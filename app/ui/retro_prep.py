@@ -286,9 +286,9 @@ def _relwis_figures(root: Path, convention: str):
 
 
 def _scores_current_fast(root: Path) -> bool:
-    """retro.scores_current's rule (exists, parses, newer than every week
-    and the hub's truth) from stats and the cached parse. Sealed roots are
-    current whenever their scores parse."""
+    """retro.scores_current's rule (exists, parses, this scores version,
+    newer than every week and the hub's truth) from stats and the cached
+    parse. Sealed roots are current whenever their scores parse."""
     from app.core import retro
     root = Path(root)
     weeks = retro.season_sample_files(root)
@@ -306,7 +306,8 @@ def _scores_current_fast(root: Path) -> bool:
             return False           # older than a sample, or than the truth
     except OSError:
         return False
-    return _scores_df(root) is not None
+    # a file scored under the earlier cell rule (retro.SCORES_V) is stale
+    return retro.scores_frame_current(_scores_df(root))
 
 
 def _scores_scoreable_fast(root: Path) -> bool:

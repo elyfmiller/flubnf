@@ -6,16 +6,37 @@ Season playback: one JSON payload per stored retrospective week.
 GET /api/retro/{season}/playback/{asof} serves what a viewer needs to replay
 a submission day: every member's quantile fan, the settled truth, the CDC's
 submitted comparators (FluSight-baseline and -ensemble, US cell included)
-and running relWIS stats.
+and running stats.
 
 Conventions (do not re-derive):
   * hub reference_date = asof + 7; horizons are canonical "0".."3"
     (app.core.horizons).
-  * relWIS uses THE frozen cell rule: settled truth > 0, positive median,
-    denominator from scoring._baseline_cells (never hand-rolled).
+  * scores use THE cell rule (scoring.cell_scored, FluSight's): settled
+    truth (0 included), a forecast with finite quantiles (a median of 0
+    included), a cell in the validated baseline (scoring._baseline_cells,
+    never hand-rolled). Each model is scored on its own cells.
   * stats exclude US, fitted or not (us_national.POOLED_INCLUDES_US, applied
     via pooled_frame / pooled_locations): US is the sum of the 52 and would
     dominate any sum. The national score is reported separately.
+
+THE STATS CONTRACT. payload["stats"][model], for every model the player
+shows (the stored members, pf2s, FluSight-baseline and FluSight-ensemble):
+
+  week_rel, cum_rel          relWIS: sum of WIS / sum of baseline WIS over
+                             the model's scored cells, this week and
+                             cumulatively through it (None: no cells)
+  week_log_rel, cum_log_rel  the same on log-scale WIS (flubnf.wis.log_wis)
+  week_cov, cum_cov          {"50", "80", "95"}: the fraction of the same
+                             cells whose truth lies inside the central
+                             interval (inclusive), or None
+  week_n, cum_n              scored cell counts
+  debug                      optional: where an official's scoring starves
+
+FluSight-baseline's rel and log rel are 1.0 by definition; its coverage is
+its own. A scores.json written before the log-scale and coverage columns (a
+sealed root) used the earlier cell rule, so the members are scored here
+instead (_stats); only what it alone holds (the retired blend) is read from
+it, with None for those.
 
 Caching: payloads live in <season_root>/playback_cache/<asof>.json, fresh
 while newer than every samples file at or before asof, scores.json and the
@@ -37,13 +58,15 @@ from app.core import horizons as hz
 from app.core import ensemble as ens
 from app.core import retro as retro_store
 from app.core import us_national as usn
-from app.core.scoring import _baseline_cells, load_truth
+from app.core import scoring
+from app.core.scoring import (_baseline_cells, _baseline_log_cells,
+                              load_truth)
 from flubnf.settings import HUB
-from flubnf.wis import wis as wis_fn
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
-#: bump when cached shapes or scoring logic change (v3: stored members only, no blend)
-CACHE_V = 3
+#: bump when cached shapes or scoring logic change (v3: stored members only,
+#: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage)
+CACHE_V = 4
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS
@@ -153,41 +176,56 @@ def _official_quantiles(model: str, asof: str, f2n: dict) -> dict | None:
 
 # ------------------------------------------------------------------- scoring
 
+#: the per-week aggregate a model's scored cells sum to (stats_cells.json)
+_AGG_KEYS = ("wis", "base", "log", "base_log", "log_n",
+             "c50", "c80", "c95", "cov_n", "n")
+
+
 def _score_block(qbl: dict, asof: str, truth: dict, n2f: dict,
-                 bases: dict) -> tuple:
-    """(wis_sum, base_sum, n_cells) under the frozen formula: truth > 0,
-    median > 0, cell present in the validated baseline."""
+                 bases: dict, lbases: dict | None = None) -> dict:
+    """The sums one week's cells give under THE cell rule
+    (scoring.cell_scored): {"wis", "base", "n"} for relWIS, {"log",
+    "base_log", "log_n"} over the cells with a baseline log score, and
+    {"c50", "c80", "c95", "cov_n"} (cells covered, cells with every band)."""
     T = pd.Timestamp(asof)
-    ws = bs = 0.0
-    n = 0
+    lbases = lbases or {}
+    agg = dict.fromkeys(_AGG_KEYS, 0.0)
     for loc, hq in qbl.items():
         fips = n2f.get(loc)
         if not fips:
             continue
         for h in HORIZONS:
             q = hq.get(h)
-            if not q:
-                continue
             actual = truth.get(
                 (fips, T + timedelta(days=7 * (int(h) + 1))))
-            if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
-                continue
             base = bases.get((fips, asof, int(h)))
-            if base is None:
+            if not scoring.cell_scored(q, actual, base):
                 continue
-            try:
-                w = float(wis_fn(q, actual).wis)
-            except Exception:
+            m = scoring.cell_metrics(q, actual)
+            if m is None:
                 continue
-            ws += w
-            bs += float(base)
-            n += 1
-    return ws, bs, n
+            agg["wis"] += m["wis"]
+            agg["base"] += float(base)
+            agg["n"] += 1
+            lb = lbases.get((fips, asof, int(h)))
+            if lb is not None:
+                agg["log"] += m["log_wis"]
+                agg["base_log"] += float(lb)
+                agg["log_n"] += 1
+            covs = [m[c] for c in scoring.COVERAGE_COLUMNS]
+            if all(c is not None for c in covs):
+                for key, c in zip(("c50", "c80", "c95"), covs):
+                    agg[key] += c
+                agg["cov_n"] += 1
+    agg["n"] = int(agg["n"])
+    agg["log_n"] = int(agg["log_n"])
+    agg["cov_n"] = int(agg["cov_n"])
+    return agg
 
 
 def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
                      official_q: dict) -> dict:
-    """{model: {"wis", "base", "n"}} for one week, members and officials
+    """{model: _score_block sums} for one week, members and officials
     alike, US excluded for all of them (us_national.POOLED_INCLUDES_US)."""
     locs = usn.pooled_locations(
         set().union(*(set(q) for q in model_q.values())) if model_q else [])
@@ -197,18 +235,57 @@ def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
         bases = _baseline_cells(asof, fips_set, truth) if fips_set else {}
     except Exception:
         bases = {}
+    lbases = (_baseline_log_cells(asof, fips_set, truth)
+              if bases else {})
     agg = {}
     for m, qbl in model_q.items():
         pooled = {k: v for k, v in qbl.items() if k in locs}
-        ws, bs, n = _score_block(pooled, asof, truth, n2f, bases)
-        agg[m] = {"wis": ws, "base": bs, "n": n}
+        agg[m] = _score_block(pooled, asof, truth, n2f, bases, lbases)
     for om, oq in official_q.items():
         if oq is None:
             continue
         states = {k: v for k, v in oq.items() if k in locs}
-        ws, bs, n = _score_block(states, asof, truth, n2f, bases)
-        agg[om] = {"wis": ws, "base": bs, "n": n}
+        agg[om] = _score_block(states, asof, truth, n2f, bases, lbases)
     return agg
+
+
+def _sum_aggs(aggs: list) -> dict:
+    out = dict.fromkeys(_AGG_KEYS, 0.0)
+    for a in aggs:
+        for k in _AGG_KEYS:
+            out[k] += float(a.get(k, 0) or 0)
+    return out
+
+
+def _agg_stats(a: dict | None) -> dict:
+    """{"rel", "log_rel", "cov", "n"} from summed aggregates (the scores
+    frame's pooled_metrics, from sums): log_rel needs a baseline log score
+    on every cell, cov every band on every cell; else None."""
+    if not a or not a.get("n"):
+        return {"rel": None, "log_rel": None, "cov": None,
+                "n": int((a or {}).get("n", 0) or 0)}
+    n = int(a["n"])
+    rel = (a["wis"] / a["base"]) if a.get("base") else None
+    log_rel = (a["log"] / a["base_log"]
+               if a.get("log_n") == n and a.get("base_log") else None)
+    cov = ({"50": a["c50"] / n, "80": a["c80"] / n, "95": a["c95"] / n}
+           if a.get("cov_n") == n else None)
+    return {"rel": rel, "log_rel": log_rel, "cov": cov, "n": n}
+
+
+#: THE STATS CONTRACT's keys (module docstring), in order; "debug" may join
+#: them for an official whose scoring starves
+STATS_FIELDS = ("week_rel", "cum_rel", "week_log_rel", "cum_log_rel",
+                "week_cov", "cum_cov", "week_n", "cum_n")
+
+
+def _stat_entry(week: dict, cum: dict) -> dict:
+    """One model's stats entry (THE STATS CONTRACT, module docstring) from
+    this week's and the cumulative {"rel", "log_rel", "cov", "n"}."""
+    return {"week_rel": week["rel"], "cum_rel": cum["rel"],
+            "week_log_rel": week["log_rel"], "cum_log_rel": cum["log_rel"],
+            "week_cov": week["cov"], "cum_cov": cum["cov"],
+            "week_n": week["n"], "cum_n": cum["n"]}
 
 
 def _season_scores(root: Path):
@@ -246,12 +323,21 @@ def _stats_fresh(root: Path, asof: str, payload: dict,
 
 def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
            model_q: dict, official_q: dict) -> dict:
-    """{model: {"week_rel", "cum_rel"}}. Members already covered by the
-    season's scores.json are read from it (one formula, computed once);
-    everything else (pf2s, officials, unscored roots) is scored on the fly
-    with per-week aggregates cached in playback_cache/stats_cells.json."""
+    """{model: THE STATS CONTRACT entry} (module docstring). Members
+    already covered by the season's scores.json are read from it (one
+    formula, computed once); everything else (pf2s, officials, unscored
+    roots) is scored on the fly with per-week aggregates cached in
+    playback_cache/stats_cells.json.
+
+    A scores.json of an earlier retro.SCORES_V (a sealed root, or a live
+    one before finalize_season rescores it) used the earlier cell rule, so
+    its members are scored on the fly too and the table is one rule. It is
+    read only for what cannot be: the retired blend, or a member no week
+    scores here (no baseline in this clone)."""
+    raw = _season_scores(root)
+    current = retro_store.scores_frame_current(raw)
     # the pooled gate: a fitted US row must never move a pooled figure
-    scores = usn.pooled_frame(_season_scores(root))
+    scores = usn.pooled_frame(raw)
     scored_models = set(scores.model.unique()) if scores is not None else set()
     upto = [w for w in season_weeks(root) if w <= asof]
     cf = _cache_dir(root) / "stats_cells.json"
@@ -296,9 +382,6 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     if dirty:
         _write_cache(cf, cache)
 
-    def _rel(ws, bs):
-        return (ws / bs) if bs else None
-
     stats = {}
     wanted = list(model_q) + [om for om in OFFICIAL
                               if any(om in aggs[w] for w in upto)]
@@ -306,19 +389,19 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     if "ensemble" in scored_models and "ensemble" not in wanted:
         wanted.append("ensemble")
     for m in wanted:
-        if m in scored_models:
+        fly = [aggs[w][m] for w in upto if m in aggs[w]]
+        if m in scored_models and (current
+                                   or not _sum_aggs(fly)["n"]):
             g = scores[scores.model == m]
             # bracket indexing: .asof is a pandas *method*, never the column
             wk = g[g["asof"] == asof]
             cum = g[g["asof"] <= asof]
-            stats[m] = {"week_rel": _rel(wk.wis.sum(), wk.base_wis.sum()),
-                        "cum_rel": _rel(cum.wis.sum(), cum.base_wis.sum())}
+            stats[m] = _stat_entry(scoring.pooled_metrics(wk),
+                                   scoring.pooled_metrics(cum))
         else:
             wk = aggs.get(asof, {}).get(m)
-            cw = sum(aggs[w][m]["wis"] for w in upto if m in aggs[w])
-            cb = sum(aggs[w][m]["base"] for w in upto if m in aggs[w])
-            stats[m] = {"week_rel": _rel(wk["wis"], wk["base"]) if wk else None,
-                        "cum_rel": _rel(cw, cb)}
+            cum = _sum_aggs(fly)
+            stats[m] = _stat_entry(_agg_stats(wk), _agg_stats(cum))
             if m in OFFICIAL and stats[m]["cum_rel"] is None:
                 # say where the official pipeline starves instead of "pending"
                 stats[m]["debug"] = _official_debug(root, m, upto, n2f)
@@ -348,11 +431,12 @@ def _official_debug(root: Path, model: str, upto: list, n2f: dict) -> str:
             return f"baseline construction failed for {w}: {str(e)[:120]}"
         if not bases:
             return f"baseline produced zero cells for {w} ({len(fips_set)} locations)"
-        ws, bs, n = _score_block({k: v for k, v in oq.items() if k != "US"},
-                                 w, truth, n2f, bases)
+        agg = _score_block({k: v for k, v in oq.items() if k != "US"},
+                           w, truth, n2f, bases)
         return (f"probe week {w}: files {len(weeks_with_file)}/{len(upto)}, "
                 f"parsed locations {len(states)}, baseline cells {len(bases)}, "
-                f"scored cells {n}, wis {ws:.1f}, base {bs:.1f}")
+                f"scored cells {agg['n']}, wis {agg['wis']:.1f}, "
+                f"base {agg['base']:.1f}")
     except Exception as e:
         return f"debug probe failed: {type(e).__name__}: {str(e)[:120]}"
 

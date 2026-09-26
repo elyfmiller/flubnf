@@ -217,9 +217,13 @@ def baseline_quantiles(ds, name: str, as_of: str, weeks_to_drop: int = 0):
 def score(q_by_name: dict, ds, as_of: str, *, weeks_to_drop: int = 0,
           truth: dict | None = None) -> pd.DataFrame:
     """One row per scored cell: location (group name), horizon, wis,
-    base_wis, rel, national. The cell rule is scoring.py's (truth > 0,
-    median > 0, a baseline cell) plus base_wis > 0: a flat series gives the
-    persistence baseline a point mass that can score exactly zero."""
+    base_wis, rel, national, truth. The cell rule is scoring.py's
+    (scoring.cell_scored: settled truth, 0 included; a forecast with finite
+    quantiles; a baseline cell) plus base_wis > 0: a flat series gives the
+    in-house persistence baseline a point mass that can score exactly zero,
+    and a zero denominator has no ratio."""
+    from app.core.scoring import cell_scored, forecast_scoreable, \
+        truth_settled
     from flubnf.wis import wis
     truth = ds.truth() if truth is None else truth
     nat = ds.national_group
@@ -233,7 +237,7 @@ def score(q_by_name: dict, ds, as_of: str, *, weeks_to_drop: int = 0,
                 continue
             end = (T + timedelta(days=7 * (int(h) + 1))).date().isoformat()
             actual = truth.get((name, end))
-            if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
+            if not (truth_settled(actual) and forecast_scoreable(q)):
                 continue
             if base is None:
                 base = baseline_quantiles(ds, name, as_of, weeks_to_drop) or {}
@@ -245,7 +249,7 @@ def score(q_by_name: dict, ds, as_of: str, *, weeks_to_drop: int = 0,
                 bw = float(wis(bq, actual).wis)
             except Exception:
                 continue
-            if not bw > 0:
+            if not (cell_scored(q, actual, bw) and bw > 0):
                 continue
             rows.append({"location": name, "horizon": int(h), "wis": w,
                          "base_wis": bw, "rel": w / bw,

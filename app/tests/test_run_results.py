@@ -32,19 +32,23 @@ def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
     # truth is keyed by week-ending date (PHYSICAL weeks): canonical horizon
     # h lands on T + 7*(h+1), so these four weeks cover "0".."3"
     truth = {("39", T + pd.Timedelta(days=7 * h)): 100.0 for h in (1, 2, 3, 4)}
-    truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: one week only
-    truth[("49", T + pd.Timedelta(days=14))] = 0.0          # zero truth: no cell
-    n2f = {"Ohio": "39", "Utah": "49", "Nowhere": None}
+    truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: two weeks,
+    truth[("49", T + pd.Timedelta(days=14))] = 0.0          # a zero truth scored
+    truth[("54", T + pd.Timedelta(days=7))] = 20.0
+    n2f = {"Ohio": "39", "Utah": "49", "Nowhere": None, "WV": "54"}
     # the baseline is keyed on the hub's horizons, the same labels the rows
     # now carry, so the join is straight through
     monkeypatch.setattr(scoring, "_baseline_cells",
                         lambda fd, fips, tr: {(f, fd, int(h)): 10.0
                                               for f in fips
                                               for h in hz.HORIZONS})
+    # WV's forecast carries a non-finite quantile: no cell
+    wv = {"0": {**_q(20.0)["0"], 0.975: float("nan")}}
     df = scoring.score_quantiles({"Ohio": _q(100.0), "Utah": _q(100.0), "Nowhere": _q(5.0),
-                                  "Zero": {"0": {0.5: 0.0}}}, "2098-01-03", n2f, truth)
+                                  "Zero": {"0": {0.5: 0.0}}, "WV": wv},
+                                 "2098-01-03", n2f, truth)
     assert sorted(df.location.unique()) == ["Ohio", "Utah"]
-    assert len(df[df.location == "Ohio"]) == 4 and len(df[df.location == "Utah"]) == 1
+    assert len(df[df.location == "Ohio"]) == 4 and len(df[df.location == "Utah"]) == 2
     assert (df.base_wis == 10.0).all() and (df.rel == df.wis / 10.0).all()
     # the same forecast scores better where its median hits the truth
     # (Ohio, truth 100) than where it misses (Utah, truth 50)

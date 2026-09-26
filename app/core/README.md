@@ -31,11 +31,11 @@ One line per module, with the role tag its docstring opens with and its main cal
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `scoring.py` | PRODUCTION | WIS scoring and the frozen cell rule | server, `retro`, `playback`, `site_build` |
+| `scoring.py` | PRODUCTION | WIS, log-scale WIS and coverage per cell, and the scored-cell rule (FluSight's) | server, `retro`, `playback`, `site_build` |
 | `relwis.py` | PRODUCTION | the two relWIS conventions and the convention note | server retro pages, `site_page`, `report_season` |
 | `us_national.py` | PRODUCTION | US national resolution, labels, pooled-scope policy | every scoring surface |
 | `categorical.py` | PRODUCTION | FluSight rate-change categories | `report`, server |
-| `floor.py` | PRODUCTION | output floor on console-run PF samples | server `pipeline._run_all` |
+| `floor.py` | PRODUCTION | output floor on console-run samples and every stored replay week | server `pipeline._run_all`, `retro.run_week` |
 | `completeness.py` | RESEARCH | reporting-completeness factors, reached only by research `spec.extra` keys | `engines/pf.py`, `engines/analogue.py` |
 
 ## Oracle step

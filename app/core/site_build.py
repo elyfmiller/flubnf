@@ -11,7 +11,8 @@ rebuild's diff shows which numbers moved.
 SCORES. Each shipped model's own relWIS (the PF and the Groundhog; an older
 payload's stored "ensemble" is printed as stored). No stored scores.json is
 read (a test pins this): every season is rescored from each week's playback
-payload under the frozen cell rule and the validated baseline. A tree
+payload under THE cell rule (app.core.scoring.cell_scored, FluSight's) and
+the validated baseline. A tree
 replayed by the bare analogue (the seal) prints under the Groundhog's name
 with nothing here to say so: publish from a Groundhog replay.
 
@@ -173,16 +174,16 @@ def discover_seasons(roots=ROOT_ORDER) -> dict:
 def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     """{model: [wis_sum, base_sum, cells]} for one stored week.
 
-    THE frozen cell rule for every model; US excluded for ours and theirs
-    alike (us_national.POOLED_INCLUDES_US).
+    THE cell rule (scoring.cell_scored) for every model; US excluded for
+    ours and theirs alike (us_national.POOLED_INCLUDES_US).
 
     One asymmetry, on purpose: our models are scored on their own cells (as
     the published record was), and the officials only on the cells our first
     model (MODEL_ORDER) scored, so a row compares like with like.
     """
     import pandas as pd
+    from app.core import scoring
     from app.core.scoring import _baseline_cells
-    from flubnf.wis import wis as wis_fn
 
     from app.core import us_national as usn
 
@@ -235,15 +236,13 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
                     continue
                 actual = truth.get(
                     (fips, T + timedelta(days=7 * (int(h) + 1))))
-                if actual is None or actual <= 0 or q.get(0.5, 0.0) <= 0:
-                    continue
                 base = bases.get((fips, asof, int(h)))
-                if base is None:
+                if not scoring.cell_scored(q, actual, base):
                     continue
-                try:
-                    w = float(wis_fn(q, actual).wis)
-                except Exception:
+                m = scoring.cell_metrics(q, actual)
+                if m is None:
                     continue
+                w = m["wis"]
                 ws += w
                 bs += float(base)
                 n += 1
@@ -824,6 +823,11 @@ def harvest_bngl() -> dict:
 
 # -------------------------------------------------------------- consistency
 
+#: |computed - published| allowed by cross_check: the table's rounding
+#: (0.0005) plus the earlier cell rule's pooled difference (about 0.001)
+CROSS_CHECK_TOLERANCE = 0.0016
+
+
 def cross_check(scored: list, placement: dict,
                 label: str = PF_LABEL_ORACLE) -> list:
     """Compare every computed season score against the number the console
@@ -831,6 +835,11 @@ def cross_check(scored: list, placement: dict,
 
     The drift alarm: a mismatch means the app's text or the data moved, and
     the build says so rather than publish a different figure silently.
+
+    The console's table was measured under the earlier cell rule (truth
+    above 0 and a positive median, scoring.py), which moves a pooled season
+    figure by up to about 0.001 on the stored seasons; the tolerance is that
+    plus the table's rounding (0.0005), so only a larger move alarms.
     """
     out = []
     for s in scored:
@@ -841,7 +850,7 @@ def cross_check(scored: list, placement: dict,
             continue
         out.append({"what": f"{s['season']} {label} relWIS",
                     "computed": rel, "app": app,
-                    "ok": abs(rel - app) <= 0.0006})
+                    "ok": abs(rel - app) <= CROSS_CHECK_TOLERANCE})
     return out
 
 

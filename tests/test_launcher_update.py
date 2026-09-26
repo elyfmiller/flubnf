@@ -157,3 +157,33 @@ def test_an_unreachable_origin_says_offline_not_local_changes(tmp_path):
 
     assert "offline" in out.stdout, out.stdout + out.stderr
     assert (clone / "app.py").read_text() == "v1\n"
+
+
+# FluBNF.app runs FluBNF.command headless first (FLUBNF_PREPARE_ONLY=1, output
+# in a log file). The same block must never set work aside where no one sees.
+
+@posix_only
+def test_a_headless_run_hands_a_stray_edit_to_terminal(tmp_path):
+    """Setting an edit aside is something the reader must see. The headless
+    run stops with 75 (the app then opens Terminal, where the stash happens
+    in view) and leaves the edit and the stash list alone."""
+    _, clone = _origin_and_clone(tmp_path)
+    (clone / "app.py").write_text("someone edited this\n")
+
+    out = _run_block(clone, FLUBNF_PREPARE_ONLY="1")
+
+    assert out.returncode == 75, out.stdout + out.stderr
+    assert "handing over to Terminal" in out.stdout
+    assert (clone / "app.py").read_text() == "someone edited this\n"
+    stashed = subprocess.run(["git", "stash", "list"], cwd=clone, text=True,
+                             capture_output=True).stdout
+    assert stashed == "", "the headless run stashed the edit out of sight"
+
+
+@posix_only
+def test_a_headless_run_still_fast_forwards_a_clean_clone(tmp_path):
+    _, clone = _origin_and_clone(tmp_path)
+    out = _run_block(clone, FLUBNF_PREPARE_ONLY="1")
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "up to date with origin" in out.stdout
+    assert (clone / "app.py").read_text() == "v2\n"

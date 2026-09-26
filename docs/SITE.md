@@ -92,12 +92,16 @@ Three of those deserve a note.
 scored, and `discover_seasons` accepts any season root under `app/state`,
 including research runs. Every season is instead rescored
 from each week's playback payload, the stored members as stored, through
-the validated baseline construction and the frozen cell rule.
+the validated baseline construction and the cell rule FluSight scores by
+(`app.core.scoring.cell_scored`: settled truth, 0 included; a forecast
+with finite quantiles, a median of 0 included; a baseline cell).
 `app/tests/test_site_build.py` pins the seal's member figures (the
 mechanistic member, the filter alone on the seal, 1.023 /
 0.636 / 0.825, analogue 1.045 / 0.756 / 0.621) when the seal is the tree on
-the machine. A tree replayed by the bare analogue prints that member's
-figure under the Groundhog's name; publish from a Groundhog replay
+the machine; those were measured under the earlier rule (truth and median
+above 0) and need re-measuring on a machine that holds the seal. A tree
+replayed by the bare analogue prints that member's figure under the
+Groundhog's name; publish from a Groundhog replay
 (Retrospective tab, "Groundhog only", or `flubnf retro`), whose record
 names the donor bank. The mechanistic column is named for what the trees
 store (`site_build.pf_label`): "Oracle SIHRS" only when every published

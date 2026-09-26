@@ -19,7 +19,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
-| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
+| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
 | `ruff` | the app/ui lint case in `app/tests/test_ui_layout.py` |
 
@@ -29,7 +29,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 
 | Subject | Files (`test_*.py`) |
 |---|---|
-| Launchers and setup scripts | `engine_bundle`, `launcher_update`, `reinstall_script`, `first_run_sparse_hub`, `windows_controlled_folder_access`, `window_backend` |
+| Launchers and setup scripts | `engine_bundle`, `launcher_update`, `mac_app_bundle`, `reinstall_script`, `first_run_sparse_hub`, `windows_controlled_folder_access`, `window_backend` |
 | SIHRS templates and fit inputs | `min_template`, `sihrs_fit` |
 | Analogue and donor paths | `analogue`, `donor_paths`, `epiweek53` |
 | Oracle SIHRS | `oracle`, `oracle_bank`, `oracle_mix` |

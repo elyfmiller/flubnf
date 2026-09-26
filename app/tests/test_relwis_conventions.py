@@ -94,21 +94,23 @@ def test_ratio_of_sums_says_nothing_when_there_is_no_overlap():
 def test_pairwise_uses_only_cells_both_models_submitted():
     """The whole hand computation, and the rule that makes it CDC's figure.
 
-    theta_i is the geometric mean over j of (mean WIS of i on the cells i
-    and j share) / (mean WIS of j on those same cells):
+    theta_i is the geometric mean over EVERY model j, i itself included
+    (ratio 1, as scoringutils get_pairwise_comparisons does), of (mean WIS
+    of i on the cells i and j share) / (mean WIS of j on those same cells):
 
-      baseline: vs TeamA 36/18 = 2, vs ours 4/1 = 4    -> sqrt(8)
-      TeamA:    vs baseline 0.5,    vs ours 2/1 = 2    -> 1
-      ours:     vs baseline 1/4,    vs TeamA 1/2       -> sqrt(0.125)
+      baseline: vs TeamA 36/18 = 2, vs ours 4/1 = 4, self 1 -> cbrt(8) = 2
+      TeamA:    vs baseline 0.5,    vs ours 2/1 = 2, self 1 -> 1
+      ours:     vs baseline 1/4,    vs TeamA 1/2,    self 1 -> cbrt(1/8)
 
-    scaled by the baseline's own skill: baseline 1, TeamA 1/sqrt(8) =
-    0.353553, ours sqrt(0.125)/sqrt(8) = 0.125.
+    scaled by the baseline's own skill: baseline 1, TeamA 1/2 = 0.5, ours
+    0.5/2 = 0.25 (its ratio of sums on its two cells, 2/8). Leaving the
+    self-pair out gave 0.5**1.5 and 0.25**1.5 (0.353553, 0.125).
     """
     scaled, n = relwis.pairwise_scaled(
         _cells(), [relwis.BASELINE, "TeamA", "FluBNF-PF"])
     assert scaled[relwis.BASELINE] == 1.0          # exactly, by construction
-    assert round(scaled["TeamA"], 9) == 0.353553391
-    assert round(scaled["FluBNF-PF"], 9) == 0.125
+    assert round(scaled["TeamA"], 9) == 0.5
+    assert round(scaled["FluBNF-PF"], 9) == 0.25
     # coverage travels with a field-dependent number
     assert n["FluBNF-PF"] == 2 and n["TeamA"] == 3
 
@@ -129,13 +131,51 @@ def test_pairwise_ignores_a_model_with_no_shared_cells():
     wis["Hermit"] = {("2019-01-05", "99", 3): 1.0}
     scaled, _ = relwis.pairwise_scaled(_cells(wis), list(wis))
     assert scaled["Hermit"] != scaled["Hermit"]     # nan: no pair exists
-    assert round(scaled["FluBNF-PF"], 9) == 0.125   # and nobody else moved
+    assert round(scaled["FluBNF-PF"], 9) == 0.25    # and nobody else moved
+
+
+def test_pairwise_equals_the_ratio_of_sums_when_every_model_covers_every_cell():
+    """With the self-pair in, full overlap makes the pairwise figure each
+    model's ratio of sums whatever the field's size (without it the figure
+    was that value to the power M/(M-1)); checked against a direct
+    geometric mean over the field, self-pair included."""
+    import math
+    import random
+    rnd = random.Random(3)
+    cells = [("2024-01-%02d" % d, "%02d" % loc, h)
+             for d in (6, 13, 20) for loc in (1, 2, 4) for h in range(4)]
+    models = [relwis.BASELINE, "A", "B", "C", "FluBNF-PF"]
+    wis = {m: {c: rnd.uniform(0.5, 1.5) * (1 + k) * rnd.uniform(1, 20)
+               for c in cells} for k, m in enumerate(models)}
+    frame = _cells(wis)
+    scaled, _ = relwis.pairwise_scaled(frame, models)
+    for m in models:
+        v, n = relwis.ratio_of_sums(frame, m)
+        assert n == len(cells) and scaled[m] == pytest.approx(v, rel=1e-12)
+    # a comparator that skips cells moves the figure to the geometric mean
+    # over the field of ratio-of-sums on each comparator's shared cells
+    part = cells[: len(cells) // 2]
+    wis["C"] = {c: wis["C"][c] for c in part}
+    scaled, _ = relwis.pairwise_scaled(_cells(wis), models)
+
+    def mean_ratio(i, j):
+        shared = [c for c in wis[i] if c in wis[j]]
+        return (sum(wis[i][c] for c in shared)
+                / sum(wis[j][c] for c in shared))
+
+    def theta(i):
+        return math.exp(sum(math.log(mean_ratio(i, j)) for j in models)
+                        / len(models))
+
+    for m in models:
+        assert scaled[m] == pytest.approx(theta(m) / theta(relwis.BASELINE),
+                                          rel=1e-12)
 
 
 def test_insert_model_ranks_us_inside_the_real_field():
     got = relwis.insert_model(_cells(), "FluBNF-PF",
                               [relwis.BASELINE, "TeamA"])
-    assert round(got["value"], 9) == 0.125
+    assert round(got["value"], 9) == 0.25
     assert (got["rank"], got["n_models"]) == (1, 3)
     assert got["n_cells"] == 2
 
@@ -467,9 +507,11 @@ def test_the_pairwise_view_withholds_the_ratio_only_panels():
     assert "<polyline" not in pair
     # the US national figure is a ratio of sums, so it is named as absent
     assert "The US national row is not shown under this convention" in flat
-    # and the player's own running figures say which convention they are
+    # and the player's own running figures say which convention they are,
+    # and how far that is from the pairwise figures (relwis module note)
     assert "beats the CDC FluSight baseline, ratio of sums" in flat
-    assert "not comparable with the pairwise scores" in flat
+    assert "not the pairwise scores above" in flat
+    assert "agree to within about 0.02" in flat
 
 
 def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
@@ -482,9 +524,10 @@ def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
     flat = _flat(html)
     assert "No scores under this convention" in flat
     assert "no hub field data cached" in flat
-    # the ratio-of-sums view is OFFERED, and named as a different quantity
+    # the ratio-of-sums view is OFFERED, with how close it runs to the
+    # pairwise figure on the same cells (relwis module note)
     assert "conv=ratio_of_sums" in html
-    assert "but it is a different quantity" in flat
+    assert "on the same cells the two agree to within about 0.02" in flat
     # and it keeps the reader's place: the same week the convention switch
     # itself carries, not a silent jump back to the last week
     assert "conv=ratio_of_sums&amp;week=2098-11-07" in html
@@ -495,7 +538,7 @@ def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
     assert "Per-state scores" not in flat
     assert "0 states scored" not in flat
     assert "Each jurisdiction is its own tournament" not in flat
-    assert "not comparable with the pairwise scores" not in flat
+    assert "not the pairwise scores above" not in flat
 
 
 def test_the_unavailable_banner_does_not_send_a_reader_where_they_already_are():

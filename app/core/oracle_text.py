@@ -21,7 +21,9 @@ sums, US excluded. The test holds each four-place figure to
 docs/ORACLE-SIHRS.md (and to the screen file where present). The bank choice
 was the lead's call on an unresolved screen (RECORD_B2_1), and the record is
 a frozen-specification replication; 2026-27 is the prospective test. caveat()
-says so once for every surface.
+says so once for every surface. The figures were measured under the earlier
+cell rule (app/core/scoring.py: truth above 0 and a positive median) and are
+kept as measured; RECORD_SOURCE says so.
 """
 from __future__ import annotations
 
@@ -109,7 +111,9 @@ RECORD_B2_1 = {"point": -0.01026693460397421,
 RECORD_SOURCE = (
     "docs/ORACLE-SIHRS.md: the B2 screen on the stored 2023-24, 2024-25 and "
     "2025-26 forecasts, reproduced by backfilling them with the Oracle step "
-    "and scoring with this app's own scorer")
+    "and scoring with this app's own scorer under its earlier cell rule "
+    "(truth and median above 0), which differs from today's at about the "
+    "third decimal")
 
 
 def fmt(x: float, places: int = 3) -> str:

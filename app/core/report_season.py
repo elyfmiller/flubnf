@@ -7,11 +7,12 @@ stored week's playback payload embedded as JSON, and the SHARED player
 (app/ui/static/player.js, the file the season page loads) inlined verbatim,
 so player features reach the export automatically. Works offline.
 
-Scope: the season verdict (tiles, the US national aggregate, per-state
-table), the forecast detail view and the live relWIS table, held to the
-season page by app/tests/test_report_parity.py. The cumulative chart and the
-categorical weekly maps stay on the season page (size); anything else the
-page shows that the export cannot deliver must be STATED, never silently absent.
+Scope: the season verdict (tiles with log-scale relWIS and coverage, the US
+national aggregate, per-state table), the forecast detail view and the live
+scores table, held to the season page by app/tests/test_report_parity.py.
+The cumulative chart and the categorical weekly maps stay on the season
+page (size); anything else the page shows that the export cannot deliver
+must be STATED, never silently absent.
 
 Theme-aware like report_v2: nau.css token blocks embedded verbatim, the
 shared boot script resolves the theme at open, and a print block flips to
@@ -24,6 +25,7 @@ every input (_newest_input) and carrying the current markers
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 
@@ -209,6 +211,108 @@ def _us_national(root: Path, df) -> tuple:
 #: the season page's cumulative chart heading, verbatim (the parity test matches it)
 CURVE_HEADING = "Cumulative relWIS through the season"
 
+#: the player's stats card: heading and explanation, one copy for the season
+#: page (Jinja globals) and this export
+LIVE_HEADING = "Live scores"
+LIVE_SCORES_NOTE = (
+    "relWIS below 1 beats the CDC FluSight baseline, ratio of sums over "
+    "the cells both scored, US left out. The log scale scores log(x+1) "
+    "counts, so small states weigh more. Coverage is the share of those "
+    "cells whose truth fell inside each central interval; a calibrated "
+    "forecast sits near 50, 80 and 95%. Season so far pools every week up "
+    "to this one.")
+
+#: the central intervals whose coverage the verdicts print, key and level
+COV_LEVELS = (("50", 50), ("80", 80), ("95", 95))
+#: points from its interval's level within which a coverage reads ok
+#: (player.js COV_TOL; a test holds the two equal), narrowed near 100 by
+#: cov_tolerance
+COV_TOLERANCE = 5
+
+
+def cov_tolerance(level) -> float:
+    """The ok band around an interval's level: COV_TOLERANCE points, or half
+    the room above the level when that is less (2.5 at 95%), so a 95%
+    interval that never misses reads too wide (player.js covTol)."""
+    return min(COV_TOLERANCE, (100 - int(level)) / 2)
+
+
+def cov_pct(frac) -> int | None:
+    """A coverage fraction as the whole percentage printed (halves round
+    up, as player.js Math.round does), or None."""
+    try:
+        f = float(frac)
+    except (TypeError, ValueError):
+        return None
+    return math.floor(100 * f + 0.5) if math.isfinite(f) else None
+
+
+def cov_state(frac, level) -> str:
+    """THE coverage reading (player.js covState): "ok" within
+    cov_tolerance(level) points of the interval's level, "low" further
+    under (too narrow), "wide" further over (too wide), "" without a
+    figure. Judged on the printed percentage, so a cell never wears a color
+    its number contradicts. Also a Jinja global (the season page)."""
+    p = cov_pct(frac)
+    if p is None:
+        return ""
+    tol = cov_tolerance(level)
+    if p < int(level) - tol:
+        return "low"
+    if p > int(level) + tol:
+        return "wide"
+    return "ok"
+
+
+#: the coverage colors' key: the line player.js covLegend writes under the
+#: live table (a test holds the two equal), also under the verdict tiles
+COV_LEGEND = (
+    f'Coverage color: <span class="cov-ok">within {COV_TOLERANCE} points of '
+    f"nominal ({cov_tolerance(95):g} at 95%)</span> · "
+    '<span class="cov-low">further under (too narrow)</span> · '
+    '<span class="cov-wide">further over (too wide)</span>.')
+
+#: the per-state tables' 95% column, said once above the table (the page
+#: and this export): the whole percentages the key's rule gives at 95%
+PSTATES_COV_NOTE = (
+    "95%: the share of the state's scored cells inside the central 95% "
+    f"interval; {math.ceil(95 - cov_tolerance(95)) - 1}% or less is too "
+    f"narrow, {math.floor(95 + cov_tolerance(95)) + 1}% or more too wide.")
+
+
+def cov_text(frac) -> str:
+    """"48%", or a dash without a figure. Also a Jinja global."""
+    p = cov_pct(frac)
+    return "–" if p is None else f"{p}%"
+
+
+def _cov_span(frac, level) -> str:
+    st = cov_state(frac, level)
+    return (f'<span class="cov-{st}">{cov_text(frac)}</span>' if st
+            else f'<span class="hint">{cov_text(frac)}</span>')
+
+
+#: what the tiles' second line holds, said once under them
+METRICS_NOTE = ("Log scale: the same ratio on the WIS of log(x+1) counts. "
+                "Coverage: the share of the same cells whose truth fell "
+                "inside the central 50, 80 and 95% intervals.")
+
+
+def _metrics_html(log_rel, cov) -> str:
+    """The verdict tile's second line: log-scale relWIS and 50/80/95%
+    coverage, each left out when the scores cannot give it (a season
+    scored before these metrics)."""
+    rows = []
+    if log_rel is not None:
+        rows.append('<dt>log scale</dt><dd class="'
+                    + ("ok" if log_rel < 1 else "bad")
+                    + f'">{log_rel:.3f}</dd>')
+    if cov:
+        rows.append("<dt>coverage 50/80/95%</dt><dd>"
+                    + " · ".join(_cov_span(cov.get(k), lv)
+                                 for k, lv in COV_LEVELS) + "</dd>")
+    return ('<dl class="tilekv">' + "".join(rows) + "</dl>") if rows else ""
+
 #: in order: the two shipped members, the research member. Older
 #: scores.json files also carry the retired blend's rows; they are not shown.
 SEASON_MODELS = ("pf", "analogue", "pf2s")
@@ -242,26 +346,41 @@ def _cumulative_curve(df) -> list:
     return curves.get("pf") or next(iter(curves.values()), [])
 
 
+def _oracle_named(names: dict) -> bool:
+    """True while pf wears the Oracle SIHRS name on this tree (the fitted
+    US note applies only then; a tree without the step names pf for the
+    filter already). player.js usPfNote makes the same test."""
+    return "Oracle" in str(names.get("pf", ""))
+
+
 def _summary_block(root: Path, weeks: list, payloads: dict,
                    names: dict | None = None) -> str:
     """The static season verdict, printed ahead of the player.
 
-    Tiles: the final week's cum_rel (the numbers the player's last frame
-    shows), plus the US tile/row with its provenance label (or a stated
-    reason when absent). Per-state table from scores.json (pooled gate), or
-    a statement when unscored. Names from `names` (names_for_root)."""
+    Tiles: the final week's cum_rel, cum_log_rel and cum_cov (the numbers
+    the player's last frame shows), plus the US tile/row with its
+    provenance label (or a stated reason when absent). Per-state table
+    from scores.json (pooled gate): relWIS and, when the scores carry it,
+    95% coverage per member; or a statement when unscored. Names from
+    `names` (names_for_root)."""
     names = names_for_root(root) if names is None else names
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
-    tiles = []
+    tiles, more = [], []
+    # any tile with coverage: the colors' key goes under the tiles
+    tile_cov = False
     for m in SEASON_MODELS:
-        v = (stats.get(m) or {}).get("cum_rel")
+        st = stats.get(m) or {}
+        v = st.get("cum_rel")
         if v is None:
             continue
         cls = "ok" if v < 1 else "bad"
+        tile_cov = tile_cov or bool(st.get("cum_cov"))
+        more.append(_metrics_html(st.get("cum_log_rel"), st.get("cum_cov")))
         tiles.append('<div class="tile"><div class="tilename">'
                      + names.get(m, m) + '</div>'
-                     + f'<div class="tileval {cls}">{v:.3f}</div></div>')
+                     + f'<div class="tileval {cls}">{v:.3f}</div>'
+                     + more[-1] + "</div>")
     # the weeks covered and the wall time are in the report header
     # (_timing_note), so the verdict does not repeat them
     rows = []
@@ -274,6 +393,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
     have = ([m for m in SEASON_MODELS
              if "model" in getattr(df, "columns", ()) and (df.model == m).any()]
             if df is not None else [])
+    # the fitted US row of Oracle SIHRS had no Oracle step (usn.PF_US_NOTE)
+    pf_us_plain = bool(us and us.is_fitted and _oracle_named(names))
     for m in have:
         if not (us and us.get(m)):
             continue
@@ -283,51 +404,87 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
         sub = ("fitted at the national level, outside the pooled figures"
                if us.is_fitted else us.fallback_note
                + ", states treated as independent")
+        if pf_us_plain and m == "pf":
+            sub = usn.PF_US_SHORT + ", " + sub
+        tile_cov = tile_cov or bool(us.cov(m))
+        more.append(_metrics_html(us.log_rel(m), us.cov(m)))
         tiles.append('<div class="tile"><div class="tilename">'
                      + us.short_label + ": " + names.get(m, m)
                      + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div>'
-                     + f'<div class="hint">{sub}</div></div>')
+                     + more[-1] + f'<div class="hint">{sub}</div></div>')
     if have:
         # cell coverage when the scores file supplies it
         n = int((df.model == have[0]).sum())
         if n:
             cover = (f"the season's {n} scored {names.get(have[0], have[0])}"
                      " cells")
+    show_cov = False
     if df is not None and "location" in df.columns:
+        # per-state figures (relWIS, log-scale relWIS, coverage) from the
+        # one per-jurisdiction summary (retro.state_metrics)
+        per_state = retro.state_metrics(df, tuple(have))
+        # a 95% coverage column per member when the scores carry coverage
+        # (a season scored before it has relWIS columns only)
+        show_cov = any((r.get(m) or {}).get("cov")
+                       for r in per_state.values() for m in have)
+
+        def cells_for(rel, cov) -> str:
+            out = ('<td class="num ' + ("ok" if rel < 1 else "bad")
+                   + f'">{rel:.3f}</td>' if rel is not None
+                   else '<td class="num hint">n/a</td>')
+            if show_cov:
+                c95 = (cov or {}).get("95")
+                st = cov_state(c95, 95)
+                out += (f'<td class="num cov-{st}">{cov_text(c95)}</td>'
+                        if st else '<td class="num hint">–</td>')
+            return out
         if us:
             # the national row leads as a distinct, labelled row (console placement)
             cells = [f"<td>{us.short_label}</td>"]
             for m in have:
-                v = us.get(m)
-                if v:
-                    cells.append('<td class="num '
-                                 + ("ok" if v < 1 else "bad")
-                                 + f'">{v:.3f}</td>')
-                else:
-                    cells.append('<td class="num hint">n/a</td>')
+                cells.append(cells_for(us.get(m) or None, us.cov(m)))
             rows.append('<tr class="usagg">' + "".join(cells) + "</tr>")
         for loc in sorted(df.location.unique()):
             cells = [f"<td>{loc}</td>"]
             for m in have:
-                g = df[(df.model == m) & (df.location == loc)]
-                bs = g.base_wis.sum() if len(g) else 0
-                if bs:
-                    v = g.wis.sum() / bs
-                    cells.append('<td class="num '
-                                 + ("ok" if v < 1 else "bad")
-                                 + f'">{v:.3f}</td>')
-                else:
-                    cells.append('<td class="num hint">n/a</td>')
+                pm = (per_state.get(str(loc)) or {}).get(m) or {}
+                cells.append(cells_for(pm.get("rel"), pm.get("cov")))
             rows.append("<tr>" + "".join(cells) + "</tr>")
     if rows:
+        if show_cov:
+            # two-row head: each member over its relWIS and 95% coverage
+            head = ('<tr><th rowspan="2">State</th>'
+                    + "".join(f'<th colspan="2" class="grp">{names.get(m, m)}'
+                              "</th>" for m in have)
+                    + "</tr><tr>"
+                    + "".join('<th class="num">relWIS</th>'
+                              '<th class="num">95%</th>' for _m in have)
+                    + "</tr>")
+        else:
+            head = ('<tr><th>State</th>'
+                    + "".join(f'<th class="num">{names.get(m, m)}</th>'
+                              for m in have) + "</tr>")
         states = ('<h2 style="margin-top:.9rem">Per-state final scores</h2>'
-                  '<table><thead><tr><th>State</th>'
-                  + "".join(f'<th class="num">{names.get(m, m)}</th>'
-                            for m in have)
-                  + '</tr></thead><tbody>'
-                  + "".join(rows) + "</tbody></table>"
-                  + (f'<p class="hint">{us.note}</p>' if us else ""))
+                  + (f'<p class="hint">{PSTATES_COV_NOTE}</p>'
+                     if show_cov else "")
+                  + '<div class="statscroll"><table class="pstates"><thead>'
+                  + head + '</thead><tbody>'
+                  + "".join(rows) + "</tbody></table></div>"
+                  + (f'<p class="hint">{us.note}</p>' if us else "")
+                  + (f'<p class="hint">{usn.PF_US_NOTE}</p>'
+                     if pf_us_plain and "pf" in have else ""))
+        # a sealed record's scores.json predates FluSight's cell rule
+        # (retro.SCORES_V): this table reads it, while the tiles and the live
+        # scores are scored under the rule (playback._stats)
+        if not retro.scores_frame_current(df_all):
+            from app.core.scoring import earlier_rule_note
+            stored = ["the per-state table"]
+            fresh = ["the pooled tiles", "the live scores"]
+            if us:
+                (stored if us.is_fitted else fresh).append("the US figures")
+            states += (f'<p class="hint">'
+                       f"{earlier_rule_note(stored, fresh)}</p>")
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")
@@ -344,9 +501,11 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
             + us_absent
             + f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
             "sums; below 1 beats the CDC FluSight baseline. "
-            f"{usn.POOLED_SCOPE_NOTE}</p>"
+            + (METRICS_NOTE + " " if any(more) else "")
+            + f"{usn.POOLED_SCOPE_NOTE}</p>"
+            + (f'<p class="pblegend">{COV_LEGEND}</p>' if tile_cov else "")
             # the file leaves the machine: it carries the convention note itself
-            f'<p class="hint">{relwis.PUBLISHED_CONVENTION_NOTE}</p>'
+            + f'<p class="hint">{relwis.PUBLISHED_CONVENTION_NOTE}</p>'
             + states + "</div>")     # the cumulative chart stays on the season page
 
 
@@ -452,6 +611,8 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
             .replace("@@TIMING@@", timing_note)
             .replace("@@SIZENOTE@@", size_note)
             .replace("@@SUMMARY@@", summary)
+            .replace("@@LIVEHEAD@@", LIVE_HEADING)
+            .replace("@@LIVENOTE@@", LIVE_SCORES_NOTE)
             .replace("@@PLOTLY@@", plotly_js)
             .replace("@@PLAYERJS@@", player_js)
             .replace("@@DATA@@", data_json))
@@ -518,8 +679,49 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    outline:2px solid var(--gold);outline-offset:2px}
  input[type=range]{flex:1;min-width:160px;accent-color:var(--gold)}
  .hint{color:var(--mut);font-size:var(--fs-hint)}
- .playgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:1rem}
- @media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
+ /* the live scores sit under the chart: this page is at most 1180px
+    wide, too narrow for the chart and the two-period table side by side.
+    The table rules are the console's (nau.css, season player), restated
+    because the export is self-contained */
+ .playgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;
+    align-items:start}
+ .playstats{min-width:0}
+ .statscroll{overflow-x:auto;max-width:100%;scrollbar-width:thin}
+ table.pbstats{width:auto}
+ table.pbstats th,table.pbstats td{padding:.3rem .5rem;white-space:nowrap}
+ th.grp{text-align:center;color:var(--ink);letter-spacing:.03em}
+ table.pbstats th.g1,table.pbstats td.g1{border-left:1px solid var(--line)}
+ table.pbstats td.gap{text-align:center}
+ table.pbstats .mname{position:sticky;left:0;z-index:1;background:var(--card);
+    text-align:left;white-space:normal;min-width:8.5rem}
+ table.pbstats.stacked th.grp{text-align:left;padding-top:.55rem;
+    text-transform:uppercase;letter-spacing:.03em}
+ table.pbstats.stacked .mname{min-width:6.5rem}
+ table.pbstats.stacked th,table.pbstats.stacked td{padding:.3rem .4rem}
+ table.pbstats.stacked thead th{white-space:normal}
+ table.pstates{width:auto;min-width:min(100%,44rem)}
+ /* a phone scrolls the per-state table: the state names stay in view */
+ table.pstates thead tr:first-child th:first-child,
+ table.pstates tbody td:first-child{position:sticky;left:0;z-index:1;
+    background:var(--card)}
+ @media(max-width:480px){table.pstates td,table.pstates th{
+    padding:.3rem .4rem}}
+ table.pbstats tr + tr th,table.pstates tr + tr th{text-transform:none;
+    letter-spacing:.02em}
+ .cov-ok{color:var(--ok)}.cov-low{color:var(--bad);font-weight:650}
+ .cov-wide{color:var(--warn);font-style:italic;font-weight:400}
+ .pblegend{color:var(--ink);font-size:var(--fs-hint);margin:.35rem 0}
+ .pbscale{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .6rem;
+    margin:0 0 .45rem}
+ .seg{display:inline-flex;gap:.3rem}
+ .seg button{padding:.08rem .6rem;border-radius:99px;font-size:.8rem}
+ .seg button.gold{background:var(--gold-bright);border-color:var(--gold-bright);
+    color:#0C0D17}
+ /* a verdict tile's second line: log scale and coverage */
+ .tilekv{display:grid;grid-template-columns:max-content max-content;
+    gap:.05rem .7rem;margin:.3rem 0 .15rem;font-size:.85rem}
+ .tilekv dt{color:var(--mut)}
+ .tilekv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums}
  table{border-collapse:collapse;font-size:var(--fs-table);width:100%;
        font-variant-numeric:tabular-nums}
  td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);
@@ -534,7 +736,8 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  .num.hint{color:var(--mut)}
  .tiles{display:flex;gap:.9rem;flex-wrap:wrap;margin:.2rem 0 .5rem}
  .tile{background:var(--bg);border:1px solid var(--line);
-       border-radius:10px;padding:.55rem .95rem;min-width:130px}
+       border-radius:10px;padding:.55rem .95rem;min-width:130px;
+       max-width:24rem}
  .tilename{color:var(--mut);font-size:.74rem;text-transform:uppercase;
            letter-spacing:.05em}
  .tileval{font-size:var(--fs-big);font-weight:750;
@@ -551,8 +754,9 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    --shadow:none}
   body{background:#FFFFFF;color:#000F7E}
   .ok{color:#177245}.bad{color:#C42840}
+  .cov-ok{color:#177245}.cov-low{color:#C42840}.cov-wide{color:#8A5A14}
   .warn{background:#FFFFFF;border-color:#8A5A14;color:#8A5A14}
-  button,select,input,label,.playerbar,.fdmodels{display:none!important}
+  button,select,input,label,.playerbar,.fdmodels,.pbscale{display:none!important}
   /* cards may break across pages (the per-state table outgrows one), but
      rows and tiles stay whole */
   .card{box-shadow:none}
@@ -597,14 +801,15 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    <p class="hint" id="fd-msg"></p>
   </div>
   <div class="playstats">
-   <h2>Live relWIS</h2>
-   <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
-    <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
+   <h2>@@LIVEHEAD@@</h2>
+   <div class="pbscale" id="pb-scale"></div>
+   <div class="statscroll"><table id="pb-stats" class="pbstats"><thead></thead>
+    <tbody></tbody></table></div>
+   <p class="pblegend" id="pb-legend"></p>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data</p>
-   <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
-    sums; cumulative pools every week so far.</p>
+   <p class="hint">@@LIVENOTE@@</p>
   </div>
  </div>
 </div>

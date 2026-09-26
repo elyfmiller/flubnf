@@ -652,10 +652,16 @@ WINDOWS_SPACE = (r'"C:\Program Files\Python312\python.exe"  '
                  r'"C:\Users\Jane Doe\flubnf\.venv\Scripts\flubnf.exe" window')
 POSIX_APP = "/Users/x/flubnf/.venv/bin/python3 /Users/x/flubnf/.venv/bin/flubnf app"
 POSIX_WINDOW = "/home/x/flubnf/.venv/bin/python /home/x/flubnf/.venv/bin/flubnf window --port 8711"
+# macOS under FluBNF.app's host (scripts/macos/flubnf_host.c): ps shows the
+# host's exec line, from the Dock (window) or from FluBNF.command (app)
+MAC_HOST_DOCK = ("/Users/x/Documents/GitHub/flubnf/FluBNF.app/Contents/MacOS/FluBNF "
+                 "/Users/x/Documents/GitHub/flubnf/.venv/bin/flubnf window")
+MAC_HOST_TERMINAL = ("/Users/Jane Doe/flubnf/FluBNF.app/Contents/MacOS/FluBNF "
+                     "/Users/Jane Doe/flubnf/.venv/bin/flubnf app")
 
 
 @pytest.mark.parametrize("cmd", [WINDOWS_APP, WINDOWS_SPACE, POSIX_APP,
-                                 POSIX_WINDOW,
+                                 POSIX_WINDOW, MAC_HOST_DOCK, MAC_HOST_TERMINAL,
                                  r"C:\repo\.venv\Scripts\flubnf.exe app",
                                  '"C:\\py\\python.exe" "C:\\r\\flubnf.exe"   app'])
 def test_entry_markers_match_real_launch_spellings(cmd):

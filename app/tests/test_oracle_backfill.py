@@ -165,12 +165,31 @@ def test_backfill_writes_the_member_into_a_new_root_and_leaves_the_source(source
     assert meta["weeks_completed"] == 2 and meta["total_weeks"] == 2
     assert meta["settings"]["particles"] == 100          # the source's settings carried
     assert meta["settings"]["oracle"].startswith("applied (backfill")
+    # no floor followed the Oracle step, whatever the source's record says
+    assert meta["settings"]["output_floor"] == OBF.FLOOR_NOT_REAPPLIED
     assert meta["backfill"]["source_root"] == str(source.resolve())
     assert meta["backfill"]["prereg_sha256"] == oracle_mod.OR.PREREG_SHA256
     # a second backfill into the same root is refused, and forced it reruns
     with pytest.raises(ValueError, match="not empty"):
         OBF.backfill_season(source, out, "2097-98")
     OBF.backfill_season(source, out, "2097-98", force=True)
+
+
+def test_a_floored_source_does_not_make_the_backfill_claim_the_floor(source, tmp_path):
+    """A source replayed through the output floor records it as applied; the
+    backfill applies the Oracle step to that pf with no floor after it, so
+    its record says so and the source's entry is kept beside it."""
+    meta_src = retro.read_meta(source)
+    meta_src["settings"]["output_floor"] = retro.FLOOR_APPLIED
+    retro.write_meta(source, meta_src)
+    out = tmp_path / "out" / "2097-98"
+    OBF.backfill_season(source, out, "2097-98")
+    meta = retro.read_meta(out)
+    assert meta["settings"]["output_floor"] == OBF.FLOOR_NOT_REAPPLIED
+    assert (meta["backfill"]["source_settings"]["output_floor"]
+            == retro.FLOOR_APPLIED)
+    assert ("output floor", OBF.FLOOR_NOT_REAPPLIED) in retro.settings_summary(
+        meta)
 
 
 def test_backfill_can_leave_the_filter_out_and_skips_a_week_without_pf(source, tmp_path):

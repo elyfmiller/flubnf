@@ -831,16 +831,23 @@ def _activate_once(appkit) -> tuple:
     return bool(app.isActive()), app.keyWindow() is not None
 
 
-#: the name the Dock, the menu bar and Activity Monitor show for the window
+#: the window's title, and the app menu's name (About, Hide, Quit)
 APP_NAME = "FluBNF"
 
 
 def _name_mac_process(name: str = APP_NAME) -> bool:
-    """Name this process for macOS before any window exists: a plain
-    interpreter otherwise shows as "Python" (or "Python 3.12") in the Dock
-    and the menu bar. Sets the main bundle's CFBundleName (the Dock and menu
-    bar read it when the app registers) and the process name. Returns True
-    when both took; never raises."""
+    """Name the app menu's items for a window started outside FluBNF.app.
+
+    This does not rename the Dock icon, and cannot. The Dock and Keep in
+    Dock follow the app bundle that holds the running program: Python.app
+    for a framework Python, a bare python3.x otherwise. Only FluBNF.app's
+    host (scripts/macos/flubnf_host.c) makes the window FluBNF in the Dock.
+
+    What this does do: pywebview builds "About/Hide/Quit <CFBundleName>"
+    from this same in-memory dictionary (webview/platforms/cocoa.py), so a
+    window run without the host reads "Quit FluBNF", not "Quit Python".
+    Under the host the bundle already says FluBNF. Returns True when the
+    dictionary took the name; never raises."""
     import sys
     if sys.platform != "darwin":
         return False
@@ -1191,13 +1198,19 @@ def app_window(port: int = 8710):
             from PyObjCTools import AppHelper
 
             # Dock icon: a plain interpreter shows the Python icon; NSImage
-            # cannot load the SVG, so use the 512px PNG.
+            # cannot load the SVG, so use the 512px PNG. Under FluBNF.app's
+            # host the Dock already shows the bundle's FluBNF.icns, which
+            # the PNG would replace at launch.
             icon_png = (Path(__file__).resolve().parents[1]
                         / "app" / "ui" / "static" / "brand"
                         / "pybnf_icon_512.png")
 
             def _icon():
                 try:
+                    bid = AppKit.NSBundle.mainBundle().bundleIdentifier()
+                    _trace(f"window: main bundle {bid}")
+                    if bid == "edu.nau.flubnf":
+                        return
                     if icon_png.is_file():
                         img = NSImage.alloc().initWithContentsOfFile_(
                             str(icon_png))
@@ -1478,9 +1491,11 @@ def groundhog_retro_cmd(
                 f"95 percent interval [{bs['lo']:+.4f}, {bs['hi']:+.4f}], "
                 f"better in {bs['b_better']} of {bs['reps']}")
     console.print("\nSelf scored, ratio of WIS sums against the FluSight "
-                  "baseline of the same\nreference date, on the project's "
-                  "frozen cell rule. Not the FluSight dashboard\nconvention, "
-                  "and no finite-sample coverage guarantee is claimed.")
+                  "baseline of the same\nreference date, on FluSight's cell "
+                  "rule (truth of 0 and a median of 0 scored).\nThe FluSight "
+                  "dashboard reports pairwise scaled relative WIS, within "
+                  "about\n0.02 of this on the same cells. No finite-sample "
+                  "coverage guarantee is claimed.")
 
 
 # ---------------------------------------------------------------------------

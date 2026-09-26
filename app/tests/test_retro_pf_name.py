@@ -200,7 +200,10 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     assert f"<h2>{FILTER}</h2>" in t
     assert f"<h2>{ORACLE}</h2>" not in t
     assert "&#9632;</span> " + FILTER in t
-    assert f"aria-pressed=\"false\">{FILTER}<" in t
+    # the per-state head names the member over its column, or over its
+    # relWIS and 95% pair when the scores carry coverage
+    assert (f"aria-pressed=\"false\">{FILTER}<" in t
+            or f'class="grp g1">{FILTER}</th>' in t)
     # the map toggle the week's two models draw
     assert 'id="retro-model"' in html
     assert f"{FILTER} categorical forecast" in t and f"{ORACLE} categorical forecast" not in t
@@ -261,8 +264,12 @@ def test_the_report_names_pf_for_the_tree_it_exports(world):
     html = _report(SEASON)                # the sealed record, filter alone
     assert f'class="tilename">{FILTER}<' in html
     assert f'class="tilename">{ORACLE}<' not in html
-    assert f'<th class="num">{FILTER}</th>' in html
+    # the per-state head: one column per member, or a group over its
+    # relWIS and 95% coverage when the scores carry coverage
+    assert (f'<th class="num">{FILTER}</th>' in html
+            or f'<th colspan="2" class="grp">{FILTER}</th>' in html)
     assert f'<th class="num">{ORACLE}</th>' not in html
+    assert f'<th colspan="2" class="grp">{ORACLE}</th>' not in html
     # the embedded player gets the same names via the overriding line (the
     # inlined player.js still carries the shared literal)
     line = report_season._names_line(

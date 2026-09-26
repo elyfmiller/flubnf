@@ -26,7 +26,7 @@
 {% endif %}
 {% if meta.error %}<div class="card"><h2>What happened</h2><p class="bad">{{ meta.error }}</p></div>{% endif %}
 
-<div class="card"><h2>Scores {{ tips.tip("rd-scores", "the scores", "relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a positive value for its week, the forecast median is positive and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.") }}</h2>
+<div class="card"><h2>Scores {{ tips.tip("rd-scores", "the scores", "relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a value for its week (0 included), the forecast's quantiles are all finite and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.") }}</h2>
  {% if summary %}
  <div class="tablewrap"><table class="compact rd-scores">
   <thead><tr><th>Model</th><th class="num">relWIS</th><th class="num">Cells</th>

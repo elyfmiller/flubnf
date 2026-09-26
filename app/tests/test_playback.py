@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import horizons as hz                      # noqa: E402
 from app.core import playback                            # noqa: E402
+from app.core import retro                               # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL    # noqa: E402
 
 ASOF = "2026-01-03"
@@ -177,13 +178,16 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
 # ------------------------------------------------------------ stats sourcing
 
 def test_stats_prefer_scores_json_for_covered_models(tmp_path, monkeypatch):
+    """A current scores.json (retro.SCORES_V) is read for the members it
+    covers; an older one is not (test_flusight_scoring)."""
     root = _mk_root(tmp_path, monkeypatch)
     pd.DataFrame([
         {"model": "pf", "location": "Ohio", "asof": ASOF,
          "horizon": 0, "wis": 4.0, "base_wis": 2.0},
         {"model": "pf", "location": "Ohio", "asof": "2025-12-27",
          "horizon": 0, "wis": 2.0, "base_wis": 2.0},
-    ]).to_json(root / "scores.json")
+    ]).assign(**{retro.SCORES_V_COLUMN: retro.SCORES_V}
+              ).to_json(root / "scores.json")
     p = playback.build_week(root, SEASON, ASOF)
     # covered model: week from this asof's rows, cum through asof
     assert p["stats"]["pf"]["week_rel"] == pytest.approx(2.0)
@@ -205,7 +209,7 @@ def test_stats_cache_refreshes_when_scores_json_arrives(tmp_path, monkeypatch):
     pd.DataFrame([
         {"model": "pf", "location": "Ohio", "asof": ASOF,
          "horizon": 0, "wis": 4.0, "base_wis": 2.0},
-    ]).to_json(sf)
+    ]).assign(**{retro.SCORES_V_COLUMN: retro.SCORES_V}).to_json(sf)
     p2 = playback.build_week(root, SEASON, ASOF)
     # stats now come from scores.json (wis/base = 4/2), not the stale cache
     assert p2["stats"]["pf"]["week_rel"] == pytest.approx(2.0)

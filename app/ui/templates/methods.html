@@ -219,10 +219,16 @@
  <p class="hint">Two measured caveats (docs/archive/RELEASE-1.0.md): seven
  of 76 sealed weeks' vintages differ from what was public at the deadline,
  and sealed scores use unrounded forecasts (a third-decimal difference).</p>
- {# the scored-cell rule lives here: this card survives the site harvest #}
- <p>A scored cell is one location, week and horizon with positive settled
- truth, a positive forecast median and a baseline forecast; FluSight keeps
- cells this drops, so counts can differ.</p>
+ {# the scored-cell rule lives here: this card survives the site harvest.
+    One sentence, scoring.CELL_RULE_NOTE, shared with the scores cards #}
+ <p>A scored cell is one location, week and horizon. {{ cell_rule_note() }}
+ Retrospectives also report relWIS on the log scale (the same ratio on the
+ WIS of log(x+1) counts) and coverage: the share of scored cells whose
+ truth fell inside the central 50%, 80% and 95% intervals, bounds
+ included. The CDC FluSight dashboard reports the log scale and 50% and
+ 95% coverage too. Records measured before 2026-09-25 used an earlier rule
+ (truth and median above 0) and differ from today's at about the third
+ decimal.</p>
  {# here, not in Measured performance: the site harvest drops that card, and
     a withdrawn claim must stay withdrawn in both places #}
  <p>Placement among FluSight teams was withdrawn on 2026-08-24 and is not

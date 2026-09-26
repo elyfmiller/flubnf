@@ -70,6 +70,14 @@ Strawberry Perl); left alone, each answers itself with yes after twenty
 seconds. **You do not need to run
 `SetupEngine` separately**; opening the app does it.
 
+**macOS, keep it in the Dock**: while the console window is open,
+right-click FluBNF in the Dock and choose **Options > Keep in Dock**. That
+icon opens FluBNF from then on, with no Terminal window unless there is
+something to show you (setup work, an engine install, an error). The first
+time, macOS may ask whether FluBNF can use your Documents folder; click
+Allow. Leave `FluBNF.app` in the FluBNF folder: a copy dragged to
+Applications cannot start.
+
 ---
 
 ## How to tell it worked

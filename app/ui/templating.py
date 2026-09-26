@@ -120,6 +120,46 @@ from app.core import oracle_text as _oracle_text              # noqa: E402
 
 templates.env.globals["oracle_text"] = _oracle_text
 
+# THE scored-cell rule, one sentence (scoring.CELL_RULE_NOTE), for Methods;
+# read at render time, so importing the console never loads pandas
+def _cell_rule_note() -> str:
+    from app.core.scoring import CELL_RULE_NOTE
+    return CELL_RULE_NOTE
+
+
+templates.env.globals["cell_rule_note"] = _cell_rule_note
+
+
+# the season verdicts' coverage reading and the player's stats-card text,
+# shared with the exported season report (app/core/report_season.py)
+def _cov_state(frac, level) -> str:
+    from app.core.report_season import cov_state
+    return cov_state(frac, level)
+
+
+def _cov_text(frac) -> str:
+    from app.core.report_season import cov_text
+    return cov_text(frac)
+
+
+def _live_scores(what: str) -> str:
+    """The stats card's and the verdicts' shared text: "heading", "note",
+    "metrics" (what a tile's second line holds), "legend" (the coverage
+    colors' key, markup) or "states" (the per-state 95% column)."""
+    from app.core import report_season
+    if what == "legend":
+        from markupsafe import Markup
+        return Markup(report_season.COV_LEGEND)
+    return {"heading": report_season.LIVE_HEADING,
+            "metrics": report_season.METRICS_NOTE,
+            "states": report_season.PSTATES_COV_NOTE}.get(
+                what, report_season.LIVE_SCORES_NOTE)
+
+
+templates.env.globals["cov_state"] = _cov_state
+templates.env.globals["cov_text"] = _cov_text
+templates.env.globals["live_scores"] = _live_scores
+
 
 def _member_colors() -> dict:
     """The one member-color map (player.js JSON literal, parsed by

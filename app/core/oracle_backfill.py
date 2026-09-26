@@ -14,7 +14,9 @@ not be the source, inside it, under app/state (the sealed and live trees),
 or a non-empty tree unless forced.
 
 REPRODUCE. retro.score_season on the backfilled root (the console's scorer
-and cell rule), pooled via us_national.pooled_frame; relWIS per season and
+and cell rule; the screens were scored under the earlier rule, truth and
+median above 0, so today's rule reproduces them to about the third
+decimal), pooled via us_national.pooled_frame; relWIS per season and
 overall on the record cells (each member's own) and the common cells, plus
 active2 when 2023-24 is among the roots; printed beside the screen's
 relwis_tables (screen_scores.json: LB; screen_b2_scores.json: LBGH). FLUBNF_HUB
@@ -33,6 +35,14 @@ from app.core import oracle as oracle_mod
 from app.core import retro
 
 REPO = Path(__file__).resolve().parents[2]
+
+#: settings.output_floor in a backfilled record. The member is the Oracle
+#: step on the source's stored pf with no floor after it (run_week floors
+#: after the step), so a floored source's "applied" must not carry over;
+#: the source's own entry stays in backfill.source_settings
+FLOOR_NOT_REAPPLIED = ("not applied after the Oracle step (a backfill from "
+                       "stored samples; the source's record says how its pf "
+                       "was stored)")
 
 
 def _sha256(p) -> str:
@@ -119,7 +129,8 @@ def backfill_season(source, out, season: str, *, force: bool = False,
             "total_weeks": len(files), "weeks_completed": len(done),
             "week_seconds": {}, "week_partial_s": {},
             "settings": {**settings, "engine": "pf", "season": season,
-                         "oracle": "applied (backfill from stored samples, no refit)"},
+                         "oracle": "applied (backfill from stored samples, no refit)",
+                         "output_floor": FLOOR_NOT_REAPPLIED},
             "backfill": {"source_root": str(src), "source_settings": settings,
                          "source_run_meta_keys": sorted(meta_src),
                          "weeks_done": done, "weeks_skipped": skipped,
