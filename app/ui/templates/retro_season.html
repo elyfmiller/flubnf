@@ -151,7 +151,6 @@
  {% if prog.status == 'stopped' %}Stopped; Run resumes from the last
  completed week.{% elif prog.status == 'interrupted' %}Interrupted when the
  app closed; Run resumes from the last completed week.{% endif %}</p>
-{{ settings_html(prog.settings) | safe }}
 {% endif %}
 {% if prog and prog.added_n and not prog.active %}
 {# the season's week list grew after this replay finished (the hub archive
@@ -163,15 +162,22 @@
  {% else %}Run on the Retrospective tab resumes this season and runs only
  {{ "that week" if prog.added_n == 1 else "those weeks" }}; the completed weeks are kept.{% endif %}</p>
 {% endif %}
-<p class="row" style="gap:.55rem">
- {# the download attribute makes WKWebView download rather than navigate
-    (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
-    button inside the anchor is the app's download idiom (see Output) #}
- <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
-   type="button" style="margin-top:0">Download season report</button></a>
- <button type="button" class="quiet" id="rev-report" style="margin-top:0"
-   data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
-</p>
+{# one band: the finished replay's settings as a chip row (the shared
+   renderer, restyled by .rs-chips) and the report buttons #}
+<div class="rs-band">
+ {% if prog and not prog.active and prog.elapsed_s and prog.elapsed_s >= 1 %}
+ <div class="rs-chips">{{ settings_html(prog.settings) | safe }}</div>
+ {% endif %}
+ <p class="row rs-acts">
+  {# the download attribute makes WKWebView download rather than navigate
+     (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
+     button inside the anchor is the app's download idiom (see Output) #}
+  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
+    type="button" style="margin-top:0">Download season report</button></a>
+  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
+    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
+ </p>
+</div>
 <script>
  // build the report if absent (same builder as the download route), then
  // reveal it via /output/reveal
@@ -192,6 +198,10 @@
   });
  })();
 </script>
+{# the verdict: tiles in a 2x2 grid beside the cumulative chart at wide
+   widths, stacked when narrow (.verdict) #}
+<div class="verdict">
+<div class="verdict-tiles">
 <div class="grid2">
  {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
@@ -220,6 +230,66 @@
    {% if us_row.fitted %}{% if pf_plain %}the particle filter without the Oracle step, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}{% endfor %}
 </div>
+</div>
+<div class="card cumcard"><h2>Cumulative relWIS through the season</h2>
+{% if conv == 'pairwise' %}
+{# a cumulative line is a ratio of sums by construction; no pairwise form #}
+<p class="hint">Not available under this convention: the curve is a
+ running ratio of sums.</p>
+{% elif curves %}
+{# one line per scored model in its member colour; the y range hugs the data
+   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
+   final value are printed #}
+{% set ns = namespace(vals=[]) %}
+{% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
+{% set vals = ns.vals %}
+{% set n = curve | length %}
+{% set hi = [vals | max, 1.05] | max %}
+{% set lo = [vals | min, 0.45] | min %}
+{% set yspan = hi - lo %}
+{% set xs = 635 / (n - 1 if n > 1 else 1) %}
+{# cumchart: labels in viewBox units (scoped rules in nau.css); the plot
+   band runs y = 12..252, the month ticks and corner dates below it #}
+<svg class="cumchart" viewBox="0 0 720 300" style="width:100%">
+ {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
+ {% set gy = (12 + (hi - gv) * 240 / yspan) | round(1) %}
+ <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
+ <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
+ {% endfor %}
+ {% for m, c in curves.items() %}
+ {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
+ {% set cn = c | length %}
+ {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
+ {% set cvals = c | map('last') | list %}
+ {% set lx = 20 + (cn - 1) * cxs %}
+ {% set ly = 12 + (hi - cvals[-1]) * 240 / yspan %}
+ <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
+  {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 240 / yspan) | round(1) }} {% endfor %}"/>
+ {% for d, v in c %}
+  <circle cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 240 / yspan) | round(1) }}" r="3"
+          fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% endfor %}
+ <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
+       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
+       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
+ {% endfor %}
+ {# month ticks on the first scored week of each month
+    (month_ticks_for_dates) #}
+ {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
+ <line x1="{{ (20 + i * xs) | round(1) }}" y1="254" x2="{{ (20 + i * xs) | round(1) }}" y2="260" stroke="var(--mut)"/>
+ <text x="{{ (20 + i * xs) | round(1) }}" y="272" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
+ {% endfor %}
+ <text x="20" y="288" fill="var(--mut)" class="svgt-sm corner">{{ curve[0][0] }}</text>
+ {% if n > 1 %}
+ <text x="655" y="288" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
+ {% endif %}
+</svg>
+{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+{% else %}
+<p class="hint">Arrives with the first scored week.</p>
+{% endif %}</div>
+</div>
+{# the notes under the verdict, across the width #}
 {# the tiles' second line explained once, with the coverage colors' key
    (the player's legend line): report_season.METRICS_NOTE and COV_LEGEND #}
 {% set tm = namespace(more=false, cov=false) %}
@@ -238,64 +308,10 @@
 <p class="hint">The US national row is not shown under this convention;
  it is on the ratio of sums view.</p>
 {% endif %}
-<div class="card"><h2>Cumulative relWIS through the season</h2>
-{% if conv == 'pairwise' %}
-{# a cumulative line is a ratio of sums by construction; no pairwise form #}
-<p class="hint">Not available under this convention: the curve is a
- running ratio of sums.</p>
-{% elif curves %}
-{# one line per scored model in its member colour; the y range hugs the data
-   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
-   final value are printed #}
-{% set ns = namespace(vals=[]) %}
-{% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
-{% set vals = ns.vals %}
-{% set n = curve | length %}
-{% set hi = [vals | max, 1.05] | max %}
-{% set lo = [vals | min, 0.45] | min %}
-{% set yspan = hi - lo %}
-{% set xs = 635 / (n - 1 if n > 1 else 1) %}
-{# cumchart: labels in viewBox units (scoped rules in nau.css) #}
-<svg class="cumchart" viewBox="0 0 720 180" style="width:100%">
- {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
- {% set gy = (12 + (hi - gv) * 124 / yspan) | round(1) %}
- <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
- <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
- {% endfor %}
- {% for m, c in curves.items() %}
- {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
- {% set cn = c | length %}
- {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
- {% set cvals = c | map('last') | list %}
- {% set lx = 20 + (cn - 1) * cxs %}
- {% set ly = 12 + (hi - cvals[-1]) * 124 / yspan %}
- <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
-  {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 124 / yspan) | round(1) }} {% endfor %}"/>
- {% for d, v in c %}
-  <circle cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 124 / yspan) | round(1) }}" r="3"
-          fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
- {% endfor %}
- <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
-       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
-       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
- {% endfor %}
- {# month ticks on the first scored week of each month
-    (month_ticks_for_dates) #}
- {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
- <line x1="{{ (20 + i * xs) | round(1) }}" y1="136" x2="{{ (20 + i * xs) | round(1) }}" y2="142" stroke="var(--mut)"/>
- <text x="{{ (20 + i * xs) | round(1) }}" y="154" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
- {% endfor %}
- <text x="20" y="168" fill="var(--mut)" class="svgt-sm">{{ curve[0][0] }}</text>
- {% if n > 1 %}
- <text x="655" y="168" text-anchor="end" fill="var(--mut)" class="svgt-sm">{{ (curve|last)[0] }}</text>
- {% endif %}
-</svg>
-{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
-{% else %}
-<p class="hint">Arrives with the first scored week.</p>
-{% endif %}</div>
 
-<div class="card"><h2>Season player</h2>
+<div class="card playcard"><h2>Season player</h2>
+ {# ONE control row: transport, speed, scrubber, week label and the two
+    views as a segmented pair; it wraps on a phone #}
  <div class="row playerbar">
   <button type="button" class="quiet" id="pb-prev" title="Previous week (left arrow)"
     aria-label="Previous week">&#9664;</button>
@@ -314,40 +330,44 @@
          value="{{ timeline.index(week) if week in timeline else 0 }}" aria-label="Week scrubber">
   {# polite live regions announce the player advancing #}
   <span class="hint" id="pb-week" aria-live="polite"></span>
+  {# aria-pressed toggles, not a tablist (no tabpanels or roving focus
+     here); setView() keeps them true #}
+  <span class="viewtabs" role="group" aria-label="Playback view">
+   <button type="button" class="quiet" id="tab-map" aria-pressed="true">Categorical forecast</button>
+   <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
+  </span>
  </div>
- {# aria-pressed toggles, not a tablist (no tabpanels or roving focus here);
-    setView() keeps them true #}
- <div class="row viewtabs" role="group" aria-label="Playback view">
-  <button type="button" class="quiet" id="tab-map" aria-pressed="true">Categorical forecast</button>
-  <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
- </div>
+ {# the view takes about 62% of the card, the live scores the rest; the
+    scores stack under the view on a narrow window (.playgrid) #}
  <div class="playgrid">
-  <div>
+  <div class="playview">
+   {# a no-data week keeps the last map, greyed, under its note #}
    <div id="view-map" class="playmap"><p class="hint" id="map-note" hidden
      aria-live="polite"></p>{{ map_html | safe }}</div>
    <div id="view-fc" hidden>
-    <div class="row" style="margin:.2rem 0 .4rem">
+    <div class="row fdrow">
      <select id="fd-loc" aria-label="Forecast location"
        style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
      <label class="ck" style="margin:0"><input type="checkbox" id="fd-lock"
        checked> Lock axes</label>
+     <div class="fdmodels" id="fd-models"></div>
     </div>
-    <div class="fdmodels" id="fd-models"></div>
-    {# reserved height = the player's default plotHeight 400 #}
-    <div id="fd-plot" style="min-height:400px"></div>
+    {# the reserved height follows the viewport (the host's plotHeight) #}
+    <div id="fd-plot" class="fdplot"></div>
     <p class="hint" id="fd-msg">loading&hellip;</p>
    </div>
   </div>
   <div class="playstats">
    {# the player's figures are always ratio of sums; heading and text are
-      the export's too (report_season.LIVE_HEADING, LIVE_SCORES_NOTE) #}
-   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{{ tips.tip("rs-live", "live scores", live_scores("note")) }}</div>
-   {# the player writes the scale switch, the table head and body, and
-      the coverage legend (player.js renderStats) #}
-   <div class="pbscale" id="pb-scale"></div>
+      the export's too (report_season.LIVE_HEADING, LIVE_SCORES_NOTE). The
+      explanation and the coverage colour key sit in the "?" tip; the
+      player fills the key (player.js covLegend) #}
+   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{% call tips.tip("rs-live", "live scores") %}{{ live_scores("note") }} <span class="pblegend" id="pb-legend"></span>{% endcall %}
+   {# the scale switch, written by the player, inline with the heading #}
+   <div class="pbscale" id="pb-scale"></div></div>
+   {# the player writes the table head and body (player.js renderStats) #}
    <div class="statscroll"><table id="pb-stats" class="pbstats"><thead></thead>
     <tbody></tbody></table></div>
-   <p class="pblegend" id="pb-legend"></p>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data</p>
@@ -390,6 +410,10 @@
          style="width:auto;min-width:min(230px,45vw);max-width:100%">
   <span class="hint" id="sf-count" aria-live="polite"></span>
  </div>
+ {# the rows are laid out in up to three side-by-side column groups at
+    wide widths (the script below moves rows into copies of this table;
+    .sfcols); the server renders one table #}
+ <div class="sfcols" id="sf-cols" data-n="1">
  <table id="sf-table"{% if show_cov %} class="pscov"{% endif %}>
  {% if show_cov %}
  {# two-row head: each member over its relWIS and 95% coverage, each
@@ -438,6 +462,7 @@
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>
   {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody></table>
+ </div>
 {% if us_row and (us_row.pf or us_row.analogue) %}
 <p class="hint">{{ us_row.note }}</p>
 {# the fitted US row of Oracle SIHRS had no Oracle step #}
@@ -460,15 +485,51 @@
   if(!tab)return;
   var tb=tab.tBodies[0],
       rows=Array.prototype.slice.call(tb.rows),
-      btns=Array.prototype.slice.call(tab.tHead.querySelectorAll('button.thsort')),
+      // the national row (usagg) stays first whatever the sort
+      pinned=rows.filter(function(r){return r.classList.contains('usagg');}),
+      states=rows.filter(function(r){return !r.classList.contains('usagg');}),
       key=null,dir=1;
+  // column groups: the one server table plus copies of it (head cloned,
+  // body empty); the sorted, filtered rows are dealt across them in
+  // order, top to bottom then left to right. The count follows the
+  // width of the host (.sfcols), one group per SF_COL_PX, at most three.
+  var host=document.getElementById('sf-cols'),
+      SF_COL_PX=tab.classList.contains('pscov')?400:300,
+      SF_MAX=3,
+      parts=[tab];
+  function ensureParts(n){
+   while(parts.length<n){
+    var t=tab.cloneNode(false);
+    t.removeAttribute('id');
+    t.className=tab.className+' sfpart';
+    t.setAttribute('aria-label','Per-state scores, continued');
+    t.appendChild(tab.tHead.cloneNode(true));
+    t.appendChild(document.createElement('tbody'));
+    host.appendChild(t);
+    parts.push(t);
+   }
+   while(parts.length>n){host.removeChild(parts.pop());}
+   host.dataset.n=String(n);
+  }
+  function groups(){
+   var w=host.clientWidth||0;
+   return Math.max(1,Math.min(SF_MAX,Math.floor(w/SF_COL_PX)));
+  }
+  function btns(){
+   var out=[];
+   parts.forEach(function(t){
+    out=out.concat(Array.prototype.slice.call(
+     t.tHead.querySelectorAll('button.thsort')));
+   });
+   return out;
+  }
   function val(r,k){
    if(k==='name')return (r.dataset.name||'').toLowerCase();
    var v=parseFloat(r.dataset[k]);
    return isNaN(v)?null:v;             // n/a cells sort to the bottom
   }
-  function resort(){
-   var out=rows.slice();
+  function order(){
+   var out=states.slice();
    if(key)out.sort(function(a,b){
     var va=val(a,key),vb=val(b,key);
     if(va===null&&vb===null)return 0;
@@ -476,8 +537,20 @@
     if(vb===null)return -1;
     return va<vb?-dir:(va>vb?dir:0);
    });
-   out.forEach(function(r){tb.appendChild(r);});
-   btns.forEach(function(b){
+   return pinned.concat(out);
+  }
+  function layout(){
+   ensureParts(groups());
+   var vis=order().filter(function(r){return !r.hidden;}),
+       hid=rows.filter(function(r){return r.hidden;}),
+       per=Math.ceil(vis.length/parts.length);
+   parts.forEach(function(t,i){
+    var body=t.tBodies[0];
+    vis.slice(i*per,(i+1)*per).forEach(function(r){body.appendChild(r);});
+   });
+   // hidden rows stay in the first table (the filter shows them again)
+   hid.forEach(function(r){tb.appendChild(r);});
+   btns().forEach(function(b){
     var on=b.dataset.key===key;
     b.setAttribute('aria-pressed',String(on));
     b.querySelector('.dir').textContent=on?(dir>0?' ▲':' ▼'):'';
@@ -490,11 +563,14 @@
     }
    });
   }
-  btns.forEach(function(b){b.addEventListener('click',function(){
+  function resort(){layout();}
+  host.addEventListener('click',function(e){
+   var b=e.target.closest?e.target.closest('button.thsort'):null;
+   if(!b)return;
    if(key===b.dataset.key)dir=-dir;
    else{key=b.dataset.key;dir=1;}
    resort();
-  });});
+  });
   var f=document.getElementById('sf-filter'),
       c=document.getElementById('sf-count');
   f.addEventListener('input',function(){
@@ -504,7 +580,15 @@
     r.hidden=!hit;if(hit)n++;
    });
    c.textContent=q?(n+' of '+rows.length+' rows'):'';
+   layout();
   });
+  var rt=null;
+  window.addEventListener('resize',function(){
+   clearTimeout(rt);rt=setTimeout(function(){
+    if(groups()!==parts.length)layout();},150);
+  });
+  if(d)d.addEventListener('toggle',function(){if(d.open)layout();});
+  layout();
  })();
 </script></div>
 {% endif %}
@@ -605,6 +689,8 @@
      return;
    }
    host.dataset.week = w;
+   // a no-data week: the last map stays, greyed, under the note
+   host.classList.toggle('nodata', noData(w));
    if(st === null){
      if(note){note.textContent = noData(w) ? NOTES[w] + ' (' + w + ')'
                                           : 'map unavailable for ' + w;
@@ -645,7 +731,11 @@
  const player = FluBNFPlayer.init({
    weeks: WEEKS,
    notes: NOTES,
+   // marks the placeholder weeks: truth only, no forecast, scores carried
+   noDataNote: NO_DATA_NOTE,
    mode: 'live',
+   // the plot fills the viewport's height (nau.css .fdplot reserves it)
+   plotHeight: () => Math.max(360, Math.min(720, Math.round(innerHeight * .55))),
    // server-side, so the toggles are right before the first payload
    seasonOfficials: {{ (official_catalog or []) | tojson }},
    // the US series and its provenance (app/core/us_national)

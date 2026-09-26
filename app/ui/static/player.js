@@ -23,6 +23,12 @@
      notes         optional {week: caption}: shown after the week label
                    (a data provenance line, or the placeholder for a week
                    with no published data, whose payload is null)
+     noDataNote    optional: the caption that marks a week with no
+                   published data (no FluSight round). Such a week has no
+                   payload of its own; the player shows the settled truth
+                   from the nearest stored week, no forecast, "no FluSight
+                   round" in the This week cells, and the Season so far
+                   figures carried over (noDataPayload)
      isCached      optional function(week) -> true when getPayload(week)
                    resolves without a wait (drives the loading hints)
      detailVisible optional function() -> false while the host shows some
@@ -30,7 +36,8 @@
                    update on every seek either way
      onSeek        optional function(week, idx): host hook on every seek
      preload       optional function(week): host hook for the next week
-     plotHeight    optional plot height in px (default 400)
+     plotHeight    optional plot height in px, or a function returning
+                   it (re-read per draw and on resize; default 400)
      ids           optional DOM id overrides, see DEFAULT_IDS
 
    The stats table (renderStats) shows, per enabled model, "This week" and
@@ -289,6 +296,27 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
 
 function isNum(v){ return typeof v === 'number' && isFinite(v); }
 
+// the placeholder payload for a week with no published data, built from
+// the nearest stored week's payload `src`: its settled truth and locations
+// (the truth series spans the season, so the now marker lands on `week`),
+// no models or officials (nothing was forecast), and the stats with the
+// week figures cleared and the season figures carried over (a week
+// without a round changes no cumulative score). Same shape as the API's
+// (THE STATS CONTRACT), so every reader works unchanged.
+function noDataPayload(src, week){
+  if(!src) return null;
+  var stats = {}, st = src.stats || {};
+  Object.keys(st).forEach(function(m){
+    var e = st[m] || {};
+    stats[m] = {week_rel: null, cum_rel: e.cum_rel,
+                week_log_rel: null, cum_log_rel: e.cum_log_rel,
+                week_cov: null, cum_cov: e.cum_cov,
+                week_n: 0, cum_n: e.cum_n};
+  });
+  return {asof: week, locations: src.locations || [], truth: src.truth || {},
+          models: {}, official: {}, stats: stats};
+}
+
 // ------------------------------------------------ stats table: the figures
 
 // the relWIS scale the stats table shows, natural by default; the switch
@@ -413,12 +441,15 @@ function cellsNote(n){
 
 // one period's four cells: relWIS on the chosen scale, then 50/80/95%
 // coverage. `state` is the period's reading (weekCellState); without a
-// score the period is ONE cell across its group, "pending" or "no
-// submission", and a missing coverage figure is a dash
+// score the period is ONE cell across its group, "pending", "no
+// submission" or "no FluSight round" (a no-data week), and a missing
+// coverage figure is a dash
+var NO_ROUND_CELL = 'no FluSight round';
 function periodCells(p, state, scale){
   if(state !== 'score')
     return '<td colspan="4" class="num hint gap g1">'
-      + (state === 'nosub' ? 'no submission' : 'pending') + '</td>';
+      + (state === 'nosub' ? 'no submission'
+         : state === 'noround' ? NO_ROUND_CELL : 'pending') + '</td>';
   var cells = cellsNote(p.n);
   var what = scale === 'log' ? 'log-scale relWIS' : 'relWIS';
   var rel = isNum(p.shown)
@@ -525,6 +556,32 @@ function createPlayer(cfg){
 
   function noteOf(w){
     return (cfg.notes && cfg.notes[w]) ? String(cfg.notes[w]) : '';
+  }
+  // a week with no published data (the host's caption marks it)
+  function isNoData(w){
+    return !!cfg.noDataNote && noteOf(w) === String(cfg.noDataNote);
+  }
+  // the week's payload, or for a no-data week the placeholder built from
+  // the nearest stored week before it (after it at the season's start)
+  var NDP = {};
+  function payloadFor(w){
+    if(!isNoData(w)) return cfg.getPayload(w);
+    if(NDP[w]) return NDP[w];
+    var i = weeks.indexOf(w), j, src = null;
+    for(j = i - 1; j >= 0 && src === null; j--)
+      if(!isNoData(weeks[j])) src = weeks[j];
+    for(j = i + 1; j < weeks.length && src === null; j++)
+      if(!isNoData(weeks[j])) src = weeks[j];
+    if(src === null) return Promise.resolve(null);
+    NDP[w] = cfg.getPayload(src).then(function(pl){
+      return noDataPayload(pl, w);
+    });
+    return NDP[w];
+  }
+  function plotHeight(){
+    var h = typeof cfg.plotHeight === 'function' ? cfg.plotHeight()
+                                                  : cfg.plotHeight;
+    return h || 400;
   }
   function failMsg(w, dflt){
     var m = cfg.payloadError ? cfg.payloadError(w) : null;
@@ -645,12 +702,14 @@ function createPlayer(cfg){
     if(box && box.clientWidth && box.scrollWidth > box.clientWidth + 1)
       draw(true);
   }
-  // a resize can cross the fit either way
+  // a resize can cross the fit either way; a viewport-sized plot follows
   var statsResize = null;
   window.addEventListener('resize', function(){
     clearTimeout(statsResize);
     statsResize = setTimeout(function(){
       if(P.statRows) drawStatsTable();
+      if(typeof cfg.plotHeight === 'function' && detailVisible()
+         && el.plot && el.plot.data) drawFC();
     }, 150);
   });
 
@@ -664,13 +723,15 @@ function createPlayer(cfg){
     // its running figures through gap weeks. A missing score reads
     // "pending", never NaN.
     var av = pl ? officialAvailability(pl, OFFS) : null;
+    var nodata = isNoData(weeks[P.idx]);
     var rows = [];
     ALLM.forEach(function(m){
       if(!P.on[m]) return;
       var st = pl && pl.stats ? pl.stats[m] : null;
       var sv = statView(st, P.scale);
-      var wk = weekCellState(sv.week.rel, OFFS.indexOf(m) >= 0, !!av,
-                             !!(av && av[m]), !!seasonOffs[m]);
+      var wk = nodata ? 'noround'
+        : weekCellState(sv.week.rel, OFFS.indexOf(m) >= 0, !!av,
+                        !!(av && av[m]), !!seasonOffs[m]);
       var cum = isNum(sv.cum.rel) ? 'score' : 'pending';
       rows.push({
         name: '<td class="mname"><span class="sw" style="background:'
@@ -682,7 +743,8 @@ function createPlayer(cfg){
     P.statRows = rows;
     drawStatsTable();
     el.status.textContent =
-      pl ? '' : failMsg(weeks[P.idx], 'stats unavailable for this week');
+      pl ? (nodata ? noteOf(weeks[P.idx]) : '')
+         : failMsg(weeks[P.idx], 'stats unavailable for this week');
     // the panel-wide Update-data hint only for a season with NO official
     // submissions at all (gap weeks have per-toggle notes)
     if(el.offhint)
@@ -771,9 +833,9 @@ function createPlayer(cfg){
   // ---- forecast detail: settled truth, a now marker, fans per model ----
   var fcSeq = 0;
   function drawFC(){
-    var tok = ++fcSeq, w = weeks[P.idx];
+    var tok = ++fcSeq, w = weeks[P.idx], nodata = isNoData(w);
     if(!isCached(w)) el.msg.textContent = 'loading ' + w + '…';
-    cfg.getPayload(w).then(function(pl){
+    payloadFor(w).then(function(pl){
       if(tok !== fcSeq) return;
       renderStats(pl);
       if(!pl){
@@ -808,8 +870,9 @@ function createPlayer(cfg){
       });
       // an empty frame says WHY instead of standing as bare axes; a drawn
       // US pf fan carries the note on what it is
-      el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us)
-        || (pfDrawn ? pfNote : '');
+      el.msg.textContent = nodata ? noteOf(w)
+        : (noForecastNote(loc, avail, drawn, cfg.us)
+           || (pfDrawn ? pfNote : ''));
       // truth drawn last (on top); the tail beyond now stays visible
       var p = pal();
       if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
@@ -833,10 +896,13 @@ function createPlayer(cfg){
       // text in root-proportional px (ticks/legend .85, title .95, now
       // marker .82); the top band scales so title and now label never
       // collide at A+
-      var L = {title: {text: title + ' · forecasts as of ' + w,
+      // a no-data week titles itself with its note under the date
+      var L = {title: {text: title + (nodata
+                 ? ' · ' + w + '<br>' + noteOf(w)
+                 : ' · forecasts as of ' + w),
                        font: {size: Math.round(fs * .95)}},
-        height: cfg.plotHeight || 400,
-        margin: {l: 8, r: 8, t: Math.round(fs * 2.4), b: 8},
+        height: plotHeight(),
+        margin: {l: 8, r: 8, t: Math.round(fs * (nodata ? 4.6 : 2.4)), b: 8},
         paper_bgcolor: surf, plot_bgcolor: surf,
         font: {color: p.ink, family: '"DM Sans",system-ui,sans-serif',
                size: Math.round(fs * .85)},
@@ -877,7 +943,7 @@ function createPlayer(cfg){
     if(detailVisible()){
       drawFC();
     } else {
-      cfg.getPayload(w).then(function(pl){
+      payloadFor(w).then(function(pl){
         if(weeks[P.idx] === w) renderStats(pl);
       });
     }
@@ -991,6 +1057,8 @@ var FluBNFPlayer = {
     statsBody: statsBody,
     covTol: covTol,
     periodCells: periodCells,
+    NO_ROUND_CELL: NO_ROUND_CELL,
+    noDataPayload: noDataPayload,
     covLegend: covLegend,
     scaleSwitch: scaleSwitch,
     SCALES: SCALES,

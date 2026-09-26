@@ -3,31 +3,40 @@
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Data</h1>
 <div class="cols">
- <div><div class="card"><h2>FluSight hub</h2>
-  {# the latest vintage's own numbers, read from the archived file #}
-  {# the live target file's newest week: what a real-time run reads when
-     the hand-kept archive has not caught up (app.core.data.observed_source) #}
-  {% if live_week %}
-  <p class="datasrc" id="live-week">Target data through <code>{{ live_week }}</code>
-   {{ tips.tip("hub-live", "the target data", "The hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.") }}</p>
-  {% if not n_vintages or live_week > latest_vintage %}
-  <p class="warn" id="live-newer">Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.</p>
-  {% endif %}
-  {% endif %}
-  {% if n_vintages %}
-  <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
-  {% if latest %}
-  <p class="hint">{{ "{:,}".format(latest.rows) }} reported rows ·
-   {{ latest.locations }} jurisdictions · newest week
-   {{ latest.newest_week }}</p>
-  {% endif %}
-  <p class="hint">{{ n_vintages }} archived truth vintages{% if n_shipped %}, {{ n_shipped }} of them shipped snapshots
-   {{ tips.tip("shipped", "shipped snapshots", "Weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.") }}{% endif %}</p>
-  {% elif not live_week %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
-  {# did every jurisdiction report the newest week? (the file a real-time
-     run reads; app/core/reported.py) #}
-  {% if newest_report %}{% import "_newest.html" as newest %}{{ newest.check(newest_report) }}
-  {% if not newest_report.clean %}<p class="hint">What each such state does in a run is chosen per state in Data issues on the <a href="/forecast">Forecast tab</a>, and recorded with the run.</p>{% endif %}{% endif %}
+ <div><div class="card hubcard"><h2>FluSight hub
+  {# one "?" for the whole card: the sentences that explain, not the
+     numbers that decide #}
+  {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
+  {% call tips.tip("hub", "the FluSight hub") -%}
+  <span class="ncline">Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.</span>
+  {% if live_newer %}<span class="ncline">Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.</span>{% endif %}
+  {% if n_shipped %}<span class="ncline">Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.</span>{% endif %}
+  <span class="ncline">Hub clone: Check for new data compares the clone with origin and changes nothing; Update data pulls. Comparators: the hub's baseline and official ensemble, which runs are scored against.</span>
+  {% if newest_report and not newest_report.clean %}<span class="ncline">What a state reading 0 or not reported does in a run is chosen per state in Data issues on the Forecast tab, and recorded with the run.</span>{% endif %}
+  {%- endcall %}</h2>
+  {% if not live_week and not n_vintages %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
+  {# labelled values, then one pill per check: the hub clone against
+     origin, the comparators, the newest week's reporting #}
+  <dl class="hubgrid">
+   {# the live target file's newest week: what a real-time run reads when
+      the hand-kept archive has not caught up (app.core.data.observed_source) #}
+   {% if live_week %}
+   <dt>Data through</dt><dd id="live-week"><code>{{ live_week }}</code>{% if live_newer %} <span class="pill warn" id="live-newer">not archived</span>{% endif %}</dd>
+   {% endif %}
+   {% if n_vintages %}
+   <dt>Latest vintage</dt><dd><code>{{ latest_vintage }}</code></dd>
+   <dt>Vintages</dt><dd>{{ n_vintages }}{% if n_shipped %} <span class="hint">{{ n_shipped }} shipped</span>{% endif %}</dd>
+   {# the latest vintage's own numbers, read from the archived file #}
+   {% if latest %}<dt>Jurisdictions</dt><dd>{{ latest.locations }} <span class="hint">{{ "{:,}".format(latest.rows) }} rows, newest week <span class="wk">{{ latest.newest_week }}</span></span></dd>{% endif %}
+   {% endif %}
+   <dt>Hub clone</dt><dd>{% if freshness %}{% set pc, pw = freshness.pill() %}<span class="pill {{ pc }}" id="hub-pill">{{ pw }}</span> <span class="hint" id="hub-detail">{{ freshness.detail }}</span>{% else %}<span class="pill" id="hub-pill">not checked</span> <span class="hint" id="hub-detail"></span>{% endif %}</dd>
+   <dt>Comparators</dt><dd>{% if comparators_missing %}<span class="pill bad">{{ comparators_missing | join(", ") }} missing</span>{% else %}<span class="pill ok">present</span>{% endif %} <span class="hint">baseline, ensemble</span></dd>
+   {# did every jurisdiction report the newest week? (the file a real-time
+      run reads; app/core/reported.py) #}
+   {% if newest_report %}{% import "_newest.html" as newest %}{% set r = newest_report %}
+   <dt>Newest week</dt><dd>{% if r.clean %}<span class="pill ok">all reported</span>{% elif r.unreported %}<span class="pill warn">{{ r.unreported | length }} not reported</span>{% elif r.zeros %}<span class="pill warn">{{ r.zeros | length }} read 0</span>{% else %}<span class="pill warn">{{ r.collapsed | length }} collapsed</span>{% endif %} {{ newest.check(r, head_only=True) }}</dd>
+   {% endif %}
+  </dl>
   {# one row: the primary pull and the quiet check. No confirmation: pulling
      is safe and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}
@@ -36,8 +45,9 @@
    <button class="gold" data-guard="data-pull">Update data</button></form>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
   </div>
-  {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
-   {{ freshness.detail }}</p>{% endif %}
+  {# while a pull or check runs (the script below): the run bar, sliding #}
+  <div id="hub-progress" hidden><div class="runbar busy" role="progressbar" aria-label="working"><div class="rfill"></div></div></div>
+  <p class="hint" id="hub-status" role="status" aria-live="polite"></p>
  </div></div>
  <div><div class="card"><h2>Archive
   {{ tips.tip("archive", "the archive", "Each dot is one week's snapshot as the runs fit it, on its flu season's row, August 1 at left.") }}</h2>
@@ -233,4 +243,42 @@
  addEventListener('fontsizechange',()=>drawVintage());
 </script>
 {% endif %}
+<script>
+ // Update data and Check for new data post in the background: both buttons
+ // off, the run bar sliding and one line meanwhile; then the page reloads
+ // (the pull's notice is the banner) or the hub-clone row takes the
+ // answer. Without script the forms post as forms.
+ (function(){
+  var prog=document.getElementById('hub-progress'),
+      stat=document.getElementById('hub-status'),
+      forms=document.querySelectorAll('.hubacts form'),
+      btns=document.querySelectorAll('.hubacts button');
+  if(!prog||!stat||!window.fetch)return;
+  function busy(on,words){
+    btns.forEach(function(b){b.disabled=on;});
+    prog.hidden=!on;stat.textContent=words||'';}
+  forms.forEach(function(f){
+   f.addEventListener('submit',function(e){
+    if(e.defaultPrevented)return;
+    e.preventDefault();
+    var pull=f.getAttribute('action')==='/data/pull';
+    busy(true,pull?'pulling the hub clone…':'checking origin…');
+    fetch(f.getAttribute('action'),{method:'POST',credentials:'same-origin',
+          headers:{'Accept':'application/json'}})
+     .then(function(r){return r.json();})
+     .then(function(d){
+       if(pull){location.reload();return;}
+       var pill=document.getElementById('hub-pill'),
+           det=document.getElementById('hub-detail');
+       if(pill){pill.className='pill '+(d.pill||'');pill.textContent=d.words||'';}
+       if(det)det.textContent=d.detail||'';
+       busy(false,'');
+     })
+     .catch(function(){
+       busy(false,'Could not reach the console. Reload the page to see the result.');
+     });
+   });
+  });
+ })();
+</script>
 {% endblock %}

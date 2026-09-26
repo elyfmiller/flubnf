@@ -667,7 +667,7 @@ def test_retro_index_offers_resume_while_paused():
     assert f'action="/retro/{SEASON}/resume"' in html
     assert f'action="/retro/{SEASON}/stop"' in html
     assert f'action="/retro/{SEASON}/pause"' not in html
-    assert "· paused" in html
+    assert ">paused</span>" in html        # the status pill
     assert "GUARD_BUSY" in html            # the ticker still runs, and yields
 
 

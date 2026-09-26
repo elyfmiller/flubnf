@@ -591,26 +591,46 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .steps .steptext .hint{display:block}
 
 /* ---- retrospective season player (additive) ---- */
-.playerbar{margin:.1rem 0 .5rem}
+/* ONE control row: transport, speed, scrubber, week label, then the two
+   views as a segmented pair at the right; it wraps on a phone */
+.playerbar{margin:.1rem 0 .6rem;gap:.45rem .6rem}
 .playerbar button{margin-top:0}
 .playerbar select{width:auto}
-.playerbar input[type="range"]{flex:1;min-width:150px;width:auto;padding:0;
+.playerbar input[type="range"]{flex:1 1 160px;min-width:150px;width:auto;padding:0;
   border:0;background:transparent;accent-color:var(--gold-bright)}
 .viewtabs{margin:0 0 .6rem}
 .viewtabs button{margin-top:0}
-/* the stats column takes the live table's natural width. Its cap is in
-   the table's own font (--fs-table grows with the viewport), sized for the
-   widest head ("log relWIS") with the official comparators' names on one
-   line. Up to 1400px, where the plot beside it would drop under about
-   600px, it stacks under the views. minmax(0,1fr), never a bare 1fr, so
-   the table's width can never widen the page */
+.playerbar .viewtabs{display:inline-flex;margin:0 0 0 auto}
+.playerbar .viewtabs button{border-radius:0;padding:.38rem .75rem}
+.playerbar .viewtabs button:first-child{border-radius:8px 0 0 8px}
+.playerbar .viewtabs button:last-child{border-radius:0 8px 8px 0;margin-left:-1px}
+/* the view (map or plot) takes about 62% of the card, the live scores
+   the rest; the table's own fit logic (player.js drawStatsTable) stacks
+   its two periods when the column is too narrow for them side by side.
+   Under 1100px the scores stack under the view. minmax(0,...), never a
+   bare fr, so the table's width can never widen the page */
 .playgrid{display:grid;
-  grid-template-columns:minmax(0,1fr) fit-content(calc(var(--fs-table) * 47));
-  gap:.9rem;align-items:start}
-@media(max-width:1400px){.playgrid{grid-template-columns:minmax(0,1fr)}}
-/* compact playback map (letterboxed); !important beats the inline style */
-.playmap svg{max-height:40vh!important}
+  grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);
+  gap:.9rem var(--gap);align-items:start}
+@media(max-width:1100px){.playgrid{grid-template-columns:minmax(0,1fr)}}
+/* the map uses the viewport's height (letterboxed above its cap);
+   !important beats the inline style */
+.playmap svg{max-height:clamp(360px,62vh,780px)!important}
+.playmap .usmap-wrap{max-width:100%}
+/* a no-data week: the last map stays, greyed, under its note */
+.playmap.nodata svg{opacity:.28;filter:grayscale(1)}
+.playmap.nodata #map-note{color:var(--ink);font-size:var(--fs-sub);
+  font-weight:600;margin:.2rem 0 .4rem}
+/* the plot reserves the same viewport-sized height (the host's
+   plotHeight), so switching views never jumps the page */
+.fdplot{min-height:clamp(360px,55vh,720px)}
+.fdrow{margin:.2rem 0 .4rem;gap:.4rem 1rem}
+.fdrow .fdmodels{margin:0}
 .playstats{min-width:0}
+/* the live table, compact: label-size type, tight cells */
+.playstats table.pbstats{font-size:var(--fs-label)}
+.playstats table.pbstats th,.playstats table.pbstats td{padding:.24rem .42rem}
+.playstats table.pbstats .mname{min-width:7rem}
 .playstats .num{text-align:right}
 .playstats table{font-variant-numeric:tabular-nums}
 /* live scores (player.js renderStats): a two-row grouped head over
@@ -828,9 +848,21 @@ details.adv[open]>summary::before{content:"\25BE"}
 .ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
 .ms-row input,.ms-row select{max-width:100%}
 /* the Forecast tab's Data issues box (templates/_data_issues.html): the
-   Model settings look, one stacked row per state */
-.dataissues .ms-row{margin:.3rem 0}
-.dataissues .ms-row select{width:100%}
+   Model settings look, one stacked row per state: name, flag and the
+   "recommended" badge on one line, the select, the reason under it */
+.dataissues .di-row{margin:.45rem 0 0}
+.dataissues .di-row select{width:100%;margin-top:.15rem}
+.dataissues .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
+  padding-bottom:.45rem;border-bottom:1px solid var(--line)}
+.dataissues .di-all label{margin:0;white-space:nowrap}
+.dataissues .di-all select{width:auto;flex:1 1 8rem;margin:0}
+.dataissues .di-head{display:flex;align-items:baseline;gap:.4rem;flex-wrap:wrap}
+.dataissues .di-head label{margin:0;font-weight:600}
+.dataissues .di-flag{color:var(--mut);font-size:var(--fs-hint);
+  font-variant-numeric:tabular-nums}
+.dataissues .di-rec{margin-left:auto;align-self:center}
+.dataissues .di-rec[hidden]{display:none}
+.dataissues .di-why{display:block;margin-top:.1rem}
 .dataissues[hidden]{display:none}
 .ms-later{opacity:.62}
 .ms-soon{margin-left:.3rem}
@@ -1011,8 +1043,11 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 .dsr-range{display:flex;flex-wrap:wrap;gap:0 .8rem;align-items:flex-end}
 .dsr-range>span{flex:1 1 8.5rem;min-width:0}
 .dsr-range>.dsr-dsf{flex:2 1 16rem}
-.rs-h{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.35rem}
+.rs-h{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .8rem;
+  margin-bottom:.35rem}
 .rs-h h2{margin-bottom:0}
+.rs-h .pbscale{margin:0}
+.rs-h .tip{margin-left:-.4rem}
 @media (max-width:640px){
   /* the card-wide cumulative chart shrinks to a phone: its viewBox-px
      labels grow so they stay legible */
@@ -1343,3 +1378,82 @@ p.newest-check[hidden]{display:none}
 .ncmark.warn{color:var(--warn)}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}
+
+/* data tab: the hub status card. Labels left, values right; a pill per
+   check carries the state (ok/warn/bad tokens, as the run status pills),
+   a hint the numbers a pill does not. The value track can shrink, so a
+   phone wraps the long reporting line instead of scrolling the page. */
+.hubgrid{display:grid;grid-template-columns:max-content minmax(0,1fr);
+  gap:.35rem .9rem;align-items:baseline;margin:.35rem 0 0}
+.hubgrid dt{color:var(--mut);font-size:var(--fs-hint);white-space:nowrap}
+.hubgrid dd{margin:0;min-width:0;font-variant-numeric:tabular-nums}
+.hubgrid .wk{white-space:nowrap}       /* a date never splits at its hyphen */
+.hubgrid .pill{font-weight:650;border-color:currentColor;white-space:nowrap;
+  vertical-align:baseline}
+/* .ok/.warn/.bad color the state; a neutral pill (not checked) is muted */
+.hubgrid .pill:not(.ok):not(.warn):not(.bad){color:var(--mut)}
+/* the newest-week row: its pill carries the state, so the line's own
+   mark stays out; the line runs on after the pill */
+.hubgrid p.newest-check{display:inline;margin:0}
+.hubgrid .ncmark{display:none}
+/* while a pull or check runs: the run bar slides (indeterminate); the
+   reduced-motion rule above holds it still */
+.runbar.busy div{width:35%;animation:hubslide 1.1s ease-in-out infinite alternate}
+@keyframes hubslide{from{margin-left:0}to{margin-left:65%}}
+#hub-status{margin:.3rem 0 0}
+#hub-status:empty{display:none}
+
+/* round9: retrospective layout */
+/* season header band: the finished replay's settings as chips (the shared
+   renderer's dl.kv, laid out as a wrapped chip row) beside the report
+   buttons */
+.rs-band{display:flex;flex-wrap:wrap;align-items:center;
+  justify-content:space-between;gap:.45rem 1rem;margin:.3rem 0 .7rem}
+.rs-band .rs-acts{margin:0;gap:.55rem}
+.rs-chips{min-width:0}
+.rs-chips .runsettings{margin:0;display:flex;flex-wrap:wrap;
+  align-items:center;gap:.3rem .5rem}
+.rs-chips .runsettings .kv{display:flex;flex-wrap:wrap;gap:.35rem 0;
+  margin:0;width:auto;max-width:100%;font-size:var(--fs-label)}
+.rs-chips .kv dt{color:var(--mut);padding:.08rem .3rem .08rem .6rem;
+  border:1px solid var(--line);border-right:0;border-radius:99px 0 0 99px;
+  background:var(--bg);white-space:nowrap}
+.rs-chips .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
+  border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
+  background:var(--bg);font-weight:650;overflow-wrap:anywhere}
+/* the verdict: tiles in a 2x2 grid beside the cumulative chart at wide
+   widths, stacked when narrow */
+.verdict{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);
+  gap:0 var(--gap);align-items:stretch}
+/* the chart card fills the tiles' height; the chart centres in it */
+.verdict .cumcard{display:flex;flex-direction:column}
+@media(max-width:1100px){.verdict{grid-template-columns:minmax(0,1fr)}}
+@media(min-width:1101px){
+  .verdict .grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+.verdict .cumcard svg.cumchart{flex:1 1 auto;min-height:0;
+  max-height:clamp(240px,40vh,520px)}
+/* a phone hides the chart's corner dates (they collide with the month
+   labels, grown for legibility) */
+@media (max-width:640px){svg.cumchart .corner{display:none}}
+/* per-state scores in column groups (the page script deals the rows
+   across up to three copies of the table, .sfcols[data-n]) */
+.sfcols{display:grid;grid-template-columns:repeat(var(--sfn,1),minmax(0,1fr));
+  gap:0 1.4rem;align-items:start}
+.sfcols[data-n="2"]{--sfn:2}
+.sfcols[data-n="3"]{--sfn:3}
+.sfcols #sf-table.pscov,.sfcols table.sfpart{width:100%;min-width:0}
+.sfcols td,.sfcols th{padding:.22rem .5rem}
+.sfcols table tr + tr th{text-transform:none;letter-spacing:.02em}
+/* the retro index: one band per season (name, status pill, facts, the
+   Results button), the run settings folded under it */
+.sband{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .7rem}
+.sband h2{margin:0}
+.sband .sfacts{flex:1 1 16rem;min-width:0}
+.sband > a{margin-left:auto}
+.pill.st{font-weight:650;font-size:var(--fs-label);border-color:currentColor}
+.season-card .rsfold{margin:.4rem 0 0}
+.season-card .rsfold > summary{cursor:pointer;color:var(--mut);
+  font-size:var(--fs-label);font-weight:600}
+.rsfold .runsettings > strong{display:none}
+.rsfold .runsettings{margin:.2rem 0 0}

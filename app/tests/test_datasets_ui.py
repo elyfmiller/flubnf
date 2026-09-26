@@ -175,7 +175,7 @@ def test_browse_view_plots_a_group_with_group_wording():
 def test_unknown_source_falls_back_to_the_hub():
     page = client.get("/data?source=nope-000000000000").text
     # the hub view, not a dataset view: no dataset links in the browser card
-    assert "<h2>FluSight hub</h2>" in page
+    assert '<div class="card hubcard"><h2>FluSight hub' in page
     assert "Back to the FluSight hub" not in page
     # the browser card shows only when there is something to browse
     from app.ui import state as ui_state

@@ -97,11 +97,13 @@ def test_no_row_and_blank_are_told_apart_and_forecast_from_the_week_before(
     got = {g.location: (g.reason, g.action, g.from_week) for g in r.gaps}
     assert got == {"Nebraska": ("no row", "forecast", WEEKS[-2]),
                    "Utah": ("blank", "forecast", WEEKS[-2])}
-    assert r.line() == (f"2 jurisdictions not reported for {NEW}: "
-                        f"Nebraska, Utah (forecast from {WEEKS[-2]})")
-    assert r.details() == [
+    # the line counts; the names are in the tip (details)
+    assert r.line() == f"3 of {len(LOCS)} reported · 2 not reported"
+    assert r.short() == f"3 of {len(LOCS)} reported · 2 not reported"
+    assert r.details()[:2] == [
         f"No row: Nebraska. Forecast from {WEEKS[-2]}.",
         f"Blank value: Utah. Forecast from {WEEKS[-2]}."]
+    assert r.details()[2].startswith("Each is chosen per state in Data issues")
 
 
 def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
@@ -113,7 +115,9 @@ def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
     assert (g.location, g.reason, g.action) == ("Wyoming", "no row", "skip")
     last = WEEKS[-(AE.MAX_ANCHOR_LAG + 2)]
     assert last in g.why and f"more than {AE.MAX_ANCHOR_LAG} unreported" in g.why
-    assert r.line().endswith("Wyoming (skipped)")
+    assert r.line() == f"4 of {len(LOCS)} reported · 1 not reported"
+    assert r.details()[0].startswith("No row: Wyoming. Skipped: its newest")
+    assert reported.recommend(g) == ("carry", g.why)
     # at exactly MAX_ANCHOR_LAG unreported weeks it still forecasts
     _hub(tmp_path / "hub2", monkeypatch,
          drop_weeks={"Wyoming": WEEKS[-AE.MAX_ANCHOR_LAG:]})
@@ -131,10 +135,11 @@ def test_a_zero_is_flagged_and_worded_by_consequence(tmp_path, monkeypatch):
     # the week is complete (every jurisdiction has a value), not clean
     assert r.complete and not r.clean
     assert g.what() == "reads 0 after 40, 40, 40"
-    assert r.line() == (f"All {len(LOCS)} reported for {NEW}; 1 reads 0: "
-                        f"Ohio ({reported.CHOOSE_NOTE})")
-    assert r.short() == f"All {len(LOCS)} reported; 1 reads 0"
-    assert r.details()[0].startswith("Reads 0 after 40, 40, 40: Ohio. Choose")
+    assert g.flag() == "0 after 40, 40, 40"
+    assert r.line() == f"All {len(LOCS)} reported · 1 reads 0"
+    assert r.short() == f"All {len(LOCS)} reported · 1 reads 0"
+    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: set "
+                              "aside (looks like a missed report).")
     assert reported.ZERO_FACT in r.details()
     # the setting treats it as missing: the run forecasts from the week before
     (g,) = reported.check("missing").gaps
@@ -152,15 +157,19 @@ def test_a_zero_after_small_weeks_is_flagged_too_and_worded_so(
     r = reported.check()
     (g,) = r.gaps
     assert g.reason == "zero" and g.what() == "reads 0, recent weeks 1-4"
+    assert g.flag() == "0 after 2, 4, 1"
     assert g.zeros == 1 and g.can_set_aside
     assert g.aside == [(NEW, 0.0)] and g.last_positive == (WEEKS[-2], 2.0)
+    assert reported.recommend(g) == ("level", "small counts; level scored best on such weeks")
     # a longer run of zeros names the last positive week; no set-aside
     text = text.replace(f"{WEEKS[-2]},39,Ohio,2", f"{WEEKS[-2]},39,Ohio,0")
     text = text.replace(f"{WEEKS[-3]},39,Ohio,4", f"{WEEKS[-3]},39,Ohio,0")
     live.write_text(text)
     (g,) = reported.check().gaps
     assert g.what() == f"reads 0 for 3 weeks (last 1 on {WEEKS[-4]})"
+    assert g.flag() == "0 for 3 wk"
     assert g.zeros == 3 and not g.can_set_aside
+    assert reported.recommend(g) == ("level", "0 for 3 weeks; level falls back to a Poisson floor")
 
 
 def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
@@ -169,10 +178,12 @@ def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
     (g,) = r.gaps
     assert (g.location, g.reason, g.prev) == ("Ohio", "collapsed", 40.0)
     assert g.what() == "reads 5 after 40" and g.can_set_aside
+    assert g.flag() == "5 after 40"
     assert r.complete and not r.clean
-    assert r.line() == (f"All {len(LOCS)} reported for {NEW}; 1 collapsed: "
-                        "Ohio (reads 5 after 40)")
-    assert r.short() == f"All {len(LOCS)} reported; 1 collapsed"
+    assert r.line() == f"All {len(LOCS)} reported · 1 collapsed"
+    assert r.short() == f"All {len(LOCS)} reported · 1 collapsed"
+    assert r.details()[0] == ("5 after 40: Ohio. Recommended: set aside "
+                              "(looks like a partial report).")
     assert reported.COLLAPSED_FACT in r.details()
     # a moderate drop is not a collapse (a fifth of the week before)
     _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "8"})
@@ -187,20 +198,66 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
     assert ohio["issue"] == "zero" and ohio["default"] == ""
     assert [v for v, _ in ohio["options"]] == list(reported.MS.ZERO_CHOICES)
     labels = dict(ohio["options"])
-    assert labels["extend"] == (f"Groundhog: extend 40 from {WEEKS[-2]}; "
-                                "Oracle SIHRS keeps the 0")
-    assert labels["set_aside"] == (f"Both models from {WEEKS[-2]} (40): "
-                                   "count the 0 as unreported")
-    assert labels["omit"] == "Leave Ohio out of both files"
+    md = WEEKS[-2][5:]                              # MM-DD
+    assert labels == {"abstain": "No forecast", "level": "Level (mean of 4 wk)",
+                      "extend": f"Extend 40 from {md}", "blend": "Blend",
+                      "set_aside": f"Both from {md}", "omit": "Leave out"}
     assert ohio["aside"] == [[NEW, 0.0]]
+    assert ohio["flag"] == "0 after 40, 40, 40"
+    assert (ohio["rec"], ohio["why"]) == (
+        "set_aside", "0 after 40, 40, 40 looks like a missed report")
+    assert ohio["hint"] == ohio["why"]
     utah = rows["Utah"]
     assert utah["issue"] == "collapsed" and utah["default"] == "keep"
-    assert [v for v, _ in utah["options"]] == ["keep", "set_aside", "omit"]
-    assert dict(utah["options"])["keep"] == "Keep 5 as reported, both models"
+    assert utah["options"] == [("keep", "Keep 5"), ("set_aside", f"Both from {md}"),
+                               ("omit", "Leave out")]
+    assert utah["rec"] == "set_aside" and utah["flag"] == "5 after 40"
     neb = rows["Nebraska"]
     assert neb["issue"] == "no row" and neb["default"] == "carry"
-    assert [v for v, _ in neb["options"]] == ["carry", "omit"]
-    assert neb["hint"] == f"no row; forecast from {WEEKS[-2]}"
+    assert neb["options"] == [("carry", f"From {md}"), ("omit", "Leave out")]
+    assert neb["rec"] == "carry" and neb["flag"] == "no row"
+    assert neb["hint"] == f"forecast from {WEEKS[-2]}"
+
+
+def _gap(reason, values, **kw):
+    weeks = WEEKS[-len(values):]
+    prev = values[-2] if len(values) >= 2 else None
+    return reported.Gap("Ohio", reason, "39", prev=prev,
+                        reported=list(zip(weeks, map(float, values))), **kw)
+
+
+def test_the_recommendation_rule_branch_by_branch():
+    rec = reported.recommend
+    # a 0 after a week of ZERO_FLOOR or more: a missed report is likely
+    assert rec(_gap("zero", [3, 24, 19, 0])) == (
+        "set_aside", "0 after 19, 24, 3 looks like a missed report")
+    assert rec(_gap("zero", [3, 24, 19, 0, 0])) == (
+        "set_aside", "0, 0 after 19, 24 looks like a missed report")
+    assert rec(_gap("zero", [1, 10, 0]))[0] == "set_aside"     # at the floor
+    assert rec(_gap("zero", [1, 9, 0]))[0] == "level"          # under it
+    # small counts: level scored best
+    assert rec(_gap("zero", [1, 4, 2, 0])) == (
+        "level", "small counts; level scored best on such weeks")
+    assert rec(_gap("zero", [40, 1, 4, 2, 0])) == (      # only the 3 prior weeks count
+        "level", "small counts; level scored best on such weeks")
+    # a run of 3 or more (past MAX_CARRY): level, its Poisson floor
+    assert rec(_gap("zero", [5, 6, 0, 0, 0])) == (
+        "level", "0 for 3 weeks; level falls back to a Poisson floor")
+    assert rec(_gap("zero", [0, 0])) == (
+        "level", "0 for 2 weeks; level falls back to a Poisson floor")
+    # a collapse: a partial report, unless the two weeks before already
+    # fell by more than half each (a real drop)
+    assert rec(_gap("collapsed", [190, 200, 194, 8])) == (
+        "set_aside", "8 after 194 looks like a partial report")
+    assert rec(_gap("collapsed", [100, 49, 24, 4])) == (
+        "keep", "falling for 2 weeks; the drop may be real")
+    assert rec(_gap("collapsed", [100, 80, 52, 9]))[0] == "set_aside"
+    assert rec(_gap("collapsed", [49, 24, 4]))[0] == "set_aside"   # one fall known
+    # not reported: the engines' own walk
+    assert rec(_gap("no row", [40, 40], action="forecast", from_week=WEEKS[-2])) == (
+        "carry", f"forecast from {WEEKS[-2]}")
+    assert rec(_gap("blank", [40, 40], action="skip", why="no reported week in the data")) == (
+        "carry", "no reported week in the data")
 
 
 def test_the_check_reads_the_file_a_real_time_run_reads(tmp_path, monkeypatch):
@@ -221,11 +278,14 @@ def test_no_hub_data_gives_no_report(tmp_path, monkeypatch):
     assert reported.check() is None
 
 
-def test_a_long_list_is_cut_to_a_short_line(tmp_path, monkeypatch):
-    monkeypatch.setattr(reported, "LINE_NAMES", 2)
+def test_the_line_counts_and_the_tip_names_every_location(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch,
-         newest={"Nebraska": None, "Ohio": None, "Utah": None})
-    assert "Nebraska, Ohio and 1 more" in reported.check().line()
+         newest={"Nebraska": None, "Ohio": None, "Utah": "0", "Wyoming": "5"})
+    r = reported.check()
+    assert r.line() == (f"3 of {len(LOCS)} reported · 2 not reported "
+                        "· 1 reads 0 · 1 collapsed")
+    assert r.details()[0] == f"No row: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
+    assert "Ohio" not in r.line() and "Nebraska" not in r.line()
 
 
 # --- the three places ---------------------------------------------------------
@@ -239,8 +299,9 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
     _hub(tmp_path / "hub2", monkeypatch, newest={"Nebraska": None})
     page = client.get("/data").text
     assert 'aria-label="Incomplete"' in page
-    assert (f"1 jurisdiction not reported for {NEW}: Nebraska "
-            f"(forecast from {WEEKS[-2]})") in page
+    # the grid row: the pill carries the count, the text the head
+    assert '<span class="pill warn">1 not reported</span>' in page
+    assert f"4 of {len(LOCS)} reported" in page
     assert f"No row: Nebraska. Forecast from {WEEKS[-2]}." in page
 
 
@@ -257,16 +318,22 @@ def test_update_data_message_carries_the_check(tmp_path, monkeypatch):
     ui_state._status.pop("flash", None)
     client.post("/data/pull", follow_redirects=False)
     flash = ui_state._status.get("flash") or ""
-    assert (f"1 jurisdiction not reported for {NEW}: Utah "
-            f"(forecast from {WEEKS[-2]})") in flash
-    # a newest week reading 0 is in the message too, with the pointer
+    # one short clause, a count: the Data tab's card names the states
+    assert flash == f"Up to date · data through {NEW} · 1 state not reported"
+    assert "Utah" not in flash
+    # a newest week reading 0 is one clause too, again a count
     ui_state._status.pop("flash", None)
-    live = root / data.LIVE_TARGET
-    live.write_text(live.read_text().replace(f"{NEW},39,Ohio,40",
-                                             f"{NEW},39,Ohio,0"))
+    root = _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "0"})
+    for _n, sub in data.COMPARATORS:         # a missing comparator would lead
+        (root / sub).mkdir(parents=True)
+    monkeypatch.setattr(data, "pull_hub", lambda: (True, "Already up to date."))
     client.post("/data/pull", follow_redirects=False)
     flash = ui_state._status.get("flash") or ""
-    assert f"1 reads 0: Ohio ({reported.CHOOSE_NOTE})" in flash
+    assert flash == f"Up to date · data through {NEW} · 1 state reads 0"
+    # the card still names them, with the pointer
+    page = client.get("/data").text
+    assert '<span class="pill warn">1 read 0</span>' in page
+    assert "Ohio" in page
 
 
 def test_forecast_tab_line_under_the_anchor(tmp_path, monkeypatch):
@@ -310,5 +377,6 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     (g,) = ui_data._newest_report().gaps
     assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
     page = client.get("/forecast").text
-    assert f"All {len(LOCS)} reported; 1 reads 0" in page
+    assert f"All {len(LOCS)} reported · 1 reads 0" in page
     assert 'aria-label="Complete, with issues"' in page
+    assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page

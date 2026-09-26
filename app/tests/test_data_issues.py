@@ -251,9 +251,15 @@ def test_choices_and_the_rule_keep_the_hub_names():
     assert not K.modified(spec) and K.hub_names(spec)
     assert runs_mod.model_settings_label(spec) == ""
     pairs = dict(runs_mod.spec_settings(spec))
+    # a record from before the recommendation names every state
     assert pairs["Data issues"] == ("Utah set aside; zero-anchor rule blend for "
                                     "the other states")
     assert "model settings" not in pairs
+    assert MS.followed_line(MS.choices_of(spec.extra)) == ""
+    assert MS.followed_line({"A": {"choice": "level", "followed": True},
+                             "B": {"choice": "omit", "followed": False},
+                             "C": {"choice": "keep", "followed": True}}) == \
+        "3 states, 2 recommended, 1 changed"
 
 
 # --- the Forecast tab -----------------------------------------------------------------
@@ -272,43 +278,65 @@ def _post(extra):
                        follow_redirects=False)
 
 
-def test_the_box_lists_the_states_and_the_form_requires_a_choice(tmp_path, monkeypatch):
+def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0", "Utah": "5"})
     ui_state._last_form.clear()
     ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
                                 "engine": "all"})
     page = client.get("/forecast").text
     box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
-    assert f'data-week="{NEW}"' in box and "Data issues for " + NEW in box
+    assert f'data-week="{NEW}"' in box and "<legend>Data issues<span" in box
     assert '<span class="ms-badge warn">2 states</span>' in box
-    assert 'name="gap.39" id="gap-39" data-issue="zero" required' in box
-    assert '<option value="" selected>Choose…</option>' in box
-    assert "Ohio: <span class=\"hint\">reads 0 after 40, 40, 40</span>" in box
-    assert 'name="gap.49"' in box and '<option value="keep" selected>' in box
+    md = WEEKS[-2][5:]
+    # one compact row: the name, the flag, the badge, the select, the reason
+    assert ('<label for="gap-39">Ohio</label><span class="di-flag">0 after 40, 40, 40'
+            '</span><span class="ms-badge ok di-rec">recommended</span>') in box
+    assert 'name="gap.39" id="gap-39" data-issue="zero" data-rec="set_aside"' in box
+    assert f'<option value="set_aside" selected>Both from {md}</option>' in box
+    assert f'<option value="extend">Extend 40 from {md}</option>' in box
+    assert '<span class="hint di-why">0 after 40, 40, 40 looks like a missed report</span>' in box
+    assert 'name="gap.49" id="gap-49" data-issue="collapsed" data-rec="set_aside"' in box
+    assert '<option value="keep">Keep 5</option>' in box
+    assert "required" not in box and "Choose…" not in box   # nothing to answer
     assert 'name="gap._sha"' in box
+    # the long explanations live in the legend's tip
+    assert "Level = it anchors on the mean of the last 4 weeks" in box
     assert "about three quarters stayed 0 once settled" in box
+    assert "Groundhog:" not in box                 # no long option labels
     assert "di.hidden = a !== di.dataset.week; di.disabled = di.hidden" in page
     assert 'id="di-all"' not in box                 # one zero state: no "all"
+    # two zero states: the short "All zero states:" row
+    _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "0", "Utah": "0"})
+    page = client.get("/forecast").text
+    box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
+    assert '<label for="di-all">All zero states:</label>' in box
+    assert '<option value="set_aside">Both from the week before</option>' in box
 
 
-def test_a_zero_state_without_a_choice_is_refused_before_the_claim(tmp_path, monkeypatch):
+def test_a_zero_state_without_a_choice_takes_the_recommendation(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0", "Utah": "0"})
     started = _capture_run(monkeypatch)
     r = _post({})
-    assert r.status_code == 303 and started == []
-    assert ui_state._status.get("running") is None
-    assert (f"2 states read 0 for {NEW}; choose what the Groundhog does with "
-            "each in Data issues. Nothing was run.") in ui_state._status["flash"]
-    # the run-wide rule stands in for every unchosen state
+    assert r.status_code == 303 and len(started) == 1
+    dc = started[0].extra["data_choices"]
+    assert {l: (s["choice"], s["recommended"], s["followed"])
+            for l, s in dc["states"].items()} == {
+        "Ohio": ("set_aside", "set_aside", True),
+        "Utah": ("set_aside", "set_aside", True)}
+    assert dc["states"]["Ohio"]["reported"] == [[NEW, 0.0]]
+    assert dc["states"]["Ohio"]["from_week"] == WEEKS[-2]
+    assert runs_mod.data_issues_label(started[0].extra) == "2 states, 2 recommended, 0 changed"
+    # the run-wide rule covers every zero state the form did not answer
     r = _post({"knob.groundhog.zero_anchor": "level"})
-    assert len(started) == 1 and "data_choices" not in started[0].extra
-    assert started[0].extra["knobs"] == {MS.ZERO_ANCHOR_KEY: "level"}
-    # a choice not offered is refused too
+    assert len(started) == 2 and "data_choices" not in started[1].extra
+    assert started[1].extra["knobs"] == {MS.ZERO_ANCHOR_KEY: "level"}
+    # a choice not offered is refused
     ui_state._status.pop("flash", None)
     _post({"gap.39": "extend", "gap.49": "abstain"})   # 0 after 40: extend is offered
-    assert len(started) == 2
+    assert len(started) == 3
     _post({"gap.39": "carry", "gap.49": "abstain"})
-    assert len(started) == 2 and "Ohio: 'carry' is not one of" in ui_state._status["flash"]
+    assert len(started) == 3 and "Ohio: 'carry' is not one of" in ui_state._status["flash"]
+    assert ui_state._status.get("running") is None
 
 
 def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_path, monkeypatch):
@@ -323,21 +351,39 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
     assert dc["week"] == NEW and dc["source_sha256"] == sha
     assert dc["states"]["Ohio"]["choice"] == "omit"
     assert dc["states"]["Ohio"]["what"] == "reads 0 after 40, 40, 40"
+    assert dc["states"]["Ohio"]["followed"] is False
     assert dc["states"]["Utah"] == {
         "issue": "collapsed", "what": "reads 5 after 40", "choice": "set_aside",
-        "week": NEW, "reported": [[NEW, 5.0]], "from_week": WEEKS[-2]}
+        "week": NEW, "reported": [[NEW, 5.0]], "from_week": WEEKS[-2],
+        "recommended": "set_aside", "followed": True}
     assert "knobs" not in s.extra                  # no model setting touched
     assert ui_state._last_form["data_choices"] == {NEW: {"39": "omit", "49": "set_aside"}}
-    # the form comes back pre-filled
+    # the run page counts the choices against the recommendations
+    assert runs_mod.data_issues_label(s.extra) == "2 states, 1 recommended, 1 changed: Ohio left out"
+    o = {"data_flags": {"analogue": [
+        {"location": "Ohio", "week": NEW, "value": 0.0, "rule": MS.LEFT_OUT_RULE},
+        {"location": "Utah", "week": NEW, "value": 5.0, "rule": MS.SET_ASIDE_RULE}]}}
+    row = runs_mod.data_issues_row(o, s.extra, {"analogue": "Groundhog"})
+    assert row[1].startswith("2 states, 1 recommended, 1 changed; 1 set aside, 1 left out")
+    # the form comes back pre-filled, the badge off where the choice differs
     page = client.get("/forecast").text
-    assert '<option value="omit" selected>Leave Ohio out of both files</option>' in page
-    # default choices are not recorded: the spec of a plain run is unchanged
+    assert '<option value="omit" selected>Leave out</option>' in page
+    ohio = page[page.index('for="gap-39"'):page.index('id="gap-39"')]
+    assert 'class="ms-badge ok di-rec" hidden>recommended' in ohio
+    utah = page[page.index('for="gap-49"'):page.index('id="gap-49"')]
+    assert 'class="ms-badge ok di-rec">recommended' in utah
+    # every listed state is recorded, a default choice too
     _post({"gap.39": "abstain", "gap.49": "keep"})
-    assert len(started) == 2 and "data_choices" in started[1].extra
-    assert list(started[1].extra["data_choices"]["states"]) == ["Ohio"]
+    assert len(started) == 2
+    got = started[1].extra["data_choices"]["states"]
+    assert {l: (s["choice"], s["followed"]) for l, s in got.items()} == {
+        "Ohio": ("abstain", False), "Utah": ("keep", False)}
+    assert runs_mod.data_issues_label(started[1].extra) == (
+        "2 states, 0 recommended, 2 changed: Ohio abstain, Utah keep")
     _hub(tmp_path / "hub2", monkeypatch, newest={"Utah": "5"})
     _post({"gap.49": "keep"})
-    assert len(started) == 3 and "data_choices" not in started[2].extra
+    assert len(started) == 3
+    assert list(started[2].extra["data_choices"]["states"]) == ["Utah"]
 
 
 def test_a_form_built_on_other_data_is_refused(tmp_path, monkeypatch):
@@ -371,6 +417,8 @@ def test_a_rerun_carries_the_data_choices(tmp_path, monkeypatch):
     assert got["week"] == NEW and got["source_sha256"] == ui_forecast._source_sha(NEW)
     assert got["states"]["Ohio"]["choice"] == "level"
     assert got["states"]["Ohio"]["reported"][-1] == [NEW, 0.0]
+    assert (got["states"]["Ohio"]["recommended"], got["states"]["Ohio"]["followed"]) == \
+        ("set_aside", False)
     assert started[0].locations == ["Ohio", "Utah"]
     # an older week: the record passes through verbatim
     old = RunSpec(engine="analogue", forecast_date=WEEKS[-2], locations=["Ohio"],

@@ -408,7 +408,7 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     assert f'value="{W3}"' in page
     assert f"Anchor week: {W3} (new data, not archived yet" in page
     dpage = client.get("/data").text
-    assert f"Target data through <code>{W3}</code>" in dpage
+    assert f'<dd id="live-week"><code>{W3}</code> <span class="pill warn" id="live-newer">not archived</span>' in dpage
     assert f"real-time runs for <span class=\"wk\">{W3}</span> read target-data" in dpage
 
 
@@ -416,7 +416,7 @@ def test_the_data_tab_says_nothing_extra_when_the_archive_is_current(tmp_path, m
     _capture(monkeypatch, tmp_path)
     _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)
     dpage = client.get("/data").text
-    assert f"Target data through <code>{W2}</code>" in dpage
+    assert f'<dd id="live-week"><code>{W2}</code></dd>' in dpage
     assert 'id="live-newer"' not in dpage
 
 

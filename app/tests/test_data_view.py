@@ -54,12 +54,15 @@ def archive(tmp_path, monkeypatch):
 
 def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
     html = client.get("/data").text
-    assert f"<code>{V2}</code>" in html
-    assert "9 reported rows" in html                 # V2's reported rows
-    assert "3 jurisdictions" in html
-    assert "newest week\n   2098-01-03" in " ".join(html.split()) \
-        or "newest week 2098-01-03" in " ".join(html.split())
-    assert "2 archived truth vintages" in html
+    assert f"<dt>Latest vintage</dt><dd><code>{V2}</code></dd>" in html
+    joined = " ".join(html.split())
+    # V2's own numbers: jurisdictions, reported rows, newest week
+    assert "<dt>Jurisdictions</dt><dd>3 " in joined
+    assert '9 rows, newest week <span class="wk">2098-01-03</span>' in joined
+    assert "<dt>Vintages</dt><dd>2</dd>" in joined
+    # one pill per check, unchecked until the button is pressed
+    assert '<span class="pill" id="hub-pill">not checked</span>' in html
+    assert "<dt>Comparators</dt>" in html
 
 
 def test_default_preview_is_the_latest_vintage(archive):

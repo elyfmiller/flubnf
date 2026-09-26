@@ -120,17 +120,32 @@ or more; 9 of the 17 in the archive were later revised to at least twice the rep
 unreported one. Some collapses are partial reports (Alabama 8 after 194 on 2026-01-24, settled at 250) and
 some are real drops (2026-03-28: Delaware 4 after 24, Hawaii 1 after 21, Maryland 9 after 52, Utah 8 after
 49, all settled where they were), so no global rule fits: the forecaster decides per state, in the Data
-issues box under the Forecast tab's anchor line, for the real-time week.
+issues box under the Forecast tab's anchor line, for the real-time week. Each state's select is preset to
+a recommendation (`app/core/reported.py recommend`, below) and the forecaster can pick another.
 
 | Newest week | Choices |
 |---|---|
 | reads 0 | `abstain`, `level`, `extend`, `blend` (the Groundhog's rule for this state; the Oracle SIHRS keeps the 0); `set_aside` (both models from the week before, the 0 counted as unreported; offered for 1 or 2 trailing zeros after a positive week); `omit` (the state is left out of both files) |
-| collapsed | `keep` (as reported, the default), `set_aside` (both models from the week before), `omit` |
-| no row or blank | `carry` (the engines' own walk, the default), `omit` |
+| collapsed | `keep` (as reported), `set_aside` (both models from the week before), `omit` |
+| no row or blank | `carry` (the engines' own walk), `omit` |
+
+The recommendation, in order (the first line that fits):
+
+- reads 0, 1 or 2 trailing zeros after a positive week, and the largest of the 3 weeks before them is 10 or
+  more: `set_aside`. A count that size does not fall to 0 in a week; a missed report is likely (every
+  newest-week 0 in the hub followed a week of 7 or fewer, so this is rare).
+- reads 0, 1 or 2 trailing zeros, those weeks all under 10: `level`. Level scored best on such weeks (the
+  table above).
+- reads 0 for 3 weeks or more: `level`, which falls back to its Poisson floor.
+- collapsed, and the two weeks before already fell by more than half each: `keep`. The drop may be real
+  (the 2026-03-28 cases above).
+- collapsed otherwise: `set_aside`. A partial report is likely (9 of 17 were revised up).
+- no row or blank: `carry`.
 
 The choices are recorded in the run's spec (`extra["data_choices"]`: the week, the data file's sha256 and
-each non-default state's issue, reported weeks and choice; `app/core/missing.py`), so a run with none has an
-unchanged spec. A set-aside is matched by date and value against the data the run reads: when the data
+each listed state's issue, reported weeks, choice, the recommendation and whether it was followed;
+`app/core/missing.py`), so a run whose week had no such state has an unchanged spec, and the run page says
+"5 states, 4 recommended, 1 changed". A set-aside is matched by date and value against the data the run reads: when the data
 changed since (Update data was pressed), nothing is trimmed and the run page says "not applied". A state
 left out is listed on the Output page as requested and left out, with the reason. None of this marks a
 run modified or changes its file names.

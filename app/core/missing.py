@@ -23,10 +23,13 @@ decisions, not model changes: they never mark a run modified. The record:
 
   {"week": "2026-07-04", "source_sha256": "<the file's digest>",
    "states": {"Arkansas": {"issue": "zero", "reported": [["2026-07-04", 0.0]],
-                           "choice": "level", "from_week": "2026-07-04"}}}
+                           "choice": "level", "from_week": "2026-07-04",
+                           "recommended": "level", "followed": true}}}
 
-Only non-default states are recorded; a run without any has no key, so a
-shipped spec is unchanged byte for byte. rules_for() gives an engine one
+Every state the Data issues box listed is recorded, with the choice the
+box recommended (app/core/reported.py recommend) and whether it was
+followed; a run whose week had no such state has no key, so a shipped
+spec is unchanged byte for byte. rules_for() gives an engine one
 location's rules; rules_of() the run-wide ones.
 
 Why only these, and why off: docs/MISSING-DATA.md (the hub survey and the
@@ -103,7 +106,8 @@ COLLAPSED_CHOICES = ("keep", "set_aside", "omit")
 UNREPORTED_CHOICES = ("carry", "omit")
 ISSUE_CHOICES = {"zero": ZERO_CHOICES, "collapsed": COLLAPSED_CHOICES,
                  "no row": UNREPORTED_CHOICES, "blank": UNREPORTED_CHOICES}
-#: the choice a form preselects; a zero has none (the forecaster chooses)
+#: the choice that changes nothing (the box preselects the recommendation,
+#: app/core/reported.py recommend; a zero has no such choice)
 DEFAULT_CHOICE = {"collapsed": "keep", "no row": "carry", "blank": "carry"}
 #: the data_flags rule names the per-state choices record
 SET_ASIDE_RULE = "set aside (Forecast tab)"
@@ -146,6 +150,21 @@ def choices_of(extra) -> dict:
     rec = (extra or {}).get(CHOICES_KEY) if isinstance(extra, Mapping) else None
     st = rec.get("states") if isinstance(rec, Mapping) else None
     return dict(st) if isinstance(st, Mapping) else {}
+
+
+def followed_line(states: Mapping) -> str:
+    """The run page's count of a choices record's states against the
+    box's recommendations: "5 states, 4 recommended, 1 changed"; "" when no
+    entry carries a "followed" flag (a record from before the rule)."""
+    flagged = [st for st in (states or {}).values()
+               if isinstance(st, Mapping) and "followed" in st]
+    if not flagged:
+        return ""
+    n = len(states)
+    yes = sum(bool(st.get("followed")) for st in flagged)
+    changed = n - yes
+    return (f"{n} state{'s' if n != 1 else ''}, {yes} recommended, "
+            f"{changed} changed")
 
 
 def rules_for(extra, loc: str, member: str) -> dict:

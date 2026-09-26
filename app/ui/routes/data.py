@@ -8,7 +8,7 @@ read _vintage_frame here. An APIRouter server.py includes.
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.core import ttlcache
 from app.ui import state
@@ -96,6 +96,11 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["live_week"] = None
     # the newest week's reporting, from the file a real-time run reads
     ctx["newest_report"] = _newest_report()
+    # the hub models runs are compared against (an older sparse clone may
+    # lack them; Update data adds them)
+    ctx["comparators"] = state.data_mod.comparators()
+    ctx["comparators_missing"] = [k for k, ok in ctx["comparators"].items()
+                                  if not ok]
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
     ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
@@ -191,9 +196,33 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
 
 
 # === Console controls on the Data tab: /data/pull, /freshness ===
-@router.post("/data/pull")
-def data_pull():
-    """Explicit hub update -- looking never pulls; pulling is a button."""
+# Both answer JSON when asked (Accept: application/json): the page's script
+# posts them that way, shows a progress bar meanwhile, and reloads or
+# updates the card. A plain form post (no script) gets the page as before.
+
+def _wants_json(request: Request) -> bool:
+    return "application/json" in (request.headers.get("accept") or "")
+
+
+def _pull_clause(rep, comp: dict) -> str:
+    """At most one short clause for what matters after a pull: states not
+    reported, a comparator missing, or states reading 0 (counts, never
+    names: the card names them)."""
+    if rep is not None and rep.unreported:
+        n = len(rep.unreported)
+        return f"{n} state{'s' if n != 1 else ''} not reported"
+    missing = [k for k, ok in comp.items() if not ok]
+    if missing:
+        return ("comparators missing" if len(missing) > 1
+                else f"{missing[0]} comparator missing")
+    if rep is not None and rep.zeros:
+        n = len(rep.zeros)
+        return f"{n} state{'s' if n != 1 else ''} read{'s' if n == 1 else ''} 0"
+    return ""
+
+
+def _pull() -> tuple:
+    """Run the hub pull and flash its outcome; (ok, message)."""
     # server-side mirror of /api/busy under _engine_lock: refuse only while a
     # run starts or reads hub files (materializing/preparing)
     with _engine_lock:
@@ -202,12 +231,13 @@ def data_pull():
         if running and (running == "starting"
                         or "materializing" in phase
                         or "preparing" in phase):
-            _flash("A run is reading the hub files right now ("
+            msg = ("A run is reading the hub files right now ("
                    + (_status.get("run_label") or str(running))
                    + "). Updating data would change those files mid read; "
                    "nothing was pulled. Try again once fitting starts or "
                    "the run finishes.")
-            return RedirectResponse("/data", status_code=303)
+            _flash(msg)
+            return False, msg
     try:
         before = state.data_mod.newest_week()
     except Exception:
@@ -215,12 +245,11 @@ def data_pull():
     ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
-        _flash("Updating the hub clone FAILED: "
+        msg = ("Updating the hub clone FAILED: "
                + (msg[:200] or "git exited nonzero with no message")
-               + ". The local archive is unchanged; check the network and "
-               "the hub clone, then try again.")
-        return RedirectResponse("/data", status_code=303)
-    vs = state.data_mod.vintages()
+               + ". The local archive is unchanged.")
+        _flash(msg)
+        return False, msg
     try:
         after = state.data_mod.newest_week()
     except Exception:
@@ -231,28 +260,41 @@ def data_pull():
         from app.ui.state import _last_form
         if _last_form:
             _last_form["forecast_date"] = after
-    from flubnf.settings import HUB as _H
-    comp = (" · comparators: baseline "
-            + ("ok" if (_H / "model-output/FluSight-baseline").is_dir() else "missing")
-            + ", official ensemble "
-            + ("ok" if (_H / "model-output/FluSight-ensemble").is_dir() else "missing"))
-    rep = _newest_report()
     # a plain lead, never git's own transcript (fast-forward listings, file
-    # counts): whether the data moved is what the user needs
+    # counts): whether the data moved is what the user needs; then at most
+    # one clause that matters, and any repair the pull made
     if after and before and after != before:
-        lead = f"New data: through {after} (was {before})"
+        was = before[5:] if before[:4] == after[:4] else before
+        lead = f"New data: through {after} (was {was})"
     elif after:
-        lead = f"Already up to date: data through {after}"
+        lead = f"Up to date · data through {after}"
     else:
         lead = "Updated"
-    _flash(lead
-           + (f" · {rep.line()}" if rep else "")
-           + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
+    bits = [lead]
+    clause = _pull_clause(_newest_report(), state.data_mod.comparators())
+    if clause:
+        bits.append(clause)
+    bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
+    _flash(" · ".join(bits))
+    return True, " · ".join(bits)
+
+
+@router.post("/data/pull")
+def data_pull(request: Request):
+    """Explicit hub update -- looking never pulls; pulling is a button."""
+    ok, msg = _pull()
+    if _wants_json(request):
+        return JSONResponse({"ok": ok, "message": msg})
     return RedirectResponse("/data", status_code=303)
 
 
 @router.post("/freshness", response_class=HTMLResponse)
 def freshness(request: Request):
     f = state.data_mod.check_freshness()
+    if _wants_json(request):
+        cls, words = f.pill()
+        return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
+                             "words": words, "detail": f.detail})
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
+
