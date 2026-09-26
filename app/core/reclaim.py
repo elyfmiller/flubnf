@@ -92,6 +92,16 @@ def _size(p: Path) -> int:
     return retro.dir_size(p)
 
 
+def _workroots(workroot_base, skip_workroots) -> list:
+    """The workroot directories the survey and the reclaim walk, sorted,
+    minus the ones named in `skip_workroots`; [] when the base is absent."""
+    base = Path(workroot_base)
+    if not base.is_dir():
+        return []
+    return [w for w in sorted(d for d in base.iterdir() if d.is_dir())
+            if w.name not in skip_workroots]
+
+
 # ------------------------------------------------------------ week pruning
 
 def week_intermediates(wd: Path) -> list:
@@ -287,18 +297,14 @@ def survey(retro_root: Path, workroot_base: Path,
             plan["compress_bytes"] += b
             plan["compress_files"] += len(comp)
             plan["compress_ids"].append(entry.name)
-    base = Path(workroot_base)
-    if base.is_dir():
-        for w in sorted(d for d in base.iterdir() if d.is_dir()):
-            if w.name in skip_workroots:
-                continue
-            items = workroot_intermediates(w)
-            if items:
-                b = sum(_size(p) for p in items)
-                if b:
-                    plan["workroot_bytes"] += b
-                    plan["workroots"] += 1
-                    plan["workroot_ids"].append(w.name)
+    for w in _workroots(workroot_base, skip_workroots):
+        items = workroot_intermediates(w)
+        if items:
+            b = sum(_size(p) for p in items)
+            if b:
+                plan["workroot_bytes"] += b
+                plan["workroots"] += 1
+                plan["workroot_ids"].append(w.name)
     plan["est_compress_saved"] = int(
         plan["compress_bytes"] * (1 - 1 / EST_GZ_RATIO))
     plan["total_est"] = (plan["week_bytes"] + plan["workroot_bytes"]
@@ -342,15 +348,11 @@ def execute(retro_root: Path, workroot_base: Path,
                 c = compress_tree(p)
                 out["compress_saved"] += c["saved"]
                 out["compress_files"] += c["files"]
-    base = Path(workroot_base)
-    if base.is_dir():
-        for w in sorted(d for d in base.iterdir() if d.is_dir()):
-            if w.name in skip_workroots:
-                continue
-            b = prune_workroot(w)
-            if b:
-                out["workroot_bytes"] += b
-                out["workroots"] += 1
+    for w in _workroots(workroot_base, skip_workroots):
+        b = prune_workroot(w)
+        if b:
+            out["workroot_bytes"] += b
+            out["workroots"] += 1
     out["total"] = (out["week_bytes"] + out["workroot_bytes"]
                     + out["compress_saved"])
     return out

@@ -17,6 +17,13 @@ theme-aware HTML file per week (plotly.js embedded once, no network).
   * nau.css token blocks embedded verbatim; a boot script resolves the
     theme at open (console localStorage same-origin, else OS preferences);
     print is always light
+
+  1. palette, model names and colours (player.js's maps), PLOTLY_CONFIG
+  2. the inputs bundle: BUNDLE_VERSION, fan_quantiles*, bundle_asof
+  3. figures: fan_figure_from_quantiles, cat_bar, _html
+  4. page chrome: _retint_js, _week_ticks_js, page_header, page_style
+  5. build_report, save_bundle, render_bundle
+  6. serve-time: builder_sources_mtime, legacy_theme_carry
 """
 from __future__ import annotations
 
@@ -27,34 +34,29 @@ from pathlib import Path
 
 import numpy as np
 
+from app.core import html_page, usmap
+
+# moved to html_page (shared with report_season and the site); the category
+# scale is usmap's (the map draws it). Both stay importable from here.
+from app.core.html_page import (
+    CHARTS_SRC,
+    FONT_STACK,
+    NAU_CSS,
+    PLAYER_SRC,
+    charts_js,
+    marked_json,
+    theme_boot_script,
+    theme_token_css,
+)
+from app.core.usmap import CAT_COLOR, CATS, NO_DATA
+
+# --------------------------------------------------- 1. palette and names
 # build-time chart palette (nau.css dark theme): figures are built with these
 # literals and re-resolved against the page tokens at open (_retint_js)
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
 OK = "#4CC38A"; BAD = "#FB4653"
-# DM Sans where installed, system fallback: no webfont fetch
-FONT_STACK = '"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif'
-CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
-CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
-             "stable": "#b9b09b", "increase": "#e8a33d",
-             "large_increase": "#c0392b"}
-NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black without tokens
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
-
-#: the one source of the embedded theme tokens, hence a builder input
-NAU_CSS = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
-#: the shared player core carries the one member-color map (marked JSON)
-PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
-    / "player.js"
-#: the one date-axis tick policy and chart config (FluCharts), inlined into
-#: both reports so their charts tick on the data's Saturdays like the console
-CHARTS_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
-    / "charts.js"
-
-
-def charts_js() -> str:
-    """charts.js verbatim (FluCharts), for inlining into a report."""
-    return CHARTS_SRC.read_text(encoding="utf-8")
 
 #: equal to the player's map; used only if its marked JSON cannot be read
 _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
@@ -64,13 +66,7 @@ _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
 def model_colors() -> dict:
     """The one member-color map: player.js's marked JSON literal, parsed so
     every Python surface wears the player's colours. Falls back, never raises."""
-    try:
-        src = PLAYER_SRC.read_text(encoding="utf-8")
-        m = re.search(r"/\*MODEL_COLORS_JSON\*/\s*(\{.*?\})"
-                      r"\s*/\*END_MODEL_COLORS_JSON\*/", src, re.S)
-        return json.loads(m.group(1)) if m else dict(_MEMBER_COLOR_FALLBACK)
-    except Exception:
-        return dict(_MEMBER_COLOR_FALLBACK)
+    return marked_json("MODEL_COLORS_JSON", _MEMBER_COLOR_FALLBACK, PLAYER_SRC)
 
 
 MEMBER_COLORS = model_colors()
@@ -83,13 +79,7 @@ _SEASON_COLOR_FALLBACK = ["#A87300", "#3375FB", "#C9568C",
 def season_colors() -> list:
     """The one season-line palette: player.js SEASON_COLORS (the CVD-safe
     set, used where the --season-N tokens are absent). Falls back, never raises."""
-    try:
-        src = PLAYER_SRC.read_text(encoding="utf-8")
-        m = re.search(r"/\*SEASON_COLORS_JSON\*/\s*(\[.*?\])"
-                      r"\s*/\*END_SEASON_COLORS_JSON\*/", src, re.S)
-        return json.loads(m.group(1)) if m else list(_SEASON_COLOR_FALLBACK)
-    except Exception:
-        return list(_SEASON_COLOR_FALLBACK)
+    return marked_json("SEASON_COLORS_JSON", _SEASON_COLOR_FALLBACK, PLAYER_SRC)
 
 
 def _rgba(hexs: str, alpha: float) -> str:
@@ -135,10 +125,10 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
                  "modeBarButtonsToRemove": ["lasso2d", "select2d",
                                             "autoScale2d"]}
 
-# ---------------------------------------------------------------------------
-# Inputs bundle: everything render_bundle needs to rebuild report.html,
-# saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
-# raw samples, keeping it ~100 KB.
+# ---------------------------------------------------- 2. the inputs bundle
+# Everything render_bundle needs to rebuild report.html, saved beside it.
+# Fans are reduced to the 23-level grid (FAN_LEVELS), never raw samples,
+# keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
 BUNDLE_VERSION = 7
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
@@ -160,27 +150,6 @@ def bundle_asof(bundle: dict) -> str:
     """A bundle's as-of date: v7 "asof"; older bundles stored the as-of
     under "reference_date"."""
     return str(bundle.get("asof") or bundle.get("reference_date") or "")
-
-
-def _fig_layout(fig, height=340, title="", legend=False):
-    # 14px chart text (above the 13.1px hint floor), title a step up;
-    # automargin sizes margins to the labels; a legend adds figure height
-    fig.update_layout(
-        template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
-        font=dict(color=INK, family=FONT_STACK, size=14),
-        margin=dict(l=8, r=8, t=42 if title else 12, b=8),
-        height=height + (36 if legend else 0),
-        title=dict(text=title, font=dict(size=16)),
-        # single-line date ticks: a two-line band collides with the legend
-        xaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True,
-                   tickformat="%b %-d"),
-        yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True),
-        showlegend=legend,
-        legend=dict(orientation="h", x=0, xanchor="left",
-                    y=-0.16, yanchor="top",
-                    font=dict(size=14, color=INK),
-                    bgcolor="rgba(0,0,0,0)"))
-    return fig
 
 
 def fan_quantiles(forecast_times, samples_by_h, levels=FAN_LEVELS) -> dict:
@@ -215,6 +184,28 @@ def fan_quantiles_from_grid(forecast_times, grid_by_time,
         out[str(t)] = {str(lv): round(float(np.interp(lv, ls, vs)), 4)
                        for lv in levels}
     return out
+
+
+# ------------------------------------------------------------- 3. figures
+def _fig_layout(fig, height=340, title="", legend=False):
+    # 14px chart text (above the 13.1px hint floor), title a step up;
+    # automargin sizes margins to the labels; a legend adds figure height
+    fig.update_layout(
+        template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
+        font=dict(color=INK, family=FONT_STACK, size=14),
+        margin=dict(l=8, r=8, t=42 if title else 12, b=8),
+        height=height + (36 if legend else 0),
+        title=dict(text=title, font=dict(size=16)),
+        # single-line date ticks: a two-line band collides with the legend
+        xaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True,
+                   tickformat="%b %-d"),
+        yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True),
+        showlegend=legend,
+        legend=dict(orientation="h", x=0, xanchor="left",
+                    y=-0.16, yanchor="top",
+                    font=dict(size=14, color=INK),
+                    bgcolor="rgba(0,0,0,0)"))
+    return fig
 
 
 def _bands(color: str | None):
@@ -298,7 +289,6 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
     return _fig_layout(fig, title=title, legend=True)
 
 
-
 def cat_bar(probs):
     import plotly.graph_objects as go
     fig = go.Figure(go.Bar(
@@ -321,47 +311,7 @@ def _html(fig, include_js=False, div_id=None):
                        div_id=div_id, config=config)
 
 
-#: the embedded token blocks: both :root blocks (palette, type scale), the
-#: named themes and the two accessibility modifiers
-_THEME_SELECTORS = (":root", '[data-theme="dark"]', '[data-theme="paper"]',
-                    '[data-theme="dim"]', '[data-contrast="high"]',
-                    '[data-vision="cvd"]')
-
-
-def theme_token_css() -> str:
-    """nau.css token blocks verbatim, in document order (the cascade
-    matters: modifiers retarget type tokens; page_style's print block
-    comes after and wins)."""
-    css = NAU_CSS.read_text()
-    blocks = []
-    for sel in _THEME_SELECTORS:
-        found = [m for m in re.finditer(re.escape(sel) + r"\{[^{}]*\}", css)
-                 if sel != ":root" or css[max(0, m.start() - 1)] not in "\"']"]
-        if not found:
-            raise ValueError(f"nau.css: token block {sel} not found")
-        blocks += [(m.start(), m.group(0)) for m in found]
-    blocks.sort()
-    return "\n".join(b for _, b in blocks)
-
-
-def theme_boot_script() -> str:
-    """First-paint theme resolution, mirroring base.html: the console's
-    localStorage keys when served same-origin, else the OS preferences."""
-    return """<script>
-(function(){var de=document.documentElement,t=null,c=null,v=null;
- try{if(location.protocol==='http:'||location.protocol==='https:'){
-  t=localStorage.getItem('theme');c=localStorage.getItem('contrast');
-  v=localStorage.getItem('vision');}}catch(e){}
- if(['light','paper','dim','dark'].indexOf(t)<0)
-  t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
- if(c!=='high'&&c!=='normal')
-  c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
- de.setAttribute('data-theme',t);
- if(c==='high')de.setAttribute('data-contrast','high');
- if(v==='cvd')de.setAttribute('data-vision','cvd');})();
-</script>"""
-
-
+# --------------------------------------------------------- 4. page chrome
 def _retint_js() -> str:
     """Rewrite the baked dark-kit literals to the resolved theme tokens
     (incl. --cat-*, --ok/--bad, the accent via --gold). Member colours are
@@ -530,6 +480,7 @@ def page_style() -> str:
 </style>"""
 
 
+# --------------------------------------------------------- 5. the report
 def build_report(asof: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
@@ -558,9 +509,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     gaps); None (older bundles): a card-less state in scope is the gap and
     a bare card is "no forecast". no_forecast: model -> {fips: reason} for
     in-scope states that have data but no forecast from that model."""
-    # build-time SVG map: plotly geo fetches its geometry from a CDN
-    from app.core import usmap
-    from app.core.usmap import cat_fill, svg_map
+    # build-time SVG map (usmap): plotly geo fetches its geometry from a CDN
+    cat_fill, svg_map = usmap.cat_fill, usmap.svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
     # card-less states: gaps (in scope) vs not fitted (out); no record: 'no data'
     scope = set(fitted_fips) if fitted_fips is not None else None
@@ -716,11 +666,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         nat_map_div = f'<div id="map-national" class="mapcap" hidden>{national_map_html}</div>'
 
     # plotly.js in the head, once, iff any figure is embedded
-    if state_details or national.get("fan"):
-        from plotly.offline import get_plotlyjs
-        plotly_js = "<script>" + get_plotlyjs() + "</script>"
-    else:
-        plotly_js = ""
+    plotly_js = ("<script>" + html_page.plotly_js() + "</script>"
+                 if state_details or national.get("fan") else "")
 
     # footer: wall time and settings (which run produced this?)
     footer = ""
@@ -882,20 +829,15 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         no_forecast=bundle.get("no_forecast"))
 
 
+# ---------------------------------------------------------- 6. serve time
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    scoring, usmap, nau.css,
-    charts.js): a stored report.html older than this is stale."""
-    times = [0.0]
-    for mod in ("report_v2", "scoring", "usmap"):
-        p = Path(__file__).with_name(mod + ".py")
-        if p.is_file():
-            times.append(p.stat().st_mtime)
-    if CHARTS_SRC.is_file():
-        times.append(CHARTS_SRC.stat().st_mtime)
-    if NAU_CSS.is_file():
-        times.append(NAU_CSS.stat().st_mtime)
-    return max(times)
+    html_page, scoring, usmap, nau.css, charts.js): a stored report.html
+    older than this is stale."""
+    srcs = [Path(__file__).with_name(m + ".py")
+            for m in ("report_v2", "html_page", "scoring", "usmap")]
+    return max([0.0] + [p.stat().st_mtime for p in srcs + [CHARTS_SRC, NAU_CSS]
+                        if p.is_file()])
 
 
 #: marks a served legacy page as already annotated (and keeps the carry

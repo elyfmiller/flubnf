@@ -192,7 +192,7 @@ def test_small_season_first_visit_renders_complete_in_one_round_trip(
     html = client.get(f"/retro/{SEASON}").text
     assert "preparing results" not in html
     assert "weeks scored" in html
-    assert "Download season report" in html
+    assert "Download report" in html
 
 
 def test_slow_job_shows_the_preparing_state_and_status_endpoint(
@@ -217,7 +217,7 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
         assert f"/api/retro/{SEASON}/results_status" in html
         assert "location.reload()" in html
         # nothing heavy rendered behind it
-        assert "Download season report" not in html
+        assert "Download report" not in html
         st = client.get(f"/api/retro/{SEASON}/results_status").json()
         assert st["pending"] is True and st["phase"] == "scoring cells"
         assert st["elapsed_s"] >= 0.0

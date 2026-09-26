@@ -14,10 +14,13 @@ One line per module, with the role tag its docstring opens with and its main cal
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
 | `retro.py` | PRODUCTION | season replay engine: calendar, sample store, run record, fit-level runner, scoring, finalize, archives | server Retrospective tab, `flubnf retro` |
+| `retro_store.py` | PRODUCTION | the replay samples store and quantile sidecars (re-exported by `retro`) | `retro`, `playback`, `replay_bundle` |
+| `retro_settings.py` | PRODUCTION | engine presets, floor record values, the resume-mismatch rules and the settings summary (re-exported by `retro`) | `retro`, server Retrospective tab |
+| `retro_archive.py` | PRODUCTION | archived runs: stamps, archive folders, sizes, delete (re-exported by `retro`) | `retro`, server Retrospective and Storage tabs |
 | `runs.py` | PRODUCTION | run ledger, workroot leasing, seeds, run-display helpers | server, engines, `retro` |
 | `knobs.py` | REGISTRY | every model tunable: shipped value read from its constant, bounds, members affected, card phrase; parse, digest, label (not read at run time yet) | `flubnf knobs` |
 | `data.py` | PRODUCTION | vintage registry and hub freshness | server Data tab, `retro`, `scoring`, engines |
-| `datasets.py` | RESEARCH | custom target data (grouped or hubverse CSV, or a folder of snapshot files, one per as_of): the one lenient reader (separators, encodings, header aliases and column mapping, any one weekday to Saturday; ambiguity refused), validate, store under `app/state/datasets/`, FluSight-shaped locations and vintage CSVs; `from_spec` for the engines | `flubnf dataset`, `app/ui/datasets_ui.py`, `sandbox.py` uploads, both engines |
+| `datasets/` | RESEARCH | custom target data (grouped or hubverse CSV, or a folder of snapshot files, one per as_of): the one lenient reader (separators, encodings, header aliases and column mapping, any one weekday to Saturday; ambiguity refused), validate, store under `app/state/datasets/`, FluSight-shaped locations and vintage CSVs; `from_spec` for the engines. A package: `report` (problems), `parsing`, `reading` (`validate`), `checks`, `store` (`ingest`), `snapshots`, `dataset` (`Dataset`, `get`, `resolve`); `__init__` re-exports every public name | `flubnf dataset`, `app/ui/datasets_ui.py`, `sandbox.py` uploads, both engines |
 | `custom_run.py` | RESEARCH | one forecast on a custom dataset: Groundhog and plain SIHRS filter, hubverse exports under non-hub names, persistence-baseline scoring | `app/ui/datasets_ui.py` |
 | `custom_retro.py` | RESEARCH | replay a week range on a custom dataset, stored under the dataset, with the Model settings knobs it was given recorded | `app/ui/datasets_ui.py` |
 | `horizons.py` | PRODUCTION | canonical vs stored horizon translation | `retro`, engines, `playback`, server |
@@ -55,6 +58,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 |---|---|---|---|
 | `report_v2.py` | PRODUCTION | the weekly run report | server `pipeline._write_weekly_report`, `/output/report` |
 | `report_season.py` | PRODUCTION | self-contained season HTML export | server `/retro/{season}/report` |
+| `html_page.py` | PRODUCTION | what the page builders share: asset paths, the Plotly and chart scripts, `esc`, the embedded-JSON reader, theme tokens | `report_v2`, `report_season`, `site_page`, `site_build` |
 | `usmap.py` | PRODUCTION | build-time US map | `report_v2`, server home outlook, `site_build` |
 | `report.py` | LEGACY | v1 tile-grid report; kept for the categorical shims | server, `site_build` |
 | `groundhog.py` | RESEARCH CLI ONLY | analogue-alone season replays with coverage and bootstrap | `flubnf groundhog retro` |
@@ -73,6 +77,7 @@ See [docs/SITE.md](../../docs/SITE.md).
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
 | `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/` (the production preflight, `check` without the engine, stop, delete, compare, zip downloads); examples from `flubnf/sandbox_examples/`; the Oracle SIHRS start (`from_shipped`, composed from `engines/pf.py` and `flubnf/sihrs_fit.py`) and the Oracle step on its runs (`oracle.apply_week`, inside the run folder); data from the hub, a `datasets.py` dataset or simulated from the model; the model at its written values in Check and a run's outcome in plain words (`fit_health`) | server `/sandbox` routes |
+| `sandbox_bngl.py`, `sandbox_check.py`, `sandbox_results.py`, `sandbox_data.py`, `sandbox_export.py` | SANDBOX | the sandbox by topic: the three files as text, Check, results and fit health, filling data.exp, compare and zips. `sandbox.py` keeps the runs and model folders and loads these on first use | `sandbox` |
 | `contactmap.py` | SANDBOX | contact map and reaction network from BNG2.pl, as SVG and graph JSON | server `/api/sandbox/models/...` |
 
 `assets/states-albers-10m.json` is the US map geometry `usmap.py` draws.

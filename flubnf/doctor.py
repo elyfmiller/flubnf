@@ -61,26 +61,19 @@ class DoctorReport:
 # ---------------------------------------------------------------------------
 def _check_python() -> CheckResult:
     major, minor = sys.version_info[:2]
+    ver = sys.version.split()[0]
     if (major, minor) < (3, 10):
-        return CheckResult(
-            "python", Status.FAIL,
-            f"{sys.version.split()[0]} — requires 3.10+",
-            "Install Python 3.10 or newer and recreate the venv.",
-        )
+        return CheckResult("python", Status.FAIL, f"{ver} — requires 3.10+",
+                           "Install Python 3.10 or newer and recreate the venv.")
     if (major, minor) >= (3, 13):
-        return CheckResult(
-            "python", Status.WARN,
-            f"{sys.version.split()[0]} — untested above 3.12",
-            "CI matrix covers 3.10/3.11/3.12; newer is unverified.",
-        )
-    return CheckResult("python", Status.OK, sys.version.split()[0])
+        return CheckResult("python", Status.WARN, f"{ver} — untested above 3.12",
+                           "CI matrix covers 3.10/3.11/3.12; newer is unverified.")
+    return CheckResult("python", Status.OK, ver)
 
 
 def _check_platform() -> CheckResult:
-    return CheckResult(
-        "platform", Status.OK,
-        f"{platform.system()} {platform.release()} ({platform.machine()})",
-    )
+    return CheckResult("platform", Status.OK, f"{platform.system()} "
+                       f"{platform.release()} ({platform.machine()})")
 
 
 _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
@@ -215,16 +208,11 @@ def _check_imports() -> list[CheckResult]:
     out: list[CheckResult] = []
     for mod, friendly in _REQUIRED_PACKAGES:
         try:
-            m = importlib.import_module(mod)
-            ver = getattr(m, "__version__", "?")
-            out.append(CheckResult(
-                f"import {friendly}", Status.OK, ver,
-            ))
+            ver = getattr(importlib.import_module(mod), "__version__", "?")
+            out.append(CheckResult(f"import {friendly}", Status.OK, ver))
         except Exception as e:  # noqa: BLE001
-            out.append(CheckResult(
-                f"import {friendly}", Status.FAIL, str(e),
-                f"pip install {friendly}",
-            ))
+            out.append(CheckResult(f"import {friendly}", Status.FAIL, str(e),
+                                   f"pip install {friendly}"))
     return out
 
 
@@ -322,18 +310,14 @@ def _check_disk_space(path: Path) -> CheckResult:
         return CheckResult("disk space", Status.WARN, str(e))
     free_gb = usage.free / (1024 ** 3)
     if free_gb < 2.0:
-        return CheckResult(
-            "disk space", Status.FAIL,
-            f"{free_gb:.1f} GB free at {path}",
-            "PyBNF runs need a few GB scratch; free up disk.",
-        )
+        return CheckResult("disk space", Status.FAIL,
+                           f"{free_gb:.1f} GB free at {path}",
+                           "PyBNF runs need a few GB scratch; free up disk.")
     if free_gb < 10.0:
-        return CheckResult(
-            "disk space", Status.WARN,
-            f"{free_gb:.1f} GB free at {path}",
-            "Plenty for a single week; the console's Storage page "
-            "(/storage) shows what can be cleared.",
-        )
+        return CheckResult("disk space", Status.WARN,
+                           f"{free_gb:.1f} GB free at {path}",
+                           "Plenty for a single week; the console's Storage "
+                           "page (/storage) shows what can be cleared.")
     return CheckResult("disk space", Status.OK, f"{free_gb:.0f} GB free")
 
 
@@ -363,15 +347,11 @@ def _check_reachable(name: str, url: str) -> CheckResult:
     except urllib.error.HTTPError as e:
         code = e.code
     except Exception as e:  # noqa: BLE001
-        return CheckResult(
-            name, Status.FAIL, f"{type(e).__name__}: {e}",
-            "Check the network connection.",
-        )
+        return CheckResult(name, Status.FAIL, f"{type(e).__name__}: {e}",
+                           "Check the network connection.")
     if code >= 500:
-        return CheckResult(
-            name, Status.WARN, f"HTTP {code} from {host}",
-            f"{host} may be having issues; retry later.",
-        )
+        return CheckResult(name, Status.WARN, f"HTTP {code} from {host}",
+                           f"{host} may be having issues; retry later.")
     return CheckResult(name, Status.OK, f"HEAD {host}: {code}")
 
 

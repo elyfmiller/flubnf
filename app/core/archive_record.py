@@ -26,11 +26,6 @@ from pathlib import Path
 RECORD = "archive.json"
 
 
-def archive_root() -> Path:
-    from app.core import runs
-    return runs.APP_STATE / "archive"
-
-
 def _read(p: Path):
     try:
         d = json.loads(Path(p).read_text())

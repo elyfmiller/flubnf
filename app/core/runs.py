@@ -27,6 +27,21 @@ from typing import Optional
 
 APP_STATE = Path(__file__).resolve().parents[1] / "state"
 
+# Sections, in file order:
+#   phrasing and settings rows   fmt_hms, locations_phrase, spec_settings,
+#                                dataset_settings, model_settings_label,
+#                                is_modified, is_research, version_pairs
+#   the Results table            MODE_LABELS, _tip, anchor_notes_row,
+#                                zero_anchor_row, data_issues_row,
+#                                results_html, dataset_results_html,
+#                                settings_html
+#   run ids, seeds, season       run_id_time, run_display, derive_seed,
+#                                default_season_start
+#   RunSpec                      RunSpec
+#   ledger and workroots         _git_sha, Ledger, run_order, lease_workroot
+
+
+# --- phrasing and settings rows ------------------------------------------------
 
 def fmt_hms(seconds) -> str:
     """Wall time as h:mm:ss, the one formatter every surface shares; None,
@@ -95,18 +110,8 @@ def spec_settings(spec, outcome=None) -> list:
     than what was asked: the data file read, and a PF member that did not
     run (no engine on this machine) is not listed as run.
     """
-    if isinstance(spec, RunSpec):
-        d = asdict(spec)
-    elif isinstance(spec, str):
-        try:
-            d = json.loads(spec or "{}")
-        except (ValueError, TypeError):
-            return []
-    elif isinstance(spec, dict):
-        d = spec
-    else:
-        return []
-    if not isinstance(d, dict) or not d:
+    d = _spec_dict(spec)
+    if not d:
         return []
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     if extra.get("dataset"):
@@ -303,18 +308,7 @@ def is_research(spec) -> bool:
     member (members == 3 or variant 2strain; it failed its gate) or the
     plain filter. Derived from the ledger spec, so every surface agrees.
     Accepts spec_settings' three shapes; unreadable is not research."""
-    if isinstance(spec, RunSpec):
-        d = asdict(spec)
-    elif isinstance(spec, str):
-        try:
-            d = json.loads(spec or "{}")
-        except (ValueError, TypeError):
-            return False
-    elif isinstance(spec, dict):
-        d = spec
-    else:
-        return False
-    extra = d.get("extra") if isinstance(d, dict) else None
+    extra = _spec_dict(spec).get("extra")
     if not isinstance(extra, dict):
         return False
     # the plain filter: file withheld, never the date's forecast; a custom
@@ -342,6 +336,8 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
         pairs.append(("PyBNF build", lab))
     return pairs
 
+
+# --- the Results table (run.html, runs.html) -----------------------------------
 
 #: what the form's two modes are called on a ledger row
 MODE_LABELS = {"realtime": "real-time (newest week)",
@@ -522,6 +518,8 @@ def _results_note(d: dict) -> str:
 
 
 def _spec_dict(spec) -> dict:
+    """spec_settings' three shapes (RunSpec, ledger dict, JSON text) as one
+    dict; unreadable or another type is {}."""
     if isinstance(spec, RunSpec):
         return asdict(spec)
     if isinstance(spec, str):
@@ -537,6 +535,15 @@ def results_tip(spec) -> str:
     """The "?" tip holding the relWIS convention, for a page that heads the
     results table itself (the run page's Results card)."""
     return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
+
+
+def _pf_fits(o: dict) -> str:
+    """The "PF fits" cell: fits done, failures (if any) marked bad."""
+    nf = len(o.get("pf_failures") or {})
+    fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
+    if nf:
+        fits += f', <span class="bad">{nf} failure{"s" if nf != 1 else ""}</span>'
+    return fits
 
 
 def _results_table(body: str, d: dict, heading: bool) -> str:
@@ -580,11 +587,7 @@ def results_html(outcome, spec, heading: bool = True) -> str:
         rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
                            f"{fv:.3f}</span>{cov}"))
     if "pf_cells" in o:
-        nf = len(o.get("pf_failures") or {})
-        fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
-        if nf:
-            fits += f', <span class="bad">{nf} failure{"s" if nf != 1 else ""}</span>'
-        rows.append(("PF fits", fits))
+        rows.append(("PF fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
@@ -632,7 +635,7 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     beside the pooled figure, abstentions and the export files. Fixed
     phrases and numbers only, group names escaped."""
     import html as _html
-    from app.core.custom_run import EXPORT_IDS, MEMBER_LABELS
+    from app.core.custom_run import MEMBER_LABELS
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     rows = []
     scores = o.get("custom_scores") or {}
@@ -651,11 +654,7 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
                      f'{float(nat["relwis"]):.3f}, beside</span>')
         rows.append((MEMBER_LABELS[m], cell))
     if "pf_cells" in o:
-        nf = len(o.get("pf_failures") or {})
-        fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
-        if nf:
-            fits += f', <span class="bad">{nf} failure{"s" if nf != 1 else ""}</span>'
-        rows.append(("PF fits", fits))
+        rows.append(("PF fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (" + _html.escape(str(o["pf_skipped"]))
                      + ")"))
@@ -706,6 +705,8 @@ def settings_html(pairs, title: str = "Run settings",
             f'<strong>{_html.escape(title)}</strong>'
             f'<dl class="kv">{body}</dl></div>')
 
+
+# --- run ids, seeds, the season start ------------------------------------------
 
 def run_id_time(run_id: str) -> str:
     """The local time a workroot id carries ('20260821T163029-5dbec2' ->
@@ -782,6 +783,8 @@ def default_season_start(forecast_date: str) -> str:
     return f"{y if m >= 8 else y - 1}-08-01"
 
 
+# --- RunSpec -------------------------------------------------------------------
+
 @dataclass
 class RunSpec:
     """Everything that defines one model run. The ledger stores this verbatim."""
@@ -815,6 +818,8 @@ class RunSpec:
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
 
+
+# --- the ledger and workroot leasing --------------------------------------------
 
 def _git_sha(repo: Path) -> str:
     try:

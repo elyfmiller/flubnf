@@ -9,6 +9,8 @@ their historical names.
 """
 from __future__ import annotations
 
+from app.core.usmap import CATS  # the one category tuple (usmap draws it)
+
 # Tile-grid positions (col, row) — the standard US state tile map.
 TILES = {
  "AK": (0, 0), "ME": (11, 0), "VT": (10, 1), "NH": (11, 1),
@@ -24,7 +26,6 @@ TILES = {
  "HI": (0, 7), "TX": (4, 7), "FL": (9, 7), "PR": (10, 7),
 }
 
-CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 COLORS = {"large_decrease": "#1a66a8", "decrease": "#7fb2d9",
           "stable": "#b8b8b0", "increase": "#e79a6b", "large_increase": "#c03a2b",
           "no_data": "#e8e6e0"}

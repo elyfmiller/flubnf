@@ -24,7 +24,6 @@ must be the hub whose truth and baseline the screen used.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from pathlib import Path
@@ -33,6 +32,7 @@ import pandas as pd
 
 from app.core import oracle as oracle_mod
 from app.core import retro
+from flubnf.vintages import sha256_of as _sha256
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -43,14 +43,6 @@ REPO = Path(__file__).resolve().parents[2]
 FLOOR_NOT_REAPPLIED = ("not applied after the Oracle step (a backfill from "
                        "stored samples; the source's record says how its pf "
                        "was stored)")
-
-
-def _sha256(p) -> str:
-    h = hashlib.sha256()
-    with open(p, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _under(p: Path, root: Path) -> bool:

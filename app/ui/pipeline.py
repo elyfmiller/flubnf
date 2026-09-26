@@ -7,6 +7,11 @@ archive, in one workroot with one ledger row. It calls its helpers
 _archive_run) bare, so a patch of pipeline.X reaches it. Other modules call
 pipeline._run_all, pipeline._sleep_guard (the retro worker, the sandbox,
 the dataset workers) and pipeline._pf_engine_state at call time.
+
+Sections, in file order: the forecast pipeline (_harvest_params,
+_WinSleepGuard / _sleep_guard, _write_weekly_report, _build_pairs,
+_pf_engine_state, _optional_rows, _run_all) | the forecast archive
+(_archive_run).
 """
 from __future__ import annotations
 

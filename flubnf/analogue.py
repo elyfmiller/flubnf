@@ -367,6 +367,17 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
     """
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
+    anchor, r = _anchor_and_pool(anchor, ratios, completeness)
+    if r is None:
+        return None
+    return _scale_ratio_quantiles(
+        anchor, {float(L): float(np.quantile(r, L)) for L in levels},
+        widen_log_sd)
+
+
+def _anchor_and_pool(anchor: float, ratios, completeness) -> tuple:
+    """The anchor divided by `completeness` (non-finite or non-positive
+    raises) and the finite ratio pool; the pool is None under MIN_DONORS."""
     if completeness is not None:
         c = float(completeness)
         if not math.isfinite(c) or c <= 0:
@@ -374,11 +385,7 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
         anchor = anchor / c
     r = np.asarray(ratios, dtype=float)
     r = r[np.isfinite(r)]
-    if r.size < MIN_DONORS:
-        return None
-    return _scale_ratio_quantiles(
-        anchor, {float(L): float(np.quantile(r, L)) for L in levels},
-        widen_log_sd)
+    return anchor, (r if r.size >= MIN_DONORS else None)
 
 
 def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
@@ -535,14 +542,8 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
             f"auxiliary splice weights sum to {sum(ws)!r}, leaving the "
             f"admissions pool a negative weight; they must sum to at most 1")
     w0 = max(w0, 0.0)
-    if completeness is not None:
-        c = float(completeness)
-        if not math.isfinite(c) or c <= 0:
-            raise ValueError(f"completeness must be finite and > 0, got {c!r}")
-        anchor = anchor / c
-    r = np.asarray(ratios, dtype=float)
-    r = r[np.isfinite(r)]
-    if r.size < MIN_DONORS:
+    anchor, r = _anchor_and_pool(anchor, ratios, completeness)
+    if r is None:
         return None
     prepared = []
     for a_raw, w, shrink, label in aux:

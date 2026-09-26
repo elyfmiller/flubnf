@@ -48,6 +48,21 @@ from app.core.engines import analogue as EA
 from app.core.engines import pf as PF
 from app.core.runs import RunSpec, default_season_start
 
+# Sections, in file order:
+#   constants and Knob   MEMBERS, ENGINE_MEMBERS, KnobError, Knob, PRIOR_DEFAULTS
+#   engine validators    _check_prior, _check_initialization, _check_aux,
+#                        _check_w_aux, _prior_knob
+#   the registry         REGISTRY, BY_KEY, OPTIONAL_KEYS, DECISION_KEYS,
+#                        Locked, LOCKED
+#   parsing              members_for, applies, _coerce, parse, defaults,
+#                        non_default, digest, label
+#   reading a spec       _aux_preset_of, _read, effective, describe
+#   Stage 2 (models)     LATER, NOT_IN_RETRO, LEGACY_FIELDS, resolve,
+#                        from_record, write_extra, spec_fields, record_of,
+#                        modified, summary, write_record, legacy_settings_knobs
+#   Stage 3 (panel)      RETRO_ARG_KEYS, PANEL_GROUPS, _tip, panel,
+#                        retro_week_extra
+
 MEMBERS = ("pf", "analogue")
 PF_ONLY = frozenset({"pf"})
 GH_ONLY = frozenset({"analogue"})
@@ -512,8 +527,7 @@ def non_default(values: Mapping, forecast_date: Optional[str] = None) -> dict:
 
 
 def _canonical(values: Mapping) -> str:
-    return json.dumps({k: list(v) if isinstance(v, tuple) else v
-                       for k, v in values.items()},
+    return json.dumps({k: _json_value(v) for k, v in values.items()},
                       sort_keys=True, separators=(",", ":"))
 
 
@@ -687,10 +701,6 @@ _SPEC_FIELDS = {"pf.particles": "particles", "pf.replicates": "replicates",
                 "run.drop_same_day": "drop_same_day"}
 
 
-def wired(key: str) -> bool:
-    return key in BY_KEY and key not in LATER
-
-
 def in_scope(key: str, scope: str) -> bool:
     """scope: "forecast" (the console) or "retro"."""
     return not (scope == "retro" and key in NOT_IN_RETRO)
@@ -698,8 +708,7 @@ def in_scope(key: str, scope: str) -> bool:
 
 def jsonable(values: Mapping) -> dict:
     """The record form: tuples become lists, keys sorted."""
-    return {k: (list(v) if isinstance(v, tuple) else v)
-            for k, v in sorted(values.items())}
+    return {k: _json_value(v) for k, v in sorted(values.items())}
 
 
 def resolve(form: Mapping, engine="all", *, scope: str = "forecast",

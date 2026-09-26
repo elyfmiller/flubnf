@@ -23,17 +23,13 @@ Engineering rules:
 """
 from __future__ import annotations
 
-import gzip
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
-from collections import OrderedDict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -48,12 +44,41 @@ from app.core.engines import pf as pf_engine          # noqa: E402
 from app.core import horizons as hz
 from app.core import missing as MS                   # noqa: E402
 from app.core import oracle as oracle_mod             # noqa: E402
-from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
 from app.core.floor import (floor_quantiles, floor_samples,  # noqa: E402
                             recent_observed)
-from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
-                           RunSpec, locations_phrase)
+from app.core.runs import RunSpec                     # noqa: E402
+
+# Sections (in order): season calendar (SEASON_BOUNDS, available_seasons,
+# season_vintages) | run record and control flags (read_meta, timing,
+# request_stop, hold_while_paused, _record_*) | fit-level execution
+# (cells_done, _launch_runners, _run_round) | one week (run_week) | the
+# season loop (run_season) | scoring (SCORES_V, score_season) | the national
+# aggregate (national_aggregate) | finalize (finalize_season) | headline
+# summary (run_summary, state_metrics).
+# Moved out, re-exported below: the samples store (retro_store), settings
+# and resume rules (retro_settings), archived runs (retro_archive).
+
+# the samples store moved to app/core/retro_store.py; re-exported so
+# `retro.X` keeps working
+from app.core.retro_store import (  # noqa: F401
+    QUANTILES_NAME, SAMPLES_GZ, SAMPLES_JSON, _week_dir, compress_samples_file,
+    member_quantiles, read_samples, read_week_quantiles, read_week_samples,
+    samples_file, season_sample_files, week_done, week_member_quantiles,
+    week_samples_path, write_week_quantiles, write_week_samples)
+# settings, presets and the resume rules moved to app/core/retro_settings.py
+from app.core.retro_settings import (  # noqa: F401
+    ENGINE_LABELS, ENGINES, FLOOR_APPLIED, FLOOR_FROM_RESUME,
+    FLOOR_NOT_RECORDED, SCOPE_LABELS, EngineBuildChanged,
+    EngineBuildMismatch, KnobsMismatch, LocationsMismatch, ResumeMismatch,
+    _build_label, engine_build_change, engine_label, location_scope,
+    location_scope_change, pf_ran, resume_form_fields, season_knobs,
+    settings_summary)
+# archived runs moved to app/core/retro_archive.py
+from app.core.retro_archive import (  # noqa: F401
+    ARCHIVE_SEP, _STAMP_RE, _SUMMARY_CACHE, _SUMMARY_CACHE_MAX, archive_dir,
+    archive_run, archive_stamp_of, delete_tree, dir_size, human_bytes,
+    list_archive_dirs, stamp_human, utc_human, utc_stamp, valid_stamp)
 
 SEASON_BOUNDS = {"2023-24": ("2023-08-01", "2024-06-15"),
                  "2024-25": ("2024-08-01", "2025-06-15"),
@@ -105,185 +130,6 @@ def season_no_data_weeks(season: str) -> dict:
     return {w: e for w, e in _data.no_data_weeks().items() if lo <= w <= hi}
 
 
-def _week_dir(root: Path, asof: str) -> Path:
-    return root / "weeks" / asof
-
-
-# --------------------------------------------------------------------------
-# the samples store: every stored-week read/write goes through these helpers,
-# so samples.json and samples.json.gz are indistinguishable downstream. New
-# weeks are gzipped (~3.7x); compress_samples_file migrates old ones keeping
-# the mtime, so caches keyed on it stay valid.
-# --------------------------------------------------------------------------
-
-SAMPLES_JSON = "samples.json"
-SAMPLES_GZ = "samples.json.gz"
-#: per-week quantile sidecar (each member's 23 levels, a few hundred KB beside
-#: ~140 MB of draws): playback, report and scorer read it instead of parsing
-#: draws. Written on store, backfilled on first read. The national aggregate
-#: still reads the draws.
-QUANTILES_NAME = "quantiles.json"
-
-
-def samples_file(wd: Path) -> Path | None:
-    """The week's stored samples file (plain or gzip), or None when the week
-    is incomplete. Plain wins when both exist (an interrupted migration)."""
-    p = Path(wd) / SAMPLES_JSON
-    if p.is_file():
-        return p
-    g = Path(wd) / SAMPLES_GZ
-    return g if g.is_file() else None
-
-
-def week_samples_path(root: Path, asof: str) -> Path | None:
-    return samples_file(_week_dir(root, asof))
-
-
-def season_sample_files(root: Path) -> list:
-    """One stored samples file per completed week, ascending by week name --
-    the successor of every `weeks/*/samples.json` glob, form-blind."""
-    weeks = Path(root) / "weeks"
-    if not weeks.is_dir():
-        return []
-    out = []
-    try:
-        for wd in sorted(weeks.iterdir()):
-            p = samples_file(wd)
-            if p is not None:
-                out.append(p)
-    except OSError:
-        return []
-    return out
-
-
-def read_samples(fp: Path) -> dict:
-    """Parse one stored samples file (plain or gzip) into CANONICAL horizons.
-    The conversion lives at the parser because other callers (the national
-    aggregate, console pages) read files directly."""
-    fp = Path(fp)
-    if fp.name.endswith(".gz"):
-        with gzip.open(fp, "rt", encoding="utf-8") as f:
-            return hz.record_to_canonical(json.load(f))
-    return hz.record_to_canonical(json.loads(fp.read_text()))
-
-
-def read_week_samples(root: Path, asof: str) -> dict:
-    """One stored week, in CANONICAL horizons (the file keeps the stored
-    convention; see app.core.horizons)."""
-    fp = week_samples_path(root, asof)
-    if fp is None:
-        raise FileNotFoundError(
-            f"no stored samples for week {asof} under {root}")
-    return read_samples(fp)          # already canonical
-
-
-def write_week_samples(wd: Path, obj: dict) -> Path:
-    """Store a completed week's samples, gzipped and atomic, retiring any
-    plain-JSON leftover. The quantile sidecar is best effort."""
-    wd = Path(wd)
-    fp = wd / SAMPLES_GZ
-    tmp = wd / (SAMPLES_GZ + ".tmp")
-    # canonical in memory, stored convention on disk
-    with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
-        json.dump(hz.record_to_stored(obj), f)
-    os.replace(tmp, fp)
-    (wd / SAMPLES_JSON).unlink(missing_ok=True)
-    try:
-        write_week_quantiles(wd, member_quantiles(obj))
-    except Exception:
-        pass
-    return fp
-
-
-def member_quantiles(d: dict) -> dict:
-    """{member: {location: {"0".."3": {level: value}}}} from one week's
-    stored record: the sample-shaped members (pf, pf2s) through the member
-    quantile formula, the analogue's stored quantiles with float levels.
-    A week replayed by the Groundhog alone (engine "analogue") stores no
-    pf block and yields no pf member."""
-    out = {}
-    for m in ("pf", "pf2s"):
-        if m in d:
-            out[m] = {loc: ens.member_quantiles_from_samples(s)
-                      for loc, s in d[m].items()}
-    if "analogue" in d:
-        out["analogue"] = {loc: {h: {float(k): float(v) for k, v in q.items()}
-                                 for h, q in qs.items()}
-                           for loc, qs in d["analogue"].items()}
-    return out
-
-
-def write_week_quantiles(wd: Path, mq: dict) -> Path:
-    """The sidecar, atomically. Levels become strings on disk (JSON keys)
-    and read back as the same floats: repr round-trips."""
-    wd = Path(wd)
-    fp = wd / QUANTILES_NAME
-    tmp = wd / (QUANTILES_NAME + ".tmp")
-    tmp.write_text(json.dumps(
-        {m: {loc: {h: {repr(float(L)): v for L, v in q.items()}
-                   for h, q in qs.items()}
-             for loc, qs in locs.items()}
-         for m, locs in hz.quantiles_to_stored(mq).items()}))
-    os.replace(tmp, fp)
-    return fp
-
-
-def read_week_quantiles(wd: Path) -> dict | None:
-    """The sidecar as member_quantiles would have returned it, or None when
-    it is absent, unreadable, or older than the samples it describes."""
-    wd = Path(wd)
-    fp = wd / QUANTILES_NAME
-    sp = samples_file(wd)
-    if not fp.is_file() or sp is None or fp.stat().st_mtime < sp.stat().st_mtime:
-        return None
-    try:
-        raw = json.loads(fp.read_text())
-        return hz.quantiles_to_canonical(
-            {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
-                       for h, q in qs.items()}
-                 for loc, qs in locs.items()}
-             for m, locs in raw.items()})
-    except Exception:
-        return None
-
-
-def week_member_quantiles(root: Path, asof: str) -> dict:
-    """The members' quantiles for one stored week: the sidecar when it is
-    current, else computed from the samples and written for next time."""
-    wd = _week_dir(root, asof)
-    mq = read_week_quantiles(wd)
-    if mq is not None:
-        return mq
-    mq = member_quantiles(read_week_samples(root, asof))
-    try:
-        write_week_quantiles(wd, mq)
-    except Exception:
-        pass
-    return mq
-
-
-def compress_samples_file(fp: Path) -> Path:
-    """Migrate one stored week to gzip, preserving its mtime so every cache
-    keyed on it stays valid. Crash-safe: the plain file stays the record
-    until it is retired."""
-    fp = Path(fp)
-    if fp.name.endswith(".gz"):
-        return fp
-    st = fp.stat()
-    gz = fp.with_name(SAMPLES_GZ)
-    tmp = fp.with_name(SAMPLES_GZ + ".tmp")
-    with open(fp, "rb") as fin, gzip.open(tmp, "wb", compresslevel=6) as fo:
-        shutil.copyfileobj(fin, fo, 1 << 20)
-    os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
-    os.replace(tmp, gz)
-    fp.unlink()
-    return gz
-
-
-def week_done(root: Path, asof: str) -> bool:
-    return week_samples_path(root, asof) is not None
-
-
 # --------------------------------------------------------------------------
 # run record: timing, heartbeat, and the STOP / PAUSE control flags
 # --------------------------------------------------------------------------
@@ -304,65 +150,6 @@ ACTIVE_STATUSES = ("running", "paused", "stopping")
 # every read-modify-write of run_meta.json goes through one lock: the
 # heartbeat thread and the season worker both fold time into the same file
 _META_LOCK = threading.RLock()
-
-
-class ResumeMismatch(ValueError):
-    """A resume asked for something other than what the tree was built
-    with; completed weeks would be pooled with differently made ones."""
-
-
-class KnobsMismatch(ResumeMismatch):
-    """A resume asked for other model settings than the tree was built with."""
-
-
-class LocationsMismatch(ResumeMismatch):
-    """A resume asked for another location list than the tree was built
-    with (a scope change, or the national row switched on or off)."""
-
-
-class EngineBuildMismatch(ResumeMismatch):
-    """A resume on another engine build (commit or local edits) than the
-    completed weeks were fitted by."""
-
-
-class EngineBuildChanged(EngineBuildMismatch):
-    """The engine build changed while a season was running (a branch
-    switched or a file edited mid-replay): the season stops before the next
-    week rather than fit it with another engine."""
-
-
-def engine_build_change(prior_settings, engine: str = "pf",
-                        build: dict | None = None) -> str | None:
-    """None when a resume may proceed on this machine's engine build: an
-    analogue-only replay (no engine), a record with no build (older
-    seasons resume as before), or the same commit and edited state.
-    Otherwise the difference in plain words. `build` defaults to this
-    machine's (app.core.engine_build)."""
-    from app.core import engine_build as _eb
-    if not pf_ran(engine):
-        return None
-    had = (prior_settings or {}).get("engine_build") \
-        if isinstance(prior_settings, dict) else None
-    if not isinstance(had, dict):
-        return None
-    return _eb.change(had, _eb.engine_build() if build is None else build)
-
-
-def location_scope(locations) -> set:
-    """A location list as a comparable set, every national spelling one."""
-    from app.core.us_national import is_us
-    return {"US" if is_us(l) else str(l) for l in (locations or [])}
-
-
-def location_scope_change(prior_locations, locations) -> str | None:
-    """None when a resume over `locations` keeps the recorded list (or none
-    was recorded); otherwise the plain-words difference, for the console
-    and the CLI alike."""
-    had, want = location_scope(prior_locations), location_scope(locations)
-    if not had or had == want:
-        return None
-    return (f"replayed over {len(had)} location(s); this run asks for "
-            f"{len(want)} with a different list")
 
 
 class SeasonStopped(Exception):
@@ -537,124 +324,6 @@ class _Heartbeat(threading.Thread):
         self._done.set()
 
 
-#: labels for the retro form's scopes, when a replay recorded no location list
-SCOPE_LABELS = {"panel6": "6-state panel", "all": "all 52 jurisdictions",
-                "custom": "custom selection"}
-
-
-def _build_label(build) -> str:
-    """A recorded engine build as the settings list names it; "" when the
-    record has none (seasons from before builds were recorded)."""
-    from app.core import engine_build as _eb
-    return _eb.recorded_label(build)
-
-
-def settings_summary(meta: dict) -> list:
-    """The settings that produced a replay, as (label, value) pairs, from
-    its run record; [] when none were recorded (the sealed runs)."""
-    s = (meta or {}).get("settings")
-    if not isinstance(s, dict) or not s:
-        return []
-    locs = [str(l) for l in (s.get("locations") or [])]
-    scope = str(s.get("scope") or "")
-    where = locations_phrase(locs) if locs else SCOPE_LABELS.get(scope, scope)
-    if scope == "custom" and len(locs) > LOCATION_LIST_LIMIT:
-        where = f"{SCOPE_LABELS['custom']}, {where}"
-    # particles, replicates and shard width describe the filter: a
-    # Groundhog-only replay records the form's defaults, but no filter ran,
-    # so they are omitted
-    pf = pf_ran(s.get("engine"))
-    pairs = [("season", str(s.get("season") or (meta or {}).get("season") or "")),
-             ("locations", where),
-             ("particles", f"{int(s.get('particles') or 0):,}"
-              if pf and s.get("particles") else ""),
-             ("replicates", str(s.get("replicates") or "") if pf else ""),
-             ("shard width", str(s.get("width") or "") if pf else ""),
-             ("engine", engine_label(s["engine"]) if s.get("engine") else ""),
-             ("PyBNF build", _build_label(s.get("engine_build")) if pf else "")]
-    # only a record made through the knob channel says "model settings"
-    # (the zero-anchor rule is a data decision, listed on its own line)
-    from app.core import knobs as _knobs
-    mk = _knobs.model_values(s.get("knobs") or {}) \
-        if isinstance(s.get("knobs"), dict) else {}
-    if mk:
-        try:
-            pairs.append(("model settings",
-                          _knobs.label(_knobs.from_record(mk))))
-        except Exception:
-            pairs.append(("model settings", "modified (unreadable record)"))
-    # the Groundhog's zero-anchor rule: recorded with the replay; a season
-    # replayed before the rule existed did what abstain does
-    za = (s.get("knobs") or {}).get(MS.ZERO_ANCHOR_KEY) \
-        if isinstance(s.get("knobs"), dict) else None
-    pairs.append(("zero-anchor rule",
-                  str(za) if za in MS.ZERO_ANCHOR_RULES else
-                  f"{MS.ZERO_ANCHOR_LEGACY} (replayed before the rule existed)"))
-    pairs.append(("zero-anchor weeks", MS.replay_zero_anchor_count(
-        (meta or {}).get("data_flags"))))
-    # whether the stored weeks went through the output floor (absent from
-    # the record: stored before replays applied it)
-    pairs.append(("output floor", str(s.get("output_floor")
-                                      or FLOOR_NOT_RECORDED)))
-    # the newest weeks a missing-data rule treated as unreported, counted
-    # (the rows stay in the record's data_flags); absent when no rule is on
-    pairs.append(("flagged weeks",
-                  MS.replay_count((meta or {}).get("data_flags"))))
-    return [(k, v) for k, v in pairs if v not in ("", None)]
-
-
-def season_knobs(meta: dict) -> dict:
-    """The model-knobs record of a replay's run record ({} when shipped or
-    from before the registry: an older tree is never marked modified). The
-    zero-anchor rule, a data decision, is left out: it never marks a
-    season modified (settings_summary lists it)."""
-    from app.core import knobs as _knobs
-    s = (meta or {}).get("settings")
-    k = s.get("knobs") if isinstance(s, dict) else None
-    return _knobs.model_values(dict(k)) if isinstance(k, dict) else {}
-
-
-def resume_form_fields(meta: dict) -> dict | None:
-    """The /retro/run form fields that resume a replay with its recorded
-    settings (one-click resume). A recorded scope passes through; a bare
-    location list resubmits as a custom selection. None when the record
-    cannot name a scope (then only the form path is offered)."""
-    s = (meta or {}).get("settings")
-    if not isinstance(s, dict) or not s:
-        return None
-    season = str(s.get("season") or (meta or {}).get("season") or "")
-    if not season:
-        return None
-    locs = [str(l) for l in (s.get("locations") or [])]
-    scope = str(s.get("scope") or "")
-    out = {"season": season, "mode": "resume"}
-    # national is posted explicitly from the run's own list, not today's
-    # default: a 52-jurisdiction replay must never resume as 53
-    from app.core.us_national import is_us as _is_us
-    out["national"] = "1" if (any(_is_us(l) for l in locs) if locs
-                              else bool(s.get("national"))) else "0"
-    if scope in ("panel6", "all"):
-        out["locations"] = scope
-        out["custom_locations"] = []
-    elif locs:
-        out["locations"] = "custom"
-        out["custom_locations"] = locs
-    else:
-        return None
-    for key in ("particles", "replicates", "width"):
-        try:
-            v = int(s.get(key) or 0)
-        except (TypeError, ValueError):
-            v = 0
-        if v > 0:
-            out[key] = v
-    engine = str(s.get("engine") or "")
-    if engine:
-        out["engine"] = engine
-    # the model knobs ride as one JSON field (only when recorded)
-    if isinstance(s.get("knobs"), dict) and s["knobs"]:
-        out["knobs"] = json.dumps(s["knobs"], sort_keys=True)
-    return out
 
 
 def _start_record(root: Path, season: str, total_weeks: int,
@@ -1001,28 +670,6 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
         raise RuntimeError("PF runners exited without completing any fit")
 
 
-#: "pf": the filter beside the analogue (hours per season); "analogue": the
-#: Groundhog alone (minutes, no engine install)
-ENGINES = ("pf", "analogue")
-
-#: the presets in plain words, as the form, the flash lines and every Run
-#: settings block (console and reports) name them
-ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
-                 "analogue": "Groundhog only"}
-
-
-def engine_label(engine) -> str:
-    """A preset's plain name; an unknown key reads as itself."""
-    return ENGINE_LABELS.get(str(engine), str(engine))
-
-
-def pf_ran(engine) -> bool:
-    """False only for the Groundhog-only preset: no particle filter, so no
-    particle or replicate count describes the replay. A record without an
-    engine predates the preset and ran the filter."""
-    return str(engine or "pf") != "analogue"
-
-
 def _floor_recent(spec, locations: list, drop_same_day: bool) -> dict:
     """The observations the output floor's adaptive rate reads, per location,
     from the week's own vintage (floor.recent_observed, as the console
@@ -1177,17 +824,6 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         except Exception:
             pass
     return out
-
-
-#: settings.output_floor in a season's run record: every week was stored
-#: through the output floor (run_week). A season whose record lacks the key
-#: was stored unfloored, before replays applied it (2026-09-25).
-FLOOR_APPLIED = "applied"
-#: ...or a season started unfloored and resumed after the change
-FLOOR_FROM_RESUME = ("applied to the weeks stored from a resume on; the "
-                     "weeks stored before it are unfloored")
-#: what the settings list says for a record without the key
-FLOOR_NOT_RECORDED = "not applied (stored before replays applied it)"
 
 
 def run_season(root: Path, season: str, locations: list, replicates=3,
@@ -1717,86 +1353,6 @@ def record_finalize(root: Path, seconds: dict) -> None:
         write_meta(root, m)
 
 
-# --------------------------------------------------------------------------
-# archived runs: a clean replay moves the season tree aside (kept, viewable)
-# to a sibling <season>__archived_<UTC stamp>, discoverable by one glob with
-# no index file.
-# --------------------------------------------------------------------------
-
-ARCHIVE_SEP = "__archived_"
-
-#: <date>T<time>Z[-N for same-second collisions]; every identifier from a URL
-#: is checked against this, so it can never name a path outside the retro root
-_STAMP_RE = re.compile(r"\d{8}T\d{6}Z(-\d+)?")
-
-#: headline relWIS per season root, keyed by scores.json mtime + week count;
-#: LRU-bounded because archived roots accumulate
-_SUMMARY_CACHE_MAX = 128
-_SUMMARY_CACHE: "OrderedDict" = OrderedDict()
-
-
-def utc_stamp(now: float | None = None) -> str:
-    """The archive naming stamp: UTC, second resolution, sortable."""
-    t = datetime.fromtimestamp(now if now is not None else _now(),
-                               tz=timezone.utc)
-    return t.strftime("%Y%m%dT%H%M%SZ")
-
-
-def valid_stamp(stamp: str) -> bool:
-    return bool(_STAMP_RE.fullmatch(stamp or ""))
-
-
-def stamp_human(stamp: str) -> str:
-    """'20260821T143012Z' -> '2026-08-21 14:30 UTC'. An unparseable stamp is
-    returned unchanged rather than guessed at."""
-    try:
-        base = (stamp or "").split("-")[0]
-        t = datetime.strptime(base, "%Y%m%dT%H%M%SZ")
-        return t.strftime("%Y-%m-%d %H:%M UTC")
-    except ValueError:
-        return stamp or ""
-
-
-def utc_human(epoch: float | None) -> str:
-    """A run record's epoch seconds as a readable UTC moment, or ''."""
-    try:
-        return datetime.fromtimestamp(float(epoch), tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M UTC")
-    except (TypeError, ValueError):
-        return ""
-
-
-def archive_dir(retro_root: Path, season: str, stamp: str) -> Path:
-    return Path(retro_root) / f"{season}{ARCHIVE_SEP}{stamp}"
-
-
-def archive_stamp_of(name: str, season: str) -> str:
-    """The stamp inside an archive directory name, or '' when the name is not
-    an archive of this season."""
-    prefix = f"{season}{ARCHIVE_SEP}"
-    if not name.startswith(prefix):
-        return ""
-    stamp = name[len(prefix):]
-    return stamp if valid_stamp(stamp) else ""
-
-
-def list_archive_dirs(retro_root: Path, season: str) -> list:
-    """Archive directories for one season, newest first. The stamp sorts
-    lexicographically in time order, so reversing the sort is the ordering."""
-    root = Path(retro_root)
-    if not root.is_dir():
-        return []
-    out = []
-    for p in root.iterdir():
-        if not archive_stamp_of(p.name, season):
-            continue
-        if p.is_dir() or p.is_symlink():
-            out.append(p)
-    return sorted(out, key=lambda p: p.name, reverse=True)
-
-
-#: season headline order: the two shipped models (older files' retired blend
-#: rows are not headlined)
 HEADLINE_MODELS = ("pf", "analogue")
 
 
@@ -1820,18 +1376,6 @@ def _headline_metrics(scores_path: Path) -> dict:
         if pm["rel"] is not None:
             out[m] = pm
     return out
-
-
-def _headline_rels(scores_path: Path) -> dict:
-    """{model: pooled relWIS} for every HEADLINE_MODELS entry a stored
-    scores.json covers; {} when the file is absent or empty."""
-    return {m: pm["rel"] for m, pm in _headline_metrics(scores_path).items()}
-
-
-def _headline_rel(scores_path: Path, model: str = "pf"):
-    """Pooled relWIS for one model from a stored scores.json, or None when
-    the file is absent, empty, or does not cover the model."""
-    return (_headline_metrics(scores_path).get(model) or {}).get("rel")
 
 
 def state_metrics(df, models=HEADLINE_MODELS) -> dict:
@@ -1902,59 +1446,3 @@ def run_summary(root: Path) -> dict:
             "headline_ns": {m: pm["n"] for m, pm in heads.items()}}
 
 
-def dir_size(path: Path) -> int:
-    """Bytes held under a tree. Symlinks are never followed (a season parked
-    on another volume must not be walked)."""
-    p = Path(path)
-    if p.is_symlink() or not p.exists():
-        return 0
-    total = 0
-    for dirpath, _dirnames, filenames in os.walk(p, followlinks=False):
-        for f in filenames:
-            try:
-                total += os.lstat(os.path.join(dirpath, f)).st_size
-            except OSError:
-                pass                       # a file vanishing mid-walk is fine
-    return total
-
-
-def human_bytes(n: int) -> str:
-    n = float(n or 0)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024 or unit == "TB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} TB"
-
-
-def archive_run(retro_root: Path, season: str, stamp: str | None = None,
-                now: float | None = None) -> Path:
-    """Move <retro_root>/<season> aside to <season>__archived_<stamp>/.
-
-    A same-parent os.rename: atomic and instant (a copy of a 12 GB season can
-    half-fill the volume). A failure raises with the original untouched; the
-    caller must not start a replay over it."""
-    src = Path(retro_root) / season
-    if not (src.is_dir() or src.is_symlink()):
-        raise FileNotFoundError(f"no season tree to archive at {src}")
-    stamp = stamp or utc_stamp(now)
-    dst = archive_dir(retro_root, season, stamp)
-    n = 1
-    while dst.exists() or dst.is_symlink():       # same-second collision
-        n += 1
-        dst = archive_dir(retro_root, season, f"{stamp}-{n}")
-    os.rename(src, dst)
-    _SUMMARY_CACHE.pop(str(src), None)
-    return dst
-
-
-def delete_tree(path: Path) -> None:
-    """Remove a season or archive tree permanently.
-
-    A symlinked tree loses only its link (never follow into data we do not own)."""
-    p = Path(path)
-    _SUMMARY_CACHE.pop(str(p), None)
-    if p.is_symlink():
-        p.unlink()
-        return
-    shutil.rmtree(p)

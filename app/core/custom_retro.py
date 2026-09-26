@@ -1,6 +1,6 @@
 """RESEARCH: replay a week range on a user-supplied dataset.
 
-The retrospective for custom data (app/core/datasets.py), modelled on
+The retrospective for custom data (app/core/datasets/), modelled on
 app/core/groundhog.run_season: for each as-of week it builds the spec
 retro.run_week builds (engine 'retro', season start August 1, the week's
 data) plus extra["dataset"], runs the Groundhog and, for an eligible

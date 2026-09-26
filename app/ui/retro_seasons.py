@@ -10,6 +10,7 @@ patch of the name here reaches them. The replay itself is app/core/retro.py.
 """
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -94,7 +95,6 @@ _RETRO_ACTIVE = ("running", "stopping", "paused")
 
 def _valid_season(season: str) -> bool:
     """YYYY-YY only (season names become directory names)."""
-    import re
     return bool(re.fullmatch(r"\d{4}-\d{2}", season or ""))
 
 

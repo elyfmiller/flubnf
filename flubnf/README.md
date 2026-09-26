@@ -10,7 +10,7 @@ Each module's docstring opens with its role tag; this page groups them. `flubnf/
 | Replay & verification | `retro <season>` (`app/core/retro.py`), `groundhog retro` (`app/core/groundhog.py`), `oracle backfill`, `oracle reproduce` (`app/core/oracle_backfill.py`), `site build` (`app/core/site_build.py`) |
 | Donor banks | `bank build`, `bank verify`, `bank show` (`bank.py`, [data/README.md](../data/README.md)) |
 
-`cli.py` file order: help panels and root options, `doctor` and `knobs`, launch plumbing (takeover, ports, window watchdog), `app`, `window` and `retro`, then the sub-apps.
+`cli.py` holds the root app and help panels, the launch plumbing (takeover, ports, window watchdog), `app` and `window`, and mounts the command groups from their own files: `cli_doctor.py` (`doctor`, `knobs`), `cli_retro.py` (`retro`, `groundhog`), `cli_verify.py` (`oracle`, `site`), `cli_bank.py` (`bank`) and `cli_datasets.py` (`dataset`).
 
 ## SHIPPED (used by the console, `app/`)
 

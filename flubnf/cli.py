@@ -1,22 +1,34 @@
-"""FluBNF command-line interface (`flubnf`).
+"""FluBNF command-line interface (`flubnf`): the root app and the console
+launch. The other command groups live in sibling modules and are mounted at
+the bottom of this file, so `flubnf.cli:app` (pyproject's entry point)
+carries every command.
 
-In file order: the help panels and root options, the doctor and knobs
-commands, the console launch plumbing (takeover, ports, window watchdog),
-then app, window and retro and the groundhog/bank/oracle/site/dataset
-sub-apps. Most commands wrap a module function, imported inside the command
-so that `flubnf app` opens its window without loading pandas or scipy
-(test_cli_import_stays_light).
+Sections, in file order:
+  1. help panels, root app and options, _trace
+  2. takeover: entry markers, ancestor walk, pid cmdline/liveness probes
+     (POSIX and Windows), PF runner sweep, pidfile
+  3. ports: candidates, reuse flags, pick/bind
+  4. macOS window: activation retries, app naming, zoom API, watchdog,
+     WebView2 probe
+  5. the `app` and `window` commands and _exit_now
+  6. the mounted groups: cli_doctor (doctor, knobs), cli_retro (retro,
+     groundhog), cli_verify (oracle, site), cli_bank, cli_datasets
+
+Heavy imports (pandas, scipy, uvicorn) stay inside the commands so that
+`flubnf app` opens its window without loading them
+(test_cli_import_stays_light). Tests patch the helpers here by name on this
+module, so every caller looks them up through the module globals at call
+time; keep them in this file.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.table import Table
 from typer.core import TyperGroup
 
 #: `flubnf --help` panels and their top-level commands, in display order;
@@ -97,107 +109,6 @@ def _trace(msg: str) -> None:
         except Exception:
             pass
     print(line, file=_sys.stderr, flush=True)
-
-
-# ---------------------------------------------------------------------------
-# doctor and knobs
-# ---------------------------------------------------------------------------
-@app.command()
-def doctor(
-    online: bool = typer.Option(
-        False, "--online",
-        help="Include network checks (Delphi Epidata and GitHub).",
-    ),
-    # Accepted and ignored: the checks read no config, workspace or Mac
-    # Studio flag (the legacy workspace CLI that used them is gone), and old
-    # scripts pass them.
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", hidden=True),
-    workspace: Optional[str] = typer.Option(
-        None, "--workspace", "-w", hidden=True),
-    pre_studio: bool = typer.Option(False, "--pre-studio", hidden=True),
-):
-    """Diagnose the environment and dependencies.
-
-    Catches the common showstoppers (broken venv, missing engine or hub
-    clone, missing BNG2.pl, NumPy 2.0 / pybnf incompat patch missing)
-    before they bite mid-run. Exits 1 when any check fails.
-    """
-    from . import doctor as docmod
-    if config is not None or workspace is not None or pre_studio:
-        console.print("[dim]--config, --workspace and --pre-studio are "
-                      "ignored: the doctor reads no config.[/dim]")
-    rep = docmod.run_doctor(online=online)
-
-    table = Table(title="FluBNF doctor")
-    table.add_column("status"); table.add_column("check"); table.add_column("detail")
-    color = {
-        docmod.Status.OK: "green",
-        docmod.Status.WARN: "yellow",
-        docmod.Status.FAIL: "red",
-    }
-    for c in rep.checks:
-        table.add_row(
-            f"[{color[c.status]}]{c.status.value}[/]",
-            c.name, c.detail,
-        )
-    console.print(table)
-
-    # Surface hints below the table for any WARN/FAIL.
-    hints = [c for c in rep.checks if c.hint and c.status is not docmod.Status.OK]
-    if hints:
-        console.print("\n[bold]hints[/]")
-        for c in hints:
-            console.print(f"  • [{color[c.status]}]{c.name}[/]: {c.hint}")
-
-    console.print(
-        f"\n[bold]summary:[/] "
-        f"{len(rep.checks) - rep.n_fail - rep.n_warn} ok, "
-        f"[yellow]{rep.n_warn} warn[/], "
-        f"[red]{rep.n_fail} fail[/]"
-    )
-    if rep.n_fail:
-        raise typer.Exit(code=1)
-
-
-@app.command()
-def knobs(
-    as_json: bool = typer.Option(False, "--json",
-                                 help="Print the registry as JSON."),
-):
-    """List the model knobs: shipped value, allowed range, the models each
-    affects and its class (run or method), then the locked settings.
-
-    Any value other than the shipped one marks a run as modified."""
-    import json
-
-    from app.core import knobs as K
-    if as_json:
-        locked = [{"key": l.key, "value": l.value, "source": l.source,
-                   "why": l.why} for l in K.LOCKED]
-        typer.echo(json.dumps({"knobs": K.describe(), "locked": locked},
-                              indent=1, default=list))
-        return
-    names = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
-    table = Table(title="Model knobs")
-    table.add_column("knob", no_wrap=True)
-    for col in ("shipped", "range", "affects", "class"):
-        table.add_column(col)
-    for r in K.describe():
-        d = r["default"]
-        shown = (f"[{', '.join(f'{x:g}' for x in d)}]" if isinstance(d, list)
-                 else f"{d:,}" if r["kind"] == "int"
-                 else ("on" if d else "off") if isinstance(d, bool) else str(d))
-        table.add_row(r["key"], shown + (f" {r['unit']}" if r["unit"] else ""),
-                      r["range"], ", ".join(names[m] for m in r["affects"]),
-                      r["class"])
-    console.print(table)
-    locked = Table(title="Locked")
-    for col in ("setting", "value", "why"):
-        locked.add_column(col)
-    for l in K.LOCKED:
-        locked.add_row(l.key, str(l.value), l.why)
-    console.print(locked)
 
 
 # ---------------------------------------------------------------------------
@@ -701,6 +612,9 @@ def _write_pidfile(pidfile: Optional[Path] = None):
     return _cleanup
 
 
+# ---------------------------------------------------------------------------
+# ports: a nearby free port when the preferred one stays bound
+# ---------------------------------------------------------------------------
 _MAX_PORT = 65535
 
 
@@ -779,6 +693,9 @@ def _server_answering(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# macOS window: activation, app name, zoom, load watchdog, WebView2 probe
+# ---------------------------------------------------------------------------
 #: Seconds after show to ask macOS to activate the window. macOS 14+ may
 #: decline a Terminal-launched process (clicks then ignored until the user
 #: switches apps), so retry until active with a key window.
@@ -1106,7 +1023,7 @@ def _windows_mshtml_only() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Console, replay, verification and bank commands
+# The `app` and `window` commands
 # ---------------------------------------------------------------------------
 @app.command("app")
 def app_serve(port: int = 8710):
@@ -1288,844 +1205,50 @@ def _exit_now(*cleanups) -> None:
     os._exit(0)
 
 
-class _RetroGroup(TyperGroup):
-    """`flubnf retro <season> ...` replays a season (the `run` command,
-    kept as the bare form); `export` and `import` move a replayed season
-    between machines. A first word that is neither a subcommand nor --help
-    (a season, or an option such as --locations) goes to `run`."""
+# ---------------------------------------------------------------------------
+# The other command groups, one module each. Imported here, after `app`
+# exists, so `flubnf.cli:app` carries them; the modules import only typer
+# and rich at module level (the import-light rule above).
+# ---------------------------------------------------------------------------
+from .cli_bank import (  # noqa: F401
+    bank_app,
+    bank_build_cmd,
+    bank_show_cmd,
+    bank_verify_cmd,
+)
+from .cli_datasets import (  # noqa: F401
+    dataset_app,
+    dataset_delete_cmd,
+    dataset_import_cmd,
+    dataset_list_cmd,
+    dataset_validate_cmd,
+)
+from .cli_doctor import doctor, knobs
+from .cli_retro import (  # noqa: F401
+    GROUNDHOG_SEASONS,
+    groundhog_app,
+    groundhog_retro_cmd,
+    retro_app,
+    retro_cmd,
+    retro_export_cmd,
+    retro_import_cmd,
+)
+from .cli_verify import (  # noqa: F401
+    oracle_app,
+    oracle_backfill_cmd,
+    oracle_reproduce_cmd,
+    site_app,
+    site_build_cmd,
+)
 
-    def parse_args(self, ctx, args):
-        if args and args[0] not in self.commands and args[0] != "--help":
-            args = ["run"] + list(args)
-        return super().parse_args(ctx, args)
-
-
-retro_app = typer.Typer(
-    cls=_RetroGroup, add_completion=False, no_args_is_help=True,
-    help="Replay a season as a competition (`flubnf retro <season>`), or "
-         "export and import a replayed season as one zip bundle.")
+app.command()(doctor)
+app.command()(knobs)
 app.add_typer(retro_app, name="retro")
-
-
-@retro_app.command("run")
-def retro_cmd(
-    season: Annotated[str, typer.Argument(
-        help="Season to replay, e.g. 2024-25.")],
-    locations: Annotated[str, typer.Option(
-        help="Comma-separated location names, or 'all' (52 jurisdictions).")] = "all",
-    width: int = 0,
-    replicates: Annotated[int, typer.Option(
-        help="Particle-filter replicates (seeds) per location-week.")] = 3,
-    root: Annotated[str, typer.Option(
-        help="Season root to write (default: the console's "
-             "app/state/retro/<season>, wherever the command runs).")] = "",
-    aux: Annotated[str, typer.Option(
-        help="Analogue donor preset; empty = the shipped Groundhog, "
-             "'none' = the bare analogue (research).")] = "",
-    oracle: Annotated[str, typer.Option(
-        help="Empty = the Oracle SIHRS; 'none' = the plain filter "
-             "(research).")] = "",
-    knob: Annotated[Optional[list[str]], typer.Option(
-        "--knob", help="Model knob as key=value (repeatable; see `flubnf "
-                       "knobs`). Off-shipped values are recorded in "
-                       "run_meta.json and a tree built with other values "
-                       "is refused, not resumed.")] = None,
-):
-    """Run a season-as-competition retrospective (resumable).
-
-    --width (shard width) 0 means auto: the engine's default_shard_width()
-    for this machine, the same default the console form offers.
-
-    aux names the analogue donor preset (analogue.AUX_PRESETS, e.g.
-    'flusurv'). Empty runs the shipped Groundhog (analogue.SHIPPED_AUX);
-    'none' the bare calendar analogue (research). The name and its bank
-    digests go into run_meta.json.
-
-    oracle: empty stores the Oracle SIHRS under pf (app/core/oracle.py
-    applied to the filter's samples; the filter's quantiles are kept in
-    oracle.json); 'none' stores the plain filter (research), which the
-    week's oracle.json records.
-
-    --knob key=value sets a model knob (app/core/knobs.py, parsed and
-    range-checked by knobs.resolve). pf.particles and pf.replicates also
-    come from here (--replicates is the older spelling of the latter; two
-    different values are refused)."""
-    import pandas as pd
-    from pathlib import Path as _P
-    from app.core import knobs as _K
-    from app.core import retro
-    from app.core.engines import pf as _pf
-    pairs = {}
-    for item in knob or []:
-        k, sep, v = str(item).partition("=")
-        if not sep or not k.strip():
-            raise typer.BadParameter(f"--knob takes key=value, got {item!r}")
-        if k.strip() in pairs:
-            raise typer.BadParameter(f"--knob {k.strip()} given twice")
-        pairs[k.strip()] = v.strip()
-    # a season name becomes a directory: YYYY-YY with consecutive years
-    import re as _re
-    m = _re.fullmatch(r"(\d{4})-(\d{2})", season)
-    if not m or (int(m.group(1)) + 1) % 100 != int(m.group(2)):
-        raise typer.BadParameter(
-            f"{season!r} is not a season; give one such as 2024-25")
-    vints = retro.season_vintages(season)
-    if not vints:
-        from app.core import data as _data
-        typer.echo(f"refused: no archived vintages for {season} in "
-                   f"{_data.ARCHIVE} and no shipped snapshots for it in "
-                   f"{_data.SHIPPED}; nothing was run. Update the hub clone, "
-                   "or pick a season it holds.", err=True)
-        raise typer.Exit(2)
-    try:
-        nd = _K.resolve(pairs, "all", scope="retro",
-                        forecast_date=(vints[0] if vints else None),
-                        check_dates=tuple(vints[-1:]),
-                        oracle_step=(oracle != "none"),
-                        legacy={"replicates": replicates})
-    except _K.KnobError as e:
-        raise typer.BadParameter(str(e)) from None
-    replicates = int(nd.get("pf.replicates", 3))
-    particles = int(nd.get("pf.particles", 10_000))
-    width = _pf.resolve_width(width)
-    from flubnf.settings import LOCATIONS
-    locs = pd.read_csv(LOCATIONS, dtype=str)
-    names = (list(locs.location_name[locs.location.str.len() == 2]
-                  [locs.abbreviation != "US"])
-             if locations == "all" else
-             [x.strip() for x in locations.split(",")])
-    # ABSOLUTE: runner subprocesses resolve conf/shard paths against their
-    # own cwd, so a relative --root fails every fit.
-    # the default is the console's own retro root (app/state/retro, beside
-    # this package), never one under the shell's current directory
-    from app.core.runs import APP_STATE as _APP_STATE
-    r = (_P(root) if root else _APP_STATE / "retro" / season).resolve()
-    from app.core.engines import analogue as _an
-    if aux == "none":
-        week_extra = _an.bare_analogue
-    elif aux:
-        week_extra = _an.aux_preset(aux)      # unknown name raises here
-    else:
-        week_extra = _an.aux_preset(_an.SHIPPED_AUX)
-    print(f"  analogue donor configuration: {week_extra.__name__}")
-    if oracle == "none":
-        inner = week_extra
-
-        def week_extra(asof, i, vintages, _inner=inner):
-            d = dict(_inner(asof, i, vintages))
-            d["oracle"] = "none"
-            return d
-        week_extra.__name__ = inner.__name__ + "+oracle:none"
-        print("  Oracle step: none (the plain filter, a research run)")
-    elif oracle:
-        raise typer.BadParameter(
-            "--oracle takes 'none' (the plain filter, a research run) or "
-            "nothing (the Oracle SIHRS)")
-    else:
-        print("  Oracle step: applied (w = 0.5; the donor bank built from "
-              "each week's vintage, named in the week's oracle.json)")
-    kx = {}
-    if nd:
-        if "groundhog.aux" in nd and aux:
-            if (_K.aux_choice(nd, None) or "none") != aux:
-                raise typer.BadParameter(
-                    "--aux and --knob groundhog.aux disagree; give one")
-        if "groundhog.aux" in nd:
-            pick = _K.aux_choice(nd, None)
-            week_extra = (_an.aux_preset(pick) if pick
-                          else _an.bare_analogue)
-            if oracle == "none":
-                inner2 = week_extra
-
-                def week_extra(asof, i, vintages, _inner=inner2):
-                    d = dict(_inner(asof, i, vintages))
-                    d["oracle"] = "none"
-                    return d
-                week_extra.__name__ = inner2.__name__ + "+oracle:none"
-        week_extra = _K.retro_week_extra(week_extra, nd)
-        kx = {"settings": {"knobs": _K.jsonable(nd)},
-              "drop_same_day": bool(nd.get("run.drop_same_day", False))}
-        print(f"  model settings: {_K.label(nd)}")
-    try:
-        done = retro.run_season(r, season, names, replicates=replicates,
-                                particles=particles,
-                                width=width, week_extra=week_extra,
-                                progress=lambda a: print(f"  {a} done",
-                                                         flush=True), **kx)
-    except retro.EngineBuildChanged as e:
-        typer.echo(f"stopped: {e}", err=True)
-        raise typer.Exit(2)
-    except retro.ResumeMismatch as e:
-        typer.echo(f"refused: {e}", err=True)
-        raise typer.Exit(2)
-    print(f"{season}: {len(done)} weeks complete -> {r}")
-
-
-def _retro_root_default() -> Path:
-    """The console's retro root (app/state/retro), read at call time."""
-    from app.core.runs import APP_STATE
-    return APP_STATE / "retro"
-
-
-@retro_app.command("export")
-def retro_export_cmd(
-    season: Annotated[str, typer.Argument(
-        help="Season to export, e.g. 2024-25.")],
-    archive: Annotated[str, typer.Option(
-        "--archive", help="Export this archived run (its stamp, as the "
-                          "season list shows it) instead of the live one.")] = "",
-    out: Annotated[str, typer.Option(
-        "--out", help="Folder for the bundle (default: app/state/exports).")] = "",
-    root: Annotated[str, typer.Option(
-        "--root", help="Retro root holding the season (default: the "
-                       "console's app/state/retro).")] = "",
-):
-    """Write a season's replay bundle: one zip of its run record, scores
-    and every stored week, for `flubnf retro import` or the Retrospective
-    tab on another machine. Prints the bundle's path and size."""
-    from app.core import replay_bundle, retro
-    rr = Path(root) if root else _retro_root_default()
-    src = retro.archive_dir(rr, season, archive) if archive else rr / season
-    if archive and not retro.valid_stamp(archive):
-        raise typer.BadParameter(f"{archive!r} is not an archive stamp")
-    try:
-        p = replay_bundle.export_season(
-            src, season, Path(out) if out else _retro_root_default().parent
-            / "exports", stamp=archive)
-    except replay_bundle.BundleError as e:
-        typer.echo(f"refused: {e}", err=True)
-        raise typer.Exit(2)
-    m = replay_bundle.inspect_bundle(p)
-    print(f"{season}: {len(m['weeks'])} weeks, "
-          f"{retro.human_bytes(p.stat().st_size)} -> {p}")
-
-
-@retro_app.command("import")
-def retro_import_cmd(
-    file: Annotated[Path, typer.Argument(
-        exists=True, dir_okay=False, help="The .flubnf-replay.zip to import.")],
-    replace: Annotated[bool, typer.Option(
-        "--replace", help="Replace a copy already imported from the same "
-                          "export.")] = False,
-    root: Annotated[str, typer.Option(
-        "--root", help="Retro root to import into (default: the console's "
-                       "app/state/retro).")] = "",
-):
-    """Import a replay bundle as a read-only archived run of its season
-    (<season>__archived_<export stamp> under the retro root). The live
-    season tree is never written."""
-    from app.core import replay_bundle
-    rr = Path(root) if root else _retro_root_default()
-    try:
-        r = replay_bundle.import_bundle(file, rr, replace=replace)
-    except replay_bundle.BundleError as e:
-        typer.echo(f"refused: {e}", err=True)
-        raise typer.Exit(2)
-    when = (r.exported_at or "")[:10]
-    print(f"imported {r.season}: {len(r.weeks)} weeks, exported from "
-          f"{r.from_host or 'another machine'}"
-          f"{' on ' + when if when else ''} -> {r.root}")
-    print(f"  open it as /retro/{r.season}?archive={r.stamp}")
-    for w in r.warnings:
-        print(f"  note: {w}")
-
-
-# ---------------------------------------------------------------------------
-# groundhog: the calendar member alone. No particle filter or toolchain,
-# about two minutes a season.
-# ---------------------------------------------------------------------------
-groundhog_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="GroundHogCGR, the calendar member, replayed and scored on its own.")
 app.add_typer(groundhog_app, name="groundhog")
-
-GROUNDHOG_SEASONS = ("2023-24", "2024-25", "2025-26")
-
-
-def _gh_row(label: str, b: dict) -> str:
-    if not b.get("cells"):
-        return f"  {label:<26} no scorable cells"
-    return (f"  {label:<26}{b['relwis']:>8.4f}"
-            f"{b.get('cov50', float('nan')):>8.3f}"
-            f"{b.get('cov80', float('nan')):>8.3f}"
-            f"{b.get('cov95', float('nan')):>8.3f}"
-            f"{b['worst_dev']:>8.3f}{b['cells']:>9,}{b['weeks']:>7}")
-
-
-@groundhog_app.command("retro")
-def groundhog_retro_cmd(
-    season: str = typer.Argument(
-        ..., help="A season such as 2024-25, or 'all' for the three on record."),
-    aux: str = typer.Option(
-        "", "--aux",
-        help="Auxiliary donor preset (flusurv, iliplus, both); flusurv is "
-             "the Groundhog. Empty runs the bare single-pool analogue "
-             "(arm directory 'shipped', its historical name)."),
-    compare: bool = typer.Option(
-        True, "--compare/--no-compare",
-        help="With --aux: also run the shipped member and report both on "
-             "identical cells, with a clustered bootstrap on the difference."),
-    with_us: bool = typer.Option(
-        False, "--with-us",
-        help="Also forecast the national row. Reported separately, never "
-             "pooled into the state figures."),
-):
-    """Replay the calendar member alone over a season and score it.
-
-    No particle filter, no PyBNF: only this repository, the committed donor
-    bank, and a hub clone for the vintages, the truth and the FluSight
-    baseline. About two minutes a season.
-    """
-    import pandas as pd
-    from app.core import groundhog as gh
-    seasons = list(GROUNDHOG_SEASONS) if season == "all" else [season]
-    arms = ([gh.SHIPPED, aux] if (aux and compare) else [aux or gh.SHIPPED])
-    runs = {a: [] for a in arms}
-    for a in arms:
-        for s in seasons:
-            console.print(f"[bold]{a}[/bold]  {s}")
-            try:
-                r = gh.run_season(
-                    s, "" if a == gh.SHIPPED else a, with_us=with_us,
-                    progress=lambda asof, i, n: (
-                        console.print(f"    {i:>3}/{n}  {asof}")
-                        if (i % 8 == 0 or i == n) else None))
-            except Exception as e:
-                console.print(f"[red]{s}: {e}[/red]")
-                raise typer.Exit(1)
-            runs[a].append(r)
-            if r["meta"]["aux"]:
-                console.print(f"    donors: {r['meta']['aux']}")
-            console.print(f"    -> {r['dir']}")
-
-    head = (f"  {'':<26}{'relWIS':>8}{'cov50':>8}{'cov80':>8}{'cov95':>8}"
-            f"{'worst':>8}{'cells':>9}{'weeks':>7}")
-    pooled = {a: (pd.concat([r["cells"] for r in rs], ignore_index=True),
-                  pd.concat([r["coverage"] for r in rs], ignore_index=True))
-              for a, rs in runs.items()}
-
-    console.print("\n[bold]Each arm on its own cells[/bold]  (52 states, US "
-                  "national excluded)")
-    console.print(head)
-    for a, (c, v) in pooled.items():
-        sm = gh.summarise(c, v)
-        console.print(_gh_row(a, sm["states"]))
-        if "us" in sm:
-            console.print(_gh_row(f"{a}, US national", sm["us"]))
-
-    if len(arms) == 2:
-        (ac, av), (bc, bv) = pooled[arms[0]], pooled[arms[1]]
-        cmp_ = gh.compare(ac, av, bc, bv)
-        console.print(f"\n[bold]On identical cells[/bold]  "
-                      f"({cmp_['common_cells']:,} common)")
-        console.print(head)
-        console.print(_gh_row(arms[0], cmp_["a"]))
-        console.print(_gh_row(arms[1], cmp_["b"]))
-        if len(seasons) > 1:
-            console.print("\n[bold]By season[/bold]")
-            console.print(f"  {'season':<10}{arms[0]:>10}{arms[1]:>10}"
-                          f"{'change':>9}{'worst a':>9}{'worst b':>9}")
-            for s, d in cmp_["by_season"].items():
-                ra, rb = d["a"]["relwis"], d["b"]["relwis"]
-                console.print(f"  {s:<10}{ra:>10.4f}{rb:>10.4f}"
-                              f"{(1 - rb / ra) * 100:>+8.1f}%"
-                              f"{d['a']['worst_dev']:>9.3f}"
-                              f"{d['b']['worst_dev']:>9.3f}")
-        bs = cmp_.get("bootstrap")
-        if bs:
-            console.print(
-                f"\n  clustered bootstrap over {bs['clusters']} as-of dates, "
-                f"{bs['reps']} replicates\n"
-                f"  {arms[1]} minus {arms[0]}: median {bs['median']:+.4f}, "
-                f"95 percent interval [{bs['lo']:+.4f}, {bs['hi']:+.4f}], "
-                f"better in {bs['b_better']} of {bs['reps']}")
-    console.print("\nSelf scored, ratio of WIS sums against the FluSight "
-                  "baseline of the same\nreference date, on FluSight's cell "
-                  "rule (truth of 0 and a median of 0 scored).\nThe FluSight "
-                  "dashboard reports pairwise scaled relative WIS, within "
-                  "about\n0.02 of this on the same cells. No finite-sample "
-                  "coverage guarantee is claimed.")
-
-
-# ---------------------------------------------------------------------------
-# bank: build once with network, commit, then `verify` rebuilds from source
-# and reports drift.
-# ---------------------------------------------------------------------------
-bank_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="Build, inspect and verify the committed auxiliary donor banks.")
 app.add_typer(bank_app, name="bank")
-
-
-@bank_app.command("build")
-def bank_build_cmd(
-    stream: str = typer.Argument(..., help="flusurv or iliplus"),
-    out: Optional[Path] = typer.Option(
-        None, "--out", help="Write here instead of data/banks/."),
-):
-    """Build a donor bank from its upstream source and commit it.
-
-    Needs network access once. Everything afterwards reads the committed
-    file, so a clone with no network still produces a spliced forecast and
-    a Delphi outage on submission day is not a failure.
-    """
-    from datetime import datetime, timezone
-    from flubnf import bank as bankmod
-    if stream not in bankmod.STREAMS:
-        console.print(f"[red]unknown stream {stream!r}; "
-                      f"known: {', '.join(bankmod.STREAMS)}[/red]")
-        raise typer.Exit(2)
-    console.print(f"[bold]building[/bold] the {stream} donor bank")
-    try:
-        b, url = bankmod.build_from_source(stream)
-    except Exception as e:
-        console.print(f"[red]build failed: {e}[/red]")
-        raise typer.Exit(1)
-    prev = None
-    try:
-        prev, _ = bankmod.read(stream, out)
-    except Exception:
-        pass                       # no committed bank yet, or an unusable one
-    man = bankmod.write(stream, b, source_url=url,
-                        built_utc=datetime.now(timezone.utc).isoformat(
-                            timespec="seconds"),
-                        builder="flubnf bank build", banks_dir=out)
-    console.print(f"  cells     {man['cells']:>9,}")
-    console.print(f"  locations {man['location_count']:>9}")
-    console.print(f"  span      {man['span'][0]} to {man['span'][1]}")
-    console.print(f"  digest    {man['digest'][:32]}")
-    console.print(f"  -> {bankmod.bank_path(stream, out)}")
-    console.print(f"  -> {bankmod.manifest_path(stream, out)}")
-    if prev is not None:
-        d = bankmod.compare(prev, b)
-        if d["identical"]:
-            console.print("  [green]unchanged from the committed bank[/green]")
-        else:
-            console.print(f"  [yellow]changed: +{d['added']} cells, "
-                          f"-{d['removed']}, {d['changed']} revised[/yellow]")
-    console.print("\n[bold]commit both files.[/bold] The bank is only "
-                  "reproducible if the manifest travels with it.")
-
-
-@bank_app.command("verify")
-def bank_verify_cmd(
-    stream: str = typer.Argument(..., help="flusurv or iliplus"),
-    banks: Optional[Path] = typer.Option(
-        None, "--banks", help="Read from here instead of data/banks/."),
-):
-    """Rebuild from source and say what moved against the committed bank.
-
-    Exits non-zero when they differ, so a scheduled job can notice drift
-    instead of a person having to remember to look.
-    """
-    from flubnf import bank as bankmod
-    try:
-        committed, man = bankmod.read(stream, banks)
-    except Exception as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(2)
-    console.print(f"[bold]committed[/bold] {man['cells']:,} cells, built "
-                  f"{man['built_utc']}, digest {man['digest'][:16]}")
-    try:
-        fresh, _ = bankmod.build_from_source(stream)
-    except Exception as e:
-        console.print(f"[red]could not rebuild from source: {e}[/red]")
-        raise typer.Exit(1)
-    d = bankmod.compare(committed, fresh)
-    if d["identical"]:
-        console.print("[green]identical: the committed bank is current[/green]")
-        return
-    console.print(f"[yellow]DRIFT[/yellow]  fresh {d['fresh_cells']:,} cells "
-                  f"against committed {d['committed_cells']:,}")
-    console.print(f"  added   {d['added']:>6}  {d['added_sample']}")
-    console.print(f"  removed {d['removed']:>6}  {d['removed_sample']}")
-    console.print(f"  revised {d['changed']:>6}")
-    for c in d["changed_sample"]:
-        console.print(f"    {c['cell']}: {c['committed']} -> {c['fresh']}")
-    console.print("\nRebuild with `flubnf bank build "
-                  f"{stream}` and commit both files, or leave it: a "
-                  "committed bank is a frozen donor pool and staying on it "
-                  "is a legitimate choice, so long as it is a choice.")
-    raise typer.Exit(1)
-
-
-@bank_app.command("show")
-def bank_show_cmd(
-    stream: str = typer.Argument(..., help="flusurv or iliplus"),
-    banks: Optional[Path] = typer.Option(
-        None, "--banks", help="Read from here instead of data/banks/."),
-):
-    """Print a committed bank's manifest, digest verified."""
-    from flubnf import bank as bankmod
-    try:
-        _, man = bankmod.read(stream, banks)
-    except Exception as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(2)
-    for k in ("stream", "built_utc", "source_url", "cells", "location_count",
-              "span", "digest", "layout_version", "builder"):
-        if k in man:
-            console.print(f"  {k:<15} {man[k]}")
-    console.print(f"  {'locations':<15} {', '.join(man['locations'])}")
-
-
-# ---------------------------------------------------------------------------
-# oracle: verification only. Backfill a stored season's Oracle SIHRS into a
-# NEW root from its samples (no refit, no engine) and score it beside the
-# registered screen (docs/ORACLE-SIHRS.md). Seasons are run by a replay.
-# ---------------------------------------------------------------------------
-oracle_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="Verification only: backfill a stored season into a new root and "
-         "reproduce the registered screen's relWIS with the app's scorer, "
-         "no refit. A season is run and viewed by a console replay "
-         "(flubnf retro, or the Retrospective tab).")
 app.add_typer(oracle_app, name="oracle")
-
-
-@oracle_app.command("backfill")
-def oracle_backfill_cmd(
-    season: str = typer.Argument(..., help="The season the root holds, e.g. 2025-26."),
-    source: Path = typer.Option(
-        ..., "--source", help="A season root of stored weeks. Read only."),
-    out: Path = typer.Option(
-        ..., "--out",
-        help="A NEW season root to write. Never the source or a path under "
-             "it, never under app/state, never a non-empty tree without --force."),
-    force: bool = typer.Option(
-        False, "--force", help="Write into a non-empty --out."),
-    keep_filter: bool = typer.Option(
-        True, "--keep-filter/--no-keep-filter",
-        help="Keep the source's pf verbatim under the research key pf_filter "
-             "beside the member (a research root; a replay's stored week "
-             "does not carry it)."),
-):
-    """Compute the Oracle SIHRS for every stored week of a season root, from
-    the stored samples and no refit, into a new root: a verification that
-    the app's code reproduces the registered screen, not how a season is
-    run or viewed (that is a console replay, flubnf retro).
-
-    Each week is read through the storage boundary and written back
-    through it: pf the member (the submitted seed's samples), pf_filter
-    the source's pf, analogue verbatim, the sidecar, oracle.json and the
-    donor pool beside it. The hub this process reads (FLUBNF_HUB) supplies
-    the vintages the pools are built from.
-    """
-    from app.core import oracle_backfill as obf
-    try:
-        res = obf.backfill_season(
-            source, out, season, force=force, keep_filter=keep_filter,
-            progress=lambda a, m: console.print(f"  {a}  {m}"))
-    except (ValueError, FileNotFoundError) as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(2)
-    console.print(f"[bold]{season}[/bold]: {len(res['weeks'])} weeks backfilled "
-                  f"-> {res['out']} in {res['seconds']}s"
-                  + (f"; skipped (no pf block): {', '.join(res['skipped'])}"
-                     if res["skipped"] else ""))
-
-
-@oracle_app.command("reproduce")
-def oracle_reproduce_cmd(
-    roots: List[Path] = typer.Argument(
-        ..., help="Backfilled season roots (one or more)."),
-    source: Optional[List[Path]] = typer.Option(
-        None, "--source",
-        help="The source roots, scored read only for the plain filter (the "
-             "NULL); every week's quantile sidecar must be current."),
-    screen: Optional[Path] = typer.Option(
-        None, "--screen",
-        help="The registered screen's screen_scores.json (or the B2 screen's "
-             "screen_b2_scores.json, the shipped bank), printed beside."),
-):
-    """Score backfilled roots with the app's own scorer and print relWIS
-    per season and over the seasons together, on the record definition
-    (each member's own scored cells) and on the common set (cells both
-    stored members scored), each with its cell count, beside the screen's
-    tables. FLUBNF_HUB must be the hub whose truth and baseline the screen
-    used.
-    """
-    from flubnf.settings import HUB
-    from app.core import oracle_backfill as obf
-    try:
-        res = obf.reproduce(list(roots), source_roots=(list(source) if source else None),
-                            screen_json=screen)
-    except (ValueError, FileNotFoundError) as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(2)
-    console.print(f"[bold]reproduce[/bold]  hub {HUB}")
-    for line in obf.report_lines(res):
-        console.print(line, highlight=False)
-    console.print(f"  cells scored (member root): {res['cells_scored']:,}")
-    if res.get("screen"):
-        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}"
-                      + (f", B2 document {res['screen']['b2_frozen_sha256']}"
-                         if res['screen'].get('b2_frozen_sha256') else ""))
-
-
-# ---------------------------------------------------------------------------
-# site: build the public static site from the lab's own state.
-# ---------------------------------------------------------------------------
-site_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="Build the public static site from the lab's retrospectives.")
 app.add_typer(site_app, name="site")
-
-
-@site_app.command("build")
-def site_build_cmd(
-    out: Optional[Path] = typer.Option(
-        None, "--out", help="Output directory (default: the repo's site/)."),
-    season: str = typer.Option(
-        "", "--season",
-        help="Pin the home outlook to this season instead of the newest "
-             "forecast. Deliberate override; recorded in the payload."),
-    asof: str = typer.Option(
-        "", "--asof",
-        help="Pin the home outlook to this forecast week (YYYY-MM-DD). "
-             "Requires the week to exist in the chosen season."),
-    check: bool = typer.Option(
-        False, "--check",
-        help="Exit non-zero if any computed score disagrees with the "
-             "figure the console publishes for the same season."),
-):
-    """Read the app's state and write the static site.
-
-    Everything on the page is computed here from the stored forecasts: the
-    outlook map from the newest full-country forecast, the season table from
-    whichever retrospective seasons exist on disk, and Methods from the
-    console's own templates. Nothing is copied from a note.
-    """
-    from app.core import site_build as sb
-    pin = (season, asof) if (season or asof) else None
-    try:
-        res = sb.build(out_dir=out, pin=pin)
-    except sb.BuildError as e:
-        console.print(f"[red]site build: {e}[/red]")
-        raise typer.Exit(2)
-
-    src = res["outlook"]
-    console.print(f"[bold]site[/bold] -> {res['out']}")
-    console.print(f"  page      {res['page_bytes']:>9,} bytes")
-    console.print(f"  payload   {res['payload_bytes']:>9,} bytes"
-                  "   (site.json, review this diff)")
-    console.print(f"  plotly    {res['plotly_bytes']:>9,} bytes"
-                  "   (cached sibling, not inlined)")
-    console.print(f"  outlook   {src['label']}")
-    console.print(f"  locations {res['locations']}")
-    console.print(f"  seasons   {', '.join(res['seasons']) or 'none'}")
-    if res["pooled"] is not None:
-        console.print(f"  pooled    Oracle SIHRS relWIS {res['pooled']:.4f}")
-    console.print(f"  built in  {res['elapsed_s']:.1f}s")
-
-    if res["mismatches"]:
-        console.print("[red]scores disagree with the console:[/red]")
-        for m in res["mismatches"]:
-            console.print(f"  {m['what']}: computed {m['computed']:.4f}, "
-                          f"console states {m['app']:.4f}")
-        if check:
-            raise typer.Exit(1)
-    else:
-        console.print("[green]  scores match the console's published "
-                      "figures[/green]")
-
-
-# ---------------------------------------------------------------------------
-# dataset: custom target data (grouped or hubverse CSV), checked offline.
-# ---------------------------------------------------------------------------
-dataset_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="Check, import, list and delete custom target data (a grouped "
-         "CSV or a hubverse time series; comma, semicolon or tab separated; "
-         "UTF-8, UTF-16 or Windows-1252; or a folder of snapshot files, one "
-         "per as_of).")
 app.add_typer(dataset_app, name="dataset")
-
-_KIND_HELP = ("'count' or 'rate'; default: from the values (whole numbers "
-              "are counts; numbers like 1.234, whose dot could separate "
-              "thousands, need it).")
-_COLUMN_HELP = ("ROLE=HEADER (or ROLE=#N, the Nth column) when the headers "
-                "do not say which column is which; ROLE is date, group, "
-                "value or population. Repeat for each.")
-
-
-def _dataset_columns(pairs) -> dict:
-    """--column ROLE=HEADER pairs as validate's mapping; a malformed pair
-    or an unknown role is a usage error (exit 2)."""
-    from app.core import datasets as ds
-    out = {}
-    for pair in pairs or []:
-        role, sep, header = str(pair).partition("=")
-        role = role.strip().lower()
-        if not sep or role not in ds.ROLES or not header.strip():
-            raise typer.BadParameter(
-                f"{pair!r}: expected ROLE=HEADER with ROLE one of "
-                f"{', '.join(ds.ROLES)}.", param_hint="--column")
-        out[role] = header.strip()
-    return out
-
-
-_PATHS_HELP = ("A CSV, or a folder of snapshot files (or several files): "
-               "one per as_of, each named by its as_of date "
-               "(2024-10-05.csv) or holding an as_of column, read as one "
-               "vintage-true dataset.")
-
-
-def _dataset_sources(paths) -> tuple:
-    """(label, [(filename, path), ...]) for the paths given: a file as
-    itself, a folder as its CSV, TSV and TXT files (named with the folder,
-    so the dataset takes the folder's name). Exit 2 on an empty folder."""
-    out = []
-    for p in paths:
-        if p.is_dir():
-            got = sorted(q for q in p.iterdir() if q.is_file()
-                         and q.suffix.lower() in (".csv", ".tsv", ".txt"))
-            if not got:
-                raise typer.BadParameter(f"{p} holds no CSV, TSV or TXT "
-                                         "files.", param_hint="PATHS")
-            out += [(f"{p.name}/{q.name}", q) for q in got]
-        else:
-            out.append((p.name, p))
-    label = (paths[0].name if len(paths) == 1
-             else f"{len(out)} files")
-    return label, out
-
-
-def _print_dataset_problems(name: str, rep_problems, rep=None) -> None:
-    from app.core import datasets as ds
-    print(f"{name}: {len(rep_problems)} problem(s), nothing stored")
-    if rep is not None:
-        lines = ds.problem_lines(rep)
-    else:
-        lines = []
-        for kind, probs in ds.problem_groups(rep_problems):
-            lines.append(f"{kind}:")
-            lines += [f"  - {p}" for p in probs]
-    for line in lines:
-        print(f"  {line}")
-
-
-@dataset_app.command("validate")
-def dataset_validate_cmd(
-    paths: List[Path] = typer.Argument(..., exists=True,
-                                       help="The CSV to check. " + _PATHS_HELP),
-    kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
-    target: Optional[str] = typer.Option(
-        None, "--target", help="The target to keep when the file has several."),
-    column: Optional[List[str]] = typer.Option(
-        None, "--column", help=_COLUMN_HELP),
-    sunday: bool = typer.Option(
-        False, "--sunday", hidden=True,
-        help="Accepted and ignored: any one weekday is moved to Saturday."),
-):
-    """Validate a dataset CSV (or a folder of snapshot files) and print
-    every problem, or a summary.
-
-    Exit code 0 when the data is valid, 1 when it has problems. Nothing is
-    stored."""
-    from app.core import datasets as ds
-    label, sources = _dataset_sources(paths)
-    rep = ds.validate_snapshots(sources, kind=kind, target=target,
-                                columns=_dataset_columns(column))
-    if not rep.ok:
-        _print_dataset_problems(label, rep.problems, rep)
-    else:
-        print(f"{label}: valid")
-        for line in ds.summary_lines(rep):
-            print(f"  {line}")
-    for w in rep.warnings:
-        print(f"  note: {w}")
-    if not rep.ok:
-        raise typer.Exit(1)
-
-
-@dataset_app.command("import")
-def dataset_import_cmd(
-    paths: List[Path] = typer.Argument(..., exists=True,
-                                       help="The CSV to store. " + _PATHS_HELP),
-    kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
-    name: Optional[str] = typer.Option(
-        None, "--name", help="The dataset's name (default: the file name, "
-                             "with the target when the file holds several; "
-                             "a folder's name for its snapshots)."),
-    target: Optional[str] = typer.Option(
-        None, "--target", help="The target to keep when the file has several."),
-    column: Optional[List[str]] = typer.Option(
-        None, "--column", help=_COLUMN_HELP),
-    sunday: bool = typer.Option(
-        False, "--sunday", hidden=True,
-        help="Accepted and ignored: any one weekday is moved to Saturday."),
-):
-    """Validate and store a dataset CSV (or a folder of snapshot files),
-    as the console's upload does.
-
-    Prints the dataset's id and summary (exit 0), or every problem (exit 1,
-    nothing stored). Importing the same data with the same options again
-    returns the stored dataset."""
-    from app.core import datasets as ds
-    columns = _dataset_columns(column)
-    label, sources = _dataset_sources(paths)
-    try:
-        d = ds.ingest_snapshots(sources, (name or "")[:80] or None,
-                                kind=kind, target=target, columns=columns)
-    except ds.DatasetError as e:
-        _print_dataset_problems(label, e.problems, e.report)
-        raise typer.Exit(1)
-    print(f"stored {d.name!r} as {d.id}")
-    print(f"  groups      {len(d.groups)}: {', '.join(d.groups[:8])}"
-          + (" ..." if len(d.groups) > 8 else ""))
-    print(f"  weeks       {len(d.weeks())} ({d.meta['date_range'][0]} to "
-          f"{d.meta['date_range'][1]})")
-    inferred = d.meta.get("options", {}).get("kind_from") == "values"
-    print(f"  kind        {d.kind}"
-          + (" (inferred from the values; --kind to change)" if inferred
-             else ""))
-    print(f"  population  {'yes' if d.has_population else 'no'}")
-    print(f"  vintages    " + (f"{len(d.vintages())} (vintage-true)"
-                               if d.vintage_true else "none (final data)")
-          + (f", from {len(d.meta['snapshot_files'])} files"
-             if d.meta.get("snapshot_files") else ""))
-    if d.meta.get("target"):
-        print(f"  target      {d.meta['target']}")
-    if d.national_group:
-        print(f"  national    {d.national_group}")
-    for w in d.meta.get("warnings") or []:
-        print(f"  note: {w}")
-
-
-@dataset_app.command("list")
-def dataset_list_cmd():
-    """List the stored datasets, newest first."""
-    from app.core import datasets as ds
-    items = ds.list_datasets()
-    if not items:
-        print("no datasets stored")
-        return
-    for d in items:
-        print(f"{d.id}  {d.name!r}  {len(d.groups)} group(s), "
-              f"{len(d.weeks())} week(s), {d.kind}, population "
-              f"{'yes' if d.has_population else 'no'}, vintages "
-              f"{'yes' if d.vintage_true else 'no'}")
-
-
-@dataset_app.command("delete")
-def dataset_delete_cmd(
-    dataset_id: str = typer.Argument(..., help="The id `dataset list` prints."),
-    yes: bool = typer.Option(False, "--yes", help="Delete without asking."),
-):
-    """Delete a stored dataset and its replays (runs keep their results)."""
-    from app.core import datasets as ds
-    try:
-        d = ds.get(dataset_id)
-    except ds.DatasetError as e:
-        print(str(e))
-        raise typer.Exit(1)
-    if not yes and not typer.confirm(f"Delete {d.name!r} ({d.id}) and its "
-                                     "replays?"):
-        print("nothing deleted")
-        raise typer.Exit(1)
-    ds.delete(d.id)
-    print(f"deleted {d.name!r} ({d.id})")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ the name of the GET /retro/{season} handler.
 from __future__ import annotations
 
 import html as _htmlmod
+import json as _json
+import os as _os
+import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -25,7 +28,7 @@ from app.ui.shared import _invalidate_scans
 # that find stale caches (they poll /api/retro/{season}/results_status).
 
 _results_jobs: dict = {}          # str(root) -> job record
-_results_lock = __import__("threading").Lock()
+_results_lock = threading.Lock()
 
 
 def _scoring_failed_hint(score_error: str) -> str:
@@ -47,7 +50,6 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     mtime. A SUBDIRECTORY because report_season._newest_input globs
     playback_cache/*.json as report inputs: cache warming must not look
     like new data."""
-    import json as _json
     import numpy as np
     from app.core import retro
     from app.core.categorical import CATS, probs_from_quantiles
@@ -113,7 +115,6 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
             by_model[model] = cards
     try:
         # write beside, then replace
-        import os as _os
         cf.parent.mkdir(parents=True, exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
         tmp.write_text(_json.dumps({"mtime": mtime, "v": 2, "cards": by_model}))
@@ -155,7 +156,6 @@ def _ensure_results_job(root: Path, season: str,
     """Start or join THE finalize job for this root (one per root; racing
     callers share the record, whose 'done' event fires when caches are
     ready). `force` rescores; ignored when joining a running job."""
-    import threading
     from app.core import retro
     key = str(root)
     with _results_lock:
