@@ -244,7 +244,7 @@ def test_data_pull_allowed_during_pure_fitting(monkeypatch):
     # the pull went ahead (a refusal says "nothing was pulled"), and the
     # message leads in plain words, never git's own transcript
     assert "nothing was pulled" not in flash
-    assert flash.startswith(("Updated", "Already up to date", "New data"))
+    assert flash.startswith(("Updated", "Up to date", "New data"))
     assert "Already up to date." not in flash
 
 
@@ -258,7 +258,8 @@ def test_update_data_says_in_plain_words_whether_the_data_moved(monkeypatch):
     ui_state._status.update({"running": None, "phase": "", "run_label": ""})
     client.post("/data/pull", follow_redirects=False)
     flash = ui_state._status.get("flash", "")
-    assert flash.startswith("New data: through 2026-10-03 (was 2026-09-26)")
+    # the earlier week keeps only its month and day within the same year
+    assert flash.startswith("New data: through 2026-10-03 (was 09-26)")
     assert "Fast-forward" not in flash
 
 
@@ -287,7 +288,7 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
     def failing_run(args, **kw):
         if "rev-parse" in args:          # the hub is its own clone
             return _R(0, str(data.HUB) + "\n", "")
-        if "pull" in args:
+        if "fetch" in args:
             return _R(1, "", "fatal: could not read from remote\n")
         return _R(0, "", "")            # the sparse-checkout heal calls
 
@@ -299,7 +300,9 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
     def clean_run(args, **kw):
         if "rev-parse" in args:
             return _R(0, str(data.HUB) + "\n", "")
-        return _R(0, "Already up to date.\n", "")
+        if "merge" in args:
+            return _R(0, "Already up to date.\n", "")
+        return _R(0, "", "")
 
     monkeypatch.setattr(data.subprocess, "run", clean_run)
     assert data.pull_hub() == (True, "Already up to date.")

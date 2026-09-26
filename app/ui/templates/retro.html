@@ -99,12 +99,41 @@ had, then scores against settled truth.</p>
        data-status="{{ s.status }}" data-active="{{ 1 if s.active else 0 }}"
        data-done="{{ s.done }}" data-total="{{ s.total }}"
        data-results="{{ 1 if s.done > 0 else 0 }}">
-   <h2>{{ s.name }}</h2>
    {# a scored complete season prints its relWIS instead of a 100% bar; a
       finished replay whose season gained weeks afterwards (s.added_n) keeps
       its score and says what Resume would run #}
    {% set s_complete = (s.rel is defined) and (s.rel is not none)
       and s.total and (s.done >= s.total or s.added_n) and not s.active %}
+   {# ONE band: the season, its status as a pill, the facts (weeks, the
+      headline scores, wall time) and the Results button #}
+   <div class="sband">
+    <h2>{{ s.name }}</h2>
+    {# the status word inside the pill, never the colour alone #}
+    {% if s.status == 'running' %}<span class="pill st warn">running</span>
+    {% elif s.status == 'stopping' %}<span class="pill st warn" title="stopping after the fits in flight">stopping</span>
+    {% elif s.status == 'paused' %}<span class="pill st warn">paused</span>
+    {% elif s.status == 'interrupted' %}<span class="pill st bad" title="the application closed mid-replay">interrupted</span>
+    {% elif s.status == 'stopped' %}<span class="pill st">stopped</span>
+    {% elif s.status == 'done' %}<span class="pill st ok">complete</span>
+    {% elif s.status and s.status.startswith('error') %}<span class="pill st bad">{{ s.status }}</span>
+    {% endif %}
+    {# .rcount is repainted by the ticker with .rstat, so they never disagree;
+       on a live card the run bar's .rstat states it, so this copy is hidden #}
+    <span class="hint sfacts"><span class="rcount"{% if s.active %} hidden{% endif %}>{{ "%d/%d weeks"|format(s.done, s.total) if (s.total and (s.done > 0 or s.status)) or s.active else ("Not replayed yet" if s.total else "no hub weeks yet") }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
+     {# the convention travels with the score: every relWIS on this page is
+        the ratio of sums (the sealed numbers' convention). One headline per
+        shipped model (PF first); a card with only `rel` prints it unnamed #}
+     {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
+     {# pf is named for THIS card's tree (s.pf_name, templating._names_for_root):
+        sealed or pre-Oracle trees hold the particle filter alone #}
+     {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
+     {% if s.elapsed_s and s.elapsed_s >= 1 and not s.active %}
+     {# finished replays only (live ones tick below); a sub-second record
+        predates timing and would read as a fabricated zero, so say nothing #}
+     &middot; <span class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</span>
+     {% endif %}</span>
+    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
+   </div>
    {% if s.active %}
    {# live replay: the console's run bar, driven by the ticker #}
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
@@ -114,36 +143,17 @@ had, then scores against settled truth.</p>
    {# a season never replayed shows one line, not an empty bar #}
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
-   <div class="row" style="justify-content:space-between">
-    {# .rcount is repainted by the ticker with .rstat, so they never disagree;
-       on a live card the run bar's .rstat states it, so this copy is hidden #}
-    <span class="hint"><span class="rcount"{% if s.active %} hidden{% endif %}>{{ "%d/%d weeks"|format(s.done, s.total) if (s.total and (s.done > 0 or s.status)) or s.active else ("Not replayed yet" if s.total else "no hub weeks yet") }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
-     {# the convention travels with the score: every relWIS on this page is
-        the ratio of sums (the sealed numbers' convention). One headline per
-        shipped model (PF first); a card with only `rel` prints it unnamed #}
-     {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
-     {# pf is named for THIS card's tree (s.pf_name, templating._names_for_root):
-        sealed or pre-Oracle trees hold the particle filter alone #}
-     {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
-     {% if s.status == 'running' %}<span class="warn">· running</span>
-     {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
-     {% elif s.status == 'paused' %}<span class="warn">· paused</span>
-     {% elif s.status == 'interrupted' %}<span class="bad">· interrupted; the application closed mid-replay</span>
-     {% elif s.status == 'stopped' and s.stop_reason %}<span class="warn">· {{ s.stop_reason }}</span>
-     {% elif s.status == 'stopped' %}<span>· stopped; Run resumes it</span>
-     {% elif s.status == 'done' and s.added_n %}<span class="ok">· complete</span> <span class="warn">· {{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}{% endif %}</span>
-     {% elif s.status == 'done' %}<span class="ok">· complete</span>
-     {% elif s.status and s.status.startswith('error') %}<span class="bad">· {{ s.status }}</span>
-     {% endif %}</span>
-    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
-   </div>
-   {% if s.elapsed_s and s.elapsed_s >= 1 and not s.active %}
-   {# finished replays only (live ones tick above); a sub-second record
-      predates timing and would read as a fabricated zero, so say nothing #}
-   <p class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %} · mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</p>
+   {# what the status means for Run, one line, only when there is one #}
+   {% if s.status == 'stopped' and s.stop_reason %}<p class="hint"><span class="warn">{{ s.stop_reason }}</span></p>
+   {% elif s.status == 'stopped' %}<p class="hint">Run resumes it from the last completed week.</p>
+   {% elif s.status == 'done' and s.added_n %}<p class="hint"><span class="warn">{{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}{% endif %}</span></p>
    {% endif %}
-   {# settings from the run record (absent for sealed runs, which predate it) #}
-   {{ settings_html(s.settings) | safe }}
+   {# settings from the run record (absent for sealed runs, which predate
+      it), folded: the band above carries what a reader scans for #}
+   {% set s_settings = settings_html(s.settings) %}
+   {% if s_settings %}
+   <details class="rsfold"><summary>Run settings</summary>{{ s_settings | safe }}</details>
+   {% endif %}
    {% if not s.active and s.resume_fields %}
    {# one-click resume from the run record's settings: completed weeks are
       kept and an interrupted week refits only the cells that never ran.

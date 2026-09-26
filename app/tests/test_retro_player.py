@@ -191,7 +191,8 @@ def test_stats_card_hosts_the_players_table_switch_and_legend():
     # the table scrolls inside its own box, never widening the page
     assert ('<div class="statscroll"><table id="pb-stats" class="pbstats">'
             '<thead></thead>') in card
-    assert '<p class="pblegend" id="pb-legend"></p>' in card
+    # the coverage key rides the "?" tip beside the heading
+    assert '<span class="pblegend" id="pb-legend"></span>' in card
     # the player fills them from its default ids
     assert "scale: 'pb-scale', legend: 'pb-legend'" in PLAYER_JS
     assert "paintStatsFrame();" in PLAYER_JS
@@ -225,8 +226,9 @@ def _season(**kw):
 
 def test_verdict_tiles_carry_log_scale_and_coverage():
     html = _season(figs=_figs())
+    # the tiles, the chart beside them and the notes under both
     tiles = html.split('<div class="grid2">', 1)[1].split(
-        "Cumulative relWIS", 1)[0]
+        '<div class="card playcard">', 1)[0]
     pf = tiles.split("<h2>Groundhog</h2>", 1)[0]
     # the log-scale figure beside the natural one, in the same ok/bad rule
     assert '<dt>log scale</dt><dd class="ok">0.835</dd>' in pf

@@ -405,7 +405,7 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     assert '{{ "%.3f"|format(r[m]) if r[m] else "n/a" }}' in SEASON_T
     # status pills and run states print the status WORD inside the span
     assert "{{ r.status }}</span>" in FORECAST_T
-    for phrase in ("· complete", "· interrupted"):
+    for phrase in ('">complete</span>', '>interrupted</span>'):
         assert phrase in retro_t, phrase
 
 

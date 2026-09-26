@@ -337,6 +337,18 @@ def vintage_series(date: str, location_name: str) -> dict:
             "values": [float(v) for v in g["value"]]}
 
 
+#: the hub models every run is compared against; an older sparse clone
+#: may lack them (pull_hub adds them to the sparse set)
+COMPARATORS = (("baseline", "model-output/FluSight-baseline"),
+               ("ensemble", "model-output/FluSight-ensemble"))
+
+
+def comparators() -> dict:
+    """{"baseline": bool, "ensemble": bool}: is each comparator's folder
+    in the hub clone?"""
+    return {name: (HUB / sub).is_dir() for name, sub in COMPARATORS}
+
+
 @dataclass
 class Freshness:
     local_latest: Optional[str]
@@ -344,20 +356,80 @@ class Freshness:
     behind: Optional[int]            # commits behind origin, None if unknown
     is_fresh: bool
     detail: str
+    local_live: Optional[str] = None     # the working file's newest week
+    remote_live: Optional[str] = None    # origin's target file's newest week
+    tree_stale: bool = False             # the file on disk is not HEAD's
+
+    def pill(self) -> tuple:
+        """(class, words) for the Data tab's hub-clone pill: ok "up to
+        date"; warn "N weeks behind", "new vintage", "N commits behind",
+        "stale files"; bad "offline"."""
+        if self.detail.startswith("fetch failed"):
+            return "bad", "offline"
+        if self.remote_live and (not self.local_live
+                                 or self.remote_live > self.local_live):
+            if not self.local_live:
+                return "warn", "no data yet"
+            days = (pd.Timestamp(self.remote_live)
+                    - pd.Timestamp(self.local_live)).days
+            n = max(1, days // 7)
+            return "warn", f"{n} week{'s' if n != 1 else ''} behind"
+        if (self.remote_latest and self.local_latest
+                and self.remote_latest > self.local_latest):
+            return "warn", "new vintage"
+        if self.behind:
+            return "warn", (f"{self.behind} commit"
+                            f"{'s' if self.behind != 1 else ''} behind")
+        if self.tree_stale:
+            return "warn", "stale files"
+        if self.is_fresh:
+            return "ok", "up to date"
+        return "warn", "not checked"
+
+
+def _git_last_line(r) -> str:
+    """git's verdict in one line: the last non-empty stderr line (a fatal
+    error comes after any warnings), else stdout's, else the exit code."""
+    for text in (r.stderr, r.stdout):
+        lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+        if lines:
+            return lines[-1]
+    return f"git exited {r.returncode}"
+
+
+def _live_blob_stale() -> bool:
+    """True when the target file on disk is not the blob origin/main holds
+    (False when either cannot be read: unknown is not stale)."""
+    try:
+        want = subprocess.run(
+            ["git", "rev-parse", f"origin/main:{LIVE_TARGET}"], cwd=HUB,
+            capture_output=True, text=True, timeout=15)
+        have = subprocess.run(
+            ["git", "hash-object", LIVE_TARGET], cwd=HUB,
+            capture_output=True, text=True, timeout=30)
+    except Exception:
+        return False
+    if want.returncode != 0 or have.returncode != 0:
+        return False
+    w, h = want.stdout.strip(), have.stdout.strip()
+    return bool(w and h and w != h)
 
 
 def check_freshness(fetch: bool = True) -> Freshness:
     """The landing page's 'check for new data' button.
 
     Compares the local hub checkout against its origin: fetches (read-only),
-    counts commits behind, and reports the newest local vintage. Never pulls
-    -- updating the checkout is an explicit user action, not a side effect of
-    looking.
+    counts commits behind, reads origin's archive listing and the newest
+    week of origin's target file, and checks that the file on disk is the
+    one origin holds (refs alone cannot say so: a pull that moved HEAD but
+    failed to fast-forward the tree leaves last week's file on disk).
+    Never pulls -- updating the checkout is an explicit user action, not a
+    side effect of looking.
     """
     local = vintages()
     local_latest = local[-1] if local else None
     behind, remote_latest, detail = None, None, ""
-    local_live, remote_live = live_newest_week(), None
+    local_live, remote_live, stale = live_newest_week(), None, False
     if fetch:
         try:
             f = subprocess.run(["git", "fetch", "origin"], cwd=HUB,
@@ -396,20 +468,24 @@ def check_freshness(fetch: bool = True) -> Freshness:
                     wk = re.findall(r"^\"?(\d{4}-\d{2}-\d{2})", sh.stdout,
                                     flags=re.M)
                     remote_live = max(wk) if wk else None
+                stale = _live_blob_stale()
         except Exception as e:                      # offline is a state, not a crash
             detail = f"fetch failed: {e}"
-    is_fresh = (behind == 0) if behind is not None else False
     if remote_live and (not local_live or remote_live > local_live):
-        detail = (f"new data through {remote_live} available upstream "
-                  f"(local has {local_live or 'none'}): Update data to get it")
+        detail = (f"new data through {remote_live} upstream (local "
+                  f"{local_live or 'none'}): Update data")
     elif remote_latest and local_latest and remote_latest > local_latest:
-        detail = (f"new vintage {remote_latest} available upstream "
-                  f"(local has {local_latest}): Update data to get it")
+        detail = (f"new vintage {remote_latest} upstream (local "
+                  f"{local_latest}): Update data")
     elif behind:
-        detail = f"{behind} commit(s) behind origin (no new vintage yet)"
+        detail = f"{behind} commit(s) behind origin, no new vintage yet"
+    elif stale and behind == 0:
+        detail = "the target file on disk is not origin's: Update data"
     elif behind == 0:
         detail = "up to date with origin"
-    return Freshness(local_latest, remote_latest, behind, is_fresh, detail)
+    is_fresh = detail == "up to date with origin"
+    return Freshness(local_latest, remote_latest, behind, is_fresh, detail,
+                     local_live, remote_live, stale)
 
 
 def _hub_not_own_repo():
@@ -435,11 +511,27 @@ def _hub_not_own_repo():
     return None
 
 
+def _git(args, timeout=60):
+    """One git command in the hub clone, output captured."""
+    return subprocess.run(["git", "-C", str(HUB)] + list(args),
+                          capture_output=True, text=True, timeout=timeout)
+
+
+#: the fetch setting a clone needs for origin/main to track origin. A
+#: refspec into refs/heads/ moves the checked-out branch on fetch and, when
+#: the fast-forward of the tree then fails, leaves last week's files on
+#: disk under a current HEAD ("fetch updated the current branch head").
+GOOD_REFSPEC = "+refs/heads/main:refs/remotes/origin/main"
+
+
 def pull_hub() -> tuple:
     """Explicit update of the hub checkout (the button's second step).
 
-    Returns (ok, message); ok is git's exit code, because the text alone
-    cannot say (a fatal error and a fast-forward summary are both one line)."""
+    Fetches origin's main, fast-forwards to it, and makes the files on disk
+    match HEAD (FluBNF never edits the hub, so any difference is a stale
+    tree). Returns (ok, message): ok is git's exit code, the message git's
+    last line plus any repair made, so a fatal line never hides behind a
+    warning."""
     # the hub folder must be the top of its own clone: a missing or plain
     # folder inside another repository (this app's, say) would otherwise
     # pull THAT repository
@@ -448,20 +540,38 @@ def pull_hub() -> tuple:
         return False, refusal
     # self-heal older sparse clones: relWIS needs FluSight-baseline's
     # submitted files, and the player's comparison needs FluSight-ensemble's
-    for sub in ("model-output/FluSight-baseline",
-                "model-output/FluSight-ensemble"):
+    for _name, sub in COMPARATORS:
         try:
             if not (HUB / sub).is_dir():
-                subprocess.run(["git", "-C", str(HUB), "sparse-checkout",
-                                "add", sub],
-                               capture_output=True, text=True, timeout=600)
+                _git(["sparse-checkout", "add", sub], timeout=600)
         except Exception:
             pass
+    notes = []
     try:
-        r = subprocess.run(["git", "pull", "--ff-only", "origin", "main"],
-                           cwd=HUB, capture_output=True, text=True,
-                           timeout=300)
+        # self-heal a fetch setting that maps origin's main onto the local
+        # branch (seen on a laptop; see GOOD_REFSPEC)
+        rs = _git(["config", "--get-all", "remote.origin.fetch"])
+        if any(":refs/heads/" in l for l in (rs.stdout or "").splitlines()):
+            _git(["config", "--unset-all", "remote.origin.fetch"])
+            _git(["config", "--add", "remote.origin.fetch", GOOD_REFSPEC])
+            notes.append("hub clone's fetch setting repaired")
+        f = _git(["fetch", "origin", "main"], timeout=300)
+        if f.returncode != 0:
+            return False, _git_last_line(f)
+        m = _git(["merge", "--ff-only", "FETCH_HEAD"], timeout=300)
+        if m.returncode != 0:
+            return False, _git_last_line(m)
+        verdict = _git_last_line(m)
+        # the files must match the ref: a fast-forward that moved HEAD but
+        # not the tree leaves last week's file on disk
+        d = _git(["diff", "--quiet", "HEAD"], timeout=120)
+        if d.returncode != 0:
+            _git(["checkout", "--", "."], timeout=300)
+            sc = _git(["config", "--get", "core.sparseCheckout"])
+            if (sc.stdout or "").strip().lower() == "true":
+                _git(["sparse-checkout", "reapply"], timeout=300)
+            notes.append("hub files restored to match the clone")
     except (OSError, subprocess.TimeoutExpired) as e:
         # no clone, no git, or a hung network: a failure, said as one
         return False, f"{type(e).__name__}: {e}"
-    return r.returncode == 0, (r.stdout.strip() or r.stderr.strip())
+    return True, " · ".join([verdict] + notes)

@@ -21,7 +21,8 @@ Rico, US) is either reported or one of four gaps:
 
 The first two make the week incomplete (Report.complete); the other two
 are issues the forecaster decides per state on the Forecast tab (the Data
-issues box, box_rows below). What a run does with an unreported week is
+issues box, box_rows below), each preset to a recommendation (recommend:
+a few if-then lines on the reported weeks). What a run does with an unreported week is
 not restated here: the Groundhog's own walk (app/core/engines/analogue.py
 _walk, MAX_ANCHOR_LAG, which the particle filter shares) is run over the
 gap locations with the run defaults, so the message and the run cannot
@@ -40,8 +41,6 @@ import pandas as pd
 from app.core import missing as MS
 from app.core import ttlcache
 
-#: the short line names at most this many locations, then "and N more"
-LINE_NAMES = 6
 #: newest weeks kept with each gap (the wording and the recorded choice)
 RECENT_WEEKS = 8
 
@@ -55,12 +54,19 @@ ZERO_FACT = ("Of the hub's newest-week zeros since 2023, about three "
              "quarters stayed 0 once settled and none rose above 5.")
 COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
                   "to at least twice the reported value.")
-#: the Data tab's pointer to the per-state choice
-CHOOSE_NOTE = "Groundhog: choose in Data issues"
+#: a choice in a few words (the tip, the run page)
+CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
+                "blend": "blend", "set_aside": "set aside", "omit": "leave out",
+                "keep": "keep", "carry": "carry"}
 
 
 def _num(v: float) -> str:
     return f"{float(v):,.0f}"
+
+
+def _md(week: str) -> str:
+    """An ISO week as MM-DD (the box's option labels)."""
+    return str(week)[5:10] if len(str(week)) >= 10 else str(week)
 
 
 @dataclass
@@ -136,6 +142,24 @@ class Gap:
             return f"reads {_num(v)} after {_num(self.prev or 0)}"
         return REASON_TEXT[self.reason]
 
+    def flag(self) -> str:
+        """The gap in two or three words (the box's row): '0 after 1, 4',
+        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'no row', 'blank
+        value'."""
+        if self.reason == "zero":
+            n = self.zeros
+            lp = self.last_positive
+            if n >= 3 or lp is None:
+                return f"0 for {n} wk"
+            prior = [v for _, v in self.reported[:-n]][-(4 - n):]
+            after = ", ".join(_num(v) for v in reversed(prior))
+            zeros = ", ".join(["0"] * n)
+            return f"{zeros} after {after}" if after else zeros
+        if self.reason == "collapsed":
+            v = self.reported[-1][1] if self.reported else 0.0
+            return f"{_num(v)} after {_num(self.prev or 0)}"
+        return REASON_TEXT[self.reason]
+
     def outcome(self) -> str:
         """What a run does, in a few words."""
         if self.action == "forecast":
@@ -145,11 +169,44 @@ class Gap:
         return "skipped"
 
 
-def _names(locs: list) -> str:
-    shown = ", ".join(locs[:LINE_NAMES])
-    if len(locs) > LINE_NAMES:
-        shown += f" and {len(locs) - LINE_NAMES} more"
-    return shown
+#: the recommendation rule's thresholds: a collapsed week whose two prior
+#: weeks each fell by more than this share is read as a real drop
+DROP_SHARE = 0.5
+
+
+def recommend(g: Gap) -> tuple:
+    """The recommended choice for one gap and why, (choice, reason); pure,
+    from the gap's reported weeks alone. If-then, in this order:
+
+      zero, 1-2 trailing zeros after a positive week, and the max of the
+        3 weeks before them >= MS.ZERO_FLOOR: set_aside (a count that size
+        does not fall to 0 in a week; a missed report is likely)
+      zero, 1-2 trailing zeros, those weeks all below the floor: level
+        (level scored best on such weeks, docs/MISSING-DATA.md)
+      zero, 3 or more (or no positive week kept): level (its Poisson floor)
+      collapsed, the two weeks before already falling by more than
+        DROP_SHARE each: keep (the drop may be real)
+      collapsed otherwise: set_aside (a partial report is likely)
+      no row or blank: carry (the engines' own walk)
+    """
+    if g.reason == "zero":
+        n = g.zeros
+        if not g.can_set_aside:
+            return "level", f"0 for {n} weeks; level falls back to a Poisson floor"
+        prior = [v for _, v in g.reported[:-n]][-3:]
+        if prior and max(prior) >= MS.ZERO_FLOOR:
+            return "set_aside", f"{g.flag()} looks like a missed report"
+        return "level", "small counts; level scored best on such weeks"
+    if g.reason == "collapsed":
+        v = [x for _, x in g.reported]
+        if (len(v) >= 4 and v[-2] < DROP_SHARE * v[-3]
+                and v[-3] < DROP_SHARE * v[-4]):
+            return "keep", "falling for 2 weeks; the drop may be real"
+        if g.can_set_aside:
+            return "set_aside", f"{g.flag()} looks like a partial report"
+        return "keep", "no week before it to forecast from"
+    return "carry", (f"forecast from {g.from_week}" if g.action == "forecast"
+                     else g.why or "the engines' own walk")
 
 
 @dataclass
@@ -187,78 +244,62 @@ class Report:
         """Complete, and no newest week reads 0 or collapsed."""
         return not self.gaps
 
-    def _issue_clauses(self) -> list:
-        out = []
-        z = self.zeros
-        if z:
-            out.append(f"{len(z)} read{'s' if len(z) == 1 else ''} 0: "
-                       f"{_names([g.location for g in z])} ({CHOOSE_NOTE})")
-        c = self.collapsed
-        if c:
-            out.append(f"{len(c)} collapsed: " + ", ".join(
-                f"{g.location} ({g.what()})" for g in c[:LINE_NAMES])
-                + (f" and {len(c) - LINE_NAMES} more" if len(c) > LINE_NAMES
-                   else ""))
-        return out
-
-    def line(self) -> str:
-        """One short line: 'All 53 jurisdictions reported for week W',
-        or how many are missing, their names and, when they share it,
-        what a run does; then the newest weeks reading 0 or collapsed,
-        with the pointer to the Forecast tab's Data issues box."""
-        if self.clean:
-            return (f"All {self.expected} jurisdictions reported for week "
-                    f"{self.week}")
-        issues = "; ".join(self._issue_clauses())
-        un = self.unreported
-        if not un:
-            return f"All {self.expected} reported for {self.week}; {issues}"
-        n = len(un)
-        head = (f"{n} jurisdiction{'s' if n != 1 else ''} not reported for "
-                f"{self.week}")
-        outs = {g.outcome() for g in un}
-        tail = f" ({outs.pop()})" if len(outs) == 1 else ""
-        text = f"{head}: {_names([g.location for g in un])}{tail}"
-        return f"{text}; {issues}" if issues else text
-
-    def short(self) -> str:
-        """The Forecast tab's line: 'All 53 reported', 'All 53 reported; 5
-        read 0', '51 of 53 reported; 1 collapsed'."""
-        n = self.expected - len(self.unreported)
-        head = (f"All {self.expected} reported" if n == self.expected
-                else f"{n} of {self.expected} reported")
+    def _counts(self) -> list:
+        """'2 not reported', '5 read 0', '1 collapsed', as they apply."""
         bits = []
+        un = self.unreported
+        if un:
+            bits.append(f"{len(un)} not reported")
         if self.zeros:
             bits.append(f"{len(self.zeros)} read{'s' if len(self.zeros) == 1 else ''} 0")
         if self.collapsed:
             bits.append(f"{len(self.collapsed)} collapsed")
-        return head + (f"; {', '.join(bits)}" if bits else "")
+        return bits
+
+    def line(self) -> str:
+        """The Data tab's line (and the Update data message's): 'All 53
+        jurisdictions reported for week W' when clean, else short(); the
+        week is on the card above it and the names are in the tip
+        (details)."""
+        if self.clean:
+            return (f"All {self.expected} jurisdictions reported for week "
+                    f"{self.week}")
+        return self.short()
+
+    def short(self) -> str:
+        """The Forecast tab's line: 'All 53 reported', 'All 53 reported · 5
+        read 0', '51 of 53 reported · 2 not reported · 1 collapsed'."""
+        n = self.expected - len(self.unreported)
+        head = (f"All {self.expected} reported" if n == self.expected
+                else f"{n} of {self.expected} reported")
+        return " · ".join([head] + self._counts())
 
     def details(self) -> list:
-        """Per-location sentences for the tip, one group per (gap, what a
-        run does): 'No row: Nebraska, Utah. Forecast from 2026-09-26.',
-        'Reads 0, recent weeks 1-4: Arkansas. Choose what the Groundhog does
-        in Data issues on the Forecast tab.'"""
+        """Per-location sentences for the tip, one group per (flag,
+        recommendation): 'No row: Nebraska, Utah. Forecast from
+        2026-09-26.', '0 after 40, 40, 40: Ohio. Recommended: set aside
+        (looks like a missed report).'"""
         groups: dict = {}
         for g in self.gaps:
-            then = ""
             if g.unreported:
                 then = g.outcome()
                 then = then[0].upper() + then[1:]
                 if g.why:
                     then += f": {g.why}"
-            elif g.reason == "zero":
-                then = ("Choose what the Groundhog does in Data issues on "
-                        "the Forecast tab; the Oracle SIHRS keeps the 0")
             else:
-                then = ("Kept as reported unless set aside in Data issues on "
-                        "the Forecast tab")
-            key = (g.what(), then)
-            groups.setdefault(key, []).append(g.location)
+                choice, why = recommend(g)
+                flag = g.flag()
+                if why.startswith(flag):          # "0 after 40 looks like..."
+                    why = why[len(flag):].strip()
+                then = f"Recommended: {CHOICE_WORDS[choice]} ({why})"
+            groups.setdefault((g.flag(), then), []).append(g.location)
         out = []
         for (what, then), locs in groups.items():
             out.append(f"{what[0].upper() + what[1:]}: {', '.join(locs)}. "
                        f"{then}.")
+        if not self.clean:
+            out.append("Each is chosen per state in Data issues on the "
+                       "Forecast tab and recorded with the run.")
         if self.zeros:
             out.append(ZERO_FACT)
         if self.collapsed:
@@ -373,64 +414,59 @@ def check(zero_rule: str = MS.TRAILING_ZERO,
 
 # --- the Forecast tab's Data issues box -----------------------------------------------
 
-#: the box's option labels, by choice; {name}, {week}, {value} and {from}
-#: are filled per state
+#: the box's option labels, by choice, short: what each does for both
+#: models is in the legend's "?" (templates/_data_issues.html). {value}
+#: and {from} (MM-DD) are filled per state
 OPTION_TEXT = {
-    "abstain": "Groundhog: no forecast; Oracle SIHRS keeps the 0",
-    "level": "Groundhog: level (mean of last 4 weeks); Oracle SIHRS keeps the 0",
-    "extend": "Groundhog: extend {value} from {from}; Oracle SIHRS keeps the 0",
-    "blend": "Groundhog: blend of level and extend; Oracle SIHRS keeps the 0",
-    "set_aside": "Both models from {from} ({value}): count the {what} as unreported",
-    "omit": "Leave {name} out of both files",
-    "keep": "Keep {value} as reported, both models",
-    "carry": "Both models from the last reported week",
+    "abstain": "No forecast",
+    "level": f"Level (mean of {MS.ZERO_ANCHOR_WEEKS} wk)",
+    "extend": "Extend {value} from {from}",
+    "blend": "Blend",
+    "set_aside": "Both from {from}",
+    "omit": "Leave out",
+    "keep": "Keep {value}",
+    "carry": "From {from}",
 }
+#: the carry label when the walk found no week to forecast from
+CARRY_SKIP_TEXT = "Engines' own walk"
 
 
 def box_rows(report: Report) -> list:
     """One row per state for templates/_data_issues.html: {fips, name,
-    issue, what, hint, reported, default, options: [(value, label)],
-    aside: [[week, value]]}. Choices a state cannot take (extend, blend and
-    set aside for 3 or more trailing zeros) are left out of its options."""
+    issue, what, flag, hint, rec, why, reported, default, options: [(value,
+    label)], aside: [[week, value]]}. `rec` and `why` are the
+    recommendation (recommend()); `hint` is `why`. Choices a state cannot
+    take (extend, blend and set aside for 3 or more trailing zeros) are
+    left out of its options."""
     rows = []
     for g in report.gaps:
         opts = []
         lp = g.last_positive
-        fill = {"name": g.location, "week": report.week,
-                "value": _num(g.reported[-1][1]) if g.reported else "0",
-                "from": lp[0] if lp else "", "what": "0"}
+        rec, why = recommend(g)
         if g.reason == "zero":
-            fill["value"] = _num(lp[1]) if lp else "0"
+            fill = {"value": _num(lp[1]) if lp else "0",
+                    "from": _md(lp[0]) if lp else ""}
             for c in MS.ZERO_CHOICES:
                 if c in ("extend", "blend", "set_aside") and not g.can_set_aside:
                     continue
                 opts.append((c, OPTION_TEXT[c].format(**fill)))
-            hint = g.what()
-            if not g.can_set_aside and g.zeros > MS.MAX_CARRY:
-                hint += ("; setting weeks aside is offered for 1 or "
-                         f"{MS.MAX_CARRY}")
         elif g.reason == "collapsed":
-            fill["what"] = _num(g.reported[-1][1]) if g.reported else "0"
-            fill["from"] = g.reported[-2][0] if len(g.reported) >= 2 else ""
-            fill["value"] = _num(g.reported[-2][1]) if len(g.reported) >= 2 else ""
+            before = g.reported[-2] if len(g.reported) >= 2 else ("", 0.0)
+            fill = {"value": _num(g.reported[-1][1]) if g.reported else "0",
+                    "from": _md(before[0])}
             for c in MS.COLLAPSED_CHOICES:
                 if c == "set_aside" and not g.can_set_aside:
                     continue
-                text = OPTION_TEXT[c].format(**{
-                    **fill, "value": (_num(g.reported[-1][1]) if c == "keep"
-                                      else fill["value"])})
-                opts.append((c, text))
-            hint = g.what()
-        else:
-            for c in MS.UNREPORTED_CHOICES:
                 opts.append((c, OPTION_TEXT[c].format(**fill)))
-            hint = g.what()
-            if g.action == "forecast":
-                hint += f"; forecast from {g.from_week}"
-            elif g.action == "skip":
-                hint += f"; {g.why}" if g.why else "; skipped"
+        else:
+            fill = {"value": "", "from": _md(g.from_week)}
+            for c in MS.UNREPORTED_CHOICES:
+                text = (OPTION_TEXT[c].format(**fill)
+                        if c != "carry" or g.from_week else CARRY_SKIP_TEXT)
+                opts.append((c, text))
         rows.append({"fips": g.fips, "name": g.location, "issue": g.reason,
-                     "what": g.what(), "hint": hint,
+                     "what": g.what(), "flag": g.flag(), "hint": why,
+                     "rec": rec, "why": why,
                      "reported": [[w, v] for w, v in g.reported],
                      "default": MS.DEFAULT_CHOICE.get(g.reason, ""),
                      "options": opts,

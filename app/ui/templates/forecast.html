@@ -97,7 +97,7 @@
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
         // the Data issues box belongs to that week too; disabled, it
-        // posts nothing (and its required selects do not block the form)
+        // posts nothing (the run then takes each state's recommendation)
         var di = document.getElementById('data-issues');
         if (di) { di.hidden = a !== di.dataset.week; di.disabled = di.hidden; }
       }

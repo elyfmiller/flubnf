@@ -188,13 +188,10 @@ US_CHOICE = "US (national)"
 
 # === The Data issues box (app/core/reported.py, app/core/missing.py) ===
 
-#: the "Apply to all zero states" select's labels, one per choice
-_ALL_TEXT = {"abstain": "Groundhog: no forecast",
-             "level": "Groundhog: level (mean of last 4 weeks)",
-             "extend": "Groundhog: extend the last positive week",
-             "blend": "Groundhog: blend of level and extend",
-             "set_aside": "Both models from the week before",
-             "omit": "Leave out of both files"}
+#: the "All zero states:" select's labels, one per choice
+_ALL_TEXT = {"abstain": "No forecast", "level": "Level", "extend": "Extend",
+             "blend": "Blend", "set_aside": "Both from the week before",
+             "omit": "Leave out"}
 
 
 def _source_sha(week: str) -> str:
@@ -210,8 +207,10 @@ def _source_sha(week: str) -> str:
 def _data_issues_context(rep, form) -> tuple:
     """(the Data issues box's context, the data file's sha256) for the
     Forecast form, or (None, "") when the newest week has no zero,
-    collapsed or unreported state (the green line stays). `form` (the last
-    form) may hold data_choices = {week: {fips: choice}} to preselect."""
+    collapsed or unreported state (the green line stays). Each row is
+    preselected with its recommendation (reported.recommend); `form` (the
+    last form) may hold data_choices = {week: {fips: choice}} to preselect
+    instead."""
     if rep is None or rep.clean:
         return None, ""
     from app.core import missing as MS
@@ -233,13 +232,15 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
 
     `gap_fields` are the box's gap.<fips> values (gap._sha the file they
     were made on); `prior` a recorded data_choices (a re-run) whose states
-    supply a choice where the form gives none. The real-time week only
-    (v1): on an older week a prior record for that week passes through
-    verbatim (the engines match its set-asides against the data) and the
-    form's fields are ignored. Refuses when the data changed since the box
-    was built, when a choice is not one the state was offered, and when a
-    zero state has no choice while the Groundhog runs without the
-    run-wide rule (groundhog.zero_anchor)."""
+    supply a choice where the form gives none; a state with neither takes
+    the box's recommendation (reported.recommend), except a zero state
+    under the run-wide rule (groundhog.zero_anchor), which the rule covers.
+    Every listed state is recorded with its recommendation and whether it
+    was followed. The real-time week only (v1): on an older week a prior
+    record for that week passes through verbatim (the engines match its
+    set-asides against the data) and the form's fields are ignored.
+    Refuses when the data changed since the box was built and when a
+    choice is not one the state was offered."""
     from app.core import missing as MS
     from app.core import reported as _rep
     locs = list(locs)
@@ -264,9 +265,8 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     prior_states = (prior or {}).get("states") if isinstance(prior, dict) else {}
     prior_states = prior_states if isinstance(prior_states, dict) else {}
     rows = {r["fips"]: r for r in _rep.box_rows(rep)}
-    groundhog = engine in ("all", "analogue")
     knob = MS.zero_anchor_of({"knobs": nd})
-    states, missing = {}, []
+    states = {}
     in_run = set(locs)
     for g in rep.gaps:
         if g.location not in in_run:
@@ -281,15 +281,14 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             return None, locs, (f"Data issues: {g.location}: '{choice}' is "
                                 f"not one of {', '.join(offered)}.")
         if not choice:
-            if g.reason == "zero" and groundhog and not knob:
-                missing.append(g.location)
-            continue                 # the default (keep, carry) or the knob
-        if choice == r["default"]:
-            continue                 # a default choice is not recorded
+            if g.reason == "zero" and knob:
+                continue             # the run-wide rule covers it
+            choice = r["rec"]        # the box's preselection
         entry = {"issue": g.reason, "what": g.what(), "choice": choice,
                  "week": rep.week,
                  "reported": (r["aside"] if choice == "set_aside"
-                              else r["reported"])}
+                              else r["reported"]),
+                 "recommended": r["rec"], "followed": choice == r["rec"]}
         if choice == "set_aside":
             aside = {w for w, _ in r["aside"]}
             before = [w for w, _ in r["reported"] if w not in aside]
@@ -297,11 +296,6 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
         elif choice in MS.ZERO_ANCHOR_RULES:
             entry["from_week"] = rep.week
         states[g.location] = entry
-    if missing:
-        n = len(missing)
-        return None, locs, (f"{n} state{'s' if n != 1 else ''} read 0 for "
-                            f"{rep.week}; choose what the Groundhog does "
-                            "with each in Data issues.")
     omitted = {l for l, st in states.items() if st["choice"] == "omit"}
     kept = [l for l in locs if l not in omitted]
     if not states:
@@ -939,8 +933,8 @@ def run_models(request: Request,
                "Nothing was run.")
         return _back(request, "/forecast")
     # the per-state data choices (the Data issues box, or a re-run's
-    # record): refused BEFORE the engine is claimed when a zero state has no
-    # choice, when a choice is not one offered, or when the data changed
+    # record): refused BEFORE the engine is claimed when a choice is not
+    # one offered or when the data changed
     import json as _json
     try:
         _prior = (_json.loads(data_choices)

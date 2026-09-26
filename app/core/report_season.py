@@ -564,7 +564,8 @@ def build_season_report(root: Path, season: str, archive: str = "",
     # placeholders (no payload) and a caption per annotated week
     timeline, notes = playback.week_notes(season, weeks)
     data = {"season": season, "weeks": timeline, "payloads": payloads,
-            "notes": notes, "stored_weeks": weeks}
+            "notes": notes, "stored_weeks": weeks,
+            "no_data_note": playback.NO_DATA_NOTE}
     # "</" would end the embedding <script> early; "<\/" is the same JSON
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
@@ -643,7 +644,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  *{box-sizing:border-box}
  body{margin:0;background:var(--bg);color:var(--ink);
       font:400 var(--fs-body)/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
- main{max-width:1180px;margin:0 auto;padding:1.4rem 1.2rem 3rem}
+ main{max-width:1500px;margin:0 auto;padding:1.4rem 1.2rem 3rem}
  .brandrow{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
   margin:0 0 .8rem}
  .brand{font-size:1.45rem;font-weight:700;letter-spacing:.01em}
@@ -666,6 +667,18 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  .runsettings .kv dt{color:var(--mut)}
  .runsettings .kv dd{margin:0;font-weight:650;
     font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+ /* laid out as the console's season page does: a wrapped chip row after
+    the title (nau.css .rs-chips) */
+ .sub.runsettings{display:flex;flex-wrap:wrap;align-items:center;
+    gap:.3rem .5rem;font-size:.95rem}
+ .sub.runsettings .kv{display:flex;flex-wrap:wrap;gap:.35rem 0;margin:0;
+    width:auto;font-size:.85rem}
+ .sub.runsettings .kv dt{padding:.08rem .3rem .08rem .6rem;
+    border:1px solid var(--line);border-right:0;border-radius:99px 0 0 99px;
+    background:var(--card);white-space:nowrap}
+ .sub.runsettings .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
+    border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
+    background:var(--card)}
  .warn{background:transparent;border:1px solid var(--warn);
        color:var(--warn);
        border-radius:10px;padding:.6rem .8rem;font-size:.9rem}
@@ -682,15 +695,26 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    padding:.4rem .6rem;font:inherit;cursor:pointer}
  button:focus-visible,select:focus-visible,input:focus-visible{
    outline:2px solid var(--gold);outline-offset:2px}
- input[type=range]{flex:1;min-width:160px;accent-color:var(--gold)}
+ input[type=range]{flex:1 1 160px;min-width:160px;accent-color:var(--gold)}
+ .playerbar{gap:.45rem .6rem;margin:.1rem 0 .6rem}
  .hint{color:var(--mut);font-size:var(--fs-hint)}
- /* the live scores sit under the chart: this page is at most 1180px
-    wide, too narrow for the chart and the two-period table side by side.
-    The table rules are the console's (nau.css, season player), restated
-    because the export is self-contained */
- .playgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;
-    align-items:start}
+ /* the console's season player layout (nau.css .playgrid), restated
+    because the export is self-contained: the plot takes about 62% of the
+    card and the live scores the rest; under 1100px the scores stack under
+    the plot. The plot reserves a viewport-sized height (plotHeight) */
+ .playgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);
+    gap:.9rem 1.1rem;align-items:start}
+ @media(max-width:1100px){.playgrid{grid-template-columns:minmax(0,1fr)}}
+ .fdplot{min-height:clamp(360px,55vh,720px)}
+ .fdrow{margin:.2rem 0 .4rem;gap:.4rem 1rem}
+ .fdrow .fdmodels{margin:0}
  .playstats{min-width:0}
+ .playstats table.pbstats{font-size:.82rem}
+ .playstats table.pbstats th,.playstats table.pbstats td{padding:.24rem .42rem}
+ .rs-h{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .8rem;
+    margin-bottom:.35rem}
+ .rs-h h2{margin-bottom:0}
+ .rs-h .pbscale{margin:0}
  .statscroll{overflow-x:auto;max-width:100%;scrollbar-width:thin}
  table.pbstats{width:auto}
  table.pbstats th,table.pbstats td{padding:.3rem .5rem;white-space:nowrap}
@@ -794,20 +818,20 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  </div>
  <div class="playgrid">
   <div>
-   <div class="row" style="margin:.2rem 0 .4rem">
+   <div class="row fdrow">
     <select id="fd-loc" aria-label="Forecast location"
-      style="width:auto;min-width:230px;max-width:100%"></select>
+      style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
     <label style="display:inline-flex;align-items:center;gap:.35rem;
       font-size:.85rem;cursor:pointer"><input type="checkbox" id="fd-lock"
       checked> Lock axes</label>
+    <div class="fdmodels" id="fd-models"></div>
    </div>
-   <div class="fdmodels" id="fd-models"></div>
-   <div id="fd-plot"></div>
+   <div id="fd-plot" class="fdplot"></div>
    <p class="hint" id="fd-msg"></p>
   </div>
   <div class="playstats">
-   <h2>@@LIVEHEAD@@</h2>
-   <div class="pbscale" id="pb-scale"></div>
+   <div class="rs-h"><h2>@@LIVEHEAD@@</h2>
+   <div class="pbscale" id="pb-scale"></div></div>
    <div class="statscroll"><table id="pb-stats" class="pbstats"><thead></thead>
     <tbody></tbody></table></div>
    <p class="pblegend" id="pb-legend"></p>
@@ -833,6 +857,9 @@ var DATA = JSON.parse(document.getElementById('pbdata').textContent);
 // WEEKS is the timeline: the stored weeks plus the season's no-data weeks,
 // which have no payload and show their note (DATA.notes) instead
 var WEEKS = DATA.weeks, PAY = DATA.payloads, NOTES = DATA.notes || {};
+// the caption marking a no-data week (playback.NO_DATA_NOTE): the player
+// shows the settled truth, no forecast and the carried-over season scores
+var NO_DATA_NOTE = DATA.no_data_note || '';
 (function(){
   var s = document.getElementById('pb-scrub');
   if(s) s.max = String(Math.max(0, WEEKS.length - 1));
@@ -870,6 +897,7 @@ function css(n, fb){
 var player = FluBNFPlayer.init({
   weeks: WEEKS,
   notes: NOTES,
+  noDataNote: NO_DATA_NOTE,
   mode: 'static',
   getPayload: function(w){ return Promise.resolve(PAY[w] || null); },
   catalog: {models: Object.keys(UNION.models),
@@ -889,7 +917,10 @@ var player = FluBNFPlayer.init({
                                      FluBNFPlayer.MODEL_COLORS.ensemble)}),
             flusightEnsemble: '#AAB1C9'};
   },
-  plotHeight: 420
+  // the plot fills the window's height (the .fdplot rule reserves it)
+  plotHeight: function(){
+    return Math.max(360, Math.min(720, Math.round(window.innerHeight * .55)));
+  }
 });
 // the report opens on the season's LAST week: a skimmer reads the final
 // verdict first, and the summary block above matches this frame; playback

@@ -382,7 +382,8 @@ def test_stats_table_distinguishes_no_submission_from_pending():
     # columns; the season group keeps an official's running figures
     # through a week it skipped
     assert "'<td colspan=\"4\" class=\"num hint gap g1\">'" in SRC
-    assert "(state === 'nosub' ? 'no submission' : 'pending')" in SRC
+    assert "(state === 'nosub' ? 'no submission'" in SRC
+    assert ": state === 'noround' ? NO_ROUND_CELL : 'pending')" in SRC
     assert "periodCells(sv.week, wk, P.scale)" in SRC
     assert "periodCells(sv.cum, cum, P.scale)" in SRC
     assert "var cum = isNum(sv.cum.rel) ? 'score' : 'pending'" in SRC
@@ -451,9 +452,67 @@ def test_us_pf_label_is_the_national_note():
 def test_no_forecast_note_is_wired_into_the_frame_draw():
     # drawFC computes availability across ALL models each frame, so an empty
     # frame never renders as silent bare axes
-    assert ("el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us)"
-            in SRC)
+    assert ("el.msg.textContent = nodata ? noteOf(w)\n"
+            "        : (noForecastNote(loc, avail, drawn, cfg.us)" in SRC)
     assert "noForecastNote: noForecastNote" in SRC
+
+
+# ------------------------------------------------ no-data weeks (no round)
+
+@needs_jsc
+def test_no_data_placeholder_keeps_truth_and_carries_the_season_scores(
+        tmp_path):
+    """A week with no published data has no payload: the player builds one
+    from the nearest stored week, truth and locations kept, nothing
+    forecast, the week figures cleared and the season figures carried
+    over (the same keys as THE STATS CONTRACT)."""
+    src = ("{asof: '2098-11-07', locations: ['Ohio'],"
+           " truth: {Ohio: [['2098-10-31', 5], ['2098-11-07', 6]]},"
+           " models: {pf: {Ohio: {}}}, official: {'FluSight-baseline': {}},"
+           " stats: {pf: {week_rel: 0.9, cum_rel: 0.8, week_log_rel: 0.7,"
+           " cum_log_rel: 0.6, week_cov: {'50': 0.5}, cum_cov: {'50': 0.4},"
+           " week_n: 3, cum_n: 9, debug: 'x'}}}")
+    got = _js(tmp_path, "I.noDataPayload(" + src + ", '2098-11-14')")
+    assert got["asof"] == "2098-11-14"
+    assert got["locations"] == ["Ohio"]
+    assert got["truth"] == {"Ohio": [["2098-10-31", 5], ["2098-11-07", 6]]}
+    assert got["models"] == {} and got["official"] == {}
+    assert got["stats"] == {"pf": {
+        "week_rel": None, "cum_rel": 0.8, "week_log_rel": None,
+        "cum_log_rel": 0.6, "week_cov": None, "cum_cov": {"50": 0.4},
+        "week_n": 0, "cum_n": 9}}
+    assert _js(tmp_path, "I.noDataPayload(null, '2098-11-14')") is None
+
+
+@needs_jsc
+def test_no_round_week_cells_say_so(tmp_path):
+    # the This week group reads "no FluSight round" as one cell; the season
+    # group keeps its running figures
+    got = _js(tmp_path, "I.periodCells({rel: null, shown: null, cov: null,"
+                        " n: 0}, 'noround', 'natural')")
+    assert got == ('<td colspan="4" class="num hint gap g1">'
+                   'no FluSight round</td>')
+    assert _js(tmp_path, "I.NO_ROUND_CELL") == "no FluSight round"
+
+
+def test_no_data_weeks_are_wired_into_the_player():
+    # the host's caption marks the week; stats and the frame both read the
+    # placeholder; the frame titles itself with the note and draws no fan
+    assert "noDataNote" in SRC
+    assert "function isNoData(w)" in SRC
+    assert "function payloadFor(w)" in SRC
+    assert "payloadFor(w).then(function(pl){" in SRC
+    assert "var wk = nodata ? 'noround'" in SRC
+    assert "? ' · ' + w + '<br>' + noteOf(w)" in SRC
+    assert "noDataPayload: noDataPayload" in SRC
+    # both hosts hand the caption over
+    from app.core.report_season import _PAGE
+    assert "noDataNote: NO_DATA_NOTE" in _PAGE
+    season_t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+                / "retro_season.html").read_text(encoding="utf-8")
+    assert "noDataNote: NO_DATA_NOTE" in season_t
+    # the console's map view greys the last map under the note
+    assert "host.classList.toggle('nodata', noData(w))" in season_t
 
 
 def test_view_state_clear_sites():

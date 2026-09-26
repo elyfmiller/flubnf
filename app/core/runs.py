@@ -162,18 +162,24 @@ def spec_settings(spec, outcome=None) -> list:
 
 
 def data_issues_label(extra: dict) -> str:
-    """The settings value for a run's data decisions: the per-state choices
-    counted by choice ("Arkansas level, Utah set aside, Oregon left out")
-    and the run-wide zero-anchor rule when one was set; "" when neither."""
+    """The settings value for a run's data decisions: the count against
+    the box's recommendations ("5 states, 4 recommended, 1 changed: Utah
+    set aside"; the changed states named, or every state on a record from
+    before the rule) and the run-wide zero-anchor rule when one was set;
+    "" when neither."""
     from app.core import missing as MS
     bits = []
     states = MS.choices_of(extra)
     words = {"set_aside": "set aside", "omit": "left out"}
     for loc in sorted(states):
-        c = str((states[loc] or {}).get("choice") or "")
-        if c:
+        st = states[loc] or {}
+        c = str(st.get("choice") or "")
+        if c and not st.get("followed"):
             bits.append(f"{loc} {words.get(c, c)}")
     text = ", ".join(bits)
+    counts = MS.followed_line(states)
+    if counts:
+        text = f"{counts}: {text}" if text else counts
     za = MS.zero_anchor_of(extra)
     if za:
         rule = f"zero-anchor rule {za}" + (" for the other states" if bits else "")
@@ -475,7 +481,8 @@ def data_issues_row(o: dict, spec_extra: dict, names: dict):
             str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE)
             for rows in flags.values() for r in rows or ()):
         return None
-    text = MS.choices_line(flags)
+    text = "; ".join(t for t in (MS.followed_line(states),
+                                 MS.choices_line(flags)) if t)
     lines = []
     not_applied = 0
     for m, key in ANCHOR_NOTE_KEYS:

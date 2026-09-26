@@ -116,5 +116,6 @@ def test_cumulative_chart_draws_the_month_ticks():
     # dates' own muted style, between the plot band and the corner labels
     assert ("month_ticks_for_dates(curve | map('first') | list)"
             in RETRO_SEASON_T)
-    for frag in ('y1="136"', 'y2="142"', 'y="154"'):
+    # (the plot band runs 12..252 in the 720x300 viewBox)
+    for frag in ('y1="254"', 'y2="260"', 'y="272"'):
         assert RETRO_SEASON_T.count(frag) >= 1, frag

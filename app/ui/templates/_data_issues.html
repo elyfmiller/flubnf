@@ -1,11 +1,13 @@
 {# The Forecast tab's Data issues box (app/core/reported.py box_rows): one
-   select per state whose newest week reads 0, collapsed, or was not
-   reported. Each posts as gap.<fips> (forms._gap_form) and the choice is
-   recorded with the run (extra["data_choices"], app/core/missing.py); a
-   zero state has no preselection and must be answered (required, and the
-   server refuses the run without it). Rendered inside #fcform under the
-   anchor line, only when the week has such a state; forecast.html's
-   paint() hides and disables it when the chosen date leaves that week (a
+   row per state whose newest week reads 0, collapsed, or was not
+   reported: the name, a short flag ("0 after 1, 4"), the select and a
+   "recommended" badge while the select holds the rule's choice
+   (reported.recommend; the reason is the row's hint). Each posts as
+   gap.<fips> (forms._gap_form) and is recorded with the run
+   (extra["data_choices"], app/core/missing.py) with whether the
+   recommendation was followed. Rendered inside #fcform under the anchor
+   line, only when the week has such a state; forecast.html's paint()
+   hides and disables it when the chosen date leaves that week (a
    disabled fieldset posts nothing).
    {% import "_data_issues.html" as di %}{{ di.box(issues, sha) }} #}
 {% import "_tips.html" as tips %}
@@ -13,39 +15,54 @@
 {% set n = issues.rows|length %}
 {% set zeros = issues.rows|selectattr("issue", "equalto", "zero")|list %}
 <fieldset class="ms-group dataissues" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
- <legend>Data issues for {{ issues.week }}<span class="ms-badge warn">{{ n }} state{{ "s" if n != 1 }}</span>
-  {{ tips.tip("data-issues", "the data issues", "States whose newest week reads 0, fell under a fifth of a week of 20 or more, or was not reported. Your choice applies to this run only and is recorded with it. Forecasting from an earlier week counts every horizon from the forecast date, as Weeks to drop does; at most 2 weeks. " ~ issues.facts) }}</legend>
+ <legend>Data issues<span class="ms-badge warn">{{ n }} state{{ "s" if n != 1 }}</span>
+  {% call tips.tip("data-issues", "the data issues") -%}
+  <span class="ncline">Newest week {{ issues.week }}: states reading 0, under a fifth of a week of 20 or more (collapsed), or not reported. Each select is preset to the recommended choice; pick another if you know better. The choice applies to this run only and is recorded with it.</span>
+  <span class="ncline">Zero: No forecast = the Groundhog abstains. Level = it anchors on the mean of the last 4 weeks (all 0: a Poisson floor). Extend = it carries the last positive week over the 0s. Blend = the mean of level and extend. For all four the Oracle SIHRS keeps the 0.</span>
+  <span class="ncline">Both from a week = both models count the newest week(s) as unreported and forecast from that week, every horizon still from the forecast date (at most 2 weeks). Keep = as reported. From a week (not reported) = the engines' own walk. Leave out = the state is in neither file.</span>
+  <span class="ncline">Recommended: both from the week before when a 0 or a collapse follows counts of 10 or more (a missed or partial report is likely); level for small counts and runs of 0; keep a collapse when the two weeks before already fell by half each.</span>
+  {% if issues.facts %}<span class="ncline">{{ issues.facts }}</span>{% endif %}
+  {%- endcall %}</legend>
  <input type="hidden" name="gap._sha" value="{{ sha }}">
  {% if zeros|length > 1 %}
- <div class="ms-row di-all">
-  {{ tips.label("Apply to all zero states", "di-all", "Sets every zero state's select below to this choice; change any of them afterwards. A choice a state cannot take (extend, blend or setting aside with 3 or more weeks of 0) is left as it was.", for_="di-all") }}
-  <select id="di-all" data-di-all="1">
+ <div class="di-row di-all">
+  <label for="di-all">All zero states:</label>
+  <select id="di-all" data-di-all="1" aria-label="Set every zero state">
    <option value="">Choose…</option>
    {% for v, t in issues.all_options %}<option value="{{ v }}">{{ t }}</option>{% endfor %}
   </select>
  </div>
  {% endif %}
- {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.default %}
- <div class="ms-row di-state" data-issue="{{ r.issue }}">
-  <div class="lblrow"><label for="gap-{{ r.fips }}">{{ r.name }}: <span class="hint">{{ r.hint }}</span></label></div>
-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}"{% if r.issue == "zero" %} required{% endif %}>
-   {% if r.issue == "zero" %}<option value=""{% if not sel %} selected{% endif %}>Choose…</option>{% endif %}
+ {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
+ <div class="di-row di-state" data-issue="{{ r.issue }}">
+  <div class="di-head"><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }}</span><span class="ms-badge ok di-rec"{% if sel != r.rec %} hidden{% endif %}>recommended</span></div>
+  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}">
    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
   </select>
+  <span class="hint di-why">{{ r.why }}</span>
  </div>
  {% endfor %}
  <script>
   (function () {
-    // "Apply to all zero states": set each zero state's select that offers
-    // the choice (a state with 3 or more weeks of 0 has no extend or blend)
+    var box = document.getElementById('data-issues');
+    if (!box) return;
+    // the "recommended" badge shows while the select holds the rule's choice
+    function mark(s) {
+      var b = s.parentNode.querySelector('.di-rec');
+      if (b) b.hidden = s.value !== s.dataset.rec;
+    }
+    var sels = box.querySelectorAll('select[name^="gap."]');
+    sels.forEach(function (s) { s.addEventListener('change', function () { mark(s); }); });
+    // "All zero states:": set each zero state's select that offers the
+    // choice (a state with 3 or more weeks of 0 has no extend or blend)
     var all = document.getElementById('di-all');
     if (!all) return;
     all.addEventListener('change', function () {
       var v = all.value;
       if (!v) return;
-      document.querySelectorAll('#data-issues select[data-issue=zero]').forEach(function (s) {
+      box.querySelectorAll('select[data-issue=zero]').forEach(function (s) {
         var has = Array.prototype.some.call(s.options, function (o) { return o.value === v; });
-        if (has) s.value = v;
+        if (has) { s.value = v; mark(s); }
       });
     });
   })();
