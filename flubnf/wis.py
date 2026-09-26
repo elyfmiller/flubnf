@@ -26,10 +26,16 @@ intervals are formed by pairing (q, 1-q) for q in {0.01, 0.025, 0.05, ...,
 
 Returns non-negative values (0.0 exactly when every quantile equals the observation); lower is better. WIS == |y - point| when there is
 no interval uncertainty.
+
+Beside it, the two other per-cell figures the CDC FluSight dashboard
+reports: `log_wis` (WIS after log(x + 1) is applied to every quantile and
+to the observation) and `coverage` (whether the observation lies inside
+the central 50, 80 and 95 percent intervals, both ends inclusive).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
@@ -109,6 +115,59 @@ def wis(
         underprediction=sum_under / K,
         n_intervals=K,
     )
+
+
+#: the log scale the CDC FluSight dashboard reports beside the natural one:
+#: scoringutils transform_forecasts(fun = log_shift, offset = 1), i.e.
+#: log(x + 1) applied to every quantile and to the observation
+LOG_OFFSET = 1.0
+
+#: the central intervals FluSight reports coverage for, as (label, lower
+#: level, upper level): scoringutils interval_coverage at 50, 80 and 95
+COVERAGE_BANDS: tuple[tuple[str, float, float], ...] = (
+    ("50", 0.25, 0.75), ("80", 0.10, 0.90), ("95", 0.025, 0.975),
+)
+
+
+def log_shift(x: float) -> float:
+    """log(x + 1). A count is never negative (the hub refuses a negative
+    value for this target), so a negative input is read as 0 rather than
+    taken outside the log's domain."""
+    return math.log(max(float(x), 0.0) + LOG_OFFSET)
+
+
+def log_wis(
+    quantiles: Mapping[float, float],
+    actual: float,
+    *,
+    pi_quantiles: Sequence[float] = FLUSIGHT_PI_QUANTILES,
+) -> float:
+    """WIS on the log scale: `wis` of log(x + 1) applied to every quantile
+    and to the observation (the dashboard's log-scale WIS)."""
+    return wis({L: log_shift(v) for L, v in quantiles.items()},
+               log_shift(actual), pi_quantiles=pi_quantiles).wis
+
+
+def interval_covered(
+    quantiles: Mapping[float, float], actual: float,
+    lower: float, upper: float,
+) -> int | None:
+    """1 when lower <= actual <= upper (both ends inclusive, scoringutils
+    interval_coverage), 0 when not; None when either level is missing."""
+    try:
+        lo = _lookup(quantiles, lower)
+        hi = _lookup(quantiles, upper)
+    except KeyError:
+        return None
+    return int(float(lo) <= float(actual) <= float(hi))
+
+
+def coverage(
+    quantiles: Mapping[float, float], actual: float,
+) -> dict[str, int | None]:
+    """{"50", "80", "95"} -> interval_covered for COVERAGE_BANDS."""
+    return {label: interval_covered(quantiles, actual, lo, hi)
+            for label, lo, hi in COVERAGE_BANDS}
 
 
 def _lookup(quantiles: Mapping[float, float], q: float) -> float:

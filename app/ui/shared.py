@@ -191,8 +191,8 @@ def relwis_chip(value, cells=None, member: str = "PF") -> str:
     """The one relWIS rendering outside a scores table, e.g. 'PF relWIS
     <span class="relwis bad">4.067</span> vs FluSight baseline, ratio of
     sums (2 cells)'. Always names convention and baseline (the CDC's
-    pairwise quantity is not comparable). Markup from fixed phrases and
-    numbers only."""
+    dashboard reports a pairwise quantity, within about 0.02 of this one on
+    the same cells). Markup from fixed phrases and numbers only."""
     try:
         v = float(value)
     except (TypeError, ValueError):

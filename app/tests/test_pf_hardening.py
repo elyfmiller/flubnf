@@ -353,6 +353,33 @@ def test_collect_reads_the_retrospective_markers_too(tmp_path):
     assert not (w / "pf_status.json").exists()
 
 
+def test_a_newest_week_of_zero_keeps_the_filters_draws(tmp_path):
+    """A newest reported week of 0 made the anchor scale 0, so every sample
+    at every horizon became 0: a point mass at 0 whatever the filter
+    forecast (every zero-anchor location-week of the 2023-26 replays). The
+    forecast scale is now 1 there; the origin block stays pinned to the
+    reported 0, so the Oracle step reads m_0 = y_T = 0 and stays identity.
+    A positive anchor is scaled exactly as before."""
+    from flubnf import oracle as fo
+    w = tmp_path / "wr"
+    w.mkdir()
+    zero = _traj_cell(w, "Hawaii_r0", "Hawaii", _GOOD_TRAJ)
+    zero["last_observed"] = 0.0
+    cells = [zero, _traj_cell(w, "Ohio_r0", "Ohio", _GOOD_TRAJ)]
+    (w / "cells.json").write_text(json.dumps(cells))
+    out = pf.collect(w)
+    # the origin is the report; the horizons are unscaled (h physical
+    # weeks ahead of the anchor column's 2 read 2+h)
+    assert out["Hawaii"][hz.ORIGIN] == [0.0, 0.0]
+    for h in hz.HORIZONS:
+        assert out["Hawaii"][h] == [float(3 + int(h))] * 2
+    cq = fo.cell_quantities(out["Hawaii"][hz.ORIGIN],
+                            [out["Hawaii"][h] for h in hz.HORIZONS])
+    assert cq["m0"] == 0.0 and not cq["eligible"]
+    assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0]
+    assert out["Ohio"]["3"] == [30.0, 30.0]
+
+
 def test_a_statusless_workroot_reads_every_cell_as_before(tmp_path):
     """An older workroot with no statuses reads every healthy cell."""
     w = tmp_path / "wr"

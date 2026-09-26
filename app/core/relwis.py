@@ -3,8 +3,13 @@ retro pages, site_page, report_season).
 
 Relative WIS under two conventions that must never be mixed.
 
-Both are correct, answer different questions, and are NOT comparable; nothing
-may put them in one table or let one stand in for the other.
+Both are correct and answer slightly different questions; nothing may put
+them in one table or let one stand in for the other. On the same cells they
+agree closely: exactly when every model covers every cell, and for
+2023-24 to 2025-26 the dashboard's pairwise figure for FluSight-ensemble
+sat 0.002 to 0.018 below its ratio of sums. Most of the gap between a
+figure here and one on the CDC dashboard comes from which weeks each
+scores, not from the convention.
 
 RATIO OF SUMS (`ratio_of_sums`, this project's home convention):
 sum(model WIS) / sum(FluSight-baseline WIS) over the same cells.
@@ -12,14 +17,15 @@ Cell-weighted (a peak week counts more), needs only our own scored cells,
 so it is ALWAYS computable. Every sealed figure uses it.
 
 PAIRWISE SCALED (`pairwise_scaled`, what the CDC dashboard reports; the
-scoringutils / Cramer et al. definition): theta_ij = mean WIS of i / mean
-WIS of j on the cells both submitted; a model's skill is the geometric mean
-of theta_ij over j != i, scaled so FluSight-baseline = 1.0. Mean-weighted
-and field-dependent, and it needs every other team's per-cell WIS, so it
-may be unavailable: `load_field_cells` reports absence as a normal state and
-no caller may substitute the other convention. This is a faithful port of
-the tournament that reproduced the published 2025-26 figures (56 of 57
-models within rounding); do not "improve" it.
+scoringutils get_pairwise_comparisons / Cramer et al. definition):
+theta_ij = mean WIS of i / mean WIS of j on the cells both submitted; a
+model's skill is the geometric mean of theta_ij over EVERY model j in the
+field, itself included (theta_ii = 1), scaled so FluSight-baseline = 1.0.
+Mean-weighted and field-dependent, and it needs every other team's per-cell
+WIS, so it may be unavailable: `load_field_cells` reports absence as a
+normal state and no caller may substitute the other convention. Until
+2026-09-25 the self-pair was left out, which raised the true figure to the
+power M/(M-1) for a field of M models.
 
 THE CELL FRAME. Every function works on one frame, one row per scored cell
 per model, with CELL_COLUMNS (model, reference_date YYYY-MM-DD, location
@@ -50,6 +56,10 @@ from pathlib import Path
 #: The columns a cell frame carries, and the key that identifies a cell.
 CELL_COLUMNS = ("model", "reference_date", "location", "horizon", "wis")
 CELL_KEY = ["reference_date", "location", "horizon"]
+#: optional per-cell columns a seal frame carries when its scores have them
+#: (scoring.METRIC_COLUMNS): log-scale WIS (the baseline rows' too) and our
+#: rows' 0/1 coverage. The field's frames never do; nothing needs them.
+METRIC_EXTRAS = ("log_wis", "cov50", "cov80", "cov95")
 
 #: the denominator under ratio of sums; the 1.0 the pairwise field is scaled to
 BASELINE = "FluSight-baseline"
@@ -81,21 +91,23 @@ CONVENTION_INFO = {
         "short": "pairwise scaled, the CDC dashboard convention",
         "blurb": ("The scoringutils definition the CDC FluSight dashboard "
                   "reports: geometric mean of pairwise mean-WIS ratios on "
-                  "shared cells, scaled so FluSight-baseline is 1.0. "
-                  "Mean-weighted, and dependent on which teams are in the "
-                  "field."),
+                  "shared cells, each model's ratio with itself included, "
+                  "scaled so FluSight-baseline is 1.0. Mean-weighted, and "
+                  "dependent on which teams are in the field."),
         "needs_field": True,
     },
 }
 
 #: THE one sentence printed beside every published relWIS (Jinja global, and
 #: imported by the site and report builders). It names WHICH ratio, since
-#: "a ratio against the baseline" describes both, and warns off the dashboard.
+#: "a ratio against the baseline" describes both, and says how far the
+#: dashboard's figure is from it.
 PUBLISHED_CONVENTION_NOTE = (
     "Every relWIS here is a ratio of sums: total model WIS over total "
     "FluSight-baseline WIS on the same cells. The CDC FluSight dashboard "
-    "reports a different quantity, a pairwise scaled relative WIS, so a "
-    "figure here is not comparable with one there.")
+    "reports a pairwise scaled relative WIS; on the same cells the two agree "
+    "to within about 0.02, and most differences from a dashboard figure "
+    "come from which weeks are scored.")
 
 #: our member keys in the field's naming, so our rows and the hub's share a frame
 SEAL_MODEL_NAMES = {"pf": "FluBNF-PF", "analogue": "FluBNF-analogue",
@@ -203,12 +215,17 @@ def seal_cells(df, models: dict = None):
     ours = d.copy()
     ours["model"] = ours["model"].map(names)
     ours = ours.dropna(subset=["model", "wis"])
-    out = [ours[list(CELL_COLUMNS)]]
+    extras = [c for c in METRIC_EXTRAS if c in d.columns]
+    out = [ours[list(CELL_COLUMNS) + extras]]
     if "base_wis" in d.columns:
         # one baseline row per cell (base_wis repeats beside every member)
         b = d.dropna(subset=["base_wis"]).drop_duplicates(subset=CELL_KEY)
         b = b.assign(model=BASELINE, wis=b["base_wis"])
-        out.append(b[list(CELL_COLUMNS)])
+        cols = list(CELL_COLUMNS)
+        if "log_wis" in extras and "base_log_wis" in d.columns:
+            b = b.assign(log_wis=b["base_log_wis"])
+            cols.append("log_wis")
+        out.append(b[cols])
     return pd.concat(out, ignore_index=True)
 
 
@@ -246,11 +263,16 @@ def pairwise_scaled(cells, field, baseline: str = BASELINE):
 
     `scaled[m]` is m's geometric-mean pairwise relative skill divided by the
     baseline's own, which is what puts FluSight-baseline at exactly 1.0.
+    The mean runs over every model in the field, m itself included (its
+    ratio with itself is 1), as scoringutils get_pairwise_comparisons does;
+    so with every model on every cell, scaled[m] is m's ratio of sums.
     `n_cells[m]` is how many cells m submitted inside this frame, the
     coverage figure that makes a field-dependent number readable.
 
     Pairs with no overlap or non-positive means are skipped, as in the
-    reference implementation.
+    reference implementation. A model with no overlapping pair at all has
+    no figure (nan): scoringutils would report its self-pair alone, 1.0,
+    which compares it with nothing.
     """
     import numpy as np
     if cells is None or not len(cells):
@@ -278,7 +300,9 @@ def pairwise_scaled(cells, field, baseline: str = BASELINE):
             if mi <= 0 or mj <= 0:
                 continue
             logs.append(math.log(mi / mj))
-        theta[name] = math.exp(sum(logs) / len(logs)) if logs else float("nan")
+        # the self-pair (log 1 = 0) joins the mean; alone it compares nothing
+        theta[name] = (math.exp(sum(logs) / (len(logs) + 1)) if logs
+                       else float("nan"))
     b = theta.get(baseline, float("nan"))
     if not (b == b) or b <= 0:          # nan or degenerate: no scaling exists
         return {}, {}
@@ -450,9 +474,15 @@ def _ratio_figures(cells, conv: str, models, names) -> Figures:
 
     Same arithmetic as `ratio_of_sums`, from one baseline join and grouped
     sums (a merge per model per state costs 156 merges per page view).
+    Each `detail[member]` and each state row's `detail[member]` also carry
+    "log_rel" (log-scale relWIS) and "cov" ({"50", "80", "95"} coverage
+    fractions) on the same cells, None when the scores predate them.
     """
+    from app.core.scoring import pooled_metrics
     a = cells[cells["model"] != BASELINE]
-    b = cells[cells["model"] == BASELINE][CELL_KEY + ["wis"]]
+    b = cells[cells["model"] == BASELINE][
+        CELL_KEY + ["wis"] + (["log_wis"] if "log_wis" in cells.columns
+                              else [])]
     if not len(a) or not len(b):
         return _empty(conv, "no cells shared with the FluSight baseline")
     m = a.merge(b, on=CELL_KEY, suffixes=("", "_b"))
@@ -462,6 +492,15 @@ def _ratio_figures(cells, conv: str, models, names) -> Figures:
     mcount = m.groupby("model").size()
     psums = m.groupby(["location", "model"])[["wis", "wis_b"]].sum()
     pcount = m.groupby(["location", "model"]).size()
+    # log-scale relWIS and coverage beside each figure (None when the
+    # scores predate them): scoring.pooled_metrics over the same cells
+    pm = m.rename(columns={"wis_b": "base_wis", "log_wis_b": "base_log_wis"})
+
+    def more(g) -> dict:
+        r = pooled_metrics(g)
+        return {"log_rel": r["log_rel"], "cov": r["cov"]}
+    mmore = {k: more(g) for k, g in pm.groupby("model")}
+    pmore = {k: more(g) for k, g in pm.groupby(["location", "model"])}
 
     def one(sums, counts, key, member):
         name = SEAL_MODEL_NAMES.get(member, member)
@@ -477,7 +516,8 @@ def _ratio_figures(cells, conv: str, models, names) -> Figures:
         v, n = one(msums, mcount, lambda name: name, member)
         if v is not None:
             values[member] = v
-            detail[member] = {"n_cells": n}
+            detail[member] = {"n_cells": n, **mmore.get(
+                SEAL_MODEL_NAMES.get(member, member), {})}
     if not values:
         return _empty(conv, "no cells shared with the FluSight baseline")
     states = []
@@ -487,7 +527,8 @@ def _ratio_figures(cells, conv: str, models, names) -> Figures:
         for member in models:
             v, n = one(psums, pcount, lambda name: (loc, name), member)
             row[member] = v
-            row["detail"][member] = {"n_cells": n}
+            row["detail"][member] = {"n_cells": n, **pmore.get(
+                (loc, SEAL_MODEL_NAMES.get(member, member)), {})}
             hit = hit or v is not None
         if hit:
             states.append(row)

@@ -1362,7 +1362,15 @@ def collect(workroot: Path) -> dict:
                 continue
         origin = tr[:, col]
         med = float(np.median(origin[np.isfinite(origin)]))
-        scale = c["last_observed"] / med if med > 0 else 1.0
+        last = float(c["last_observed"])
+        # The anchor ratio needs a positive count at both ends: a newest week
+        # that reads 0 would make the scale 0 and every sample at every
+        # horizon 0. The filter has already conditioned on that 0 through its
+        # likelihood, so its forecast draws are kept as they are. The origin
+        # block is still pinned to the report (0): the Oracle step's m_0, the
+        # horizon -1 row and the retro map baseline all read it as y_T.
+        scale = last / med if (last > 0 and med > 0) else 1.0
+        origin_scale = scale if last > 0 else 0.0
         # Horizons are AS-OF-relative: with k trimmed weeks the conf asked for
         # pf_forecast_intervals = 4 + k, so horizon h is column col+k+h and
         # the as-of week is col+k. The anchor pair (last_observed, med) is
@@ -1380,7 +1388,7 @@ def collect(workroot: Path) -> dict:
         # submitted row a week early).
         d = by_loc.setdefault(c["location"],
                               {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
-        d[hz.ORIGIN].extend((tr[:, col + k] * scale).tolist())
+        d[hz.ORIGIN].extend((tr[:, col + k] * origin_scale).tolist())
         for h in (1, 2, 3, 4):
             d[str(h - 1)].extend((tr[:, col + k + h] * scale).tolist())
     return by_loc

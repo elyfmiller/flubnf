@@ -49,7 +49,7 @@ APP_ONLY_HEADINGS = {
 APP_TO_REPORT = {
     # (the cumulative chart has no export counterpart)
     "Season player": 'id="pb-scrub"',
-    "Live relWIS": "Live relWIS",
+    "Live scores": "<h2>Live scores</h2>",
     "Per-state scores": "Per-state final scores",
 }
 

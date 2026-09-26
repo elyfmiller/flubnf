@@ -30,6 +30,11 @@
      plotHeight    optional plot height in px (default 400)
      ids           optional DOM id overrides, see DEFAULT_IDS
 
+   The stats table (renderStats) shows, per enabled model, "This week" and
+   "Season so far": relWIS on the natural or log scale (the scale switch,
+   persisted) and 50/80/95% interval coverage; the player writes its head,
+   body, switch and coverage legend, so both hosts show the same table.
+
    Safari-safe: no lookbehind regexes, nothing asynchronous at top level.
    The payload variable is ALWAYS `pl` (a contract test checks the fields
    read against the playback API). */
@@ -79,6 +84,18 @@ function isUS(loc){
 // title/legend/filename text: the US row by its provenance label
 function locLabel(loc, us){
   return isUS(loc) ? usLabel(us) : String(loc);
+}
+
+// the Oracle step skips the national row, so a FITTED US forecast under
+// pf is the plain particle filter. The host's cfg.us.pf_note says so
+// (us_national.PF_US_NOTE, sent only when fitted); it applies only while
+// pf wears the Oracle SIHRS name (a tree without the step already names pf
+// for the filter). US_PF_LABEL, pf's legend entry there, is
+// us_national.PF_US_SHORT without its article (a test holds them equal).
+var US_PF_LABEL = 'Particle filter without the Oracle step';
+function usPfNote(us){
+  return (us && us.pf_note && /Oracle/.test(nameOf('pf')))
+    ? String(us.pf_note) : '';
 }
 
 // one location's entry in a payload map; the national row matches any US
@@ -153,10 +170,13 @@ var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
 // (outside the competition window) keeps a live toggle with this note
 var WEEK_NOTE = ' (no official submission this week)';
 
+// scale and legend are optional hosts for the stats table's scale switch
+// and its coverage legend (the player fills both)
 var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
   speed: 'pb-speed', scrub: 'pb-scrub', week: 'pb-week', loc: 'fd-loc',
   lock: 'fd-lock', models: 'fd-models', plot: 'fd-plot', msg: 'fd-msg',
-  stats: 'pb-stats', status: 'pb-status', offhint: 'pb-offhint'};
+  stats: 'pb-stats', status: 'pb-status', offhint: 'pb-offhint',
+  scale: 'pb-scale', legend: 'pb-legend'};
 
 // the report's fixed dark kit (the console passes its CSS variables).
 // `card` is the explicit chart background so a saved PNG has an opaque ground.
@@ -264,6 +284,180 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
   return 'pending';
 }
 
+function isNum(v){ return typeof v === 'number' && isFinite(v); }
+
+// ------------------------------------------------ stats table: the figures
+
+// the relWIS scale the stats table shows, natural by default; the switch
+// persists per browser (localStorage guarded: file: and private windows)
+var SCALES = ['natural', 'log'];
+var SCALE_KEY = 'flubnf-relwis-scale';
+function readScale(){
+  try{
+    return localStorage.getItem(SCALE_KEY) === 'log' ? 'log' : 'natural';
+  }catch(e){ return 'natural'; }
+}
+function saveScale(s){
+  try{ localStorage.setItem(SCALE_KEY, s); }catch(e){}
+}
+
+// the central intervals whose coverage the table shows, as stats keys
+var COV_BANDS = ['50', '80', '95'];
+// THE coverage reading (report_season.cov_state is the same rule): within
+// covTol(level) points of the interval's level reads ok, further under is
+// too narrow, further over too wide. Judged on the whole percentage
+// printed, so a cell never wears a color its own number contradicts.
+var COV_TOL = 5;
+
+// the ok band at an interval's level: COV_TOL points, or half the room
+// above the level when that is less (2.5 at 95%), so a 95% interval that
+// never misses reads too wide (report_season.cov_tolerance)
+function covTol(nominal){
+  return Math.min(COV_TOL, (100 - nominal) / 2);
+}
+
+// a coverage fraction as a whole percentage, or null
+function covPct(v){
+  return isNum(v) ? Math.round(100 * v) : null;
+}
+
+// 'ok' | 'low' (too narrow) | 'wide' (too wide) | '' (no figure)
+function covState(v, nominal){
+  var p = covPct(v);
+  if(p === null) return '';
+  var tol = covTol(nominal);
+  if(p < nominal - tol) return 'low';
+  if(p > nominal + tol) return 'wide';
+  return 'ok';
+}
+
+// one model's figures for the two table groups, read through the stats
+// contract's own keys (app/core/playback.py THE STATS CONTRACT): `rel`
+// decides whether the period has a score at all, `shown` is the relWIS on
+// the chosen scale (null when the scores predate the log scale)
+function statView(st, scale){
+  var log = scale === 'log';
+  if(!st) st = {};
+  return {
+    week: {rel: st.week_rel, shown: log ? st.week_log_rel : st.week_rel,
+           cov: st.week_cov || null, n: st.week_n},
+    cum: {rel: st.cum_rel, shown: log ? st.cum_log_rel : st.cum_rel,
+          cov: st.cum_cov || null, n: st.cum_n}};
+}
+
+// the table's two-row head: the model column, then "This week" and
+// "Season so far", each over relWIS (on the chosen scale) and coverage.
+// Stacked (a card too narrow for the two side by side, e.g. a phone): one
+// row, the model column over the four figures; statsBody then gives each
+// period its own heading row, "This week" above "Season so far"
+var PERIOD_LABELS = {week: 'This week', cum: 'Season so far'};
+function statsHead(scale, stacked){
+  var rel = scale === 'log' ? 'log relWIS' : 'relWIS';
+  var sub = '<th class="num g1" scope="col">' + rel + '</th>'
+    + COV_BANDS.map(function(b){
+        return '<th class="num" scope="col" title="share of scored cells '
+          + 'inside the central ' + b + '% interval">' + b + '%</th>';
+      }).join('');
+  if(stacked)
+    return '<tr><th scope="col" class="mname">Model</th>' + sub + '</tr>';
+  return '<tr><th rowspan="2" scope="col" class="mname">Model</th>'
+    + '<th colspan="4" scope="colgroup" class="grp g1">'
+    + PERIOD_LABELS.week + '</th>'
+    + '<th colspan="4" scope="colgroup" class="grp g1">'
+    + PERIOD_LABELS.cum + '</th></tr><tr>' + sub + sub + '</tr>';
+}
+
+// the table's columns in each layout: the model, then 4 per period shown
+function statsCols(stacked){
+  return stacked ? 5 : 9;
+}
+
+// the table body from one entry per enabled model ({name: its name cell,
+// week and cum: periodCells, debug: text or ''}). Wide: a row per model.
+// Stacked: a heading row per period, then a row per model under it; a
+// model's debug line follows its season row
+function statsBody(rows, stacked){
+  var n = statsCols(stacked);
+  var dbg = function(r){
+    return r.debug
+      ? '<tr><td colspan="' + n + '" class="hint" '
+        + 'style="font-size:.78rem;white-space:normal">'
+        + String(r.debug).replace(/</g, '&lt;') + '</td></tr>'
+      : '';
+  };
+  if(!rows.length)
+    return '<tr><td colspan="' + n + '" class="hint">no models enabled'
+      + '</td></tr>';
+  if(!stacked)
+    return rows.map(function(r){
+      return '<tr>' + r.name + r.week + r.cum + '</tr>' + dbg(r);
+    }).join('');
+  return ['week', 'cum'].map(function(p){
+    return '<tr><th colspan="' + n + '" scope="colgroup" class="grp">'
+      + PERIOD_LABELS[p] + '</th></tr>'
+      + rows.map(function(r){
+          return '<tr>' + r.name + r[p] + '</tr>' + (p === 'cum' ? dbg(r) : '');
+        }).join('');
+  }).join('');
+}
+
+// "4,812 scored cells", for a figure's tooltip
+function cellsNote(n){
+  if(!isNum(n)) return '';
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    + ' scored cell' + (n === 1 ? '' : 's');
+}
+
+// one period's four cells: relWIS on the chosen scale, then 50/80/95%
+// coverage. `state` is the period's reading (weekCellState); without a
+// score the period is ONE cell across its group, "pending" or "no
+// submission", and a missing coverage figure is a dash
+function periodCells(p, state, scale){
+  if(state !== 'score')
+    return '<td colspan="4" class="num hint gap g1">'
+      + (state === 'nosub' ? 'no submission' : 'pending') + '</td>';
+  var cells = cellsNote(p.n);
+  var what = scale === 'log' ? 'log-scale relWIS' : 'relWIS';
+  var rel = isNum(p.shown)
+    ? '<td class="num g1 ' + (p.shown < 1 ? 'ok' : 'bad') + '" title="'
+      + what + (cells ? ' over ' + cells : '') + '">'
+      + p.shown.toFixed(3) + '</td>'
+    : '<td class="num hint g1" title="' + what + ' is not available for '
+      + 'these scores">–</td>';
+  return rel + COV_BANDS.map(function(b){
+    var v = p.cov ? p.cov[b] : null, pc = covPct(v);
+    if(pc === null)
+      return '<td class="num hint" title="coverage is not available for '
+        + 'these scores">–</td>';
+    return '<td class="num cov-' + covState(v, +b) + '" title="' + pc
+      + '% of ' + (cells || 'the scored cells') + ' inside the central '
+      + b + '% interval">' + pc + '%</td>';
+  }).join('');
+}
+
+// the legend line under the table: what each coverage color means
+// (report_season.COV_LEGEND, the same line under the verdict tiles)
+function covLegend(){
+  return 'Coverage color: <span class="cov-ok">within ' + COV_TOL
+    + ' points of nominal (' + covTol(95) + ' at 95%)</span> · '
+    + '<span class="cov-low">further under (too narrow)</span> · '
+    + '<span class="cov-wide">further over (too wide)</span>.';
+}
+
+// the scale switch: a label, two aria-pressed buttons, the one-line hint
+function scaleSwitch(scale){
+  return '<span class="hint" id="pb-scale-l">relWIS scale</span>'
+    + '<span class="seg" role="group" aria-labelledby="pb-scale-l">'
+    + SCALES.map(function(s){
+        var on = s === scale;
+        return '<button type="button" data-scale="' + s + '"'
+          + (on ? ' class="gold"' : '') + ' aria-pressed="' + on + '">'
+          + s + '</button>';
+      }).join('')
+    + '</span><span class="hint">The CDC FluSight dashboard reports '
+    + 'both.</span>';
+}
+
 // models offered, in display order: the ones that ship. A stored season's
 // retired blend is never offered (report_v2.RETIRED_MODELS is the same set)
 var RETIRED_MODELS = ['ensemble'];
@@ -311,7 +505,7 @@ function createPlayer(cfg){
   var P = {idx: (el.scrub && +el.scrub.value) || 0, playing: false,
            timer: null, loc: null, built: false, on: {}, pl: null,
            user: {x: null, y: null}, bound: false, applying: false,
-           suppress: false};
+           suppress: false, scale: readScale()};
   var ALLM = [], OFFS = OFFICIALS.slice();
 
   // season-level official availability: seeded from the host, then grown
@@ -401,43 +595,84 @@ function createPlayer(cfg){
     });
   }
 
-  // ---- live stats table: per enabled model, this week and cumulative ----
+  // ---- the stats table's head, scale switch and legend: written once,
+  // the head again whenever the scale changes ----
+  function paintStatsFrame(){
+    var th = el.stats.querySelector('thead');
+    if(!th){
+      th = document.createElement('thead');
+      el.stats.insertBefore(th, el.stats.firstChild);
+    }
+    th.innerHTML = statsHead(P.scale, el.stats.classList.contains('stacked'));
+    if(el.scale){
+      el.scale.innerHTML = scaleSwitch(P.scale);
+      el.scale.querySelectorAll('button[data-scale]').forEach(function(b){
+        b.addEventListener('click', function(){
+          if(P.scale === b.dataset.scale) return;
+          P.scale = b.dataset.scale;
+          saveScale(P.scale);
+          paintStatsFrame();
+          if(P.pl) renderStats(P.pl);   // else the next payload paints it
+        });
+      });
+    }
+    if(el.legend) el.legend.innerHTML = covLegend();
+  }
+
+  // ---- the table itself from the last rendered entries: the wide layout
+  // unless its card cannot show it whole (a phone), then stacked. Drawn
+  // wide, measured against its scroll box, redrawn stacked when it
+  // overflows; a hidden box (width 0) keeps the wide layout ----
+  function drawStatsTable(){
+    var th = el.stats.querySelector('thead');
+    var tb = el.stats.querySelector('tbody');
+    var box = el.stats.parentNode;
+    var rows = P.statRows || [];
+    var draw = function(stacked){
+      el.stats.classList.toggle('stacked', stacked);
+      if(th) th.innerHTML = statsHead(P.scale, stacked);
+      tb.innerHTML = statsBody(rows, stacked);
+    };
+    draw(false);
+    if(box && box.clientWidth && box.scrollWidth > box.clientWidth + 1)
+      draw(true);
+  }
+  // a resize can cross the fit either way
+  var statsResize = null;
+  window.addEventListener('resize', function(){
+    clearTimeout(statsResize);
+    statsResize = setTimeout(function(){
+      if(P.statRows) drawStatsTable();
+    }, 150);
+  });
+
+  // ---- live stats table: per enabled model, relWIS and coverage for this
+  // week and for the season so far ----
   function renderStats(pl){
     P.pl = pl || null;
     if(pl) buildControls(pl);
     updateAvailability(pl);
-    var tb = el.stats.querySelector('tbody');
-    // a missing score reads "pending", never NaN
-    var fmt = function(v){
-      return (typeof v === 'number' && isFinite(v))
-        ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
-          + v.toFixed(3) + '</td>'
-        : '<td class="num hint">pending</td>';
-    };
-    // only the week cell distinguishes the blanks; the cumulative cell keeps
-    // its running number through gap weeks
+    // only the week group distinguishes the blanks; the season group keeps
+    // its running figures through gap weeks. A missing score reads
+    // "pending", never NaN.
     var av = pl ? officialAvailability(pl, OFFS) : null;
-    var weekCell = function(v, m){
-      var s = weekCellState(v, OFFS.indexOf(m) >= 0, !!av,
-                            !!(av && av[m]), !!seasonOffs[m]);
-      return s === 'nosub' ? '<td class="num hint">no submission</td>'
-                           : fmt(s === 'score' ? v : null);
-    };
     var rows = [];
     ALLM.forEach(function(m){
       if(!P.on[m]) return;
       var st = pl && pl.stats ? pl.stats[m] : null;
-      var dbg = (st && st.debug)
-        ? '<tr><td colspan="3" class="hint" style="font-size:.78rem">'
-          + String(st.debug).replace(/</g, '&lt;') + '</td></tr>'
-        : '';
-      rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-        + '"></span>' + nameOf(m) + '</td>'
-        + weekCell(st ? st.week_rel : null, m)
-        + fmt(st ? st.cum_rel : null) + '</tr>' + dbg);
+      var sv = statView(st, P.scale);
+      var wk = weekCellState(sv.week.rel, OFFS.indexOf(m) >= 0, !!av,
+                             !!(av && av[m]), !!seasonOffs[m]);
+      var cum = isNum(sv.cum.rel) ? 'score' : 'pending';
+      rows.push({
+        name: '<td class="mname"><span class="sw" style="background:'
+          + colorOf(m) + '"></span>' + nameOf(m) + '</td>',
+        week: periodCells(sv.week, wk, P.scale),
+        cum: periodCells(sv.cum, cum, P.scale),
+        debug: (st && st.debug) ? st.debug : ''});
     });
-    tb.innerHTML = rows.join('')
-      || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
+    P.statRows = rows;
+    drawStatsTable();
     el.status.textContent =
       pl ? '' : failMsg(weeks[P.idx], 'stats unavailable for this week');
     // the panel-wide Update-data hint only for a season with NO official
@@ -447,8 +682,9 @@ function createPlayer(cfg){
         || Object.keys(seasonOffs).length > 0;
   }
 
-  // ---- forecast fan for one model: median plus 50% and 90% bands ----
-  function fan(m, byH, w, ax, ay){
+  // ---- forecast fan for one model: median plus 50% and 90% bands;
+  // `label` names the legend entry (default: the model's name) ----
+  function fan(m, byH, w, ax, ay, label){
     var hs = Object.keys(byH)
       .filter(function(h){ return /^[1-4]$/.test(h); }).sort();
     if(!hs.length) return [];
@@ -481,7 +717,8 @@ function createPlayer(cfg){
       band(hi95, lo5, official ? .05 : .10);
       band(hi75, lo25, official ? .08 : .18);
     }
-    out.push({x: X, y: pad(med), mode: 'lines+markers', name: nameOf(m),
+    out.push({x: X, y: pad(med), mode: 'lines+markers',
+      name: label || nameOf(m),
       line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
       legendgroup: m});
     return out;
@@ -547,6 +784,8 @@ function createPlayer(cfg){
       var ax = pastX.length ? pastX[pastX.length - 1] : null;
       var ay = pastY.length ? pastY[pastY.length - 1] : null;
       var traces = [], avail = 0, drawn = 0;
+      // a fitted US pf fan is the plain filter: its legend entry says so
+      var pfNote = isUS(loc) ? usPfNote(cfg.us) : '', pfDrawn = false;
       ALLM.forEach(function(m){
         var src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
                                        : (pl.models || {})[m];
@@ -555,10 +794,14 @@ function createPlayer(cfg){
         avail++;
         if(!P.on[m]) return;
         drawn++;
-        fan(m, byH, w, ax, ay).forEach(function(t){ traces.push(t); });
+        var lab = (m === 'pf' && pfNote) ? US_PF_LABEL : '';
+        if(lab) pfDrawn = true;
+        fan(m, byH, w, ax, ay, lab).forEach(function(t){ traces.push(t); });
       });
-      // an empty frame says WHY instead of standing as bare axes
-      el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us);
+      // an empty frame says WHY instead of standing as bare axes; a drawn
+      // US pf fan carries the note on what it is
+      el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us)
+        || (pfDrawn ? pfNote : '');
       // truth drawn last (on top); the tail beyond now stays visible
       var p = pal();
       if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
@@ -699,6 +942,7 @@ function createPlayer(cfg){
   });
 
   labelPlay(false);      // the initial, paused state names itself correctly
+  paintStatsFrame();     // the table head and its switch before any payload
 
   // the static host passes the catalog; the live host builds on first payload
   if(cfg.catalog) buildControls(null);
@@ -728,6 +972,21 @@ var FluBNFPlayer = {
     WEEK_NOTE: WEEK_NOTE,
     availabilityTier: availabilityTier,
     weekCellState: weekCellState,
+    COV_BANDS: COV_BANDS,
+    COV_TOL: COV_TOL,
+    covPct: covPct,
+    covState: covState,
+    statView: statView,
+    statsHead: statsHead,
+    statsCols: statsCols,
+    statsBody: statsBody,
+    covTol: covTol,
+    periodCells: periodCells,
+    covLegend: covLegend,
+    scaleSwitch: scaleSwitch,
+    SCALES: SCALES,
+    US_PF_LABEL: US_PF_LABEL,
+    usPfNote: usPfNote,
     noForecastNote: noForecastNote,
     offeredModels: offeredModels,
     RETIRED_MODELS: RETIRED_MODELS,

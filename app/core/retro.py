@@ -10,7 +10,10 @@ Engineering rules:
   * members: pf (seeded, replicated) + analogue, each scored on its own. The
     analogue runs as the Groundhog by default (engines/analogue.SHIPPED_AUX in
     every week's spec unless `week_extra` overrides; named in run_meta.json).
+    Both are stored through the console's output floor (app/core/floor.py).
     Older scores.json files may carry retired "ensemble" rows.
+  * SCORED by FluSight's cell rule (scoring.cell_scored), with log-scale WIS
+    and 50/80/95 coverage beside WIS (score_season; SCORES_V).
   * PF cells sharded across N runner subprocesses (entry-point files, never
     stdin: the macOS spawn rule).
   * CONTROLLABLE: STOP and PAUSE files in the season root are polled between
@@ -47,6 +50,8 @@ from app.core import missing as MS                   # noqa: E402
 from app.core import oracle as oracle_mod             # noqa: E402
 from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
+from app.core.floor import (floor_quantiles, floor_samples,  # noqa: E402
+                            recent_observed)
 from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
                            RunSpec, locations_phrase)
 
@@ -567,6 +572,10 @@ def settings_summary(meta: dict) -> list:
                           _knobs.label(_knobs.from_record(s["knobs"]))))
         except Exception:
             pairs.append(("model settings", "modified (unreadable record)"))
+    # whether the stored weeks went through the output floor (absent from
+    # the record: stored before replays applied it)
+    pairs.append(("output floor", str(s.get("output_floor")
+                                      or FLOOR_NOT_RECORDED)))
     # the newest weeks a missing-data rule treated as unreported, counted
     # (the rows stay in the record's data_flags); absent when no rule is on
     pairs.append(("flagged weeks",
@@ -991,12 +1000,31 @@ def pf_ran(engine) -> bool:
     return str(engine or "pf") != "analogue"
 
 
+def _floor_recent(spec, locations: list, drop_same_day: bool) -> dict:
+    """The observations the output floor's adaptive rate reads, per location,
+    from the week's own vintage (floor.recent_observed, as the console
+    builds them); {} when the file cannot be read (the floor then keeps its
+    default rate everywhere)."""
+    from app.core import data as _data
+    try:
+        path, _kind = _data.spec_source(spec)
+        return recent_observed(path, locations, spec.forecast_date,
+                               drop_same_day=drop_same_day)
+    except Exception:
+        return {}
+
+
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
              width: int = pf_engine.DEFAULT_SHARD_WIDTH,
              drop_same_day: bool = False,
              extra: dict | None = None, engine: str = "pf") -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
+
+    Both members are stored through the console's output floor
+    (app/core/floor.py, the default rate; the pf after the Oracle step,
+    with the week's recent observations for the adaptive rate), so a
+    replay scores what a submission would carry.
 
     `extra` is the spec's research dictionary (seed_anchor,
     continue_states, save_states; see pf_engine.continuation_for), recorded
@@ -1047,7 +1075,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         manifest["engine"] = "analogue"
         wd.mkdir(parents=True, exist_ok=True)
         (wd / "manifest.json").write_text(json.dumps(manifest, indent=1))
-        an_q = an_engine.run(spec, **an_kw)
+        an_q = {loc: floor_quantiles(q)
+                for loc, q in an_engine.run(spec, **an_kw).items()}
         out = {"asof": asof,
                "analogue": {loc: {h: {str(k): v for k, v in q.items()}
                                   for h, q in qs.items()}
@@ -1091,12 +1120,19 @@ def run_week(root: Path, season: str, asof: str, locations: list,
             pf_samples, asof, wd, extra=extra,
             weeks_to_drop=int(spec.weeks_to_drop or 0),
             drop_same_day=bool(drop_same_day))
-        stored = {"pf": member}
     else:
         oracle_mod.write_not_applied(
             wd, asof, "the replay asked for the plain filter (oracle = none)")
-        stored = {"pf": pf_samples}
-    an_q = an_engine.run(spec, **an_kw)
+        member = pf_samples
+    # the output floor after the Oracle step, as the console applies it
+    # (app/core/floor.py, the default rate): the stored week is what a
+    # submission would carry, never a point mass
+    recent = _floor_recent(spec, locations, drop_same_day)
+    stored = {"pf": {loc: floor_samples(s, loc, asof,
+                                        recent=recent.get(loc, []))
+                     for loc, s in member.items()}}
+    an_q = {loc: floor_quantiles(q)
+            for loc, q in an_engine.run(spec, **an_kw).items()}
     out = {"asof": asof,
            **stored,
            "analogue": {loc: {h: {str(k): v for k, v in q.items()}
@@ -1117,6 +1153,17 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         except Exception:
             pass
     return out
+
+
+#: settings.output_floor in a season's run record: every week was stored
+#: through the output floor (run_week). A season whose record lacks the key
+#: was stored unfloored, before replays applied it (2026-09-25).
+FLOOR_APPLIED = "applied"
+#: ...or a season started unfloored and resumed after the change
+FLOOR_FROM_RESUME = ("applied to the weeks stored from a resume on; the "
+                     "weeks stored before it are unfloored")
+#: what the settings list says for a record without the key
+FLOOR_NOT_RECORDED = "not applied (stored before replays applied it)"
 
 
 def run_season(root: Path, season: str, locations: list, replicates=3,
@@ -1211,6 +1258,15 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             # reclassified as modified by the resume
             rec.pop("knobs", None)
             rec.pop("knobs_digest", None)
+    # the output floor run_week applies, recorded so a season stored before
+    # replays applied it (no such key) can be told apart; a resume of one
+    # says which of its weeks carry it
+    if _weeks_on_disk(root):
+        prior_floor = ((read_meta(root) or {}).get("settings")
+                       or {}).get("output_floor")
+        rec["output_floor"] = prior_floor or FLOOR_FROM_RESUME
+    else:
+        rec["output_floor"] = FLOOR_APPLIED
     _start_record(root, season, len(vintages), rec)
     beat = _Heartbeat(root)
     beat.start()
@@ -1274,14 +1330,52 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     return done
 
 
+#: scores.json's version, stored in every row's SCORES_V_COLUMN. 2: the
+#: FluSight cell rule (scoring.cell_scored: truth of 0 and a median of 0
+#: scored) with log-scale WIS and 50/80/95 coverage per row. A file without
+#: it (version 1: truth > 0 and median > 0, no such columns) is not current,
+#: so finalize_season rescores a live root; a sealed root keeps its file and
+#: every reader of the new columns treats them as absent.
+SCORES_V = 2
+SCORES_V_COLUMN = "scores_v"
+
+
+def scores_version(df) -> int:
+    """The version a parsed scores frame was written under (1 for a file
+    from before the version column; 0 for no frame)."""
+    if df is None:
+        return 0
+    if SCORES_V_COLUMN not in getattr(df, "columns", ()) or not len(df):
+        return 1
+    try:
+        return int(pd.to_numeric(df[SCORES_V_COLUMN], errors="coerce").min())
+    except (TypeError, ValueError):
+        return 1
+
+
+def scores_frame_current(df) -> bool:
+    """Whether a parsed scores frame is this version's: the version column
+    says so, or the frame has no rows (an empty file scores nothing under
+    either rule, and is rescored while unscoreable anyway)."""
+    if df is None:
+        return False
+    if not len(df):
+        return True
+    return scores_version(df) >= SCORES_V
+
+
 def score_season(root: Path, season: str) -> pd.DataFrame:
     """Score every stored week vs settled truth: one row per (member,
-    location, as-of, horizon), pf and analogue. Nothing is blended (older
-    files' "ensemble" rows are not reproduced by a rescore)."""
-    from app.core.scoring import _baseline_cells, load_truth
-    from flubnf.wis import wis as wis_fn
+    location, as-of, horizon), pf and analogue, under THE cell rule
+    (scoring.cell_scored) with the per-cell metrics (scoring.cell_metrics)
+    and the baseline's WIS and log-scale WIS on the same cell. Nothing is
+    blended (older files' "ensemble" rows are not reproduced by a rescore).
+
+    Columns: model, location, fips, asof, horizon, wis, log_wis, cov50,
+    cov80, cov95 (0/1), base_wis, base_log_wis, rel, scores_v."""
+    from app.core import scoring
     from datetime import timedelta
-    truth, n2f = load_truth()
+    truth, n2f = scoring.load_truth()
     rows = []
     for wk in season_sample_files(root):
         asof = wk.parent.name; T = pd.Timestamp(asof)
@@ -1295,38 +1389,42 @@ def score_season(root: Path, season: str) -> pd.DataFrame:
                               ("analogue", an_all.get(loc, {}))):
                 for h in hz.HORIZONS:
                     q = qs.get(h)
-                    if not q:
-                        continue
                     # canonical horizon h is h+1 weeks past the as-of
                     actual = truth.get(
                         (fips, T + timedelta(days=7 * (int(h) + 1))))
-                    if actual is None or actual <= 0 or q[0.5] <= 0:
+                    # the rule's truth and forecast halves; the baseline
+                    # half is the join below
+                    if not (scoring.truth_settled(actual)
+                            and scoring.forecast_scoreable(q)):
                         continue
-                    try:
-                        w = float(wis_fn(q, actual).wis)
-                    except Exception:
+                    m = scoring.cell_metrics(q, actual)
+                    if m is None:
                         continue
                     rows.append({"model": model, "location": loc, "fips": fips,
-                                 "asof": asof, "horizon": int(h), "wis": w})
+                                 "asof": asof, "horizon": int(h), **m})
     df = pd.DataFrame(rows)
     if df.empty:
         return df
     # baseline per asof (the validated construction)
-    bases = {}
+    bases, lbases = {}, {}
     for asof in df["asof"].unique():
-        bs = _baseline_cells(asof, set(df[df["asof"] == asof].fips), truth)
-        for k, v in bs.items():
-            bases[k] = v
+        fips_set = set(df[df["asof"] == asof].fips)
+        bases.update(scoring._baseline_cells(asof, fips_set, truth))
+        lbases.update(scoring._baseline_log_cells(asof, fips_set, truth))
     df["base_wis"] = [bases.get((r.fips, r.asof, r.horizon), np.nan)
                       for r in df.itertuples()]
+    df["base_log_wis"] = [lbases.get((r.fips, r.asof, r.horizon), np.nan)
+                          for r in df.itertuples()]
     df = df.dropna(subset=["base_wis"])
     df["rel"] = df.wis / df.base_wis
+    df[SCORES_V_COLUMN] = SCORES_V
     return df
 
 
 #: bump when the aggregate's construction or cached shape changes
-#: (v2: a fitted US block is excluded from the sum; v3: no blend row)
-NATIONAL_CACHE_V = 3
+#: (v2: a fitted US block is excluded from the sum; v3: no blend row;
+#: v4: the FluSight cell rule, log-scale relWIS and coverage per member)
+NATIONAL_CACHE_V = 4
 
 #: the analogue's national Monte Carlo draws, matching the PF's 3 x 10k
 _NATIONAL_DRAWS = 30_000
@@ -1342,16 +1440,19 @@ def national_aggregate(root: Path) -> dict | None:
         draws summed across states and re-quantiled.
 
     Scored per (week, horizon) against the hub's US truth like
-    score_season (same guards and baseline). Expensive, so cached in
+    score_season (the same cell rule and baseline). Expensive, so cached in
     playback_cache/us_aggregate.json keyed by _national_cache_key; the
     last computation's cost rides along as `seconds`.
+
+    Returns {member: relWIS, "cells": {member: n}, "log_rel": {member:
+    log-scale relWIS}, "cov": {member: {"50", "80", "95"}}, "weeks",
+    "seconds"} (scoring.pooled_metrics over the member's national cells).
     """
     import zlib
     from datetime import timedelta
-    from app.core.scoring import _baseline_cells, load_truth
+    from app.core import scoring
     from app.core import us_national as usn
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
-    from flubnf.wis import wis as wis_fn
     root = Path(root)
     wks = season_sample_files(root)
     if not wks:
@@ -1365,9 +1466,9 @@ def national_aggregate(root: Path) -> dict | None:
     except Exception:
         pass
     t0 = time.monotonic()
-    truth, _n2f = load_truth()
+    truth, _n2f = scoring.load_truth()
     levels = [float(L) for L in QL]
-    rows = []                       # (model, asof, horizon 0-based, wis)
+    rows = []                       # (model, asof, horizon 0-based, metrics)
     for wp in wks:
         d = read_samples(wp)
         asof = d["asof"]
@@ -1413,31 +1514,33 @@ def national_aggregate(root: Path) -> dict | None:
         for model, qs in (("pf", pf_nat), ("analogue", an_nat)):
             for h in hz.HORIZONS:
                 q = qs.get(h)
-                if not q:
-                    continue
                 actual = truth.get(
                     ("US", T + timedelta(days=7 * (int(h) + 1))))
-                # the same degenerate-cell guards as score_season
-                if actual is None or actual <= 0 or q[0.5] <= 0:
+                # the same cell rule as score_season (baseline half below)
+                if not (scoring.truth_settled(actual)
+                        and scoring.forecast_scoreable(q)):
                     continue
-                try:
-                    w = float(wis_fn(q, actual).wis)
-                except Exception:
+                m = scoring.cell_metrics(q, actual)
+                if m is None:
                     continue
-                rows.append((model, asof, int(h), w))
-    bases = {}
+                rows.append((model, asof, int(h), m))
+    bases, lbases = {}, {}
     for asof in {r[1] for r in rows}:
-        for k, v in _baseline_cells(asof, {"US"}, truth).items():
-            bases[k] = v
-    result = {"cells": {}, "weeks": len(wks)}
+        bases.update(scoring._baseline_cells(asof, {"US"}, truth))
+        lbases.update(scoring._baseline_log_cells(asof, {"US"}, truth))
+    result = {"cells": {}, "weeks": len(wks), "log_rel": {}, "cov": {}}
     for model in ("pf", "analogue"):
-        cells = [(w, bases.get(("US", asof, h)))
-                 for m, asof, h, w in rows if m == model]
-        cells = [(w, b) for w, b in cells if b]
+        cells = [{**m, "base_wis": bases.get(("US", asof, h)),
+                  "base_log_wis": lbases.get(("US", asof, h), np.nan)}
+                 for mm, asof, h, m in rows if mm == model]
+        cells = [c for c in cells if c["base_wis"] is not None]
         if cells:
-            result[model] = (sum(w for w, _ in cells)
-                             / sum(b for _, b in cells))
-            result["cells"][model] = len(cells)
+            pm = scoring.pooled_metrics(pd.DataFrame(cells))
+            if pm["rel"] is not None:
+                result[model] = pm["rel"]
+            result["cells"][model] = pm["n"]
+            result["log_rel"][model] = pm["log_rel"]
+            result["cov"][model] = pm["cov"]
     result["seconds"] = round(time.monotonic() - t0, 1)
     # atomic; an unwritable tree (sealed, read-only) just recomputes next time
     try:
@@ -1476,8 +1579,10 @@ def national_aggregate_fresh(root: Path) -> bool:
 
 
 def scores_current(root: Path) -> bool:
-    """Whether scores.json exists, parses, and is newer than every stored
-    week and the truth (see scores_scoreable for whether it has rows)."""
+    """Whether scores.json exists, parses, is this SCORES_V's (a file
+    scored under the earlier cell rule is not), and is newer than every
+    stored week and the truth (see scores_scoreable for whether it has
+    rows)."""
     root = Path(root)
     sf = root / "scores.json"
     weeks = season_sample_files(root)
@@ -1490,8 +1595,7 @@ def scores_current(root: Path) -> bool:
         if sf.stat().st_mtime < max([p.stat().st_mtime for p in weeks]
                                     + [truth_mtime()]):
             return False           # older than a sample, or than the truth
-        pd.read_json(sf)
-        return True
+        return scores_frame_current(pd.read_json(sf))
     except Exception:
         return False
 
@@ -1671,37 +1775,75 @@ def list_archive_dirs(retro_root: Path, season: str) -> list:
 HEADLINE_MODELS = ("pf", "analogue")
 
 
+def _headline_metrics(scores_path: Path) -> dict:
+    """{model: scoring.pooled_metrics} for every HEADLINE_MODELS entry a
+    stored scores.json scores; {} when the file is absent or empty.
+
+    Pooled, through us_national.pooled_frame (US rows never count)."""
+    from app.core import us_national as usn
+    from app.core.scoring import pooled_metrics
+    try:
+        df = pd.read_json(scores_path)
+    except Exception:
+        return {}
+    if df.empty or "model" not in df.columns:
+        return {}
+    df = usn.pooled_frame(df)
+    out = {}
+    for m in HEADLINE_MODELS:
+        pm = pooled_metrics(df[df.model == m])
+        if pm["rel"] is not None:
+            out[m] = pm
+    return out
+
+
 def _headline_rels(scores_path: Path) -> dict:
     """{model: pooled relWIS} for every HEADLINE_MODELS entry a stored
     scores.json covers; {} when the file is absent or empty."""
-    return {m: r for m in HEADLINE_MODELS
-            if (r := _headline_rel(scores_path, m)) is not None}
+    return {m: pm["rel"] for m, pm in _headline_metrics(scores_path).items()}
 
 
 def _headline_rel(scores_path: Path, model: str = "pf"):
     """Pooled relWIS for one model from a stored scores.json, or None when
-    the file is absent, empty, or does not cover the model.
+    the file is absent, empty, or does not cover the model."""
+    return (_headline_metrics(scores_path).get(model) or {}).get("rel")
 
-    Pooled, through us_national.pooled_frame (US rows never count)."""
+
+def state_metrics(df, models=HEADLINE_MODELS) -> dict:
+    """Per-jurisdiction final scores from a scores frame: {location: {model:
+    scoring.pooled_metrics}} ("rel", "log_rel", "cov" {"50", "80", "95"},
+    "n"), US rows left out (us_national.pooled_frame; the national row is
+    us_national.resolve's). A location a model did not score is absent from
+    its dict; log_rel and cov are None for a file from before them."""
     from app.core import us_national as usn
-    try:
-        df = pd.read_json(scores_path)
-        if df.empty or "model" not in df.columns:
-            return None
-        df = usn.pooled_frame(df)
-        g = df[df.model == model]
-        base = float(g.base_wis.sum()) if len(g) else 0.0
-        return float(g.wis.sum() / base) if base else None
-    except Exception:
-        return None
+    from app.core.scoring import pooled_metrics
+    if df is None or "model" not in getattr(df, "columns", ()) \
+            or "location" not in df.columns:
+        return {}
+    df = usn.pooled_frame(df)
+    out: dict = {}
+    for (loc, m), g in df[df.model.isin(list(models))].groupby(
+            ["location", "model"], sort=True):
+        pm = pooled_metrics(g)
+        if pm["rel"] is not None:
+            out.setdefault(str(loc), {})[m] = pm
+    return out
 
 
 def run_summary(root: Path) -> dict:
     """What one run -- live or archived -- amounts to: completed weeks, wall
-    time, when it ran, whether it was scored, and its headline relWIS per
-    model (`headline_rels`, PF first; `headline_rel` is the first of them).
+    time, when it ran, whether it was scored, and its headline figures per
+    model, pooled over the jurisdictions (US excluded), PF first:
 
-    Every field degrades to None or 0 rather than raising."""
+      headline_rels      {model: relWIS}; `headline_rel` is the first
+      headline_log_rels  {model: log-scale relWIS, or None}
+      headline_covs      {model: {"50", "80", "95"} coverage fractions, or
+                         None}
+      headline_ns        {model: scored cells}
+
+    A scores.json from before the log-scale and coverage columns (a sealed
+    root) gives None for those. Every field degrades to None or 0 rather
+    than raising."""
     root = Path(root)
     meta = read_meta(root)
     t = timing(meta) if meta else {}
@@ -1711,14 +1853,15 @@ def run_summary(root: Path) -> dict:
     key = ((sf.stat().st_mtime if scored else None), weeks)
     hit = _SUMMARY_CACHE.get(str(root))
     if hit is not None and hit[0] == key:
-        rels = hit[1]
+        heads = hit[1]
         _SUMMARY_CACHE.move_to_end(str(root))     # least-recently-used
     else:
-        rels = _headline_rels(sf) if scored else {}
-        _SUMMARY_CACHE[str(root)] = (key, rels)
+        heads = _headline_metrics(sf) if scored else {}
+        _SUMMARY_CACHE[str(root)] = (key, heads)
         _SUMMARY_CACHE.move_to_end(str(root))
         while len(_SUMMARY_CACHE) > _SUMMARY_CACHE_MAX:
             _SUMMARY_CACHE.popitem(last=False)
+    rels = {m: pm["rel"] for m, pm in heads.items()}
     return {"weeks": weeks,
             "elapsed_s": t.get("elapsed_s"),
             "started_utc": t.get("started_utc"),
@@ -1727,7 +1870,11 @@ def run_summary(root: Path) -> dict:
             "scored": scored,
             # first in HEADLINE_MODELS order that the file covers
             "headline_rel": next(iter(rels.values()), None),
-            "headline_rels": dict(rels)}
+            "headline_rels": rels,
+            "headline_log_rels": {m: pm["log_rel"] for m, pm in heads.items()},
+            "headline_covs": {m: (dict(pm["cov"]) if pm["cov"] else None)
+                              for m, pm in heads.items()},
+            "headline_ns": {m: pm["n"] for m, pm in heads.items()}}
 
 
 def dir_size(path: Path) -> int:

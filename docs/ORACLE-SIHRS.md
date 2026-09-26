@@ -156,9 +156,12 @@ the way a live week is made: the Retrospective tab, a season, the preset
 week (`app.core.retro.run_season` -> `run_week`) the particle filter is
 fitted from the season start (August 1) through that as-of week on that
 week's vintage, the Oracle step is applied with that week's vintage and
-donor pool, and the week is stored with oracle.json beside it (section
-3). run_meta.json records `settings.oracle = "applied"`, and the season
-is titled the Oracle SIHRS on the Retrospective index and its season page
+donor pool, the console's output floor after it (`app/core/floor.py`, as
+a submission carries it), and the week is stored with oracle.json beside
+it (section 3). run_meta.json records `settings.oracle = "applied"` and
+`settings.output_floor = "applied"` (a season stored before replays
+applied the floor has no such key), and the season is titled the Oracle
+SIHRS on the Retrospective index and its season page
 (a tree with no oracle.json and no such record, as every sealed record
 is, reads "Particle filter alone"). Scoring, the season player and the
 season report read the replayed tree like any other.
@@ -217,8 +220,9 @@ relWIS beside the screen's tables:
         --screen <screen>/screen_scores.json
 
 The scorer is `app.core.retro.score_season` (the same cell rule and
-baseline construction every console figure uses), pooled through
-`app.core.us_national.pooled_frame`; the numbers are printed per season
+baseline construction every console figure uses; since 2026-09-25 that
+is FluSight's rule, which also scores a truth of 0 and a median of 0),
+pooled through `app.core.us_national.pooled_frame`; the numbers are printed per season
 and over the seasons together on the record definition (each member on its
 own scored cells) and on the common set (cells where both stored members
 scored), each with its cell count. `--source` scores a source root for
@@ -231,7 +235,10 @@ screen's own surface) backfilled for 2024-25 (27 weeks) and 2025-26 (26
 weeks) and scored against the pinned hub copy the screen used. relWIS,
 ratio of WIS sums against the FluSight baseline, US excluded; the stored
 member is the submitted seed's realisation, so the screen's seed-1 value
-is the one to match and its seed mean is beside it:
+is the one to match and its seed mean is beside it. Scored under the cell
+rule of that date (truth above 0 and a positive median); `reproduce` now
+scores under FluSight's rule, which moves these figures at about the third
+decimal, and the table stays as measured:
 
 | scope | cell set | Oracle SIHRS | cells | screen LB seed 1 | screen LB seed mean | plain filter | cells | screen NULL | grid's calendar analogue | cells |
 |---|---|---|---|---|---|---|---|---|---|---|

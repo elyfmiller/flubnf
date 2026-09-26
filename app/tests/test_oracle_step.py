@@ -331,7 +331,10 @@ def test_run_week_with_oracle_none_stores_the_plain_filter(hubfiles, tmp_path, m
     root = tmp_path / "2097-98"
     out = retro.run_week(root, "2097-98", ASOF, ["Ohio"], width=1,
                          extra={"oracle": "none"})
-    assert set(out) == {"asof", "pf", "analogue"} and out["pf"] == raw
+    # the plain filter, through the output floor every stored week gets
+    from app.core.floor import floor_samples
+    want = {loc: floor_samples(s, loc, ASOF) for loc, s in raw.items()}
+    assert set(out) == {"asof", "pf", "analogue"} and out["pf"] == want
     prov = oracle_mod.read_provenance(root / "weeks" / ASOF)
     assert prov["applied"] is False and "oracle = none" in prov["reason"]
     assert not (root / "weeks" / ASOF / oracle_mod.BANK_DIRNAME).exists()

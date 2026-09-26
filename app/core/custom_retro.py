@@ -34,6 +34,7 @@ from app.core import custom_run as CR
 from app.core import horizons as hz
 from app.core import missing as MS
 from app.core.runs import RunSpec, default_season_start
+from app.core.scoring import truth_settled
 
 #: (label, lower level, upper level, nominal): groundhog.BANDS' intervals
 BANDS = (("50", 0.25, 0.75, 0.50), ("80", 0.10, 0.90, 0.80),
@@ -145,7 +146,7 @@ def coverage(q_by_name: dict, ds, asof: str, cells: pd.DataFrame,
                 continue
             end = (T + pd.Timedelta(days=7 * (int(h) + 1))).date().isoformat()
             actual = truth.get((name, end))
-            if actual is None or actual <= 0:
+            if not truth_settled(actual):
                 continue
             for label, lo, hi, _nom in BANDS:
                 rows.append({"location": name, "horizon": int(h),

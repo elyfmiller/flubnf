@@ -68,6 +68,17 @@ NOTES = {
         "view carries the CDC comparators alone."),
 }
 
+#: what the Oracle SIHRS member's US row is, wherever a table or tile puts
+#: it under that name: the Oracle step skips the national row
+#: (app/core/oracle.py, docs/ORACLE-SIHRS.md), so the fitted US forecast is
+#: the plain particle filter
+PF_US_NOTE = (
+    "The US row under Oracle SIHRS is the particle filter without the "
+    "Oracle step: the step is applied to the states, DC and Puerto Rico "
+    "only.")
+#: the short form, for a tile or a label beside the US figure
+PF_US_SHORT = "the particle filter without the Oracle step"
+
 #: the word flagging a non-preferred answer
 FALLBACK_WORD = "fallback"
 
@@ -167,14 +178,19 @@ class UsNational:
     """What the US series is for one season, and where it came from.
 
     `scores` maps member name to relWIS, or to None where that member has
-    no scoreable national cell; `cells` to the cell counts. Both are empty
-    under `officials_only`."""
+    no scoreable national cell; `cells` to the cell counts; `log_scores` to
+    the log-scale relWIS and `covs` to the coverage fractions ({"50", "80",
+    "95"}), each None where the source cannot give it (a scores.json or
+    national cache from before these metrics). All are empty under
+    `officials_only`."""
 
     provenance: str
     scores: dict = field(default_factory=dict)
     cells: dict = field(default_factory=dict)
     n_states: int | None = None
     reason: str = ""
+    log_scores: dict = field(default_factory=dict)
+    covs: dict = field(default_factory=dict)
 
     @property
     def is_fitted(self) -> bool:
@@ -213,13 +229,27 @@ class UsNational:
     def __getitem__(self, model):
         return self.scores.get(model)
 
+    def log_rel(self, model):
+        """The member's log-scale relWIS, or None."""
+        return self.log_scores.get(model)
+
+    def cov(self, model):
+        """The member's coverage fractions {"50", "80", "95"}, or None."""
+        return self.covs.get(model)
+
     def as_dict(self) -> dict:
-        """The JSON-safe form; provenance and wording travel with the numbers."""
+        """The JSON-safe form; provenance and wording travel with the numbers.
+        Member keys carry relWIS; "log_rel" and "cov" map member to its
+        log-scale relWIS and coverage fractions (None when unknown), and
+        "pf_note" says what the Oracle SIHRS member's US figure is."""
         d = {"provenance": self.provenance, "label": self.label,
              "short_label": self.short_label, "note": self.note,
              "fitted": self.is_fitted, "fallback": self.is_fallback,
              "fallback_note": self.fallback_note,
-             "n_states": self.n_states, "cells": dict(self.cells)}
+             "n_states": self.n_states, "cells": dict(self.cells),
+             "log_rel": {m: self.log_scores.get(m) for m in MODELS},
+             "cov": {m: self.covs.get(m) for m in MODELS},
+             "pf_note": PF_US_NOTE if self.is_fitted else ""}
         d.update({m: self.scores.get(m) for m in MODELS})
         if self.reason:
             d["reason"] = self.reason
@@ -228,21 +258,26 @@ class UsNational:
 
 def from_scores(df) -> UsNational | None:
     """The fitted answer read straight out of a season's scores frame, or
-    None when the frame carries no national rows. relWIS is sum(wis) over
-    sum(base_wis), the frozen formula, per member."""
+    None when the frame carries no national rows. Per member, through
+    scoring.pooled_metrics: relWIS is sum(wis) over sum(base_wis), the
+    log-scale figure likewise, coverage the fraction of cells covered."""
+    from app.core.scoring import pooled_metrics
     sub = us_frame(df)
     if sub is None:
         return None
-    scores, cells = {}, {}
+    scores, cells, logs, covs = {}, {}, {}, {}
     for m in MODELS:
         g = sub[sub["model"] == m] if "model" in sub.columns else sub[:0]
-        bs = float(g["base_wis"].sum()) if len(g) else 0.0
-        scores[m] = (float(g["wis"].sum()) / bs) if bs else None
-        cells[m] = int(len(g))
+        pm = pooled_metrics(g)
+        scores[m] = pm["rel"]
+        cells[m] = pm["n"]
+        logs[m] = pm["log_rel"]
+        covs[m] = pm["cov"]
     n_states = None
     if df is not None and "location" in getattr(df, "columns", ()):
         n_states = int(pooled_frame(df)["location"].nunique())
-    return UsNational(FITTED, scores=scores, cells=cells, n_states=n_states)
+    return UsNational(FITTED, scores=scores, cells=cells, n_states=n_states,
+                      log_scores=logs, covs=covs)
 
 
 def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
@@ -277,8 +312,10 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
     if row:
         scores = {m: (float(row[m]) if row.get(m) else None) for m in MODELS}
         cells = {m: int((row.get("cells") or {}).get(m, 0)) for m in MODELS}
+        logs = {m: (row.get("log_rel") or {}).get(m) for m in MODELS}
+        covs = {m: (row.get("cov") or {}).get(m) for m in MODELS}
         return UsNational(AGGREGATED, scores=scores, cells=cells,
-                          n_states=n_states)
+                          n_states=n_states, log_scores=logs, covs=covs)
     return UsNational(OFFICIALS_ONLY, n_states=n_states, reason=reason)
 
 

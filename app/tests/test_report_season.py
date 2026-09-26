@@ -147,7 +147,9 @@ def test_report_js_reads_only_contract_fields(tmp_path, monkeypatch):
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
     stat_fields = set(re.findall(r"\bst\.(\w+)", js))
-    assert {"week_rel", "cum_rel"} <= stat_fields <= {"week_rel", "cum_rel", "debug"}, stat_fields
+    # read only through the stats contract's keys (playback.STATS_FIELDS)
+    assert ({"week_rel", "cum_rel"} <= stat_fields
+            <= set(playback.STATS_FIELDS) | {"debug"}), stat_fields
     for m in ("ensemble", "pf", "analogue", "pf2s",
               "FluSight-baseline", "FluSight-ensemble"):
         assert m in js, m
@@ -207,16 +209,20 @@ def test_empty_season_raises_unknown_week(tmp_path):
 
 # ---------------------------------------------- verdict block and identity
 
-def _write_scores(root):
+def _write_scores(root, current=True):
     """A synthetic scores.json in the shape retro.score_season writes: one
     row per model, week, and state, with known relWIS ratios (pf 0.5,
-    analogue 1.5, ensemble 0.9)."""
+    analogue 1.5, ensemble 0.9). current=False leaves out the version
+    column: a sealed record scored under the earlier cell rule."""
+    from app.core import retro
     rows = []
     for asof in (W1, W2):
         for loc in N2F:
             for m, w in (("pf", 1.0), ("analogue", 3.0), ("ensemble", 1.8)):
                 rows.append({"model": m, "asof": asof, "location": loc,
                              "wis": w, "base_wis": 2.0})
+                if current:
+                    rows[-1][retro.SCORES_V_COLUMN] = retro.SCORES_V
     pd.DataFrame(rows).to_json(root / "scores.json")
 
 
@@ -432,3 +438,112 @@ def test_results_page_has_download_button():
         map_html="<div id='usmap-wrap'></div>", n_weeks=1, score_error="")
     assert "Download season report" in html
     assert '/retro/2098-99/report' in html
+
+
+# ------------------------------- log scale and coverage in the export
+
+def _write_metric_scores(root, us=False):
+    """scores.json as score_season writes it now: WIS with log-scale WIS,
+    0/1 coverage and the baseline's log-scale WIS per cell. pf covers
+    every interval (0.8 log relWIS); the analogue misses the 50% one (1.2)."""
+    from app.core import retro
+    rows = []
+    locs = list(N2F) + (["US"] if us else [])
+    for asof in (W1, W2):
+        for loc in locs:
+            for m, w, lw, cov in (("pf", 1.0, 0.4, (1, 1, 1)),
+                                  ("analogue", 3.0, 0.6, (0, 1, 1))):
+                rows.append({"model": m, "asof": asof, "location": loc,
+                             "horizon": 0, "wis": w, "base_wis": 2.0,
+                             "log_wis": lw, "base_log_wis": 0.5,
+                             "cov50": cov[0], "cov80": cov[1],
+                             "cov95": cov[2], "rel": w / 2.0,
+                             retro.SCORES_V_COLUMN: retro.SCORES_V})
+    pd.DataFrame(rows).to_json(root / "scores.json")
+
+
+def test_report_verdict_carries_log_scale_and_coverage(tmp_path,
+                                                       monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)
+    _write_metric_scores(root)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    summary = html.split('id="season-summary"', 1)[1].split(
+        'id="pb-play"', 1)[0]
+    # the tiles: the final frame's figures, log scale in the ok/bad rule,
+    # coverage read against each interval's level
+    pf = summary.split('class="tilename">Groundhog', 1)[0]
+    assert '<dt>log scale</dt><dd class="ok">0.800</dd>' in pf
+    # 100% is too wide at every level, 95% included (2.5 points there)
+    assert pf.count('<span class="cov-wide">100%</span>') == 3
+    an = summary.split('class="tilename">Groundhog', 1)[1]
+    assert '<dd class="bad">1.200</dd>' in an
+    assert '<span class="cov-low">0%</span>' in an
+    assert report_season.METRICS_NOTE in summary
+    # the per-state table: each member over its relWIS and 95% coverage
+    assert summary.count('<th colspan="2" class="grp">') == 2
+    assert summary.count('<th class="num">95%</th>') == 2
+    assert '<td class="num cov-wide">100%</td>' in summary
+    # the colors' key under the tiles, the 95% column's reading above it
+    assert f'<p class="pblegend">{report_season.COV_LEGEND}</p>' in summary
+    assert report_season.PSTATES_COV_NOTE in summary
+    # the player card: the shared heading, the switch and legend slots
+    assert f"<h2>{report_season.LIVE_HEADING}</h2>" in html
+    assert report_season.LIVE_SCORES_NOTE in html
+    for marker in ('id="pb-scale"', 'id="pb-legend"',
+                   '<table id="pb-stats" class="pbstats">'):
+        assert marker in html, marker
+
+
+def test_report_verdict_without_the_new_columns_stays_as_it_was(
+        tmp_path, monkeypatch):
+    """A scores.json from before log-scale WIS and coverage (a sealed root)
+    keeps its per-state table as it was: relWIS alone, no coverage column.
+    It also used the earlier cell rule, so the tiles (the player's final
+    frame) are scored here under FluSight's and carry the new figures, and
+    a line says which figures used which rule."""
+    from app.core import scoring
+    root = _mk_root(tmp_path, monkeypatch)
+    _write_scores(root, current=False)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    summary = html.split('id="season-summary"', 1)[1].split(
+        'id="pb-play"', 1)[0]
+    assert '<th class="num">95%</th>' not in summary
+    assert "<thead><tr><th>State</th>" in summary
+    tiles = summary.split('class="tiles"', 1)[1].split("</div></div>", 1)[0]
+    assert 'class="tilekv"' in tiles
+    assert report_season.METRICS_NOTE in summary
+    assert 'class="tileval ok">0.500' not in tiles    # not the stored 0.5
+    note = scoring.earlier_rule_note(
+        ["the per-state table"], ["the pooled tiles", "the live scores"])
+    assert note in summary
+    # a current file needs no such line
+    root2 = _mk_root(tmp_path / "b", monkeypatch)
+    _write_scores(root2)
+    html2 = report_season.build_season_report(root2, SEASON).read_text()
+    assert "earlier cell rule" not in html2
+
+
+def test_report_fitted_us_pf_is_named_the_plain_filter_under_oracle(
+        tmp_path, monkeypatch):
+    """The Oracle step skips the national row: when pf is Oracle SIHRS, the
+    fitted US tile and the table say what the US figure is; a tree without
+    the step (pf named for the filter) needs no such note."""
+    from app.core import retro
+    from app.core import us_national as usn
+    root = _mk_root(tmp_path, monkeypatch)
+    _write_metric_scores(root, us=True)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    assert 'class="tilename">US (fitted): Particle filter alone' in html
+    assert usn.PF_US_NOTE not in html.split('id="pb-play"', 1)[0]
+    root2 = _mk_root(tmp_path / "b", monkeypatch)
+    _write_metric_scores(root2, us=True)
+    retro.write_meta(root2, {"status": "done",
+                             "settings": {"oracle": "applied"}})
+    html2 = report_season.build_season_report(root2, SEASON).read_text()
+    summary = html2.split('id="pb-play"', 1)[0]
+    assert 'class="tilename">US (fitted): Oracle SIHRS' in summary
+    assert usn.PF_US_SHORT + ", fitted at the national level" in summary
+    assert f'<p class="hint">{usn.PF_US_NOTE}</p>' in summary
+    # the US row's coverage joins the table beside its relWIS
+    row = summary.split('<tr class="usagg">', 1)[1].split("</tr>", 1)[0]
+    assert '<td class="num cov-wide">100%</td>' in row

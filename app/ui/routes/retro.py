@@ -758,6 +758,17 @@ def retro_results(request: Request, season: str, week: str = "",
     us_row = (us.as_dict() if (us is not None and us.has_scores
                                and convention == relwis.RATIO_OF_SUMS)
               else None)
+    # a sealed record's scores.json predates FluSight's cell rule
+    # (retro.SCORES_V); the live scores, and a US row built from the
+    # states, are scored under it, so the page says which figures are which
+    rule_note = ""
+    if scoreable and not retro.scores_frame_current(df_all):
+        from app.core.scoring import earlier_rule_note
+        stored = ["the pooled tiles", "the per-state table"]
+        fresh = ["the live scores"]
+        if us_row:
+            (stored if us.is_fitted else fresh).append("the US figures")
+        rule_note = earlier_rule_note(stored, fresh)
     wk = week if week in weeks else weeks[-1]
     from app.core.usmap import svg_map
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
@@ -866,6 +877,7 @@ def retro_results(request: Request, season: str, week: str = "",
         "us": (us.as_dict() if us is not None
                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
         "pooled_note": usn.POOLED_SCOPE_NOTE,
+        "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,

@@ -4,6 +4,24 @@
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
+{# a verdict tile's second line: log-scale relWIS and 50/80/95% coverage
+   (the export prints the same, report_season._metrics_html); a figure the
+   scores cannot give (a season scored before these metrics) is left out #}
+{% macro tile_more(log_rel, cov) -%}
+{%- if log_rel is not none or cov %}<dl class="tilekv">
+ {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}</dd>{% endif %}
+ {%- if cov %}<dt>coverage 50/80/95%</dt><dd>
+  {%- for b in ("50", "80", "95") %}{% set cs = cov_state(cov.get(b), b | int) %}<span class="{{ ('cov-' ~ cs) if cs else 'hint' }}">{{ cov_text(cov.get(b)) }}</span>{{ " · " if not loop.last }}{% endfor %}</dd>{% endif %}
+</dl>{% endif %}
+{%- endmacro %}
+{# the per-state table's 95% coverage cell and its sort attribute #}
+{% macro cov95(cov) -%}
+{%- set c = (cov or {}).get('95') %}{% set cs = cov_state(c, 95) -%}
+<td class="num{{ ' cov-' ~ cs if cs in ('low', 'wide') else (' hint' if not cs else '') }}">{{ cov_text(c) }}</td>
+{%- endmacro %}
+{% macro cov95_data(m, cov) -%}
+{%- set c = (cov or {}).get('95') %} data-{{ m }}-cov="{{ "%.6f"|format(c) if c is not none else '' }}"
+{%- endmacro %}
 {# one curve per scored model; a bare `curve` (pre-2026-09-22 contexts) still
    draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
@@ -86,7 +104,8 @@
  {%- if conv != 'ratio_of_sums' %} The
  {# keeps archive and week, so the reader does not lose their place #}
  <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
- of sums view</a> is always available, but it is a different quantity.
+ of sums view</a> is always available; on the same cells the two agree to
+ within about 0.02.
  {%- else %} This is the ratio of sums view; the scores themselves are missing.
  {%- endif %}</p>
 {% endif %}
@@ -161,25 +180,41 @@
 <div class="grid2">
  {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
+ {% set d = (figs.detail.get(m) if figs and figs.detail else None) %}
  <div class="card"><h2>{{ model_name(m) }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
-   {# the convention label rides with every number. Coverage is printed;
-      `d`'s pairwise rank and field size are deliberately not (placement
-      stays withdrawn, see Methods) #}
+   {# log scale and coverage on the same cells (ratio of sums only) #}
+   {{ tile_more(d.get('log_rel') if d else None, d.get('cov') if d else None) }}
+   {# the convention label rides with every number. The cell count is
+      printed; `d`'s pairwise rank and field size are deliberately not
+      (placement stays withdrawn, see Methods) #}
    <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
-   {%- set d = (figs.detail.get(m) if figs and figs.detail else None) %}
    {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cell{{ "" if d.n_cells == 1 else "s" }}){% endif %}
    {%- if loop.first and pooled_note and not unavailable %} {{ tips.tip("rs-pooled", "the pooled figure", pooled_note) }}{% endif %}</p></div>
  {% endfor %}
  {# the national tile ALWAYS names its provenance (fitted vs sum of
-    states); it is outside the pooled headline by policy #}
+    states); it is outside the pooled headline by policy. A fitted US pf
+    is the particle filter without the Oracle step (us_row.pf_note), said
+    while pf wears the Oracle SIHRS name #}
  {% for m in season_models %}{% if us_row and us_row[m] %}
+ {% set pf_plain = m == 'pf' and us_row.pf_note and 'Oracle' in model_name('pf') %}
  <div class="card"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2><div class="big
    {% if us_row[m] < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row[m]) }}</div>
+   {{ tile_more((us_row.log_rel or {}).get(m), (us_row.cov or {}).get(m)) }}
    <p class="hint">relWIS vs the FluSight baseline;
-   {% if us_row.fitted %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
+   {% if us_row.fitted %}{% if pf_plain %}the particle filter without the Oracle step, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}{% endfor %}
 </div>
+{# the tiles' second line explained once, with the coverage colors' key
+   (the player's legend line): report_season.METRICS_NOTE and COV_LEGEND #}
+{% set tm = namespace(more=false, cov=false) %}
+{% for m in heads %}{% set d = (figs.detail.get(m) if figs and figs.detail else None) %}{% if d and d.get('log_rel') is not none %}{% set tm.more = true %}{% endif %}{% if d and d.get('cov') %}{% set tm.cov = true %}{% endif %}{% endfor %}
+{% if us_row %}{% for m in season_models %}{% if us_row[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_row[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
+{% if (tm.more or tm.cov) and not unavailable %}<p class="hint">{{ live_scores("metrics") }}</p>{% endif %}
+{% if tm.cov and not unavailable %}<p class="pblegend">{{ live_scores("legend") }}</p>{% endif %}
+{# a sealed record scored under the earlier cell rule says which figures
+   read it (scoring.earlier_rule_note) #}
+{% if rule_note and not unavailable %}<p class="hint">{{ rule_note }}</p>{% endif %}
 {# no tiles under this convention -> no notes about them; the note rides
    the first head tile as its tip, and stands as a line only without one #}
 {% if pooled_note and not unavailable and not heads %}<p class="hint">{{ pooled_note }}</p>{% endif %}
@@ -287,17 +322,23 @@
    </div>
   </div>
   <div class="playstats">
-   {# the player's figures are always ratio of sums #}
-   <div class="rs-h"><h2>Live relWIS</h2>{{ tips.tip("rs-live", "live relWIS", "relWIS below 1 beats the CDC FluSight baseline, ratio of sums; cumulative pools every week so far.") }}</div>
-   <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
-    <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
+   {# the player's figures are always ratio of sums; heading and text are
+      the export's too (report_season.LIVE_HEADING, LIVE_SCORES_NOTE) #}
+   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{{ tips.tip("rs-live", "live scores", live_scores("note")) }}</div>
+   {# the player writes the scale switch, the table head and body, and
+      the coverage legend (player.js renderStats) #}
+   <div class="pbscale" id="pb-scale"></div>
+   <div class="statscroll"><table id="pb-stats" class="pbstats"><thead></thead>
+    <tbody></tbody></table></div>
+   <p class="pblegend" id="pb-legend"></p>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data</p>
    {# only when there ARE pairwise scores to be confused with #}
    {% if conv == 'pairwise' and not unavailable %}
-   <p class="hint">The player always uses the ratio of sums, so these
-    figures are not comparable with the pairwise scores above.</p>
+   <p class="hint">The player's figures are ratios of sums, not the
+    pairwise scores above; on the same cells the two agree to within about
+    0.02.</p>
    {% endif %}
   </div>
  </div>
@@ -313,17 +354,44 @@
 <details class="ledgerfold" id="statefold" open>
  <summary><h2 style="display:inline">Per-state scores</h2>
   <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
+ {# 95% coverage beside each member's relWIS when the scores carry it (a
+    season scored before these metrics, or the pairwise view, has relWIS
+    columns only). Coverage is colored only when off: too narrow in the
+    alarm color, too wide in the warning color, italic (cov_state, the
+    player's rule; cov95) #}
+ {% set sc = namespace(on=false) %}
+ {% for r in states %}{% for m in season_models %}{% if ((r.detail or {}).get(m) or {}).get('cov') %}{% set sc.on = true %}{% endif %}{% endfor %}{% endfor %}
+ {% set show_cov = sc.on %}
  {# the convention, named once for every cell #}
  <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
  {% if conv == 'pairwise' %}Each jurisdiction is scored against its own
-  field, a figure CDC does not publish.{% endif %}</p>
+  field, a figure CDC does not publish.{% endif %}
+ {% if show_cov %}{{ live_scores("states") }}{% endif %}</p>
  <div class="row" style="margin:.5rem 0 .3rem">
   <input type="search" id="sf-filter" placeholder="Filter by state name"
          aria-label="Filter rows by state name"
          style="width:auto;min-width:min(230px,45vw);max-width:100%">
   <span class="hint" id="sf-count" aria-live="polite"></span>
  </div>
- <table id="sf-table">
+ <table id="sf-table"{% if show_cov %} class="pscov"{% endif %}>
+ {% if show_cov %}
+ {# two-row head: each member over its relWIS and 95% coverage, each
+    column sortable #}
+ <thead><tr>
+  <th rowspan="2"><button type="button" class="thsort" data-key="name"
+    aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
+  {% for mk in season_models %}
+  <th colspan="2" scope="colgroup" class="grp g1">{{ model_name(mk) }}</th>
+  {% endfor %}
+ </tr><tr>
+  {% for mk in season_models %}
+  <th class="num g1"><button type="button" class="thsort" data-key="{{ mk }}"
+    aria-pressed="false" aria-label="{{ model_name(mk) }} relWIS">relWIS<span class="dir" aria-hidden="true"></span></button></th>
+  <th class="num"><button type="button" class="thsort" data-key="{{ mk }}Cov"
+    aria-pressed="false" aria-label="{{ model_name(mk) }} 95% coverage">95%<span class="dir" aria-hidden="true"></span></button></th>
+  {% endfor %}
+ </tr></thead>
+ {% else %}
  <thead><tr>
   <th><button type="button" class="thsort" data-key="name"
     aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
@@ -332,26 +400,33 @@
     aria-pressed="false">{{ model_name(mk) }}<span class="dir" aria-hidden="true"></span></button></th>
   {% endfor %}
  </tr></thead>
+ {% endif %}
  <tbody>
  {# the national row leads as a DISTINCT row with its provenance label; it
     sorts and filters with the states but is NOT in the pooled figures #}
  {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
-  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
+  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% if show_cov %}{{ cov95_data(m, (us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}>
   <td>{{ us_row.short_label }}</td>
   {% for m in season_models %}
-  <td class="num{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
-   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>{% endfor %}</tr>
+  <td class="num{% if show_cov %} g1{% endif %}{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
+   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>
+   {%- if show_cov %}{{ cov95((us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}</tr>
  {% endif %}
  {% for r in states %}<tr data-name="{{ r.name }}"
-  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% endfor %}>
+  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% if show_cov %}{{ cov95_data(m, ((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}>
   <td>{{ r.name }}</td>
  {% for m in season_models %}
- <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
-  {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
+ <td class="num{% if show_cov %} g1{% endif %}{% if r[m] and r[m] >= 1 %} bad{% endif %}">
+  {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>
+  {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody></table>
 {% if us_row and (us_row.pf or us_row.analogue) %}
 <p class="hint">{{ us_row.note }}</p>
+{# the fitted US row of Oracle SIHRS had no Oracle step #}
+{% if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}
+<p class="hint">{{ us_row.pf_note }}</p>
+{% endif %}
 {% endif %}
 </details>
 <script>

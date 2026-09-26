@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .wis import wis
+from .wis import log_wis, wis
 
 #: the hub's target name for weekly influenza hospital admissions
 TARGET = "wk inc flu hosp"
@@ -29,10 +29,11 @@ def baseline_cells(dates, locs_needed, truth, hub: Path | None = None
     package reads. Callers with their own hub resolution pass it explicitly
     rather than relying on an environment variable read at import time.
 
-    Returns rows of (variant, location, asof, horizon, wis). A forecast date
-    whose baseline file is absent contributes no rows, which is how
-    early-season weeks (fewer than five history points, so the hub publishes
-    no baseline) end up with no scored cells.
+    Returns rows of (variant, location, asof, horizon, wis, log_wis), the
+    last the same cell's WIS on the log scale (flubnf.wis.log_wis). A
+    forecast date whose baseline file is absent contributes no rows, which
+    is how early-season weeks (fewer than five history points, so the hub
+    publishes no baseline) end up with no scored cells.
     """
     if hub is None:
         from .settings import HUB as _HUB
@@ -63,7 +64,8 @@ def baseline_cells(dates, locs_needed, truth, hub: Path | None = None
                 continue
             try:
                 rows.append({"variant": "FluSight-baseline", "location": loc,
-                             "asof": asof, "horizon": int(hz), "wis": wis(q, a).wis})
+                             "asof": asof, "horizon": int(hz), "wis": wis(q, a).wis,
+                             "log_wis": log_wis(q, a)})
             except (KeyError, ValueError):
                 pass
     return pd.DataFrame(rows)

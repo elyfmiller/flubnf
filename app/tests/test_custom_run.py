@@ -136,9 +136,13 @@ def test_score_uses_the_persistence_baseline_and_the_cell_rule():
     end = "2023-12-09"
     assert cells.iloc[0].base_wis == pytest.approx(
         wis(base["0"], truth[("Adult", end)]).wis)
-    # a zero median is not scored (scoring.py's rule)
+    # a forecast of 0 is scored like any other (scoring.py's rule, FluSight's)
     z = {h: {float(L): 0.0 for L in SB.QUANTILES} for h in hz.HORIZONS}
-    assert CR.score({"Adult": z}, ds, FD, truth=truth).empty
+    zc = CR.score({"Adult": z}, ds, FD, truth=truth)
+    assert len(zc) == 4 and (zc.wis > 0).all()
+    # a forecast with a non-finite quantile is not
+    bad = {h: {**q[h], 0.5: float("nan")} for h in hz.HORIZONS}
+    assert CR.score({"Adult": bad}, ds, FD, truth=truth).empty
 
 
 def test_a_flat_series_never_divides_by_a_zero_baseline():

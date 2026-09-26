@@ -1,5 +1,7 @@
 """PRODUCTION: the output floor applied to console-run PF samples
-(app/ui/pipeline._run_all).
+(app/ui/pipeline._run_all) and, with the same arguments, to every stored
+retrospective week (app/core/retro.run_week), so a replay scores what a
+submission would carry.
 
 Predictive-output floor: no forecast cell may be a point mass.
 
@@ -55,6 +57,31 @@ def floor_samples(samples_by_h: dict, location: str, date: str,
         b = a.copy()
         b[fin] = a[fin] + noise[fin]
         out[h] = b.tolist()
+    return out
+
+
+def recent_observed(path, locations, asof: str, drop_same_day: bool = False,
+                    n: int = 15) -> dict:
+    """{location name: [value, ...]}: the newest `n` rows at or before
+    `asof` in an observed file, oldest first, non-finite values left out.
+    The console builds the same list for `recent` (pipeline._run_all's
+    obs): the same-day row is left out under drop_same_day, as the engines
+    leave it out. A location with no rows gets []."""
+    import pandas as pd
+    from flubnf.settings import load_locations
+    lo = load_locations()          # the hub's table, else the packaged copy
+    n2f = dict(zip(lo.location_name, lo.location.str.zfill(2)))
+    t = pd.read_csv(path, dtype={"location": str})
+    day = t["date"].astype(str).str[:10]
+    t = t[day <= str(asof)].copy()
+    if drop_same_day:
+        t = t[t["date"].astype(str).str[:10] != str(asof)]
+    t["location"] = t["location"].str.zfill(2)
+    out = {}
+    for loc in locations:
+        g = t[t.location == n2f.get(loc, "")].sort_values("date").tail(n)
+        vals = pd.to_numeric(g["value"], errors="coerce")
+        out[loc] = [float(v) for v in vals if np.isfinite(v)]
     return out
 
 

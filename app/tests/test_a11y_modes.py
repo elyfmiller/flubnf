@@ -298,8 +298,9 @@ def test_member_palette_audit_and_its_non_color_redundancy():
         for th, (bg, card) in grounds.items():
             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
             assert _cr(mem[m], card) >= 3.0, (m, th, "card")
-    # redundancy still backs up the color channel
-    assert "name: nameOf(m)" in PLAYER
+    # redundancy still backs up the color channel (a fitted US pf fan's
+    # legend entry names what it is instead, player.js US_PF_LABEL)
+    assert "name: label || nameOf(m)" in PLAYER
     assert "+ '\"></span>' + nameOf(m)" in PLAYER
 
 
@@ -383,13 +384,24 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     # the one relWIS chip outside a table prints the score beside the class
     assert "1.234" in relwis_chip(1.234)
     assert "0.500" in relwis_chip(0.5)
-    # the player's stats cells print the value, never a bare colored cell
-    assert "'<td class=\"num ' + (v < 1 ? 'ok' : 'bad') + '\">'" in PLAYER
-    assert "+ v.toFixed(3) + '</td>'" in PLAYER
+    # the player's stats cells print the value, never a bare colored cell:
+    # relWIS to three places, coverage as its percentage, and a legend line
+    # names what each coverage color means
+    assert "(p.shown < 1 ? 'ok' : 'bad')" in PLAYER
+    assert "+ p.shown.toFixed(3) + '</td>'" in PLAYER
+    assert "'<td class=\"num cov-' + covState(v, +b)" in PLAYER
+    assert "+ b + '% interval\">' + pc + '%</td>'" in PLAYER
+    assert "(too narrow)" in PLAYER and "(too wide)" in PLAYER
     # the season page prints every score it colors and names the scale
     assert '{{ "%.3f"|format(v) }}' in SEASON_T
     assert "relWIS vs the FluSight baseline" in SEASON_T
-    assert "relWIS below 1 beats the CDC FluSight baseline" in SEASON_T
+    from app.core import report_season
+    assert 'live_scores("note")' in SEASON_T
+    assert ("relWIS below 1 beats the CDC FluSight baseline"
+            in report_season.LIVE_SCORES_NOTE)
+    # coverage in the verdicts prints its percentage beside the color
+    assert "{{ cov_text(cov.get(b)) }}" in SEASON_T
+    assert "{{ cov_text(c) }}" in SEASON_T
     assert '{{ "%.3f"|format(r[m]) if r[m] else "n/a" }}' in SEASON_T
     # status pills and run states print the status WORD inside the span
     assert "{{ r.status }}</span>" in FORECAST_T

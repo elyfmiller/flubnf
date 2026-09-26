@@ -266,10 +266,11 @@ REGISTRY: tuple = (
          "flubnf.analogue:MIN_DONORS",
          "Fewer donor ratios than this and the Groundhog abstains.",
          lo=1, hi=1_000, unit="ratios"),
-    # -- Output floor (console runs only) --
+    # -- Output floor (the rate is a console setting; replays use LAM) --
     Knob("output.floor_lam", "Output floor rate", BOTH, "output", "method",
          "float", FL.LAM, "app.core.floor:LAM",
-         "Poisson noise floor so no cell is a point mass; console runs only.",
+         "Poisson noise floor so no cell is a point mass. Replays use the "
+         "default rate.",
          lo=0.0, hi=5.0),
     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
@@ -645,9 +646,10 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
                    "oracle.min_donor_seasons", "oracle.min_paths",
                    "groundhog.min_donors"})
 
-#: knobs the retrospective cannot carry: retro.run_week drops no weeks and
-#: stores unfloored samples (the floor is a console output rule), and it
-#: writes no submission files (the optional hub rows)
+#: knobs the retrospective cannot carry: retro.run_week drops no weeks, it
+#: stores every week through the output floor at the default rate (the rate
+#: knob is the console's), and it writes no submission files (the optional
+#: hub rows)
 NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
                           *OPTIONAL_KEYS})
 

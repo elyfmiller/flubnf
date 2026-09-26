@@ -84,11 +84,12 @@ def forecast_week(season: str, asof: str, locations: list,
 
 def score_week(q_by_loc: dict, asof: str, n2f: dict, truth: dict) -> tuple:
     """(cells, coverage) for one week. `cells` is scoring.score_quantiles'
-    frame, the project's frozen cell rule: truth above zero, median above
-    zero, cell present in the validated FluSight baseline. `coverage` holds
-    one row per (cell, band) with a hit flag, and a `scored` flag saying
-    whether that cell is in `cells`: `summarise` reports coverage on the
-    scored cells only, so relWIS and coverage describe the same cells."""
+    frame, under THE cell rule (scoring.cell_scored: settled truth, 0
+    included; a forecast with finite quantiles; the cell present in the
+    validated FluSight baseline). `coverage` holds one row per (cell, band)
+    with a hit flag, and a `scored` flag saying whether that cell is in
+    `cells`: `summarise` reports coverage on the scored cells only, so
+    relWIS and coverage describe the same cells."""
     cells = scoring.score_quantiles(q_by_loc, asof, n2f, truth)
     scored = (set(zip(cells.fips.astype(str), cells.horizon.astype(int)))
               if not cells.empty else set())
@@ -104,7 +105,7 @@ def score_week(q_by_loc: dict, asof: str, n2f: dict, truth: dict) -> tuple:
                 continue
             # canonical horizon h is h+1 weeks past the as-of
             actual = truth.get((fips, T + timedelta(days=7 * (int(h) + 1))))
-            if actual is None or actual <= 0:
+            if not scoring.truth_settled(actual):
                 continue
             for label, lo, hi, _nom in BANDS:
                 cov.append({"location": loc, "fips": fips, "horizon": int(h),

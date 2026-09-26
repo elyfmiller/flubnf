@@ -598,13 +598,67 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   border:0;background:transparent;accent-color:var(--gold-bright)}
 .viewtabs{margin:0 0 .6rem}
 .viewtabs button{margin-top:0}
-.playgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,300px);
+/* the stats column takes the live table's natural width. Its cap is in
+   the table's own font (--fs-table grows with the viewport), sized for the
+   widest head ("log relWIS") with the official comparators' names on one
+   line. Up to 1400px, where the plot beside it would drop under about
+   600px, it stacks under the views. minmax(0,1fr), never a bare 1fr, so
+   the table's width can never widen the page */
+.playgrid{display:grid;
+  grid-template-columns:minmax(0,1fr) fit-content(calc(var(--fs-table) * 47));
   gap:.9rem;align-items:start}
-@media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
+@media(max-width:1400px){.playgrid{grid-template-columns:minmax(0,1fr)}}
 /* compact playback map (letterboxed); !important beats the inline style */
 .playmap svg{max-height:40vh!important}
+.playstats{min-width:0}
 .playstats .num{text-align:right}
 .playstats table{font-variant-numeric:tabular-nums}
+/* live scores (player.js renderStats): a two-row grouped head over
+   "This week" and "Season so far", each relWIS and 50/80/95% coverage, at
+   its natural width. A card narrower than the table scrolls the table
+   inside it, the model column staying in view */
+.statscroll{overflow-x:auto;max-width:100%;scrollbar-width:thin}
+table.pbstats{width:auto}
+table.pbstats th,table.pbstats td{padding:.3rem .5rem;white-space:nowrap}
+/* a group head over its columns (the live table, the per-state table),
+   each group ruled off from the one before */
+th.grp{text-align:center;color:var(--ink);letter-spacing:.03em}
+table.pbstats .g1,#sf-table .g1{border-left:1px solid var(--line)}
+table.pbstats td.gap{text-align:center}
+table.pbstats .mname{position:sticky;left:0;z-index:1;background:var(--card);
+  text-align:left;white-space:normal;min-width:8.5rem}
+/* stacked (player.js drawStatsTable: a card too narrow for the two periods
+   side by side): each period's heading row reads as a section, and the
+   columns tighten so the four figures fit a phone */
+table.pbstats.stacked th.grp{text-align:left;padding-top:.55rem;
+  text-transform:uppercase;letter-spacing:.03em}
+table.pbstats.stacked .mname{min-width:6.5rem}
+table.pbstats.stacked th,table.pbstats.stacked td{padding:.3rem .4rem}
+table.pbstats.stacked thead th{white-space:normal}
+/* with coverage beside relWIS the per-state table keeps each pair
+   together: natural width, but never narrower than 44rem or the card */
+#sf-table.pscov{width:auto;min-width:min(100%,44rem)}
+/* the second head row keeps its case (relWIS, 50%) */
+table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
+  letter-spacing:.02em}
+/* coverage against its interval's level (player.js covState): ok, too
+   narrow (the alarm, bold), too wide (a lesser fault: the warning color,
+   italic, so it never reads as a muted placeholder or by hue alone). The
+   legend line runs in ink */
+.cov-ok{color:var(--ok)}
+.cov-low{color:var(--bad);font-weight:650}
+.cov-wide{color:var(--warn);font-style:italic;font-weight:400}
+.pblegend{color:var(--ink);font-size:var(--fs-hint);margin:.35rem 0}
+/* a verdict tile's second line: log-scale relWIS and coverage */
+.tilekv{display:grid;grid-template-columns:max-content max-content;
+  gap:.05rem .8rem;margin:.35rem 0 .1rem;font-size:var(--fs-hint)}
+.tilekv dt{color:var(--mut)}
+.tilekv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums}
+/* the relWIS scale switch: label, two pills, the one-line hint */
+.pbscale{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .6rem;
+  margin:0 0 .45rem}
+.pbscale .seg{margin:0;gap:.3rem}
+.pbscale .seg button{padding:.08rem .6rem;font-size:var(--fs-label)}
 .sw{display:inline-block;width:.7rem;height:.7rem;border-radius:3px;
   margin-right:.35rem;vertical-align:-1px}
 .fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}

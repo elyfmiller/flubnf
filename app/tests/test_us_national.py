@@ -249,7 +249,9 @@ def _console_season(tmp_path, monkeypatch):
                 for h in range(1, 5)} for loc in n2f}
     (wd / "samples.json").write_text(
         json.dumps({"asof": asof, "pf": pf, "analogue": an}))
-    _frame().to_json(root / "scores.json")
+    # a current scores file (retro.SCORES_V), so the page reads it as stored
+    _frame().assign(**{_retro.SCORES_V_COLUMN: _retro.SCORES_V}).to_json(
+        root / "scores.json")
     _retro.write_meta(root, {"status": "done", "weeks_completed": 1,
                              "total_weeks": 1})
     return root, season

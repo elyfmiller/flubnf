@@ -81,7 +81,9 @@ def test_wis_card_discloses_the_cell_rule():
         "rel": [0.5, 1.0]})
     html = scoring.summary_table_html(df)
     assert "A cell is scored when settled truth exists" in html
-    assert "counts can differ" in html
+    # FluSight's rule: a week of 0 is scored, as the official scores do
+    assert "a week of 0 included" in html
+    assert "as in FluSight's own scoring" in html
 
 
 def test_load_truth_records_its_source(tmp_path, monkeypatch):

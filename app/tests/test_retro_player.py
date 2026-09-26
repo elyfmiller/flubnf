@@ -97,9 +97,11 @@ def test_js_reads_only_contract_fields():
     fields = set(re.findall(r"\bpl\.(\w+)", both))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
-    # stats entries expose exactly week_rel and cum_rel
+    # stats entries are read only through the contract's keys
+    # (playback.STATS_FIELDS, plus "debug")
+    from app.core import playback
     stat_fields = set(re.findall(r"\bst\.(\w+)", both))
-    assert stat_fields <= {"week_rel", "cum_rel", "debug"}, stat_fields
+    assert stat_fields <= set(playback.STATS_FIELDS) | {"debug"}, stat_fields
     assert {"week_rel", "cum_rel"} <= stat_fields
     # our members and the officials all appear as model handles
     for m in ("ensemble", "pf", "analogue", "pf2s",
@@ -171,3 +173,145 @@ def test_template_passes_season_official_catalog():
     ctx = {k: v for k, v in CONTEXT.items() if k != "official_catalog"}
     html2 = templates.env.get_template("retro_season.html").render(**ctx)
     assert "seasonOfficials: []" in html2
+
+
+# ------------------------------- live scores and the verdicts' new figures
+
+def test_stats_card_hosts_the_players_table_switch_and_legend():
+    """The player writes the table head, the scale switch and the coverage
+    legend into the host's slots; the card's heading and explanation are
+    the export's own (report_season.LIVE_HEADING, LIVE_SCORES_NOTE)."""
+    from app.core import report_season
+    html = _render()
+    card = html.split('<div class="playstats">', 1)[1].split("</div>\n </div>",
+                                                             1)[0]
+    assert f"<h2>{report_season.LIVE_HEADING}</h2>" in card
+    assert report_season.LIVE_SCORES_NOTE in card
+    assert '<div class="pbscale" id="pb-scale"></div>' in card
+    # the table scrolls inside its own box, never widening the page
+    assert ('<div class="statscroll"><table id="pb-stats" class="pbstats">'
+            '<thead></thead>') in card
+    assert '<p class="pblegend" id="pb-legend"></p>' in card
+    # the player fills them from its default ids
+    assert "scale: 'pb-scale', legend: 'pb-legend'" in PLAYER_JS
+    assert "paintStatsFrame();" in PLAYER_JS
+
+
+def _figs(detail_cov=True):
+    from app.core import relwis
+    cov = {"50": 0.43, "80": 0.71, "95": 0.88}
+    return relwis.Figures(
+        convention=relwis.RATIO_OF_SUMS,
+        values={"pf": 0.783, "analogue": 0.651},
+        detail={"pf": {"n_cells": 4576, "log_rel": 0.835,
+                       "cov": cov if detail_cov else None},
+                "analogue": {"n_cells": 4524, "log_rel": None, "cov": None}},
+        states=({"name": "Ohio", "pf": 0.9, "analogue": 1.1,
+                 "detail": {"pf": {"n_cells": 80, "log_rel": 0.8,
+                                   "cov": ({"50": 0.5, "80": 0.8,
+                                            "95": 0.62} if detail_cov
+                                           else None)},
+                            "analogue": {"n_cells": 80, "log_rel": None,
+                                         "cov": None}}},))
+
+
+def _season(**kw):
+    ctx = dict(CONTEXT, heads={"pf": 0.783, "analogue": 0.651},
+               season_models=["pf", "analogue"], us=None, us_row=None)
+    ctx.update(kw)
+    ctx["states"] = list(ctx["figs"].states) if "figs" in kw else []
+    return templates.env.get_template("retro_season.html").render(**ctx)
+
+
+def test_verdict_tiles_carry_log_scale_and_coverage():
+    html = _season(figs=_figs())
+    tiles = html.split('<div class="grid2">', 1)[1].split(
+        "Cumulative relWIS", 1)[0]
+    pf = tiles.split("<h2>Groundhog</h2>", 1)[0]
+    # the log-scale figure beside the natural one, in the same ok/bad rule
+    assert '<dt>log scale</dt><dd class="ok">0.835</dd>' in pf
+    # coverage as whole percentages, each read against its interval's level
+    assert '<dt>coverage 50/80/95%</dt>' in pf
+    assert '<span class="cov-low">43%</span>' in pf
+    assert '<span class="cov-low">71%</span>' in pf
+    assert '<span class="cov-low">88%</span>' in pf
+    assert "(4,576 cells)" in pf
+    # a member whose scores predate the figures shows none of them
+    an = tiles.split("<h2>Groundhog</h2>", 1)[1]
+    assert "tilekv" not in an
+    # what the second line holds and the coverage colors' key, once, under
+    # the tiles (the player's legend line)
+    from app.core import report_season
+    assert f'<p class="pblegend">{report_season.COV_LEGEND}</p>' in tiles
+    assert report_season.METRICS_NOTE in tiles
+    # none of it without a figure to explain
+    bare = _season(figs=_figs(detail_cov=False))
+    assert report_season.COV_LEGEND not in bare
+
+
+def test_per_state_table_adds_95_coverage_when_the_scores_carry_it():
+    html = _season(figs=_figs())
+    body = html.split("Per-state scores")[1].split("</table>")[0]
+    # two-row head: each member over its relWIS and 95% columns, all
+    # sortable, the member named once over its pair
+    assert '<table id="sf-table" class="pscov">' in html
+    assert body.count('<th colspan="2" scope="colgroup" class="grp g1">') == 2
+    for key in ("name", "pf", "pfCov", "analogue", "analogueCov"):
+        assert f'data-key="{key}"' in body, key
+    assert 'aria-label="Oracle SIHRS 95% coverage"' in body
+    # rows carry the coverage the client sorts on; 62% of a 95% interval
+    # is too narrow, and a member without the figure prints a dash
+    assert 'data-pf-cov="0.620000"' in body
+    assert 'data-analogue-cov=""' in body
+    assert '<td class="num cov-low">62%</td>' in body
+    assert '<td class="num hint">–</td>' in body
+    # the column's reading at 95%, said once above the table
+    from markupsafe import escape
+    from app.core import report_season
+    assert "95%: the share of the state" in report_season.PSTATES_COV_NOTE
+    assert str(escape(report_season.PSTATES_COV_NOTE)) in html
+
+
+def test_per_state_table_keeps_one_column_per_member_without_coverage():
+    html = _season(figs=_figs(detail_cov=False))
+    body = html.split("Per-state scores")[1].split("</table>")[0]
+    assert 'class="pscov"' not in html
+    assert body.count('class="thsort"') == 3
+    assert "Cov" not in body and "95%" not in body
+
+
+def test_fitted_us_pf_says_it_is_the_plain_filter():
+    """The Oracle step skips the national row: under the Oracle SIHRS name,
+    the fitted US figure is the particle filter without it, on the tile
+    and under the table (us_national.PF_US_NOTE)."""
+    fit = us_national.UsNational(
+        us_national.FITTED,
+        scores={"pf": 0.9, "analogue": 0.58},
+        cells={"pf": 96, "analogue": 96}, n_states=52,
+        log_scores={"pf": 0.75, "analogue": None},
+        covs={"pf": {"50": 0.2, "80": 0.48, "95": 0.7},
+              "analogue": None}).as_dict()
+    html = _season(figs=_figs(), us=fit, us_row=fit)
+    flat = " ".join(html.split())
+    tile = flat.split("<h2>US (fitted): Oracle SIHRS</h2>", 1)[1].split(
+        "</div></div>", 1)[0]
+    assert us_national.PF_US_SHORT + ", fitted nationally" in tile
+    assert '<dd class="ok">0.750</dd>' in tile
+    assert '<span class="cov-low">20%</span>' in tile
+    an = flat.split("<h2>US (fitted): Groundhog</h2>", 1)[1].split(
+        "</div></div>", 1)[0]
+    assert us_national.PF_US_SHORT not in an
+    assert f'<p class="hint">{us_national.PF_US_NOTE}</p>' in flat
+    # the US row's coverage joins the table beside its relWIS
+    row = flat.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
+    assert 'data-pf-cov="0.700000"' in row
+    assert '<td class="num cov-low">70%</td>' in row
+    # a tree without the step names pf for the filter: nothing to add
+    plain = _season(figs=_figs(), us=fit, us_row=fit,
+                    model_name=lambda m: {"pf": "Particle filter alone",
+                                          "analogue": "Groundhog"}.get(m, m))
+    # (the player's us block still carries pf_note: it makes the same test
+    # of pf's name, player.js usPfNote)
+    page = plain.split("// live host for the shared player", 1)[0]
+    assert us_national.PF_US_NOTE not in page
+    assert us_national.PF_US_SHORT not in page
