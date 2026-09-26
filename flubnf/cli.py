@@ -76,23 +76,26 @@ def _root(verbose: bool = typer.Option(False, "--verbose", "-v")):
 
 def _trace(msg: str) -> None:
     """Startup trace: a timestamped line to stderr and to the file named by
-    FLUBNF_STARTUP_TRACE; a no-op when that is unset. The launch has four
-    actors (this process, uvicorn, the warm thread, WKWebView) and their
-    ordering is the diagnosis, so the trace stays in, env-gated."""
+    FLUBNF_STARTUP_TRACE. A no-op when that is unset, except under a Dock
+    launch (FLUBNF_HOST_FALLBACK, set by flubnf-launch), whose stderr is
+    app/state/logs/launch.log: there the trace is the only record of what
+    macOS answered. The launch has four actors (this process, uvicorn, the
+    warm thread, WKWebView) and their ordering is the diagnosis."""
     import os
     import sys as _sys
     import time as _time
     path = os.environ.get("FLUBNF_STARTUP_TRACE")
-    if not path:
+    if not path and not os.environ.get("FLUBNF_HOST_FALLBACK"):
         return
     t = _time.time()
     line = (f"{t:.3f} {_time.strftime('%H:%M:%S', _time.localtime(t))}"
             f".{int(t * 1000) % 1000:03d} [pid {os.getpid()} cli] {msg}")
-    try:
-        with open(path, "a") as fh:
-            fh.write(line + "\n")
-    except Exception:
-        pass
+    if path:
+        try:
+            with open(path, "a") as fh:
+                fh.write(line + "\n")
+        except Exception:
+            pass
     print(line, file=_sys.stderr, flush=True)
 
 
@@ -807,7 +810,8 @@ def _activate_once(appkit) -> tuple:
         pass
     try:
         appkit.NSRunningApplication.currentApplication().activateWithOptions_(
-            appkit.NSApplicationActivateAllWindows)
+            appkit.NSApplicationActivateAllWindows
+            | getattr(appkit, "NSApplicationActivateIgnoringOtherApps", 0))
     except Exception:
         pass
     # macOS 14+: ask on behalf of the focused app (the launching Terminal),
@@ -938,15 +942,22 @@ def _allow_pinch_zoom(window) -> None:
 
 def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
                           watch=ACTIVATE_WATCH, sleep=None,
-                          clock=None) -> bool:
+                          clock=None, stop=None) -> bool:
     """Ask macOS at each of `delays` (on the main thread via `call_after`)
     to activate this app until it is active with a key window. Every
-    outcome goes to the startup trace. Returns whether a request succeeded."""
+    outcome goes to the startup trace. Returns whether a request succeeded.
+
+    `stop` (a threading.Event) ends the wait early: the window closed. Run
+    this on a daemon thread only. pywebview runs the start callback on a
+    non-daemon thread, and a wait left there (the declined-activation watch
+    is up to ACTIVATE_WATCH[0] seconds) keeps the process alive after the
+    window closes: a spinning cursor for up to two minutes, then exit."""
     import platform
     import threading as _th
     import time as _t
     sleep = sleep or _t.sleep
     clock = clock or _t.monotonic
+    stop = stop or _th.Event()
     t0 = clock()
     _trace(f"window: macOS {platform.mac_ver()[0] or 'unknown'}, "
            f"{len(delays)} activation requests planned")
@@ -961,13 +972,24 @@ def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
                 box["r"] = None
             done.set()
         call_after(_run)
-        done.wait(2.0)
+        for _ in range(20):
+            if done.wait(0.1) or stop.is_set():
+                break
         return box.get("r")
+
+    def _stopped() -> bool:
+        if stop.is_set():
+            _trace(f"window: closed at +{clock() - t0:.1f}s; activation "
+                   "watch ended")
+            return True
+        return False
 
     for i, d in enumerate(delays):
         wait = d - (clock() - t0)
         if wait > 0:
             sleep(wait)
+        if _stopped():
+            return False
         r = _on_main(lambda: _activate_once(appkit)) or (False, False)
         active, key = r
         _trace(f"window: activation request {i + 1} at "
@@ -979,6 +1001,8 @@ def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
     total, step = watch
     while clock() - t0 < total:
         sleep(step)
+        if _stopped():
+            return False
         app = appkit.NSApplication.sharedApplication()
         if _on_main(lambda: bool(app.isActive())):
             _trace(f"window: app became active at +{clock() - t0:.1f}s "
@@ -1161,7 +1185,7 @@ def app_window(port: int = 8710):
     # free port (otherwise the window can end up bound to nothing)
     signalled = _terminate_predecessor()
     _trace(f"window: predecessor takeover done (signalled={signalled})")
-    _write_pidfile()
+    drop_pidfile = _write_pidfile()
     sock, port = _bind_app_socket(port)
     url = f"http://localhost:{port}"
     _trace(f"window: port {port} bound and listening "
@@ -1183,8 +1207,17 @@ def app_window(port: int = 8710):
                                    min_size=(760, 520),
                                    zoomable=True, js_api=api)
     api._window = window
+    closed = threading.Event()
+    try:
+        window.events.closed += closed.set
+    except Exception:
+        pass
+
     def _activate():
-        # Runs on a secondary thread: Cocoa calls go through callAfter to
+        # Runs on a secondary, NON-daemon thread of pywebview's: everything
+        # that waits goes to a daemon thread of its own, and stops when the
+        # window closes, or the process outlives the window (a spinning
+        # cursor until the wait ends). Cocoa calls go through callAfter to
         # the main loop. A non-bundled process may start deactivated, hence
         # _bring_window_forward; the watchdog recovers a page that never
         # loaded.
@@ -1221,11 +1254,38 @@ def app_window(port: int = 8710):
                     pass
             AppHelper.callAfter(_icon)
             AppHelper.callAfter(_allow_pinch_zoom, window)
-            _bring_window_forward(AppKit, AppHelper.callAfter)
+            threading.Thread(target=_bring_window_forward,
+                             args=(AppKit, AppHelper.callAfter),
+                             kwargs={"stop": closed}, daemon=True).start()
         except Exception:
             pass
     _trace("window: entering webview.start (main loop)")
     webview.start(_activate)
+    # The window is gone: leave now. Every helper thread is a daemon, but
+    # the interpreter's exit also waits on any thread a library left
+    # running, and the user has closed the app, so nothing here is worth
+    # a wait (a running fit is already lost with the server).
+    _trace("window: closed; exiting")
+    _exit_now(drop_pidfile)
+
+
+def _exit_now(*cleanups) -> None:
+    """Run `cleanups`, flush the standard streams and end the process
+    without waiting for other threads (os._exit): the exit after the
+    window closes, which must be immediate."""
+    import os
+    import sys as _sys
+    for fn in cleanups:
+        try:
+            fn()
+        except Exception:
+            pass
+    for stream in (_sys.stdout, _sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass
+    os._exit(0)
 
 
 @app.command("retro")
