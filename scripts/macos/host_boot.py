@@ -24,6 +24,24 @@ STARTUP = 30.0
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def report(why: str) -> bool:
+    """A launch that FluBNF.command started through `open` (FLUBNF_LAUNCH=
+    ready) passes FLUBNF_BOOT_STATUS: write `why` there, where the Terminal
+    that asked reads it and starts the console in view, rather than opening
+    a second Terminal. True when reported so."""
+    path = os.environ.get("FLUBNF_BOOT_STATUS")
+    if not path:
+        return False
+    try:
+        with open(path, "w") as fh:
+            fh.write(why + "\n")
+    except OSError:
+        return False
+    sys.stderr.write(f"flubnf-host: {why}\n")
+    sys.stderr.flush()
+    return True
+
+
 def to_terminal(why: str, run=subprocess.run) -> None:
     """Say why in the launch log, then open FluBNF.command in Terminal.
     Waits for `open` (it returns once Terminal has the request), so the
@@ -59,14 +77,16 @@ def main(argv=None, clock=time.monotonic, run=runpy.run_path) -> None:
         run(script, run_name="__main__")
     except SystemExit as e:
         if e.code not in (None, 0) and clock() - t0 < STARTUP:
-            to_terminal(f"the console stopped at startup (exit {e.code})")
+            why = f"the console stopped at startup (exit {e.code})"
+            report(why) or to_terminal(why)
         raise
     except BaseException:
         if clock() - t0 >= STARTUP:
             raise
         import traceback
         traceback.print_exc()
-        to_terminal("the console failed at startup")
+        report("the console failed at startup") \
+            or to_terminal("the console failed at startup")
         raise SystemExit(1)
 
 

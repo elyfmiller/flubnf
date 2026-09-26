@@ -210,6 +210,38 @@ def test_a_ready_clone_execs_the_host_as_the_window(tmp_path):
 
 
 @posix_only
+def test_a_ready_launch_skips_the_checks_and_starts_the_console(tmp_path):
+    """FLUBNF_LAUNCH=ready: FluBNF.command ran the update, the checks and
+    the build a moment ago and asked LaunchServices for the app. Straight
+    to the host, as `app` (what FluBNF.command runs), output left with the
+    asking Terminal (no launch.log), the status file passed through."""
+    repo, rec = _launch_repo(tmp_path)
+    status = tmp_path / "boot"
+    r, log, _ = _launch(repo, FLUBNF_LAUNCH="ready",
+                        FLUBNF_BOOT_STATUS=str(status))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _read(rec, "prep.env") is None and _read(rec, "build") is None
+    assert _read(rec, "host") == [f"{repo}/.venv/bin/flubnf", "app"]
+    env = _envfile(_read(rec, "host.env"))
+    assert env["FLUBNF_HOST_FALLBACK"] == "1"
+    assert env["FLUBNF_BOOT_STATUS"] == str(status)
+    assert log == "" and _read(rec, "open") is None
+
+
+@posix_only
+def test_a_ready_launch_that_cannot_start_reports_and_never_opens_terminal(tmp_path):
+    """No second Terminal from a launch a Terminal asked for: the reason
+    goes to the status file, and that Terminal starts the console itself."""
+    repo, rec = _launch_repo(tmp_path, host=False)
+    status = tmp_path / "boot"
+    r, _, _ = _launch(repo, FLUBNF_LAUNCH="ready",
+                      FLUBNF_BOOT_STATUS=str(status))
+    assert r.returncode == 1
+    assert "no FluBNF host" in status.read_text()
+    assert _read(rec, "open") is None and _read(rec, "osascript") is None
+
+
+@posix_only
 @pytest.mark.parametrize("case, why", [
     ("asked", "FLUBNF_LAUNCH=terminal"),
     ("first-run", "first run"),
@@ -334,10 +366,24 @@ def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True):
     return repo, rec
 
 
-def _as_os(tmp_path, repo, rec, name="Darwin", *, build="exit 0", host_rc=0) -> str:
+def _as_os(tmp_path, repo, rec, name="Darwin", *, build="exit 0", host_rc=0,
+           opened="ok") -> str:
     """PATH under which `uname -s` says `name`, with a host and a build
-    stand-in in the clone."""
+    stand-in in the clone, and `open` a stand-in for LaunchServices that
+    records its call. `opened`: ok (the app ran and quit), boot-fail (the
+    app wrote a startup failure to FLUBNF_BOOT_STATUS) or refuse (open
+    itself failed, as an older macOS without --env does)."""
     _script(tmp_path / "osbin" / "uname", f"echo {name}\n")
+    _script(tmp_path / "osbin" / "open", f"""printf "%s\\n" "$@" > "{rec}/open"
+case "{opened}" in
+  refuse) exit 1 ;;
+  boot-fail)
+    for a in "$@"; do
+      case "$a" in FLUBNF_BOOT_STATUS=*) echo "the console stopped at startup (exit 1)" > "${{a#FLUBNF_BOOT_STATUS=}}" ;; esac
+    done ;;
+esac
+exit 0
+""")
     _script(repo / "scripts" / "macos" / "build_app_host.sh",
             f'echo built >> "{rec}/build"\n{build}\n')
     _script(repo / HOST_REL, f'echo "host $*" >> "{rec}/console"\nexit {host_rc}\n')
@@ -384,16 +430,39 @@ def test_headless_mode_stops_before_the_console_when_ready(tmp_path):
 
 
 @posix_only
+def test_the_terminal_launch_opens_the_app_through_launchservices(tmp_path):
+    """From Terminal the window starts as a Dock click does (open -W -n -a
+    FluBNF.app), not as this shell's child: recent macOS never makes a
+    Terminal child the active app, so it showed no hover and would not
+    resize. The app skips the checks this file just ran (ready)."""
+    repo, rec = _command_repo(tmp_path)
+    path = _as_os(tmp_path, repo, rec)
+    r = _command(repo, PATH=path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    args = _read(rec, "open")
+    assert args[:6] == ["-W", "-n", "-a", f"{repo}/FluBNF.app", "--env",
+                        "FLUBNF_LAUNCH=ready"], args
+    boot = [a for a in args if a.startswith("FLUBNF_BOOT_STATUS=")]
+    assert len(boot) == 1 and not Path(boot[0].split("=", 1)[1]).exists()
+    assert _read(rec, "console") is None          # nothing ran as a child
+    assert _read(rec, "build") == ["built"]
+
+
+@posix_only
 @pytest.mark.parametrize("host_rc, again", [
     (0, False), (130, False), (137, False), (143, False),   # quit, Ctrl-C, takeovers
     (1, True), (139, True)])                                # a start that failed
-def test_the_terminal_launch_runs_the_console_under_the_host(tmp_path, host_rc, again):
-    """From Terminal too the window is FluBNF.app's once the host exists, so
-    Keep in Dock after a first run pins FluBNF.app. A start that fails under
-    the host gets one run without it, as the console ran before."""
+@pytest.mark.parametrize("opened", ["boot-fail", "refuse"])
+def test_the_terminal_launch_runs_the_console_under_the_host(tmp_path, host_rc,
+                                                              again, opened):
+    """When the app fails at startup (it says so in FLUBNF_BOOT_STATUS) or
+    macOS will not open it, the console starts here in view, under the
+    host, as it did before; a start that fails under the host gets one run
+    without it."""
     repo, rec = _command_repo(tmp_path)
-    path = _as_os(tmp_path, repo, rec, host_rc=host_rc)
+    path = _as_os(tmp_path, repo, rec, host_rc=host_rc, opened=opened)
     r = _command(repo, PATH=path)
+    assert _read(rec, "open"), r.stdout + r.stderr
     runs = _read(rec, "console")
     assert runs[0] == f"host {repo}/.venv/bin/flubnf app", r.stdout + r.stderr
     assert runs[1:] == (["direct app"] if again else [])
@@ -457,6 +526,30 @@ def test_boot_leaves_a_late_crash_alone(monkeypatch):
         boot.main(["host_boot.py", "/x/flubnf", "window"],
                   clock=iter([0.0, 3600.0]).__next__, run=run)
     assert calls == []
+
+
+@pytest.mark.parametrize("exc", [SystemExit(1), ImportError("webview")])
+def test_boot_reports_to_the_asking_terminal_instead_of_opening_one(
+        monkeypatch, tmp_path, exc):
+    """A launch FluBNF.command made through `open` names a status file: an
+    early failure is written there (that Terminal then starts the console
+    in view) and no second Terminal opens."""
+    boot = _boot()
+    status = tmp_path / "boot"
+    status.write_text("")
+    monkeypatch.setenv("FLUBNF_BOOT_STATUS", str(status))
+    calls = []
+    monkeypatch.setattr(boot, "to_terminal", lambda why: calls.append(why))
+
+    def run(path, run_name):
+        raise exc
+    monkeypatch.setattr(sys, "argv", list(sys.argv))
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    with pytest.raises(SystemExit):
+        boot.main(["host_boot.py", "/x/.venv/bin/flubnf", "app"],
+                  clock=iter([0.0, 1.0]).__next__, run=run)
+    assert calls == []
+    assert "at startup" in status.read_text()
 
 
 def test_boot_runs_the_script_as_python_would(monkeypatch):

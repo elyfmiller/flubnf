@@ -172,12 +172,14 @@ if [ "$(uname -s)" = Darwin ] && [ -f scripts/macos/build_app_host.sh ]; then
 fi
 
 echo "FluBNF console starting. A window (or browser tab) will open. Ctrl-C here to stop."
-if [ -n "$HOST" ]; then
+
+# The console under FluBNF.app's host, started here in view. A start that
+# fails under the host gets one run without it. 130, 137 and 143 are Ctrl-C
+# and a takeover by a newer launch, not failures.
+run_here() {
   T0=$SECONDS
   "$HOST" "$PWD/.venv/bin/flubnf" app
   STATUS=$?
-  # A start that fails under the host gets one run without it. 130, 137
-  # and 143 are Ctrl-C and a takeover by a newer launch, not failures.
   case "$STATUS" in
     0|130|137|143) ;;
     *)
@@ -189,6 +191,39 @@ if [ -n "$HOST" ]; then
       fi
       ;;
   esac
+}
+
+if [ -n "$HOST" ]; then
+  # Through LaunchServices, as a Dock click is: a window started as this
+  # shell's child is never made the active app on recent macOS (Terminal
+  # keeps the focus), so it shows no hover and will not resize. The app
+  # skips its own checks (FLUBNF_LAUNCH=ready: this file just ran them),
+  # prints here, and writes a failure at startup to BOOT instead of opening
+  # another Terminal; the console then starts here in view, as it did
+  # before. Ctrl-C here stops the app (its pidfile).
+  BOOT="$(mktemp -t flubnf-boot.XXXXXX 2>/dev/null)" || BOOT=""
+  OUT=()
+  TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
+  case "$TTY_NOW" in /dev/*) OUT=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
+  [ -z "$BOOT" ] || OUT+=(--env "FLUBNF_BOOT_STATUS=$BOOT")
+  STOPPED=""
+  trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT
+  open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready ${OUT[@]+"${OUT[@]}"}
+  ORC=$?
+  trap - INT
+  if [ -n "$STOPPED" ]; then
+    STATUS=130
+  elif [ "$ORC" -ne 0 ]; then
+    # an older macOS without open --env, or LaunchServices refused
+    echo "· macOS did not open FluBNF.app (code $ORC); starting the console here"
+    run_here
+  elif [ -n "$BOOT" ] && [ -s "$BOOT" ]; then
+    echo "· $(cat "$BOOT"); starting it here to show why"
+    run_here
+  else
+    STATUS=0
+  fi
+  [ -z "$BOOT" ] || rm -f "$BOOT"
 else
   .venv/bin/flubnf app
   STATUS=$?
