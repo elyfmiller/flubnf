@@ -20,6 +20,9 @@
                    back to catalog.officials, then accumulates from payloads
      palette       optional function() -> theme colors, re-read per redraw
      payloadError  optional function(week) -> message for a failed week
+     notes         optional {week: caption}: shown after the week label
+                   (a data provenance line, or the placeholder for a week
+                   with no published data, whose payload is null)
      isCached      optional function(week) -> true when getPayload(week)
                    resolves without a wait (drives the loading hints)
      detailVisible optional function() -> false while the host shows some
@@ -520,9 +523,14 @@ function createPlayer(cfg){
     return (p.models || {})[m] || p.mut;
   }
 
+  function noteOf(w){
+    return (cfg.notes && cfg.notes[w]) ? String(cfg.notes[w]) : '';
+  }
   function failMsg(w, dflt){
     var m = cfg.payloadError ? cfg.payloadError(w) : null;
-    return m || dflt;
+    // a week the host annotated (no data published) has no payload by
+    // design: its note is the message, not a failure
+    return m || noteOf(w) || dflt;
   }
 
   // ---- controls: built once, from cfg.catalog (the static host passes
@@ -855,8 +863,9 @@ function createPlayer(cfg){
 
   // ---- the player: prev / play-pause / next, speed, scrubber, arrows ----
   function labelWeek(){
+    var note = noteOf(weeks[P.idx]);
     el.week.textContent = weeks[P.idx] + ' · week ' + (P.idx + 1)
-      + ' of ' + weeks.length;
+      + ' of ' + weeks.length + (note ? ' · ' + note : '');
   }
   function seek(i, fromScrub){
     P.idx = Math.max(0, Math.min(weeks.length - 1, i));

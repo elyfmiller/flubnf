@@ -117,7 +117,12 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
         if status in ("stopped", "interrupted"):
             resume_fields = _retro.resume_form_fields(
                 _retro.read_meta(_live_root(s)))
-        seasons.append({"name": s, "total": total, "done": done,
+        # weeks the season gained after this replay finished (hub archive
+        # or shipped snapshots): Resume runs them (retro_seasons._retro_progress)
+        added = list(prog.get("added") or [])
+        seasons.append({"name": s, "total": max(total, int(prog.get("total") or 0)),
+                        "done": done,
+                        "added": added, "added_n": len(added),
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
                         "rel": rel, "rels": rels,
@@ -182,6 +187,7 @@ def api_retro_startover(season: str = ""):
     from app.core.retro import season_vintages
     if not _valid_season(season):
         return {"season": season, "weeks": 0, "total": 0, "complete": False,
+                "added": 0,
                 "elapsed_s": None, "elapsed_hms": "", "finished": "",
                 "status": "", "active": False, "archives": 0,
                 "sealed": False}
@@ -195,10 +201,14 @@ def api_retro_startover(season: str = ""):
         if is_seal and retro_seasons._weeks_done(shown_root):
             sealed = True
             s = retro.run_summary(shown_root)
+    # weeks the season's list gained after this run finished: a Resume
+    # runs only those (the prompt says so)
+    prog = retro_seasons._retro_progress(season)
     return {"season": season,
             "sealed": sealed,
             "weeks": s["weeks"],
             "total": total,
+            "added": len(prog.get("added") or []) if not sealed else 0,
             "complete": bool(total and s["weeks"] >= total),
             "elapsed_s": s["elapsed_s"],
             # blank rather than a fabricated 0:00:00
@@ -640,6 +650,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     return RedirectResponse("/retro", status_code=303)
 
 
+def _playback_note() -> str:
+    """The player's placeholder text for a week with no published data."""
+    from app.core import playback
+    return playback.NO_DATA_NOTE
+
+
 def retro_engine_label(engine: str) -> str:
     """The preset's plain name: app.core.retro.ENGINE_LABELS, the one map
     (the Run settings blocks read it too)."""
@@ -700,6 +716,8 @@ def retro_results(request: Request, season: str, week: str = "",
                 "us": None, "pooled_note": "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
+                "timeline": weeks, "notes": {},
+                "no_data_note": _playback_note(),
                 "official_catalog": [], "prog": None, "n_weeks": 0})
         if job["error"]:
             # show the failure, never pass it off as "truth not settled"
@@ -860,6 +878,9 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = _playback.season_official_catalog(root)
     except Exception:
         official_catalog = []
+    # the player's timeline: the stored weeks plus the season's no-data
+    # weeks as placeholders, and the captions (data provenance) per week
+    timeline, notes = _playback.week_notes(season, weeks)
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
         "model_name": _name_fn(names), "knobs_label": knobs_label,
@@ -880,6 +901,8 @@ def retro_results(request: Request, season: str, week: str = "",
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "timeline": timeline, "notes": notes,
+        "no_data_note": _playback.NO_DATA_NOTE,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
                  else retro_seasons._retro_progress(season)),

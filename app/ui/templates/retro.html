@@ -90,9 +90,11 @@ had, then scores against settled truth.</p>
        data-done="{{ s.done }}" data-total="{{ s.total }}"
        data-results="{{ 1 if s.done > 0 else 0 }}">
    <h2>{{ s.name }}</h2>
-   {# a scored complete season prints its relWIS instead of a 100% bar #}
+   {# a scored complete season prints its relWIS instead of a 100% bar; a
+      finished replay whose season gained weeks afterwards (s.added_n) keeps
+      its score and says what Resume would run #}
    {% set s_complete = (s.rel is defined) and (s.rel is not none)
-      and s.total and s.done >= s.total and not s.active %}
+      and s.total and (s.done >= s.total or s.added_n) and not s.active %}
    {% if s.active %}
    {# live replay: the console's run bar, driven by the ticker #}
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
@@ -119,6 +121,7 @@ had, then scores against settled truth.</p>
      {% elif s.status == 'interrupted' %}<span class="bad">· interrupted; the application closed mid-replay</span>
      {% elif s.status == 'stopped' and s.stop_reason %}<span class="warn">· {{ s.stop_reason }}</span>
      {% elif s.status == 'stopped' %}<span>· stopped; Run resumes it</span>
+     {% elif s.status == 'done' and s.added_n %}<span class="ok">· complete</span> <span class="warn">· {{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}{% endif %}</span>
      {% elif s.status == 'done' %}<span class="ok">· complete</span>
      {% elif s.status and s.status.startswith('error') %}<span class="bad">· {{ s.status }}</span>
      {% endif %}</span>

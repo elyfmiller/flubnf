@@ -22,7 +22,13 @@ from typing import Optional
 
 import pandas as pd
 
+from flubnf import vintages as shipped_vintages
 from flubnf.settings import ARCHIVE, HUB, LOCATIONS  # noqa: F401
+
+#: the committed snapshots for the as-of weeks the hub archive skipped
+#: (flubnf/vintages.py); a module-level name so tests can point it at an
+#: empty folder, the way they repoint ARCHIVE
+SHIPPED = shipped_vintages.VINTAGES_DIR
 
 
 def truth_mtime() -> float:
@@ -37,22 +43,61 @@ def truth_mtime() -> float:
         return 0.0
 
 
-def vintages() -> list:
-    """Every archived truth vintage, sorted ascending."""
+def archive_vintages() -> list:
+    """The hub archive's truth vintages alone, sorted ascending."""
     return sorted(p.name.split("_")[-1].removesuffix(".csv")
                   for p in ARCHIVE.glob("target-hospital-admissions_*.csv"))
 
 
+def shipped_weeks() -> list:
+    """The as-of weeks the shipped snapshot folder (SHIPPED) can serve."""
+    return shipped_vintages.weeks(SHIPPED)
+
+
+def vintages() -> list:
+    """Every truth vintage a run can read, sorted ascending: the hub archive
+    and the shipped snapshots (flubnf/vintages.py), one entry per week."""
+    return sorted(set(archive_vintages()) | set(shipped_weeks()))
+
+
 def vintage_path(date: str) -> Path:
-    """Exact vintage or a LOUD error naming nearby ones (never a silent skip)."""
+    """The file holding the truth as of `date`: the hub archive's vintage
+    when it has one, else the shipped snapshot (sha256 verified against its
+    manifest), else a LOUD error naming both folders and nearby weeks
+    (never a silent skip)."""
     p = ARCHIVE / f"target-hospital-admissions_{date}.csv"
-    if not p.is_file():
-        vs = vintages()
-        near = [v for v in vs
-                if abs((pd.Timestamp(v) - pd.Timestamp(date)).days) <= 45]
-        raise FileNotFoundError(
-            f"No vintage for {date}. Nearby: {near or vs[-3:]}")
-    return p
+    if p.is_file():
+        return p
+    if str(date) in shipped_weeks():
+        return shipped_vintages.shipped_path(date, SHIPPED)
+    vs = vintages()
+    near = [v for v in vs
+            if abs((pd.Timestamp(v) - pd.Timestamp(date)).days) <= 45]
+    raise FileNotFoundError(
+        f"No vintage for {date} in the hub archive {ARCHIVE} or the shipped "
+        f"snapshots {SHIPPED}. Nearby: {near or vs[-3:]}")
+
+
+def vintage_source(date: str) -> dict:
+    """Where a week's truth comes from, for provenance: {"kind": "archive"
+    | "shipped" | "none", "path", "label", "commit"}. label reads 'hub
+    archive' or 'hub snapshot, commit 1c8e1141 (2024-11-27)'."""
+    p = ARCHIVE / f"target-hospital-admissions_{date}.csv"
+    if p.is_file():
+        return {"kind": "archive", "path": str(p), "label": "hub archive",
+                "commit": ""}
+    e = shipped_vintages.entry(date, SHIPPED)
+    if e is not None and str(date) in shipped_weeks():
+        return {"kind": "shipped", "path": str(SHIPPED / e["file"]),
+                "label": shipped_vintages.provenance(date, SHIPPED),
+                "commit": str(e.get("hub_commit") or "")}
+    return {"kind": "none", "path": "", "label": "", "commit": ""}
+
+
+def no_data_weeks() -> dict:
+    """{as_of: manifest entry} for the weeks with no published data and no
+    FluSight round (flubnf/vintages.py)."""
+    return shipped_vintages.no_data_weeks(SHIPPED)
 
 
 #: the hub's live target file, relative to the clone: `git pull` rewrites it
@@ -211,19 +256,43 @@ def file_sha256(path) -> str:
 
 
 def source_record(path, kind: str) -> dict:
-    """What a run records about its data: kind, path, sha256, newest week."""
-    return {"kind": kind, "path": str(path), "sha256": file_sha256(path),
-            "newest_week": newest_row_week(path) or ""}
+    """What a run records about its data: kind, path, sha256, newest week;
+    for a shipped snapshot also the hub commit it was taken from."""
+    rec = {"kind": kind, "path": str(path), "sha256": file_sha256(path),
+           "newest_week": newest_row_week(path) or ""}
+    commit = shipped_commit(path)
+    if commit:
+        rec["snapshot_commit"] = commit
+    return rec
+
+
+def shipped_commit(path) -> str:
+    """The hub commit a shipped snapshot file was taken from, '' for any
+    other file (the archive's, the live file, a dataset's)."""
+    try:
+        p = Path(path).resolve()
+        if p.parent != Path(SHIPPED).resolve():
+            return ""
+    except OSError:
+        return ""
+    asof = p.name.removeprefix(shipped_vintages.FILE_PREFIX).removesuffix(".csv")
+    e = shipped_vintages.entry(asof, SHIPPED)
+    return str(e.get("hub_commit") or "") if e else ""
 
 
 def source_phrase(rec) -> str:
     """One short phrase for a recorded source: 'live target-data through
-    2026-10-03' or 'archived vintage 2026-10-03'; '' when not recorded."""
+    2026-10-03', 'archived vintage 2026-10-03' or 'shipped snapshot
+    2024-11-23, hub commit 1c8e1141'; '' when not recorded."""
     if not isinstance(rec, dict) or not rec.get("kind"):
         return ""
     wk = str(rec.get("newest_week") or "")
     if rec["kind"] == "live":
         return f"live target-data through {wk}" if wk else "live target-data"
+    commit = str(rec.get("snapshot_commit") or "")
+    if commit:
+        return (f"shipped snapshot {wk}, hub commit {commit}" if wk
+                else f"shipped snapshot, hub commit {commit}")
     return f"archived vintage {wk}" if wk else "archived vintage"
 
 
@@ -310,9 +379,13 @@ def check_freshness(fetch: bool = True) -> Freshness:
                     ["git", "ls-tree", "-r", "--name-only", "origin/main",
                      "auxiliary-data/target-data-archive/"],
                     cwd=HUB, capture_output=True, text=True, timeout=15)
-                remote = sorted(l.split("_")[-1].removesuffix(".csv")
-                                for l in ls.stdout.splitlines()
-                                if "target-hospital-admissions_" in l)
+                # the weeks a pull can bring: origin's archive plus the
+                # shipped snapshots (already local; folded in so the two
+                # lists compare like for like with vintages())
+                remote = sorted(set(l.split("_")[-1].removesuffix(".csv")
+                                    for l in ls.stdout.splitlines()
+                                    if "target-hospital-admissions_" in l)
+                                | set(shipped_weeks()))
                 remote_latest = remote[-1] if remote else None
                 # the live target file moves every week, the archive by
                 # hand: its newest week is the data a real-time run gets

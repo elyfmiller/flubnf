@@ -103,6 +103,25 @@ def _sealed_records_in_tmp(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
+    """The committed truth snapshots (data/vintages/) stay out of every test
+    unless it asks: with the hub pointed at an empty folder the suite
+    expects NO weeks, and the eight shipped ones would otherwise appear as
+    seasons. Opt in with the `shipped_vintages` fixture."""
+    from app.core import data as core_data
+    monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
+
+
+@pytest.fixture
+def shipped_vintages(monkeypatch):
+    """The real committed snapshot folder (opt-in; see the autouse fixture)."""
+    from app.core import data as core_data
+    from flubnf import vintages as shipped
+    monkeypatch.setattr(core_data, "SHIPPED", shipped.VINTAGES_DIR)
+    return shipped.VINTAGES_DIR
+
+
+@pytest.fixture(autouse=True)
 def _sandbox_released():
     """The sandbox's engine claim is module state that /run and /retro/run
     refuse on; no test may leak a live sandbox fit into another."""

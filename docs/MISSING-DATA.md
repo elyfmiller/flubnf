@@ -4,7 +4,8 @@ The question: when a state does not report, should the models fill the gap (a sp
 neighbouring weeks) instead of treating it as absent or as a 0? This page answers it from the hub's own
 record: the 90 archived vintages (2023-09-23 to 2026-07-04, `auxiliary-data/target-data-archive/`) and the
 settled `target-data/target-hospital-admissions.csv`. The survey scripts are not part of the app; every
-number below comes from the hub files as published.
+number below comes from the hub files as published. (The eight scored weeks the archive skipped, shipped
+since as `data/vintages/`, are not in these counts; see [data/README.md](../data/README.md).)
 
 ## What the models do today
 

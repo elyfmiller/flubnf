@@ -560,7 +560,11 @@ def build_season_report(root: Path, season: str, archive: str = "",
                 and names_line in text):
             return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
-    data = {"season": season, "weeks": weeks, "payloads": payloads}
+    # the player's timeline carries the season's no-data weeks as
+    # placeholders (no payload) and a caption per annotated week
+    timeline, notes = playback.week_notes(season, weeks)
+    data = {"season": season, "weeks": timeline, "payloads": payloads,
+            "notes": notes, "stored_weeks": weeks}
     # "</" would end the embedding <script> early; "<\/" is the same JSON
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
@@ -607,6 +611,7 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
             .replace("@@NWEEKS@@", str(len(weeks)))
             .replace("@@FIRST@@", weeks[0])
             .replace("@@LAST@@", weeks[-1])
+            # the scrubber's range is set by the embedded timeline at load
             .replace("@@MAXIDX@@", str(len(weeks) - 1))
             .replace("@@TIMING@@", timing_note)
             .replace("@@SIZENOTE@@", size_note)
@@ -825,7 +830,13 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 // the JS reads only fields the API defines.
 'use strict';
 var DATA = JSON.parse(document.getElementById('pbdata').textContent);
-var WEEKS = DATA.weeks, PAY = DATA.payloads;
+// WEEKS is the timeline: the stored weeks plus the season's no-data weeks,
+// which have no payload and show their note (DATA.notes) instead
+var WEEKS = DATA.weeks, PAY = DATA.payloads, NOTES = DATA.notes || {};
+(function(){
+  var s = document.getElementById('pb-scrub');
+  if(s) s.max = String(Math.max(0, WEEKS.length - 1));
+})();
 // controls build from the union across every embedded week, so a model or
 // location present in only part of the season still gets a toggle
 var UNION = {models: {}, offs: {}, locs: {}};
@@ -858,6 +869,7 @@ function css(n, fb){
 @@NAMES@@
 var player = FluBNFPlayer.init({
   weeks: WEEKS,
+  notes: NOTES,
   mode: 'static',
   getPayload: function(w){ return Promise.resolve(PAY[w] || null); },
   catalog: {models: Object.keys(UNION.models),

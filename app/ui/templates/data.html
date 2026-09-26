@@ -21,7 +21,8 @@
    {{ latest.locations }} jurisdictions · newest week
    {{ latest.newest_week }}</p>
   {% endif %}
-  <p class="hint">{{ n_vintages }} archived truth vintages</p>
+  <p class="hint">{{ n_vintages }} archived truth vintages{% if n_shipped %}, {{ n_shipped }} of them shipped snapshots
+   {{ tips.tip("shipped", "shipped snapshots", "Weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.") }}{% endif %}</p>
   {% elif not live_week %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
   {# did every jurisdiction report the newest week? (the file a real-time
      run reads; app/core/reported.py) #}
@@ -46,7 +47,8 @@
    {% for row in vintage_rows %}{% set y = 14 + 22 * loop.index0 %}
    <text x="0" y="{{ y + 4 }}" font-size="11" fill="currentColor">{{ row.season }}</text>
    <line x1="64" y1="{{ y }}" x2="556" y2="{{ y }}" stroke="currentColor" stroke-opacity=".18"/>
-   {% for off, d in row.points %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"><title>{{ d }}</title></circle>{% endfor %}
+   {# a shipped snapshot is a ring, not a dot; its title says so #}
+   {% for off, d in row.points %}{% if d in shipped %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="none" stroke="{{ row.color }}" stroke-width="1.6"><title>{{ d }} (shipped snapshot)</title></circle>{% else %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"><title>{{ d }}</title></circle>{% endif %}{% endfor %}
    {% endfor %}
    {% set yb = 14 + 22 * vintage_rows | length %}
    {% for m, lab in ((0, "Aug"), (13, "Nov"), (26, "Feb"), (39, "May"), (52, "Aug")) %}
@@ -79,7 +81,8 @@
   {% if not ds or ds.vintage_true %}
   <span><label for="dv-vintage">{{ "Snapshot" if ds else "Vintage" }}</label>
    <select id="dv-vintage" name="vintage">
-    {% for v in vintages %}<option {% if v == sel_vintage %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    {# a shipped snapshot's label says so; its value stays the bare date #}
+    {% for v in vintages %}<option {% if v == sel_vintage %}selected{% endif %}{% if v in shipped %} value="{{ v }}"{% endif %}>{{ v }}{% if v in shipped %} (shipped snapshot){% endif %}</option>{% endfor %}
    </select></span>
   {% endif %}
   <span><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
@@ -91,7 +94,7 @@
  {% else %}<p class="hint">Nothing archived yet.</p>{% endif %}
  {% if view_note %}<p class="warn">{{ view_note }}</p>{% endif %}
  {% if sel_summary %}
- <p class="hint">As archived on {{ sel_vintage }}: {{ "{:,}".format(sel_summary.rows) }}
+ <p class="hint">{% if sel_vintage in shipped %}Shipped snapshot for {{ sel_vintage }} ({{ shipped_labels[sel_vintage] }}){% else %}As archived on {{ sel_vintage }}{% endif %}: {{ "{:,}".format(sel_summary.rows) }}
   reported rows · {{ sel_summary.locations }} jurisdictions · weeks
   {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
  {% endif %}

@@ -1,0 +1,127 @@
+{
+ "digest": "sha256 of the file bytes; app.core.data.vintage_path verifies it on every read and raises on a mismatch",
+ "layout_version": 1,
+ "naming": "target-hospital-admissions_<as-of Saturday>.csv, the archive's naming; the archive file wins when both exist",
+ "no_data_weeks": [
+  {
+   "as_of": "2024-05-04",
+   "reason": "no data published; no FluSight round (HHS hospital reporting ended)",
+   "reference_date": "2024-05-11",
+   "season": "2023-24"
+  },
+  {
+   "as_of": "2025-01-18",
+   "reason": "no data published; no FluSight round (federal communications pause)",
+   "reference_date": "2025-01-25",
+   "season": "2024-25"
+  }
+ ],
+ "source_repo": "https://github.com/cdcepi/FluSight-forecast-hub",
+ "vintages": [
+  {
+   "as_of": "2024-11-23",
+   "file": "target-hospital-admissions_2024-11-23.csv",
+   "hub_commit": "1c8e1141",
+   "hub_commit_date": "2024-11-27T12:09:35-05:00",
+   "hub_commit_sha": "1c8e1141e0809428693770e8914b2d7d51f314b5",
+   "location_count": 53,
+   "reference_date": "2024-11-30",
+   "rows": 7791,
+   "season": "2024-25",
+   "sha256": "02e8c78d4d63ee32a5b0bfa171a400d4e0a816014cf272f5a7b2771dc9220ce0",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2024-12-07",
+   "file": "target-hospital-admissions_2024-12-07.csv",
+   "hub_commit": "47f76990",
+   "hub_commit_date": "2024-12-11T18:40:47+00:00",
+   "hub_commit_sha": "47f76990a0cfba1cf226c7bc0087200777e77766",
+   "location_count": 53,
+   "reference_date": "2024-12-14",
+   "rows": 7897,
+   "season": "2024-25",
+   "sha256": "db5621aa21bd603cd09dc80590662aa5c2ebc61cf0b56614d4dbf3f67767fe4d",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2025-01-04",
+   "file": "target-hospital-admissions_2025-01-04.csv",
+   "hub_commit": "fd7109e8",
+   "hub_commit_date": "2025-01-08T18:26:56+00:00",
+   "hub_commit_sha": "fd7109e8c1f6051cc399b4ca357541921bc14bf7",
+   "location_count": 53,
+   "reference_date": "2025-01-11",
+   "rows": 8109,
+   "season": "2024-25",
+   "sha256": "74b88f42708ef7afd4726e60bc282cdc6a56e5f63e19d0cd92c0c92c3c19f79a",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2025-11-22",
+   "file": "target-hospital-admissions_2025-11-22.csv",
+   "hub_commit": "03a4b119",
+   "hub_commit_date": "2025-11-26T17:44:51+00:00",
+   "hub_commit_sha": "03a4b1192c787c7f7b4fa9bafc7bbc3ec2a140c2",
+   "location_count": 53,
+   "reference_date": "2025-11-29",
+   "rows": 10547,
+   "season": "2025-26",
+   "sha256": "b1dd3e423bf5887334eacbaab51b9d1df49102d6abd269a0d7adea47327ff397",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2025-12-20",
+   "file": "target-hospital-admissions_2025-12-20.csv",
+   "hub_commit": "42ee35f1",
+   "hub_commit_date": "2025-12-24T18:05:12+00:00",
+   "hub_commit_sha": "42ee35f1c7970306bbbb9acc9c056473f96a1ddd",
+   "location_count": 53,
+   "reference_date": "2025-12-27",
+   "rows": 10759,
+   "season": "2025-26",
+   "sha256": "0234b961205d8fc742d1d3d5c4767f0d613acdec17f68795e56cc7645a231493",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2026-01-31",
+   "file": "target-hospital-admissions_2026-01-31.csv",
+   "hub_commit": "569f578a",
+   "hub_commit_date": "2026-02-04T15:53:03-05:00",
+   "hub_commit_sha": "569f578af246017a009dee647f63da29ef46f691",
+   "location_count": 53,
+   "reference_date": "2026-02-07",
+   "rows": 11077,
+   "season": "2025-26",
+   "sha256": "6f5568795d7b423449bc313aa50e2e0ec7b2537c632d71646de6f6859f7303d6",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2026-03-07",
+   "file": "target-hospital-admissions_2026-03-07.csv",
+   "hub_commit": "f696cda5",
+   "hub_commit_date": "2026-03-11T14:12:53-04:00",
+   "hub_commit_sha": "f696cda50959db38599a9ff614201c86eb7df84d",
+   "location_count": 53,
+   "reference_date": "2026-03-14",
+   "rows": 11342,
+   "season": "2025-26",
+   "sha256": "3efba5b93fedf706e13287e9b3dd02ce5d4c84dd60e12c66177b09e7e3c05478",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  },
+  {
+   "as_of": "2026-04-25",
+   "file": "target-hospital-admissions_2026-04-25.csv",
+   "hub_commit": "6c25e693",
+   "hub_commit_date": "2026-04-29T14:36:21-04:00",
+   "hub_commit_sha": "6c25e693bb1c28e7aff1f4dd0f0f773b8471ff4f",
+   "location_count": 53,
+   "reference_date": "2026-05-02",
+   "rows": 11713,
+   "season": "2025-26",
+   "sha256": "2b94797a483025ad46aedaf9b9d6e9af7f1bfcd671ab3e6ae2cdcf0918f155f1",
+   "source_path": "target-data/target-hospital-admissions.csv"
+  }
+ ],
+ "what": "Weekly snapshots of the hub's target-data/target-hospital-admissions.csv for as-of weeks the hub's target-data-archive does not hold, taken from the hub's commit history, bytes unchanged."
+}

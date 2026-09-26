@@ -1352,10 +1352,11 @@ def retro_cmd(
             f"{season!r} is not a season; give one such as 2024-25")
     vints = retro.season_vintages(season)
     if not vints:
-        from flubnf.settings import ARCHIVE as _ARCHIVE
+        from app.core import data as _data
         typer.echo(f"refused: no archived vintages for {season} in "
-                   f"{_ARCHIVE}; nothing was run. Update the hub clone, or "
-                   "pick a season it holds.", err=True)
+                   f"{_data.ARCHIVE} and no shipped snapshots for it in "
+                   f"{_data.SHIPPED}; nothing was run. Update the hub clone, "
+                   "or pick a season it holds.", err=True)
         raise typer.Exit(2)
     try:
         nd = _K.resolve(pairs, "all", scope="retro",

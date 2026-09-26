@@ -42,7 +42,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from app.core.data import ARCHIVE                     # noqa: E402
+from app.core import data as _data                    # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
 from app.core import horizons as hz
@@ -71,14 +71,14 @@ def season_bounds(season: str) -> tuple:
 
 
 def available_seasons() -> list:
-    """Seasons derived from the hub's vintage archive: a vintage dated inside
-    a season's window makes that season available, so a future season appears
+    """Seasons derived from the truth vintages (app.core.data.vintages: the
+    hub archive and the shipped snapshots): a vintage dated inside a season's
+    window makes that season available, so a future season appears
     automatically once its vintages exist. Falls back to the hardcoded season
-    list if derivation fails or the archive is empty."""
+    list if derivation fails or there are no vintages."""
     try:
         seasons = set()
-        for p in ARCHIVE.glob("target-hospital-admissions_*.csv"):
-            v = p.name.split("_")[-1].removesuffix(".csv")
+        for v in _data.vintages():
             y, m = int(v[:4]), int(v[5:7])
             start = y if m >= 8 else y - 1
             s = f"{start}-{(start + 1) % 100:02d}"
@@ -91,10 +91,18 @@ def available_seasons() -> list:
 
 
 def season_vintages(season: str) -> list:
+    """The replay's weeks: every truth vintage (hub archive and shipped
+    snapshots, app.core.data.vintages) dated inside the season's window."""
     lo, hi = season_bounds(season)
-    return [v for v in sorted(p.name.split("_")[-1].removesuffix(".csv")
-                              for p in ARCHIVE.glob("target-hospital-admissions_*.csv"))
-            if lo <= v <= hi]
+    return [v for v in _data.vintages() if lo <= v <= hi]
+
+
+def season_no_data_weeks(season: str) -> dict:
+    """{as_of: entry} for the season's weeks with no published data and no
+    FluSight round (data/vintages/manifest.json): nothing to replay or
+    score, but a timeline should say so rather than skip the date."""
+    lo, hi = season_bounds(season)
+    return {w: e for w, e in _data.no_data_weeks().items() if lo <= w <= hi}
 
 
 def _week_dir(root: Path, asof: str) -> Path:

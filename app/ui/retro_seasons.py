@@ -168,6 +168,8 @@ def _archive_progress(root: Path, season: str) -> dict:
             # the archive's own settings, not the live season's
             "settings": retro.settings_summary(meta),
             "total": int(t.get("total_weeks") or done),
+            # frozen: the season's week list growing later adds nothing here
+            "added": [], "added_n": 0, "sealed": False,
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": t.get("mean_s"), "eta_s": None,
@@ -396,7 +398,13 @@ def _retro_progress(season: str) -> dict:
     t = retro.timing(meta) if meta else {}
     root, _is_seal = _season_root(season)
     done = _weeks_done(root)
-    total = t.get("total_weeks") or len(retro.season_vintages(season))
+    vints = retro.season_vintages(season)
+    # the season's week list can grow after a replay finished (the hub
+    # archive or the shipped snapshots gained a week): the total follows
+    # the list, and `added` names the weeks a Resume would run
+    total = max(int(t.get("total_weeks") or 0), len(vints))
+    added = ([v for v in vints if not retro.week_done(root, v)]
+             if status == "done" and done else [])
     mean_s = t.get("mean_s")
     eta_lo = eta_s = eta_hi = eta_basis = None
     if status == "running" and total and done < total:
@@ -405,6 +413,7 @@ def _retro_progress(season: str) -> dict:
             eta_lo, eta_s, eta_hi, eta_basis = est
     return {"season": season, "status": status, "done": done,
             "total": int(total or 0),
+            "added": added, "added_n": len(added), "sealed": _is_seal,
             "settings": retro.settings_summary(meta),
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,

@@ -17,7 +17,9 @@ admissions with influenza, forecast as full predictive distributions at the
 from a clone of the public FluSight hub (cdcepi/FluSight-forecast-hub):
 `target-data/` for the current series, `auxiliary-data/target-data-archive/`
 for the dated snapshots that retrospectives replay, and
-`model-output/FluSight-baseline/` for scoring. The shipped forecast reads
+`model-output/FluSight-baseline/` for scoring. Eight scored weeks the hub
+archive skipped ship with FluBNF as `data/vintages/`, copied from the hub's
+own published files ([data/README.md](data/README.md)). The shipped forecast reads
 nothing else; the research two-strain member, off the default path, can
 fetch NREVSS series from the Delphi Epidata API, cached under `app/state`.
 

@@ -69,8 +69,18 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     defaults with a note, never an error page."""
     import re as _re
     vs = state.data_mod.vintages()
+    # the weeks served from the shipped snapshots (data/vintages/), not the
+    # hub archive: the page marks them so a reader can tell the two apart
+    try:
+        shipped = [w for w in state.data_mod.shipped_weeks()
+                   if state.data_mod.vintage_source(w)["kind"] == "shipped"]
+    except Exception:
+        shipped = []
     ctx = {"active": "Data", "latest_vintage": vs[-1] if vs else "none",
            "n_vintages": len(vs), "freshness": freshness,
+           "shipped": shipped, "n_shipped": len(shipped),
+           "shipped_labels": {w: state.data_mod.vintage_source(w)["label"]
+                              for w in shipped},
            "latest": None, "vintages": list(reversed(vs)),
            "sel_vintage": "", "sel_loc": "", "loc_names": [],
            "sel_summary": None, "series_table": [], "series_n": 0,
