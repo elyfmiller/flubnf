@@ -657,13 +657,34 @@ def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
     return preferred
 
 
-def _bind_app_socket(preferred: int = 8710, tries: int = 10):
+def _bind_app_socket(preferred: int = 8710, tries: int = 10,
+                     settle: float = 0.0, sleep=None, clock=None):
     """(listening socket, port) for the window path, bound and LISTENING
-    before the window opens, then handed to uvicorn (sockets=...). Holding
-    it removes the probe-then-bind race, and WKWebView's first request waits
-    in the backlog instead of being refused (the dead-first-window bug).
-    (None, preferred) when all are busy so uvicorn reports the conflict."""
+    before the window opens, then handed to the server. Holding it removes
+    the probe-then-bind race, and WKWebView's first request waits in the
+    backlog instead of being refused (the dead-first-window bug).
+    (None, preferred) when all are busy so uvicorn reports the conflict.
+
+    `settle`: seconds to keep retrying `preferred` first. A relaunch that
+    just stopped its predecessor passes it, because the predecessor's
+    server process exits up to a second after its window; binding the next
+    port instead would change the page's origin, and with it the theme,
+    contrast and font size the page keeps in localStorage."""
     import socket
+    import time
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    t0 = clock()
+    while settle > 0 and clock() - t0 < settle:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            _set_port_reuse(s)
+            s.bind(("127.0.0.1", preferred))
+            s.listen(128)
+            return s, s.getsockname()[1]
+        except OSError:
+            s.close()
+            sleep(0.1)
     for port in _port_candidates(preferred, tries):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -1074,13 +1095,63 @@ def app_serve(port: int = 8710):
                 log_level="warning", use_colors=False)
 
 
+def _start_window_server(sock, port: int, popen=None, platform=None):
+    """Start the console server for the window and return a callable that
+    stops it.
+
+    POSIX: a child process (python -m flubnf.window_server) that inherits
+    the held listening socket, so the window's main thread never shares an
+    interpreter lock with the server: a long step of a forecast can no
+    longer freeze hover and resizing. The child leaves when this process
+    does. Windows, or no held socket (every port busy, so uvicorn reports
+    the conflict): a daemon thread, as before."""
+    import os
+    import sys
+    import threading
+    platform = platform or os.name
+    if platform == "posix" and sock is not None:
+        import subprocess
+        popen = popen or subprocess.Popen
+        repo = str(Path(__file__).resolve().parents[1])
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in (repo, env.get("PYTHONPATH", "")) if p)
+        fd = sock.fileno()
+        proc = popen([sys.executable, "-m", "flubnf.window_server",
+                      str(fd), str(os.getpid())],
+                     pass_fds=(fd,), cwd=repo, env=env)
+        sock.close()            # the child holds its own copy
+        _trace(f"window: server process {proc.pid} started on port {port}")
+
+        def _stop():
+            # the window is closing: give the server a moment, then end it
+            # (a running fit is lost either way, as with the old thread)
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        return _stop
+
+    import uvicorn
+
+    def _serve():
+        config = uvicorn.Config("app.ui.server:app", port=port,
+                                host="127.0.0.1", log_level="warning")
+        uvicorn.Server(config).run(sockets=[sock] if sock else None)
+
+    threading.Thread(target=_serve, daemon=True).start()
+    return lambda: None
+
+
 @app.command("window")
 def app_window(port: int = 8710):
     """The console in its own native window (no browser). Needs pywebview:
     .venv/bin/pip install pywebview"""
     import threading
-
-    import uvicorn
     try:
         import webview
     except ImportError:
@@ -1103,17 +1174,12 @@ def app_window(port: int = 8710):
     signalled = _terminate_predecessor()
     _trace(f"window: predecessor takeover done (signalled={signalled})")
     drop_pidfile = _write_pidfile()
-    sock, port = _bind_app_socket(port)
+    sock, port = _bind_app_socket(port, settle=3.0 if signalled else 0.0)
     url = f"http://localhost:{port}"
     _trace(f"window: port {port} bound and listening "
            f"(held={sock is not None}), starting server thread")
 
-    def _serve():
-        config = uvicorn.Config("app.ui.server:app", port=port,
-                                host="127.0.0.1", log_level="warning")
-        uvicorn.Server(config).run(sockets=[sock] if sock else None)
-
-    threading.Thread(target=_serve, daemon=True).start()
+    stop_server = _start_window_server(sock, port)
     # Open the window now: the held socket queues WKWebView's first request
     # until the server finishes importing, so it is never refused.
     _trace("window: creating window (server import in flight)")
@@ -1183,7 +1249,7 @@ def app_window(port: int = 8710):
     # running, and the user has closed the app, so nothing here is worth
     # a wait (a running fit is already lost with the server).
     _trace("window: closed; exiting")
-    _exit_now(drop_pidfile)
+    _exit_now(drop_pidfile, stop_server)
 
 
 def _exit_now(*cleanups) -> None:
