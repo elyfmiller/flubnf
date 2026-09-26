@@ -1421,18 +1421,17 @@ p.newest-check[hidden]{display:none}
 .rs-chips .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
   border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
   background:var(--bg);font-weight:650;overflow-wrap:anywhere}
-/* the verdict: tiles in a 2x2 grid beside the cumulative chart at wide
-   widths, stacked when narrow */
-.verdict{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);
-  gap:0 var(--gap);align-items:stretch}
-/* the chart card fills the tiles' height; the chart centres in it */
-.verdict .cumcard{display:flex;flex-direction:column}
-@media(max-width:1100px){.verdict{grid-template-columns:minmax(0,1fr)}}
-@media(min-width:1101px){
-  .verdict .grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-.verdict .cumcard svg.cumchart{flex:1 1 auto;min-height:0;
-  max-height:clamp(240px,40vh,520px)}
+/* the verdict: one row of tiles (four across when the window allows);
+   the cumulative chart sits in the player's side column with a marker
+   that follows the playback */
+.verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.rs-facts{margin:.2rem 0 .5rem}
+.rs-facts .pill{font-weight:650;border-color:currentColor;margin-left:.2rem}
+.rs-notes{margin:.3rem 0 .6rem}
+.rs-chips .runsettings > strong{display:none}
+.cumwrap{margin-top:.9rem}
+.cumwrap h2{font-size:var(--fs-label);margin-bottom:.2rem}
+.cumwrap svg.cumchart{max-height:clamp(200px,32vh,420px)}
 /* a phone hides the chart's corner dates (they collide with the month
    labels, grown for legibility) */
 @media (max-width:640px){svg.cumchart .corner{display:none}}

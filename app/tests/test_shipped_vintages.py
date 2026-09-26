@@ -237,8 +237,9 @@ def test_the_no_data_week_is_a_placeholder_in_its_own_season_only(shipped_vintag
     tl4, n4 = playback.week_notes("2023-24", ["2024-04-20", "2024-04-27"])
     assert tl4 == ["2024-04-20", "2024-04-27", "2024-05-04"]
     assert n4["2024-05-04"] == playback.NO_DATA_NOTE
-    # payload shapes are untouched: the contract's cache version stands
-    assert playback.CACHE_V == 4
+    # the placeholder adds no payload field of its own (the "seen" series
+    # is the contract's, playback.CACHE_V 5)
+    assert playback.CACHE_V == 5
 
 
 def test_the_season_page_hands_the_player_the_timeline_and_notes():

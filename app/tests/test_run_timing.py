@@ -719,7 +719,8 @@ def test_season_page_carries_controls_and_timing():
                    "elapsed_s": 3725.0, "mean_s": 124.0, "weeks_measured": 30,
                    "eta_s": None, "slowest_week": W1, "slowest_s": 300.0})
     assert "Replay wall time 1:02:05" in over
-    assert f"slowest week {W1} at 300 s" in over
+    # the slowest week rides the timing tip
+    assert f"the slowest, {W1}, took 300 s" in over
     assert f'action="/retro/{SEASON}/stop"' not in over
 
     # the template must still render for a season with no record at all

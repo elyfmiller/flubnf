@@ -11,6 +11,7 @@ Start with the [README](../README.md); each area of the tree has its own index l
 | The mechanistic model | [ORACLE-SIHRS.md](ORACLE-SIHRS.md) | the Oracle SIHRS: filter plus the Oracle step, and its record |
 | Students writing a model | [SANDBOX.md](SANDBOX.md) | the Sandbox: from an example or the template to a fitted model of your own |
 | Model templates | [MODEL-PROVENANCE.md](MODEL-PROVENANCE.md) | SIHRS BNGL design history, sourced values, failed experiments |
+| Replaying seasons | [RETROSPECTIVES.md](RETROSPECTIVES.md) | what a replay stores, archived runs, and exporting a replay to view on another machine |
 | Missing weeks | [MISSING-DATA.md](MISSING-DATA.md) | how NHSN gaps and zeros appear in the hub, what each model does, the replay and the two off-by-default rules |
 | Donor banks | [DONOR-BANKS.md](DONOR-BANKS.md) | the Groundhog's committed banks and how to reuse them ([data/README.md](../data/README.md)) |
 | Publishing | [SITE.md](SITE.md) | the public site generator (`flubnf site build`); not live yet |

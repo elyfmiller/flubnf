@@ -11,6 +11,7 @@ a wrong-method request. An APIRouter server.py includes last of the tabs.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -668,6 +669,101 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     return RedirectResponse("/retro", status_code=303)
 
 
+# === Retrospective: import a replay bundle (app/core/replay_bundle) ===
+#: bytes over the bundle cap an upload may carry in form framing
+_IMPORT_BODY_SLACK = 4 * 1024 * 1024
+
+
+def _exports_dir():
+    """Where bundles are built and uploads land: app/state/exports."""
+    from app.core.runs import APP_STATE
+    return APP_STATE / "exports"
+
+
+def _import_replay_file(src: Path, replace: bool):
+    """Import one bundle (a saved upload or a local path) into the retro
+    root; the message for the flash and the season page to open, or a
+    refusal and the index."""
+    from app.core import replay_bundle
+    try:
+        r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
+                                        replace=replace, build=RUNNING_SHA)
+    except replay_bundle.BundleError as e:
+        return f"Not imported: {e}", "/retro"
+    except OSError as e:
+        return (f"Not imported: {type(e).__name__}: {str(e)[:160]}.",
+                "/retro")
+    when = (r.exported_at or "")[:10]
+    msg = (f"Imported {r.season} ({len(r.weeks)} week"
+           f"{'' if len(r.weeks) == 1 else 's'}, exported from "
+           f"{r.from_host or 'another machine'}"
+           f"{' on ' + when if when else ''}).")
+    if r.warnings:
+        msg += " Note: " + "; ".join(r.warnings) + "."
+    return msg, f"/retro/{r.season}?archive={r.stamp}"
+
+
+@router.post("/retro/import")
+async def retro_import(request: Request):
+    """Import a replay bundle as a read-only archived entry of its season:
+    an uploaded file (streamed to app/state/exports, never held in memory)
+    or a path on this machine. The live season is never written."""
+    import os
+    from starlette.concurrency import run_in_threadpool
+    from starlette.datastructures import UploadFile
+    from app.core import replay_bundle
+    cap = replay_bundle.BUNDLE_MAX_BYTES
+    cl = request.headers.get("content-length", "")
+    if cl.strip().isdigit() and int(cl) > cap + _IMPORT_BODY_SLACK:
+        _flash(f"Not imported: the upload is larger than the "
+               f"{cap // 1024 ** 3} GB limit.")
+        return RedirectResponse("/retro", status_code=303)
+    try:
+        form = await request.form(max_files=1, max_fields=10)
+    except Exception as e:
+        _flash(f"Not imported: the upload could not be read ({e}).")
+        return RedirectResponse("/retro", status_code=303)
+    up = form.get("file")
+    local = str(form.get("path") or "").strip()
+    replace = str(form.get("replace") or "") == "1"
+    if isinstance(up, UploadFile) and up.filename:
+        # stream the upload to a temp file beside the exports, in chunks;
+        # the client's file name is never used as a path
+        d = _exports_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / f"incoming-{os.getpid()}-{int(time.time() * 1000)}.zip"
+        try:
+            with open(tmp, "wb") as out:
+                seen = 0
+                while True:
+                    chunk = await up.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    seen += len(chunk)
+                    if seen > cap:
+                        raise ValueError(
+                            f"the upload is larger than the {cap // 1024 ** 3}"
+                            " GB limit")
+                    out.write(chunk)
+            msg, target = await run_in_threadpool(_import_replay_file, tmp,
+                                                  replace)
+        except (OSError, ValueError) as e:
+            msg, target = f"Not imported: {e}.", "/retro"
+        finally:
+            await up.close()
+            tmp.unlink(missing_ok=True)
+    elif local:
+        msg, target = await run_in_threadpool(_import_replay_file,
+                                              Path(local).expanduser(),
+                                              replace)
+    else:
+        msg, target = ("Choose a replay bundle to import, or give its path "
+                       "on this machine."), "/retro"
+    _invalidate_scans()
+    _flash(msg)
+    return RedirectResponse(target, status_code=303)
+
+
 def _playback_note() -> str:
     """The player's placeholder text for a week with no published data."""
     from app.core import playback
@@ -696,6 +792,10 @@ def retro_results(request: Request, season: str, week: str = "",
         _flash("Unrecognized archived run identifier.")
         return RedirectResponse("/retro", status_code=303)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    # an archived entry imported from another machine says so in place of
+    # the archived-run banner (app/core/replay_bundle)
+    from app.core import replay_bundle
+    imported = replay_bundle.imported_info(root) if archive else {}
     # this tree's names, passed as model_name (shadows the global)
     names = _names_for_root(root)
     # a replay with modified model settings wears its label on the page
@@ -728,6 +828,7 @@ def retro_results(request: Request, season: str, week: str = "",
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
+                "imported": imported,
                 "heads": {}, "curve": [], "curves": {}, "states": [],
                 "season_models": [], "member_colors": _member_colors(),
                 "us_row": None,
@@ -926,6 +1027,7 @@ def retro_results(request: Request, season: str, week: str = "",
                  else retro_seasons._retro_progress(season)),
         "archive": archive,
         "archive_when": retro.stamp_human(archive) if archive else "",
+        "imported": imported,
         "n_weeks": len(weeks) if scoreable else 0})
 
 
@@ -1011,3 +1113,51 @@ def api_retro_report_path(season: str, archive: str = ""):
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
     return {"path": str(p)}
+
+
+# === Retrospective: export a replay bundle (app/core/replay_bundle) ===
+def _export_bundle(season: str, archive: str):
+    """Build (or reuse, when fresh) the season's replay bundle under
+    app/state/exports; the path, or a (message, status) refusal."""
+    from app.core import replay_bundle
+    root, _is_seal = retro_seasons._season_root(season, archive)
+    try:
+        return replay_bundle.export_season(root, season, _exports_dir(),
+                                          stamp=archive, build=RUNNING_SHA)
+    except replay_bundle.BundleError as e:
+        return str(e), 404
+    except OSError as e:
+        return f"{type(e).__name__}: {str(e)[:160]}", 500
+
+
+@router.get("/retro/{season}/export")
+def retro_season_export(season: str, archive: str = ""):
+    """Build and download the season's replay bundle (one zip: run record,
+    scores and every stored week); `archive` = that run's. Import it on
+    another machine from the Retrospective tab."""
+    from fastapi.responses import FileResponse, PlainTextResponse
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    p = _export_bundle(season, archive)
+    if isinstance(p, tuple):
+        return PlainTextResponse(p[0], status_code=p[1])
+    return FileResponse(p, filename=p.name, media_type="application/zip",
+                        content_disposition_type="attachment")
+
+
+@router.get("/api/retro/{season}/export_path")
+def api_retro_export_path(season: str, archive: str = ""):
+    """Build the replay bundle if absent and return its path, name and
+    size (the season page's Export button shows the size and reveals it)."""
+    from fastapi.responses import PlainTextResponse
+    from app.core import retro
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    p = _export_bundle(season, archive)
+    if isinstance(p, tuple):
+        return PlainTextResponse(p[0], status_code=p[1])
+    n = p.stat().st_size
+    return {"path": str(p), "name": p.name, "bytes": n,
+            "size_h": retro.human_bytes(n)}

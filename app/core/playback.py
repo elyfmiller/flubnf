@@ -32,6 +32,10 @@ shows (the stored members, pf2s, FluSight-baseline and FluSight-ensemble):
   week_n, cum_n              scored cell counts
   debug                      optional: where an official's scoring starves
 
+Beside "truth" (the settled series) a payload carries "seen": the week's
+own vintage per location, what the models fitted on, up to the as-of
+week; {} when that vintage is not on this machine.
+
 FluSight-baseline's rel and log rel are 1.0 by definition; its coverage is
 its own. A scores.json written before the log-scale and coverage columns (a
 sealed root) used the earlier cell rule, so the members are scored here
@@ -66,7 +70,7 @@ from flubnf.settings import HUB
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
 #: bump when cached shapes or scoring logic change (v3: stored members only,
 #: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage)
-CACHE_V = 4
+CACHE_V = 5
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS
@@ -484,6 +488,30 @@ def _strq(hq: dict) -> dict:
             for h, q in hq.items()}
 
 
+def _seen_series(asof: str, fips_by_name: dict, lo: str) -> dict:
+    """{location name: [[date, value], ...]} as the week's vintage reported
+    them (app.core.data.vintage_path: the archive file or the shipped
+    snapshot), from `lo` to the as-of week: what the models fitted on,
+    which the settled truth later revises. {} when the vintage is not on
+    this machine (an imported replay on a device without the hub archive):
+    the player then shows the settled truth alone and says so."""
+    from app.core import data as _data
+    try:
+        t = pd.read_csv(_data.vintage_path(asof), dtype={"location": str})
+    except Exception:
+        return {}
+    t["location"] = t["location"].str.zfill(2)
+    t["date"] = t["date"].astype(str).str[:10]
+    t = t[(t["date"] >= lo) & (t["date"] <= asof)]
+    t = t[pd.to_numeric(t["value"], errors="coerce").notna()]
+    out = {}
+    for name, fips in fips_by_name.items():
+        g = t[t["location"] == fips].sort_values("date")
+        if len(g):
+            out[name] = [[d, float(v)] for d, v in zip(g["date"], g["value"])]
+    return out
+
+
 def _truth_series(truth: dict, fips: str, lo: str, hi: str) -> list:
     pts = [(str(d.date()), float(v)) for (f, d), v in truth.items()
            if f == fips and lo <= str(d.date()) <= hi]
@@ -550,11 +578,17 @@ def build_week(root: Path, season: str, asof: str) -> dict:
         if fips:
             truth_out[name] = _truth_series(truth, fips, lo, hi_ext)
 
+    # the vintage the models saw, beside the settled truth (the player
+    # draws both, so revisions are visible); US is "US" in the vintage too
+    seen = _seen_series(asof, {n: ("US" if n == "US" else n2f.get(n))
+                               for n in truth_locs
+                               if n == "US" or n2f.get(n)}, lo)
     payload = {
         "_v": CACHE_V,
         "asof": asof,
         "locations": locs,
         "truth": truth_out,
+        "seen": seen,
         "models": {m: {loc: _strq(hq) for loc, hq in qbl.items()}
                    for m, qbl in model_q.items()},
         "official": {om: {name: _strq(hq) for name, hq in oq.items()}

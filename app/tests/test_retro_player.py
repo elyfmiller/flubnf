@@ -93,7 +93,7 @@ def test_js_reads_only_contract_fields():
     # every `pl.` field is a top-level contract key (page and player checked
     # together as one JS surface)
     both = html + PLAYER_JS
-    contract = {"asof", "locations", "truth", "models", "official", "stats"}
+    contract = {"asof", "locations", "truth", "seen", "models", "official", "stats"}
     fields = set(re.findall(r"\bpl\.(\w+)", both))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
@@ -227,7 +227,7 @@ def _season(**kw):
 def test_verdict_tiles_carry_log_scale_and_coverage():
     html = _season(figs=_figs())
     # the tiles, the chart beside them and the notes under both
-    tiles = html.split('<div class="grid2">', 1)[1].split(
+    tiles = html.split('<div class="grid2 tiles4">', 1)[1].split(
         '<div class="card playcard">', 1)[0]
     pf = tiles.split("<h2>Groundhog</h2>", 1)[0]
     # the log-scale figure beside the natural one, in the same ok/bad rule
@@ -244,7 +244,8 @@ def test_verdict_tiles_carry_log_scale_and_coverage():
     # what the second line holds and the coverage colors' key, once, under
     # the tiles (the player's legend line)
     from app.core import report_season
-    assert f'<p class="pblegend">{report_season.COV_LEGEND}</p>' in tiles
+    # ... in the tip under the tiles, not as a line of its own
+    assert f'<span class="pblegend">{report_season.COV_LEGEND}</span>' in tiles
     assert report_season.METRICS_NOTE in tiles
     # none of it without a figure to explain
     bare = _season(figs=_figs(detail_cov=False))

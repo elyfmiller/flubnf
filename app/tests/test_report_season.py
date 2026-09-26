@@ -99,7 +99,7 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert data["weeks"] == [W1, W2]
     assert set(data["payloads"]) == {W1, W2}
     pl = data["payloads"][W1]
-    assert set(pl) == {"_v", "asof", "locations", "truth", "models", "official", "stats"}
+    assert set(pl) == {"_v", "asof", "locations", "truth", "seen", "models", "official", "stats"}
     assert set(pl["models"]) == {"pf", "analogue"}
     assert pl["stats"]["pf"]["cum_rel"] is not None
     assert pl["stats"]["analogue"]["cum_rel"] is not None
@@ -142,7 +142,7 @@ def test_report_js_reads_only_contract_fields(tmp_path, monkeypatch):
     player = report_season.PLAYER_SRC.read_text()
     host = html.split("// FluBNF season player", 1)[1]
     js = player + host
-    contract = {"_v", "asof", "locations", "truth", "models", "official", "stats"}
+    contract = {"_v", "asof", "locations", "truth", "seen", "models", "official", "stats"}
     fields = set(re.findall(r"\bpl\.(\w+)", js))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract

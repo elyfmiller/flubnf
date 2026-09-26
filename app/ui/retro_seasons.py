@@ -134,13 +134,17 @@ def _known_seasons() -> list:
 
 @ttlcache.ttl_cache()
 def _scan_archive_entries(retro_root: Path, season: str) -> list:
-    from app.core import retro
+    from app.core import replay_bundle, retro
     out = []
     for p in retro.list_archive_dirs(retro_root, season):
         stamp = retro.archive_stamp_of(p.name, season)
         s = retro.run_summary(p)
         size = retro.dir_size(p)
         out.append({"id": stamp, "when": retro.stamp_human(stamp),
+                    # a replay imported from another machine wears that
+                    # label ("imported from <host> on <date>") in place of
+                    # the archived-run one
+                    "imported": replay_bundle.imported_label(p),
                     "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
                     "rel": s["headline_rel"], "rels": s.get("headline_rels"),
                     # each archive is its own tree, named for what it holds
