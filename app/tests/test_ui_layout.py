@@ -310,6 +310,7 @@ def test_routes_one_path_reaches_keep_their_order():
         (("POST", "/runs/clear"), ("GET", "/runs/{run_id}")),
         (("POST", "/retro/stop"), ("GET", "/retro/{season}")),
         (("POST", "/retro/run"), ("GET", "/retro/{season}")),
+        (("POST", "/retro/import"), ("GET", "/retro/{season}")),
     }
     assert {frozenset(p) for p in _overlaps(live)} == \
         {frozenset(p) for p in pairs}
@@ -350,6 +351,7 @@ def test_the_dataset_routes_come_last():
     ("PUT", "/runs/clear", "POST"),
     ("PUT", "/retro/stop", "POST"),
     ("PUT", "/retro/run", "POST"),
+    ("PUT", "/retro/import", "POST"),
     ("DELETE", "/runs/x", "GET"),
 ])
 def test_a_wrong_method_names_the_first_matching_route(method, path, allow):

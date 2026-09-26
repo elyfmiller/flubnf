@@ -314,7 +314,7 @@ function noDataPayload(src, week){
                 week_n: 0, cum_n: e.cum_n};
   });
   return {asof: week, locations: src.locations || [], truth: src.truth || {},
-          models: {}, official: {}, stats: stats};
+          seen: {}, models: {}, official: {}, stats: stats};
 }
 
 // ------------------------------------------------ stats table: the figures
@@ -851,8 +851,15 @@ function createPlayer(cfg){
         if(r[0] <= w){ pastX.push(r[0]); pastY.push(r[1]); }
         if(r[0] >= w){ futX.push(r[0]); futY.push(r[1]); }
       });
-      var ax = pastX.length ? pastX[pastX.length - 1] : null;
-      var ay = pastY.length ? pastY[pastY.length - 1] : null;
+      // what the models saw: the week's own vintage (later revised into
+      // the settled truth); the fans anchor on its last point
+      var seen = pickLoc(pl.seen || {}, loc) || [];
+      var seenX = [], seenY = [];
+      seen.forEach(function(r){ if(r[0] <= w){ seenX.push(r[0]); seenY.push(r[1]); } });
+      var ax = seenX.length ? seenX[seenX.length - 1]
+             : (pastX.length ? pastX[pastX.length - 1] : null);
+      var ay = seenY.length ? seenY[seenY.length - 1]
+             : (pastY.length ? pastY[pastY.length - 1] : null);
       var traces = [], avail = 0, drawn = 0;
       // a fitted US pf fan is the plain filter: its legend entry says so
       var pfNote = isUS(loc) ? usPfNote(cfg.us) : '', pfDrawn = false;
@@ -873,9 +880,17 @@ function createPlayer(cfg){
       el.msg.textContent = nodata ? noteOf(w)
         : (noForecastNote(loc, avail, drawn, cfg.us)
            || (pfDrawn ? pfNote : ''));
-      // truth drawn last (on top); the tail beyond now stays visible
+      // truth drawn last (on top); the tail beyond now stays visible. With
+      // the vintage present it is the solid line and the settled series
+      // runs lighter behind it, so a revision shows as the gap between
       var p = pal();
-      if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
+      if(seenX.length){
+        traces.push({x: pastX, y: pastY, mode: 'lines',
+          name: 'truth (settled)', opacity: .45,
+          line: {color: p.ink, width: 1.3}});
+        traces.push({x: seenX, y: seenY, mode: 'lines',
+          name: 'reported as of ' + w, line: {color: p.ink, width: 2}});
+      } else if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
         name: 'truth (settled)', line: {color: p.ink, width: 2}});
       if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
         name: 'truth beyond now', opacity: .65,

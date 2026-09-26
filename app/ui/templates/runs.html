@@ -147,7 +147,7 @@
  <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>
  {% for a in storage.retro_archives %}
  <div class="archrow">
-  <span class="grow"><strong>{{ a.season }} retrospective · archived {{ a.when }}</strong>
+  <span class="grow"><strong>{{ a.season }} retrospective · {{ a.imported if a.imported else ('archived ' ~ a.when) }}</strong>
    <span class="hint">· {{ a.size_h }}{% if a.busy %} · <span class="warn">season replaying</span>{% endif %}
    · <code style="font-size:.78em">{{ a.id }}</code></span></span>
   {% if not a.busy %}
@@ -156,7 +156,7 @@
    <input type="hidden" name="ident" value="{{ a.id }}">
    <input type="hidden" name="confirm" value="">
    <button type="button" class="quiet" data-del-storage
-     data-what="archived {{ a.season }} run from {{ a.when }}"
+     data-what="{{ a.season }} run {{ a.imported if a.imported else ('archived ' ~ a.when) }}"
      data-size="{{ a.size_h }}"
      data-hint="The live {{ a.season }} season is not touched.">Delete</button>
   </form>

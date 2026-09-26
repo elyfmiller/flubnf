@@ -1288,7 +1288,26 @@ def _exit_now(*cleanups) -> None:
     os._exit(0)
 
 
-@app.command("retro")
+class _RetroGroup(TyperGroup):
+    """`flubnf retro <season> ...` replays a season (the `run` command,
+    kept as the bare form); `export` and `import` move a replayed season
+    between machines. A first word that is neither a subcommand nor --help
+    (a season, or an option such as --locations) goes to `run`."""
+
+    def parse_args(self, ctx, args):
+        if args and args[0] not in self.commands and args[0] != "--help":
+            args = ["run"] + list(args)
+        return super().parse_args(ctx, args)
+
+
+retro_app = typer.Typer(
+    cls=_RetroGroup, add_completion=False, no_args_is_help=True,
+    help="Replay a season as a competition (`flubnf retro <season>`), or "
+         "export and import a replayed season as one zip bundle.")
+app.add_typer(retro_app, name="retro")
+
+
+@retro_app.command("run")
 def retro_cmd(
     season: Annotated[str, typer.Argument(
         help="Season to replay, e.g. 2024-25.")],
@@ -1440,6 +1459,75 @@ def retro_cmd(
         typer.echo(f"refused: {e}", err=True)
         raise typer.Exit(2)
     print(f"{season}: {len(done)} weeks complete -> {r}")
+
+
+def _retro_root_default() -> Path:
+    """The console's retro root (app/state/retro), read at call time."""
+    from app.core.runs import APP_STATE
+    return APP_STATE / "retro"
+
+
+@retro_app.command("export")
+def retro_export_cmd(
+    season: Annotated[str, typer.Argument(
+        help="Season to export, e.g. 2024-25.")],
+    archive: Annotated[str, typer.Option(
+        "--archive", help="Export this archived run (its stamp, as the "
+                          "season list shows it) instead of the live one.")] = "",
+    out: Annotated[str, typer.Option(
+        "--out", help="Folder for the bundle (default: app/state/exports).")] = "",
+    root: Annotated[str, typer.Option(
+        "--root", help="Retro root holding the season (default: the "
+                       "console's app/state/retro).")] = "",
+):
+    """Write a season's replay bundle: one zip of its run record, scores
+    and every stored week, for `flubnf retro import` or the Retrospective
+    tab on another machine. Prints the bundle's path and size."""
+    from app.core import replay_bundle, retro
+    rr = Path(root) if root else _retro_root_default()
+    src = retro.archive_dir(rr, season, archive) if archive else rr / season
+    if archive and not retro.valid_stamp(archive):
+        raise typer.BadParameter(f"{archive!r} is not an archive stamp")
+    try:
+        p = replay_bundle.export_season(
+            src, season, Path(out) if out else _retro_root_default().parent
+            / "exports", stamp=archive)
+    except replay_bundle.BundleError as e:
+        typer.echo(f"refused: {e}", err=True)
+        raise typer.Exit(2)
+    m = replay_bundle.inspect_bundle(p)
+    print(f"{season}: {len(m['weeks'])} weeks, "
+          f"{retro.human_bytes(p.stat().st_size)} -> {p}")
+
+
+@retro_app.command("import")
+def retro_import_cmd(
+    file: Annotated[Path, typer.Argument(
+        exists=True, dir_okay=False, help="The .flubnf-replay.zip to import.")],
+    replace: Annotated[bool, typer.Option(
+        "--replace", help="Replace a copy already imported from the same "
+                          "export.")] = False,
+    root: Annotated[str, typer.Option(
+        "--root", help="Retro root to import into (default: the console's "
+                       "app/state/retro).")] = "",
+):
+    """Import a replay bundle as a read-only archived run of its season
+    (<season>__archived_<export stamp> under the retro root). The live
+    season tree is never written."""
+    from app.core import replay_bundle
+    rr = Path(root) if root else _retro_root_default()
+    try:
+        r = replay_bundle.import_bundle(file, rr, replace=replace)
+    except replay_bundle.BundleError as e:
+        typer.echo(f"refused: {e}", err=True)
+        raise typer.Exit(2)
+    when = (r.exported_at or "")[:10]
+    print(f"imported {r.season}: {len(r.weeks)} weeks, exported from "
+          f"{r.from_host or 'another machine'}"
+          f"{' on ' + when if when else ''} -> {r.root}")
+    print(f"  open it as /retro/{r.season}?archive={r.stamp}")
+    for w in r.warnings:
+        print(f"  note: {w}")
 
 
 # ---------------------------------------------------------------------------

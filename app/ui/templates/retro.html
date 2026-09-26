@@ -92,6 +92,24 @@ had, then scores against settled truth.</p>
        c.style.display=(s.value==='custom')?'':'none';});
    })();
   </script>
+  {# a replay bundle from another machine (a season page's Export replay):
+     lands as a read-only archived run of its season, never in the live
+     tree. The file picker, or a path when the file is already here #}
+  <h3 class="rt-arch-h">Import a replay</h3>
+  <form method="post" action="/retro/import" enctype="multipart/form-data"
+    id="rt-import">
+   <label for="rt-import-file">Replay bundle (.flubnf-replay.zip)</label>
+   <input type="file" name="file" id="rt-import-file"
+     accept=".zip,.flubnf-replay.zip,application/zip">
+   <label for="rt-import-path">or its path on this machine</label>
+   <input type="text" name="path" id="rt-import-path"
+     placeholder="/Users/you/Downloads/2025-26-FluBNF-replay-….flubnf-replay.zip">
+   <label class="ck"><input type="checkbox" name="replace" value="1">
+    replace a copy already imported from the same export</label>
+   <button class="quiet">Import replay</button>
+   <p class="hint">Imported replays are read only: results, player and
+    report as for an archived run, and Delete removes them.</p>
+  </form>
  </div></div>
  <div>
   {% for s in seasons %}
@@ -190,8 +208,10 @@ had, then scores against settled truth.</p>
       as for the live season #}
    <h3 class="rt-arch-h">{{ s.archives|length }} archived run{{ "" if s.archives|length == 1 else "s" }} kept</h3>
    {% for a in s.archives %}
-   <div class="archrow">
-    <span class="grow"><strong>{{ a.when }}</strong>
+   <div class="archrow"{% if a.imported %} data-imported="1"{% endif %}>
+    {# an imported replay is labelled for where it came from, not for the
+       moment it was set aside (it never was) #}
+    <span class="grow"><strong>{{ a.imported if a.imported else a.when }}</strong>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
       if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
       if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}{% for m, v in a_rels.items() %} &middot; {{ ((a.pf_name if (m == 'pf' and a.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{
@@ -202,7 +222,7 @@ had, then scores against settled truth.</p>
       action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
      <input type="hidden" name="confirm" value="">
      <button type="button" class="quiet" data-del-archive
-       data-season="{{ s.name }}" data-when="{{ a.when }}"
+       data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"
        data-weeks="{{ a.weeks }}" data-size="{{ a.size_h }}">Delete</button>
     </form>
    </div>

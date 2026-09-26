@@ -126,9 +126,13 @@ def _storage_inventory() -> dict:
                 stamp = retro.archive_stamp_of(p.name, season)
                 size = _tree_size(str(p))
                 inv["total_bytes"] += size
+                from app.core import replay_bundle
                 inv["retro_archives"].append({
                     "id": p.name, "season": season,
                     "when": retro.stamp_human(stamp),
+                    # a replay imported from another machine
+                    # ("imported from <host> on <date>"), else ""
+                    "imported": replay_bundle.imported_label(p),
                     "size_h": retro.human_bytes(size),
                     "busy": _season_status(season) in _RETRO_ACTIVE})
     arch = APP_STATE / "archive"

@@ -84,7 +84,17 @@
 </script>
 {% else %}
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
-{% if archive %}
+{% set imported = imported if imported is defined else {} %}
+{% if archive and imported %}
+{# a replay imported from another machine (app/core/replay_bundle): read
+   only, kept beside this machine's own runs of the season #}
+<p class="banner" role="status" id="imported-banner"><strong>Imported
+ from {{ imported.from or "another machine" }}{% if imported.imported_at %} on
+ {{ imported.imported_at[:10] }}{% endif %}.</strong> Exported there
+ {% if imported.exported_at %}on {{ imported.exported_at[:10] }} {% endif %}from
+ {% if imported.source and imported.source != 'live' %}an archived run{% else %}the live season{% endif %};
+ read only. <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
+{% elif archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
  {{ archive_when }}{% endif %}.</strong> Set aside when a fresh replay
  started; <a href="/retro/{{ season }}">open the live {{ season }} season</a>.</p>
@@ -142,25 +152,24 @@
  // reloads yield to an open guard modal (GUARD_BUSY)
  FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
 </script>
-{% elif prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
-{# a sub-second record would read as a fabricated zero: say nothing #}
-<p class="hint">Replay wall time {{ prog.elapsed_s | hms }} over
- {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
- per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
- slowest week {{ prog.slowest_week }} at {{ "%.0f"|format(prog.slowest_s) }} s{% endif %}.
- {% if prog.status == 'stopped' %}Stopped; Run resumes from the last
- completed week.{% elif prog.status == 'interrupted' %}Interrupted when the
- app closed; Run resumes from the last completed week.{% endif %}</p>
-{% endif %}
-{% if prog and prog.added_n and not prog.active %}
-{# the season's week list grew after this replay finished (the hub archive
-   or the shipped snapshots, data/vintages/): name the weeks, say what to do #}
-<p class="hint" id="weeks-added">{{ prog.added_n }} week{{ "" if prog.added_n == 1 else "s" }} added
- to {{ season }} since this replay finished: {{ prog.added | join(", ") }}.
- {% if prog.sealed %}This is a sealed record and cannot be resumed; a fresh
- replay from the Retrospective tab is needed to run {{ "it" if prog.added_n == 1 else "them" }}.
- {% else %}Run on the Retrospective tab resumes this season and runs only
- {{ "that week" if prog.added_n == 1 else "those weeks" }}; the completed weeks are kept.{% endif %}</p>
+{% elif prog and ((prog.elapsed_s and prog.elapsed_s >= 1) or prog.added_n) %}
+{# one facts line: wall time, pace, state pills; the details ride tips #}
+<p class="hint rs-facts">
+ {%- if prog.elapsed_s and prog.elapsed_s >= 1 -%}
+ Replay wall time {{ prog.elapsed_s | hms }} · {{ prog.done }} weeks
+ {%- if prog.mean_s %} · {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}
+ {%- if prog.slowest_week %} {{ tips.tip("rs-timing", "the replay's timing", "Mean over " ~ prog.weeks_measured ~ " timed week" ~ ("" if prog.weeks_measured == 1 else "s") ~ "; the slowest, " ~ prog.slowest_week ~ ", took " ~ ("%.0f"|format(prog.slowest_s)) ~ " s.") }}{% endif %}
+ {%- endif %}
+ {%- if prog.status == 'stopped' %} <span class="pill warn">stopped</span> Run resumes from the last completed week.
+ {%- elif prog.status == 'interrupted' %} <span class="pill warn">interrupted</span> Run resumes from the last completed week.{% endif %}
+ {%- if prog.added_n and not prog.active %}
+ {# the season's week list grew after this replay finished (the hub archive
+    or the shipped snapshots, data/vintages/): a pill, the weeks in its tip #}
+ <span class="pill warn" id="weeks-added">{{ prog.added_n }} week{{ "" if prog.added_n == 1 else "s" }} added</span>
+ {%- if prog.sealed %} sealed record: a fresh replay runs {{ "it" if prog.added_n == 1 else "them" }}{% else %} Run resumes {{ "it" if prog.added_n == 1 else "them" }}{% endif %}
+ {{ tips.tip("rs-added", "the added weeks", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added to the season since this replay finished: " ~ (prog.added | join(", ")) ~ ". " ~ ("This is a sealed record and cannot be resumed; a fresh replay from the Retrospective tab is needed to run " ~ ("it" if prog.added_n == 1 else "them") ~ "." if prog.sealed else "Run on the Retrospective tab resumes this season and runs only " ~ ("that week" if prog.added_n == 1 else "those weeks") ~ "; the completed weeks are kept.")) }}
+ {%- endif %}
+</p>
 {% endif %}
 {# one band: the finished replay's settings as a chip row (the shared
    renderer, restyled by .rs-chips) and the report buttons #}
@@ -176,8 +185,39 @@
     type="button" style="margin-top:0">Download season report</button></a>
   <button type="button" class="quiet" id="rev-report" style="margin-top:0"
     data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
+  {# the replay bundle (app/core/replay_bundle): one zip of this run's
+     record, scores and weeks, for Import a replay on another machine.
+     Built first (the size goes into the hint), then downloaded the same
+     way as the report #}
+  <button type="button" class="quiet" id="exp-replay" style="margin-top:0"
+    data-season="{{ season }}" data-archive="{{ archive }}"
+    data-href="/retro/{{ season }}/export{{ aq }}">Export replay</button>
+  <span class="hint" id="exp-replay-hint">One zip to import on another
+   machine (Retrospective tab).</span>
  </p>
 </div>
+<script>
+ // build the bundle (same builder as the download route), print its size,
+ // then download it through an anchor with the download attribute
+ (function(){
+  var b=document.getElementById('exp-replay'),h=document.getElementById('exp-replay-hint');
+  if(!b)return;
+  b.addEventListener('click',function(){
+    var t=b.textContent;
+    b.disabled=true;b.textContent='Preparing…';
+    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/export_path'
+          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive):''))
+      .then(function(r){if(!r.ok)return r.text().then(function(m){throw new Error(m||'export unavailable');});
+        return r.json();})
+      .then(function(d){
+        h.textContent=d.size_h+' · '+d.name;
+        var a=document.createElement('a');a.href=b.dataset.href;a.download=d.name;
+        document.body.appendChild(a);a.click();a.remove();
+        b.disabled=false;b.textContent=t;})
+      .catch(function(e){h.textContent=e.message;b.disabled=false;b.textContent=t;});
+  });
+ })();
+</script>
 <script>
  // build the report if absent (same builder as the download route), then
  // reveal it via /output/reveal
@@ -198,11 +238,10 @@
   });
  })();
 </script>
-{# the verdict: tiles in a 2x2 grid beside the cumulative chart at wide
-   widths, stacked when narrow (.verdict) #}
+{# the verdict: one row of tiles; the cumulative chart rides the player's
+   side column, where a marker follows the playback #}
 <div class="verdict">
-<div class="verdict-tiles">
-<div class="grid2">
+<div class="grid2 tiles4">
  {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
  {% set d = (figs.detail.get(m) if figs and figs.detail else None) %}
@@ -231,63 +270,6 @@
  {% endif %}{% endfor %}
 </div>
 </div>
-<div class="card cumcard"><h2>Cumulative relWIS through the season</h2>
-{% if conv == 'pairwise' %}
-{# a cumulative line is a ratio of sums by construction; no pairwise form #}
-<p class="hint">Not available under this convention: the curve is a
- running ratio of sums.</p>
-{% elif curves %}
-{# one line per scored model in its member colour; the y range hugs the data
-   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
-   final value are printed #}
-{% set ns = namespace(vals=[]) %}
-{% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
-{% set vals = ns.vals %}
-{% set n = curve | length %}
-{% set hi = [vals | max, 1.05] | max %}
-{% set lo = [vals | min, 0.45] | min %}
-{% set yspan = hi - lo %}
-{% set xs = 635 / (n - 1 if n > 1 else 1) %}
-{# cumchart: labels in viewBox units (scoped rules in nau.css); the plot
-   band runs y = 12..252, the month ticks and corner dates below it #}
-<svg class="cumchart" viewBox="0 0 720 300" style="width:100%">
- {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
- {% set gy = (12 + (hi - gv) * 240 / yspan) | round(1) %}
- <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
- <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
- {% endfor %}
- {% for m, c in curves.items() %}
- {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
- {% set cn = c | length %}
- {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
- {% set cvals = c | map('last') | list %}
- {% set lx = 20 + (cn - 1) * cxs %}
- {% set ly = 12 + (hi - cvals[-1]) * 240 / yspan %}
- <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
-  {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 240 / yspan) | round(1) }} {% endfor %}"/>
- {% for d, v in c %}
-  <circle cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 240 / yspan) | round(1) }}" r="3"
-          fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
- {% endfor %}
- <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
-       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
-       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
- {% endfor %}
- {# month ticks on the first scored week of each month
-    (month_ticks_for_dates) #}
- {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
- <line x1="{{ (20 + i * xs) | round(1) }}" y1="254" x2="{{ (20 + i * xs) | round(1) }}" y2="260" stroke="var(--mut)"/>
- <text x="{{ (20 + i * xs) | round(1) }}" y="272" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
- {% endfor %}
- <text x="20" y="288" fill="var(--mut)" class="svgt-sm corner">{{ curve[0][0] }}</text>
- {% if n > 1 %}
- <text x="655" y="288" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
- {% endif %}
-</svg>
-{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
-{% else %}
-<p class="hint">Arrives with the first scored week.</p>
-{% endif %}</div>
 </div>
 {# the notes under the verdict, across the width #}
 {# the tiles' second line explained once, with the coverage colors' key
@@ -295,8 +277,7 @@
 {% set tm = namespace(more=false, cov=false) %}
 {% for m in heads %}{% set d = (figs.detail.get(m) if figs and figs.detail else None) %}{% if d and d.get('log_rel') is not none %}{% set tm.more = true %}{% endif %}{% if d and d.get('cov') %}{% set tm.cov = true %}{% endif %}{% endfor %}
 {% if us_row %}{% for m in season_models %}{% if us_row[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_row[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
-{% if (tm.more or tm.cov) and not unavailable %}<p class="hint">{{ live_scores("metrics") }}</p>{% endif %}
-{% if tm.cov and not unavailable %}<p class="pblegend">{{ live_scores("legend") }}</p>{% endif %}
+{% if (tm.more or tm.cov) and not unavailable %}<p class="hint rs-notes">Log scale and coverage, explained {% call tips.tip("rs-metrics", "the tiles' figures") %}{{ live_scores("metrics") }}{% if tm.cov %} <span class="pblegend">{{ live_scores("legend") }}</span>{% endif %}{% endcall %}</p>{% endif %}
 {# a sealed record scored under the earlier cell rule says which figures
    read it (scoring.earlier_rule_note) #}
 {% if rule_note and not unavailable %}<p class="hint">{{ rule_note }}</p>{% endif %}
@@ -377,6 +358,64 @@
     pairwise scores above; on the same cells the two agree to within about
     0.02.</p>
    {% endif %}
+<div class="cumwrap" id="cumwrap"><h2>Cumulative relWIS through the season</h2>
+{% if conv == 'pairwise' %}
+{# a cumulative line is a ratio of sums by construction; no pairwise form #}
+<p class="hint">Not available under this convention: the curve is a
+ running ratio of sums.</p>
+{% elif curves %}
+{# one line per scored model in its member colour; the y range hugs the data
+   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
+   final value are printed #}
+{% set ns = namespace(vals=[]) %}
+{% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
+{% set vals = ns.vals %}
+{% set n = curve | length %}
+{% set hi = [vals | max, 1.05] | max %}
+{% set lo = [vals | min, 0.45] | min %}
+{% set yspan = hi - lo %}
+{% set xs = 635 / (n - 1 if n > 1 else 1) %}
+{# cumchart: labels in viewBox units (scoped rules in nau.css); the plot
+   band runs y = 12..252, the month ticks and corner dates below it #}
+<svg class="cumchart" viewBox="0 0 720 300" style="width:100%">
+ <line id="cum-marker" x1="-10" y1="8" x2="-10" y2="256" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".6"/>
+ {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
+ {% set gy = (12 + (hi - gv) * 240 / yspan) | round(1) %}
+ <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
+ <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
+ {% endfor %}
+ {% for m, c in curves.items() %}
+ {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
+ {% set cn = c | length %}
+ {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
+ {% set cvals = c | map('last') | list %}
+ {% set lx = 20 + (cn - 1) * cxs %}
+ {% set ly = 12 + (hi - cvals[-1]) * 240 / yspan %}
+ <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
+  {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 240 / yspan) | round(1) }} {% endfor %}"/>
+ {% for d, v in c %}
+  <circle data-week="{{ d }}" cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 240 / yspan) | round(1) }}" r="3"
+          fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% endfor %}
+ <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
+       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
+       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
+ {% endfor %}
+ {# month ticks on the first scored week of each month
+    (month_ticks_for_dates) #}
+ {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
+ <line x1="{{ (20 + i * xs) | round(1) }}" y1="254" x2="{{ (20 + i * xs) | round(1) }}" y2="260" stroke="var(--mut)"/>
+ <text x="{{ (20 + i * xs) | round(1) }}" y="272" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
+ {% endfor %}
+ <text x="20" y="288" fill="var(--mut)" class="svgt-sm corner">{{ curve[0][0] }}</text>
+ {% if n > 1 %}
+ <text x="655" y="288" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
+ {% endif %}
+</svg>
+{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+{% else %}
+<p class="hint">Arrives with the first scored week.</p>
+{% endif %}</div>
   </div>
  </div>
 </div>
@@ -724,6 +763,18 @@
    requestAnimationFrame(renderMap);
  }
  function showMap(w){ wantWeek = w; scheduleMap(); }
+ // the cumulative chart's marker: on the last scored week at or before w
+ function cumMarker(w){
+   var m = document.getElementById('cum-marker');
+   if(!m) return;
+   var best = null;
+   document.querySelectorAll('svg.cumchart circle[data-week]').forEach(function(c){
+     var d = c.dataset.week;
+     if(d <= w && (!best || d > best.dataset.week)) best = c;
+   });
+   var x = best ? best.getAttribute('cx') : -10;
+   m.setAttribute('x1', x); m.setAttribute('x2', x);
+ }
 
  // ---- the two page views (outlook map, forecast detail) stay host-side;
  // the shared player drives everything inside the forecast detail view ----
@@ -744,7 +795,7 @@
    payloadError: w => PERR[w],
    isCached: w => (w in PAY),
    detailVisible: () => V.view === 'fc',
-   onSeek: w => {if(V.view === 'map') showMap(w);},
+   onSeek: w => {if(V.view === 'map') showMap(w); cumMarker(w);},
    preload: w => {if(V.view === 'map') fetchMap(w);},
    // re-read per redraw; card = the explicit chart background (saved PNGs)
    palette: () => ({ink: css('--ink'), mut: css('--mut'),

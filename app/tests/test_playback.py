@@ -95,7 +95,7 @@ def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-b
 def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     p = playback.build_week(root, SEASON, ASOF)
-    assert set(p) == {"_v", "asof", "locations", "truth", "models", "official",
+    assert set(p) == {"_v", "asof", "locations", "truth", "seen", "models", "official",
                       "stats"}
     assert p["asof"] == ASOF
     assert p["locations"] == ["Ohio", "Utah"]
@@ -325,3 +325,40 @@ def test_real_mapswap_covers_every_state_shape():
     assert set(states) == set(state_paths())
     for s in states.values():
         assert set(s) == {"f", "o", "h"}
+
+
+# ------------------------------------------------ what the models saw
+
+def test_payload_carries_the_vintage_the_models_saw(tmp_path, monkeypatch):
+    # "seen": the week's own vintage per location up to the as-of week,
+    # beside the settled truth; the player draws both so a revision shows
+    from app.core import data as core_data
+    v = tmp_path / f"target-hospital-admissions_{ASOF}.csv"
+    rows = ["date,location,location_name,value,weekly_rate"]
+    for d, val in (("2025-12-20", 90), ("2025-12-27", 95), (ASOF, 8),
+                   ("2026-01-10", 999)):          # a row past the as-of
+        rows.append(f"{d},39,Ohio,{val},0")
+    rows.append(f"{ASOF},US,US,1000,0")
+    v.write_text("\n".join(rows) + "\n")
+    monkeypatch.setattr(core_data, "vintage_path", lambda asof: v)
+    root = _mk_root(tmp_path, monkeypatch)
+    p = playback.build_week(root, SEASON, ASOF)
+    assert p["seen"]["Ohio"] == [["2025-12-20", 90.0], ["2025-12-27", 95.0],
+                                 [ASOF, 8.0]]
+    assert p["seen"]["US"] == [[ASOF, 1000.0]]
+    assert "Utah" not in p["seen"]                 # no rows in the vintage
+    # the settled truth is untouched by it
+    assert p["truth"]["Ohio"] != p["seen"]["Ohio"]
+
+
+def test_payload_without_the_vintage_on_this_machine(tmp_path, monkeypatch):
+    # an imported replay on a device without the archive: no "seen", the
+    # settled truth alone, never a failure
+    from app.core import data as core_data
+
+    def _missing(asof):
+        raise FileNotFoundError("no vintage")
+    monkeypatch.setattr(core_data, "vintage_path", _missing)
+    root = _mk_root(tmp_path, monkeypatch)
+    p = playback.build_week(root, SEASON, ASOF)
+    assert p["seen"] == {}

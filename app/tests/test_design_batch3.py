@@ -136,7 +136,7 @@ def test_cumulative_chart_prints_terminal_value_dates_and_both_gridlines():
 def test_cumulative_chart_y_range_hugs_the_data():
     # scores near 0.9 land at DIFFERENT heights: the range hugs the data
     html = _season(curve=[("2098-11-07", 0.95), ("2098-11-14", 0.90)])
-    ys = re.findall(r'<circle cx="[\d.]+" cy="([\d.]+)"', html)
+    ys = re.findall(r'<circle data-week="[^"]*" cx="[\d.]+" cy="([\d.]+)"', html)
     assert len(ys) == 2
     assert abs(float(ys[0]) - float(ys[1])) > 5
 
