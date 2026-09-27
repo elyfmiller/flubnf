@@ -37,7 +37,7 @@
    and the toggletip */
 .dt-newest-dd{align-items:center}
 .dt-newest{display:inline-flex;align-items:center;gap:.3rem;
-  font-weight:650;white-space:nowrap}
+  font-weight:650}
 .dt-newest .ncmark{min-width:0;line-height:1}
 /* the pull and the check: the primary first, both flush */
 .hubcard .hubacts{margin-top:.85rem;gap:.5rem}

@@ -15,7 +15,7 @@
   {% if not live_week and not n_vintages %}
   {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it.{% endcall %}
   {% endif %}
-  {% call tips.stats("uk-stats--kv dt-hubstats", label="FluSight hub") %}
+  {% call tips.stats("dt-hubstats", label="FluSight hub") %}
    {# the live target file's newest week: what a real-time run reads when
       the hand-kept archive has not caught up (app.core.data.observed_source) #}
    {% if live_week %}
@@ -206,7 +206,7 @@
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
-   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
+   legend:{orientation:'h',x:0,xanchor:'left',yref:'container',y:0,yanchor:'bottom'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  // season helpers: byte-identical to forecast.html's (test-pinned). Parse
@@ -273,6 +273,11 @@
  drawVintage('raw');
  addEventListener('themechange',()=>drawVintage());
  addEventListener('fontsizechange',()=>drawVintage());
+ // a new text size resizes the table beside the chart: the chart takes
+ // its column's new width (Plotly's own resize follows the window only)
+ addEventListener('fontsizechange',()=>{
+   const el=document.getElementById('vintageplot');
+   if(el&&window.Plotly&&Plotly.Plots)Plotly.Plots.resize(el);});
 </script>
 {% endif %}
 <script>
