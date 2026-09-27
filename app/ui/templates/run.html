@@ -1,30 +1,10 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
-{% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endif %}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
+{% if dataset %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endif %}{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
-
-<h1>Run: {{ label or "details" }}
- {# research badge from the ledger row's spec (the record of record) #}
- {% if research %}<span class="pill">research</span>{% endif %}
- {% if modified %}<span class="pill warn">modified settings</span>{% endif %}
- {% if status and status not in ("ok", "done") %}
-  <span class="pill {{ 'warn' if status in ('stopped','interrupted','partial') else 'bad' }}">{{ status }}</span>
- {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}
-</h1>
-
-{% if modified %}
-{# the knobs record from the ledger spec; "model settings" in the settings
-   block below names every value #}
-<div class="card" id="modified-note">
- <h2>Modified model settings</h2>
- {% if override %}
- <p>Exported under the hub names by override. Reason recorded with the
-  run: <q>{{ override }}</q></p>
- {% else %}
- <p>This run's files carry the non-hub name (<code>&lt;hub id&gt;-modified</code>),
-  so they can never pass for the registered models.</p>
- {% endif %}
-</div>
-{% endif %}
+{# a status word in a badge: the ledger's run statuses by kind #}
+{% set RUN_STATE = {"ok": "ok", "done": "ok", "running": "pending",
+                    "stopped": "warn", "interrupted": "warn", "partial": "warn"} %}
 
 {# fresh re-run from the recorded spec (console fits hold no checkpoint);
    console-run guard plus /run's server-side checks #}
@@ -34,100 +14,124 @@
   {{ tips.tip("run-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
  </form>
 {% endset %}
+
+{# the title, then what the run is in badges: research (from the ledger
+   row's spec, the record of record), modified settings, its status; the
+   re-run is the page's action #}
+{% set badges %}
+ {%- if research %}{{ tips.badge("info", "research") }}{% endif %}
+ {%- if modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+ {%- if status %}{{ tips.badge(RUN_STATE.get(status, "error"), status) }}{% endif %}
+{% endset %}
+<div class="fc-runhead">{{ tips.heading("Run: " ~ (label or "details"), level=1, after=badges | trim, aside=(rerun if can_rerun and not error else "")) }}</div>
+
+{% if modified %}
+{# the knobs record from the ledger spec; the settings card's "model
+   settings" row names every value #}
+<div class="card" id="modified-note">
+ {{ tips.heading("Modified model settings", "run-mod", "The Run settings card names every changed value (model settings).") }}
+ {% call tips.stats("uk-stats--kv fc-kv") %}
+ {% if override %}
+  {% call tips.stat("Files named", "hub names, by override", id="run-mod-name") %}Exported under the hub names by override.{% endcall %}
+  {% call tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") %}Recorded with the run.{% endcall %}
+ {% else %}
+  {% call tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) %}This run's files carry the non-hub name (&lt;hub id&gt;-modified), so they can never pass for the registered models.{% endcall %}
+ {% endif %}
+ {% endcall %}
+</div>
+{% endif %}
+
 {% if error %}
-<div class="card">
- <h2>What happened</h2>
- <p>{{ error }}</p>
- <p class="hint">Nothing from this run was submitted; every run receives a
- fresh workspace.</p>
- {% if can_rerun %}{{ rerun }}{% endif %}
+<div class="card fc-error">
+ {{ tips.heading("What happened", "run-error", aside=(rerun if can_rerun else "")) }}
+ {% call tips.alert("error", error, title="Run failed.", id="run-error-msg", live="") %}Nothing from this run was submitted; every run receives a fresh workspace.{% endcall %}
 </div>
 {% endif %}
 
 {% if pf_failures or step_errors %}
 {# partial-run record from the ledger outcome: names each failed cell and
    reason as copyable text (the ledger chips only count them) #}
-<div class="card"><h2>Partial-run detail</h2>
- <p class="hint">Recorded on this run's ledger row; copy this block when
-  reporting a partial run.</p>
+<div class="card fc-partial">
+ {{ tips.heading("Partial-run detail", "run-partial", "Recorded on this run's ledger row; copy this block when reporting a partial run.") }}
  {% if pf_failures %}
- <p>PF fit{{ 's' if pf_failures | length != 1 }} that failed
-  ({{ pf_failures | length }}):</p>
+ <h3 class="fc-sub">PF fit{{ 's' if pf_failures | length != 1 }} that failed <span class="fc-count">{{ pf_failures | length }}</span></h3>
+ <ul class="fc-faillist">
  {% for cell, why in pf_failures.items() | sort %}
- <p><code>{{ cell }}</code> <span class="bad">{{ why }}</span></p>
+  <li>{{ tips.icon("error", cls="uk-c-error") }}<code>{{ cell }}</code> <span>{{ why }}</span></li>
  {% endfor %}
+ </ul>
  {% endif %}
+ {% if step_errors %}
+ <h3 class="fc-sub">Step{{ 's' if step_errors | length != 1 }} that failed <span class="fc-count">{{ step_errors | length }}</span></h3>
+ <ul class="fc-faillist">
  {% for step, why in step_errors.items() %}
- <p><code>{{ step }}</code> <span class="bad">{{ why }}</span></p>
+  <li>{{ tips.icon("error", cls="uk-c-error") }}<code>{{ step }}</code> <span>{{ why }}</span></li>
  {% endfor %}
+ </ul>
+ {% endif %}
 </div>
 {% endif %}
 
 {% if settings %}
 {# settings and versions from the ledger row only (the viewer's own
-   versions did not produce this run); no recorded versions, no block #}
-{% if results %}<div class="card"><h2>Results{% if results_tip %} {{ results_tip | safe }}{% endif %}</h2>{{ results | safe }}</div>{% endif %}
-<div class="card runrec"><h2>Run settings</h2>
+   versions did not produce this run); no recorded versions, no block.
+   Results and settings side by side where the window allows #}
+<div class="fc-rungrid">
+{% if results %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
+<div class="card runrec">{{ tips.heading("Run settings", "run-settings") }}
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
 </div>
+</div>
 {% endif %}
 
-{% if can_rerun and not error %}<div class="card">{{ rerun }}</div>{% endif %}
-
-{# the weekly report: one line, its note in the tip #}
-{% if report %}<div class="card">
- <p>Weekly report: <a href="/runs/{{ run_id }}/report">open</a>
-  <span class="hint">·</span>
-  <a href="/runs/{{ run_id }}/report/download" download>download</a>
-  {{ tips.tip("run-report", "the weekly report", "One self-contained HTML file; it opens without the app.") }}</p>
+{# the weekly report: open or save it, its note in the tip #}
+{% if report %}<div class="card fc-report">
+ {% set report_actions %}<a class="btn quiet" href="/runs/{{ run_id }}/report">{{ tips.icon("external") }} Open</a>
+ <a class="btn quiet" href="/runs/{{ run_id }}/report/download" download>{{ tips.icon("download") }} Download</a>{% endset %}
+ {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions) }}
 </div>{% endif %}
+
+{% if not dataset %}
+<div class="card fc-subs">{{ tips.heading("Submission files", "run-subs") }}
+{% set archived = subs | selectattr("archived") | list %}
+{% set current = subs | rejectattr("archived") | list %}
+{% for s in current %}
+ {% if s.submittable or s.modified %}
+ <div class="fc-file"><span class="fc-file-model">{{ s.model }}</span>
+  <a href="/output/download?path={{ s.path | urlencode }}">{{ tips.icon("download") }} {{ s.name }}</a>
+  {% if s.modified and not s.submittable %}{% call tips.badge("warn", "non-hub name", id="run-sub-mod-" ~ loop.index) %}Non-hub name: this run's model settings differ from the defaults.{% endcall %}{% endif %}</div>
+ {{ covm.line(s.cov) }}
+ {% endif %}
+{% endfor %}
+{% if not current and not archived %}{{ tips.empty("No submission files", "folder", tiptext="Submissions appear when a run completes.", id="run-nosubs", compact=True) }}{% endif %}
+{% for model, why in (sub_errors or {}).items() %}
+ <div class="fc-file"><span class="fc-file-model">{{ model }}</span>
+  {% call tips.badge("error", "no file written", id="run-suberr-" ~ loop.index) %}Refused before anything reached disk: {{ why }}{% endcall %}</div>
+{% endfor %}
+{% if archived %}
+{% call tips.fold("Archived files (" ~ archived | length ~ ")", id="run-archived", cls="fc-archived", after=tips.tip("run-archived-tip", "archived files", "Written by an earlier version under a retired hub name; kept as a record, not for submission.")) %}
+ <ul class="fc-filelist">
+ {% for s in archived %}<li>{{ s.model }} {{ tips.badge("neutral", "archived") }}<br><code>{{ s.name }}</code></li>{% endfor %}
+ </ul>
+{% endcall %}
+{% endif %}
+</div>
+{% endif %}
 
 {% if dataset %}{% include "_dataset_run.html" %}{% endif %}
 
 {% for model, locs in models.items() %}
 <div class="card"><h2>{{ (dataset_members or {}).get(model) or model_name(model) }}: median {{ "values" if dataset else "admissions" }}, 1-4 weeks ahead</h2>
-<table><tr><th>{{ "group" if dataset else "location" }}</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
+<table class="fc-medians"><tr><th>{{ "group" if dataset else "location" }}</th><th class="num">1 wk</th><th class="num">2 wk</th><th class="num">3 wk</th><th class="num">4 wk</th></tr>
 {% for loc, m in locs.items() %}
 <tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
   {% set v = m.get(h) %}
-  <td>{{ "%.0f"|format(v["0.5"] if v is mapping else (v or 0)) }}</td>{% endfor %}</tr>
+  <td class="num">{{ "%.0f"|format(v["0.5"] if v is mapping else (v or 0)) }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
 {% else %}
 {% if not error %}
-<div class="card"><p class="hint">No results stored for this run
-{% if status == 'running' %} yet; it is still running (<a href="/forecast">Forecast</a>){% endif %}.</p></div>
+<div class="card">{% if status == 'running' %}{{ tips.empty("No results stored for this run yet", "clock", action='<a class="btn quiet" href="/forecast">Open Forecast</a>' | safe, tiptext="It is still running; the Forecast tab follows it.", id="run-noresults") }}{% else %}{{ tips.empty("No results stored for this run", "folder", id="run-noresults") }}{% endif %}</div>
 {% endif %}
 {% endfor %}
-
-{% if not dataset %}
-<div class="card"><h2>Submission files</h2>
-{% set archived = subs | selectattr("archived") | list %}
-{% for s in subs | rejectattr("archived") %}
- {% if s.submittable %}
- <p class="subline">{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
- {{ covm.line(s.cov) }}
- {% elif s.modified %}
- <p class="subline">{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
-  <span class="hint">Non-hub name: this run's model settings differ from
-  the defaults.</span></p>
- {{ covm.line(s.cov) }}
- {% endif %}
-{% else %}{% if not archived %}<p class="hint">None yet. Submissions appear when a run
- completes.</p>{% endif %}{% endfor %}
-{% if archived %}
-<details class="preview archived">
- <summary class="hint">Archived files ({{ archived | length }})</summary>
- <p class="hint">Written by an earlier version under a retired hub name;
- kept as a record, not for submission.</p>
- {% for s in archived %}
- <p>{{ s.model }} <span class="hint">(archived)</span><br><code>{{ s.name }}</code></p>
- {% endfor %}
-</details>
-{% endif %}
-{% for model, why in (sub_errors or {}).items() %}
- <p><b>{{ model }}</b>: <span class="bad">no file written</span><br>
-  <span class="hint">Refused before anything reached disk: {{ why }}</span></p>
-{% endfor %}</div>
-{% endif %}
 {% endblock %}
