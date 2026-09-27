@@ -89,7 +89,7 @@
 {% if report %}<div class="card fc-report">
  {% set report_actions %}<a class="btn quiet" href="/runs/{{ run_id }}/report">{{ tips.icon("external") }} Open</a>
  <a class="btn quiet" href="/runs/{{ run_id }}/report/download" download>{{ tips.icon("download") }} Download</a>{% endset %}
- {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions) }}
+ {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions, cls="fc-flush") }}
 </div>{% endif %}
 
 {% if not dataset %}

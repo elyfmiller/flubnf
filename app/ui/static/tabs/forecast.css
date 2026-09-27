@@ -75,9 +75,9 @@
 .fc-di .di-head{flex:1 1 0;min-width:0;display:flex;align-items:center;
   gap:.1rem .3rem;flex-wrap:wrap}
 .fc-di .di-head label{margin:0;color:var(--ink);font-weight:600}
-.fc-di .di-head .tip{margin-left:0}
 .fc-di .di-flag{flex-basis:100%;color:var(--mut);font-size:var(--fs-hint);
   font-variant-numeric:tabular-nums}
+.fc-di .di-flag .tip{margin-left:.1rem}
 .fc-di .di-rec{display:inline-flex;font-size:var(--fs-label)}
 .fc-di .di-rec[hidden]{display:none}
 .fc-di[hidden]{display:none}
@@ -98,6 +98,8 @@
 /* ---- 5. the run page ---- */
 /* the title and its badges, the re-run at the right */
 .fc-runhead{margin-bottom:.3rem}
+/* a card that is its heading alone (the weekly report and its actions) */
+.fc-flush{margin-bottom:0}
 /* results and settings side by side where the window allows */
 .fc-rungrid{display:grid;gap:0 var(--gap);align-items:start;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))}

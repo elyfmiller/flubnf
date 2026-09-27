@@ -294,7 +294,7 @@ def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, mo
     assert ('<div class="di-head"><span class="di-rec uk-c-ok">' in box
             and 'aria-label="recommended"' in box)
     assert '<label for="gap-39">Ohio</label>' in box
-    assert '<span class="di-flag">0 after 40, 40, 40</span>' in box
+    assert '<span class="di-flag">0 after 40, 40, 40 <span class="tip">' in box
     assert 'name="gap.39" id="gap-39" data-issue="zero" data-rec="set_aside"' in box
     assert f'<option value="set_aside" selected>Both from {md}</option>' in box
     assert f'<option value="extend">Extend 40 from {md}</option>' in box
