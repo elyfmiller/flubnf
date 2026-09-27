@@ -130,7 +130,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 
 | Template | Included by |
 |---|---|
-| `base.html` | extended by every page: nav, theme and a11y pickers, guard and start-over modals |
+| `base.html` | extended by every page: nav, the Display menu (text size, theme, a11y modes, zoom; see **Display settings**), guard and start-over modals |
 | `diagrams.html` | imported as `dg` by `home.html`, `methods.html`, `model.html`, and `app/core/site_build.py` |
 | `research_run.html` | `base.html`, only on `/model/pf2s` (`research_panel`) |
 | `sandbox_views.html` | `sandbox.html`; loads `static/model-views.js` and `.css` |
@@ -160,3 +160,30 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |
+| `brand/logos.css`, `brand/themes/` | `base.html`: the header mark per theme (see **Display settings**) |
+
+## Display settings
+
+The header's Display menu (`base.html`) holds four sections: **Text size**, **Theme**, **Accessibility** and **Zoom** (the native window only). Each is a heading with its "?"; every control is a native one, so it works by keyboard and screen reader, and Escape, a click outside or Tab past the last control closes the menu. A script at the top of `base.html` applies the stored choices before the first paint, so a page never flashes the wrong look. The choices live in the window's `localStorage`: `theme`, `contrast` (`high` or `normal`), `vision` (`cvd` or `normal`), `fontsize` and `zoom`.
+
+**Text size** is a slider from 80% to 160% of the standard size in 5% steps (the root font size; every size in the console is in `rem`, `em` or the `--fs-*` tokens). The small and large A are step buttons, Reset returns to 100%. `fontsize` is stored as a number; the old three-step values (`s`, `m`, `l`) read as 87.5, 100 and 115 and are rewritten as numbers. The page dispatches `fontsizechange` once the slider rests, and the charts redraw on it.
+
+**Themes.** Eight, in the menu's order: on light grounds Light (the default), Paper, GitHub Light and Solarized Light; on dark grounds Dim, Dark, Nord and Dracula. Light, Paper, Dim and Dark carry the PyBNF brand; the other four take their colors from the code-editor palettes credited (with their MIT licenses) above their blocks in `nau.css`. A theme is one token block, `[data-theme="<id>"]{...}`, in `static/nau.css`, where every token is a literal color; the light block is also `:root`. The list of themes lives once in `base.html` (`THEMES`: the first-paint check and the picker render from it). Adding a theme is a token block in `nau.css`, a line in `static/brand/logos.css` and an entry in `THEMES`; `app/tests/test_display_themes.py` holds the three equal and measures the new block.
+
+What a rule, a chart or a map reaches for:
+
+| Tokens | Meaning |
+|---|---|
+| `--ink`, `--mut`, `--bg`, `--card`, `--line`, `--field-line` | text, muted text, the page ground, a raised card, a rule, a field's boundary (3:1 on both grounds) |
+| `--ok`, `--warn`, `--bad` | status: good, a warning, a problem (words, badges, alerts, values that judge) |
+| `--season-1` .. `--season-6` | chart series, one per line or bar, in order |
+| `--cat-large-decrease` .. `--cat-large-increase`, `--map-nodata` | the outlook map's scale |
+| `--gold`, `--gold-bright`, `--accent-ink`, `--slate` | links and the highlighted series; a primary fill; the accent as text or a boundary; the data accent |
+| `--btn-ink`, `--on-accent`, `--on-bad` | outline buttons; the text on a primary fill and on a `--bad` fill |
+| `--scheme` | `light` or `dark`, for native controls (`color-scheme`) |
+
+The shared controls (buttons, link buttons, the "?") read tokens that each theme sets, so a control that looks different on dark grounds needs no rule per theme. Style with the tokens, never a theme selector.
+
+**Accessibility modes** compose with every theme. High contrast (`data-contrast="high"`, on by itself when the system asks for more contrast) remaps text, boundaries and the status colors onto each theme's `-hc` literals. Color-blind safe colors (`data-vision="cvd"`) moves the status triad, the series and the map scale together onto each theme's `-cvd` literals, based on the Okabe and Ito palette: good in blue, warnings in gold or yellow, problems in a deep red or vermillion, the map from blue to red through orange; the series take the safe set in the order that keeps neighbours apart. `app/tests/test_display_themes.py` measures every theme in all four combinations (text 4.5:1, 7:1 with high contrast; boundaries and series 3:1) and simulates deuteranopia and protanopia (Machado, Oliveira and Fernandes 2009; Vienot 1999) on the status colors, the series and the map. A status never rests on color alone: the kit's badges and alerts carry an icon and a word.
+
+**The header mark per theme.** The mark is `--logo`, set once per theme in `static/brand/logos.css` and drawn by `base.html`'s brand link and by the theme previews in the menu. Light, Paper, Dim and Dark use the brand kit's `brand/pybnf_icon.svg`; GitHub Light, Solarized Light, Nord and Dracula use a recolor of it in their palettes, `brand/themes/<theme>.svg`. To use a brand-kit variant for a theme, put the file at `static/brand/themes/<theme>.svg` (a square SVG or PNG of 512 px or more) and point that theme's line in `logos.css` at it. The line lives there, not in `nau.css`, because the reports embed `nau.css`'s token blocks. The favicon (`brand/favicon.ico`, `brand/favicon-32.png`) and the app icon (`FluBNF.app`) stay the brand kit's own in every theme.
