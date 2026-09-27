@@ -18,6 +18,9 @@
    result stays up (dimmed) and the same select is focused in the new
    one. A short status line (role=status) says what the check found; the
    result itself is not a live region, so it is not read out each time.
+   While a check runs the result box holds the UI kit's sliding bar,
+   labelled with what is checked; a check that fails, or a folder with
+   no tables, is a kit alert line (static/ui-kit.css).
    The preview's buttons submit the form itself (POST /data/datasets),
    which stores the files and opens them where they are needed. A closed
    <details> around the box opens when a file is dragged over it. Files
@@ -32,6 +35,27 @@
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // the UI kit's markup (templates/_tips.html progress and alert), built
+  // here: the result box is filled by script. The icon comes from
+  // window.FluBNFUI (static/tips.js) when it is there
+  function kitIcon(name) {
+    var ui = window.FluBNFUI;
+    return ui && ui.icon ? ui.icon(name) : '';
+  }
+
+  function busyBar(text) {
+    return '<div class="uk-progress uk-progress--busy">'
+      + '<div class="uk-progress-head"><span class="uk-progress-label">'
+      + esc(text) + '</span></div><div class="uk-progress-track"'
+      + ' role="progressbar" aria-label="' + esc(text) + '">'
+      + '<div class="uk-progress-fill"></div></div></div>';
+  }
+
+  function alertLine(text) {
+    return '<div class="uk-alert uk-alert--error">' + kitIcon('error')
+      + '<span class="uk-alert-text">' + esc(text) + '</span></div>';
   }
 
   function hasFiles(e) {
@@ -229,7 +253,7 @@
       form.setAttribute('aria-busy', 'true');
       say(lead + 'Checking ' + what + '…');
       if (keep === null) {
-        out.innerHTML = '<p class="hint">Checking ' + esc(what) + '…</p>';
+        out.innerHTML = busyBar('Checking ' + what);
       }
       fetch('/data/datasets/check?where=' + encodeURIComponent(
         form.dataset.where || 'data'), {method: 'POST', body: fd,
@@ -256,7 +280,7 @@
           if (fs.length === 1) {
             msg = 'The file could not be checked; choose it again.';
           }
-          out.innerHTML = '<p class="bad">' + msg + '</p>';
+          out.innerHTML = alertLine(msg);
           if (keep !== null) refocus(null);
           say(msg);
         })
@@ -267,7 +291,7 @@
 
     function none() {
       say(NO_TABLES);
-      out.innerHTML = '<p class="bad">' + NO_TABLES + '</p>';
+      out.innerHTML = alertLine(NO_TABLES);
     }
 
     // snapshot files, from anywhere: held by the snapshot zone and checked

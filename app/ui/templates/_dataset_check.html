@@ -1,31 +1,46 @@
 {# The upload box's result (datasets_ui.check_view; rendered in the page on
    a refused store, and returned as HTML by POST /data/datasets/check):
-   every problem grouped by kind, or a column mapping when that is what is
-   missing, the target picker for a file with several, the notices, and a
-   preview of a valid file with its "Forecast this" / "Replay this" buttons
-   (they submit the upload box's form). Selects marked data-recheck make
-   static/dataset_upload.js check again. Only a refused store
-   (chk.refused) says nothing was stored: a check never stores. #}
+   every problem grouped by kind under one alert line, or a column mapping
+   when that is what is missing (the roles still to choose marked), the
+   target picker for a file with several, the notes on how the file was
+   read (a closed fold), and a preview of a valid file: labelled values,
+   a sparkline per group, the first rows, and its "Forecast this" /
+   "Replay this" buttons (they submit the upload box's form). Selects
+   marked data-recheck make static/dataset_upload.js check again. Only a
+   refused store (chk.refused) says nothing was stored: a check never
+   stores. The alert lines are silent (live=""): a check's status line
+   speaks for it, and a refused store's box is itself the alert. #}
 {% import "_tips.html" as tips %}
+
+{# the notes on how a file was read (decimal commas, moved dates, ignored
+   columns): a closed fold whose summary counts them #}
+{% macro notes(chk, fid) -%}
+{% if chk.notices %}{% set n = chk.notices | length %}
+{% call tips.fold(n ~ " note" ~ ("" if n == 1 else "s") ~ " on how it was read", id=fid ~ "-notes", cls="dt-notes", after=tips.icon("info", cls="uk-c-info")) %}
+<ul class="dsnotes">{% for n in chk.notices %}<li>{{ n }}</li>{% endfor %}</ul>
+{% endcall %}
+{% endif %}
+{%- endmacro %}
+
 {% macro result(chk, where) -%}
 {% set fid = "dsup-" ~ where %}
 {% if chk.problems %}
 <div class="dsproblems"{% if chk.refused %} role="alert"{% endif %}>
  {% set many = "" if chk.n == 1 else "s" %}
- {% if chk.refused %}<p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ many }} to fix:</p>
- {% else %}<p class="bad"><strong>{{ chk.n }} problem{{ many }} to fix</strong> before {{ "these files" if chk.files and chk.files > 1 else "this file" }} can be stored:</p>{% endif %}
+ {% if chk.refused %}{{ tips.alert("error", chk.n ~ " problem" ~ many ~ " to fix:", title="Nothing was stored.", live="") }}
+ {% else %}{{ tips.alert("error", "before " ~ ("these files" if chk.files and chk.files > 1 else "this file") ~ " can be stored:", title=chk.n ~ " problem" ~ many ~ " to fix", live="") }}{% endif %}
  {% for kind, probs in chk.problems %}
- <p class="dsp-kind">{{ kind }}</p>
- <ul>{% for p in probs %}<li>{{ p.message }}</li>{% endfor %}</ul>
+ <div class="dt-pgroup"><p class="dsp-kind">{{ kind }}</p>
+ <ul>{% for p in probs %}<li>{{ p.message }}</li>{% endfor %}</ul></div>
  {% endfor %}
 </div>
 {% endif %}
 {% if chk.mapping %}
-<fieldset class="dsmap"><legend>Which column is which?</legend>
- {% for w in chk.mapping.why %}<p class="hint">{{ w }}</p>{% endfor %}
+<fieldset class="dsmap"><legend>Which column is which?{% if chk.mapping.why %}
+ {% call tips.tip(fid ~ "-map", "choosing the columns") %}{% for w in chk.mapping.why %}<span class="ncline">{{ w }}</span>{% endfor %}{% endcall %}{% endif %}</legend>
  <div class="dsmap-roles">
  {% for r in chk.mapping.roles %}
- <span><label for="{{ fid }}-col-{{ r.role }}">{{ r.label }}{{ "" if r.required else " (optional)" }}</label>
+ <span><span class="dt-maplbl"><label for="{{ fid }}-col-{{ r.role }}">{{ r.label }}</label>{% if not r.required %} {{ tips.badge("neutral", "optional") }}{% elif not r.value %} {{ tips.badge("warn", "choose") }}{% endif %}</span>
   <select name="col_{{ r.role }}" id="{{ fid }}-col-{{ r.role }}" data-recheck>
    <option value="">{{ "choose…" if r.required else "none" }}</option>
    {% for v, h in chk.mapping.headers %}<option value="{{ v }}"{% if v == r.value %} selected{% endif %}>{{ h }}</option>{% endfor %}
@@ -35,36 +50,42 @@
 </fieldset>
 {% endif %}
 {% if chk.targets %}
-<div class="dstarget">{{ tips.label("Target", fid ~ "-target", "This file holds several targets; a dataset holds one.", for_=fid ~ "-target") }}
+<div class="dstarget">{{ tips.label("Target", fid ~ "-target", "This file holds several targets; a dataset holds one." ~ ("" if chk.target else " Choose the target to check and store."), for_=fid ~ "-target") }}
  <select name="target" id="{{ fid }}-target" data-recheck>
   <option value=""{% if not chk.target %} selected{% endif %}>choose…</option>{% for t in chk.targets %}
-  <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select>
- {% if not chk.target %}<p class="hint">Choose the target to check and store.</p>{% endif %}</div>
+  <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
 {% endif %}
-{% if chk.notices %}
-<ul class="dsnotes">{% for n in chk.notices %}<li>{{ n }}</li>{% endfor %}</ul>
-{% endif %}
+{% if not chk.preview %}{{ notes(chk, fid) }}{% endif %}
 {% if chk.preview %}{% set pv = chk.preview %}
-<div class="dspreview">
- <p class="ok"><strong>Ready to use.</strong></p>
- <dl class="kv dsfacts">
-  <dt>Groups</dt><dd>{{ pv.n_groups }}{% if pv.n_groups <= 6 %}: {{ pv.groups | join(", ") }}{% endif %}{% if pv.national %} (national: {{ pv.national }}){% endif %}</dd>
-  <dt>Weeks</dt><dd>{{ pv.weeks }}, {{ pv.first }} to {{ pv.last }}</dd>
-  <dt>Rows</dt><dd>{{ "{:,}".format(pv.rows) }}</dd>
-  <dt>Values</dt><dd>{{ "counts" if pv.kind == "count" else "rates" }}{{ " (detected)" if pv.inferred else "" }}</dd>
-  <dt>Population</dt><dd>{{ "yes" if pv.population else "no" }}</dd>
-  {% if pv.files %}<dt>Snapshots</dt><dd>{{ pv.files }} files, as_of <span class="nw">{{ pv.as_of_first }}</span> to <span class="nw">{{ pv.as_of_last }}</span></dd>
-  {% elif pv.snapshots %}<dt>Snapshots</dt><dd>{{ pv.snapshots }} (as_of)</dd>{% endif %}
-  {% if pv.target %}<dt>Target</dt><dd>{{ pv.target }}</dd>{% endif %}
-  <dt>Read as</dt><dd>{{ pv.read_as }}</dd>
- </dl>
+<div class="dspreview dt-panel">
+ {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
+ {# what the file holds, one labelled value each #}
+ {% call tips.stats("dt-facts", label="What the file holds") %}
+  {# the national group is badged on its sparkline; named here when it
+     has none #}
+  {% set drawn = pv.sparks | map(attribute="name") | list %}
+  {% set nat %}{% if pv.national and pv.national not in drawn %}{{ tips.badge("neutral", "national: " ~ pv.national) }}{% endif %}{% endset %}
+  {{ tips.stat("Groups", pv.n_groups, unit=(pv.groups | join(", ")) if pv.n_groups <= 6 else "", after=nat) }}
+  {% set span %}<span class="dt-nw">{{ pv.first }}</span> to <span class="dt-nw">{{ pv.last }}</span>{% endset %}
+  {{ tips.stat("Weeks", pv.weeks, unit=span) }}
+  {{ tips.stat("Rows", "{:,}".format(pv.rows)) }}
+  {% set det %}{% if pv.inferred %}{{ tips.badge("neutral", "detected") }}{% endif %}{% endset %}
+  {{ tips.stat("Values", "counts" if pv.kind == "count" else "rates", after=det) }}
+  {{ tips.stat("Population", "yes" if pv.population else "no") }}
+  {% if pv.files %}{% set asof %}files, as_of <span class="dt-nw">{{ pv.as_of_first }}</span> to <span class="dt-nw">{{ pv.as_of_last }}</span>{% endset %}
+  {{ tips.stat("Snapshots", pv.files, unit=asof) }}
+  {% elif pv.snapshots %}{{ tips.stat("Snapshots", pv.snapshots, unit="as_of") }}{% endif %}
+  {% if pv.target %}{{ tips.stat("Target", pv.target) }}{% endif %}
+ {% endcall %}
  <div class="dssparks">{% for sp in pv.sparks %}
   <figure class="dsspark"><svg viewBox="0 0 {{ pv.w }} {{ pv.h }}" preserveAspectRatio="none" role="img" aria-label="{{ sp.label }}"><title>{{ sp.label }}</title><polyline points="{{ sp.points }}" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
-   <figcaption>{{ sp.name }}</figcaption></figure>{% endfor %}
+   <figcaption>{{ sp.name }}{% if sp.name == pv.national %} {{ tips.badge("neutral", "national") }}{% endif %}</figcaption></figure>{% endfor %}
+  {% if pv.more %}<div class="dt-more"><span class="dt-more-n">+{{ pv.more }}</span> more group{{ "" if pv.more == 1 else "s" }}</div>{% endif %}
  </div>
- {% if pv.more %}<p class="hint">and {{ pv.more }} more group{{ "" if pv.more == 1 else "s" }}</p>{% endif %}
+ {{ notes(chk, fid) }}
  <div class="tablewrap"><table class="compact dsfirst">
-  <caption class="hint">First rows as read{% if pv.files %}, from {{ pv.rows_file }}{% endif %}</caption>
+  <caption class="dt-cap">First rows as read{% if pv.files %}, from {{ pv.rows_file }}{% endif %}
+   <span class="dt-tag"><span class="uk-sr">Read as </span>{{ pv.read_as }}</span></caption>
   <thead><tr><th class="num">Row</th><th>Week{% if pv.dates_differ %} <span class="dsasw">as written</span>{% endif %}</th><th>Group</th><th class="num">Value</th>{% if pv.population %}<th class="num"><abbr title="Population">Pop.</abbr></th>{% endif %}</tr></thead>
   <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td><td class="wk">{{ r.week }}{% if pv.dates_differ %}<span class="dsasw">{{ r.date }}</span>{% endif %}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
  </table></div>

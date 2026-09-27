@@ -68,6 +68,20 @@ def boxes(page):
     return re.findall(r'<form[^>]*data-dsup data-where="(\w+)"', page)
 
 
+#: the preview's "Ready to use" badge (a check that stores nothing)
+READY = '<span class="uk-badge-t">Ready to use</span>'
+
+
+def fact(html, label):
+    """One of the preview's labelled values (tips.stat) as plain text:
+    the value, its unit and any badge beside it."""
+    m = re.search(r'<div class="uk-stat[^"]*"><dt>' + re.escape(label)
+                  + r'(?:<span class="tip">.*?</span></span>)?</dt><dd>(.*?)'
+                  r'</dd></div>', html, flags=re.S)
+    assert m, label
+    return " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
+
+
 # -------------------------------------------------------- one shared box
 
 def test_the_box_is_on_data_forecast_and_retrospective():
@@ -297,11 +311,11 @@ def test_a_valid_file_previews_and_stores_nothing():
     assert j["ok"] and j["inferred_kind"] == "count"
     assert not j["needs_mapping"] and j["targets"] == []
     html = j["html"]
-    assert "Ready to use." in html and "Nothing was stored" not in html
-    assert "<dt>Groups</dt><dd>3: Adult, Overall, Pediatric</dd>" in html
-    assert "2019-08-03 to 2024-02-24" in html
-    assert "<dt>Values</dt><dd>counts (detected)</dd>" in html
-    assert "<dt>Population</dt><dd>yes</dd>" in html
+    assert READY in html and "Nothing was stored" not in html
+    assert fact(html, "Groups") == "3 Adult, Overall, Pediatric"
+    assert fact(html, "Weeks").endswith("2019-08-03 to 2024-02-24")
+    assert fact(html, "Values") == "counts detected"
+    assert fact(html, "Population") == "yes"
     assert "comma-separated, UTF-8" in html
     assert html.count("<polyline") == 3                 # one per group
     assert 'aria-label="Adult: ' in html
@@ -338,7 +352,7 @@ def test_problems_come_grouped_by_kind_with_rows():
     assert ('(row 3; e.g., -2 (<span class="nw">2024-08-10</span>, A))'
             in html and "(row 4;" in html)
     assert "(row 5; e.g., soon (B/C))" in html
-    assert "Ready to use." not in html
+    assert READY not in html
     # a date stays on one line at phone width (it broke after a hyphen)
     assert '<span class="nw">2024-08-19</span> (A, Monday, row 4)' in html
     # a refused store does
@@ -378,7 +392,7 @@ def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
     assert '<option value="#1">day</option>' in html
     assert '<option value="#2" selected>area</option>' not in html
     j = check(raw, col_date="#1", col_group="#2", col_value="#3").json()
-    assert j["ok"] and "Ready to use." in j["html"]
+    assert j["ok"] and READY in j["html"]
     # the chosen columns stay offered, preselected
     assert '<option value="#3" selected>amount</option>' in j["html"]
     r = store(raw, col_date="#1", col_group="#2", col_value="#3")
@@ -401,11 +415,11 @@ def test_a_file_with_several_targets_waits_for_a_choice():
     assert '<select name="target" id="dsup-data-target" data-recheck>' in html
     assert '<option value="" selected>choose…</option>' in html
     assert " selected>wk inc" not in html
-    assert "Nothing was stored." not in html and "Ready to use." not in html
+    assert "Nothing was stored." not in html and READY not in html
     assert 'value="forecast"' not in html
     j = check(raw, target="wk inc flu hosp").json()
     assert j["ok"] and "<option selected>wk inc flu hosp</option>" in j["html"]
-    assert "Ready to use." in j["html"]
+    assert READY in j["html"]
     single = b"target_end_date,target,location,observation\n2024-08-03,a,01,1\n"
     assert 'name="target"' not in check(single).json()["html"]
     # storing without a choice stores nothing and asks again
@@ -429,7 +443,7 @@ def test_blank_target_cells_are_a_problem_not_dropped_rows():
            b"2024-01-06,,US,5\n2024-01-06,wk inc flu hosp,US,5\n"
            b"2024-01-13,wk inc flu hosp,US,6\n")
     j = check(raw).json()
-    assert not j["ok"] and "Ready to use." not in j["html"]
+    assert not j["ok"] and READY not in j["html"]
     assert ("The &#39;target&#39; column is blank on 1 row(s) (row 2; e.g., "
             'row 2: <span class="nw">2024-01-06</span>, US), while the others '
             "name wk inc flu hosp.") in j["html"]
@@ -494,9 +508,9 @@ def test_a_kind_filled_in_from_the_values_stays_from_the_values():
     kind: the preview keeps '(detected)' and the store records
     kind_from 'values', as the CLI does."""
     j = check(grouped_bytes(), kind="count", kind_auto="1").json()
-    assert "<dt>Values</dt><dd>counts (detected)</dd>" in j["html"]
+    assert fact(j["html"], "Values") == "counts detected"
     j = check(grouped_bytes(), kind="count").json()
-    assert "<dt>Values</dt><dd>counts</dd>" in j["html"]
+    assert fact(j["html"], "Values") == "counts"
     assert store(grouped_bytes(), kind="count",
                  kind_auto="1").status_code == 303
     (ds,) = D.list_datasets()
@@ -525,9 +539,9 @@ def test_numbers_that_read_two_ways_leave_the_kind_to_the_user():
     j = check(raw).json()
     assert not j["ok"] and j["inferred_kind"] is None
     assert "Choose whether the values are counts or rates" in j["html"]
-    assert "Ready to use." not in j["html"]
+    assert READY not in j["html"]
     j = check(raw, kind="rate").json()
-    assert j["ok"] and "<dt>Values</dt><dd>rates</dd>" in j["html"]
+    assert j["ok"] and fact(j["html"], "Values") == "rates"
 
 
 def test_the_check_refuses_what_is_not_a_file(monkeypatch):
