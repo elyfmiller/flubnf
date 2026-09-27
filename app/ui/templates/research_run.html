@@ -2,24 +2,41 @@
    (research_panel). The ONE form for the three-member request (the
    two-strain engine failed its full-grid gate, so Forecast never offers
    it); posts /run with members=3 through the same checks and guard, and
-   everything it starts is tagged research. #}
-<div class="card" id="research-run">
- <h2>Research run <span class="pill">research · not the submitted forecast</span></h2>
- <p class="hint">The weekly pipeline with the two-strain member fitted
-  beside the submitted models: scored, never submitted.</p>
- <form method="post" action="/run">
-  <label for="rr-date">Forecast date</label>
-  <input id="rr-date" name="forecast_date" value="{{ form.forecast_date }}">
-  <label for="rr-locs">Locations</label>
-  <input id="rr-locs" name="locations"
-    value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
-    title='state names, comma-separated, or "all"'>
-  <label for="rr-particles">Particles</label>
-  <input id="rr-particles" name="particles" type="number" value="10000"
-    min="1000" max="100000" step="1000">
-  <label for="rr-reps">Replicates</label>
-  <input id="rr-reps" name="replicates" type="number"
-    value="{{ form.replicates }}" min="1" max="9">
+   everything it starts is tagged research. A research run never reaches
+   the model pages' forecasts card: the Storage tab's run ledger lists it,
+   badged. Styles: static/tabs/models.css (model.html links it). #}
+{% import "_tips.html" as tips %}
+<div class="card md-research" id="research-run">
+ {% set badge %}{{ tips.badge("info", "research · not the submitted forecast") }}{% endset %}
+ {% set ledger %}<a href="/storage">Past runs in Storage</a>{% endset %}
+ {{ tips.heading("Research run", "rr", "The weekly pipeline with the two-strain member fitted beside the submitted models: scored, never submitted.", after=badge, aside=ledger) }}
+ {% if status.running %}
+ {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
+ {{ tips.alert("warn", "A run is in progress.", id="rr-busy", action=fc_link) }}
+ {% endif %}
+ <form method="post" action="/run" class="md-form">
+  <div class="md-fields">
+   <div class="md-field">
+    {{ tips.label("Forecast date", "rr-date-tip", "Any day; the run anchors on the latest archived week on or before it.", for_="rr-date") }}
+    <input id="rr-date" name="forecast_date" type="date" value="{{ form.forecast_date }}" required>
+   </div>
+   <div class="md-field">
+    {{ tips.label("Locations", "rr-locs-tip", 'State names, comma-separated, or "all": the 52 jurisdictions and US (national).', for_="rr-locs") }}
+    <input id="rr-locs" name="locations"
+      value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+      placeholder='state names, comma-separated, or "all"'>
+   </div>
+   <div class="md-field">
+    {{ tips.label("Particles", "rr-particles-tip", "Candidate epidemics per jurisdiction; run time grows linearly. 1,000 to 100,000.", for_="rr-particles") }}
+    <input id="rr-particles" name="particles" type="number" value="10000"
+      min="1000" max="100000" step="1000">
+   </div>
+   <div class="md-field">
+    {{ tips.label("Replicates", "rr-reps-tip", "Seeded filter runs per jurisdiction, pooled; shipped per-state numbers use 3 or more.", for_="rr-reps") }}
+    <input id="rr-reps" name="replicates" type="number"
+      value="{{ form.replicates }}" min="1" max="9">
+   </div>
+  </div>
   <input type="hidden" name="engine" value="all">
   <input type="hidden" name="members" value="3">
   <input type="hidden" name="weeks_to_drop" value="0">

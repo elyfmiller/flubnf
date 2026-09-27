@@ -148,7 +148,9 @@ def test_switcher_lists_two_strain_as_the_research_option():
     t = client.get("/models").text
     assert t.count("data-model=") == 3
     assert "Two-strain SIHRS" in t
-    assert "(research)" in t
+    # the research option wears a "research" tag inside its own button
+    pf2s = t.split('data-model="pf2s"', 1)[1].split("</button>", 1)[0]
+    assert '<span class="md-tag">research</span>' in pf2s
 
 
 def test_model_pages_render_mechanism_and_collapsed_intro():
@@ -161,8 +163,10 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         r = client.get(f"/model/{name}")
         assert r.status_code == 200, name
         assert marker in r.text, name
-        # intro collapsed by default: a details block without `open`
-        assert '<details class="card intro">' in r.text, name
+        # the header card; its full description collapsed by default (a
+        # fold without `open`)
+        assert 'class="card md-hero"' in r.text, name
+        assert '<details class="uk-fold md-about" id="md-about">' in r.text, name
         assert 'href="/methods#' in r.text, name
 
 

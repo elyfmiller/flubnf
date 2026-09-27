@@ -1,11 +1,13 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
+<link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
 {% block content %}
 {# the switcher below names the model; the heading names the tab #}
 <h1>Models</h1>
 {# model switcher: aria-pressed buttons that navigate (PF -> /models, others
-   -> /model/<name>); the research-only page has no nav tab #}
+   -> /model/<name>); the research-only page has no nav tab, and its button
+   wears a "research" tag #}
 <div class="row viewtabs" role="group" aria-label="Model view">
  {# labels from the shared model-name map #}
  {% for mn, mhref in [("pf", "/models"),
@@ -14,79 +16,144 @@
  <button type="button" class="quiet{% if name == mn %} gold{% endif %}"
    aria-pressed="{{ 'true' if name == mn else 'false' }}"
    data-model="{{ mn }}"
-   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ model_name(mn) }}{% if mn == "pf2s" %} <span class="hint">(research)</span>{% endif %}</button>
+   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ model_name(mn) }}{% if mn == "pf2s" %} <span class="md-tag">research</span>{% endif %}</button>
  {% endfor %}
 </div>
-<details class="card intro">
- {# the summary is a short phrase; the full description opens below it #}
- <summary>{{ oneline }}</summary>
- <p class="sub introbody">{{ blurb }}</p>
-</details>
+
+{# the model at a glance (routes/models.py HEADERS and _record): its name
+   with kind and status, the one line under it, the relWIS record drawn
+   against the baseline (its sentences in the Record "i"), and the full
+   description behind a fold #}
+<section class="card md-hero" aria-labelledby="h-md-model">
+ {% set badges %}<span class="md-kind">{{ header.kind }}</span>
+ {%- if header.research %}{{ tips.badge("info", "Research only") }}
+ {%- else %}{{ tips.badge("ok", "Submitted to FluSight") }}{% endif %}{% endset %}
+ {% set methods_link %}<a class="btn quiet md-more" href="/methods#{{ manchor }}">Full methodology</a>{% endset %}
+ {{ tips.heading(title, "md-model", cls="md-hero-head", after=badges, aside=methods_link) }}
+ <div class="md-hero-grid">
+  <div class="md-hero-main">
+   <p class="md-tagline">{{ header.tagline }}</p>
+   {% call tips.stats("uk-stats--kv md-facts", label="About the model") %}
+    {%- for k, v in header.facts %}{{ tips.stat(k, v) }}{% endfor -%}
+   {% endcall %}
+   {% call tips.fold("Full description", id="md-about", cls="md-about") %}<p>{{ header.blurb }}</p>{% endcall %}
+  </div>
+  <div class="md-record" role="group" aria-labelledby="h-md-rec">
+   {% set rec_after %}<span class="md-unit">relWIS</span>
+   {%- if record.worse %}{{ tips.badge("warn", "scored worse") }}{% endif %}{% endset %}
+   {% call tips.heading("Record", "md-rec", level=3, rich=True, after=rec_after, tip_label="the record") %}
+    {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
+   {% endcall %}
+   {# each bar from 0; the dashed mark is the FluSight baseline (1.0),
+      so a bar short of it beats the baseline #}
+   <dl class="md-bars" style="--one:{{ record.one }}%">
+    {% for b in record.bars %}
+    <div class="md-bar{% if b.this %} md-bar--this{% endif %}"><dt>{{ b.label }}</dt><dd><span class="md-bar-v">{{ b.text }}</span><span class="md-bar-track" aria-hidden="true"><span class="md-bar-fill" style="width:{{ b.pct }}%"></span></span></dd></div>
+    {% endfor %}
+   </dl>
+   <p class="md-axis" style="--one:{{ record.one }}%" aria-hidden="true"><span>baseline 1.0</span></p>
+   {% if record.facts %}{% call tips.stats("uk-stats--row md-recfacts", label="Record details") %}
+    {%- for k, v in record.facts %}{{ tips.stat(k, v) }}{% endfor -%}
+   {% endcall %}{% endif %}
+  </div>
+ </div>
+</section>
+
+{# each mechanism drawing carries its defining equations beneath it, each
+   named, its reading in the "?" (dg.eq_*(kit=true)); the Oracle SIHRS gets
+   two cards (the forecast pipeline, then the compartment model the filter
+   fits) #}
+{% if name == "pf" %}
 <div class="card mech">
- {# each mechanism drawing carries its defining equation beneath it; the
-    Oracle SIHRS gets two (the forecast pipeline, then the compartment
-    model the filter fits) #}
- {% if name == "pf" %}
  <h2>How the forecast is made</h2>
- {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle() }}
- <p class="hint">relWIS vs the FluSight baseline (below 1 beats it):
- {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
- filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on the same
- {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells of 2024-25 and
- 2025-26. {% call tips.tip("mo-record", "the record") %}{{ oracle_text.fmt(oracle_text.RECORD["2023-24"].oracle) }} against
- {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }} in 2023-24 and
- {{ oracle_text.fmt(oracle_text.RECORD.three.oracle) }} against
- {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} over three seasons, a
- frozen-specification replication whose prospective test is the 2026-27
- season (Methods).{% endcall %}</p>
- <h2>The compartment model the filter fits</h2>
- {{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
- {% elif name == "pf2s" %}<h2>The two circuits the filter fits</h2>
- {{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
- {% else %}<h2>How the forecast is made</h2>
- {{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}{% endif %}
- <p class="hint">Full methodology:
- <a href="/methods#{{ manchor }}">Methods</a>.</p>
+ {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle(kit=true) }}
 </div>
+<div class="card mech">
+ <h2>The compartment model the filter fits</h2>
+ {{ dg.sihrs(uid='m') }}{{ dg.eq_pf(kit=true) }}
+</div>
+{% elif name == "pf2s" %}
+<div class="card mech">
+ <h2>The two circuits the filter fits</h2>
+ {{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s(kit=true) }}
+</div>
+{% else %}
+<div class="card mech">
+ <h2>How the forecast is made</h2>
+ {{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue(kit=true) }}
+</div>
+{% endif %}
+
 {% if bngl_src %}
-{# the BNGL template file as stored, read at render time (read-only) #}
+{# the BNGL template file as stored, read at render time (read-only); the
+   summary names the file, its "?" what the tokens are #}
 <details class="card bngl">
- <summary>View model source (BNGL)</summary>
- <p class="hint">flubnf/templates/{{ bngl_file }} as stored; tokens such as
- <code>{{ '{{POP}}' }}</code> are filled in per state and week.</p>
+ <summary><span class="md-src-t">View model source (BNGL)</span>
+  <span class="md-src-f">{{ tips.icon("folder") }}<span class="uk-sr">File: </span>flubnf/templates/{{ bngl_file }}</span>
+  <span class="md-src-f">{{ bngl_lines }} lines</span>
+  {%- call tips.tip("md-bngl", "the model source") %}flubnf/templates/{{ bngl_file }} as stored; tokens such as
+  <code class="md-code">{{ '{{POP}}' }}</code> are filled in per state and week.{% endcall %}</summary>
  <pre>{{ bngl_src }}</pre>
 </details>
 {% endif %}
-{# the research view has no settings card: its run control is the
-   research panel below, and the intro already says it does not ship #}
-<div class="{{ 'cols' if name != 'pf2s' }}">
- {% if name != "pf2s" %}
- <div><div class="card"><h2>Settings</h2>
-  <form method="post" action="/run">
-   <label for="mf-date">Forecast date</label>
-   <input id="mf-date" name="forecast_date" value="{{ form.forecast_date }}">
-   <label for="mf-locs">Locations</label>
-   <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
-          title='state names, comma-separated, or "all"'>
-   <label for="mf-reps">Replicates</label>
-   <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+
+{# the research view has no quick run and no forecasts card: its run
+   control is the research card below (research_run.html), and a research
+   run never shows here (the fans are the newest non-research run's) #}
+{% if not header.research %}
+<div class="cols">
+ <div><div class="card md-quick">
+  {% set all_link %}<a href="/forecast">All settings</a>{% endset %}
+  {{ tips.heading("Quick run", "md-quick", "Runs the " ~ title ~ " alone with its shipped settings; every setting is on the Forecast tab.", aside=all_link) }}
+  {% if status.running %}
+  {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
+  {{ tips.alert("warn", "A run is in progress.", id="md-busy", action=fc_link) }}
+  {% endif %}
+  <form method="post" action="/run" class="md-form">
+   <div class="md-fields">
+    <div class="md-field">
+     {{ tips.label("Forecast date", "md-date", "Any day; the run anchors on the latest archived week on or before it.", for_="mf-date") }}
+     <input id="mf-date" name="forecast_date" type="date" value="{{ form.forecast_date }}" required>
+    </div>
+    <div class="md-field">
+     {{ tips.label("Locations", "md-locs", 'State names, comma-separated, or "all": the 52 jurisdictions and US (national).', for_="mf-locs") }}
+     <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+            placeholder='state names, comma-separated, or "all"'>
+    </div>
+    {% if name == "pf" %}
+    <div class="md-field">
+     {{ tips.label("Replicates", "md-reps", "Seeded filter runs per jurisdiction, pooled; shipped per-state numbers use 3 or more.", for_="mf-reps") }}
+     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+    </div>
+    {% endif %}
+   </div>
+   {# the Groundhog fits no replicates: the field posts as it always has,
+      unseen #}
+   {% if name != "pf" %}<input type="hidden" id="mf-reps" name="replicates" value="{{ form.replicates }}">{% endif %}
    <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
    <input type="hidden" name="weeks_to_drop" value="0">
    <input type="hidden" name="weeks_to_nowcast" value="0">
    {# same /run endpoint, so the same interference guard as Forecast #}
    <button class="gold" data-guard="console-run">Run {{ title }} only</button>
   </form>
-  {% if status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
  </div></div>
- {% endif %}
  <div>
-  <div class="card"><h2>Forecasts</h2>
-   <div id="mfan"><p class="hint">No forecasts from this model yet.</p></div>
-   {% if rid %}<p class="hint">latest run: {{ label }} · {{ date }}</p>{% endif %}
-   {% if name == "pf2s" and status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
+  <div class="card md-fc">
+   {{ tips.heading("Forecasts", "md-fc", "The newest stored run's forecasts, one location at a time. Research runs and runs with modified model settings are left out.") }}
+   {% if has_fans %}
+   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% endset %}
+   {% call tips.stats("uk-stats--row md-runfacts", label="Latest run") %}
+    {{- tips.stat("Forecast date", date) }}{{ tips.stat("Latest run", run_when, after=run_link) -}}
+   {% endcall %}
+   {% endif %}
+   <div id="mfan">{% if not has_fans %}
+    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest run ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
+    {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
+   {%- endif %}</div>
   </div>
  </div>
 </div>
+{% endif %}
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
@@ -124,14 +191,17 @@
   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
   xaxis:{gridcolor:css('--line'),automargin:true},
   yaxis:{gridcolor:css('--line'),rangemode:'tozero',automargin:true}};}
- const LOCS=Object.keys(FANQ); let IDX=0;
+ // no forecasts card (the research view): nothing to page through
+ const MFAN=document.getElementById('mfan');
+ const LOCS=MFAN?Object.keys(FANQ):[]; let IDX=0;
  // the pager shell renders once and Plotly.react repaints in place (with a
- // reserved height), so a flip never collapses the card or jumps the scroll
+ // reserved height), so a flip never collapses the card or jumps the scroll;
+ // the readout between the arrows is announced as it changes
  if(LOCS.length){
-   document.getElementById('mfan').innerHTML=
-     '<div class="carousel"><button type="button" class="quiet cnav" id="pv">◀</button>'
-     +'<span class="hint" id="pos"></span>'
-     +'<button type="button" class="quiet cnav" id="nx">▶</button></div>'
+   MFAN.innerHTML=
+     '<div class="carousel"><button type="button" class="quiet cnav" id="pv" aria-label="Previous location">◀</button>'
+     +'<span class="hint" id="pos" aria-live="polite"></span>'
+     +'<button type="button" class="quiet cnav" id="nx" aria-label="Next location">▶</button></div>'
      +'<div id="plot" style="min-height:420px"></div>';
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};
