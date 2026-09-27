@@ -481,7 +481,7 @@ header.nav details.display[open] > summary{
 .dm-sec{padding:.7rem 0 .75rem;border-top:1px solid var(--line)}
 .dm-sec:first-child{border-top:0}
 .displaypop .uk-heading{margin:0 0 .5rem}
-.displaypop .uk-heading > h2{font-size:var(--fs-label);font-weight:700;
+.displaypop .uk-heading > h3{font-size:var(--fs-label);font-weight:700;
   text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
 /* text size: small A, the slider, large A, the readout; Reset at the right
    of the heading */

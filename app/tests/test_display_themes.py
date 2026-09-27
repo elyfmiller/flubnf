@@ -334,7 +334,7 @@ def test_the_display_menu_is_a_settings_popover():
     # hover-only titles and no loose explanatory sentence
     for sec, name in (("dm-size", "Text size"), ("dm-theme", "Theme"),
                       ("dm-a11y", "Accessibility"), ("dm-zoom", "Zoom")):
-        assert f'<h2 id="h-{sec}">{name}</h2>' in menu, sec
+        assert f'<h3 id="h-{sec}">{name}</h3>' in menu, sec
         assert f'aria-describedby="tip-{sec}"' in menu, sec
     assert " title=" not in menu
     assert not re.search(r"<p[ >]", menu) and 'class="hint"' not in menu
