@@ -227,6 +227,8 @@
     <form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button>Stop</button></form>
    </div>
    {% endif %}
+   {# a failed run's own words first, on the error edge #}
+   {% if res.meta.error %}<pre class="sberr sb-err">{{ res.meta.error }}</pre>{% endif %}
    {% set h = res.health %}
    {% set quick = (res.meta.particles | int) < presets.full %}
    {% set offer_full = quick and not live_run and st in ("ok", "failed", "stopped", "interrupted") %}
@@ -249,7 +251,6 @@
    {% endcall %}{% endif %}
    {% elif offer_full %}{{ full_form }}
    {% endif %}
-   {% if res.meta.error %}<pre class="sberr sb-err">{{ res.meta.error }}</pre>{% endif %}
    {% if res.stderr %}{% call tips.fold("Engine messages", open=(st != "ok"), cls="sbengine") %}<pre class="sberr">{{ res.stderr }}</pre>{% endcall %}{% endif %}
    {% if res.traj %}<div id="sbplot" style="min-height:320px"></div>{% endif %}
    {% if res.params and cmp and cmp.params %}
