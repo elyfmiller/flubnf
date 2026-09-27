@@ -601,7 +601,7 @@ def test_replay_this_says_what_it_stored_in_the_card_it_opens():
     page = client.get(r.headers["location"]).text
     top, card = page.split('id="dataset-replay"')
     # the confirmation as the card's alert, its notices folded under it
-    note = card.split('<div class="dsr-stored">')[1]
+    note = card.split('<div class="dsr-stored rt-stored">')[1]
     note = note.split('<form method="get"')[0]
     assert f"Stored the dataset Kids: 3 group(s), {len(ds.weeks())} week(s)." \
         in note
