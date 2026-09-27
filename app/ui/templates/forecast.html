@@ -189,7 +189,8 @@
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {# why the particle filter's options are off, in a badge's tip #}
    {% if not dataset.pf_ok %}<p class="fc-under">{% call tips.badge("neutral", "particle filter off", id="fc-pf-off", icon_name="lock") %}{{ engine_names.analogue }}: {{ dataset.pf_why }}.{% endcall %}</p>
-   {% else %}<p class="fc-under">{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}</p>{% endif %}
+   {% else %}{% set eb_ds %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+   {% if eb_ds | trim %}<p class="fc-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
    <div class="lblrow"><label class="ck" for="fc-flusurv"><input type="checkbox" name="flusurv" value="1" id="fc-flusurv"
      {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
     {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>
