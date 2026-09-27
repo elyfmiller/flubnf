@@ -93,21 +93,30 @@ def test_diff_runs_names_the_changed_prior_line_and_settings(two_runs):
 def test_compare_page_renders_both_runs_and_the_diff(two_runs):
     a, b = two_runs["a"], two_runs["b"]
     html = client.get(f"/sandbox?model=kinetics_example&run={b}&compare={a}").text
-    assert "<h2>What changed</h2>" in html and f"From the compared run {a} to this one." in html
+    # the heading's "?" names the compared run
+    assert '<h2 id="h-sb-diff">What changed</h2>' in html
+    assert f'id="tip-sb-diff">From the compared run {a} to this one.</span>' in html
     assert f'<option value="{a}" selected>' in html
     assert "this run: median (5 to 95%)" in html and "<th>compared run</th>" in html
-    assert "seed" in html and "model.bngl: unchanged." in html
+    # an unchanged file is marked so; the edited one folds open with its diff
+    assert "seed" in html
+    assert ('<li><code>model.bngl</code> <span class="uk-badge uk-badge--neutral"'
+            in html)
+    same = html[html.index('<ul class="sb-files"'):]
+    same = same[:same.index("</ul>")]
+    assert "model.bngl" in same and "unchanged" in same and "priors.conf" not in same
+    assert '<span class="uk-fold-sum">priors.conf</span>' in html
     cmp = json.loads(html.split("window.SANDBOX_CMP = ", 1)[1].split(";</script>")[0])
     assert cmp["run_id"] == a and cmp["traj"]["q50"][0] == 1.0
     # without ?compare= no diff; another model's run is refused
-    assert "<h2>What changed</h2>" not in client.get(
+    assert "What changed</h2>" not in client.get(
         f"/sandbox?model=kinetics_example&run={b}").text
     sb.add_example("sir_example")
     other = sb.prepare("sir_example")
     ui_state._status.pop("flash", None)
     html = client.get(f"/sandbox?model=kinetics_example&run={b}"
                       f"&compare={other.name}").text
-    assert "<h2>What changed</h2>" not in html and "another model" in html
+    assert "What changed</h2>" not in html and "another model" in html
 
 
 def test_model_zip_holds_the_three_files_and_the_sidecars(sandbox_root):

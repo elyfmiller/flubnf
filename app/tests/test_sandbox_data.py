@@ -162,6 +162,15 @@ def test_fill_data_refuses_empty_unknown_and_reversed(box):
 
 # --------------------------------------------------------------- the page
 
+def source_facts(html):
+    """The data.exp source row under the editor ("data.exp holds", then one
+    fact a chip): the facts' visible words, in order."""
+    import re
+    row = html[html.index('<div class="sb-src"><span class="sb-src-k">data.exp holds</span>'):]
+    row = row[:row.index("</ul></div>")]
+    return re.findall(r"<span>([^<]*)</span></li>", row)
+
+
 def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
     sb.new_model("mine")
     r = client.post("/sandbox/models/mine/fill-data",
@@ -172,8 +181,8 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
     html = client.get("/sandbox?model=mine").text
     assert ("data.exp filled: Alabama, 2024-10-05 to 2024-10-26, settled "
             "truth, 3 weeks, 1 missing weeks dropped") in html
-    assert ("data.exp holds Alabama, 2024-10-05 to 2024-10-26, settled truth "
-            "(3 weeks, 1 dropped missing)") in html
+    assert source_facts(html) == ["Alabama", "2024-10-05 to 2024-10-26",
+                                  "settled truth", "3 weeks, 1 dropped missing"]
     assert "0 8\n1 10\n3 14.5" in html                    # the editor holds it
     assert 'value="Alabama" selected' in html             # the form recalls it
     r = client.post("/sandbox/models/mine/fill-data",
@@ -183,7 +192,8 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
     assert r.status_code == 303
     html = client.get("/sandbox?model=mine").text
     assert "vintage of 2024-11-09, 3 weeks, 1 missing weeks dropped" in html
-    assert "(3 weeks, 1 dropped missing)" in html and 'value="2024-11-09" selected' in html
+    assert source_facts(html)[2:] == ["vintage of 2024-11-09", "3 weeks, 1 dropped missing"]
+    assert 'value="2024-11-09" selected' in html
     # a refused fill flashes the reason and leaves the file alone
     r = client.post("/sandbox/models/mine/fill-data",
                     data={"location": "Atlantis", "start": WEEKS[0],
@@ -197,7 +207,7 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
 def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
-    assert "<summary>Load data</summary>" in html
+    assert '<span class="uk-fold-sum">Load data</span>' in html
     assert 'formaction="/sandbox/models/mine/fill-data"' in html
     assert "Load into data.exp" in html and "No hub archive here" not in html
     assert html.index('value="US"') < html.index('value="Alabama"') < html.index('value="Wyoming"')
@@ -213,7 +223,10 @@ def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     monkeypatch.setattr(sb, "vintages", lambda: [])
     r = client.get("/sandbox?model=mine")
     assert r.status_code == 200
-    assert "No hub archive here: upload a CSV, type the rows or copy an example." in r.text
+    # an empty state in the Load data fold, what to do instead in its "?"
+    assert '<p class="uk-empty-title">No hub archive here' in r.text
+    assert ('id="tip-sb-nohub">Upload a CSV, type the rows or copy an '
+            'example.</span>') in r.text
     assert 'name="location"' not in r.text
     assert client.get("/sandbox").status_code == 200      # no editor, no fieldset
 

@@ -926,7 +926,6 @@ table.results td{padding:.18rem 0}
 /* the sandbox's New model form: labels above full-width fields, Create below */
 form.sbnew .lblrow{margin:.5rem 0 .2rem}
 form.sbnew > .lblrow:first-child{margin-top:0}
-form.sbnew .hint{margin-top:.3rem}
 form.sbnew > .row{margin-top:.9rem}
 /* the sandbox workbench: the model (files, then diagram) on the left, its
    runs on the right; one column: files, runs, diagram. The runs column
@@ -940,7 +939,6 @@ form.sbnew > .row{margin-top:.9rem}
 .sbwork.sbwork-new{grid-template-rows:auto 1fr;grid-template-areas:"edit runs" "edit diag"}
 @media(max-width:1100px){.sbwork,.sbwork.sbwork-new{grid-template-columns:minmax(0,1fr);
   grid-template-rows:auto;grid-template-areas:"edit" "runs" "diag"}}
-.sbcrumb{margin:0}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 /* sub-groups inside a card are a heading, not another box */
@@ -961,8 +959,6 @@ details.sbfill .row > span[hidden]{display:none}
   align-items:center;margin:.5rem 0 .2rem}
 details.sbfill input[type=file]{padding:.3rem}
 .sbupload{margin-top:.5rem}
-.sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
-.sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
 /* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
 fieldset.sbshipped{border:0;padding:0;margin:.8rem 0;min-width:0}
@@ -978,13 +974,7 @@ fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
 table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
-#sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
-#sb-checked p{margin:.4rem 0 .1rem}
-.sb-bad{color:var(--bad);font-weight:600}
-.sb-ok{color:var(--ok);font-weight:600}
-.sb-warn{color:var(--ink);font-weight:600}
 tr[aria-current="true"] td{font-weight:600}
-#sb-dirty[hidden]{display:none}
 @media(max-width:640px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2),
   .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
@@ -993,8 +983,6 @@ tr[aria-current="true"] td{font-weight:600}
 .mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
 .mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
 .mview-draw svg{display:block;max-width:none}
-.mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
-.mview-hint{margin:.4rem 0 0}
 
 /* polish: home-models-methods */
 /* home: a small heading over each performance table; the setup list */
@@ -1208,26 +1196,13 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
 .sb-tabbed .sbfile + .sbfile{margin-top:0}
 .sb-tabbed .sbfile > .lblrow{display:none}
 .sbfile > .lblrow{margin-top:0}
-.sbfile details.adv{margin:.5rem 0 .2rem}
 /* run settings under a rule: the files above, what a run uses below */
 fieldset.sbrun{border-top:1px solid var(--line);padding-top:.7rem;margin-top:.9rem}
-#sb-eta{margin:.45rem 0 0}
-#sb-eta:empty{display:none}
 .sbactions{margin-top:.8rem}
-.sbdirty{color:var(--warn);border-color:currentColor}
 #sb-checked:empty{display:none}
 #sb-checked{margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
 #sb-checked.sb-stale{opacity:.55}
 /* results: the status first, then the plot, the parameters, compare, files */
-.sbrunline{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.1rem 0 .2rem}
-.sbrunline + .hint{margin-top:0}
-.pill.sbst{font-weight:650;font-size:var(--fs-label)}
-.sbst-ok{color:var(--ok)}.sbst-failed{color:var(--bad)}
-.sbst-interrupted,.sbst-stopped{color:var(--warn)}
-.sbst-running,.sbst-prepared{color:var(--accent-ink)}
-.pill.sbst{border-color:currentColor}
-.sblive{justify-content:space-between;margin:.4rem 0}
-.sblive p{margin:0}
 pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   border-radius:8px;padding:.5rem .7rem;margin:.5rem 0}
 #results .sbcompare{margin-top:.7rem}
@@ -1237,10 +1212,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sboracle form.row{align-items:flex-end}
 .sboracle form.row > span{display:flex;flex-direction:column}
 .sboracle form.row input{width:7rem}
-/* the gallery: each model's note on one line under its name */
-.sbmodels .sbnote{margin:.1rem 0 0;width:0;min-width:100%;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
-.sbmodels td:first-child{width:55%}
+/* the gallery: the models table */
 @media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
 .sbmodels td{vertical-align:top}
 .sbmodels td:nth-child(3),.sbmodels td:nth-child(4){white-space:nowrap}
@@ -1297,10 +1269,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sbrun-parts .sbpair{max-width:24rem}
 .sbrun-grid > span:nth-child(3){flex-basis:9.5rem}
 @media(max-width:560px){.sbrun-grid > span{flex-basis:100%}}
-/* the run's outcome in plain words, what to try, the full-fit offer */
-.sbhealth{margin:.6rem 0 .2rem}
-.pill.sbh{font-weight:650;font-size:var(--fs-label);border-color:currentColor;margin-right:.25rem}
-.sbh-good{color:var(--ok)}.sbh-rough{color:var(--warn)}.sbh-collapsed{color:var(--bad)}
+/* the run: what to try, the full-fit offer */
 details.sbtries{margin:.3rem 0 .4rem}
 .sbtries ul{margin:.3rem 0 .2rem 1.1rem;padding:0}
 .sbtries li{margin:.15rem 0}
@@ -1311,13 +1280,7 @@ details.sbengine{margin:.3rem 0 .5rem}
 details.sbhow > summary{list-style:none;cursor:pointer}
 details.sbhow > summary::-webkit-details-marker{display:none}
 details.sbhow > summary h2{display:inline;margin:0}
-.sbsteps{margin:.6rem 0 .5rem 1.25rem;padding:0}
-.sbsteps li{margin:.3rem 0;max-width:62rem}
-.sbhow .hint,.sbhelpmenu .hint{margin:.2rem 0 0}
 .sbhead-menus{display:flex;gap:.5rem;align-items:flex-start;flex:none}
-.sbmenu.sbhelpmenu{width:min(34rem,calc(100vw - 2rem));max-width:none}
-.sbhelpmenu .sbsteps{margin-top:0}
-#sbnew-about:empty{display:none}
 .sbsim{margin-top:.6rem}
 
 /* round3: submission files and model identities */

@@ -78,7 +78,12 @@ def test_results_card_has_no_empty_mode_and_the_list_shows_the_note(box):
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example")
     html = client.get(f"/sandbox?run={w.name}&model=kinetics_example").text
-    assert "jitter 0.15 ·  ·" not in html and "· on Bobs" in html
+    # the run's settings as labelled values: the observable named, none empty
+    settings = html[html.index('<dl class="uk-stats uk-stats--row sb-settings" aria-label="Run settings">'):]
+    settings = settings[:settings.index("</dl>")]
+    assert "<dt>Observable" in settings and 'id="sb-obs">Bobs</span>' in settings
+    assert '<span class="uk-stat-v"></span>' not in settings
+    assert '<span class="uk-stat-v">0.15</span>' in settings
     html = client.get("/sandbox").text
     assert "A model that is not an epidemic" in html
 
