@@ -513,10 +513,6 @@ details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
  color:var(--ink); border-radius:9px; padding:.55rem .85rem;
  margin:0 0 .75rem; font-size:.9rem}
 
-/* model-page intro: one-line summary, collapsed by default */
-details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
-  font-weight:500}
-details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
 /* SVG labels on the type scale via rem classes, so A-/A/A+ reaches them;
