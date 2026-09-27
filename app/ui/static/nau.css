@@ -794,7 +794,6 @@ details.dsup-fold[open]>summary::before{content:"\25BE"}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
 .srcpick{align-items:flex-end;margin-bottom:.4rem}
 .srcpick select{width:auto;min-width:12rem;max-width:100%}
-.dsr-h{margin:1rem 0 .2rem;font-size:var(--fs-label)}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
@@ -1076,7 +1075,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 .rd-settings .runsettings>strong{display:none}
 .rd-settings .runsettings .kv{width:auto;
   grid-template-columns:max-content minmax(0,1fr)}
-.rd-nw{white-space:nowrap}
 @media (max-width:640px){
   /* six columns fit a phone without the last one at the edge */
   table.rd-scores td,table.rd-scores th{padding-left:.3rem;padding-right:.3rem}
@@ -1441,8 +1439,6 @@ p.newest-check[hidden]{display:none}
 .rs-settings{margin:.15rem 0 .7rem}
 .rs-settings .tip{margin-left:.1rem}
 .rs-settings .runsettings > strong{display:none}
-.rs-facts .pill{font-weight:650;border-color:currentColor;margin-left:.2rem}
-.rs-notes{margin:.3rem 0 .6rem}
 .rs-chips .runsettings > strong{display:none}
 .cumwrap{margin-top:.9rem}
 .cumwrap h2{font-size:var(--fs-label);margin-bottom:.2rem}
@@ -1463,9 +1459,7 @@ p.newest-check[hidden]{display:none}
    Results button), the run settings folded under it */
 .sband{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .7rem}
 .sband h2{margin:0}
-.sband .sfacts{flex:1 1 16rem;min-width:0}
 .sband > a{margin-left:auto}
-.pill.st{font-weight:650;font-size:var(--fs-label);border-color:currentColor}
 .season-card .rsfold{margin:.4rem 0 0}
 .season-card .rsfold > summary{cursor:pointer;color:var(--mut);
   font-size:var(--fs-label);font-weight:600}

@@ -89,6 +89,8 @@
 .rt-count{color:var(--mut);font-size:var(--fs-label)}
 
 /* ---- 4. your data ---- */
+/* the "Replay this" confirmation across the tab, its notices under it */
+.rt-stored{margin:0 0 var(--sp-3)}
 /* what the replayed weeks see: a label and its badge */
 .lblrow.rt-kind{gap:.4rem;margin:.6rem 0 .35rem}
 .rt-kind-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}

@@ -17,7 +17,7 @@
 <div id="dataset-replay">
 {% if dr.stored %}{# "Replay this" just stored it: said here, where the
    page lands, across the width; its notices folded under the line #}
-<div class="dsr-stored">{{ tips.alert("ok", dr.stored.text, id="dsr-stored", live="") }}
+<div class="dsr-stored rt-stored">{{ tips.alert("ok", dr.stored.text, id="dsr-stored", live="") }}
  {% if dr.stored.warnings %}{% set nw = dr.stored.warnings | length %}
  {% call tips.fold(nw ~ " notice" ~ ("" if nw == 1 else "s") ~ " about the file", id="dsr-notes", after=tips.icon("warning", "to check", cls="uk-c-warn")) %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endcall %}
  {% endif %}</div>
