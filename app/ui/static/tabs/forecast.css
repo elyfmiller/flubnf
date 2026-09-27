@@ -58,21 +58,23 @@
   font-variant-numeric:tabular-nums}
 
 /* ---- 3. the Data issues box ---- */
-/* the Model settings look; one row per state: the check, the name, its
-   "i", the flag, then the select */
-.fc-di legend{display:inline-flex;align-items:center;gap:.4rem}
+/* the Model settings look; one row per state: the check and the name,
+   the flag and its "i" under them, the select beside (under them when
+   the column is too narrow for both: large text, a narrow window) */
+.fc-di legend{display:inline-flex;align-items:center;flex-wrap:wrap;
+  gap:.2rem .4rem}
 .fc-di .di-row{margin:.35rem 0 0}
-.fc-di .di-state{display:flex;align-items:center;gap:.4rem;
-  padding-top:.35rem;border-top:1px solid var(--line)}
+.fc-di .di-state{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.3rem .4rem;padding-top:.35rem;border-top:1px solid var(--line)}
 .fc-di .di-state:first-of-type{border-top:0;padding-top:0}
 .fc-di .di-row select{margin:0;font-size:var(--fs-label);
   padding:.3rem .45rem}
-.fc-di .di-state select{width:auto;flex:0 1 46%;min-width:7.5rem}
+.fc-di .di-state select{width:auto;flex:1 1 7.5rem;max-width:15rem}
 .fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
   margin-bottom:.2rem}
 .fc-di .di-all label{margin:0;white-space:nowrap}
 .fc-di .di-all select{width:auto;flex:1 1 8rem}
-.fc-di .di-head{flex:1 1 0;min-width:0;display:flex;align-items:center;
+.fc-di .di-head{flex:1 1 8.5rem;min-width:0;display:flex;align-items:center;
   gap:.1rem .3rem;flex-wrap:wrap}
 .fc-di .di-head label{margin:0;color:var(--ink);font-weight:600}
 .fc-di .di-flag{flex-basis:100%;color:var(--mut);font-size:var(--fs-hint);
