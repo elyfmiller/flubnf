@@ -109,8 +109,8 @@ def _cr(a: str, b: str) -> float:
 
 def _mix(a: str, b: str, p: float) -> str:
     """color-mix(in srgb, a p, b)"""
-    return "#%02X%02X%02X" % tuple(round(p * x + (1 - p) * y)
-                                   for x, y in zip(_rgb(a), _rgb(b)))
+    return "#" + "".join(f"{round(p * x + (1 - p) * y):02X}"
+                         for x, y in zip(_rgb(a), _rgb(b)))
 
 
 IDENT = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
@@ -383,7 +383,7 @@ def test_the_theme_picker_is_a_radiogroup_of_previews():
     # accents from its own tokens; its name is the radio's label, with the
     # ground spoken where the name does not say it
     assert menu.count('<span class="dm-th-logo"></span>') == 8
-    assert '<span class="dm-th-name">Nord<span class="uk-sr">, dark</span></span>' in menu
+    assert '<span class="dm-th-name">Nord<span class="uk-sr"> dark theme</span></span>' in menu
     assert '<span class="dm-th-name">GitHub Light</span>' in menu
     # the check mark is drawn in the page's accent, not the preview's
     assert "label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);" in NAU

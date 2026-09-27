@@ -103,7 +103,7 @@
        <label class="dm-th"><input type="radio" name="dm-theme" value="{{ id }}" data-th="{{ id }}"
          ><span class="dm-th-sw" data-theme="{{ id }}" aria-hidden="true"><span class="dm-th-bar"><span class="dm-th-logo"></span><span class="dm-th-line"></span></span><span class="dm-th-card"><span class="dm-th-aa">Aa</span><span class="dm-th-dots"><i></i><i></i><i></i></span></span></span
          ><span class="dm-th-check" aria-hidden="true">{{ kit.icon("check") }}</span
-         ><span class="dm-th-name">{{ name }}{% if ground not in name | lower %}<span class="uk-sr">, {{ ground }}</span>{% endif %}</span></label>
+         ><span class="dm-th-name">{{ name }}{% if ground not in name | lower %}<span class="uk-sr"> {{ ground }} theme</span>{% endif %}</span></label>
       {% endfor %}
       </div>
      {% endfor %}
