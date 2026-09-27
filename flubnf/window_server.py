@@ -31,6 +31,10 @@ def _parent_gone(parent: int) -> bool:
     the process was re-parented) or no longer exists."""
     if os.getppid() != parent:
         return True
+    if os.name != "posix":
+        # os.kill(pid, 0) TERMINATES the process on Windows; this module
+        # is started on POSIX only, so the parent check above is enough
+        return False
     try:
         os.kill(parent, 0)
     except ProcessLookupError:
