@@ -8,6 +8,9 @@
    assets and works offline #}
 <link rel="stylesheet" href="/static/fonts/dm-sans.css">
 <link rel="stylesheet" href="/static/nau.css">
+{# the UI kit (templates/_tips.html macros, docs/UI-KIT.md): after nau.css,
+   whose tokens it reads #}
+<link rel="stylesheet" href="/static/ui-kit.css">
 <script>
  // theme before first paint: four themes (light, paper, dim, dark); an
  // unknown stored value falls back to the system preference
@@ -120,9 +123,11 @@
 {# one shell for every page. No page sets main_class, but tests pin the
    rendered empty class="" #}
 <main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}
- <div class="banner" role="alert"><strong>Update pulled.</strong> This window
+ {# a line to act on now (the kit's alert): the step, the why in its tip #}
+ {% import "_tips.html" as kit %}
+ {% call kit.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart", live="alert") %}This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
- reload refreshes the look, not the server logic.</div>
+ reload refreshes the look, not the server logic.{% endcall %}
 {% endif %}{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>
 {% endif %}{% block content %}{% endblock %}{% if research_panel %}

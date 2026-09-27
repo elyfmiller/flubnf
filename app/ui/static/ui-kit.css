@@ -1,0 +1,320 @@
+/* FluBNF UI kit: the components that replace loose explanatory text
+   (templates/_tips.html macros; docs/UI-KIT.md says when to use each).
+   Loaded by base.html right after nau.css, on every page.
+
+   RULES
+     - colors only through the nau.css tokens (every theme, data-contrast
+       ="high", data-vision="cvd"); tints are color-mix() of two tokens.
+       Measured in app/tests/test_ui_kit.py: badge words (a token on the
+       card) and alert text (ink on a 6% tint) hold 4.5:1 in every theme
+       and mode, an alert's icon 3:1
+     - sizes in rem/em and the nau.css type and spacing tokens, so every
+       component follows the text size (80% to 160% of the root) and wraps
+       rather than overflows
+     - every class starts "uk-"; a tab restyles none of them (its own
+       rules go in static/tabs/<tab>.css with the tab's prefix)
+
+   CONTENTS
+     1. utilities: visually hidden text, the icon, the "?" hit area
+     2. heading with its tip; the icon tip
+     3. toggletip
+     4. badge
+     5. alert
+     6. empty state
+     7. stats
+     8. reason button
+     9. stepper, progress
+    10. legend chips
+    11. fold, meta row, unit affix
+    12. high contrast, forced colors */
+
+/* ---- 1. utilities ---- */
+/* read by assistive tech, never shown */
+.uk-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);
+  white-space:nowrap;border:0}
+/* the icon set: 1em square in the text's color; the SVG's own attributes
+   carry the stroke, so it draws without this sheet too */
+.uk-icon{display:inline-block;flex:none;width:1em;height:1em;
+  vertical-align:-.125em;overflow:visible}
+/* the state colors, for an icon or a word (never the only signal) */
+.uk-c-ok{color:var(--ok)}
+.uk-c-warn{color:var(--warn)}
+.uk-c-error{color:var(--bad)}
+.uk-c-info{color:var(--accent-ink)}
+.uk-c-muted{color:var(--mut)}
+/* the "?" and "i" buttons stay 1.1rem round, but their hit area reaches
+   24px at the standard text size (a ring outside the drawn circle) */
+button.tipbtn,button.uk-tt-btn{position:relative}
+button.tipbtn::before,button.uk-tt-btn::before{content:"";position:absolute;
+  inset:-.25rem;border-radius:50%}
+
+/* ---- 2. heading with its tip ---- */
+/* the title and its "?" on one line; .card h2 keeps its kicker style */
+.uk-heading{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.2rem .45rem;margin:0 0 .55rem;min-width:0}
+.uk-heading > h1,.uk-heading > h2,.uk-heading > h3,.uk-heading > h4{
+  margin:0;min-width:0}
+.uk-heading > .tip,.uk-heading > .uk-tt{margin-left:0}
+.uk-heading-aside{margin-left:auto;display:inline-flex;align-items:center;
+  gap:.5rem;flex-wrap:wrap}
+.uk-heading-aside button,.uk-heading-aside a.btn{margin-top:0}
+/* an icon tip: the icon is the button (no ring), in its state's color */
+button.tipbtn.uk-tipicon,[data-theme="dark"] button.tipbtn.uk-tipicon,
+[data-theme="dim"] button.tipbtn.uk-tipicon{width:auto;height:auto;
+  min-width:1.1rem;min-height:1.1rem;padding:.1rem;border:0;border-radius:4px;
+  background:transparent;color:var(--accent-ink);font-size:1em;cursor:help}
+button.tipbtn.uk-tipicon.uk-c-ok{color:var(--ok)}
+button.tipbtn.uk-tipicon.uk-c-warn{color:var(--warn)}
+button.tipbtn.uk-tipicon.uk-c-error{color:var(--bad)}
+button.tipbtn.uk-tipicon.uk-c-muted{color:var(--mut)}
+button.tipbtn.uk-tipicon:hover,[data-theme="dark"] button.tipbtn.uk-tipicon:hover,
+[data-theme="dim"] button.tipbtn.uk-tipicon:hover{background:var(--bg);
+  color:var(--accent-ink)}
+button.tipbtn.uk-tipicon.uk-c-ok:hover{color:var(--ok)}
+button.tipbtn.uk-tipicon.uk-c-warn:hover{color:var(--warn)}
+button.tipbtn.uk-tipicon.uk-c-error:hover{color:var(--bad)}
+button.tipbtn.uk-tipicon.uk-c-muted:hover{color:var(--mut)}
+
+/* ---- 3. toggletip: an "i" that opens a card-surface panel ---- */
+.uk-tt{position:relative;display:inline-block;vertical-align:middle;
+  margin-left:.3rem;line-height:1}
+button.uk-tt-btn,[data-theme="dark"] button.uk-tt-btn,
+[data-theme="dim"] button.uk-tt-btn{display:inline-flex;align-items:center;
+  justify-content:center;width:1.1rem;height:1.1rem;padding:0;margin:0;
+  border-radius:50%;border:1.5px solid var(--accent-ink);
+  background:transparent;color:var(--accent-ink);font:inherit;
+  font-size:.72rem;font-weight:800;font-style:normal;line-height:1;
+  text-transform:none;cursor:pointer}
+button.uk-tt-btn:hover,[data-theme="dark"] button.uk-tt-btn:hover,
+[data-theme="dim"] button.uk-tt-btn:hover,
+.uk-tt.open > button.uk-tt-btn{background:var(--accent-ink);color:var(--card)}
+/* hidden until opened; without script it shows while focus is inside it
+   (the button, then the links in the panel) */
+.uk-tt-pop{display:none;position:absolute;left:0;top:calc(100% + .4rem);
+  z-index:61;width:max-content;max-width:min(26rem,calc(100vw - 2rem));
+  padding:.6rem .75rem;border:1px solid var(--field-line);border-radius:var(--r-md);
+  background:var(--card);color:var(--ink);box-shadow:var(--shadow);
+  font-size:var(--fs-label);font-weight:400;line-height:1.45;
+  text-align:left;text-transform:none;letter-spacing:normal;
+  white-space:normal;overflow-wrap:break-word}
+html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
+  display:block}
+.uk-tt-title{display:block;margin:0 0 .25rem;font-weight:700}
+.uk-tt-pop ul,.uk-tt-pop ol{margin:.25rem 0;padding-left:1.1rem}
+.uk-tt-pop li{margin:.1rem 0}
+.uk-tt-pop p{margin:.3rem 0}
+.uk-tt-pop > :first-child{margin-top:0}
+.uk-tt-pop > :last-child{margin-bottom:0}
+.uk-tt-line{display:block}
+.uk-tt-line + .uk-tt-line{margin-top:.3rem}
+
+/* ---- 4. badge: icon and word in the state's color, outlined on the
+   card (a tint would take the dim theme's red under 4.5:1) ---- */
+.uk-badge{--uk-c:var(--mut);display:inline-flex;align-items:center;
+  gap:.3em;max-width:100%;padding:.05em .6em .05em .45em;
+  border:1px solid var(--uk-c);border-radius:var(--r-pill);
+  background:var(--card);color:var(--uk-c);font-size:var(--fs-label);
+  font-weight:650;line-height:1.4;white-space:nowrap;vertical-align:middle;
+  text-transform:none;letter-spacing:normal}
+.uk-badge-t{overflow:hidden;text-overflow:ellipsis}
+.uk-badge--ok{--uk-c:var(--ok)}
+.uk-badge--warn{--uk-c:var(--warn)}
+.uk-badge--error{--uk-c:var(--bad)}
+.uk-badge--info,.uk-badge--pending{--uk-c:var(--accent-ink)}
+.uk-badge--neutral{--uk-c:var(--mut)}
+.uk-badge + .tip{margin-left:.15rem}
+
+/* ---- 5. alert: one line to act on now, a 6% tint of its kind ---- */
+.uk-alert{--uk-c:var(--accent-ink);display:flex;align-items:center;
+  flex-wrap:wrap;gap:.35rem .6rem;margin:0 0 var(--sp-3);padding:.5rem .85rem;
+  border:1px solid color-mix(in srgb,var(--uk-c) 40%,var(--line));
+  border-left:4px solid var(--uk-c);border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--uk-c) 6%,var(--card));color:var(--ink);
+  line-height:1.45}
+.uk-alert > .uk-icon{color:var(--uk-c);font-size:1.15em}
+.uk-alert-text{flex:1 1 14rem;min-width:0;overflow-wrap:break-word}
+.uk-alert-text .tip{margin-left:.15rem}
+.uk-alert-action{margin-left:auto;display:inline-flex;align-items:center;
+  gap:.5rem;flex-wrap:wrap}
+.uk-alert-action button,.uk-alert-action a.btn{margin-top:0}
+.uk-alert--error{--uk-c:var(--bad)}
+.uk-alert--warn{--uk-c:var(--warn)}
+.uk-alert--info{--uk-c:var(--accent-ink)}
+.uk-alert--ok{--uk-c:var(--ok)}
+
+/* ---- 6. empty state: icon, short title, one action ---- */
+.uk-empty{display:flex;flex-direction:column;align-items:center;
+  gap:.35rem;margin:.4rem 0;padding:1.1rem 1rem;text-align:center;
+  border:1px dashed color-mix(in srgb,var(--mut) 45%,transparent);
+  border-radius:var(--r-md);color:var(--mut)}
+.uk-empty-icon{font-size:1.9em}
+.uk-empty-title{margin:0;color:var(--ink);font-weight:600}
+.uk-empty-action{margin-top:.2rem}
+.uk-empty-action button,.uk-empty-action a.btn{margin-top:0}
+/* compact: one line inside a list */
+.uk-empty--compact{flex-direction:row;flex-wrap:wrap;align-items:center;
+  gap:.3rem .5rem;padding:.35rem 0;margin:.2rem 0;border:0;text-align:left}
+.uk-empty--compact .uk-empty-icon{font-size:1.1em}
+.uk-empty--compact .uk-empty-title{font-weight:500;color:var(--mut)}
+.uk-empty--compact .uk-empty-action{margin:0 0 0 .3rem}
+
+/* ---- 7. stats: a label over a value and its unit ---- */
+.uk-stats{display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,9.5rem),1fr));
+  gap:var(--sp-3) var(--sp-4);margin:.35rem 0 .6rem}
+.uk-stat{min-width:0}
+.uk-stat dt{display:flex;align-items:center;gap:.1rem;color:var(--mut);
+  font-size:var(--fs-label);font-weight:600}
+.uk-stat dd{display:flex;align-items:baseline;flex-wrap:wrap;gap:.1rem .35em;
+  margin:.1rem 0 0;min-width:0}
+.uk-stat-v{color:var(--ink);font-size:var(--fs-lead);font-weight:700;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.uk-stat-u{color:var(--mut);font-size:var(--fs-label)}
+.uk-stat--ok .uk-stat-v{color:var(--ok)}
+.uk-stat--warn .uk-stat-v{color:var(--warn)}
+.uk-stat--error .uk-stat-v{color:var(--bad)}
+/* labels left, values right, one row per fact */
+.uk-stats--kv{grid-template-columns:max-content minmax(0,1fr);
+  gap:.35rem .9rem;align-items:baseline}
+.uk-stats--kv .uk-stat{display:contents}
+.uk-stats--kv .uk-stat dd{margin:0}
+.uk-stats--kv .uk-stat-v{font-size:inherit;font-weight:650}
+/* one compact row: label and value side by side, facts wrapping */
+.uk-stats--row{display:flex;flex-wrap:wrap;gap:.3rem 1.2rem}
+.uk-stats--row .uk-stat{display:flex;align-items:baseline;gap:.4rem}
+.uk-stats--row .uk-stat dd{margin:0}
+.uk-stats--row .uk-stat-v{font-size:inherit;font-weight:650}
+
+/* ---- 8. reason button: a disabled control and the "?" saying why ---- */
+.uk-reason{display:inline-flex;align-items:center;gap:.3rem;
+  margin-top:.7rem;vertical-align:middle;max-width:100%}
+.uk-reason > button{margin-top:0}
+.uk-reason-tip .tip{margin-left:0}
+.row > .uk-reason,.uk-heading-aside .uk-reason,.uk-alert-action .uk-reason,
+.uk-empty-action .uk-reason{margin-top:0}
+
+/* ---- 9. stepper: numbered marks joined by a line; progress bar ---- */
+.uk-stepper{--uk-mark:1.75rem;list-style:none;margin:.45rem 0 .6rem;
+  padding:0;display:flex;flex-wrap:wrap;gap:.6rem 0}
+/* a horizontal stepper watches its own width: too narrow for its steps
+   side by side (a side column, large text), it stacks them (below) */
+.uk-stepper:not(.uk-stepper--vertical){container:uk-steps / inline-size}
+.uk-step{position:relative;display:flex;align-items:center;gap:.5rem;
+  flex:1 1 9rem;min-width:0}
+/* the joining line, after each step but the last */
+.uk-step::after{content:"";flex:1 1 1.5rem;min-width:1rem;height:2px;
+  margin:0 .6rem 0 .1rem;background:var(--line)}
+.uk-step:last-child::after{display:none}
+.uk-step--done::after{background:var(--accent-ink)}
+.uk-step-mark{flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:var(--uk-mark);height:var(--uk-mark);
+  border:2px solid var(--line);border-radius:50%;background:var(--card);
+  color:var(--mut);font-size:var(--fs-label);font-weight:750;
+  font-variant-numeric:tabular-nums}
+.uk-step-mark .uk-icon{font-size:1.15em}
+.uk-step--done .uk-step-mark{border-color:var(--accent-ink);
+  color:var(--accent-ink)}
+.uk-step--current .uk-step-mark{border-color:var(--accent-ink);
+  background:var(--accent-ink);color:var(--card)}
+.uk-step--error .uk-step-mark{border-color:var(--bad);color:var(--bad)}
+.uk-step-body{min-width:0;display:inline-flex;align-items:center;
+  flex-wrap:wrap;gap:0 .15rem;line-height:1.35}
+.uk-step-label{font-weight:600}
+.uk-step--current .uk-step-label{font-weight:750}
+.uk-step--todo .uk-step-label{color:var(--mut)}
+.uk-step--todo .uk-step-label a{color:var(--gold)}
+.uk-step-meta{flex-basis:100%;color:var(--mut);font-size:var(--fs-label)}
+/* vertical: stacked, the line runs down from each mark */
+.uk-stepper--vertical{flex-direction:column;flex-wrap:nowrap;gap:0}
+.uk-stepper--vertical .uk-step{flex:none;align-items:flex-start;
+  padding:0 0 .95rem}
+.uk-stepper--vertical .uk-step:last-child{padding-bottom:0}
+.uk-stepper--vertical .uk-step::after{position:absolute;margin:0;
+  left:calc(var(--uk-mark) / 2 - 1px);top:calc(var(--uk-mark) + .2rem);
+  bottom:.2rem;width:2px;height:auto;min-width:0}
+.uk-stepper--vertical .uk-step-body{padding-top:.2rem}
+@container uk-steps (max-width:30rem){
+  .uk-step{flex:1 1 100%}
+  .uk-step::after{position:absolute;margin:0;min-width:0;width:2px;
+    height:auto;left:calc(var(--uk-mark) / 2 - 1px);
+    top:calc(var(--uk-mark) + .15rem);bottom:-.45rem}
+}
+/* progress: a label and readout over a bar in the accent */
+.uk-progress{margin:.45rem 0}
+.uk-progress-head{display:flex;flex-wrap:wrap;justify-content:space-between;
+  gap:.1rem .8rem;margin:0 0 .25rem;font-size:var(--fs-label)}
+.uk-progress-label{color:var(--mut);font-weight:600}
+.uk-progress-val{color:var(--ink);font-weight:650;
+  font-variant-numeric:tabular-nums}
+.uk-progress-track{height:.75rem;border:1px solid var(--line);
+  border-radius:var(--r-pill);background:var(--track);overflow:hidden}
+.uk-progress-fill{height:100%;width:0;border-radius:var(--r-pill);
+  background:var(--accent-ink);transition:width .45s linear}
+.uk-progress--busy .uk-progress-fill{width:35%;
+  animation:uk-slide 1.1s ease-in-out infinite alternate}
+@keyframes uk-slide{from{margin-left:0}to{margin-left:65%}}
+
+/* ---- 10. legend chips: a swatch and a word ---- */
+.uk-legend{list-style:none;display:flex;flex-wrap:wrap;align-items:center;
+  gap:.3rem 1rem;margin:.4rem 0;padding:0;color:var(--ink);
+  font-size:var(--fs-label)}
+.uk-chip{display:inline-flex;align-items:center;gap:.4em;white-space:nowrap}
+.uk-chip .tip{margin-left:.1rem}
+.uk-sw{--sw:var(--mut);flex:none;display:inline-block;width:.8em;
+  height:.8em;border-radius:3px;background:var(--sw);
+  forced-color-adjust:none}
+.uk-sw--line,.uk-sw--dash,.uk-sw--dotted{width:1.5em;height:0;
+  border-radius:2px;background:none;border-top:3px solid var(--sw)}
+.uk-sw--dash{border-top-style:dashed}
+.uk-sw--dotted{border-top-style:dotted}
+.uk-sw--point{border-radius:50%}
+.uk-sw--ring{background:none;border:2px solid var(--sw);border-radius:50%}
+.uk-sw--band{width:1.5em;height:.75em;border-radius:2px;
+  background:color-mix(in srgb,var(--sw) 30%,transparent);
+  border-top:2px solid var(--sw)}
+
+/* ---- 11. fold, meta row, unit affix ---- */
+details.uk-fold{margin:.35rem 0}
+details.uk-fold > summary{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.2rem .5rem;cursor:pointer;list-style:none;color:var(--ink);
+  font-weight:600;user-select:none}
+details.uk-fold > summary::-webkit-details-marker{display:none}
+/* the chevron: drawn with borders, turns down when open */
+details.uk-fold > summary::before{content:"";width:.42em;height:.42em;
+  margin:0 .15em 0 .1em;border-right:2px solid var(--accent-ink);
+  border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg);
+  transition:transform .15s}
+details.uk-fold[open] > summary::before{transform:rotate(45deg)}
+.uk-fold-sum{min-width:0;overflow-wrap:anywhere}
+.uk-fold-body{margin:.35rem 0 .2rem 1.1rem}
+.uk-fold-body > :first-child{margin-top:0}
+/* facts in a row, each an icon and a value */
+.uk-meta{list-style:none;display:flex;flex-wrap:wrap;align-items:center;
+  gap:.2rem 1rem;margin:.15rem 0 .4rem;padding:0;color:var(--mut);
+  font-size:var(--fs-label)}
+.uk-meta li{display:inline-flex;align-items:center;gap:.3em;min-width:0;
+  overflow-wrap:anywhere}
+.uk-meta .uk-icon{color:var(--mut)}
+/* a field with its unit beside it: <span class="uk-affix"><input>
+   <span>MB</span></span> */
+.uk-affix{display:flex;align-items:center;gap:.4rem}
+.uk-affix > input,.uk-affix > select{flex:1 1 auto;min-width:0}
+.uk-affix > span{flex:none;color:var(--mut);font-size:var(--fs-label)}
+
+/* ---- 12. high contrast and forced colors ---- */
+/* high contrast: flat surfaces, heavier boundaries */
+[data-contrast="high"] .uk-alert{background:var(--card);border-width:2px;
+  border-left-width:5px}
+[data-contrast="high"] .uk-badge{border-width:2px}
+[data-contrast="high"] .uk-empty:not(.uk-empty--compact){border:2px solid var(--line)}
+[data-contrast="high"] .uk-tt-pop{border-width:2px}
+[data-contrast="high"] .uk-step-mark{border-width:3px}
+/* Windows high contrast: the system colors take over; keep the edges */
+@media (forced-colors:active){
+  .uk-badge,.uk-alert,.uk-tt-pop,.uk-step-mark{border-color:CanvasText}
+  .uk-progress-fill{background:Highlight}
+}
+@media (prefers-reduced-motion:reduce){
+  details.uk-fold > summary::before,.uk-progress-fill{transition:none}
+}

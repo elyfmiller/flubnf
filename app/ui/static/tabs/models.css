@@ -1,0 +1,6 @@
+/* Models tab styles: model.html, diagrams.html and research_run.html. A
+   page links this sheet from its {% block head %}, after base.html's
+   nau.css and ui-kit.css; a partial that renders on another tab's page
+   links it itself (docs/UI-KIT.md, "Tab stylesheets"). Colors only through
+   the nau.css tokens; new classes start "md-"; kit classes (uk-*) are used
+   as they are, never restyled here. */
