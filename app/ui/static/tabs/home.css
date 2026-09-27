@@ -114,3 +114,5 @@ p.hm-eq{display:flex;flex-wrap:wrap;align-items:center;
 .hm-mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   font-size:.92em;overflow-wrap:anywhere}
 .hm-versions{margin:.5rem 0 .1rem}
+/* below a list of what is missing, the versions sit apart from it */
+.hm-missing ~ .hm-versions{padding-top:.6rem;border-top:1px solid var(--line)}
