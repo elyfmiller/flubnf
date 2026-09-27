@@ -1085,6 +1085,8 @@ a.skip{position:absolute;left:-9999px;top:0;z-index:100;
   background:var(--card);color:var(--ink);border:1px solid var(--line);
   border-radius:0 0 8px 0;padding:.5rem .9rem;font-weight:650}
 a.skip:focus{left:0}
+/* the build line under every page (base.html) */
+footer.buildline{text-align:center;padding:.6rem 0 1rem}
 
 /* reduced motion: transitions settle instantly (quips.js holds one line) */
 @media (prefers-reduced-motion: reduce){
