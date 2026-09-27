@@ -160,10 +160,15 @@ def test_dataset_content_is_not_served_to_a_foreign_host():
 def test_browse_view_plots_a_group_with_group_wording():
     ds = stored()
     page = client.get(f"/data?source={ds.id}&loc=Adult").text
-    assert f"<h2>{ds.name}" in page
+    assert f'<h2 id="h-ds-browse">{ds.name}</h2>' in page
     assert '<label for="dv-loc">Group</label>' in page
     assert 'name="source" value="' + ds.id in page
-    assert "final data (not vintage-true)" in page
+    # final data: a badge beside the name, the reason in its "?"
+    assert ('<span class="uk-badge uk-badge--warn" id="ds-kind" '
+            'data-state="warn">') in page
+    assert page.split('id="ds-kind"')[1].split("</span></span>")[0] \
+        .endswith('<span class="uk-badge-t">final data')
+    assert "forecasts and replays on it are not vintage-true" in page
     assert "const VDS = " + json.dumps(ds.name) in page
     series = json.loads(re.search(r"const VSERIES = (\{.*?\});", page).group(1))
     assert series["dates"][0] == "2019-08-03"
@@ -175,7 +180,9 @@ def test_browse_view_plots_a_group_with_group_wording():
 def test_unknown_source_falls_back_to_the_hub():
     page = client.get("/data?source=nope-000000000000").text
     # the hub view, not a dataset view: no dataset links in the browser card
-    assert '<div class="card hubcard"><h2>FluSight hub' in page
+    assert '<div class="card hubcard">' in page
+    assert (page.index('<div class="card hubcard">')
+            < page.index('<h2 id="h-hub">FluSight hub</h2>'))
     assert "Back to the FluSight hub" not in page
     # the browser card shows only when there is something to browse
     from app.ui import state as ui_state

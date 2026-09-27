@@ -4,4 +4,101 @@
    kit.css; a partial that renders on another tab's page links it itself
    (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the nau.css
    tokens; new classes start "dt-"; kit classes (uk-*) are used as they
-   are, never restyled here. */
+   are, never restyled here.
+
+   CONTENTS
+     1. shared bits: a date that never splits, the small heading, tags
+     2. FluSight hub card: the labelled rows, the newest week's value
+     3. Archive card: the tiles over the strip
+     4. vintage and dataset browser: the pick row, the chart bar
+     5. Your datasets: the stored list's row actions
+     6. the upload box: zone titles, the icon, the links under a zone
+     7. the result box: problem groups, the mapping, the preview */
+
+/* ---- 1. shared bits ---- */
+/* a date or a range never splits at its hyphens */
+.dt-nw{white-space:nowrap}
+/* a small heading inside a card (a list, a table, the preview): the
+   label type, not the card's kicker */
+.dt-subhead{margin:1rem 0 .35rem}
+.dt-subhead > h3{font-size:var(--fs-label);font-weight:700;color:var(--ink);
+  letter-spacing:.01em}
+/* a quiet word beside a value ("population") */
+.dt-tag{display:inline-block;margin-left:.3rem;padding:0 .45rem;
+  border:1px solid var(--line);border-radius:var(--r-pill);color:var(--mut);
+  font-size:var(--fs-micro);line-height:1.5;white-space:nowrap}
+.dt-none{color:var(--mut)}
+
+/* ---- 2. FluSight hub card ---- */
+.dt-hubstats{margin:.2rem 0 .1rem}
+/* the newest week's row: the mark and the head, then the count badges
+   and the toggletip */
+.dt-newest-dd{align-items:center}
+.dt-newest{display:inline-flex;align-items:center;gap:.3rem;
+  font-weight:650;white-space:nowrap}
+.dt-newest .ncmark{min-width:0;line-height:1}
+/* the pull and the check: the primary first, both flush */
+.hubcard .hubacts{margin-top:.85rem;gap:.5rem}
+
+/* ---- 3. Archive card ---- */
+.dt-archstats{margin:.1rem 0 .7rem}
+.dt-archive .archive-wrap{margin-top:.2rem}
+
+/* ---- 4. vintage and dataset browser ---- */
+/* the selects and Show on one baseline, each select sized to its words */
+.dt-pick{align-items:flex-end;gap:.4rem .8rem;margin:.2rem 0 .5rem}
+.dt-field{display:flex;flex-direction:column;min-width:0}
+.dt-field > select{width:auto;min-width:9rem;max-width:100%}
+/* the dataset's pages at the right of its heading */
+a.dt-act{padding:.3rem .8rem;font-size:var(--fs-label)}
+a.dt-back{font-size:var(--fs-label);white-space:nowrap}
+/* the chart's view toggle beside the series' numbers */
+.dt-chartbar{display:flex;flex-wrap:wrap;align-items:center;
+  justify-content:space-between;gap:.5rem 1.2rem;margin:.6rem 0 .3rem}
+.dt-seg{display:inline-flex;border:1px solid var(--line);
+  border-radius:var(--r-sm);overflow:hidden}
+.dt-seg > button{margin:0;border:0;border-radius:0;padding:.35rem .85rem;
+  font-size:var(--fs-label)}
+.dt-seg > button + button{border-left:1px solid var(--line)}
+.dt-series{margin:0}
+.dt-vsum{margin:.2rem 0 .3rem}
+
+/* ---- 5. Your datasets ---- */
+.dt-listhead{margin-top:1.3rem}
+/* the row's links and Delete on one line */
+.dt-rowacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .8rem}
+.dt-delform{margin:0;gap:.3rem}
+
+/* ---- 6. the upload box ---- */
+/* three rows per zone (title, drop zone, link) on the boxes' subgrid, so
+   the two zones line up side by side */
+.dsbox.dt-zone{grid-row:span 3}
+.dt-zonehead{display:flex;align-items:center;flex-wrap:wrap;gap:.2rem .4rem;
+  min-width:0}
+.dt-zonetitle{font-weight:700;font-size:var(--fs-label);color:var(--ink)}
+.dt-dropicon{font-size:1.5em;color:var(--accent-ink)}
+.dt-zonelinks{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;
+  margin:0 0 .45rem;font-size:var(--fs-label);color:var(--mut)}
+.dt-zonelinks a{display:inline-flex;align-items:center;gap:.3rem}
+
+/* ---- 7. the result box ---- */
+/* the preview of a valid file: one sunken panel, apart from the box */
+.dt-panel{margin:.7rem 0 .3rem;padding:.2rem var(--sp-4) var(--sp-3);
+  border:1px solid var(--line);border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--bg) 55%,var(--card))}
+.dt-panel > .dt-subhead{margin-top:.6rem}
+.dt-pgroup{margin:.35rem 0 .2rem}
+.dt-pgroup > ul{margin:.15rem 0 .3rem;padding-left:1.2rem}
+.dt-pgroup li{overflow-wrap:break-word}
+.dt-maplbl{display:flex;align-items:center;gap:.35rem;margin:.5rem 0 .2rem}
+.dt-maplbl > label{margin:0}
+.dt-notes{margin:.5rem 0}
+.dt-notes .dsnotes{margin:.2rem 0}
+.dt-facts{margin:.2rem 0 .7rem}
+/* "+9 more groups": a tile the size of a sparkline */
+.dt-more{display:flex;align-items:center;gap:.35rem;min-height:2.5rem;
+  padding:0 .6rem;border:1px dashed var(--line);border-radius:var(--r-sm);
+  color:var(--mut);font-size:var(--fs-micro)}
+.dt-more-n{color:var(--ink);font-weight:700;font-size:var(--fs-label)}
+.dt-cap{caption-side:top;text-align:left;padding:.3rem 0;color:var(--mut);
+  font-size:var(--fs-label);font-weight:600}
