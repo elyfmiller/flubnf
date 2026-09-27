@@ -746,7 +746,6 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
 .dsup[aria-busy="true"] .dsup-result{opacity:.6}
 .dsp-kind{margin:.5rem 0 0;font-size:var(--fs-micro);font-weight:650;
   text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
-.dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
 .dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
 .dsproblems li{overflow-wrap:break-word}
 .dsproblems .nw,.dsnotes .nw{white-space:nowrap}
@@ -760,10 +759,6 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
 .dsr-stored p{margin:0}
 .dsr-stored .dsnotes{margin:.3rem 0 0}
 .dspreview{margin:.5rem 0}
-.dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
-  gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}
-.dsfacts dt{color:var(--mut)}
-.dsfacts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
 .dssparks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr));
   gap:.5rem .9rem;margin:.6rem 0 .2rem}
 .dsspark{margin:0;min-width:0}
@@ -1091,9 +1086,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
    never the page; a wide card does not blow the labels up */
 .archive-wrap{overflow-x:auto;max-width:100%}
 .archive-strip{display:block;width:100%;min-width:420px;max-width:680px}
-/* your datasets: the stored list under a small heading */
-.dslist-h{margin:1rem 0 .2rem;font-size:var(--fs-label);color:var(--mut)}
-.dslist-none{margin-top:.8rem}
 /* under 600px each dataset row stacks: name, facts, then its actions */
 @media(max-width:600px){
   .dstable thead{display:none}
@@ -1253,8 +1245,8 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   opacity:0;overflow:hidden;clip-path:inset(50%)}
 .dsfolder:focus-within label{outline:2px solid var(--accent-ink);outline-offset:2px}
 .dsfolder label{display:inline;margin:0;font-size:inherit}
-/* a date in the preview's facts or the stored note stays on one line */
-.dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
+/* a date in the stored note stays on one line */
+.dsr-stored .nw{white-space:nowrap}
 
 /* round3: dataset upload */
 /* two drop zones side by side, one form: one weekly CSV, and the optional
@@ -1266,11 +1258,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   gap:0 1rem}
 .dsbox{min-width:0;display:grid;grid-row:span 2;grid-template-rows:subgrid}
 .dsbox .dsdrop{justify-content:center;margin:.3rem 0 .35rem}
-.dsbox>.hint{margin:0 0 .5rem}
 .dsdrop.picked{border-style:solid;border-color:var(--accent-ink)}
-/* a link and its "?" stay together on one line; the tip's own text wraps */
-.dskeep{white-space:nowrap}
-.dskeep .tipbox{white-space:normal}
 
 /* round3: forecast tab and run pages */
 /* US (national), the 53rd location, set apart at the end of the list */
@@ -1391,29 +1379,6 @@ p.newest-check[hidden]{display:none}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}
 
-/* data tab: the hub status card. Labels left, values right; a pill per
-   check carries the state (ok/warn/bad tokens, as the run status pills),
-   a hint the numbers a pill does not. The value track can shrink, so a
-   phone wraps the long reporting line instead of scrolling the page. */
-.hubgrid{display:grid;grid-template-columns:max-content minmax(0,1fr);
-  gap:.35rem .9rem;align-items:baseline;margin:.35rem 0 0}
-.hubgrid dt{color:var(--mut);font-size:var(--fs-hint);white-space:nowrap}
-.hubgrid dd{margin:0;min-width:0;font-variant-numeric:tabular-nums}
-.hubgrid .wk{white-space:nowrap}       /* a date never splits at its hyphen */
-.hubgrid .pill{font-weight:650;border-color:currentColor;white-space:nowrap;
-  vertical-align:baseline}
-/* .ok/.warn/.bad color the state; a neutral pill (not checked) is muted */
-.hubgrid .pill:not(.ok):not(.warn):not(.bad){color:var(--mut)}
-/* the newest-week row: its pill carries the state, so the line's own
-   mark stays out; the line runs on after the pill */
-.hubgrid p.newest-check{display:inline;margin:0}
-.hubgrid .ncmark{display:none}
-/* while a pull or check runs: the run bar slides (indeterminate); the
-   reduced-motion rule above holds it still */
-.runbar.busy div{width:35%;animation:hubslide 1.1s ease-in-out infinite alternate}
-@keyframes hubslide{from{margin-left:0}to{margin-left:65%}}
-#hub-status{margin:.3rem 0 0}
-#hub-status:empty{display:none}
 
 /* round9: retrospective layout */
 /* season header band: the finished replay's settings as chips (the shared
