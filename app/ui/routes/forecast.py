@@ -135,12 +135,14 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
-        # the latest-run card links the weekly report when one exists
+        # the latest-run card links the weekly report when one exists, and
+        # a run that died says why in its status badge's tip
         try:
-            r["has_report"] = bool(_json.loads(r.get("outcome")
-                                               or "{}").get("report"))
+            _o = _json.loads(r.get("outcome") or "{}")
+            r["has_report"] = bool(_o.get("report"))
+            r["error"] = str(_o.get("error") or "")
         except Exception:
-            r["has_report"] = False
+            r["has_report"], r["error"] = False, ""
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
     # archived Saturdays, newest first, for the form's picker (the native

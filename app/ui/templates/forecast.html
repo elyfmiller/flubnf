@@ -411,7 +411,7 @@
    {# the run, its status in a badge (a word and an icon, never color
       alone); the run page keeps the full record #}
    <p class="fc-runline"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
-    {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status) }}</p>
+    {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status, tiptext=r.error or "", id="fc-latest-status") }}</p>
    {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
