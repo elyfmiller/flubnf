@@ -45,15 +45,16 @@
     {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
    {% endcall %}
    {# each bar from 0; the dashed mark is the FluSight baseline (1.0),
-      so a bar short of it beats the baseline #}
+      so a bar short of it beats the baseline; the scores wear the one
+      relWIS rule (.relwis ok/bad, as everywhere a relWIS prints) #}
    <dl class="md-bars" style="--one:{{ record.one }}%">
     {% for b in record.bars %}
-    <div class="md-bar{% if b.this %} md-bar--this{% endif %}"><dt>{{ b.label }}</dt><dd><span class="md-bar-v">{{ b.text }}</span><span class="md-bar-track" aria-hidden="true"><span class="md-bar-fill" style="width:{{ b.pct }}%"></span></span></dd></div>
+    <div class="md-bar{% if b.this %} md-bar--this{% endif %}"><dt>{{ b.label }}</dt><dd><span class="md-bar-v relwis {{ b.rule }}">{{ b.text }}</span><span class="md-bar-track" aria-hidden="true"><span class="md-bar-fill" style="width:{{ b.pct }}%"></span></span></dd></div>
     {% endfor %}
    </dl>
    <p class="md-axis" style="--one:{{ record.one }}%" aria-hidden="true"><span>baseline 1.0</span></p>
    {% if record.facts %}{% call tips.stats("uk-stats--row md-recfacts", label="Record details") %}
-    {%- for k, v in record.facts %}{{ tips.stat(k, v) }}{% endfor -%}
+    {%- for k, v, s in record.facts %}{{ tips.stat(k, v, state=s) }}{% endfor -%}
    {% endcall %}{% endif %}
   </div>
  </div>

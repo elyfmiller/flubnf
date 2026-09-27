@@ -87,7 +87,12 @@ def test_the_record_sentences_ride_the_record_toggletip():
             assert needle in pop, (path, needle)
         # one bar per compared score, each value as text beside it
         assert t.count('class="md-bar-track" aria-hidden="true"') == 2, path
-    assert '<span class="md-bar-v">0.731</span>' in client.get("/models").text
+    # the one relWIS rule: tabular, ok below 1
+    assert '<span class="md-bar-v relwis ok">0.731</span>' in \
+        client.get("/models").text
+    gh = client.get("/model/analogue").text
+    assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
+                     r'0\.722</span>', gh)
     pf2s = client.get("/model/pf2s").text
     assert '<span class="uk-badge-t">scored worse</span>' in pf2s
 

@@ -107,7 +107,8 @@ def _record(name: str) -> dict:
         return _bars({
             "bars": [("Groundhog, pooled", pooled, True),
                      ("Without FluSurv-NET donors", bare, False)],
-            "facts": [(s, fmt(v)) for s, v in seasons] + [("Cells", cells)],
+            "facts": [(s, fmt(v), _rule(v)) for s, v in seasons]
+                     + [("Cells", cells)],
             "lines": [
                 (f"Three-season relWIS vs the FluSight baseline on {cells} "
                  f"cells: {fmt(seasons[0][1])}, {fmt(seasons[1][1])} and "
@@ -124,14 +125,22 @@ def _record(name: str) -> dict:
              f"it is kept for research runs only.")]})
 
 
+def _rule(v: float) -> str:
+    """The one relWIS rule's class: below 1 beats the baseline."""
+    return "ok" if v < 1 else "bad"
+
+
 def _bars(rec: dict) -> dict:
-    """Bar widths and the baseline's place, as percentages of the axis.
-    The sentences are this module's own text and numbers: safe markup, so
-    an apostrophe reads as typed in the page source too."""
+    """Bar widths and the baseline's place, as percentages of the axis;
+    each score's ok/bad class; every fact as (label, value, state). The
+    sentences are this module's own text and numbers: safe markup, so an
+    apostrophe reads as typed in the page source too."""
     rec["lines"] = [Markup(x) for x in rec["lines"]]
     rec["bars"] = [{"label": lab, "text": ot.fmt(v), "this": this,
+                    "rule": _rule(v),
                     "pct": round(100 * min(v, RECORD_AXIS) / RECORD_AXIS, 1)}
                    for lab, v, this in rec["bars"]]
+    rec["facts"] = [f if len(f) == 3 else (*f, "") for f in rec["facts"]]
     rec["one"] = round(100 / RECORD_AXIS, 1)
     return rec
 
