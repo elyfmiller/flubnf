@@ -612,7 +612,7 @@ def test_the_index_labels_the_convention_beside_every_score():
     head = card.split('rt-arch-h"', 1)[0]
     assert re.search(r'<dt>relWIS<span class="tip">.*?'
                      r'relWIS vs FluSight baseline, ratio of sums.*?'
-                     r'<span class="uk-stat-v"[^>]*>0\.877</span>', head, re.S)
+                     r'<span class="uk-stat-v"[^>]*>0\.877</span>', head, re.DOTALL)
     # the archived runs: their heading's "?" names it for every row
     arch = card.split('rt-arch-h"', 1)[1]
     assert "relWIS vs FluSight baseline, ratio of sums" in \

@@ -78,7 +78,7 @@ def _rel_stat(state, value):
     state (and an icon that says it: never the color alone)."""
     return re.compile(r'<div class="uk-stat uk-stat--' + state
                       + r'"><dt>relWIS.*?<span class="uk-stat-v"[^>]*>'
-                      + re.escape(value) + r'</span>', re.S)
+                      + re.escape(value) + r'</span>', re.DOTALL)
 
 
 def test_completed_season_prints_relwis_instead_of_the_bar():
