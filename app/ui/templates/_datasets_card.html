@@ -27,7 +27,7 @@
     <a href="/retro?dataset={{ d.id }}">Replay</a>
     <form method="post" action="/data/datasets/{{ d.id }}/delete" class="row dt-delform">
      <input type="hidden" name="confirm" value="">
-     {{ tips.reason_button("Delete", "ds-del-" ~ loop.index, d.busy, off=d.busy | length > 0, cls="quiet", type="button",
+     {{ tips.reason_button("Delete", "ds-del-" ~ loop.index, ((d.busy[:1] | upper) ~ d.busy[1:] ~ ".") if d.busy else "", off=d.busy | length > 0, cls="quiet", type="button",
                            data={"del-dataset": "", "name": d.name}, label="why deleting " ~ d.name ~ " is unavailable") }}
     </form></div></td>
   </tr>{% endfor %}</tbody>

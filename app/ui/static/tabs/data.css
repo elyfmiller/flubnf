@@ -30,6 +30,8 @@
 .dt-none{color:var(--mut)}
 
 /* ---- 2. FluSight hub card ---- */
+/* a week in the card's tips stays on one line */
+.hubcard .wk{white-space:nowrap}
 .dt-hubstats{margin:.2rem 0 .1rem}
 /* the newest week's row: the mark and the head, then the count badges
    and the toggletip */
@@ -83,7 +85,7 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 
 /* ---- 7. the result box ---- */
 /* the preview of a valid file: one sunken panel, apart from the box */
-.dt-panel{margin:.7rem 0 .3rem;padding:.2rem var(--sp-4) var(--sp-3);
+.dt-panel{margin:.7rem 0 .3rem;padding:.2rem var(--sp-3) var(--sp-3);
   border:1px solid var(--line);border-radius:var(--r-md);
   background:color-mix(in srgb,var(--bg) 55%,var(--card))}
 .dt-panel > .dt-subhead{margin-top:.6rem}

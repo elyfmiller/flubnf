@@ -60,7 +60,7 @@
 <div class="dspreview dt-panel">
  {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
  {# what the file holds, one labelled value each #}
- {% call tips.stats("dt-facts", label="What the file holds") %}
+ {% call tips.stats("uk-stats--row dt-facts", label="What the file holds") %}
   {# the national group is badged on its sparkline; named here when it
      has none #}
   {% set drawn = pv.sparks | map(attribute="name") | list %}
