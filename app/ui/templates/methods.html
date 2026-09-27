@@ -17,10 +17,13 @@
 {% macro status(state, text) -%}
 {% if active is defined %}{{ tips.badge(state, text) }}{% else %}<em>({{ text }})</em>{% endif %}
 {%- endmacro %}
-{# a version, or a status where the engine is absent; the data-vkey span is
-   the hook base.html's probe updates while a version is still resolving #}
+{# a version, or a status where the engine is absent. The data-vkey span is
+   the hook base.html's poll fills while a version is still resolving (a
+   first launch): it holds a pending badge until the version text lands #}
 {% macro version(key, v) -%}
-{% if v == "not installed" %}{{ status("neutral", "not installed") }}{% else %}<span data-vkey="{{ key }}">{{ v }}</span>{% endif %}
+{% if v == "not installed" %}{{ status("neutral", "not installed") }}
+{%- elif "resolving" in v %}<span data-vkey="{{ key }}">{{ status("pending", v) }}</span>
+{%- else %}<span data-vkey="{{ key }}">{{ v }}</span>{% endif %}
 {%- endmacro %}
 <h1>Methods</h1>
 {# in-page contents: same-page anchors, so they survive the site harvest #}
