@@ -4,11 +4,13 @@
    and ui-kit.css; a partial that renders on another tab's page links it
    itself (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the
    nau.css tokens; new classes start "fc-"; kit classes (uk-*) are used as
-   they are, never restyled here.
+   they are, never restyled here (an fc- class passed through a macro's
+   cls, as fc-kv, fc-flush and fc-ms-locked are, only lays out its box:
+   margins, columns and text size, never its colors).
 
    CONTENTS
-     1. settings card: sections, the dataset's truth, the anchor line,
-        the locations count, a line under a field, labelled values
+     1. settings card: the dataset's truth, the anchor line, the
+        locations count, a badge under a field, labelled values
      2. results column: running, latest run, actions, pagers
      3. the Data issues box (_data_issues.html)
      4. the Model settings panel (_model_settings.html)
