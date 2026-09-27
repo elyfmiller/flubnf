@@ -77,7 +77,7 @@ def fact(html, label):
     the value, its unit and any badge beside it."""
     m = re.search(r'<div class="uk-stat[^"]*"><dt>' + re.escape(label)
                   + r'(?:<span class="tip">.*?</span></span>)?</dt><dd>(.*?)'
-                  r'</dd></div>', html, flags=re.S)
+                  r"</dd></div>", html, flags=re.DOTALL)
     assert m, label
     return " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
 

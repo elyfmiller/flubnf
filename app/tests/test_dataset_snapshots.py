@@ -22,7 +22,7 @@ import pytest
 from app.core import datasets as D
 
 from test_datasets_ui import client, isolated  # noqa: F401
-from test_dataset_upload_box import fact  # noqa: E402
+from test_dataset_upload_box import fact
 
 SNAPS = Path(__file__).resolve().parent / "fixtures" / "snapshots"
 FILES = sorted(SNAPS.iterdir())
