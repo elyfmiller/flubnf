@@ -365,7 +365,9 @@ def test_a_completed_run_with_fit_failures_is_partial_not_failed():
            "status": "partial", "chips": "PF 159 fits", "has_report": True,
            "spec": "{}", "elapsed_s": None}
     html = _render_forecast(row)
-    assert "pill warn" in html, "the partial pill should warn, not condemn"
+    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">' in html
+            and '<span class="uk-badge-t">partial</span>' in html), \
+        "the partial badge should warn, not condemn"
     assert f'action="/runs/{row["run_id"]}/rerun"' in html, (
         "a partial run must still offer the rerun")
 

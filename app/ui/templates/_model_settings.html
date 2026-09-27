@@ -16,11 +16,12 @@
    with `only` shows for that kind of data alone. The FluSight panels set
    none of these and render exactly as before. #}
 {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
+{# the panel renders on the Retrospective tab too: it links its sheet #}
+<link rel="stylesheet" href="/static/tabs/forecast.css">
 <details class="adv"{% if kp.modified %} open{% endif %} id="{{ px }}model-settings"
   data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
  <summary class="advbtn">Model settings
-  <span class="ms-badge {{ 'warn' if kp.modified else 'ok' }}" id="{{ px }}ms-badge"
-    aria-live="polite">{{ "modified" if kp.modified else "default" }}</span></summary>
+  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", "modified" if kp.modified else "default", id=px ~ "ms-badge") }}</span></summary>
  <div class="ms-head">
   <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
   {{ tips.tip(px ~ "ms-about", "model settings", kp.about or ("Every value starts at its default. Changing any of them marks the run modified on every page it appears on" ~ (", and its files are exported under a non-hub name unless you tick the box below." if kp.override else ", and the season's results are not published."))) }}
@@ -58,7 +59,7 @@
      {% if r.max is not none %}max="{{ r.max }}"{% endif %}
      step="{{ r.step }}"{% if r.later %} disabled{% endif %}>
    {% endif %}
-   {% if r.later %}<span class="hint ms-soon">coming later</span>{% endif %}
+   {% if r.later %}<span class="fc-ms-soon">{{ tips.badge("pending", "coming later") }}</span>{% endif %}
   </div>
   {% endfor %}
  </fieldset>
@@ -73,12 +74,13 @@
     value="{{ form.modified_reason if form and form.modified_reason else '' }}">
  </div>
  {% endif %}
- <details class="ms-locked">
-  <summary>Fixed by the model definition {{ tips.tip(px ~ "ms-locked", "the fixed settings", "Part of what the models are (the hub's target, the pre-registration, the SIHRS compartment model), so they are listed here and not settable.") }}</summary>
-  <dl class="kv hint">
-   {% for l in kp.locked %}<dt>{{ l.key }}</dt><dd>{{ l.value }} · {{ l.why }}</dd>{% endfor %}
-  </dl>
- </details>
+ {# the settings the model definition fixes: each value, its reason in
+    its tip #}
+ {% call tips.fold("Fixed by the model definition", id=px ~ "ms-locked-fold", cls="fc-ms-locked", after=tips.tip(px ~ "ms-locked", "the fixed settings", "Part of what the models are (the hub's target, the pre-registration, the SIHRS compartment model), so they are listed here and not settable.")) %}
+  {% call tips.stats("uk-stats--kv fc-kv") %}
+   {% for l in kp.locked %}{{ tips.stat(l.key, l.value, tiptext=l.why, id=px ~ "ms-lk-" ~ loop.index) }}{% endfor %}
+  {% endcall %}
+ {% endcall %}
 </details>
 <script src="/static/model_settings.js" defer></script>
 {% endif %}

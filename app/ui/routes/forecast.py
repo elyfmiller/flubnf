@@ -158,12 +158,13 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         live_only = next((v for v in vintage_dates[:1] if v not in _vs), "")
     except Exception:
         live_only = ""
-    # ascending, as resolve_anchor reads it (the picker lists newest first)
+    # ascending, as resolve_anchor reads it (the picker lists newest first);
+    # the page shows the week as a labelled value (a "not archived" badge
+    # while only the live file holds it), this sentence when there is none
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""),
                                 sorted(vintage_dates))
-    anchor_note = ((f"Anchor week: {_anchor}"
-                    + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
-                    ) if _anchor else "No archived week on or before that date.")
+    anchor_note = (f"Anchor week: {_anchor}." if _anchor
+                   else "No archived week on or before that date.")
     # the newest week's reporting, under the anchor line while the anchor
     # is that week (the Data tab's check, app/core/reported.py)
     from app.ui.routes.data import _newest_report
@@ -176,7 +177,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "newest_report": newest_report, "anchor_week": _anchor or "",
         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
-        "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
+        "live_only": live_only, "live_only_tip": LIVE_ONLY_TIP,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "us_choice": US_CHOICE, "us_checked": us_checked,
@@ -333,8 +334,9 @@ def _location_list(locations: list) -> list:
         locs_list.append("US" if spelled == US_CHOICE else spelled)
     return locs_list
 
-#: the anchor line's ending for a week only the live target file holds
-LIVE_ONLY_NOTE = " (new data, not archived yet: read from target-data)."
+#: the anchor line's "not archived" badge tip, for a week only the live
+#: target file holds
+LIVE_ONLY_TIP = "New data, not archived yet: read from target-data."
 
 
 def _official_overlay(fc_date: str, locs: list) -> dict:

@@ -1,9 +1,9 @@
 /* The Model settings panel (templates/_model_settings.html): the live
-   "default / modified" badge, the rows that do not apply to the chosen
-   engine hidden (the server ignores them too, and never records them),
-   "Reset to defaults", and the override's reason made required when its
-   box is ticked. The server is the authority; this only keeps the page
-   honest while the form is filled in.
+   "default / modified" badge (a kit badge), the rows that do not apply to
+   the chosen engine hidden (the server ignores them too, and never
+   records them), "Reset to defaults", and the override's reason made
+   required when its box is ticked. The server is the authority; this
+   only keeps the page honest while the form is filled in.
 
    Every panel on the page is its own (the Retrospective tab holds the
    FluSight replay's and the own-data replay's); a panel's parts are found
@@ -17,7 +17,8 @@
     if (box.dataset.msReady) return;
     box.dataset.msReady = '1';
     var form = box.closest('form');
-    var badge = box.querySelector('.ms-badge');
+    // the summary's kit badge (tips.badge: icon and word)
+    var badge = box.querySelector('summary .uk-badge');
     var ovr = box.querySelector('.ms-override');
     var tick = box.querySelector('input[name=submit_modified]');
     var reason = box.querySelector('input[name=modified_reason]');
@@ -93,14 +94,26 @@
           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
       });
     }
+    // the badge takes its state's word, class and icon. The icon comes
+    // from FluBNFUI (tips.js, loaded after this script): until then the
+    // server's icon stays, and the next update swaps it
+    if (badge) badge.dataset.icon = badge.getAttribute('data-state');
+    function setBadge(state, text) {
+      badge.className = 'uk-badge uk-badge--' + state;
+      badge.setAttribute('data-state', state);
+      var t = badge.querySelector('.uk-badge-t');
+      if (t) t.textContent = text;
+      var svg = badge.querySelector('svg');
+      if (svg && window.FluBNFUI && badge.dataset.icon !== state) {
+        svg.outerHTML = window.FluBNFUI.icon(state === 'warn' ? 'warning' : 'check');
+        badge.dataset.icon = state;
+      }
+    }
     function update() {
       var any = inputs.some(function (el) {
         return !el.closest('[hidden]') && isModified(el);
       });
-      if (badge) {
-        badge.textContent = any ? 'modified' : 'default';
-        badge.className = 'ms-badge ' + (any ? 'warn' : 'ok');
-      }
+      if (badge) setBadge(any ? 'warn' : 'ok', any ? 'modified' : 'default');
       if (ovr) ovr.hidden = !any;
       if (reason) reason.required = !!(any && tick && tick.checked);
     }
