@@ -14,15 +14,16 @@
  {{ dsup.box("replay") }}
 </div>
 {% else %}
-<div class="cols" id="dataset-replay">
+<div id="dataset-replay">
+{% if dr.stored %}{# "Replay this" just stored it: said here, where the
+   page lands, across the width; its notices folded under the line #}
+<div class="dsr-stored">{{ tips.alert("ok", dr.stored.text, id="dsr-stored", live="") }}
+ {% if dr.stored.warnings %}{% set nw = dr.stored.warnings | length %}
+ {% call tips.fold(nw ~ " notice" ~ ("" if nw == 1 else "s") ~ " about the file", id="dsr-notes", after=tips.icon("warning", "to check", cls="uk-c-warn")) %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endcall %}
+ {% endif %}</div>
+{% endif %}
+<div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if dr.stored %}{# "Replay this" just stored it: said here, where the
-     page lands; its notices folded under the line #}
-  <div class="dsr-stored">{{ tips.alert("ok", dr.stored.text, id="dsr-stored", live="") }}
-   {% if dr.stored.warnings %}{% set nw = dr.stored.warnings | length %}
-   {% call tips.fold(nw ~ " notice" ~ ("" if nw == 1 else "s") ~ " about the file", id="dsr-notes", after=tips.badge("warn", "check")) %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endcall %}
-   {% endif %}</div>
-  {% endif %}
   {# which of your datasets; a plain GET form, like the Forecast tab's #}
   <form method="get" action="/retro" class="row srcpick">
    <span>{{ tips.label("Dataset", "dsr-src", "A dataset replays on its own groups and weeks. Upload one here or on the Data tab.", for_="dsr-ds") }}
@@ -89,5 +90,6 @@
   {{ tips.empty("Not replayed yet", "clock", compact=True, id="dsr-none") }}
   {% endfor %}
  </div></div>
+</div>
 </div>
 {% endif %}

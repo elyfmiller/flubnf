@@ -391,11 +391,13 @@
   <div class="playstats">
    {# the player's figures are always ratio of sums; heading and text are
       the export's too (report_season.LIVE_HEADING, LIVE_SCORES_NOTE). The
-      explanation and the coverage colour key sit in the "?" tip; the
-      player fills the key (player.js covLegend) #}
-   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{% call tips.tip("rs-live", "live scores") %}{{ live_scores("note") }} <span class="pblegend" id="pb-legend"></span><span class="ncline">relWIS scale: natural or log. The CDC FluSight dashboard reports both.</span>{% endcall %}
+      explanation, the coverage colour key and the scale switch's note sit
+      in the "i" beside the heading (a card-surface panel, so the key's
+      colors read as they do in the table); the player fills the key
+      (player.js covLegend) #}
+   <div class="rs-h"><span class="rt-hgroup"><h2>{{ live_scores("heading") }}</h2>{% call tips.toggletip("rs-live", "the live scores") %}<span class="uk-tt-line">{{ live_scores("note") }}</span><span class="uk-tt-line"><span class="pblegend" id="pb-legend"></span></span><span class="uk-tt-line">relWIS scale: natural or log. The CDC FluSight dashboard reports both.</span>{% endcall %}
    {#- only when there ARE pairwise scores to be confused with #}
-   {%- if conv == 'pairwise' and not unavailable %}{{ tips.icon_tip("rs-live-pw", "the player's figures", "info", "The player's figures are ratios of sums, not the pairwise scores above; on the same cells the two agree to within about 0.02.", state="info") }}{% endif %}
+   {%- if conv == 'pairwise' and not unavailable %}{{ tips.icon_tip("rs-live-pw", "the player's figures", "info", "The player's figures are ratios of sums, not the pairwise scores above; on the same cells the two agree to within about 0.02.", state="info") }}{% endif %}</span>
    {# the scale switch, written by the player, inline with the heading #}
    <div class="pbscale" id="pb-scale"></div></div>
    {# the player writes the table head and body (player.js renderStats) #}

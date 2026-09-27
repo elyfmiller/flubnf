@@ -16,7 +16,7 @@
 
 {% if live %}
 <div class="card">
- {{ tips.heading("Running", "rd-live", after=tips.badge("pending", "running")) }}
+ <h2>Running</h2>
  <p class="runstat" id="dsr-prog" aria-live="polite">{{ meta.weeks_completed or 0 }} of {{ meta.total_weeks }} weeks</p>
  {{ tips.progress("Weeks replayed", meta.weeks_completed or 0, meta.total_weeks or 1, id="rd-progress") }}
  <form method="post" action="/retro/dataset/{{ ds.id }}/{{ stamp }}/stop"><button class="quiet">Stop</button></form>

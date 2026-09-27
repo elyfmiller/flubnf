@@ -76,6 +76,10 @@
 .rt-note:not([hidden]){display:flex;align-items:center;gap:.4rem;
   margin:.1rem 0 .45rem;color:var(--ink);font-size:var(--fs-label)}
 .rt-note-i{flex:none;color:var(--accent-ink)}
+/* the live scores' heading and its "i" kept together beside the switch */
+.rt-hgroup{display:inline-flex;align-items:center;gap:.1rem}
+.rt-hgroup > h2{margin:0}
+.rs-h .rt-hgroup .tip{margin-left:.2rem}
 /* the axes lock and its "?" inline in the forecast detail's control row */
 .lblrow.rt-lock{display:inline-flex;margin:0}
 /* the per-state name filter and its count */
