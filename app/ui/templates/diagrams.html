@@ -7,7 +7,25 @@
    boxes are audited to fit at A+ (115%). Accessible names ride aria-label,
    not a nested title element (it pops a hover tooltip over the drawing).
    The wide drawings sit in a .figscroll wrapper: at phone width they keep
-   a legible size and scroll sideways on their own, never the page. #}
+   a legible size and scroll sideways on their own, never the page.
+
+   The equation panels (eq_*) and the harmonic's caption take kit=true on
+   the console's model pages: each equation wears a short name whose "?"
+   holds its note, word for word, and the caption becomes a badge. It needs
+   the UI kit (ui-kit.css, tips.js) and static/tabs/models.css, so the
+   default (kit=false) stays the plain notes that Methods, Home and the
+   public site (site_build, no kit) render. #}
+{% import "_tips.html" as tips %}
+
+{# one equation line: the math, then its note beside it; with kit=true a
+   name chip whose "?" holds the note instead. math and note are markup
+   ({% set %} blocks), `id` names the tip. #}
+{% macro _eq(kit, name, id, math, note) -%}
+{% if kit %}<p class="md-eq"><span class="math">{{ math }}</span>
+  <span class="md-eqname">{{ name }}{% call tips.tip(id, name | lower) %}{{ note }}{% endcall %}</span></p>
+{%- else %}<p><span class="math">{{ math }}</span>
+  <span class="eqnote">{{ note }}</span></p>{% endif %}
+{%- endmacro %}
 
 {% macro sihrs(uid='s') -%}
 <div class="figscroll"><svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
@@ -294,26 +312,32 @@
 </svg></div>
 {%- endmacro %}
 
-{% macro eq_oracle() -%}
-<div class="eqpanel">
- <p><span class="math">ln <i>G</i><sub><i>k</i></sub> =
+{% macro eq_oracle(kit=false) -%}
+{%- set blend %}ln <i>G</i><sub><i>k</i></sub> =
   &#189; ln <i>G</i><sub><i>T</i></sub> +
   &#189; ln <i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;),
-  &#8195;<i>k</i> = 1..4</span>
-  <span class="eqnote">the growth blend: each path's growth over forecast
+  &#8195;<i>k</i> = 1..4{% endset %}
+{%- set blend_note %}the growth blend: each path's growth over forecast
   week <i>k</i> is the geometric mean of the filter's rate at the origin
-  <i>T</i> and its donor's at the matching earlier-season week <i>W</i></span></p>
- <p><span class="math"><i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
-  <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;)</span>
-  <span class="eqnote">new infections per infected per week: the log
+  <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
+{%- set few %}A week with too few donors (30 paths per stream) leaves
+ the filter unchanged.{% endset %}
+{%- set rate %}<i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
+  <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;){% endset %}
+{%- set rate_note %}new infections per infected per week: the log
   growth plus the fixed removal rate 7/3.2, from the filter's medians
-  <i>m</i><sub>0</sub>, <i>m</i><sub>1</sub></span></p>
- <p><span class="math"><i>x</i>&#8242;<sub><i>i,h</i></sub> =
-  <i>x</i><sub><i>i,h</i></sub> &#183; <i>F</i><sub><i>h</i></sub>(<i>d</i><sub><i>i</i></sub>)</span>
-  <span class="eqnote">each sample is rescaled to follow the blended
-  growth, keeping the filter's spread and adding the donors'</span></p>
- <p class="eqnote">A week with too few donors (30 paths per stream) leaves
- the filter unchanged.</p>
+  <i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>{% endset %}
+{%- set rescale %}<i>x</i>&#8242;<sub><i>i,h</i></sub> =
+  <i>x</i><sub><i>i,h</i></sub> &#183; <i>F</i><sub><i>h</i></sub>(<i>d</i><sub><i>i</i></sub>){% endset %}
+{%- set rescale_note %}each sample is rescaled to follow the blended
+  growth, keeping the filter's spread and adding the donors'{% endset %}
+{#- with the kit, the too-few-donors fallback rides the blend's "?" #}
+{%- set blend_kit %}<span class="uk-tt-line">{{ blend_note }}</span><span class="uk-tt-line">{{ few }}</span>{% endset %}
+<div class="eqpanel">
+ {{ _eq(kit, "Growth blend", "dg-eq-blend", blend, blend_kit if kit else blend_note) }}
+ {{ _eq(kit, "Growth rate", "dg-eq-rate", rate, rate_note) }}
+ {{ _eq(kit, "Sample rescale", "dg-eq-rescale", rescale, rescale_note) }}
+ {% if not kit %}<p class="eqnote">{{ few }}</p>{% endif %}
 </div>
 {%- endmacro %}
 
@@ -417,7 +441,7 @@
    parameters. Labels sit in pockets clear of the curves at A+. No marker
    defs, so no uid. #}
 
-{% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30) -%}
+{% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30, kit=false) -%}
 {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
 <svg viewBox="0 0 560 232" role="img"
      aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
@@ -507,79 +531,96 @@
        ({{ season_week_name(phi) }})</tspan></text>
  {% endif %}
 </svg>
-{% if two %}
-<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
- Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
+{# the caption: plain, or with the kit a badge whose "?" holds it #}
+{% set caption %}{% if two %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
  <i>&#966;</i><sub>A</sub> = week {{ phi_a }}, {{ season_week_name(phi_a) }};
  <i>&#966;</i><sub>B</sub> = week {{ phi_b }}, {{ season_week_name(phi_b) }});
- all are fitted per state and week.</p>
-{% else %}
-<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
- Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
+ all are fitted per state and week.{% else %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
  <i>&#966;</i><sub>1</sub> = week {{ phi }}, {{ season_week_name(phi) }});
- both are fitted per state and week.</p>
+ both are fitted per state and week.{% endif %}{% endset %}
+{% if kit %}<p class="md-illus">{% call tips.badge("info", "illustrative values", id="dg-illus" ~ ("2" if two else "1")) %}{{ caption }}{% endcall %}</p>
+{% else %}<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
+ {{ caption }}</p>
 {% endif %}
 {%- endmacro %}
 
 {# ---- defining equations: one styled-text panel per model (no math
    library), placed under the diagram it annotates #}
 
-{% macro eq_pf() -%}
-<div class="eqpanel">
- <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+{% macro eq_pf(kit=false) -%}
+{%- set forcing %}<i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
   exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
-  <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
-  <span class="eqnote">the fitted seasonal forcing: this is the curve the
-  filter bends each week</span></p>
- {{ harmonic() }}
- <p><span class="math">admissions<sub>w</sub> &#8764;
+  <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;){% endset %}
+{%- set forcing_note %}the fitted seasonal forcing: this is the curve the
+  filter bends each week{% endset %}
+{%- set obs %}admissions<sub>w</sub> &#8764;
   NegBin(&#8239;<i>mult</i>&#8202;&#183;&#8202;&#916;<i>H</i><sub>Cum</sub>(<i>w</i>),
-  <i>r</i>&#8239;)</span>
-  <span class="eqnote">the observation mean: ascertained admissions
+  <i>r</i>&#8239;){% endset %}
+{%- set obs_note %}the observation mean: ascertained admissions
   accumulated across the reporting week, the weekly increment of
-  <i>H</i><sub>Cum</sub></span></p>
- <p class="eqnote">Fitted per state: <i>R</i><sub>eff</sub>,
- <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
- Fixed, not fitted: <i>&#947;</i> (sourced), and <i>&#961;</i>,
+  <i>H</i><sub>Cum</sub>{% endset %}
+{%- set fixed %}Fixed, not fitted: <i>&#947;</i> (sourced), and <i>&#961;</i>,
  <i>&#947;</i><sub>H</sub>, <i>&#969;</i> (recorded working assumptions).
  <i>&#961;</i> enters through the accumulator that fills
- <i>H</i><sub>Cum</sub>.</p>
+ <i>H</i><sub>Cum</sub>.{% endset %}
+<div class="eqpanel">
+ {{ _eq(kit, "Seasonal forcing", "dg-eq-forcing", forcing, forcing_note) }}
+ {{ harmonic(kit=kit) }}
+ {{ _eq(kit, "Observation model", "dg-eq-obs", obs, obs_note) }}
+ {% if kit %}
+ {# the parameters as chips, in two rows; the fixed row's "?" says which
+    are sourced and which are recorded assumptions #}
+ <dl class="md-params">
+  <div class="md-params-row"><dt>Fitted per state</dt>
+   <dd><span class="md-par"><i>R</i><sub>eff</sub></span><span class="md-par"><i>&#949;</i><sub>1</sub></span><span class="md-par"><i>&#966;</i><sub>1</sub></span><span class="md-par"><i>mult</i></span><span class="md-par"><i>r</i></span></dd></div>
+  <div class="md-params-row"><dt>Fixed, not fitted{% call tips.tip("dg-eq-fixed", "the fixed parameters") %}{{ fixed }}{% endcall %}</dt>
+   <dd><span class="md-par"><i>&#947;</i></span><span class="md-par"><i>&#961;</i></span><span class="md-par"><i>&#947;</i><sub>H</sub></span><span class="md-par"><i>&#969;</i></span></dd></div>
+ </dl>
+ {% else %}
+ <p class="eqnote">Fitted per state: <i>R</i><sub>eff</sub>,
+ <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
+ {{ fixed }}</p>
+ {% endif %}
 </div>
 {%- endmacro %}
 
-{% macro eq_pf2s() -%}
-<div class="eqpanel">
- <p><span class="math"><i>&#946;</i><sub>s</sub>(<i>t</i>) =
+{% macro eq_pf2s(kit=false) -%}
+{%- set forcing %}<i>&#946;</i><sub>s</sub>(<i>t</i>) =
   <i>&#946;</i><sub>0,s</sub> exp(&#8239;<i>&#949;</i><sub>1</sub>
   cos(&#8239;2&#960;(<i>t</i> &#8722;
   <i>&#966;</i><sub>s</sub>)&#8202;/&#8202;52&#8239;)&#8239;),
-  <i>s</i> &#8712; {A, B}</span>
-  <span class="eqnote">one harmonic form shared by both circuits; each strain
-  fits its own <i>R</i><sub>eff</sub> and phase</span></p>
- {{ harmonic(two=true) }}
- <p><span class="math">admissions<sub>w</sub> &#8764;
+  <i>s</i> &#8712; {A, B}{% endset %}
+{%- set forcing_note %}one harmonic form shared by both circuits; each strain
+  fits its own <i>R</i><sub>eff</sub> and phase{% endset %}
+{%- set adm %}admissions<sub>w</sub> &#8764;
   NegBin(&#8239;<i>mult</i>&#8202;&#183;&#8202;&#916;<i>H</i><sub>Cum</sub>(<i>w</i>),
   <i>r</i>&#8239;), <i>H</i><sub>Cum</sub> = <i>Hadm</i><sub>A</sub> +
-  <i>Hadm</i><sub>B</sub></span>
-  <span class="eqnote">the first likelihood channel: ascertained admissions
+  <i>Hadm</i><sub>B</sub>{% endset %}
+{%- set adm_note %}the first likelihood channel: ascertained admissions
   accumulated across the reporting week, from the one accumulator that sums
-  both circuits</span></p>
- <p><span class="math">typed positives: <i>k</i><sub>A</sub> &#8764;
-  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>
-  <span class="eqnote">the second likelihood channel: the admissions channel
+  both circuits{% endset %}
+{%- set typed %}typed positives: <i>k</i><sub>A</sub> &#8764;
+  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;){% endset %}
+{%- set typed_note %}the second likelihood channel: the admissions channel
   sees only the ascertained total, so typed specimens fit the A/B
-  share</span></p>
+  share{% endset %}
+<div class="eqpanel">
+ {{ _eq(kit, "Seasonal forcing", "dg-eq-forcing2", forcing, forcing_note) }}
+ {{ harmonic(two=true, kit=kit) }}
+ {{ _eq(kit, "Admissions channel", "dg-eq-adm", adm, adm_note) }}
+ {{ _eq(kit, "Strain share channel", "dg-eq-typed", typed, typed_note) }}
 </div>
 {%- endmacro %}
 
-{% macro eq_analogue() -%}
-<div class="eqpanel">
- <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
+{% macro eq_analogue(kit=false) -%}
+{%- set quant %}<i>q</i><sub>h</sub>(<i>&#964;</i>) =
   <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
-  ratios at matched calendar weeks&#8239;)</span>
-  <span class="eqnote">each forecast quantile scales the last observed value
+  ratios at matched calendar weeks&#8239;){% endset %}
+{%- set quant_note %}each forecast quantile scales the last observed value
   by the empirical quantiles of calendar-matched historical growth
-  ratios</span></p>
+  ratios{% endset %}
+<div class="eqpanel">
+ {{ _eq(kit, "Forecast quantiles", "dg-eq-quant", quant, quant_note) }}
 </div>
 {%- endmacro %}
 
