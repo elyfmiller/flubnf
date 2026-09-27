@@ -651,7 +651,7 @@ def test_retro_index_offers_pause_and_stop_while_running():
     # the console's run treatment: bar, readout, estimate basis, quips
     assert 'class="runbar"' in html and 'class="rfill"' in html
     assert 'class="runstat rstat"' in html
-    assert 'class="hint rbasis"' in html
+    assert 'class="rbasis"' in html          # the readout's "?" tip
     assert 'class="quip rquip"' in html
     assert 'src="/static/retro_progress.js"' in html
     assert "GUARD_BUSY" in html

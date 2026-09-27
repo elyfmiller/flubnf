@@ -2,7 +2,8 @@
 {% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/player.js"></script>
 <script src="/static/quips.js"></script>
-<script src="/static/retro_progress.js"></script>{% endblock %}
+<script src="/static/retro_progress.js"></script>
+<link rel="stylesheet" href="/static/tabs/retro.css">{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 {# the player's timeline and captions (playback.week_notes); a context
    without them (an older caller) plays the stored weeks alone #}
@@ -13,14 +14,20 @@
    (the export prints the same, report_season._metrics_html); a figure the
    scores cannot give (a season scored before these metrics) is left out #}
 {% macro tile_more(log_rel, cov) -%}
-{%- if log_rel is not none or cov %}<dl class="tilekv">
+{%- if log_rel is not none or cov %}<dl class="tilekv rt-tilekv">
  {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}</dd>{% endif %}
- {%- if cov %}<dt>coverage 50/80/95%</dt><dd>
+ {%- if cov %}<dt>coverage 50/80/95%</dt><dd class="rt-cov">
   {%- for b in ("50", "80", "95") %}{% set cs = cov_state(cov.get(b), b | int) %}<span class="{{ ('cov-' ~ cs) if cs else 'hint' }}">{{ cov_text(cov.get(b)) }}</span>{{ " · " if not loop.last }}{% endfor %}</dd>{% endif %}
 </dl>{% endif %}
 {%- endmacro %}
-{# the run settings as one line: values first, the long parentheticals
-   left to the tip (the shared renderer, settings_html, prints them) #}
+{# a tile's value with its verdict as an icon too (below 1 beats the
+   baseline), so it never rests on the color alone #}
+{% macro big(v) -%}
+<div class="big rt-big {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict") }}</div>
+{%- endmacro %}
+{# the run settings as a row of facts: values first, the long
+   parentheticals left to the tip (the shared renderer, settings_html,
+   prints them) #}
 {% macro settings_line(pairs) -%}
 {%- set ns = namespace(items=[]) -%}
 {%- for k, v in pairs -%}
@@ -36,7 +43,7 @@
  {%- else %}{% set t = k ~ ' ' ~ v0 %}{% endif -%}
  {%- set ns.items = ns.items + [t] -%}
 {%- endfor -%}
-{{ ns.items | join(' · ') }}
+{{ tips.meta(ns.items, label="Run settings") }}
 {%- endmacro %}
 {# the per-state table's 95% coverage cell and its sort attribute #}
 {% macro cov95(cov) -%}
@@ -53,16 +60,20 @@
 {% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
 {# every link and fetch carries the archive id, so all read the same tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
+{# a replay with modified model settings wears a badge; what was changed
+   is its tip #}
+{% macro knobs_badge() -%}
+{%- if knobs_label %}{{ tips.badge("warn", "modified settings", knobs_label, id="rs-knobs") }}{% endif %}
+{%- endmacro %}
 {% if preparing %}
 {# preparing: scoring, the national aggregate and playback warming run as one
-   background job; poll its status and reload when it lands. No bar: the job
-   has no honest denominator. #}
-<h1><span class="accent">{{ season }}</span>: preparing results {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
+   background job; poll its status and reload when it lands. The bar only
+   slides: the job has no honest denominator. #}
+<div class="rt-title"><h1><span class="accent">{{ season }}</span>: preparing results</h1>{{ knobs_badge() }}</div>
 <div class="card" data-season="{{ season }}">
- <h2>Preparing the season results</h2>
+ {{ tips.heading("Preparing the season results", "rs-prep", "Scoring every stored week, building the US aggregate and warming the player; this runs once and is kept.") }}
  <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
- <p class="hint">Scoring every stored week, building the US aggregate and
-  warming the player; this runs once and is kept.</p>
+ <div class="runbar busy" aria-hidden="true"><div></div></div>
  <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
@@ -102,62 +113,55 @@
  })();
 </script>
 {% else %}
-<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
-{% set imported = imported if imported is defined else {} %}
-{% if archive and imported %}
-{# a replay imported from another machine (app/core/replay_bundle): read
-   only, kept beside this machine's own runs of the season #}
-<p class="banner" role="status" id="imported-banner"><strong>Imported
- from {{ imported.from or "another machine" }}{% if imported.imported_at %} on
- {{ imported.imported_at[:10] }}{% endif %}.</strong> Exported there
- {% if imported.exported_at %}on {{ imported.exported_at[:10] }} {% endif %}from
- {% if imported.source and imported.source != 'live' %}an archived run{% else %}the live season{% endif %};
- read only. <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
-{% elif archive %}
-<p class="banner" role="status"><strong>Archived run{% if archive_when %} from
- {{ archive_when }}{% endif %}.</strong> Set aside when a fresh replay
- started; <a href="/retro/{{ season }}">open the live {{ season }} season</a>.</p>
-{% endif %}
 {# ONE availability flag: with no scores under the chosen convention, every
-   score-describing panel below falls silent together and the banner says
+   score-describing panel below falls silent together and the alert says
    why once. Undefined `figs` (older contexts) is falsy. #}
 {% set unavailable = figs and not figs.available %}
 {# ONE scoring convention per page (two quantities are called relWIS; see
    app/core/relwis): head tiles and per-state table follow it, every figure
-   is labeled, and convention-specific panels say so rather than revert. #}
-{% if figs and figs.convention == 'pairwise' and figs.available %}
-{# the pairwise view is reachable by URL only; placement stays withdrawn #}
-<p class="hint">Pairwise relWIS against the teams that submitted this
- season (jurisdictions only), so it moves with the field; placement is not
- shown (<a href="/methods">Methods</a>).</p>
+   is labeled, and convention-specific panels say so rather than revert.
+   The pairwise view is reachable by URL only and wears a badge; placement
+   stays withdrawn (its toggletip links Methods) #}
+<div class="rt-title"><h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored</h1>{{ knobs_badge() }}
+{%- if figs and figs.convention == 'pairwise' and figs.available %}{{ tips.badge("info", "pairwise relWIS") }}{% call tips.toggletip("rs-pairwise", "the pairwise view", title="Pairwise relWIS") %}<span class="uk-tt-line">Pairwise relWIS against the teams that submitted this season (jurisdictions only), so it moves with the field; placement is not shown (<a href="/methods">Methods</a>).</span>{% endcall %}{% endif %}</div>
+{% set imported = imported if imported is defined else {} %}
+{% set live_link %}<a href="/retro/{{ season }}">Open the live {{ season }} season</a>{% endset %}
+{% if archive and imported %}
+{# a replay imported from another machine (app/core/replay_bundle): read
+   only, kept beside this machine's own runs of the season #}
+{% set imp_title %}Imported from {{ imported.from or "another machine" }}{% if imported.imported_at %} on {{ imported.imported_at[:10] }}{% endif %}.{% endset %}
+{% call tips.alert("info", "Read only.", title=imp_title, id="imported-banner", action=live_link, live="") %}Exported there {% if imported.exported_at %}on {{ imported.exported_at[:10] }} {% endif %}from {% if imported.source and imported.source != 'live' %}an archived run{% else %}the live season{% endif %}; read only: results, player and report as for an archived run.{% endcall %}
+{% elif archive %}
+{% set arch_title %}Archived run{% if archive_when %} from {{ archive_when }}{% endif %}.{% endset %}
+{% call tips.alert("info", "Read only.", title=arch_title, id="archived-banner", action=live_link, live="") %}Set aside when a fresh replay started; the live {{ season }} season holds the current replay.{% endcall %}
 {% endif %}
 {% if unavailable and figs.reason %}
-{# deliberately no fallback to the other convention's numbers #}
-<p class="banner" role="status"><strong>No scores under this
- convention.</strong> {{ figs.reason }}.
- {%- if conv != 'ratio_of_sums' %} The
- {# keeps archive and week, so the reader does not lose their place #}
- <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
- of sums view</a> is always available; on the same cells the two agree to
- within about 0.02.
+{# deliberately no fallback to the other convention's numbers; the
+   ratio of sums view keeps archive and week, so the reader does not lose
+   their place #}
+{% set ros_link %}{% if conv != 'ratio_of_sums' %}<a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">Ratio of sums view</a>{% endif %}{% endset %}
+{% call tips.alert("warn", "", title="No scores under this convention.", id="rs-unavail", action=ros_link, live="") %}{{ figs.reason }}.
+ {%- if conv != 'ratio_of_sums' %} The ratio of sums view is always available; on the same cells the two agree to within about 0.02.
  {%- else %} This is the ratio of sums view; the scores themselves are missing.
- {%- endif %}</p>
+ {%- endif %}{% endcall %}
 {% endif %}
 {% if prog and prog.active %}
-{# live replay, driven by the shared ticker (retro_progress.js) #}
+{# live replay, driven by the shared ticker (retro_progress.js): the run
+   bar and its readout, what the estimate rests on in the readout's tip
+   (.rbasis), a lost connection as a badge #}
 <div class="card season-card" data-season="{{ season }}"
      data-status="{{ prog.status }}" data-active="1"
      data-done="{{ prog.done }}" data-total="{{ prog.total }}"
      data-results="1">
- <h2>{% if prog.status == 'paused' %}Replay paused{% else %}Replay in progress{% endif %}</h2>
+ {{ tips.heading("Replay paused" if prog.status == 'paused' else "Replay in progress", "rs-live",
+                 after=(tips.badge("warn", "paused") if prog.status == 'paused' else tips.badge("pending", "running"))) }}
  <div class="runbar"><div class="rfill" style="width:2%"></div></div>
- <p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
- <p class="hint rbasis"></p>
- {# the settings this replay runs under, from its run record #}
- {{ settings_html(prog.settings) | safe }}
+ <div class="rt-readout"><p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
+  {% call tips.tip("rs-eta", "the estimate") %}<span class="rbasis">{{ ("estimate from " ~ prog.weeks_measured ~ " completed week" ~ ("" if prog.weeks_measured == 1 else "s")) if prog.weeks_measured else "estimate arrives once the first week completes" }}</span>{% endcall %}
+  <span class="rt-stall" hidden>{{ tips.badge("warn", "connection lost", "Connection lost. Numbers paused until the console answers again.", id="rs-stall") }}</span></div>
  {# stop/pause need no confirmation: in-flight fits finish, each is
     checkpointed #}
- <div class="row">
+ <div class="row rt-resume">
   {% if prog.status == 'paused' %}
   <form method="post" action="/retro/{{ season }}/resume"><button class="gold">Resume</button></form>
   {% else %}
@@ -165,76 +169,65 @@
   {% endif %}
   <form method="post" action="/retro/{{ season }}/stop"><button class="quiet">Stop</button></form>
  </div>
+ {# the settings this replay runs under, from its run record #}
+ {% set live_set = settings_html(prog.settings) %}
+ {% if live_set %}{% call tips.fold("Run settings", id="rs-live-set", cls="rsfold") %}{{ live_set | safe }}{% endcall %}{% endif %}
  <p class="quip rquip"></p>
 </div>
 <script>
  // reloads yield to an open guard modal (GUARD_BUSY)
  FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
 </script>
-{% elif prog and ((prog.elapsed_s and prog.elapsed_s >= 1) or prog.added_n) %}
-{# one band: the facts line (wall time, pace, state pills; details in
-   tips) and the report buttons; under it the settings as one muted line,
-   the full list (the shared renderer) in its tip #}
-<div class="rs-band">
-<p class="hint rs-facts">
- {%- if prog.elapsed_s and prog.elapsed_s >= 1 -%}
- Replay wall time {{ prog.elapsed_s | hms }} · {{ prog.done }} weeks
- {%- if prog.mean_s %} · {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}
- {%- if prog.slowest_week %} {{ tips.tip("rs-timing", "the replay's timing", "Mean over " ~ prog.weeks_measured ~ " timed week" ~ ("" if prog.weeks_measured == 1 else "s") ~ "; the slowest, " ~ prog.slowest_week ~ ", took " ~ ("%.0f"|format(prog.slowest_s)) ~ " s.") }}{% endif %}
- {%- endif %}
- {%- if prog.status == 'stopped' %} <span class="pill warn">stopped</span> Run resumes from the last completed week.
- {%- elif prog.status == 'interrupted' %} <span class="pill warn">interrupted</span> Run resumes from the last completed week.{% endif %}
- {%- if prog.added_n and not prog.active %}
- {# the season's week list grew after this replay finished (the hub archive
-    or the shipped snapshots, data/vintages/): a pill, the weeks in its tip #}
- <span class="pill warn" id="weeks-added">{{ prog.added_n }} week{{ "" if prog.added_n == 1 else "s" }} added</span>
- {%- if prog.sealed %} sealed record: a fresh replay runs {{ "it" if prog.added_n == 1 else "them" }}{% else %} Run resumes {{ "it" if prog.added_n == 1 else "them" }}{% endif %}
- {{ tips.tip("rs-added", "the added weeks", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added to the season since this replay finished: " ~ (prog.added | join(", ")) ~ ". " ~ ("This is a sealed record and cannot be resumed; a fresh replay from the Retrospective tab is needed to run " ~ ("it" if prog.added_n == 1 else "them") ~ "." if prog.sealed else "Run on the Retrospective tab resumes this season and runs only " ~ ("that week" if prog.added_n == 1 else "those weeks") ~ "; the completed weeks are kept.")) }}
- {%- endif %}
-</p>
- <p class="row rs-acts">
-  {# the download attribute makes WKWebView download rather than navigate
-     (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
-     button inside the anchor is the app's download idiom (see Output) #}
-  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
-    type="button" style="margin-top:0">Download report</button></a>
-  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
-    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
-  {# the replay bundle (app/core/replay_bundle): one zip of this run's
-     record, scores and weeks, for Import a replay on another machine.
-     Built first (the size goes into the hint), then downloaded the same
-     way as the report #}
-  <button type="button" class="quiet" id="exp-replay" style="margin-top:0"
-    data-season="{{ season }}" data-archive="{{ archive }}"
-    data-href="/retro/{{ season }}/export{{ aq }}"
-    title="One zip of this replay to import on another machine (Retrospective tab)">Export replay</button>
-  <span class="hint" id="exp-replay-hint"></span>
- </p>
-</div>
-<p class="hint rs-settings">{{ settings_line(prog.settings) }}
- {# the full list, one line per setting (a tooltip cannot hold a dl) #}
- {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}{% endcall %}</p>
 {% else %}
+{# one band: the finished replay's facts (labelled values; the timing and
+   the state in tips and badges) beside the report buttons; under it the
+   settings as a row of facts, the full list (the shared renderer's
+   pairs) in its tip #}
+{% set p_timed = prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
+{% set p_facts = prog and (p_timed or prog.added_n or prog.status in ('stopped', 'interrupted')) %}
 <div class="rs-band">
- <p class="row rs-acts">
+ {% if p_facts %}
+ <div class="rs-facts rt-bandfacts">
+  {% if p_timed %}
+  {% call tips.stats("uk-stats--row", label="Replay timing") %}
+   {% call tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") %}Replay wall time {{ prog.elapsed_s | hms }} over {{ prog.done }} weeks{% if prog.mean_s %}, {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}.{% if prog.slowest_week %} Mean over {{ prog.weeks_measured }} timed week{{ "" if prog.weeks_measured == 1 else "s" }}; the slowest, {{ prog.slowest_week }}, took {{ "%.0f"|format(prog.slowest_s) }} s.{% endif %}{% endcall %}
+   {{ tips.stat("Weeks", prog.done) }}
+   {% if prog.mean_s %}{{ tips.stat("Pace", "%.0f"|format(prog.mean_s), "s per week") }}{% endif %}
+  {% endcall %}
+  {% endif %}
+  {% if prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes from the last completed week.", id="rs-state") }}
+  {% elif prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay. Run resumes from the last completed week.", id="rs-state") }}{% endif %}
+  {% if prog.added_n and not prog.active %}
+  {# the season's week list grew after this replay finished (the hub archive
+     or the shipped snapshots, data/vintages/): a badge, the weeks in its tip #}
+  {{ tips.badge("warn", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added to the season since this replay finished: " ~ (prog.added | join(", ")) ~ ". " ~ ("This is a sealed record and cannot be resumed; a fresh replay from the Retrospective tab is needed to run " ~ ("it" if prog.added_n == 1 else "them") ~ "." if prog.sealed else "Run on the Retrospective tab resumes this season and runs only " ~ ("that week" if prog.added_n == 1 else "those weeks") ~ "; the completed weeks are kept."), id="weeks-added") }}
+  {% endif %}
+ </div>
+ {% endif %}
+ <div class="row rs-acts">
   {# the download attribute makes WKWebView download rather than navigate
      (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
      button inside the anchor is the app's download idiom (see Output) #}
   <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
-    type="button" style="margin-top:0">Download report</button></a>
-  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
+    type="button">{{ tips.icon("download") }} Download report</button></a>
+  <button type="button" class="quiet" id="rev-report"
     data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
   {# the replay bundle (app/core/replay_bundle): one zip of this run's
      record, scores and weeks, for Import a replay on another machine.
-     Built first (the size goes into the hint), then downloaded the same
-     way as the report #}
-  <button type="button" class="quiet" id="exp-replay" style="margin-top:0"
+     Built first (its size and name land beside it), then downloaded the
+     same way as the report #}
+  <span class="rt-exp"><button type="button" class="quiet" id="exp-replay"
     data-season="{{ season }}" data-archive="{{ archive }}"
-    data-href="/retro/{{ season }}/export{{ aq }}"
-    title="One zip of this replay to import on another machine (Retrospective tab)">Export replay</button>
-  <span class="hint" id="exp-replay-hint"></span>
- </p>
+    data-href="/retro/{{ season }}/export{{ aq }}">Export replay</button>
+   {{ tips.tip("rs-export", "Export replay", "One zip of this replay (its record, scores and weeks) to import on another machine, under Import a replay on the Retrospective tab.") }}</span>
+  <span class="rt-exp-out" id="exp-replay-hint" aria-live="polite"></span>
+ </div>
 </div>
+{% if p_facts and prog.settings %}
+<div class="rs-settings rt-settings">{{ settings_line(prog.settings) }}
+ {# the full list, one line per setting (a tooltip cannot hold a dl) #}
+ {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}{% endcall %}</div>
+{% endif %}
 {% endif %}
 <script>
  // build the bundle (same builder as the download route), print its size,
@@ -250,11 +243,15 @@
       .then(function(r){if(!r.ok)return r.text().then(function(m){throw new Error(m||'export unavailable');});
         return r.json();})
       .then(function(d){
-        h.textContent=d.size_h+' · '+d.name;
+        // the bundle's size and name as a badge (FluBNFUI, tips.js)
+        var ok=d.size_h+' · '+d.name;
+        if(window.FluBNFUI)h.innerHTML=FluBNFUI.badge('ok',ok);else h.textContent=ok;
         var a=document.createElement('a');a.href=b.dataset.href;a.download=d.name;
         document.body.appendChild(a);a.click();a.remove();
         b.disabled=false;b.textContent=t;})
-      .catch(function(e){h.textContent=e.message;b.disabled=false;b.textContent=t;});
+      .catch(function(e){
+        if(window.FluBNFUI)h.innerHTML=FluBNFUI.badge('error',e.message);else h.textContent=e.message;
+        b.disabled=false;b.textContent=t;});
   });
  })();
 </script>
@@ -278,23 +275,52 @@
   });
  })();
 </script>
-{# the verdict: one row of tiles; the cumulative chart rides the player's
-   side column, where a marker follows the playback #}
+{# the verdict: a heading whose "i" explains the tiles' second lines (log
+   scale, coverage and its colors' key: report_season.METRICS_NOTE and
+   COV_LEGEND) and what the page leaves out, then one row of tiles. Each
+   tile names its convention and cells in the "?" beside its title; the
+   cumulative chart rides the player's side column. With no scores yet the
+   tiles give way to an empty state, or to the scoring failure #}
+{% set tm = namespace(more=false, cov=false, us=false) %}
+{% for m in heads %}{% set d = (figs.detail.get(m) if figs and figs.detail else None) %}{% if d and d.get('log_rel') is not none %}{% set tm.more = true %}{% endif %}{% if d and d.get('cov') %}{% set tm.cov = true %}{% endif %}{% endfor %}
+{% if us_row %}{% for m in season_models %}{% if us_row[m] %}{% set tm.us = true %}{% endif %}{% if us_row[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_row[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
+{% set score_error = score_error if score_error is defined else "" %}
+{% set unsettled = unsettled if unsettled is defined else false %}
+{% if not unavailable and (heads or tm.us or score_error or unsettled or pooled_note) %}
 <div class="verdict">
+ {# a sealed record scored under the earlier cell rule says which figures
+    read it (scoring.earlier_rule_note), as a badge beside the heading #}
+ {% set rule_badge = tips.badge("info", "earlier cell rule", rule_note, id="rs-rule") if rule_note else "" %}
+ {% call tips.heading("Season scores", "rs-scores", rich=True, tip_label="the season scores", cls="rt-sec-h", after=rule_badge) %}
+  {%- if tm.more or tm.cov %}<span class="uk-tt-line">{{ live_scores("metrics") }}</span>{% endif %}
+  {%- if tm.cov %}<span class="uk-tt-line"><span class="pblegend">{{ live_scores("legend") }}</span></span>{% endif %}
+  {#- no tiles: the pooled note rides here, not on a first tile #}
+  {%- if pooled_note and not heads %}<span class="uk-tt-line">{{ pooled_note }}</span>{% endif %}
+  {#- the national series is ratio-of-sums only; pairwise is jurisdictions only #}
+  {%- if conv == 'pairwise' %}<span class="uk-tt-line">The US national row is not shown under this convention; it is on the ratio of sums view.</span>{% endif %}
+ {% endcall %}
+ {% if score_error %}
+ {# show the failure, never pass it off as "truth not settled" #}
+ {% set errc %}<code>{{ score_error }}</code>{% endset %}
+ {% call tips.alert("error", errc, title="Scoring failed.", id="rs-scorefail") %}The fitted forecasts below are intact; fix the scoring input (usually the FluSight hub clone, via the Data tab) and reload this page.{% endcall %}
+ {% elif unsettled and not heads %}
+ {{ tips.empty("No scoreable weeks yet", "clock", tiptext="Truth for these forecast dates has not settled, so relWIS arrives later; the weekly maps below are available now.", id="rs-unsettled") }}
+ {% endif %}
+ {% if heads or tm.us %}
 <div class="grid2 tiles4">
  {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
  {% set d = (figs.detail.get(m) if figs and figs.detail else None) %}
- <div class="card"><h2>{{ model_name(m) }}</h2><div class="big
-   {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
+ <div class="card rt-tile"><div class="rt-tile-h"><h2>{{ model_name(m) }}</h2>
+   {#- the convention label rides with every number. The cell count is
+       printed; `d`'s pairwise rank and field size are deliberately not
+       (placement stays withdrawn, see Methods) #}
+   {% call tips.tip("rs-tile-" ~ loop.index, model_name(m) ~ " score") %}relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
+   {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cell{{ "" if d.n_cells == 1 else "s" }}){% endif %}.
+   {%- if loop.first and pooled_note %} {{ pooled_note }}{% endif %}{% endcall %}</div>
+   {{ big(v) }}
    {# log scale and coverage on the same cells (ratio of sums only) #}
-   {{ tile_more(d.get('log_rel') if d else None, d.get('cov') if d else None) }}
-   {# the convention label rides with every number. The cell count is
-      printed; `d`'s pairwise rank and field size are deliberately not
-      (placement stays withdrawn, see Methods) #}
-   <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
-   {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cell{{ "" if d.n_cells == 1 else "s" }}){% endif %}
-   {%- if loop.first and pooled_note and not unavailable %} {{ tips.tip("rs-pooled", "the pooled figure", pooled_note) }}{% endif %}</p></div>
+   {{ tile_more(d.get('log_rel') if d else None, d.get('cov') if d else None) }}</div>
  {% endfor %}
  {# the national tile ALWAYS names its provenance (fitted vs sum of
     states); it is outside the pooled headline by policy. A fitted US pf
@@ -302,43 +328,27 @@
     while pf wears the Oracle SIHRS name #}
  {% for m in season_models %}{% if us_row and us_row[m] %}
  {% set pf_plain = m == 'pf' and us_row.pf_note and 'Oracle' in model_name('pf') %}
- <div class="card"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2><div class="big
-   {% if us_row[m] < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row[m]) }}</div>
-   {{ tile_more((us_row.log_rel or {}).get(m), (us_row.cov or {}).get(m)) }}
-   <p class="hint">relWIS vs the FluSight baseline;
-   {% if us_row.fitted %}{% if pf_plain %}the particle filter without the Oracle step, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
+ <div class="card rt-tile"><div class="rt-tile-h"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2>
+   {% call tips.tip("rs-us-" ~ m, us_row.short_label ~ " " ~ model_name(m) ~ " score") %}relWIS vs the FluSight baseline;
+   {% if us_row.fitted %}{% if pf_plain %}the particle filter without the Oracle step, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}.{% endcall %}</div>
+   {{ big(us_row[m]) }}
+   {{ tile_more((us_row.log_rel or {}).get(m), (us_row.cov or {}).get(m)) }}</div>
  {% endif %}{% endfor %}
 </div>
+ {% endif %}
 </div>
-</div>
-{# the notes under the verdict, across the width #}
-{# the tiles' second line explained once, with the coverage colors' key
-   (the player's legend line): report_season.METRICS_NOTE and COV_LEGEND #}
-{% set tm = namespace(more=false, cov=false) %}
-{% for m in heads %}{% set d = (figs.detail.get(m) if figs and figs.detail else None) %}{% if d and d.get('log_rel') is not none %}{% set tm.more = true %}{% endif %}{% if d and d.get('cov') %}{% set tm.cov = true %}{% endif %}{% endfor %}
-{% if us_row %}{% for m in season_models %}{% if us_row[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_row[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
-{% if (tm.more or tm.cov) and not unavailable %}<p class="hint rs-notes">Log scale and coverage, explained {% call tips.tip("rs-metrics", "the tiles' figures") %}{{ live_scores("metrics") }}{% if tm.cov %} <span class="pblegend">{{ live_scores("legend") }}</span>{% endif %}{% endcall %}</p>{% endif %}
-{# a sealed record scored under the earlier cell rule says which figures
-   read it (scoring.earlier_rule_note) #}
-{% if rule_note and not unavailable %}<p class="hint">{{ rule_note }}</p>{% endif %}
-{# no tiles under this convention -> no notes about them; the note rides
-   the first head tile as its tip, and stands as a line only without one #}
-{% if pooled_note and not unavailable and not heads %}<p class="hint">{{ pooled_note }}</p>{% endif %}
-{% if conv == 'pairwise' and not unavailable %}
-{# the national series is ratio-of-sums only; pairwise is jurisdictions only #}
-<p class="hint">The US national row is not shown under this convention;
- it is on the ratio of sums view.</p>
 {% endif %}
 
-<div class="card playcard"><h2>Season player</h2>
+<div class="card playcard">
+ {{ tips.heading("Season player", "rs-player", "Play steps through the season a week at a time at the chosen speed; drag the scrubber to any week. The left and right arrow keys step back and forward a week.") }}
  {# ONE control row: transport, speed, scrubber, week label and the two
     views as a segmented pair; it wraps on a phone #}
  <div class="row playerbar">
-  <button type="button" class="quiet" id="pb-prev" title="Previous week (left arrow)"
+  <button type="button" class="quiet" id="pb-prev"
     aria-label="Previous week">&#9664;</button>
   {# the play button's aria-label is state-managed by the shared player #}
   <button type="button" class="quiet" id="pb-play">&#9654; Play</button>
-  <button type="button" class="quiet" id="pb-next" title="Next week (right arrow)"
+  <button type="button" class="quiet" id="pb-next"
     aria-label="Next week">&#9654;</button>
   <select id="pb-speed" aria-label="Playback speed">
    <option value="500">0.5 s / week</option>
@@ -363,14 +373,14 @@
  <div class="playgrid">
   <div class="playview">
    {# a no-data week keeps the last map, greyed, under its note #}
-   <div id="view-map" class="playmap"><p class="hint" id="map-note" hidden
-     aria-live="polite"></p>{{ map_html | safe }}</div>
+   <div id="view-map" class="playmap"><p class="rt-note" id="map-note" hidden
+     aria-live="polite">{{ tips.icon("info", cls="rt-note-i") }}<span class="rt-note-t"></span></p>{{ map_html | safe }}</div>
    <div id="view-fc" hidden>
     <div class="row fdrow">
      <select id="fd-loc" aria-label="Forecast location"
        style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
-     <label class="ck" style="margin:0"><input type="checkbox" id="fd-lock"
-       checked> Lock axes</label>
+     <span class="lblrow rt-lock"><label class="ck" style="margin:0"><input type="checkbox" id="fd-lock"
+       checked> Lock axes</label>{{ tips.tip("rs-lock", "locked axes", "Keeps each location's axes fixed through playback, so the frames never jump. A zoom or pan by hand overrides them until a double click, another location, or this box.") }}</span>
      <div class="fdmodels" id="fd-models"></div>
     </div>
     {# the reserved height follows the viewport (the host's plotHeight) #}
@@ -383,26 +393,21 @@
       the export's too (report_season.LIVE_HEADING, LIVE_SCORES_NOTE). The
       explanation and the coverage colour key sit in the "?" tip; the
       player fills the key (player.js covLegend) #}
-   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{% call tips.tip("rs-live", "live scores") %}{{ live_scores("note") }} <span class="pblegend" id="pb-legend"></span>{% endcall %}
+   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{% call tips.tip("rs-live", "live scores") %}{{ live_scores("note") }} <span class="pblegend" id="pb-legend"></span><span class="ncline">relWIS scale: natural or log. The CDC FluSight dashboard reports both.</span>{% endcall %}
+   {#- only when there ARE pairwise scores to be confused with #}
+   {%- if conv == 'pairwise' and not unavailable %}{{ tips.icon_tip("rs-live-pw", "the player's figures", "info", "The player's figures are ratios of sums, not the pairwise scores above; on the same cells the two agree to within about 0.02.", state="info") }}{% endif %}
    {# the scale switch, written by the player, inline with the heading #}
    <div class="pbscale" id="pb-scale"></div></div>
    {# the player writes the table head and body (player.js renderStats) #}
    <div class="statscroll"><table id="pb-stats" class="pbstats"><thead></thead>
     <tbody></tbody></table></div>
    <p class="hint" id="pb-status" aria-live="polite"></p>
-   <p class="hint" id="pb-offhint" hidden>official comparators appear after
-    Update data</p>
-   {# only when there ARE pairwise scores to be confused with #}
-   {% if conv == 'pairwise' and not unavailable %}
-   <p class="hint">The player's figures are ratios of sums, not the
-    pairwise scores above; on the same cells the two agree to within about
-    0.02.</p>
-   {% endif %}
+   {# a season with no official submission at all: where to get them #}
+   <div id="pb-offhint" hidden>{{ tips.alert("info", "Official comparators appear after Update data.", id="rs-offhint", action='<a href="/data">Data tab</a>' | safe, live="") }}</div>
 <div class="cumwrap" id="cumwrap"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
 {# a cumulative line is a ratio of sums by construction; no pairwise form #}
-<p class="hint">Not available under this convention: the curve is a
- running ratio of sums.</p>
+{{ tips.empty("Not available under this convention", "info", tiptext="The curve is a running ratio of sums.", id="rs-cum-pw", compact=True) }}
 {% elif curves %}
 {# one line per scored model in its member colour; the y range hugs the data
    (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
@@ -452,9 +457,9 @@
  <text x="655" y="288" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
  {% endif %}
 </svg>
-{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+{% if curves | length > 1 or '' not in curves %}{% set lg = namespace(items=[]) %}{% for m in curves %}{% set lg.items = lg.items + [('var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)'), model_name(m), 'line')] %}{% endfor %}{{ tips.legend(lg.items, label="Cumulative relWIS lines", id="rs-cum-lg") }}{% endif %}
 {% else %}
-<p class="hint">Arrives with the first scored week.</p>
+{{ tips.empty("Arrives with the first scored week", "clock", id="rs-cum-none", compact=True) }}
 {% endif %}</div>
   </div>
  </div>
@@ -467,27 +472,25 @@
    sort (aria-pressed header buttons; a second press flips) and a name
    filter over data-* attributes; rows only reorder and hide. Only scores
    >= 1 (lost to the baseline) are colored. #}
+{# 95% coverage beside each member's relWIS when the scores carry it (a
+   season scored before these metrics, or the pairwise view, has relWIS
+   columns only). Coverage is colored only when off: too narrow in the
+   alarm color, too wide in the warning color, italic (cov_state, the
+   player's rule; cov95) #}
+{% set sc = namespace(on=false) %}
+{% for r in states %}{% for m in season_models %}{% if ((r.detail or {}).get(m) or {}).get('cov') %}{% set sc.on = true %}{% endif %}{% endfor %}{% endfor %}
+{% set show_cov = sc.on %}
 <details class="ledgerfold" id="statefold" open>
- <summary><h2 style="display:inline">Per-state scores</h2>
-  <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
- {# 95% coverage beside each member's relWIS when the scores carry it (a
-    season scored before these metrics, or the pairwise view, has relWIS
-    columns only). Coverage is colored only when off: too narrow in the
-    alarm color, too wide in the warning color, italic (cov_state, the
-    player's rule; cov95) #}
- {% set sc = namespace(on=false) %}
- {% for r in states %}{% for m in season_models %}{% if ((r.detail or {}).get(m) or {}).get('cov') %}{% set sc.on = true %}{% endif %}{% endfor %}{% endfor %}
- {% set show_cov = sc.on %}
- {# the convention, named once for every cell #}
- <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
- {% if conv == 'pairwise' %}Each jurisdiction is scored against its own
-  field, a figure CDC does not publish.{% endif %}
- {% if show_cov %}{{ live_scores("states") }}{% endif %}</p>
- <div class="row" style="margin:.5rem 0 .3rem">
+ {# a plain h2 in the summary (no div there), the convention for every
+    cell in its "?", the count as a badge #}
+ <summary><h2 style="display:inline">Per-state scores</h2>{% call tips.tip("rs-states", "the per-state scores") %}relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
+ {%- if conv == 'pairwise' %} Each jurisdiction is scored against its own field, a figure CDC does not publish.{% endif %}
+ {%- if show_cov %} {{ live_scores("states") }}{% endif %}{% endcall %}
+  {{ tips.badge("neutral", states|length ~ " state" ~ ('' if states|length == 1 else 's') ~ " scored") }}</summary>
+ <div class="row rt-filter">
   <input type="search" id="sf-filter" placeholder="Filter by state name"
-         aria-label="Filter rows by state name"
-         style="width:auto;min-width:min(230px,45vw);max-width:100%">
-  <span class="hint" id="sf-count" aria-live="polite"></span>
+         aria-label="Filter rows by state name">
+  <span class="rt-count" id="sf-count" aria-live="polite"></span>
  </div>
  {# the rows are laid out in up to three side-by-side column groups at
     wide widths (the script below moves rows into copies of this table;
@@ -527,7 +530,9 @@
  {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% if show_cov %}{{ cov95_data(m, (us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}>
-  <td>{{ us_row.short_label }}</td>
+  <td>{{ us_row.short_label }}{% call tips.tip("rs-usrow", "the US row") %}<span class="ncline">{{ us_row.note }}</span>
+   {#- the fitted US row of Oracle SIHRS had no Oracle step #}
+   {%- if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="ncline">{{ us_row.pf_note }}</span>{% endif %}{% endcall %}</td>
   {% for m in season_models %}
   <td class="num{% if show_cov %} g1{% endif %}{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
    {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>
@@ -542,13 +547,6 @@
   {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody></table>
  </div>
-{% if us_row and (us_row.pf or us_row.analogue) %}
-<p class="hint">{{ us_row.note }}</p>
-{# the fitted US row of Oracle SIHRS had no Oracle step #}
-{% if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}
-<p class="hint">{{ us_row.pf_note }}</p>
-{% endif %}
-{% endif %}
 </details>
 <script>
  // the fold state persists (open by default); sort and filter are
@@ -760,6 +758,8 @@
    const w = wantWeek;
    const host = document.getElementById('view-map');
    const note = document.getElementById('map-note');
+   // the line beside the note's icon (the whole note on an older page)
+   const noteT = note && (note.querySelector('.rt-note-t') || note);
    const svg = host.querySelector('svg#usmap');
    if(w == null || !svg || host.dataset.week === w) return;
    const st = SWAP[w];
@@ -771,7 +771,7 @@
    // a no-data week: the last map stays, greyed, under the note
    host.classList.toggle('nodata', noData(w));
    if(st === null){
-     if(note){note.textContent = noData(w) ? NOTES[w] + ' (' + w + ')'
+     if(note){noteT.textContent = noData(w) ? NOTES[w] + ' (' + w + ')'
                                           : 'map unavailable for ' + w;
               note.hidden = false;}
      return;
@@ -780,11 +780,11 @@
    // under its name)
    const pick = (CURM && st[CURM]) ? st[CURM] : st[Object.keys(st)[0]];
    if(!pick || !pick.states){
-     if(note){note.textContent = 'map unavailable for ' + w; note.hidden = false;}
+     if(note){noteT.textContent = 'map unavailable for ' + w; note.hidden = false;}
      return;
    }
    if(CURM && !st[CURM] && note){
-     note.textContent = (MNAMES[CURM] || CURM) + ' was not stored for ' + w
+     noteT.textContent = (MNAMES[CURM] || CURM) + ' was not stored for ' + w
                         + '; showing ' + (MNAMES[Object.keys(st)[0]] || Object.keys(st)[0]);
      note.hidden = false;
    } else if(note) note.hidden = true;
@@ -825,6 +825,8 @@
    // marks the placeholder weeks: truth only, no forecast, scores carried
    noDataNote: NO_DATA_NOTE,
    mode: 'live',
+   // the scale switch's hint rides the live-scores "?" tip here
+   scaleNote: false,
    // the plot fills the viewport's height (nau.css .fdplot reserves it)
    plotHeight: () => Math.max(360, Math.min(720, Math.round(innerHeight * .55))),
    // server-side, so the toggles are right before the first payload

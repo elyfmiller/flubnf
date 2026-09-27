@@ -1,8 +1,21 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
 {% block head %}<script src="/static/quips.js"></script>
-<script src="/static/retro_progress.js"></script>{% endblock %}
+<script src="/static/retro_progress.js"></script>
+<link rel="stylesheet" href="/static/tabs/retro.css">{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
-<h1>Retrospective</h1>
+{# a relWIS verdict never rests on color alone: an icon that says it too
+   (below 1 beats the baseline) #}
+{% macro verdict(v) -%}
+{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}
+{%- endmacro %}
+{# an archived run's headline: the model's name and its figure (the same
+   encoding as the season facts), with the verdict icon #}
+{% macro rel_item(name, v) -%}
+<span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
+{%- endmacro %}
+{% if own_tab %}<h1>Retrospective</h1>{% else %}
+{{ tips.heading("Retrospective", "rt-page", "Replays a past season week by week on the data each Saturday had, then scores against settled truth.", level=1, cls="rt-h1") }}
+{% endif %}
 {# the data source as two tabs, as on Forecast: the FluSight hub's
    seasons, or your own datasets (_dataset_replay.html); plain links, so
    Back, bookmarks and no-script work #}
@@ -11,14 +24,11 @@
  <a href="/retro?tab=own"{% if own_tab %} aria-current="page"{% endif %}>Your data</a>
 </nav>
 {% if own_tab %}{% include "_dataset_replay.html" %}{% else %}
-<p class="sub">Replays a past season week by week on the data each Saturday
-had, then scores against settled truth.</p>
+{# platform-aware (templating.py _engine_setup_hint): never a macOS-only
+   filename. What to do now, one line across the page; the how in its tip #}
+{% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
 <div class="cols">
- <div><div class="card"><h2>Settings</h2>
-  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
-  {% if not engine_ok %}<p class="warn">The Oracle SIHRS needs the
-  particle-filter engine: {{ engine_setup_hint() }}. Groundhog only works
-  without it.</p>{% endif %}
+ <div><div class="card rt-runcard"><h2>Settings</h2>
   <form method="post" action="/retro/run">
    <label for="rt-season">Season</label>
    <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -42,7 +52,7 @@ had, then scores against settled truth.</p>
      <option value="1">fit US national too (default)</option>
      <option value="0">states only</option></select>
    {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.", for_="rt-width-in") }}
-   <input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}">
+   <span class="uk-affix"><input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
    {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.", for_="retro-engine") }}
    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
@@ -68,18 +78,28 @@ had, then scores against settled truth.</p>
    <input type="hidden" name="confirm" value="">
    {# data-guard checks /api/busy (a paused season counts as busy) and offers
       stop-and-proceed; data-startover asks resume/archive/discard when the
-      season has completed weeks #}
-   <button class="gold" data-guard="retro-run" data-startover="1"
-     id="retro-run-btn" {% if not engine_ok %}disabled{% endif %}>
-     Run retrospective</button>
+      season has completed weeks. Without the engine only the Groundhog-only
+      preset can run: the button is off, its "?" says why #}
+   {{ tips.reason_button("Run retrospective", "rt-run-why",
+        "The Oracle SIHRS needs the particle-filter engine: choose Groundhog only, or install the engine (the alert above the page says how).",
+        off=not engine_ok, cls="gold", data={"guard": "retro-run", "startover": "1"},
+        attrs='id="retro-run-btn"' | safe) }}
    {% if not engine_ok %}
    <script>
     (function(){
-      // no engine venv: only the Groundhog-only preset can run
+      // no engine venv: only the Groundhog-only preset can run; the "?"
+      // beside the button carries the reason (FluBNFUI, deferred)
       var e=document.getElementById('retro-engine'),
-          b=document.getElementById('retro-run-btn');
-      function sync(){ b.disabled = (e.value === 'pf'); }
-      e.addEventListener('change', sync); sync();
+          b=document.getElementById('retro-run-btn'),
+          why=document.getElementById('tip-rt-run-why');
+      var reason=why?why.textContent:'';
+      function sync(){
+        var off=(e.value==='pf');
+        if(window.FluBNFUI)FluBNFUI.setReason(b,off?reason:null);
+        else b.disabled=off;
+      }
+      e.addEventListener('change', sync);
+      document.addEventListener('DOMContentLoaded', sync);
     })();
    </script>
    {% endif %}
@@ -92,23 +112,23 @@ had, then scores against settled truth.</p>
        c.style.display=(s.value==='custom')?'':'none';});
    })();
   </script>
-  {# a replay bundle from another machine (a season page's Export replay):
-     lands as a read-only archived run of its season, never in the live
-     tree. The file picker, or a path when the file is already here #}
-  <h3 class="rt-arch-h">Import a replay</h3>
+ </div>
+ {# a replay bundle from another machine (a season page's Export replay):
+    lands as a read-only archived run of its season, never in the live
+    tree. The file picker, or a path when the file is already here #}
+ <div class="card rt-importcard">
+  {{ tips.heading("Import a replay", "rt-import-h", "Imported replays are read only: results, player and report as for an archived run, and Delete removes them.") }}
   <form method="post" action="/retro/import" enctype="multipart/form-data"
     id="rt-import">
-   <label for="rt-import-file">Replay bundle (.flubnf-replay.zip)</label>
+   {{ tips.label("Replay bundle", "rt-import-f", "A .flubnf-replay.zip file, made by Export replay on another machine's season page.", for_="rt-import-file") }}
    <input type="file" name="file" id="rt-import-file"
      accept=".zip,.flubnf-replay.zip,application/zip">
    <label for="rt-import-path">or its path on this machine</label>
    <input type="text" name="path" id="rt-import-path"
      placeholder="/Users/you/Downloads/2025-26-FluBNF-replay-….flubnf-replay.zip">
-   <label class="ck"><input type="checkbox" name="replace" value="1">
-    replace a copy already imported from the same export</label>
+   <div class="lblrow"><label class="ck" for="rt-import-rep"><input type="checkbox" name="replace" value="1" id="rt-import-rep"> Replace an earlier import</label>
+    {{ tips.tip("rt-import-rep", "replacing an import", "Replace a copy already imported from the same export.") }}</div>
    <button class="quiet">Import replay</button>
-   <p class="hint">Imported replays are read only: results, player and
-    report as for an archived run, and Delete removes them.</p>
   </form>
  </div></div>
  <div>
@@ -117,66 +137,81 @@ had, then scores against settled truth.</p>
        data-status="{{ s.status }}" data-active="{{ 1 if s.active else 0 }}"
        data-done="{{ s.done }}" data-total="{{ s.total }}"
        data-results="{{ 1 if s.done > 0 else 0 }}">
-   {# a scored complete season prints its relWIS instead of a 100% bar; a
+   {# a scored complete season prints its relWIS instead of a bar; a
       finished replay whose season gained weeks afterwards (s.added_n) keeps
-      its score and says what Resume would run #}
+      its score and its badge says what Resume would run #}
    {% set s_complete = (s.rel is defined) and (s.rel is not none)
       and s.total and (s.done >= s.total or s.added_n) and not s.active %}
-   {# ONE band: the season, its status as a pill, the facts (weeks, the
-      headline scores, wall time) and the Results button #}
+   {% set sid = s.name | replace(".", "-") %}
+   {# ONE band: the season, its state as badges (a word and an icon, the
+      why in each tip) and the Results button #}
    <div class="sband">
     <h2>{{ s.name }}</h2>
-    {# the status word inside the pill, never the colour alone #}
-    {% if s.status == 'running' %}<span class="pill st warn">running</span>
-    {% elif s.status == 'stopping' %}<span class="pill st warn" title="stopping after the fits in flight">stopping</span>
-    {% elif s.status == 'paused' %}<span class="pill st warn">paused</span>
-    {% elif s.status == 'interrupted' %}<span class="pill st bad" title="the application closed mid-replay">interrupted</span>
-    {% elif s.status == 'stopped' %}<span class="pill st">stopped</span>
-    {% elif s.status == 'done' %}<span class="pill st ok">complete</span>
-    {% elif s.status and s.status.startswith('error') %}<span class="pill st bad">{{ s.status }}</span>
+    {% if s.status == 'running' %}{{ tips.badge("pending", "running") }}
+    {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping", "The replay is stopping after the fits in flight; each finished fit is checkpointed.", id="rt-st-" ~ sid) }}
+    {% elif s.status == 'paused' %}{{ tips.badge("warn", "paused") }}
+    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay. Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
+    {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
+    {% elif s.status == 'done' %}{{ tips.badge("ok", "complete") }}
+    {% elif s.status and s.status.startswith('error') %}{{ tips.badge("error", "error", s.status, id="rt-st-" ~ sid) }}
+    {% elif not s.total %}{{ tips.badge("neutral", "no hub weeks yet", "The FluSight hub has no weeks of this season yet; Update data on the Data tab fetches them.", id="rt-st-" ~ sid) }}
+    {% elif not s.active and s.done == 0 %}{{ tips.badge("neutral", "not replayed") }}
     {% endif %}
-    {# .rcount is repainted by the ticker with .rstat, so they never disagree;
-       on a live card the run bar's .rstat states it, so this copy is hidden #}
-    <span class="hint sfacts"><span class="rcount"{% if s.active %} hidden{% endif %}>{{ "%d/%d weeks"|format(s.done, s.total) if (s.total and (s.done > 0 or s.status)) or s.active else ("Not replayed yet" if s.total else "no hub weeks yet") }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
-     {# the convention travels with the score: every relWIS on this page is
-        the ratio of sums (the sealed numbers' convention). One headline per
-        shipped model (PF first); a card with only `rel` prints it unnamed #}
-     {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
-     {# pf is named for THIS card's tree (s.pf_name, templating._names_for_root):
-        sealed or pre-Oracle trees hold the particle filter alone #}
-     {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
-     {% if s.elapsed_s and s.elapsed_s >= 1 and not s.active %}
-     {# finished replays only (live ones tick below); a sub-second record
-        predates timing and would read as a fabricated zero, so say nothing #}
-     &middot; <span class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</span>
-     {% endif %}</span>
-    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
+    {% if s.seal %}{{ tips.badge("info", "sealed", s.seal_label, id="rt-seal-" ~ sid) }}{% endif %}
+    {% if s.status == 'done' and s.added_n %}
+    {% call tips.badge("warn", s.added_n ~ " week" ~ ("" if s.added_n == 1 else "s") ~ " added", id="rt-added-" ~ sid) %}{{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}.{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}.{% endif %}{% endcall %}
+    {% endif %}
+    {% if s.done > 0 %}<a class="rt-go" href="/retro/{{ s.name }}"><button class="quiet" type="button">Results →</button></a>{% endif %}
    </div>
    {% if s.active %}
-   {# live replay: the console's run bar, driven by the ticker #}
+   {# live replay: the console's run bar and its readout, driven by the
+      ticker; what the estimate rests on is the readout's tip (.rbasis),
+      a lost connection a badge. .rcount follows the readout (hidden) #}
+   <span class="rcount" hidden>{{ "%d/%d weeks"|format(s.done, s.total) }}</span>
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
-   <p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
-   <p class="hint rbasis"></p>
+   <div class="rt-readout"><p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
+    {% call tips.tip("rt-eta-" ~ sid, "the estimate") %}<span class="rbasis">{{ ("estimate from " ~ s.weeks_measured ~ " completed week" ~ ("" if s.weeks_measured == 1 else "s")) if s.weeks_measured else "estimate arrives once the first week completes" }}</span>{% endcall %}
+    <span class="rt-stall" hidden>{{ tips.badge("warn", "connection lost", "Connection lost. Numbers paused until the console answers again.", id="rt-stall-" ~ sid) }}</span></div>
    {% elif not s_complete and s.total and s.done > 0 %}
-   {# a season never replayed shows one line, not an empty bar #}
-   <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
+   {# an unfinished (or unscored) replay: how far it got #}
+   {{ tips.progress("Weeks replayed", s.done, s.total, "%d/%d weeks"|format(s.done, s.total), id="rt-prog-" ~ sid) }}
    {% endif %}
-   {# what the status means for Run, one line, only when there is one #}
-   {% if s.status == 'stopped' and s.stop_reason %}<p class="hint"><span class="warn">{{ s.stop_reason }}</span></p>
-   {% elif s.status == 'stopped' %}<p class="hint">Run resumes it from the last completed week.</p>
-   {% elif s.status == 'done' and s.added_n %}<p class="hint"><span class="warn">{{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}{% endif %}</span></p>
+   {% if not s.active and s.done > 0 %}
+   {# the facts: weeks, one headline per shipped model (PF first) and the
+      wall time, each a label and a value; the convention and the timing
+      detail in the tips. pf is named for THIS card's tree (s.pf_name):
+      sealed or pre-Oracle trees hold the particle filter alone #}
+   {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
+   {% set s_timed = s.elapsed_s and s.elapsed_s >= 1 %}
+   {% if s_complete or s_timed %}
+   {% call tips.stats("uk-stats--row rt-facts", label=s.name ~ " facts") %}
+    {% if s_complete %}{{ tips.stat("Weeks", "%d/%d"|format(s.done, s.total)) }}
+    {% for m, v in s_rels.items() %}
+    {% set mname = (s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) if m else '' %}
+    {{ tips.stat((mname ~ ' ') ~ 'relWIS' if mname else 'relWIS', "%.3f"|format(v),
+                 tiptext=("relWIS vs FluSight baseline, ratio of sums: below 1 beats the baseline." if loop.first else ""),
+                 id="rt-rel-" ~ sid ~ "-" ~ (m or "x"), state=("ok" if v < 1 else "error"),
+                 after=verdict(v)) }}
+    {% endfor %}{% endif %}
+    {# finished replays only (live ones tick above); a sub-second record
+       predates timing and would read as a fabricated zero, so say nothing #}
+    {% if s_timed %}{% call tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) %}total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}{% endcall %}{% endif %}
+   {% endcall %}
    {% endif %}
+   {% endif %}
+   {# why the season stopped on its own (an engine build changed): act now #}
+   {% if s.status == 'stopped' and s.stop_reason %}{{ tips.alert("warn", s.stop_reason, id="rt-stop-" ~ sid, live="") }}{% endif %}
    {# settings from the run record (absent for sealed runs, which predate
       it), folded: the band above carries what a reader scans for #}
    {% set s_settings = settings_html(s.settings) %}
    {% if s_settings %}
-   <details class="rsfold"><summary>Run settings</summary>{{ s_settings | safe }}</details>
+   {% call tips.fold("Run settings", id="rt-set-" ~ sid, cls="rsfold") %}{{ s_settings | safe }}{% endcall %}
    {% endif %}
    {% if not s.active and s.resume_fields %}
    {# one-click resume from the run record's settings: completed weeks are
       kept and an interrupted week refits only the cells that never ran.
       Same guard and server checks as the form; no record, no button. #}
-   <div class="row">
+   <div class="row rt-resume">
     <form method="post" action="/retro/run" class="resume-run">
      {% for k, v in s.resume_fields.items() if k != "custom_locations" %}
      <input type="hidden" name="{{ k }}" value="{{ v }}">
@@ -187,13 +222,13 @@ had, then scores against settled truth.</p>
      <input type="hidden" name="confirm" value="">
      <button class="gold" data-guard="retro-run">Resume</button>
     </form>
-    {{ tips.tip("rt-resume-" ~ s.name, "resume", "Resumes with the recorded settings shown above; an interrupted week refits only the cells that never ran.") }}
+    {{ tips.tip("rt-resume-" ~ sid, "resume", "Resumes with the recorded settings (Run settings); an interrupted week refits only the cells that never ran.") }}
    </div>
    {% endif %}
    {% if s.active %}
    {# stop/pause need no confirmation: in-flight fits finish, each is
       checkpointed #}
-   <div class="row">
+   <div class="row rt-resume">
     {% if s.paused %}
     <form method="post" action="/retro/{{ s.name }}/resume"><button class="gold">Resume</button></form>
     {% else %}
@@ -201,21 +236,24 @@ had, then scores against settled truth.</p>
     {% endif %}
     <form method="post" action="/retro/{{ s.name }}/stop"><button class="quiet">Stop</button></form>
    </div>
-   <p class="quip rquip"></p>
    {% endif %}
+   {% if s.active %}<p class="quip rquip"></p>{% endif %}
    {% if s.archives %}
    {# archived runs: complete frozen trees; results, player and report work
       as for the live season #}
-   <h3 class="rt-arch-h">{{ s.archives|length }} archived run{{ "" if s.archives|length == 1 else "s" }} kept</h3>
+   {% set n_arch = s.archives | length %}
+   {{ tips.heading(n_arch ~ " archived run" ~ ("" if n_arch == 1 else "s") ~ " kept", "rt-arch-" ~ sid, "Complete runs set aside when a fresh replay started, or imported from another machine: results, player and report work as for the live season. relWIS vs FluSight baseline, ratio of sums.", level=3, cls="rt-arch-h") }}
    {% for a in s.archives %}
    <div class="archrow"{% if a.imported %} data-imported="1"{% endif %}>
     {# an imported replay is labelled for where it came from, not for the
        moment it was set aside (it never was) #}
-    <span class="grow"><strong>{{ a.imported if a.imported else a.when }}</strong>
-     <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
-      if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
-      if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}{% for m, v in a_rels.items() %} &middot; {{ ((a.pf_name if (m == 'pf' and a.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{
-      "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
+    <div class="grow"><strong>{{ a.imported if a.imported else a.when }}</strong>
+     {% set fx = namespace(items=[("", a.weeks ~ " week" ~ ("" if a.weeks == 1 else "s"))]) %}
+     {% if a.elapsed_s and a.elapsed_s >= 1 %}{% set fx.items = fx.items + [("clock", a.elapsed_s | hms, "Wall time")] %}{% endif %}
+     {% if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}
+     {% for m, v in a_rels.items() %}{% set fx.items = fx.items + [("", rel_item(((a.pf_name if (m == 'pf' and a.pf_name) else model_name(m)) if m else ''), v))] %}{% endfor %}{% endif %}
+     {% set fx.items = fx.items + [("folder", a.size_h, "Size")] %}
+     {{ tips.meta(fx.items, label="Archived run facts") }}</div>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
       type="button">Results →</button></a>
     <form method="post"

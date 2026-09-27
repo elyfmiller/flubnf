@@ -31,15 +31,6 @@ _results_jobs: dict = {}          # str(root) -> job record
 _results_lock = threading.Lock()
 
 
-def _scoring_failed_hint(score_error: str) -> str:
-    """The season map panel's scoring-failed fragment; score_error is
-    escaped HERE (the template injects map_html with | safe)."""
-    return ("<p class='hint'>Scoring failed: <code>"
-            + _htmlmod.escape(score_error) + "</code>. The fitted forecasts "
-            "below are intact; fix the scoring input (usually the FluSight "
-            "hub clone, via the Data tab) and reload this page.</p>")
-
-
 def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     """{model: {fips: card}} for one stored retro week, every model it
     stored: each member's 23-level quantile sidecar

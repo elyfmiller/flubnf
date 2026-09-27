@@ -607,7 +607,14 @@ def test_the_index_labels_the_convention_beside_every_score():
                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
                                 "elapsed_s": None, "rel": 0.9,
                                 "size_h": "1 MB"}]}])
-    assert ('relWIS <span class="ok">0.877</span> '
-            'vs FluSight baseline, ratio of sums') in html
-    assert ('relWIS <span class="ok">0.900</span> '
-            'vs FluSight baseline, ratio of sums') in html
+    # the season's headline: its "?" names the convention
+    card = html.split('data-season="2098-99"', 1)[1]
+    head = card.split('rt-arch-h"', 1)[0]
+    assert re.search(r'<dt>relWIS<span class="tip">.*?'
+                     r'relWIS vs FluSight baseline, ratio of sums.*?'
+                     r'<span class="uk-stat-v"[^>]*>0\.877</span>', head, re.S)
+    # the archived runs: their heading's "?" names it for every row
+    arch = card.split('rt-arch-h"', 1)[1]
+    assert "relWIS vs FluSight baseline, ratio of sums" in \
+        arch.split('<div class="archrow"', 1)[0]
+    assert 'relWIS <span class="ok">0.900</span>' in arch

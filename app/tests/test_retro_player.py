@@ -227,7 +227,7 @@ def _season(**kw):
 def test_verdict_tiles_carry_log_scale_and_coverage():
     html = _season(figs=_figs())
     # the tiles, the chart beside them and the notes under both
-    tiles = html.split('<div class="grid2 tiles4">', 1)[1].split(
+    tiles = html.split('<div class="verdict">', 1)[1].split(
         '<div class="card playcard">', 1)[0]
     pf = tiles.split("<h2>Groundhog</h2>", 1)[0]
     # the log-scale figure beside the natural one, in the same ok/bad rule
@@ -241,10 +241,10 @@ def test_verdict_tiles_carry_log_scale_and_coverage():
     # a member whose scores predate the figures shows none of them
     an = tiles.split("<h2>Groundhog</h2>", 1)[1]
     assert "tilekv" not in an
-    # what the second line holds and the coverage colors' key, once, under
-    # the tiles (the player's legend line)
+    # what the second line holds and the coverage colors' key, once, in
+    # the "i" beside the verdict's heading (the player's legend line), not
+    # as a line of its own
     from app.core import report_season
-    # ... in the tip under the tiles, not as a line of its own
     assert f'<span class="pblegend">{report_season.COV_LEGEND}</span>' in tiles
     assert report_season.METRICS_NOTE in tiles
     # none of it without a figure to explain
@@ -304,7 +304,8 @@ def test_fitted_us_pf_says_it_is_the_plain_filter():
     an = flat.split("<h2>US (fitted): Groundhog</h2>", 1)[1].split(
         "</div></div>", 1)[0]
     assert us_national.PF_US_SHORT not in an
-    assert f'<p class="hint">{us_national.PF_US_NOTE}</p>' in flat
+    # the note rides the US row's "?" in the per-state table
+    assert f'<span class="ncline">{us_national.PF_US_NOTE}</span>' in flat
     # the US row's coverage joins the table beside its relWIS
     row = flat.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
     assert 'data-pf-cov="0.700000"' in row

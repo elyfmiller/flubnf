@@ -628,7 +628,9 @@ def test_the_season_page_wears_the_modified_badge():
            "model_name": lambda m: m, "archive": "",
            "preparing": {"phase": "scoring", "elapsed_s": 1.0}}
     html = t.render(**ctx, knobs_label=K.label({"oracle.w": 0.25}))
-    assert '<span class="pill warn" title="modified: oracle.w=0.25' in html
+    # a badge (icon and word), what was modified in its "?"
+    assert '<span class="uk-badge uk-badge--warn" id="rs-knobs"' in html
+    assert 'id="tip-rs-knobs">modified: oracle.w=0.25' in html
     assert "modified settings</span>" not in t.render(**ctx, knobs_label="")
 
 

@@ -133,7 +133,9 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
     assert meta["weeks_to_drop"] == 1
     page = " ".join(client.get(r.headers["location"]).text.split())
     assert "<dt>model settings</dt><dd>modified: groundhog.bandwidth=3" in page
-    assert '<span class="pill warn">modified settings</span>' in page
+    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
+            in page and '<span class="uk-badge-t">modified settings</span>'
+            in page)
     card = client.get(f"/retro?dataset={ds.id}").text.split('id="dataset-replay"')[1]
     assert "modified settings" in card
 
