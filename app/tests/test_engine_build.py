@@ -166,8 +166,10 @@ def test_home_names_the_production_build_without_a_warning(tmp_path,
     d.mkdir()
     (d / "VERSION").write_text("feature/particle-filter 2fdadee0\n")
     html = _home_with(monkeypatch, d)
-    assert "PyBNF <span data-engine-label>2fdadee0 (feature/particle-filter)" \
-        in html
+    # the Setup card's PyBNF value is the build
+    label = "<span data-engine-label>2fdadee0 (feature/particle-filter)</span>"
+    assert label in html
+    assert html.rfind("<dt>PyBNF</dt>", 0, html.index(label)) != -1
     assert 'data-engine-build="other"' not in html
 
 

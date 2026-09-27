@@ -65,9 +65,15 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow; the workflow says nothing is combined
-    assert 'class="steps"' in r.text
-    assert 'class="stepnum"' in r.text
+    # start-here numbered flow (the kit's stepper, each step's purpose in
+    # its "?"); the workflow says nothing is combined
+    assert 'class="uk-stepper uk-stepper--vertical" aria-label="Start here"' \
+        in r.text
+    for href, tip in (("/data", "Confirm the feed is current."),
+                      ("/forecast", "Pick a date, run the models."),
+                      ("/output", "Submission files and the report.")):
+        assert f'<a href="{href}">' in r.text, href
+        assert tip in r.text, tip
     assert "nothing blended" in r.text
     # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",

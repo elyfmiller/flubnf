@@ -1,37 +1,86 @@
-{% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}{% block content %}
-<div class="hero">
+{% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/home.css">{% endblock %}
+{% block content %}
+{# the page reads as headings, values and controls; each explanation sits in
+   the "?" or "i" beside what it explains (docs/UI-KIT.md) #}
+<div class="hero hm-hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
- <p>Weekly probabilistic forecasts of influenza hospital admissions for all
- 52 US jurisdictions in the CDC FluSight format, from two models: the Oracle
- SIHRS, a mechanistic model fitted each week, and the Groundhog, an
- empirical calendar model.</p>
+ <p>Weekly probabilistic forecasts of influenza hospital admissions.</p>
+ {# the rest of the old lead as facts; the full sentence is How it works' "i" #}
+ <ul class="hm-facts" aria-label="At a glance">
+  <li><b>52</b> US jurisdictions</li>
+  <li><b>CDC FluSight</b> format</li>
+  <li><b>Oracle SIHRS</b> mechanistic, fitted each week</li>
+  <li><b>Groundhog</b> empirical calendar model</li>
+ </ul>
 </div>
 
-<div class="card">
- {# the h2 names the payload and its date, like every other card #}
- <h2>US categorical forecast{% if outlook_date %} · {{ outlook_date }}{% endif %}</h2>
- {# model label (same computation as the weekly report, via the inputs
-    bundle); the span is the toggle's data-mapmodel-label target;
-    'approximate' only for pre-bundle runs #}
- {% if outlook_model_label %}<p class="sub mapmodel"><span
-   data-mapmodel-label>{{ outlook_model_label }}</span
-  >{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
+<div class="card hm-outlook">
+ {# the h2 names the payload and its date, like every other card; how to
+    read the map is its "i" #}
+ {% call tips.heading("US categorical forecast" ~ (" · " ~ outlook_date if outlook_date else ""),
+                      "hm-map", rich=True, tip_label="reading the map") %}
+  <span class="uk-tt-line">Most likely direction of admissions next week.</span>
+  <span class="uk-tt-line">Each state takes the color of its most likely
+  category; the stronger the color, the more likely that category.</span>
+  {% if outlook_date %}
+  <span class="uk-tt-line">Hover a state for its numbers; click one to open its
+  section of the weekly report.</span>
+  <span class="uk-tt-line">Ctrl or Cmd with the mouse wheel zooms, dragging
+  pans, and a double-click resets the view.</span>
+  {% endif %}
+ {% endcall %}
+ {# the map's facts and its model control in one bar. The label span is
+    the toggle's data-mapmodel-label target (same computation as the weekly
+    report, via the inputs bundle); with a toggle the pressed button names
+    the model, so the label is read, not shown. 'approximate' only for
+    pre-bundle runs #}
+ {% if outlook_date %}
+ <div class="hm-mapbar">
+  {% if outlook_model_label or outlook_toggle %}
+  <div class="hm-model">
+   <span class="hm-k">Model</span>
+   {# model toggle, rendered server-side only when >= 2 per-model card sets
+      exist (exact from a v3 bundle, else approximate from stored
+      quantiles) #}
+   {{ outlook_toggle | safe }}
+   <span class="hm-model-v{% if outlook_toggle %} uk-sr{% endif %}" data-mapmodel-label>{{ outlook_model_label }}</span>
+   {% if outlook_approx %}{% call tips.badge("info", "approximate", id="hm-approx") %}Categories
+   approximate, from stored quantiles: this run predates the per-model map
+   in the report bundle, so each model's categories are read from the
+   quantiles it stored.{% endcall %}{% endif %}
+  </div>
+  {% endif %}
+  {% call tips.stats("uk-stats--row hm-mapstats") %}
+   {% call tips.stat("Coverage", outlook_n ~ " of 52", "jurisdictions", id="hm-cover") %}The
+   latest run's fits cover {{ outlook_n }} of 52 jurisdictions
+   and the rest show as no data.{% endcall %}
+  {% endcall %}
+  {% if outlook_report %}<a class="btn quiet hm-report" href="/output/report">Weekly report</a>{% endif %}
+ </div>
  {% endif %}
- {# model toggle, rendered server-side only when >= 2 per-model card sets
-    exist (exact from a v3 bundle, else approximate from stored quantiles) #}
- {{ outlook_toggle | safe }}
- {{ map_svg | safe }}
- <p class="hint">{% if outlook_pending %}Preparing the map; this page
- updates by itself in a few seconds.
- {% elif outlook_date %}Most likely direction of admissions next week;
- the latest run's fits cover {{ outlook_n }} of 52 jurisdictions and
- the rest show as no data.
- {% else %}Most likely direction of admissions next week.
- Fills in when you run a forecast.{% endif %}</p>
+ <div class="hm-stage">
+  {{ map_svg | safe }}
+  {% if outlook_pending %}
+  {# cold first paint: the silhouette under a preparing card #}
+  <div class="hm-over"><div class="hm-over-card">
+   {% call tips.empty("Preparing the map", "clock", id="hm-prep") %}Preparing
+   the map; this page updates by itself in a few seconds.{% endcall %}
+   <span class="hm-busy" aria-hidden="true"><span></span></span>
+  </div></div>
+  {% elif not outlook_date %}
+  <div class="hm-over"><div class="hm-over-card">
+   {% set run_btn %}<a class="btn gold" href="/forecast">Run a forecast</a>{% endset %}
+   {% call tips.empty("No forecast yet", "calendar", action=run_btn, id="hm-nofc") %}Most
+   likely direction of admissions next week.
+   Fills in when you run a forecast.{% endcall %}
+  </div></div>
+  {% endif %}
+ </div>
  {% if outlook_pending %}
- {# cold first paint: poll /api/outlook-ready and reload ONCE (lands on the
-    ready branch). 600 ms, then 2.5 s forever: the endpoint answering again
-    is the recovery signal after a restart, and a dead server must not be
+ {# poll /api/outlook-ready and reload ONCE (lands on the ready branch).
+    600 ms, then 2.5 s forever: the endpoint answering again is the
+    recovery signal after a restart, and a dead server must not be
     hammered at 600 ms all night. #}
  <script>
  (function () {
@@ -56,15 +105,16 @@
 {# the weekly loop and the record land in the first viewport; the pipeline
    diagram (read-once reference) sits one scroll below #}
 <div class="grid2 homeperf">
- <div class="card"><h2>Measured performance</h2>
-  <p class="hint">relWIS vs the FluSight baseline; below 1.000 beats it.</p>
+ <div class="card hm-perf">
+  {{ tips.heading("Measured performance", "hm-perf", "relWIS vs the FluSight baseline; below 1.000 beats it.",
+                  after='<span class="hm-unit">relWIS</span>' | safe) }}
   {# Oracle record (oracle_text.RECORD). Class must NOT be bare "perf":
      site_build.harvest_placement reads the FIRST class="perf" table (the
      one below) from this source #}
-  <h3 class="hint perfhead">Oracle SIHRS record
-  {% call tips.tip("home-oracle", "the Oracle SIHRS record") %}The Oracle
+  {% call tips.heading("Oracle SIHRS record", "home-oracle", level=3, cls="hm-perfhead",
+                       rich=True, tip_label="the Oracle SIHRS record") %}The Oracle
   SIHRS against the plain particle filter on the same cells, a
-  frozen-specification replication (<a href="/methods#oracle">Methods</a>).{% endcall %}</h3>
+  frozen-specification replication (<a href="/methods#oracle">Methods</a>).{% endcall %}
   <table class="perf oraclerec">
    <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Plain filter</th><th class="num">Cells</th></tr></thead>
@@ -79,15 +129,19 @@
     {% endfor %}
    </tbody>
   </table>
-  <h3 class="hint perfhead">Full-season replays
-  {% call tips.tip("home-replays", "the full-season replays") %}Full-season
-  replays on vintage data: the filter alone and the FluSight Ensemble on
-  15,460 cells, the Groundhog on 15,340 (other cells than the table above;
-  placement among teams withdrawn). Both tables were measured under the
-  earlier cell rule (truth and median above 0), which differs from today's
-  at about the third decimal. {{ relwis_convention_note }}{% endcall %}</h3>
+  {% call tips.heading("Full-season replays", "home-replays", level=3, cls="hm-perfhead",
+                       rich=True, tip_label="the full-season replays") %}
+   <span class="uk-tt-line">Full-season replays on vintage data: the filter
+   alone and the FluSight Ensemble on 15,460 cells, the Groundhog on 15,340
+   (other cells than the table above; placement among teams withdrawn).</span>
+   <span class="uk-tt-line">Both tables were measured under the earlier cell
+   rule (truth and median above 0), which differs from today's at about the
+   third decimal.</span>
+   <span class="uk-tt-line">{{ relwis_convention_note }}</span>
+  {% endcall %}
   <table class="perf">
-   {# columns named for whose forecast they score; the unit is in the hint #}
+   {# columns named for whose forecast they score; the unit is beside the
+      card's heading #}
    <thead><tr><th>Season</th><th class="num">Filter alone</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
@@ -107,23 +161,31 @@
      replay (flubnf groundhog retro, 15,340 cells, 2026-09-21). The sealed
      engine's table stays on Methods and docs/archive/RELEASE-1.0.md. #}
  </div>
- <div class="card"><h2>Start here</h2>
-  <ol class="steps">
-   <li class="step"><span class="stepnum">1</span>
-    <span class="steptext"><a href="/data">Data</a>
-     <span class="hint">confirm the feed is current</span></span></li>
-   <li class="step"><span class="stepnum">2</span>
-    <span class="steptext"><a href="/forecast">Forecast</a>
-     <span class="hint">pick a date, run the models</span></span></li>
-   <li class="step"><span class="stepnum">3</span>
-    <span class="steptext"><a href="/output">Output</a>
-     <span class="hint">submission files and the report</span></span></li>
-  </ol>
-  <p class="hint">Replay a past season on
-  <a href="/retro">Retrospective</a>.</p></div>
+ <div class="card hm-start">
+  <h2>Start here</h2>
+  {# the weekly loop, one tab per step; what each step is for is its "?" #}
+  {{ tips.stepper([{"label": "Data", "href": "/data", "tip": "Confirm the feed is current."},
+                   {"label": "Forecast", "href": "/forecast", "tip": "Pick a date, run the models."},
+                   {"label": "Output", "href": "/output", "tip": "Submission files and the report."}],
+                  vertical=True, label="Start here", id="hm-start") }}
+  <div class="hm-start-more">
+   <a class="btn quiet" href="/retro">{{ tips.icon("refresh") }} Replay a past season</a>
+  </div>
+ </div>
 </div>
 
-<div class="card"><h2>How it works</h2>
+<div class="card hm-how">
+ {% call tips.heading("How it works", "hm-how", rich=True, tip_label="how it works") %}
+  <span class="uk-tt-line">Weekly probabilistic forecasts of influenza
+  hospital admissions for all 52 US jurisdictions in the CDC FluSight
+  format, from two models: the Oracle SIHRS, a mechanistic model fitted each
+  week, and the Groundhog, an empirical calendar model.</span>
+  <span class="uk-tt-line">One weekly data pull feeds the Oracle SIHRS (the
+  particle-filter fit, its forecast growth then blended with donor growth
+  from past seasons at the same calendar week) and the Groundhog; each
+  model's quantiles are written as its own FluSight CSV, nothing is blended
+  between the two, and the weekly report shows both.</span>
+ {% endcall %}
  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
     title element (its tooltip pops over the drawing) #}
  <div class="pipe">
@@ -187,36 +249,43 @@
  </svg>
  </div>
  {# the three equations behind the pipeline: seasonal forcing, the Oracle
-    growth blend, the Groundhog quantile #}
+    growth blend, the Groundhog quantile; each named, its reading in the "?" #}
  <div class="eqpanel">
-  <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+  <p class="hm-eq"><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
    <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
-   <span class="eqnote">seasonal forcing:
-   the curve the filter bends each week</span></p>
+   <span class="hm-eqname">Seasonal forcing{{ tips.tip("hm-eq-forcing", "seasonal forcing",
+   "Seasonal forcing: the curve the filter bends each week.") }}</span></p>
   {{ dg.harmonic() }}
-  <p><span class="math">ln <i>G</i><sub><i>k</i></sub> =
+  <p class="hm-eq"><span class="math">ln <i>G</i><sub><i>k</i></sub> =
    &#189; ln <i>G</i><sub><i>T</i></sub> +
    &#189; ln <i>G</i><sub><i>d</i></sub></span>
-   <span class="eqnote">the Oracle step: each forecast path grows at the
-   geometric mean of the filter's growth and one past season's at the same
-   calendar week</span></p>
-  <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
+   <span class="hm-eqname">The Oracle step{{ tips.tip("hm-eq-oracle", "the Oracle step",
+   "The Oracle step: each forecast path grows at the geometric mean of the filter's growth and one past season's at the same calendar week.") }}</span></p>
+  <p class="hm-eq"><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>
-   <span class="eqnote">the Groundhog: the last value scaled by past
-   seasons' growth at the same calendar week</span></p>
+   <span class="hm-eqname">The Groundhog{{ tips.tip("hm-eq-groundhog", "the Groundhog equation",
+   "The Groundhog: the last value scaled by past seasons' growth at the same calendar week.") }}</span></p>
  </div>
 </div>
 
-<div class="grid3">
- <div class="card"><h2>PyBNF</h2>
+{# the three components: a glyph, the name with its description in the "?",
+   a short role, the project's link #}
+{% set newtab = tips.icon("external", "opens in a new tab") %}
+<div class="grid3 hm-comps">
+ <div class="card hm-comp">
+  {% call tips.heading("PyBNF", "hm-pybnf", tip_label="PyBNF") %}Los Alamos's
+  fitting suite for rule-based models; FluBNF runs a fork that adds the
+  particle filter (<span class="hm-mono">fit_type=pf</span>).{% endcall %}
   <div class="cardviz">
    <img src="/static/brand/pybnf_icon.svg" alt="PyBNF brand mark"></div>
-  <p>Los Alamos's fitting suite for rule-based models; FluBNF runs a fork
-  that adds the particle filter (<code>fit_type=pf</code>).</p>
-  <p class="hint"><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
- <div class="card"><h2>bngsim</h2>
+  <p class="hm-role">Model fitting</p>
+  <p class="hm-links"><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF {{ newtab }}</a></p></div>
+ <div class="card hm-comp">
+  {% call tips.heading("bngsim", "hm-bngsim", tip_label="bngsim") %}The
+  in-process BioNetGen simulator the particle filter runs on, so a
+  state-season fit takes seconds.{% endcall %}
   <div class="cardviz">
    <svg viewBox="0 0 250 64" role="img" aria-label="Simulation-trace glyph">
     <g fill="none" stroke="var(--mut)" stroke-opacity=".45" stroke-width="1.4">
@@ -228,10 +297,13 @@
           fill="none" stroke="var(--gold)" stroke-width="2.4"/>
     <path d="M10,58 H242" stroke="currentColor" stroke-width="1.3" fill="none"/>
    </svg></div>
-  <p>The in-process BioNetGen simulator the particle filter runs on, so a
-  state-season fit takes seconds.</p>
-  <p class="hint"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
- <div class="card"><h2>BNGL and BioNetGen</h2>
+  <p class="hm-role">Simulation</p>
+  <p class="hm-links"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim {{ newtab }}</a></p></div>
+ <div class="card hm-comp">
+  {# the Methods link rides the links row: a tooltip holds no links #}
+  {% call tips.heading("BNGL and BioNetGen", "hm-bngl", tip_label="BNGL and BioNetGen") %}The
+  language the SIHRS compartment model is written in; BNG2.pl expands it
+  into the reaction network bngsim integrates.{% endcall %}
   <div class="cardviz">
    <svg viewBox="0 0 250 64" role="img" aria-label="Contact-map glyph">
     <g stroke="currentColor" stroke-width="1.7">
@@ -259,32 +331,50 @@
      <text x="223" y="36">C</text>
     </g>
    </svg></div>
-  <p>The language the <a href="/methods#sihrs">SIHRS compartment model</a>
-  is written in; BNG2.pl expands it into the reaction network bngsim
-  integrates.</p>
-  <p class="hint"><a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org</a></p></div>
+  <p class="hm-role">Model language</p>
+  <p class="hm-links"><a href="/methods#sihrs">SIHRS compartment model</a>
+   <a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org {{ newtab }}</a></p></div>
 </div>
 
-<div class="card"><h2>Setup</h2>
+<div class="card hm-setup">
+ {% if missing %}{% set setup_state = tips.badge("warn", missing | length ~ " not installed", id="hm-missing") %}
+ {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
+ {{ tips.heading("Setup", "hm-setup", "What this machine has installed for forecasting, and the versions the console runs with.",
+                 after=setup_state) }}
  {% if missing %}
-  <p class="hint">Not installed on this machine:</p>
-  <ul class="setupmiss">{% for m in missing %}<li class="warn">{{ m[2] }}</li>{% endfor %}</ul>
-  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
-  <p class="hint">To add the particle-filter engine,
-  {{ engine_setup_hint() }}.</p>
- {% else %}<p class="ok">All components installed.</p>{% endif %}
+  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
+     filename. The one line to act on; what is missing follows #}
+  {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
+  {{ tips.alert("warn", fix, id="hm-fix", live="") }}
+  {# each missing component by name; the rest of its description and the
+     path looked at are its "?" #}
+  <ul class="hm-missing" aria-label="Not installed on this machine">
+   {% for m in missing %}{% set name, _sep, rest = m[2].partition(": ") %}
+   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ name }}</span>
+    {%- call tips.tip("hm-miss-" ~ loop.index, name) %}{% if rest %}{{ rest[:1] | upper }}{{ rest[1:] }}. {% endif %}Looked
+    for at <span class="hm-mono">{{ m[1] }}</span> ({{ m[0] }}).{% endcall %}</li>
+   {% endfor %}
+  </ul>
+ {% endif %}
  {# the engine build when it is not production (the fix in its tip) #}
  {% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}
- {# self-reported bngsim strings can mislead; the pin of record is stated
-    (same note on Methods), in the tip. PyBNF is named by its build (branch
-    and commit) once known; its self-reported version until then #}
+ {# one labelled value per component. Self-reported bngsim strings can
+    mislead; the pin of record is stated (same note on Methods), in the
+    tip. PyBNF is named by its build (branch and commit) once known; its
+    self-reported version until then. data-vkey spans are base.html's
+    version poll targets #}
  {% set ebv = engine_build_view() %}
- <p class="hint">PyBNF {% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %} ·
- bngsim <span data-vkey="bngsim">{{ versions.bngsim }}</span> ·
- BioNetGen <span data-vkey="bionetgen">{{ versions.bionetgen }}</span> ·
- Perl <span data-vkey="perl">{{ versions.perl }}</span> ·
- FastAPI <span data-vkey="fastapi">{{ versions.fastapi }}</span> ·
- Plotly <span data-vkey="plotly">{{ versions.plotly }}</span>
- {{ tips.tip("home-pin", "the bngsim version", "Reproducing the sealed numbers needs bngsim 0.15.1 (setup_engine.sh), whatever version a build reports.") }}</p>
+ {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
+  {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
+  {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
+  {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
+  {% call tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else "")) %}Reproducing
+  the sealed numbers needs bngsim 0.15.1 (setup_engine.sh), whatever version a
+  build reports.{% endcall %}
+  {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
+  {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
+  {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
+  {% endfor %}
+ {% endcall %}
 </div>
 {% endblock %}
