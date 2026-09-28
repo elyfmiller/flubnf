@@ -80,7 +80,7 @@
  (function(){
   var stat=document.getElementById('prep-stat');
   var t0=Date.now()-({{ preparing.elapsed_s | round(1) }}*1000);
-  if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'));
+  if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'),undefined,window.FLUBNF_RETRO_QUIPS);
   var phase={{ preparing.phase | tojson }};
   function paint(){
     if(document.hidden)return;          // nothing to see: do no work

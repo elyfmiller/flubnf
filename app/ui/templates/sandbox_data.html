@@ -1,12 +1,19 @@
-{# Load data.exp from the FluSight hub, a stored dataset, or a CSV upload.
-   This partial sits INSIDE the editor's form, and a form inside a form is
-   dropped by the HTML parser, so each button names its own action with
-   formaction (the upload also its enctype) instead of a nested form; the
-   editor's text rides along and is saved first. The date inputs step 7
-   days from 2020-01-04, a Saturday, so they land on week-ending days.
-   sandbox.js shows the location or the group that fits the source. #}
+{# Load data.exp from the FluSight hub, a stored dataset, a CSV upload, or
+   the model itself: one panel, its three ways in as a segmented switch
+   (sandbox.js shows one pane; without it the three stack, each under its
+   own heading). This partial sits INSIDE the editor's form, and a form
+   inside a form is dropped by the HTML parser, so each button names its
+   own action with formaction (the upload also its enctype) instead of a
+   nested form; the editor's text rides along and is saved first.
+   The date inputs carry no browser constraint (no step, min or max): they
+   belong to the editor's form, so a constraint would stop Save and Save
+   and run too. The server takes any day and counts the weeks ending
+   Saturday within the range; sandbox.js checks the range against the
+   source as it changes and says why Load is off, beside the dates. #}
 {% import "_tips.html" as tips %}{% set _src = data_source or {} %}
 {% set _ds = pick_dataset or ((_src.dataset or {}).id if _src.dataset else "") %}
+{% set _hub = locations or datasets %}
+{% set _pane = "upload" if (upload_report or not _hub) else "hub" %}
 {% if data_source %}
 {# where data.exp came from: one row of facts under the editor #}
 {% set _kind %}{% if data_source.asof == "settled" %}settled truth{% elif data_source.asof == "dataset" %}dataset {{ data_source.dataset.name }}{% else %}vintage of {{ data_source.asof }}{% endif %}{% endset %}
@@ -18,57 +25,81 @@
 <div class="sb-src"><span class="sb-src-k">data.exp holds</span>{{ tips.meta(_facts, label="data.exp holds") }}</div>
 {% endif %}
 {% call tips.fold("Load data", id="sb-fill", open=(upload_report or pick_dataset), cls="sbfill") %}
- {% if locations or datasets %}
- <div class="row">
-  <span>{{ tips.label("Source", "sb-source", "The hub's latest settled counts, the counts as the hub held them on a past date (what a forecaster saw then), or a dataset you uploaded.", for_="sbfill-source") }}
-   <select id="sbfill-source" name="source">
-    {% if locations %}<optgroup label="FluSight hub">
-     <option value="settled" {% if _src.asof == "settled" and not _ds %}selected{% endif %}>latest (settled)</option>
-     {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
-    </optgroup>{% endif %}
-    {% if datasets %}<optgroup label="Your datasets">
-     {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
-    </optgroup>{% endif %}
-   </select></span>
-  {% if locations %}<span id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
-   <select id="sbfill-loc" name="location">
-    {% for l in locations %}<option value="{{ l.name }}" {% if _src.location == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
-   </select></span>{% endif %}
-  {% if datasets %}<span id="sbfill-groupwrap"><label for="sbfill-group">Group</label>
-   <select id="sbfill-group" name="group">
-    {% for d in datasets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}" {% if _ds == d.id and _src.location == g.name %}selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}
-   </select></span>{% endif %}
-  <span><label for="sbfill-start">Start</label>
-   <input id="sbfill-start" name="start" type="date" step="7" min="2020-01-04" value="{{ _src.start or data_range.start }}"></span>
-  <span><label for="sbfill-end">End</label>
-   <input id="sbfill-end" name="end" type="date" step="7" min="2020-01-04" value="{{ _src.end or data_range.end }}"></span>
+ <div class="sb-seg-row" hidden>
+  <div class="uk-seg sb-dseg" role="group" aria-label="Where the data comes from">
+   <button type="button" data-pane="hub" aria-controls="sbfill-hub" aria-pressed="{{ 'true' if _pane == 'hub' else 'false' }}">Hub or dataset</button>
+   <button type="button" data-pane="upload" aria-controls="sbfill-up" aria-pressed="{{ 'true' if _pane == 'upload' else 'false' }}">Upload a CSV</button>
+   <button type="button" data-pane="sim" aria-controls="sbfill-sim" aria-pressed="false">Simulate</button>
+  </div>
  </div>
- <div class="row sb-loadrow">
-  <span class="sbsetpop"><span class="lblrow"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span></span>
-  <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Load into data.exp</button>
+ {# ---- the hub archive or a stored dataset #}
+ <div class="sb-pane" data-pane="hub" id="sbfill-hub">
+  <h3 class="sb-pane-h">Hub or dataset</h3>
+  {% if _hub %}
+  <div class="sb-fgrid">
+   <span class="sb-f">{{ tips.label("Source", "sb-source", "The hub's latest settled counts, the counts as the hub held them on a past date (what a forecaster saw then), or a dataset you uploaded.", for_="sbfill-source") }}
+    <select id="sbfill-source" name="source"{% if vintages %} data-newest="{{ vintages[0] }}"{% endif %}>
+     {% if locations %}<optgroup label="FluSight hub">
+      <option value="settled" {% if _src.asof == "settled" and not _ds %}selected{% endif %}>latest (settled)</option>
+      {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
+     </optgroup>{% endif %}
+     {% if datasets %}<optgroup label="Your datasets">
+      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+     </optgroup>{% endif %}
+    </select></span>
+   {% if locations %}<span class="sb-f" id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
+    <select id="sbfill-loc" name="location">
+     {% for l in locations %}<option value="{{ l.name }}" {% if _src.location == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+    </select></span>{% endif %}
+   {% if datasets %}<span class="sb-f" id="sbfill-groupwrap"><label for="sbfill-group">Group</label>
+    <select id="sbfill-group" name="group">
+     {% for d in datasets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}" {% if _ds == d.id and _src.location == g.name %}selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}
+    </select></span>{% endif %}
+   <span class="sb-f">{{ tips.label("Start", "sb-fstart", "Any day: the weeks the source holds from it on are loaded.", for_="sbfill-start") }}
+    <input id="sbfill-start" name="start" type="date" value="{{ _src.start or data_range.start }}"></span>
+   <span class="sb-f">{{ tips.label("End", "sb-fend", "Any day: the weeks the source holds up to it are loaded.", for_="sbfill-end") }}
+    <input id="sbfill-end" name="end" type="date" value="{{ _src.end or data_range.end }}"></span>
+  </div>
+  {# why Load is off (the range and the source disagree): sandbox.js #}
+  <div class="sb-fwhy" id="sbfill-why" aria-live="polite"></div>
+  <div class="sb-pane-foot">
+   <span class="sbsetpop"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span>
+   {% set _load %}formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post" id="sbfill-load"{% endset %}
+   {{- tips.reason_button("Load into data.exp", "sbfill-load-why", "", off=False, attrs=_load, label="why Load is off") }}
+  </div>
+  {% else %}
+  {{ tips.empty("No hub archive here", "folder", tiptext="Upload a CSV, type the rows or copy an example.", id="sb-nohub", compact=True) }}
+  {% endif %}
  </div>
- {% else %}
- {{ tips.empty("No hub archive here", "folder", tiptext="Upload a CSV, type the rows or copy an example.", id="sb-nohub", compact=True) }}
- {% endif %}
- <div class="row sbupload">
-  <span>{{ tips.label("Upload a CSV", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
-   <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
-  <span><label for="sbfill-kind">Values</label>
-   <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
-  <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data">Upload and load</button>
+ {# ---- a CSV of your own #}
+ <div class="sb-pane" data-pane="upload" id="sbfill-up">
+  <h3 class="sb-pane-h">Upload a CSV</h3>
+  <div class="sb-fgrid sb-fgrid--up">
+   <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
+    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
+   <span class="sb-f"><label for="sbfill-kind">Values</label>
+    <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
+  </div>
+  {% if upload_report %}
+  <div class="sbreport sb-report">
+   {% if upload_report.problems %}{% set _n = upload_report.problems | length %}
+   {{ tips.alert("error", _n ~ " problem" ~ ("" if _n == 1 else "s") ~ " in the file.", title="Not loaded:", id="sb-upload-bad") }}
+   <ul class="sb-list">{% for p in upload_report.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+   {% if upload_report.warnings %}{% set _n = upload_report.warnings | length %}
+   {{ tips.alert("warn", _n ~ " note" ~ ("" if _n == 1 else "s") ~ " on the file.", title="Worth a look:", id="sb-upload-warn") }}
+   <ul class="sb-list">{% for w in upload_report.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endif %}
+  <div class="sb-pane-foot">
+   <button formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data">Upload and load</button>
+  </div>
  </div>
- {% if upload_report %}
- <div class="sbreport">
-  {% if upload_report.problems %}{% set _n = upload_report.problems | length %}
-  {{ tips.alert("error", _n ~ " problem" ~ ("" if _n == 1 else "s") ~ " in the file.", title="Not loaded:", id="sb-upload-bad") }}
-  <ul class="sb-list">{% for p in upload_report.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
-  {% if upload_report.warnings %}{% set _n = upload_report.warnings | length %}
-  {{ tips.alert("warn", _n ~ " note" ~ ("" if _n == 1 else "s") ~ " on the file.", title="Worth a look:", id="sb-upload-warn") }}
-  <ul class="sb-list">{% for w in upload_report.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
- </div>
- {% endif %}
- <div class="row sbsim">
-  <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/simulate-data" formmethod="post">Simulate data from the model</button>
-  {{ tips.tip("sb-simulate", "simulate data", "Replaces data.exp with counts drawn from the model at the values written in model.bngl, over the same weeks, with negative-binomial noise at its r__FREE. A fit on them should find those values again: the test that a new model and its priors work, before real data.") }}
+ {# ---- counts drawn from the model itself #}
+ <div class="sb-pane" data-pane="sim" id="sbfill-sim">
+  <h3 class="sb-pane-h">Simulate</h3>
+  <div class="sb-pane-foot sb-pane-foot--start sbsim">
+   <button formaction="/sandbox/models/{{ editing.name }}/simulate-data" formmethod="post">Simulate data from the model</button>
+   {{ tips.tip("sb-simulate", "simulate data", "Replaces data.exp with counts drawn from the model at the values written in model.bngl, over the same weeks, with negative-binomial noise at its r__FREE. A fit on them should find those values again: the test that a new model and its priors work, before real data.") }}
+  </div>
  </div>
 {% endcall %}

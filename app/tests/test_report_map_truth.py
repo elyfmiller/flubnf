@@ -28,8 +28,9 @@ def _hover(html: str, fips: str) -> str:
 
 
 def _legend(html: str) -> str:
-    return html[html.index('<div class="legend">'):
-                html.index('<p class="hint">Hover a state')]
+    # the kit's legend chips: the categories' list (id map-legend)
+    i = html.index('id="map-legend"')
+    return html[i:html.index("</ul>", i)]
 
 
 def _locs():
@@ -53,7 +54,7 @@ def test_a_bare_card_in_scope_hovers_no_forecast_like_its_legend(tmp_path):
     html = report_v2.build_report(
         "2098-01-03", {"VT": card}, {}, {}, tmp_path / "r.html",
         fitted_fips=["50", "39"]).read_text()
-    assert "no forecast</span>" in _legend(html)
+    assert "</span>no forecast<" in _legend(html)
     hv = _hover(html, "50")
     assert "no forecast" in hv and "reporting gap" not in hv
     # a card-less state in scope (an older bundle's gap) still reads the gap
@@ -81,7 +82,7 @@ def test_pipeline_report_names_the_reason_and_keeps_gap_for_real_gaps(
                                      an_q={"Ohio": _gh_q()})
     html = (tmp_path / "report.html").read_text()
     leg = _legend(html)
-    assert "no forecast</span>" in leg and "reporting gap" in leg
+    assert "</span>no forecast<" in leg and "reporting gap" in leg
     ut = _hover(html, n2f["Utah"])
     assert "no forecast: newest week reads 0" in ut
     assert "reporting gap" not in ut

@@ -29,6 +29,15 @@
 .sb-startrow > select{flex:1 1 auto;min-width:0}
 .sb-about{flex:none}
 .sb-about[hidden]{display:none}
+/* the Oracle SIHRS start's fields: one aligned grid of full-width
+   fields (one column in the side card, more where there is room), every
+   label on one line above its field */
+.sb-shiprow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
+  gap:0 .8rem;align-items:end}
+.sb-shiprow > span{display:flex;flex-direction:column;min-width:0}
+.sb-shiprow > span[hidden]{display:none}
+.sb-shiprow > span > label,.sb-shiprow > span > .lblrow{display:flex;align-items:center;
+  min-height:1.5rem;margin:.5rem 0 .2rem;white-space:nowrap}
 /* Your models: the name, its note's "i" and an incomplete badge on a line */
 .sb-name{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.15rem .35rem;
   min-width:0;overflow-wrap:anywhere}
@@ -37,14 +46,72 @@ a.sb-runlink{display:inline-block;border-radius:99px;text-decoration:none}
 a.sb-runlink:hover{text-decoration:none;opacity:.8}
 
 /* ---- the editor card ---- */
-/* the action row: the buttons left; unsaved, busy and the time estimate
-   pushed to the right edge */
+/* the toolbar: the card's title with unsaved and busy beside it, then
+   Check, Save and Save and run (the one primary) at the right edge; the
+   buttons wrap under the title as one group when the card is narrow */
+.sb-toolbar{display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:.5rem 1rem;margin:0 0 .45rem}
+.sb-toolbar-h{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem .7rem;min-width:0}
+.sb-toolbar-h > h2{margin:0}
+.sb-tools{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-left:auto}
+.sb-tools > button{margin-top:0}
 .sb-status{display:inline-flex;align-items:center;flex-wrap:wrap;
-  gap:.35rem .7rem;margin-left:auto;min-width:0}
+  gap:.35rem .7rem;min-width:0}
+.sb-status:empty{display:none}
 .sb-dirty[hidden],.sb-eta[hidden]{display:none}
+
+/* ---- the run settings card: Particles on its own row, then Jitter,
+   Forecast weeks and Seed in three equal columns, labels on one line ---- */
+.sb-runcard fieldset.sbrun{border:0;margin:0;padding:0;min-width:0}
+.sb-legend{float:left;width:100%;margin:0 0 .15rem;padding:0;
+  font-size:var(--fs-h2);font-weight:700;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--mut)}
+.sbrun-grid{clear:both;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0 .9rem;align-items:end}
+.sbrun-grid > span{display:flex;flex-direction:column;min-width:0}
+.sbrun-grid > .sbrun-parts{grid-column:1 / -1}
+.sbrun-grid .lblrow{min-height:1.5rem;white-space:nowrap}
+@media(max-width:560px){.sbrun-grid{grid-template-columns:minmax(0,1fr)}}
 /* Particles: the preset and the count, the time estimate beside them */
 .sb-partsrow{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .9rem}
 .sb-partsrow > .sbpair{flex:0 1 24rem;min-width:0}
+
+/* ---- Load data: one panel under data.exp. A segmented switch picks
+   the way in (hub or dataset, upload, simulate) and shows its pane;
+   without the script the panes stack, each under its heading ---- */
+details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--bg) 50%,var(--card))}
+.sb-seg-row{margin:.35rem 0 .2rem}
+.sb-seg-row[hidden],.sb-pane[hidden],.sb-f[hidden]{display:none}
+.sb-pane + .sb-pane{margin-top:.9rem}
+.sb-panes-on .sb-pane + .sb-pane{margin-top:0}
+.sb-pane-h{margin:.5rem 0 0;font-size:var(--fs-label);font-weight:700;color:var(--ink)}
+.sb-panes-on .sb-pane-h{display:none}
+/* the fields in one aligned grid: two columns (Source and Location or
+   Group over Start and End), every label on one line, every field on one
+   baseline; one column at phone width */
+.sb-fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0 .8rem;align-items:end}
+.sb-fgrid--up{grid-template-columns:minmax(0,2.4fr) minmax(7rem,1fr)}
+@media(max-width:560px){.sb-fgrid,.sb-fgrid--up{grid-template-columns:minmax(0,1fr)}}
+.sb-f{display:flex;flex-direction:column;min-width:0}
+.sb-f > label,.sb-f > .lblrow{display:flex;align-items:center;min-height:1.5rem;
+  margin:.5rem 0 .2rem;white-space:nowrap}
+.sb-f--file input[type=file]{padding:.3rem}
+/* the pane's one action at its right edge, an option (Set N) at the left */
+.sb-pane-foot{display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:.5rem 1rem;margin-top:.75rem}
+.sb-pane-foot > button,.sb-pane-foot > .uk-reason{margin:0 0 0 auto}
+.sb-pane-foot--start{justify-content:flex-start;gap:.4rem;margin-top:.55rem}
+.sb-pane-foot--start > button{margin:0}
+.sbsetpop{display:inline-flex;align-items:center;gap:.2rem}
+.sbsetpop .ck{margin:0}
+/* an upload's report under the file field */
+.sb-report{margin-top:.65rem}
+/* why Load is off: one alert line under the dates */
+.sb-fwhy{margin-top:.5rem}
+.sb-fwhy:empty{display:none}
 .sb-eta{display:inline-flex;align-items:center;gap:.3rem;color:var(--mut);
   font-size:var(--fs-label);font-weight:600;font-variant-numeric:tabular-nums;
   white-space:nowrap}
@@ -52,16 +119,36 @@ a.sb-runlink:hover{text-decoration:none;opacity:.8}
 .sb-src{display:flex;align-items:center;flex-wrap:wrap;gap:.1rem .7rem;
   margin:.1rem 0 .35rem}
 .sb-src-k{color:var(--mut);font-size:var(--fs-label);font-weight:650;white-space:nowrap}
-.sb-loadrow{margin-top:.55rem}
 /* a list under an alert: the problems or notes it counts */
 .sb-list{margin:-.35rem 0 .7rem 1.6rem;padding:0;font-size:var(--fs-hint)}
 .sb-list li{margin:.15rem 0}
 /* Check's facts under its alert */
 .sb-facts{margin:.2rem 0 0}
 
-/* ---- the results card ---- */
-.sb-settings{margin:.1rem 0 .6rem}
-.sb-sample{margin:.5rem 0 .2rem}
+/* ---- the results card: the summary (the outcome, the run's facts and
+   settings) over a rule, the plot and the fitted values, then the
+   Diagnostics and Compare sections, each under a rule, and the run's
+   files at the foot: Download at the left, Delete at the right ---- */
+.sb-rsum{padding-bottom:.65rem;border-bottom:1px solid var(--line)}
+.sb-runfacts{display:flex;flex-direction:column;gap:.2rem;margin-top:.55rem}
+.sb-runfacts .uk-meta{margin:0}
+.sb-settings{margin:0}
+.sb-sample{margin:.1rem 0 .2rem}
+.sb-rsec{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--line)}
+.sb-rsec > .uk-heading{margin-bottom:.3rem}
+.sb-cmprow{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;margin:0}
+.sb-cmprow > label{margin:0;white-space:nowrap}
+.sb-cmprow > select{flex:1 1 14rem;width:auto;min-width:0}
+.sb-cmprow > button{margin-top:0}
+.sb-filebar{display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:.5rem 1rem;margin-top:.85rem;padding-top:.75rem;
+  border-top:1px solid var(--line)}
+.sb-filebar form{margin:0}
+.sb-filebar button{margin-top:0}
+/* the destructive tier at rest: a quiet button in the error color, filled
+   only in the confirmation that follows (Delete, Stop) */
+button.sb-danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
+button.sb-danger:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,var(--card))}
 /* a live fit: the sliding bar, its "?" and Stop on one line, the "?"
    and Stop level with the bar under its label */
 .sb-live{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.4rem .7rem;margin:.4rem 0 .6rem}
@@ -69,7 +156,7 @@ a.sb-runlink:hover{text-decoration:none;opacity:.8}
 .sb-live-bar{flex:1 1 12rem;min-width:0}
 .sb-live form{margin:0}
 /* the fit in a word: the alert, the full fit at its right */
-.sb-health{margin:.5rem 0 .1rem}
+.sb-health{margin:0 0 .1rem}
 .sb-health form{margin:0}
 /* a failed run's own words: the error edge on the engine's text */
 pre.sb-err{border-left:3px solid var(--bad);color:var(--ink)}
@@ -94,3 +181,6 @@ details.sbhow[open] > summary{margin-bottom:.7rem}
 pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
   padding:.5rem .7rem;border-radius:var(--r-sm);background:var(--bg);
   color:var(--mut);font-size:var(--fs-label)}
+/* Save and run repeated at the foot of Run settings */
+.sb-runfoot{display:flex;justify-content:flex-end;margin-top:1rem}
+.sb-runfoot > button{margin-top:0}

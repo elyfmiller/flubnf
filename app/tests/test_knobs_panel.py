@@ -211,3 +211,63 @@ def test_panel_data_is_the_registry():
     assert not K.panel("forecast", {"oracle.count_floor": "5"})["modified"]
     assert ui_forms._knobs.FORM_PREFIX == K.FORM_PREFIX
     json.dumps(p)                                       # template-safe
+
+
+def test_the_panel_stays_closed_while_a_run_is_in_progress():
+    """The owner's report: the panel opened by itself while a forecast
+    ran. The browser posts the Season start the script filled in (August 1
+    of the forecast's season); that value is the default, so the page
+    reads "default", and the panel renders closed during the run."""
+    ui_state._last_form.clear()
+    ui_state._last_form.update({
+        "forecast_date": FD, "locations": ["Ohio"], "engine": "all",
+        "weeks_to_drop": 0, "replicates": 3, "members": 2,
+        "season_start": "2097-08-01", "particles": 10000,
+        "drop_same_day": 0, "knobs": {}, "submit_modified": False,
+        "modified_reason": "", "ms_refused": False})
+    ui_state._status.update({"running": "all:x", "run_label": "x",
+                             "workroot": None, "expected_total": None})
+    html = client.get("/forecast").text
+    assert '<details class="adv" id="model-settings"' in html
+    assert ">default</span>" in html
+    # the filled value is not kept as a typed one: the script refills it
+    assert dict(_panel_form(html).fields).get("season_start", "") == ""
+    # a run with a real change still renders closed; its badge says so
+    ui_state._last_form["knobs"] = {"oracle.w": "0.25"}
+    html = client.get("/forecast").text
+    assert '<details class="adv" id="model-settings"' in html
+    assert ">modified</span>" in html
+    # a season start of the user's own is kept, and reads modified
+    ui_state._last_form.update({"knobs": {}, "season_start": "2097-09-15"})
+    html = client.get("/forecast").text
+    assert dict(_panel_form(html).fields)["season_start"] == "2097-09-15"
+    assert ">modified</span>" in html
+    assert '<details class="adv" id="model-settings"' in html
+    # idle again: changed settings open the panel; defaults keep it closed
+    ui_state._status.update({"running": None})
+    try:
+        html = client.get("/forecast").text
+        assert '<details class="adv" open id="model-settings"' in html
+        ui_state._last_form.update({"season_start": "2097-08-01"})
+        html = client.get("/forecast").text
+        assert '<details class="adv" id="model-settings"' in html
+    finally:
+        ui_state._last_form.clear()
+
+
+def test_season_auto_is_august_first_of_each_days_season():
+    assert ui_forms._season_auto("2098-01-04") == {"2097-08-01"}
+    assert ui_forms._season_auto("2097-09-06", "2097-07-26", "", None) == {
+        "2097-08-01", "2096-08-01"}
+
+
+def test_the_panel_remembers_only_the_users_own_toggle():
+    ui = Path(__file__).resolve().parents[1] / "ui"
+    js = (ui / "static" / "model_settings.js").read_text()
+    # a click on the summary is stored for the session and restored; no
+    # page render or run state opens it
+    assert "sessionStorage.setItem(memo" in js
+    assert "sum.addEventListener('click'" in js
+    tpl = (ui / "templates" / "_model_settings.html").read_text()
+    assert "{% if kp.open %} open{% endif %}" in tpl
+    assert "kp.modified %} open" not in tpl

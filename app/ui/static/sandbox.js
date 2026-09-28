@@ -97,11 +97,26 @@
       }
       name();
     }
+    // As of: the group's last week, and the range the picker offers; a
+    // week outside it says which weeks the group holds when Create is
+    // pressed (no step: a dataset's weeks need not end on a Saturday)
     function lastWeek() {
       var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
-      if (o && asof) asof.value = o.getAttribute('data-last') || asof.value;
+      if (!o || !asof) return;
+      asof.value = o.getAttribute('data-last') || asof.value;
+      asof.min = o.getAttribute('data-first') || '';
+      asof.max = o.getAttribute('data-last') || '';
+      asofCheck();
+    }
+    function asofCheck() {
+      if (!asof || typeof asof.setCustomValidity !== 'function') return;
+      var lo = asof.min, hi = asof.max, v = asof.value, msg = '';
+      if (!asof.disabled && v && ((lo && v < lo) || (hi && v > hi)))
+        msg = 'Pick a week the group holds: ' + lo + ' to ' + hi + '.';
+      asof.setCustomValidity(msg);
     }
     start.addEventListener('change', show);
+    if (asof) asof.addEventListener('input', asofCheck);
     [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
     if (grp) grp.addEventListener('change', function () { lastWeek(); name(); });
     show();
@@ -154,6 +169,31 @@
     pick(tabs.some(function (t) { return t.getAttribute('data-file') === first; }) ? first : 'bngl');
   }
 
+  // ---- Load data's three ways in (hub or dataset, upload, simulate) as a
+  // segmented switch, one pane shown; without this script they stack
+  function setupPanes() {
+    var fold = $('sb-fill');
+    if (!fold) return;
+    var row = fold.querySelector('.sb-seg-row');
+    var btns = Array.prototype.slice.call(fold.querySelectorAll('.sb-dseg > button'));
+    var panes = Array.prototype.slice.call(fold.querySelectorAll('.sb-pane'));
+    if (!row || !btns.length) return;
+    var cur = btns[0].getAttribute('data-pane');
+    btns.forEach(function (b) { if (b.getAttribute('aria-pressed') === 'true') cur = b.getAttribute('data-pane'); });
+    function pick(p) {
+      btns.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-pane') === p ? 'true' : 'false');
+      });
+      panes.forEach(function (x) { x.hidden = x.getAttribute('data-pane') !== p; });
+    }
+    btns.forEach(function (b) {
+      b.addEventListener('click', function () { pick(b.getAttribute('data-pane')); });
+    });
+    fold.classList.add('sb-panes-on');
+    row.hidden = false;
+    pick(cur);
+  }
+
   // the page-head menus (How it works, Manage) are popovers: one open at
   // a time, and Escape or a click outside closes them, as the Display
   // menu does; Escape hands focus back to the menu's button
@@ -177,6 +217,7 @@
   function setup() {
     setupNew();
     setupMenus();
+    setupPanes();
     var form = $('sbform');
     setupTabs(form);
     // ---- run settings: the preset sets the particles; typing a count
@@ -234,11 +275,56 @@
       if (ds && first && (!cur || cur.disabled)) first.selected = true;
       if (ds && changed) rangeFromGroup();
     }
+    // the range against the source, said beside the dates: Load is off
+    // (its "?" and one alert line say why) while the range is empty,
+    // backwards, or wholly outside the weeks the source holds. The
+    // inputs carry no browser constraint (they ride in the editor's
+    // form, whose Save a constraint would stop too); the server checks
+    // again. The hub's first week is not known here: only its last.
+    var why = $('sbfill-why'), load = $('sbfill-load');
+    function rangeReason() {
+      var a = d0.value, b = d1.value, v = src ? src.value : 'settled';
+      var first = '', last = '', holds = '';
+      if (v.indexOf('dataset:') === 0) {
+        var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+        if (o) {
+          first = o.getAttribute('data-first') || '';
+          last = o.getAttribute('data-last') || '';
+          holds = 'The group ' + o.value + ' holds ' + first + ' to ' + last + '.';
+        }
+      } else if (v === 'settled') {
+        last = (src && src.getAttribute('data-newest')) || '';
+        holds = 'The newest hub week is ' + last + '.';
+      } else {
+        last = v;
+        holds = 'The vintage of ' + v + ' holds weeks up to ' + v + '.';
+      }
+      if (!a || !b) return 'Pick a start and an end date.';
+      if (a > b) return 'Start ' + a + ' is after End ' + b + '.';
+      if (last && a > last) return 'Start ' + a + ' is past the last week. ' + holds;
+      if (first && b < first) return 'End ' + b + ' is before the first week. ' + holds;
+      return '';
+    }
+    function rangeCheck() {
+      if (!d0 || !d1 || !load) return;
+      var r = rangeReason();
+      if (root.FluBNFUI) root.FluBNFUI.setReason(load, r || null);
+      else load.disabled = !!r;
+      if (why) why.innerHTML = r ? alertHtml('warn', 'Load is off:', r, null) : '';
+    }
     if (src) {
-      src.addEventListener('change', function () { showSource(true); });
-      if (grp) grp.addEventListener('change', rangeFromGroup);
+      src.addEventListener('change', function () { showSource(true); rangeCheck(); });
+      if (grp) grp.addEventListener('change', function () { rangeFromGroup(); rangeCheck(); });
       showSource(false);
     }
+    [d0, d1].forEach(function (e) {
+      if (!e) return;
+      e.addEventListener('input', rangeCheck);
+      e.addEventListener('change', rangeCheck);
+    });
+    // tips.js (setReason, the alert) runs after this deferred script
+    if (root.FluBNFUI) rangeCheck();
+    else document.addEventListener('DOMContentLoaded', rangeCheck);
 
     // ---- unsaved changes: a badge beside Save, and a warning on leaving
     var dirty = false, chip = $('sb-dirty');

@@ -30,6 +30,44 @@
   <span class="eqnote">{{ note }}</span></p>{% endif %}
 {%- endmacro %}
 
+{# the equation group's symbols, in a closed "Variables" fold at the foot
+   of its panel: rows are (symbol, meaning, units or range, source), each
+   a template literal written as markup (hence |safe), the symbol in the
+   equations' own .math styling. Source is one word: fitted (a prior's
+   range, app/core/engines/pf.py VARS_1S/VARS_2S), fixed (a set value,
+   flubnf/sihrs_priors.py, flubnf/oracle.py), data (read from a feed),
+   derived (computed from the others) or index. Definitions come from the
+   BNGL templates (flubnf/templates), flubnf/oracle.py, oracle_bank.py,
+   oracle_mix.py and analogue.py. A plain <details> and <table>: the public
+   site (no kit) renders it as is. #}
+{% macro _vars(kit, id, rows) -%}
+{% set count %}{% if kit %}{{ tips.tag(rows | length ~ " symbols") }}{% endif %}{% endset %}
+{% call tips.fold("Variables", id=id, cls="eqvars", after=count) %}
+<div class="eqvars-scroll"><table class="eqvars-t">
+ <thead><tr><th scope="col">Symbol</th><th scope="col">Meaning</th><th scope="col">Units, range</th><th scope="col">Source</th></tr></thead>
+ <tbody>
+ {%- for sym, meaning, units, src in rows %}
+  <tr><th scope="row"><span class="math">{{ sym | safe }}</span></th><td>{{ meaning | safe }}</td><td>{{ units | safe }}</td><td>{% if kit %}{{ tips.tag(src) }}{% else %}{{ src }}{% endif %}</td></tr>
+ {%- endfor %}
+ </tbody>
+</table></div>
+{% endcall %}
+{%- endmacro %}
+
+{# the compartment model's symbols, shared by eq_pf and eq_pf2s #}
+{% set _V_FIXED = [
+  ("<i>&#947;</i>", "infections resolve: 7/3.2, from the 3.2-day mean generation time (Chan et al. 2024)", "2.19 per week", "fixed"),
+  ("<i>&#961;</i>", "fraction of infections hospitalized (the I to H branch); admissions identify only its product with <i>mult</i>", "0.02, a working assumption", "fixed"),
+  ("<i>&#947;</i><sub>H</sub>", "discharge, from a ~6-day stay; moves the census H only", "1.17 per week, a working assumption", "fixed"),
+  ("<i>&#969;</i>", "waning immunity, R to S, from ~1 year of immunity", "0.019 per week, a working assumption", "fixed"),
+  ("<i>s</i><sub>0</sub>", "initial susceptible fraction", "0.85", "fixed"),
+  ("<i>N</i>", "the jurisdiction's population (FluSight hub locations.csv)", "people", "data")] %}
+{% set _V_OBS = [
+  ("admissions<sub>w</sub>", "NHSN influenza admissions for reporting week <i>w</i>, as archived on the forecast date", "admissions per week", "data"),
+  ("<i>&#916;H</i><sub>Cum</sub>(<i>w</i>)", "the increase of <i>H</i><sub>Cum</sub> over reporting week <i>w</i>", "people", "derived"),
+  ("<i>mult</i>", "ascertainment, in the observation only (never in a rule)", "prior 0.002 to 1, log-uniform", "fitted"),
+  ("<i>r</i>", "negative-binomial dispersion", "prior 0.1 to 40, log-uniform", "fitted")] %}
+
 {% macro sihrs(uid='s') -%}
 <div class="figscroll"><svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
@@ -341,6 +379,22 @@
  {{ _eq(kit, "Growth rate", "dg-eq-rate", rate, rate_note) }}
  {{ _eq(kit, "Sample rescale", "dg-eq-rescale", rescale, rescale_note) }}
  {% if not kit %}<p class="eqnote">{{ few }}</p>{% endif %}
+ {{ _vars(kit, "dg-vars-oracle", [
+   ("<i>T</i>", "the forecast origin: the as-of Saturday", "date", "data"),
+   ("<i>k</i>, <i>h</i>", "the forecast week after <i>T</i>", "1 to 4 weeks", "index"),
+   ("<i>G</i>", "transmission index, <i>&#946;</i>&#8202;<i>S</i>&#8202;/&#8202;<i>N</i> = <i>&#947;</i> + weekly log growth: new infections per infected", "per week", "derived"),
+   ("<i>G</i><sub><i>k</i></sub>", "the blended level over forecast week <i>k</i>", "per week", "derived"),
+   ("<i>G</i><sub><i>T</i></sub>", "the filter's own <i>G</i> at the origin, <i>&#947;</i> + <i>&#955;</i><sub><i>T</i></sub>", "per week", "derived"),
+   ("<i>&#955;</i><sub><i>T</i></sub>", "the filter's own first-week log growth", "per week", "derived"),
+   ("<i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>", "medians of the filter's samples at the origin and one week ahead", "admissions per week", "derived"),
+   ("<i>W</i>", "the donor's week: a Saturday of a strictly earlier season within two epiweeks of <i>T</i>'s, any jurisdiction", "date", "data"),
+   ("<i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;)", "donor <i>d</i>'s <i>G</i> at the midpoint of week <i>W</i> + <i>k</i>, from smoothed log counts of its series: NHSN admissions, or FluSurv-NET rates shrunk to the admissions scale", "per week", "data"),
+   ("&#189;", "the blend weight, set a priori", "0.5", "fixed"),
+   ("<i>&#947;</i>", "the compartment model's removal rate, 7/3.2", "2.19 per week", "fixed"),
+   ("<i>x</i><sub><i>i,h</i></sub>", "the filter's forecast sample path <i>i</i> at week <i>h</i>", "admissions per week", "derived"),
+   ("<i>d</i><sub><i>i</i></sub>", "the one donor path drawn for sample path <i>i</i>, by a seeded uniform draw", "index", "index"),
+   ("<i>F</i><sub><i>h</i></sub>(<i>d</i><sub><i>i</i></sub>)", "the rescale factor: the blended median path over the filter's own, in closed form", "ratio; 1 leaves a sample as it was", "derived"),
+   ("<i>x</i>&#8242;<sub><i>i,h</i></sub>", "the sample after the step, the one submitted", "admissions per week", "derived")]) }}
 </div>
 {%- endmacro %}
 
@@ -584,6 +638,15 @@
  <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
  {{ fixed }}</p>
  {% endif %}
+ {{ _vars(kit, "dg-vars-pf", [
+   ("<i>t</i>", "time from the first fitted week (the season start, August 1, plus one week)", "weeks", "index"),
+   ("<i>&#946;</i>(<i>t</i>)", "transmission rate: new infections arise at <i>&#946;</i>&#8202;<i>S</i>&#8202;<i>I</i>&#8202;/&#8202;<i>N</i>", "per week", "derived"),
+   ("<i>&#946;</i><sub>0</sub>", "base transmission rate, <i>R</i><sub>eff</sub>&#8202;<i>&#947;</i>&#8202;/&#8202;<i>s</i><sub>0</sub>", "per week", "derived"),
+   ("<i>R</i><sub>eff</sub>", "base reproduction number at the initial susceptible fraction <i>s</i><sub>0</sub>, harmonic-neutral", "prior 0.6 to 2.5, uniform", "fitted"),
+   ("<i>&#949;</i><sub>1</sub>", "annual-harmonic amplitude", "prior 0 to 1, uniform", "fitted"),
+   ("<i>&#966;</i><sub>1</sub>", "annual-harmonic phase: the week of peak transmission", "prior 0 to 52 weeks, uniform", "fitted"),
+   ("<i>H</i><sub>Cum</sub>", "cumulative admissions: tallies the I to H flow, <i>&#961;</i>&#8202;<i>&#947;</i>&#8202;<i>I</i>, and never decays", "people", "derived")]
+   + _V_OBS + _V_FIXED) }}
 </div>
 {%- endmacro %}
 
@@ -612,6 +675,20 @@
  {{ harmonic(two=true, kit=kit) }}
  {{ _eq(kit, "Admissions channel", "dg-eq-adm", adm, adm_note) }}
  {{ _eq(kit, "Strain share channel", "dg-eq-typed", typed, typed_note) }}
+ {{ _vars(kit, "dg-vars-pf2s", [
+   ("<i>s</i>", "the strain", "A or B", "index"),
+   ("<i>t</i>", "time from the first fitted week (the season start, August 1, plus one week)", "weeks", "index"),
+   ("<i>&#946;</i><sub>s</sub>(<i>t</i>)", "strain <i>s</i>'s transmission rate", "per week", "derived"),
+   ("<i>&#946;</i><sub>0,s</sub>", "its base rate, <i>R</i><sub>eff,s</sub>&#8202;<i>&#947;</i>&#8202;/&#8202;<i>s</i><sub>0</sub>", "per week", "derived"),
+   ("<i>R</i><sub>eff,A</sub>, <i>R</i><sub>eff,B</sub>", "each strain's base reproduction number at <i>s</i><sub>0</sub>, harmonic-neutral", "prior A 0.6 to 2.5, B 0.3 to 2.5, log-uniform", "fitted"),
+   ("<i>&#949;</i><sub>1</sub>", "seasonal amplitude, shared by both strains", "prior 0 to 1, uniform", "fitted"),
+   ("<i>&#966;</i><sub>s</sub>", "strain <i>s</i>'s week of peak transmissibility", "prior 0 to 52 weeks, uniform", "fitted"),
+   ("<i>Hadm</i><sub>A</sub>, <i>Hadm</i><sub>B</sub>", "each circuit's cumulative admissions", "people", "derived"),
+   ("<i>H</i><sub>Cum</sub>", "cumulative admissions of both circuits", "people", "derived"),
+   ("<i>k</i><sub>A</sub>", "NREVSS positives typed influenza A that week (the HHS region's where the state reports none)", "specimens", "data"),
+   ("<i>n</i>", "typed positives that week, A plus B", "specimens", "data"),
+   ("share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)", "the model's strain-A share of the infected, <i>I</i><sub>A</sub>&#8202;/&#8202;(<i>I</i><sub>A</sub>&#8202;+&#8202;<i>I</i><sub>B</sub>); <i>mult</i> cancels in it", "0 to 1", "derived")]
+   + _V_OBS + _V_FIXED) }}
 </div>
 {%- endmacro %}
 
@@ -624,6 +701,13 @@
   ratios{% endset %}
 <div class="eqpanel">
  {{ _eq(kit, "Forecast quantiles", "dg-eq-quant", quant, quant_note) }}
+ {{ _vars(kit, "dg-vars-analogue", [
+   ("<i>q</i><sub>h</sub>(<i>&#964;</i>)", "the forecast's <i>&#964;</i> quantile at horizon <i>h</i>", "admissions per week", "derived"),
+   ("<i>h</i>", "the horizon", "weeks after the forecast date", "index"),
+   ("<i>&#964;</i>", "a quantile level, one of FluSight's 23", "0.01 to 0.99", "fixed"),
+   ("<i>y</i><sub>last</sub>", "the last observed admissions value, as archived on the forecast date", "admissions per week", "data"),
+   ("<i>Q</i><sub><i>&#964;</i></sub>", "the empirical <i>&#964;</i> quantile of the pooled ratios", "ratio", "derived"),
+   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction, strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
 </div>
 {%- endmacro %}
 

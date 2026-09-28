@@ -320,6 +320,55 @@ def test_api_progress_reads_a_workroot_with_glob_brackets(tmp_path):
     assert (live["done"], live["total"]) == (4, 10)
 
 
+def test_api_progress_tiles_each_location(tmp_path):
+    """The running page's tiles: every fit from cells.json, the finished
+    ones from each shard's status, the fit a shard is on as "live", a
+    FAIL counted apart; a research run's pf2s/ adds to the same tiles."""
+    w = tmp_path / "run"
+    (w / "pf2s").mkdir(parents=True)
+    cells = [{"key": f"{loc[:2]}_r{r}", "location": loc, "replicate": r}
+             for loc in ("Ohio", "Texas", "US") for r in (0, 1)]
+    (w / "cells.json").write_text(json.dumps(cells))
+    (w / "pf_cells_0.json").write_text(json.dumps(cells[:4]))
+    (w / "pf_cells_1.json").write_text(json.dumps(cells[4:]))
+    (w / "pf_status_0.json").write_text(json.dumps(
+        {"Oh_r0": "ok", "Oh_r1": "ok", "Te_r0": "FAIL: boom"}))
+    (w / "pf_status_1.json").write_text("{}")
+    (w / "pf2s" / "cells.json").write_text(json.dumps(
+        [{"key": "Oh_2s", "location": "Ohio"}]))
+    ui_state._status.update({"running": "all:x", "workroot": str(w),
+                             "expected_total": 6,
+                             "started_utc": time.time() - 30})
+    tiles = {t["name"]: t for t in
+             client.get("/api/progress").json()["locations"]}
+    assert list(tiles) == ["Ohio", "Texas", "US"]            # run order
+    assert (tiles["Ohio"]["done"], tiles["Ohio"]["total"]) == (2, 3)
+    assert tiles["Texas"]["failed"] == 1 and tiles["Texas"]["live"]
+    assert tiles["US"]["live"] and tiles["US"]["done"] == 0
+    assert not tiles["Ohio"]["live"]
+    # no cells yet (or a Groundhog-only run): no tiles, and no error
+    (w / "cells.json").unlink()
+    (w / "pf2s" / "cells.json").unlink()
+    assert client.get("/api/progress").json()["locations"] == []
+
+
+def test_forecast_running_card_holds_the_results_place():
+    ui_state._status.update({"running": "all:x", "run_label": "x",
+                             "workroot": None, "expected_total": None,
+                             "started_utc": time.time() - 30})
+    html = client.get("/forecast").text
+    card = html.split('class="card fc-running"')[1].split("</script>")[0]
+    # settings left, the results' place right: the tiles, the skeleton
+    # shown until tiles arrive, and the quip inside that place
+    assert 'class="runsplit fc-runsplit"' in card
+    assert 'id="fc-grid" hidden' in card and 'id="fc-skel"' in card
+    wait = card.split('id="fc-wait"')[1]
+    assert 'id="quip"' in wait
+    assert "renderLocs(d.locations)" in html
+    # no estimate before the first fit finishes: said, not dashed
+    assert "setStat('fc-left','estimating')" in html
+
+
 def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
@@ -574,7 +623,11 @@ def test_weekly_report_footer_states_the_run_wall_time(tmp_path):
     from app.core.report_v2 import build_report
     p = build_report("2098-01-03", {}, {}, {}, tmp_path / "r.html",
                      elapsed_s=3725.0)
-    assert "Run wall time: 1:02:05" in p.read_text()
+    # a stat on the run card: label, then value and unit
+    html = p.read_text()
+    assert "<dt>Run wall time</dt>" in html
+    assert 'id="runtime">1:02:05</span> <span class="uk-stat-u">h:mm:ss' \
+        in html
     q = build_report("2098-01-03", {}, {}, {}, tmp_path / "q.html")
     assert "Run wall time" not in q.read_text()   # never guessed
 
@@ -729,14 +782,23 @@ def test_season_page_carries_controls_and_timing():
 
 # ------------------------------------------------------------------- quips
 
+def _quip_list(src: str, name: str) -> list:
+    return [ln.strip().strip(",").strip('"')
+            for ln in src.split(f"window.{name} = [")[1].split("];")[0]
+            .splitlines()
+            if ln.strip().startswith('"')]
+
+
 def test_quips_are_shared_and_in_voice():
     src = (Path(__file__).resolve().parents[1] / "ui" / "static"
            / "quips.js").read_text()
-    quips = [ln.strip().strip(",").strip('"')
-             for ln in src.split("window.FLUBNF_QUIPS = [")[1].split("];")[0]
-             .splitlines()
-             if ln.strip().startswith('"')]
-    assert len(quips) >= 65                       # the original 50, plus more
+    shared = _quip_list(src, "FLUBNF_QUIPS")
+    retro = _quip_list(src, "FLUBNF_RETRO_QUIPS")
+    quips = shared + retro
+    assert len(shared) >= 65                      # the original 50, plus more
+    # replay lines stay off the forecast page
+    assert "replaying last winter at one week per breath" in retro
+    assert not any("replay" in q for q in shared)
     assert "teaching 10,000 particles to sneeze responsibly" in quips
     assert len(set(quips)) == len(quips)          # no duplicates
     for q in quips:
@@ -758,5 +820,8 @@ def test_both_run_pages_draw_from_the_shared_quip_list():
     ticker = (Path(__file__).resolve().parents[1] / "ui" / "static"
               / "retro_progress.js").read_text()
     assert "flubnfQuips" in ticker
+    # only the retrospective pages add the replay lines
+    assert "FLUBNF_RETRO_QUIPS" in ticker
+    assert "FLUBNF_RETRO_QUIPS" not in fc
     # the paused card holds its quip still
     assert "st.quips.pause()" in ticker

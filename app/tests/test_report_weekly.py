@@ -111,9 +111,13 @@ def test_weekly_report_is_theme_aware(tmp_path):
 def test_weekly_report_map_swatches_ride_the_category_tokens(tmp_path):
     # the legend and confidence swatches resolve through --cat-*, so the
     # color-vision modifier reaches them exactly as it reaches the map
+    # (the kit's legend chips: the swatch color is the chip's --sw)
     html = _build(tmp_path)
-    assert 'style="background:var(--cat-increase, #e8a33d)' in html
-    assert "background:var(--cat-large-decrease, #2e7d4f)" in html
+    assert 'style="--sw:var(--cat-increase, #e8a33d)"' in html
+    assert "--sw:var(--cat-large-decrease, #2e7d4f)" in html
+    # the confidence chips mix the same token over the card
+    assert ("--sw:color-mix(in srgb,var(--cat-increase, #e8a33d) 64%,"
+            "var(--card))") in html
 
 
 def test_weekly_report_carries_a_print_stylesheet(tmp_path):
@@ -137,7 +141,10 @@ def test_weekly_report_keeps_its_build_contract(tmp_path):
         settings_html='<p class="hint runsettings"><strong>Run settings:'
                       "</strong> engine pf</p>",
         fitted_fips=["39"]).read_text()
-    assert "Run wall time: 1:02:05" in html
+    # the run card's stat: label, value, unit
+    assert "<dt>Run wall time</dt>" in html
+    assert '<span class="uk-stat-v" id="runtime">1:02:05</span>' in html
+    assert '<span class="uk-stat-u">h:mm:ss</span>' in html
     assert "Run settings" in html
     assert "no data (reporting gap)" in html
     assert "shown as gaps, never interpolated" in html
@@ -185,11 +192,11 @@ def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
             "hover_html": ""}
     html = build_report("2098-01-03", {"VT": card}, {}, {},
                         tmp_path / "r.html", fitted_fips=["50"]).read_text()
-    assert "no forecast</span>" in html
+    assert "</span>no forecast<" in html
     assert "No-forecast states have data but no forecast" in html
     html2 = build_report("2098-01-03", {}, {}, {}, tmp_path / "r2.html",
                          fitted_fips=["50"]).read_text()
-    assert "no forecast</span>" not in html2
+    assert "</span>no forecast<" not in html2
 
 
 def test_state_panel_and_national_card_use_the_hub_rate_change_rule():
@@ -204,3 +211,24 @@ def test_state_panel_and_national_card_use_the_hub_rate_change_rule():
     assert "grid[0], lo_l, pop_l, 0)" in src
     assert "q1, lo_us, us_pop, 0)" in src
     assert "q1, lo_us, 340_000_000, 0)" not in src
+
+
+def test_weekly_report_carries_the_ui_kit(tmp_path):
+    """The report wears the console's kit offline: the kit's sheet and
+    behavior inlined, the face and the per-theme marks as data: URIs, the
+    map's explainer in a "?" and the view switch as the kit's segmented
+    control, whose aria-pressed the page script flips."""
+    from app.core import html_page
+    html = build_report("2098-01-03", {}, {}, {}, tmp_path / "r.html",
+                        national_map_html="<svg></svg>").read_text()
+    assert html_page.kit_css() in html and html_page.kit_js() in html
+    assert "@font-face" in html and "data:font/woff2;base64," in html
+    assert '[data-theme="dracula"]{--logo:url("data:image/svg+xml;base64,' \
+        in html
+    assert 'class="mark" aria-hidden="true"' in html
+    assert 'aria-describedby="tip-map"' in html
+    assert '<div class="uk-seg" role="group" aria-label="Map view">' in html
+    assert 'id="btn-state-view" class="on" aria-pressed="true"' in html
+    assert "bN.setAttribute('aria-pressed'" in html
+    # the stored text size is followed too
+    assert "localStorage.getItem('fontsize')" in html

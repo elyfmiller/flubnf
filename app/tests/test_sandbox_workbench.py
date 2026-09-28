@@ -114,6 +114,8 @@ def test_the_workbench_carries_one_form_with_presets_and_three_actions(box, monk
     assert form.index('class="sb-default"') < form.index("fill-data")
     assert 'formaction="/sandbox/models/kinetics_example/run" data-guard="sandbox-run"' in form
     assert 'id="sb-check"' in form and ">Save and run<" in form
+    # once in the toolbar, once at the foot of Run settings
+    assert form.count(">Save and run<") == 2
     assert ">Quick check (200)<" in form and ">Full fit (10,000)<" in form and ">Custom<" in form
     for name in ("particles", "jitter", "forecast_weeks", "seed"):
         assert f'name="{name}"' in form, name

@@ -109,13 +109,13 @@ def test_states_outside_the_run_read_not_fitted(tmp_path):
     html = report_v2.build_report(
         "2026-01-03", _cards(), {}, {}, tmp_path / "a.html",
         fitted_fips=["39"]).read_text()
-    assert "not fitted in this run</span>" in html
-    assert "no forecast</span>" not in html
+    assert "</span>not fitted in this run<" in html
+    assert "</span>no forecast<" not in html
     # an in-scope card without probabilities is still "no forecast"
     html = report_v2.build_report(
         "2026-01-03", _cards(), {}, {}, tmp_path / "b.html",
         fitted_fips=["39", "48"]).read_text()
-    assert "no forecast</span>" in html
+    assert "</span>no forecast<" in html
 
 
 def test_national_detail_says_us_was_not_run(tmp_path):

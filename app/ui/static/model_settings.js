@@ -10,7 +10,9 @@
    inside it, never by a page-wide id. data-engine names the model select
    a panel follows (default: #model-pick or #retro-engine in its form);
    data-kind (set by the page) hides the rows marked data-only for another
-   kind of data, and a group whose rows are all hidden hides too. Loading
+   kind of data, and a group whose rows are all hidden hides too. The
+   panel reopens when the user left it open this session (sessionStorage,
+   per page and panel). Loading
    the script twice sets nothing up twice. */
 (function () {
   function init(box) {
@@ -125,6 +127,19 @@
       if (tick) tick.checked = false;
       if (reason) reason.value = '';
       update();
+    });
+    // reopened when the user left it open this session (the server opens
+    // it after a refusal, or for changed settings when no run is going); a
+    // click on the summary is the user's choice, never a page render
+    var memo = 'ms-open:' + location.pathname + ':' + (box.id || '');
+    try {
+      if (sessionStorage.getItem(memo) === '1') box.open = true;
+    } catch (e) {}
+    var sum = box.querySelector('summary');
+    if (sum) sum.addEventListener('click', function () {
+      setTimeout(function () {
+        try { sessionStorage.setItem(memo, box.open ? '1' : '0'); } catch (e) {}
+      }, 0);
     });
     box.addEventListener('input', update);
     box.addEventListener('change', update);

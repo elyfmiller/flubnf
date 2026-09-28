@@ -30,21 +30,23 @@ def test_home_renders_workflow_performance_and_component_cards():
     # two submissions, nothing blended
     assert "Two submissions" in r.text and "Equal-weight blend" not in r.text
     assert "Groundhog" in r.text
-    # measured performance: the PF reseal's three-season record and the
-    # Groundhog's replay, both universes named. FluSight field placements
-    # were withdrawn, so the table must not carry them and must say so.
+    # measured performance: the shipped Oracle SIHRS's three-season record
+    # beside the Groundhog's replay and the FluSight Ensemble, each
+    # universe named. FluSight field placements were withdrawn, so the
+    # table must not carry them and must say so.
     assert 'class="perf"' in r.text
-    for cell in ("0.840", "0.797", "0.846", "0.821",
+    for cell in ("0.767", "0.697", "0.781", "0.738",
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
-                 "15,460", "15,340", "Oracle SIHRS", "Groundhog",
-                 # Oracle SIHRS vs the plain filter on the same cells, the
-                 # caveat, and the three-season column
-                 "0.697", "0.794", "0.781", "0.843", "0.731", "0.813", "9,279",
-                 "0.767", "0.840", "0.738", "0.819", "6,021", "15,300",
-                 "FluSurv-NET", "below 1.000 beats it",
-                 "Filter alone", "frozen-specification replication"):
+                 "15,460", "15,340", "15,300", "Oracle SIHRS", "Groundhog",
+                 # the plain filter on the same cells, in the column's tip
+                 # (its ablation), and the two-season figure
+                 "0.840", "0.794", "0.843", "0.819", "0.731", "0.813",
+                 "9,279", "6,021", "4,859", "4,420",
+                 "below 1.000 beats it", "frozen-specification replication"):
         assert cell in r.text, cell
+    # the filter alone is no longer a headline column
+    assert "Filter alone" not in r.text
     # the performance card names no blend (the outlook label above it
     # reflects the latest stored run and may predate the retirement)
     perf = r.text[r.text.index('class="perf"'):]
@@ -78,6 +80,27 @@ def test_home_renders_workflow_performance_and_component_cards():
     # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",
                                           "")
+
+
+def test_home_table_headlines_the_recorded_oracle_sihrs():
+    """home.html's first score column is read from its source by the site
+    (site_build.harvest_placement), so the Oracle SIHRS figures are
+    literals there: they must be oracle_text's record, season by season;
+    trees that predate the step are held to the filter's own replay."""
+    from app.core import oracle_text as ot
+    from app.core import site_build as sb
+    got = sb.harvest_placement()
+    assert set(got) == {"2023-24", "2024-25", "2025-26"}
+    for season, entry in got.items():
+        assert f"{entry['app_rel']:.3f}" == ot.fmt(ot.RECORD[season]["oracle"])
+    assert sb.reference_for(got, sb.PF_LABEL_ORACLE) is got
+    filt = sb.reference_for(got, sb.PF_LABEL_FILTER)
+    assert {s: e["app_rel"] for s, e in filt.items()} == sb.FILTER_RESEAL_REL
+    # the pooled cell is the three-season record
+    src = (Path(__file__).resolve().parents[1] / "ui/templates/home.html"
+           ).read_text(encoding="utf-8")
+    assert ('<td>Pooled</td><td class="num rel">'
+            + ot.fmt(ot.RECORD["three"]["oracle"]) + "</td>") in src
 
 
 def test_two_strain_is_off_the_navbar_but_still_routed():
@@ -299,6 +322,40 @@ def test_methods_carries_the_pf_and_two_strain_equations():
     assert "the growth blend" in t
     assert "NegBin(" in t
     assert "Binomial(" in t
+
+
+def test_every_equation_group_defines_its_symbols():
+    """Each equation panel ends on a closed "Variables" fold: a table of
+    symbol, meaning, units or range and source, the symbol in the
+    equations' .math, with the fitted priors and fixed values the engine
+    uses (app/core/engines/pf.py VARS_1S, flubnf/sihrs_fit.py)."""
+    pages = {"/methods": ("dg-vars-pf", "dg-vars-oracle", "dg-vars-pf2s"),
+             "/model/pf": ("dg-vars-pf", "dg-vars-oracle"),
+             "/model/pf2s": ("dg-vars-pf2s",),
+             "/model/analogue": ("dg-vars-analogue",)}
+    for page, ids in pages.items():
+        t = client.get(page).text
+        assert t.count('class="eqpanel"') == t.count("eqvars-t"), page
+        for fid in ids:
+            assert f'<details class="uk-fold eqvars" id="{fid}">' in t, (page, fid)
+        # every row's symbol wears the equations' math styling
+        rows = re.findall(r'<th scope="row">(.*?)</th>', t, re.DOTALL)
+        assert rows, page
+        for th in rows:
+            assert th.startswith('<span class="math">'), (page, th)
+    t = client.get("/model/pf").text
+    for needle in ("prior 0.6 to 2.5, uniform", "prior 0 to 52 weeks, uniform",
+                   "prior 0.002 to 1, log-uniform", "prior 0.1 to 40, log-uniform",
+                   "2.19 per week", "0.02, a working assumption",
+                   "1.17 per week", "0.019 per week", ">0.85<",
+                   "the as-of Saturday", "the blend weight, set a priori"):
+        assert needle in t, needle
+    # the site (no kit) renders the same fold as plain markup
+    from app.core import site_build as sb
+    from app.ui.server import VERSIONS
+    html = sb.harvest_methods(VERSIONS)
+    assert html.count('class="eqvars-t"') == 3
+    assert "uk-tag" not in html.split('class="eqvars-t"', 1)[1].split("</table>", 1)[0]
 
 
 def test_home_workflow_carries_the_forcing_and_groundhog_equations():

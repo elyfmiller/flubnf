@@ -108,60 +108,67 @@
    diagram (read-once reference) sits one scroll below #}
 <div class="grid2 homeperf">
  <div class="card hm-perf">
-  {{ tips.heading("Measured performance", "hm-perf", "relWIS vs the FluSight baseline; below 1.000 beats it.",
-                  after=tips.tag("relWIS")) }}
-  {# Oracle record (oracle_text.RECORD). Class must NOT be bare "perf":
-     site_build.harvest_placement reads the FIRST class="perf" table (the
-     one below) from this source #}
-  {% call tips.heading("Oracle SIHRS record", "home-oracle", level=3, cls="hm-perfhead",
-                       rich=True, tip_label="the Oracle SIHRS record") %}The Oracle
-  SIHRS against the plain particle filter on the same cells, a
-  frozen-specification replication (<a href="/methods#oracle">Methods</a>).{% endcall %}
-  <table class="perf oraclerec">
-   <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
-    <th class="num">Plain filter</th><th class="num">Cells</th></tr></thead>
-   <tbody>
-    {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
-                          ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
-    {% set r = oracle_text.RECORD[key] %}
-    <tr{% if key in ("both", "three") %} class="total"{% endif %}><td>{{ label }}</td>
-     <td class="num rel">{{ oracle_text.fmt(r.oracle) }}</td>
-     <td class="num">{{ oracle_text.fmt(r.filter) }}</td>
-     <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
-    {% endfor %}
-   </tbody>
-  </table>
-  {% call tips.heading("Full-season replays", "home-replays", level=3, cls="hm-perfhead",
-                       rich=True, tip_label="the full-season replays") %}
-   <span class="uk-tt-line">Full-season replays on vintage data: the filter
-   alone and the FluSight Ensemble on 15,460 cells, the Groundhog on 15,340
-   (other cells than the table above; placement among teams withdrawn).</span>
-   <span class="uk-tt-line">Both tables were measured under the earlier cell
-   rule (truth and median above 0), which differs from today's at about the
-   third decimal.</span>
+  {% call tips.heading("Measured performance", "hm-perf", rich=True, after=tips.tag("relWIS"),
+                       tip_label="the measured performance") %}
+   <span class="uk-tt-line">relWIS vs the FluSight baseline; below 1.000 beats it.</span>
+   <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
+   {{ oracle_text.cells(oracle_text.RECORD.three.cells) }}, the Groundhog on
+   15,340, the FluSight Ensemble on 15,460 (placement among teams
+   withdrawn).</span>
+   <span class="uk-tt-line">Measured under the earlier cell rule (truth and
+   median above 0), which differs from today's at about the third
+   decimal.</span>
    <span class="uk-tt-line">{{ relwis_convention_note }}</span>
   {% endcall %}
+  {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
+     means; its "three" row is the pooled cell) beside the Groundhog and the
+     FluSight Ensemble. The table's markup stays as it is: site_build.
+     harvest_placement reads the first class="perf" table of this SOURCE,
+     its first "num rel" cell per season row, so the Oracle figures are
+     literals here, held equal to oracle_text.fmt(RECORD) by
+     app/tests/test_pages.py. The plain filter's figures are its ablation,
+     in the column's tip #}
   <table class="perf">
    {# columns named for whose forecast they score; the unit is beside the
       card's heading #}
-   <thead><tr><th>Season</th><th class="num">Filter alone</th>
+   <thead><tr><th>Season</th><th class="num">Oracle SIHRS
+    {%- call tips.toggletip("home-oracle", "the Oracle SIHRS figures", title="The Oracle SIHRS record") %}
+     <span class="uk-tt-line">The stored forecasts with the Oracle step and
+     its donor bank applied, a frozen-specification replication
+     (<a href="/methods#oracle">Methods</a>), on
+     {{ oracle_text.cells(oracle_text.RECORD["2023-24"].cells) }},
+     {{ oracle_text.cells(oracle_text.RECORD["2024-25"].cells) }} and
+     {{ oracle_text.cells(oracle_text.RECORD["2025-26"].cells) }} cells.</span>
+     <span class="uk-tt-line">The plain filter without the step, on the same
+     cells: {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }},
+     {{ oracle_text.fmt(oracle_text.RECORD["2024-25"].filter) }} and
+     {{ oracle_text.fmt(oracle_text.RECORD["2025-26"].filter) }};
+     {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} pooled.</span>
+     <span class="uk-tt-line">2024-25 and 2025-26 together:
+     {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
+     filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on
+     {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells.</span>
+    {%- endcall %}</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
    <tbody>
-    <tr><td>2023-24</td><td class="num rel">0.840</td>
+    <tr><td>2023-24</td><td class="num rel">0.767</td>
      <td class="num rel">0.722</td><td class="num">0.741</td></tr>
-    <tr><td>2024-25</td><td class="num rel">0.797</td>
+    <tr><td>2024-25</td><td class="num rel">0.697</td>
      <td class="num rel">0.653</td><td class="num">0.663</td></tr>
-    <tr><td>2025-26</td><td class="num rel">0.846</td>
+    <tr><td>2025-26</td><td class="num rel">0.781</td>
      <td class="num rel">0.651</td><td class="num">0.684</td></tr>
-    <tr class="total"><td>Pooled</td><td class="num rel">0.821</td>
+    <tr class="total"><td>Pooled</td><td class="num rel">0.738</td>
      <td class="num rel">0.666</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
-  {# provenance: Filter alone + FluSight Ensemble = reseal 2026-09-07
-     (app/state/retro_reseal, 15,460 cells, pre-Oracle); Groundhog = its own
-     replay (flubnf groundhog retro, 15,340 cells, 2026-09-21). The sealed
-     engine's table stays on Methods and docs/archive/RELEASE-1.0.md. #}
+  {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
+     the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
+     cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
+     15,460 cells); Groundhog = its own replay (flubnf groundhog retro,
+     15,340 cells, 2026-09-21). The particle filter alone on the reseal
+     (0.840 / 0.797 / 0.846, 0.821 pooled) is site_build.FILTER_RESEAL_REL,
+     the site's reference for trees that predate the step. #}
  </div>
  <div class="card hm-start">
   <h2>Start here</h2>

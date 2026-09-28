@@ -217,7 +217,10 @@ def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     assert '<option value="settled" >latest (settled)</option>' in html
     assert '<option value="2024-11-09" >as of 2024-11-09</option>' in html
     assert html.index('value="2024-11-09"') < html.index('value="2024-11-02"')
-    assert 'name="start" type="date" step="7"' in html
+    # no browser constraint on the dates: they ride in the editor's form,
+    # where a step or min stopped Save too (sandbox.js says why Load is off)
+    assert '<input id="sbfill-start" name="start" type="date" value=' in html
+    assert '<input id="sbfill-end" name="end" type="date" value=' in html
     assert 'value="2024-06-29"' in html and 'value="2024-11-09"' in html  # 20 weeks
     assert "data.exp holds" not in html                   # nothing filled yet
     assert "sandbox_data" not in html                     # the include resolved

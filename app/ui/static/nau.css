@@ -840,6 +840,17 @@ svg.cumchart .svgt-md{font-size:11px}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
 .eqpanel .math sub{font-size:.68em}
 .eqpanel .eqnote{color:var(--mut);font-size:var(--fs-hint);font-weight:400}
+/* an equation group's "Variables" fold (diagrams.html _vars): left-aligned
+   under the centered lines; its table scrolls inside itself when narrow.
+   The symbol is a row header in the equations' .math, not a caps label */
+.eqpanel details.eqvars{max-width:56rem;margin:.55rem auto .2rem;text-align:left}
+.eqvars-scroll{overflow-x:auto}
+.eqvars-t td,.eqvars-t th{padding:.3rem .6rem .3rem 0;vertical-align:top}
+.eqvars-t td{font-size:var(--fs-hint)}
+.eqvars-t tbody th{color:var(--ink);font-size:inherit;text-transform:none;
+  letter-spacing:0;white-space:nowrap}
+.eqvars-t tbody th .math{white-space:nowrap}
+.eqvars-t td:nth-child(3){color:var(--mut)}
 /* read-only BNGL source: collapsed, scrolls inside its own well */
 details.bngl > summary{cursor:pointer;list-style:none;font-weight:600}
 details.bngl > summary::-webkit-details-marker{display:none}
@@ -1183,25 +1194,7 @@ form.sbnew > .row{margin-top:.9rem}
   grid-template-rows:auto;grid-template-areas:"edit" "runs" "diag"}}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-/* sub-groups inside a card are a heading, not another box */
-fieldset.sbrun{border:0;padding:0;margin:1rem 0 .4rem;min-width:0}
-fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
-/* run settings: one grid, every field its column's width */
-.sbrun-grid{display:grid;gap:0 .7rem;align-items:end;
-  grid-template-columns:minmax(15.5rem,2.4fr) minmax(0,.9fr) minmax(0,1fr) minmax(7rem,1.2fr)}
-.sbrun-grid > span{display:flex;flex-direction:column;min-width:0}
-@media(max-width:560px){.sbrun-grid{grid-template-columns:minmax(0,1fr)}}
 .sbpair{display:grid;grid-template-columns:minmax(0,1fr) 5.5rem;gap:.4rem}
-details.sbfill .row{align-items:flex-end}
-details.sbfill .row > span{display:flex;flex-direction:column}
-details.sbfill .row > span[hidden]{display:none}
-/* a label with its tip and one without sit on one baseline */
-.sbfill .row > span > label,.sbrun-grid > span > label,
-.sbfill .row .lblrow,.sbrun-grid .lblrow{min-height:1.5rem;display:flex;white-space:nowrap;
-  align-items:center;margin:.5rem 0 .2rem}
-details.sbfill input[type=file]{padding:.3rem}
-.sbupload{margin-top:.5rem}
-.sbactions{margin-top:.5rem}
 /* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
 fieldset.sbshipped{border:0;padding:0;margin:.8rem 0;min-width:0}
 fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
@@ -1209,10 +1202,6 @@ fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 .sbshipped .row > span{display:flex;flex-direction:column}
 .sbshipped .row > span[hidden]{display:none}
 .sbshipped .lblrow{margin:0 0 .25rem}
-.sbsetpop{align-self:flex-end}
-.sbsetpop label{display:inline-flex;align-items:center;gap:.3rem}
-.sbcompare{margin:0}
-.sbcompare select{width:auto;max-width:100%}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
 table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
@@ -1328,7 +1317,6 @@ table.sbkeys code{white-space:nowrap}
   table.sbkeys td:first-child{flex:0 0 100%;padding-top:.4rem;padding-bottom:.15rem}
   table.sbkeys td:nth-child(2){flex:1 1 auto;min-width:0}
   table.sbkeys td:last-child{color:var(--mut)}}
-.sbupload > button,.sbfill .row > button{align-self:flex-end}
 
 /* the Forecast data source: two tabs under the page title (FluSight hub,
    Your data), underlined like the header's tabs, not pills */
@@ -1405,19 +1393,12 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
 .sb-tabbed .sbfile + .sbfile{margin-top:0}
 .sb-tabbed .sbfile > .lblrow{display:none}
 .sbfile > .lblrow{margin-top:0}
-/* run settings under a rule: the files above, what a run uses below */
-fieldset.sbrun{border-top:1px solid var(--line);padding-top:.7rem;margin-top:.9rem}
-.sbactions{margin-top:.8rem}
 #sb-checked:empty{display:none}
 #sb-checked{margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
 #sb-checked.sb-stale{opacity:.55}
 /* results: the status first, then the plot, the parameters, compare, files */
 pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   border-radius:8px;padding:.5rem .7rem;margin:.5rem 0}
-#results .sbcompare{margin-top:.7rem}
-.sbcompare label{margin:0}
-.sbrunfoot{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
-.sbrunfoot form{margin:0}
 .sboracle form.row{align-items:flex-end}
 .sboracle form.row > span:not(.uk-reason){display:flex;flex-direction:column}
 .sboracle form.row input{width:7rem}
@@ -1460,15 +1441,6 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .fanoff .ck{margin:0}
 
 /* round3: sandbox */
-/* run settings: Particles on its own line, then Jitter, Forecast weeks
-   and Seed side by side; a field wraps before its label can run into the
-   next one (a label never shrinks below its own width) */
-.sbrun-grid{display:flex;flex-wrap:wrap;gap:0 .9rem;align-items:flex-end}
-.sbrun-grid > span{flex:1 1 6.5rem;min-width:auto}
-.sbrun-grid > .sbrun-parts{flex:1 1 100%}
-.sbrun-parts .sbpair{max-width:24rem}
-.sbrun-grid > span:nth-child(3){flex-basis:9.5rem}
-@media(max-width:560px){.sbrun-grid > span{flex-basis:100%}}
 /* the run: what to try, the full-fit offer */
 details.sbtries{margin:.3rem 0 .4rem}
 .sbtries ul{margin:.3rem 0 .2rem 1.1rem;padding:0}
@@ -1481,7 +1453,6 @@ details.sbhow > summary{list-style:none;cursor:pointer}
 details.sbhow > summary::-webkit-details-marker{display:none}
 details.sbhow > summary h2{display:inline;margin:0}
 .sbhead-menus{display:flex;gap:.5rem;align-items:flex-start;flex:none}
-.sbsim{margin-top:.6rem}
 
 /* round3: submission files and model identities */
 details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
@@ -1501,13 +1472,6 @@ header.nav .navtabs.more-l.more-r{
   mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}
 
 /* round6: ui */
-/* Sandbox Load data: Set N is a .ck checkbox (the global input width:100%
-   stretched it and squeezed its label under the button); it takes a line
-   of its own and the Load button follows it */
-details.sbfill .row > span.sbsetpop{flex:1 0 100%;flex-direction:row;align-items:center}
-.sbfill .row .sbsetpop .lblrow{margin:.3rem 0 0;min-height:0}
-.sbsetpop .ck{margin:0}
-details.sbfill .row > .sbsetpop + button{align-self:flex-start}
 /* run settings: a long value (a location list) wraps inside the card
    instead of widening the page at 700px or larger text */
 .runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
