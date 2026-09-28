@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import datasets as D                       # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
+from app.tests.test_sandbox_data import source_facts     # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 from app.ui.routes import sandbox as ui_sandbox          # noqa: E402
 
@@ -74,8 +75,10 @@ def test_a_one_location_hubverse_upload_loads_with_calendar_weeks(box):
     assert info["asof"] == "dataset" and info["dataset"]["id"] == ds[0].id
     assert info["dates"][2] == "2024-10-19" and info["dropped"] == 0
     html = client.get(r.headers["location"]).text
-    assert "data.exp filled: Springfield, 2024-10-05 to 2024-11-02, dataset counts" in html
-    assert "data.exp holds Springfield, 2024-10-05 to 2024-11-02, dataset counts (5 weeks)" in html
+    assert "data.exp filled: 5 weeks of Springfield, 2024-10-05 to 2024-11-02." in html
+    assert "Source: dataset counts." in html
+    assert source_facts(html) == ["Springfield", "2024-10-05 to 2024-11-02",
+                                  "dataset counts", "5 weeks"]
     assert f'<option value="dataset:{ds[0].id}" selected>counts</option>' in html
 
 
@@ -86,8 +89,8 @@ def test_a_grouped_upload_is_stored_then_one_group_loaded(box):
     before = sb.read_model("mine")["data.exp"]
     assert sb.read_model("mine")["data.exp"] == before            # nothing loaded yet
     html = client.get(r.headers["location"]).text
-    assert "pick a group under Load data" in html
-    assert '<details class="adv sbfill" open>' in html
+    assert "pick one under Load data" in html
+    assert '<details class="uk-fold sbfill" id="sb-fill" open>' in html
     assert f'value="Overall" data-ds="{ds.id}"' in html
     r = client.post("/sandbox/models/mine/fill-data",
                     data={"source": f"dataset:{ds.id}", "group": "Overall"},
@@ -97,7 +100,7 @@ def test_a_grouped_upload_is_stored_then_one_group_loaded(box):
     assert rows[0] == [0, 380] and [t for t, _ in rows] == list(range(len(rows)))
     info = sb.read_data_source("mine")
     assert info["population"] == 6800000 and info["start"] == "2022-01-01"
-    assert "; population 6,800,000" in client.get("/sandbox?model=mine").text
+    assert source_facts(client.get("/sandbox?model=mine").text)[-1] == "population 6,800,000"
     # a range within the group's weeks, and a group the dataset lacks
     sb.fill_data("mine", "Adult", "2022-01-08", "2022-01-15", dataset=ds.id)
     assert _rows() == [[0, 320], [1, 340]]
@@ -188,7 +191,8 @@ def test_a_client_file_name_is_never_a_path(box, tmp_path):
 def test_rates_load_with_a_word_about_the_objective(box):
     rates = HUBVERSE.replace(",8\n", ",0.8\n")
     r = _upload(rates, kind="rate")
-    assert "rates, not counts" in client.get(r.headers["location"]).text
+    assert "Rates: set objfunc in priors.conf." in client.get(
+        r.headers["location"]).text
 
 
 def test_the_stored_dataset_is_offered_to_other_models(box):

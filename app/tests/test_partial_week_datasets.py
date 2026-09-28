@@ -65,9 +65,9 @@ def test_a_dataset_run_refuses_it(monkeypatch):
         follow_redirects=False)
     assert got == []
     flash = ui_state._status.get("flash", "")
-    assert (f"Model settings: {PARTIAL}: this rule's floor (a prior week of "
-            "20 or more) assumes hospital admission counts and cannot run on "
-            "the custom dataset 'Kids'. Nothing was run.") in flash
+    assert (f"Not run: model settings: {PARTIAL}: this rule's floor (a prior "
+            "week of 20 or more) assumes hospital admission counts and cannot "
+            "run on the custom dataset 'Kids'.") in flash
     # the trailing-zero rule runs
     client.post("/run/dataset", data={
         "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
@@ -87,7 +87,7 @@ def test_a_dataset_replay_refuses_it():
     assert CX.list_replays(D.get(ds.id)) == []
     assert "assumes hospital admission counts" in ui_state._status.get(
         "flash", "")
-    assert "Nothing was started." in ui_state._status["flash"]
+    assert "Not started" in ui_state._status["flash"]
     assert not DU._REPLAY
 
 

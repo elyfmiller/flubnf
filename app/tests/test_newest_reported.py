@@ -299,10 +299,17 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
     _hub(tmp_path / "hub2", monkeypatch, newest={"Nebraska": None})
     page = client.get("/data").text
     assert 'aria-label="Incomplete"' in page
-    # the grid row: the pill carries the count, the text the head
-    assert '<span class="pill warn">1 not reported</span>' in page
-    assert f"4 of {len(LOCS)} reported" in page
+    # the row: a badge carries the count, the text the head, and the
+    # toggletip names each state and links to Data issues on the Forecast
+    # tab (a tooltip could not hold the link)
+    row = page.split('id="newest-check"')[1].split('id="tt-newest-gaps"')[0]
+    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
+            in row)
+    assert '<span class="uk-badge-t">1 not reported</span>' in row
+    assert f"4 of {len(LOCS)} reported" in row
     assert f"No row: Nebraska. Forecast from {WEEKS[-2]}." in page
+    assert ('<a href="/forecast#data-issues">Data issues on the Forecast '
+            'tab</a>') in page
 
 
 def test_update_data_message_carries_the_check(tmp_path, monkeypatch):
@@ -332,7 +339,7 @@ def test_update_data_message_carries_the_check(tmp_path, monkeypatch):
     assert flash == f"Up to date · data through {NEW} · 1 state reads 0"
     # the card still names them, with the pointer
     page = client.get("/data").text
-    assert '<span class="pill warn">1 read 0</span>' in page
+    assert '<span class="uk-badge-t">1 reads 0</span>' in page
     assert "Ohio" in page
 
 
@@ -364,8 +371,10 @@ def test_forecast_tab_says_all_reported_in_green(tmp_path, monkeypatch):
     ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
                                 "engine": "all"})
     page = client.get("/forecast").text
-    assert 'class="newest-check hint ok"' in page
-    assert f"All {len(LOCS)} reported" in page
+    # the green check mark, named "Complete", beside the head
+    line = page.split('id="newest-check"')[1].split("</p>")[0]
+    assert 'class="ncmark ok" role="img" aria-label="Complete"' in line
+    assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
 
 
 def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
@@ -377,6 +386,9 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     (g,) = ui_data._newest_report().gaps
     assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
     page = client.get("/forecast").text
-    assert f"All {len(LOCS)} reported · 1 reads 0" in page
+    # the head, then each count as a warn badge (as the Data tab's row)
+    line = page.split('id="newest-check"')[1].split("</p>")[0]
+    assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
+    assert '<span class="uk-badge-t">1 reads 0</span>' in line
     assert 'aria-label="Complete, with issues"' in page
     assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page

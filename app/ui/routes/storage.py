@@ -20,7 +20,7 @@ from app.ui import retro_seasons
 from app.ui.retro_prep import _results_jobs
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
                                   _season_status, _valid_season)
-from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_chips,
+from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
                            _run_label, _scan_archive_dates)
 from app.ui.state import _status
 from app.ui.templating import templates
@@ -69,12 +69,38 @@ def _live_workroot_ids() -> set:
     return out
 
 
+def _busy_why(kind: str, ident: str, status: str = "") -> str:
+    """Why one storage entry cannot be deleted right now, in the words the
+    refused POST flashes; the page shows the same sentence as its disabled
+    Delete button's reason."""
+    if kind == "workroot":
+        return (f"The run {ident} is active; its workroot cannot be deleted "
+                "while it runs.")
+    if kind == "retro-season":
+        return f"{ident} is replaying (status: {status}); stop it first."
+    if kind == "retro-archive":
+        return (f"{ident} is replaying; stop it before deleting its archived "
+                "runs.")
+    return ("A console run is in progress and may be writing the archive; "
+            "stop it first.")
+
+
+# the panel's counted categories, in page order: (key, label)
+_CATEGORIES = (("workroots", "Run workroots"),
+               ("retro", "Retrospective seasons"),
+               ("retro_archives", "Archived retrospective runs"),
+               ("report_archives", "Report archives"),
+               ("datasets", "Dataset uploads and replays"))
+
+
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
-    archives, report archives, your datasets (each with a busy flag), plus
-    the protected trees (no controls). total_bytes/total_h sum the managed
-    categories only, each byte once: a dataset adds its own folder (the
-    upload and its replays), its runs being counted as workroots."""
+    archives, report archives, your datasets (each with a busy flag and,
+    when busy, "why" it cannot be deleted), plus the protected trees (no
+    controls). total_bytes/total_h sum the managed categories only, each
+    byte once: a dataset adds its own folder (the upload and its replays),
+    its runs being counted as workroots. "cats" splits that total by
+    category (the page's composition bar and legend)."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
@@ -106,6 +132,8 @@ def _storage_inventory() -> dict:
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
                 "busy": p.name in live_ids,
+                "why": (_busy_why("workroot", p.name)
+                        if p.name in live_ids else ""),
                 # for the dataset rows: the run's size and its dataset
                 "bytes": size, "dataset": _dsu.spec_dataset(row.get("spec"))})
     if retro_seasons.RETRO_ROOT.is_dir():
@@ -118,7 +146,10 @@ def _storage_inventory() -> dict:
                 inv["total_bytes"] += size
                 inv["retro"].append({
                     "id": p.name, "size_h": retro.human_bytes(size),
-                    "status": st, "busy": st in _RETRO_ACTIVE})
+                    "bytes": size, "status": st,
+                    "busy": st in _RETRO_ACTIVE,
+                    "why": (_busy_why("retro-season", p.name, st)
+                            if st in _RETRO_ACTIVE else "")})
                 continue
             m = _re.match(r"(\d{4}-\d{2})", p.name)
             if m and retro.archive_stamp_of(p.name, m.group(1)):
@@ -128,21 +159,27 @@ def _storage_inventory() -> dict:
                 inv["total_bytes"] += size
                 from app.core import replay_bundle
                 inv["retro_archives"].append({
-                    "id": p.name, "season": season,
+                    "id": p.name, "season": season, "stamp": stamp,
                     "when": retro.stamp_human(stamp),
                     # a replay imported from another machine
                     # ("imported from <host> on <date>"), else ""
                     "imported": replay_bundle.imported_label(p),
-                    "size_h": retro.human_bytes(size),
-                    "busy": _season_status(season) in _RETRO_ACTIVE})
+                    "size_h": retro.human_bytes(size), "bytes": size,
+                    "busy": _season_status(season) in _RETRO_ACTIVE,
+                    "why": _busy_why("retro-archive", season)})
     arch = APP_STATE / "archive"
     for d in reversed(_scan_archive_dates(arch)):
         size = _tree_size(str(arch / d))
         inv["total_bytes"] += size
         inv["report_archives"].append({
-            "id": d, "size_h": retro.human_bytes(size),
-            "busy": console_busy})
+            "id": d, "size_h": retro.human_bytes(size), "bytes": size,
+            # the Output tab serves an archived report by its date
+            "report": (arch / d / "report.html").is_file(),
+            "busy": console_busy, "why": _busy_why("report-archive", d)})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
+    for d in inv["datasets"]:
+        d["why"] = (f"{d['name']} cannot be deleted now: {d['busy']}."
+                    if d.get("busy") else "")
     inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
     for label, p in (("Production engine record", retro_seasons.RETRO_RESEAL),
                      ("Sealed validation record", retro_seasons.RETRO_SEAL),
@@ -152,6 +189,14 @@ def _storage_inventory() -> dict:
                 "label": label, "path": str(p),
                 "size_h": retro.human_bytes(_tree_size(str(p)))})
     inv["total_h"] = retro.human_bytes(inv["total_bytes"])
+    cats = []
+    for key, label in _CATEGORIES:
+        b = sum(int(r.get("own_bytes" if key == "datasets" else "bytes")
+                    or 0) for r in inv[key])
+        if b:
+            cats.append({"key": key, "label": label, "bytes": b,
+                         "size_h": retro.human_bytes(b)})
+    inv["cats"] = cats
     return inv
 
 
@@ -198,7 +243,8 @@ def runs_page(request: Request):
         r["label"] = _run_label(r["run_id"], r.get("spec", ""), tag=False)
         r["research"] = is_research(r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["chips"] = _outcome_chips(r.get("outcome", ""))
+        # the outcome as facts the page draws as chips and badges
+        r["facts"] = _outcome_items(r.get("outcome", ""))
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
@@ -225,17 +271,17 @@ def runs_clear(request: Request, confirm: str = Form("")):
     ledger = Ledger()
     ids = _clearable_run_ids(ledger)
     if not ids:
-        _flash("The run ledger has no completed rows to clear.")
+        _flash("Nothing to clear: the ledger has no completed rows.", "warn")
         return _back(request, "/storage")
     if confirm != str(len(ids)):
-        _flash("The ledger changed since this page was rendered "
+        _flash("Not cleared: the ledger changed "
                f"({len(ids)} clearable row{'' if len(ids) == 1 else 's'} "
-               "now). Nothing was cleared; review and confirm again.")
+               "now).", "warn", detail="Review and confirm again.")
         return _back(request, "/storage")
     n = ledger.delete_runs(ids)
     _invalidate_scans()
-    _flash(f"Cleared {n} completed row{'' if n == 1 else 's'} from the run "
-           "ledger. No data on disk was deleted: the runs' workroots stay "
+    _flash(f"Cleared {n} completed ledger row{'' if n == 1 else 's'}.", "ok",
+           detail="No data on disk was deleted: the runs' workroots stay "
            "in the storage panel until deleted there.")
     return _back(request, "/storage")
 
@@ -251,15 +297,13 @@ def _storage_target(kind: str, ident: str):
             return None, "Unrecognized workroot name."
         p = APP_STATE / "workroots" / ident
         if ident in _live_workroot_ids():
-            return None, (f"The run {ident} is active; its workroot cannot "
-                          "be deleted while it runs.")
+            return None, _busy_why(kind, ident)
         base = APP_STATE / "workroots"
     elif kind == "retro-season":
         if not _valid_season(ident):
             return None, "Unrecognized season name."
         if _season_status(ident) in _RETRO_ACTIVE:
-            return None, (f"{ident} is replaying (status: "
-                          f"{_season_status(ident)}); stop it first.")
+            return None, _busy_why(kind, ident, _season_status(ident))
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "retro-archive":
@@ -269,16 +313,14 @@ def _storage_target(kind: str, ident: str):
             return None, "Unrecognized archived run identifier."
         season = m.group(1)
         if _season_status(season) in _RETRO_ACTIVE:
-            return None, (f"{season} is replaying; stop it before deleting "
-                          "its archived runs.")
+            return None, _busy_why(kind, season)
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "report-archive":
         if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
             return None, "Unrecognized report archive date."
         if _status.get("running"):
-            return None, ("A console run is in progress and may be writing "
-                          "the archive; stop it first.")
+            return None, _busy_why(kind, ident)
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
     else:
@@ -305,25 +347,25 @@ def storage_delete(request: Request, kind: str = Form(""),
     _invalidate_scans()
     p, why = _storage_target(kind, ident)
     if p is None:
-        _flash(f"{why} Nothing was deleted.")
+        _flash(f"Not deleted: {why[:1].lower()}{why[1:]}", "warn")
         return _back(request, "/storage")
     if confirm != ident:
-        _flash("The deletion was not confirmed, so nothing was deleted.")
+        _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/storage")
     size_h = retro.human_bytes(retro.dir_size(p))
     try:
         retro.delete_tree(p)
     except Exception as e:
         _flash(f"Could not delete {ident}: {type(e).__name__}: "
-               f"{str(e)[:160]}. Nothing else changed.")
+               f"{str(e)[:160]}.", "error", detail="Nothing else changed.")
         return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
             "report-archive": "report archive"}.get(kind, "entry")
-    tail = (" Its ledger row remains as the run's record."
+    tail = ("Its ledger row remains as the run's record."
             if kind == "workroot" else "")
-    _flash(f"Deleted the {noun} {ident}: {size_h} freed.{tail}")
+    _flash(f"Deleted the {noun} {ident}: {size_h} freed.", "ok", detail=tail)
     return _back(request, "/storage")
 
 
@@ -336,13 +378,14 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     _invalidate_scans()
     items = _clearable_workroots()
     if not items:
-        _flash("No completed run workroots are on disk to delete.")
+        _flash("Nothing to delete: no completed run workroots on disk.",
+               "warn")
         return _back(request, "/storage")
     if confirm != str(len(items)):
-        _flash("The storage panel changed since this page was rendered "
+        _flash("Not deleted: the storage panel changed "
                f"({len(items)} deletable workroot"
-               f"{'' if len(items) == 1 else 's'} now). Nothing was "
-               "deleted; review and confirm again.")
+               f"{'' if len(items) == 1 else 's'} now).", "warn",
+               detail="Review and confirm again.")
         return _back(request, "/storage")
     live = _live_workroot_ids()
     freed, n = 0, 0
@@ -361,8 +404,8 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
             continue          # one stuck tree must not sink the sweep
     _invalidate_scans()
     _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
-           f"{retro.human_bytes(freed)} freed. Every ledger row is kept "
-           "and shows a dash for disk use.")
+           f"{retro.human_bytes(freed)} freed.", "ok",
+           detail="Every ledger row is kept and shows a dash for disk use.")
     return _back(request, "/storage")
 
 
@@ -439,14 +482,14 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     plan = _reclaim_survey()
     counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
     if plan["total_est"] <= 0 and plan["compress_files"] == 0:
-        _flash("There is nothing to reclaim: no completed week or run "
-               "carries intermediates and every stored week is already "
-               "compressed.")
+        _flash("Nothing to reclaim.", "warn",
+               detail="No completed week or run carries intermediates, and "
+               "every stored week is already compressed.")
         return _back(request, "/storage")
     if confirm != counts:
-        _flash("The storage panel changed since this report was made "
-               "(a run finished or files moved). Nothing was deleted; "
-               "review the reclaim report and confirm again.")
+        _flash("Not reclaimed: the storage panel changed since the report.",
+               "warn", detail="A run finished or files moved. Review the "
+               "reclaim report and confirm again.")
         return _back(request, "/storage")
     skip_seasons, skip_workroots = _reclaim_skips()
     out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
@@ -467,7 +510,9 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
         bits.append(f"{hb(out['compress_saved'])} by compressing "
                     f"{out['compress_files']} stored week"
                     f"{'' if out['compress_files'] == 1 else 's'} in place")
-    _flash(f"Reclaimed {hb(out['total'])}: " + "; ".join(bits) + ". Every "
-           "stored week, score, report, and submission file is kept; the "
-           "sealed validation record and the hub clone were not touched.")
+    _flash(f"Reclaimed {hb(out['total'])}.", "ok",
+           detail=("; ".join(bits) + ". " if bits else "")
+           + "Every stored week, score, report and submission file is "
+           "kept; the sealed validation record and the hub clone were not "
+           "touched.")
     return _back(request, "/storage")

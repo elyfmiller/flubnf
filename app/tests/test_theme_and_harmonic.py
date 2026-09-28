@@ -1,10 +1,11 @@
-"""The seasonal-harmonic figure and the four-theme system.
+"""The seasonal-harmonic figure and the theme system.
 
 One parameterized macro draws beta(t)/beta0 from the stated
 cosine-exponential (computed by a template global) on every surface that
-shows the equation. Four themes (light, paper, dim, dark) via a navbar
-picker; every theme block defines the same token set, and paper/dim hold
-4.5:1 for text pairs and 3:1 for boundaries and fills.
+shows the equation. Eight themes (light, paper, github, solarized, dim,
+dark, nord, dracula) via the Display menu's picker; every theme block
+defines the same token set and holds 4.5:1 for text pairs and 3:1 for
+boundaries and fills (every mode: test_display_themes.py).
 """
 import re
 import sys
@@ -51,11 +52,12 @@ def test_harmonic_figure_renders_on_every_surface():
 
 
 def test_every_surface_calls_the_one_macro():
-    # one parameterized macro: eq_pf/eq_pf2s embed it, home imports it
-    assert "{{ harmonic() }}" in DIAGRAMS_T
-    assert "{{ harmonic(two=true) }}" in DIAGRAMS_T
+    # one parameterized macro: eq_pf/eq_pf2s embed it (passing their kit
+    # mode on), home imports it (in kit mode: its caption in a badge's tip)
+    assert "{{ harmonic(kit=kit) }}" in DIAGRAMS_T
+    assert "{{ harmonic(two=true, kit=kit) }}" in DIAGRAMS_T
     home_t = (UI / "templates" / "home.html").read_text()
-    assert "{{ dg.harmonic() }}" in home_t
+    assert "{{ dg.harmonic(kit=true) }}" in home_t
     assert DIAGRAMS_T.count("{% macro harmonic(") == 1
 
 
@@ -131,12 +133,16 @@ LIGHT = _block(NAU, ":root")
 DARK = _block(NAU, '[data-theme="dark"]')
 PAPER = _block(NAU, '[data-theme="paper"]')
 DIM = _block(NAU, '[data-theme="dim"]')
+#: every named theme block (light is the root block)
+NAMED = re.findall(r'\[data-theme="([\w-]+)"\]\{', NAU)
+BLOCKS = {"light": LIGHT}
+BLOCKS.update({t: _block(NAU, f'[data-theme="{t}"]') for t in NAMED})
 
 
-def test_the_four_theme_blocks_define_the_same_tokens():
-    sets = {n: set(b) for n, b in
-            (("light", LIGHT), ("dark", DARK), ("paper", PAPER),
-             ("dim", DIM))}
+def test_the_eight_theme_blocks_define_the_same_tokens():
+    assert sorted(BLOCKS) == sorted(["light", "paper", "github", "solarized",
+                                     "dim", "dark", "nord", "dracula"])
+    sets = {n: set(b) for n, b in BLOCKS.items()}
     for name, s in sets.items():
         assert s == sets["light"], (
             f"{name} token set diverges: only-in-{name}="
@@ -148,9 +154,11 @@ def test_the_four_theme_blocks_define_the_same_tokens():
     assert not any(t.startswith("fs-") for t in sets["light"])
     # and no stray extra token blocks reintroduce fall-through definitions
     assert NAU.count(":root{") == 2                 # colors + the type scale
-    assert NAU.count('[data-theme="dark"]{') == 1
-    assert NAU.count('[data-theme="paper"]{') == 1
-    assert NAU.count('[data-theme="dim"]{') == 1
+    for t in NAMED:
+        assert NAU.count(f'[data-theme="{t}"]{{') == 1, t
+    # the light block also answers to data-theme="light" (a theme preview
+    # can wear it inside another theme)
+    assert '[data-theme="light"],:root{' in NAU
 
 
 # ------------------------------------- the measured bars on the new themes
@@ -169,7 +177,7 @@ def _cr(a: str, b: str) -> float:
     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 
 
-def _check(theme: dict, danger_ink: str):
+def _check(theme: dict):
     for fg in ("ink", "mut", "gold", "ok", "warn", "bad"):
         for bgt in ("bg", "card"):
             assert _cr(theme[fg], theme[bgt]) >= 4.5, (fg, bgt)
@@ -177,43 +185,68 @@ def _check(theme: dict, danger_ink: str):
     assert _cr(theme["field-line"], theme["bg"]) >= 3.0       # field boundary
     assert _cr(theme["accent-ink"], theme["track"]) >= 3.0    # progress fill
     assert _cr(theme["accent-ink"], theme["nav-bg"]) >= 3.0   # active tab
-    assert _cr("#0C0D17", theme["gold-bright"]) >= 4.5        # button.gold ink
-    assert _cr(danger_ink, theme["bad"]) >= 4.5               # button.danger
+    assert _cr(theme["on-accent"], theme["gold-bright"]) >= 4.5  # button.gold ink
+    assert _cr(theme["on-bad"], theme["bad"]) >= 4.5          # button.danger
+    for bgt in ("bg", "card"):                                # outline buttons
+        assert _cr(theme["btn-ink"], theme[bgt]) >= 4.5, bgt
 
 
 def test_paper_pairs_hold_the_review_bars():
-    _check(PAPER, "#FFFFFF")        # paper keeps the light danger ink (white)
+    _check(PAPER)
+    assert PAPER["on-bad"] == "#FFFFFF"   # paper keeps the light danger ink
 
 
 def test_dim_pairs_hold_the_review_bars():
-    _check(DIM, "#0C0D17")          # dim takes the dark treatment (near-black)
+    _check(DIM)
+    assert DIM["on-bad"] == "#0C0D17"     # dim takes the dark treatment
+
+
+def test_every_theme_holds_the_review_bars():
+    for name, b in BLOCKS.items():
+        try:
+            _check(dict(LIGHT, **b))
+        except AssertionError as e:
+            raise AssertionError((name, e.args)) from e
 
 
 # ------------------------------------------------------- the navbar picker
 
-def test_navbar_theme_picker_replaces_the_toggle():
+def test_navbar_theme_picker_lists_every_theme():
     html = client.get("/data").text
-    assert 'class="themepick" role="group" aria-label="Color theme"' in html
-    for th in ("light", "paper", "dim", "dark"):
-        assert f'data-th="{th}"' in html, th
+    assert ('class="themepick" role="radiogroup" aria-labelledby="h-dm-theme"'
+            in html)
+    for th in BLOCKS:
+        assert f'value="{th}" data-th="{th}"' in html, th
+    assert html.count('type="radio" name="dm-theme"') == len(BLOCKS)
     assert "themebtn" not in html                   # the two-state toggle is gone
-    # honest pressed states, marked on load and on every press
+    # the current theme is checked on load and on every change
     assert "b.dataset.th" in html
-    assert "setAttribute('aria-pressed',String(b.dataset.th===t))" in BASE_T
+    assert "b.checked=(b.dataset.th===t)" in BASE_T
     # persistence rides the existing preference key
     assert "localStorage.setItem('theme',t)" in BASE_T
-    # every press dispatches themechange so Plotly and the player recolor
+    # every change dispatches themechange so Plotly and the player recolor
     assert "dispatchEvent(new Event('themechange'))" in BASE_T
-    # the first-paint script accepts all four and falls back on junk
-    assert "['light','paper','dim','dark'].indexOf(t)<0" in BASE_T
+    # the first-paint script accepts all eight and falls back on junk
+    assert ("['light','paper','github','solarized','dim','dark','nord',"
+            "'dracula'].indexOf(t)<0") in html
 
 
-def test_dim_receives_the_dark_control_treatment():
-    # dim's slate ground would hide the LANL Blue outline: it takes the
-    # dark control rules
-    for rule in ('[data-theme="dim"] button',
-                 '[data-theme="dim"] button.quiet',
-                 '[data-theme="dim"] button.gold',
-                 '[data-theme="dim"] button.danger',
-                 '[data-theme="dim"] button.linkish'):
+def test_dark_grounds_receive_the_dark_control_treatment():
+    # a dark ground would hide the LANL Blue outline: every dark theme's
+    # outline buttons wear its accent, and the text on a --bad fill turns
+    # near-black; the rules read the tokens, so no rule names a theme
+    for name, over in BLOCKS.items():
+        b = dict(LIGHT, **over)
+        if b["scheme"] != "dark":
+            assert b["btn-ink"] == b["ink"], name    # light grounds: the ink
+            continue
+        assert b["btn-ink"] == b["gold"], name
+        assert _cr(b["on-bad"], "#FFFFFF") > 10, name
+    for rule in ("button{padding:.45rem .95rem;border:1px solid var(--btn-ink)",
+                 "color:var(--btn-ink);font:inherit",
+                 "button.gold{background:var(--gold-bright);border-color:var(--gold-bright);\n  color:var(--on-accent)}",
+                 "button.danger{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}",
+                 "a.btn.gold{background:var(--gold-bright);border-color:var(--gold-bright);\n  color:var(--on-accent)}"):
         assert rule in NAU, rule
+    assert '[data-theme="dim"] button{' not in NAU
+    assert '[data-theme="dark"] button,' not in NAU

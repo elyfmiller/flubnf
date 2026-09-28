@@ -193,6 +193,30 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--line);
  overflow-x:auto}
 .methods .eqnote{font-family:"DM Sans",system-ui,sans-serif;color:var(--mut);
  font-size:.88rem}
+/* the console's UI kit without its sheet or script: no inert "?" or "i"
+   buttons; each tip's text reads under what it explains; the stepper's
+   marks give way to the list's own numbers; swatches drawn; text meant
+   for screen readers stays hidden */
+.methods .tipbtn,.methods .uk-tt-btn,.methods .uk-step-mark{display:none}
+.methods .tipbox,.methods .uk-tt-pop{display:block;color:var(--mut);
+ font-size:.9rem;font-weight:400}
+.methods .uk-tt-line,.methods .uk-tt-title{display:block}
+.methods .uk-heading{margin-bottom:.4rem}
+.methods .uk-stat{display:flex;flex-wrap:wrap;align-items:baseline;
+ gap:.1rem .5rem;margin:.35rem 0}
+.methods .uk-stat dt{display:contents;font-weight:600}
+.methods .uk-stat dd{margin:0}
+.methods .uk-stat .tip{order:3;flex-basis:100%}
+.methods .uk-stat-u{color:var(--mut)}
+.methods .uk-legend{list-style:none;display:flex;flex-wrap:wrap;
+ gap:.3rem 1rem;padding:0;margin:.4rem 0}
+.methods .uk-sw{display:inline-block;width:.8em;height:.8em;margin-right:.3em;
+ border-radius:2px;background:var(--sw)}
+.methods .uk-tag{color:var(--mut);font-size:.85rem;font-weight:600}
+.methods .uk-sr{position:absolute;width:1px;height:1px;overflow:hidden;
+ clip:rect(0 0 0 0);white-space:nowrap}
+.methods svg.uk-icon{display:inline-block;width:1em;height:1em;margin:0;
+ vertical-align:-.125em}
 @media (max-width:640px){nav.tabs{margin-left:0}.a11y{margin-left:0}}
 """
 

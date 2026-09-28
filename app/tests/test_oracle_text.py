@@ -159,7 +159,10 @@ def test_methods_carries_the_oracle_step_card():
     t = " ".join(client.get("/methods").text.split())
     assert 'id="oracle"' in t
     for needle in ("The Oracle step", "One donor per sample",
-                   "How it relates to the Groundhog", "Why.",
+                   "How it relates to the Groundhog",
+                   # the why, in its own fold (it was a bold "Why." lead)
+                   "Why blend in past seasons",
+                   "past seasons at the same calendar week show how seasons",
                    "frozen by a pre-registration", ot.PREREG_SHA256[:16],
                    ot.B2_SHA256[:16],
                    "0.697", "0.794", "0.781", "0.843", "0.731", "0.813",

@@ -537,6 +537,30 @@ def results_tip(spec) -> str:
     return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
 
 
+# the UI kit's check and warning icons (templates/_tips.html ICONS): the
+# SVG draws from its own attributes, so it reads without the kit's sheet
+_VERDICT_ICON = {
+    True: ("check", "ok", "beats the baseline",
+           '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>'),
+    False: ("warning", "error", "does not beat the baseline",
+            ('<path d="M8 1.9 14.6 13.5H1.4Z"/><path d="M8 6.1v3.4"/>'
+             '<circle cx="8" cy="11.5" r=".95" fill="currentColor" stroke="none"/>')),
+}
+
+
+def _verdict(fv: float, cls: str = "fc-verdict") -> str:
+    """The relWIS cell's verdict beside its number: the kit's check (below
+    1, beats the baseline) or warning icon, named for assistive tech, so
+    the color is never the only signal (the "?" beside Results names the
+    convention). `cls` is the page's spacing class (Storage passes its
+    own)."""
+    _name, state, label, paths = _VERDICT_ICON[fv < 1]
+    return (f'<svg class="uk-icon {cls} uk-c-{state}" viewBox="0 0 16 16" '
+            'width="1em" height="1em" fill="none" stroke="currentColor" '
+            'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" '
+            f'role="img" aria-label="{label}" focusable="false">{paths}</svg>')
+
+
 def _pf_fits(o: dict) -> str:
     """The "PF fits" cell: fits done, failures (if any) marked bad."""
     nf = len(o.get("pf_failures") or {})
@@ -585,19 +609,18 @@ def results_html(outcome, spec, heading: bool = True) -> str:
         cov = (f' <span class="hint">({int(n)} cell{"s" if int(n) != 1 else ""})</span>'
                if n else "")
         rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
-                           f"{fv:.3f}</span>{cov}"))
+                           f"{fv:.3f}</span>{_verdict(fv)}{cov}"))
     if "pf_cells" in o:
         rows.append(("PF fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
         # installed but broken (a different remedy from "no engine"); the
-        # message carries a path, so it is escaped
-        import html as _html
+        # message (it carries a path) is the "?" tip's, escaped there
         rows.append(("PF fits", '<span class="bad">none (engine install '
-                                'incomplete)</span> <span class="hint">'
-                                f'{_html.escape(str(o["pf_engine_broken"]))}'
-                                '</span>'))
+                                'incomplete)</span>'
+                                + _tip("pf-broken", "the incomplete engine "
+                                       "install", str(o["pf_engine_broken"]))))
     arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
     if arow:
         rows.append(arow)
@@ -615,12 +638,15 @@ def results_html(outcome, spec, heading: bool = True) -> str:
             _missing.line(_missing.unreported_flags(o["data_flags"]))
             or "on; no week flagged")))
     if o.get("submission_withheld"):
-        rows.append(("Submission",f'<span class="bad">withheld</span> '
-                     f'<span class="hint">{o["submission_withheld"]}</span>'))
+        rows.append(("Submission", '<span class="bad">withheld</span>'
+                     + _tip("sub-withheld", "why the submission was withheld",
+                            str(o["submission_withheld"]))))
     if o.get("submission_errors"):
         n = len(o["submission_errors"])
-        rows.append(("Submission errors", f'<span class="bad">{n}</span> '
-                     '<span class="hint">on the run page</span>'))
+        rows.append(("Submission errors", f'<span class="bad">{n}</span>'
+                     + _tip("sub-errors", "the submission errors",
+                            "Each refused file and why: Submission files, "
+                            "on the run page.")))
     if o.get("submissions"):
         n = len(o["submissions"])
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
@@ -646,8 +672,8 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
         fv = float(sc["relwis"])
         n = int(sc.get("cells") or 0)
         cell = (f'<span class="relwis {"ok" if fv < 1 else "bad"}">{fv:.3f}'
-                f'</span> <span class="hint">({n} cell{"s" if n != 1 else ""})'
-                '</span>')
+                f'</span>{_verdict(fv)} <span class="hint">'
+                f'({n} cell{"s" if n != 1 else ""})</span>')
         nat = sc.get("national") or {}
         if nat.get("relwis") is not None:
             cell += (f' <span class="hint">· national group '

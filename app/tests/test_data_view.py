@@ -54,15 +54,27 @@ def archive(tmp_path, monkeypatch):
 
 def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
     html = client.get("/data").text
-    assert f"<dt>Latest vintage</dt><dd><code>{V2}</code></dd>" in html
+    # the Archive card's tiles: one labelled value per fact
+    assert ('<dt>Latest vintage</dt><dd><span class="uk-stat-v" '
+            f'id="latest-vintage"><span class="dt-nw">{V2}</span></span>'
+            ) in html
     joined = " ".join(html.split())
     # V2's own numbers: jurisdictions, reported rows, newest week
-    assert "<dt>Jurisdictions</dt><dd>3 " in joined
-    assert '9 rows, newest week <span class="wk">2098-01-03</span>' in joined
-    assert "<dt>Vintages</dt><dd>2</dd>" in joined
-    # one pill per check, unchecked until the button is pressed
-    assert '<span class="pill" id="hub-pill">not checked</span>' in html
-    assert "<dt>Comparators</dt>" in html
+    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
+            'id="latest-locs">3</span>') in joined
+    assert ('<dt>Rows</dt><dd><span class="uk-stat-v" id="latest-rows">9'
+            '</span>') in joined
+    assert ('<dt>Covers through</dt><dd><span class="uk-stat-v" '
+            'id="latest-newest"><span class="dt-nw">2098-01-03</span>'
+            ) in joined
+    assert ('<dt>Vintages</dt><dd><span class="uk-stat-v" id="n-vintages">'
+            '2</span></dd>') in joined
+    # one badge per check, unchecked until the button is pressed
+    assert ('<span class="uk-badge uk-badge--neutral" id="hub-pill" '
+            'data-state="neutral">') in html
+    assert html.split('id="hub-pill"')[1].split("</span></span>")[0] \
+        .endswith('<span class="uk-badge-t">not checked')
+    assert "<dt>Comparators<" in html
 
 
 def test_default_preview_is_the_latest_vintage(archive):
@@ -124,20 +136,27 @@ def test_location_preview_shows_series_table_newest_first(archive):
     # newest week first in the recent-weeks table
     assert joined.index("2098-01-03") < joined.index("2097-12-27")
     assert "190" in html                              # Ohio's newest value
-    assert "peak 190 admissions" in joined
-    assert "3 reported weeks" in joined
+    # the series' own numbers, labelled beside the chart's toggle
+    assert ('<dt>Peak</dt><dd><span class="uk-stat-v" id="vb-peak">190'
+            '</span> <span class="uk-stat-u">admissions</span>') in joined
+    assert ('<dt>Reported weeks</dt><dd><span class="uk-stat-v" id="vb-n">'
+            '3</span>') in joined
 
 
 def test_vintage_browser_shows_what_that_week_knew(archive):
     html = client.get(f"/data?vintage={V1}&loc=Ohio").text
     joined = " ".join(html.split())
     # the older vintage: no 2098-01-03 data row, and the UNREVISED value
-    assert f"As archived on {V1}" in joined
-    assert "weeks 2097-12-20 to 2097-12-27" in joined
+    assert ('<dt>Source</dt><dd><span class="uk-stat-v" id="vb-source">'
+            'hub archive</span>') in joined
+    assert ('<dt>Weeks</dt><dd><span class="uk-stat-v" id="vb-weeks">'
+            '<span class="dt-nw">2097-12-20</span> to <span class="dt-nw">'
+            '2097-12-27</span>') in joined
     assert ">140<" in html                            # what V1 knew for Ohio
     assert ">155<" not in html and ">190<" not in html   # V2's revisions
     # Wyoming's unreported row was dropped, so V1 covers 3 jurisdictions
-    assert "3 jurisdictions" in joined
+    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
+            'id="vb-locs">3</span>') in joined
 
 
 def test_recent_weeks_reads_as_a_compact_instrument(archive):

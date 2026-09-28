@@ -1,29 +1,32 @@
 {# The Forecast tab's Data issues box (app/core/reported.py box_rows): one
    row per state whose newest week reads 0, collapsed, or was not
-   reported: the name, a short flag ("0 after 1, 4"), the select and a
-   check that reads "recommended" while the select holds the rule's
-   choice (reported.recommend); the reason is the row's hover text and
-   a visually hidden line for assistive tech. Each posts as
-   gap.<fips> (forms._gap_form) and is recorded with the run
-   (extra["data_choices"], app/core/missing.py) with whether the
-   recommendation was followed. Rendered inside #fcform under the anchor
-   line, only when the week has such a state; forecast.html's paint()
-   hides and disables it when the chosen date leaves that week (a
-   disabled fieldset posts nothing).
+   reported: the name, a short flag ("0 after 1, 4"), a check that marks
+   the select while it holds the rule's choice (reported.recommend), the
+   reason in an "i" tip after the flag (keyboard and touch reach it; it
+   also describes the select), and the select. The toggletip beside the
+   count explains the choices. Each posts as gap.<fips> (forms._gap_form) and is
+   recorded with the run (extra["data_choices"], app/core/missing.py) with
+   whether the recommendation was followed. Rendered inside #fcform under
+   the anchor line, only when the week has such a state; forecast.html's
+   paint() hides and disables it when the chosen date leaves that week (a
+   disabled fieldset posts nothing). Styles: static/tabs/forecast.css.
    {% import "_data_issues.html" as di %}{{ di.box(issues, sha) }} #}
 {% import "_tips.html" as tips %}
 {% macro box(issues, sha="", hidden=False) -%}
 {% set n = issues.rows|length %}
 {% set zeros = issues.rows|selectattr("issue", "equalto", "zero")|list %}
-<fieldset class="ms-group dataissues" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
- <legend>Data issues<span class="ms-badge warn">{{ n }} state{{ "s" if n != 1 }}</span>
-  {% call tips.tip("data-issues", "the data issues") -%}
-  <span class="ncline">Newest week {{ issues.week }}: states reading 0, under a fifth of a week of 20 or more (collapsed), or not reported. Each select is preset to the recommended choice; pick another if you know better. The choice applies to this run only and is recorded with it.</span>
-  <span class="ncline">Zero: No forecast = the Groundhog abstains. Level = it anchors on the mean of the last 4 weeks (all 0: a Poisson floor). Extend = it carries the last positive week over the 0s. Blend = the mean of level and extend. For all four the Oracle SIHRS keeps the 0.</span>
-  <span class="ncline">Both from a week = both models count the newest week(s) as unreported and forecast from that week, every horizon still from the forecast date (at most 2 weeks). Keep = as reported. From a week (not reported) = the engines' own walk. Leave out = the state is in neither file.</span>
-  <span class="ncline">Recommended: both from the week before when a 0 or a collapse follows counts of 10 or more (a missed or partial report is likely); level for small counts and runs of 0; keep a collapse when the two weeks before already fell by half each.</span>
-  {% if issues.facts %}<span class="ncline">{{ issues.facts }}</span>{% endif %}
-  {%- endcall %}</legend>
+<fieldset class="ms-group fc-di" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
+ {# the legend is the title alone, so it stays one line on the border at
+    any text size; the count and the explainer open the box #}
+ <legend>Data issues</legend>
+ <div class="fc-di-head">{{ tips.badge("warn", n ~ " state" ~ ("s" if n != 1 else ""), id="di-count") }}
+  {%- call tips.toggletip("data-issues", "the data issues", title="Newest week " ~ issues.week) -%}
+  <span class="uk-tt-line">States reading 0, under a fifth of a week of 20 or more (collapsed), or not reported. Each select is preset to the recommended choice; pick another if you know better. The choice applies to this run only and is recorded with it.</span>
+  <span class="uk-tt-line"><b>Zero:</b> No forecast = the Groundhog abstains. Level = it anchors on the mean of the last 4 weeks (all 0: a Poisson floor). Extend = it carries the last positive week over the 0s. Blend = the mean of level and extend. For all four the Oracle SIHRS keeps the 0.</span>
+  <span class="uk-tt-line">Both from a week = both models count the newest week(s) as unreported and forecast from that week, every horizon still from the forecast date (at most 2 weeks). Keep = as reported. From a week (not reported) = the engines' own walk. Leave out = the state is in neither file.</span>
+  <span class="uk-tt-line"><b>Recommended:</b> both from the week before when a 0 or a collapse follows counts of 10 or more (a missed or partial report is likely); level for small counts and runs of 0; keep a collapse when the two weeks before already fell by half each.</span>
+  {% if issues.facts %}<span class="uk-tt-line">{{ issues.facts }}</span>{% endif %}
+  {%- endcall %}</div>
  <input type="hidden" name="gap._sha" value="{{ sha }}">
  {% if zeros|length > 1 %}
  <div class="di-row di-all">
@@ -36,18 +39,17 @@
  {% endif %}
  {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
  <div class="di-row di-state" data-issue="{{ r.issue }}">
-  <div class="di-head" title="{{ r.why }}"><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }}</span><span class="ms-badge ok di-rec"{% if sel != r.rec %} hidden{% endif %}>recommended</span></div>
-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}" title="{{ r.why }}">
+  <div class="di-head"><span class="di-rec uk-c-ok"{% if sel != r.rec %} hidden{% endif %}>{{ tips.icon("check", "recommended") }}</span><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }} {{ tips.icon_tip("di-why-" ~ r.fips, "why " ~ r.name ~ " is flagged", "info", r.why, state="muted") }}</span></div>
+  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}" aria-describedby="tip-di-why-{{ r.fips }}">
    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
   </select>
-  <span class="hint di-why">{{ r.why }}</span>
  </div>
  {% endfor %}
  <script>
   (function () {
     var box = document.getElementById('data-issues');
     if (!box) return;
-    // the "recommended" badge shows while the select holds the rule's choice
+    // the "recommended" check shows while the select holds the rule's choice
     function mark(s) {
       var b = s.parentNode.querySelector('.di-rec');
       if (b) b.hidden = s.value !== s.dataset.rec;

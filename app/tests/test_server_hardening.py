@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient           # noqa: E402
 from app.ui import server as srv                    # noqa: E402
 from app.ui.routes import retro as ui_retro         # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
-from app.ui import retro_prep as ui_retro_prep      # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 from app.ui import templating as ui_templating      # noqa: E402
@@ -273,7 +272,8 @@ def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
     flash = ui_state._status.get("flash", "")
-    assert "FAILED" in flash
+    assert "Could not update the hub clone" in flash
+    assert ui_state._status.get("flash_kind") == "error"
     assert "fatal: unable to access remote" in flash
     assert "latest vintage" not in flash    # the success trimmings stay off
 
@@ -376,11 +376,15 @@ def test_script_json_escapes_every_angle_bracket():
     assert json.loads(blob) == payload   # still the same JSON value
 
 
-def test_scoring_failed_hint_escapes_the_error_text():
-    frag = ui_retro_prep._scoring_failed_hint("<img src=x onerror=alert(1)> & boom")
-    assert "<img" not in frag
-    assert "&lt;img src=x onerror=alert(1)&gt; &amp; boom" in frag
-    assert frag.startswith("<p class='hint'>Scoring failed: <code>")
+def test_scoring_failed_alert_escapes_the_error_text():
+    # the season page's scoring-failed alert prints the error as text
+    html = srv.templates.env.get_template("retro_season.html").render(
+        active="Retrospective", season="2098-99", heads={}, curve=[],
+        states=[], weeks=["2098-11-07"], week="2098-11-07", map_html="",
+        n_weeks=0, score_error="<img src=x onerror=alert(1)> & boom")
+    assert "<img src=x" not in html
+    assert "<code>&lt;img src=x onerror=alert(1)&gt; &amp; boom</code>" in html
+    assert "<strong>Scoring failed.</strong>" in html
 
 
 def test_forecast_script_blob_cannot_close_its_script_element(monkeypatch):

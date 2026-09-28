@@ -1,4 +1,4 @@
-"""The data layer joins the type system: the A-/A/A+ control dispatches
+"""The data layer joins the type system: the text-size slider dispatches
 fontsizechange; Plotly layouts use the brand face with a system fallback and
 root-relative text sizes, redrawing on both events; SVG labels use rem
 classes; nav tab size follows the window (clamp) on one row. The static report has no
@@ -28,13 +28,20 @@ SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 
 # ------------------------------------------------- the fontsizechange event
 
-def test_fontsize_buttons_dispatch_fontsizechange():
-    # the dispatch rides the same click handler that persists the choice,
-    # mirroring the themechange pattern the theme button established
+def test_fontsize_control_dispatches_fontsizechange():
+    # the dispatch rides the one function that applies and persists a size
+    # (the slider, its step buttons and Reset all call it), mirroring the
+    # themechange pattern the theme picker established
     assert "dispatchEvent(new Event('fontsizechange'))" in BASE_T
-    handler = BASE_T.split("btns.forEach(function(b){b.onclick", 1)[1]
-    assert "dispatchEvent(new Event('fontsizechange'))" in \
-        handler.split("})();", 1)[0]
+    control = BASE_T.split("// text-size control:", 1)[1].split("})();", 1)[0]
+    apply = control.split("function apply(p,now){", 1)[1]
+    apply = apply.split("r.addEventListener", 1)[0]
+    assert "de.style.fontSize=p+'%'" in apply
+    assert "localStorage.setItem('fontsize',String(p))" in apply
+    assert "dispatchEvent(new Event('fontsizechange'))" in apply
+    for caller in ("r.addEventListener('input',function(){apply(",
+                   "reset.onclick=function(){apply(100,true)"):
+        assert caller in control, caller
     # and the served shell carries it
     assert "dispatchEvent(new Event('fontsizechange'))" in \
         client.get("/data").text
@@ -103,11 +110,12 @@ def test_svg_labels_are_sized_in_rem_classes_not_viewbox_units():
         assert 'font-size="' not in src, name
         assert "svgt-" in src, name
     # the classes exist, in rem, with the smallest step holding the hint
-    # floor once the artwork's viewBox scale is applied
-    for rule in ("svg .svgt-xl{font-size:1.3rem}",
-                 "svg .svgt-lg{font-size:1rem}",
-                 "svg .svgt-md{font-size:.92rem}",
-                 "svg .svgt-sm{font-size:.875rem}",
+    # floor once the artwork's viewBox scale is applied; each holds at its
+    # 115% size (the text size runs to 160%), so labels fit their boxes
+    for rule in ("svg .svgt-xl{font-size:min(1.3rem,23.92px)}",
+                 "svg .svgt-lg{font-size:min(1rem,18.4px)}",
+                 "svg .svgt-md{font-size:min(.92rem,16.93px)}",
+                 "svg .svgt-sm{font-size:min(.875rem,16.1px)}",
                  "svg .svgt-sub{font-size:.68em}"):
         assert rule in NAU, rule
 

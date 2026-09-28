@@ -100,6 +100,8 @@
   "month_ticks_for_dates": "callable _month_ticks_for_dates",
   "oracle_text": "module app.core.oracle_text",
   "pop_flash": "callable <lambda>",
+  "pop_flash_detail": "callable <lambda>",
+  "pop_flash_kind": "callable <lambda>",
   "relwis_convention_note": "value str",
   "restart_needed": "callable _restart_needed",
   "results_html": "callable results_html",

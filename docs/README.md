@@ -14,6 +14,7 @@ Start with the [README](../README.md); each area of the tree has its own index l
 | Replaying seasons | [RETROSPECTIVES.md](RETROSPECTIVES.md) | what a replay stores, archived runs, and exporting a replay to view on another machine |
 | Missing weeks | [MISSING-DATA.md](MISSING-DATA.md) | how NHSN gaps and zeros appear in the hub, what each model does, the replay and the two off-by-default rules |
 | Donor banks | [DONOR-BANKS.md](DONOR-BANKS.md) | the Groundhog's committed banks and how to reuse them ([data/README.md](../data/README.md)) |
+| Changing the console's pages | [UI-KIT.md](UI-KIT.md) | the UI kit (tips, badges, alerts, empty states and the rest), when to use each, and each tab's stylesheet |
 | Publishing | [SITE.md](SITE.md) | the public site generator (`flubnf site build`); not live yet |
 | Submitting | [model-metadata/README.md](../model-metadata/README.md) | the hub model cards and IDs |
 | History | [archive/RELEASE-1.0.md](archive/RELEASE-1.0.md) | releases 1.0 and 1.1 (the retired blend); historical, not maintained |

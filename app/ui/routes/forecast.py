@@ -27,7 +27,7 @@ from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
 from app.ui.shared import (_back, _console_elapsed, _flash,
-                           _invalidate_scans, _outcome_chips, _run_label,
+                           _invalidate_scans, _run_label,
                            _sandbox_live_reason)
 from app.ui.state import ENGINES, _engine_lock, _last_form, _status
 from app.ui.templating import (_member_colors, _script_json, _season_colors,
@@ -68,7 +68,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         ds = _dsu.get_dataset(source)
         if ds is not None:
             return _dsu.forecast_page(request, ds)
-        _flash("That dataset is not stored; showing the FluSight hub.")
+        _flash("That dataset is not stored; showing the FluSight hub.",
+               "warn")
     import pandas as pd
     from flubnf.settings import load_locations
     # a missing state list must be visible: without it runs cover all 52
@@ -133,14 +134,15 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["chips"] = _outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
-        # the latest-run card links the weekly report when one exists
+        # the latest-run card links the weekly report when one exists, and
+        # a run that died says why in its status badge's tip
         try:
-            r["has_report"] = bool(_json.loads(r.get("outcome")
-                                               or "{}").get("report"))
+            _o = _json.loads(r.get("outcome") or "{}")
+            r["has_report"] = bool(_o.get("report"))
+            r["error"] = str(_o.get("error") or "")
         except Exception:
-            r["has_report"] = False
+            r["has_report"], r["error"] = False, ""
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
     # archived Saturdays, newest first, for the form's picker (the native
@@ -158,12 +160,13 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         live_only = next((v for v in vintage_dates[:1] if v not in _vs), "")
     except Exception:
         live_only = ""
-    # ascending, as resolve_anchor reads it (the picker lists newest first)
+    # ascending, as resolve_anchor reads it (the picker lists newest first);
+    # the page shows the week as a labelled value (a "not archived" badge
+    # while only the live file holds it), this sentence when there is none
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""),
                                 sorted(vintage_dates))
-    anchor_note = ((f"Anchor week: {_anchor}"
-                    + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
-                    ) if _anchor else "No archived week on or before that date.")
+    anchor_note = (f"Anchor week: {_anchor}." if _anchor
+                   else "No archived week on or before that date.")
     # the newest week's reporting, under the anchor line while the anchor
     # is that week (the Data tab's check, app/core/reported.py)
     from app.ui.routes.data import _newest_report
@@ -176,7 +179,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "newest_report": newest_report, "anchor_week": _anchor or "",
         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
-        "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
+        "live_only": live_only, "live_only_tip": LIVE_ONLY_TIP,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "us_choice": US_CHOICE, "us_checked": us_checked,
@@ -269,9 +272,8 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     posted = gap_fields.pop("_sha", "")
     if posted and sha and posted != sha:
         return None, locs, (
-            "The hub data changed since the Forecast tab was loaded, so the "
-            "choices in Data issues may no longer fit it. Reload the tab and "
-            "choose again.")
+            "the hub data changed since the tab loaded; reload it and "
+            "choose again in Data issues.")
     prior_states = (prior or {}).get("states") if isinstance(prior, dict) else {}
     prior_states = prior_states if isinstance(prior_states, dict) else {}
     rows = {r["fips"]: r for r in _rep.box_rows(rep)}
@@ -288,8 +290,8 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             choice = str((prior_states.get(g.location) or {}).get("choice")
                          or "")
         if choice and choice not in offered:
-            return None, locs, (f"Data issues: {g.location}: '{choice}' is "
-                                f"not one of {', '.join(offered)}.")
+            return None, locs, (f"Data issues for {g.location}: '{choice}' "
+                                f"is not one of {', '.join(offered)}.")
         if not choice:
             if g.reason == "zero" and knob:
                 continue             # the run-wide rule covers it
@@ -333,8 +335,9 @@ def _location_list(locations: list) -> list:
         locs_list.append("US" if spelled == US_CHOICE else spelled)
     return locs_list
 
-#: the anchor line's ending for a week only the live target file holds
-LIVE_ONLY_NOTE = " (new data, not archived yet: read from target-data)."
+#: the anchor line's "not archived" badge tip, for a week only the live
+#: target file holds
+LIVE_ONLY_TIP = "New data, not archived yet: read from target-data."
 
 
 def _official_overlay(fc_date: str, locs: list) -> dict:
@@ -400,17 +403,17 @@ def run_stop():
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, run_id: str):
     import json as _json
+
     from app.core.runs import APP_STATE, Ledger
-    import html as _html
     w = APP_STATE / "workroots" / run_id
     # an unknown id (no ledger row, no workroot) is a 404, never an empty
     # run page; "." and ".." never name a run
     if run_id in (".", "..") or not (Ledger().row(run_id) or w.is_dir()):
-        return HTMLResponse(
-            f"<!doctype html><title>No such run</title><p>No run "
-            f"<code>{_html.escape(run_id)}</code> is recorded here. "
-            "<a href=\"/runs\">Storage</a> lists the runs.</p>",
-            status_code=404)
+        # a page of the console (under Storage, which lists the runs)
+        return output_routes._notice(
+            request, 404, "empty", f"No run {run_id} is recorded here",
+            tip="Storage lists the runs.", action=("/runs", "Open Storage"),
+            active="Storage", heading="Run")
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
@@ -489,17 +492,22 @@ def run_page(request: Request, run_id: str):
 
 
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)
-def run_report(run_id: str):
+def run_report(request: Request, run_id: str):
     from app.core.runs import APP_STATE
     d = APP_STATE / "workroots" / run_id
     if not (d / "report.html").is_file():
-        return HTMLResponse("<p>no report for this run</p>")
+        # a page of the console with the way back, as Output's notices,
+        # under Storage as the run page is
+        return output_routes._notice(
+            request, 404, "empty", "No report for this run",
+            action=(f"/runs/{run_id}", "Back to the run"),
+            active="Storage", heading="Run report")
     # rebuilt if stale, as /output/report
     return HTMLResponse(output_routes._report_for_serving(d))
 
 
 @router.get("/runs/{run_id}/report/download")
-def run_report_download(run_id: str):
+def run_report_download(request: Request, run_id: str):
     """Save this run's weekly report, named for the run's forecast date."""
     from app.core.runs import APP_STATE
     d = APP_STATE / "workroots" / run_id
@@ -510,7 +518,10 @@ def run_report_download(run_id: str):
             "forecast_date", "")
     except Exception:
         pass                 # no results.json yet: fall back to the run id
-    return output_routes._weekly_report_file(d, date or run_id)
+    return output_routes._weekly_report_file(
+        d, date or run_id, request,
+        notice={"action": (f"/runs/{run_id}", "Back to the run"),
+                "active": "Storage", "heading": "Run report"})
 
 
 @router.post("/runs/{run_id}/rerun")
@@ -527,9 +538,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     except (ValueError, TypeError):
         d = None
     if not isinstance(d, dict) or not d.get("forecast_date"):
-        _flash("That run's settings were not recorded, so it cannot be "
-               "re-run from here. Set the run up on the Forecast form "
-               "instead. Nothing was started.")
+        _flash("Not re-run: that run's settings were not recorded.", "warn",
+               detail="Set the run up on the Forecast form instead.")
         return _back(request, "/forecast")
     members = 3 if (d.get("extra") or {}).get("members") == 3 else 2
     locs = [str(l) for l in (d.get("locations") or [])]
@@ -558,8 +568,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         if isinstance(_dc, dict) and _dc:
             _cx["data_choices"] = _dc
     except ValueError:
-        _flash("This run's recorded model settings are not readable, so it "
-               "cannot be re-run from here. Nothing was started.")
+        _flash("Not re-run: its recorded model settings are unreadable.",
+               "warn")
         return _back(request, "/forecast")
     # what /run would build, compared field by field with the stored spec
     candidate = RunSpec(
@@ -593,15 +603,15 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
             and "pf.jitter" not in _rec):
         off.append("jitter")              # only the knob channel sets it
     if off:
-        _flash("This run's recorded settings cannot be reproduced from the "
-               "console path (" + ", ".join(dict.fromkeys(off)) + " differ "
-               "from what the form would run), so nothing was started. "
-               "Re-run it from a script using its ledger row.")
+        _flash("Not re-run: " + ", ".join(dict.fromkeys(off))
+               + " differ from what the form would run.", "warn",
+               detail="The console cannot reproduce this run's recorded "
+               "settings. Re-run it from a script using its ledger row.")
         return _back(request, "/forecast")
     if had_override:
-        _flash("The earlier run exported under the hub names by override; "
-               "an override is never carried over, so this re-run's files "
-               "carry the non-hub name.")
+        _flash("This re-run's files carry the non-hub name.",
+               detail="The earlier run used the hub names by override; an "
+               "override is never carried over.")
     return run_models(request, background,
                       forecast_date=candidate.forecast_date,
                       locations=locs,
@@ -811,9 +821,9 @@ def run_models(request: Request,
     except ValueError:
         # a blank or typed non-date (the model page's text field) is said
         # as such, never "no data for <text> yet"
-        _flash(f"'{forecast_date}' is not a date; give one as YYYY-MM-DD. "
-               "Nothing was run." if forecast_date else
-               "Give a forecast date. Nothing was run.")
+        _flash(f"Not run: '{forecast_date}' is not a date (YYYY-MM-DD)."
+               if forecast_date else "Not run: give a forecast date.",
+               "warn")
         return _back(request, "/forecast")
     typed_day = forecast_date
     if _d.weekday() != 5:
@@ -822,8 +832,7 @@ def run_models(request: Request,
         forecast_date = _pick or forecast_date
     # refused before any notice about the anchor or the settings
     if engine not in ENGINES:
-        _flash(f"'{engine}' is not one of the available engines. "
-               "Nothing was run.")
+        _flash(f"Not run: '{engine}' is not an available engine.", "warn")
         return _back(request, "/forecast")
     # an unknown mode reads as the pill's default, so the anchor rule below
     # records what the run reads (never "realtime" on an archived week)
@@ -848,9 +857,10 @@ def run_models(request: Request,
             # the as-of is past every week the hub holds: no data yet
             if _last_form:
                 _last_form["forecast_date"] = newest or live_wk
-            _flash(f"No data for {forecast_date} yet: the hub's target data "
-                   f"ends at {live_wk}. Update data on the Data tab, or "
-                   f"forecast from {live_wk}. Nothing was run.")
+            _flash(f"Not run: no data for {forecast_date} yet; the hub's "
+                   f"data ends at {live_wk}.", "warn",
+                   detail=f"Update data on the Data tab, or forecast from "
+                   f"{live_wk}.")
             return _back(request, "/forecast")
         # archive gaps are real (holiday weeks): suggest the nearest EARLIER
         # vintage only; a later one would leak hindsight
@@ -860,19 +870,18 @@ def run_models(request: Request,
         if near and _last_form:
             _last_form["forecast_date"] = near
         if not vs:
-            _flash(f"No archived data for {forecast_date}. Pull the "
-                   "FluSight hub on the Data tab first.")
+            _flash(f"Not run: no archived data for {forecast_date}.", "warn",
+                   detail="Pull the FluSight hub on the Data tab first.")
         elif earlier:
-            _flash(f"The FluSight hub archived no data snapshot dated "
-                   f"{forecast_date}; such gaps are real, usually holiday "
-                   "weeks. The graphs still show a point at that date "
-                   "because they draw today's settled data, which was not "
-                   "yet reported on the day itself. Nearest earlier "
-                   f"archived Saturday: {near}. A later one would leak a "
-                   "week of hindsight, so it is not offered.")
+            _flash(f"Not run: the hub archived no snapshot dated "
+                   f"{forecast_date}. Nearest earlier: {near}.", "warn",
+                   detail="Such gaps are real, usually holiday weeks. The "
+                   "graphs still show a point at that date because they "
+                   "draw today's settled data. A later snapshot would leak "
+                   "a week of hindsight, so it is not offered.")
         else:
-            _flash(f"No archived data for {forecast_date}; the archive "
-                   f"starts at {near}.")
+            _flash(f"Not run: no archived data for {forecast_date}; the "
+                   f"archive starts at {near}.", "warn")
         return _back(request, "/forecast")
     # A direct call (rerun) may pass Form default objects: read them as blank
     season_start = _str_field(season_start).strip()
@@ -887,7 +896,7 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
-        _flash(f"Model settings: {e}. Nothing was run.")
+        _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
@@ -920,7 +929,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
-        _flash(f"Model settings: {e}. Nothing was run.")
+        _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     kspec = _knobs.spec_fields(nd)
     season_start = kspec.get("season_start", "")
@@ -931,14 +940,14 @@ def run_models(request: Request,
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
     if not locations:
-        _flash("Select at least one location, or all 53 jurisdictions. "
-               "Nothing was run.")
+        _flash("Not run: select a location, or all 53 jurisdictions.",
+               "warn")
         return _back(request, "/forecast")
     try:
         locs_list = _location_list(locations)
     except Exception as e:
-        _flash(f"The state list could not be read ({type(e).__name__}). "
-               "Nothing was run.")
+        _flash(f"Not run: could not read the state list "
+               f"({type(e).__name__}).", "error")
         return _back(request, "/forecast")
     # the per-state data choices (the Data issues box, or a re-run's
     # record): refused BEFORE the engine is claimed when a choice is not
@@ -950,18 +959,19 @@ def run_models(request: Request,
         if _prior is not None and not isinstance(_prior, dict):
             raise ValueError("not a dictionary")
     except ValueError:
-        _flash("The recorded data choices are not readable. Nothing was run.")
+        _flash("Not run: the recorded data choices are unreadable.",
+               "error")
         return _back(request, "/forecast")
     _dc, locs_list, _why = _data_choices(forecast_date, newest, engine,
                                          locs_list, gap_fields, nd, _prior)
     if _why:
-        _flash(f"{_why} Nothing was run.")
+        _flash(f"Not run: {_why}", "warn")
         return _back(request, "/forecast")
     if _dc:
         extra["data_choices"] = _dc
     if not locs_list:
-        _flash("Every selected location was left out in Data issues. "
-               "Nothing was run.")
+        _flash("Not run: every selected location is left out in Data "
+               "issues.", "warn")
         return _back(request, "/forecast")
     # busy check + claim under _engine_lock (see its comment)
     with _engine_lock:
@@ -971,13 +981,15 @@ def run_models(request: Request,
         live_retro = sorted(x for x in retro_seasons._known_seasons()
                             if _season_status(x) in _RETRO_ACTIVE)
         if live_retro:
-            _flash("A retrospective replay holds the engine ("
-                   + ", ".join(live_retro) + "). Stop or pause it from the "
-                   "Retrospective tab first; nothing was run.")
+            _flash("Not run: a replay holds the engine ("
+                   + ", ".join(live_retro) + ").", "warn",
+                   detail="Stop or pause it from the Retrospective tab "
+                   "first.")
             return _back(request, "/forecast")
         sb = _sandbox_live_reason()
         if sb:
-            _flash(f"Not run: {sb}. Stop it from the Sandbox first.")
+            _flash(f"Not run: {sb}.", "warn",
+                   detail="Stop it from the Sandbox first.")
             return _back(request, "/forecast")
         # background tasks fire after the redirect: claim NOW so the landing
         # page shows the run
@@ -1002,8 +1014,8 @@ def run_models(request: Request,
         if newest and mode == "realtime" and forecast_date != newest:
             mode = "vintage"
             extra["mode"] = mode
-            _flash(f"Anchored on the archived week {forecast_date}, not the "
-                   f"newest week ({newest}): recorded as a vintage run.")
+            _flash(f"Recorded as a vintage run: {forecast_date} is not the "
+                   f"newest week ({newest}).")
         elif newest and forecast_date == newest and mode != "realtime":
             # the newest week IS real-time data whatever the pill said; recorded
             # so, which lets the run read the live file when it is not archived
@@ -1026,8 +1038,8 @@ def run_models(request: Request,
             background.add_task(pipeline._run_all, spec)
             queued = True
         else:
-            _flash(f"'{engine}' is not one of the available engines. "
-                   "Nothing was run.")
+            _flash(f"Not run: '{engine}' is not an available engine.",
+                   "warn")
     finally:
         if not queued:
             # nothing will run (unknown engine, or a failure before the

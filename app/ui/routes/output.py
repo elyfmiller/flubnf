@@ -10,6 +10,7 @@ _weekly_report_file here. An APIRouter server.py includes.
 """
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -151,6 +152,10 @@ def _attach_coverage(files: list, outcome: dict, spec) -> None:
         entry["cov"] = coverage.file_coverage(
             outcome or {}, member, entry["model"], requested, present,
             hub_total=total)
+        # the handle of this file's coverage tips (_coverage.html): one per
+        # file path, so unique on the Output page and on a run page
+        entry["cov"]["id"] = "cov-" + hashlib.sha1(
+            str(entry["path"]).encode()).hexdigest()[:10]
 
 
 #: the hub's clock: the window closes at this hour, Eastern, on its last day
@@ -180,11 +185,12 @@ def _eastern(now):
         tzinfo=_dt.timezone(_dt.timedelta(hours=off)))
 
 
-def _window_text(due, today=None, now=None) -> str:
-    """The hub's window for a round, one sentence: due (from/by, 11 PM
-    Eastern on the last day) or closed. `due` is (first, last) dates. The
-    clock is Eastern time, not the machine's: `now` (an aware datetime,
-    default the current time) or, for a whole-day answer, `today`."""
+def _window(due, today=None, now=None) -> tuple:
+    """(state, sentence) of the hub's window for a round: "due" (open now,
+    until 11 PM Eastern on the last day), "soon" (it opens later: from, to)
+    or "closed". `due` is (first, last) dates. The clock is Eastern time,
+    not the machine's: `now` (an aware datetime, default the current time)
+    or, for a whole-day answer, `today`."""
     import datetime as _dt
     first, last = due
     if today is None:
@@ -193,34 +199,57 @@ def _window_text(due, today=None, now=None) -> str:
         if today == last and et.hour >= HUB_CLOSE_HOUR:
             today = last + _dt.timedelta(days=1)     # closed at 11 PM ET
     if today > last:
-        return f"The window closed {last:%a %Y-%m-%d}."
+        return "closed", f"The window closed {last:%a %Y-%m-%d}."
     if today < first:
-        return f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
-    return f"Due {last:%a %Y-%m-%d}, 11 PM ET."
+        return "soon", f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
+    return "due", f"Due {last:%a %Y-%m-%d}, 11 PM ET."
 
 
-def _date_window(ref: str, today=None, now=None) -> str:
-    """A forecast date's one line: its window, or that the reference date
-    is not a FluSight round (hub-config/tasks.json, vendored)."""
+def _window_text(due, today=None, now=None) -> str:
+    """The hub's window for a round, one sentence (_window)."""
+    return _window(due, today=today, now=now)[1]
+
+
+#: a window state's badge on a date card: (kit state, words); "due" and
+#: "soon" show their own sentence, less the period
+_WINDOW_BADGE = {"due": ("warn", ""), "soon": ("pending", ""),
+                 "closed": ("neutral", "Window closed"),
+                 "record": ("neutral", "Not a FluSight round")}
+
+
+def _date_status(ref: str, today=None, now=None) -> dict:
+    """A forecast date's window for its card: {"state": due, soon, closed,
+    or record (the reference date is not a FluSight round:
+    hub-config/tasks.json, vendored), "text": the one-line sentence,
+    "badge": (kit state, words)}; {} when the rules cannot be read."""
     from app.core import hubcheck
     try:
         rounds = hubcheck.vendored_rules()["rounds"]
         if ref not in rounds:
-            return f"{ref} is not a FluSight round, so its files are a record."
-        return _window_text(hubcheck.submission_window(ref),
-                            today=today, now=now)
+            state = "record"
+            text = f"{ref} is not a FluSight round, so its files are a record."
+        else:
+            state, text = _window(hubcheck.submission_window(ref),
+                                  today=today, now=now)
     except Exception:
-        return ""
+        return {}
+    kind, words = _WINDOW_BADGE[state]
+    return {"state": state, "text": text,
+            "badge": (kind, words or text.rstrip("."))}
+
+
+def _date_window(ref: str, today=None, now=None) -> str:
+    """A forecast date's one line: its window, or that the reference date
+    is not a FluSight round (_date_status's sentence)."""
+    return _date_status(ref, today=today, now=now).get("text", "")
 
 
 #: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once
 _CHECKED: dict = {}
 
 
-def _check_line(path: str) -> dict:
-    """One file's hub checks in a few words: {"ok", "text"} ("Passes the
-    hub's checks" or "Fails N hub checks: <first>"), cached per file
-    version."""
+def _check_summary(path: str) -> dict:
+    """hubcheck.summary of one file, cached per file version."""
     from app.core import hubcheck
     try:
         st = Path(path).stat()
@@ -234,11 +263,24 @@ def _check_line(path: str) -> dict:
             if len(_CHECKED) > 512:
                 _CHECKED.clear()
             _CHECKED[key] = s
+    return s
+
+
+def _check_head(s: dict) -> str:
+    """A check summary in a few words (the Output page's badge)."""
     if s["ok"]:
-        return {"ok": True, "text": "Passes the hub's checks"}
+        return "Passes the hub's checks"
     n = len(s["problems"])
-    return {"ok": False, "text": f"Fails {n} hub check{'s' if n != 1 else ''}: "
-                                 f"{s['problems'][0]}"}
+    return f"Fails {n} hub check{'s' if n != 1 else ''}"
+
+
+def _check_line(path: str) -> dict:
+    """One file's hub checks in a few words: {"ok", "text"} ("Passes the
+    hub's checks" or "Fails N hub checks: <first>")."""
+    s = _check_summary(path)
+    if s["ok"]:
+        return {"ok": True, "text": _check_head(s)}
+    return {"ok": False, "text": f"{_check_head(s)}: {s['problems'][0]}"}
 
 
 def _reference_date(asof: str) -> str:
@@ -364,6 +406,10 @@ def _file_entry(c: dict) -> dict:
          "complete": c["complete"]}
     if not modified:
         e["check"] = _check_line(c["path"])
+        # the badge's words, and every problem for its tip (the one-line
+        # text holds only the first)
+        s = _check_summary(c["path"])
+        e["check_head"], e["problems"] = _check_head(s), list(s["problems"])
     try:
         o = _json.loads((c.get("row") or {}).get("outcome") or "{}")
     except (ValueError, TypeError):
@@ -382,8 +428,9 @@ def _member_order(dir_name: str) -> int:
 
 def forecast_dates(today=None, now=None) -> tuple:
     """(dates, own) for the Output page. dates: newest forecast date first,
-    each {"asof", "ref", "window", "files": the hub-named file per model,
-    "modified": the -modified file per model}; each file from the run
+    each {"asof", "ref", "window" (the sentence), "status" (_date_status),
+    "files": the hub-named file per model, "modified": the -modified file
+    per model}; each file from the run
     archive_record.choose picks among the runs that wrote one for the date.
     own: the own-data runs, newest first, with their exports."""
     from app.core import archive_record as _ar
@@ -404,9 +451,9 @@ def forecast_dates(today=None, now=None) -> tuple:
         for d in sorted(by[asof], key=lambda d: (_member_order(d), d)):
             e = _file_entry(_ar.choose(by[asof][d]))
             (modified if e["modified"] else files).append(e)
+        status = _date_status(ref, today=today, now=now) if ref else {}
         dates.append({"asof": asof, "ref": ref or asof,
-                      "window": _date_window(ref, today=today, now=now)
-                      if ref else "",
+                      "window": status.get("text", ""), "status": status,
                       # the data the shown files' runs read, once each
                       "data_src": list(dict.fromkeys(
                           x for x in (_run_data_source(e["run_id"])
@@ -433,11 +480,38 @@ def output_page(request: Request):
     from app.core.runs import APP_STATE
     rid, res = shared._latest_results()
     dates, own = forecast_dates()
+    has_report = bool(rid and (APP_STATE / "workroots" / rid
+                               / "report.html").is_file())
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
         "archive_dates": list(reversed(_archive_dates())),
-        "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
+        "has_report": has_report,
+        # the week the latest report is for, beside its buttons
+        "report_asof": str((res or {}).get("forecast_date") or "")
+        if has_report else ""})
+
+
+def _notice(request: Request, status: int, kind: str, title: str,
+            tip: str = "", icon: str = "folder",
+            action: tuple = ("/output", "Back to Output"),
+            active: str = "Output", heading: str = "Output"):
+    """A refusal or a missing file as a page of the console (output.html's
+    notice), never a bare line: kind "error" is a one-line alert, "empty"
+    an empty state; `tip` its explainer; `action` (href, words) the way on.
+    `status` is the response's code; `active` the tab it sits under (a
+    run's pages sit under Storage) and `heading` its title."""
+    return templates.TemplateResponse(request, "output.html", {
+        "active": active,
+        "notice": {"kind": kind, "title": title, "tip": tip, "icon": icon,
+                   "href": action[0], "label": action[1],
+                   "heading": heading}},
+        status_code=status)
+
+
+def _not_found(request: Request):
+    """/output/download's 404: the path is not a file it may serve."""
+    return _notice(request, 404, "empty", "File not found in app state")
 
 
 @router.get("/output/download")
@@ -451,22 +525,24 @@ def output_download(request: Request, path: str):
     try:
         p = Path(path).resolve()
     except (OSError, ValueError):       # a NUL byte or an unusable name
-        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+        return _not_found(request)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
-        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+        return _not_found(request)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)
-        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+        return _not_found(request)
     # a dataset run's exports carry the upload: the global middleware
     # (shared._same_host_guard) already serves them to localhost only
     if p.parent.parent.name == "submission" \
             and p.parent.name not in _registered_model_ids() \
             and p.parent.name not in _modified_model_ids():
-        return HTMLResponse(
-            "<p>This folder is not a registered hub model: the file was "
-            "written by an earlier version under a retired hub name and is "
-            "kept on disk as a record, not for submission; Storage lists "
-            "its run folder.</p>", status_code=409)
+        return _notice(
+            request, 409, "error", "Not a registered hub model.",
+            tip="This folder is not a registered hub model: the file was "
+                "written by an earlier version under a retired hub name and "
+                "is kept on disk as a record, not for submission; Storage "
+                "lists its run folder.",
+            action=("/storage", "Open Storage"))
     return FileResponse(p, filename=p.name, media_type="text/csv",
                         content_disposition_type="attachment")
 
@@ -531,31 +607,34 @@ def _report_for_serving(dirpath: Path) -> str:
         return text
 
 
-def _bad_date(date: str):
+def _bad_date(date: str, request: Request):
     """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
     import re
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         return None
-    return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
-                        status_code=400)
+    return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
 
 
 @router.get("/output/report", response_class=HTMLResponse)
-def output_report(date: str = ""):
+def output_report(request: Request, date: str = ""):
     """Latest run's report, or ?date=YYYY-MM-DD from the archive (both via
     _report_for_serving)."""
     from app.core.runs import APP_STATE
     if date:
-        if bad := _bad_date(date):
+        if bad := _bad_date(date, request):
             return bad
         d = APP_STATE / "archive" / date
         if not (d / "report.html").is_file():
-            return HTMLResponse(f"<p>No archived report for {date}.</p>")
+            return _notice(request, 200, "empty",
+                           f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
     rid, _ = shared._latest_results()
     d = APP_STATE / "workroots" / (rid or "")
     if not (d / "report.html").is_file():
-        return HTMLResponse("<p>No report yet. Run the models first.</p>")
+        return _notice(request, 200, "empty", "No report yet", icon="clock",
+                       tip="Generated automatically with each full run. "
+                           "Run the models first.",
+                       action=("/forecast", "Run a forecast"))
     return HTMLResponse(_report_for_serving(d))
 
 
@@ -565,12 +644,17 @@ def _weekly_report_name(date: str) -> str:
         else "FluBNF-weekly-report.html"
 
 
-def _weekly_report_file(dirpath: Path, date: str):
+def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+                        notice: dict | None = None):
     """The weekly report as a download, refreshed first (same bytes as the
-    page); missing -> 404."""
+    page); missing -> 404 (a console page when `request` is given;
+    `notice` holds _notice's action, active and heading for a run's)."""
     from fastapi.responses import FileResponse
     f = Path(dirpath) / "report.html"
     if not f.is_file():
+        if request is not None:
+            return _notice(request, 404, "empty", "No report to download",
+                           **(notice or {}))
         return HTMLResponse("<p>No report to download.</p>", status_code=404)
     _report_for_serving(dirpath)
     return FileResponse(f, filename=_weekly_report_name(date),
@@ -579,13 +663,14 @@ def _weekly_report_file(dirpath: Path, date: str):
 
 
 @router.get("/output/report/download")
-def output_report_download(date: str = ""):
+def output_report_download(request: Request, date: str = ""):
     """/output/report's file, as a download."""
     from app.core.runs import APP_STATE
     if date:
-        if bad := _bad_date(date):
+        if bad := _bad_date(date, request):
             return bad
-        return _weekly_report_file(APP_STATE / "archive" / date, date)
+        return _weekly_report_file(APP_STATE / "archive" / date, date,
+                                   request)
     rid, res = shared._latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
-                               (res or {}).get("forecast_date", ""))
+                               (res or {}).get("forecast_date", ""), request)

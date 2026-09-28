@@ -214,8 +214,10 @@ def test_period_cells_print_every_figure_they_color(tmp_path):
     assert ">48%</td>" in full and 'class="num cov-ok"' in full
     assert ">70%</td>" in full and 'class="num cov-low"' in full
     assert ">99%</td>" in full
-    # a figure the scores cannot give is a dash, never a colored blank
-    assert bare.count(">–</td>") == 4 and "cov-" not in bare
+    # a figure the scores cannot give is "n/a", never a colored blank
+    assert bare.count(">n/a</td>") == 4 and "cov-" not in bare
+    # without the host's verdictIcons (the standalone report) no icon
+    assert "<svg" not in full
     # no score: one cell across the group, saying which blank it is
     assert nosub == ('<td colspan="4" class="num hint gap g1">'
                      'no submission</td>')
@@ -434,7 +436,7 @@ def test_coverage_rule_matches_the_python_verdicts():
             cs(1.0, 95), cs(None, 95)] == \
         ["ok", "low", "ok", "wide", "low", "ok", "ok", "wide", "wide", ""]
     assert report_season.cov_text(0.4449) == "44%"
-    assert report_season.cov_text(float("nan")) == "–"
+    assert report_season.cov_text(float("nan")) == "n/a"
 
 
 def test_us_pf_label_is_the_national_note():

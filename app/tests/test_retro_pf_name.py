@@ -199,7 +199,7 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     # the verdict tile, the chart legend and the table header
     assert f"<h2>{FILTER}</h2>" in t
     assert f"<h2>{ORACLE}</h2>" not in t
-    assert "&#9632;</span> " + FILTER in t
+    assert 'aria-hidden="true"></span>' + FILTER in t     # legend chip
     # the per-state head names the member over its column, or over its
     # relWIS and 95% pair when the scores carry coverage
     assert (f"aria-pressed=\"false\">{FILTER}<" in t

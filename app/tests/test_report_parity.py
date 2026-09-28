@@ -49,6 +49,8 @@ APP_ONLY_HEADINGS = {
 APP_TO_REPORT = {
     # (the cumulative chart has no export counterpart)
     "Season player": 'id="pb-scrub"',
+    # the verdict tiles' heading: the report carries the tiles themselves
+    "Season scores": 'class="tilename"',
     "Live scores": "<h2>Live scores</h2>",
     "Per-state scores": "Per-state final scores",
 }
@@ -195,7 +197,8 @@ def test_every_app_section_has_a_report_counterpart(built):
 def test_verdict_tiles_match_including_us_aggregate(built):
     app_html, report_html = built
     app_tiles = set(re.findall(
-        r'<div class="card"><h2>([^<]+)</h2><div class="big', app_html))
+        r'<div class="card rt-tile"><div class="rt-tile-h"><h2>([^<]+)</h2>',
+        app_html))
     rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
     # one national tile per model; pf is named for the stored tree
     assert "US (aggregated): Particle filter alone" in app_tiles
@@ -247,7 +250,9 @@ def test_cumulative_curve_stays_on_the_page(built):
 
 def test_timing_and_settings_match(built):
     app_html, report_html = built
-    t = re.search(r"Replay wall time ([\d:]+)", app_html)
+    # the season band's Wall time value (its "?" says more only when the
+    # record has per-week timing)
+    t = re.search(r'id="rs-timing">([\d:]+)<', app_html)
     assert t, "the fixture's run record must put the wall time on the page"
     assert f"Total wall time {t.group(1)} (h:mm:ss)" in report_html
     pair_re = re.compile(r"<dt>(.*?)</dt><dd>(.*?)</dd>")

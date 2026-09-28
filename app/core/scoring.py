@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 from datetime import timedelta
+from pathlib import Path
 from typing import Mapping
 
 import numpy as np
@@ -39,6 +40,9 @@ import pandas as pd
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 from flubnf.wis import COVERAGE_BANDS, coverage, log_wis, wis
 from flubnf.settings import HUB
+
+#: the locations list shipped with the package, used when no hub clone
+BUNDLED_LOCATIONS = Path(__file__).resolve().parents[2] / "flubnf/data/locations.csv"
 
 
 #: what the last load_truth() served: "settled", or "vintage <date>" when the
@@ -72,7 +76,12 @@ def load_truth() -> tuple:
     t = pd.read_csv(target, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
     t["date"] = pd.to_datetime(t["date"])
-    locs = pd.read_csv(HUB / "auxiliary-data/locations.csv", dtype=str)
+    # the hub's list, else the bundled copy (same columns): a stored
+    # season still plays back without a hub clone
+    locs_csv = HUB / "auxiliary-data/locations.csv"
+    if not locs_csv.is_file():
+        locs_csv = BUNDLED_LOCATIONS
+    locs = pd.read_csv(locs_csv, dtype=str)
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
     truth = {(r.location, r.date): float(r.value)
              for r in t.itertuples() if np.isfinite(r.value)}

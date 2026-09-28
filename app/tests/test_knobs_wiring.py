@@ -200,7 +200,8 @@ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
     assert r.status_code == 303
     assert started == [] and ui_state._status.get("running") is None
     assert msg in ui_state._status.get("flash", "")
-    assert "Nothing was run" in ui_state._status.get("flash", "")
+    assert "Not run" in ui_state._status.get("flash", "")
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_a_knob_that_does_not_apply_is_ignored_and_not_recorded(tmp_path,
@@ -377,7 +378,8 @@ def test_old_ledger_rows_are_never_marked_modified(tmp_path, monkeypatch):
     orow = html.split(f'href="/runs/{oid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nid}"', 1)[1].split("</tr>", 1)[0]
     assert "modified settings" not in orow
-    assert '<span class="pill warn">modified settings</span>' in nrow
+    assert ('uk-badge--warn' in nrow
+            and '<span class="uk-badge-t">modified settings</span>' in nrow)
     page = client.get(f"/runs/{nid}").text
     assert 'id="modified-note"' in page and "non-hub name" in page
     assert 'id="modified-note"' not in client.get(f"/runs/{oid}").text
@@ -401,7 +403,8 @@ def test_rerun_carries_the_knobs_but_never_the_override(tmp_path, monkeypatch):
     assert s.jitter == 0.3
     assert s.extra["knobs"] == {"oracle.w": 0.25, "pf.jitter": 0.3}
     assert "knobs_override" not in s.extra
-    assert "never carried over" in ui_state._status.get("flash", "")
+    assert "non-hub name" in ui_state._status.get("flash", "")
+    assert "never carried over" in ui_state._status.get("flash_detail", "")
 
 
 # --- the retrospective ------------------------------------------------------------------
@@ -489,14 +492,16 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
     client.post("/retro/run", data={**base, "knob.oracle.w": "0.3"},
                 follow_redirects=False)
     assert launched == []
-    assert "mix two configurations" in ui_state._status.get("flash", "")
+    assert "other model settings" in ui_state._status.get("flash", "")
+    assert "mix two configurations" in ui_state._status.get("flash_detail", "")
     # out of the retro scope, out of range, or one knob sent twice: refused
     # before anything moves
     for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"},
                 {"knob.oracle.w": ["0.25", "0.3"]}):
         ui_retro_seasons._retro_status.pop(SEASON, None)
         client.post("/retro/run", data={**base, **bad}, follow_redirects=False)
-        assert launched == [] and "Nothing was started" in ui_state._status["flash"]
+        assert launched == [] and "Not started" in ui_state._status["flash"]
+        assert ui_state._status.get("flash_kind") == "warn"
     # the recorded knobs (the one-click resume's JSON field) launch
     ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/retro/run", data={**base, "knobs": '{"oracle.w": 0.25}'},
@@ -544,7 +549,8 @@ def test_the_retro_route_refuses_a_resume_over_other_locations(
         client.post("/retro/run", data={**base, **other},
                     follow_redirects=False)
         assert launched == [], other
-        assert "mix two location scopes" in ui_state._status.get("flash", "")
+        assert "mix two location scopes" in ui_state._status.get(
+            "flash_detail", "")
     ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/retro/run", data={**base, "locations": "panel6",
                                     "national": "0"}, follow_redirects=False)
@@ -628,7 +634,9 @@ def test_the_season_page_wears_the_modified_badge():
            "model_name": lambda m: m, "archive": "",
            "preparing": {"phase": "scoring", "elapsed_s": 1.0}}
     html = t.render(**ctx, knobs_label=K.label({"oracle.w": 0.25}))
-    assert '<span class="pill warn" title="modified: oracle.w=0.25' in html
+    # a badge (icon and word), what was modified in its "?"
+    assert '<span class="uk-badge uk-badge--warn" id="rs-knobs"' in html
+    assert 'id="tip-rs-knobs">modified: oracle.w=0.25' in html
     assert "modified settings</span>" not in t.render(**ctx, knobs_label="")
 
 

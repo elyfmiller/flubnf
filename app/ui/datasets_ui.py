@@ -336,11 +336,13 @@ async def upload(request: Request):
     warn = list(ds.meta.get("warnings") or [])
     if as_snaps and len(fs) == 1 and not ds.vintage_true:
         warn.insert(0, _LONE)
-    done =(f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
-            f"{len(ds.weeks())} week(s).")
+    counts = f"{len(ds.groups)} group(s), {len(ds.weeks())} week(s)."
+    done = f"Stored the dataset {ds.name}: {counts}"
+    snaps = ""
     if ds.meta.get("snapshot_files"):
         vs = ds.vintages()
-        done += (f" {len(vs)} snapshots, as_of {vs[0]} to {vs[-1]}.")
+        snaps = f"{len(vs)} snapshots, as_of {vs[0]} to {vs[-1]}."
+        done += " " + snaps
     if nxt == "replay":
         # said in the Your data tab's settings card, not at the page top;
         # #main replaces the form's #datasets, which a redirect keeps
@@ -349,7 +351,11 @@ async def upload(request: Request):
         ui_state._status["log"].append(" ".join([done] + warn))
         return RedirectResponse(f"/retro?dataset={ds.id}#main",
                                 status_code=303)
-    shared._flash(done + (" " + " ".join(warn) if warn else ""))
+    # the counts on the line; the snapshots and any warnings in its tip
+    shared._flash(f"Stored {ds.name}: {counts}"
+                  + (f" {len(warn)} warning(s)." if warn else ""),
+                  "warn" if warn else "ok",
+                  detail=" ".join(([snaps] if snaps else []) + warn))
     if nxt == "forecast":
         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
     return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
@@ -361,17 +367,18 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
     happened either way (both delete routes)."""
     ds = get_dataset(ds_id)
     if ds is None:
-        shared._flash("No such dataset; nothing was deleted.")
+        shared._flash("Not deleted: no such dataset.", "warn")
         return
     why = busy_with(ds.id)
     if why:
-        shared._flash(f"{ds.name} was not deleted: {why}.")
+        shared._flash(f"{ds.name} not deleted: {why}.", "warn")
         return
     if confirm != ds.name:
-        shared._flash(f"Deleting {ds.name} was not confirmed; "
-                      "nothing was deleted.")
+        shared._flash(f"Not deleted: the confirmation did not name {ds.name}.",
+                      "warn")
         return
-    shared._flash(deleted_message(ds, *delete_everything(ds)))
+    msg, kind, detail = deleted_message(ds, *delete_everything(ds))
+    shared._flash(msg, kind, detail=detail)
 
 
 @router.post("/data/datasets/{ds_id}/delete")
@@ -549,7 +556,6 @@ def forecast_page(request: Request, ds):
     for r in rows:
         r["label"] = shared._run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["chips"] = outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         r["has_report"] = False
         if r["status"] == "running" and not (
@@ -564,6 +570,7 @@ def forecast_page(request: Request, ds):
         "status": ui_state._status,
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
+        "anchor_week": anchor if ok else "",
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
             forms._knob_panel("forecast", form, names=PANEL_MEMBERS),
@@ -661,14 +668,14 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     from app.core.runs import RunSpec, spec_settings
     ds = get_dataset(ds_id)
     if ds is None:
-        shared._flash("That dataset no longer exists. Nothing was run.")
+        shared._flash("Not run: that dataset no longer exists.", "warn")
         return RedirectResponse("/forecast", status_code=303)
     here = f"/forecast?source={ds.id}"
     dates = ds.forecast_dates()
     fd = forms._str_field(forecast_date).strip()
     if not fd:
         # a cleared date field: said as such (FastAPI's raw 422 page before)
-        shared._flash("Give a forecast date. Nothing was run.")
+        shared._flash("Not run: give a forecast date.", "warn")
         return RedirectResponse(here, status_code=303)
     pick, _ = forms.resolve_anchor(fd, dates)
     fd = pick or fd
@@ -676,18 +683,18 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         earlier = [d for d in dates if d <= fd]
         near = earlier[-1] if earlier else (dates[0] if dates else "")
         shared._flash(
-            f"{ds.name} holds no week {fd} to forecast from."
+            f"Not run: {ds.name} has no week {fd}."
             + (f" Nearest earlier week: {near}." if earlier else
-               f" Its first forecastable week is {near}." if near else ""))
+               f" First forecastable week: {near}." if near else ""), "warn")
         return RedirectResponse(here, status_code=303)
     if engine not in ENGINE_NAMES:
-        shared._flash(f"'{engine}' is not a model choice. Nothing was run.")
+        shared._flash(f"Not run: '{engine}' is not a model choice.", "warn")
         return RedirectResponse(here, status_code=303)
     view = _dataset_view(ds)
     if engine in ("all", "pf") and not view["pf_ok"]:
-        shared._flash(f"The plain SIHRS particle filter cannot run on "
-                      f"{ds.name}: {view['pf_why']}. Choose {GROUNDHOG} "
-                      "only. Nothing was run.")
+        shared._flash(f"Not run: the plain SIHRS filter cannot run on "
+                      f"{ds.name}.", "warn",
+                      detail=f"{view['pf_why']}. Choose {GROUNDHOG} only.")
         return RedirectResponse(here, status_code=303)
     groups = [x.strip() for l in locations for x in str(l).split("|")
               if x.strip()]
@@ -696,18 +703,18 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     unknown = [g for g in groups if g not in ds.groups]
     groups = [g for g in ds.groups if g in groups]      # dataset order
     if unknown:
-        shared._flash(f"Not groups of {ds.name}: {', '.join(unknown[:5])}. "
-                      "Nothing was run.")
+        shared._flash(f"Not run: not groups of {ds.name}: "
+                      f"{', '.join(unknown[:5])}.", "warn")
         return RedirectResponse(here, status_code=303)
     if not groups:
-        shared._flash("Select at least one group. Nothing was run.")
+        shared._flash("Not run: select at least one group.", "warn")
         return RedirectResponse(here, status_code=303)
     want_fs = forms._str_field(flusurv).lower() in ("1", "on", "true", "yes")
     season_start = forms._str_field(season_start).strip()
     try:
         kraw = knob_values(ds, knob_fields, knobs_json)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Model settings: {e}. Nothing was run.")
+        shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     _LAST[ds.id] ={"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
@@ -736,7 +743,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
-        shared._flash(f"Model settings: {e}. Nothing was run.")
+        shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)
     # built before the claim: nothing between the claim and the queued
@@ -752,22 +759,23 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
                    extra=extra)
     with ui_state._engine_lock:
         if ui_state._status.get("running"):
-            shared._flash("A run is already in progress; not starting "
-                          "another.")
+            shared._flash("Not run: a run is already in progress.", "warn")
             return RedirectResponse(here + "#results", status_code=303)
         live = sorted(x for x in retro_seasons._known_seasons()
                       if retro_seasons._season_status(x)
                       in retro_seasons._RETRO_ACTIVE)
         if live:
-            shared._flash("A retrospective replay holds the engine ("
-                          + ", ".join(live) + "). Stop or pause it from the "
-                          "Retrospective tab first; nothing was run.")
+            shared._flash("Not run: a replay holds the engine ("
+                          + ", ".join(live) + ").", "warn",
+                          detail="Stop or pause it from the Retrospective "
+                          "tab first.")
             return RedirectResponse(here, status_code=303)
         # the sandbox's claim, as /run reads it (its middleware guard
         # covers /run and /retro/run only)
         sb = shared._sandbox_live_reason()
         if sb:
-            shared._flash(f"Not run: {sb}. Stop it from the Sandbox first.")
+            shared._flash(f"Not run: {sb}.", "warn",
+                          detail="Stop it from the Sandbox first.")
             return RedirectResponse(here, status_code=303)
         ui_state._status["running"] = "starting"
         ui_state._status.pop("stop_requested", None)
@@ -844,8 +852,9 @@ def run_worker(spec) -> None:
         from app.core.engines.pf import RunStopped
         if run_id is None:
             ui_state._status["log"].append(f"run setup failed: {str(e)[:200]}")
-            shared._flash(f"The run on {ref.get('name', 'the dataset')} "
-                          f"could not start: {str(e)[:200]}")
+            shared._flash(f"Could not start the run on "
+                          f"{ref.get('name', 'the dataset')}: {str(e)[:200]}",
+                          "error")
         elif isinstance(e, (RunStopped, custom_run.Stopped)):
             ledger.close_run(run_id, "stopped", outcome)
         else:
@@ -982,14 +991,18 @@ def delete_everything(ds) -> tuple:
     return freed, gone, kept
 
 
-def deleted_message(ds, freed: int, gone: int, kept: int) -> str:
+def deleted_message(ds, freed: int, gone: int, kept: int) -> tuple:
+    """(message, kind, detail) of a dataset delete's notice."""
     from app.core import retro
-    return (f"Deleted the dataset {ds.name}, its replays and {gone} run "
-            f"workroot{'' if gone == 1 else 's'}: "
-            f"{retro.human_bytes(freed)} freed. The runs' ledger rows are "
-            "kept."
-            + (f" {kept} run workroot{'' if kept == 1 else 's'} could not "
-               "be deleted and stay under Run workroots." if kept else ""))
+    s = "" if gone == 1 else "s"
+    detail = (f"Its replays and {gone} run workroot{s} went with it; the "
+              "runs' ledger rows are kept.")
+    if kept:
+        return ((f"Deleted {ds.name}, but {kept} run workroot"
+                 f"{'' if kept == 1 else 's'} could not be deleted."), "warn",
+                detail + " The rest stay under Run workroots.")
+    return (f"Deleted {ds.name}: {retro.human_bytes(freed)} freed.", "ok",
+            detail)
 
 
 @router.post("/storage/datasets/{ds_id}/delete")
@@ -1117,23 +1130,23 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
     back = RedirectResponse(f"/retro?dataset={ds.id}" if ds is not None
                             else "/retro?tab=own", status_code=303)
     if ds is None:
-        shared._flash("That dataset no longer exists. Nothing was started.")
+        shared._flash("Not started: that dataset no longer exists.", "warn")
         return back
     if engine not in CX.ENGINES:
-        shared._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
-                      "SIHRS particle filter. Nothing was started.")
+        shared._flash(f"Not started: choose {GROUNDHOG}, alone or with the "
+                      "plain SIHRS filter.", "warn")
         return back
     if engine == "all" and not (ds.pf_eligible
                                 and pipeline._pf_engine_state() == "ready"):
-        shared._flash(f"The plain SIHRS particle filter cannot replay "
-                      f"{ds.name}: {_dataset_view(ds)['pf_why']}. Nothing "
-                      "was started.")
+        shared._flash(f"Not started: the plain SIHRS filter cannot replay "
+                      f"{ds.name}.", "warn",
+                      detail=f"{_dataset_view(ds)['pf_why']}.")
         return back
     weeks = CX.weeks_between(ds, forms._str_field(first).strip(),
                              forms._str_field(last).strip())
     if not weeks:
-        shared._flash(f"No weeks of {ds.name} fall in that range. Nothing was "
-                      "started.")
+        shared._flash(f"Not started: no weeks of {ds.name} fall in that "
+                      "range.", "warn")
         return back
     pick = [g for g in groups if g in ds.groups]
     if not pick or "all" in groups:
@@ -1157,27 +1170,27 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Model settings: {e}. Nothing was started.")
+        shared._flash(f"Not started: model settings: {e}.", "warn")
         return back
     kspec = forms._knobs.spec_fields(nd)
     k = int(kspec.pop("weeks_to_drop", 0))
     with ui_state._engine_lock:
         if ui_state._status.get("running") or _REPLAY:
-            shared._flash("A run or replay holds the engine; wait for it "
-                          "or stop it first. Nothing was started.")
+            shared._flash("Not started: a run or replay holds the engine.",
+                          "warn", detail="Wait for it or stop it first.")
             return back
         live = sorted(x for x in retro_seasons._known_seasons()
                       if retro_seasons._season_status(x)
                       in retro_seasons._RETRO_ACTIVE)
         if live:
-            shared._flash("A season replay holds the engine ("
-                          + ", ".join(live) + "); stop or pause it first. "
-                          "Nothing was started.")
+            shared._flash("Not started: a season replay holds the engine ("
+                          + ", ".join(live) + ").", "warn",
+                          detail="Stop or pause it first.")
             return back
         sb = shared._sandbox_live_reason()
         if sb:
-            shared._flash(f"Not started: {sb}. Stop it from the Sandbox "
-                          "first.")
+            shared._flash(f"Not started: {sb}.", "warn",
+                          detail="Stop it from the Sandbox first.")
             return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})

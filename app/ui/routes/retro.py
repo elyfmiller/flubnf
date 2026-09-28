@@ -32,7 +32,7 @@ from app.ui.forms import (_knob_form, _knob_panel, _knob_raw, _knobs,
 from app.ui.retro_prep import (_job_covered, _relwis_figures, _results_jobs,
                                _results_pending, _retro_map_models,
                                _scores_df, _scores_scoreable_fast,
-                               _scoring_failed_hint, _week_map_cards_by_model)
+                               _week_map_cards_by_model)
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _archive_progress,
                                   _is_sealed_root, _live_root,
                                   _retro_claim_at, _retro_status, _retro_stop,
@@ -242,19 +242,18 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season) or not _valid_archive(stamp):
-        _flash("Unrecognized season or archive identifier. Nothing was "
-               "deleted.")
+        _flash("Not deleted: unrecognized season or archive.", "warn")
         return _back(request, "/retro")
     if _season_status(season) in _RETRO_ACTIVE:
-        _flash(f"{season} is replaying. Stop it first; nothing was deleted.")
+        _flash(f"Not deleted: {season} is replaying; stop it first.", "warn")
         return _back(request, "/retro")
     if confirm != season:
-        _flash("The deletion was not confirmed, so nothing was deleted.")
+        _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/retro")
     p = retro.archive_dir(retro_seasons.RETRO_ROOT, season, stamp)
     if not (p.is_dir() or p.is_symlink()):
-        _flash(f"No archived {season} run from {retro.stamp_human(stamp)}. "
-               "Nothing was deleted.")
+        _flash(f"Not deleted: no archived {season} run from "
+               f"{retro.stamp_human(stamp)}.", "warn")
         return _back(request, "/retro")
     weeks = retro.run_summary(p)["weeks"]
     size_h = retro.human_bytes(retro.dir_size(p))
@@ -262,12 +261,13 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         retro.delete_tree(p)
     except Exception as e:
         _flash(f"Could not delete the archived {season} run: "
-               f"{type(e).__name__}: {str(e)[:160]}. Nothing else changed.")
+               f"{type(e).__name__}: {str(e)[:160]}.", "error",
+               detail="Nothing else changed.")
         return _back(request, "/retro")
     _flash(f"Deleted the archived {season} run from "
-           f"{retro.stamp_human(stamp)}: {weeks} completed week"
-           f"{'' if weeks == 1 else 's'}, {size_h} freed. The live "
-           f"{season} season was not touched.")
+           f"{retro.stamp_human(stamp)}: {weeks} week"
+           f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
+           detail=f"The live {season} season was not touched.")
     return _back(request, "/retro")
 
 
@@ -351,9 +351,11 @@ def _retro_bg(season: str, locations: list, width: int,
                 pass
 
 
-def _refused(msg: str) -> RedirectResponse:
-    """Flash why a control request did nothing and go back to the index."""
-    _flash(msg)
+def _refused(msg: str, detail: str = "",
+             kind: str = "warn") -> RedirectResponse:
+    """Flash why a control request did nothing and go back to the index
+    (a refusal warns; a failure passes kind="error")."""
+    _flash(msg, kind, detail=detail)
     return RedirectResponse("/retro", status_code=303)
 
 
@@ -375,8 +377,9 @@ def retro_stop():
         retro.request_stop(_live_root(season))
     if stopping:
         _flash("Stopping " + ", ".join(sorted(stopping)) + " after the "
-               "fits now in flight. Completed weeks and finished fits are "
-               "kept; the replay resumes from there next time.")
+               "fits in flight.", "ok",
+               detail="Completed weeks and finished fits are kept; the "
+               "replay resumes from there next time.")
     return RedirectResponse("/retro", status_code=303)
 
 
@@ -387,23 +390,24 @@ def retro_season_stop(request: Request, season: str):
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season):
-        _flash("Unrecognized season name. Nothing was stopped.")
+        _flash("Not stopped: unrecognized season name.", "warn")
         return _back(request, "/retro")
     if _season_status(season) not in _RETRO_ACTIVE:
-        _flash(f"{season} is not replaying, so there was nothing to stop.")
+        _flash(f"Nothing to stop: {season} is not replaying.", "warn")
         return _back(request, "/retro")
     retro.request_stop(_live_root(season))
     _retro_stop.add(season)
     if _season_status(season) in ("running", "paused"):
         _retro_status[season] = "stopping"
-        _flash(f"Stopping {season} after the fits now in flight. Completed "
-               "weeks and finished fits are kept; Run resumes from there.")
+        _flash(f"Stopping {season} after the fits in flight.", "ok",
+               detail="Completed weeks and finished fits are kept; Run "
+               "resumes from there.")
     else:
         # not replaying: resolve now, never leave an orphan "stopping" claim
         _retro_status[season] = "stopped"
         _retro_stop.discard(season)
-        _flash(f"{season} was not replaying; it is marked stopped and Run "
-               "will start it fresh or resume it.")
+        _flash(f"{season} was not replaying; it is marked stopped.",
+               detail="Run will start it fresh or resume it.")
     return _back(request, "/retro")
 
 
@@ -414,14 +418,14 @@ def retro_season_pause(request: Request, season: str):
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season):
-        _flash("Unrecognized season name. Nothing was paused.")
+        _flash("Not paused: unrecognized season name.", "warn")
         return _back(request, "/retro")
     if _season_status(season) not in ("running", "paused"):
-        _flash(f"{season} is not replaying, so there was nothing to pause.")
+        _flash(f"Nothing to pause: {season} is not replaying.", "warn")
         return _back(request, "/retro")
     retro.request_pause(_live_root(season))
-    _flash(f"Pausing {season} after the fits now in flight. The replay "
-           "holds; Resume continues it.")
+    _flash(f"Pausing {season} after the fits in flight.", "ok",
+           detail="The replay holds; Resume continues it.")
     return _back(request, "/retro")
 
 
@@ -431,10 +435,10 @@ def retro_season_resume(request: Request, season: str):
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season):
-        _flash("Unrecognized season name. Nothing was resumed.")
+        _flash("Not resumed: unrecognized season name.", "warn")
         return _back(request, "/retro")
     retro.clear_pause(_live_root(season))
-    _flash(f"Resuming {season}.")
+    _flash(f"Resuming {season}.", "ok")
     return _back(request, "/retro")
 
 
@@ -469,48 +473,47 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core.retro import available_seasons
     _invalidate_scans()
     if not _valid_season(season):
-        return _refused(
-            "Unrecognized season name. Nothing was started.")
+        return _refused("Not started: unrecognized season name.")
     # busy checks, the archive/discard move and the claim all run under
     # _engine_lock (the move is part of claiming the tree); the worker does not
     with _engine_lock:
         if _season_status(season) in _RETRO_ACTIVE:
             return _refused(
-                f"{season} is already replaying (status: "
-                f"{_season_status(season)}). One season worker runs at a "
-                "time; stop it first if you want to start over.")
+                f"Not started: {season} is already replaying (status: "
+                f"{_season_status(season)}).",
+                "One season worker runs at a time; stop it first to start "
+                "over.")
         # server-side mirror of /api/busy (see _engine_lock)
         if _status.get("running"):
             return _refused(
-                "A console run holds the engine ("
+                "Not started: a console run holds the engine ("
                 + (_status.get("run_label") or str(_status.get("running")))
-                + "). Stop it from the Forecast tab first; nothing was "
-                "started.")
+                + ").", "Stop it from the Forecast tab first.")
         sb = _sandbox_live_reason()
         if sb:
-            return _refused(
-                f"Not started: {sb}. Stop it from the Sandbox first.")
+            return _refused(f"Not started: {sb}.",
+                            "Stop it from the Sandbox first.")
         other = sorted(x for x in retro_seasons._known_seasons()
                        if x != season and _season_status(x) in _RETRO_ACTIVE)
         if other:
             return _refused(
-                "Another season is already replaying ("
-                + ", ".join(other) + "). One season worker runs at a time; "
-                "stop it first. Nothing was started.")
+                "Not started: another season is replaying ("
+                + ", ".join(other) + ").",
+                "One season worker runs at a time; stop it first.")
         if mode not in ("resume", "archive", "discard"):
             return _refused(
-                f"'{mode}' is not one of resume, archive, or discard. "
-                "Nothing was started and nothing was changed.")
+                f"Not started: '{mode}' is not resume, archive or discard.",
+                "Nothing was changed.")
         if season not in available_seasons():
             return _refused(
-                f"Season {season} is not available. A season appears once "
-                "its vintage archive exists.")
+                f"Not started: season {season} is not available.",
+                "A season appears once its vintage archive exists.")
         if engine not in retro.ENGINES:
             # a future pf2s preset: accept it here, pass {"variant": "2strain"}
             # through retro.run_week's RunSpec, collect it beside pf
             return _refused(
-                "The engine presets for a retrospective are the Oracle "
-                "SIHRS and the Groundhog, or the Groundhog alone.")
+                "Not started: choose Oracle SIHRS and Groundhog, or "
+                "Groundhog alone.")
         from app.core import us_national as usn
         all_states = _retro_state_names()
         if locations == "all":
@@ -521,7 +524,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                      if n in set(all_states) or usn.is_us(n)]
             if not names:
                 return _refused(
-                    "Custom scope selected but no locations were checked. "
+                    "Not started: no locations checked for the custom scope.",
                     "Check at least one state and try again.")
         else:
             names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
@@ -546,8 +549,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                         **({"drop_same_day": drop_same_day}
                            if _str_field(drop_same_day).strip() else {})})
         except ValueError as e:              # KnobError is a ValueError
-            return _refused(
-                f"Model settings: {e}. Nothing was started.")
+            return _refused(f"Not started: model settings: {e}.")
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
         width = max(1, min(int(width), 16))
@@ -574,25 +576,26 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             if (_knobs.settings_digest(had)
                     != _knobs.settings_digest(_knobs.jsonable(nd))):
                 return _refused(
-                    f"{season} has {existing} completed week"
-                    f"{'' if existing == 1 else 's'} replayed with model "
-                    f"settings {_knobs.label(_knobs.from_record(had))}; "
-                    f"this run asks for {_knobs.label(nd)}. Resuming "
-                    "would mix two configurations in one season. Archive "
-                    "or discard the existing results to run it. Nothing "
-                    "was started.")
+                    f"Not started: {season} has {existing} week"
+                    f"{'' if existing == 1 else 's'} with other model "
+                    "settings.",
+                    f"They were replayed with "
+                    f"{_knobs.label(_knobs.from_record(had))}; this run "
+                    f"asks for {_knobs.label(nd)}. Resuming would mix two "
+                    "configurations in one season. Archive or discard the "
+                    "existing results to run it.")
             # never resume a tree with the other engine preset (weeks would be
             # skipped as done or mislabeled); the record says what ran
             was = str((retro.read_meta(live) or {}).get("settings", {})
                       .get("engine") or "pf")
             if was != engine:
                 return _refused(
-                    f"{season} has {existing} completed week"
-                    f"{'' if existing == 1 else 's'} replayed with the "
-                    f"{retro_engine_label(was)} preset; the "
-                    f"{retro_engine_label(engine)} preset cannot resume "
-                    "them. Archive or discard the existing results to "
-                    "run it. Nothing was started.")
+                    f"Not started: {season} has {existing} week"
+                    f"{'' if existing == 1 else 's'} from the "
+                    f"{retro_engine_label(was)} preset.",
+                    f"The {retro_engine_label(engine)} preset cannot "
+                    "resume them. Archive or discard the existing results "
+                    "to run it.")
             # nor with another location scope (the rule lives in
             # retro.run_season, so the CLI refuses it too; checked here
             # first so the refusal comes before anything is claimed)
@@ -601,36 +604,36 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 .get("locations"), names)
             if change:
                 return _refused(
-                    f"{season} has {existing} completed week"
-                    f"{'' if existing == 1 else 's'} {change}. "
+                    f"Not started: {season} has {existing} week"
+                    f"{'' if existing == 1 else 's'} {change}.",
                     "Resuming would mix two location scopes in one "
                     "season. Archive or discard the existing results to "
-                    "run it. Nothing was started.")
+                    "run it.")
             # nor on another engine build (the rule is retro.run_season's
             # too): weeks fitted by two engines would be scored as one
             bchange = retro.engine_build_change(
                 (retro.read_meta(live) or {}).get("settings"), engine)
             if bchange:
                 return _refused(
-                    f"{season} has {existing} completed week"
-                    f"{'' if existing == 1 else 's'} that {bchange}. "
-                    "Resuming would mix two engine builds in one "
-                    "season. Switch the engine back, or archive or "
-                    "discard the existing results to run it. Nothing "
-                    "was started.")
+                    f"Not started: {season} has {existing} week"
+                    f"{'' if existing == 1 else 's'} that {bchange}.",
+                    "Resuming would mix two engine builds in one season. "
+                    "Switch the engine back, or archive or discard the "
+                    "existing results to run it.")
         if mode == "discard" and confirm != season:
             return _refused(
-                f"Discarding {season} was not confirmed, so nothing "
-                "was deleted and nothing was started.")
+                f"Not started: discarding {season} was not confirmed.",
+                "Nothing was deleted.")
         if (not (mode == "resume" and existing)
                 and _missing.ZERO_ANCHOR_KEY not in nd):
             # a fresh replay (both presets run the Groundhog) must say what
             # it does when a state's newest week reads 0; no default.
             # Refused before anything is moved or deleted
             return _refused(
-                "Choose what the Groundhog does when a state's newest "
-                "week reads 0 (Newest week reading 0: abstain, level, "
-                "extend or blend). Nothing was started.")
+                "Not started: choose what the Groundhog does when the "
+                "newest week reads 0.",
+                "Set Newest week reading 0: abstain, level, extend or "
+                "blend.")
         if mode == "discard":
             if existing:
                 try:
@@ -638,11 +641,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 except Exception as e:
                     return _refused(
                         f"Could not delete the {season} results: "
-                        f"{type(e).__name__}: {str(e)[:160]}. Nothing was "
-                        "started; the existing results are intact.")
-                _flash(f"Discarded {existing} completed week"
-                       f"{'' if existing == 1 else 's'} of {season}. Starting "
-                       "a fresh replay.")
+                        f"{type(e).__name__}: {str(e)[:160]}.",
+                        "Nothing was started; the existing results are "
+                        "intact.", kind="error")
+                _flash(f"Discarded {existing} week"
+                       f"{'' if existing == 1 else 's'} of {season}; "
+                       "starting a fresh replay.", "ok")
         elif mode == "archive" and existing:
             try:
                 dst = retro.archive_run(retro_seasons.RETRO_ROOT, season)
@@ -650,12 +654,14 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 # the move is atomic: a failure leaves the original whole
                 return _refused(
                     f"Could not archive {season}: {type(e).__name__}: "
-                    f"{str(e)[:160]}. Nothing was started; the existing "
-                    "results are intact.")
-            _flash(f"Archived {existing} completed week"
+                    f"{str(e)[:160]}.",
+                    "Nothing was started; the existing results are "
+                    "intact.", kind="error")
+            _flash(f"Archived {existing} week"
                    f"{'' if existing == 1 else 's'} of {season} as "
-                   f"{dst.name}; it stays viewable from the season list. "
-                   "Starting a fresh replay.")
+                   f"{dst.name}; starting a fresh replay.", "ok",
+                   detail="The archive stays viewable from the season "
+                   "list.")
         # claim in the request (not the task) so double submits cannot race
         _invalidate_scans()
         _retro_status[season] = "running"
@@ -698,25 +704,27 @@ def _exports_dir():
 
 def _import_replay_file(src: Path, replace: bool):
     """Import one bundle (a saved upload or a local path) into the retro
-    root; the message for the flash and the season page to open, or a
-    refusal and the index."""
+    root; (message, kind, detail) for the flash and the season page to
+    open, or a refusal and the index."""
     from app.core import replay_bundle
     try:
         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
                                         replace=replace, build=RUNNING_SHA)
     except replay_bundle.BundleError as e:
-        return f"Not imported: {e}", "/retro"
+        return (f"Not imported: {e}", "warn", ""), "/retro"
     except OSError as e:
-        return (f"Not imported: {type(e).__name__}: {str(e)[:160]}.",
-                "/retro")
+        return (f"Could not import: {type(e).__name__}: {str(e)[:160]}.",
+                "error", ""), "/retro"
     when = (r.exported_at or "")[:10]
     msg = (f"Imported {r.season} ({len(r.weeks)} week"
-           f"{'' if len(r.weeks) == 1 else 's'}, exported from "
-           f"{r.from_host or 'another machine'}"
-           f"{' on ' + when if when else ''}).")
+           f"{'' if len(r.weeks) == 1 else 's'}).")
+    detail = (f"Exported from {r.from_host or 'another machine'}"
+              f"{' on ' + when if when else ''}.")
     if r.warnings:
-        msg += " Note: " + "; ".join(r.warnings) + "."
-    return msg, f"/retro/{r.season}?archive={r.stamp}"
+        msg += f" {len(r.warnings)} note(s)."
+        detail += " Note: " + "; ".join(r.warnings) + "."
+    return ((msg, "warn" if r.warnings else "ok", detail),
+            f"/retro/{r.season}?archive={r.stamp}")
 
 
 @router.post("/retro/import")
@@ -732,13 +740,14 @@ async def retro_import(request: Request):
     cl = request.headers.get("content-length", "")
     if cl.strip().isdigit() and int(cl) > cap + _IMPORT_BODY_SLACK:
         return _refused(
-            f"Not imported: the upload is larger than the "
-            f"{cap // 1024 ** 3} GB limit.")
+            f"Not imported: the upload is over the {cap // 1024 ** 3} GB "
+            "limit.")
     try:
         form = await request.form(max_files=1, max_fields=10)
     except Exception as e:
         return _refused(
-            f"Not imported: the upload could not be read ({e}).")
+            f"Could not import: the upload could not be read ({e}).",
+            kind="error")
     up = form.get("file")
     local = str(form.get("path") or "").strip()
     replace = str(form.get("replace") or "") == "1"
@@ -763,8 +772,10 @@ async def retro_import(request: Request):
                     out.write(chunk)
             msg, target = await run_in_threadpool(_import_replay_file, tmp,
                                                   replace)
-        except (OSError, ValueError) as e:
-            msg, target = f"Not imported: {e}.", "/retro"
+        except OSError as e:
+            msg, target = (f"Could not import: {e}.", "error", ""), "/retro"
+        except ValueError as e:
+            msg, target = (f"Not imported: {e}.", "warn", ""), "/retro"
         finally:
             await up.close()
             tmp.unlink(missing_ok=True)
@@ -773,10 +784,10 @@ async def retro_import(request: Request):
                                               Path(local).expanduser(),
                                               replace)
     else:
-        msg, target = ("Choose a replay bundle to import, or give its path "
-                       "on this machine."), "/retro"
+        msg, target = (("Not imported: choose a bundle, or give its path "
+                        "here."), "warn", ""), "/retro"
     _invalidate_scans()
-    _flash(msg)
+    _flash(msg[0], msg[1], detail=msg[2])
     return RedirectResponse(target, status_code=303)
 
 
@@ -996,12 +1007,9 @@ def retro_results(request: Request, season: str, week: str = "",
             have_truth = -1      # unknown: surface the probe, never the calm text
         if have_truth != 0:
             score_error = "scored zero cells with no exception. " + probe
-    if not scoreable and score_error:
-        map_html = _scoring_failed_hint(score_error)
-    elif not scoreable:
-        map_html = ("<p class='hint'>No scoreable weeks yet. Truth for "
-                    "these forecast dates has not settled, so relWIS arrives "
-                    "later; the weekly maps below are available now.</p>") + map_html
+    # no scores: the page says why above the player (a scoring failure as
+    # an alert, unsettled truth as an empty state); the weekly maps stay
+    unsettled = not scoreable and not score_error
     # comparators that submitted at least once this season (player toggles)
     try:
         official_catalog = _playback.season_official_catalog(root)
@@ -1030,6 +1038,8 @@ def retro_results(request: Request, season: str, week: str = "",
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "score_error": score_error if not scoreable else "",
+        "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
         "no_data_note": _playback.NO_DATA_NOTE,
         "official_catalog": official_catalog,
@@ -1039,6 +1049,11 @@ def retro_results(request: Request, season: str, week: str = "",
         "archive_when": retro.stamp_human(archive) if archive else "",
         "imported": imported,
         "n_weeks": len(weeks) if scoreable else 0})
+
+
+#: the player's message when a week cannot be scored for lack of any
+#: observed data
+NO_TRUTH = "No observed data to score against. Update data from the Data tab."
 
 
 @router.get("/api/retro/{season}/playback/{asof}")
@@ -1055,6 +1070,9 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
+    except FileNotFoundError:
+        # no observed data at all (no hub clone, no stored vintages)
+        return PlainTextResponse(NO_TRUTH, status_code=503)
 
 
 @router.get("/api/retro/{season}/mapswap/{asof}")
@@ -1099,6 +1117,8 @@ def _season_report(season: str, archive: str):
             build=RUNNING_SHA, versions=VERSIONS)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
+    except FileNotFoundError:
+        return PlainTextResponse(NO_TRUTH, status_code=503)
 
 
 @router.get("/retro/{season}/report")

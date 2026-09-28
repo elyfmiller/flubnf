@@ -225,15 +225,25 @@ def test_the_buttons_answer_json_when_asked(hub, monkeypatch):
                         "words": "up to date", "detail": "up to date with origin"}
     r = client.post("/freshness")
     assert r.status_code == 200
-    assert '<span class="pill ok" id="hub-pill">up to date</span>' in r.text
+    assert ('<span class="uk-badge uk-badge--ok" id="hub-pill" '
+            'data-state="ok">') in r.text
+    assert r.text.split('id="hub-pill"')[1].split("</span></span>")[0] \
+        .endswith('<span class="uk-badge-t">up to date')
+    # the check's own words in the "?" beside the badge
+    assert 'id="tip-hub-detail">up to date with origin</span>' in r.text
 
 
 def test_the_page_carries_the_progress_bar_and_the_script(hub, monkeypatch):
     monkeypatch.setattr(data, "vintages", lambda: [])
     html = client.get("/data").text
     assert 'id="hub-progress" hidden' in html
-    assert 'class="runbar busy" role="progressbar"' in html
+    # the kit's sliding bar, labelled with what runs; the status line
+    # speaks it; a failure is an alert line
+    assert '<div class="uk-progress uk-progress--busy" id="hub-bar">' in html
+    assert 'role="progressbar" aria-labelledby="hub-bar-l"' in html
     assert 'id="hub-status" role="status" aria-live="polite"' in html
+    assert "FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral'" in html
+    assert "err.innerHTML=ui.alert('error',msg)" in html
     assert "headers:{'Accept':'application/json'}" in html
     # the forms still post on their own without script
     assert '<form method="post" action="/data/pull">' in html

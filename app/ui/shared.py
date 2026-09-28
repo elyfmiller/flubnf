@@ -139,12 +139,29 @@ def _name_workroot(workroot: Path, running: str) -> bool:
     return stop
 
 
-def _flash(msg: str) -> None:
+def _flash(msg: str, kind: str = "info", detail: str = "") -> None:
     """Notice for the next page the user sees (also appended to the log).
-    Unconsumed messages join rather than overwrite."""
+    `msg` is one short sentence, the essential fact first; `detail` is an
+    optional extra (the reason's fine print, what to do next) shown in the
+    notice's "?" tip. `kind` is the kit alert's (info, ok, warn, error): a
+    refusal warns, a failure is an error. Unconsumed messages join rather
+    than overwrite; joined notices keep the most severe kind."""
     prev = _status.get("flash")
-    _status["flash"] = f"{prev}  {msg}" if prev and msg not in prev else msg
-    _status["log"].append(msg)
+    # a repeat of a queued notice keeps the others
+    _status["flash"] = (msg if not prev else prev if msg in prev
+                        else f"{prev}  {msg}")
+    rank = ("info", "ok", "warn", "error")
+    old = _status.get("flash_kind") if prev else None
+    _status["flash_kind"] = max((k for k in (old, kind) if k in rank),
+                                key=rank.index, default="info")
+    pd = _status.get("flash_detail") if prev else None
+    if detail and not (pd and detail in pd):
+        pd = f"{pd}  {detail}" if pd else detail
+    if pd:
+        _status["flash_detail"] = pd
+    else:
+        _status.pop("flash_detail", None)
+    _status["log"].append(f"{msg} {detail}" if detail else msg)
 
 
 def _back(request: Request, fallback: str) -> RedirectResponse:
@@ -217,58 +234,103 @@ def _pf_member_label(o: dict) -> str:
     return ("Oracle SIHRS" if ox else "PF") + tail
 
 
-def _outcome_chips(outcome_json: str) -> str:
-    """One run's outcome as short chips: MARKUP (|safe) of fixed phrases and
-    numbers only; raw error strings stay on the run page."""
+def _outcome_items(outcome_json) -> list:
+    """One run's outcome as facts, for pages that draw each one with the UI
+    kit (the Storage ledger): [{"chip", "text", "state", "tip"}]. "chip" is
+    the fact as _outcome_chips writes it; "text" the short word or figure
+    (Markup for a relWIS figure), "state" a badge state ("" = a plain
+    fact), "tip" what the chip's parenthesis or tail said. A relWIS
+    figure's text carries its verdict icon after the number. Fixed phrases
+    and numbers only: raw error strings stay on the run page."""
     import json as _json
+
+    from markupsafe import Markup
     try:
         o = _json.loads(outcome_json) if isinstance(outcome_json, str) else outcome_json
     except Exception:
-        return ""
-    bits = []
+        return []
+    if not isinstance(o, dict):
+        return []
+    items = []
+
+    def add(chip, text=None, state="", tip=""):
+        items.append({"chip": chip, "text": chip if text is None else text,
+                      "state": state, "tip": tip})
+
+    def judged(chip, v):
+        # the figure's verdict icon right after it (the one rule: below 1
+        # beats the baseline), so the color is never the only signal
+        from app.core.runs import _verdict
+        return Markup(chip.replace("</span>", "</span>"
+                                   + _verdict(float(v), "st-verdict"), 1))
     if "pf_cells" in o:
         n = o["pf_cells"]
-        bits.append(f"PF {n} fit{'s' if n != 1 else ''}")
+        add(f"PF {n} fit{'s' if n != 1 else ''}")
     if o.get("pf_failures"):
         nf = len(o["pf_failures"])
-        bits.append(f'<span class="bad">{nf} failure'
-                    f'{"s" if nf != 1 else ""}</span>')
-    if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
+        word = f"{nf} failure{'s' if nf != 1 else ''}"
+        add(f'<span class="bad">{word}</span>', word, "error",
+            "The run page names each failed fit.")
+    if o.get("pf_skipped"):
+        add("PF skipped (no engine)", "PF skipped", "",
+            "No engine: a configuration, not a fault.")
     # no engine is a configuration; a broken install is a fault
     if o.get("pf_engine_broken"):
-        bits.append('<span class="bad">PF engine install incomplete</span>')
-    if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
+        add('<span class="bad">PF engine install incomplete</span>',
+            "PF engine install incomplete", "error",
+            "A broken install is a fault, unlike no engine at all. The run "
+            "page has the message.")
+    if o.get("submissions"):
+        ns = len(o["submissions"])
+        add(f"{ns} submission{'s' if ns != 1 else ''}")
     if o.get("submission_errors"):
         ns = len(o["submission_errors"])
-        bits.append(f'<span class="bad">{ns} submission'
-                    f'{"s" if ns != 1 else ""} refused</span>')
+        word = f"{ns} submission{'s' if ns != 1 else ''} refused"
+        add(f'<span class="bad">{word}</span>', word, "error",
+            "The run page gives each refused file's reason.")
     if o.get("submission_withheld"):
         # deliberate withholding (research run); the run page names the model
-        bits.append('<span class="hint">submission withheld '
-                    '(research run)</span>')
+        add('<span class="hint">submission withheld (research run)</span>',
+            "submission withheld", "",
+            "Withheld deliberately: a research run. The run page names the "
+            "model.")
     if o.get("knobs"):
         # modified model settings: the files carry the non-hub name unless
         # the operator exported under the hub names with a reason
-        bits.append('<span class="warn">modified settings'
-                    + (', hub names by override' if (o["knobs"] or {}).get(
-                        "override") else '') + '</span>')
-    if o.get("report"): bits.append("report ✓")
+        over = bool((o["knobs"] or {}).get("override"))
+        add('<span class="warn">modified settings'
+            + (', hub names by override' if over else '') + '</span>',
+            "modified settings", "warn",
+            "Modified model settings: the files carry the non-hub name "
+            "unless the operator exported under the hub names with a reason"
+            + ("; this run did (hub names by override)." if over else "."))
+    if o.get("report"):
+        add("report ✓", "report", "ok")
     if o.get("pf_relwis"):
         # scored-cell count; older rows only carry the fit-cell count
-        bits.append(relwis_chip(o["pf_relwis"],
-                                cells=o.get("pf_relwis_cells",
-                                            o.get("pf_cells")),
-                                member=_pf_member_label(o)))
+        chip = relwis_chip(o["pf_relwis"],
+                           cells=o.get("pf_relwis_cells", o.get("pf_cells")),
+                           member=_pf_member_label(o))
+        if chip:
+            add(chip, judged(chip, o["pf_relwis"]))
     # every scored member (older rows' retired-blend keys are not shown)
     for key, member in (("analogue_relwis", "Groundhog"),):
         if o.get(key):
-            bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
-                                    member=member + (" (modified)" if o.get(
-                                        "knobs") else "")))
+            chip = relwis_chip(o[key], cells=o.get(f"{key}_cells"),
+                               member=member + (" (modified)" if o.get(
+                                   "knobs") else ""))
+            if chip:
+                add(chip, judged(chip, o[key]))
     if o.get("error"):
-        bits.append('<span class="bad">failed</span>; the full error is on '
-                    'the run page')
-    return " · ".join(bits)
+        add('<span class="bad">failed</span>; the full error is on the run '
+            'page', "failed", "error", "The full error is on the run page.")
+    return items
+
+
+def _outcome_chips(outcome_json: str) -> str:
+    """One run's outcome as short chips: MARKUP (|safe) of fixed phrases and
+    numbers only; raw error strings stay on the run page."""
+    return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
 
 
 def _latest_results():

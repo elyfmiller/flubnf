@@ -113,15 +113,21 @@ def test_the_page_lists_it_with_a_name_confirmed_delete(state):
     html = " ".join(client.get("/storage").text.split())
     (row,) = ui_storage._storage_inventory()["datasets"]
     assert "Your datasets" in html
-    assert (f'<a href="/data?source={ds.id}#browser">Template</a></strong> '
-            f'<span class="hint">· {row["size_h"]} · data') in html
-    assert "· 1 replay " in html and "· 1 run " in html
+    line = html.split(f'<a href="/data?source={ds.id}#browser">Template</a>'
+                      '</strong>', 1)[1].split("</div>", 1)[0]
+    assert f'<span class="st-size">{row["size_h"]}</span>' in line
+    # its parts, one fact each in the row's meta line
+    assert "<li>data " in line
+    assert "<li>1 replay " in line and "<li>1 run " in line
     assert f'action="/storage/datasets/{ds.id}/delete"' in html
     assert 'data-confirm="Template"' in html
     # the shared delete script fills the name when a row carries one
     assert "f.confirm.value=d.confirm||f.ident.value" in html
-    # its run's workroot row names it, and its groups as groups
-    assert "· on Template · 3 groups: Adult, Overall, Pediatric ·" in html
+    # its run's workroot row names it (linked), and its groups as groups
+    wrow = html.split(f'data-wid="{state["ds_run"]}"', 1)[1] \
+               .split("</div>", 1)[0]
+    assert f'on <a href="/data?source={ds.id}#browser">Template</a>' in wrow
+    assert "<li>3 groups: Adult, Overall, Pediatric</li>" in wrow
 
 
 def test_a_dataset_alone_lists_no_empty_parts(state):
@@ -143,8 +149,9 @@ def test_a_dataset_alone_lists_no_empty_parts(state):
     assert tpl["goes"] == ("With it go its 1 replay and its 1 run "
                            "workroot; the runs' ledger rows are kept.")
     html = " ".join(client.get("/storage").text.split())
-    row = html.split(">Alone</a></strong>")[1].split("</span></span>")[0]
-    assert row == f' <span class="hint">· {alone["size_h"]}'
+    row = html.split(">Alone</a></strong>")[1].split("</div>")[0]
+    assert f'<span class="st-size">{alone["size_h"]}</span>' in row
+    assert "uk-meta" not in row                  # no parts line at all
     assert "0 replays" not in html and "0 runs" not in html
     assert 'data-confirm="Alone" data-what="the dataset Alone" ' in html
     assert 'data-hint="">Delete' in html
@@ -155,7 +162,8 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     url = f"/storage/datasets/{ds.id}/delete"
     for wrong in ("", ds.id, "template"):
         client.post(url, data={"confirm": wrong}, follow_redirects=False)
-        assert "not confirmed" in ui_state._status.get("flash", "")
+        assert "did not name Template" in ui_state._status.get("flash", "")
+        assert ui_state._status.get("flash_kind") == "warn"
         assert ds.path.is_dir() and (wr / state["ds_run"]).is_dir()
     size = ui_storage._storage_inventory()["datasets"][0]["size_h"]
     r = client.post(url, data={"confirm": "Template"},
@@ -164,9 +172,9 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     assert r.status_code == 303 and r.headers["location"] == "/storage"
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()             # a hub run stays
-    assert ("Deleted the dataset Template, its replays and 1 run "
-            f"workroot: {size} freed. The runs' ledger rows are kept.") \
-        in ui_state._status["flash"]
+    assert f"Deleted Template: {size} freed." in ui_state._status["flash"]
+    assert ("Its replays and 1 run workroot went with it; the runs' ledger "
+            "rows are kept.") in ui_state._status["flash_detail"]
     # the ledger rows stand, the run's with a dash for disk use
     ids = {r["run_id"] for r in Ledger().rows(10)}
     assert {state["ds_run"], state["hub_run"]} <= ids
@@ -184,7 +192,9 @@ def test_the_data_tab_delete_frees_what_storage_counts(state):
     assert r.status_code == 303
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()
-    assert "its replays and 1 run workroot" in ui_state._status["flash"]
+    assert "its replays and 1 run workroot" in ui_state._status[
+        "flash_detail"].lower()
+    assert ui_state._status["flash_kind"] == "ok"
     assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
 
 
@@ -197,8 +207,9 @@ def test_a_busy_dataset_has_no_delete_and_is_refused(state):
     assert "a replay on it is in progress" in html
     client.post(f"/storage/datasets/{ds.id}/delete",
                 data={"confirm": "Template"}, follow_redirects=False)
-    assert "was not deleted: a replay on it is in progress" in \
+    assert "not deleted: a replay on it is in progress" in \
         ui_state._status["flash"]
+    assert ui_state._status.get("flash_kind") == "warn"
     assert ds.path.is_dir()
 
 

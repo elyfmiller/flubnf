@@ -144,14 +144,15 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
     chips = ui_shared._outcome_chips(json.dumps({
         "submissions": {"a": "x"},
         "submission_errors": {"b": "y"}}))
-    assert "1 submissions" in chips and "1 submission refused" in chips
+    assert "1 submissions" not in chips
+    assert chips.startswith("1 submission · ") and "1 submission refused" in chips
 
 
 # ------------------ old run folders read as the model they are, archived
 
 def _archived_block(html: str) -> tuple:
     """(page without the archived <details>, the archived block)."""
-    i = html.find('<details class="preview archived">')
+    i = html.find('<details class="uk-fold fc-archived" id="run-archived">')
     if i < 0:
         return html, ""
     j = html.index("</details>", i) + len("</details>")
@@ -184,7 +185,8 @@ def test_an_old_folder_is_named_by_its_model_and_archived(
     try:
         html = client.get(f"/runs/{RID}").text
         rest, block = _archived_block(html)
-        assert label in block and "(archived)" in block
+        # the record wears an "archived" badge (a word, not color alone)
+        assert label in block and '<span class="uk-badge-t">archived</span>' in block
         assert f.name in block                         # the record, readable
         assert old not in rest                         # never as a model
         assert _download_targets(html) == []

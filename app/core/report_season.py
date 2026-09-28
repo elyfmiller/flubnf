@@ -266,9 +266,9 @@ PSTATES_COV_NOTE = (
 
 
 def cov_text(frac) -> str:
-    """"48%", or a dash without a figure. Also a Jinja global."""
+    """"48%", or "n/a" without a figure. Also a Jinja global."""
     p = cov_pct(frac)
-    return "–" if p is None else f"{p}%"
+    return "n/a" if p is None else f"{p}%"
 
 
 def _cov_span(frac, level) -> str:
@@ -424,7 +424,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
                 c95 = (cov or {}).get("95")
                 st = cov_state(c95, 95)
                 out += (f'<td class="num cov-{st}">{cov_text(c95)}</td>'
-                        if st else '<td class="num hint">–</td>')
+                        if st else '<td class="num hint">n/a</td>')
             return out
         if us:
             # the national row leads as a distinct, labelled row (console placement)

@@ -1,0 +1,96 @@
+/* Output tab styles: output.html and _coverage.html. A page links this
+   sheet from its {% block head %}, after base.html's nau.css and ui-
+   kit.css; a partial that renders on another tab's page links it itself
+   (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the nau.css
+   tokens; new classes start "out-"; kit classes (uk-*) are used as they
+   are, never restyled here. _coverage.html also renders on the run page
+   (run.html), and links this sheet from its fold. */
+
+/* the page title and its toggletip: the room the old subtitle took */
+.out-title{margin-bottom:var(--sp-3)}
+/* a badge and its "?" as one item of a row, so the row's gap falls
+   around the pair and not between them */
+.out-bt{display:inline-flex;align-items:center;max-width:100%;min-width:0}
+
+/* the weekly report card: the title row carries the latest report's
+   buttons; the earlier weeks sit on one row, label beside the picker */
+.out-report .out-arch{display:flex;flex-wrap:wrap;align-items:center;
+  gap:.45rem .6rem;margin-top:.55rem}
+.out-arch label{display:inline;margin:0;font-weight:600}
+.out-arch select{width:auto;min-width:9rem;margin:0}
+.out-arch button{margin-top:0}
+.out-report .out-arch:first-child{margin-top:0}
+
+/* a date card: the title with its window badge, a row of facts, then one
+   flat row per file, parted by hairlines */
+.out-file{padding:.65rem 0}
+.out-file + .out-file{border-top:1px solid var(--line)}
+.out-file-head{display:flex;flex-wrap:wrap;align-items:flex-start;
+  justify-content:space-between;gap:.5rem 1.2rem}
+.out-file-id{flex:1 1 20rem;min-width:0}
+.out-model{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .5rem;
+  overflow-wrap:anywhere}
+.out-file-sub{display:flex;flex-wrap:wrap;align-items:center;
+  gap:.25rem .9rem;margin-top:.25rem}
+.out-fname{overflow-wrap:anywhere}
+.out-run{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.2rem .45rem;
+  font-size:var(--fs-label)}
+.out-run > a{color:var(--mut);font-weight:600}
+.out-run > a:hover{color:var(--ink)}
+/* Download and Show in folder: one pair, the same height */
+.out-acts{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;flex:none}
+.out-acts form{margin:0}
+.out-acts button{margin-top:0}
+.out-acts a.btn,.out-acts button{padding:.36rem .85rem}
+/* the file's checks: badges on one row, the closed coverage fold beside
+   them on the same center line; an open fold takes a row of its own */
+.out-status{display:flex;flex-wrap:wrap;align-items:center;
+  gap:.35rem .6rem;margin-top:.5rem}
+.out-cov{flex:1 1 16rem;min-width:0;display:flex;flex-direction:column;
+  align-items:flex-start}
+/* the count in the fold's summary at the badges' size, so a partial
+   file's "52 of 53 locations" reads as a complete one's badge does and
+   sits on the same line as the checks badge */
+.out-cov .uk-fold-sum{font-size:var(--fs-label);font-weight:650}
+/* an open fold takes the whole row: its lists use the card's width */
+.out-cov:has(> details[open]){flex-basis:100%}
+/* the coverage fold's lists (_coverage.html; also on the run page): a
+   label in its state's color over the locations and their reasons */
+p.out-cov-h{display:flex;align-items:center;gap:.35em;margin:.15rem 0 .1rem;
+  font-size:var(--fs-label);font-weight:700}
+ul.out-cov-list{margin:0 0 .45rem;padding-left:1.25rem}
+ul.out-cov-list li{margin:.12rem 0;overflow-wrap:anywhere}
+
+/* a season's older dates: one bar that opens onto their cards; the
+   chevron drawn with borders, as the kit's fold draws its own */
+details.out-older{margin:0 0 var(--gap)}
+details.out-older > summary{display:flex;flex-wrap:wrap;align-items:center;
+  gap:.3rem 1rem;padding:.7rem var(--card-px);border:1px dashed var(--line);
+  border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer;
+  list-style:none;user-select:none}
+details.out-older > summary::-webkit-details-marker{display:none}
+details.out-older > summary::before{content:"";width:.45em;height:.45em;
+  margin-right:.1rem;border-right:2px solid var(--accent-ink);
+  border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg);
+  transition:transform .15s}
+details.out-older[open] > summary::before{transform:rotate(45deg)}
+details.out-older[open] > summary{margin-bottom:var(--gap)}
+details.out-older > summary:hover{border-style:solid}
+.out-older-t{font-weight:650}
+.out-older-span{display:inline-flex;align-items:center;gap:.3em;
+  color:var(--mut);font-size:var(--fs-label)}
+@media (prefers-reduced-motion:reduce){
+  details.out-older > summary::before{transition:none}
+}
+
+/* own data: one group per run, the dataset's name over its facts */
+.out-set{padding:.35rem 0 .2rem}
+.out-set + .out-set{border-top:1px solid var(--line);margin-top:.35rem;
+  padding-top:.7rem}
+.out-set-name{margin:0;font-size:var(--fs-lead);font-weight:700}
+.out-set .out-file{padding-left:.9rem;
+  border-left:2px solid var(--line)}
+.out-set .out-file + .out-file{border-top:0;margin-top:.2rem}
+
+/* a refused download or a missing report: the one card on the page */
+.out-notice{max-width:44rem}

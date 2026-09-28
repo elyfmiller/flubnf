@@ -164,13 +164,17 @@ def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
     html = client.get("/runs").text
     rrow = html.split(f'href="/runs/{rrid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nrid}"', 1)[1].split("</tr>", 1)[0]
-    assert '<span class="pill">research</span>' in rrow
+    # the ledger's badge: an icon and the word, in the info state
+    assert ('uk-badge--info' in rrow
+            and '<span class="uk-badge-t">research</span>' in rrow)
     assert "research" not in nrow
-    # the badge follows the run onto its own page
+    # the badge follows the run onto its own page, beside its title
+    def head(page):
+        return page.split('<div class="fc-runhead">', 1)[1].split("</h1>", 1)[1] \
+            .split("</div>", 1)[0]
     rpage = client.get(f"/runs/{rrid}").text
-    assert '<span class="pill">research</span>' in rpage
-    assert "research" not in client.get(f"/runs/{nrid}").text.split(
-        "<h1>", 1)[1].split("</h1>", 1)[0]
+    assert '<span class="uk-badge-t">research</span>' in head(rpage)
+    assert "research" not in head(client.get(f"/runs/{nrid}").text)
 
 
 def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch):

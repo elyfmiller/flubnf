@@ -1,41 +1,84 @@
-{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}{% import "_tips.html" as tips %}
+{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/storage.css">{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Storage</h1>
 
-{% if storage %}
-<div class="card">
-{# ships FOLDED: the summary carries the total ("On disk: 29 KB in use",
-   or "nothing yet"); open state persists #}
-<details class="ledgerfold" id="storagefold">
- <summary><h2 class="stfold-h">On disk</h2>
-  <span class="stotal">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
-  <span class="hint">in use</span>{% else %}<span class="hint">Nothing stored yet.</span>{% endif %}</span>
-  {{- tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}</summary>
+{# a storage row: the title line (name and badges), the size, the action
+   (Delete, or a disabled Delete whose "?" says why), and a meta row of
+   facts under the title. No <div> inside a row: tests find a row by its
+   data-wid and read it up to its closing </div>. #}
+{% macro del_form(action, kind, ident, what, size, hint, confirm="") -%}
+<form class="st-act" method="post" action="{{ action }}">
+ {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+ <input type="hidden" name="ident" value="{{ ident }}">
+ <input type="hidden" name="confirm" value="">
+ <button type="button" class="quiet st-del" aria-label="Delete {{ what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
+   data-what="{{ what }}" data-size="{{ size }}"
+   data-hint="{{ hint }}">Delete</button>
+</form>
+{%- endmacro %}
+{% macro busy_act(id, why, what) -%}
+{%- set named %}aria-label="Delete {{ what }}"{% endset -%}
+<span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del", attrs=named, label="why " ~ what ~ " cannot be deleted now") }}</span>
+{%- endmacro %}
+{# a section's count beside its heading: the kit's neutral badge, as on
+   the other tabs; none for an empty section, whose empty state says so #}
+{% macro count(n) -%}
+{% if n %}{{ tips.badge("neutral", n ~ (" entry" if n == 1 else " entries")) }}{% endif %}
+{%- endmacro %}
 
- {# reclaim: dry-run report first, then the shared confirmation. Deletes only
-    fit intermediates of COMPLETED weeks/runs and compresses samples
-    losslessly; never touches the seal or hub. #}
+{# each row reads title, facts, size, action (the grid places them; the
+   order is the keyboard's and a screen reader's) #}
+{% if storage %}
+<div class="card st-card">
+{# ships FOLDED: the summary carries the total ("On disk 29 KB in use", or
+   a "Nothing stored yet" badge) and the composition bar; open state
+   persists #}
+<details class="ledgerfold" id="storagefold">
+ <summary class="st-sum"><h2 class="stfold-h" id="h-st-disk">On disk</h2>
+  <span class="stotal st-total">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
+  <span class="st-unit">in use</span>{% else %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
+  {{- tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}
+  {%- if storage.cats %}
+  {# the total by category; the legend in the body names each one #}
+  <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
+  {%- endif %}</summary>
+
  {% if storage.total_bytes %}
- <form method="post" action="/storage/reclaim" id="reclaim-form">
-  <input type="hidden" name="confirm" value="">
-  <button type="button" class="quiet" id="reclaim-btn">Reclaim space…</button>
-  {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
-  <span class="hint" id="reclaim-note"></span>
- </form>
+ {# the categories counted in the total, then reclaim: a dry-run report
+    first, then the shared confirmation. Deletes only fit intermediates of
+    COMPLETED weeks/runs and compresses samples losslessly; never touches
+    the seal or hub. #}
+ {% set legend_items = [] %}
+ {% for c in storage.cats %}
+  {% set lg_text %}{{ c.label }} <span class="st-lgv">{{ c.size_h }}</span>{% endset %}
+  {% set _ = legend_items.append({"color": "var(--st-c-" ~ c.key ~ ")", "text": lg_text}) %}
+ {% endfor %}
+ <div class="st-tools">
+  {{ tips.legend(legend_items, label="Disk use by category", id="st-lg") }}
+  <form method="post" action="/storage/reclaim" id="reclaim-form" class="st-reclaim">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet st-btn" id="reclaim-btn">{{ tips.icon("refresh") }} Reclaim space…</button>
+   {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
+   <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim", "No completed week or run carries intermediates and every stored week is already compressed.", id="st-reclaim-none") }}</span></span>
+  </form>
+ </div>
+ <div id="reclaim-fail" hidden>{{ tips.alert("error", "Nothing was changed. Try again.", title="The reclaim report failed.", id="st-reclaim-fail") }}</div>
  <script>
   (function(){
-   var b=document.getElementById('reclaim-btn'),
-       note=document.getElementById('reclaim-note');
+   var b=document.getElementById('reclaim-btn');
    if(!b)return;
+   var busy=document.getElementById('reclaim-busy'),
+       none=document.getElementById('reclaim-none'),
+       fail=document.getElementById('reclaim-fail');
+   function show(el){busy.hidden=el!==busy;none.hidden=el!==none;
+     fail.hidden=el!==fail;b.disabled=el===busy;}
    b.addEventListener('click',function(){
-    note.textContent='measuring…';
+    show(busy);
     fetch('/api/storage/reclaim').then(function(r){return r.json();})
      .then(function(d){
-      note.textContent='';
-      if(!d||!d.categories||!d.categories.length){
-       note.textContent='Nothing to reclaim: no completed week or run '
-         +'carries intermediates and every stored week is already compressed.';
-       return;
-      }
+      show(null);
+      if(!d||!d.categories||!d.categories.length){show(none);return;}
       var lines=d.categories.map(function(c){
        return c.label+': '+c.bytes_h+' ('+c.detail+')';}).join(' · ');
       if(!window.FluBNFConfirm)return;
@@ -54,177 +97,151 @@
         f.confirm.value=d.confirm;f.submit();}
       });
      })
-     .catch(function(){note.textContent='The reclaim report failed; '
-       +'nothing was changed. Try again.';});
+     .catch(function(){show(fail);});
    });
   })();
  </script>
  {% endif %}
 
- {# nothing stored: the header already says so, no empty sections #}
+ {% set sbx = sandbox_storage() %}
+ {% if not storage.total_bytes %}
+ {# nothing counted yet: one empty state, no empty sections (the ledger's
+    empty state below carries the one action) #}
+ {{ tips.empty("No runs or replays on disk", "folder", id="st-empty") }}
+ {% endif %}
+
  {% if storage.workroots or storage.total_bytes %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
- {% for w in storage.workroots %}
- {# label from the run's ledger row (the id is secondary); no row = an
-    unrecorded run, time parsed from the id #}
- <div class="archrow" data-wid="{{ w.id }}">
-  <span class="grow"><strong>{{ w.label }}</strong>
-   {% if w.research %} <span class="pill">research</span>{% endif %}
-   {% if w.modified %} <span class="pill warn">modified settings</span>{% endif %}
-   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.dataset_name %}· on {{ w.dataset_name }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
-   · <code style="font-size:.78em">{{ w.id }}</code></span></span>
-  {% if not w.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="workroot">
-   <input type="hidden" name="ident" value="{{ w.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="workroot {{ w.id }} ({{ w.label }})" data-size="{{ w.size_h }}"
-     data-hint="The run's ledger row is kept and will show a dash for disk use.">Delete</button>
-  </form>
-  {% endif %}
- </div>
- {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
- {% if clear_workroots.count %}
  {# clear-all: the confirmation names count and size; the server excludes
     the active run, keeps ledger rows, refuses a stale count, and the
-    protection barrier still guards the seal and hub #}
+    protection barrier still guards the seal and hub. The button sits in
+    the section heading and submits this form through its form attribute. #}
+ {% if clear_workroots.count %}
  <form method="post" action="/storage/clear-workroots" id="clear-workroots">
   <input type="hidden" name="confirm" value="">
-  <button type="button" class="quiet" id="clear-workroots-btn"
+ </form>
+ {% endif %}
+ {% set wr_aside %}{% if clear_workroots.count %}<button type="button" class="quiet st-btn" id="clear-workroots-btn" form="clear-workroots"
     data-count="{{ clear_workroots.count }}"
     data-size="{{ clear_workroots.size_h }}">Delete all
     {{ clear_workroots.count }} completed
     workroot{{ "" if clear_workroots.count == 1 else "s" }}
-    ({{ clear_workroots.size_h }})</button>
- </form>
- <script>
-  (function(){
-   var b=document.getElementById('clear-workroots-btn');
-   if(!b)return;
-   b.addEventListener('click',function(){
-    var f=b.form,n=b.dataset.count,s=b.dataset.size;
-    if(!f||!window.FluBNFConfirm)return;
-    window.FluBNFConfirm({
-     title:'Delete all completed run workroots?',
-     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
-       +' totaling '+s+' on disk. A run that is active right now is '
-       +'excluded, and it cannot be undone.',
-     hint:'Every ledger row is kept and will show a dash for disk use, '
-       +'exactly as a single workroot delete leaves it. The sealed '
-       +'validation record and the hub clone are separate protected '
-       +'trees and are never touched.',
-     okLabel:'Delete '+n+' workroot'+(n==='1'?'':'s'),
-     onOk:function(){f.confirm.value=n;f.submit();}
-    });
-   });
-  })();
- </script>
+    ({{ clear_workroots.size_h }})</button>{% endif %}{% endset %}
+ <section class="st-sec" aria-labelledby="h-st-wr">
+ {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
+ {% for w in storage.workroots %}
+ {# label from the run's ledger row, linked to its run page (the id is
+    secondary); no row = an unrecorded run, time parsed from the id #}
+ <div class="st-row" data-wid="{{ w.id }}">
+  <span class="st-title"><strong>{% if w.recorded %}<a href="/runs/{{ w.id }}">{{ w.label }}</a>{% else %}{{ w.label }}{% endif %}</strong>
+   {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
+   {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
+   {%- if w.busy %} {{ tips.badge("pending", "running now") }}{% endif %}</span>
+  {% set items = [] %}
+  {% if w.when %}{% set _ = items.append(("clock", "run " ~ w.when, "")) %}{% endif %}
+  {% if w.dataset_name %}{% set ds_link %}on <a href="/data?source={{ w.dataset }}#browser">{{ w.dataset_name }}</a>{% endset %}{% set _ = items.append(("folder", ds_link, "")) %}{% endif %}
+  {% if w.scope %}{% set _ = items.append(w.scope) %}{% endif %}
+  {% set wid %}<code>{{ w.id }}</code>{% endset %}{% set _ = items.append(wid) %}
+  {{ tips.meta(items) }}
+  <span class="st-size">{{ w.size_h }}</span>
+  {% if w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
+  {% else %}{{ del_form("/storage/delete", "workroot", w.id, "workroot " ~ w.id ~ " (" ~ w.label ~ ")", w.size_h, "The run's ledger row is kept and will show a dash for disk use.") }}{% endif %}
+ </div>
+ {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
+ </section>
  {% endif %}
 
- {% endif %}
  {% if storage.retro or storage.total_bytes %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
+ <section class="st-sec" aria-labelledby="h-st-rs">
+ {{ tips.heading("Retrospective seasons", "st-rs", "Each season's live replay results. Deleting one leaves its archived runs and the sealed record untouched: they are separate trees.", level=3, after=count(storage.retro | length), cls="st-h") }}
  {% for s in storage.retro %}
- <div class="archrow">
-  <span class="grow"><strong>{{ s.id }} retrospective</strong>
-   <span class="hint">· {{ s.size_h }}{% if s.busy %} · <span class="warn">{{ s.status }}</span>{% endif %}</span></span>
-  {% if not s.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="retro-season">
-   <input type="hidden" name="ident" value="{{ s.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="{{ s.id }} season results" data-size="{{ s.size_h }}"
-     data-hint="Archived runs of this season and the sealed record are separate trees and are not touched.">Delete</button>
-  </form>
-  {% endif %}
+ <div class="st-row">
+  <span class="st-title"><strong><a href="/retro/{{ s.id }}">{{ s.id }} retrospective</a></strong>
+   {%- if s.busy %} {{ tips.badge("pending", s.status) }}{% endif %}</span>
+  <span class="st-size">{{ s.size_h }}</span>
+  {% if s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why, s.id ~ " season results") }}
+  {% else %}{{ del_form("/storage/delete", "retro-season", s.id, s.id ~ " season results", s.size_h, "Archived runs of this season and the sealed record are separate trees and are not touched.") }}{% endif %}
  </div>
- {% else %}<p class="hint">No live season trees on disk.</p>{% endfor %}
+ {% else %}{{ tips.empty("No live season trees on disk", "calendar", compact=True) }}{% endfor %}
+ </section>
  {% endif %}
 
  {% if storage.retro_archives %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>
+ <section class="st-sec" aria-labelledby="h-st-ra">
+ {{ tips.heading("Archived retrospective runs", "st-ra", "Earlier replays of a season, kept when it started fresh, and replays imported from another machine.", level=3, after=count(storage.retro_archives | length), cls="st-h") }}
  {% for a in storage.retro_archives %}
- <div class="archrow">
-  <span class="grow"><strong>{{ a.season }} retrospective · {{ a.imported if a.imported else ('archived ' ~ a.when) }}</strong>
-   <span class="hint">· {{ a.size_h }}{% if a.busy %} · <span class="warn">season replaying</span>{% endif %}
-   · <code style="font-size:.78em">{{ a.id }}</code></span></span>
-  {% if not a.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="retro-archive">
-   <input type="hidden" name="ident" value="{{ a.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="{{ a.season }} run {{ a.imported if a.imported else ('archived ' ~ a.when) }}"
-     data-size="{{ a.size_h }}"
-     data-hint="The live {{ a.season }} season is not touched.">Delete</button>
-  </form>
-  {% endif %}
+ {% set a_when = a.imported if a.imported else ('archived ' ~ a.when) %}
+ <div class="st-row">
+  <span class="st-title"><strong><a href="/retro/{{ a.season }}?archive={{ a.stamp }}">{{ a.season }} retrospective</a></strong>
+   {%- if a.busy %} {{ tips.badge("pending", "season replaying") }}{% endif %}</span>
+  {% set aid %}<code>{{ a.id }}</code>{% endset %}
+  {{ tips.meta([("download" if a.imported else "calendar", a_when, ""), aid]) }}
+  <span class="st-size">{{ a.size_h }}</span>
+  {% if a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why, a.season ~ " run " ~ a_when) }}
+  {% else %}{{ del_form("/storage/delete", "retro-archive", a.id, a.season ~ " run " ~ a_when, a.size_h, "The live " ~ a.season ~ " season is not touched.") }}{% endif %}
  </div>
  {% endfor %}
+ </section>
  {% endif %}
 
  {% if storage.report_archives %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Report archives</h3>
+ <section class="st-sec" aria-labelledby="h-st-rp">
+ {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=count(storage.report_archives | length), cls="st-h") }}
  {% for f in storage.report_archives %}
- <div class="archrow">
-  <span class="grow"><strong>Weekly report and submissions · {{ f.id }}</strong>
-   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span></span>
-  {% if not f.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="report-archive">
-   <input type="hidden" name="ident" value="{{ f.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="archived {{ f.id }} report and submissions"
-     data-size="{{ f.size_h }}"
-     data-hint="The workroot that produced it is a separate entry above.">Delete</button>
-  </form>
-  {% endif %}
+ <div class="st-row">
+  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong>
+   {%- if f.busy %} {{ tips.badge("pending", "console run in progress") }}{% endif %}</span>
+  {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
+  {{ tips.meta([rlink]) }}{% endif %}
+  <span class="st-size">{{ f.size_h }}</span>
+  {% if f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}
+  {% else %}{{ del_form("/storage/delete", "report-archive", f.id, "archived " ~ f.id ~ " report and submissions", f.size_h, "The workroot that produced it is a separate entry above.") }}{% endif %}
  </div>
  {% endfor %}
+ </section>
  {% endif %}
 
  {% if storage.datasets %}
  {# your datasets (app/ui/datasets_ui.storage_rows): each one's size holds
     its upload, replays and runs; the delete takes all three, confirmed by
     the dataset's name, and keeps the runs' ledger rows #}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Your datasets {{ tips.tip("st-datasets", "your datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.") }}</h3>
+ <section class="st-sec" aria-labelledby="h-st-datasets">
+ {{ tips.heading("Your datasets", "st-datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.", level=3, after=count(storage.datasets | length), cls="st-h") }}
  {% for d in storage.datasets %}
- <div class="archrow">
-  <span class="grow"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
-   <span class="hint">· {{ d.size_h }}{% for p in d.parts %} · {{ p }}{% endfor %}{% if d.busy %} · <span class="warn">{{ d.busy }}</span>{% endif %}</span></span>
-  {% if not d.busy %}
-  <form method="post" action="/storage/datasets/{{ d.id }}/delete">
-   <input type="hidden" name="ident" value="{{ d.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage data-confirm="{{ d.name }}"
-     data-what="the dataset {{ d.name }}" data-size="{{ d.size_h }}"
-     data-hint="{{ d.goes }}">Delete</button>
-  </form>
-  {% endif %}
+ <div class="st-row">
+  <span class="st-title"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
+   {%- if d.busy %} {{ tips.badge("pending", "in use") }}{% endif %}</span>
+  {% if d.parts %}{{ tips.meta(d.parts, label="What it holds") }}{% endif %}
+  <span class="st-size">{{ d.size_h }}</span>
+  {% if d.busy %}{{ busy_act("st-ds-" ~ loop.index, d.why, "the dataset " ~ d.name) }}
+  {% else %}{{ del_form("/storage/datasets/" ~ d.id ~ "/delete", "", d.id, "the dataset " ~ d.name, d.size_h, d.goes, confirm=d.name) }}{% endif %}
  </div>
  {% endfor %}
+ </section>
  {% endif %}
 
  {% if storage.protected %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Protected {{ tips.tip("st-protected", "protected trees", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.") }}</h3>
+ <section class="st-sec" id="st-protected" aria-labelledby="h-st-protected">
+ {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length), cls="st-h", tip_label="protected trees") }}
  {% for p in storage.protected %}
  {# never deletable here; the server refuses crafted requests too #}
- <div class="archrow">
-  <span class="grow"><strong>{{ p.label }}</strong>
-   <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
+ <div class="st-row">
+  <span class="st-title"><strong>{{ p.label }}</strong></span>
+  <span class="st-size">{{ p.size_h }}</span>
+  <span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
  </div>
  {% endfor %}
+ </section>
  {% endif %}
- {% set sbx = sandbox_storage() %}
  {% if sbx %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Sandbox</h3>
- <div class="archrow">
-  <span class="grow"><strong><a href="/sandbox">Sandbox models and runs</a></strong>
-   <span class="hint">· {{ sbx.size_h }} · {{ sbx.models }} model{{ "" if sbx.models == 1 else "s" }}, {{ sbx.runs }} run{{ "" if sbx.runs == 1 else "s" }}; delete them in the Sandbox</span></span>
+ <section class="st-sec" aria-labelledby="h-st-sbx">
+ {{ tips.heading("Sandbox", "st-sbx", "Kept out of the total above: the Sandbox's models and runs are deleted in the Sandbox, not here.", level=3, cls="st-h") }}
+ <div class="st-row">
+  <span class="st-title"><strong><a href="/sandbox">Sandbox models and runs</a></strong></span>
+  <span class="st-size">{{ sbx.size_h }}</span>
+  <span class="st-act"><a class="btn quiet st-del" href="/sandbox">Open Sandbox</a></span>
+  {{ tips.meta([sbx.models ~ " model" ~ ("" if sbx.models == 1 else "s"), sbx.runs ~ " run" ~ ("" if sbx.runs == 1 else "s")]) }}
  </div>
+ </section>
  {% endif %}
 </details>
 </div>
@@ -234,11 +251,35 @@
  (function(){
   var d=document.getElementById('storagefold');
   if(!d)return;
-  if(localStorage.getItem('storagefold-v2')==='1')d.open=true;
+  try{if(localStorage.getItem('storagefold-v2')==='1')d.open=true;}catch(e){}
   d.addEventListener('toggle',function(){
-   localStorage.setItem('storagefold-v2',d.open?'1':'0');});
+   try{localStorage.setItem('storagefold-v2',d.open?'1':'0');}catch(e){}});
  })();
 </script>
+{% if clear_workroots.count %}
+<script>
+ (function(){
+  var b=document.getElementById('clear-workroots-btn');
+  if(!b)return;
+  b.addEventListener('click',function(){
+   var f=b.form,n=b.dataset.count,s=b.dataset.size;
+   if(!f||!window.FluBNFConfirm)return;
+   window.FluBNFConfirm({
+    title:'Delete all completed run workroots?',
+    msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
+      +' totaling '+s+' on disk. A run that is active right now is '
+      +'excluded, and it cannot be undone.',
+    hint:'Every ledger row is kept and will show a dash for disk use, '
+      +'exactly as a single workroot delete leaves it. The sealed '
+      +'validation record and the hub clone are separate protected '
+      +'trees and are never touched.',
+    okLabel:'Delete '+n+' workroot'+(n==='1'?'':'s'),
+    onOk:function(){f.confirm.value=n;f.submit();}
+   });
+  });
+ })();
+</script>
+{% endif %}
 <script>
  // deletes use the shared confirmation shell; confirm is filled only on
  // confirmation (the server refuses the POST without it)
@@ -262,38 +303,45 @@
 </script>
 {% endif %}
 
-<div class="card">
-<h2>Run ledger {{ tips.tip("st-ledger", "the run ledger", "Elapsed is wall time (a dash: recorded before timing existed). A dash under on disk: the workroot was deleted and the ledger row remains.") }}</h2>
-{# ledger fold: one-line summary (count, newest); open state persists #}
+<div class="card st-card">
+{% set ST = {"ok": "ok", "running": "pending", "interrupted": "warn",
+             "stopped": "warn", "partial": "warn"} %}
+{% set ledger_tip = "One row per console run, newest first; each links to its run page. Clearing rows never deletes data on disk." %}
 {% if ledger %}
+{# ledger fold: the heading, count and newest entry in the summary; closed
+   by default, open state persists #}
 <details class="ledgerfold" id="ledgerfold">
- <summary>{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
-  recorded<span class="hint"> · newest {{ ledger[0].label }}
-  ({{ ledger[0].status }})</span></summary>
-{% endif %}
+ <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
+  {{- tips.tip("st-ledger", "the run ledger", ledger_tip) }}
+  <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
+  recorded</strong>
+  <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
+  <span class="uk-sr">(</span>{{ tips.badge(ST.get(ledger[0].status, "error"), ledger[0].status) }}<span class="uk-sr">)</span></span></summary>
 {# rows from before elapsed was recorded show a dash (hms renders None) #}
-{% if ledger %}<div class="tablewrap"><table><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr>
-{% for r in ledger %}
- <tr><td class="nowrap"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
+<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed{{ tips.tip("st-elapsed", "elapsed", "Elapsed is wall time (a dash: recorded before timing existed).") }}</th><th class="num">on disk{{ tips.tip("st-ondisk", "on disk", "A dash under on disk: the workroot was deleted and the ledger row remains.") }}</th><th>summary</th></tr>
+{% for r in ledger %}{% set ri = loop.index %}
+ <tr><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.label.split(" · ") %}<span class="st-nw">{{ part }}</span>{{ " · " if not loop.last }}{% endfor %}</a>
  {# research badge (the spec asked for the third member) #}
- {% if r.research %} <span class="pill">research</span>{% endif %}
+ {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
  {# model settings off the default ones (a knobs record in the spec) #}
- {% if r.modified %} <span class="pill warn">modified settings</span>{% endif %}</td>
- <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
+ {%- if r.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}</td>
+ <td>{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
  {# a dash = the workroot was deleted; the ledger row stands #}
  <td class="num">{{ r.disk_h or "--" }}</td>
- {# chips: server markup from fixed phrases and numbers, never raw errors #}
- <td>{{ r.chips | safe }}</td></tr>
+ {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items) #}
+ <td><span class="st-facts">{% for f in (r.facts or []) %}
+  <span class="st-fi">{% if f.state %}{{ tips.badge(f.state, f.text, f.tip, id="st-f-" ~ ri ~ "-" ~ loop.index) }}
+  {%- else %}<span class="st-fact">{{ f.text }}</span>{% if f.tip %}{{ tips.tip("st-f-" ~ ri ~ "-" ~ loop.index, f.text, f.tip) }}{% endif %}{% endif %}</span>
+ {%- endfor %}</span></td></tr>
 {% endfor %}
 </table></div>
-{% else %}<p class="hint">No runs yet.</p>{% endif %}
 {% if clear_count %}
 {# clear via the shared confirmation (names the count); the server refuses a
    stale count, skips the active run, and never deletes workroot data #}
-<form method="post" action="/runs/clear" id="clear-ledger">
+<form method="post" action="/runs/clear" id="clear-ledger" class="st-foot">
  <input type="hidden" name="confirm" value="">
- <button type="button" class="quiet" id="clear-ledger-btn"
+ <button type="button" class="quiet st-btn" id="clear-ledger-btn"
    data-count="{{ clear_count }}">Clear {{ clear_count }} completed
    row{{ "" if clear_count == 1 else "s" }}</button>
 </form>
@@ -319,18 +367,22 @@
  })();
 </script>
 {% endif %}
-{% if ledger %}
 </details>
 <script>
- // closed by default; a reader who opens it keeps it open (localStorage)
+ // closed by default; a reader who opens it keeps it open (localStorage);
+ // a link to #ledgerfold (the research card on /model/pf2s) opens it
  (function(){
   var d=document.getElementById('ledgerfold');
   if(!d)return;
-  if(localStorage.getItem('ledgerfold-open')==='1')d.open=true;
+  try{if(localStorage.getItem('ledgerfold-open')==='1')d.open=true;}catch(e){}
+  if(location.hash==='#ledgerfold')d.open=true;
   d.addEventListener('toggle',function(){
-   localStorage.setItem('ledgerfold-open',d.open?'1':'0');});
+   try{localStorage.setItem('ledgerfold-open',d.open?'1':'0');}catch(e){}});
  })();
 </script>
+{% else %}
+{{ tips.heading("Run ledger", "st-ledger", ledger_tip) }}
+{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
 {% endif %}
 </div>
 {% endblock %}

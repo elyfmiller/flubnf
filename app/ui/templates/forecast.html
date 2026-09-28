@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
+{% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
+<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/quips.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
@@ -11,13 +12,15 @@
  <a href="/forecast?tab=own"{% if dataset or own_tab %} aria-current="page"{% endif %}>Your data</a>
 </nav>
 {% if own_tab and not dataset %}
-<div class="card"><h2>Your data</h2>
- <p class="hint">A weekly CSV of your own, forecast with both models and exported under non-hub names; never submitted.</p>
+<div class="card">{{ tips.heading("Your data", "fc-own", "A weekly CSV of your own, forecast with both models and exported under non-hub names; never submitted.") }}
  {{ dsup.box("forecast") }}
 </div>
 {% else %}
+{# a status word in a badge: the ledger's run statuses by kind #}
+{% set RUN_STATE = {"ok": "ok", "done": "ok", "running": "pending",
+                    "stopped": "warn", "interrupted": "warn", "partial": "warn"} %}
 <div class="cols">
- <div><div class="card"><h2>Settings</h2>
+ <div><div class="card fc-settings"><h2>Settings</h2>
   {% if dataset %}
   {# which of your datasets; a plain GET form, like the Data tab's #}
   <form method="get" action="/forecast" class="row srcpick">
@@ -27,16 +30,17 @@
    </select></span>
    <button class="quiet">Use</button>
   </form>
+  {# the data's truth in a badge (the dataset's name is the select's) #}
+  <p class="fc-truth">{% call tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data, not vintage-true", id="fc-ds-truth") -%}
+   {{ "Each week is forecast from the as_of snapshot that held it, as it stood then." if dataset.vintage_true else "The upload has no as_of column, so a past week is forecast from the final data cut at that week; later revisions leak in, so it reads better than real time would have." }} Scores are against an in-house persistence baseline, not FluSight-baseline.
+  {%- endcall %}</p>
   <details class="dsup-fold" id="fc-upload">
    <summary>Upload another</summary>
    {{ dsup.box("forecast") }}
   </details>
   {% endif %}
   <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
-   {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
-   <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
-    {{ tips.tip("fc-ds-truth", "the data behind these forecasts", ("Each week is forecast from the as_of snapshot that held it, as it stood then." if dataset.vintage_true else "The upload has no as_of column, so a past week is forecast from the final data cut at that week; later revisions leak in, so it reads better than real time would have.") ~ " Scores are against an in-house persistence baseline, not FluSight-baseline.") }}</p>
-   {% endif %}
+   {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
    <div class="modes">
@@ -50,8 +54,19 @@
    {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.", for_="fc-date-in") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.", for_="fc-date-in") }}{% endif %}
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}" id="fc-date-in" data-default="{{ default_date }}">
    {# any day is accepted; this line names the archived week it resolves to
-      (server-side resolve_anchor, the run's own function; updated live) #}
-   <p class="hint" id="anchor-line">{{ anchor_note }}</p>
+      (server-side resolve_anchor, the run's own function; the script below
+      repaints it as the date changes): the week as a labelled value, a
+      badge while only the live target file holds it, or one warn line
+      when no week is on or before the day. A dataset page passes only
+      anchor_note ("Anchor week: <w>." or the no-week sentence). #}
+   {% set an = anchor_note or "" %}
+   {% set aw = anchor_week if anchor_week is defined and anchor_week else (an[13:] | trim(".") if an.startswith("Anchor week: ") else "") %}
+   <div class="fc-anchor" id="anchor-line" aria-live="polite">
+    <span class="fc-anchor-ok"{% if not aw %} hidden{% endif %}>{{ tips.icon("calendar", cls="uk-c-muted") }}<span class="fc-anchor-k">Anchor week</span>
+     <b id="fc-anchor-wk">{{ aw }}</b>
+     <span id="fc-anchor-live"{% if dataset or not aw or aw != live_only %} hidden{% endif %}>{% call tips.badge("warn", "not archived", id="fc-live") %}{{ live_only_tip }}{% endcall %}</span></span>
+    <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
+   </div>
    {# the newest week's reporting, shown while the anchor is that week #}
    {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
    {# the per-state choices for that week's zeros, collapses and gaps
@@ -69,7 +84,6 @@
       // LAST week on or before the day, as resolve_anchor picks it
       var VS = {{ vintage_dates | default([], true) | tojson }}.slice().sort();
       var LIVE = {{ (live_only or "") | tojson }};
-      var LIVE_NOTE = {{ (live_only_note or ".") | tojson }};
       var box = document.querySelector('input[name=forecast_date]');
       var line = document.getElementById('anchor-line');
       var pick = document.getElementById('vintage-pick');
@@ -91,9 +105,16 @@
         var a = anchorFor(box.value);
         // the panel's Season start default follows the week that runs
         box.dataset.anchor = a || '';
-        line.textContent = a
-          ? 'Anchor week: ' + a + (a === LIVE ? LIVE_NOTE : '.')
-          : 'No archived week on or before ' + box.value + '.';
+        // the week as a value (its badge while only target-data holds
+        // it), or the one warn line when no week is on or before the day
+        var ok = line.querySelector('.fc-anchor-ok'),
+            no = line.querySelector('.fc-anchor-none'),
+            live = document.getElementById('fc-anchor-live');
+        ok.hidden = !a; no.hidden = !!a;
+        if (a) document.getElementById('fc-anchor-wk').textContent = a;
+        else document.getElementById('fc-anchor-none').textContent =
+          {{ ("No week of this dataset on or before " if dataset else "No archived week on or before ") | tojson }} + box.value + '.';
+        if (live) live.hidden = !a || a !== LIVE;
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
         // the Data issues box belongs to that week too; disabled, it
@@ -140,15 +161,16 @@
       setMode(initial, false);
     })();
    </script>
+   {# the pick's count rides in the label as a chip (the script below) #}
    {% if dataset %}
-   <div class="lblrow"><label id="fc-locs-lbl">Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
+   <div class="lblrow"><label id="fc-locs-lbl">Groups <span id="lcount" class="fc-count"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
    {% else %}
-   <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "All 53 is what the hub takes: the 52 jurisdictions (the 50 states, DC and Puerto Rico) and US (national). Ticking one state starts a custom pick with US (national) still ticked; untick it to leave US out. US is fitted as a series of its own and scored apart from the 52.") }}</div>
+   <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="fc-count"></span></label>{{ tips.tip("fc-locs", "locations", "All 53 is what the hub takes: the 52 jurisdictions (the 50 states, DC and Puerto Rico) and US (national). Ticking one state starts a custom pick with US (national) still ticked; untick it to leave US out. US is fitted as a series of its own and scored apart from the 52.") }}</div>
    {% endif %}
+   {% if locations_error %}{{ tips.alert("warn", locations_error, id="fc-locs-error") }}{% endif %}
    <div class="checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 jurisdictions" }}</b></label>
-     {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
@@ -165,8 +187,10 @@
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
-   {% if not dataset.pf_ok %}<p class="hint">{{ engine_names.analogue }}: {{ dataset.pf_why }}.</p>
-   {% else %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endif %}
+   {# why the particle filter's options are off, in a badge's tip #}
+   {% if not dataset.pf_ok %}<p class="fc-under">{% call tips.badge("neutral", "particle filter off", id="fc-pf-off", icon_name="lock") %}{{ engine_names.analogue }}: {{ dataset.pf_why }}.{% endcall %}</p>
+   {% else %}{% set eb_ds %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+   {% if eb_ds | trim %}<p class="fc-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
    <div class="lblrow"><label class="ck" for="fc-flusurv"><input type="checkbox" name="flusurv" value="1" id="fc-flusurv"
      {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
     {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>
@@ -180,11 +204,15 @@
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {% endif %}
+   {# one engine today: a labelled value, not a select with nothing to
+      pick; the build's badge on its own line under it (the column is
+      narrow) #}
    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
-    {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
-    {# one engine today: stated as text, not a select with nothing to pick #}
-    <p class="fixedval">Particle filter</p>
-    {% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %}
+    {% set eb_after %}{% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+    {% call tips.stats("uk-stats--kv fc-kv") %}
+     {{- tips.stat("Engine", "Particle filter", tiptext="The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.", id="fc-engine") -}}
+    {% endcall %}
+    {% if eb_after | trim %}<p class="fc-under">{{ eb_after | trim }}</p>{% endif %}
    </div>
    <script>
     (function(){
@@ -207,9 +235,10 @@
      const all=document.getElementById('ck-all').checked;
      const us=!!(CKUS&&CKUS.checked);
      const n=document.querySelectorAll('.ck-one:checked').length;
+     // the label's chip: empty (and hidden) when nothing is ticked
      document.getElementById('lcount').textContent =
-       all? '(all '+{{ (all_locs | length if dataset else 53) | tojson }}+')'
-       : n? '('+n+(us?' + US':'')+' selected)' : us? '(US only)' : '';
+       all? 'all '+{{ (all_locs | length if dataset else 53) | tojson }}
+       : n? n+(us?' + US':'')+' selected' : us? 'US only' : '';
    }
    // 'all' and specific states are mutually exclusive; nothing is disabled.
    // 'all' is the 53: ticking it ticks US (national) too; a state pick
@@ -240,17 +269,23 @@
  </div></div>
  <div id="results">
   {% if status.running %}
-  <div class="card"><h2>Running</h2>
+  {# the live run: its label, a labelled bar (busy until the fit count is
+     known), the counts as values, the spec's settings, Stop at the top #}
+  <div class="card fc-running">
+   {% set stop %}<form method="post" action="/run/stop"
+     onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>{% endset %}
+   {{ tips.heading("Running", "fc-running", after=tips.badge("pending", "running", id="fc-run-state"), aside=stop) }}
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
-   <div class="runbar"><div id="runfill" style="width:3%"></div></div>
-   <p class="runstat" id="prog"></p>
+   {{ tips.progress("Progress", none, text=status.phase or "starting", id="fc-prog") }}
    {# elapsed ticks client-side from the server's elapsed_s, re-anchored
       each poll (no drift; survives reload) #}
-   <p class="runstat" id="elapsed"></p>
+   {% call tips.stats(label="Run progress") %}
+    {{- tips.stat("Fits done", "--", id="fc-fits") -}}
+    {{- tips.stat("Elapsed", elapsed0 | hms, id="elapsed") -}}
+    {{- tips.stat("Time left", "--", id="fc-left") -}}
+   {% endcall %}
    {# the live spec's settings, as the run page and weekly report state them #}
    <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
-   <form method="post" action="/run/stop"
-     onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
   <script>
@@ -265,12 +300,23 @@
    function hms(t){t=Math.max(0,Math.round(t));
      return Math.floor(t/3600)+':'+String(Math.floor(t/60)%60).padStart(2,'0')
        +':'+String(t%60).padStart(2,'0');}
+   // the kit's progress bar (tips.progress, #fc-prog), moved by
+   // FluBNFUI.setProgress: the readout beside its label, and the fill once
+   // the fit count is known (busy until then)
+   const PROG=document.getElementById('fc-prog');
+   function progText(t){
+     if(PROG&&window.FluBNFUI) FluBNFUI.setProgress(PROG,undefined,100,t);
+   }
+   function progPct(p){
+     if(PROG&&window.FluBNFUI) FluBNFUI.setProgress(PROG,p,100);
+   }
+   function setStat(id,t){const e=document.getElementById(id); if(e) e.textContent=t;}
    setInterval(()=>{
      if(document.hidden) return;          // nothing to see: do no work
      const el=document.getElementById('elapsed');
      if(!el||EL.s==null) return;
      // EL.at null = polls went quiet (see catch): hold the last-good reading
-     el.textContent='elapsed '+hms(EL.s+(EL.at!=null?(Date.now()-EL.at)/1000:0));
+     el.textContent=hms(EL.s+(EL.at!=null?(Date.now()-EL.at)/1000:0));
    },500);
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
@@ -318,8 +364,19 @@
          if(cur==null || PS.ema<=cur){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
          else if(++PS.up>=3){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
        }
-       if(STOPPING) document.getElementById('prog').textContent='Stopping; finishing the current fit…';
-       else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
+       if(STOPPING){
+         progText('Stopping; finishing the current fit…');
+         // the bar freezes at the fits done (a reload while stopping
+         // would otherwise show the busy slide); Time left stays "--"
+         if(d.total){
+           setStat('fc-fits', d.done+' of '+d.total);
+           PS.disp=Math.max(PS.disp,3,100*d.done/d.total); progPct(PS.disp);
+         }
+         const st=document.getElementById('fc-run-state');
+         if(st && st.dataset.state!=='warn' && window.FluBNFUI)
+           FluBNFUI.setBadge(st,'warn','stopping');
+       }
+       else if(!d.total) progText(d.phase||'starting');
      }catch(e){
        // 3 consecutive failed polls freeze the elapsed clock at its
        // last-good value; the next success re-anchors it
@@ -340,51 +397,59 @@
      const frac=Math.min(0.95,(Date.now()-D.t)/1000/Math.max(per,1));
      let pct=Math.max(3,Math.min(99,100*(D.done+frac)/D.total));
      pct=Math.max(PS.disp,pct); PS.disp=pct;      // never regress
-     document.getElementById('runfill').style.width=pct+'%';
-     let s=Math.round(pct)+'% · '+D.done+'/'+D.total+' fits';
+     progPct(pct);
+     progText(Math.round(pct)+'%');
+     setStat('fc-fits', D.done+' of '+D.total);
      if(PS.shown!=null){const rem=Math.max(0,PS.shown-(Date.now()-PS.shownT)/1000);
        const m=Math.floor(rem/60);
-       s+=' · ~'+(m>0?m+' min':Math.round(rem)+' s')+' left';}
-     document.getElementById('prog').textContent=s;
+       setStat('fc-left','~'+(m>0?m+' min':Math.round(rem)+' s'));}
    },400);
    poll();
   </script>
   {% elif ledger %}
-  <div class="card"><h2>Latest run</h2>
+  <div class="card fc-latest">
    {% set r = ledger[0] %}
-   <p><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
-   <span class="pill {% if r.status == 'ok' %}ok{% elif r.status in ('interrupted', 'partial') %}warn{% else %}bad{% endif %}">{{ r.status }}</span></p>
-   {# settings left, results right; the run page keeps the full record #}
+   {{ tips.heading("Latest run", "fc-latest") }}
+   {# the run, its status in a badge (a word and an icon, never color
+      alone); the run page keeps the full record #}
+   <p class="fc-runline"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
+    {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status, tiptext=r.error or "", id="fc-latest-status") }}</p>
+   {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
     <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
-   {% if dataset %}
-   <p class="hint"><a href="/runs/{{ r.run_id }}">Fans and export files</a></p>
-   {% else %}
-   <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
-   {% endif %}
-   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
-   {# fresh re-run from the recorded spec (console fits hold no checkpoint,
-      so never a resume); same guard and server-side checks as /run #}
-   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run row">
-    <button class="gold" data-guard="console-run">Run again with these settings</button>
-    {{ tips.tip("fc-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
-   </form>
-   {% endif %}
+   <div class="fc-actions">
+    {% if dataset %}
+    <a class="btn quiet" href="/runs/{{ r.run_id }}">{{ tips.icon("folder") }} Fans and export files</a>
+    {% else %}
+    {% if r.has_report %}<a class="btn quiet" href="/runs/{{ r.run_id }}/report" target="_blank">{{ tips.icon("external") }} Weekly report</a>{% endif %}
+    <a class="btn quiet" href="/output">{{ tips.icon("folder") }} Submission files</a>
+    {% endif %}
+    {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
+    {# fresh re-run from the recorded spec (console fits hold no checkpoint,
+       so never a resume); same guard and server-side checks as /run #}
+    <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run row">
+     <button class="gold" data-guard="console-run">Run again with these settings</button>
+     {{ tips.tip("fc-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
+    </form>
+    {% endif %}
+   </div>
   </div>
   {% endif %}
 
-  {# the fan build replaces this wrapper's innerHTML whenever stored
-     forecasts exist, so the first-launch hint shows only with an empty FANQ #}
-  <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
+  {# the fan build replaces this wrapper's content whenever stored
+     forecasts exist, so the empty state shows only with an empty FANQ #}
+  <div id="fanwrap">{% if fanq_json == '{}' %}<div class="card">{{ tips.heading("Forecasts", "fc-fans-none") }}{{ tips.empty("No forecasts yet", "clock", tiptext="Forecasts appear here once the models run.", id="fc-nofans") }}</div>{% endif %}</div>
 
-  {# no hub data yet (and no dataset): one line, no controls, no blank
-     chart area; the controls stay in the page (hidden) for the script #}
+  {# no hub data yet (and no dataset): an empty state, no controls, no
+     blank chart area; the controls stay in the page (hidden) for the
+     script. What the panel draws is its title's tip (a <summary> holds no
+     <div>, so a plain h2 and tips.tip) #}
   {% set nodata = not dataset and series_json == '{}' %}
-  <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint">· {{ (dataset.name ~ ", any group, newest data") if dataset else "raw admissions, any location, latest vintage" }}</span></summary>
+  <details class="card fc-datacard" open><summary><h2 style="display:inline">Data</h2>
+   {{ tips.tip("fc-data", "the data panel", ((dataset.name ~ ", any group, newest data") if dataset else "Raw admissions, any location, latest vintage") ~ ".") }}</summary>
    <div id="data-ctl"{% if nodata %} hidden{% endif %}>
    {# one pager row: the arrows step the select itself #}
    <div class="carousel dataloc">
@@ -401,18 +466,39 @@
     <button type="button" class="quiet cnav" id="data-next" aria-label="next location">▶</button>
     <span class="hint" id="data-pos"></span>
    </div>
-   {# the selected view wears the filled pill + aria-pressed (drawData keeps both) #}
-   <div class="seg" role="group" aria-label="data view">
-    <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
-    <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
+   {# the view as the kit's segmented switch (as on the Data tab): the
+      selected one aria-pressed and gold (drawData keeps both); points is
+      a toggle of its own beside it #}
+   <div class="fc-dview">
+    <div class="uk-seg" role="group" aria-label="data view">
+     <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
+     <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
+    </div>
     <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
    </div>
    </div>
    {# reserved height (chart draws at 380): a fetch never collapses the page #}
-   <div id="dataplots"{% if not nodata %} style="min-height:380px"{% endif %}>{% if nodata %}<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>{% endif %}</div>
+   {% set nodata_hub %}{{ tips.empty("No data yet", "folder", action='<a class="btn gold" href="/data">Pull the FluSight hub</a>' | safe, tiptext="Pull the FluSight hub on the Data tab.", id="fc-nodata") }}{% endset %}
+   <div id="dataplots"{% if not nodata %} style="min-height:380px"{% endif %}>{% if nodata %}{{ nodata_hub }}{% endif %}</div>
+   {# the script's empty states (drawData): the hub's, a group's #}
+   <template id="fc-nodata-hub">{{ nodata_hub }}</template>
+   <template id="fc-nodata-group">{{ tips.empty("No weeks for this group", "calendar", compact=True) }}</template>
   </details>
  </div>
 </div>
+{# the fan card, cloned into #fanwrap by the script when stored forecasts
+   exist: the model buttons (script), the FluSight switch's slot, the
+   location pager and the expand button #}
+<template id="fc-fan-tpl"><div class="card" id="fancard">
+ {{ tips.heading("Forecasts", "fc-fans", "The latest stored run's forecasts: the band is the 10-90% interval around the median; the dotted line after the forecast date is the data as it settled since.", after=tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")])) }}
+ <div class="fanbar"><div class="seg" role="group" aria-label="model"></div>
+  <span class="fanoff" id="fan-offslot"></span></div>
+ <div class="carousel"><button type="button" class="quiet cnav" id="fan-prev" aria-label="previous location">◀</button>
+  <select id="fan-loc" aria-label="forecast location" style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
+  <button type="button" class="quiet cnav" id="fan-next" aria-label="next location">▶</button>
+  <span class="fc-pos" id="fan-pos"></span>
+  <button type="button" class="quiet" id="fan-expand" aria-haspopup="dialog">⤢ expand</button></div>
+ <div id="fanplot" style="min-height:400px"></div></div></template>
 {# expanded forecast view: base.html's modal shell sized by .modal.fanx; its
    pager shares the card's selection, so closing restores location, scroll
    and focus #}
@@ -467,7 +553,7 @@
      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
    return c;
  }
- // chart text in root px so A-/A/A+ reaches it (ticks/legend .85, title .95)
+ // chart text in root px so the text size reaches it (ticks/legend .85, title .95)
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  // explicit card-surface background so a saved PNG stays readable
  function lay(title, h){ const fs=rootPx(), surf=css('--card');
@@ -476,10 +562,12 @@
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
-   // legend under the plot (a right-hand one ate up to a third of the width)
+   // legend under the plot (a right-hand one ate up to a third of the width),
+   // anchored to the chart's bottom edge so rotated week labels at a large
+   // text size never run under it (as on Data);
    // traceorder: a filled band would otherwise reverse the legend
-   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top',
-           traceorder:'normal'},
+   legend:{orientation:'h',x:0,xanchor:'left',yref:'container',y:0,
+           yanchor:'bottom',traceorder:'normal'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  // parse Y-M-D components: new Date on a date-only string is UTC and shifts
@@ -513,8 +601,8 @@
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots');
    const loc=LOCS[0];
-   const NODATA=SRCQ?'<p class="hint">No weeks for this group.</p>'
-     :'<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
+   // the empty states, rendered by the server (templates under #dataplots)
+   const NODATA=document.getElementById(SRCQ?'fc-nodata-group':'fc-nodata-hub').innerHTML;
    if(!SERIES[loc]){
      // keep the current chart during the fetch (emptying it jumped the scroll)
      fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ).then(r=>r.json())
@@ -667,7 +755,9 @@
      marker:{size:6,symbol:'circle-open'}});
    // react repaints in place: a page flip never collapses the card or
    // moves the scroll
-   FluCharts.react(document.getElementById('fanplot'),traces,lay(loc,400),
+   // taller at a large text size, where the legend takes more rows
+   FluCharts.react(document.getElementById('fanplot'),traces,
+     lay(loc,400+Math.round(Math.max(0,rootPx()-16)*10)),
      pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    // the expanded view mirrors the card (traces deep-copied: no shared state)
    const xb=document.getElementById('fanx-modal');
@@ -694,19 +784,14 @@
  }
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
-   // the title says latest STORED forecasts (honest across a restart)
-   const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+(MNAMES[m]||m)+'</button>').join('');
-   wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
-     +'<div class="fanbar"><div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
-     +'<span class="fanoff" id="fan-offslot"></span></div>'
-     +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
-     +'<select id="fan-loc" aria-label="forecast location"'
-     +' style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>'
-     +'<button type="button" class="quiet cnav" id="fan-next">▶</button>'
-     +'<span class="hint" id="fan-pos"></span>'
-     +'<button type="button" class="quiet" id="fan-expand"'
-     +' aria-haspopup="dialog">⤢ expand</button></div>'
-     +'<div id="fanplot" style="min-height:400px"></div></div>';
+   // the card from its server template (#fc-fan-tpl: its meta says latest
+   // STORED run, honest across a restart), one button per model
+   wrap.innerHTML='';
+   wrap.appendChild(document.getElementById('fc-fan-tpl').content.cloneNode(true));
+   const mseg=wrap.querySelector('.fanbar .seg');
+   MODELS.forEach(m=>{const b=document.createElement('button');
+     b.type='button'; b.className='quiet mbtn'; b.dataset.m=m;
+     b.textContent=(MNAMES[m]||m); mseg.appendChild(b);});
    document.querySelectorAll('.mbtn').forEach(b=>{
      if(b.dataset.m===FMODEL) b.classList.add('gold');
      b.setAttribute('aria-pressed', String(b.dataset.m===FMODEL));

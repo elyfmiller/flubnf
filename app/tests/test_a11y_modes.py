@@ -2,11 +2,12 @@
 palette.
 
 Both are MODIFIERS on the root element (data-contrast="high",
-data-vision="cvd") that compose with the four themes: each theme block
+data-vision="cvd") that compose with the eight themes: each theme block
 carries literal -hc/-cvd variants, and two mode blocks remap consumer
 tokens onto them via var(). These tests emulate that cascade in Python,
-spot-check the 4 x 2 x 2 grid, hold the contrast bars with the modifier on,
-and check blue/orange separability under deutan/protan simulation.
+spot-check the 8 x 2 x 2 grid, hold the contrast bars with the modifier on,
+and check the swapped status colors' separability under deutan/protan
+simulation (the full audit of the eight themes: test_display_themes.py).
 """
 import re
 import sys
@@ -38,9 +39,11 @@ def _decls(selector: str) -> dict:
 
 
 ROOT = _decls(":root")
-THEME = {"light": {}, "paper": _decls('[data-theme="paper"]'),
-         "dim": _decls('[data-theme="dim"]'),
-         "dark": _decls('[data-theme="dark"]')}
+#: every theme block in nau.css (light is the root block)
+THEME = {"light": {}}
+THEME.update({t: _decls(f'[data-theme="{t}"]')
+              for t in re.findall(r'\[data-theme="([\w-]+)"\]\{', NAU)})
+THEMES = tuple(THEME)
 HC = _decls('[data-contrast="high"]')
 CVD = _decls('[data-vision="cvd"]')
 
@@ -90,12 +93,14 @@ def test_theme_blocks_carry_the_modifier_variants_literally():
     # as literal colors
     need = {"ink-hc", "mut-hc", "nav-ink-hc", "line-hc", "field-line-hc",
             "accent-ink-hc", "ok-hc", "warn-hc", "bad-hc",
-            "ok-cvd", "bad-cvd", "ok-cvd-hc", "bad-cvd-hc",
+            "ok-cvd", "warn-cvd", "bad-cvd",
+            "ok-cvd-hc", "warn-cvd-hc", "bad-cvd-hc",
             "cat-large-decrease", "cat-decrease", "cat-stable",
             "cat-increase", "cat-large-increase",
             "cat-cvd-large-decrease", "cat-cvd-decrease", "cat-cvd-stable",
             "cat-cvd-increase", "cat-cvd-large-increase"}
-    for name in ("light", "paper", "dim", "dark"):
+    assert len(THEMES) == 8, THEMES
+    for name in THEMES:
         block = dict(ROOT) if name == "light" else THEME[name]
         missing = need - set(block)
         assert not missing, (name, sorted(missing))
@@ -113,25 +118,32 @@ def test_mode_blocks_only_remap_and_never_state_colors():
                 continue
             assert re.fullmatch(r"var\(--[\w-]+\)", val.strip()), (tok, val)
     # one block each, contrast before vision, both after the themes, so cvd
-    # wins --ok/--bad when both are on while contrast retargets the cvd
-    # pair's own -hc variants
+    # wins --ok/--warn/--bad when both are on while contrast retargets the
+    # cvd triad's own -hc variants
     assert NAU.count('[data-contrast="high"]{') == 1
     assert NAU.count('[data-vision="cvd"]{') == 1
-    assert (NAU.index('[data-theme="dim"]{')
+    last_theme = max(NAU.index(f'[data-theme="{t}"]{{')
+                     for t in THEMES if t != "light")
+    assert (last_theme
             < NAU.index('[data-contrast="high"]{')
             < NAU.index('[data-vision="cvd"]{'))
     assert HC["ok-cvd"] == "var(--ok-cvd-hc)"
+    assert HC["warn-cvd"] == "var(--warn-cvd-hc)"
     assert HC["bad-cvd"] == "var(--bad-cvd-hc)"
     assert HC["focus-w"] == "3px"                   # thickened focus rings
+    # the vision mode moves the whole status triad, not a pair
+    assert CVD["ok"] == "var(--ok-cvd)"
+    assert CVD["warn"] == "var(--warn-cvd)"
+    assert CVD["bad"] == "var(--bad-cvd)"
 
 
 def test_token_overrides_compose_across_the_grid():
-    # spot-checks across the 4 x 2 x 2 grid via cascade emulation
+    # spot-checks across the 8 x 2 x 2 grid via cascade emulation
     # normal contrast and vision: the classic palette, untouched
     assert resolve("light")["ok"] == "#177245"
     assert resolve("dark")["bad"] == "#FB4653"
     # contrast alone: consumer tokens land on the theme's -hc literals
-    for th in ("light", "paper", "dim", "dark"):
+    for th in THEMES:
         r = resolve(th, contrast=True)
         base = dict(ROOT) if th == "light" else THEME[th]
         for pair in (("ink", "ink-hc"), ("mut", "mut-hc"),
@@ -141,20 +153,23 @@ def test_token_overrides_compose_across_the_grid():
                      ("nav-ink", "nav-ink-hc")):
             assert r[pair[0]] == base[pair[1]], (th, pair)
         assert r["focus-w"] == "3px"
-    # vision alone: ok/bad and the whole map scale go blue/orange
-    for th in ("light", "paper", "dim", "dark"):
+    # vision alone: the status triad and the whole map scale move onto the
+    # color-vision-safe literals
+    for th in THEMES:
         r = resolve(th, vision=True)
         base = dict(ROOT) if th == "light" else THEME[th]
         assert r["ok"] == base["ok-cvd"], th
+        assert r["warn"] == base["warn-cvd"], th
         assert r["bad"] == base["bad-cvd"], th
         for c in ("large-decrease", "decrease", "stable", "increase",
                   "large-increase"):
             assert r["cat-" + c] == base["cat-cvd-" + c], (th, c)
-    # both: the cvd pair at its high-contrast strength, per theme
-    for th in ("light", "dim"):
+    # both: the cvd triad at its high-contrast strength, per theme
+    for th in THEMES:
         r = resolve(th, contrast=True, vision=True)
         base = dict(ROOT) if th == "light" else THEME[th]
         assert r["ok"] == base["ok-cvd-hc"], th
+        assert r["warn"] == base["warn-cvd-hc"], th
         assert r["bad"] == base["bad-cvd-hc"], th
         assert r["ink"] == base["ink-hc"], th       # contrast still applies
 
@@ -163,10 +178,10 @@ def test_token_overrides_compose_across_the_grid():
 
 def test_high_contrast_holds_well_above_the_review_bars():
     # the review bars (4.5 text, 3 boundaries) are the floor; the modifier
-    # aims for 7:1 text, 3:1+ boundaries, 4.5:1+ progress fill on its track
-    danger_ink = {"light": "#FFFFFF", "paper": "#FFFFFF",
-                  "dim": "#0C0D17", "dark": "#0C0D17"}
-    for th in ("light", "paper", "dim", "dark"):
+    # aims for 7:1 text, 3:1+ boundaries, 4.5:1+ progress fill on its track.
+    # button.danger's text is the theme's --on-bad (white on the light
+    # themes' dark reds, near-black on the dark themes' light reds)
+    for th in THEMES:
         for vision in (False, True):
             r = resolve(th, contrast=True, vision=vision)
             for fg in ("ink", "mut", "ok", "warn", "bad"):
@@ -177,7 +192,9 @@ def test_high_contrast_holds_well_above_the_review_bars():
                 assert _cr(r["line"], r[bg]) >= 3.0, (th, vision, bg)
             assert _cr(r["field-line"], r["bg"]) >= 4.5, (th, vision)
             assert _cr(r["accent-ink"], r["track"]) >= 4.5, (th, vision)
-            assert _cr(danger_ink[th], r["bad"]) >= 4.5, (th, vision)
+            assert _cr(r["on-bad"], r["bad"]) >= 4.5, (th, vision)
+    assert resolve("light")["on-bad"] == "#FFFFFF"
+    assert resolve("dark")["on-bad"] == "#0C0D17"
 
 
 def _rule(selector: str) -> dict:
@@ -199,7 +216,7 @@ def test_the_open_model_settings_button_reads_at_aa_everywhere():
     assert closed["color"] == "var(--accent-ink)"          # unchanged
     assert closed["border"] == "1.5px solid var(--accent)"
     opened = _rule(".adv[open] > summary.advbtn")
-    for th in ("light", "paper", "dim", "dark"):
+    for th in THEMES:
         for contrast in (False, True):
             for vision in (False, True):
                 r = resolve(th, contrast=contrast, vision=vision)
@@ -209,12 +226,12 @@ def test_the_open_model_settings_button_reads_at_aa_everywhere():
 
 
 def test_cvd_pair_holds_the_ratios_of_the_pair_it_replaces():
-    # in every theme and contrast strength, the blue/orange pair meets the
-    # worst-surface ratio of the green/red it replaces
-    for th in ("light", "paper", "dim", "dark"):
+    # in every theme, the color-vision-safe triad meets the worst-surface
+    # ratio of the green/amber/red it replaces
+    for th in THEMES:
         base = resolve(th)
         cvd = resolve(th, vision=True)
-        for tok in ("ok", "bad"):
+        for tok in ("ok", "warn", "bad"):
             floor = min(_cr(base[tok], base["bg"]),
                         _cr(base[tok], base["card"]))
             got = min(_cr(cvd[tok], cvd["bg"]), _cr(cvd[tok], cvd["card"]))
@@ -250,18 +267,41 @@ def _simdist(a: str, b: str, M) -> float:
     return sum((x - y) ** 2 for x, y in zip(pa, pb)) ** 0.5
 
 
+def _lab(rgb: tuple) -> tuple:
+    """sRGB 0..255 -> CIE L*a*b* (D65), for a perceptual distance."""
+    def lin(c):
+        c /= 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (lin(c) for c in rgb)
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+
+    def f(t):
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    return (116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z)))
+
+
+def _simde(a: str, b: str, M) -> float:
+    la, lb = _lab(_sim(a, M)), _lab(_sim(b, M))
+    return sum((x - y) ** 2 for x, y in zip(la, lb)) ** 0.5
+
+
 def test_swapped_pair_stays_separable_under_deutan_and_protan():
-    for th in ("light", "paper", "dim", "dark"):
+    for th in THEMES:
         base = resolve(th)
         for M in (_DEUTAN, _PROTAN):
-            rg = _simdist(base["ok"], base["bad"], M)
+            rg = _simde(base["ok"], base["bad"], M)
             for contrast in (False, True):
                 r = resolve(th, contrast=contrast, vision=True)
                 d = _simdist(r["ok"], r["bad"], M)
                 assert d >= 80, (th, contrast, d)
                 if not contrast:
-                    # at normal strength blue/orange beats green/red
-                    assert d >= rg, (th, d, rg)
+                    # at normal strength the swapped pair beats green/red,
+                    # as perceived (CIE Lab distance of the simulated pair)
+                    got = _simde(r["ok"], r["bad"], M)
+                    assert got >= rg, (th, got, rg)
 
 
 def test_member_palette_audit_and_its_non_color_redundancy():
@@ -279,7 +319,10 @@ def test_member_palette_audit_and_its_non_color_redundancy():
     assert set(mem) == {"ensemble", "pf", "analogue", "pf2s"}
     # the anchors: the gold and cyan identities stay themselves
     assert mem["analogue"] == "#FFC72C" and mem["ensemble"] == "#34C0F0"
-    for ens in (mem["ensemble"], "#0173A9"):        # dark and light variant
+    # dark and light variant, and every theme's --gold (the console draws
+    # the ensemble through it)
+    golds = {mem["ensemble"], "#0173A9"} | {resolve(t)["gold"] for t in THEMES}
+    for ens in sorted(golds):
         pol = dict(mem, ensemble=ens)
         for a, b in itertools.combinations(sorted(pol), 2):
             for M in (_DEUTAN, _PROTAN):
@@ -289,11 +332,15 @@ def test_member_palette_audit_and_its_non_color_redundancy():
                     zip(*(tuple(int(pol[m].lstrip("#")[i:i + 2], 16)
                                 for i in (0, 2, 4)) for m in (a, b)))) ** 0.5
             assert d >= 60, (a, b, ens)
-    # the movable members hold 3:1 against all eight theme grounds
+    # the movable members hold 3:1 against every theme's two grounds
     grounds = {"light": ("#F1EFF7", "#FFFFFF"),
                "paper": ("#F7F2E5", "#FDFAF1"),
                "dim": ("#212536", "#2A2F45"),
                "dark": ("#0C0D17", "#151729")}
+    for th in THEMES:
+        r = resolve(th)
+        grounds[th] = (r["bg"], r["card"])
+    assert len(grounds) == 8
     for m in ("pf", "pf2s"):
         for th, (bg, card) in grounds.items():
             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
@@ -320,19 +367,25 @@ def test_cvd_map_scale_beats_the_classic_scale_under_deutan():
 
 # ------------------------------------------------- the navbar controls
 
-def test_a11y_controls_sit_with_the_theme_picker_and_state_pressed():
+def test_a11y_controls_sit_with_the_theme_picker_and_state_checked():
     html = client.get("/data").text
     assert 'class="a11ypick" role="group" aria-label="Accessibility modes"' \
         in html
     assert 'data-ax="contrast"' in html and 'data-ax="vision"' in html
-    # labeled aria-pressed toggles beside the theme picker and text size
-    assert html.index('class="fontsize"') < html.index('class="themepick"') \
-        < html.index('class="a11ypick"')
-    assert 'aria-label="High contrast"' in html
-    assert 'aria-label="Red-green safe colors"' in html
-    # pressed state is marked on load and on every press
+    # two named switches beside the theme picker and text size, above the
+    # themes so they stay in view in a short window at a large text size
+    assert html.index('class="fontsize"') < html.index('class="a11ypick"') \
+        < html.index('class="themepick"')
+    for ax, name in (("contrast", "High contrast"),
+                     ("vision", "Color-blind safe colors")):
+        btn = html.split(f'data-ax="{ax}"', 1)[0].rsplit("<button", 1)[1]
+        assert 'role="switch" aria-checked="false"' in btn, ax
+        rest = html.split(f'data-ax="{ax}"', 1)[1].split("</button>", 1)[0]
+        assert f'<span class="dm-sw-label">{name}</span>' in rest, ax
+    # the checked state is marked on load and on every press
     assert "de.getAttribute('data-contrast')==='high'" in BASE_T
     assert "de.getAttribute('data-vision')==='cvd'" in BASE_T
+    assert "b.setAttribute('aria-checked',String(on))" in BASE_T
 
 
 def test_modes_persist_and_dispatch_themechange():
@@ -388,7 +441,7 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     # relWIS to three places, coverage as its percentage, and a legend line
     # names what each coverage color means
     assert "(p.shown < 1 ? 'ok' : 'bad')" in PLAYER
-    assert "+ p.shown.toFixed(3) + '</td>'" in PLAYER
+    assert "+ p.shown.toFixed(3) + verdictIcon(p.shown) + '</td>'" in PLAYER
     assert "'<td class=\"num cov-' + covState(v, +b)" in PLAYER
     assert "+ b + '% interval\">' + pc + '%</td>'" in PLAYER
     assert "(too narrow)" in PLAYER and "(too wide)" in PLAYER
@@ -404,8 +457,11 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     assert "{{ cov_text(c) }}" in SEASON_T
     assert '{{ "%.3f"|format(r[m]) if r[m] else "n/a" }}' in SEASON_T
     # status pills and run states print the status WORD inside the span
-    assert "{{ r.status }}</span>" in FORECAST_T
-    for phrase in ('">complete</span>', '>interrupted</span>'):
+    # (the Forecast latest run and the retro index's badges: an icon and
+    # the word, tips.badge)
+    assert 'tips.badge(RUN_STATE.get(r.status, "error"), r.status,' in FORECAST_T
+    for phrase in ('tips.badge("ok", "complete")',
+                   'tips.badge("error", "interrupted"'):
         assert phrase in retro_t, phrase
 
 

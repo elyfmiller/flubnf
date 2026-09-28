@@ -133,7 +133,9 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
     assert meta["weeks_to_drop"] == 1
     page = " ".join(client.get(r.headers["location"]).text.split())
     assert "<dt>model settings</dt><dd>modified: groundhog.bandwidth=3" in page
-    assert '<span class="pill warn">modified settings</span>' in page
+    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
+            in page and '<span class="uk-badge-t">modified settings</span>'
+            in page)
     card = client.get(f"/retro?dataset={ds.id}").text.split('id="dataset-replay"')[1]
     assert "modified settings" in card
 
@@ -164,8 +166,9 @@ def test_a_refused_value_starts_nothing():
     ds = stored(TEMPLATE.read_bytes(), "Template")
     r, meta = _replay(ds, weeks_to_drop="9")
     assert meta is None and r.headers["location"] == f"/retro?dataset={ds.id}"
-    assert ("Model settings: run.weeks_to_drop: 9 is outside 0 to 4. "
-            "Nothing was started.") in ui_state._status.get("flash", "")
+    assert ("Not started: model settings: run.weeks_to_drop: 9 is outside "
+            "0 to 4.") in ui_state._status.get("flash", "")
+    assert ui_state._status.get("flash_kind") == "warn"
     assert not DU._REPLAY and not ui_state._status.get("running")
 
 
@@ -284,5 +287,5 @@ def test_a_repeated_knob_field_is_refused_on_a_dataset_run(monkeypatch):
     assert r.status_code == 303 and got == []
     flash = ui_state._status.get("flash", "")
     assert "knob.groundhog.bandwidth more than once" in flash
-    assert "Nothing was run" in flash
+    assert "Not run" in flash
     assert not ui_state._status.get("running")

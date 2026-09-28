@@ -61,8 +61,8 @@ async def _sandbox_engine_guard(request: Request, call_next):
         # a plain read: an async middleware must not wait on _engine_lock
         live = _sandbox_live()
         if local and live:
-            _flash(f"A sandbox fit holds the engine ({live}). Stop it from "
-                   "the Sandbox tab first; nothing was started.")
+            _flash(f"Not started: a sandbox fit holds the engine ({live}).",
+                   "warn", detail="Stop it from the Sandbox tab first.")
             return RedirectResponse("/retro" if path == "/retro/run"
                                     else "/forecast", status_code=303)
     return await call_next(request)
@@ -114,7 +114,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             editing = {"name": sandbox_mod.check_name(model),
                        **sandbox_mod.read_model(model)}
         except Exception as e:
-            _flash(str(e))
+            _not_done("Not opened", e)
             model = ""
     all_runs = sandbox_mod.list_runs(live=live)
     last = {}
@@ -131,7 +131,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
                                       live=live)
     except Exception as e:
-        _flash(f"That sandbox run could not be read: {e}")
+        _flash(f"Could not read that sandbox run: {e}", "error")
         res = None
     # a second run of the same model, overlaid and diffed against the open one
     cmp, diff = None, None
@@ -143,7 +143,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                     f"{compare} is a run of another model")
             diff = sandbox_mod.diff_runs(compare, res["run_id"])
         except Exception as e:
-            _flash(f"Not compared: {e}")
+            _not_done("Not compared", e)
             cmp, diff = None, None
     examples = sandbox_mod.list_examples()
     ctx = {"active": "Sandbox", "models": models, "last": last,
@@ -214,6 +214,16 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     return templates.TemplateResponse(request, "sandbox.html", ctx)
 
 
+def _not_done(lead: str, e: Exception) -> None:
+    """Flash a sandbox action that did not happen, `lead` first ("Not
+    saved"): a SandboxError is a refusal (warn), anything else a failure
+    (error). A long reason's first line is the notice, the rest its tip."""
+    first, _, rest = str(e).strip().partition("\n")
+    _flash(f"{lead}: {first[:200]}",
+           "warn" if isinstance(e, sandbox_mod.SandboxError) else "error",
+           detail=rest.strip()[:1500])
+
+
 # -------------------------------------------------------------- models
 
 @router.post("/sandbox/add-example")
@@ -221,10 +231,10 @@ def sandbox_add_example(request: Request, name: str = Form(...)):
     """Kept for scripts and old pages: an example under its own name."""
     try:
         sandbox_mod.add_example(name)
-        _flash(f"Example {name} copied into the sandbox.")
+        _flash(f"Example {name} copied into the sandbox.", "ok")
         return _sandbox_redirect(name)
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not copied", e)
         return _sandbox_redirect()
 
 
@@ -245,27 +255,27 @@ def sandbox_new(request: Request, name: str = Form(...),
             sandbox_mod.from_shipped(name, location, forecast_date,
                                      season_start=season_start)
             _flash(f"{name}: the Oracle SIHRS filter for {location.strip()} "
-                   f"as of {forecast_date.strip()}.")
+                   f"as of {forecast_date.strip()}.", "ok")
         elif kind == "shipped" and what.startswith("dataset:"):
             sandbox_mod.from_shipped(name, group, as_of,
                                      season_start=season_start,
                                      dataset=what.split(":", 1)[1])
             _flash(f"{name}: the Oracle SIHRS filter for {group.strip()} "
-                   f"as of {as_of.strip()}.")
+                   f"as of {as_of.strip()}.", "ok")
         elif kind == "example":
             sandbox_mod.add_example(what, as_name=name)
-            _flash(f"{name} copied from the example {what}.")
+            _flash(f"{name} copied from the example {what}.", "ok")
         elif kind == "copy":
             sandbox_mod.copy_model(what, name)
-            _flash(f"{name} copied from {what}.")
+            _flash(f"{name} copied from {what}.", "ok")
         elif kind == "skeleton":
             sandbox_mod.new_model(name)
-            _flash(f"{name} written from the skeleton.")
+            _flash(f"{name} written from the skeleton.", "ok")
         else:
             raise sandbox_mod.SandboxError(f"{start!r} is not a way to start")
         return _sandbox_redirect(name)
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not created", e)
         return _sandbox_redirect(what if kind == "copy" else "")
 
 
@@ -273,15 +283,16 @@ def sandbox_new(request: Request, name: str = Form(...),
 def sandbox_delete_model(name: str, confirm: str = Form("")):
     """Delete a model with its runs (never while one of them fits)."""
     if confirm != name:
-        _flash("Not deleted: the confirmation did not name the model.")
+        _flash("Not deleted: the confirmation did not name the model.",
+               "warn")
         return _sandbox_redirect(name)
     try:
         n = sandbox_mod.delete_model(name, live=_sandbox_status.get("running"))
         _flash(f"Deleted {name}" + (f" and its {n} run{'' if n == 1 else 's'}"
-                                    if n else "") + ".")
+                                    if n else "") + ".", "ok")
         return _sandbox_redirect()
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not deleted", e)
         return _sandbox_redirect(name)
 
 
@@ -289,14 +300,14 @@ def sandbox_delete_model(name: str, confirm: str = Form("")):
 def sandbox_delete_run(run_id: str, confirm: str = Form("")):
     """Delete one run folder (never the live fit)."""
     if confirm != run_id:
-        _flash("Not deleted: the confirmation did not name the run.")
+        _flash("Not deleted: the confirmation did not name the run.", "warn")
         return _sandbox_redirect()
     try:
         model = sandbox_mod.delete_run(run_id, live=_sandbox_status.get("running"))
-        _flash(f"Deleted sandbox run {run_id}.")
+        _flash(f"Deleted sandbox run {run_id}.", "ok")
         return _sandbox_redirect(model)
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not deleted", e)
         return _sandbox_redirect()
 
 
@@ -308,9 +319,9 @@ def sandbox_save(request: Request, name: str,
         sandbox_mod.save_model(name, {"model.bngl": model_bngl,
                                       "data.exp": data_exp,
                                       "priors.conf": priors_conf})
-        _flash(f"Saved {name}.")
+        _flash(f"Saved {name}.", "ok")
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not saved", e)
     return _sandbox_redirect(name)
 
 
@@ -340,16 +351,19 @@ def _sandbox_fill_flash(info: dict) -> None:
         what = "settled truth"
     else:
         what = f"vintage of {info['asof']}"
-    msg = (f"data.exp filled: {info['location']}, {info['start']} to "
-           f"{info['end']}, {what}, {info['rows']} weeks")
+    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}, "
+           f"{info['start']} to {info['end']}.")
+    detail = f"Source: {what}."
     if info["dropped"]:
-        msg += f", {info['dropped']} missing weeks dropped"
+        detail += f" {info['dropped']} missing weeks dropped."
     if info.get("population_set"):
-        msg += f"; N set to {info['population_set']:,}"
-    if info.get("kind") == "rate":
-        msg += (" (rates, not counts: the default objfunc expects counts; "
-                "set objfunc in priors.conf)")
-    _flash(msg)
+        detail += f" N set to {info['population_set']:,}."
+    rate = info.get("kind") == "rate"
+    if rate:
+        # to act on: said on the line, the why in the tip
+        msg += " Rates: set objfunc in priors.conf."
+        detail += " The default objfunc expects counts."
+    _flash(msg, "warn" if rate else "ok", detail=detail)
 
 
 @router.post("/sandbox/models/{name}/fill-data")
@@ -369,7 +383,7 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
         if saved:
-            _flash(f"Saved {', '.join(saved)} first.")
+            _flash(f"Saved {', '.join(saved)} first.", "ok")
         if src.startswith("dataset:"):
             info = sandbox_mod.fill_data(name, (group or "").strip(),
                                          (start or "").strip(),
@@ -383,7 +397,7 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
                 set_pop=pop)
         _sandbox_fill_flash(info)
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not filled", e)
     return _sandbox_redirect(name)
 
 
@@ -398,17 +412,18 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
         if saved:
-            _flash(f"Saved {', '.join(saved)} first.")
+            _flash(f"Saved {', '.join(saved)} first.", "ok")
         s = int(sim_seed) if str(sim_seed).strip().isdigit() else 1
         f = sandbox_mod.simulate_data(name, seed=s)
         noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
                  else "Poisson noise")
-        _flash(f"data.exp filled with {f['rows']} weeks of {f['column']} "
-               "simulated from the model at the values written in "
-               f"model.bngl, with {noise}: a fit should find values near "
-               "them.")
+        # what a fit on them should find is the Simulate button's tip
+        _flash(f"data.exp filled with {f['rows']} simulated weeks of "
+               f"{f['column']}.", "ok",
+               detail=f"Drawn from the model at the values written in "
+               f"model.bngl, with {noise}.")
     except Exception as e:
-        _flash(f"Not simulated: {e}")
+        _not_done("Not simulated", e)
     return _sandbox_redirect(name)
 
 
@@ -467,16 +482,16 @@ async def sandbox_upload_data(request: Request, name: str):
             "nothing was read past it or stored."]}
         return _sandbox_redirect(name)
     except Exception as e:
-        _flash(f"The upload could not be read: {e}")
+        _flash(f"Could not read the upload: {e}", "error")
         return _sandbox_redirect(name if sandbox_mod.NAME_RE.match(name) else "")
     try:
         saved = await run_in_threadpool(
             _sandbox_save_posted, name, str(form.get("model_bngl") or ""),
             str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""))
         if saved:
-            _flash(f"Saved {', '.join(saved)} first.")
+            _flash(f"Saved {', '.join(saved)} first.", "ok")
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not saved", e)
         return _sandbox_redirect(name)
     up = form.get("csv")
     if not isinstance(up, UploadFile) or not up.filename:
@@ -499,10 +514,10 @@ async def sandbox_upload_data(request: Request, name: str):
                                            dataset=ds.id)
             _sandbox_fill_flash(info)
         except Exception as e:
-            _flash(str(e))
+            _not_done(f"Stored {ds.name}; data.exp not filled", e)
     else:
-        _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick a group "
-               "under Load data.")
+        _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick one "
+               "under Load data.", "ok")
     if warn:
         _sandbox_upload_report[name] = {"problems": [], "warnings": warn}
     return RedirectResponse(_sandbox_url(name) + f"&dataset={ds.id}",
@@ -519,7 +534,8 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
     with _engine_lock:
         why = _sandbox_busy_reason()
         if why:
-            _flash(f"Not started: {why}. The sandbox waits for the engine.")
+            _flash(f"Not started: {why}.", "warn",
+                   detail="The sandbox waits for the engine.")
             return _sandbox_redirect(name)
         _sandbox_status.update(claim=name, cancel=False)
     try:
@@ -530,7 +546,7 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
     except Exception as e:
         with _engine_lock:
             _sandbox_status.update(claim=None, cancel=False)
-        _flash(f"Not started: {e}")
+        _not_done("Not started", e)
         return _sandbox_redirect(name)
     run_id = workroot.name
     with _engine_lock:
@@ -539,7 +555,8 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
                                running=None if cancelled else run_id)
     if cancelled:
         sandbox_mod.mark(workroot, "stopped")
-        _flash(f"Sandbox run {run_id} was stopped before it started.")
+        _flash(f"Sandbox run {run_id} was stopped before it started.",
+               "warn")
         return _sandbox_redirect(name, run_id)
 
     def _go():
@@ -558,7 +575,7 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
 
     threading.Thread(target=_go, daemon=True, name=f"sandbox-{run_id}").start()
     _flash(f"Sandbox run {run_id} started with "
-           f"{max(50, min(int(particles), 100_000))} particles.")
+           f"{max(50, min(int(particles), 100_000))} particles.", "ok")
     return _sandbox_redirect(name, run_id)
 
 
@@ -583,9 +600,9 @@ def sandbox_model_run(name: str, model_bngl: str = Form(""),
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
         if saved:
-            _flash(f"Saved {name}.")
+            _flash(f"Saved {name}.", "ok")
     except Exception as e:
-        _flash(f"Not saved, not started: {e}")
+        _not_done("Not saved, not started", e)
         return _sandbox_redirect(name)
     return _sandbox_start(name, particles=particles, jitter=jitter,
                           forecast_weeks=forecast_weeks, seed=seed)
@@ -602,12 +619,13 @@ def sandbox_run_stop(run_id: str):
             live = _sandbox_status.get("running") == run_id
         if live:
             sandbox_mod.stop(d)
-            _flash(f"Stopping sandbox run {run_id}; it ends at the next "
-                   "safe point.")
+            _flash(f"Stopping sandbox run {run_id} at the next safe point.",
+                   "ok")
         else:
-            _flash(f"Sandbox run {run_id} is not fitting; nothing to stop.")
+            _flash(f"Nothing to stop: sandbox run {run_id} is not fitting.",
+                   "warn")
     except Exception as e:
-        _flash(str(e))
+        _not_done("Not stopped", e)
     return _sandbox_redirect(model, run_id if model else "")
 
 
@@ -770,10 +788,10 @@ def sandbox_run_oracle(run_id: str, w: str = Form("")):
         except ValueError:
             raise sandbox_mod.SandboxError(f"w must be a number, not {w!r}")
         out = sandbox_mod.oracle_step(run_id, wv)
-        _flash(f"Oracle step applied to {run_id} with w = {out['w']:g} "
-               "(sandbox, not a submission).")
+        _flash(f"Oracle step applied to {run_id} with w = {out['w']:g}.",
+               "ok", detail="A sandbox result, not a submission.")
     except Exception as e:
-        _flash(f"Oracle step not applied: {e}")
+        _not_done("Oracle step not applied", e)
     return _sandbox_redirect(model, run_id if model else "")
 
 

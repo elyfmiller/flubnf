@@ -1,12 +1,20 @@
-{# "How the Sandbox works": the path from nothing to a fitted model, one
-   line a step, shared by the gallery (a card, open while there are no
-   models) and the workbench (a menu beside Manage). #}
-<ol class="sbsteps">
- <li><strong>Start a model.</strong> Copy the template for a new pathogen, or the example closest to yours; each one fits as shipped.</li>
- <li><strong>Edit its three files.</strong> model.bngl is the model (a parameter whose name ends in __FREE is fitted), data.exp the weekly counts, priors.conf the range each fitted value is drawn from.</li>
- <li><strong>Check.</strong> Reads the files without fitting: what would stop a run, and the model's counts at its written values beside the data.</li>
- <li><strong>Save and run.</strong> The full fit (10,000 particles) gives the estimates; a quick check (200) only shows that the model runs.</li>
- <li><strong>Read the result.</strong> The first line says whether the fit is sound, the band should cover the data points, and the table gives each fitted value with its 5 to 95% range.</li>
- <li><strong>Try a change.</strong> Edit and run again, or Duplicate the model under Manage; Compare with sets two runs side by side and lists what changed. Download run holds the numbers as CSV.</li>
-</ol>
-<p class="hint">Your own counts go in through the data.exp tab: Load data takes the FluSight hub, a dataset or a CSV, and Simulate data draws counts from the model itself to test the fit on values you know.</p>
+{# "How the Sandbox works": the path from nothing to a fitted model as a
+   stepper, each step's explanation in its "?". Shared by the gallery (a
+   card, open while there are no models: across) and the workbench (the
+   How it works menu beside Manage: down); the includer sets how_id (unique
+   per page) and how_vertical. #}
+{% import "_tips.html" as tips %}
+{{ tips.stepper([
+    {"label": "Start a model",
+     "tip": "Copy the template for a new pathogen, or the example closest to yours; each one fits as shipped."},
+    {"label": "Edit its three files",
+     "tip": "model.bngl is the model (a parameter whose name ends in __FREE is fitted), data.exp the weekly counts, priors.conf the range each fitted value is drawn from. Your own counts go in through the data.exp tab: Load data takes the FluSight hub, a dataset or a CSV, and Simulate data draws counts from the model itself to test the fit on values you know."},
+    {"label": "Check",
+     "tip": "Reads the files without fitting: what would stop a run, and the model's counts at its written values beside the data."},
+    {"label": "Save and run",
+     "tip": "The full fit (10,000 particles) gives the estimates; a quick check (200) only shows that the model runs."},
+    {"label": "Read the result",
+     "tip": "The first line says whether the fit is sound, the band should cover the data points, and the table gives each fitted value with its 5 to 95% range."},
+    {"label": "Try a change",
+     "tip": "Edit and run again, or Duplicate the model under Manage; Compare with sets two runs side by side and lists what changed. Download run holds the numbers as CSV."}],
+   label="How the Sandbox works", id=how_id or "sb-how", vertical=how_vertical) }}

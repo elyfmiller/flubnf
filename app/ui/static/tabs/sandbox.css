@@ -1,0 +1,96 @@
+/* Sandbox tab styles: sandbox.html and its partials (sandbox_help,
+   sandbox_data, sandbox_views). A page links this sheet from its
+   {% block head %}, after base.html's nau.css and ui-kit.css; a partial
+   that renders on another tab's page links it itself (docs/UI-KIT.md, "Tab
+   stylesheets"). Colors only through the nau.css tokens; new classes start
+   "sb-"; kit classes (uk-*) are used as they are, never restyled here.
+   The older sandbox rules (sbwork, sbtabs, sbrun-grid, sbfill, sbmenu)
+   stay in nau.css. */
+
+/* ---- page heads ---- */
+/* the gallery's title with its "?" and the never-submitted badge */
+.sb-pagehead{margin:.1rem 0 1rem}
+/* the workbench: a breadcrumb, the model's name with its "?" and badges,
+   then one row of facts */
+.sb-crumb{margin:0;font-size:var(--fs-label);color:var(--mut)}
+.sb-title{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .55rem;min-width:0}
+.sb-title > h1{margin:.1rem 0;min-width:0;overflow-wrap:anywhere}
+.sb-headmeta{margin:0 0 .5rem}
+
+/* the Manage menu: Download and Delete side by side, each on one line */
+.sb-menurow a.btn,.sb-menurow button{white-space:nowrap}
+/* the Manage menu: room for Download (with its icon) and Delete side by
+   side */
+.sbmanage > .sbmenu:not(.sb-howmenu){max-width:min(26rem,calc(100vw - 2rem))}
+
+/* ---- the gallery ---- */
+/* Start from: the list and the "i" with the chosen start's note */
+.sb-startrow{display:flex;align-items:center;gap:.4rem}
+.sb-startrow > select{flex:1 1 auto;min-width:0}
+.sb-about{flex:none}
+.sb-about[hidden]{display:none}
+/* Your models: the name, its note's "i" and an incomplete badge on a line */
+.sb-name{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.15rem .35rem;
+  min-width:0;overflow-wrap:anywhere}
+/* the last run: its status badge is the link */
+a.sb-runlink{display:inline-block;border-radius:99px;text-decoration:none}
+a.sb-runlink:hover{text-decoration:none;opacity:.8}
+
+/* ---- the editor card ---- */
+/* the action row: the buttons left; unsaved, busy and the time estimate
+   pushed to the right edge */
+.sb-status{display:inline-flex;align-items:center;flex-wrap:wrap;
+  gap:.35rem .7rem;margin-left:auto;min-width:0}
+.sb-dirty[hidden],.sb-eta[hidden]{display:none}
+/* Particles: the preset and the count, the time estimate beside them */
+.sb-partsrow{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .9rem}
+.sb-partsrow > .sbpair{flex:0 1 24rem;min-width:0}
+.sb-eta{display:inline-flex;align-items:center;gap:.3rem;color:var(--mut);
+  font-size:var(--fs-label);font-weight:600;font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+/* where data.exp came from: a label, then the facts */
+.sb-src{display:flex;align-items:center;flex-wrap:wrap;gap:.1rem .7rem;
+  margin:.1rem 0 .35rem}
+.sb-src-k{color:var(--mut);font-size:var(--fs-label);font-weight:650;white-space:nowrap}
+.sb-loadrow{margin-top:.55rem}
+/* a list under an alert: the problems or notes it counts */
+.sb-list{margin:-.35rem 0 .7rem 1.6rem;padding:0;font-size:var(--fs-hint)}
+.sb-list li{margin:.15rem 0}
+/* Check's facts under its alert */
+.sb-facts{margin:.2rem 0 0}
+
+/* ---- the results card ---- */
+.sb-settings{margin:.1rem 0 .6rem}
+.sb-sample{margin:.5rem 0 .2rem}
+/* a live fit: the sliding bar, its "?" and Stop on one line, the "?"
+   and Stop level with the bar under its label */
+.sb-live{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.4rem .7rem;margin:.4rem 0 .6rem}
+.sb-live > .tip{margin-bottom:.45rem}
+.sb-live-bar{flex:1 1 12rem;min-width:0}
+.sb-live form{margin:0}
+/* the fit in a word: the alert, the full fit at its right */
+.sb-health{margin:.5rem 0 .1rem}
+.sb-health form{margin:0}
+/* a failed run's own words: the error edge on the engine's text */
+pre.sb-err{border-left:3px solid var(--bad);color:var(--ink)}
+
+/* ---- what changed ---- */
+.sb-files{list-style:none;display:flex;flex-wrap:wrap;gap:.35rem 1.4rem;
+  margin:.7rem 0 .4rem;padding:0}
+.sb-files li{display:inline-flex;align-items:center;gap:.45rem}
+.sb-files code,.sb-filediff code{font-size:var(--fs-label)}
+
+/* ---- the Oracle step ---- */
+.sb-ostats{margin:.8rem 0 .4rem}
+
+/* ---- How the Sandbox works ---- */
+/* the gallery's card (under New model): its stepper under the heading */
+details.sbhow[open] > summary{margin-bottom:.7rem}
+/* the workbench menu: as wide as its steps */
+.sbmenu.sb-howmenu{width:max-content;max-width:min(22rem,calc(100vw - 2rem))}
+
+/* ---- the diagram ---- */
+.sb-key{margin:.45rem 0 0}
+pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
+  padding:.5rem .7rem;border-radius:var(--r-sm);background:var(--bg);
+  color:var(--mut);font-size:var(--fs-label)}

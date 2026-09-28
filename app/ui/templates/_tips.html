@@ -19,3 +19,232 @@
 {% macro label(text, id, tiptext, for_="") -%}
 <div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{{ tip(id, text | lower, tiptext) }}</div>
 {%- endmacro %}
+
+{# ---------------------------------------------------------------- the kit
+   The components that replace loose explanatory text (docs/UI-KIT.md: when
+   to use each, with examples). Styles: static/ui-kit.css, colors through
+   the nau.css tokens only; behavior: static/tips.js (FluBNFUI). Every
+   macro whose explainer can be rich text takes it as a call block, as tip()
+   does:  {% call tips.badge("warn", "not archived") %}...{% endcall %}
+   Ids are the caller's: a tip's box is "tip-<id>", a toggletip's
+   "tt-<id>", so one id per page.
+
+     icon, icon_tip         the inline icon set; an icon whose tooltip explains
+     heading                a section title and its "?"
+     toggletip              a click-to-open explainer that may hold links and lists
+     badge                  a status pill: icon and word (ok, warn, error, info,
+                            neutral, pending)
+     alert                  a line the user must act on now
+     empty                  an empty state: icon, short title, one action
+     stats, stat            labelled values with their units
+     reason_button          a disabled control whose reason is its tip
+     stepper, progress      steps of a flow; a labelled progress bar
+     legend                 color or shape chips for a chart
+     fold                   progressive disclosure for detail lists
+     meta                   a row of facts (icon and value) instead of a sentence
+     tag                    a kind or a unit in a word, with no state
+     namechip               the name of the formula or figure beside it, its
+                            reading in a "?" #}
+
+{# the icon set: 16-unit strokes in currentColor, sized in em (1em square),
+   drawn by the attributes alone so an icon reads without ui-kit.css (the
+   season report inlines player.js, not the kit's stylesheet). static/tips.js
+   carries the same table (FluBNFUI.icon); a test holds them equal. #}
+{% set ICONS = {
+ "info": '<circle cx="8" cy="8" r="6.25"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".95" fill="currentColor" stroke="none"/>',
+ "warning": '<path d="M8 1.9 14.6 13.5H1.4Z"/><path d="M8 6.1v3.4"/><circle cx="8" cy="11.5" r=".95" fill="currentColor" stroke="none"/>',
+ "error": '<path d="M5.4 1.75h5.2l3.65 3.65v5.2l-3.65 3.65H5.4L1.75 10.6V5.4Z"/><path d="M8 4.7v3.9"/><circle cx="8" cy="11" r=".95" fill="currentColor" stroke="none"/>',
+ "check": '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>',
+ "clock": '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/>',
+ "download": '<path d="M8 2.1v8.2"/><path d="m4.8 7.2 3.2 3.2 3.2-3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
+ "upload": '<path d="M8 10.3V2.1"/><path d="m4.8 5.3 3.2-3.2 3.2 3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
+ "folder": '<path d="M1.9 4.3c0-.6.4-1 1-1h3.3l1.5 1.7h5.4c.6 0 1 .4 1 1v6.8c0 .6-.4 1-1 1H2.9c-.6 0-1-.4-1-1Z"/>',
+ "external": '<path d="M12.7 9.3v3.6c0 .6-.4 1-1 1H3.1c-.6 0-1-.4-1-1V4.3c0-.6.4-1 1-1h3.6"/><path d="M9.3 2.1h4.6v4.6"/><path d="M13.9 2.1 7.5 8.5"/>',
+ "lock": '<rect x="3" y="7" width="10" height="7" rx="1.4"/><path d="M5.3 7V5.1a2.7 2.7 0 0 1 5.4 0V7"/>',
+ "calendar": '<rect x="2" y="3.2" width="12" height="10.8" rx="1.4"/><path d="M2 6.7h12M5.2 1.8v2.8M10.8 1.8v2.8"/>',
+ "refresh": '<path d="M13.3 8a5.3 5.3 0 1 1-1.55-3.75"/><path d="M12.3 1.7v2.9H9.4"/>',
+ "dot": '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
+ "close": '<path d="m4.3 4.3 7.4 7.4M11.7 4.3l-7.4 7.4"/>',
+} %}
+{# a badge's icon by state, so the state never rests on color alone #}
+{% set STATE_ICONS = {"ok": "check", "warn": "warning", "error": "error",
+                      "info": "info", "neutral": "dot", "pending": "clock"} %}
+
+{# an inline icon. Decorative (aria-hidden) unless it carries meaning of its
+   own: then give `label` and it becomes role="img" with that name. #}
+{% macro icon(name, label="", cls="") -%}
+<svg class="uk-icon{% if cls %} {{ cls }}{% endif %}" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"{% if label %} role="img" aria-label="{{ label }}"{% else %} aria-hidden="true"{% endif %} focusable="false">{{ ICONS[name] | safe }}</svg>
+{%- endmacro %}
+
+{# a tip whose button is an icon instead of "?" (a warning mark whose
+   tooltip names what to check, a lock whose tooltip says why). Same
+   behavior and markup as tip(); `state` colors the icon (ok, warn, error,
+   info). #}
+{% macro icon_tip(id, label, name, text="", state="") -%}
+<span class="tip"><button type="button" class="tipbtn uk-tipicon{% if state %} uk-c-{{ state }}{% endif %}"
+ aria-label="About {{ label }}" aria-describedby="tip-{{ id }}">{{ icon(name) }}</button
+><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+{%- endmacro %}
+
+{# a toggletip: an "i" button that opens a panel on click (and on keyboard
+   focus without script), for an explanation too long or too rich for a
+   tooltip: links, lists, several lines. The panel is ordinary content the
+   button controls (aria-expanded, aria-controls), never role=tooltip, so a
+   link inside it is reachable by Tab. tips.js adds Escape and click-outside
+   closing and places the panel in the viewport. Block content (a list)
+   needs the toggletip outside any <p>: a <ul> closes an open <p>. #}
+{% macro toggletip(id, label, text="", title="") -%}
+<span class="uk-tt"><button type="button" class="uk-tt-btn" aria-expanded="false"
+ aria-controls="tt-{{ id }}" aria-label="More about {{ label }}">i</button
+><span class="uk-tt-pop" id="tt-{{ id }}">{% if title %}<strong class="uk-tt-title">{{ title }}</strong>{% endif %}{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+{%- endmacro %}
+
+{# a section title with its explainer beside it (not inside the heading, so
+   the heading's accessible name stays the title alone). `after` is markup
+   that follows the tip (a badge, a count); `aside` sits at the right edge
+   (an action). rich=True makes the explainer a toggletip. #}
+{% macro heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+{%- set lbl = tip_label or (text | lower) -%}
+<div class="uk-heading{% if cls %} {{ cls }}{% endif %}"><h{{ level }}{% if id %} id="h-{{ id }}"{% endif %}>{{ text }}</h{{ level }}>
+{%- if body | trim %}{% if rich %}{{ toggletip(id, lbl, body) }}{% else %}{{ tip(id, lbl, body) }}{% endif %}{% endif %}
+{%- if after %}{{ after }}{% endif %}
+{%- if aside %}<span class="uk-heading-aside">{{ aside }}</span>{% endif %}</div>
+{%- endmacro %}
+
+{# a status badge: icon and word, never color alone. state is one of ok,
+   warn, error, info, neutral, pending; `icon` overrides the state's icon.
+   With tiptext (or a call block) its "?" follows it, the two held
+   together (uk-badge-pair) so a wrapping line never splits them. An `id`
+   names the badge (FluBNFUI.setBadge updates it in place) and its tip
+   ("tip-<id>"). #}
+{% macro badge(state, text, tiptext="", id="", icon_name="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+{%- set b %}<span class="uk-badge uk-badge--{{ state }}"{% if id %} id="{{ id }}"{% endif %} data-state="{{ state }}">{{ icon(icon_name or STATE_ICONS.get(state, "dot")) }}<span class="uk-badge-t">{{ text }}</span></span>{% endset -%}
+{%- if body | trim %}<span class="uk-badge-pair">{{ b }}{{ tip(id or ("b-" ~ (text | lower | replace(" ", "-"))), text, body) }}</span>
+{%- else %}{{ b }}{% endif %}
+{%- endmacro %}
+
+{# a line the user must act on now: one short line, the details in its tip.
+   kind: error (announced as an alert), warn, info, ok (announced politely);
+   live="" silences it (a line present from first paint that is not news).
+   `title` is a bold lead; `action` is markup at the right (a link or a
+   button). hidden=True renders it hidden, for a page script to show.
+   `tip_label` names the "?" where the line itself would read wrong. #}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+{%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
+{%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
+<div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
+{%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
+{%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
+{%- endmacro %}
+
+{# an empty state: an icon, one short title, and at most one action (a link
+   or a button, as markup). compact=True is one line, for a list inside a
+   card; the default is a block that fills the space the content would.
+   hidden=True renders it hidden, for a page script to show. #}
+{% macro empty(title, icon_name="folder", action="", tiptext="", id="", compact=False, hidden=False) -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+<div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
+{%- if body | trim %} {{ tip(id or "empty", title | lower, body) }}{% endif %}</p>
+{%- if action %}<div class="uk-empty-action">{{ action }}</div>{% endif %}</div>
+{%- endmacro %}
+
+{# labelled values: a sentence like "123 admissions, newest week ..." becomes
+   one stat per fact. stats() is the list; stat() one entry:
+   {% call tips.stats() %}{{ tips.stat("Newest week", d, id="nw") }}{% endcall %}
+   cls: "" (tiles that wrap), "uk-stats--kv" (label and value columns),
+   "uk-stats--row" (one compact row). `state` (ok, warn, error) colors the
+   value; say the state in words too (a badge in `after`). `tip_label`
+   names the "?" where lowercasing the label would not ("relWIS"). #}
+{% macro stats(cls="", label="") -%}
+<dl class="uk-stats{% if cls %} {{ cls }}{% endif %}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ caller() }}</dl>
+{%- endmacro %}
+{% macro stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+<div class="uk-stat{% if state %} uk-stat--{{ state }}{% endif %}"><dt>{{ label }}
+{%- if body | trim %}{{ tip(id or ("s-" ~ (label | lower | replace(" ", "-"))), tip_label or (label | lower), body) }}{% endif %}</dt><dd><span class="uk-stat-v"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</span>{% if unit %} <span class="uk-stat-u">{{ unit }}</span>{% endif %}{% if after %} {{ after }}{% endif %}</dd></div>
+{%- endmacro %}
+
+{# a control that is off for a reason: the button is disabled and described
+   by a "?" that states why (a disabled button takes no focus; its tip
+   does). off=False renders it enabled with the tip hidden, for a page
+   script to switch (FluBNFUI.setReason(button, reason or null)). `data` is
+   a dict of data-* attributes; `attrs` raw extra attributes. #}
+{% macro reason_button(text, id, reason, off=True, cls="", type="", name="", value="", data={}, attrs="", label="") -%}
+<span class="uk-reason"><button{% if type %} type="{{ type }}"{% endif %}{% if cls %} class="{{ cls }}"{% endif %}{% if name %} name="{{ name }}"{% endif %}{% if value %} value="{{ value }}"{% endif %}
+{%- for k, v in data.items() %} data-{{ k }}="{{ v }}"{% endfor %}{% if attrs %} {{ attrs }}{% endif %}{% if off %} disabled aria-describedby="tip-{{ id }}"{% endif %} data-uk-reason="{{ id }}">{{ text }}</button
+><span class="uk-reason-tip"{% if not off %} hidden{% endif %}>{{ tip(id, label or ("why " ~ (text | lower) ~ " is unavailable"), reason) }}</span></span>
+{%- endmacro %}
+
+{# the steps of a flow. steps: a list of dicts {label, href, tip, meta,
+   state, tip_label}; tip_label names the "?" where the label in lower case
+   would repeat a nav link's name ("the Data step"); state is done,
+   current, todo or error, else it follows `current`
+   (1-based: earlier steps done, that one current). current=0 is a plain
+   numbered guide. Each step's state is spoken (visually hidden text) as
+   well as drawn. vertical=True stacks them with a joining line. #}
+{% macro stepper(steps, current=0, label="Steps", id="steps", vertical=False) -%}
+<ol class="uk-stepper{% if vertical %} uk-stepper--vertical{% endif %}" aria-label="{{ label }}">
+{%- for s in steps %}{% set n = loop.index %}
+{%- set st = s.state or ("done" if current and n < current else ("current" if n == current else "todo")) %}
+<li class="uk-step uk-step--{{ st }}"{% if st == "current" %} aria-current="step"{% endif %}><span class="uk-step-mark" aria-hidden="true">{% if st == "done" %}{{ icon("check") }}{% elif st == "error" %}{{ icon("error") }}{% else %}{{ n }}{% endif %}</span><span class="uk-step-body"><span class="uk-step-label">{% if s.href %}<a href="{{ s.href }}">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}</span>
+{%- if st == "done" %}<span class="uk-sr"> (done)</span>{% elif st == "current" %}<span class="uk-sr"> (current step)</span>{% elif st == "error" %}<span class="uk-sr"> (problem)</span>{% endif %}
+{%- if s.tip %}{{ tip(id ~ "-" ~ n, s.tip_label or (s.label | lower), s.tip) }}{% endif %}
+{%- if s.meta %}<span class="uk-step-meta">{{ s.meta }}</span>{% endif %}</span></li>
+{%- endfor %}</ol>
+{%- endmacro %}
+
+{# a labelled progress bar: value/max, or value=none for work without an
+   honest denominator (the bar slides; reduced motion holds it). `text` is
+   the readout beside the label ("3 of 10 weeks"). #}
+{% macro progress(label, value=none, max=100, text="", id="progress") -%}
+{%- set pct = ((100 * value / max) | round(1)) if (value is not none and max) else none -%}
+<div class="uk-progress{% if pct is none %} uk-progress--busy{% endif %}" id="{{ id }}"><div class="uk-progress-head"><span class="uk-progress-label" id="{{ id }}-l">{{ label }}</span>{% if text %}<span class="uk-progress-val">{{ text }}</span>{% endif %}</div>
+<div class="uk-progress-track" role="progressbar" aria-labelledby="{{ id }}-l"{% if pct is not none %} aria-valuemin="0" aria-valuemax="{{ max }}" aria-valuenow="{{ value }}"{% endif %}{% if text %} aria-valuetext="{{ text }}"{% endif %}><div class="uk-progress-fill"{% if pct is not none %} style="width:{{ pct }}%"{% endif %}></div></div></div>
+{%- endmacro %}
+
+{# chart legend chips: a swatch and a word each, instead of a sentence that
+   names colors. items: (color, text), (color, text, shape) or dicts {color,
+   text, shape, tip}; color is a token (var(--gold)) or a palette value the
+   server passes; shape: box (default), line, dash, dotted, point, ring,
+   band. #}
+{% macro legend(items, label="Legend", id="") -%}
+<ul class="uk-legend"{% if id %} id="{{ id }}"{% endif %} aria-label="{{ label }}">
+{%- for it in items %}{% set d = it if it is mapping else {"color": it[0], "text": it[1], "shape": (it[2] if it | length > 2 else "")} %}
+<li class="uk-chip"><span class="uk-sw{% if d.shape %} uk-sw--{{ d.shape }}{% endif %}" style="--sw:{{ d.color }}" aria-hidden="true"></span>{{ d.text }}
+{%- if d.tip %}{{ tip((id or "lg") ~ "-" ~ loop.index, d.text | lower, d.tip) }}{% endif %}</li>
+{%- endfor %}</ul>
+{%- endmacro %}
+
+{# progressive disclosure: a closed fold whose summary says what is inside
+   ("3 missing locations"), the list or detail in the body (a call block).
+   `after` is markup in the summary after its text (a badge). #}
+{% macro fold(summary, id="", open=False, after="", cls="") -%}
+<details class="uk-fold{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if open %} open{% endif %}><summary><span class="uk-fold-sum">{{ summary }}</span>{% if after %} {{ after }}{% endif %}</summary><div class="uk-fold-body">{{ caller() }}</div></details>
+{%- endmacro %}
+
+{# a row of facts instead of a sentence: items are (icon, text), (icon,
+   text, label) or plain text; `label` is spoken before the text (visually
+   hidden) where the icon alone names the fact ("Size: 5.4 MB"). #}
+{% macro meta(items, label="") -%}
+<ul class="uk-meta"{% if label %} aria-label="{{ label }}"{% endif %}>
+{%- for it in items %}{% if it is string %}<li>{{ it }}</li>{% else %}<li>{% if it[0] %}{{ icon(it[0]) }}{% endif %}{% if it | length > 2 and it[2] %}<span class="uk-sr">{{ it[2] }}: </span>{% endif %}<span>{{ it[1] }}</span></li>{% endif %}
+{%- endfor %}</ul>
+{%- endmacro %}
+
+{# a tag: a kind or a unit in a word ("Mechanistic", "relWIS",
+   "population"), outlined and muted, with no icon: it states no status
+   (a status is a badge) #}
+{% macro tag(text, cls="") -%}
+<span class="uk-tag{% if cls %} {{ cls }}{% endif %}">{{ text }}</span>
+{%- endmacro %}
+
+{# a name chip: the short name of the formula or figure beside it, the
+   reading in the "?" it holds. Put the formula and its chip in a
+   <p class="uk-figline">, a centered line under a figure. #}
+{% macro namechip(text, id, tiptext="", tip_label="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+<span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>
+{%- endmacro %}

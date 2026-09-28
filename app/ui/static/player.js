@@ -38,6 +38,13 @@
      preload       optional function(week): host hook for the next week
      plotHeight    optional plot height in px, or a function returning
                    it (re-read per draw and on resize; default 400)
+     scaleNote     optional: false leaves the scale switch's one-line
+                   hint out (the console says it in its "?" tip); the
+                   standalone report keeps it
+     verdictIcons  optional: true follows each relWIS figure with the UI
+                   kit's check or warning icon, named (the console, where
+                   every other relWIS carries one); the standalone report
+                   keeps the color and the cell's title
      ids           optional DOM id overrides, see DEFAULT_IDS
 
    The stats table (renderStats) shows, per enabled model, "This week" and
@@ -211,7 +218,7 @@ function frameConf(loc, week){
 
 // ---------------------------------------------------------- pure helpers
 
-// root font size in px, so plotly text (px only) tracks the A-/A/A+ control
+// root font size in px, so plotly text (px only) tracks the text-size slider
 function rootFont(){
   try{
     return parseFloat(
@@ -443,8 +450,25 @@ function cellsNote(n){
 // coverage. `state` is the period's reading (weekCellState); without a
 // score the period is ONE cell across its group, "pending", "no
 // submission" or "no FluSight round" (a no-data week), and a missing
-// coverage figure is a dash
+// figure reads "n/a"
 var NO_ROUND_CELL = 'no FluSight round';
+// the host's cfg.verdictIcons (createPlayer sets it): the kit's check and
+// warning icons (templates/_tips.html ICONS), drawn by their attributes
+var VERDICT_ICONS = false;
+function verdictIcon(v){
+  if(!VERDICT_ICONS) return '';
+  var ok = v < 1;
+  return '<svg class="uk-icon rt-verdict uk-c-' + (ok ? 'ok' : 'error')
+    + '" viewBox="0 0 16 16" width="1em" height="1em" fill="none"'
+    + ' stroke="currentColor" stroke-width="1.5" stroke-linecap="round"'
+    + ' stroke-linejoin="round" role="img" aria-label="'
+    + (ok ? 'beats the baseline' : 'does not beat the baseline')
+    + '" focusable="false">'
+    + (ok ? '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>'
+       : '<path d="M8 1.9 14.6 13.5H1.4Z"/><path d="M8 6.1v3.4"/>'
+         + '<circle cx="8" cy="11.5" r=".95" fill="currentColor" stroke="none"/>')
+    + '</svg>';
+}
 function periodCells(p, state, scale){
   if(state !== 'score')
     return '<td colspan="4" class="num hint gap g1">'
@@ -455,14 +479,14 @@ function periodCells(p, state, scale){
   var rel = isNum(p.shown)
     ? '<td class="num g1 ' + (p.shown < 1 ? 'ok' : 'bad') + '" title="'
       + what + (cells ? ' over ' + cells : '') + '">'
-      + p.shown.toFixed(3) + '</td>'
+      + p.shown.toFixed(3) + verdictIcon(p.shown) + '</td>'
     : '<td class="num hint g1" title="' + what + ' is not available for '
-      + 'these scores">–</td>';
+      + 'these scores">n/a</td>';
   return rel + COV_BANDS.map(function(b){
     var v = p.cov ? p.cov[b] : null, pc = covPct(v);
     if(pc === null)
       return '<td class="num hint" title="coverage is not available for '
-        + 'these scores">–</td>';
+        + 'these scores">n/a</td>';
     return '<td class="num cov-' + covState(v, +b) + '" title="' + pc
       + '% of ' + (cells || 'the scored cells') + ' inside the central '
       + b + '% interval">' + pc + '%</td>';
@@ -478,8 +502,9 @@ function covLegend(){
     + '<span class="cov-wide">further over (too wide)</span>.';
 }
 
-// the scale switch: a label, two aria-pressed buttons, the one-line hint
-function scaleSwitch(scale){
+// the scale switch: a label, two aria-pressed buttons, the one-line hint;
+// `note` false leaves the hint out (a host that says it in a tip)
+function scaleSwitch(scale, note){
   return '<span class="hint" id="pb-scale-l">relWIS scale</span>'
     + '<span class="seg" role="group" aria-labelledby="pb-scale-l">'
     + SCALES.map(function(s){
@@ -488,8 +513,8 @@ function scaleSwitch(scale){
           + (on ? ' class="gold"' : '') + ' aria-pressed="' + on + '">'
           + s + '</button>';
       }).join('')
-    + '</span><span class="hint">The CDC FluSight dashboard reports '
-    + 'both.</span>';
+    + '</span>' + (note === false ? '' : '<span class="hint">The CDC FluSight dashboard reports '
+    + 'both.</span>');
 }
 
 // models offered, in display order: the ones that ship. A stored season's
@@ -524,6 +549,7 @@ function noForecastNote(loc, available, enabled, us){
 
 function createPlayer(cfg){
   var weeks = cfg.weeks || [];
+  VERDICT_ICONS = !!cfg.verdictIcons;
   var ids = {}, k;
   for(k in DEFAULT_IDS) ids[k] = DEFAULT_IDS[k];
   if(cfg.ids) for(k in cfg.ids) ids[k] = cfg.ids[k];
@@ -670,7 +696,7 @@ function createPlayer(cfg){
     }
     th.innerHTML = statsHead(P.scale, el.stats.classList.contains('stacked'));
     if(el.scale){
-      el.scale.innerHTML = scaleSwitch(P.scale);
+      el.scale.innerHTML = scaleSwitch(P.scale, cfg.scaleNote);
       el.scale.querySelectorAll('button[data-scale]').forEach(function(b){
         b.addEventListener('click', function(){
           if(P.scale === b.dataset.scale) return;
@@ -1026,7 +1052,7 @@ function createPlayer(cfg){
     renderStats(P.pl);
     if(detailVisible()) drawFC();
   });
-  // fired by the console's A-/A/A+ control (never in the static report)
+  // fired by the console's text-size slider (never in the static report)
   addEventListener('fontsizechange', function(){
     if(detailVisible()) drawFC();
   });

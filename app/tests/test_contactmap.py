@@ -296,7 +296,8 @@ def test_network_route_draws_a_saved_model_and_reports_bngs_words(box):
 def test_editor_page_carries_the_view_pills(box):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
-    assert 'id="cmap"' in html and 'id="cmap-svg"' in html and "<h2>Diagram " in html
+    assert 'id="cmap"' in html and 'id="cmap-svg"' in html
+    assert '<h2 id="h-sb-diagram">Diagram</h2>' in html            # its "?" beside it
     # the rules' flow first; the other two only for a model with sites
     assert 'data-view="flow" role="tab" aria-selected="true">Model<' in html
     assert 'data-view="contactmap" role="tab" aria-selected="false" hidden>Binding sites<' in html

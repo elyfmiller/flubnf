@@ -1,0 +1,117 @@
+/* Retrospective tab styles: retro.html, retro_season.html,
+   retro_dataset.html and _dataset_replay.html. A page links this sheet
+   from its {% block head %}, after base.html's nau.css and ui-kit.css; a
+   partial that renders on another tab's page links it itself (docs/UI-
+   KIT.md, "Tab stylesheets"). Colors only through the nau.css tokens; new
+   classes start "rt-"; kit classes (uk-*) are used as they are, never
+   restyled here.
+
+   CONTENTS
+     1. page titles: the h1 with its badges, the line of facts under it
+     2. the index: season cards (band, live readout, facts), the import card
+     3. the season page: band, verdict tiles, player notes, per-state filter
+     4. your data: the kind badge, replay rows, the horizon switch */
+
+/* ---- 1. page titles ---- */
+/* the h1 and its state badges on one line, wrapping under it */
+.rt-title{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .6rem;
+  margin:.1rem 0 .7rem}
+.rt-title > h1{margin:0}
+/* the hub tab's h1 with its "?" */
+.rt-h1{margin:.1rem 0 .6rem}
+/* the facts under a title: a badge and a row of values */
+.rt-sub{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .9rem;
+  margin:-.3rem 0 .9rem}
+/* a section heading outside a card, in the card headings' kicker style */
+.rt-sec-h > h2{font-size:var(--fs-h2);text-transform:uppercase;
+  letter-spacing:.05em;color:var(--mut)}
+/* a relWIS verdict's icon beside its figure (the color is not alone) */
+.rt-verdict{margin-left:.25em}
+.rt-rel{white-space:nowrap}
+
+/* ---- 2. the index ---- */
+/* the band: the Results button keeps the right edge */
+.rt-go{margin-left:auto}
+/* an archived run's Results link: the row's small button size */
+.archrow a.btn{padding:.22rem .6rem;font-size:var(--fs-label)}
+/* the live readout, its "?" (what the estimate rests on) and the
+   connection badge on one line */
+.rt-readout{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .6rem}
+.rt-readout .runstat{margin:.25rem 0}
+/* the season's facts under its band */
+.rt-facts{margin:.55rem 0 .25rem}
+/* the resume, pause and stop controls */
+.rt-resume{margin:.55rem 0 .15rem}
+/* the archived runs: a small heading, rows of facts */
+.rt-arch-h{margin:1rem 0 .15rem}
+.rt-arch-h > h3{margin:0;font-size:var(--fs-label);font-weight:650;
+  color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+/* the import card: the replace box on its own line under the path */
+.rt-importcard form > button{margin-top:.6rem}
+.rt-importcard .lblrow .ck{margin:0}
+
+/* ---- 3. the season page ---- */
+/* the band's facts: the timing values and the state badges */
+.rt-bandfacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem}
+/* the settings as a row of facts with the full list in its "?" */
+.rt-settings{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:0 .35rem}
+/* the facts wrap in their own box; the "?" stays beside them, never on a
+   line of its own */
+.rt-settings > ul{flex:0 1 auto;min-width:0}
+.rt-settings > .tip{flex:none;margin-top:.15rem}
+.rt-exp{display:inline-flex;align-items:center;gap:.25rem}
+.rt-exp-out{font-size:var(--fs-label)}
+/* a verdict tile: its title and "?" on one line, the figure with its
+   verdict icon, the second lines wrapping inside a narrow tile */
+.rt-tile-h{display:flex;align-items:flex-start;flex-wrap:nowrap;
+  gap:.1rem .35rem;margin:0 0 .35rem}
+.rt-tile-h > h2{flex:0 1 auto;min-width:0;margin:0}
+/* the "?" stays beside a title that wraps */
+.rt-tile-h > .tip{flex:none}
+/* a row of tiles shares its rows (title, figure, second lines), so a title
+   that wraps moves every figure of the row with it and they stay level */
+.verdict .tiles4 > .rt-tile{display:grid;grid-row:span 3;
+  grid-template-rows:subgrid;row-gap:0;align-content:start}
+.rt-big .rt-verdict{font-size:.5em;vertical-align:.45em;margin-left:.35rem}
+.tilekv.rt-tilekv{grid-template-columns:max-content minmax(0,1fr)}
+.rt-tilekv .rt-cov{overflow-wrap:anywhere}
+/* a tile too narrow for label and value side by side (four across, large
+   text) stacks each label over its value (the container is the list's
+   box: a container cannot be a subgrid, and the tile is one) */
+.rt-tilemore{container-type:inline-size}
+@container (max-width:17rem){
+  .tilekv.rt-tilekv{grid-template-columns:minmax(0,1fr);gap:0}
+  .rt-tilekv dd + dt{margin-top:.25rem}
+}
+/* the map's note (a week without data, a model not stored): an icon and
+   the line; hidden until the page script writes it */
+.rt-note:not([hidden]){display:flex;align-items:center;gap:.4rem;
+  margin:.1rem 0 .45rem;color:var(--ink);font-size:var(--fs-label)}
+.rt-note-i{flex:none;color:var(--accent-ink)}
+/* the live scores' heading and its "i" kept together beside the switch */
+.rt-hgroup{display:inline-flex;align-items:center;gap:.1rem}
+.rt-hgroup > h2{margin:0}
+.rs-h .rt-hgroup .tip{margin-left:.2rem}
+/* the axes lock and its "?" inline in the forecast detail's control row */
+.lblrow.rt-lock{display:inline-flex;margin:0}
+/* the per-state name filter and its count */
+.rt-filter{margin:.55rem 0 .35rem}
+.rt-filter input[type="search"]{width:auto;min-width:min(14rem,45vw);
+  max-width:100%}
+.rt-count{color:var(--mut);font-size:var(--fs-label)}
+
+/* ---- 4. your data ---- */
+/* the "Replay this" confirmation across the tab, its notices under it */
+.rt-stored{margin:0 0 var(--sp-3)}
+/* what the replayed weeks see: a label and its badge */
+.lblrow.rt-kind{gap:.4rem;margin:.6rem 0 .35rem}
+.rt-kind-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+/* a badge on its own line under a field (the engine build) */
+.rt-under{margin:.35rem 0 .2rem}
+/* a replay row's facts and the "?" on its baseline */
+.rt-meta{display:flex;flex-wrap:wrap;align-items:center;gap:0 .35rem}
+.rt-abst{margin:.5rem 0 0}
+.rt-detail{align-items:flex-start;gap:2rem}
+.rt-plot{min-height:25rem}
+/* the horizon's label beside its segmented switch (the kit's uk-seg) */
+.rt-hz-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}

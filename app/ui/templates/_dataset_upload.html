@@ -6,50 +6,58 @@
    Two drop zones side by side (stacked in a narrow window), one form:
    the first takes one weekly CSV (name="file"); the second, optional,
    several dated snapshot files or a folder of them (name="snapshots",
-   one file per as_of), stored as one vintage-true dataset. Each zone is
-   a label around its native file input (visually hidden but focusable:
-   the zone shows its focus and, with script, what was chosen); the
-   folder link under the second is an input of its own. Name and Values
-   appear once files are chosen. With script (static/dataset_upload.js)
-   the files are checked at once and the result box (_dataset_check.html)
-   shows every problem, a column mapping, or a preview whose buttons store
-   them and open them where they are needed; a status line (role=status)
-   says in a few words what the check found. Several files or a folder
-   dropped on the first zone go to the second. Without script the form
-   stores them (POST /data/datasets; a folder posts its tables) and a
-   refusal comes back on the Data tab, scrolled to its upload box
-   (#datasets) with the problems announced (role=alert). `upload` is a
-   refused store's report. #}
+   one file per as_of), stored as one vintage-true dataset. Each zone has
+   a title whose "?" says what goes in it, and under it the one link it
+   offers (the template CSV; the folder pick). Each zone is a label
+   around its native file input (visually hidden but focusable: the zone
+   shows its focus and, with script, what was chosen); the folder link
+   under the second is an input of its own. Name and Values appear once
+   files are chosen. With script (static/dataset_upload.js) the files are
+   checked at once and the result box (_dataset_check.html) shows every
+   problem, a column mapping, or a preview whose buttons store them and
+   open them where they are needed; a status line (role=status) says in a
+   few words what the check found. Several files or a folder dropped on
+   the first zone go to the second. Without script the form stores them
+   (POST /data/datasets; a folder posts its tables) and a refusal comes
+   back on the Data tab, scrolled to its upload box (#datasets) with the
+   problems announced (role=alert). `upload` is a refused store's report.
+   The box links the Data tab's stylesheet itself: it renders on the
+   Forecast and Retrospective pages too (a <link> in the body is valid;
+   the browser loads the file once). #}
 {% import "_tips.html" as tips %}
 {% import "_dataset_check.html" as dscheck %}
 {% macro box(where, upload=none) -%}
 {% set fid = "dsup-" ~ where %}
 {% set accept = ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" %}
+<link rel="stylesheet" href="/static/tabs/data.css">
 <form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
   class="dsup{% if upload %} has-file{% endif %}" id="{{ fid }}" data-dsup data-where="{{ where }}">
  <div class="dsboxes">
-  <div class="dsbox">
+  <div class="dsbox dt-zone">
+   <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
+    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations. For a true retrospective, give the data as each week saw it: an as_of column, or snapshot files in the box beside this one.</span>{% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
     <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
+    {{ tips.icon("upload", cls="dt-dropicon") }}
     <span class="dsdrop-t">Drop a CSV here or <span class="dslink">choose a file</span></span>
     <span class="dsdrop-on" aria-hidden="true">Drop to check</span>
     <span class="dsdrop-f" data-file></span>
    </label>
-   <p class="hint">Weekly rows of date, group and value; population optional.
-    <span class="dskeep"><a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a>
-    {{ tips.tip(fid ~ "-about", "the file", "Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to " ~ dataset_upload_mb() ~ " MB. The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations. For a true retrospective, give the data as each week saw it: an as_of column, or snapshot files in the box beside this one.") }}</span></p>
+   <div class="dt-zonelinks"><a href="/static/dataset-template.csv" download="dataset-template.csv">{{ tips.icon("download") }} Template CSV</a></div>
   </div>
-  <div class="dsbox">
+  <div class="dsbox dt-zone">
+   <div class="dt-zonehead"><span class="dt-zonetitle">Snapshots</span>
+    {{ tips.badge("neutral", "optional") }}
+    {% call tips.tip(fid ~ "-snaps", "snapshot files") %}<span class="ncline">Optional: dated snapshots, one file per as_of.</span><span class="ncline">Several files at once (or a folder), one snapshot per as_of, each a table like the weekly CSV named by its as_of date (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column. The files must share their columns and groups; they are stored as one vintage-true dataset, and each replayed week then sees the snapshot that held it.</span><span class="ncline">A folder gives its CSV, TSV and TXT files; several files dropped on the first box come here.</span>{% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-snap" data-drop="snap">
     <input type="file" name="snapshots" id="{{ fid }}-snap" data-snap multiple accept="{{ accept }}">
+    {{ tips.icon("upload", cls="dt-dropicon") }}
     <span class="dsdrop-t">Drop snapshots here or <span class="dslink">choose files</span></span>
     <span class="dsdrop-on" aria-hidden="true">Drop to check as snapshots</span>
     <span class="dsdrop-f" data-file></span>
    </label>
-   <p class="hint">Optional: dated snapshots, one file per as_of.
-    <span class="dskeep"><span class="dsfolder"><label class="dslink" for="{{ fid }}-folder">Choose a folder</label>
-     <input type="file" name="snapshots" id="{{ fid }}-folder" data-folder webkitdirectory multiple></span>
-    {{ tips.tip(fid ~ "-snaps", "snapshot files", "Several files at once (or a folder), one snapshot per as_of, each a table like the weekly CSV named by its as_of date (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column. The files must share their columns and groups; they are stored as one vintage-true dataset, and each replayed week then sees the snapshot that held it. A folder gives its CSV, TSV and TXT files; several files dropped on the first box come here.") }}</span></p>
+   <div class="dt-zonelinks">{{ tips.icon("folder") }} <span class="dsfolder"><label class="dslink" for="{{ fid }}-folder">Choose a folder</label>
+     <input type="file" name="snapshots" id="{{ fid }}-folder" data-folder webkitdirectory multiple></span></div>
   </div>
  </div>
  <div class="dsup-fields">

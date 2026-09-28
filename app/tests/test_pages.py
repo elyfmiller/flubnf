@@ -65,9 +65,15 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow; the workflow says nothing is combined
-    assert 'class="steps"' in r.text
-    assert 'class="stepnum"' in r.text
+    # start-here numbered flow (the kit's stepper, each step's purpose in
+    # its "?"); the workflow says nothing is combined
+    assert 'class="uk-stepper uk-stepper--vertical" aria-label="Start here"' \
+        in r.text
+    for href, tip in (("/data", "Confirm the feed is current."),
+                      ("/forecast", "Pick a date, run the models."),
+                      ("/output", "Submission files and the report.")):
+        assert f'<a href="{href}">' in r.text, href
+        assert tip in r.text, tip
     assert "nothing blended" in r.text
     # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",
@@ -148,7 +154,9 @@ def test_switcher_lists_two_strain_as_the_research_option():
     t = client.get("/models").text
     assert t.count("data-model=") == 3
     assert "Two-strain SIHRS" in t
-    assert "(research)" in t
+    # the research option wears a "research" tag inside its own button
+    pf2s = t.split('data-model="pf2s"', 1)[1].split("</button>", 1)[0]
+    assert '<span class="md-tag">research</span>' in pf2s
 
 
 def test_model_pages_render_mechanism_and_collapsed_intro():
@@ -161,8 +169,10 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         r = client.get(f"/model/{name}")
         assert r.status_code == 200, name
         assert marker in r.text, name
-        # intro collapsed by default: a details block without `open`
-        assert '<details class="card intro">' in r.text, name
+        # the header card; its full description collapsed by default (a
+        # fold without `open`)
+        assert 'class="card md-hero"' in r.text, name
+        assert '<details class="uk-fold md-about" id="md-about">' in r.text, name
         assert 'href="/methods#' in r.text, name
 
 
@@ -392,6 +402,7 @@ def test_data_page_draws_the_archive_timeline():
     assert ui_data._vintage_rows([]) == []
     r = client.get("/data")
     assert r.status_code == 200
-    assert "Policies" not in r.text and "<h2>Archive" in r.text
+    assert ("Policies" not in r.text
+            and '<h2 id="h-archive">Archive</h2>' in r.text)
     # hub-free environments have no vintages and say so instead of drawing
     assert ('class="archive-strip"' in r.text) == bool(ui_state.data_mod.vintages())

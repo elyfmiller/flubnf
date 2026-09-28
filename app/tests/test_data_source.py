@@ -168,7 +168,9 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     page = client.get(f"/runs/{row['run_id']}").text
     assert f"live target-data through {ASOF}" in page
     html = client.get("/output").text
-    assert f"Data: live target-data through {ASOF}" in html
+    # the date card's fact row: the source, spoken as "Data: ..."
+    assert (f'<span class="uk-sr">Data: </span><span>live target-data '
+            f'through {ASOF}</span>') in html
 
 
 def test_update_data_mid_run_does_not_change_what_the_run_reads(console, hubfiles, tmp_path, monkeypatch):
@@ -314,7 +316,8 @@ def test_the_run_route_refuses_a_week_past_the_live_file(tmp_path, monkeypatch):
     r = _post(W2)
     assert r.status_code == 303 and not started
     flash = str(ui_state._status.get("flash") or "")
-    assert f"No data for {W2} yet" in flash and f"ends at {W1}" in flash
+    assert f"no data for {W2} yet" in flash and f"ends at {W1}" in flash
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypatch):
@@ -323,7 +326,7 @@ def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypat
     an archived week is still recorded as a vintage run."""
     started = _capture(monkeypatch, tmp_path)
     _hub(tmp_path / "hub", [W1, W2], [W1], monkeypatch)
-    for fd, want in (("", "Give a forecast date"),
+    for fd, want in (("", "Not run: give a forecast date"),
                      ("7/4/2098", "'7/4/2098' is not a date")):
         ui_state._status.pop("flash", None)
         r = _post(fd)
@@ -336,7 +339,8 @@ def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypat
                                   "engine": "bogus"}, follow_redirects=False)
     flash = str(ui_state._status.get("flash") or "")
     assert not started and not ui_state._status.get("running")
-    assert flash == "'bogus' is not one of the available engines. Nothing was run."
+    assert flash == "Not run: 'bogus' is not an available engine."
+    assert ui_state._status.get("flash_kind") == "warn"
     ui_state._status.pop("flash", None)
     _post(W1, mode="weird")
     assert started[0].extra["mode"] == "vintage"
@@ -381,7 +385,9 @@ def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
     ui_state._last_form.update({"forecast_date": "2098-10-20",   # a Monday
                                 "locations": ["all"], "engine": "all"})
     page = client.get("/forecast").text
-    assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
+    # the anchor week as a labelled value under the date
+    line = page[page.find('id="anchor-line"'):][:900]
+    assert "Anchor week</span>" in line and f'<b id="fc-anchor-wk">{W3}</b>' in line, line
     script = page.split('id="anchor-line"')[1].split("</script>")[0]
     # the script's copy: the NEWEST archived week on or before the day (the
     # list runs newest first), with the day read and moved in UTC so a zone
@@ -406,9 +412,20 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     assert ui_state._last_form["forecast_date"] == W3
     page = client.get("/forecast").text
     assert f'value="{W3}"' in page
-    assert f"Anchor week: {W3} (new data, not archived yet" in page
+    # the anchor names the week and, in its "not archived" badge's tip, that
+    # it is new data read from target-data
+    line = page[page.find('id="anchor-line"'):page.find('id="anchor-line"') + 2500]
+    assert f'<b id="fc-anchor-wk">{W3}</b>' in line
+    live = line[line.index('id="fc-anchor-live"'):]
+    assert not live.startswith('id="fc-anchor-live" hidden')
+    assert '<span class="uk-badge-t">not archived</span>' in live
+    assert "New data, not archived yet: read from target-data." in live
     dpage = client.get("/data").text
-    assert f'<dd id="live-week"><code>{W3}</code> <span class="pill warn" id="live-newer">not archived</span>' in dpage
+    assert (f'<span class="uk-stat-v" id="live-week"><span class="dt-nw">{W3}'
+            '</span></span> <span class="uk-badge-pair"><span class="uk-badge '
+            'uk-badge--warn" id="live-newer" data-state="warn">') in dpage
+    assert dpage.split('id="live-newer"')[1].split("</span></span>")[0] \
+        .endswith('<span class="uk-badge-t">not archived')
     assert f"real-time runs for <span class=\"wk\">{W3}</span> read target-data" in dpage
 
 
@@ -416,7 +433,8 @@ def test_the_data_tab_says_nothing_extra_when_the_archive_is_current(tmp_path, m
     _capture(monkeypatch, tmp_path)
     _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)
     dpage = client.get("/data").text
-    assert f'<dd id="live-week"><code>{W2}</code></dd>' in dpage
+    assert (f'<span class="uk-stat-v" id="live-week"><span class="dt-nw">{W2}'
+            '</span></span></dd>') in dpage
     assert 'id="live-newer"' not in dpage
 
 

@@ -110,11 +110,12 @@ def test_clear_removes_completed_rows_never_the_active_one(state):
     assert r.status_code == 303
     left = led.rows(50)
     assert [x["run_id"] for x in left] == [state["rids"]["running"]]
-    assert "Cleared 3 completed rows" in _flash()
+    assert "Cleared 3 completed ledger rows" in _flash()
     # the confirm copy's promise holds: clearing deleted NO disk data
     for rid in state["rids"].values():
         assert (state["root"] / "workroots" / rid).is_dir()
-    assert "No data on disk was deleted" in _flash()
+    assert "No data on disk was deleted" in ui_state._status.get(
+        "flash_detail", "")
 
 
 def test_clear_refuses_a_stale_count(state):
@@ -122,7 +123,8 @@ def test_clear_refuses_a_stale_count(state):
                     follow_redirects=False)
     assert r.status_code == 303
     assert len(state["ledger"].rows(50)) == 4        # nothing removed
-    assert "Nothing was cleared" in _flash()
+    assert "Not cleared" in _flash()
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_clear_control_names_the_count_and_the_no_disk_promise(state):
@@ -158,29 +160,37 @@ def test_storage_panel_lists_everything_with_sizes(state):
 
 def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     """A recorded run's row leads with its ledger label (kind, forecast date,
-    wall clock, scope); the raw id stays visible but secondary."""
+    wall clock, scope), linked to its run page; the raw id stays visible but
+    secondary, in the row's meta line."""
     html = client.get("/storage").text
     rid = state["rids"]["ok"]
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
-    assert "<strong>Forecast for 2098-01-03</strong>" in row
-    assert "· run 2" in row                       # the wall-clock moment
-    assert f"<code" in row and rid in row         # the id, small and mono
+    assert (f'<strong><a href="/runs/{rid}">Forecast for 2098-01-03</a>'
+            '</strong>') in row
+    meta = row.split('class="uk-meta"', 1)[1]
+    assert "<span>run 2" in meta                  # the wall-clock moment
+    assert f"<code" in meta and rid in meta       # the id, small and mono
     # an unrecorded workroot (no ledger row) says so instead of guessing
     orphan = "20980118T093000-0aacd0"
     (state["root"] / "workroots" / orphan).mkdir()
     ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
-    assert "Unrecorded run" in row
+    assert "<strong>Unrecorded run</strong>" in row   # no run page to link
     assert "run 2098-01-18 09:30" in row          # parsed from the id
 
 
 def test_protected_trees_render_no_delete_controls(state):
     html = client.get("/runs").text
-    protected = html.split(">Protected ", 1)[1].split("</div>\n<script>", 1)[0]
+    protected = html.split('id="st-protected"', 1)[1].split("</section>", 1)[0]
+    assert ">Protected</h3>" in protected
     assert "<form" not in protected
     assert "data-del-storage" not in protected
-    assert 'class="pill">protected' in protected
+    # each tree says so with a badge (lock icon and word), not a button
+    assert protected.count('<span class="uk-badge-t">protected</span>') \
+        == protected.count('class="st-row"') == 2      # seal and hub
+    # the section's count is the kit's neutral badge, as on other tabs
+    assert '<span class="uk-badge-t">2 entries</span>' in protected
 
 
 def test_busy_rows_render_no_delete_controls(state):
@@ -190,9 +200,15 @@ def test_busy_rows_render_no_delete_controls(state):
     # workroot rows are found by their data-wid attribute
     row = html.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in row             # the live workroot
-    srow = html.split(f"<strong>{SEASON} retrospective</strong>",
+    # its Delete is disabled, and its "?" says why in the refusal's words
+    assert " disabled " in row and "running now" in row
+    assert (f"The run {live} is active; its workroot cannot be deleted "
+            "while it runs.") in row
+    srow = html.split(f">{SEASON} retrospective</a></strong>",
                       1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in srow            # the replaying season
+    assert " disabled " in srow
+    assert f"{SEASON} is replaying (status: running); stop it first." in srow
 
 
 # ---------------------------------------------------------------- deletions
@@ -204,7 +220,7 @@ def test_delete_workroot_leaves_an_honest_dangling_ledger_row(state):
                     follow_redirects=False)
     assert r.status_code == 303
     assert not (state["root"] / "workroots" / rid).exists()
-    assert "ledger row remains" in _flash()
+    assert "ledger row remains" in ui_state._status.get("flash_detail", "")
     # the row survives and reads honestly: a dash, not an error
     html = client.get("/runs").text
     assert rid in html
@@ -325,8 +341,8 @@ def test_clear_all_refuses_a_stale_count(state):
     assert r.status_code == 303
     for rid in state["rids"].values():
         assert (state["root"] / "workroots" / rid).is_dir()
-    assert "Nothing was deleted" in _flash() \
-        or "Nothing was\ndeleted" in _flash()
+    assert "Not deleted" in _flash()
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
@@ -340,7 +356,7 @@ def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
     assert (state["root"] / "workroots"
             / state["rids"]["running"]).is_dir()
     assert "Deleted 3 completed run workroots" in _flash()
-    assert "ledger row" in _flash()
+    assert "ledger row" in ui_state._status.get("flash_detail", "")
     # every ledger row remains, the cleared ones honestly dangling
     html = client.get("/runs").text
     for rid in state["rids"].values():
@@ -377,7 +393,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert "No completed run workroots" in _flash()
+    assert "no completed run workroots" in _flash()
     # and the control disappears from the page
     html = client.get("/runs").text
     assert "Delete all" not in html
@@ -398,7 +414,8 @@ def test_seal_and_hub_are_refused_on_any_crafted_request(state):
                         data={"kind": kind, "ident": ident,
                               "confirm": ident}, follow_redirects=False)
         assert r.status_code == 303
-        assert "Nothing was deleted" in _flash(), (kind, ident)
+        assert "Not deleted" in _flash(), (kind, ident)
+        assert ui_state._status.get("flash_kind") == "warn"
     assert (state["seal"] / SEASON / "weeks" / "sealed.json").is_file()
     assert (state["hub"] / "auxiliary-data" / "truth.csv").is_file()
 
@@ -423,7 +440,7 @@ def test_unknown_kind_is_refused(state):
                     data={"kind": "ledger", "ident": "x", "confirm": "x"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert "Nothing was deleted" in _flash()
+    assert "Not deleted" in _flash()
 
 
 # ------------------------------------------------------------- ledger fold
@@ -437,10 +454,10 @@ def test_ledger_collapses_behind_a_summary_by_default(state):
     # closed by default: the fold never ships an open attribute
     assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
     assert "4 runs recorded" in joined
-    # the ledger keeps its own clear heading on the Storage page
-    assert "<h2>Run ledger " in html
-    # the newest entry (the live run) is named in the summary line
+    # the newest entry (the live run) is named in the summary line, which
+    # carries the ledger's own heading on the Storage page
     summary = html.split('id="ledgerfold">', 1)[1].split("</summary>", 1)[0]
+    assert 'id="h-st-ledger">Run ledger</h2>' in summary
     assert "newest" in summary
     # the table and the clear control live INSIDE the fold
     fold = html.split('<details class="ledgerfold" id="ledgerfold">', 1)[1] \
@@ -493,4 +510,6 @@ def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
     html = client.get("/runs").text
     # no ledger fold with nothing to fold (the storage panel keeps its own)
     assert 'id="ledgerfold"' not in html
-    assert "No runs yet." in html
+    # an empty state (icon, title, one action), not a sentence
+    empty = html.split('id="st-ledger-empty"', 1)[1].split("</div></div>", 1)[0]
+    assert "No runs yet" in empty and 'href="/forecast"' in empty

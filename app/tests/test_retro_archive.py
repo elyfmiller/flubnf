@@ -499,7 +499,8 @@ def test_deleting_an_archive_needs_confirmation_and_spares_the_live_season(
     assert not arch.exists()
     assert _tree_snapshot(live) == live_before
     flash = ui_state._status.get("flash", "")
-    assert "2 completed weeks" in flash and "was not touched" in flash
+    assert "2 weeks" in flash
+    assert "was not touched" in ui_state._status.get("flash_detail", "")
 
 
 def test_deleting_an_archive_refuses_an_identifier_it_cannot_verify(

@@ -1,5 +1,9 @@
 /* FluBNF console theme (PyBNF brand kit, LANL Mesa-aligned).
-   Themes, brightest to darkest: light (default), paper, dim, dark.
+   Eight themes, in the Display menu's order. Light grounds: light (the
+   default), paper, github, solarized. Dark grounds: dim, dark, nord,
+   dracula. light, paper, dim and dark carry the brand; github, solarized,
+   nord and dracula take their colors from the code-editor palettes credited
+   above their blocks, tuned to the same bars.
    LANL Blue carries structure and primary text; Cyan is THE accent (primary
    action, active tab, links, focus, progress); Blue Slate is the data accent;
    Inhibition Red (--bad) is semantic only. Legacy names --gold/--gold-bright
@@ -7,59 +11,85 @@
    them via getComputedStyle. .gold on a button means "primary".
    Every token is a LITERAL in every theme block, -hc/-cvd variants and
    --map-nodata included (plot code resolves raw values; no var() aliases; a
-   parity test compares the four blocks). The two a11y modifiers
+   parity test compares the eight blocks). The two a11y modifiers
    (data-contrast="high", data-vision="cvd") only remap consumer tokens onto
    those literals, so contrast x vision x theme resolves through the cascade.
+   The light block also answers to [data-theme="light"], so any element can
+   wear any theme (the Display menu's theme previews do).
+
+   THE SEMANTIC COLORS: what a rule, a chart or a map reaches for
+     status      --ok (good), --warn, --bad (a problem): words, badges,
+                 alerts, marks that judge a value
+     series      --season-1..6, one per line or bar, in order
+     map scale   --cat-large-decrease .. --cat-large-increase, --map-nodata
+     accents     --gold (links, the highlighted series), --gold-bright (a
+                 primary fill, --on-accent text on it), --accent-ink (the
+                 accent where it must read as text or a boundary)
+     controls    --btn-ink (outline buttons), --on-bad (text on a --bad fill),
+                 --field-line (field boundaries, 3:1 on the ground)
+     scheme      --scheme (light or dark: native controls, via color-scheme)
+   The color-vision mode moves status, series and the map scale together
+   onto their -cvd literals (Okabe-Ito based: good in blue, warn in gold or
+   yellow, bad in wine or vermillion), so every surface that uses them
+   follows. The measured bars for all eight themes and both modes:
+   app/tests/test_display_themes.py.
 
    CONTENTS (file order)
-     1. theme tokens: light at the first root block, then dark, paper, dim
+     1. theme tokens: light at the first root block, then dark, paper, dim,
+        github, solarized, nord, dracula
      2. type scale, focus width, spacing/radius (the second root block)
      3. a11y modifiers: contrast, then vision
-     4. body, navbar, theme/a11y/text-size pickers
+     4. body, navbar and the brand mark, the Display menu
      5. layout shell, cards, controls, buttons, links
      6. tables, status colors, pills, progress
      7. home hero, grid2/grid3, rows
      8. checklist, runbar, folds (card/ledger), per-state sort, run settings,
         carousel, quip
      9. output tab (linkish, previews), banner
-    10. model pages: intro, diagram text (svgt), cumchart, eqpanel, BNGL,
+    10. model pages: diagram text (svgt), cumchart, eqpanel, BNGL,
         map legend
-    11. home: pipeline, perf table, card glyphs, start-here stepper
+    11. home: pipeline, perf table, card glyphs
     12. season player
     13. modals, archive rows, storage total
     14. skip link, reduced motion
     15. forecast modes and Advanced fold, ? tips, runsplit/results, sandbox
    ORDER DEPENDENCIES
      - modifier blocks after all theme blocks (equal specificity, later
-       wins); vision after contrast so --ok/--bad take the cvd pair while
-       contrast retargets that pair's -hc variants
-     - dark/dim button overrides after the base button rules; .gold after
-       .quiet (selected toggles carry both); button.danger's dark/dim text
-       color after its base rule
+       wins); vision after contrast so --ok/--warn/--bad take the cvd
+       literals while contrast retargets those literals' -hc variants
+     - .gold after .quiet (selected toggles carry both)
      - .modal h2 after .card h2; .row[hidden] after .row
      - token blocks may not contain a closing brace in a comment: tests and
-       report_v2 parse each block up to its first closing brace */
-:root{
+       report_v2 parse each block up to its first closing brace
+     - the header mark's file per theme lives in static/brand/logos.css, not
+       here: the reports embed these token blocks and must not reference
+       /static/ */
+[data-theme="light"],:root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
-  --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
+  --line:#DCD8E9; --track:#DBD7E8; --field-line:#8A86A3;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  /* outline buttons, text on a primary fill and on a --bad fill; the
+     native controls' scheme */
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
   /* official comparator lines (FluSight ensemble): neutral grey, never a
      member color, 3:1+ on the card */
   --official:#6E7590;
   --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
+  --shadow-pop:0 10px 32px rgba(12,13,23,.22);
   /* high-contrast variants (data-contrast="high" remaps onto these) */
   --ink-hc:#000000; --mut-hc:#363C6B; --nav-ink-hc:#000000;
   --line-hc:#7F7A9E; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
   --official-hc:#3A3F5C;
-  /* red-green-safe variants (data-vision="cvd" remaps onto these) */
-  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
-  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  /* color-vision-safe status (data-vision="cvd" remaps onto these): good
+     blue, warn gold, bad wine, apart under deutan and protan simulation */
+  --ok-cvd:#1256C0; --warn-cvd:#835B00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0A3E8F; --warn-cvd-hc:#6E4600; --bad-cvd-hc:#6E3C50;
   /* outlook-map category scale (identical in every theme) + cvd twin */
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
@@ -68,7 +98,7 @@
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
   /* season-line palette, identical in every theme: normal-vision default
-     (3:1 on all eight theme grounds) + the red-green-safe set (= player.js
+     (3:1 on all sixteen theme grounds) + the red-green-safe set (= player.js
      SEASON_COLORS) that data-vision="cvd" remaps onto. Charts resolve
      --season-N per draw. Any value change must re-clear
      test_season_palette.py. */
@@ -85,15 +115,17 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
-  --map-nodata:#232741;
+  --map-nodata:#2A2F50;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#C8CEE9; --nav-ink-hc:#FFFFFF;
   --line-hc:#6E76A4; --field-line-hc:#8C96D2; --accent-ink-hc:#7FDBFF;
   --ok-hc:#96E6BC; --warn-hc:#F2C689; --bad-hc:#FFA0AB;
   --official-hc:#D6DBEC;
-  --ok-cvd:#6FB8FF; --bad-cvd:#FF9E45;
-  --ok-cvd-hc:#A9D2FF; --bad-cvd-hc:#FFBE85;
+  --ok-cvd:#6FB8FF; --warn-cvd:#EBD84A; --bad-cvd:#E07058;
+  --ok-cvd-hc:#A9D2FF; --warn-cvd-hc:#F5EC5A; --bad-cvd-hc:#E6966E;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -115,15 +147,17 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
   --official:#6E7590;
-  --map-nodata:#DCD3BD;
+  --map-nodata:#C4CAD8;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
+  --shadow-pop:0 10px 32px rgba(63,54,28,.22);
   --ink-hc:#000000; --mut-hc:#343963; --nav-ink-hc:#000000;
   --line-hc:#837C62; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
   --official-hc:#3A3F5C;
-  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
-  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  --ok-cvd:#1256C0; --warn-cvd:#835B00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0A3E8F; --warn-cvd-hc:#6A4400; --bad-cvd-hc:#6E3C50;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -145,15 +179,153 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
-  --map-nodata:#333952;
+  --map-nodata:#434A68;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#CDD4EF; --nav-ink-hc:#FFFFFF;
   --line-hc:#838BB1; --field-line-hc:#9AA4DE; --accent-ink-hc:#7FDBFF;
   --ok-hc:#9FEAC4; --warn-hc:#F4CD96; --bad-hc:#FFAAB3;
   --official-hc:#D6DBEC;
-  --ok-cvd:#7FBFFF; --bad-cvd:#FFA45C;
-  --ok-cvd-hc:#B5D8FF; --bad-cvd-hc:#FFC38F;
+  --ok-cvd:#7FBFFF; --warn-cvd:#EAD84E; --bad-cvd:#E88A6A;
+  --ok-cvd-hc:#B5D8FF; --warn-cvd-hc:#F5EC6A; --bad-cvd-hc:#F5AE90;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* github: GitHub Light, from the Primer primitives (github/primer,
+   MIT License, Copyright GitHub Inc.). White card on the canvas grey,
+   near-black ink, the Primer blues; links a step darker (blue 6) so the
+   highlighted series stays apart from the Oracle SIHRS blue */
+[data-theme="github"]{
+  --bg:#F6F8FA; --card:#FFFFFF; --ink:#1F2328; --mut:#59636E;
+  --line:#D1D9E0; --track:#E1E6EB; --field-line:#818B98;
+  --navy:#0A3069; --navy-deep:#07214A;
+  --accent:#54AEFF; --accent-ink:#0969DA; --slate:#8250DF;
+  --gold:#0550AE; --gold-bright:#54AEFF;
+  --nav-bg:#FFFFFF; --nav-ink:#1F2328;
+  --ok:#1A7F37; --warn:#8A5D00; --bad:#CF222E;
+  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light;
+  --official:#6E7781;
+  --map-nodata:#CFCCD6;
+  --shadow:0 1px 2px rgba(31,35,40,.08),0 2px 8px rgba(31,35,40,.06);
+  --shadow-pop:0 10px 32px rgba(31,35,40,.22);
+  --ink-hc:#010409; --mut-hc:#393F46; --nav-ink-hc:#010409;
+  --line-hc:#737D88; --field-line-hc:#454C54; --accent-ink-hc:#0349B4;
+  --ok-hc:#055D20; --warn-hc:#5C3F00; --bad-hc:#96101B;
+  --official-hc:#454C54;
+  --ok-cvd:#0969DA; --warn-cvd:#8A5D00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0349B4; --warn-cvd-hc:#6A4400; --bad-cvd-hc:#6E3C50;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* solarized: Solarized Light (Ethan Schoonover, ethanschoonover.com/
+   solarized, MIT License). base3 cards on a ground between base3 and base2
+   (base2 itself would take the chart lines under 3:1), base2 header, base02
+   ink; the accents darkened where they carry text */
+[data-theme="solarized"]{
+  --bg:#F5EEDB; --card:#FDF6E3; --ink:#073642; --mut:#4E6168;
+  --line:#E3DBC4; --track:#EBE4CF; --field-line:#788789;
+  --navy:#073642; --navy-deep:#002B36;
+  --accent:#268BD2; --accent-ink:#1C6BA3; --slate:#6C71C4;
+  --gold:#1C6BA3; --gold-bright:#5DADE6;
+  --nav-bg:#EEE8D5; --nav-ink:#073642;
+  --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
+  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
+  --official:#657B83;
+  --map-nodata:#C6CCD4;
+  --shadow:0 1px 2px rgba(88,110,117,.10),0 2px 8px rgba(88,110,117,.08);
+  --shadow-pop:0 10px 32px rgba(88,110,117,.22);
+  --ink-hc:#002B36; --mut-hc:#2E4148; --nav-ink-hc:#002B36;
+  --line-hc:#7C877F; --field-line-hc:#485A5E; --accent-ink-hc:#0B4B7A;
+  --ok-hc:#3B4600; --warn-hc:#553E00; --bad-hc:#86191A;
+  --official-hc:#3F5158;
+  --ok-cvd:#1A5FAE; --warn-cvd:#785800; --bad-cvd:#74344C;
+  --ok-cvd-hc:#0A3C92; --warn-cvd-hc:#5E4600; --bad-cvd-hc:#643C46;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* nord: Nord (Arctic Ice Studio and Sven Greb, nordtheme.com, MIT
+   License). Polar Night grounds one step deeper than nord0 (the chart
+   lines keep 3:1 there), Snow Storm ink, Frost accents, Aurora status
+   colors lightened to AA */
+[data-theme="nord"]{
+  --bg:#242933; --card:#2B303B; --ink:#D8DEE9; --mut:#A2ABBC;
+  --line:#3B4252; --track:#353B48; --field-line:#727D97;
+  --navy:#434C5E; --navy-deep:#2E3440;
+  --accent:#88C0D0; --accent-ink:#88C0D0; --slate:#81A1C1;
+  --gold:#88C0D0; --gold-bright:#88C0D0;
+  --nav-bg:#2E3440; --nav-ink:#ECEFF4;
+  --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
+  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
+  --official:#9AA4B8;
+  --map-nodata:#414D62;
+  --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
+  --ink-hc:#FFFFFF; --mut-hc:#D8DEE9; --nav-ink-hc:#FFFFFF;
+  --line-hc:#737E96; --field-line-hc:#98A3BC; --accent-ink-hc:#B2DCE8;
+  --ok-hc:#C9DDB8; --warn-hc:#F4E0B6; --bad-hc:#F4B8BE;
+  --official-hc:#CDD3DF;
+  --ok-cvd:#86BDF0; --warn-cvd:#EBD65A; --bad-cvd:#E09070;
+  --ok-cvd-hc:#B9DAFA; --warn-cvd-hc:#F7F07A; --bad-cvd-hc:#FAB48C;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* dracula: Dracula (Zeno Rocha, draculatheme.com, MIT License). The
+   Background as the card on a darker ground, Current Line for rules,
+   Purple the accent, Pink the data accent; Comment lightened for muted
+   text */
+[data-theme="dracula"]{
+  --bg:#21222C; --card:#282A36; --ink:#F8F8F2; --mut:#A9AFCB;
+  --line:#44475A; --track:#343746; --field-line:#6878AE;
+  --navy:#44475A; --navy-deep:#282A36;
+  --accent:#BD93F9; --accent-ink:#BD93F9; --slate:#FF79C6;
+  --gold:#BD93F9; --gold-bright:#BD93F9;
+  --nav-bg:#282A36; --nav-ink:#F8F8F2;
+  --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
+  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
+  --official:#A2A7C2;
+  --map-nodata:#44475A;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
+  --ink-hc:#FFFFFF; --mut-hc:#D9DCEA; --nav-ink-hc:#FFFFFF;
+  --line-hc:#7580AA; --field-line-hc:#95A0CE; --accent-ink-hc:#DCC6FF;
+  --ok-hc:#9CFFB3; --warn-hc:#FFD6A8; --bad-hc:#FFB0B0;
+  --official-hc:#D3D6E5;
+  --ok-cvd:#94ECFD; --warn-cvd:#F0E860; --bad-cvd:#EC7F58;
+  --ok-cvd-hc:#C2F4FE; --warn-cvd-hc:#F5F26A; --bad-cvd-hc:#FAA078;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -166,10 +338,10 @@
   --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 /* ---- fluid type scale: clamp(floor, rem + vw, ceiling) ----
-   The rem term must carry most of each step (~2/3+ at 1280px): the A-/A/A+
-   control scales the root size only, so a steep vw slope would neutralise
-   it. Floors are the old fixed sizes; ceilings land around 2100-2600px.
-   Size tokens only. */
+   The rem term must carry most of each step (~2/3+ at 1280px): the Display
+   menu's text size (80% to 160%) scales the root size only, so a steep vw
+   slope would neutralise it. Floors are the old fixed sizes; ceilings land
+   around 2100-2600px. Size tokens only. */
 :root{
   --fs-body:clamp(.875rem,.83rem + .15vw,1.05rem);    /* 14   -> 16.8px */
   --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.9rem);        /* 20   -> 30.4px */
@@ -201,37 +373,44 @@
   --gap:clamp(.6rem,.3rem + .7vw,1.25rem);          /* 12.7 -> 14.9 -> 18.8px */
   --card-py:clamp(.75rem,.5rem + .55vw,1.3rem);     /* 12 -> 15.9 -> 19px  */
   --card-px:clamp(.85rem,.4rem + 1vw,1.6rem);       /* 13.6 -> 20.8 -> 26px */
-  --side-col:clamp(260px,22vw + 60px,400px);        /* the .cols left track */
+  --side-col:clamp(16.25rem,22vw + 60px,25rem);     /* the .cols left track (grows with the text size) */
 }
 /* ---- accessibility modifiers: remap consumer tokens onto the per-theme
    -hc / -cvd literals (never a color of their own). Both follow the theme
-   blocks; vision follows contrast so --ok/--bad take the cvd pair while
-   contrast retargets that pair's -hc variants.
-   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it moves ok/bad, the map's
-   --cat-* scale and --season-* onto --season-cvd-* (charts redraw on
-   themechange; audited in test_season_palette.py). It does NOT move member
-   lines (player.js MODEL_COLORS, dichromat-safe by construction; audited in
-   test_a11y_modes.py). SEASON_COLORS in player.js is the token-less
-   fallback (the fixed-dark report). */
+   blocks; vision follows contrast so --ok/--warn/--bad take the cvd
+   literals while contrast retargets those literals' -hc variants.
+   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE (the Display menu's
+   "Color-blind safe colors" switch): it moves the status triad
+   (ok/warn/bad onto --ok-cvd/--warn-cvd/--bad-cvd), the map's --cat-*
+   scale and --season-* onto --season-cvd-* (charts redraw on themechange;
+   audited in test_season_palette.py and test_display_themes.py). It does
+   NOT move member lines (player.js MODEL_COLORS, dichromat-safe by
+   construction; audited in test_a11y_modes.py). SEASON_COLORS in
+   player.js is the token-less fallback (the fixed-dark report).
+   The series take the safe set in the order that keeps every neighbour
+   apart under simulated deuteranopia and protanopia: 1, 2, 3, 6, 5, 4
+   (in literal order the pink and the teal, the 3rd and 4th, merge for a
+   protanope). */
 [data-contrast="high"]{
   --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
   --line:var(--line-hc); --field-line:var(--field-line-hc);
   --accent-ink:var(--accent-ink-hc);
   --ok:var(--ok-hc); --warn:var(--warn-hc); --bad:var(--bad-hc);
-  --ok-cvd:var(--ok-cvd-hc); --bad-cvd:var(--bad-cvd-hc);
+  --ok-cvd:var(--ok-cvd-hc); --warn-cvd:var(--warn-cvd-hc);
+  --bad-cvd:var(--bad-cvd-hc);
   --official:var(--official-hc);
   --focus-w:3px;
 }
 [data-vision="cvd"]{
-  --ok:var(--ok-cvd); --bad:var(--bad-cvd);
+  --ok:var(--ok-cvd); --warn:var(--warn-cvd); --bad:var(--bad-cvd);
   --cat-large-decrease:var(--cat-cvd-large-decrease);
   --cat-decrease:var(--cat-cvd-decrease);
   --cat-stable:var(--cat-cvd-stable);
   --cat-increase:var(--cat-cvd-increase);
   --cat-large-increase:var(--cat-cvd-large-increase);
   --season-1:var(--season-cvd-1); --season-2:var(--season-cvd-2);
-  --season-3:var(--season-cvd-3); --season-4:var(--season-cvd-4);
-  --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-6);
+  --season-3:var(--season-cvd-3); --season-4:var(--season-cvd-6);
+  --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-4);
 }
 *{box-sizing:border-box}
 /* body text on the fluid scale; anything without its own size inherits it */
@@ -252,9 +431,13 @@ header.nav .brand{display:flex;align-items:center;gap:.55rem;flex:none;
 header.nav .brand:hover{text-decoration:none}
 /* structural cyan uses --accent-ink: raw cyan fails 3:1 on light surfaces */
 header.nav .brand em{color:var(--accent-ink);font-style:normal}
-/* ONE mark: the blue-tile icon reads on both the light and dark strip */
-header.nav .brand img.mark{height:32px;width:32px;display:block}
-/* tabs: 13.6px at 900px, 15.2 at 1100, 16.8 from 1300 (at the A size);
+/* the brand mark: the theme's logo file, --logo (static/brand/logos.css,
+   one line per theme), falling back to the brand kit's icon. Sized in em,
+   so it grows with the text size beside the wordmark */
+header.nav .brand .mark{flex:none;display:block;width:1.45em;height:1.45em;
+  background:var(--logo,url("/static/brand/pybnf_icon.svg")) center/contain no-repeat;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* tabs: 13.6px at 900px, 15.2 at 1100, 16.8 from 1300 (at 100% text);
    side padding in em so it scales with them */
 header.nav a.tab{color:var(--nav-ink);text-decoration:none;
   padding:.8rem .45em;
@@ -267,7 +450,18 @@ header.nav .navtabs{display:flex;align-items:center;gap:.15rem;
   flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin;
   scrollbar-color:color-mix(in srgb,var(--nav-ink) 35%,transparent) transparent}
 header.nav .navtabs a.tab{white-space:nowrap;flex:none}
-/* the Display menu: a plain <details>, its panel drops below the header */
+/* native controls (scrollbars, selects, date pickers, the range) follow
+   the theme's scheme */
+html{color-scheme:var(--scheme,light)}
+
+/* ---- the Display menu: a settings popover at the header's right. A
+   plain <details> opens it without script; base.html's script adds
+   Escape, click-outside and focus-leaving closing. Four sections, each a
+   heading with its "?" (the kit's heading): Text size (a slider, 80% to
+   160%), Theme (eight previews, radios), Accessibility (two switches),
+   Zoom (the native window only). Sized in rem, so it grows with the text,
+   and capped by the window: at 160% in a short window it scrolls inside
+   itself. Class prefix dm- ---- */
 header.nav details.display{position:relative;flex:none}
 header.nav details.display > summary{list-style:none;cursor:pointer;
   display:flex;align-items:center;gap:.4em;padding:.35rem .7rem;
@@ -275,38 +469,153 @@ header.nav details.display > summary{list-style:none;cursor:pointer;
   border-radius:7px;color:var(--nav-ink);font-size:.85rem;font-weight:600;
   white-space:nowrap;user-select:none}
 header.nav details.display > summary::-webkit-details-marker{display:none}
-header.nav details.display > summary::after{content:"\25BE";font-size:.8em}
+header.nav details.display > summary::after{content:"";width:.4em;height:.4em;
+  margin:0 .1em 0 .15em;border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;transform:translateY(-.12em) rotate(45deg)}
+header.nav details.display[open] > summary::after{
+  transform:translateY(.1em) rotate(-135deg)}
+header.nav details.display > summary .uk-icon{font-size:1.1em}
 header.nav details.display > summary:hover{
   background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 header.nav details.display[open] > summary{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
 .displaypop{position:absolute;right:0;top:calc(100% + .45rem);z-index:55;
-  display:grid;grid-template-columns:max-content;gap:.2rem;
-  padding:.6rem .75rem .75rem;background:var(--nav-bg);color:var(--nav-ink);
+  width:min(25rem,calc(100vw - 1.5rem));max-height:calc(100vh - 5.5rem);
+  overflow-y:auto;overscroll-behavior:contain;
+  padding:.15rem 1rem .75rem;background:var(--nav-bg);color:var(--nav-ink);
   border:1px solid var(--line);border-radius:var(--r-md);
+  box-shadow:var(--shadow-pop),var(--shadow);
+  font-size:var(--fs-body);font-weight:400;text-align:left;white-space:normal}
+.dm-sec{padding:.7rem 0 .75rem;border-top:1px solid var(--line)}
+.dm-sec:first-child{border-top:0}
+.displaypop .uk-heading{margin:0 0 .5rem}
+.displaypop .uk-heading > h3{font-size:var(--fs-label);font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+/* text size: small A, the slider, large A, the readout; Reset at the right
+   of the heading */
+.fontsize{display:flex;align-items:center;gap:.55rem}
+.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
+  height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
+  accent-color:var(--accent-ink);cursor:pointer}
+.fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
+  outline-offset:2px;border-radius:var(--r-sm)}
+button.dm-step{flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:2rem;height:2rem;margin:0;padding:0;
+  border:1px solid var(--field-line);border-radius:50%;background:transparent;
+  color:var(--nav-ink);font-weight:700;line-height:1}
+button.dm-step:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+button.dm-step[disabled]{opacity:.4}
+.dm-step-sm{font-size:.78rem}
+.dm-step-lg{font-size:1.2rem}
+.dm-fs-out{flex:none;min-width:3.4em;text-align:right;font-weight:700;
+  font-variant-numeric:tabular-nums}
+button.dm-reset{min-height:24px;margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
+  border-radius:var(--r-pill);background:transparent;color:var(--nav-ink);
+  font-size:var(--fs-label);font-weight:600}
+button.dm-reset:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+button.dm-reset[disabled]{opacity:.45}
+/* theme: a radio per theme, drawn as a preview of that theme. The preview
+   wears the theme itself (data-theme on the element: its tokens), so it is
+   never out of step with nau.css; the ring and the check come from the
+   page's theme (--dm-ring, resolved on the label). The radios stay native:
+   arrow keys move the choice, Tab enters at the checked one */
+.themepick{display:block}
+.dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
+  font-size:var(--fs-micro);font-weight:650}
+.dm-grid + .dm-grp{margin-top:.7rem}
+.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
+label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
+  position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
+  padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
+  font-size:var(--fs-label);cursor:pointer}
+label.dm-th:hover{background:color-mix(in srgb,var(--nav-ink) 7%,transparent)}
+label.dm-th input{position:absolute;top:.4rem;left:.4rem;width:1px;height:1px;
+  margin:0;padding:0;opacity:0;pointer-events:none}
+.dm-th-sw{position:relative;display:block;aspect-ratio:8/5;overflow:hidden;
+  border-radius:6px;border:1px solid var(--line);background:var(--bg);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--dm-ring) 18%,transparent)}
+.dm-th-bar{display:flex;align-items:center;gap:.25em;height:30%;
+  padding:0 .3em;background:var(--nav-bg);border-bottom:2px solid var(--accent-ink)}
+.dm-th-logo{flex:none;width:1em;height:1em;
+  background:var(--logo,url("/static/brand/pybnf_icon.svg")) center/contain no-repeat}
+.dm-th-line{flex:1 1 auto;height:.22em;max-width:2.2em;border-radius:1px;
+  background:var(--nav-ink);opacity:.8}
+.dm-th-card{position:absolute;left:10%;right:10%;top:42%;bottom:12%;
+  display:flex;align-items:center;justify-content:space-between;gap:.2em;
+  padding:0 .35em;border-radius:3px;background:var(--card);
   box-shadow:var(--shadow)}
-.displaypop .dlabel{font-size:var(--fs-micro);font-weight:600;
-  color:var(--mut);margin-top:.35rem}
-.displaypop .dlabel:first-child{margin-top:0}
-/* the three segmented groups: aria-pressed, persisted; the a11y buttons
-   are independent toggles */
-.fontsize,.themepick,.a11ypick,.zoompick{display:inline-flex;
-  border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
+.dm-th-aa{color:var(--ink);font-weight:750;font-size:1em;line-height:1}
+.dm-th-dots{display:inline-flex;gap:.18em}
+.dm-th-dots i{display:block;width:.55em;height:.55em;border-radius:50%;
+  background:var(--gold-bright)}
+.dm-th-dots i + i{background:var(--ok)}
+.dm-th-dots i + i + i{background:var(--bad)}
+.dm-th-name{text-align:center;line-height:1.2;overflow-wrap:anywhere}
+.dm-th-check{position:absolute;top:0;right:0;display:none;
+  align-items:center;justify-content:center;width:1.25rem;height:1.25rem;
+  border-radius:50%;background:var(--dm-ring);color:var(--nav-bg);
+  font-size:.8rem;box-shadow:0 0 0 2px var(--nav-bg)}
+label.dm-th input:checked ~ .dm-th-sw{border-color:var(--dm-ring);
+  box-shadow:0 0 0 2px var(--dm-ring)}
+label.dm-th input:checked ~ .dm-th-check{display:inline-flex}
+label.dm-th input:checked ~ .dm-th-name{font-weight:750}
+label.dm-th input:focus-visible ~ .dm-th-sw{outline:var(--focus-w,2px) solid var(--dm-focus);
+  outline-offset:3px}
+/* the previews show the two a11y modes as well: each preview's data-theme
+   restates the literal tokens, so the modes' remaps apply again inside it */
+[data-contrast="high"] .dm-th-sw{--ink:var(--ink-hc);--nav-ink:var(--nav-ink-hc);
+  --line:var(--line-hc);--accent-ink:var(--accent-ink-hc);--ok:var(--ok-hc);
+  --warn:var(--warn-hc);--bad:var(--bad-hc);--ok-cvd:var(--ok-cvd-hc);
+  --warn-cvd:var(--warn-cvd-hc);--bad-cvd:var(--bad-cvd-hc)}
+[data-vision="cvd"] .dm-th-sw{--ok:var(--ok-cvd);--warn:var(--warn-cvd);
+  --bad:var(--bad-cvd)}
+/* accessibility: two switches, each a button (role=switch) with a track,
+   a knob that slides and carries a check when on, and the state as a word */
+.a11ypick{display:flex;flex-direction:column;gap:.2rem}
+.dm-switch-row{display:flex;align-items:center;gap:.25rem}
+.dm-switch-row .tip{margin-left:.15rem}
+button.dm-switch{display:inline-flex;align-items:center;gap:.65rem;flex:0 1 auto;
+  min-width:0;margin:0;padding:.35rem .45rem .35rem .2rem;border:0;
+  border-radius:var(--r-sm);background:transparent;color:var(--nav-ink);
+  font:inherit;font-weight:600;text-align:left}
+button.dm-switch:hover{background:color-mix(in srgb,var(--nav-ink) 7%,transparent)}
+.dm-sw-track{position:relative;flex:none;width:2.6rem;height:1.45rem;
+  border:1.5px solid var(--field-line);border-radius:var(--r-pill);
+  background:var(--track);transition:background-color .15s,border-color .15s}
+.dm-sw-knob{position:absolute;top:50%;left:.16rem;display:flex;
+  align-items:center;justify-content:center;width:1rem;height:1rem;
+  margin-top:-.5rem;border-radius:50%;background:var(--mut);
+  color:var(--accent-ink);font-size:.72rem;transition:transform .15s}
+.dm-sw-knob .uk-icon{display:none}
+.dm-sw-state{flex:none;min-width:2em;color:var(--mut);font-size:var(--fs-label);
+  font-weight:600}
+.dm-sw-state::after{content:"Off"}
+button.dm-switch[aria-checked="true"] .dm-sw-track{background:var(--accent-ink);
+  border-color:var(--accent-ink)}
+button.dm-switch[aria-checked="true"] .dm-sw-knob{transform:translateX(1.1rem);
+  background:var(--nav-bg)}
+button.dm-switch[aria-checked="true"] .dm-sw-knob .uk-icon{display:block}
+button.dm-switch[aria-checked="true"] .dm-sw-state{color:var(--nav-ink)}
+button.dm-switch[aria-checked="true"] .dm-sw-state::after{content:"On"}
+/* zoom (the native window only): out, the level, in */
+.zoompick{display:inline-flex;border:1px solid var(--field-line);
   border-radius:7px;overflow:hidden}
-.fontsize button,.themepick button,.a11ypick button,.zoompick button{margin:0;
-  padding:.35rem .6rem;border:0;border-radius:0;flex:1 1 auto;
-  background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
-  cursor:pointer}
-.fontsize button+button,.themepick button+button,.a11ypick button+button,
-.zoompick button+button{
-  border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
-.fontsize button:hover,.themepick button:hover,.a11ypick button:hover,
-.zoompick button:hover{
-  background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
-.fontsize button[aria-pressed="true"],.themepick button[aria-pressed="true"],
-.a11ypick button[aria-pressed="true"]{
-  background:color-mix(in srgb,var(--accent) 25%,transparent)}
+.zoompick button{margin:0;padding:.35rem .75rem;border:0;border-radius:0;
+  flex:1 1 auto;background:transparent;color:var(--nav-ink);
+  font-size:var(--fs-label);font-weight:650}
+.zoompick button + button{border-left:1px solid var(--field-line)}
+.zoompick button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 .zoompick button[data-zoom="0"]{min-width:4.2em;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){
+  .dm-sw-track,.dm-sw-knob{transition:none}
+}
+@media (forced-colors:active){
+  .dm-sw-track,.dm-th-sw,button.dm-step{border-color:CanvasText}
+  button.dm-switch[aria-checked="true"] .dm-sw-track{background:Highlight}
+  label.dm-th input:checked ~ .dm-th-sw{outline:3px solid Highlight}
+  .dm-sw-knob{background:CanvasText}
+  button.dm-switch[aria-checked="true"] .dm-sw-knob{background:Canvas}
+}
 /* at wide windows the fluid figures would outgrow the screen: the US map
    (975x610) keeps to the window's height, centered; the cumulative chart
    stops growing taller than 320px (its viewBox centers inside) */
@@ -352,39 +661,35 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
 summary:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
-/* buttons: default = secondary outline, .gold = primary (cyan), .quiet */
-button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
-  background:transparent;color:var(--navy);font:inherit;font-weight:650;
+/* buttons: default = secondary outline, .gold = primary (cyan), .quiet.
+   Every theme states its own colors as tokens (--btn-ink: LANL Blue on
+   light grounds, the accent on dark ones, where the blue would vanish;
+   --on-accent and --on-bad: the text on a primary or a --bad fill), so no
+   rule here names a theme */
+button{padding:.45rem .95rem;border:1px solid var(--btn-ink);border-radius:8px;
+  background:transparent;color:var(--btn-ink);font:inherit;font-weight:650;
   cursor:pointer;margin-top:.7rem}
-button:hover{background:color-mix(in srgb,var(--navy) 9%,transparent)}
-/* dark grounds swap the LANL Blue outline (invisible there) for the accent */
-[data-theme="dark"] button,[data-theme="dim"] button{
-  border-color:var(--gold);color:var(--gold)}
-[data-theme="dark"] button:hover,[data-theme="dim"] button:hover{
-  background:color-mix(in srgb,var(--gold) 14%,transparent)}
-button.quiet,[data-theme="dark"] button.quiet,[data-theme="dim"] button.quiet{
-  background:transparent;border:1px solid var(--line);color:var(--mut)}
-button.quiet:hover,[data-theme="dark"] button.quiet:hover,
-[data-theme="dim"] button.quiet:hover{
-  background:var(--bg);color:var(--ink)}
+button:hover{background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}
+button.quiet{background:transparent;border:1px solid var(--line);color:var(--mut)}
+button.quiet:hover{background:var(--bg);color:var(--ink)}
 /* .gold after .quiet: toggle buttons carry both classes when selected */
-button.gold,[data-theme="dark"] button.gold,[data-theme="dim"] button.gold{
-  background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
-button.gold:hover,[data-theme="dark"] button.gold:hover,
-[data-theme="dim"] button.gold:hover{
-  background:color-mix(in srgb,#000 12%,var(--gold-bright))}
-/* destructive tier (--bad) for stop-and-think confirms; text flips with the
-   theme's red lightness, all >= 4.5:1 */
-button.danger,[data-theme="dark"] button.danger,
-[data-theme="dim"] button.danger{
-  background:var(--bad);border-color:var(--bad);color:#fff}
-[data-theme="dark"] button.danger,[data-theme="dim"] button.danger{
-  color:#0C0D17}
-button.danger:hover,[data-theme="dark"] button.danger:hover,
-[data-theme="dim"] button.danger:hover{
+button.gold{background:var(--gold-bright);border-color:var(--gold-bright);
+  color:var(--on-accent)}
+button.gold:hover{background:color-mix(in srgb,#000 12%,var(--gold-bright))}
+/* destructive tier (--bad) for stop-and-think confirms; the text is the
+   theme's --on-bad (white on the light themes' dark reds, near-black on
+   the dark themes' light reds), 4.5:1+ in every mode */
+button.danger{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
+button.danger:hover{
   background:color-mix(in srgb,#000 12%,var(--bad));
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
-button[disabled]{opacity:.45;cursor:not-allowed}
+/* a disabled control, in any tier: muted text in a dashed outline on no
+   fill (dashed: unavailable, as the kit's empty state), from the theme's
+   tokens; an opacity washed it out on the dark grounds. --mut holds 4.5:1
+   and --field-line 3:1 against the card */
+button[disabled],button[disabled]:hover{background:transparent;
+  border-color:var(--field-line);border-style:dashed;color:var(--mut);
+  cursor:not-allowed}
 a{color:var(--gold);font-weight:600;text-decoration:none}
 a:hover{text-decoration:underline}
 /* ---- data ---- */
@@ -468,12 +773,10 @@ details.ledgerfold > summary .hint{font-weight:400}
 
 /* per-state score table (season page): sort headers are plain buttons with
    aria-pressed; the US aggregate row is set apart (constructed, not fitted) */
-th button.thsort,[data-theme="dark"] th button.thsort,
-[data-theme="dim"] th button.thsort{margin:0;padding:0;border:0;
+th button.thsort{margin:0;padding:0;border:0;
   background:none;color:var(--mut);font:inherit;font-weight:600;
   text-transform:inherit;letter-spacing:inherit;cursor:pointer}
-th button.thsort:hover,[data-theme="dark"] th button.thsort:hover,
-[data-theme="dim"] th button.thsort:hover{background:none;color:var(--ink)}
+th button.thsort:hover{background:none;color:var(--ink)}
 th button.thsort[aria-pressed="true"]{color:var(--gold)}
 tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 
@@ -494,12 +797,10 @@ tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 .quip{text-align:center;margin:.7rem 0 .1rem;
  font-size:.98rem;font-style:italic;color:var(--gold)}
 /* ---- output tab: downloads + csv previews ---- */
-button.linkish,[data-theme="dark"] button.linkish,
-[data-theme="dim"] button.linkish{background:none;border:0;
+button.linkish{background:none;border:0;
   padding:0;margin:0;color:var(--mut);font-size:var(--fs-label);
   font-weight:600;text-decoration:underline;cursor:pointer}
-button.linkish:hover,[data-theme="dark"] button.linkish:hover,
-[data-theme="dim"] button.linkish:hover{
+button.linkish:hover{
   background:none;color:var(--ink)}
 details.preview > summary{cursor:pointer;list-style:none;user-select:none}
 details.preview > summary::-webkit-details-marker{display:none}
@@ -513,19 +814,18 @@ details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
  color:var(--ink); border-radius:9px; padding:.55rem .85rem;
  margin:0 0 .75rem; font-size:.9rem}
 
-/* model-page intro: one-line summary, collapsed by default */
-details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
-  font-weight:500}
-details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
-/* SVG labels on the type scale via rem classes, so A-/A/A+ reaches them;
+/* SVG labels on the type scale via rem classes, so the text size reaches them;
    svgt-sm renders at or above the 13.1px hint floor in the 840-unit
-   diagrams; svgt-sub is relative to its parent text */
-svg .svgt-xl{font-size:1.3rem}
-svg .svgt-lg{font-size:1rem}
-svg .svgt-md{font-size:.92rem}
-svg .svgt-sm{font-size:.875rem}
+   diagrams; svgt-sub is relative to its parent text. The labels follow the
+   text size up to 115%, where the diagrams were audited to fit their boxes;
+   past it (the size runs to 160%) they hold, so no label spills out of the
+   box drawn around it (the drawing itself scales with its width) */
+svg .svgt-xl{font-size:min(1.3rem,23.92px)}
+svg .svgt-lg{font-size:min(1rem,18.4px)}
+svg .svgt-md{font-size:min(.92rem,16.93px)}
+svg .svgt-sm{font-size:min(.875rem,16.1px)}
 svg .svgt-sub{font-size:.68em}
 /* EXCEPTION: svg.cumchart labels in viewBox px, which scale WITH the
    card-wide chart (rem labels ballooned relative to the plot) */
@@ -555,7 +855,7 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
 
-/* ---- home: workflow pipeline, performance table, card glyphs, stepper ---- */
+/* ---- home: workflow pipeline, performance table, card glyphs ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
   margin:.4rem auto .1rem}
 /* seal-results table: tight rows, full card width */
@@ -573,22 +873,6 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   margin:.15rem 0 .5rem}
 .cardviz svg{color:var(--ink);height:56px;width:auto;max-width:100%}
 .cardviz img{height:50px;width:50px;border-radius:11px}
-/* start-here numbered badge */
-.stepnum{flex:none;width:1.6rem;height:1.6rem;border-radius:50%;
-  display:inline-flex;align-items:center;justify-content:center;
-  font-weight:750;font-size:.85rem;color:var(--gold);
-  border:2px solid var(--gold)}
-/* start-here vertical stepper: badge, title, hint; a line joins the badges */
-.steps{list-style:none;margin:.5rem 0 .2rem;padding:0}
-.steps .step{position:relative;display:flex;align-items:flex-start;
-  gap:.65rem;padding:0 0 .95rem}
-.steps .step:last-child{padding-bottom:0}
-.steps .step::before{content:"";position:absolute;
-  left:calc(.8rem - 1px);top:1.75rem;bottom:.15rem;width:2px;
-  background:var(--line)}
-.steps .step:last-child::before{display:none}
-.steps .steptext{min-width:0;line-height:1.35;padding-top:.05rem}
-.steps .steptext .hint{display:block}
 
 /* ---- retrospective season player (additive) ---- */
 /* ONE control row: transport, speed, scrubber, week label, then the two
@@ -746,7 +1030,6 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
 .dsup[aria-busy="true"] .dsup-result{opacity:.6}
 .dsp-kind{margin:.5rem 0 0;font-size:var(--fs-micro);font-weight:650;
   text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
-.dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
 .dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
 .dsproblems li{overflow-wrap:break-word}
 .dsproblems .nw,.dsnotes .nw{white-space:nowrap}
@@ -760,10 +1043,6 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
 .dsr-stored p{margin:0}
 .dsr-stored .dsnotes{margin:.3rem 0 0}
 .dspreview{margin:.5rem 0}
-.dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
-  gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}
-.dsfacts dt{color:var(--mut)}
-.dsfacts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
 .dssparks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr));
   gap:.5rem .9rem;margin:.6rem 0 .2rem}
 .dsspark{margin:0;min-width:0}
@@ -793,8 +1072,8 @@ details.dsup-fold[open]>summary::before{content:"\25BE"}
 .dstable td.dsactions form{display:inline;margin:0}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
 .srcpick{align-items:flex-end;margin-bottom:.4rem}
-.srcpick select{width:auto;min-width:12rem;max-width:100%}
-.dsr-h{margin:1rem 0 .2rem;font-size:var(--fs-label)}
+.srcpick > span{min-width:0;max-width:100%}
+.srcpick select{width:auto;min-width:min(12rem,100%);max-width:100%}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
@@ -804,6 +1083,8 @@ a.skip{position:absolute;left:-9999px;top:0;z-index:100;
   background:var(--card);color:var(--ink);border:1px solid var(--line);
   border-radius:0 0 8px 0;padding:.5rem .9rem;font-weight:650}
 a.skip:focus{left:0}
+/* the build line under every page (base.html) */
+footer.buildline{text-align:center;padding:.6rem 0 1rem}
 
 /* reduced motion: transitions settle instantly (quips.js holds one line) */
 @media (prefers-reduced-motion: reduce){
@@ -817,7 +1098,7 @@ a.skip:focus{left:0}
 .modes > [role=tablist]{display:flex;gap:.4rem}
 .modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
-.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
+.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
 #fcform.mode-realtime #vintage-pick{display:none}
 details.adv{margin:.7rem 0 .4rem}
@@ -835,54 +1116,16 @@ details.adv[open]>summary::before{content:"\25BE"}
 .adv[open] > summary.advbtn{background:var(--accent-ink);
  border-color:var(--accent-ink);color:var(--card)}
 /* the Model settings panel (templates/_model_settings.html): one fieldset
-   per stage, a live shipped/modified badge in the fold's button */
-.ms-badge{display:inline-block;margin-left:.45rem;padding:0 .45rem;
-  border-radius:99px;border:1px solid currentColor;font-size:var(--fs-micro);
-  font-weight:650;background:var(--card)}
-.ms-badge.ok{color:var(--ok)}
-.ms-badge.warn{color:var(--warn)}
+   per stage (its badges and fixed list: static/tabs/forecast.css) */
 .ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
 .ms-head button{margin-top:0}
 .ms-group{border:1px solid var(--line);border-radius:10px;
   padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
 .ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
 .ms-row input,.ms-row select{max-width:100%}
-/* the Forecast tab's Data issues box (templates/_data_issues.html): the
-   Model settings look, one stacked row per state: name, flag and the
-   "recommended" badge on one line, the select, the reason under it */
-/* one state = one line: a check while the select holds the recommended
-   choice, the name and flag, then the select; the reason is the row's
-   hover text (and a visually hidden line) */
-.dataissues .di-row{margin:.35rem 0 0}
-.dataissues .di-state{display:flex;align-items:center;gap:.4rem;
-  padding-top:.3rem;border-top:1px solid var(--line)}
-.dataissues .di-state:first-of-type{border-top:0;padding-top:0}
-.dataissues .di-row select{margin:0;font-size:var(--fs-label);padding:.3rem .45rem}
-.dataissues .di-state select{width:auto;flex:0 1 46%;min-width:7.5rem}
-.dataissues .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
-  margin-bottom:.2rem}
-.dataissues .di-all label{margin:0;white-space:nowrap}
-.dataissues .di-all select{width:auto;flex:1 1 8rem}
-.dataissues .di-head{flex:1 1 0;min-width:0;display:flex;align-items:baseline;
-  gap:.3rem;flex-wrap:wrap}
-.dataissues .di-head label{margin:0;font-weight:600}
-.dataissues .di-flag{color:var(--mut);font-size:var(--fs-hint);white-space:nowrap}
-/* the check: its text stays "recommended" for assistive tech */
-.dataissues .di-rec{order:-1;margin:0;padding:0;border:0;background:none;
-  font-size:0;line-height:1}
-.dataissues .di-rec::before{content:"\2713";font-size:var(--fs-label);
-  font-weight:700}
-.dataissues .di-rec[hidden]{display:none}
-.dataissues .di-why{position:absolute;width:1px;height:1px;overflow:hidden;
-  clip:rect(0 0 0 0);white-space:nowrap}
-.dataissues[hidden]{display:none}
 .ms-later{opacity:.62}
-.ms-soon{margin-left:.3rem}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
 .ms-override .ck{font-weight:600}
-.ms-locked{margin-top:.8rem}
-.ms-locked>summary{cursor:pointer;display:inline;color:var(--mut);font-size:var(--fs-hint)}
-.ms-locked dl.kv{margin-top:.4rem}
 /* the "?" explainer (templates/_tips.html, static/tips.js): a small round
    button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
    surface (ink on card) so it reads in every theme and a11y mode. */
@@ -890,14 +1133,13 @@ details.adv[open]>summary::before{content:"\25BE"}
 .lblrow label{margin:0}
 .tip{position:relative;display:inline-block;vertical-align:middle;
   margin-left:.3rem;line-height:1}
-button.tipbtn,[data-theme="dark"] button.tipbtn,[data-theme="dim"] button.tipbtn{
+button.tipbtn{
   display:inline-flex;align-items:center;justify-content:center;
   width:1.1rem;height:1.1rem;padding:0;margin:0;border-radius:50%;
   border:1.5px solid var(--accent-ink);background:transparent;
   color:var(--accent-ink);font-size:.7rem;font-weight:800;line-height:1;
   cursor:help}
-button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
-[data-theme="dim"] button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
+button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox{position:fixed;left:0;top:0;
   z-index:60;width:max-content;max-width:min(20rem,85vw);padding:.45rem .6rem;
   border-radius:8px;border:1px solid var(--line);background:var(--ink);
@@ -926,7 +1168,6 @@ table.results td{padding:.18rem 0}
 /* the sandbox's New model form: labels above full-width fields, Create below */
 form.sbnew .lblrow{margin:.5rem 0 .2rem}
 form.sbnew > .lblrow:first-child{margin-top:0}
-form.sbnew .hint{margin-top:.3rem}
 form.sbnew > .row{margin-top:.9rem}
 /* the sandbox workbench: the model (files, then diagram) on the left, its
    runs on the right; one column: files, runs, diagram. The runs column
@@ -940,7 +1181,6 @@ form.sbnew > .row{margin-top:.9rem}
 .sbwork.sbwork-new{grid-template-rows:auto 1fr;grid-template-areas:"edit runs" "edit diag"}
 @media(max-width:1100px){.sbwork,.sbwork.sbwork-new{grid-template-columns:minmax(0,1fr);
   grid-template-rows:auto;grid-template-areas:"edit" "runs" "diag"}}
-.sbcrumb{margin:0}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 /* sub-groups inside a card are a heading, not another box */
@@ -961,8 +1201,6 @@ details.sbfill .row > span[hidden]{display:none}
   align-items:center;margin:.5rem 0 .2rem}
 details.sbfill input[type=file]{padding:.3rem}
 .sbupload{margin-top:.5rem}
-.sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
-.sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
 /* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
 fieldset.sbshipped{border:0;padding:0;margin:.8rem 0;min-width:0}
@@ -978,13 +1216,7 @@ fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
 table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
-#sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
-#sb-checked p{margin:.4rem 0 .1rem}
-.sb-bad{color:var(--bad);font-weight:600}
-.sb-ok{color:var(--ok);font-weight:600}
-.sb-warn{color:var(--ink);font-weight:600}
 tr[aria-current="true"] td{font-weight:600}
-#sb-dirty[hidden]{display:none}
 @media(max-width:640px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2),
   .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
@@ -993,24 +1225,8 @@ tr[aria-current="true"] td{font-weight:600}
 .mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
 .mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
 .mview-draw svg{display:block;max-width:none}
-.mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
-.mview-hint{margin:.4rem 0 0}
 
 /* polish: home-models-methods */
-/* home: a small heading over each performance table; the setup list */
-h3.perfhead{margin:.9rem 0 .15rem;font-weight:650;display:flex;
-  align-items:center;gap:.1rem}
-.card h2 + p.hint + h3.perfhead{margin-top:.35rem}
-ul.setupmiss{margin:.2rem 0 .5rem;padding-left:1.2rem}
-/* model pages: the intro's full description; a second heading in the
-   mechanism card sits apart from the figure above it */
-p.introbody{margin:.55rem 0 .1rem}
-.mech h2:not(:first-child){margin-top:1.4rem}
-/* model switcher: the research tag stays readable on the pressed button */
-.viewtabs button.gold[data-model] .hint{color:inherit;opacity:.75}
-/* methods: the in-page contents row */
-nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
-  font-size:var(--fs-hint)}
 /* phone width: equations wrap instead of clipping, wide figures scroll
    with a visible bar (their right side is off-card), tables tighten so they
    fit the card */
@@ -1029,8 +1245,7 @@ nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
 .seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
   font-size:.85rem;font-weight:600}
 /* unselected: outlined; selected keeps the global .gold fill */
-.seg button:not(.gold),[data-theme="dark"] .seg button:not(.gold),
-[data-theme="dim"] .seg button:not(.gold){background:transparent;
+.seg button:not(.gold){background:transparent;
   color:var(--ink);border:1px solid var(--gold)}
 /* Forecast pager rows: every control on one line (a stray button
    margin-top dropped "expand" below the arrows); scoped to this page's
@@ -1038,12 +1253,8 @@ nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
 #fancard .carousel button,.fanx .carousel button,
 .dataloc button{margin-top:0;padding:.2rem .6rem}
 .dataloc{margin:.6rem 0 .2rem}
-/* a setting with one possible value, stated as text */
-.fixedval{margin:.1rem 0 .2rem;font-weight:600}
 /* forms whose only control is a button and its tip */
 form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
-/* Output: the earlier-weeks picker sits under its own label */
-.archlbl{margin-top:.9rem}
 /* run page settings: values wrap in their own track at phone width
    instead of running past the card edge */
 .runrec .runsettings .kv{grid-template-columns:max-content minmax(0,1fr)}
@@ -1076,7 +1287,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 .rd-settings .runsettings>strong{display:none}
 .rd-settings .runsettings .kv{width:auto;
   grid-template-columns:max-content minmax(0,1fr)}
-.rd-nw{white-space:nowrap}
 @media (max-width:640px){
   /* six columns fit a phone without the last one at the edge */
   table.rd-scores td,table.rd-scores th{padding-left:.3rem;padding-right:.3rem}
@@ -1091,9 +1301,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
    never the page; a wide card does not blow the labels up */
 .archive-wrap{overflow-x:auto;max-width:100%}
 .archive-strip{display:block;width:100%;min-width:420px;max-width:680px}
-/* your datasets: the stored list under a small heading */
-.dslist-h{margin:1rem 0 .2rem;font-size:var(--fs-label);color:var(--mut)}
-.dslist-none{margin-top:.8rem}
 /* under 600px each dataset row stacks: name, facts, then its actions */
 @media(max-width:600px){
   .dstable thead{display:none}
@@ -1148,24 +1355,16 @@ input[type=file]::file-selector-button:hover{
   background:color-mix(in srgb,var(--accent) 16%,var(--card))}
 /* a link that looks like a button (downloads, page links): same tiers as
    <button>; never a <button> inside an <a> */
-a.btn{display:inline-block;padding:.45rem .95rem;border:1px solid var(--navy);
-  border-radius:var(--r-sm);background:transparent;color:var(--navy);
+a.btn{display:inline-block;padding:.45rem .95rem;border:1px solid var(--btn-ink);
+  border-radius:var(--r-sm);background:transparent;color:var(--btn-ink);
   font-weight:650;line-height:1.5;text-decoration:none;cursor:pointer}
 a.btn:hover{text-decoration:none;
-  background:color-mix(in srgb,var(--navy) 9%,transparent)}
-[data-theme="dark"] a.btn,[data-theme="dim"] a.btn{
-  border-color:var(--gold);color:var(--gold)}
-[data-theme="dark"] a.btn:hover,[data-theme="dim"] a.btn:hover{
-  background:color-mix(in srgb,var(--gold) 14%,transparent)}
-a.btn.quiet,[data-theme="dark"] a.btn.quiet,[data-theme="dim"] a.btn.quiet{
-  background:transparent;border-color:var(--line);color:var(--mut)}
-a.btn.quiet:hover,[data-theme="dark"] a.btn.quiet:hover,
-[data-theme="dim"] a.btn.quiet:hover{background:var(--bg);color:var(--ink)}
-a.btn.gold,[data-theme="dark"] a.btn.gold,[data-theme="dim"] a.btn.gold{
-  background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
-a.btn.gold:hover,[data-theme="dark"] a.btn.gold:hover,
-[data-theme="dim"] a.btn.gold:hover{
-  background:color-mix(in srgb,#000 12%,var(--gold-bright))}
+  background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}
+a.btn.quiet{background:transparent;border-color:var(--line);color:var(--mut)}
+a.btn.quiet:hover{background:var(--bg);color:var(--ink)}
+a.btn.gold{background:var(--gold-bright);border-color:var(--gold-bright);
+  color:var(--on-accent)}
+a.btn.gold:hover{background:color-mix(in srgb,#000 12%,var(--gold-bright))}
 /* the results table's heading (results_html): matches "Run settings" */
 table.results caption.reshead{caption-side:top;padding:0 0 .15rem;
   color:var(--mut);font-size:var(--fs-hint)}
@@ -1193,14 +1392,12 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
 .sbtabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin:0 0 .6rem}
 .sbtabs[hidden]{display:none}
 .sbtablist{display:flex;gap:.2rem;min-width:0}
-.sbtablist button,[data-theme="dark"] .sbtablist button,[data-theme="dim"] .sbtablist button{
+.sbtablist button{
   margin:0 0 -1px;padding:.4rem .8rem;border:0;border-bottom:3px solid transparent;
   border-radius:0;background:transparent;color:var(--mut);font-weight:600;
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88rem}
-.sbtablist button:hover,[data-theme="dark"] .sbtablist button:hover,
-[data-theme="dim"] .sbtablist button:hover{color:var(--ink);background:transparent}
-.sbtablist button[aria-selected="true"],[data-theme="dark"] .sbtablist button[aria-selected="true"],
-[data-theme="dim"] .sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
+.sbtablist button:hover{color:var(--ink);background:transparent}
+.sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
 .sbtabtips{display:flex;align-items:center;padding:0 .3rem}
 .sbtabtips > [hidden]{display:none}
 .sbfile[hidden]{display:none}
@@ -1208,26 +1405,13 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
 .sb-tabbed .sbfile + .sbfile{margin-top:0}
 .sb-tabbed .sbfile > .lblrow{display:none}
 .sbfile > .lblrow{margin-top:0}
-.sbfile details.adv{margin:.5rem 0 .2rem}
 /* run settings under a rule: the files above, what a run uses below */
 fieldset.sbrun{border-top:1px solid var(--line);padding-top:.7rem;margin-top:.9rem}
-#sb-eta{margin:.45rem 0 0}
-#sb-eta:empty{display:none}
 .sbactions{margin-top:.8rem}
-.sbdirty{color:var(--warn);border-color:currentColor}
 #sb-checked:empty{display:none}
 #sb-checked{margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
 #sb-checked.sb-stale{opacity:.55}
 /* results: the status first, then the plot, the parameters, compare, files */
-.sbrunline{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.1rem 0 .2rem}
-.sbrunline + .hint{margin-top:0}
-.pill.sbst{font-weight:650;font-size:var(--fs-label)}
-.sbst-ok{color:var(--ok)}.sbst-failed{color:var(--bad)}
-.sbst-interrupted,.sbst-stopped{color:var(--warn)}
-.sbst-running,.sbst-prepared{color:var(--accent-ink)}
-.pill.sbst{border-color:currentColor}
-.sblive{justify-content:space-between;margin:.4rem 0}
-.sblive p{margin:0}
 pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   border-radius:8px;padding:.5rem .7rem;margin:.5rem 0}
 #results .sbcompare{margin-top:.7rem}
@@ -1235,12 +1419,9 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sbrunfoot{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
 .sbrunfoot form{margin:0}
 .sboracle form.row{align-items:flex-end}
-.sboracle form.row > span{display:flex;flex-direction:column}
+.sboracle form.row > span:not(.uk-reason){display:flex;flex-direction:column}
 .sboracle form.row input{width:7rem}
-/* the gallery: each model's note on one line under its name */
-.sbmodels .sbnote{margin:.1rem 0 0;width:0;min-width:100%;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
-.sbmodels td:first-child{width:55%}
+/* the gallery: the models table */
 @media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
 .sbmodels td{vertical-align:top}
 .sbmodels td:nth-child(3),.sbmodels td:nth-child(4){white-space:nowrap}
@@ -1253,8 +1434,8 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   opacity:0;overflow:hidden;clip-path:inset(50%)}
 .dsfolder:focus-within label{outline:2px solid var(--accent-ink);outline-offset:2px}
 .dsfolder label{display:inline;margin:0;font-size:inherit}
-/* a date in the preview's facts or the stored note stays on one line */
-.dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
+/* a date in the stored note stays on one line */
+.dsr-stored .nw{white-space:nowrap}
 
 /* round3: dataset upload */
 /* two drop zones side by side, one form: one weekly CSV, and the optional
@@ -1266,11 +1447,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
   gap:0 1rem}
 .dsbox{min-width:0;display:grid;grid-row:span 2;grid-template-rows:subgrid}
 .dsbox .dsdrop{justify-content:center;margin:.3rem 0 .35rem}
-.dsbox>.hint{margin:0 0 .5rem}
 .dsdrop.picked{border-style:solid;border-color:var(--accent-ink)}
-/* a link and its "?" stay together on one line; the tip's own text wraps */
-.dskeep{white-space:nowrap}
-.dskeep .tipbox{white-space:normal}
 
 /* round3: forecast tab and run pages */
 /* US (national), the 53rd location, set apart at the end of the list */
@@ -1281,11 +1458,6 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .fanbar .seg{margin:.45rem 0}
 .fanoff{display:inline-flex;align-items:center;gap:.35rem}
 .fanoff .ck{margin:0}
-/* beside the settings form the latest-run card is narrow: the settings get
-   the wider column, so a donor-bank digest keeps to one line */
-@media(min-width:1080px){
-  .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
-}
 
 /* round3: sandbox */
 /* run settings: Particles on its own line, then Jitter, Forecast weeks
@@ -1297,10 +1469,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sbrun-parts .sbpair{max-width:24rem}
 .sbrun-grid > span:nth-child(3){flex-basis:9.5rem}
 @media(max-width:560px){.sbrun-grid > span{flex-basis:100%}}
-/* the run's outcome in plain words, what to try, the full-fit offer */
-.sbhealth{margin:.6rem 0 .2rem}
-.pill.sbh{font-weight:650;font-size:var(--fs-label);border-color:currentColor;margin-right:.25rem}
-.sbh-good{color:var(--ok)}.sbh-rough{color:var(--warn)}.sbh-collapsed{color:var(--bad)}
+/* the run: what to try, the full-fit offer */
 details.sbtries{margin:.3rem 0 .4rem}
 .sbtries ul{margin:.3rem 0 .2rem 1.1rem;padding:0}
 .sbtries li{margin:.15rem 0}
@@ -1311,26 +1480,16 @@ details.sbengine{margin:.3rem 0 .5rem}
 details.sbhow > summary{list-style:none;cursor:pointer}
 details.sbhow > summary::-webkit-details-marker{display:none}
 details.sbhow > summary h2{display:inline;margin:0}
-.sbsteps{margin:.6rem 0 .5rem 1.25rem;padding:0}
-.sbsteps li{margin:.3rem 0;max-width:62rem}
-.sbhow .hint,.sbhelpmenu .hint{margin:.2rem 0 0}
 .sbhead-menus{display:flex;gap:.5rem;align-items:flex-start;flex:none}
-.sbmenu.sbhelpmenu{width:min(34rem,calc(100vw - 2rem));max-width:none}
-.sbhelpmenu .sbsteps{margin-top:0}
-#sbnew-about:empty{display:none}
 .sbsim{margin-top:.6rem}
 
 /* round3: submission files and model identities */
-.subrow{justify-content:space-between;margin:.45rem 0}
-.subacts{display:flex;align-items:center;gap:.9rem;white-space:nowrap}
 details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
 details.archived > p.hint{margin:.3rem 0}
-details.archived .subrow{margin:.3rem 0}
 
 /* round4: data source */
 /* a week date never breaks across lines (Data tab: the live-file line) */
 #live-newer .wk{white-space:nowrap}
-.datasrc{white-space:nowrap}
 
 /* round4: navbar edges: a scrolled tab strip fades at the side with more */
 header.nav .navtabs.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);
@@ -1353,67 +1512,17 @@ details.sbfill .row > .sbsetpop + button{align-self:flex-start}
    instead of widening the page at 700px or larger text */
 .runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
 
-/* round7: output */
-/* a submission file's coverage: "N of M locations", a fold naming each
-   missing location and each one anchored on an earlier week */
-details.covfold{margin:.1rem 0 .35rem}
-details.covfold > summary{font-size:var(--fs-label)}
-details.covfold .covhead{margin:.35rem 0 .1rem}
-ul.covlist{margin:.1rem 0 .2rem;padding-left:1.1rem;font-size:var(--fs-label)}
-ul.covlist li{margin:.1rem 0;overflow-wrap:anywhere}
-p.cov{margin:.1rem 0 .3rem}
-.subline{margin:.45rem 0 .1rem}
-
-/* round8: output */
-/* one card per forecast date: a meta line, then one flat row per file
-   (name and run on the left, Download and Show in folder on the right),
-   rows parted by a hairline, no box inside the card */
-.fcday > h2{margin-bottom:.15rem}
-p.fcmeta{margin:0 0 .35rem}
-.fcfile{padding:.15rem 0 .1rem}
-.fcfile + .fcfile{border-top:1px solid var(--line)}
-.fcfile .subrow{margin:.4rem 0 .15rem;flex-wrap:wrap;gap:.3rem .9rem}
-.fcfile .outname{min-width:0;overflow-wrap:anywhere}
-.fcfile .runref{margin-left:.35rem;white-space:nowrap}
-.fcfile .subacts{margin-left:auto}
-.fcfile .subacts form{margin:0}
-.pill.modtag{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;
-  color:var(--mut);margin-left:.3rem;padding:0 .45rem}
-
 /* round8: data check */
 /* the newest week's reporting: one line, a mark (ok or warn token) with
    its own text alternative, the "?" listing each missing location */
 p.newest-check{margin:.2rem 0 .4rem}
 p.newest-check[hidden]{display:none}
 .ncmark{display:inline-block;min-width:1em;font-weight:800;text-align:center}
-.ncmark.ok,p.newest-check.hint.ok{color:var(--ok)}
+.ncmark.ok{color:var(--ok)}
 .ncmark.warn{color:var(--warn)}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}
 
-/* data tab: the hub status card. Labels left, values right; a pill per
-   check carries the state (ok/warn/bad tokens, as the run status pills),
-   a hint the numbers a pill does not. The value track can shrink, so a
-   phone wraps the long reporting line instead of scrolling the page. */
-.hubgrid{display:grid;grid-template-columns:max-content minmax(0,1fr);
-  gap:.35rem .9rem;align-items:baseline;margin:.35rem 0 0}
-.hubgrid dt{color:var(--mut);font-size:var(--fs-hint);white-space:nowrap}
-.hubgrid dd{margin:0;min-width:0;font-variant-numeric:tabular-nums}
-.hubgrid .wk{white-space:nowrap}       /* a date never splits at its hyphen */
-.hubgrid .pill{font-weight:650;border-color:currentColor;white-space:nowrap;
-  vertical-align:baseline}
-/* .ok/.warn/.bad color the state; a neutral pill (not checked) is muted */
-.hubgrid .pill:not(.ok):not(.warn):not(.bad){color:var(--mut)}
-/* the newest-week row: its pill carries the state, so the line's own
-   mark stays out; the line runs on after the pill */
-.hubgrid p.newest-check{display:inline;margin:0}
-.hubgrid .ncmark{display:none}
-/* while a pull or check runs: the run bar slides (indeterminate); the
-   reduced-motion rule above holds it still */
-.runbar.busy div{width:35%;animation:hubslide 1.1s ease-in-out infinite alternate}
-@keyframes hubslide{from{margin-left:0}to{margin-left:65%}}
-#hub-status{margin:.3rem 0 0}
-#hub-status:empty{display:none}
 
 /* round9: retrospective layout */
 /* season header band: the finished replay's settings as chips (the shared
@@ -1433,16 +1542,15 @@ p.newest-check[hidden]{display:none}
 .rs-chips .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
   border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
   background:var(--bg);font-weight:650;overflow-wrap:anywhere}
-/* the verdict: one row of tiles (four across when the window allows);
+/* the verdict: one row of tiles (four across when the window allows;
+   the floor in rem, so large text wraps them rather than clipping);
    the cumulative chart sits in the player's side column with a marker
    that follows the playback */
-.verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))}
 .rs-band .rs-facts{margin:0;flex:1 1 20rem;min-width:0}
 .rs-settings{margin:.15rem 0 .7rem}
 .rs-settings .tip{margin-left:.1rem}
 .rs-settings .runsettings > strong{display:none}
-.rs-facts .pill{font-weight:650;border-color:currentColor;margin-left:.2rem}
-.rs-notes{margin:.3rem 0 .6rem}
 .rs-chips .runsettings > strong{display:none}
 .cumwrap{margin-top:.9rem}
 .cumwrap h2{font-size:var(--fs-label);margin-bottom:.2rem}
@@ -1463,9 +1571,7 @@ p.newest-check[hidden]{display:none}
    Results button), the run settings folded under it */
 .sband{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .7rem}
 .sband h2{margin:0}
-.sband .sfacts{flex:1 1 16rem;min-width:0}
 .sband > a{margin-left:auto}
-.pill.st{font-weight:650;font-size:var(--fs-label);border-color:currentColor}
 .season-card .rsfold{margin:.4rem 0 0}
 .season-card .rsfold > summary{cursor:pointer;color:var(--mut);
   font-size:var(--fs-label);font-weight:600}
