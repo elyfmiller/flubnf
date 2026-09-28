@@ -21,6 +21,8 @@ from app.ui.state import _status
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
+# the notice's kit alert kind (shared._flash), read with it
+templates.env.globals["pop_flash_kind"] = lambda: _status.pop("flash_kind", None) or "info"
 # one wall-time format everywhere the console shows a duration
 templates.env.filters["hms"] = fmt_hms
 

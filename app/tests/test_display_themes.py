@@ -323,9 +323,13 @@ def test_the_map_scale_stays_apart_for_dichromats():
         # no data: apart from the card it sits on and from every step it
         # could be mistaken for (the legend and the hover card name it too)
         nd = r["map-nodata"]
-        assert _de(nd, r["card"], (IDENT,)) >= 4, th
+        assert _de(nd, r["card"], (IDENT,)) >= 10, th
         for c in scale + classic:
             assert _de(nd, c, EVERY) >= 5, (th, nd, c)
+        # nor a pale stable state: the map draws a state at half opacity
+        # when its outlook is uncertain
+        for st in (r["cat-stable"], resolve(th)["cat-stable"]):
+            assert _de(nd, _mix(st, r["card"], .5), (IDENT,)) >= 11, (th, nd)
 
 
 # ------------------------------------------------------------ the menu

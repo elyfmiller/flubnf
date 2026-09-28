@@ -372,9 +372,10 @@ def test_a11y_controls_sit_with_the_theme_picker_and_state_checked():
     assert 'class="a11ypick" role="group" aria-label="Accessibility modes"' \
         in html
     assert 'data-ax="contrast"' in html and 'data-ax="vision"' in html
-    # two named switches beside the theme picker and text size
-    assert html.index('class="fontsize"') < html.index('class="themepick"') \
-        < html.index('class="a11ypick"')
+    # two named switches beside the theme picker and text size, above the
+    # themes so they stay in view in a short window at a large text size
+    assert html.index('class="fontsize"') < html.index('class="a11ypick"') \
+        < html.index('class="themepick"')
     for ax, name in (("contrast", "High contrast"),
                      ("vision", "Color-blind safe colors")):
         btn = html.split(f'data-ax="{ax}"', 1)[0].rsplit("<button", 1)[1]
@@ -440,7 +441,7 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     # relWIS to three places, coverage as its percentage, and a legend line
     # names what each coverage color means
     assert "(p.shown < 1 ? 'ok' : 'bad')" in PLAYER
-    assert "+ p.shown.toFixed(3) + '</td>'" in PLAYER
+    assert "+ p.shown.toFixed(3) + verdictIcon(p.shown) + '</td>'" in PLAYER
     assert "'<td class=\"num cov-' + covState(v, +b)" in PLAYER
     assert "+ b + '% interval\">' + pc + '%</td>'" in PLAYER
     assert "(too narrow)" in PLAYER and "(too wide)" in PLAYER

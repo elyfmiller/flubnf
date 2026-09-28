@@ -80,6 +80,7 @@
   --official:#6E7590;
   --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
+  --shadow-pop:0 10px 32px rgba(12,13,23,.22);
   /* high-contrast variants (data-contrast="high" remaps onto these) */
   --ink-hc:#000000; --mut-hc:#363C6B; --nav-ink-hc:#000000;
   --line-hc:#7F7A9E; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
@@ -116,8 +117,9 @@
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
   --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
-  --map-nodata:#232741;
+  --map-nodata:#2A2F50;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#C8CEE9; --nav-ink-hc:#FFFFFF;
   --line-hc:#6E76A4; --field-line-hc:#8C96D2; --accent-ink-hc:#7FDBFF;
   --ok-hc:#96E6BC; --warn-hc:#F2C689; --bad-hc:#FFA0AB;
@@ -147,8 +149,9 @@
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
   --official:#6E7590;
-  --map-nodata:#DCD3BD;
+  --map-nodata:#C4CAD8;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
+  --shadow-pop:0 10px 32px rgba(63,54,28,.22);
   --ink-hc:#000000; --mut-hc:#343963; --nav-ink-hc:#000000;
   --line-hc:#837C62; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
@@ -178,8 +181,9 @@
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
   --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
-  --map-nodata:#333952;
+  --map-nodata:#434A68;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#CDD4EF; --nav-ink-hc:#FFFFFF;
   --line-hc:#838BB1; --field-line-hc:#9AA4DE; --accent-ink-hc:#7FDBFF;
   --ok-hc:#9FEAC4; --warn-hc:#F4CD96; --bad-hc:#FFAAB3;
@@ -213,6 +217,7 @@
   --official:#6E7781;
   --map-nodata:#CFCCD6;
   --shadow:0 1px 2px rgba(31,35,40,.08),0 2px 8px rgba(31,35,40,.06);
+  --shadow-pop:0 10px 32px rgba(31,35,40,.22);
   --ink-hc:#010409; --mut-hc:#393F46; --nav-ink-hc:#010409;
   --line-hc:#737D88; --field-line-hc:#454C54; --accent-ink-hc:#0349B4;
   --ok-hc:#055D20; --warn-hc:#5C3F00; --bad-hc:#96101B;
@@ -244,8 +249,9 @@
   --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
   --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
   --official:#657B83;
-  --map-nodata:#D8D0B8;
+  --map-nodata:#C6CCD4;
   --shadow:0 1px 2px rgba(88,110,117,.10),0 2px 8px rgba(88,110,117,.08);
+  --shadow-pop:0 10px 32px rgba(88,110,117,.22);
   --ink-hc:#002B36; --mut-hc:#2E4148; --nav-ink-hc:#002B36;
   --line-hc:#7C877F; --field-line-hc:#485A5E; --accent-ink-hc:#0B4B7A;
   --ok-hc:#3B4600; --warn-hc:#553E00; --bad-hc:#86191A;
@@ -277,8 +283,9 @@
   --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
   --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
   --official:#9AA4B8;
-  --map-nodata:#3B4252;
+  --map-nodata:#414D62;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#D8DEE9; --nav-ink-hc:#FFFFFF;
   --line-hc:#737E96; --field-line-hc:#98A3BC; --accent-ink-hc:#B2DCE8;
   --ok-hc:#C9DDB8; --warn-hc:#F4E0B6; --bad-hc:#F4B8BE;
@@ -310,8 +317,9 @@
   --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
   --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
   --official:#A2A7C2;
-  --map-nodata:#343746;
+  --map-nodata:#44475A;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --shadow-pop:0 10px 32px rgba(0,0,0,.45);
   --ink-hc:#FFFFFF; --mut-hc:#D9DCEA; --nav-ink-hc:#FFFFFF;
   --line-hc:#7580AA; --field-line-hc:#95A0CE; --accent-ink-hc:#DCC6FF;
   --ok-hc:#9CFFB3; --warn-hc:#FFD6A8; --bad-hc:#FFB0B0;
@@ -365,7 +373,7 @@
   --gap:clamp(.6rem,.3rem + .7vw,1.25rem);          /* 12.7 -> 14.9 -> 18.8px */
   --card-py:clamp(.75rem,.5rem + .55vw,1.3rem);     /* 12 -> 15.9 -> 19px  */
   --card-px:clamp(.85rem,.4rem + 1vw,1.6rem);       /* 13.6 -> 20.8 -> 26px */
-  --side-col:clamp(260px,22vw + 60px,400px);        /* the .cols left track */
+  --side-col:clamp(16.25rem,22vw + 60px,25rem);     /* the .cols left track (grows with the text size) */
 }
 /* ---- accessibility modifiers: remap consumer tokens onto the per-theme
    -hc / -cvd literals (never a color of their own). Both follow the theme
@@ -476,7 +484,7 @@ header.nav details.display[open] > summary{
   overflow-y:auto;overscroll-behavior:contain;
   padding:.15rem 1rem .75rem;background:var(--nav-bg);color:var(--nav-ink);
   border:1px solid var(--line);border-radius:var(--r-md);
-  box-shadow:0 10px 32px rgba(12,13,23,.22),var(--shadow);
+  box-shadow:var(--shadow-pop),var(--shadow);
   font-size:var(--fs-body);font-weight:400;text-align:left;white-space:normal}
 .dm-sec{padding:.7rem 0 .75rem;border-top:1px solid var(--line)}
 .dm-sec:first-child{border-top:0}
@@ -487,7 +495,7 @@ header.nav details.display[open] > summary{
    of the heading */
 .fontsize{display:flex;align-items:center;gap:.55rem}
 .fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
-  height:1.6rem;margin:0;padding:0;border:0;background:transparent;
+  height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
   accent-color:var(--accent-ink);cursor:pointer}
 .fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
   outline-offset:2px;border-radius:var(--r-sm)}
@@ -501,7 +509,7 @@ button.dm-step[disabled]{opacity:.4}
 .dm-step-lg{font-size:1.2rem}
 .dm-fs-out{flex:none;min-width:3.4em;text-align:right;font-weight:700;
   font-variant-numeric:tabular-nums}
-button.dm-reset{margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
+button.dm-reset{min-height:24px;margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
   border-radius:var(--r-pill);background:transparent;color:var(--nav-ink);
   font-size:var(--fs-label);font-weight:600}
 button.dm-reset:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
@@ -553,6 +561,14 @@ label.dm-th input:checked ~ .dm-th-check{display:inline-flex}
 label.dm-th input:checked ~ .dm-th-name{font-weight:750}
 label.dm-th input:focus-visible ~ .dm-th-sw{outline:var(--focus-w,2px) solid var(--dm-focus);
   outline-offset:3px}
+/* the previews show the two a11y modes as well: each preview's data-theme
+   restates the literal tokens, so the modes' remaps apply again inside it */
+[data-contrast="high"] .dm-th-sw{--ink:var(--ink-hc);--nav-ink:var(--nav-ink-hc);
+  --line:var(--line-hc);--accent-ink:var(--accent-ink-hc);--ok:var(--ok-hc);
+  --warn:var(--warn-hc);--bad:var(--bad-hc);--ok-cvd:var(--ok-cvd-hc);
+  --warn-cvd:var(--warn-cvd-hc);--bad-cvd:var(--bad-cvd-hc)}
+[data-vision="cvd"] .dm-th-sw{--ok:var(--ok-cvd);--warn:var(--warn-cvd);
+  --bad:var(--bad-cvd)}
 /* accessibility: two switches, each a button (role=switch) with a track,
    a knob that slides and carries a check when on, and the state as a word */
 .a11ypick{display:flex;flex-direction:column;gap:.2rem}
@@ -597,6 +613,8 @@ button.dm-switch[aria-checked="true"] .dm-sw-state::after{content:"On"}
   .dm-sw-track,.dm-th-sw,button.dm-step{border-color:CanvasText}
   button.dm-switch[aria-checked="true"] .dm-sw-track{background:Highlight}
   label.dm-th input:checked ~ .dm-th-sw{outline:3px solid Highlight}
+  .dm-sw-knob{background:CanvasText}
+  button.dm-switch[aria-checked="true"] .dm-sw-knob{background:Canvas}
 }
 /* at wide windows the fluid figures would outgrow the screen: the US map
    (975x610) keeps to the window's height, centered; the cumulative chart
@@ -1054,7 +1072,8 @@ details.dsup-fold[open]>summary::before{content:"\25BE"}
 .dstable td.dsactions form{display:inline;margin:0}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
 .srcpick{align-items:flex-end;margin-bottom:.4rem}
-.srcpick select{width:auto;min-width:12rem;max-width:100%}
+.srcpick > span{min-width:0;max-width:100%}
+.srcpick select{width:auto;min-width:min(12rem,100%);max-width:100%}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
@@ -1400,7 +1419,7 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sbrunfoot{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
 .sbrunfoot form{margin:0}
 .sboracle form.row{align-items:flex-end}
-.sboracle form.row > span{display:flex;flex-direction:column}
+.sboracle form.row > span:not(.uk-reason){display:flex;flex-direction:column}
 .sboracle form.row input{width:7rem}
 /* the gallery: the models table */
 @media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
@@ -1439,11 +1458,6 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .fanbar .seg{margin:.45rem 0}
 .fanoff{display:inline-flex;align-items:center;gap:.35rem}
 .fanoff .ck{margin:0}
-/* beside the settings form the latest-run card is narrow: the settings get
-   the wider column, so a donor-bank digest keeps to one line */
-@media(min-width:1080px){
-  .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
-}
 
 /* round3: sandbox */
 /* run settings: Particles on its own line, then Jitter, Forecast weeks

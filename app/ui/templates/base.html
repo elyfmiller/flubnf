@@ -92,6 +92,27 @@
       <output class="dm-fs-out" id="dm-fs-out" for="dm-fs" aria-hidden="true">100%</output>
      </div>
     </section>
+    {# two independent a11y modifiers, composing with every theme: switches
+       (role=switch), their state drawn (knob, check, On/Off) and spoken.
+       Above the themes: two rows that stay in view in a short window at a
+       large text size, where the theme grid scrolls #}
+    <section class="dm-sec">
+     {{ kit.heading("Accessibility", "dm-a11y", level=3, tiptext="Two modes that work with every theme and with each other.") }}
+     <div class="a11ypick" role="group" aria-label="Accessibility modes">
+      <div class="dm-switch-row">
+       <button type="button" class="dm-switch" role="switch" aria-checked="false"
+        data-ax="contrast" aria-describedby="tip-dm-contrast"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
+        ><span class="dm-sw-label">High contrast</span><span class="dm-sw-state" aria-hidden="true"></span></button>
+       {{ kit.tip("dm-contrast", "high contrast", "Stronger text, boundaries, and fills on the current theme, and thicker focus rings. It turns on by itself when the system asks for more contrast, until you choose here.") }}
+      </div>
+      <div class="dm-switch-row">
+       <button type="button" class="dm-switch" role="switch" aria-checked="false"
+        data-ax="vision" aria-describedby="tip-dm-vision"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
+        ><span class="dm-sw-label">Color-blind safe colors</span><span class="dm-sw-state" aria-hidden="true"></span></button>
+       {{ kit.tip("dm-vision", "color-blind safe colors", "For red-green color blindness: status colors, chart lines and the outlook map move to a palette based on Okabe and Ito's, whose colors stay apart without red and green. Good turns blue, warnings gold or yellow, problems a deep red that stays apart from both; the map runs from blue to red through orange. Icons and words still name every status.") }}
+      </div>
+     </div>
+    </section>
     {# theme: one radio per theme, drawn as a preview that wears the theme
        (data-theme on the preview: its own tokens and mark) #}
     <section class="dm-sec">
@@ -108,25 +129,6 @@
       {% endfor %}
       </div>
      {% endfor %}
-     </div>
-    </section>
-    {# two independent a11y modifiers, composing with every theme: switches
-       (role=switch), their state drawn (knob, check, On/Off) and spoken #}
-    <section class="dm-sec">
-     {{ kit.heading("Accessibility", "dm-a11y", level=3, tiptext="Two modes that work with every theme and with each other.") }}
-     <div class="a11ypick" role="group" aria-label="Accessibility modes">
-      <div class="dm-switch-row">
-       <button type="button" class="dm-switch" role="switch" aria-checked="false"
-        data-ax="contrast" aria-describedby="tip-dm-contrast"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
-        ><span class="dm-sw-label">High contrast</span><span class="dm-sw-state" aria-hidden="true"></span></button>
-       {{ kit.tip("dm-contrast", "high contrast", "Stronger text, boundaries, and fills on the current theme, and thicker focus rings. It turns on by itself when the system asks for more contrast, until you choose here.") }}
-      </div>
-      <div class="dm-switch-row">
-       <button type="button" class="dm-switch" role="switch" aria-checked="false"
-        data-ax="vision" aria-describedby="tip-dm-vision"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
-        ><span class="dm-sw-label">Color-blind safe colors</span><span class="dm-sw-state" aria-hidden="true"></span></button>
-       {{ kit.tip("dm-vision", "color-blind safe colors", "For red-green color blindness: status colors, chart lines and the outlook map move to a palette based on Okabe and Ito's, whose colors stay apart without red and green. Good turns blue, warnings gold or yellow, problems a deep red that stays apart from both; the map runs from blue to red through orange. Icons and words still name every status.") }}
-      </div>
      </div>
     </section>
     {# whole-page zoom: the native window only (a browser has its own);
@@ -146,15 +148,30 @@
  // a scrolled tab strip opens with the current tab in view
  (function () {
    var s = document.querySelector('.navtabs'), a = s && s.querySelector('.tab.active');
-   if (a && s.scrollWidth > s.clientWidth) s.scrollLeft = a.offsetLeft - (s.clientWidth - a.offsetWidth) / 2;
+   if (!s) return;
    // fade the edge that has more tabs past it, so a clipped tab reads as
    // "scroll for more" rather than a cut-off word
    function edges() {
-     if (!s) return;
      s.classList.toggle('more-l', s.scrollLeft > 2);
      s.classList.toggle('more-r', s.scrollLeft + s.clientWidth < s.scrollWidth - 2);
    }
-   if (s) { s.addEventListener('scroll', edges, {passive: true}); window.addEventListener('resize', edges); edges(); }
+   // the current tab centered, measured against the strip (a tab's
+   // offsetParent is the header), then the fades; again once the web font
+   // has loaded and after a text-size change, which both move the tabs
+   function fit() {
+     if (a && s.scrollWidth > s.clientWidth)
+       s.scrollLeft = a.getBoundingClientRect().left - s.getBoundingClientRect().left
+         + s.scrollLeft - (s.clientWidth - a.offsetWidth) / 2;
+     edges();
+   }
+   s.addEventListener('scroll', edges, {passive: true});
+   window.addEventListener('resize', edges);
+   window.addEventListener('fontsizechange', fit);
+   // the fades follow the text-size slider while it moves
+   var r = document.getElementById('dm-fs');
+   if (r) r.addEventListener('input', function () { requestAnimationFrame(edges); });
+   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+   fit();
  })();
  // the Display menu: Escape, a click outside or focus moving out of it
  // (Tab past its last control) closes it; Escape hands focus back to its
@@ -162,7 +179,16 @@
  (function () {
    var d = document.getElementById('displaymenu');
    if (!d) return;
-   var s = d.querySelector('summary');
+   var s = d.querySelector('summary'), pop = d.querySelector('.displaypop');
+   // the menu scrolls within the room under its button (nau.css caps it
+   // too, before this runs)
+   function room() {
+     if (d.open && pop)
+       pop.style.maxHeight = Math.max(160, innerHeight - s.getBoundingClientRect().bottom - 16) + 'px';
+   }
+   d.addEventListener('toggle', room);
+   addEventListener('resize', room);
+   addEventListener('fontsizechange', room);
    addEventListener('keydown', function (e) {
      if (e.key === 'Escape' && d.open) { d.open = false; s.focus(); }
    });
@@ -181,10 +207,11 @@
  {% call kit.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart", live="alert") %}This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
  reload refreshes the look, not the server logic.{% endcall %}
-{% endif %}{% set _f = pop_flash() %}{% if _f %}
+{% endif %}{% set _f = pop_flash() %}{% set _fk = pop_flash_kind() %}{% if _f %}
  {# the outcome of the last action (a notice from the server): the kit's
-    alert, announced politely #}
- {{ kit.alert("info", _f, id="flash") }}
+    alert in the notice's kind (a failure is an error, announced at once;
+    the rest politely) #}
+ {{ kit.alert(_fk, _f, id="flash") }}
 {% endif %}{% block content %}{% endblock %}{% if research_panel %}
 {# research run control, only when a route sets research_panel (/model/pf2s) #}
 {% include "research_run.html" %}
@@ -242,7 +269,8 @@
      if(Math.abs(scrollY-y)>50 && !e.target.closest('a')) scrollTo(0,y);}));},true);
  addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
    sessionStorage.removeItem(k);
-   if(y && !location.hash) scrollTo(0,parseInt(y));});
+   // a notice at the top (the action's outcome) stays in view instead
+   if(y && !location.hash && !document.getElementById('flash')) scrollTo(0,parseInt(y));});
  // theme picker: native radios (arrow keys move the choice), the current
  // theme checked on load; a change applies and persists it and dispatches
  // themechange so charts re-resolve their tokens
@@ -299,7 +327,13 @@
     var t=(Math.round(p*10)/10)+'%';
     out.textContent=t;r.value=p;
     r.setAttribute('aria-valuetext',t.replace('%',' percent'));
-    reset.disabled=(p===100);}
+    reset.disabled=(p===100);
+    // a step at its end of the scale is off; focus it held moves to the
+    // slider
+    var a=document.activeElement;
+    steps.forEach(function(b){
+      b.disabled=(+b.dataset.fsStep<0)?p<=80:p>=160;});
+    if(a&&a.disabled)r.focus();}
   function apply(p,now){
     p=Math.max(80,Math.min(160,p));
     de.style.fontSize=p+'%';show(p);
