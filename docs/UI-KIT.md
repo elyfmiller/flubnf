@@ -248,5 +248,6 @@ Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-
 
 ## Where the kit does not reach
 
-- The weekly and season reports and the public site are standalone pages that load neither `ui-kit.css` nor `tips.js`. The season report inlines `static/player.js` verbatim and `app/core/runs.py`'s settings renderer feeds both reports, so markup those two write must read without the kit.
+- The weekly report (`app/core/report_v2.py`) is a standalone file that carries the kit inside it: `app/core/html_page.py` inlines nau.css's tip rules and `ui-kit.css` (`kit_css`), `tips.js` (`kit_js`), the DM Sans faces and the theme marks, and renders the `_tips.html` macros from Python (`kit_macros`). A change to any of those files makes stored reports stale, so they are rebuilt from their inputs bundle when next served.
+- The season report and the public site are standalone pages that load neither `ui-kit.css` nor `tips.js`. The season report inlines `static/player.js` verbatim and `app/core/runs.py`'s settings renderer feeds both reports, so markup that renderer writes must read without the kit.
 - The public site renders `methods.html`'s content block through the console's Jinja env with only `diagrams.html` imported (`app/core/site_build.py` `harvest_methods`), and reads the first `class="perf"` table of `home.html` (`harvest_placement`). Import `_tips.html` inside Methods' content block, keep that table's markup, and run `app/tests/test_site_build.py` after changing either page.

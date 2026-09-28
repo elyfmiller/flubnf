@@ -574,7 +574,11 @@ def test_weekly_report_footer_states_the_run_wall_time(tmp_path):
     from app.core.report_v2 import build_report
     p = build_report("2098-01-03", {}, {}, {}, tmp_path / "r.html",
                      elapsed_s=3725.0)
-    assert "Run wall time: 1:02:05" in p.read_text()
+    # a stat on the run card: label, then value and unit
+    html = p.read_text()
+    assert "<dt>Run wall time</dt>" in html
+    assert 'id="runtime">1:02:05</span> <span class="uk-stat-u">h:mm:ss' \
+        in html
     q = build_report("2098-01-03", {}, {}, {}, tmp_path / "q.html")
     assert "Run wall time" not in q.read_text()   # never guessed
 
