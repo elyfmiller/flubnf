@@ -45,8 +45,12 @@
  * script. A C check after Py_BytesMain would miss most of them: an uncaught
  * SystemExit(n) from a script ends in Py_Exit() -> exit()
  * (Python/pythonrun.c, handle_system_exit), so Py_BytesMain never returns.
- * The flag is removed from the environment, so no child inherits it. The
- * fallback cannot loop: FluBNF.command never sets the flag.
+ * The flag is removed from the environment, so no child inherits it.
+ * Neither this host nor host_boot.py opens Terminal itself: both hand over
+ * to the bundle's launcher (flubnf-launch --handover "<why>"), whose
+ * guards keep that from looping. A launch that FluBNF.command asked for
+ * (which runs with the flag too, through `open`) reports to that Terminal
+ * instead, and a second automatic reopen within minutes is an alert.
  *
  * The file also compiles on Linux (it reads /proc/self/exe there) so the
  * tests can build and run it. Only macOS gives it a purpose.
@@ -143,20 +147,26 @@ static int venv_version_ok(const char *cfg)
     return ok;
 }
 
-/* Hand the launch to Terminal (FluBNF.command) so the user sees why. Only
- * returns if that could not be started. */
-static void to_terminal(const char *repo, const char *why)
+/* Hand the launch to Terminal (FluBNF.command) so the user sees why,
+ * through the launcher beside this host (`flubnf-launch --handover why`),
+ * which decides: report to the Terminal that asked, reopen Terminal, or,
+ * after a reopen moments ago, say so in an alert. Only returns if the
+ * launcher could not be started. */
+static void to_terminal(const char *exe, const char *why)
 {
-    char cmd[PATH_MAX + 32];
-    fprintf(stderr, TAG "%s; reopening FluBNF.command in Terminal\n", why);
+    char launcher[PATH_MAX];
+    fprintf(stderr, TAG "%s; handing over to FluBNF.command in Terminal\n", why);
     fflush(stderr);
-    if (snprintf(cmd, sizeof cmd, "%s/FluBNF.command", repo) >= (int)sizeof cmd)
+    if (strlen(exe) >= sizeof launcher)
         return;
+    strcpy(launcher, exe);
+    if (pop(launcher) == NULL
+        || strlen(launcher) + sizeof "/flubnf-launch" > sizeof launcher)
+        return;
+    strcat(launcher, "/flubnf-launch");
 #ifdef __APPLE__
-    execl("/usr/bin/open", "open", "-a", "Terminal", cmd, (char *)NULL);
-    perror(TAG "open");
-#else
-    (void)cmd;
+    execl("/bin/bash", "bash", launcher, "--handover", why, (char *)NULL);
+    perror(TAG "flubnf-launch");
 #endif
 }
 
@@ -193,7 +203,7 @@ int main(int argc, char **argv)
     }
     if (access(py, X_OK) != 0 || access(cfg, R_OK) != 0) {
         if (fallback)
-            to_terminal(repo, "no .venv yet (first run, or setup did not finish)");
+            to_terminal(exe, "no .venv yet (first run, or setup did not finish)");
         fprintf(stderr, TAG "%s is missing\n", py);
         return 69;
     }
@@ -201,7 +211,7 @@ int main(int argc, char **argv)
         snprintf(why, sizeof why, ".venv is not a Python %d.%d venv; this host "
                  "needs rebuilding", PY_MAJOR_VERSION, PY_MINOR_VERSION);
         if (fallback)
-            to_terminal(repo, why);
+            to_terminal(exe, why);
         fprintf(stderr, TAG "%s\n", why);
         return 69;
     }

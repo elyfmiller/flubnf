@@ -26,6 +26,17 @@
 # launch skips straight to the host, its output stays in that Terminal, and
 # a failure is written to FLUBNF_BOOT_STATUS for that Terminal to handle,
 # never a second Terminal.
+# macOS may drop the --env values `open` passes, so FluBNF.command also
+# leaves app/state/terminal-launch (its pid, then its status file) while it
+# waits: a launch that finds it fresh, with that pid alive, is ready too.
+# --handover "<why>": the host and host_boot.py, whose console stopped at
+# startup, hand over here instead of opening Terminal themselves, so every
+# automatic reopen goes through `terminal` below and its two guards: a
+# launch a Terminal asked for reports to that Terminal and never opens
+# another, and a second automatic reopen within HANDOVER_MIN minutes of the
+# last one is an alert instead of another Terminal. Without them a console
+# that stops at startup could reopen Terminal, which opens the app, which
+# stops and reopens Terminal, without end.
 # A copy that cannot start at all (moved out of its clone, or an old clone
 # that reinstall.sh set aside) says so in an alert.
 # Output of a quiet launch goes to app/state/logs/launch.log.
@@ -37,9 +48,14 @@ main() {
   local open=/usr/bin/open      # tests replace this line with a recorder
   local osascript=/usr/bin/osascript    # and this one
   local limit=120               # seconds the headless checks may take
-  local here repo host log rc home prep started
-  local ready=""
-  [ "${FLUBNF_LAUNCH:-}" = ready ] && ready=1
+  local HANDOVER_MIN=2          # minutes between automatic Terminal reopens
+  local GUARD_MIN=3             # minutes a terminal-launch file counts as fresh
+  local here repo host log rc home prep started guard stamp gpid gboot
+  local ready="" asked="" handover=""
+  [ "${FLUBNF_LAUNCH:-}" = ready ] && ready=1 && asked=1
+  if [ "${1:-}" = --handover ]; then
+    handover="${2:-the console stopped at startup}"
+  fi
 
   # When not even Terminal can take over: say why in an alert rather than
   # fail in silence.
@@ -59,6 +75,15 @@ main() {
       [ -n "${FLUBNF_BOOT_STATUS:-}" ] && echo "$1" > "$FLUBNF_BOOT_STATUS"
       exit 1
     fi
+    # the second automatic reopen within HANDOVER_MIN minutes: stop here
+    stamp="$repo/app/state/terminal-handover"
+    if [ -n "$(find "$stamp" -mmin -"$HANDOVER_MIN" 2>/dev/null)" ]; then
+      alert "FluBNF could not start ($1), and it already reopened in Terminal a moment ago, so it stops here rather than open Terminal again. Open FluBNF.command in $repo to see why; app/state/logs/launch.log there has the details."
+    fi
+    # a clone only: a copy moved out of it gets no app/state
+    if [ -f "$repo/FluBNF.command" ] || [ -d "$repo/.git" ]; then
+      mkdir -p "$repo/app/state" 2>/dev/null && touch "$stamp" 2>/dev/null
+    fi
     echo "flubnf-launch: $1; opening FluBNF.command in Terminal"
     "$open" -a Terminal "$repo/FluBNF.command" && exit 0
     alert "FluBNF.app could not open FluBNF.command in $repo. It works only inside its FluBNF folder, next to FluBNF.command: open FluBNF.app from that folder, and keep that one in the Dock."
@@ -67,7 +92,31 @@ main() {
   here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || here="$(dirname "$0")"
   repo="${here%/*/*/*}"         # <repo>/<Name>.app/Contents/MacOS
   host="$here/FluBNF"
+  # A Terminal is waiting on this launch (FluBNF.command, `open -W`), even
+  # if macOS dropped FLUBNF_LAUNCH: ready, and its status file is ours.
+  guard="$repo/app/state/terminal-launch"
+  if [ -z "$ready" ] && [ -n "$(find "$guard" -mmin -"$GUARD_MIN" 2>/dev/null)" ]; then
+    gpid="$(sed -n 1p "$guard" 2>/dev/null)"
+    gboot="$(sed -n 2p "$guard" 2>/dev/null)"
+    case "$gpid" in
+      ''|*[!0-9]*) ;;
+      *) if kill -0 "$gpid" 2>/dev/null; then
+           ready=1
+           [ -n "${FLUBNF_BOOT_STATUS:-}" ] || [ -z "$gboot" ] \
+             || export FLUBNF_BOOT_STATUS="$gboot"
+         fi ;;
+    esac
+  fi
   cd "$repo" 2>/dev/null || terminal "cannot open the folder $repo"
+  # the host or host_boot.py, whose console stopped at startup
+  if [ -n "$handover" ]; then
+    if [ -z "$asked" ]; then
+      log="$repo/app/state/logs/launch.log"
+      mkdir -p "$(dirname "$log")" 2>/dev/null
+      exec >>"$log" 2>&1
+    fi
+    terminal "$handover"
+  fi
   # Only a clone gets a log: a copy moved out of it (to the Desktop, to
   # Applications) must not leave app/state/logs in its new folder. Not
   # finding FluBNF.command here is not proof it is absent (this app may be
@@ -75,8 +124,9 @@ main() {
   [ -f FluBNF.command ] || [ -d .git ] \
     || terminal "no FluBNF.command beside FluBNF.app in $repo"
 
-  # ready: the asking Terminal shows the output (open --stdout/--stderr)
-  if [ -z "$ready" ]; then
+  # asked: the asking Terminal shows the output (open --stdout/--stderr);
+  # a launch that found only the guard file logs as a Dock launch does
+  if [ -z "$asked" ]; then
     log="$repo/app/state/logs/launch.log"
     mkdir -p "$(dirname "$log")" 2>/dev/null
     if [ -f "$log" ] && [ "$(wc -c < "$log" | tr -d ' ')" -gt 1000000 ]; then

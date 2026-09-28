@@ -201,7 +201,15 @@ if [ -n "$HOST" ]; then
   # prints here, and writes a failure at startup to BOOT instead of opening
   # another Terminal; the console then starts here in view, as it did
   # before. Ctrl-C here stops the app (its pidfile).
+  # macOS may drop those --env values, so the same two facts also wait in
+  # app/state/terminal-launch (this shell's pid, then BOOT) until the app
+  # quits: FluBNF.app, the host and host_boot.py never open another
+  # Terminal while it names a live pid, which is what stops a console that
+  # fails at startup from reopening Terminal without end.
   BOOT="$(mktemp -t flubnf-boot.XXXXXX 2>/dev/null)" || BOOT=""
+  GUARD="app/state/terminal-launch"
+  mkdir -p app/state 2>/dev/null
+  printf '%s\n%s\n' "$$" "$BOOT" > "$GUARD" 2>/dev/null || GUARD=""
   OUT=()
   TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
   case "$TTY_NOW" in /dev/*) OUT=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
@@ -211,6 +219,7 @@ if [ -n "$HOST" ]; then
   open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready ${OUT[@]+"${OUT[@]}"}
   ORC=$?
   trap - INT
+  [ -z "$GUARD" ] || rm -f "$GUARD"
   if [ -n "$STOPPED" ]; then
     STATUS=130
   elif [ "$ORC" -ne 0 ]; then
