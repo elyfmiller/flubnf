@@ -284,9 +284,31 @@
     {{- tips.stat("Elapsed", elapsed0 | hms, id="elapsed") -}}
     {{- tips.stat("Time left", "--", id="fc-left") -}}
    {% endcall %}
-   {# the live spec's settings, as the run page and weekly report state them #}
-   <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
-   <p class="quip" id="quip"></p>
+   {# the latest-run card's split: the live spec's settings left (as the
+      run page and weekly report state them); right, where the results
+      will be, the fits by location as they finish (/api/progress
+      "locations"), or a results skeleton while none are known (a
+      Groundhog-only run fits none), and the rotating quip #}
+   <div class="runsplit fc-runsplit">
+    <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
+    <div class="fc-wait" id="fc-wait">
+     <section id="fc-grid" hidden aria-labelledby="fc-grid-h">
+      <div class="fc-wait-head"><strong id="fc-grid-h">Locations</strong>
+       <span class="fc-count" id="fc-loc-count"></span>
+       {{ tips.tip("fc-grid", "the location tiles", "One tile per location, in run order; its bar fills as its replicates finish. The results replace the tiles when the run completes.") }}</div>
+      <ul class="fc-locs" id="fc-locs" aria-label="Fits by location"></ul>
+      {{ tips.legend([("var(--ok)", "fitted"), ("var(--accent-ink)", "fitting", "ring"),
+                      ("var(--field-line)", "waiting", "ring"), ("var(--bad)", "failed")],
+                     label="Tile states", id="fc-grid-lg") }}
+     </section>
+     <section id="fc-skel" aria-labelledby="fc-skel-h">
+      <div class="fc-wait-head"><strong id="fc-skel-h">Results</strong>
+       {{ tips.badge("pending", "after the run", tiptext="The results table (relWIS against the FluSight baseline, fits, submission files, the weekly report) takes this place when the run completes.", id="fc-skel-badge") }}</div>
+      <div class="fc-skel" aria-hidden="true">{% for w in (62, 48, 71, 40, 55) %}<span class="fc-skel-row"><i style="width:{{ w - 25 }}%"></i><i style="width:{{ w }}%"></i></span>{% endfor %}</div>
+     </section>
+     <p class="quip fc-quip" id="quip"></p>
+    </div>
+   </div>
   </div>
   <script>
    flubnfQuips('quip');
@@ -311,6 +333,56 @@
      if(PROG&&window.FluBNFUI) FluBNFUI.setProgress(PROG,p,100);
    }
    function setStat(id,t){const e=document.getElementById(id); if(e) e.textContent=t;}
+   // the location tiles (/api/progress "locations"): built once, then
+   // each tile's state, bar and spoken line follow every poll; with none
+   // (not yet, or a Groundhog-only run) the results skeleton stays
+   var TILES={};
+   function locState(t){
+     if(t.failed) return 'fail';
+     if(t.total && t.done>=t.total) return 'done';
+     if(t.live && !STOPPING) return 'live';
+     return t.done ? 'part' : 'wait';
+   }
+   var TILE_WORD={fail:'a fit failed',done:'fitted',live:'fitting',
+                 part:'fitting',wait:'waiting'};
+   function renderLocs(list){
+     var grid=document.getElementById('fc-grid'),
+         ul=document.getElementById('fc-locs');
+     if(!grid||!ul||!list||!list.length) return;
+     grid.hidden=false;
+     var sk=document.getElementById('fc-skel'); if(sk) sk.hidden=true;
+     var fitted=0, failed=0;
+     list.forEach(function(t){
+       var li=TILES[t.name];
+       if(!li){
+         li=document.createElement('li'); li.className='fc-loc';
+         li.innerHTML='<span class="fc-loc-a" aria-hidden="true"></span>'
+           +'<span class="fc-loc-i" aria-hidden="true"></span>'
+           +'<span class="fc-loc-bar" aria-hidden="true"><i></i></span>'
+           +'<span class="uk-sr"></span>';
+         li.querySelector('.fc-loc-a').textContent=t.abbr||t.name;
+         // a dataset's groups have no abbreviation: tiles sized to names
+         if(!t.abbr) ul.classList.add('fc-locs--names');
+         ul.appendChild(li); TILES[t.name]=li;
+       }
+       var st=locState(t);
+       if(st==='done') fitted++;
+       if(st==='fail') failed++;
+       if(li.dataset.state!==st){
+         li.dataset.state=st;
+         var ic=li.querySelector('.fc-loc-i');
+         ic.innerHTML=(window.FluBNFUI&&(st==='done'||st==='fail'))
+           ? FluBNFUI.icon(st==='done'?'check':'error') : '';
+       }
+       var pct=t.total?Math.round(100*t.done/t.total):0;
+       li.querySelector('.fc-loc-bar i').style.width=pct+'%';
+       var say=t.name+': '+t.done+' of '+t.total+' fits, '+TILE_WORD[st];
+       li.querySelector('.uk-sr').textContent=say;
+       li.title=say;
+     });
+     setStat('fc-loc-count', fitted+' of '+list.length+' fitted'
+       +(failed?', '+failed+' failed':''));
+   }
    setInterval(()=>{
      if(document.hidden) return;          // nothing to see: do no work
      const el=document.getElementById('elapsed');
@@ -357,6 +429,7 @@
            + d.settings.map(p=>'<dt>'+esc(p[0])+'</dt><dd>'+esc(p[1])+'</dd>').join('')
            + '</dl></div>';
        }
+       renderLocs(d.locations);
        if(d.eta_s!=null){
          PS.ema = PS.ema==null ? d.eta_s : 0.3*d.eta_s + 0.7*PS.ema;
          const cur = PS.shown==null ? null
@@ -375,6 +448,7 @@
          const st=document.getElementById('fc-run-state');
          if(st && st.dataset.state!=='warn' && window.FluBNFUI)
            FluBNFUI.setBadge(st,'warn','stopping');
+         setStat('fc-left','--');
        }
        else if(!d.total) progText(d.phase||'starting');
      }catch(e){
@@ -403,6 +477,9 @@
      if(PS.shown!=null){const rem=Math.max(0,PS.shown-(Date.now()-PS.shownT)/1000);
        const m=Math.floor(rem/60);
        setStat('fc-left','~'+(m>0?m+' min':Math.round(rem)+' s'));}
+     // no fit finished yet: the rate (and so the estimate) comes with the
+     // first one
+     else setStat('fc-left','estimating');
    },400);
    poll();
   </script>

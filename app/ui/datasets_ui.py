@@ -573,7 +573,9 @@ def forecast_page(request: Request, ds):
         "anchor_week": anchor if ok else "",
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
-            forms._knob_panel("forecast", form, names=PANEL_MEMBERS),
+            forms._knob_panel("forecast", form, names=PANEL_MEMBERS,
+                              season_auto=forms._season_auto(
+                                  form.get("forecast_date", ""), anchor)),
             kind=ds.kind),
         "elapsed0": shared._console_elapsed(),
         "series_json": templating._script_json(series),
@@ -724,7 +726,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
                     "drop_same_day": forms._int_field(drop_same_day),
                     "flusurv": want_fs,
                     "knobs": {k: v for k, v in kraw.items()
-                              if isinstance(v, str)}}
+                              if isinstance(v, str)}, "ms_refused": False}
     try:
         nd = forms._knobs.resolve(
             kraw, engine, scope="forecast", forecast_date=fd,
@@ -743,6 +745,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
+        _LAST[ds.id]["ms_refused"] = True    # the panel opens on its error
         shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)

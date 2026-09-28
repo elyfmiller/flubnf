@@ -320,6 +320,55 @@ def test_api_progress_reads_a_workroot_with_glob_brackets(tmp_path):
     assert (live["done"], live["total"]) == (4, 10)
 
 
+def test_api_progress_tiles_each_location(tmp_path):
+    """The running page's tiles: every fit from cells.json, the finished
+    ones from each shard's status, the fit a shard is on as "live", a
+    FAIL counted apart; a research run's pf2s/ adds to the same tiles."""
+    w = tmp_path / "run"
+    (w / "pf2s").mkdir(parents=True)
+    cells = [{"key": f"{loc[:2]}_r{r}", "location": loc, "replicate": r}
+             for loc in ("Ohio", "Texas", "US") for r in (0, 1)]
+    (w / "cells.json").write_text(json.dumps(cells))
+    (w / "pf_cells_0.json").write_text(json.dumps(cells[:4]))
+    (w / "pf_cells_1.json").write_text(json.dumps(cells[4:]))
+    (w / "pf_status_0.json").write_text(json.dumps(
+        {"Oh_r0": "ok", "Oh_r1": "ok", "Te_r0": "FAIL: boom"}))
+    (w / "pf_status_1.json").write_text("{}")
+    (w / "pf2s" / "cells.json").write_text(json.dumps(
+        [{"key": "Oh_2s", "location": "Ohio"}]))
+    ui_state._status.update({"running": "all:x", "workroot": str(w),
+                             "expected_total": 6,
+                             "started_utc": time.time() - 30})
+    tiles = {t["name"]: t for t in
+             client.get("/api/progress").json()["locations"]}
+    assert list(tiles) == ["Ohio", "Texas", "US"]            # run order
+    assert (tiles["Ohio"]["done"], tiles["Ohio"]["total"]) == (2, 3)
+    assert tiles["Texas"]["failed"] == 1 and tiles["Texas"]["live"]
+    assert tiles["US"]["live"] and tiles["US"]["done"] == 0
+    assert not tiles["Ohio"]["live"]
+    # no cells yet (or a Groundhog-only run): no tiles, and no error
+    (w / "cells.json").unlink()
+    (w / "pf2s" / "cells.json").unlink()
+    assert client.get("/api/progress").json()["locations"] == []
+
+
+def test_forecast_running_card_holds_the_results_place():
+    ui_state._status.update({"running": "all:x", "run_label": "x",
+                             "workroot": None, "expected_total": None,
+                             "started_utc": time.time() - 30})
+    html = client.get("/forecast").text
+    card = html.split('class="card fc-running"')[1].split("</script>")[0]
+    # settings left, the results' place right: the tiles, the skeleton
+    # shown until tiles arrive, and the quip inside that place
+    assert 'class="runsplit fc-runsplit"' in card
+    assert 'id="fc-grid" hidden' in card and 'id="fc-skel"' in card
+    wait = card.split('id="fc-wait"')[1]
+    assert 'id="quip"' in wait
+    assert "renderLocs(d.locations)" in html
+    # no estimate before the first fit finishes: said, not dashed
+    assert "setStat('fc-left','estimating')" in html
+
+
 def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
