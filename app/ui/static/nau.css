@@ -1042,8 +1042,6 @@ nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
 .fixedval{margin:.1rem 0 .2rem;font-weight:600}
 /* forms whose only control is a button and its tip */
 form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
-/* Output: the earlier-weeks picker sits under its own label */
-.archlbl{margin-top:.9rem}
 /* run page settings: values wrap in their own track at phone width
    instead of running past the card edge */
 .runrec .runsettings .kv{grid-template-columns:max-content minmax(0,1fr)}
@@ -1321,16 +1319,12 @@ details.sbhow > summary h2{display:inline;margin:0}
 .sbsim{margin-top:.6rem}
 
 /* round3: submission files and model identities */
-.subrow{justify-content:space-between;margin:.45rem 0}
-.subacts{display:flex;align-items:center;gap:.9rem;white-space:nowrap}
 details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
 details.archived > p.hint{margin:.3rem 0}
-details.archived .subrow{margin:.3rem 0}
 
 /* round4: data source */
 /* a week date never breaks across lines (Data tab: the live-file line) */
 #live-newer .wk{white-space:nowrap}
-.datasrc{white-space:nowrap}
 
 /* round4: navbar edges: a scrolled tab strip fades at the side with more */
 header.nav .navtabs.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);
@@ -1354,31 +1348,7 @@ details.sbfill .row > .sbsetpop + button{align-self:flex-start}
 .runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
 
 /* round7: output */
-/* a submission file's coverage: "N of M locations", a fold naming each
-   missing location and each one anchored on an earlier week */
-details.covfold{margin:.1rem 0 .35rem}
-details.covfold > summary{font-size:var(--fs-label)}
-details.covfold .covhead{margin:.35rem 0 .1rem}
-ul.covlist{margin:.1rem 0 .2rem;padding-left:1.1rem;font-size:var(--fs-label)}
-ul.covlist li{margin:.1rem 0;overflow-wrap:anywhere}
-p.cov{margin:.1rem 0 .3rem}
 .subline{margin:.45rem 0 .1rem}
-
-/* round8: output */
-/* one card per forecast date: a meta line, then one flat row per file
-   (name and run on the left, Download and Show in folder on the right),
-   rows parted by a hairline, no box inside the card */
-.fcday > h2{margin-bottom:.15rem}
-p.fcmeta{margin:0 0 .35rem}
-.fcfile{padding:.15rem 0 .1rem}
-.fcfile + .fcfile{border-top:1px solid var(--line)}
-.fcfile .subrow{margin:.4rem 0 .15rem;flex-wrap:wrap;gap:.3rem .9rem}
-.fcfile .outname{min-width:0;overflow-wrap:anywhere}
-.fcfile .runref{margin-left:.35rem;white-space:nowrap}
-.fcfile .subacts{margin-left:auto}
-.fcfile .subacts form{margin:0}
-.pill.modtag{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;
-  color:var(--mut);margin-left:.3rem;padding:0 .45rem}
 
 /* round8: data check */
 /* the newest week's reporting: one line, a mark (ok or warn token) with
