@@ -3,23 +3,27 @@
    this" stores a file and reopens this tab on it); else the settings of a
    replay of one dataset (picked by a plain GET form, like the Forecast
    tab's, so the weeks and groups are rendered without script) beside its
-   replays. Never among the FluSight seasons. Tips imported by retro.html. #}
+   replays. Never among the FluSight seasons. Tips imported by retro.html,
+   which links the tab's sheet. #}
 {% import "_dataset_upload.html" as dsup %}
 {% set dr = dataset_replay %}{% set d = dr.ds %}
 {% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
 {% if not d %}
-<div class="card" id="dataset-replay"><h2>Your data
- {{ tips.tip("rt-ds-about", "replaying your own data", about) }}</h2>
- <p class="hint">A weekly CSV of your own, replayed week by week and kept apart from the FluSight seasons.</p>
+<div class="card" id="dataset-replay">
+ {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week and kept apart from the FluSight seasons.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
  {{ dsup.box("replay") }}
 </div>
 {% else %}
-<div class="cols" id="dataset-replay">
+<div id="dataset-replay">
+{% if dr.stored %}{# "Replay this" just stored it: said here, where the
+   page lands, across the width; its notices folded under the line #}
+<div class="dsr-stored rt-stored">{{ tips.alert("ok", dr.stored.text, id="dsr-stored", live="") }}
+ {% if dr.stored.warnings %}{% set nw = dr.stored.warnings | length %}
+ {% call tips.fold(nw ~ " notice" ~ ("" if nw == 1 else "s") ~ " about the file", id="dsr-notes", after=tips.icon("warning", "to check", cls="uk-c-warn")) %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endcall %}
+ {% endif %}</div>
+{% endif %}
+<div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if dr.stored %}{# "Replay this" just stored it: said here, where the page lands #}
-  <div class="banner dsr-stored" role="status"><p>{{ dr.stored.text }}</p>
-   {% if dr.stored.warnings %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}</div>
-  {% endif %}
   {# which of your datasets; a plain GET form, like the Forecast tab's #}
   <form method="get" action="/retro" class="row srcpick">
    <span>{{ tips.label("Dataset", "dsr-src", "A dataset replays on its own groups and weeks. Upload one here or on the Data tab.", for_="dsr-ds") }}
@@ -33,8 +37,11 @@
   </details>
   <form method="post" action="/retro/dataset/run" id="dsr-form">
    <input type="hidden" name="dataset" value="{{ d.id }}">
-   <p class="hint"><span id="dsr-kind">{{ "Vintage-true: each week sees its as_of snapshot." if d.vintage_true else "Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did." }}</span>
-    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
+   {# what each replayed week sees, as a badge: vintage-true, or the final
+      series (optimistic scores); the why in its tip #}
+   <div class="lblrow rt-kind"><span class="rt-kind-l">Data</span>
+   {% if d.vintage_true %}{% call tips.badge("ok", "vintage-true", id="dsr-kind") %}Vintage-true: each week sees its as_of snapshot. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then.{% endcall %}
+   {% else %}{% call tips.badge("warn", "final data", id="dsr-kind") %}Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did. Without as_of snapshots (an as_of column, or one file per as_of), later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}{% endif %}</div>
    {# the week range on one grid that holds at narrow widths; the newest
       flu season's weeks by default (datasets_ui.replay_window) #}
    <div class="dsr-range">
@@ -63,19 +70,26 @@
    <button class="gold" data-guard="console-run">Replay</button>
   </form>
  </div></div>
- <div><div class="card dsr-replays"><h2>Replays of {{ d.name }}
-  {{ tips.tip("rt-ds-about", "replaying your own data", about) }}</h2>
+ <div><div class="card dsr-replays">
+  {{ tips.heading("Replays of " ~ d.name, "rt-ds-about", about, tip_label="replaying your own data") }}
   {% for r in d.replays %}
+  {% set rid = loop.index %}
   <div class="archrow">
-   <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
-    {% if r.modified %}<span class="pill warn">modified settings</span>{% endif %}
-    <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
-     · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
+   <div class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
+    {% if r.status == 'done' %}{{ tips.badge("ok", "done") }}
+    {% elif r.status == 'running' %}{{ tips.badge("pending", "running") }}
+    {% elif r.status in ('error', 'interrupted') %}{{ tips.badge("error", r.status) }}
+    {% else %}{{ tips.badge("neutral", r.status) }}{% endif %}
+    {% if r.modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+    {% set fx = namespace(items=[("", r.kind), ("", r.done ~ "/" ~ r.total ~ " weeks")]) %}
+    {% for m, v in r.rels.items() %}{% set t %}{{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}{% endset %}{% set fx.items = fx.items + [("", t)] %}{% endfor %}
+    <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}{% if r.rels %}{{ tips.tip("dsr-rel-" ~ rid, "relWIS", "relWIS vs in-house persistence baseline: below 1 beats it.") }}{% endif %}</div></div>
    <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
   </div>
   {% else %}
-  <p class="hint">Not replayed yet.</p>
+  {{ tips.empty("Not replayed yet", "clock", compact=True, id="dsr-none") }}
   {% endfor %}
  </div></div>
+</div>
 </div>
 {% endif %}

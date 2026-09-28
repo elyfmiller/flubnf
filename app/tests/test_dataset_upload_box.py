@@ -600,8 +600,9 @@ def test_replay_this_says_what_it_stored_in_the_card_it_opens():
     (ds,) = D.list_datasets()
     page = client.get(r.headers["location"]).text
     top, card = page.split('id="dataset-replay"')
-    note = card.split('<div class="banner dsr-stored" role="status">')[1]
-    note = note.split("</div>")[0]
+    # the confirmation as the card's alert, its notices folded under it
+    note = card.split('<div class="dsr-stored rt-stored">')[1]
+    note = note.split('<form method="get"')[0]
     assert f"Stored the dataset Kids: 3 group(s), {len(ds.weeks())} week(s)." \
         in note
     assert "Not UTF-8 text: read as Windows-1252" in note

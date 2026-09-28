@@ -456,8 +456,10 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     assert "{{ cov_text(c) }}" in SEASON_T
     assert '{{ "%.3f"|format(r[m]) if r[m] else "n/a" }}' in SEASON_T
     # status pills and run states print the status WORD inside the span
+    # (the retro index's badges: an icon and the word, tips.badge)
     assert "{{ r.status }}</span>" in FORECAST_T
-    for phrase in ('">complete</span>', '>interrupted</span>'):
+    for phrase in ('tips.badge("ok", "complete")',
+                   'tips.badge("error", "interrupted"'):
         assert phrase in retro_t, phrase
 
 

@@ -289,7 +289,7 @@ def test_the_season_page_renders_the_import_and_says_so(tmp_path,
     assert res.status_code == 200
     html = res.text
     assert 'id="imported-banner"' in html
-    assert f"Imported\n from {rb.hostname()}" in html
+    assert f"Imported from {rb.hostname()}" in html
     assert "read only" in html
     assert "Archived run" not in html                 # not the archive banner
     assert f'const ARCHIVE = "{r.stamp}";' in html    # the player reads it

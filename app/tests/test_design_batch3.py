@@ -73,16 +73,26 @@ def _season(**kw):
 
 # ------------------------------------- finding 17: index states the verdict
 
+def _rel_stat(state, value):
+    """The index card's headline: a labelled relWIS value in its verdict's
+    state (and an icon that says it: never the color alone)."""
+    return re.compile(r'<div class="uk-stat uk-stat--' + state
+                      + r'"><dt>relWIS.*?<span class="uk-stat-v"[^>]*>'
+                      + re.escape(value) + r'</span>', re.DOTALL)
+
+
 def test_completed_season_prints_relwis_instead_of_the_bar():
     html = _index()
-    # the archived-row encoding, beside the Results button
-    assert 'relWIS <span class="ok">0.877</span>' in html
-    assert "<progress" not in html
+    # a labelled value beside the Results button, with its verdict icon
+    assert _rel_stat("ok", "0.877").search(html)
+    assert 'aria-label="beats the baseline"' in html
+    assert 'role="progressbar"' not in html
 
 
 def test_completed_season_losing_to_baseline_wears_bad():
     html = _index(rel=1.023)
-    assert 'relWIS <span class="bad">1.023</span>' in html
+    assert _rel_stat("error", "1.023").search(html)
+    assert 'aria-label="does not beat the baseline"' in html
 
 
 def test_active_and_unfinished_seasons_keep_their_bars():
@@ -91,10 +101,10 @@ def test_active_and_unfinished_seasons_keep_their_bars():
     assert 'class="runbar"' in live
     assert "relWIS" not in live
     part = _index(done=3, status="stopped", rel=0.9)
-    assert "<progress" in part                # incomplete: bar, not verdict
+    assert 'role="progressbar"' in part       # incomplete: bar, not verdict
     assert "relWIS" not in part
     unscored = _index(rel=None)               # complete but never scored
-    assert "<progress" in unscored
+    assert 'role="progressbar"' in unscored
 
 
 def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
@@ -117,8 +127,8 @@ def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
         "active": False})
     r = client.get("/retro")
     assert r.status_code == 200
-    assert 'relWIS <span class="ok">0.877</span>' in r.text
-    assert "<progress" not in r.text
+    assert _rel_stat("ok", "0.877").search(r.text)
+    assert 'role="progressbar"' not in r.text
 
 
 # --------------------------------- finding 18: the chart carries its scale
@@ -143,7 +153,7 @@ def test_cumulative_chart_y_range_hugs_the_data():
 
 def test_cumulative_chart_absent_curve_says_so():
     html = _season(curve=[])
-    assert "Arrives with the first scored week." in html
+    assert "Arrives with the first scored week" in html
 
 
 # ------------------------- finding 20: exceptions only, numerals aligned

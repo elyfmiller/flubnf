@@ -32,7 +32,7 @@ from app.ui.forms import (_knob_form, _knob_panel, _knob_raw, _knobs,
 from app.ui.retro_prep import (_job_covered, _relwis_figures, _results_jobs,
                                _results_pending, _retro_map_models,
                                _scores_df, _scores_scoreable_fast,
-                               _scoring_failed_hint, _week_map_cards_by_model)
+                               _week_map_cards_by_model)
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _archive_progress,
                                   _is_sealed_root, _live_root,
                                   _retro_claim_at, _retro_status, _retro_stop,
@@ -996,12 +996,9 @@ def retro_results(request: Request, season: str, week: str = "",
             have_truth = -1      # unknown: surface the probe, never the calm text
         if have_truth != 0:
             score_error = "scored zero cells with no exception. " + probe
-    if not scoreable and score_error:
-        map_html = _scoring_failed_hint(score_error)
-    elif not scoreable:
-        map_html = ("<p class='hint'>No scoreable weeks yet. Truth for "
-                    "these forecast dates has not settled, so relWIS arrives "
-                    "later; the weekly maps below are available now.</p>") + map_html
+    # no scores: the page says why above the player (a scoring failure as
+    # an alert, unsettled truth as an empty state); the weekly maps stay
+    unsettled = not scoreable and not score_error
     # comparators that submitted at least once this season (player toggles)
     try:
         official_catalog = _playback.season_official_catalog(root)
@@ -1030,6 +1027,8 @@ def retro_results(request: Request, season: str, week: str = "",
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "score_error": score_error if not scoreable else "",
+        "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
         "no_data_note": _playback.NO_DATA_NOTE,
         "official_catalog": official_catalog,

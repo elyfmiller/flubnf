@@ -75,7 +75,8 @@ window.FLUBNF_QUIPS = [
 
 // Rotate quips into an element; returns {pause, resume} so a paused run
 // holds still. WCAG 2.2.2: prefers-reduced-motion shows one static quip,
-// and a click toggles rotation in every mode.
+// and a click, or Enter or Space on the focused line (a toggle button for
+// assistive tech, pressed while held), toggles rotation in every mode.
 window.flubnfQuips = function (target, ms) {
   var el = (typeof target === "string")
     ? document.getElementById(target) : target;
@@ -84,7 +85,18 @@ window.flubnfQuips = function (target, ms) {
   el.textContent = q[i++ % q.length];   // paint at once, not after a delay
   el.title = "Click to pause or resume this line";
   el.style.cursor = "pointer";
-  el.addEventListener("click", function () { held = !held; });
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("aria-label", "Hold the rotating line");
+  el.setAttribute("aria-pressed", "false");
+  function toggle() {
+    held = !held;
+    el.setAttribute("aria-pressed", held ? "true" : "false");
+  }
+  el.addEventListener("click", toggle);
+  el.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+  });
   var reduce = typeof matchMedia === "function"
     && matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (!reduce) {

@@ -38,6 +38,9 @@
      preload       optional function(week): host hook for the next week
      plotHeight    optional plot height in px, or a function returning
                    it (re-read per draw and on resize; default 400)
+     scaleNote     optional: false leaves the scale switch's one-line
+                   hint out (the console says it in its "?" tip); the
+                   standalone report keeps it
      ids           optional DOM id overrides, see DEFAULT_IDS
 
    The stats table (renderStats) shows, per enabled model, "This week" and
@@ -478,8 +481,9 @@ function covLegend(){
     + '<span class="cov-wide">further over (too wide)</span>.';
 }
 
-// the scale switch: a label, two aria-pressed buttons, the one-line hint
-function scaleSwitch(scale){
+// the scale switch: a label, two aria-pressed buttons, the one-line hint;
+// `note` false leaves the hint out (a host that says it in a tip)
+function scaleSwitch(scale, note){
   return '<span class="hint" id="pb-scale-l">relWIS scale</span>'
     + '<span class="seg" role="group" aria-labelledby="pb-scale-l">'
     + SCALES.map(function(s){
@@ -488,8 +492,8 @@ function scaleSwitch(scale){
           + (on ? ' class="gold"' : '') + ' aria-pressed="' + on + '">'
           + s + '</button>';
       }).join('')
-    + '</span><span class="hint">The CDC FluSight dashboard reports '
-    + 'both.</span>';
+    + '</span>' + (note === false ? '' : '<span class="hint">The CDC FluSight dashboard reports '
+    + 'both.</span>');
 }
 
 // models offered, in display order: the ones that ship. A stored season's
@@ -670,7 +674,7 @@ function createPlayer(cfg){
     }
     th.innerHTML = statsHead(P.scale, el.stats.classList.contains('stacked'));
     if(el.scale){
-      el.scale.innerHTML = scaleSwitch(P.scale);
+      el.scale.innerHTML = scaleSwitch(P.scale, cfg.scaleNote);
       el.scale.querySelectorAll('button[data-scale]').forEach(function(b){
         b.addEventListener('click', function(){
           if(P.scale === b.dataset.scale) return;
