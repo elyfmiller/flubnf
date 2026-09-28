@@ -186,7 +186,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "us_choice": US_CHOICE, "us_checked": us_checked,
         "official_json": _script_json(official),
         "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
-            form.get("forecast_date", ""), _anchor)),
+            form.get("forecast_date", ""), _anchor),
+            busy=bool(_status.get("running"))),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(templating._model_names()),

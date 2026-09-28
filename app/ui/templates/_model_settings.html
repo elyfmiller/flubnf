@@ -18,9 +18,9 @@
 {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
 {# the panel renders on the Retrospective tab too: it links its sheet #}
 <link rel="stylesheet" href="/static/tabs/forecast.css">
-{# closed, a run in progress included: open only after a refusal over
-   these settings (kp.open); the badge says "modified", and
-   model_settings.js reopens it when the user left it open this session #}
+{# kp.open: after a refusal over these settings, or when the values
+   differ from the defaults and no run is in progress; closed during a
+   run. model_settings.js restores the user's own open/closed choice #}
 <details class="adv"{% if kp.open %} open{% endif %} id="{{ px }}model-settings"
   data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
  <summary class="advbtn">Model settings

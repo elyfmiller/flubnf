@@ -782,14 +782,23 @@ def test_season_page_carries_controls_and_timing():
 
 # ------------------------------------------------------------------- quips
 
+def _quip_list(src: str, name: str) -> list:
+    return [ln.strip().strip(",").strip('"')
+            for ln in src.split(f"window.{name} = [")[1].split("];")[0]
+            .splitlines()
+            if ln.strip().startswith('"')]
+
+
 def test_quips_are_shared_and_in_voice():
     src = (Path(__file__).resolve().parents[1] / "ui" / "static"
            / "quips.js").read_text()
-    quips = [ln.strip().strip(",").strip('"')
-             for ln in src.split("window.FLUBNF_QUIPS = [")[1].split("];")[0]
-             .splitlines()
-             if ln.strip().startswith('"')]
-    assert len(quips) >= 65                       # the original 50, plus more
+    shared = _quip_list(src, "FLUBNF_QUIPS")
+    retro = _quip_list(src, "FLUBNF_RETRO_QUIPS")
+    quips = shared + retro
+    assert len(shared) >= 65                      # the original 50, plus more
+    # replay lines stay off the forecast page
+    assert "replaying last winter at one week per breath" in retro
+    assert not any("replay" in q for q in shared)
     assert "teaching 10,000 particles to sneeze responsibly" in quips
     assert len(set(quips)) == len(quips)          # no duplicates
     for q in quips:
@@ -811,5 +820,8 @@ def test_both_run_pages_draw_from_the_shared_quip_list():
     ticker = (Path(__file__).resolve().parents[1] / "ui" / "static"
               / "retro_progress.js").read_text()
     assert "flubnfQuips" in ticker
+    # only the retrospective pages add the replay lines
+    assert "FLUBNF_RETRO_QUIPS" in ticker
+    assert "FLUBNF_RETRO_QUIPS" not in fc
     # the paused card holds its quip still
     assert "st.quips.pause()" in ticker

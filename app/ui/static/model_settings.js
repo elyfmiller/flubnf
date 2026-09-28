@@ -128,8 +128,8 @@
       if (reason) reason.value = '';
       update();
     });
-    // open or closed as the user last left it this session (the server
-    // renders it closed, open only after a refusal over its settings); a
+    // reopened when the user left it open this session (the server opens
+    // it after a refusal, or for changed settings when no run is going); a
     // click on the summary is the user's choice, never a page render
     var memo = 'ms-open:' + location.pathname + ':' + (box.id || '');
     try {

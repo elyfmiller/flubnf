@@ -1,7 +1,8 @@
-// Shared run quips (forecast and retrospective pages).
-// House voice: lowercase, no exclamation marks, no emoji; flu, Bayesian
-// inference, particle filtering, epidemiology; dry and playful. The last
-// block is retrospective-specific.
+// Run quips. FLUBNF_QUIPS is shared by the forecast and retrospective
+// pages; FLUBNF_RETRO_QUIPS (replays of past seasons) joins them on the
+// retrospective pages only. House voice: lowercase, no exclamation marks,
+// no emoji; flu, Bayesian inference, particle filtering, epidemiology;
+// dry and playful.
 window.FLUBNF_QUIPS = [
   "teaching 10,000 particles to sneeze responsibly",
   "resampling the unlucky",
@@ -96,8 +97,11 @@ window.FLUBNF_QUIPS = [
   "counting admissions, not headlines",
   "checking that the fan widens as the horizon does",
   "consulting the population denominator, state by state",
-  "keeping the median modest and the tails honest",
-  // ---- replay voice: the retrospective's own weather ----
+  "keeping the median modest and the tails honest"
+];
+
+// the retrospective's own weather: replaying seasons that already ended
+window.FLUBNF_RETRO_QUIPS = [
   "replaying last winter at one week per breath",
   "marching the calendar forward, saturday by saturday",
   "pretending not to know how this season ended",
@@ -117,14 +121,15 @@ window.FLUBNF_QUIPS = [
   "scoring nothing yet, on principle"
 ];
 
-// Rotate quips into an element; returns {pause, resume} so a paused run
+// Rotate quips into an element (the shared lines, plus `extra` when given:
+// the retrospective pages pass FLUBNF_RETRO_QUIPS); returns {pause, resume} so a paused run
 // holds still. WCAG 2.2.2: prefers-reduced-motion shows one static quip,
 // and a click, or Enter or Space on the focused line (a toggle button for
 // assistive tech, pressed while held), toggles rotation in every mode.
-window.flubnfQuips = function (target, ms) {
+window.flubnfQuips = function (target, ms, extra) {
   var el = (typeof target === "string")
     ? document.getElementById(target) : target;
-  var q = window.FLUBNF_QUIPS, i = 0, running = true, held = false;
+  var q = (window.FLUBNF_QUIPS || []).concat(extra || []), i = 0, running = true, held = false;
   if (!el || !q || !q.length) return {pause: function () {}, resume: function () {}};
   i = Math.floor(Math.random() * q.length);   // a fresh line each visit
   el.textContent = q[i++ % q.length];   // paint at once, not after a delay

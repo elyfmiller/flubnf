@@ -147,7 +147,8 @@ def _season_auto(*days) -> set:
 
 
 def _knob_panel(scope: str, form: dict | None = None,
-                season_auto=(), **panel_kw) -> dict | None:
+                season_auto=(), busy: bool = False,
+                **panel_kw) -> dict | None:
     """The Model settings panel's context (knobs.panel) with the values a
     form last held: the knob fields, then the older field names. None
     (no panel) if the registry cannot be read, so a page still renders.
@@ -156,10 +157,11 @@ def _knob_panel(scope: str, form: dict | None = None,
     `season_auto`: the Season start values the panel's script fills in by
     itself (the browser posts that filled value with every run); one of
     them is the default, not a change, so it neither marks the panel
-    modified nor survives as a typed value. The panel renders closed
-    unless the last submission was refused over its settings
-    (form["ms_refused"]); the page's script remembers the user's own
-    open/closed choice for the session."""
+    modified nor survives as a typed value. The panel renders open after
+    a refusal over its settings (form["ms_refused"]), or when its values
+    differ from the defaults and no run is in progress (`busy`); closed
+    otherwise. The page's script remembers the user's own open/closed
+    choice for the session."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
     for fld, key in _knobs.LEGACY_FIELDS.items():
@@ -175,7 +177,8 @@ def _knob_panel(scope: str, form: dict | None = None,
         p = _knobs.panel(scope, vals, **panel_kw)
     except Exception:
         return None
-    p["open"] = bool(form.get("ms_refused"))
+    p["open"] = bool(form.get("ms_refused")) or (
+        bool(p.get("modified")) and not busy)
     return p
 
 

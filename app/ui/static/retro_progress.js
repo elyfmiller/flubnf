@@ -45,7 +45,8 @@
     cards.forEach(function (c) {
       S[c.dataset.season] = {
         card: c, disp: 0, lo: null, hi: null, etaAt: 0,
-        quips: root.flubnfQuips ? root.flubnfQuips(c.querySelector(".rquip"))
+        quips: root.flubnfQuips ? root.flubnfQuips(c.querySelector(".rquip"), undefined,
+                                     root.FLUBNF_RETRO_QUIPS)
                                 : {pause: function () {}, resume: function () {}},
         d: {status: c.dataset.status, done: +c.dataset.done,
             total: +c.dataset.total, elapsed_s: null,

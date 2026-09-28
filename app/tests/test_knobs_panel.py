@@ -243,6 +243,16 @@ def test_the_panel_stays_closed_while_a_run_is_in_progress():
     assert dict(_panel_form(html).fields)["season_start"] == "2097-09-15"
     assert ">modified</span>" in html
     assert '<details class="adv" id="model-settings"' in html
+    # idle again: changed settings open the panel; defaults keep it closed
+    ui_state._status.update({"running": None})
+    try:
+        html = client.get("/forecast").text
+        assert '<details class="adv" open id="model-settings"' in html
+        ui_state._last_form.update({"season_start": "2097-08-01"})
+        html = client.get("/forecast").text
+        assert '<details class="adv" id="model-settings"' in html
+    finally:
+        ui_state._last_form.clear()
 
 
 def test_season_auto_is_august_first_of_each_days_season():
