@@ -70,11 +70,19 @@ def _own_tmpdir(tmp_path, monkeypatch):
     return d
 
 
-def _handover_stamp() -> Path:
+def _guard_dir() -> Path:
+    """The per-user folder of flubnf-launch's reopen records (off a Mac:
+    under TMPDIR)."""
+    return Path(os.environ["TMPDIR"]) / f"edu.nau.flubnf-{os.getuid()}"
+
+
+def _handover_stamp(repo: Path) -> Path:
     """Where flubnf-launch records its last automatic reopen of Terminal
-    (off a Mac: under TMPDIR, per user)."""
-    return Path(os.environ["TMPDIR"]) / f"edu.nau.flubnf-{os.getuid()}" \
-        / "terminal-handover"
+    for the clone `repo`: one record per clone, named by the checksum of
+    its real path (FluBNF.command names the same file)."""
+    crc = subprocess.run(["cksum"], input=f"{repo.resolve()}\n", text=True,
+                         capture_output=True, check=True).stdout.split()[0]
+    return _guard_dir() / f"terminal-handover-{crc}"
 
 
 def _read(rec: Path, name: str):
@@ -317,7 +325,7 @@ def test_a_handover_reopens_terminal_once_then_alerts(tmp_path):
     assert _read(rec, "prep.env") is None and _read(rec, "host") is None
     log = (repo / "app/state/logs/launch.log").read_text()
     assert "stopped at startup (exit 3)" in log
-    stamp = _handover_stamp()
+    stamp = _handover_stamp(repo)
     assert abs(int(stamp.read_text()) - time.time()) < 60
     (rec / "open").unlink()
     r = _handover(repo)
@@ -325,12 +333,16 @@ def test_a_handover_reopens_terminal_once_then_alerts(tmp_path):
     assert _read(rec, "open") is None
     said = "\n".join(_read(rec, "osascript"))
     assert "could not start" in said and "already reopened in Terminal" in said
-    # the launcher's own reasons too, worded as what they are
+    assert "as critical" in said
+    # the launcher's own reasons too, worded as what they are: a note, not
+    # a failure
     (rec / "osascript").unlink()
     r, _, _ = _launch(repo, FLUBNF_LAUNCH="terminal")
     assert r.returncode == 1 and _read(rec, "open") is None
     said = "\n".join(_read(rec, "osascript"))
-    assert "does not open another so soon" in said and "FLUBNF_LAUNCH=terminal" in said
+    assert "FluBNF needs Terminal (FLUBNF_LAUNCH=terminal)" in said
+    assert "does not open another so soon" in said
+    assert "FluBNF did not open Terminal again" in said and "as critical" not in said
     # nine minutes on, still refused; eleven, allowed again
     (rec / "osascript").unlink()
     _age(stamp, 9)
@@ -347,10 +359,10 @@ def test_a_ready_launch_that_reaches_the_console_clears_the_record(tmp_path):
     quick second Dock click after a good start is never refused."""
     repo, rec = _launch_repo(tmp_path)
     assert _handover(repo).returncode == 0
-    assert _handover_stamp().exists()
+    assert _handover_stamp(repo).exists()
     r, _, _ = _launch(repo, args=["--ready", str(tmp_path / "boot")])
     assert r.returncode == 0, r.stdout + r.stderr
-    assert not _handover_stamp().exists()
+    assert not _handover_stamp(repo).exists()
     (rec / "open").unlink()
     assert _handover(repo).returncode == 0 and _read(rec, "open")
 
@@ -367,6 +379,26 @@ def test_a_reopen_it_cannot_record_is_an_alert(tmp_path, monkeypatch):
     assert r.returncode == 1
     assert _read(rec, "open") is None
     assert "cannot record reopening Terminal" in "\n".join(_read(rec, "osascript"))
+
+
+@posix_only
+def test_the_record_is_per_clone_and_counts_only_a_terminal_that_opened(tmp_path):
+    """A copy moved out of its clone (to Applications) cannot open Terminal:
+    each click says why, and leaves no record that would refuse the real
+    clone. Two clones keep separate records."""
+    moved, mrec = _launch_repo(tmp_path / "moved", command=False)
+    for _ in range(2):
+        r, _, _ = _launch(moved)
+        assert r.returncode == 1
+        said = "\n".join(_read(mrec, "osascript"))
+        assert "could not open FluBNF.command" in said, said
+    assert not _handover_stamp(moved).exists()
+    a, arec = _launch_repo(tmp_path / "a")
+    b, brec = _launch_repo(tmp_path / "b")
+    assert _handover(a).returncode == 0 and _read(arec, "open")
+    assert _handover(b).returncode == 0 and _read(brec, "open")
+    assert _handover_stamp(a).exists() and _handover_stamp(b).exists()
+    assert _handover_stamp(a) != _handover_stamp(b)
 
 
 @posix_only
@@ -468,7 +500,7 @@ def test_a_chain_that_loses_its_ready_signal_opens_terminal_at_most_once(
     if state == "unwritable":
         # the record's folder cannot be made (FluBNF.command's own status
         # file, beside it in TMPDIR, still can)
-        _handover_stamp().parent.write_text("")
+        _guard_dir().write_text("")
     macos = repo / "FluBNF.app" / "Contents" / "MacOS"
     terminal = _script(tmp_path / "bin" / "open-terminal", f"""echo x >> "{rec}/terminal"
 [ "$(wc -l < "{rec}/terminal")" -le 4 ] || exit 1
@@ -850,6 +882,56 @@ def test_without_a_status_file_the_terminal_launch_runs_in_view(tmp_path, monkey
 
 
 @posix_only
+@pytest.mark.parametrize("branch", ["no-host", "open-refused", "no-status-file",
+                                    "setup-failed"])
+def test_a_terminal_run_without_the_app_lets_the_dock_open_terminal_again(
+        tmp_path, branch):
+    """A Dock launch that needed Terminal (here: no host for this Python)
+    records the reopen. FluBNF.command there then starts the console
+    itself, or stops, without ever opening the app: no chain can follow,
+    so it clears the record, and the next Dock click that needs Terminal
+    opens it instead of an alert."""
+    repo, rec = _command_repo(tmp_path, venv=branch != "setup-failed")
+    path = _as_os(tmp_path, repo, rec, build="exit 1" if branch == "no-host" else "exit 0",
+                  opened="refuse" if branch == "open-refused" else "ok")
+    if branch == "no-status-file":
+        _script(tmp_path / "osbin" / "mktemp", "exit 1\n")
+    if branch == "setup-failed":
+        _script(repo / "setup.sh", 'echo "setup failed"\nexit 1\n')
+    macos = repo / "FluBNF.app" / "Contents" / "MacOS"
+    terminal = _script(tmp_path / "bin" / "open-terminal", f'echo x >> "{rec}/terminal"\n')
+    alert = _script(tmp_path / "bin" / "osascript", f'echo x >> "{rec}/alert"\n')
+    (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
+    (macos / "flubnf-launch").chmod(0o755)
+    assert _handover(repo, "no FluBNF host for this Python").returncode == 0
+    assert _handover_stamp(repo).exists()
+    r = _command(repo, PATH=path)
+    said = r.stdout + r.stderr
+    assert not _handover_stamp(repo).exists(), said
+    assert _read(rec, "console") == (None if branch == "setup-failed" else
+                                     ["direct app"] if branch == "no-host" else
+                                     [f"host {repo}/.venv/bin/flubnf app"]), said
+    assert _handover(repo, "no FluBNF host for this Python").returncode == 0
+    assert _read(rec, "terminal") == ["x", "x"] and _read(rec, "alert") is None
+
+
+@posix_only
+@pytest.mark.parametrize("opened", ["ok", "boot-fail", "silent"])
+def test_a_terminal_run_that_opened_the_app_keeps_the_record(tmp_path, opened):
+    """Once FluBNF.command has opened the app, the record stays: if that app
+    lost its ready signal it handed over, and the record is what ends the
+    chain."""
+    repo, rec = _command_repo(tmp_path)
+    path = _as_os(tmp_path, repo, rec, opened=opened)
+    stamp = _handover_stamp(repo)
+    stamp.parent.mkdir(parents=True)
+    stamp.write_text(f"{int(time.time())}\n")
+    r = _command(repo, PATH=path)
+    assert _read(rec, "open"), r.stdout + r.stderr
+    assert stamp.exists()
+
+
+@posix_only
 @pytest.mark.parametrize("name, build", [("Darwin", "exit 1"), ("Linux", "exit 0")])
 def test_without_a_host_the_terminal_launch_is_unchanged(tmp_path, name, build):
     """No host (a failed build, no Command Line Tools) or not a Mac: the
@@ -1121,6 +1203,53 @@ def test_a_host_that_cannot_start_python_hands_over_to_the_launcher(tmp_path):
                            capture_output=True, text=True, check=False,
                            env=_env(), timeout=60)
     assert plain.returncode == 69 and not Path(f"{rec}.args").exists()
+
+
+@posix_only
+@embeds
+def test_a_launch_stopped_on_request_before_its_window_is_up_is_no_failure(tmp_path):
+    """A second FluBNF.command moments after the first: the newer launch
+    takes over (SIGTERM) before the first one's window is up. The host
+    empties the first Terminal's status file, so that Terminal stands down
+    instead of starting the console again and taking over the newer one in
+    turn. A crash leaves the file saying the app quit early."""
+    import signal
+    repo, _, host = _built(tmp_path)
+    script = repo / ".venv" / "bin" / "flubnf"
+    status = tmp_path / "boot"
+    early = "FluBNF.app quit before the console started\n"
+
+    def run(body, stop):
+        script.write_text(body)
+        status.write_text(early)
+        p = subprocess.Popen([str(host), str(script), "app"], stdout=subprocess.PIPE,
+                             text=True, env=_env(FLUBNF_BOOT_STATUS=status))
+        try:
+            assert p.stdout.readline().strip() == "importing"
+            if stop:
+                p.send_signal(stop)
+            return p.wait(timeout=60)
+        finally:
+            p.kill()
+            p.stdout.close()
+
+    waits = "import time\nprint('importing', flush=True)\ntime.sleep(60)\n"
+    assert run(waits, signal.SIGTERM) == -signal.SIGTERM
+    assert status.read_text() == ""
+    crash = "import os\nprint('importing', flush=True)\nos.abort()\n"
+    assert run(crash, None) == -signal.SIGABRT
+    assert status.read_text() == early
+    # a console run in view (no status file) is stopped as before
+    script.write_text(waits)
+    p = subprocess.Popen([str(host), str(script), "app"], stdout=subprocess.PIPE,
+                         text=True, env=_env())
+    try:
+        assert p.stdout.readline().strip() == "importing"
+        p.terminate()
+        assert p.wait(timeout=60) == -signal.SIGTERM
+    finally:
+        p.kill()
+        p.stdout.close()
 
 
 @posix_only

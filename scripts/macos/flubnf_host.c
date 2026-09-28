@@ -54,13 +54,23 @@
  * and reports to that Terminal instead, and a second automatic reopen
  * within minutes is an alert.
  *
+ * STOPPED ON REQUEST. A launch that FluBNF.command asked for carries that
+ * Terminal's status file (FLUBNF_BOOT_STATUS), which says the app quit
+ * early until the console's window is up. SIGTERM before then is a stop on
+ * request, not a failure: a newer launch taking over (the pidfile takeover
+ * in flubnf/cli.py), or reinstall.sh. The handler below empties the file,
+ * so that Terminal stands down instead of starting the console again (and
+ * taking over the newer one in turn), then dies of the signal as before.
+ *
  * The file also compiles on Linux (it reads /proc/self/exe there) so the
  * tests can build and run it. Only macOS gives it a purpose.
  */
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -170,6 +180,19 @@ static void to_terminal(const char *exe, const char *why)
     perror(TAG "flubnf-launch");
 }
 
+/* FLUBNF_BOOT_STATUS, copied at startup for the handler. */
+static char boot_status[PATH_MAX];
+
+/* Only async-signal-safe calls: open, close, signal, raise. */
+static void stopped_on_request(int sig)
+{
+    int fd = open(boot_status, O_WRONLY | O_TRUNC);
+    if (fd >= 0)
+        close(fd);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
 static int join(char out[PATH_MAX], const char *repo, const char *rel)
 {
     return snprintf(out, PATH_MAX, "%s/%s", repo, rel) < PATH_MAX ? 0 : -1;
@@ -180,6 +203,7 @@ int main(int argc, char **argv)
     char exe[PATH_MAX], repo[PATH_MAX], py[PATH_MAX], cfg[PATH_MAX],
          boot[PATH_MAX], why[128];
     const char *fb = getenv("FLUBNF_HOST_FALLBACK");
+    const char *status = getenv("FLUBNF_BOOT_STATUS");
     int fallback = fb != NULL && *fb != '\0';
     char **pargv;
     int pargc = 0, i;
@@ -190,6 +214,15 @@ int main(int argc, char **argv)
     unsetenv("__PYVENV_LAUNCHER__");
     unsetenv("PYTHONEXECUTABLE");
     unsetenv("PYTHONHOME");
+
+    if (status != NULL && *status != '\0' && strlen(status) < sizeof boot_status) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof sa);
+        strcpy(boot_status, status);
+        sa.sa_handler = stopped_on_request;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGTERM, &sa, NULL);
+    }
 
     if (self_path(exe) != 0 || bundle_repo(exe, repo) != 0) {
         fprintf(stderr, TAG "cannot place myself inside <repo>/<Name>.app/"

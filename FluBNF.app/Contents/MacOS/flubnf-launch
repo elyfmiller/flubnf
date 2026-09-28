@@ -31,10 +31,11 @@
 # Terminal to handle, never a second Terminal: ready is exported to the
 # host, so its own handover reports there too.
 # Guard: every automatic reopen of Terminal goes through `terminal` below.
-# It records the reopen first, in a per-user folder outside the clone (this
-# app may be refused ~/Documents), and refuses a second one within
-# HANDOVER_MIN minutes, or one it cannot record, with an alert instead. A
-# ready launch that reaches the console clears the record. So a chain that
+# It records the reopen first, per clone, in a per-user folder outside the
+# clone (this app may be refused ~/Documents), and refuses a second one
+# within HANDOVER_MIN minutes, or one it cannot record, with an alert
+# instead. A console that starts clears the record: a ready launch here, or
+# FluBNF.command starting one itself without this app. So a chain that
 # keeps losing its ready signal opens Terminal once, then stops.
 # A copy that cannot start at all (moved out of its clone, or an old clone
 # that reinstall.sh set aside) says so in an alert.
@@ -49,7 +50,7 @@ main() {
   local head=/usr/bin/head      # and this one (reads a byte to test access)
   local limit=120               # seconds the headless checks may take
   local HANDOVER_MIN=10         # minutes an automatic Terminal reopen blocks the next
-  local here repo host log rc home prep started sdir stamp now last via=""
+  local here repo host log rc home prep started sdir stamp key now last via=""
   local ready="" handover=""
   [ "${FLUBNF_LAUNCH:-}" = ready ] && ready=1 && via=env
   while [ $# -gt 0 ]; do
@@ -63,19 +64,27 @@ main() {
     shift
   done
 
-  # The reopen guard's folder: per user, outside the clone, always writable
+  here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || here="$(dirname "$0")"
+  repo="${here%/*/*/*}"         # <repo>/<Name>.app/Contents/MacOS
+  host="$here/FluBNF"
+
+  # The reopen guard's record: per user, outside the clone, always
+  # writable; one per clone (the checksum of its real path). FluBNF.command
+  # names the same file.
   sdir="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)"
   [ -n "$sdir" ] || sdir="${TMPDIR:-/tmp}"
   sdir="${sdir%/}/edu.nau.flubnf-$(id -u 2>/dev/null)"
-  stamp="$sdir/terminal-handover"
+  key="$(cd "$repo" 2>/dev/null && pwd -P | cksum)" || key="$(echo "$repo" | cksum)"
+  stamp="$sdir/terminal-handover-${key%% *}"
 
   # When not even Terminal can take over: say why in an alert rather than
-  # fail in silence.
+  # fail in silence. A title as $2: a note, not a failure.
   alert() {
+    local shown='"FluBNF cannot start" message (item 1 of argv) as critical'
+    [ -z "${2:-}" ] || shown="\"$2\" message (item 1 of argv)"
     echo "flubnf-launch: $1"
     "$osascript" -e 'on run argv' -e 'activate' \
-      -e 'display alert "FluBNF cannot start" message (item 1 of argv) as critical' \
-      -e 'end run' "$1"
+      -e "display alert $shown" -e 'end run' "$1"
     exit 1
   }
 
@@ -97,12 +106,14 @@ main() {
       if [ -n "$handover" ]; then
         alert "FluBNF could not start ($1). It already reopened in Terminal less than $HANDOVER_MIN minutes ago, so it stops here rather than open Terminal again. Open FluBNF.command in $repo to see why; app/state/logs/launch.log there has the details."
       fi
-      alert "FluBNF opened FluBNF.command in Terminal less than $HANDOVER_MIN minutes ago ($1) and does not open another so soon. Use that Terminal window, or open FluBNF.command in $repo yourself."
+      alert "FluBNF needs Terminal ($1), but it opened FluBNF.command there less than $HANDOVER_MIN minutes ago and does not open another so soon. Use that Terminal window, or open FluBNF.command in $repo yourself." \
+        "FluBNF did not open Terminal again"
     fi
     { mkdir -p "$sdir" && echo "$now" > "$stamp"; } 2>/dev/null \
       || alert "FluBNF could not start ($1), and it cannot record reopening Terminal in $sdir, so it does not reopen it. Open FluBNF.command in $repo yourself."
     echo "flubnf-launch: $1; opening FluBNF.command in Terminal"
     "$open" -a Terminal "$repo/FluBNF.command" && exit 0
+    rm -f "$stamp" 2>/dev/null       # no Terminal opened, so none to count
     alert "FluBNF.app could not open FluBNF.command in $repo. It works only inside its FluBNF folder, next to FluBNF.command: open FluBNF.app from that folder, and keep that one in the Dock."
   }
 
@@ -126,9 +137,6 @@ main() {
     terminal "macOS has not given FluBNF access to its folder $repo. In System Settings > Privacy & Security > Files and Folders, turn on Documents Folder for FluBNF (or add FluBNF.app to Full Disk Access), then open FluBNF again"
   }
 
-  here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || here="$(dirname "$0")"
-  repo="${here%/*/*/*}"         # <repo>/<Name>.app/Contents/MacOS
-  host="$here/FluBNF"
   cd "$repo" 2>/dev/null || terminal "cannot open the folder $repo"
   # the host or host_boot.py, whose console stopped at startup
   if [ -n "$handover" ]; then

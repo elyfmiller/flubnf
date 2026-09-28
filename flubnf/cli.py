@@ -1098,9 +1098,10 @@ def app_serve(port: int = 8710):
 
 def _boot_started() -> None:
     """Tell the Terminal that opened this launch (FluBNF.command, through
-    `open`) that the console is up: empty the status file it named in
-    FLUBNF_BOOT_STATUS, which says the app quit early until then. A later
-    failure can still write its reason there. No variable, no-op."""
+    `open`) that the console is up (its window shown, or its page served):
+    empty the status file it named in FLUBNF_BOOT_STATUS, which says the
+    app quit early until then. A later failure can still write its reason
+    there. No variable, no-op."""
     import os
     path = os.environ.get("FLUBNF_BOOT_STATUS")
     if not path:
@@ -1212,6 +1213,12 @@ def app_window(port: int = 8710):
         window.events.closed += closed.set
     except Exception:
         pass
+    # The console is up once its window is on screen. Not the start
+    # callback: pywebview starts that before it creates the window.
+    try:
+        window.events.shown += _boot_started
+    except Exception:
+        _boot_started()
 
     def _activate():
         # Runs on a secondary, NON-daemon thread of pywebview's: everything
@@ -1221,8 +1228,7 @@ def app_window(port: int = 8710):
         # the main loop. A non-bundled process may start deactivated, hence
         # _bring_window_forward; the watchdog recovers a page that never
         # loaded.
-        _trace("window: start callback fired (window shown)")
-        _boot_started()
+        _trace("window: start callback fired")
         threading.Thread(target=_window_watchdog, args=(window, url),
                          daemon=True).start()
         try:

@@ -10,6 +10,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import types
 from pathlib import Path
 
@@ -1344,11 +1345,58 @@ def test_boot_started_empties_the_status_file(tmp_path, monkeypatch):
     cli._boot_started()                       # an unwritable path never raises
 
 
-def test_the_console_reports_it_is_up_once_its_window_or_page_is():
-    """The window's start callback and the browser path (once the server
-    answers) both clear the status file."""
-    window = inspect.getsource(cli.app_window)
-    shown = window.split("def _activate():")[1].split("webview.start(_activate)")[0]
-    assert "_boot_started()" in shown
+def test_the_window_reports_it_is_up_once_it_is_shown(tmp_path, monkeypatch):
+    """pywebview runs the start callback before it creates the window, so a
+    crash while the window is made would read as a clean start. The status
+    file is emptied on the window's `shown` event instead."""
+    status = tmp_path / "boot"
+    status.write_text("FluBNF.app quit before the console started\n")
+    monkeypatch.setenv("FLUBNF_BOOT_STATUS", str(status))
+
+    class Event:                      # pywebview's: += a handler, set() runs it
+        def __init__(self):
+            self.handlers = []
+
+        def __iadd__(self, handler):
+            self.handlers.append(handler)
+            return self
+
+        def set(self):
+            for handler in self.handlers:
+                handler()
+
+    window = types.SimpleNamespace(events=types.SimpleNamespace(
+        closed=Event(), shown=Event(), loaded=Event()))
+    seen = {}
+
+    def start(func):                  # as pywebview 6.2.1 orders it
+        t = threading.Thread(target=func)
+        t.start()
+        t.join()
+        seen["callback"] = status.read_text()
+        window.events.shown.set()     # the window is made, then shown
+        seen["shown"] = status.read_text()
+
+    monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(
+        settings={}, create_window=lambda *a, **k: window, start=start))
+    for name, stand_in in {
+            "_windows_mshtml_only": lambda: False,
+            "_name_mac_process": lambda: None,
+            "_terminate_predecessor": lambda: False,
+            "_write_pidfile": lambda: (lambda: None),
+            "_bind_app_socket": lambda port, settle=0.0: (None, port),
+            "_start_window_server": lambda sock, port: (lambda: None),
+            "_window_watchdog": lambda *a, **k: "loaded",
+            "_bring_window_forward": lambda *a, **k: False,
+            "_allow_pinch_zoom": lambda window: None,
+            "_exit_now": lambda *cleanups: None}.items():
+        monkeypatch.setattr(cli, name, stand_in)
+    cli.app_window(port=8710)
+    assert seen == {"callback": "FluBNF.app quit before the console started\n",
+                    "shown": ""}
+
+
+def test_the_browser_path_reports_it_is_up_once_the_page_is_served():
+    """Without pywebview the console is up once the server answers."""
     served = inspect.getsource(cli.app_serve)
     assert "_boot_started()" in served.split("def _open():")[1].split("webbrowser.open")[0]
