@@ -4,11 +4,11 @@
    alternative (the kit's check or warning icon), the counts, and a "?"
    naming each such location, its flag and the recommended choice.
    {% import "_newest.html" as newest %}{{ newest.check(r, short=True) }}
-   short=True: "All 53 reported" when complete, "All 53 reported · 5 read
-   0" with issues. The mark warns for any zero, collapsed or unreported
-   state; the per-state choice is made on the Forecast tab (the Data
-   issues box, _data_issues.html). head_only=True: the head alone
-   ("All 53 reported") plus the "?".
+   short=True: the mark and "All 53 reported", then one warn badge per
+   count ("5 read 0"), as the Data tab's row. The mark warns for any
+   zero, collapsed or unreported state; the per-state choice is made on
+   the Forecast tab (the Data issues box, _data_issues.html).
+   head_only=True: the head alone ("All 53 reported") plus the "?".
 
    row(r): the Data tab's "Newest week" value: the mark and the head, one
    badge per count ("5 read 0"), and a toggletip naming each location,
@@ -35,12 +35,16 @@
 {%- endmacro %}
 
 {% macro check(r, short=False, hidden=False, head_only=False) -%}
-<p class="newest-check{% if short %} hint{% if r.complete %} ok{% endif %}{% endif %}" id="newest-check" data-week="{{ r.week }}"
+{%- set parts = r.short().split(' · ') -%}
+<p class="newest-check{% if short %} hint{% endif %}" id="newest-check" data-week="{{ r.week }}"
  data-complete="{{ 'yes' if r.complete else 'no' }}"{% if hidden %} hidden{% endif %}>
-{%- if r.clean -%}
-{{ mark(r) }} {{ r.short() if short else r.line() }}
+{%- if short or head_only -%}
+{{ mark(r) }} <span class="nc-head">{{ parts[0] }}</span>
+{%- if not head_only %}{% for c in parts[1:] %} {{ tips.badge("warn", c) }}{% endfor %}{% endif %}
 {%- else -%}
-{{ mark(r) }} {{ r.short().split(' · ')[0] if head_only else (r.short() if short else r.line()) }}
+{{ mark(r) }} {{ r.line() }}
+{%- endif %}
+{%- if not r.clean %}
 {% call tips.tip("newest-gaps", "the jurisdictions to look at for " ~ r.week) -%}
 {{ lines(r) }}
 {%- endcall %}

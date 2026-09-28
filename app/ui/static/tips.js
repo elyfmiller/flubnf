@@ -27,7 +27,12 @@
     });
   }
   document.addEventListener('mouseover', function (e) {
-    var t = tipOf(e); if (t) place(t);
+    var t = tipOf(e);
+    // a reason button's wrapper (its disabled button passes the pointer
+    // through, ui-kit.css): its reason shows on hover too
+    var r = !t && e.target && e.target.closest ? e.target.closest('.uk-reason') : null;
+    if (r) t = r.querySelector('.uk-reason-tip .tip');
+    if (t) place(t);
   });
   document.addEventListener('focusin', function (e) {
     var t = tipOf(e); if (t) { t.classList.remove('dismissed'); place(t); }
@@ -66,10 +71,12 @@
    leaving it closes it. Without this script a panel shows while focus is
    inside its toggletip (ui-kit.css, html:not(.uk-js)).
    window.FluBNFUI builds kit markup for page scripts: icon(name, label),
-   badge(state, text), setBadge(el, state, text) and setReason(button,
-   reason); the icon table matches the ICONS set in _tips.html (a test
-   holds them equal). Loaded deferred: call it from handlers, not while
-   the page parses. ES5. */
+   badge(state, text), tip(id, label, text), alert(kind, text, title, tip,
+   live) and progress(label, value, max, text, id), and updates it in
+   place: setBadge(el, state, text), setReason(button, reason) and
+   setProgress(el, value, max, text); the icon table matches the ICONS set
+   in _tips.html (a test holds them equal). Loaded deferred: call it from
+   handlers, not while the page parses. ES5. */
 (function () {
   var root = document.documentElement;
   if (root.classList) root.classList.add('uk-js');
@@ -201,6 +208,86 @@
     }
     if (wrap) wrap.hidden = !reason;
   }
+  // tips.tip's markup: the "?" and its tooltip (the text is escaped)
+  function tip(id, label, text) {
+    return '<span class="tip"><button type="button" class="tipbtn" aria-label="About '
+      + esc(label) + '" aria-describedby="tip-' + esc(id) + '">?</button>'
+      + '<span class="tipbox" role="tooltip" id="tip-' + esc(id) + '">'
+      + esc(text) + '</span></span>';
+  }
+  // tips.alert's markup. kind: error, warn, info or ok; title: a bold lead;
+  // tip: [id, text] for its "?"; live: the role, by kind when undefined
+  // (error: alert, else status), '' for none (a live region holds it)
+  function alert(kind, text, title, tipIdText, live) {
+    var icons = {error: 'error', warn: 'warning', info: 'info', ok: 'check'},
+        role = live === undefined ? (kind === 'error' ? 'alert' : 'status') : live,
+        name = String(title || text || '').toLowerCase().replace(/[ .:]+$/, '');
+    return '<div class="uk-alert uk-alert--' + esc(kind) + '"'
+      + (role ? ' role="' + esc(role) + '"' : '') + '>' + icon(icons[kind] || 'info')
+      + '<span class="uk-alert-text">'
+      + (title ? '<strong>' + esc(title) + '</strong>' + (text ? ' ' : '') : '')
+      + esc(text || '')
+      + (tipIdText ? ' ' + tip(tipIdText[0], name, tipIdText[1]) : '')
+      + '</span></div>';
+  }
+  // tips.progress's markup; value null (or undefined) is work without an
+  // honest denominator: the bar slides. Without an id the bar is named by
+  // aria-label
+  function progress(label, value, max, text, id) {
+    var busy = value === null || value === undefined, m = max || 100,
+        pct = busy ? 0 : Math.max(0, Math.min(100, 100 * value / m));
+    return '<div class="uk-progress' + (busy ? ' uk-progress--busy' : '') + '"'
+      + (id ? ' id="' + esc(id) + '"' : '') + '><div class="uk-progress-head">'
+      + '<span class="uk-progress-label"' + (id ? ' id="' + esc(id) + '-l"' : '') + '>'
+      + esc(label) + '</span>'
+      + (text ? '<span class="uk-progress-val">' + esc(text) + '</span>' : '')
+      + '</div><div class="uk-progress-track" role="progressbar"'
+      + (id ? ' aria-labelledby="' + esc(id) + '-l"' : ' aria-label="' + esc(label) + '"')
+      + (busy ? '' : ' aria-valuemin="0" aria-valuemax="' + m + '" aria-valuenow="' + value + '"')
+      + (text ? ' aria-valuetext="' + esc(text) + '"' : '') + '>'
+      + '<div class="uk-progress-fill"' + (busy ? '' : ' style="width:' + pct + '%"')
+      + '></div></div></div>';
+  }
+  // an existing progress bar (tips.progress) moves: a number fills it to
+  // value/max, null makes it slide, undefined leaves the fill; text (when
+  // given) is the readout beside the label
+  function setProgress(el, value, max, text) {
+    if (!el) return;
+    var track = el.querySelector('[role=progressbar]'),
+        fill = el.querySelector('.uk-progress-fill'),
+        m = max || 100;
+    if (value === null) {
+      el.classList.add('uk-progress--busy');
+      if (fill) fill.style.width = '';
+      if (track) {
+        track.removeAttribute('aria-valuenow');
+        track.removeAttribute('aria-valuemin');
+        track.removeAttribute('aria-valuemax');
+      }
+    } else if (typeof value === 'number') {
+      el.classList.remove('uk-progress--busy');
+      if (fill) fill.style.width = Math.max(0, Math.min(100, 100 * value / m)) + '%';
+      if (track) {
+        track.setAttribute('aria-valuemin', '0');
+        track.setAttribute('aria-valuemax', String(m));
+        track.setAttribute('aria-valuenow', String(Math.round(value)));
+      }
+    }
+    if (text !== undefined && text !== null) {
+      var v = el.querySelector('.uk-progress-val');
+      if (!v) {
+        var head = el.querySelector('.uk-progress-head');
+        if (head) {
+          v = document.createElement('span');
+          v.className = 'uk-progress-val';
+          head.appendChild(v);
+        }
+      }
+      if (v) v.textContent = text;
+      if (track) track.setAttribute('aria-valuetext', text);
+    }
+  }
   window.FluBNFUI = {icon: icon, badge: badge, setBadge: setBadge,
-                     setReason: setReason, esc: esc};
+                     setReason: setReason, esc: esc, tip: tip, alert: alert,
+                     progress: progress, setProgress: setProgress};
 })();

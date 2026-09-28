@@ -94,22 +94,12 @@
 /* what the replayed weeks see: a label and its badge */
 .lblrow.rt-kind{gap:.4rem;margin:.6rem 0 .35rem}
 .rt-kind-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+/* a badge on its own line under a field (the engine build) */
+.rt-under{margin:.35rem 0 .2rem}
 /* a replay row's facts and the "?" on its baseline */
 .rt-meta{display:flex;flex-wrap:wrap;align-items:center;gap:0 .35rem}
 .rt-abst{margin:.5rem 0 0}
 .rt-detail{align-items:flex-start;gap:2rem}
 .rt-plot{min-height:25rem}
-/* the horizon as a segmented switch of plain links, the current one
-   filled */
+/* the horizon's label beside its segmented switch (the kit's uk-seg) */
 .rt-hz-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}
-.rt-seg{display:inline-flex;border:1px solid var(--line);
-  border-radius:var(--r-pill);overflow:hidden;font-size:var(--fs-label);
-  font-weight:650;font-variant-numeric:tabular-nums}
-.rt-seg > a,.rt-seg > span{display:inline-flex;align-items:center;
-  justify-content:center;min-width:1.9rem;padding:.2rem .6rem;
-  line-height:1.4;color:var(--ink);text-decoration:none}
-.rt-seg > * + *{border-left:1px solid var(--line)}
-.rt-seg > a:hover{background:var(--bg)}
-.rt-seg > a:focus-visible{outline:2px solid var(--accent-ink);
-  outline-offset:-2px}
-.rt-seg > .rt-seg-on{background:var(--accent-ink);color:var(--card)}

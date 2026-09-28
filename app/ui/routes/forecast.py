@@ -27,7 +27,7 @@ from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
 from app.ui.shared import (_back, _console_elapsed, _flash,
-                           _invalidate_scans, _outcome_chips, _run_label,
+                           _invalidate_scans, _run_label,
                            _sandbox_live_reason)
 from app.ui.state import ENGINES, _engine_lock, _last_form, _status
 from app.ui.templating import (_member_colors, _script_json, _season_colors,
@@ -133,7 +133,6 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["chips"] = _outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
         # the latest-run card links the weekly report when one exists, and
         # a run that died says why in its status badge's tip
@@ -493,17 +492,20 @@ def run_page(request: Request, run_id: str):
 
 
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)
-def run_report(run_id: str):
+def run_report(request: Request, run_id: str):
     from app.core.runs import APP_STATE
     d = APP_STATE / "workroots" / run_id
     if not (d / "report.html").is_file():
-        return HTMLResponse("<p>no report for this run</p>")
+        # a page of the console with the way back, as Output's notices
+        return output_routes._notice(
+            request, 404, "empty", "No report for this run",
+            action=(f"/runs/{run_id}", "Back to the run"))
     # rebuilt if stale, as /output/report
     return HTMLResponse(output_routes._report_for_serving(d))
 
 
 @router.get("/runs/{run_id}/report/download")
-def run_report_download(run_id: str):
+def run_report_download(request: Request, run_id: str):
     """Save this run's weekly report, named for the run's forecast date."""
     from app.core.runs import APP_STATE
     d = APP_STATE / "workroots" / run_id
@@ -514,7 +516,7 @@ def run_report_download(run_id: str):
             "forecast_date", "")
     except Exception:
         pass                 # no results.json yet: fall back to the run id
-    return output_routes._weekly_report_file(d, date or run_id)
+    return output_routes._weekly_report_file(d, date or run_id, request)
 
 
 @router.post("/runs/{run_id}/rerun")

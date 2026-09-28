@@ -166,6 +166,16 @@ def test_the_theme_lists_agree():
     assert sorted(THEME) == sorted(ORDER)
     logos = re.findall(r'\[data-theme="([\w-]+)"\][,{]', LOGOS)
     assert logos == ORDER, logos
+    # the reports carry the same eight: their first-paint check and a
+    # token block per named theme (app/core/html_page.py)
+    from app.core import html_page
+    assert list(html_page.THEMES) == ORDER
+    rboot = re.search(r"if\(\[([^\]]*)\]\.indexOf\(t\)<0\)",
+                      html_page.theme_boot_script())
+    assert re.findall(r"'([\w-]+)'", rboot.group(1)) == ORDER
+    tokens = html_page.theme_token_css()
+    for th in ORDER[1:]:
+        assert f'[data-theme="{th}"]{{' in tokens, th
     # every preview wears its theme; the ground groups follow the list
     for th in ORDER:
         assert f'class="dm-th-sw" data-theme="{th}" aria-hidden="true"' in html

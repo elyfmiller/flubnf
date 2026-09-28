@@ -26,7 +26,7 @@
 {% if own_tab %}{% include "_dataset_replay.html" %}{% else %}
 {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
    filename. What to do now, one line across the page; the how in its tip #}
-{% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
+{% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
 <div class="cols">
  <div><div class="card rt-runcard"><h2>Settings</h2>
   <form method="post" action="/retro/run">
@@ -188,7 +188,8 @@
     {% if s_complete %}{{ tips.stat("Weeks", "%d/%d"|format(s.done, s.total)) }}
     {% for m, v in s_rels.items() %}
     {% set mname = (s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) if m else '' %}
-    {{ tips.stat((mname ~ ' ') ~ 'relWIS' if mname else 'relWIS', "%.3f"|format(v),
+    {% set rel_label = (mname ~ ' ') ~ 'relWIS' if mname else 'relWIS' %}
+    {{ tips.stat(rel_label, "%.3f"|format(v), tip_label=rel_label,
                  tiptext=("relWIS vs FluSight baseline, ratio of sums: below 1 beats the baseline." if loop.first else ""),
                  id="rt-rel-" ~ sid ~ "-" ~ (m or "x"), state=("ok" if v < 1 else "error"),
                  after=verdict(v)) }}

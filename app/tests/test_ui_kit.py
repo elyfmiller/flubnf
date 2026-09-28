@@ -34,7 +34,8 @@ DOCS_INDEX = (REPO / "docs" / "README.md").read_text()
 
 MACROS = ("tip", "label", "icon", "icon_tip", "toggletip", "heading",
           "badge", "alert", "empty", "stats", "stat", "reason_button",
-          "stepper", "progress", "legend", "fold", "meta")
+          "stepper", "progress", "legend", "fold", "meta", "tag",
+          "namechip")
 ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
               "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")
@@ -313,6 +314,52 @@ def test_fold_and_meta():
                   '("folder", "5 MB"), "plain"]) }}')
     assert '<span class="uk-sr">As of: </span><span>2026-09-20</span>' in meta
     assert meta.count("<li>") == 3 and meta.count('aria-hidden="true"') == 2
+
+
+def test_tag_and_name_chip():
+    # a tag is a word with no state: no icon, no role
+    tag = render('{{ t.tag("relWIS") }}')
+    assert tag == '<span class="uk-tag">relWIS</span>'
+    # a name chip holds its "?", named for the chip
+    chip = render('{{ t.namechip("Seasonal forcing", "f", "The curve.") }}')
+    assert chip.startswith('<span class="uk-name">Seasonal forcing<span class="tip">')
+    assert 'aria-label="About seasonal forcing"' in chip
+    assert 'id="tip-f">The curve.</span>' in chip
+    assert ".uk-figline" in KIT_CSS
+
+
+def test_hidden_alert_and_empty_stay_hidden():
+    a = render('{{ t.alert("warn", "x", id="a", hidden=True) }}')
+    e = render('{{ t.empty("None", id="e", hidden=True) }}')
+    assert ' hidden>' in a and ' hidden>' in e
+    # their display rule would override [hidden]; the kit puts it back
+    assert ".uk-alert[hidden]{display:none}" in KIT_CSS
+    assert ".uk-empty[hidden]{display:none}" in KIT_CSS
+
+
+def test_stat_tip_label_names_the_tip():
+    s = render('{{ t.stat("relWIS", "0.9", tiptext="Below 1 beats it.", '
+               'id="r", tip_label="relWIS") }}')
+    assert 'aria-label="About relWIS"' in s
+
+
+def test_the_script_builds_the_kit_markup_the_macros_write():
+    # FluBNFUI.tip/alert/progress, so page scripts never copy the markup
+    for name in ("function tip(", "function alert(", "function progress(",
+                 "function setProgress(", "tip: tip, alert: alert",
+                 "progress: progress, setProgress: setProgress"):
+        assert name in TIPS_JS, name
+    # the tab scripts that fill a box with kit pieces use them
+    static = UI / "static"
+    assert "ui.progress(text)" in (static / "dataset_upload.js").read_text()
+    assert "FluBNFUI.alert(kind, text, title, tip, '')" in \
+        (static / "sandbox.js").read_text()
+    for p in (static / "dataset_upload.js", static / "sandbox.js",
+              UI / "templates" / "data.html",
+              UI / "templates" / "sandbox_views.html"):
+        t = p.read_text()
+        assert "'<div class=\"uk-alert" not in t, p.name
+        assert 'class="tipbtn" aria-label="About \'' not in t, p.name
 
 
 # ---------------------------------------------------------- the stylesheet

@@ -57,7 +57,7 @@ A form label with its "?" on the same line. A hint under a field (`<p class="hin
 
 ### Heading: `tips.heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="")`
 
-A section title with its explainer beside it. It replaces the subtext line under a card's `h2`. The "?" sits after the heading element, not inside it, so the heading's accessible name is the title alone. `after` is markup after the tip (a badge, a count); `aside` is markup pushed to the right edge (an action). `rich=True` makes the explainer a toggletip. The heading gets `id="h-<id>"`.
+A section title with its explainer beside it. It replaces the subtext line under a card's `h2`. The "?" sits after the heading element, not inside it, so the heading's accessible name is the title alone. `after` is markup after the tip (a badge, a count); `aside` is markup pushed to the right edge (an action). `rich=True` makes the explainer a toggletip. The heading gets `id="h-<id>"`. At `level=3` it is a sub-heading inside a card, drawn at one size on every tab; a tab's `cls` sets its spacing only.
 
 ```jinja
 {{ tips.heading("Run ledger", "st-ledger", "Elapsed is wall time; a dash: recorded before timing existed.",
@@ -86,26 +86,26 @@ A status in an icon and a word, never in color alone. `state` is `ok`, `warn`, `
 {{ tips.badge("warn", r.unreported | length ~ " not reported", id="nw-badge") }}
 ```
 
-### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none)`
+### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False)`
 
-A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice this way.
+A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden.
 
 ```jinja
 {% call tips.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart") %}
 This window still runs build {{ running_sha() }}.{% endcall %}
 ```
 
-### Empty state: `tips.empty(title, icon_name="folder", action="", tiptext="", id="", compact=False)`
+### Empty state: `tips.empty(title, icon_name="folder", action="", tiptext="", id="", compact=False, hidden=False)`
 
-What a card shows before it has content: an icon, one short title, and at most one action that fills it. It replaces "Nothing here yet. Run a forecast first." paragraphs. `compact=True` is a single line for a list inside a card ("No workroots on disk").
+What a card shows before it has content: an icon, one short title, and at most one action that fills it. It replaces "Nothing here yet. Run a forecast first." paragraphs. `compact=True` is a single line for a list inside a card ("No workroots on disk"). `hidden=True` renders it hidden, as for an alert.
 
 ```jinja
 {{ tips.empty("No forecasts yet", "clock", action='<a class="btn gold" href="/forecast">Run a forecast</a>' | safe) }}
 ```
 
-### Stats: `tips.stats(cls="", label="")` and `tips.stat(label, value, unit="", tiptext="", id="", state="", after="")`
+### Stats: `tips.stats(cls="", label="")` and `tips.stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="")`
 
-Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. `id` lands on the value, for a script that updates it.
+Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. `id` lands on the value, for a script that updates it. The "?" is named from the label in lower case; `tip_label` names it where that would read wrong ("relWIS").
 
 ```jinja
 {% call tips.stats("uk-stats--kv") %}
@@ -116,7 +116,7 @@ Labelled values. A sentence that strings facts together ("212 vintages, newest w
 
 ### Reason button: `tips.reason_button(text, id, reason, off=True, cls="", type="", name="", value="", data={}, attrs="", label="")`
 
-A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
+A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. Hovering the disabled button shows the reason too. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
 
 ```jinja
 {{ tips.reason_button("Apply the Oracle step", "sb-oracle-why", oracle_gate.reason,
@@ -170,6 +170,34 @@ A row of facts, each an icon and a value, instead of a "run 2026-09-20 · on dat
 {{ tips.meta([("calendar", w.when, "Run"), ("folder", w.size_h, "Size"), ("clock", r.elapsed_s | hms, "Wall time")]) }}
 ```
 
+### Tag: `tips.tag(text, cls="")`
+
+A kind or a unit in a word ("Mechanistic", "relWIS", "population"): an outlined, muted pill with no icon, because it states no status. A status is a badge; a count beside a heading is a neutral badge ("3 entries").
+
+```jinja
+{{ tips.heading("Measured performance", "home-perf", tip, after=tips.tag("relWIS")) }}
+```
+
+### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`
+
+The short name of the formula or figure beside it, with its reading in the "?" the chip holds: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as "illustrative values").
+
+```jinja
+<p class="uk-figline"><span class="math">...</span>
+ {{ tips.namechip("Seasonal forcing", "hm-eq-forcing", "The curve the filter bends each week.") }}</p>
+```
+
+### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`
+
+One choice among a few, joined in one outline: the chart's view, the map's model, a horizon. The children are buttons whose `aria-pressed` says which is on (a script flips it), or links with the current choice a `<span aria-current="true">`; the choice is filled as a primary button is. It has no macro because its buttons are the page's own (ids, handlers); the kit only draws them.
+
+```jinja
+<div class="uk-seg" role="group" aria-label="Chart view">
+ <button type="button" id="vb-mode-raw" aria-pressed="true">full series</button>
+ <button type="button" id="vb-mode-season" aria-pressed="false">season over season</button>
+</div>
+```
+
 ### Icons: `tips.icon(name, label="", cls="")` and `tips.icon_tip(id, label, name, text="", state="")`
 
 Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `check`, `clock`, `download`, `folder`, `external`, `lock`, `calendar`, `refresh`, `dot`, `close`. An icon is decorative (`aria-hidden`) unless given a `label`, which makes it an image with that name. Its drawing attributes are on the SVG itself, so it renders without `ui-kit.css` too. `icon_tip` is a tip whose button is an icon instead of "?": a warning mark whose tooltip names what to check, a lock whose tooltip says why something is protected; `state` colors it (`ok`, `warn`, `error`, `info`, `muted`). For an icon beside text, `<span class="uk-c-warn">` (or `-ok`, `-error`, `-info`, `-muted`) colors it with the state token.
@@ -189,7 +217,13 @@ Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `c
 | `FluBNFUI.badge(state, text)` | a badge's markup (string); the text is escaped |
 | `FluBNFUI.setBadge(el, state, text)` | turns an existing badge into another state and word |
 | `FluBNFUI.setReason(button, reason)` | disables a reason button with that reason, or enables it (`null`) |
+| `FluBNFUI.tip(id, label, text)` | a tip's markup (`tips.tip`); the text is escaped |
+| `FluBNFUI.alert(kind, text, title, tip, live)` | an alert's markup (`tips.alert`); `tip` is `[id, text]` for its "?"; `live` the role (by kind when left out, `''` for none inside a live region) |
+| `FluBNFUI.progress(label, value, max, text, id)` | a progress bar's markup (`tips.progress`); `value` null slides |
+| `FluBNFUI.setProgress(el, value, max, text)` | moves an existing bar: a number fills it, `null` slides it, `undefined` leaves the fill; `text` is the readout |
 | `FluBNFUI.esc(text)` | HTML-escapes a string |
+
+A script that fills a box with kit components builds them with these, never by copying the markup, so a change to a component reaches every page.
 
 Static scripts stay ES5 (no arrow functions, `let`, `const` or template strings).
 
@@ -203,7 +237,7 @@ Each tab's own rules live in `app/ui/static/tabs/<tab>.css` (`home`, `data`, `fo
 
 A partial that renders on another tab's page (the upload box is on Data, Forecast and Retrospective) links its owner's sheet itself; a `<link>` in the body is valid and the browser loads the file once. So every rule in a tab sheet is scoped by the tab's class prefix (`hm-`, `dt-`, `fc-`, `out-`, `rt-`, `st-`, `md-`, `mt-`, `sb-`) and never styles a bare element or a kit class. A sheet a tab does not need is deleted. `nau.css` keeps the tokens, the themes and the shared layout; a tab edits it only to delete rules that only it used.
 
-Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-mix()` of two tokens), never a literal, so a rule works in every theme, in high contrast and in the color-vision mode; `app/tests/test_ui_kit.py` holds the tab sheets and the kit to that. Sizes are in `rem`, `em` and the type tokens (`--fs-label`, `--fs-hint`), so they follow the text size, which runs from 80% to 160% of the root.
+Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-mix()` of two tokens; the table of tokens is under "Display settings" in [app/ui/README.md](../app/ui/README.md)), never a literal, so a rule works in every theme, in high contrast and in the color-vision mode; `app/tests/test_ui_kit.py` holds the tab sheets and the kit to that. Sizes are in `rem`, `em` and the type tokens (`--fs-label`, `--fs-hint`), so they follow the text size, which runs from 80% to 160% of the root.
 
 ## Accessibility contract
 

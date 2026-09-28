@@ -15,7 +15,7 @@
    scores cannot give (a season scored before these metrics) is left out #}
 {% macro tile_more(log_rel, cov) -%}
 {%- if log_rel is not none or cov %}<dl class="tilekv rt-tilekv">
- {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}</dd>{% endif %}
+ {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}{{ tips.icon("check" if log_rel < 1 else "warning", "beats the baseline" if log_rel < 1 else "does not beat the baseline", cls="rt-verdict") }}</dd>{% endif %}
  {%- if cov %}<dt>coverage 50/80/95%</dt><dd class="rt-cov">
   {%- for b in ("50", "80", "95") %}{% set cs = cov_state(cov.get(b), b | int) %}<span class="{{ ('cov-' ~ cs) if cs else 'hint' }}">{{ cov_text(cov.get(b)) }}</span>{{ " · " if not loop.last }}{% endfor %}</dd>{% endif %}
 </dl>{% endif %}
@@ -73,7 +73,7 @@
 <div class="card" data-season="{{ season }}">
  {{ tips.heading("Preparing the season results", "rs-prep", "Scoring every stored week, building the US aggregate and warming the player; this runs once and is kept.") }}
  <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
- <div class="runbar busy" aria-hidden="true"><div></div></div>
+ {{ tips.progress("Preparing", id="rs-prep-bar") }}
  <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
@@ -537,7 +537,7 @@
    {%- if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="ncline">{{ us_row.pf_note }}</span>{% endif %}{% endcall %}</td>
   {% for m in season_models %}
   <td class="num{% if show_cov %} g1{% endif %}{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
-   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>
+   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}{% if us_row[m] and us_row[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}</td>
    {%- if show_cov %}{{ cov95((us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}</tr>
  {% endif %}
  {% for r in states %}<tr data-name="{{ r.name }}"
@@ -545,7 +545,7 @@
   <td>{{ r.name }}</td>
  {% for m in season_models %}
  <td class="num{% if show_cov %} g1{% endif %}{% if r[m] and r[m] >= 1 %} bad{% endif %}">
-  {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>
+  {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}{% if r[m] and r[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}</td>
   {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody></table>
  </div>

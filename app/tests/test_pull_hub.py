@@ -243,7 +243,7 @@ def test_the_page_carries_the_progress_bar_and_the_script(hub, monkeypatch):
     assert 'role="progressbar" aria-labelledby="hub-bar-l"' in html
     assert 'id="hub-status" role="status" aria-live="polite"' in html
     assert "FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral'" in html
-    assert '<div class="uk-alert uk-alert--error" role="alert">' in html
+    assert "err.innerHTML=ui.alert('error',msg)" in html
     assert "headers:{'Accept':'application/json'}" in html
     # the forms still post on their own without script
     assert '<form method="post" action="/data/pull">' in html

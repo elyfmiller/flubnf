@@ -62,11 +62,15 @@ def marked_json(marker: str, fallback, src: Path = PLAYER_SRC):
 
 
 # ------------------------------------------------------------ 3. the theme
+#: the console's themes, as base.html's THEMES lists them (light is :root)
+THEMES = ("light", "paper", "github", "solarized",
+          "dim", "dark", "nord", "dracula")
 #: the embedded token blocks: both :root blocks (palette, type scale), the
 #: named themes and the two accessibility modifiers
-_THEME_SELECTORS = (":root", '[data-theme="dark"]', '[data-theme="paper"]',
-                    '[data-theme="dim"]', '[data-contrast="high"]',
-                    '[data-vision="cvd"]')
+_THEME_SELECTORS = ((":root",)
+                    + tuple(f'[data-theme="{t}"]' for t in THEMES
+                            if t != "light")
+                    + ('[data-contrast="high"]', '[data-vision="cvd"]'))
 
 
 def theme_token_css() -> str:
@@ -88,12 +92,13 @@ def theme_token_css() -> str:
 def theme_boot_script() -> str:
     """First-paint theme resolution, mirroring base.html: the console's
     localStorage keys when served same-origin, else the OS preferences."""
+    names = ",".join(f"'{t}'" for t in THEMES)
     return """<script>
 (function(){var de=document.documentElement,t=null,c=null,v=null;
  try{if(location.protocol==='http:'||location.protocol==='https:'){
   t=localStorage.getItem('theme');c=localStorage.getItem('contrast');
   v=localStorage.getItem('vision');}}catch(e){}
- if(['light','paper','dim','dark'].indexOf(t)<0)
+ if([""" + names + """].indexOf(t)<0)
   t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
  if(c!=='high'&&c!=='normal')
   c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';

@@ -8,7 +8,7 @@
 {% import "_tips.html" as tips %}
 <div class="card md-research" id="research-run">
  {% set badge %}{{ tips.badge("info", "research · not the submitted forecast") }}{% endset %}
- {% set ledger %}<a href="/storage">Past runs in Storage</a>{% endset %}
+ {% set ledger %}<a href="/storage#ledgerfold">Past runs in Storage</a>{% endset %}
  {{ tips.heading("Research run", "rr", "The weekly pipeline with the two-strain member fitted beside the submitted models: scored, never submitted.", after=badge, aside=ledger) }}
  {% if status.running %}
  {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}

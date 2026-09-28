@@ -54,7 +54,9 @@
 <div class="card fc-partial">
  {{ tips.heading("Partial-run detail", "run-partial", "Recorded on this run's ledger row; copy this block when reporting a partial run.") }}
  {% if pf_failures %}
- <h3 class="fc-sub">PF fit{{ 's' if pf_failures | length != 1 }} that failed <span class="fc-count">{{ pf_failures | length }}</span></h3>
+ {% set n = pf_failures | length %}
+ {{ tips.heading("PF fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
+                 after=tips.badge("neutral", n ~ (" cell" if n == 1 else " cells"))) }}
  <ul class="fc-faillist">
  {% for cell, why in pf_failures.items() | sort %}
   <li>{{ tips.icon("error", cls="uk-c-error") }}<code>{{ cell }}</code> <span>{{ why }}</span></li>
@@ -62,7 +64,9 @@
  </ul>
  {% endif %}
  {% if step_errors %}
- <h3 class="fc-sub">Step{{ 's' if step_errors | length != 1 }} that failed <span class="fc-count">{{ step_errors | length }}</span></h3>
+ {% set n = step_errors | length %}
+ {{ tips.heading("Step" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
+                 after=tips.badge("neutral", n ~ (" step" if n == 1 else " steps"))) }}
  <ul class="fc-faillist">
  {% for step, why in step_errors.items() %}
   <li>{{ tips.icon("error", cls="uk-c-error") }}<code>{{ step }}</code> <span>{{ why }}</span></li>

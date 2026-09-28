@@ -46,9 +46,9 @@
      8. checklist, runbar, folds (card/ledger), per-state sort, run settings,
         carousel, quip
      9. output tab (linkish, previews), banner
-    10. model pages: intro, diagram text (svgt), cumchart, eqpanel, BNGL,
+    10. model pages: diagram text (svgt), cumchart, eqpanel, BNGL,
         map legend
-    11. home: pipeline, perf table, card glyphs, start-here stepper
+    11. home: pipeline, perf table, card glyphs
     12. season player
     13. modals, archive rows, storage total
     14. skip link, reduced motion
@@ -665,7 +665,13 @@ button.danger{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
 button.danger:hover{
   background:color-mix(in srgb,#000 12%,var(--bad));
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
-button[disabled]{opacity:.45;cursor:not-allowed}
+/* a disabled control, in any tier: muted text in a dashed outline on no
+   fill (dashed: unavailable, as the kit's empty state), from the theme's
+   tokens; an opacity washed it out on the dark grounds. --mut holds 4.5:1
+   and --field-line 3:1 against the card */
+button[disabled],button[disabled]:hover{background:transparent;
+  border-color:var(--field-line);border-style:dashed;color:var(--mut);
+  cursor:not-allowed}
 a{color:var(--gold);font-weight:600;text-decoration:none}
 a:hover{text-decoration:underline}
 /* ---- data ---- */
@@ -749,12 +755,10 @@ details.ledgerfold > summary .hint{font-weight:400}
 
 /* per-state score table (season page): sort headers are plain buttons with
    aria-pressed; the US aggregate row is set apart (constructed, not fitted) */
-th button.thsort,[data-theme="dark"] th button.thsort,
-[data-theme="dim"] th button.thsort{margin:0;padding:0;border:0;
+th button.thsort{margin:0;padding:0;border:0;
   background:none;color:var(--mut);font:inherit;font-weight:600;
   text-transform:inherit;letter-spacing:inherit;cursor:pointer}
-th button.thsort:hover,[data-theme="dark"] th button.thsort:hover,
-[data-theme="dim"] th button.thsort:hover{background:none;color:var(--ink)}
+th button.thsort:hover{background:none;color:var(--ink)}
 th button.thsort[aria-pressed="true"]{color:var(--gold)}
 tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 
@@ -775,12 +779,10 @@ tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 .quip{text-align:center;margin:.7rem 0 .1rem;
  font-size:.98rem;font-style:italic;color:var(--gold)}
 /* ---- output tab: downloads + csv previews ---- */
-button.linkish,[data-theme="dark"] button.linkish,
-[data-theme="dim"] button.linkish{background:none;border:0;
+button.linkish{background:none;border:0;
   padding:0;margin:0;color:var(--mut);font-size:var(--fs-label);
   font-weight:600;text-decoration:underline;cursor:pointer}
-button.linkish:hover,[data-theme="dark"] button.linkish:hover,
-[data-theme="dim"] button.linkish:hover{
+button.linkish:hover{
   background:none;color:var(--ink)}
 details.preview > summary{cursor:pointer;list-style:none;user-select:none}
 details.preview > summary::-webkit-details-marker{display:none}
@@ -798,11 +800,14 @@ details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
 .mech svg{color:var(--ink)}
 /* SVG labels on the type scale via rem classes, so the text size reaches them;
    svgt-sm renders at or above the 13.1px hint floor in the 840-unit
-   diagrams; svgt-sub is relative to its parent text */
-svg .svgt-xl{font-size:1.3rem}
-svg .svgt-lg{font-size:1rem}
-svg .svgt-md{font-size:.92rem}
-svg .svgt-sm{font-size:.875rem}
+   diagrams; svgt-sub is relative to its parent text. The labels follow the
+   text size up to 115%, where the diagrams were audited to fit their boxes;
+   past it (the size runs to 160%) they hold, so no label spills out of the
+   box drawn around it (the drawing itself scales with its width) */
+svg .svgt-xl{font-size:min(1.3rem,23.92px)}
+svg .svgt-lg{font-size:min(1rem,18.4px)}
+svg .svgt-md{font-size:min(.92rem,16.93px)}
+svg .svgt-sm{font-size:min(.875rem,16.1px)}
 svg .svgt-sub{font-size:.68em}
 /* EXCEPTION: svg.cumchart labels in viewBox px, which scale WITH the
    card-wide chart (rem labels ballooned relative to the plot) */
@@ -1074,7 +1079,7 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
 .modes > [role=tablist]{display:flex;gap:.4rem}
 .modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
-.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
+.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
 #fcform.mode-realtime #vintage-pick{display:none}
 details.adv{margin:.7rem 0 .4rem}
@@ -1203,12 +1208,6 @@ tr[aria-current="true"] td{font-weight:600}
 .mview-draw svg{display:block;max-width:none}
 
 /* polish: home-models-methods */
-/* model pages: the intro's full description; a second heading in the
-   mechanism card sits apart from the figure above it */
-p.introbody{margin:.55rem 0 .1rem}
-.mech h2:not(:first-child){margin-top:1.4rem}
-/* model switcher: the research tag stays readable on the pressed button */
-.viewtabs button.gold[data-model] .hint{color:inherit;opacity:.75}
 /* phone width: equations wrap instead of clipping, wide figures scroll
    with a visible bar (their right side is off-card), tables tighten so they
    fit the card */
@@ -1227,8 +1226,7 @@ p.introbody{margin:.55rem 0 .1rem}
 .seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
   font-size:.85rem;font-weight:600}
 /* unselected: outlined; selected keeps the global .gold fill */
-.seg button:not(.gold),[data-theme="dark"] .seg button:not(.gold),
-[data-theme="dim"] .seg button:not(.gold){background:transparent;
+.seg button:not(.gold){background:transparent;
   color:var(--ink);border:1px solid var(--gold)}
 /* Forecast pager rows: every control on one line (a stray button
    margin-top dropped "expand" below the arrows); scoped to this page's
@@ -1375,14 +1373,12 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
 .sbtabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin:0 0 .6rem}
 .sbtabs[hidden]{display:none}
 .sbtablist{display:flex;gap:.2rem;min-width:0}
-.sbtablist button,[data-theme="dark"] .sbtablist button,[data-theme="dim"] .sbtablist button{
+.sbtablist button{
   margin:0 0 -1px;padding:.4rem .8rem;border:0;border-bottom:3px solid transparent;
   border-radius:0;background:transparent;color:var(--mut);font-weight:600;
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88rem}
-.sbtablist button:hover,[data-theme="dark"] .sbtablist button:hover,
-[data-theme="dim"] .sbtablist button:hover{color:var(--ink);background:transparent}
-.sbtablist button[aria-selected="true"],[data-theme="dark"] .sbtablist button[aria-selected="true"],
-[data-theme="dim"] .sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
+.sbtablist button:hover{color:var(--ink);background:transparent}
+.sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
 .sbtabtips{display:flex;align-items:center;padding:0 .3rem}
 .sbtabtips > [hidden]{display:none}
 .sbfile[hidden]{display:none}
@@ -1508,7 +1504,7 @@ details.sbfill .row > .sbsetpop + button{align-self:flex-start}
 p.newest-check{margin:.2rem 0 .4rem}
 p.newest-check[hidden]{display:none}
 .ncmark{display:inline-block;min-width:1em;font-weight:800;text-align:center}
-.ncmark.ok,p.newest-check.hint.ok{color:var(--ok)}
+.ncmark.ok{color:var(--ok)}
 .ncmark.warn{color:var(--warn)}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}
@@ -1532,10 +1528,11 @@ p.newest-check[hidden]{display:none}
 .rs-chips .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
   border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
   background:var(--bg);font-weight:650;overflow-wrap:anywhere}
-/* the verdict: one row of tiles (four across when the window allows);
+/* the verdict: one row of tiles (four across when the window allows;
+   the floor in rem, so large text wraps them rather than clipping);
    the cumulative chart sits in the player's side column with a marker
    that follows the playback */
-.verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))}
 .rs-band .rs-facts{margin:0;flex:1 1 20rem;min-width:0}
 .rs-settings{margin:.15rem 0 .7rem}
 .rs-settings .tip{margin-left:.1rem}

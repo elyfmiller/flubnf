@@ -9,8 +9,8 @@
      1. the model switcher's research tag
      2. the header card: name, kind and status, one line, the fold
      3. the record: relWIS bars against the baseline
-     4. named equations (diagrams.html eq_*(kit=true)), parameter chips,
-        the harmonic's badge
+     4. parameter chips (diagrams.html eq_*(kit=true); the equations are
+        the kit's figure lines and name chips)
      5. the BNGL source summary
      6. run forms (quick run, research run) and the forecasts card */
 
@@ -26,10 +26,6 @@
 .md-hero-head{margin-bottom:.2rem;gap:.35rem .6rem}
 .md-hero-head > h2{font-size:1.45em;text-transform:none;letter-spacing:0;
   color:var(--ink);line-height:1.25}
-.md-kind{display:inline-flex;align-items:center;padding:.05em .6em;
-  border:1px solid var(--line);border-radius:var(--r-pill);
-  color:var(--mut);font-size:var(--fs-label);font-weight:650;
-  line-height:1.4}
 a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
 .md-hero-grid{display:grid;
   grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
@@ -49,9 +45,6 @@ a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
 .md-record .uk-heading{margin-bottom:.35rem}
 .md-record .uk-heading > h3{font-size:var(--fs-h2);text-transform:uppercase;
   letter-spacing:.05em;color:var(--mut)}
-.md-unit{padding:0 .45em;border:1px solid var(--line);
-  border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-micro);
-  font-weight:650;line-height:1.45}
 .md-bars{margin:.2rem 0 0;max-width:34rem}
 .md-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;
   gap:.1rem .6rem;align-items:baseline;margin:0 0 .5rem}
@@ -83,14 +76,8 @@ a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
   .md-bar-track{outline:1px solid CanvasText}
 }
 
-/* ---- 4. named equations: the math beside a name chip and its "?" ---- */
-p.md-eq{display:flex;flex-wrap:wrap;align-items:center;
-  justify-content:center;gap:.25rem .8rem;margin:.5rem 0}
-.md-eqname{display:inline-flex;align-items:center;
-  padding:.05rem .15rem .05rem .65rem;border:1px solid var(--line);
-  border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-label);
-  font-weight:600;white-space:nowrap}
-/* the parameters: two rows of symbol chips */
+/* ---- 4. equations: each is the kit's figure line and name chip; the
+   parameters: two rows of symbol chips ---- */
 .md-params{display:flex;flex-wrap:wrap;justify-content:center;
   gap:.45rem 1.8rem;margin:.75rem 0 .25rem}
 .md-params-row{display:flex;flex-wrap:wrap;align-items:center;
@@ -102,7 +89,6 @@ p.md-eq{display:flex;flex-wrap:wrap;align-items:center;
   border:1px solid var(--line);border-radius:6px;background:var(--bg);
   color:var(--ink);font-weight:600;text-align:center;line-height:1.5}
 .md-par sub{font-size:.68em}
-p.md-illus{margin:.1rem 0 .45rem;text-align:center}
 
 /* ---- 5. the BNGL source: the file and its size beside the title ---- */
 .md-src-t{font-weight:600}

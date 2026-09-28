@@ -3,26 +3,28 @@
    --bad (red is semantic, a compartment is not a failure). Macros with
    arrow markers take a uid so marker ids stay unique per page. Only
    structural labels (rates on arrows), no fitted values. Text uses the
-   svgt-* rem classes (never size attributes) so A-/A/A+ reaches it; label
-   boxes are audited to fit at A+ (115%). Accessible names ride aria-label,
-   not a nested title element (it pops a hover tooltip over the drawing).
+   svgt-* rem classes (never size attributes) so the text size reaches it; label
+   boxes are audited to fit at 115% (nau.css holds the labels there past
+   it). Accessible names ride aria-label, not a nested title element (it
+   pops a hover tooltip over the drawing).
    The wide drawings sit in a .figscroll wrapper: at phone width they keep
    a legible size and scroll sideways on their own, never the page.
 
    The equation panels (eq_*) and the harmonic's caption take kit=true on
-   the console's model pages: each equation wears a short name whose "?"
-   holds its note, word for word, and the caption becomes a badge. It needs
-   the UI kit (ui-kit.css, tips.js) and static/tabs/models.css, so the
-   default (kit=false) stays the plain notes that Methods, Home and the
-   public site (site_build, no kit) render. #}
+   the console's model pages: each equation wears a name chip whose "?"
+   holds its note, word for word (tips.namechip), and the caption becomes
+   a badge. It needs the UI kit (ui-kit.css, tips.js); the panels' parameter
+   chips also static/tabs/models.css. Home takes harmonic(kit=true) alone.
+   The default (kit=false) stays the plain notes that Methods and the public
+   site (site_build, no kit) render. #}
 {% import "_tips.html" as tips %}
 
 {# one equation line: the math, then its note beside it; with kit=true a
    name chip whose "?" holds the note instead. math and note are markup
    ({% set %} blocks), `id` names the tip. #}
 {% macro _eq(kit, name, id, math, note) -%}
-{% if kit %}<p class="md-eq"><span class="math">{{ math }}</span>
-  <span class="md-eqname">{{ name }}{% call tips.tip(id, name | lower) %}{{ note }}{% endcall %}</span></p>
+{% if kit %}<p class="uk-figline"><span class="math">{{ math }}</span>
+  {% call tips.namechip(name, id) %}{{ note }}{% endcall %}</p>
 {%- else %}<p><span class="math">{{ math }}</span>
   <span class="eqnote">{{ note }}</span></p>{% endif %}
 {%- endmacro %}
@@ -538,7 +540,7 @@
  all are fitted per state and week.{% else %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
  <i>&#966;</i><sub>1</sub> = week {{ phi }}, {{ season_week_name(phi) }});
  both are fitted per state and week.{% endif %}{% endset %}
-{% if kit %}<p class="md-illus">{% call tips.badge("info", "illustrative values", id="dg-illus" ~ ("2" if two else "1")) %}{{ caption }}{% endcall %}</p>
+{% if kit %}<p class="uk-figline"><span>{% call tips.badge("info", "illustrative values", id="dg-illus" ~ ("2" if two else "1")) %}{{ caption }}{% endcall %}</span></p>
 {% else %}<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
  {{ caption }}</p>
 {% endif %}

@@ -298,22 +298,15 @@
    function hms(t){t=Math.max(0,Math.round(t));
      return Math.floor(t/3600)+':'+String(Math.floor(t/60)%60).padStart(2,'0')
        +':'+String(t%60).padStart(2,'0');}
-   // the kit's progress bar (tips.progress, #fc-prog): the readout beside
-   // its label, and the fill once the fit count is known (busy until then)
+   // the kit's progress bar (tips.progress, #fc-prog), moved by
+   // FluBNFUI.setProgress: the readout beside its label, and the fill once
+   // the fit count is known (busy until then)
    const PROG=document.getElementById('fc-prog');
-   const PTRACK=PROG&&PROG.querySelector('[role=progressbar]');
    function progText(t){
-     const v=PROG&&PROG.querySelector('.uk-progress-val');
-     if(v) v.textContent=t;
-     if(PTRACK) PTRACK.setAttribute('aria-valuetext',t);
+     if(PROG&&window.FluBNFUI) FluBNFUI.setProgress(PROG,undefined,100,t);
    }
    function progPct(p){
-     if(!PROG) return;
-     PROG.classList.remove('uk-progress--busy');
-     PTRACK.setAttribute('aria-valuemin','0');
-     PTRACK.setAttribute('aria-valuemax','100');
-     PTRACK.setAttribute('aria-valuenow',String(Math.round(p)));
-     PROG.querySelector('.uk-progress-fill').style.width=p+'%';
+     if(PROG&&window.FluBNFUI) FluBNFUI.setProgress(PROG,p,100);
    }
    function setStat(id,t){const e=document.getElementById(id); if(e) e.textContent=t;}
    setInterval(()=>{
@@ -465,10 +458,14 @@
     <button type="button" class="quiet cnav" id="data-next" aria-label="next location">▶</button>
     <span class="hint" id="data-pos"></span>
    </div>
-   {# the selected view wears the filled pill + aria-pressed (drawData keeps both) #}
-   <div class="seg" role="group" aria-label="data view">
-    <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
-    <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
+   {# the view as the kit's segmented switch (as on the Data tab): the
+      selected one aria-pressed and gold (drawData keeps both); points is
+      a toggle of its own beside it #}
+   <div class="fc-dview">
+    <div class="uk-seg" role="group" aria-label="data view">
+     <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
+     <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
+    </div>
     <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
    </div>
    </div>
@@ -548,7 +545,7 @@
      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
    return c;
  }
- // chart text in root px so A-/A/A+ reaches it (ticks/legend .85, title .95)
+ // chart text in root px so the text size reaches it (ticks/legend .85, title .95)
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  // explicit card-surface background so a saved PNG stays readable
  function lay(title, h){ const fs=rootPx(), surf=css('--card');
@@ -557,10 +554,12 @@
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
-   // legend under the plot (a right-hand one ate up to a third of the width)
+   // legend under the plot (a right-hand one ate up to a third of the width),
+   // anchored to the chart's bottom edge so rotated week labels at a large
+   // text size never run under it (as on Data);
    // traceorder: a filled band would otherwise reverse the legend
-   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top',
-           traceorder:'normal'},
+   legend:{orientation:'h',x:0,xanchor:'left',yref:'container',y:0,
+           yanchor:'bottom',traceorder:'normal'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  // parse Y-M-D components: new Date on a date-only string is UTC and shifts

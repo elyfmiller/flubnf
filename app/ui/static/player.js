@@ -214,7 +214,7 @@ function frameConf(loc, week){
 
 // ---------------------------------------------------------- pure helpers
 
-// root font size in px, so plotly text (px only) tracks the A-/A/A+ control
+// root font size in px, so plotly text (px only) tracks the text-size slider
 function rootFont(){
   try{
     return parseFloat(
@@ -1030,7 +1030,7 @@ function createPlayer(cfg){
     renderStats(P.pl);
     if(detailVisible()) drawFC();
   });
-  // fired by the console's A-/A/A+ control (never in the static report)
+  // fired by the console's text-size slider (never in the static report)
   addEventListener('fontsizechange', function(){
     if(detailVisible()) drawFC();
   });

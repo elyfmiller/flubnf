@@ -281,11 +281,11 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                                    gap_fips=gaps, reasons=why.get(m)),
                                "us": {}}
                            for m in order}
-                # a segmented pair in the map's bar (tabs/home.css)
+                # a segmented pair in the map's bar (the kit's uk-seg)
                 outlook_toggle = usmap.model_toggle(
                     order, report_v2.MODEL_LABEL, default, payload,
                     group_id="outlook-model", btn_class="quiet",
-                    active_class="gold", wrap_class="hm-seg",
+                    active_class="gold", wrap_class="uk-seg",
                     short_labels=report_v2.MODEL_SHORT)
         except Exception:
             outlook_toggle = ""

@@ -193,6 +193,24 @@
     for(var i = 0; i < gs.length; i++) adopt(gs[i]);
   }
 
+  // a new text size can change a chart's column (the text beside it
+  // grows) with no window resize, and a window resize is all Plotly's
+  // responsive mode follows: every chart on screen takes its container's
+  // width again. The console's pages redraw their own text on the same
+  // event; the reports never fire it
+  if(root.addEventListener && root.document){
+    root.addEventListener('fontsizechange', function(){
+      var P = root.Plotly;
+      if(!P || !P.Plots || !P.Plots.resize) return;
+      var gs = root.document.querySelectorAll('.js-plotly-plot');
+      for(var i = 0; i < gs.length; i++){
+        if(!gs[i].offsetParent) continue;       // hidden: nothing to fit
+        var pr = P.Plots.resize(gs[i]);
+        if(pr && pr.then) pr.then(null, function(){});
+      }
+    });
+  }
+
   var API = {conf: conf, weekTicks: weekTicks, anchorFor: anchorFor,
              applyLayout: applyLayout, react: react, newPlot: newPlot,
              refit: refit, watch: watch, adopt: adopt, adoptAll: adoptAll,

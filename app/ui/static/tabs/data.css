@@ -7,7 +7,7 @@
    are, never restyled here.
 
    CONTENTS
-     1. shared bits: a date that never splits, the small heading, tags
+     1. shared bits: a date that never splits, the small heading
      2. FluSight hub card: the labelled rows, the newest week's value
      3. Archive card: the tiles over the strip
      4. vintage and dataset browser: the pick row, the chart bar
@@ -18,15 +18,9 @@
 /* ---- 1. shared bits ---- */
 /* a date or a range never splits at its hyphens */
 .dt-nw{white-space:nowrap}
-/* a small heading inside a card (a list, a table, the preview): the
-   label type, not the card's kicker */
+/* a sub-heading inside a card (a list, a table, the preview): its
+   spacing; the type is the kit's level-3 heading */
 .dt-subhead{margin:1rem 0 .35rem}
-.dt-subhead > h3{font-size:var(--fs-label);font-weight:700;color:var(--ink);
-  letter-spacing:.01em}
-/* a quiet word beside a value ("population") */
-.dt-tag{display:inline-block;margin-left:.3rem;padding:0 .45rem;
-  border:1px solid var(--line);border-radius:var(--r-pill);color:var(--mut);
-  font-size:var(--fs-micro);line-height:1.5;white-space:nowrap}
 .dt-none{color:var(--mut)}
 
 /* ---- 2. FluSight hub card ---- */
@@ -57,11 +51,6 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 /* the chart's view toggle beside the series' numbers */
 .dt-chartbar{display:flex;flex-wrap:wrap;align-items:center;
   justify-content:space-between;gap:.5rem 1.2rem;margin:.6rem 0 .3rem}
-.dt-seg{display:inline-flex;border:1px solid var(--line);
-  border-radius:var(--r-sm);overflow:hidden}
-.dt-seg > button{margin:0;border:0;border-radius:0;padding:.35rem .85rem;
-  font-size:var(--fs-label)}
-.dt-seg > button + button{border-left:1px solid var(--line)}
 .dt-series{margin:0}
 .dt-vsum{margin:.2rem 0 .3rem}
 

@@ -41,7 +41,10 @@
      stepper, progress      steps of a flow; a labelled progress bar
      legend                 color or shape chips for a chart
      fold                   progressive disclosure for detail lists
-     meta                   a row of facts (icon and value) instead of a sentence #}
+     meta                   a row of facts (icon and value) instead of a sentence
+     tag                    a kind or a unit in a word, with no state
+     namechip               the name of the formula or figure beside it, its
+                            reading in a "?" #}
 
 {# the icon set: 16-unit strokes in currentColor, sized in em (1em square),
    drawn by the attributes alone so an icon reads without ui-kit.css (the
@@ -122,22 +125,23 @@
    kind: error (announced as an alert), warn, info, ok (announced politely);
    live="" silences it (a line present from first paint that is not news).
    `title` is a bold lead; `action` is markup at the right (a link or a
-   button). #}
-{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none) -%}
+   button). hidden=True renders it hidden, for a page script to show. #}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False) -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
-<div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
+<div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
 {%- if body | trim %} {{ tip(id or "alert", (title or text) | lower | trim(" ."), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
 
 {# an empty state: an icon, one short title, and at most one action (a link
    or a button, as markup). compact=True is one line, for a list inside a
-   card; the default is a block that fills the space the content would. #}
-{% macro empty(title, icon_name="folder", action="", tiptext="", id="", compact=False) -%}
+   card; the default is a block that fills the space the content would.
+   hidden=True renders it hidden, for a page script to show. #}
+{% macro empty(title, icon_name="folder", action="", tiptext="", id="", compact=False, hidden=False) -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
-<div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
+<div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
 {%- if body | trim %} {{ tip(id or "empty", title | lower, body) }}{% endif %}</p>
 {%- if action %}<div class="uk-empty-action">{{ action }}</div>{% endif %}</div>
 {%- endmacro %}
@@ -147,14 +151,15 @@
    {% call tips.stats() %}{{ tips.stat("Newest week", d, id="nw") }}{% endcall %}
    cls: "" (tiles that wrap), "uk-stats--kv" (label and value columns),
    "uk-stats--row" (one compact row). `state` (ok, warn, error) colors the
-   value; say the state in words too (a badge in `after`). #}
+   value; say the state in words too (a badge in `after`). `tip_label`
+   names the "?" where lowercasing the label would not ("relWIS"). #}
 {% macro stats(cls="", label="") -%}
 <dl class="uk-stats{% if cls %} {{ cls }}{% endif %}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ caller() }}</dl>
 {%- endmacro %}
-{% macro stat(label, value, unit="", tiptext="", id="", state="", after="") -%}
+{% macro stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <div class="uk-stat{% if state %} uk-stat--{{ state }}{% endif %}"><dt>{{ label }}
-{%- if body | trim %}{{ tip(id or ("s-" ~ (label | lower | replace(" ", "-"))), label | lower, body) }}{% endif %}</dt><dd><span class="uk-stat-v"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</span>{% if unit %} <span class="uk-stat-u">{{ unit }}</span>{% endif %}{% if after %} {{ after }}{% endif %}</dd></div>
+{%- if body | trim %}{{ tip(id or ("s-" ~ (label | lower | replace(" ", "-"))), tip_label or (label | lower), body) }}{% endif %}</dt><dd><span class="uk-stat-v"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</span>{% if unit %} <span class="uk-stat-u">{{ unit }}</span>{% endif %}{% if after %} {{ after }}{% endif %}</dd></div>
 {%- endmacro %}
 
 {# a control that is off for a reason: the button is disabled and described
@@ -220,4 +225,19 @@
 <ul class="uk-meta"{% if label %} aria-label="{{ label }}"{% endif %}>
 {%- for it in items %}{% if it is string %}<li>{{ it }}</li>{% else %}<li>{% if it[0] %}{{ icon(it[0]) }}{% endif %}{% if it | length > 2 and it[2] %}<span class="uk-sr">{{ it[2] }}: </span>{% endif %}<span>{{ it[1] }}</span></li>{% endif %}
 {%- endfor %}</ul>
+{%- endmacro %}
+
+{# a tag: a kind or a unit in a word ("Mechanistic", "relWIS",
+   "population"), outlined and muted, with no icon: it states no status
+   (a status is a badge) #}
+{% macro tag(text, cls="") -%}
+<span class="uk-tag{% if cls %} {{ cls }}{% endif %}">{{ text }}</span>
+{%- endmacro %}
+
+{# a name chip: the short name of the formula or figure beside it, the
+   reading in the "?" it holds. Put the formula and its chip in a
+   <p class="uk-figline">, a centered line under a figure. #}
+{% macro namechip(text, id, tiptext="", tip_label="") -%}
+{%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+<span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>
 {%- endmacro %}

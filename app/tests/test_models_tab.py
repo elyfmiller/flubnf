@@ -50,7 +50,7 @@ def test_header_names_kind_status_and_links_methods():
             ("/model/pf2s", "Mechanistic", "Research only", "two-strain")):
         t = client.get(path).text
         hero = t.split('class="card md-hero"', 1)[1].split("</section>", 1)[0]
-        assert f'<span class="md-kind">{kind}</span>' in hero, path
+        assert f'<span class="uk-tag">{kind}</span>' in hero, path
         assert f'<span class="uk-badge-t">{status}</span>' in hero, path
         assert f'href="/methods#{anchor}"' in hero, path
         # the full description is in the page, behind a closed fold
@@ -103,7 +103,7 @@ def test_model_pages_name_each_equation_and_tip_its_note():
     t = client.get("/models").text
     for name in ("Growth blend", "Growth rate", "Sample rescale",
                  "Seasonal forcing", "Observation model"):
-        assert f'<span class="md-eqname">{name}' in t, name
+        assert f'<span class="uk-name">{name}' in t, name
     # the fallback caveat rides the growth blend's tip
     blend = t.split('id="tip-dg-eq-blend"', 1)[1].split("</span></span>", 1)[0]
     assert "A week with too few donors (30 paths per stream)" in _text(blend)
@@ -118,21 +118,26 @@ def test_model_pages_name_each_equation_and_tip_its_note():
     assert 'class="eqnote"' not in t
     p2 = client.get("/model/pf2s").text
     for name in ("Admissions channel", "Strain share channel"):
-        assert f'<span class="md-eqname">{name}' in p2, name
+        assert f'<span class="uk-name">{name}' in p2, name
     assert "all are fitted per state and week." in p2
 
 
-def test_methods_home_and_the_site_keep_the_plain_notes():
+def test_methods_and_the_site_keep_the_plain_notes():
     """The public site renders Methods without the UI kit: its equation
-    notes stay visible text, never a tip."""
+    notes stay visible text, never a tip. Home (console only) takes the
+    harmonic's kit mode: its caption is the badge's tip."""
     from app.core import site_build
     versions = {k: "x" for k in ("pybnf", "bngsim", "bionetgen", "fastapi",
                                  "plotly")}
-    for html in (client.get("/methods").text, client.get("/").text,
+    for html in (client.get("/methods").text,
                  site_build.harvest_methods(versions)):
         assert 'class="eqnote"' in html
-        assert "md-eq" not in html and 'id="tip-dg-' not in html
+        assert "uk-name" not in html and 'id="tip-dg-' not in html
     assert "Values shown are illustrative" in client.get("/methods").text
+    home = client.get("/").text
+    assert 'class="eqnote"' not in home
+    assert '<span class="uk-badge-t">illustrative values</span>' in home
+    assert "both are fitted per state and week." in home
 
 
 # --------------------------------------------------- forecasts card states
@@ -165,7 +170,13 @@ def test_the_research_view_has_no_forecasts_card_and_links_storage():
     t = client.get("/model/pf2s").text
     assert 'id="mfan"' not in t and 'class="card md-fc"' not in t
     card = t.split('id="research-run"', 1)[1]
-    assert 'href="/storage"' in card
+    # straight to the run ledger, which lists research runs (it opens on
+    # that anchor)
+    assert 'href="/storage#ledgerfold"' in card
+    runs_t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+              / "runs.html").read_text()
+    assert 'id="ledgerfold"' in runs_t
+    assert "location.hash==='#ledgerfold'" in runs_t
 
 
 # ------------------------------------------------------------- run forms

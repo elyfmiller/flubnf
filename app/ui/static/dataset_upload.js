@@ -37,25 +37,17 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // the UI kit's markup (templates/_tips.html progress and alert), built
-  // here: the result box is filled by script. The icon comes from
-  // window.FluBNFUI (static/tips.js) when it is there
-  function kitIcon(name) {
-    var ui = window.FluBNFUI;
-    return ui && ui.icon ? ui.icon(name) : '';
-  }
-
+  // the UI kit's progress bar and alert (templates/_tips.html), built by
+  // window.FluBNFUI (static/tips.js): the result box is filled by script.
+  // Without the kit's script, the words alone
   function busyBar(text) {
-    return '<div class="uk-progress uk-progress--busy">'
-      + '<div class="uk-progress-head"><span class="uk-progress-label">'
-      + esc(text) + '</span></div><div class="uk-progress-track"'
-      + ' role="progressbar" aria-label="' + esc(text) + '">'
-      + '<div class="uk-progress-fill"></div></div></div>';
+    var ui = window.FluBNFUI;
+    return ui && ui.progress ? ui.progress(text) : esc(text);
   }
 
   function alertLine(text) {
-    return '<div class="uk-alert uk-alert--error">' + kitIcon('error')
-      + '<span class="uk-alert-text">' + esc(text) + '</span></div>';
+    var ui = window.FluBNFUI;
+    return ui && ui.alert ? ui.alert('error', text, '', null, '') : esc(text);
   }
 
   function hasFiles(e) {

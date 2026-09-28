@@ -70,8 +70,8 @@
   // legend markup: a swatch in the mark's line style and its words), and
   // a chip naming the clocks left out, its "?" saying why
   function key(g, clocks) {
-    var ul = document.createElement('ul'), kinds = {}, esc = window.FluBNFUI
-      ? window.FluBNFUI.esc : function (s) { return String(s); };
+    var ul = document.createElement('ul'), kinds = {}, ui = window.FluBNFUI,
+        esc = ui ? ui.esc : function (s) { return String(s); };
     ul.className = 'uk-legend sb-key';
     ul.setAttribute('aria-label', 'Key');
     g.edges.forEach(function (e) { kinds[e.kind] = 1; });
@@ -80,9 +80,7 @@
       var li = document.createElement('li');
       li.className = 'uk-chip';
       li.innerHTML = '<span class="uk-sw uk-sw--' + shape + '" style="--sw:var(' + color + ')" aria-hidden="true"></span>'
-        + esc(text) + (tip ? '<span class="tip"><button type="button" class="tipbtn" aria-label="About '
-        + esc(text) + '" aria-describedby="tip-sb-key-' + tip[0] + '">?</button><span class="tipbox" role="tooltip" id="tip-sb-key-'
-        + tip[0] + '">' + esc(tip[1]) + '</span></span>' : '');
+        + esc(text) + (tip && ui ? ui.tip('sb-key-' + tip[0], text, tip[1]) : '');
       ul.appendChild(li);
     }
     [['transfer', 'line', '--accent-ink', 'moves from one to the other'],

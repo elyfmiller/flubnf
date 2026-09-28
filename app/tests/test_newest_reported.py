@@ -371,8 +371,10 @@ def test_forecast_tab_says_all_reported_in_green(tmp_path, monkeypatch):
     ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
                                 "engine": "all"})
     page = client.get("/forecast").text
-    assert 'class="newest-check hint ok"' in page
-    assert f"All {len(LOCS)} reported" in page
+    # the green check mark, named "Complete", beside the head
+    line = page.split('id="newest-check"')[1].split("</p>")[0]
+    assert 'class="ncmark ok" role="img" aria-label="Complete"' in line
+    assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
 
 
 def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
@@ -384,6 +386,9 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     (g,) = ui_data._newest_report().gaps
     assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
     page = client.get("/forecast").text
-    assert f"All {len(LOCS)} reported · 1 reads 0" in page
+    # the head, then each count as a warn badge (as the Data tab's row)
+    line = page.split('id="newest-check"')[1].split("</p>")[0]
+    assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
+    assert '<span class="uk-badge-t">1 reads 0</span>' in line
     assert 'aria-label="Complete, with issues"' in page
     assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page

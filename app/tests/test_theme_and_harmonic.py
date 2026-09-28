@@ -53,11 +53,11 @@ def test_harmonic_figure_renders_on_every_surface():
 
 def test_every_surface_calls_the_one_macro():
     # one parameterized macro: eq_pf/eq_pf2s embed it (passing their kit
-    # mode on), home imports it
+    # mode on), home imports it (in kit mode: its caption in a badge's tip)
     assert "{{ harmonic(kit=kit) }}" in DIAGRAMS_T
     assert "{{ harmonic(two=true, kit=kit) }}" in DIAGRAMS_T
     home_t = (UI / "templates" / "home.html").read_text()
-    assert "{{ dg.harmonic() }}" in home_t
+    assert "{{ dg.harmonic(kit=true) }}" in home_t
     assert DIAGRAMS_T.count("{% macro harmonic(") == 1
 
 

@@ -72,7 +72,7 @@
   <select id="rd-group" aria-label="group"></select>
   {# the horizon as plain links (no script), the current one marked #}
   <span class="rd-hz"><span class="rt-hz-l" id="rd-hz-l">Horizon</span>
-  <span class="rt-seg" role="group" aria-labelledby="rd-hz-l">{% for hh in horizons %}{% if hh == h %}<span class="rt-seg-on" aria-current="true">{{ hh }}</span>{% else %}<a href="?h={{ hh }}">{{ hh }}</a>{% endif %}{% endfor %}</span>
+  <span class="uk-seg" role="group" aria-labelledby="rd-hz-l">{% for hh in horizons %}{% if hh == h %}<span aria-current="true">{{ hh }}</span>{% else %}<a href="?h={{ hh }}">{{ hh }}</a>{% endif %}{% endfor %}</span>
   {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
  </div>
  <div id="rd-plot" class="rt-plot"></div>

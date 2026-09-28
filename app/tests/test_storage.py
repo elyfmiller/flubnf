@@ -185,9 +185,10 @@ def test_protected_trees_render_no_delete_controls(state):
     assert "<form" not in protected
     assert "data-del-storage" not in protected
     # each tree says so with a badge (lock icon and word), not a button
-    assert protected.count('uk-badge--neutral') \
+    assert protected.count('<span class="uk-badge-t">protected</span>') \
         == protected.count('class="st-row"') == 2      # seal and hub
-    assert '<span class="uk-badge-t">protected</span>' in protected
+    # the section's count is the kit's neutral badge, as on other tabs
+    assert '<span class="uk-badge-t">2 entries</span>' in protected
 
 
 def test_busy_rows_render_no_delete_controls(state):

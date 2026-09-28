@@ -549,7 +549,6 @@ def forecast_page(request: Request, ds):
     for r in rows:
         r["label"] = shared._run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["chips"] = outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         r["has_report"] = False
         if r["status"] == "running" and not (
@@ -564,6 +563,7 @@ def forecast_page(request: Request, ds):
         "status": ui_state._status,
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
+        "anchor_week": anchor if ok else "",
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
             forms._knob_panel("forecast", form, names=PANEL_MEMBERS),

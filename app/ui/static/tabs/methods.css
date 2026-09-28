@@ -48,9 +48,8 @@
   padding-top:.2rem;font-size:var(--fs-label)}
 
 /* ---- 3. card parts ---- */
-/* sub-headings inside a card: sentence case, the card's ink */
+/* sub-headings inside a card (the kit's level-3 heading): spacing */
 .mt-h3{margin:1rem 0 .4rem}
-.mt-h3 > h3{font-size:var(--fs-body);font-weight:700}
 /* labelled facts on a sunken panel */
 .mt-facts{margin:.6rem 0 .8rem;padding:.7rem .9rem;border-radius:var(--r-md);
   background:var(--bg)}
@@ -77,6 +76,8 @@ a.btn.mt-go{padding:.15rem .7rem;font-size:var(--fs-label)}
 .mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem 1rem;
   margin:-.1rem 0 .3rem}
 .mt-unit{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+/* a relWIS figure's verdict icon, in the figure's ok or bad color */
+.mt-verdict{margin-left:.25em;vertical-align:-.1em}
 .mt-end{margin-left:auto}
 .mt-pooled{margin-top:.7rem}
 .mt-seals code{font-size:.85em}

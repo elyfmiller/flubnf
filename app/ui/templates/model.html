@@ -25,7 +25,7 @@
    against the baseline (its sentences in the Record "i"), and the full
    description behind a fold #}
 <section class="card md-hero" aria-labelledby="h-md-model">
- {% set badges %}<span class="md-kind">{{ header.kind }}</span>
+ {% set badges %}{{ tips.tag(header.kind) }}
  {%- if header.research %}{{ tips.badge("info", "Research only") }}
  {%- else %}{{ tips.badge("ok", "Submitted to FluSight") }}{% endif %}{% endset %}
  {% set methods_link %}<a class="btn quiet md-more" href="/methods#{{ manchor }}">Full methodology</a>{% endset %}
@@ -39,7 +39,7 @@
    {% call tips.fold("Full description", id="md-about", cls="md-about") %}<p>{{ header.blurb }}</p>{% endcall %}
   </div>
   <div class="md-record" role="group" aria-labelledby="h-md-rec">
-   {% set rec_after %}<span class="md-unit">relWIS</span>
+   {% set rec_after %}{{ tips.tag("relWIS") }}
    {%- if record.worse %}{{ tips.badge("warn", "scored worse") }}{% endif %}{% endset %}
    {% call tips.heading("Record", "md-rec", level=3, rich=True, after=rec_after, tip_label="the record") %}
     {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
@@ -179,7 +179,7 @@
      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
    return c;
  }
- // chart text in root px so A-/A/A+ reaches it (ticks/legend .85, title .95)
+ // chart text in root px so the text size reaches it (ticks/legend .85, title .95)
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  // explicit card-surface background so a saved PNG stays readable
  function lay(t,h){const fs=rootPx(),surf=css('--card');

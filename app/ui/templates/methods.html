@@ -14,6 +14,12 @@
 {# a status: the kit's badge on the console's tab (`active` is set); the
    site harvest passes no `active` and draws every svg in its .methods block
    as a centered figure, so there the word stands alone #}
+{# a relWIS verdict never rests on color alone: on the console an icon
+   says it too (the public site's CSS would draw an icon as a figure; its
+   unit line says below 1 beats the baseline) #}
+{% macro rel_verdict(v) -%}
+{% if active is defined %}{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="mt-verdict") }}{% endif %}
+{%- endmacro %}
 {% macro status(state, text) -%}
 {% if active is defined %}{{ tips.badge(state, text) }}{% else %}<em>({{ text }})</em>{% endif %}
 {%- endmacro %}
@@ -193,8 +199,8 @@
                          ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
   {% set r = oracle_text.RECORD[key] %}
   <tr><td>{{ label }}</td>
-   <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}</td>
-   <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}</td>
+   <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}{{ rel_verdict(r.oracle) }}</td>
+   <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}{{ rel_verdict(r.filter) }}</td>
    <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
   {% endfor %}
  </table></div>
@@ -306,9 +312,9 @@
     baseline), members included #}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
-  <tr><td>Particle filter alone (the Oracle SIHRS before its step){{ tips.tip("mt-pf-alone", "the filter alone", "The production engine's replay; its cells differ from the Oracle record above.") }}</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
-  <tr><td>Groundhog</td><td class="ok">0.722</td><td class="ok">0.653</td><td class="ok">0.651</td></tr>
-  <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
+  <tr><td>Particle filter alone (the Oracle SIHRS before its step){{ tips.tip("mt-pf-alone", "the filter alone", "The production engine's replay; its cells differ from the Oracle record above.") }}</td><td class="ok">0.840{{ rel_verdict(0.840) }}</td><td class="ok">0.797{{ rel_verdict(0.797) }}</td><td class="ok">0.846{{ rel_verdict(0.846) }}</td></tr>
+  <tr><td>Groundhog</td><td class="ok">0.722{{ rel_verdict(0.722) }}</td><td class="ok">0.653{{ rel_verdict(0.653) }}</td><td class="ok">0.651{{ rel_verdict(0.651) }}</td></tr>
+  <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045{{ rel_verdict(1.045) }}</td><td class="ok">0.756{{ rel_verdict(0.756) }}</td><td class="ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Groundhog and bare analogue, pooled") %}
   {% call tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh") %}Groundhog and

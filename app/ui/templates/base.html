@@ -607,7 +607,8 @@
 </script>
 <script>
  // version spans still 'resolving' (background probe) poll /api/versions
- // until it lands
+ // until it lands. A span that holds a badge while resolving (Methods)
+ // shows "not installed" as a neutral badge, as a fresh load does
  (function(){
   var spans=document.querySelectorAll('[data-vkey]');
   if(!spans.length)return;
@@ -621,7 +622,10 @@
      .then(function(d){
        spans.forEach(function(s){
          var v=(d.versions||{})[s.dataset.vkey];
-         if(v&&v.indexOf('resolving')<0)s.textContent=v;
+         if(!v||v.indexOf('resolving')>=0)return;
+         if(v==='not installed'&&window.FluBNFUI&&s.querySelector('.uk-badge'))
+           s.innerHTML=FluBNFUI.badge('neutral',v);
+         else s.textContent=v;
        });
        if(!d.resolved)setTimeout(poll,1500);
      }).catch(function(){setTimeout(poll,3000);});

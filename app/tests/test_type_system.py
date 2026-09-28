@@ -110,11 +110,12 @@ def test_svg_labels_are_sized_in_rem_classes_not_viewbox_units():
         assert 'font-size="' not in src, name
         assert "svgt-" in src, name
     # the classes exist, in rem, with the smallest step holding the hint
-    # floor once the artwork's viewBox scale is applied
-    for rule in ("svg .svgt-xl{font-size:1.3rem}",
-                 "svg .svgt-lg{font-size:1rem}",
-                 "svg .svgt-md{font-size:.92rem}",
-                 "svg .svgt-sm{font-size:.875rem}",
+    # floor once the artwork's viewBox scale is applied; each holds at its
+    # 115% size (the text size runs to 160%), so labels fit their boxes
+    for rule in ("svg .svgt-xl{font-size:min(1.3rem,23.92px)}",
+                 "svg .svgt-lg{font-size:min(1rem,18.4px)}",
+                 "svg .svgt-md{font-size:min(.92rem,16.93px)}",
+                 "svg .svgt-sm{font-size:min(.875rem,16.1px)}",
                  "svg .svgt-sub{font-size:.68em}"):
         assert rule in NAU, rule
 

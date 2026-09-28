@@ -145,7 +145,7 @@
  {# the forecast data panel's mode pair, same conventions; beside it the
     series' own numbers #}
  <div class="dt-chartbar">
-  <div class="dt-seg" role="group" aria-label="Chart view">
+  <div class="uk-seg" role="group" aria-label="Chart view">
    <button type="button" class="quiet" id="vb-mode-raw" aria-pressed="false">full series</button>
    <button type="button" class="quiet" id="vb-mode-season" aria-pressed="false">season over season</button>
   </div>
@@ -272,12 +272,8 @@
  document.getElementById('vb-mode-season').onclick=()=>drawVintage('season');
  drawVintage('raw');
  addEventListener('themechange',()=>drawVintage());
+ // (a new text size also refits the chart to its column: charts.js)
  addEventListener('fontsizechange',()=>drawVintage());
- // a new text size resizes the table beside the chart: the chart takes
- // its column's new width (Plotly's own resize follows the window only)
- addEventListener('fontsizechange',()=>{
-   const el=document.getElementById('vintageplot');
-   if(el&&window.Plotly&&Plotly.Plots)Plotly.Plots.resize(el);});
 </script>
 {% endif %}
 <script>
@@ -303,9 +299,7 @@
     stat.textContent=on?words:'';}
   function fail(msg){
     var ui=window.FluBNFUI;
-    if(err)err.innerHTML='<div class="uk-alert uk-alert--error" role="alert">'
-      +(ui?ui.icon('error'):'')+'<span class="uk-alert-text">'
-      +(ui?ui.esc(msg):msg)+'</span></div>';}
+    if(err){if(ui)err.innerHTML=ui.alert('error',msg);else err.textContent=msg;}}
   forms.forEach(function(f){
    f.addEventListener('submit',function(e){
     if(e.defaultPrevented)return;

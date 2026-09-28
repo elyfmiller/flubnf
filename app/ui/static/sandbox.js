@@ -266,19 +266,14 @@
     // from a click, so loaded).
     var check = $('sb-check'), out = $('sb-checked');
     function esc(s) { return root.FluBNFUI ? root.FluBNFUI.esc(s) : String(s); }
-    function icon(n) { return root.FluBNFUI ? root.FluBNFUI.icon(n) : ''; }
-    // a tip as tips.tip writes it (tips.js handles it by delegation)
+    // a tip and an alert as the kit writes them (FluBNFUI.tip, .alert);
+    // the report box is a live region, so the alert carries no role
     function tipHtml(id, label, text) {
-      return '<span class="tip"><button type="button" class="tipbtn" aria-label="About '
-        + esc(label) + '" aria-describedby="tip-' + id + '">?</button><span class="tipbox"'
-        + ' role="tooltip" id="tip-' + id + '">' + esc(text) + '</span></span>';
+      return root.FluBNFUI ? root.FluBNFUI.tip(id, label, text) : '';
     }
     function alertHtml(kind, title, text, tip) {
-      var icons = {error: 'error', warn: 'warning', ok: 'check', info: 'info'};
-      return '<div class="uk-alert uk-alert--' + kind + '">' + icon(icons[kind])
-        + '<span class="uk-alert-text"><strong>' + esc(title) + '</strong>'
-        + (text ? ' ' + esc(text) : '') + (tip ? ' ' + tipHtml(tip[0], title, tip[1]) : '')
-        + '</span></div>';
+      return root.FluBNFUI ? root.FluBNFUI.alert(kind, text, title, tip, '')
+        : esc(title) + (text ? ' ' + esc(text) : '');
     }
     function listHtml(items) {
       return items.length ? '<ul class="sb-list">' + items.map(function (t) {

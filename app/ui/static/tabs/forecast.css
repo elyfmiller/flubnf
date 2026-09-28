@@ -11,7 +11,8 @@
    CONTENTS
      1. settings card: the dataset's truth, the anchor line, the
         locations count, a badge under a field, labelled values
-     2. results column: running, latest run, actions, pagers
+     2. results column: running, latest run, actions, pagers, the data
+        panel's view switch
      3. the Data issues box (_data_issues.html)
      4. the Model settings panel (_model_settings.html)
      5. the run page (run.html, _dataset_run.html) */
@@ -29,7 +30,8 @@
 .fc-anchor-ok b{color:var(--ink);font-weight:700;
   font-variant-numeric:tabular-nums}
 .fc-anchor-none{color:var(--warn);font-weight:600}
-/* the pick's count: a small chip inside the Locations label */
+/* the pick's live count ("12 of 53"): a small chip inside the Locations
+   label, written by the page script */
 .fc-count{display:inline-block;margin-left:.3rem;padding:0 .5em;
   border:1px solid var(--line);border-radius:var(--r-pill);
   background:var(--bg);color:var(--ink);font-size:var(--fs-micro);
@@ -58,6 +60,12 @@
 /* the pager's "3/53" */
 .fc-pos{color:var(--mut);font-size:var(--fs-label);
   font-variant-numeric:tabular-nums}
+
+/* the data panel's view switch (the kit's uk-seg) and the points toggle
+   beside it */
+.fc-dview{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;
+  margin:.45rem 0}
+.fc-dview > button{margin:0;padding:.3rem .85rem;font-size:var(--fs-label)}
 
 /* ---- 3. the Data issues box ---- */
 /* the Model settings look; one row per state: the check and the name,
@@ -110,8 +118,7 @@
   grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))}
 .fc-rungrid > .card{min-width:0}
 /* the partial run's failures: an error icon, the cell, the reason */
-.fc-sub{display:flex;align-items:center;gap:.4rem;margin:.8rem 0 .3rem;
-  font-size:var(--fs-label);color:var(--ink)}
+.fc-sub{margin:.8rem 0 .3rem}
 .fc-faillist{list-style:none;margin:0;padding:0}
 .fc-faillist li{display:flex;align-items:baseline;flex-wrap:wrap;
   gap:.2rem .5rem;padding:.3rem 0;border-top:1px solid var(--line)}

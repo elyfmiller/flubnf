@@ -107,7 +107,7 @@
 <div class="grid2 homeperf">
  <div class="card hm-perf">
   {{ tips.heading("Measured performance", "hm-perf", "relWIS vs the FluSight baseline; below 1.000 beats it.",
-                  after='<span class="hm-unit">relWIS</span>' | safe) }}
+                  after=tips.tag("relWIS")) }}
   {# Oracle record (oracle_text.RECORD). Class must NOT be bare "perf":
      site_build.harvest_placement reads the FIRST class="perf" table (the
      one below) from this source #}
@@ -251,22 +251,23 @@
  {# the three equations behind the pipeline: seasonal forcing, the Oracle
     growth blend, the Groundhog quantile; each named, its reading in the "?" #}
  <div class="eqpanel">
-  <p class="hm-eq"><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+  <p class="uk-figline"><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
    <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
-   <span class="hm-eqname">Seasonal forcing{{ tips.tip("hm-eq-forcing", "seasonal forcing",
-   "Seasonal forcing: the curve the filter bends each week.") }}</span></p>
-  {{ dg.harmonic() }}
-  <p class="hm-eq"><span class="math">ln <i>G</i><sub><i>k</i></sub> =
+   {{ tips.namechip("Seasonal forcing", "hm-eq-forcing",
+   "Seasonal forcing: the curve the filter bends each week.") }}</p>
+  {# the figure's "illustrative values" caption is a badge with its tip #}
+  {{ dg.harmonic(kit=true) }}
+  <p class="uk-figline"><span class="math">ln <i>G</i><sub><i>k</i></sub> =
    &#189; ln <i>G</i><sub><i>T</i></sub> +
    &#189; ln <i>G</i><sub><i>d</i></sub></span>
-   <span class="hm-eqname">The Oracle step{{ tips.tip("hm-eq-oracle", "the Oracle step",
-   "The Oracle step: each forecast path grows at the geometric mean of the filter's growth and one past season's at the same calendar week.") }}</span></p>
-  <p class="hm-eq"><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
+   {{ tips.namechip("The Oracle step", "hm-eq-oracle",
+   "The Oracle step: each forecast path grows at the geometric mean of the filter's growth and one past season's at the same calendar week.") }}</p>
+  <p class="uk-figline"><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>
-   <span class="hm-eqname">The Groundhog{{ tips.tip("hm-eq-groundhog", "the Groundhog equation",
-   "The Groundhog: the last value scaled by past seasons' growth at the same calendar week.") }}</span></p>
+   {{ tips.namechip("The Groundhog", "hm-eq-groundhog",
+   "The Groundhog: the last value scaled by past seasons' growth at the same calendar week.", tip_label="the Groundhog equation") }}</p>
  </div>
 </div>
 

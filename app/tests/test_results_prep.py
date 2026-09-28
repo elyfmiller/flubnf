@@ -449,6 +449,6 @@ def test_type_keeps_growing_past_1800_and_900_is_unchanged():
         assert a < b < c, (tok, a, b, c)     # monotone growth, no dead cap
         # 900px identical to the pre-change scale (anchor and slope frozen)
         assert abs(_clamp_px(css, tok, 900) - at900) < 0.05, tok
-    # the A-/A/A+ control still multiplies: the rem anchor scales with root
+    # the text-size slider still multiplies: the rem anchor scales with root
     assert _clamp_px(css, "--fs-body", 2200, root_px=18.4) > \
         _clamp_px(css, "--fs-body", 2200, root_px=16.0)

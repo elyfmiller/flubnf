@@ -21,8 +21,10 @@
 {%- set named %}aria-label="Delete {{ what }}"{% endset -%}
 <span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del", attrs=named, label="why " ~ what ~ " cannot be deleted now") }}</span>
 {%- endmacro %}
+{# a section's count beside its heading: the kit's neutral badge, as on
+   the other tabs #}
 {% macro count(n) -%}
-<span class="st-count">{{ n }}<span class="uk-sr"> {{ "entry" if n == 1 else "entries" }}</span></span>
+{{ tips.badge("neutral", n ~ (" entry" if n == 1 else " entries")) }}
 {%- endmacro %}
 
 {% if storage %}
@@ -365,11 +367,13 @@
 {% endif %}
 </details>
 <script>
- // closed by default; a reader who opens it keeps it open (localStorage)
+ // closed by default; a reader who opens it keeps it open (localStorage);
+ // a link to #ledgerfold (the research card on /model/pf2s) opens it
  (function(){
   var d=document.getElementById('ledgerfold');
   if(!d)return;
   try{if(localStorage.getItem('ledgerfold-open')==='1')d.open=true;}catch(e){}
+  if(location.hash==='#ledgerfold')d.open=true;
   d.addEventListener('toggle',function(){
    try{localStorage.setItem('ledgerfold-open',d.open?'1':'0');}catch(e){}});
  })();

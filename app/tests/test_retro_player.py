@@ -231,7 +231,9 @@ def test_verdict_tiles_carry_log_scale_and_coverage():
         '<div class="card playcard">', 1)[0]
     pf = tiles.split("<h2>Groundhog</h2>", 1)[0]
     # the log-scale figure beside the natural one, in the same ok/bad rule
-    assert '<dt>log scale</dt><dd class="ok">0.835</dd>' in pf
+    # and with its verdict icon (never color alone)
+    assert ('<dt>log scale</dt><dd class="ok">0.835<svg class="uk-icon rt-verdict"'
+            in pf)
     # coverage as whole percentages, each read against its interval's level
     assert '<dt>coverage 50/80/95%</dt>' in pf
     assert '<span class="cov-low">43%</span>' in pf
@@ -299,7 +301,7 @@ def test_fitted_us_pf_says_it_is_the_plain_filter():
     tile = flat.split("<h2>US (fitted): Oracle SIHRS</h2>", 1)[1].split(
         "</div></div>", 1)[0]
     assert us_national.PF_US_SHORT + ", fitted nationally" in tile
-    assert '<dd class="ok">0.750</dd>' in tile
+    assert '<dd class="ok">0.750<svg class="uk-icon rt-verdict"' in tile
     assert '<span class="cov-low">20%</span>' in tile
     an = flat.split("<h2>US (fitted): Groundhog</h2>", 1)[1].split(
         "</div></div>", 1)[0]

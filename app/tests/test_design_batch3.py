@@ -162,7 +162,9 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     html = _season(states=[{"name": "Ohio", "pf": 0.9, "analogue": 1.1},
                            {"name": "Utah", "pf": 0.8, "analogue": None}])
     body = html.split("Per-state scores")[1].split("</table>")[0]
-    assert re.search(r'<td class="num bad">\s*1\.100</td>', body)
+    # the exception says so in an icon too, never in color alone
+    assert re.search(r'<td class="num bad">\s*1\.100<svg class="uk-icon rt-verdict"'
+                     r'[^>]*aria-label="does not beat the baseline"', body)
     assert re.search(r'<td class="num">\s*0\.900</td>', body)   # quiet win
     assert 'class="num ok"' not in body
     assert re.search(r'<td class="num">\s*n/a</td>', body)
