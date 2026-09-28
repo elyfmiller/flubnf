@@ -1,0 +1,23 @@
+/* The header mark per theme: --logo, read by base.html's brand mark and by
+   the Display menu's theme previews (nau.css, ".brand .mark" and
+   ".dm-th-logo"). One line per theme, set on the theme's own selector so a
+   preview that wears a theme shows that theme's mark.
+
+   light, paper, dim and dark wear the brand kit's icon as it ships; github,
+   solarized, nord and dracula a recolor of it in their palettes
+   (brand/themes/<theme>.svg). A brand-kit variant for a theme is one file
+   and one line: put the file at brand/themes/<theme>.svg and point that
+   theme's line here at it (a square SVG or PNG of 512 px or more; the mark
+   draws at about 32 px, contained, on the header's ground).
+
+   Kept out of nau.css on purpose: the reports embed nau.css's token blocks
+   and must not reference /static/. The favicon and the app icon stay the
+   brand kit's own (brand/favicon.ico, FluBNF.app). */
+[data-theme="light"],:root{--logo:url("/static/brand/pybnf_icon.svg")}
+[data-theme="paper"]{--logo:url("/static/brand/pybnf_icon.svg")}
+[data-theme="github"]{--logo:url("/static/brand/themes/github.svg")}
+[data-theme="solarized"]{--logo:url("/static/brand/themes/solarized.svg")}
+[data-theme="dim"]{--logo:url("/static/brand/pybnf_icon.svg")}
+[data-theme="dark"]{--logo:url("/static/brand/pybnf_icon.svg")}
+[data-theme="nord"]{--logo:url("/static/brand/themes/nord.svg")}
+[data-theme="dracula"]{--logo:url("/static/brand/themes/dracula.svg")}

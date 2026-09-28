@@ -1,6 +1,6 @@
 """The season-line palette: two palettes at the token layer (nau.css).
 
-  * --season-1..6: the normal-vision default (3:1+ on all eight grounds);
+  * --season-1..6: the normal-vision default (3:1+ on all sixteen grounds);
   * --season-cvd-1..6: the red-green-safe set (the SEASON_COLORS literals in
     player.js), which data-vision="cvd" remaps --season-N onto.
 
@@ -30,13 +30,26 @@ BASE_T = (UI / "templates" / "base.html").read_text()
 FORECAST_T = (UI / "templates" / "forecast.html").read_text()
 MODEL_T = (UI / "templates" / "model.html").read_text()
 
-#: the eight theme grounds (bg and card of light, paper, dim, dark), the
-#: same bar the member-palette audit holds (test_a11y_modes)
-GROUNDS = ("#F1EFF7", "#FFFFFF", "#F7F2E5", "#FDFAF1",
-           "#212536", "#2A2F45", "#0C0D17", "#151729")
-#: both --gold variants the latest season's line can wear: the cyan on
-#: dark grounds and the accent-ink teal on light grounds
-GOLD = ("#34C0F0", "#0173A9")
+#: the theme block selectors: light is the root block, then every named
+#: theme (eight in all)
+SELECTORS = [":root"] + [f'[data-theme="{t}"]' for t in
+                         re.findall(r'\[data-theme="([\w-]+)"\]\{', NAU)]
+
+
+def _lit(selector: str, token: str) -> str:
+    m = re.search(re.escape(selector) + r"\{[^}]*--" + token
+                  + r"\s*:\s*(#[0-9A-Fa-f]{6})", NAU)
+    assert m, (selector, token)
+    return m.group(1)
+
+
+#: every theme's two grounds (bg and card: sixteen), the same bar the
+#: member-palette audit holds (test_a11y_modes)
+GROUNDS = tuple(_lit(s, g) for s in SELECTORS for g in ("bg", "card"))
+#: every --gold the latest season's line can wear: the cyan on the brand's
+#: dark grounds, the accent-ink teal on its light grounds, and each
+#: editor-inspired theme's own
+GOLD = tuple(sorted({_lit(s, "gold") for s in SELECTORS}))
 
 # Vienot (1999) dichromacy simulation in linearized sRGB (the same
 # matrices the member-palette audit uses)
@@ -102,26 +115,41 @@ CVD = _tokens(_block(":root"), "season-cvd")
 # -------------------------------------------------- the two token palettes
 
 def test_both_palettes_live_in_every_theme_block():
-    """Six normal + six cvd literals, identical in all four theme blocks."""
+    """Six normal + six cvd literals, identical in all eight theme blocks."""
     assert len(NORMAL) == 6 and len(CVD) == 6
     assert NORMAL != CVD
-    for sel in (':root', '[data-theme="dark"]', '[data-theme="paper"]',
-                '[data-theme="dim"]'):
+    assert len(SELECTORS) == 8 and len(GROUNDS) == 16
+    assert {"#34C0F0", "#0173A9"} <= set(GOLD)
+    for sel in SELECTORS:
         b = _block(sel)
         assert _tokens(b, "season") == NORMAL, sel
         assert _tokens(b, "season-cvd") == CVD, sel
 
 
-def test_cvd_mode_remaps_the_season_tokens():
+def _cvd_order() -> list:
+    """The safe literal (1..6) each --season-N takes in the cvd mode."""
     m = re.search(r'\[data-vision="cvd"\]\{([^}]*)\}', NAU)
     assert m
-    for i in range(1, 7):
-        assert f"--season-{i}:var(--season-cvd-{i})" in \
-            " ".join(m.group(1).split()).replace("; ", ";")
+    got = dict(re.findall(r"--season-(\d)\s*:\s*var\(--season-cvd-(\d)\)",
+                          m.group(1)))
+    return [int(got[str(i)]) for i in range(1, 7)]
+
+
+#: the safe set in the order charts take it with the mode on
+CVD_CHART = [CVD[k - 1] for k in _cvd_order()]
+
+
+def test_cvd_mode_remaps_the_season_tokens():
+    # every series token moves, each onto its own safe literal; the first
+    # three (the usual chart's prior seasons) keep their places, and the
+    # rest take the order the separability audit below holds
+    order = _cvd_order()
+    assert sorted(order) == [1, 2, 3, 4, 5, 6]
+    assert order[:3] == [1, 2, 3]
 
 
 def test_normal_palette_is_distinct_and_holds_3_to_1_on_all_grounds():
-    """Normal set: 3:1+ on all eight grounds; adjacent pairs (and the first
+    """Normal set: 3:1+ on all sixteen grounds; adjacent pairs (and the first
     against both golds) clearly separable."""
     for c in NORMAL:
         for g in GROUNDS:
@@ -133,11 +161,11 @@ def test_normal_palette_is_distinct_and_holds_3_to_1_on_all_grounds():
 
 
 def test_cvd_palette_keeps_60_separability_in_every_vision_mode():
-    """CVD set: every visible pair (adjacent, and first vs both golds)
-    measures 60+ under both Vienot matrices and normal vision; 3:1 on all
-    grounds."""
-    pairs = [(CVD[i], CVD[(i + 1) % 6]) for i in range(6)]
-    pairs += [(g, CVD[0]) for g in GOLD]
+    """CVD set: every visible pair (adjacent in the order charts take it,
+    and first vs every gold) measures 60+ under both Vienot matrices and
+    normal vision; 3:1 on all grounds."""
+    pairs = [(CVD_CHART[i], CVD_CHART[(i + 1) % 6]) for i in range(6)]
+    pairs += [(g, CVD_CHART[0]) for g in GOLD]
     for a, b in pairs:
         for M in (_DEUTAN, _PROTAN, _IDENT):
             assert _dist(a, b, M) >= 60, (a, b, M, _dist(a, b, M))

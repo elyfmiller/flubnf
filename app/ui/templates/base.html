@@ -1,4 +1,13 @@
 <!doctype html>
+{% import "_tips.html" as kit %}
+{# the eight themes, in the Display menu's order: (id, name, ground). nau.css
+   has one token block per id and static/brand/logos.css one mark per id;
+   app/tests/test_display_themes.py holds the three lists equal #}
+{% set THEMES = [("light", "Light", "light"), ("paper", "Paper", "light"),
+                 ("github", "GitHub Light", "light"),
+                 ("solarized", "Solarized Light", "light"),
+                 ("dim", "Dim", "dark"), ("dark", "Dark", "dark"),
+                 ("nord", "Nord", "dark"), ("dracula", "Dracula", "dark")] %}
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}FluBNF{% endblock %}</title>
@@ -11,31 +20,40 @@
 {# the UI kit (templates/_tips.html macros, docs/UI-KIT.md): after nau.css,
    whose tokens it reads #}
 <link rel="stylesheet" href="/static/ui-kit.css">
+{# the header mark per theme (--logo), one line per theme #}
+<link rel="stylesheet" href="/static/brand/logos.css">
 <script>
- // theme before first paint: four themes (light, paper, dim, dark); an
- // unknown stored value falls back to the system preference
- (function(){var t=localStorage.getItem('theme');
-  if(['light','paper','dim','dark'].indexOf(t)<0)
+ // before first paint, so the page never flashes the wrong look: the theme
+ // (one of the eight; an unknown stored value falls back to the system
+ // preference), the two a11y modes and the text size
+ (function(){var de=document.documentElement,t=localStorage.getItem('theme');
+  if([{% for id, _name, _ground in THEMES %}'{{ id }}'{{ "," if not loop.last }}{% endfor %}].indexOf(t)<0)
    t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);
-  // a11y modifiers before first paint: a stored choice wins; otherwise
-  // high contrast follows the OS (prefers-contrast: more)
+  de.setAttribute('data-theme',t);
+  // a11y modifiers: a stored choice wins; otherwise high contrast follows
+  // the OS (prefers-contrast: more)
   var c=localStorage.getItem('contrast');
   if(c!=='high'&&c!=='normal')
    c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
-  if(c==='high')document.documentElement.setAttribute('data-contrast','high');
+  if(c==='high')de.setAttribute('data-contrast','high');
   if(localStorage.getItem('vision')==='cvd')
-   document.documentElement.setAttribute('data-vision','cvd');
-  // text size before first paint: no flash of the wrong scale
-  var m={s:'87.5%',m:'100%',l:'115%'},f=localStorage.getItem('fontsize');
-  document.documentElement.style.fontSize=m[f]||'100%';})();
+   de.setAttribute('data-vision','cvd');
+  // text size: a percentage of the standard size, 80 to 160. The old
+  // three-step values (s, m, l) read as 87.5, 100 and 115 and are stored
+  // back as numbers, so nobody's setting is lost
+  var old={s:87.5,m:100,l:115},f=localStorage.getItem('fontsize'),
+      p=old[f]||parseFloat(f);
+  if(!(p>=80&&p<=160))p=100;
+  if(old[f])localStorage.setItem('fontsize',String(p));
+  de.style.fontSize=p+'%';})();
 </script>
 {% block head %}{% endblock %}
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <a class="brand" href="/" aria-label="FluBNF home">
-    <img class="mark" src="/static/brand/pybnf_icon.svg" alt="">
+    {# the theme's mark (--logo, static/brand/logos.css) #}
+    <span class="mark" aria-hidden="true"></span>
     <span><em>Flu</em>BNF</span></a>
   {# tabs follow the weekly loop (Data, Forecast, Output), then the review
      pages. /model/<name> stays routed for reports and bookmarks; /model/pf2s
@@ -51,44 +69,76 @@
   {% endfor %}
   </nav>
   <span class="spacer"></span>
-  {# text size, theme and a11y modes behind one Display button, so the
+  {# text size, theme, a11y modes and zoom behind one Display button, so the
      header stays one row at every desktop width. A plain <details>: it
-     opens and closes without JS; the script below adds Escape and
-     click-outside closing #}
+     opens and closes without JS; the script below adds Escape,
+     click-outside and focus-leaving closing. Each section is a heading
+     with its "?" (h3: the menu's own sections, kept out of the page's
+     h1/h2 outline); every control is a native one (styles: nau.css, "the
+     Display menu") #}
   <details class="display" id="displaymenu">
-   <summary title="Text size, color theme and accessibility modes">Display</summary>
-   <div class="displaypop">
-    <span class="dlabel" aria-hidden="true">Text size</span>
-    <div class="fontsize" role="group" aria-label="Text size">
-      <button type="button" data-fs="s" title="Smaller text">A-</button>
-      <button type="button" data-fs="m" title="Standard text">A</button>
-      <button type="button" data-fs="l" title="Larger text">A+</button>
-    </div>
-    <span class="dlabel" aria-hidden="true">Theme</span>
-    <div class="themepick" role="group" aria-label="Color theme">
-      <button type="button" data-th="light" title="Light theme">Light</button>
-      <button type="button" data-th="paper" title="Paper theme: warm off-white">Paper</button>
-      <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
-      <button type="button" data-th="dark" title="Dark theme">Dark</button>
-    </div>
+   <summary aria-label="Display settings"><svg class="uk-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M2 4.5h6.2M12.8 4.5H14M2 11.5h1.2M7.8 11.5H14"/><circle cx="10.5" cy="4.5" r="2"/><circle cx="5.5" cy="11.5" r="2"/></svg>Display</summary>
+   <div class="displaypop" role="group" aria-label="Display settings">
+    {# text size: 80% to 160% of the standard size in 5% steps; the step
+       buttons are the scale's ends (a small and a large A) #}
+    <section class="dm-sec">
+     {{ kit.heading("Text size", "dm-size", level=3, tiptext="All text in the console, from 80% to 160% of the standard size in steps of 5%. Charts, maps and diagrams follow. Kept on this computer.",
+         aside='<button type="button" class="dm-reset" id="dm-fs-reset" aria-label="Reset text size to 100%">Reset</button>' | safe) }}
+     <div class="fontsize">
+      <button type="button" class="dm-step dm-step-sm" data-fs-step="-1" aria-label="Smaller text">A</button>
+      <input type="range" id="dm-fs" min="80" max="160" step="5" value="100"
+       aria-labelledby="h-dm-size" aria-valuetext="100 percent">
+      <button type="button" class="dm-step dm-step-lg" data-fs-step="1" aria-label="Larger text">A</button>
+      <output class="dm-fs-out" id="dm-fs-out" for="dm-fs" aria-hidden="true">100%</output>
+     </div>
+    </section>
+    {# theme: one radio per theme, drawn as a preview that wears the theme
+       (data-theme on the preview: its own tokens and mark) #}
+    <section class="dm-sec">
+     {{ kit.heading("Theme", "dm-theme", level=3, tiptext="Colors for every page, chart and map. Paper is a warm off-white, Dim a softened dark. GitHub Light, Solarized Light, Nord and Dracula take their colors from the code-editor themes of those names. Every theme holds the same contrast bars.") }}
+     <div class="themepick" role="radiogroup" aria-labelledby="h-dm-theme">
+     {% for ground in ("light", "dark") %}
+      <span class="dm-grp" aria-hidden="true">{{ ground | capitalize }}</span>
+      <div class="dm-grid">
+      {% for id, name, g in THEMES if g == ground %}
+       <label class="dm-th"><input type="radio" name="dm-theme" value="{{ id }}" data-th="{{ id }}"
+         ><span class="dm-th-sw" data-theme="{{ id }}" aria-hidden="true"><span class="dm-th-bar"><span class="dm-th-logo"></span><span class="dm-th-line"></span></span><span class="dm-th-card"><span class="dm-th-aa">Aa</span><span class="dm-th-dots"><i></i><i></i><i></i></span></span></span
+         ><span class="dm-th-check" aria-hidden="true">{{ kit.icon("check") }}</span
+         ><span class="dm-th-name">{{ name }}{% if ground not in name | lower %}<span class="uk-sr"> {{ ground }} theme</span>{% endif %}</span></label>
+      {% endfor %}
+      </div>
+     {% endfor %}
+     </div>
+    </section>
+    {# two independent a11y modifiers, composing with every theme: switches
+       (role=switch), their state drawn (knob, check, On/Off) and spoken #}
+    <section class="dm-sec">
+     {{ kit.heading("Accessibility", "dm-a11y", level=3, tiptext="Two modes that work with every theme and with each other.") }}
+     <div class="a11ypick" role="group" aria-label="Accessibility modes">
+      <div class="dm-switch-row">
+       <button type="button" class="dm-switch" role="switch" aria-checked="false"
+        data-ax="contrast" aria-describedby="tip-dm-contrast"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
+        ><span class="dm-sw-label">High contrast</span><span class="dm-sw-state" aria-hidden="true"></span></button>
+       {{ kit.tip("dm-contrast", "high contrast", "Stronger text, boundaries, and fills on the current theme, and thicker focus rings. It turns on by itself when the system asks for more contrast, until you choose here.") }}
+      </div>
+      <div class="dm-switch-row">
+       <button type="button" class="dm-switch" role="switch" aria-checked="false"
+        data-ax="vision" aria-describedby="tip-dm-vision"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
+        ><span class="dm-sw-label">Color-blind safe colors</span><span class="dm-sw-state" aria-hidden="true"></span></button>
+       {{ kit.tip("dm-vision", "color-blind safe colors", "For red-green color blindness: status colors, chart lines and the outlook map move to a palette based on Okabe and Ito's, whose colors stay apart without red and green. Good turns blue, warnings gold or yellow, problems a deep red that stays apart from both; the map runs from blue to red through orange. Icons and words still name every status.") }}
+      </div>
+     </div>
+    </section>
     {# whole-page zoom: the native window only (a browser has its own);
        shown once pywebview's bridge is up #}
-    <span class="dlabel zoomrow" aria-hidden="true" hidden>Zoom</span>
-    <div class="zoompick zoomrow" role="group" aria-label="Page zoom" hidden>
-      <button type="button" data-zoom="-1" title="Zoom out (Cmd -)">&minus;</button>
-      <button type="button" data-zoom="0" title="Actual size (Cmd 0)">100%</button>
-      <button type="button" data-zoom="1" title="Zoom in (Cmd +)">+</button>
-    </div>
-    {# two independent a11y modifiers, composing with every theme #}
-    <span class="dlabel" aria-hidden="true">Accessibility</span>
-    <div class="a11ypick" role="group" aria-label="Accessibility modes">
-      <button type="button" data-ax="contrast" aria-pressed="false"
-        aria-label="High contrast"
-        title="High contrast: stronger text, boundaries, and fills on the current theme">Contrast</button>
-      <button type="button" data-ax="vision" aria-pressed="false"
-        aria-label="Red-green safe colors"
-        title="Color-vision mode: blue and orange replace green and red">CV safe</button>
-    </div>
+    <section class="dm-sec zoomrow" hidden>
+     {{ kit.heading("Zoom", "dm-zoom", level=3, tiptext="The whole window, text and layout together: Cmd + to zoom in, Cmd - to zoom out, Cmd 0 for actual size (Ctrl on Windows and Linux), or pinch on a trackpad.") }}
+     <div class="zoompick zoomrow" role="group" aria-label="Page zoom" hidden>
+      <button type="button" data-zoom="-1" aria-label="Zoom out">&minus;</button>
+      <button type="button" data-zoom="0"><span class="uk-sr">Actual size, now </span><span class="dm-zoom-v">100%</span></button>
+      <button type="button" data-zoom="1" aria-label="Zoom in">+</button>
+     </div>
+    </section>
    </div>
   </details>
 </header>
@@ -106,8 +156,9 @@
    }
    if (s) { s.addEventListener('scroll', edges, {passive: true}); window.addEventListener('resize', edges); edges(); }
  })();
- // the Display menu: Escape or a click outside closes it; Escape hands
- // focus back to its button
+ // the Display menu: Escape, a click outside or focus moving out of it
+ // (Tab past its last control) closes it; Escape hands focus back to its
+ // button
  (function () {
    var d = document.getElementById('displaymenu');
    if (!d) return;
@@ -118,18 +169,22 @@
    addEventListener('click', function (e) {
      if (d.open && !d.contains(e.target)) d.open = false;
    });
+   d.addEventListener('focusout', function (e) {
+     if (d.open && e.relatedTarget && !d.contains(e.relatedTarget)) d.open = false;
+   });
  })();
 </script>
 {# one shell for every page. No page sets main_class, but tests pin the
    rendered empty class="" #}
 <main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}
  {# a line to act on now (the kit's alert): the step, the why in its tip #}
- {% import "_tips.html" as kit %}
  {% call kit.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart", live="alert") %}This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
  reload refreshes the look, not the server logic.{% endcall %}
 {% endif %}{% set _f = pop_flash() %}{% if _f %}
- <div class="banner" role="status">{{ _f }}</div>
+ {# the outcome of the last action (a notice from the server): the kit's
+    alert, announced politely #}
+ {{ kit.alert("info", _f, id="flash") }}
 {% endif %}{% block content %}{% endblock %}{% if research_panel %}
 {# research run control, only when a route sets research_panel (/model/pf2s) #}
 {% include "research_run.html" %}
@@ -188,29 +243,30 @@
  addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
    sessionStorage.removeItem(k);
    if(y && !location.hash) scrollTo(0,parseInt(y));});
- // theme picker: aria-pressed, persisted; dispatches themechange so charts
- // re-resolve their tokens
+ // theme picker: native radios (arrow keys move the choice), the current
+ // theme checked on load; a change applies and persists it and dispatches
+ // themechange so charts re-resolve their tokens
  (function(){
-  var picks=document.querySelectorAll('.themepick button');
-  function mark(t){picks.forEach(function(b){
-    b.setAttribute('aria-pressed',String(b.dataset.th===t));});}
+  var picks=document.querySelectorAll('.themepick input[data-th]');
+  function mark(t){picks.forEach(function(b){b.checked=(b.dataset.th===t);});}
   mark(document.documentElement.getAttribute('data-theme'));
-  picks.forEach(function(b){b.onclick=function(){
+  picks.forEach(function(b){b.addEventListener('change',function(){
+    if(!b.checked)return;
     var t=b.dataset.th;
     document.documentElement.setAttribute('data-theme',t);
     localStorage.setItem('theme',t);mark(t);
-    dispatchEvent(new Event('themechange'));};});})();
- // accessibility modes: independent aria-pressed toggles, persisted (an
- // explicit 'normal' stops the OS preference re-enabling contrast);
- // dispatches themechange so charts recolor
+    dispatchEvent(new Event('themechange'));});});})();
+ // accessibility modes: two independent switches (role=switch,
+ // aria-checked), persisted (an explicit 'normal' stops the OS preference
+ // re-enabling contrast); dispatches themechange so charts recolor
  (function(){
   var de=document.documentElement,
-      axb=document.querySelectorAll('.a11ypick button');
+      axb=document.querySelectorAll('.a11ypick button[data-ax]');
   function mark(){axb.forEach(function(b){
     var on=b.dataset.ax==='contrast'
       ? de.getAttribute('data-contrast')==='high'
       : de.getAttribute('data-vision')==='cvd';
-    b.setAttribute('aria-pressed',String(on));});}
+    b.setAttribute('aria-checked',String(on));});}
   mark();
   axb.forEach(function(b){b.onclick=function(){
     if(b.dataset.ax==='contrast'){
@@ -226,26 +282,54 @@
     }
     mark();
     dispatchEvent(new Event('themechange'));};});})();
- // text-size control: root font percentage, persisted; dispatches
- // fontsizechange so charts (px-sized) redraw
+ // text-size control: the root font percentage, 80 to 160 in steps of 5
+ // (a slider, the small and large A step buttons, Reset to 100), kept in
+ // localStorage as a number (the first-paint script applies it). The size
+ // follows the slider live; fontsizechange, which redraws the charts (they
+ // size their text in px), fires once the slider rests
  (function(){
-  var m={s:'87.5%',m:'100%',l:'115%'},
-      btns=document.querySelectorAll('.fontsize button');
-  function mark(f){btns.forEach(function(b){
-    b.setAttribute('aria-pressed',String(b.dataset.fs===f));});}
-  mark(localStorage.getItem('fontsize')||'m');
-  btns.forEach(function(b){b.onclick=function(){
-    var f=b.dataset.fs;
-    document.documentElement.style.fontSize=m[f];
-    localStorage.setItem('fontsize',f);mark(f);
-    dispatchEvent(new Event('fontsizechange'));};});})();
+  var de=document.documentElement,r=document.getElementById('dm-fs'),
+      out=document.getElementById('dm-fs-out'),
+      reset=document.getElementById('dm-fs-reset'),
+      steps=document.querySelectorAll('.fontsize button[data-fs-step]'),
+      timer=null;
+  if(!r)return;
+  function cur(){return parseFloat(de.style.fontSize)||100;}
+  function show(p){
+    var t=(Math.round(p*10)/10)+'%';
+    out.textContent=t;r.value=p;
+    r.setAttribute('aria-valuetext',t.replace('%',' percent'));
+    reset.disabled=(p===100);}
+  function apply(p,now){
+    p=Math.max(80,Math.min(160,p));
+    de.style.fontSize=p+'%';show(p);
+    localStorage.setItem('fontsize',String(p));
+    clearTimeout(timer);
+    timer=setTimeout(function(){
+      dispatchEvent(new Event('fontsizechange'));},now?0:150);}
+  show(cur());
+  r.addEventListener('input',function(){apply(parseFloat(r.value));});
+  // off the 5% grid (87.5, kept from the old A- setting) the first arrow
+  // lands on the grid instead of skipping a step
+  r.addEventListener('keydown',function(e){
+    var p=cur(),up=(e.key==='ArrowRight'||e.key==='ArrowUp'),
+        down=(e.key==='ArrowLeft'||e.key==='ArrowDown');
+    if(p%5===0||!(up||down))return;
+    e.preventDefault();apply(up?Math.ceil(p/5)*5:Math.floor(p/5)*5);});
+  // a step lands on the 5% grid (87.5, kept from the old A- setting, steps
+  // to 85 or 90)
+  steps.forEach(function(b){b.onclick=function(){
+    var n=parseInt(b.dataset.fsStep,10),p=cur();
+    apply(n>0?Math.floor(p/5)*5+5:Math.ceil(p/5)*5-5,true);};});
+  // Reset turns itself off at 100%: focus moves on to the slider
+  reset.onclick=function(){apply(100,true);r.focus();};})();
  // page zoom in the native window: the Display menu's Zoom row, Cmd+= /
  // Cmd+- / Cmd+0 (Ctrl on other systems), and trackpad pinch (native).
  // The level is kept per machine and restored on every page.
  (function(){
   function api(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.zoom
     ? window.pywebview.api : null;}
-  var label=document.querySelector('.zoompick button[data-zoom="0"]');
+  var label=document.querySelector('.zoompick .dm-zoom-v');
   function show(z){
     if(typeof z!=='number')return;
     if(label)label.textContent=Math.round(z*100)+'%';
@@ -545,5 +629,5 @@
  })();
 </script>
 <script src="/static/tips.js" defer></script>
-<footer class="hint" style="text-align:center;padding:.6rem 0 1rem">FluBNF build {{ running_sha() }}</footer>
+<footer class="hint buildline">FluBNF build {{ running_sha() }}</footer>
 </body></html>

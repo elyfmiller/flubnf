@@ -1,5 +1,9 @@
 /* FluBNF console theme (PyBNF brand kit, LANL Mesa-aligned).
-   Themes, brightest to darkest: light (default), paper, dim, dark.
+   Eight themes, in the Display menu's order. Light grounds: light (the
+   default), paper, github, solarized. Dark grounds: dim, dark, nord,
+   dracula. light, paper, dim and dark carry the brand; github, solarized,
+   nord and dracula take their colors from the code-editor palettes credited
+   above their blocks, tuned to the same bars.
    LANL Blue carries structure and primary text; Cyan is THE accent (primary
    action, active tab, links, focus, progress); Blue Slate is the data accent;
    Inhibition Red (--bad) is semantic only. Legacy names --gold/--gold-bright
@@ -7,15 +11,35 @@
    them via getComputedStyle. .gold on a button means "primary".
    Every token is a LITERAL in every theme block, -hc/-cvd variants and
    --map-nodata included (plot code resolves raw values; no var() aliases; a
-   parity test compares the four blocks). The two a11y modifiers
+   parity test compares the eight blocks). The two a11y modifiers
    (data-contrast="high", data-vision="cvd") only remap consumer tokens onto
    those literals, so contrast x vision x theme resolves through the cascade.
+   The light block also answers to [data-theme="light"], so any element can
+   wear any theme (the Display menu's theme previews do).
+
+   THE SEMANTIC COLORS: what a rule, a chart or a map reaches for
+     status      --ok (good), --warn, --bad (a problem): words, badges,
+                 alerts, marks that judge a value
+     series      --season-1..6, one per line or bar, in order
+     map scale   --cat-large-decrease .. --cat-large-increase, --map-nodata
+     accents     --gold (links, the highlighted series), --gold-bright (a
+                 primary fill, --on-accent text on it), --accent-ink (the
+                 accent where it must read as text or a boundary)
+     controls    --btn-ink (outline buttons), --on-bad (text on a --bad fill),
+                 --field-line (field boundaries, 3:1 on the ground)
+     scheme      --scheme (light or dark: native controls, via color-scheme)
+   The color-vision mode moves status, series and the map scale together
+   onto their -cvd literals (Okabe-Ito based: good in blue, warn in gold or
+   yellow, bad in wine or vermillion), so every surface that uses them
+   follows. The measured bars for all eight themes and both modes:
+   app/tests/test_display_themes.py.
 
    CONTENTS (file order)
-     1. theme tokens: light at the first root block, then dark, paper, dim
+     1. theme tokens: light at the first root block, then dark, paper, dim,
+        github, solarized, nord, dracula
      2. type scale, focus width, spacing/radius (the second root block)
      3. a11y modifiers: contrast, then vision
-     4. body, navbar, theme/a11y/text-size pickers
+     4. body, navbar and the brand mark, the Display menu
      5. layout shell, cards, controls, buttons, links
      6. tables, status colors, pills, progress
      7. home hero, grid2/grid3, rows
@@ -31,22 +55,26 @@
     15. forecast modes and Advanced fold, ? tips, runsplit/results, sandbox
    ORDER DEPENDENCIES
      - modifier blocks after all theme blocks (equal specificity, later
-       wins); vision after contrast so --ok/--bad take the cvd pair while
-       contrast retargets that pair's -hc variants
-     - dark/dim button overrides after the base button rules; .gold after
-       .quiet (selected toggles carry both); button.danger's dark/dim text
-       color after its base rule
+       wins); vision after contrast so --ok/--warn/--bad take the cvd
+       literals while contrast retargets those literals' -hc variants
+     - .gold after .quiet (selected toggles carry both)
      - .modal h2 after .card h2; .row[hidden] after .row
      - token blocks may not contain a closing brace in a comment: tests and
-       report_v2 parse each block up to its first closing brace */
-:root{
+       report_v2 parse each block up to its first closing brace
+     - the header mark's file per theme lives in static/brand/logos.css, not
+       here: the reports embed these token blocks and must not reference
+       /static/ */
+[data-theme="light"],:root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
-  --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
+  --line:#DCD8E9; --track:#DBD7E8; --field-line:#8A86A3;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  /* outline buttons, text on a primary fill and on a --bad fill; the
+     native controls' scheme */
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
   /* official comparator lines (FluSight ensemble): neutral grey, never a
      member color, 3:1+ on the card */
   --official:#6E7590;
@@ -57,9 +85,10 @@
   --line-hc:#7F7A9E; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
   --official-hc:#3A3F5C;
-  /* red-green-safe variants (data-vision="cvd" remaps onto these) */
-  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
-  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  /* color-vision-safe status (data-vision="cvd" remaps onto these): good
+     blue, warn gold, bad wine, apart under deutan and protan simulation */
+  --ok-cvd:#1256C0; --warn-cvd:#835B00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0A3E8F; --warn-cvd-hc:#6E4600; --bad-cvd-hc:#6E3C50;
   /* outlook-map category scale (identical in every theme) + cvd twin */
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
@@ -68,7 +97,7 @@
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
   /* season-line palette, identical in every theme: normal-vision default
-     (3:1 on all eight theme grounds) + the red-green-safe set (= player.js
+     (3:1 on all sixteen theme grounds) + the red-green-safe set (= player.js
      SEASON_COLORS) that data-vision="cvd" remaps onto. Charts resolve
      --season-N per draw. Any value change must re-clear
      test_season_palette.py. */
@@ -85,6 +114,7 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
   --map-nodata:#232741;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
@@ -92,8 +122,8 @@
   --line-hc:#6E76A4; --field-line-hc:#8C96D2; --accent-ink-hc:#7FDBFF;
   --ok-hc:#96E6BC; --warn-hc:#F2C689; --bad-hc:#FFA0AB;
   --official-hc:#D6DBEC;
-  --ok-cvd:#6FB8FF; --bad-cvd:#FF9E45;
-  --ok-cvd-hc:#A9D2FF; --bad-cvd-hc:#FFBE85;
+  --ok-cvd:#6FB8FF; --warn-cvd:#EBD84A; --bad-cvd:#E07058;
+  --ok-cvd-hc:#A9D2FF; --warn-cvd-hc:#F5EC5A; --bad-cvd-hc:#E6966E;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -115,6 +145,7 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
   --official:#6E7590;
   --map-nodata:#DCD3BD;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
@@ -122,8 +153,8 @@
   --line-hc:#837C62; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
   --official-hc:#3A3F5C;
-  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
-  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  --ok-cvd:#1256C0; --warn-cvd:#835B00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0A3E8F; --warn-cvd-hc:#6A4400; --bad-cvd-hc:#6E3C50;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -145,6 +176,7 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
   --official:#AAB1C9;
   --map-nodata:#333952;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
@@ -152,8 +184,140 @@
   --line-hc:#838BB1; --field-line-hc:#9AA4DE; --accent-ink-hc:#7FDBFF;
   --ok-hc:#9FEAC4; --warn-hc:#F4CD96; --bad-hc:#FFAAB3;
   --official-hc:#D6DBEC;
-  --ok-cvd:#7FBFFF; --bad-cvd:#FFA45C;
-  --ok-cvd-hc:#B5D8FF; --bad-cvd-hc:#FFC38F;
+  --ok-cvd:#7FBFFF; --warn-cvd:#EAD84E; --bad-cvd:#E88A6A;
+  --ok-cvd-hc:#B5D8FF; --warn-cvd-hc:#F5EC6A; --bad-cvd-hc:#F5AE90;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* github: GitHub Light, from the Primer primitives (github/primer,
+   MIT License, Copyright GitHub Inc.). White card on the canvas grey,
+   near-black ink, the Primer blues; links a step darker (blue 6) so the
+   highlighted series stays apart from the Oracle SIHRS blue */
+[data-theme="github"]{
+  --bg:#F6F8FA; --card:#FFFFFF; --ink:#1F2328; --mut:#59636E;
+  --line:#D1D9E0; --track:#E1E6EB; --field-line:#818B98;
+  --navy:#0A3069; --navy-deep:#07214A;
+  --accent:#54AEFF; --accent-ink:#0969DA; --slate:#8250DF;
+  --gold:#0550AE; --gold-bright:#54AEFF;
+  --nav-bg:#FFFFFF; --nav-ink:#1F2328;
+  --ok:#1A7F37; --warn:#8A5D00; --bad:#CF222E;
+  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light;
+  --official:#6E7781;
+  --map-nodata:#CFCCD6;
+  --shadow:0 1px 2px rgba(31,35,40,.08),0 2px 8px rgba(31,35,40,.06);
+  --ink-hc:#010409; --mut-hc:#393F46; --nav-ink-hc:#010409;
+  --line-hc:#737D88; --field-line-hc:#454C54; --accent-ink-hc:#0349B4;
+  --ok-hc:#055D20; --warn-hc:#5C3F00; --bad-hc:#96101B;
+  --official-hc:#454C54;
+  --ok-cvd:#0969DA; --warn-cvd:#8A5D00; --bad-cvd:#7D3551;
+  --ok-cvd-hc:#0349B4; --warn-cvd-hc:#6A4400; --bad-cvd-hc:#6E3C50;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* solarized: Solarized Light (Ethan Schoonover, ethanschoonover.com/
+   solarized, MIT License). base3 cards on a ground between base3 and base2
+   (base2 itself would take the chart lines under 3:1), base2 header, base02
+   ink; the accents darkened where they carry text */
+[data-theme="solarized"]{
+  --bg:#F5EEDB; --card:#FDF6E3; --ink:#073642; --mut:#4E6168;
+  --line:#E3DBC4; --track:#EBE4CF; --field-line:#788789;
+  --navy:#073642; --navy-deep:#002B36;
+  --accent:#268BD2; --accent-ink:#1C6BA3; --slate:#6C71C4;
+  --gold:#1C6BA3; --gold-bright:#5DADE6;
+  --nav-bg:#EEE8D5; --nav-ink:#073642;
+  --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
+  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
+  --official:#657B83;
+  --map-nodata:#D8D0B8;
+  --shadow:0 1px 2px rgba(88,110,117,.10),0 2px 8px rgba(88,110,117,.08);
+  --ink-hc:#002B36; --mut-hc:#2E4148; --nav-ink-hc:#002B36;
+  --line-hc:#7C877F; --field-line-hc:#485A5E; --accent-ink-hc:#0B4B7A;
+  --ok-hc:#3B4600; --warn-hc:#553E00; --bad-hc:#86191A;
+  --official-hc:#3F5158;
+  --ok-cvd:#1A5FAE; --warn-cvd:#785800; --bad-cvd:#74344C;
+  --ok-cvd-hc:#0A3C92; --warn-cvd-hc:#5E4600; --bad-cvd-hc:#643C46;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* nord: Nord (Arctic Ice Studio and Sven Greb, nordtheme.com, MIT
+   License). Polar Night grounds one step deeper than nord0 (the chart
+   lines keep 3:1 there), Snow Storm ink, Frost accents, Aurora status
+   colors lightened to AA */
+[data-theme="nord"]{
+  --bg:#242933; --card:#2B303B; --ink:#D8DEE9; --mut:#A2ABBC;
+  --line:#3B4252; --track:#353B48; --field-line:#727D97;
+  --navy:#434C5E; --navy-deep:#2E3440;
+  --accent:#88C0D0; --accent-ink:#88C0D0; --slate:#81A1C1;
+  --gold:#88C0D0; --gold-bright:#88C0D0;
+  --nav-bg:#2E3440; --nav-ink:#ECEFF4;
+  --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
+  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
+  --official:#9AA4B8;
+  --map-nodata:#3B4252;
+  --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --ink-hc:#FFFFFF; --mut-hc:#D8DEE9; --nav-ink-hc:#FFFFFF;
+  --line-hc:#737E96; --field-line-hc:#98A3BC; --accent-ink-hc:#B2DCE8;
+  --ok-hc:#C9DDB8; --warn-hc:#F4E0B6; --bad-hc:#F4B8BE;
+  --official-hc:#CDD3DF;
+  --ok-cvd:#86BDF0; --warn-cvd:#EBD65A; --bad-cvd:#E09070;
+  --ok-cvd-hc:#B9DAFA; --warn-cvd-hc:#F7F07A; --bad-cvd-hc:#FAB48C;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
+}
+/* dracula: Dracula (Zeno Rocha, draculatheme.com, MIT License). The
+   Background as the card on a darker ground, Current Line for rules,
+   Purple the accent, Pink the data accent; Comment lightened for muted
+   text */
+[data-theme="dracula"]{
+  --bg:#21222C; --card:#282A36; --ink:#F8F8F2; --mut:#A9AFCB;
+  --line:#44475A; --track:#343746; --field-line:#6878AE;
+  --navy:#44475A; --navy-deep:#282A36;
+  --accent:#BD93F9; --accent-ink:#BD93F9; --slate:#FF79C6;
+  --gold:#BD93F9; --gold-bright:#BD93F9;
+  --nav-bg:#282A36; --nav-ink:#F8F8F2;
+  --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
+  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
+  --official:#A2A7C2;
+  --map-nodata:#343746;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --ink-hc:#FFFFFF; --mut-hc:#D9DCEA; --nav-ink-hc:#FFFFFF;
+  --line-hc:#7580AA; --field-line-hc:#95A0CE; --accent-ink-hc:#DCC6FF;
+  --ok-hc:#9CFFB3; --warn-hc:#FFD6A8; --bad-hc:#FFB0B0;
+  --official-hc:#D3D6E5;
+  --ok-cvd:#94ECFD; --warn-cvd:#F0E860; --bad-cvd:#EC7F58;
+  --ok-cvd-hc:#C2F4FE; --warn-cvd-hc:#F5F26A; --bad-cvd-hc:#FAA078;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
@@ -166,10 +330,10 @@
   --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 /* ---- fluid type scale: clamp(floor, rem + vw, ceiling) ----
-   The rem term must carry most of each step (~2/3+ at 1280px): the A-/A/A+
-   control scales the root size only, so a steep vw slope would neutralise
-   it. Floors are the old fixed sizes; ceilings land around 2100-2600px.
-   Size tokens only. */
+   The rem term must carry most of each step (~2/3+ at 1280px): the Display
+   menu's text size (80% to 160%) scales the root size only, so a steep vw
+   slope would neutralise it. Floors are the old fixed sizes; ceilings land
+   around 2100-2600px. Size tokens only. */
 :root{
   --fs-body:clamp(.875rem,.83rem + .15vw,1.05rem);    /* 14   -> 16.8px */
   --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.9rem);        /* 20   -> 30.4px */
@@ -205,33 +369,40 @@
 }
 /* ---- accessibility modifiers: remap consumer tokens onto the per-theme
    -hc / -cvd literals (never a color of their own). Both follow the theme
-   blocks; vision follows contrast so --ok/--bad take the cvd pair while
-   contrast retargets that pair's -hc variants.
-   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it moves ok/bad, the map's
-   --cat-* scale and --season-* onto --season-cvd-* (charts redraw on
-   themechange; audited in test_season_palette.py). It does NOT move member
-   lines (player.js MODEL_COLORS, dichromat-safe by construction; audited in
-   test_a11y_modes.py). SEASON_COLORS in player.js is the token-less
-   fallback (the fixed-dark report). */
+   blocks; vision follows contrast so --ok/--warn/--bad take the cvd
+   literals while contrast retargets those literals' -hc variants.
+   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE (the Display menu's
+   "Color-blind safe colors" switch): it moves the status triad
+   (ok/warn/bad onto --ok-cvd/--warn-cvd/--bad-cvd), the map's --cat-*
+   scale and --season-* onto --season-cvd-* (charts redraw on themechange;
+   audited in test_season_palette.py and test_display_themes.py). It does
+   NOT move member lines (player.js MODEL_COLORS, dichromat-safe by
+   construction; audited in test_a11y_modes.py). SEASON_COLORS in
+   player.js is the token-less fallback (the fixed-dark report).
+   The series take the safe set in the order that keeps every neighbour
+   apart under simulated deuteranopia and protanopia: 1, 2, 3, 6, 5, 4
+   (in literal order the pink and the teal, the 3rd and 4th, merge for a
+   protanope). */
 [data-contrast="high"]{
   --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
   --line:var(--line-hc); --field-line:var(--field-line-hc);
   --accent-ink:var(--accent-ink-hc);
   --ok:var(--ok-hc); --warn:var(--warn-hc); --bad:var(--bad-hc);
-  --ok-cvd:var(--ok-cvd-hc); --bad-cvd:var(--bad-cvd-hc);
+  --ok-cvd:var(--ok-cvd-hc); --warn-cvd:var(--warn-cvd-hc);
+  --bad-cvd:var(--bad-cvd-hc);
   --official:var(--official-hc);
   --focus-w:3px;
 }
 [data-vision="cvd"]{
-  --ok:var(--ok-cvd); --bad:var(--bad-cvd);
+  --ok:var(--ok-cvd); --warn:var(--warn-cvd); --bad:var(--bad-cvd);
   --cat-large-decrease:var(--cat-cvd-large-decrease);
   --cat-decrease:var(--cat-cvd-decrease);
   --cat-stable:var(--cat-cvd-stable);
   --cat-increase:var(--cat-cvd-increase);
   --cat-large-increase:var(--cat-cvd-large-increase);
   --season-1:var(--season-cvd-1); --season-2:var(--season-cvd-2);
-  --season-3:var(--season-cvd-3); --season-4:var(--season-cvd-4);
-  --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-6);
+  --season-3:var(--season-cvd-3); --season-4:var(--season-cvd-6);
+  --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-4);
 }
 *{box-sizing:border-box}
 /* body text on the fluid scale; anything without its own size inherits it */
@@ -252,9 +423,13 @@ header.nav .brand{display:flex;align-items:center;gap:.55rem;flex:none;
 header.nav .brand:hover{text-decoration:none}
 /* structural cyan uses --accent-ink: raw cyan fails 3:1 on light surfaces */
 header.nav .brand em{color:var(--accent-ink);font-style:normal}
-/* ONE mark: the blue-tile icon reads on both the light and dark strip */
-header.nav .brand img.mark{height:32px;width:32px;display:block}
-/* tabs: 13.6px at 900px, 15.2 at 1100, 16.8 from 1300 (at the A size);
+/* the brand mark: the theme's logo file, --logo (static/brand/logos.css,
+   one line per theme), falling back to the brand kit's icon. Sized in em,
+   so it grows with the text size beside the wordmark */
+header.nav .brand .mark{flex:none;display:block;width:1.45em;height:1.45em;
+  background:var(--logo,url("/static/brand/pybnf_icon.svg")) center/contain no-repeat;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* tabs: 13.6px at 900px, 15.2 at 1100, 16.8 from 1300 (at 100% text);
    side padding in em so it scales with them */
 header.nav a.tab{color:var(--nav-ink);text-decoration:none;
   padding:.8rem .45em;
@@ -267,7 +442,18 @@ header.nav .navtabs{display:flex;align-items:center;gap:.15rem;
   flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin;
   scrollbar-color:color-mix(in srgb,var(--nav-ink) 35%,transparent) transparent}
 header.nav .navtabs a.tab{white-space:nowrap;flex:none}
-/* the Display menu: a plain <details>, its panel drops below the header */
+/* native controls (scrollbars, selects, date pickers, the range) follow
+   the theme's scheme */
+html{color-scheme:var(--scheme,light)}
+
+/* ---- the Display menu: a settings popover at the header's right. A
+   plain <details> opens it without script; base.html's script adds
+   Escape, click-outside and focus-leaving closing. Four sections, each a
+   heading with its "?" (the kit's heading): Text size (a slider, 80% to
+   160%), Theme (eight previews, radios), Accessibility (two switches),
+   Zoom (the native window only). Sized in rem, so it grows with the text,
+   and capped by the window: at 160% in a short window it scrolls inside
+   itself. Class prefix dm- ---- */
 header.nav details.display{position:relative;flex:none}
 header.nav details.display > summary{list-style:none;cursor:pointer;
   display:flex;align-items:center;gap:.4em;padding:.35rem .7rem;
@@ -275,38 +461,143 @@ header.nav details.display > summary{list-style:none;cursor:pointer;
   border-radius:7px;color:var(--nav-ink);font-size:.85rem;font-weight:600;
   white-space:nowrap;user-select:none}
 header.nav details.display > summary::-webkit-details-marker{display:none}
-header.nav details.display > summary::after{content:"\25BE";font-size:.8em}
+header.nav details.display > summary::after{content:"";width:.4em;height:.4em;
+  margin:0 .1em 0 .15em;border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;transform:translateY(-.12em) rotate(45deg)}
+header.nav details.display[open] > summary::after{
+  transform:translateY(.1em) rotate(-135deg)}
+header.nav details.display > summary .uk-icon{font-size:1.1em}
 header.nav details.display > summary:hover{
   background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 header.nav details.display[open] > summary{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
 .displaypop{position:absolute;right:0;top:calc(100% + .45rem);z-index:55;
-  display:grid;grid-template-columns:max-content;gap:.2rem;
-  padding:.6rem .75rem .75rem;background:var(--nav-bg);color:var(--nav-ink);
+  width:min(25rem,calc(100vw - 1.5rem));max-height:calc(100vh - 5.5rem);
+  overflow-y:auto;overscroll-behavior:contain;
+  padding:.15rem 1rem .75rem;background:var(--nav-bg);color:var(--nav-ink);
   border:1px solid var(--line);border-radius:var(--r-md);
+  box-shadow:0 10px 32px rgba(12,13,23,.22),var(--shadow);
+  font-size:var(--fs-body);font-weight:400;text-align:left;white-space:normal}
+.dm-sec{padding:.7rem 0 .75rem;border-top:1px solid var(--line)}
+.dm-sec:first-child{border-top:0}
+.displaypop .uk-heading{margin:0 0 .5rem}
+.displaypop .uk-heading > h3{font-size:var(--fs-label);font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+/* text size: small A, the slider, large A, the readout; Reset at the right
+   of the heading */
+.fontsize{display:flex;align-items:center;gap:.55rem}
+.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
+  height:1.6rem;margin:0;padding:0;border:0;background:transparent;
+  accent-color:var(--accent-ink);cursor:pointer}
+.fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
+  outline-offset:2px;border-radius:var(--r-sm)}
+button.dm-step{flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:2rem;height:2rem;margin:0;padding:0;
+  border:1px solid var(--field-line);border-radius:50%;background:transparent;
+  color:var(--nav-ink);font-weight:700;line-height:1}
+button.dm-step:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+button.dm-step[disabled]{opacity:.4}
+.dm-step-sm{font-size:.78rem}
+.dm-step-lg{font-size:1.2rem}
+.dm-fs-out{flex:none;min-width:3.4em;text-align:right;font-weight:700;
+  font-variant-numeric:tabular-nums}
+button.dm-reset{margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
+  border-radius:var(--r-pill);background:transparent;color:var(--nav-ink);
+  font-size:var(--fs-label);font-weight:600}
+button.dm-reset:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+button.dm-reset[disabled]{opacity:.45}
+/* theme: a radio per theme, drawn as a preview of that theme. The preview
+   wears the theme itself (data-theme on the element: its tokens), so it is
+   never out of step with nau.css; the ring and the check come from the
+   page's theme (--dm-ring, resolved on the label). The radios stay native:
+   arrow keys move the choice, Tab enters at the checked one */
+.themepick{display:block}
+.dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
+  font-size:var(--fs-micro);font-weight:650}
+.dm-grid + .dm-grp{margin-top:.7rem}
+.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
+label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
+  position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
+  padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
+  font-size:var(--fs-label);cursor:pointer}
+label.dm-th:hover{background:color-mix(in srgb,var(--nav-ink) 7%,transparent)}
+label.dm-th input{position:absolute;top:.4rem;left:.4rem;width:1px;height:1px;
+  margin:0;padding:0;opacity:0;pointer-events:none}
+.dm-th-sw{position:relative;display:block;aspect-ratio:8/5;overflow:hidden;
+  border-radius:6px;border:1px solid var(--line);background:var(--bg);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--dm-ring) 18%,transparent)}
+.dm-th-bar{display:flex;align-items:center;gap:.25em;height:30%;
+  padding:0 .3em;background:var(--nav-bg);border-bottom:2px solid var(--accent-ink)}
+.dm-th-logo{flex:none;width:1em;height:1em;
+  background:var(--logo,url("/static/brand/pybnf_icon.svg")) center/contain no-repeat}
+.dm-th-line{flex:1 1 auto;height:.22em;max-width:2.2em;border-radius:1px;
+  background:var(--nav-ink);opacity:.8}
+.dm-th-card{position:absolute;left:10%;right:10%;top:42%;bottom:12%;
+  display:flex;align-items:center;justify-content:space-between;gap:.2em;
+  padding:0 .35em;border-radius:3px;background:var(--card);
   box-shadow:var(--shadow)}
-.displaypop .dlabel{font-size:var(--fs-micro);font-weight:600;
-  color:var(--mut);margin-top:.35rem}
-.displaypop .dlabel:first-child{margin-top:0}
-/* the three segmented groups: aria-pressed, persisted; the a11y buttons
-   are independent toggles */
-.fontsize,.themepick,.a11ypick,.zoompick{display:inline-flex;
-  border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
+.dm-th-aa{color:var(--ink);font-weight:750;font-size:1em;line-height:1}
+.dm-th-dots{display:inline-flex;gap:.18em}
+.dm-th-dots i{display:block;width:.55em;height:.55em;border-radius:50%;
+  background:var(--gold-bright)}
+.dm-th-dots i + i{background:var(--ok)}
+.dm-th-dots i + i + i{background:var(--bad)}
+.dm-th-name{text-align:center;line-height:1.2;overflow-wrap:anywhere}
+.dm-th-check{position:absolute;top:0;right:0;display:none;
+  align-items:center;justify-content:center;width:1.25rem;height:1.25rem;
+  border-radius:50%;background:var(--dm-ring);color:var(--nav-bg);
+  font-size:.8rem;box-shadow:0 0 0 2px var(--nav-bg)}
+label.dm-th input:checked ~ .dm-th-sw{border-color:var(--dm-ring);
+  box-shadow:0 0 0 2px var(--dm-ring)}
+label.dm-th input:checked ~ .dm-th-check{display:inline-flex}
+label.dm-th input:checked ~ .dm-th-name{font-weight:750}
+label.dm-th input:focus-visible ~ .dm-th-sw{outline:var(--focus-w,2px) solid var(--dm-focus);
+  outline-offset:3px}
+/* accessibility: two switches, each a button (role=switch) with a track,
+   a knob that slides and carries a check when on, and the state as a word */
+.a11ypick{display:flex;flex-direction:column;gap:.2rem}
+.dm-switch-row{display:flex;align-items:center;gap:.25rem}
+.dm-switch-row .tip{margin-left:.15rem}
+button.dm-switch{display:inline-flex;align-items:center;gap:.65rem;flex:0 1 auto;
+  min-width:0;margin:0;padding:.35rem .45rem .35rem .2rem;border:0;
+  border-radius:var(--r-sm);background:transparent;color:var(--nav-ink);
+  font:inherit;font-weight:600;text-align:left}
+button.dm-switch:hover{background:color-mix(in srgb,var(--nav-ink) 7%,transparent)}
+.dm-sw-track{position:relative;flex:none;width:2.6rem;height:1.45rem;
+  border:1.5px solid var(--field-line);border-radius:var(--r-pill);
+  background:var(--track);transition:background-color .15s,border-color .15s}
+.dm-sw-knob{position:absolute;top:50%;left:.16rem;display:flex;
+  align-items:center;justify-content:center;width:1rem;height:1rem;
+  margin-top:-.5rem;border-radius:50%;background:var(--mut);
+  color:var(--accent-ink);font-size:.72rem;transition:transform .15s}
+.dm-sw-knob .uk-icon{display:none}
+.dm-sw-state{flex:none;min-width:2em;color:var(--mut);font-size:var(--fs-label);
+  font-weight:600}
+.dm-sw-state::after{content:"Off"}
+button.dm-switch[aria-checked="true"] .dm-sw-track{background:var(--accent-ink);
+  border-color:var(--accent-ink)}
+button.dm-switch[aria-checked="true"] .dm-sw-knob{transform:translateX(1.1rem);
+  background:var(--nav-bg)}
+button.dm-switch[aria-checked="true"] .dm-sw-knob .uk-icon{display:block}
+button.dm-switch[aria-checked="true"] .dm-sw-state{color:var(--nav-ink)}
+button.dm-switch[aria-checked="true"] .dm-sw-state::after{content:"On"}
+/* zoom (the native window only): out, the level, in */
+.zoompick{display:inline-flex;border:1px solid var(--field-line);
   border-radius:7px;overflow:hidden}
-.fontsize button,.themepick button,.a11ypick button,.zoompick button{margin:0;
-  padding:.35rem .6rem;border:0;border-radius:0;flex:1 1 auto;
-  background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
-  cursor:pointer}
-.fontsize button+button,.themepick button+button,.a11ypick button+button,
-.zoompick button+button{
-  border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
-.fontsize button:hover,.themepick button:hover,.a11ypick button:hover,
-.zoompick button:hover{
-  background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
-.fontsize button[aria-pressed="true"],.themepick button[aria-pressed="true"],
-.a11ypick button[aria-pressed="true"]{
-  background:color-mix(in srgb,var(--accent) 25%,transparent)}
+.zoompick button{margin:0;padding:.35rem .75rem;border:0;border-radius:0;
+  flex:1 1 auto;background:transparent;color:var(--nav-ink);
+  font-size:var(--fs-label);font-weight:650}
+.zoompick button + button{border-left:1px solid var(--field-line)}
+.zoompick button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 .zoompick button[data-zoom="0"]{min-width:4.2em;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){
+  .dm-sw-track,.dm-sw-knob{transition:none}
+}
+@media (forced-colors:active){
+  .dm-sw-track,.dm-th-sw,button.dm-step{border-color:CanvasText}
+  button.dm-switch[aria-checked="true"] .dm-sw-track{background:Highlight}
+  label.dm-th input:checked ~ .dm-th-sw{outline:3px solid Highlight}
+}
 /* at wide windows the fluid figures would outgrow the screen: the US map
    (975x610) keeps to the window's height, centered; the cumulative chart
    stops growing taller than 320px (its viewBox centers inside) */
@@ -352,36 +643,26 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
 summary:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
-/* buttons: default = secondary outline, .gold = primary (cyan), .quiet */
-button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
-  background:transparent;color:var(--navy);font:inherit;font-weight:650;
+/* buttons: default = secondary outline, .gold = primary (cyan), .quiet.
+   Every theme states its own colors as tokens (--btn-ink: LANL Blue on
+   light grounds, the accent on dark ones, where the blue would vanish;
+   --on-accent and --on-bad: the text on a primary or a --bad fill), so no
+   rule here names a theme */
+button{padding:.45rem .95rem;border:1px solid var(--btn-ink);border-radius:8px;
+  background:transparent;color:var(--btn-ink);font:inherit;font-weight:650;
   cursor:pointer;margin-top:.7rem}
-button:hover{background:color-mix(in srgb,var(--navy) 9%,transparent)}
-/* dark grounds swap the LANL Blue outline (invisible there) for the accent */
-[data-theme="dark"] button,[data-theme="dim"] button{
-  border-color:var(--gold);color:var(--gold)}
-[data-theme="dark"] button:hover,[data-theme="dim"] button:hover{
-  background:color-mix(in srgb,var(--gold) 14%,transparent)}
-button.quiet,[data-theme="dark"] button.quiet,[data-theme="dim"] button.quiet{
-  background:transparent;border:1px solid var(--line);color:var(--mut)}
-button.quiet:hover,[data-theme="dark"] button.quiet:hover,
-[data-theme="dim"] button.quiet:hover{
-  background:var(--bg);color:var(--ink)}
+button:hover{background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}
+button.quiet{background:transparent;border:1px solid var(--line);color:var(--mut)}
+button.quiet:hover{background:var(--bg);color:var(--ink)}
 /* .gold after .quiet: toggle buttons carry both classes when selected */
-button.gold,[data-theme="dark"] button.gold,[data-theme="dim"] button.gold{
-  background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
-button.gold:hover,[data-theme="dark"] button.gold:hover,
-[data-theme="dim"] button.gold:hover{
-  background:color-mix(in srgb,#000 12%,var(--gold-bright))}
-/* destructive tier (--bad) for stop-and-think confirms; text flips with the
-   theme's red lightness, all >= 4.5:1 */
-button.danger,[data-theme="dark"] button.danger,
-[data-theme="dim"] button.danger{
-  background:var(--bad);border-color:var(--bad);color:#fff}
-[data-theme="dark"] button.danger,[data-theme="dim"] button.danger{
-  color:#0C0D17}
-button.danger:hover,[data-theme="dark"] button.danger:hover,
-[data-theme="dim"] button.danger:hover{
+button.gold{background:var(--gold-bright);border-color:var(--gold-bright);
+  color:var(--on-accent)}
+button.gold:hover{background:color-mix(in srgb,#000 12%,var(--gold-bright))}
+/* destructive tier (--bad) for stop-and-think confirms; the text is the
+   theme's --on-bad (white on the light themes' dark reds, near-black on
+   the dark themes' light reds), 4.5:1+ in every mode */
+button.danger{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
+button.danger:hover{
   background:color-mix(in srgb,#000 12%,var(--bad));
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
 button[disabled]{opacity:.45;cursor:not-allowed}
@@ -519,7 +800,7 @@ details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
 details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
-/* SVG labels on the type scale via rem classes, so A-/A/A+ reaches them;
+/* SVG labels on the type scale via rem classes, so the text size reaches them;
    svgt-sm renders at or above the 13.1px hint floor in the 840-unit
    diagrams; svgt-sub is relative to its parent text */
 svg .svgt-xl{font-size:1.3rem}
@@ -804,6 +1085,8 @@ a.skip{position:absolute;left:-9999px;top:0;z-index:100;
   background:var(--card);color:var(--ink);border:1px solid var(--line);
   border-radius:0 0 8px 0;padding:.5rem .9rem;font-weight:650}
 a.skip:focus{left:0}
+/* the build line under every page (base.html) */
+footer.buildline{text-align:center;padding:.6rem 0 1rem}
 
 /* reduced motion: transitions settle instantly (quips.js holds one line) */
 @media (prefers-reduced-motion: reduce){
@@ -890,14 +1173,13 @@ details.adv[open]>summary::before{content:"\25BE"}
 .lblrow label{margin:0}
 .tip{position:relative;display:inline-block;vertical-align:middle;
   margin-left:.3rem;line-height:1}
-button.tipbtn,[data-theme="dark"] button.tipbtn,[data-theme="dim"] button.tipbtn{
+button.tipbtn{
   display:inline-flex;align-items:center;justify-content:center;
   width:1.1rem;height:1.1rem;padding:0;margin:0;border-radius:50%;
   border:1.5px solid var(--accent-ink);background:transparent;
   color:var(--accent-ink);font-size:.7rem;font-weight:800;line-height:1;
   cursor:help}
-button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
-[data-theme="dim"] button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
+button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox{position:fixed;left:0;top:0;
   z-index:60;width:max-content;max-width:min(20rem,85vw);padding:.45rem .6rem;
   border-radius:8px;border:1px solid var(--line);background:var(--ink);
@@ -1148,24 +1430,16 @@ input[type=file]::file-selector-button:hover{
   background:color-mix(in srgb,var(--accent) 16%,var(--card))}
 /* a link that looks like a button (downloads, page links): same tiers as
    <button>; never a <button> inside an <a> */
-a.btn{display:inline-block;padding:.45rem .95rem;border:1px solid var(--navy);
-  border-radius:var(--r-sm);background:transparent;color:var(--navy);
+a.btn{display:inline-block;padding:.45rem .95rem;border:1px solid var(--btn-ink);
+  border-radius:var(--r-sm);background:transparent;color:var(--btn-ink);
   font-weight:650;line-height:1.5;text-decoration:none;cursor:pointer}
 a.btn:hover{text-decoration:none;
-  background:color-mix(in srgb,var(--navy) 9%,transparent)}
-[data-theme="dark"] a.btn,[data-theme="dim"] a.btn{
-  border-color:var(--gold);color:var(--gold)}
-[data-theme="dark"] a.btn:hover,[data-theme="dim"] a.btn:hover{
-  background:color-mix(in srgb,var(--gold) 14%,transparent)}
-a.btn.quiet,[data-theme="dark"] a.btn.quiet,[data-theme="dim"] a.btn.quiet{
-  background:transparent;border-color:var(--line);color:var(--mut)}
-a.btn.quiet:hover,[data-theme="dark"] a.btn.quiet:hover,
-[data-theme="dim"] a.btn.quiet:hover{background:var(--bg);color:var(--ink)}
-a.btn.gold,[data-theme="dark"] a.btn.gold,[data-theme="dim"] a.btn.gold{
-  background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
-a.btn.gold:hover,[data-theme="dark"] a.btn.gold:hover,
-[data-theme="dim"] a.btn.gold:hover{
-  background:color-mix(in srgb,#000 12%,var(--gold-bright))}
+  background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}
+a.btn.quiet{background:transparent;border-color:var(--line);color:var(--mut)}
+a.btn.quiet:hover{background:var(--bg);color:var(--ink)}
+a.btn.gold{background:var(--gold-bright);border-color:var(--gold-bright);
+  color:var(--on-accent)}
+a.btn.gold:hover{background:color-mix(in srgb,#000 12%,var(--gold-bright))}
 /* the results table's heading (results_html): matches "Run settings" */
 table.results caption.reshead{caption-side:top;padding:0 0 .15rem;
   color:var(--mut);font-size:var(--fs-hint)}
