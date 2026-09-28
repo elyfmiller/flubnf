@@ -45,7 +45,7 @@
        sandbox.js hides it unless an Oracle start is picked #}
     <fieldset class="sbshipped" id="sbnew-shipped">
      <legend>Oracle SIHRS filter</legend>
-     <div class="row">
+     <div class="row sb-shiprow">
       {% if vintages and locations %}
       <span class="sbnew-hub"><label for="sbnew-loc">Location</label>
        <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}</select></span>
@@ -54,9 +54,9 @@
       {% endif %}
       {% if pf_sets %}
       <span class="sbnew-ds"><label for="sbnew-group">Group</label>
-       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
+       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
       <span class="sbnew-ds">{{ tips.label("As of", "sb-asof", "A week the dataset holds; the fit sees the data up to it.", for_="sbnew-asof") }}
-       <input id="sbnew-asof" name="as_of" type="date" step="7" min="2020-01-04"></span>
+       <input id="sbnew-asof" name="as_of" type="date"></span>
       {% endif %}
       <span>{{ tips.label("Season start", "sb-season", "Optional. t = 0 and the seasonal phase count from it; blank takes August 1, as production does.", for_="sbnew-season") }}
        <input id="sbnew-season" name="season_start" type="date"></span>
@@ -117,14 +117,14 @@
     <label for="sb-dup-name">Duplicate as</label>
     <div class="row">
      <input id="sb-dup-name" name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
-     <button class="quiet">Duplicate</button>
+     <button>Duplicate</button>
     </div>
    </form>
    <div class="row sb-menurow">
     <a class="btn quiet" href="/sandbox/models/{{ name }}/download" download>{{ tips.icon("download") }} Download model (.zip)</a>
     <form method="post" action="/sandbox/models/{{ name }}/delete">
      <input type="hidden" name="ident" value="{{ name }}"><input type="hidden" name="confirm" value="">
-     <button type="button" class="quiet" data-sb-delete="{{ name }} and its {{ runs | length }} run{{ '' if runs | length == 1 else 's' }}">Delete model</button>
+     <button type="button" class="quiet sb-danger" data-sb-delete="{{ name }} and its {{ runs | length }} run{{ '' if runs | length == 1 else 's' }}">Delete model</button>
     </form>
    </div>
   </div>
@@ -133,10 +133,25 @@
 </div>
 <div class="sbwork{% if not res %} sbwork-new{% endif %}">
  <div class="sbedit">
-  <div class="card">
-   <form method="post" action="/sandbox/models/{{ name }}/save" id="sbform" data-model="{{ name }}">
-    {# the first submit button is the form's default: Enter in a field saves, never loads data #}
-    <button type="submit" class="sb-default" tabindex="-1" aria-hidden="true">Save</button>
+  {# one form, two cards: the model's files under a toolbar (Check, Save,
+     and Save and run, the primary), then the next run's settings #}
+  <form method="post" action="/sandbox/models/{{ name }}/save" id="sbform" data-model="{{ name }}">
+   {# the first submit button is the form's default: Enter in a field saves, never loads data #}
+   <button type="submit" class="sb-default" tabindex="-1" aria-hidden="true">Save</button>
+   <div class="card sb-editor">
+    <div class="sb-toolbar">
+     <div class="sb-toolbar-h"><h2 id="h-sb-model">Model</h2>
+      <span class="sb-status">
+       <span class="sb-dirty" id="sb-dirty" hidden>{{ tips.badge("warn", "unsaved changes") }}</span>
+       {%- if busy %}{{ tips.badge("pending", "engine busy", "Engine busy: " ~ busy ~ ".", id="sb-busy") }}{% endif %}
+      </span></div>
+     <div class="sbactions sb-tools" role="group" aria-labelledby="h-sb-model">
+      <button type="button" id="sb-check">Check</button>
+      <button formaction="/sandbox/models/{{ name }}/save">Save</button>
+      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
+      {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without fitting: what would stop a run, and the model at its written values beside the data. Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
+     </div>
+    </div>
     {# sandbox.js turns the three files into tabs; without it they stack #}
     <div class="sbtabs" hidden>
      <div class="sbtablist" role="tablist" aria-label="model files">
@@ -170,7 +185,10 @@
       </tbody></table></div>
      {% endcall %}
     </section>
-    <fieldset class="sbrun"><legend>Run settings</legend>
+    <div id="sb-checked" aria-live="polite"></div>
+   </div>
+   <div class="card sb-runcard">
+    <fieldset class="sbrun"><legend class="sb-legend">Run settings</legend>
      <div class="sbrun-grid">
       <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", "The full fit uses the production 10,000 particles and gives the estimates. A quick check (200) only shows that the model runs: its numbers are rough, and it often collapses onto a few parameter sets.", for_="sb-preset") }}
        <span class="sb-partsrow"><span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">
@@ -190,27 +208,23 @@
        <input id="sb-seed-in" name="seed" type="number" value="{{ form.seed }}" min="0"></span>
      </div>
     </fieldset>
-    <div class="row sbactions">
-     <button type="button" id="sb-check">Check</button>
-     <button formaction="/sandbox/models/{{ name }}/save">Save</button>
-     <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
-     {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without fitting: what would stop a run, and the model at its written values beside the data. Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
-     <span class="sb-status">
-      <span class="sb-dirty" id="sb-dirty" hidden>{{ tips.badge("warn", "unsaved changes") }}</span>
-      {%- if busy %}{{ tips.badge("pending", "engine busy", "Engine busy: " ~ busy ~ ".", id="sb-busy") }}{% endif %}
-     </span>
-    </div>
-    <div id="sb-checked" aria-live="polite"></div>
-   </form>
-  </div>
+   </div>
+  </form>
  </div>
  <div class="sbruns">
   {% if res %}
   {% set st = res.meta.status %}
   {% set live_run = res.run_id == running_id %}
+  {# the open run in four groups: its summary (the outcome, the run's
+     facts and settings), the result (the plot and the fitted values), its
+     diagnostics (the posterior sample, the engine's words), then compare
+     and the run's files. The heading's badge is the run's status only
+     while it says something the outcome line does not (running, failed,
+     stopped): a finished run's outcome is the line under the heading. #}
   <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
-   {{ tips.heading("Results", "sb-results", after=run_badge(st, "sb-status")) }}
    {% set h = res.health %}
+   {% set show_health = h and not live_run %}
+   {{ tips.heading("Results", "sb-results", after=(run_badge(st, "sb-status") if (st != "ok" or not show_health) else "")) }}
    {% set quick = (res.meta.particles | int) < presets.full %}
    {% set offer_full = quick and not live_run and st in ("ok", "failed", "stopped", "interrupted") %}
    {% set full_form %}<form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
@@ -219,7 +233,8 @@
     <button class="gold" data-guard="sandbox-run">Run the full fit ({{ "{:,}".format(presets.full) }} particles)</button>
     {{ tips.tip("sb-full", "the full fit", "Runs the saved model again with the production 10,000 particles and this run's other settings. Unsaved edits in the editor are not included: Save first.") }}
    </form>{% endset %}
-   {% if h and not live_run %}
+   <div class="sb-rsum">
+   {% if show_health %}
    {# the outcome in a word and an icon, the sentence in its "?", what to
       try behind a fold, the full fit beside it: the first line under the
       heading (the How it works tip says so) #}
@@ -233,6 +248,16 @@
    {% endcall %}{% endif %}
    {% elif offer_full %}{{ full_form }}
    {% endif %}
+   {% if live_run %}
+   <div class="sb-live">
+    <div class="sb-live-bar">{{ tips.progress("Fitting now", id="sb-live") }}</div>
+    {{ tips.tip("sb-live-t", "fitting now", "This page updates when the run ends.") }}
+    <form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button class="quiet sb-danger">Stop</button></form>
+   </div>
+   {% endif %}
+   {# a failed run's own words first, on the error edge #}
+   {% if res.meta.error %}<pre class="sberr sb-err">{{ res.meta.error }}</pre>{% endif %}
+   <div class="sb-runfacts">
    {% set facts = [("folder", res.run_id, "Run")] %}
    {% if res.meta.seconds is defined %}{% set facts = facts + [("clock", res.meta.seconds ~ " s", "Wall time")] %}{% endif %}
    {{ tips.meta(facts, label="Run") }}
@@ -243,47 +268,50 @@
     {{ tips.stat("Seed", res.meta.seed) }}
     {{ tips.stat("Forecast weeks", res.meta.forecast_weeks) }}
    {% endcall %}
-   {% if live_run %}
-   <div class="sb-live">
-    <div class="sb-live-bar">{{ tips.progress("Fitting now", id="sb-live") }}</div>
-    {{ tips.tip("sb-live-t", "fitting now", "This page updates when the run ends.") }}
-    <form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button>Stop</button></form>
    </div>
-   {% endif %}
-   {# a failed run's own words first, on the error edge #}
-   {% if res.meta.error %}<pre class="sberr sb-err">{{ res.meta.error }}</pre>{% endif %}
-   {% if res.stderr %}{% call tips.fold("Engine messages", open=(st != "ok"), cls="sbengine") %}<pre class="sberr">{{ res.stderr }}</pre>{% endcall %}{% endif %}
+   </div>
    {% if res.traj %}<div id="sbplot" style="min-height:320px"></div>{% endif %}
    {% if res.params and cmp and cmp.params %}
    {% set cp = {} %}{% for p in cmp.params %}{% set _ = cp.update({p.name: p}) %}{% endfor %}
-   <table class="kv sbparams2"><thead><tr><th>parameter</th><th>this run: median (5 to 95%)</th><th>compared run</th></tr></thead><tbody>
+   <div class="sbscroll"><table class="kv sbparams2"><thead><tr><th>parameter</th><th>this run: median (5 to 95%)</th><th>compared run</th></tr></thead><tbody>
    {% for p in res.params %}{% set q = cp.get(p.name) %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p50) }} ({{ "%.4g" | format(p.p5) }} to {{ "%.4g" | format(p.p95) }})</td><td>{% if q %}{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }}){% else %}absent{% endif %}</td></tr>{% endfor %}
    {% for q in cmp.params if q.name not in (res.params | map(attribute="name") | list) %}<tr><td>{{ q.name }}</td><td>absent</td><td>{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }})</td></tr>{% endfor %}
-   </tbody></table>
+   </tbody></table></div>
    {% elif res.params %}
-   <table class="kv"><thead><tr><th>parameter</th><th class="num">5%</th><th class="num">median</th><th class="num">95%</th></tr></thead><tbody>
+   <table class="kv sb-params"><thead><tr><th>parameter</th><th class="num">5%</th><th class="num">median</th><th class="num">95%</th></tr></thead><tbody>
    {% for p in res.params %}<tr><td>{{ p.name }}</td><td class="num">{{ "%.4g" | format(p.p5) }}</td><td class="num">{{ "%.4g" | format(p.p50) }}</td><td class="num">{{ "%.4g" | format(p.p95) }}</td></tr>{% endfor %}
    </tbody></table>
-   {% endif %}
-   {% if res.params %}
-   {% call tips.stats("uk-stats--row sb-sample", label="Posterior sample") %}
-    {{ tips.stat("Distinct vectors", "{:,}".format(res.distinct), "of " ~ "{:,}".format(res.sample), tiptext="Distinct parameter vectors in the fit's sample of " ~ "{:,}".format(res.sample) ~ ".", id="sb-distinct") }}
-    {% if res.ess %}{{ tips.stat("ESS at the last week", "{:,.0f}".format(res.ess[-1].ess), tiptext="The effective sample size: how many particles carry the weight, at the last data week.", id="sb-ess-last") }}
-    {{ tips.stat("Minimum ESS", "{:,.0f}".format(res.ess | map(attribute="ess") | min), tiptext="The lowest effective sample size over all the weeks.", id="sb-ess-min") }}{% endif %}
-   {% endcall %}
    {% elif not res.traj and st == "ok" %}{{ tips.empty("This run left no parameter sample and no trajectory", "info", compact=True, id="sb-noout") }}{% endif %}
+   {% if res.params or res.stderr %}
+   <section class="sb-rsec" aria-labelledby="h-sb-diag">
+    {{ tips.heading("Diagnostics", "sb-diag", level=3) }}
+    {% if res.params %}
+    {% call tips.stats("uk-stats--row sb-sample", label="Posterior sample") %}
+     {{ tips.stat("Distinct vectors", "{:,}".format(res.distinct), "of " ~ "{:,}".format(res.sample), tiptext="Distinct parameter vectors in the fit's sample of " ~ "{:,}".format(res.sample) ~ ".", id="sb-distinct") }}
+     {% if res.ess %}{{ tips.stat("ESS at the last week", "{:,.0f}".format(res.ess[-1].ess), tiptext="The effective sample size: how many particles carry the weight, at the last data week.", id="sb-ess-last") }}
+     {{ tips.stat("Minimum ESS", "{:,.0f}".format(res.ess | map(attribute="ess") | min), tiptext="The lowest effective sample size over all the weeks.", id="sb-ess-min") }}{% endif %}
+    {% endcall %}
+    {% endif %}
+    {% if res.stderr %}{% call tips.fold("Engine messages", open=(st != "ok"), cls="sbengine") %}<pre class="sberr">{{ res.stderr }}</pre>{% endcall %}{% endif %}
+   </section>
+   {% endif %}
    {% set others = runs | rejectattr("run_id", "equalto", res.run_id) | list %}
-   {% if others %}<form method="get" action="/sandbox" class="row sbcompare">
-    <input type="hidden" name="model" value="{{ name }}"><input type="hidden" name="run" value="{{ res.run_id }}">
-    <label for="sb-compare">Compare with</label>
-    <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }}, {{ r.particles }} particles)</option>{% endfor %}</select>
-    <button class="quiet">Compare</button>
-    {{ tips.tip("sb-compare", "compare", "The other run's median and band are drawn dashed over this one; the parameter tables sit side by side, and What changed lists every edit between the two.") }}
-   </form>{% endif %}
+   {% if others %}
+   <section class="sb-rsec" aria-labelledby="h-sb-cmp">
+    {{ tips.heading("Compare", "sb-cmp", level=3) }}
+    <form method="get" action="/sandbox" class="sbcompare sb-cmprow">
+     <input type="hidden" name="model" value="{{ name }}"><input type="hidden" name="run" value="{{ res.run_id }}">
+     <label for="sb-compare">Compare with</label>
+     <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }}, {{ r.particles }} particles)</option>{% endfor %}</select>
+     <button>Compare</button>
+     {{ tips.tip("sb-compare", "compare", "The other run's median and band are drawn dashed over this one; the parameter tables sit side by side, and What changed lists every edit between the two.") }}
+    </form>
+   </section>
+   {% endif %}
    {% if not live_run %}
-   <div class="row sbrunfoot">
+   <div class="sbrunfoot sb-filebar">
     <a class="btn quiet" href="/sandbox/runs/{{ res.run_id }}/download" download>{{ tips.icon("download") }} Download run (.zip)</a>
-    <form method="post" action="/sandbox/runs/{{ res.run_id }}/delete"><input type="hidden" name="ident" value="{{ res.run_id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet" data-sb-delete="run {{ res.run_id }}">Delete run</button></form>
+    <form method="post" action="/sandbox/runs/{{ res.run_id }}/delete"><input type="hidden" name="ident" value="{{ res.run_id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet sb-danger" data-sb-delete="run {{ res.run_id }}">Delete run</button></form>
    </div>
    {% endif %}
   </div>
