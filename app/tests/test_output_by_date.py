@@ -221,6 +221,22 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
             "record.") in tip
 
 
+def test_a_seasons_older_dates_sit_behind_one_fold(root):
+    """The newest four dates are cards; older ones are in one closed fold
+    whose summary counts them and names their span, every file still
+    offered for download."""
+    for asof in ("2098-01-03", "2098-01-10", "2098-01-17", "2098-01-24",
+                 "2098-01-31"):
+        _run(root, asof, [GH])
+    html = client.get("/output").text
+    head, fold = html.split('<details class="out-older" id="out-older">', 1)
+    assert head.count('class="card out-day"') == 4
+    assert 'id="fc-2098-01-03"' in fold and 'id="fc-2098-01-03"' not in head
+    assert "1 earlier forecast date<" in fold
+    assert "2098-01-10 to 2098-01-10" in fold
+    assert html.count("/output/download?path=") == 5
+
+
 def test_each_files_coverage_fold_has_its_own_handle(root):
     """Two files missing a location: two folds, "1 of 2 locations" and
     "1 missing" each, their ids (and so their tips' ids) distinct."""
