@@ -12,13 +12,14 @@
  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
  <input type="hidden" name="ident" value="{{ ident }}">
  <input type="hidden" name="confirm" value="">
- <button type="button" class="quiet st-del" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
+ <button type="button" class="quiet st-del" aria-label="Delete {{ what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
    data-what="{{ what }}" data-size="{{ size }}"
    data-hint="{{ hint }}">Delete</button>
 </form>
 {%- endmacro %}
-{% macro busy_act(id, why) -%}
-<span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del") }}</span>
+{% macro busy_act(id, why, what) -%}
+{%- set named %}aria-label="Delete {{ what }}"{% endset -%}
+<span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del", attrs=named, label="why " ~ what ~ " cannot be deleted now") }}</span>
 {%- endmacro %}
 {% macro count(n) -%}
 <span class="st-count">{{ n }}<span class="uk-sr"> {{ "entry" if n == 1 else "entries" }}</span></span>
@@ -36,7 +37,7 @@
   {{- tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}
   {%- if storage.cats %}
   {# the total by category; the legend in the body names each one #}
-  <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}"></span>{% endfor %}</span>
+  <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
   {%- endif %}</summary>
 
  {% if storage.total_bytes %}
@@ -132,7 +133,7 @@
    {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
    {%- if w.busy %} {{ tips.badge("pending", "running now") }}{% endif %}</span>
   <span class="st-size">{{ w.size_h }}</span>
-  {% if w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why) }}
+  {% if w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
   {% else %}{{ del_form("/storage/delete", "workroot", w.id, "workroot " ~ w.id ~ " (" ~ w.label ~ ")", w.size_h, "The run's ledger row is kept and will show a dash for disk use.") }}{% endif %}
   {% set items = [] %}
   {% if w.when %}{% set _ = items.append(("clock", "run " ~ w.when, "")) %}{% endif %}
@@ -153,7 +154,7 @@
   <span class="st-title"><strong><a href="/retro/{{ s.id }}">{{ s.id }} retrospective</a></strong>
    {%- if s.busy %} {{ tips.badge("pending", s.status) }}{% endif %}</span>
   <span class="st-size">{{ s.size_h }}</span>
-  {% if s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why) }}
+  {% if s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why, s.id ~ " season results") }}
   {% else %}{{ del_form("/storage/delete", "retro-season", s.id, s.id ~ " season results", s.size_h, "Archived runs of this season and the sealed record are separate trees and are not touched.") }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No live season trees on disk", "calendar", compact=True) }}{% endfor %}
@@ -169,7 +170,7 @@
   <span class="st-title"><strong><a href="/retro/{{ a.season }}?archive={{ a.stamp }}">{{ a.season }} retrospective</a></strong>
    {%- if a.busy %} {{ tips.badge("pending", "season replaying") }}{% endif %}</span>
   <span class="st-size">{{ a.size_h }}</span>
-  {% if a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why) }}
+  {% if a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why, a.season ~ " run " ~ a_when) }}
   {% else %}{{ del_form("/storage/delete", "retro-archive", a.id, a.season ~ " run " ~ a_when, a.size_h, "The live " ~ a.season ~ " season is not touched.") }}{% endif %}
   {% set aid %}<code>{{ a.id }}</code>{% endset %}
   {{ tips.meta([("download" if a.imported else "calendar", a_when, ""), aid]) }}
@@ -186,7 +187,7 @@
   <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong>
    {%- if f.busy %} {{ tips.badge("pending", "console run in progress") }}{% endif %}</span>
   <span class="st-size">{{ f.size_h }}</span>
-  {% if f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why) }}
+  {% if f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}
   {% else %}{{ del_form("/storage/delete", "report-archive", f.id, "archived " ~ f.id ~ " report and submissions", f.size_h, "The workroot that produced it is a separate entry above.") }}{% endif %}
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
   {{ tips.meta([rlink]) }}{% endif %}
@@ -206,7 +207,7 @@
   <span class="st-title"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
    {%- if d.busy %} {{ tips.badge("pending", "in use") }}{% endif %}</span>
   <span class="st-size">{{ d.size_h }}</span>
-  {% if d.busy %}{{ busy_act("st-ds-" ~ loop.index, d.why) }}
+  {% if d.busy %}{{ busy_act("st-ds-" ~ loop.index, d.why, "the dataset " ~ d.name) }}
   {% else %}{{ del_form("/storage/datasets/" ~ d.id ~ "/delete", "", d.id, "the dataset " ~ d.name, d.size_h, d.goes, confirm=d.name) }}{% endif %}
   {% if d.parts %}{{ tips.meta(d.parts, label="What it holds") }}{% endif %}
  </div>
