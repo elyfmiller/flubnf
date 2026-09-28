@@ -403,10 +403,10 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
         f = sandbox_mod.simulate_data(name, seed=s)
         noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
                  else "Poisson noise")
+        # what a fit on them should find is the Simulate button's tip
         _flash(f"data.exp filled with {f['rows']} weeks of {f['column']} "
                "simulated from the model at the values written in "
-               f"model.bngl, with {noise}: a fit should find values near "
-               "them.")
+               f"model.bngl, with {noise}.")
     except Exception as e:
         _flash(f"Not simulated: {e}")
     return _sandbox_redirect(name)

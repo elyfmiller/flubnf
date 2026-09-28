@@ -279,12 +279,18 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
     w = sb.prepare("kinetics_example", particles=200, jitter=0.2, seed=3)
     _finish(w, collapsed=True)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
-    assert '<span class="pill sbh sbh-collapsed">The fit collapsed</span>' in html
+    # the outcome in an error alert, its sentence in the alert's "?"
+    health = html[html.index('class="sb-health sb-health--collapsed"'):]
+    assert '<div class="uk-alert uk-alert--error" id="sb-health">' in health
+    assert "The fit collapsed" in health[:health.index('id="tip-sb-health"')]
+    tip = health[health.index('id="tip-sb-health"'):]
+    assert "not a real estimate" in tip[:tip.index("</span>")]
     assert "What to try" in html
     # the engine's words stay, folded under their own summary
-    assert "<summary>Engine messages</summary>" in html
+    assert '<span class="uk-fold-sum">Engine messages</span>' in html
     assert "the cloud collapsed" in html
-    # one click to the full fit, with this run's other settings
+    # one click to the full fit, with this run's other settings, beside it
+    assert health.index('class="uk-alert-action"') < health.index('class="row sbfull"')
     form = html[html.index('class="row sbfull"') - 80:]
     form = form[:form.index("</form>")]
     assert 'action="/sandbox/models/kinetics_example/run"' in form
@@ -299,7 +305,9 @@ def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
     w = sb.prepare("kinetics_example", particles=10_000)
     _finish(w)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
-    assert '<span class="pill sbh sbh-good">The fit looks healthy</span>' in html
+    health = html[html.index('class="sb-health sb-health--good"'):]
+    assert '<div class="uk-alert uk-alert--ok" id="sb-health">' in health
+    assert "The fit looks healthy" in health[:health.index('id="tip-sb-health"')]
     assert "sbfull" not in html and "What to try" not in html
 
 
@@ -314,7 +322,13 @@ def test_the_gallery_guides_a_first_visit(box):
     html = _client().get("/sandbox").text
     # no models yet: How the Sandbox works is open
     assert '<details class="card sbhow" open>' in html
-    assert "<strong>Start a model.</strong>" in html
+    # the steps as a stepper, each step's sentence in its "?"
+    how = html[html.index('<details class="card sbhow" open>'):]
+    how = how[:how.index("</details>")]
+    assert '<ol class="uk-stepper uk-stepper--vertical" aria-label="How the Sandbox works">' in how
+    assert '<span class="uk-step-label">Start a model</span>' in how
+    assert "Copy the template for a new pathogen, or the example closest to yours" in how
+    assert "Your own counts go in through the data.exp tab" in how
     # the template comes first and is the default start, with its note
     start = html[html.index('id="sbnew-start"'):]
     start = start[:start.index("</select>")]

@@ -83,9 +83,14 @@ def test_the_gallery_shows_each_models_note_origin_and_last_run(box):
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example")
     html = client.get("/sandbox").text
+    # the note in the name's "i", the last run a status badge linking to it
     assert "A model that is not an epidemic: first-order conversion A -&gt; B." in html
+    assert 'aria-label="About kinetics_example"' in html
     assert "example kinetics_example" in html
-    assert f'href="/sandbox?run={w.name}&amp;model=kinetics_example">interrupted<' in html
+    link = html[html.index(f'href="/sandbox?run={w.name}&amp;model=kinetics_example">'):]
+    link = link[:link.index("</a>")]
+    assert 'class="uk-badge uk-badge--warn"' in link
+    assert '<span class="uk-badge-t">interrupted</span>' in link
 
 
 def test_a_note_is_the_first_sentence_over_lines(box):

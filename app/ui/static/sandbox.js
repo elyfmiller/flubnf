@@ -69,9 +69,15 @@
     function show() {
       var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
-      // what the chosen start is: its note (the Oracle start shows its fields)
+      // what the chosen start is: its note in the "i" beside the list,
+      // hidden for a start without one (the Oracle start shows its fields)
       var about = $('sbnew-about'), o = start.options[start.selectedIndex];
-      if (about) about.textContent = (o && o.getAttribute('data-note')) || '';
+      var note = (o && o.getAttribute('data-note')) || '';
+      if (about) {
+        about.textContent = note;
+        var wrap = about.closest('.sb-about');
+        if (wrap) wrap.hidden = !note;
+      }
       each('.sbnew-hub', function (e) { e.hidden = !hub; });
       each('.sbnew-ds', function (e) { e.hidden = !ds; });
       each('select, input', function (e) {
@@ -175,13 +181,16 @@
     setupTabs(form);
     // ---- run settings: the preset sets the particles; typing a count
     // other than a preset's reads as custom; the estimate follows
+    // (the estimate: a clock and "about 40 s" beside the actions, "on
+    // this machine (estimated)" in its "?"; hidden when there is none)
     var preset = $('sb-preset'), parts = $('sb-particles'), eta = $('sb-eta');
     function showEta() {
       if (!eta || !parts) return;
       var full = parseFloat(eta.getAttribute('data-full')) || 0;
       var n = parseInt(parts.value, 10) || 0;
-      var t = fmtEta(full * n / 10000);
-      eta.textContent = t ? 'Fitting takes ' + t + ' on this machine (estimated).' : '';
+      var t = fmtEta(full * n / 10000), v = eta.querySelector('.sb-eta-v');
+      if (v) v.textContent = t;
+      eta.hidden = !t;
     }
     if (preset && parts) {
       var quick = preset.getAttribute('data-quick'), full = preset.getAttribute('data-full');
@@ -231,7 +240,7 @@
       showSource(false);
     }
 
-    // ---- unsaved changes: a chip beside Save, and a warning on leaving
+    // ---- unsaved changes: a badge beside Save, and a warning on leaving
     var dirty = false, chip = $('sb-dirty');
     if (form) {
       form.addEventListener('input', function (e) {
@@ -250,56 +259,77 @@
       });
     }
 
-    // ---- Check: the editor text, read without the engine
+    // ---- Check: the editor text, read without the engine. The report is
+    // the kit's pieces: a one-line alert (problems, or none) with the
+    // explanation in its "?", the items to act on as a list, and the facts
+    // as labelled values. UI is window.FluBNFUI (tips.js, deferred: here
+    // from a click, so loaded).
     var check = $('sb-check'), out = $('sb-checked');
-    function list(title, items, cls) {
-      var wrap = document.createElement('div');
-      var h = document.createElement('p');
-      h.className = cls;
-      h.textContent = title;
-      wrap.appendChild(h);
-      if (items.length) {
-        var ul = document.createElement('ul');
-        items.forEach(function (t) {
-          var li = document.createElement('li');
-          li.textContent = t;
-          ul.appendChild(li);
-        });
-        wrap.appendChild(ul);
-      }
-      return wrap;
+    function esc(s) { return root.FluBNFUI ? root.FluBNFUI.esc(s) : String(s); }
+    function icon(n) { return root.FluBNFUI ? root.FluBNFUI.icon(n) : ''; }
+    // a tip as tips.tip writes it (tips.js handles it by delegation)
+    function tipHtml(id, label, text) {
+      return '<span class="tip"><button type="button" class="tipbtn" aria-label="About '
+        + esc(label) + '" aria-describedby="tip-' + id + '">?</button><span class="tipbox"'
+        + ' role="tooltip" id="tip-' + id + '">' + esc(text) + '</span></span>';
+    }
+    function alertHtml(kind, title, text, tip) {
+      var icons = {error: 'error', warn: 'warning', ok: 'check', info: 'info'};
+      return '<div class="uk-alert uk-alert--' + kind + '">' + icon(icons[kind])
+        + '<span class="uk-alert-text"><strong>' + esc(title) + '</strong>'
+        + (text ? ' ' + esc(text) : '') + (tip ? ' ' + tipHtml(tip[0], title, tip[1]) : '')
+        + '</span></div>';
+    }
+    function listHtml(items) {
+      return items.length ? '<ul class="sb-list">' + items.map(function (t) {
+        return '<li>' + esc(t) + '</li>';
+      }).join('') + '</ul>' : '';
+    }
+    // one labelled value (tips.stat's markup): [label, value, unit, tip]
+    function statsHtml(rows) {
+      return '<dl class="uk-stats uk-stats--row sb-facts" aria-label="Check facts">' + rows.map(function (s) {
+        return '<div class="uk-stat"><dt>' + esc(s[0]) + (s[3] ? tipHtml(s[3][0], s[0].toLowerCase(), s[3][1]) : '')
+          + '</dt><dd><span class="uk-stat-v">' + esc(s[1]) + '</span>'
+          + (s[2] ? ' <span class="uk-stat-u">' + esc(s[2]) + '</span>' : '') + '</dd></div>';
+      }).join('') + '</dl>';
+    }
+    // "at its written values the model gives A a week; data.exp holds B"
+    // as two values; anything else as it is
+    function scaleRows(text) {
+      var m = /^at its written values the model gives (.+?) a week; data\.exp holds (.+)$/.exec(text || '');
+      if (!m) return text ? [['Model at its written values', text, '', null]] : [];
+      return [['Model gives', m[1], 'a week', ['sb-ck-model', 'What the model gives at its written values, beside the data.']],
+              ['data.exp holds', m[2], '', null]];
     }
     if (check && out && form) {
       check.addEventListener('click', function () {
         check.disabled = true;
         out.classList.remove('sb-stale');
-        out.textContent = 'Checking.';
+        out.innerHTML = root.FluBNFUI ? root.FluBNFUI.badge('pending', 'checking') : 'Checking.';
         fetch('/api/sandbox/models/' + encodeURIComponent(form.getAttribute('data-model')) + '/check',
               {method: 'POST', body: new FormData(form)})
           .then(function (r) { return r.json(); })
           .then(function (d) {
-            while (out.firstChild) out.removeChild(out.firstChild);
-            var f = d.facts || {}, facts = [];
-            if (f.suffix) facts.push('simulate suffix ' + f.suffix);
-            if (f.rows) facts.push(f.rows + ' data rows');
-            if (f.free && f.free.length) facts.push(f.free.length + ' fitted parameters');
-            if (f.network) facts.push('network ' + f.network + (f.species != null ? ' (' + f.species + ' species, ' + f.reactions + ' reactions)' : ''));
+            var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
             var probs = d.problems || [], warns = d.warnings || [];
-            out.appendChild(list(probs.length ? probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ': a run would fail.'
-              : 'No problems found: the model can run. Only a run shows whether it fits the data.',
-              probs, probs.length ? 'sb-bad' : 'sb-ok'));
-            if (warns.length) out.appendChild(list('Worth a look:', warns, 'sb-warn'));
-            // the model at its written values beside the data, then the facts
-            [f.at_start ? f.at_start.charAt(0).toUpperCase() + f.at_start.slice(1) + '.' : '',
-             facts.join(' · ')].forEach(function (text) {
-              if (!text) return;
-              var p = document.createElement('p');
-              p.className = 'hint';
-              p.textContent = text;
-              out.appendChild(p);
-            });
+            if (probs.length) {
+              html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
+                                'a run would fail.') + listHtml(probs);
+            } else {
+              html += alertHtml('ok', 'No problems found:', 'the model can run.',
+                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
+            }
+            if (warns.length) html += alertHtml('warn', 'Worth a look:', warns.length === 1 ? '1 note.'
+                                                : warns.length + ' notes.') + listHtml(warns);
+            if (f.suffix) rows.push(['Simulate suffix', f.suffix, '', null]);
+            if (f.rows) rows.push(['Data rows', f.rows, '', null]);
+            if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '', null]);
+            if (f.network) rows.push(['Network', f.network, f.species != null
+              ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '', null]);
+            if (rows.length) html += statsHtml(rows);
+            out.innerHTML = html;
           })
-          .catch(function () { out.textContent = 'The check could not be run.'; })
+          .catch(function () { out.innerHTML = alertHtml('error', 'The check could not be run.', '', null); })
           .then(function () { check.disabled = false; });
       });
     }
@@ -328,7 +358,10 @@
             if (d && d.meta && !live(d.meta.status)) {
               clearInterval(timer);
               if (!dirty) location.reload();
-              else if (chip) chip.textContent = 'unsaved changes (the run ended: save, then reload)';
+              else if (chip && root.FluBNFUI) {
+                root.FluBNFUI.setBadge(chip.querySelector('.uk-badge'), 'warn',
+                                       'unsaved changes (the run ended: save, then reload)');
+              }
             }
           }).catch(function () {});
       }, 5000);
