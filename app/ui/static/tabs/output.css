@@ -46,7 +46,8 @@
    beside them when it opens (its text lines up on the badges' baseline) */
 .out-status{display:flex;flex-wrap:wrap;align-items:baseline;
   gap:.35rem .6rem;margin-top:.5rem}
-.out-cov{flex:1 1 16rem;min-width:0}
+.out-cov{flex:1 1 16rem;min-width:0;display:flex;flex-direction:column;
+  align-items:flex-start}
 /* the coverage fold's lists (_coverage.html; also on the run page): a
    label in its state's color over the locations and their reasons */
 p.out-cov-h{display:flex;align-items:center;gap:.35em;margin:.15rem 0 .1rem;
