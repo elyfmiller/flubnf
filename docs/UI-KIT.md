@@ -68,7 +68,7 @@ Inside a `<summary>` (whose content may not hold a `<div>`), keep the plain `<h2
 
 ### Toggletip: `tips.toggletip(id, label, text="", title="")`
 
-An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button. Without script the panel shows while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
+An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button; an Escape that closes a panel or hides a tip goes no further, so the menu around it stays open until a second Escape. A panel taller than the window scrolls inside itself, kept in view. Without script the panel shows, in the flow under its button (so a card never clips it), while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
 
 ```jinja
 {% call tips.toggletip("out-files", "these files", title="Submission files") %}
@@ -79,16 +79,16 @@ An "i" button that opens a panel on click (Enter or Space from the keyboard) and
 
 ### Badge: `tips.badge(state, text, tiptext="", id="", icon_name="")`
 
-A status in an icon and a word, never in color alone. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`; each has its own icon shape (check, triangle, octagon, circle, dot, clock), so the states differ in the color-vision mode and in grayscale too. With a tip, the "?" follows the badge. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
+A status in an icon and a word, never in color alone. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`; each has its own icon shape (check, triangle, octagon, circle, dot, clock), so the states differ in the color-vision mode and in grayscale too. With a tip, the "?" follows the badge, the two held together in one `uk-badge-pair` so a wrapping line never leaves the "?" on its own. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
 
 ```jinja
 {{ tips.badge("ok", "all reported") }}
 {{ tips.badge("warn", r.unreported | length ~ " not reported", id="nw-badge") }}
 ```
 
-### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False)`
+### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="")`
 
-A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden.
+A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden. The "?" is named from the title (or the line) in lower case; `tip_label` names it where that would read wrong (a long warning). The flash takes its kind from the server (`shared._flash(msg, kind)`): a failure is an error.
 
 ```jinja
 {% call tips.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart") %}
@@ -125,7 +125,7 @@ A control that is off for a reason. The button is disabled and described by a "?
 
 ### Stepper: `tips.stepper(steps, current=0, label="Steps", id="steps", vertical=False)`
 
-The steps of a flow as numbered marks joined by a line. `steps` is a list of dicts: `label`, and optionally `href`, `tip`, `meta` (a short visible caption, used sparingly) and `state` (`done`, `current`, `todo`, `error`). Without a `state`, steps follow `current` (1-based: earlier steps done, that one current); `current=0` is a plain numbered guide. Each state is spoken as well as drawn, and the current step carries `aria-current="step"`. A horizontal stepper stacks itself when its container is too narrow for the steps side by side; `vertical=True` always stacks.
+The steps of a flow as numbered marks joined by a line. `steps` is a list of dicts: `label`, and optionally `href`, `tip`, `tip_label` (names the "?" where the label alone would repeat a nav link's name: "the Data step"), `meta` (a short visible caption, used sparingly) and `state` (`done`, `current`, `todo`, `error`). Without a `state`, steps follow `current` (1-based: earlier steps done, that one current); `current=0` is a plain numbered guide. Each state is spoken as well as drawn, and the current step carries `aria-current="step"`. A horizontal stepper stacks itself when its container is under 40rem, rather than wrap a step onto a row of its own; a label and its "?" never part. `vertical=True` always stacks.
 
 ```jinja
 {{ tips.stepper([{"label": "Data", "href": "/data", "tip": "confirm the feed is current"},
@@ -200,7 +200,7 @@ One choice among a few, joined in one outline: the chart's view, the map's model
 
 ### Icons: `tips.icon(name, label="", cls="")` and `tips.icon_tip(id, label, name, text="", state="")`
 
-Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `check`, `clock`, `download`, `folder`, `external`, `lock`, `calendar`, `refresh`, `dot`, `close`. An icon is decorative (`aria-hidden`) unless given a `label`, which makes it an image with that name. Its drawing attributes are on the SVG itself, so it renders without `ui-kit.css` too. `icon_tip` is a tip whose button is an icon instead of "?": a warning mark whose tooltip names what to check, a lock whose tooltip says why something is protected; `state` colors it (`ok`, `warn`, `error`, `info`, `muted`). For an icon beside text, `<span class="uk-c-warn">` (or `-ok`, `-error`, `-info`, `-muted`) colors it with the state token.
+Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `check`, `clock`, `download`, `upload`, `folder`, `external`, `lock`, `calendar`, `refresh`, `dot`, `close`. An icon is decorative (`aria-hidden`) unless given a `label`, which makes it an image with that name. Its drawing attributes are on the SVG itself, so it renders without `ui-kit.css` too. `icon_tip` is a tip whose button is an icon instead of "?": a warning mark whose tooltip names what to check, a lock whose tooltip says why something is protected; `state` colors it (`ok`, `warn`, `error`, `info`, `muted`). For an icon beside text, `<span class="uk-c-warn">` (or `-ok`, `-error`, `-info`, `-muted`) colors it with the state token.
 
 ```jinja
 <a class="btn" href="{{ url }}" download>{{ tips.icon("download") }} Download</a>

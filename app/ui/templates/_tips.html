@@ -57,6 +57,7 @@
  "check": '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>',
  "clock": '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/>',
  "download": '<path d="M8 2.1v8.2"/><path d="m4.8 7.2 3.2 3.2 3.2-3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
+ "upload": '<path d="M8 10.3V2.1"/><path d="m4.8 5.3 3.2-3.2 3.2 3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
  "folder": '<path d="M1.9 4.3c0-.6.4-1 1-1h3.3l1.5 1.7h5.4c.6 0 1 .4 1 1v6.8c0 .6-.4 1-1 1H2.9c-.6 0-1-.4-1-1Z"/>',
  "external": '<path d="M12.7 9.3v3.6c0 .6-.4 1-1 1H3.1c-.6 0-1-.4-1-1V4.3c0-.6.4-1 1-1h3.6"/><path d="M9.3 2.1h4.6v4.6"/><path d="M13.9 2.1 7.5 8.5"/>',
  "lock": '<rect x="3" y="7" width="10" height="7" rx="1.4"/><path d="M5.3 7V5.1a2.7 2.7 0 0 1 5.4 0V7"/>',
@@ -113,25 +114,29 @@
 
 {# a status badge: icon and word, never color alone. state is one of ok,
    warn, error, info, neutral, pending; `icon` overrides the state's icon.
-   With tiptext (or a call block) its "?" follows it. An `id` names the
-   badge (FluBNFUI.setBadge updates it in place) and its tip ("tip-<id>"). #}
+   With tiptext (or a call block) its "?" follows it, the two held
+   together (uk-badge-pair) so a wrapping line never splits them. An `id`
+   names the badge (FluBNFUI.setBadge updates it in place) and its tip
+   ("tip-<id>"). #}
 {% macro badge(state, text, tiptext="", id="", icon_name="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
-<span class="uk-badge uk-badge--{{ state }}"{% if id %} id="{{ id }}"{% endif %} data-state="{{ state }}">{{ icon(icon_name or STATE_ICONS.get(state, "dot")) }}<span class="uk-badge-t">{{ text }}</span></span>
-{%- if body | trim %}{{ tip(id or ("b-" ~ (text | lower | replace(" ", "-"))), text, body) }}{% endif %}
+{%- set b %}<span class="uk-badge uk-badge--{{ state }}"{% if id %} id="{{ id }}"{% endif %} data-state="{{ state }}">{{ icon(icon_name or STATE_ICONS.get(state, "dot")) }}<span class="uk-badge-t">{{ text }}</span></span>{% endset -%}
+{%- if body | trim %}<span class="uk-badge-pair">{{ b }}{{ tip(id or ("b-" ~ (text | lower | replace(" ", "-"))), text, body) }}</span>
+{%- else %}{{ b }}{% endif %}
 {%- endmacro %}
 
 {# a line the user must act on now: one short line, the details in its tip.
    kind: error (announced as an alert), warn, info, ok (announced politely);
    live="" silences it (a line present from first paint that is not news).
    `title` is a bold lead; `action` is markup at the right (a link or a
-   button). hidden=True renders it hidden, for a page script to show. #}
-{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False) -%}
+   button). hidden=True renders it hidden, for a page script to show.
+   `tip_label` names the "?" where the line itself would read wrong. #}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
 <div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
-{%- if body | trim %} {{ tip(id or "alert", (title or text) | lower | trim(" ."), body) }}{% endif %}</span>
+{%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
 
@@ -174,7 +179,9 @@
 {%- endmacro %}
 
 {# the steps of a flow. steps: a list of dicts {label, href, tip, meta,
-   state}; state is done, current, todo or error, else it follows `current`
+   state, tip_label}; tip_label names the "?" where the label in lower case
+   would repeat a nav link's name ("the Data step"); state is done,
+   current, todo or error, else it follows `current`
    (1-based: earlier steps done, that one current). current=0 is a plain
    numbered guide. Each step's state is spoken (visually hidden text) as
    well as drawn. vertical=True stacks them with a joining line. #}
@@ -184,7 +191,7 @@
 {%- set st = s.state or ("done" if current and n < current else ("current" if n == current else "todo")) %}
 <li class="uk-step uk-step--{{ st }}"{% if st == "current" %} aria-current="step"{% endif %}><span class="uk-step-mark" aria-hidden="true">{% if st == "done" %}{{ icon("check") }}{% elif st == "error" %}{{ icon("error") }}{% else %}{{ n }}{% endif %}</span><span class="uk-step-body"><span class="uk-step-label">{% if s.href %}<a href="{{ s.href }}">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}</span>
 {%- if st == "done" %}<span class="uk-sr"> (done)</span>{% elif st == "current" %}<span class="uk-sr"> (current step)</span>{% elif st == "error" %}<span class="uk-sr"> (problem)</span>{% endif %}
-{%- if s.tip %}{{ tip(id ~ "-" ~ n, s.label | lower, s.tip) }}{% endif %}
+{%- if s.tip %}{{ tip(id ~ "-" ~ n, s.tip_label or (s.label | lower), s.tip) }}{% endif %}
 {%- if s.meta %}<span class="uk-step-meta">{{ s.meta }}</span>{% endif %}</span></li>
 {%- endfor %}</ol>
 {%- endmacro %}

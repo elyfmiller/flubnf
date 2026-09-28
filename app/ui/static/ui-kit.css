@@ -45,11 +45,13 @@
 .uk-c-error{color:var(--bad)}
 .uk-c-info{color:var(--accent-ink)}
 .uk-c-muted{color:var(--mut)}
-/* the "?" and "i" buttons stay 1.1rem round, but their hit area reaches
-   24px at the standard text size (a ring outside the drawn circle) */
+/* the "?" and "i" buttons stay 1.1rem round, but their hit area (a ring
+   centered on the drawn circle) is 1.6rem across, and never under 24px
+   however small the text is set */
 button.tipbtn,button.uk-tt-btn{position:relative}
 button.tipbtn::before,button.uk-tt-btn::before{content:"";position:absolute;
-  inset:-.25rem;border-radius:50%}
+  left:50%;top:50%;width:max(1.6rem,24px);height:max(1.6rem,24px);
+  transform:translate(-50%,-50%);border-radius:50%}
 
 /* ---- 2. heading with its tip ---- */
 /* the title and its "?" on one line; .card h2 keeps its kicker style */
@@ -91,9 +93,12 @@ button.uk-tt-btn{display:inline-flex;align-items:center;
 button.uk-tt-btn:hover,
 .uk-tt.open > button.uk-tt-btn{background:var(--accent-ink);color:var(--card)}
 /* hidden until opened; without script it shows while focus is inside it
-   (the button, then the links in the panel) */
+   (the button, then the links in the panel), in the flow under its button
+   so a card's overflow never clips it. A panel taller than the window
+   scrolls inside itself (tips.js keeps it in the viewport) */
 .uk-tt-pop{display:none;position:absolute;left:0;top:calc(100% + .4rem);
   z-index:61;width:max-content;max-width:min(26rem,calc(100vw - 2rem));
+  max-height:calc(100vh - 1rem);overflow-y:auto;overscroll-behavior:contain;
   padding:.6rem .75rem;border:1px solid var(--field-line);border-radius:var(--r-md);
   background:var(--card);color:var(--ink);box-shadow:var(--shadow);
   font-size:var(--fs-label);font-weight:400;line-height:1.45;
@@ -101,6 +106,9 @@ button.uk-tt-btn:hover,
   white-space:normal;overflow-wrap:break-word}
 html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
   display:block}
+html:not(.uk-js) .uk-tt:focus-within{display:block;max-width:100%}
+html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
+  width:auto;max-width:100%;margin-top:.3rem;max-height:none}
 .uk-tt-title{display:block;margin:0 0 .25rem;font-weight:700}
 .uk-tt-pop ul,.uk-tt-pop ol{margin:.25rem 0;padding-left:1.1rem}
 .uk-tt-pop li{margin:.1rem 0}
@@ -125,6 +133,13 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
 .uk-badge--info,.uk-badge--pending{--uk-c:var(--accent-ink)}
 .uk-badge--neutral{--uk-c:var(--mut)}
 .uk-badge + .tip{margin-left:.15rem}
+/* a badge and its "?" (tips.badge with a tip): one unit that wraps as a
+   whole; a badge too long for its line shortens (ellipsis, the full word
+   in the tip) rather than push the "?" off */
+.uk-badge-pair{display:inline-flex;align-items:center;gap:.15rem;
+  max-width:100%;vertical-align:middle;white-space:nowrap}
+.uk-badge-pair > .uk-badge{min-width:0}
+.uk-badge-pair > .tip,.uk-badge-pair > .uk-tt{flex:none;margin-left:0}
 
 /* ---- 5. alert: one line to act on now, a 6% tint of its kind ---- */
 .uk-alert{--uk-c:var(--accent-ink);display:flex;align-items:center;
@@ -207,7 +222,8 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
 .uk-stepper{--uk-mark:1.75rem;list-style:none;margin:.45rem 0 .6rem;
   padding:0;display:flex;flex-wrap:wrap;gap:.6rem 0}
 /* a horizontal stepper watches its own width: too narrow for its steps
-   side by side (a side column, large text), it stacks them (below) */
+   side by side (a side column, large text), it stacks them (below)
+   rather than wrap a step onto a row of its own */
 .uk-stepper:not(.uk-stepper--vertical){container:uk-steps / inline-size}
 .uk-step{position:relative;display:flex;align-items:center;gap:.5rem;
   flex:1 1 9rem;min-width:0}
@@ -227,13 +243,16 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
 .uk-step--current .uk-step-mark{border-color:var(--accent-ink);
   background:var(--accent-ink);color:var(--card)}
 .uk-step--error .uk-step-mark{border-color:var(--bad);color:var(--bad)}
-.uk-step-body{min-width:0;display:inline-flex;align-items:center;
-  flex-wrap:wrap;gap:0 .15rem;line-height:1.35}
+/* the label and its "?" side by side (a long label wraps beside its
+   "?", never away from it); the meta line under both */
+.uk-step-body{min-width:0;display:inline-grid;
+  grid-template-columns:minmax(0,max-content) auto;align-items:center;
+  column-gap:.15rem;line-height:1.35}
 .uk-step-label{font-weight:600}
 .uk-step--current .uk-step-label{font-weight:750}
 .uk-step--todo .uk-step-label{color:var(--mut)}
 .uk-step--todo .uk-step-label a{color:var(--gold)}
-.uk-step-meta{flex-basis:100%;color:var(--mut);font-size:var(--fs-label)}
+.uk-step-meta{grid-column:1 / -1;color:var(--mut);font-size:var(--fs-label)}
 /* vertical: stacked, the line runs down from each mark */
 .uk-stepper--vertical{flex-direction:column;flex-wrap:nowrap;gap:0}
 .uk-stepper--vertical .uk-step{flex:none;align-items:flex-start;
@@ -243,7 +262,7 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop,.uk-tt.open > .uk-tt-pop{
   left:calc(var(--uk-mark) / 2 - 1px);top:calc(var(--uk-mark) + .2rem);
   bottom:.2rem;width:2px;height:auto;min-width:0}
 .uk-stepper--vertical .uk-step-body{padding-top:.2rem}
-@container uk-steps (max-width:30rem){
+@container uk-steps (max-width:40rem){
   .uk-step{flex:1 1 100%}
   .uk-step::after{position:absolute;margin:0;min-width:0;width:2px;
     height:auto;left:calc(var(--uk-mark) / 2 - 1px);

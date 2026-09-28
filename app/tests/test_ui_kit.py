@@ -37,7 +37,7 @@ MACROS = ("tip", "label", "icon", "icon_tip", "toggletip", "heading",
           "stepper", "progress", "legend", "fold", "meta", "tag",
           "namechip")
 ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
-              "folder", "external", "lock", "calendar", "refresh", "dot",
+              "upload", "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")
 STATES = ("ok", "warn", "error", "info", "neutral", "pending")
 
@@ -129,6 +129,10 @@ def test_the_script_draws_the_same_icons():
     js = dict(re.findall(r"(\w+): '([^']*)'", js_block))
     assert set(tpl) == set(ICON_NAMES) == set(js)
     assert tpl == js
+    # the run results' relWIS verdict (app/core/runs.py) draws two of them
+    from app.core.runs import _VERDICT_ICON
+    for name, _state, _label, paths in _VERDICT_ICON.values():
+        assert paths == tpl[name], name
 
 
 def test_icon_tip_is_a_tip_whose_button_is_the_icon():
@@ -395,7 +399,10 @@ def test_kit_colors_come_only_from_tokens():
 def test_kit_sizes_follow_the_text_size():
     body = re.sub(r"/\*.*?\*/", "", KIT_CSS, flags=re.S)
     assert not re.findall(r"font-size:\s*[\d.]+px", body)
-    # widths and paddings in rem/em; px only for hairlines and radii
+    # widths and paddings in rem/em; px only for hairlines and radii, and
+    # the one floor that must not shrink with the text: the 24px hit area
+    # of the "?" and "i" buttons (max(1.6rem,24px))
+    body = body.replace("max(1.6rem,24px)", "1.6rem")
     for m in re.finditer(r"([\d.]+)px", body):
         assert float(m.group(1)) <= 5, m.group(0)
 

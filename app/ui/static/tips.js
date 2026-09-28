@@ -14,7 +14,10 @@
     var x = br.left + br.width / 2 - w / 2;
     x = Math.max(8, Math.min(x, W - 8 - w));
     var y = br.bottom + 6;
-    if (y + h > H - 8 && br.top - 6 - h > 8) y = br.top - 6 - h;
+    if (y + h > H - 8) {
+      // no room below: above, or (room on neither side) as low as fits
+      y = br.top - 6 - h > 8 ? br.top - 6 - h : Math.max(8, H - 8 - h);
+    }
     b.style.left = Math.round(x) + 'px';
     b.style.top = Math.round(y) + 'px';
   }
@@ -28,6 +31,9 @@
   }
   document.addEventListener('mouseover', function (e) {
     var t = tipOf(e);
+    // the pointer coming back to a dismissed tip shows it again
+    if (t && !(e.relatedTarget && t.contains(e.relatedTarget)))
+      t.classList.remove('dismissed');
     // a reason button's wrapper (its disabled button passes the pointer
     // through, ui-kit.css): its reason shows on hover too
     var r = !t && e.target && e.target.closest ? e.target.closest('.uk-reason') : null;
@@ -37,23 +43,36 @@
   document.addEventListener('focusin', function (e) {
     var t = tipOf(e); if (t) { t.classList.remove('dismissed'); place(t); }
   });
+  document.addEventListener('focusout', function (e) {
+    var t = tipOf(e); if (t) t.classList.remove('dismissed');
+  });
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.tipbtn') : null;
     var t = btn ? btn.parentNode : null;
     closeAll(t);
     if (!t) return;
     e.preventDefault();                  // a tip inside a <label> or <summary>
-    t.classList.remove('dismissed');
-    t.classList.toggle('open');
+    // a second click hides it, though the button keeps focus and hover
+    var on = !t.classList.contains('open');
+    t.classList.toggle('open', on);
+    t.classList.toggle('dismissed', !on);
     place(t);
   });
-  document.addEventListener('keydown', function (e) {
+  // Escape hides a shown tip and goes no further, so the menu or dialog
+  // the tip sits in stays open (a second Escape closes that). Capture on
+  // window: before any page's own Escape handler
+  window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    var shown = !!document.querySelector('.tip.open');
     closeAll(null);
     var a = document.activeElement;
-    if (a && a.classList && a.classList.contains('tipbtn'))
+    if (a && a.classList && a.classList.contains('tipbtn') &&
+        !a.parentNode.classList.contains('dismissed')) {
       a.parentNode.classList.add('dismissed');
-  });
+      shown = true;
+    }
+    if (shown) e.stopPropagation();
+  }, true);
   // a shown tip follows its button on scroll and resize
   function replace() {
     document.querySelectorAll('.tip.open, .tip:focus-within, .tip:hover')
@@ -99,7 +118,11 @@
     var x = br.left + br.width / 2 - wd / 2;
     x = Math.max(8, Math.min(x, W - 8 - wd));
     var y = br.bottom + 6;
-    if (y + h > H - 8 && br.top - 6 - h > 8) y = br.top - 6 - h;
+    if (y + h > H - 8) {
+      // no room below: above, or (room on neither side) as low as fits;
+      // a panel taller than the window scrolls (ui-kit.css max-height)
+      y = br.top - 6 - h > 8 ? br.top - 6 - h : Math.max(8, H - 8 - h);
+    }
     p.pop.style.left = Math.round(x) + 'px';
     p.pop.style.top = Math.round(y) + 'px';
   }
@@ -132,12 +155,15 @@
     }
     closeAll(ttOf(e.target));            // a click inside a panel keeps it
   });
-  document.addEventListener('keydown', function (e) {
+  // Escape closes an open panel and goes no further (as a tooltip's does)
+  window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    var w = ttOf(document.activeElement);
+    var w = ttOf(document.activeElement),
+        any = !!document.querySelector('.uk-tt.open');
     closeAll(w);
     if (w && w.classList.contains('open')) close(w, true);
-  });
+    if (any) e.stopPropagation();
+  }, true);
   // focus moving out of a toggletip (Tab past its last link) closes it
   document.addEventListener('focusout', function (e) {
     var w = ttOf(e.target);
@@ -156,6 +182,7 @@
     check: '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>',
     clock: '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/>',
     download: '<path d="M8 2.1v8.2"/><path d="m4.8 7.2 3.2 3.2 3.2-3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
+    upload: '<path d="M8 10.3V2.1"/><path d="m4.8 5.3 3.2-3.2 3.2 3.2"/><path d="M2.4 11.4v2.2h11.2v-2.2"/>',
     folder: '<path d="M1.9 4.3c0-.6.4-1 1-1h3.3l1.5 1.7h5.4c.6 0 1 .4 1 1v6.8c0 .6-.4 1-1 1H2.9c-.6 0-1-.4-1-1Z"/>',
     external: '<path d="M12.7 9.3v3.6c0 .6-.4 1-1 1H3.1c-.6 0-1-.4-1-1V4.3c0-.6.4-1 1-1h3.6"/><path d="M9.3 2.1h4.6v4.6"/><path d="M13.9 2.1 7.5 8.5"/>',
     lock: '<rect x="3" y="7" width="10" height="7" rx="1.4"/><path d="M5.3 7V5.1a2.7 2.7 0 0 1 5.4 0V7"/>',
