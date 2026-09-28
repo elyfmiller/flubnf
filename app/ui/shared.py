@@ -139,11 +139,16 @@ def _name_workroot(workroot: Path, running: str) -> bool:
     return stop
 
 
-def _flash(msg: str) -> None:
+def _flash(msg: str, kind: str = "info") -> None:
     """Notice for the next page the user sees (also appended to the log).
-    Unconsumed messages join rather than overwrite."""
+    Unconsumed messages join rather than overwrite. `kind` is the kit
+    alert's (info, ok, warn, error); joined notices keep the most severe."""
     prev = _status.get("flash")
     _status["flash"] = f"{prev}  {msg}" if prev and msg not in prev else msg
+    rank = ("info", "ok", "warn", "error")
+    old = _status.get("flash_kind") if prev else None
+    _status["flash_kind"] = max((k for k in (old, kind) if k in rank),
+                                key=rank.index, default="info")
     _status["log"].append(msg)
 
 
@@ -222,7 +227,8 @@ def _outcome_items(outcome_json) -> list:
     kit (the Storage ledger): [{"chip", "text", "state", "tip"}]. "chip" is
     the fact as _outcome_chips writes it; "text" the short word or figure
     (Markup for a relWIS figure), "state" a badge state ("" = a plain
-    fact), "tip" what the chip's parenthesis or tail said. Fixed phrases
+    fact), "tip" what the chip's parenthesis or tail said. A relWIS
+    figure's text carries its verdict icon after the number. Fixed phrases
     and numbers only: raw error strings stay on the run page."""
     import json as _json
 
@@ -238,6 +244,13 @@ def _outcome_items(outcome_json) -> list:
     def add(chip, text=None, state="", tip=""):
         items.append({"chip": chip, "text": chip if text is None else text,
                       "state": state, "tip": tip})
+
+    def judged(chip, v):
+        # the figure's verdict icon right after it (the one rule: below 1
+        # beats the baseline), so the color is never the only signal
+        from app.core.runs import _verdict
+        return Markup(chip.replace("</span>", "</span>"
+                                   + _verdict(float(v), "st-verdict"), 1))
     if "pf_cells" in o:
         n = o["pf_cells"]
         add(f"PF {n} fit{'s' if n != 1 else ''}")
@@ -256,7 +269,8 @@ def _outcome_items(outcome_json) -> list:
             "A broken install is a fault, unlike no engine at all. The run "
             "page has the message.")
     if o.get("submissions"):
-        add(f"{len(o['submissions'])} submissions")
+        ns = len(o["submissions"])
+        add(f"{ns} submission{'s' if ns != 1 else ''}")
     if o.get("submission_errors"):
         ns = len(o["submission_errors"])
         word = f"{ns} submission{'s' if ns != 1 else ''} refused"
@@ -286,7 +300,7 @@ def _outcome_items(outcome_json) -> list:
                            cells=o.get("pf_relwis_cells", o.get("pf_cells")),
                            member=_pf_member_label(o))
         if chip:
-            add(chip, Markup(chip))
+            add(chip, judged(chip, o["pf_relwis"]))
     # every scored member (older rows' retired-blend keys are not shown)
     for key, member in (("analogue_relwis", "Groundhog"),):
         if o.get(key):
@@ -294,7 +308,7 @@ def _outcome_items(outcome_json) -> list:
                                member=member + (" (modified)" if o.get(
                                    "knobs") else ""))
             if chip:
-                add(chip, Markup(chip))
+                add(chip, judged(chip, o[key]))
     if o.get("error"):
         add('<span class="bad">failed</span>; the full error is on the run '
             'page', "failed", "error", "The full error is on the run page.")

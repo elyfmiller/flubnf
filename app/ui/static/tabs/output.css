@@ -42,12 +42,18 @@
 .out-acts form{margin:0}
 .out-acts button{margin-top:0}
 .out-acts a.btn,.out-acts button{padding:.36rem .85rem}
-/* the file's checks: badges on one row; the coverage fold keeps its place
-   beside them when it opens (its text lines up on the badges' baseline) */
-.out-status{display:flex;flex-wrap:wrap;align-items:baseline;
+/* the file's checks: badges on one row, the closed coverage fold beside
+   them on the same center line; an open fold takes a row of its own */
+.out-status{display:flex;flex-wrap:wrap;align-items:center;
   gap:.35rem .6rem;margin-top:.5rem}
 .out-cov{flex:1 1 16rem;min-width:0;display:flex;flex-direction:column;
   align-items:flex-start}
+/* the count in the fold's summary at the badges' size, so a partial
+   file's "52 of 53 locations" reads as a complete one's badge does and
+   sits on the same line as the checks badge */
+.out-cov .uk-fold-sum{font-size:var(--fs-label);font-weight:650}
+/* an open fold takes the whole row: its lists use the card's width */
+.out-cov:has(> details[open]){flex-basis:100%}
 /* the coverage fold's lists (_coverage.html; also on the run page): a
    label in its state's color over the locations and their reasons */
 p.out-cov-h{display:flex;align-items:center;gap:.35em;margin:.15rem 0 .1rem;

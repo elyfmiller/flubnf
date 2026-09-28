@@ -55,6 +55,19 @@ def test_outcome_chips_apply_the_rule():
             ' vs FluSight baseline, ratio of sums (1 cell)') in good
 
 
+def test_ledger_figures_say_their_verdict_with_an_icon():
+    """On the Storage ledger a relWIS figure is followed by the kit's check
+    or warning icon, named, so the verdict never rests on color alone."""
+    items = ui_shared._outcome_items({"pf_cells": 2, "pf_relwis": 4.067,
+                                      "analogue_relwis": 0.702})
+    pf, gh = [str(i["text"]) for i in items if "relWIS" in i["chip"]]
+    assert '<span class="relwis bad">4.067</span><svg class="uk-icon ' \
+           'st-verdict uk-c-error"' in pf
+    assert 'aria-label="does not beat the baseline"' in pf
+    assert '0.702</span><svg class="uk-icon st-verdict uk-c-ok"' in gh
+    assert 'aria-label="beats the baseline"' in gh
+
+
 def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
     """The chip names the member by what the row ran: the Oracle step's bank
     label -> Oracle SIHRS; oracle = none -> the plain filter; pre-step rows
@@ -105,14 +118,14 @@ def test_methods_table_colors_every_score_members_included():
     assert r.status_code == 200
     # member seasons that lost to the baseline are marked, not neutral,
     # and say so with an icon too (never color alone)
-    assert ('<td class="bad">1.045<svg class="uk-icon mt-verdict"'
+    assert ('<td class="num bad">1.045<svg class="uk-icon mt-verdict"'
             in r.text)
     assert 'aria-label="does not beat the baseline"' in r.text
     # and seasons that beat it wear the same ok, both models and the
     # retired bare analogue's reference row alike
     for v in ("0.840", "0.797", "0.846", "0.756", "0.618",
               "0.722", "0.653", "0.651"):
-        assert f'<td class="ok">{v}<svg class="uk-icon mt-verdict"' in r.text, v
+        assert f'<td class="num ok">{v}<svg class="uk-icon mt-verdict"' in r.text, v
 
 
 def test_relwis_class_is_tabular():

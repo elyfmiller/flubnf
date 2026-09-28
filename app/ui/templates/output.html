@@ -50,14 +50,15 @@ their run folders.{% endcall %}</span>{% endif %}</span>
  {{ tips.meta(facts.items) }}
  {% for f in d.files %}{% set fi = di ~ "-" ~ loop.index %}
  {% set run %}{% if f.run_id %}{{ runref(f.run_id, f.run_when, not f.complete, id="out-inc-" ~ fi) }}{% endif %}{% endset %}
- {% set status %}{% if f.check %}{% if f.check.ok %}{{ tips.badge("ok", f.check_head) }}{% else %}<span class="out-bt">{% call tips.badge("error", f.check_head, id="out-chk-" ~ fi) %}{% for p in f.problems %}<span class="uk-tt-line">{{ p }}</span>{% endfor %}{% endcall %}</span>{% endif %}{% endif %}
+ {% set status %}{% if f.check %}{% if f.check.ok %}{{ tips.badge("ok", f.check_head) }}{% else %}{#- the problems can run to dozens of lines: an "i" whose panel scrolls
+    (a tooltip cannot), beside the error badge #}<span class="uk-badge-pair">{{ tips.badge("error", f.check_head, id="out-chk-" ~ fi) }}{% call tips.toggletip("out-chk-" ~ fi, "the hub check problems", title=f.check_head) %}{% for p in f.problems %}<span class="uk-tt-line">{{ p }}</span>{% endfor %}{% endcall %}</span>{% endif %}{% endif %}
  {% if f.cov %}<div class="out-cov">{{ covm.line(f.cov) }}</div>{% endif %}{% endset %}
  {{ filerow(f.model, f.name, f.path, run=run, status=status) }}
  {% endfor %}
  {% for f in d.modified %}{% set fi = di ~ "-m" ~ loop.index %}
- {% set tag %}<span class="out-bt">{{ tips.badge("info", "modified settings", "This run's model settings differ from the defaults.", id="out-mod-" ~ fi) }}</span>{% endset %}
+ {% set tag %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "This run's model settings differ from the defaults.", id="out-mod-" ~ fi) }}</span>{% endset %}
  {% set run %}{% if f.run_id %}{{ runref(f.run_id, f.run_when, not f.complete, id="out-inc-" ~ fi) }}{% endif %}{% endset %}
- {% set status %}<span class="out-bt">{{ tips.badge("neutral", "Non-hub name", "A run with modified model settings writes <model>-modified files: a record under a non-hub name, not for the hub.", id="out-nh-" ~ fi) }}</span>
+ {% set status %}<span class="out-bt">{{ tips.badge("warn", "non-hub name", "A run with modified model settings writes <model>-modified files: a record under a non-hub name, not for the hub.", id="out-nh-" ~ fi) }}</span>
  {% if f.cov %}<div class="out-cov">{{ covm.line(f.cov) }}</div>{% endif %}{% endset %}
  {{ filerow(f.model, f.name, f.path, tag=tag, run=run, status=status) }}
  {% endfor %}
@@ -65,8 +66,8 @@ their run folders.{% endcall %}</span>{% endif %}</span>
 {%- endmacro %}
 {% if notice %}
 {# a refused download, a bad date or a report that is not there: one line
-   and the way back (routes/output._notice) #}
-<h1>Output</h1>
+   and the way back (routes/output._notice; a run's pages title it) #}
+<h1>{{ notice.heading or "Output" }}</h1>
 {# the way on: primary when it goes forward (run a forecast), else quiet #}
 {% set back %}<a class="btn {{ 'gold' if notice.href == '/forecast' else 'quiet' }}" href="{{ notice.href }}">{{ notice.label }}</a>{% endset %}
 {% if notice.kind == "error" %}

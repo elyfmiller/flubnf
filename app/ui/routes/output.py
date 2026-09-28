@@ -494,15 +494,18 @@ def output_page(request: Request):
 
 def _notice(request: Request, status: int, kind: str, title: str,
             tip: str = "", icon: str = "folder",
-            action: tuple = ("/output", "Back to Output")):
+            action: tuple = ("/output", "Back to Output"),
+            active: str = "Output", heading: str = "Output"):
     """A refusal or a missing file as a page of the console (output.html's
     notice), never a bare line: kind "error" is a one-line alert, "empty"
     an empty state; `tip` its explainer; `action` (href, words) the way on.
-    `status` is the response's code."""
+    `status` is the response's code; `active` the tab it sits under (a
+    run's pages sit under Storage) and `heading` its title."""
     return templates.TemplateResponse(request, "output.html", {
-        "active": "Output",
+        "active": active,
         "notice": {"kind": kind, "title": title, "tip": tip, "icon": icon,
-                   "href": action[0], "label": action[1]}},
+                   "href": action[0], "label": action[1],
+                   "heading": heading}},
         status_code=status)
 
 
@@ -641,14 +644,17 @@ def _weekly_report_name(date: str) -> str:
         else "FluBNF-weekly-report.html"
 
 
-def _weekly_report_file(dirpath: Path, date: str, request: Request = None):
+def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+                        notice: dict | None = None):
     """The weekly report as a download, refreshed first (same bytes as the
-    page); missing -> 404 (a console page when `request` is given)."""
+    page); missing -> 404 (a console page when `request` is given;
+    `notice` holds _notice's action, active and heading for a run's)."""
     from fastapi.responses import FileResponse
     f = Path(dirpath) / "report.html"
     if not f.is_file():
         if request is not None:
-            return _notice(request, 404, "empty", "No report to download")
+            return _notice(request, 404, "empty", "No report to download",
+                           **(notice or {}))
         return HTMLResponse("<p>No report to download.</p>", status_code=404)
     _report_for_serving(dirpath)
     return FileResponse(f, filename=_weekly_report_name(date),

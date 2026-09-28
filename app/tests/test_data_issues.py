@@ -285,7 +285,8 @@ def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, mo
                                 "engine": "all"})
     page = client.get("/forecast").text
     box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
-    assert f'data-week="{NEW}"' in box and "<legend>Data issues<span" in box
+    assert f'data-week="{NEW}"' in box and "<legend>Data issues</legend>" in box
+    assert '<div class="fc-di-head"><span class="uk-badge' in box
     assert ('<span class="uk-badge uk-badge--warn" id="di-count" data-state="warn">'
             in box and '<span class="uk-badge-t">2 states</span>' in box)
     md = WEEKS[-2][5:]

@@ -205,12 +205,14 @@
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {% endif %}
    {# one engine today: a labelled value, not a select with nothing to
-      pick; the build's badge beside it #}
+      pick; the build's badge on its own line under it (the column is
+      narrow) #}
    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
     {% set eb_after %}{% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
     {% call tips.stats("uk-stats--kv fc-kv") %}
-     {{- tips.stat("Engine", "Particle filter", tiptext="The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.", id="fc-engine", after=eb_after | trim) -}}
+     {{- tips.stat("Engine", "Particle filter", tiptext="The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.", id="fc-engine") -}}
     {% endcall %}
+    {% if eb_after | trim %}<p class="fc-under">{{ eb_after | trim }}</p>{% endif %}
    </div>
    <script>
     (function(){
@@ -364,6 +366,12 @@
        }
        if(STOPPING){
          progText('Stopping; finishing the current fit…');
+         // the bar freezes at the fits done (a reload while stopping
+         // would otherwise show the busy slide); Time left stays "--"
+         if(d.total){
+           setStat('fc-fits', d.done+' of '+d.total);
+           PS.disp=Math.max(PS.disp,3,100*d.done/d.total); progPct(PS.disp);
+         }
          const st=document.getElementById('fc-run-state');
          if(st && st.dataset.state!=='warn' && window.FluBNFUI)
            FluBNFUI.setBadge(st,'warn','stopping');
@@ -747,7 +755,9 @@
      marker:{size:6,symbol:'circle-open'}});
    // react repaints in place: a page flip never collapses the card or
    // moves the scroll
-   FluCharts.react(document.getElementById('fanplot'),traces,lay(loc,400),
+   // taller at a large text size, where the legend takes more rows
+   FluCharts.react(document.getElementById('fanplot'),traces,
+     lay(loc,400+Math.round(Math.max(0,rootPx()-16)*10)),
      pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    // the expanded view mirrors the card (traces deep-copied: no shared state)
    const xb=document.getElementById('fanx-modal');

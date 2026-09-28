@@ -39,8 +39,10 @@
   vertical-align:.05em}
 .fc-count:empty{display:none}
 /* a badge on its own line under a field (the particle filter off, the
-   engine build) */
+   engine build); a long one wraps inside the column instead of running
+   past the card's edge */
 .fc-under{margin:.35rem 0 .2rem}
+.fc-under .uk-badge-pair,.fc-under .uk-badge{white-space:normal}
 /* labelled values in the form's column: a compact key/value pair */
 .fc-kv{margin:.55rem 0 .3rem}
 
@@ -57,6 +59,15 @@
 .fc-actions a.btn{display:inline-flex;align-items:center;gap:.4em;
   font-size:var(--fs-label);padding:.35rem .8rem}
 .fc-actions form.rerun-run{margin:0 0 0 auto}
+/* latest run: settings and results side by side once the card holds
+   both (a rem width, so large text stacks them); the settings get the
+   wider column, so a donor-bank digest keeps to one line */
+.fc-latest{container-type:inline-size}
+@container (min-width:41.5rem){
+  .fc-latest .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+}
+/* a relWIS verdict's icon beside its number (runs.py _verdict) */
+.fc-verdict{margin-left:.25em;vertical-align:-.1em}
 /* the pager's "3/53" */
 .fc-pos{color:var(--mut);font-size:var(--fs-label);
   font-variant-numeric:tabular-nums}
@@ -71,8 +82,10 @@
 /* the Model settings look; one row per state: the check and the name,
    the flag and its "i" under them, the select beside (under them when
    the column is too narrow for both: large text, a narrow window) */
-.fc-di legend{display:inline-flex;align-items:center;flex-wrap:wrap;
-  gap:.2rem .4rem}
+/* the count and its "i" open the box (the legend is the title alone) */
+.fc-di-head{display:flex;align-items:center;flex-wrap:wrap;gap:.2rem .4rem;
+  margin:0 0 .35rem}
+.fc-di-head .uk-tt{margin-left:0}
 .fc-di .di-row{margin:.35rem 0 0}
 .fc-di .di-state{display:flex;align-items:center;flex-wrap:wrap;
   gap:.3rem .4rem;padding-top:.35rem;border-top:1px solid var(--line)}
@@ -107,6 +120,7 @@
 .fc-ms-locked .fc-kv{grid-template-columns:minmax(0,1fr);row-gap:.1rem;
   font-size:var(--fs-label)}
 .fc-ms-locked .fc-kv dd{margin-bottom:.45rem;overflow-wrap:anywhere}
+.fc-ms-locked .fc-kv dt{min-width:0;overflow-wrap:anywhere}
 
 /* ---- 5. the run page ---- */
 /* the title and its badges, the re-run at the right */
@@ -123,11 +137,12 @@
 .fc-faillist li{display:flex;align-items:baseline;flex-wrap:wrap;
   gap:.2rem .5rem;padding:.3rem 0;border-top:1px solid var(--line)}
 .fc-faillist li:first-child{border-top:0}
-/* a file line: the model, the file's link, a badge when named apart */
-.fc-file{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .6rem;
-  margin:.55rem 0 .15rem}
-.fc-file-model{min-width:12rem;color:var(--mut);font-size:var(--fs-label);
-  font-weight:650}
+/* a file line: the model, the file's link, a badge when named apart; the
+   model a column of its own, so the links of consecutive rows line up */
+.fc-file{display:grid;grid-template-columns:minmax(12rem,max-content) minmax(0,1fr);
+  align-items:center;gap:.25rem .6rem;margin:.55rem 0 .15rem}
+.fc-file > .uk-badge,.fc-file > .uk-badge-pair{grid-column:2;justify-self:start}
+.fc-file-model{color:var(--mut);font-size:var(--fs-label);font-weight:650}
 .fc-file a{display:inline-flex;align-items:center;gap:.35em;
   overflow-wrap:anywhere}
 .fc-filelist{list-style:none;margin:0;padding:0}

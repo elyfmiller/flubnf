@@ -144,7 +144,8 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
     chips = ui_shared._outcome_chips(json.dumps({
         "submissions": {"a": "x"},
         "submission_errors": {"b": "y"}}))
-    assert "1 submissions" in chips and "1 submission refused" in chips
+    assert "1 submissions" not in chips
+    assert chips.startswith("1 submission · ") and "1 submission refused" in chips
 
 
 # ------------------ old run folders read as the model they are, archived

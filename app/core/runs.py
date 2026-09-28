@@ -537,11 +537,28 @@ def results_tip(spec) -> str:
     return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
 
 
-def _verdict(fv: float) -> str:
-    """The relWIS cell's verdict in words for assistive tech (the color
-    says it on screen; the "?" beside Results names the convention)."""
-    return (' <span class="uk-sr">(beats the baseline)</span>' if fv < 1
-            else ' <span class="uk-sr">(does not beat the baseline)</span>')
+# the UI kit's check and warning icons (templates/_tips.html ICONS): the
+# SVG draws from its own attributes, so it reads without the kit's sheet
+_VERDICT_ICON = {
+    True: ("check", "ok", "beats the baseline",
+           '<circle cx="8" cy="8" r="6.25"/><path d="m5.1 8.3 2 2 3.8-4.2"/>'),
+    False: ("warning", "error", "does not beat the baseline",
+            ('<path d="M8 1.9 14.6 13.5H1.4Z"/><path d="M8 6.1v3.4"/>'
+             '<circle cx="8" cy="11.5" r=".95" fill="currentColor" stroke="none"/>')),
+}
+
+
+def _verdict(fv: float, cls: str = "fc-verdict") -> str:
+    """The relWIS cell's verdict beside its number: the kit's check (below
+    1, beats the baseline) or warning icon, named for assistive tech, so
+    the color is never the only signal (the "?" beside Results names the
+    convention). `cls` is the page's spacing class (Storage passes its
+    own)."""
+    _name, state, label, paths = _VERDICT_ICON[fv < 1]
+    return (f'<svg class="uk-icon {cls} uk-c-{state}" viewBox="0 0 16 16" '
+            'width="1em" height="1em" fill="none" stroke="currentColor" '
+            'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" '
+            f'role="img" aria-label="{label}" focusable="false">{paths}</svg>')
 
 
 def _pf_fits(o: dict) -> str:

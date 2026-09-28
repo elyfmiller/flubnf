@@ -403,17 +403,17 @@ def run_stop():
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, run_id: str):
     import json as _json
+
     from app.core.runs import APP_STATE, Ledger
-    import html as _html
     w = APP_STATE / "workroots" / run_id
     # an unknown id (no ledger row, no workroot) is a 404, never an empty
     # run page; "." and ".." never name a run
     if run_id in (".", "..") or not (Ledger().row(run_id) or w.is_dir()):
-        return HTMLResponse(
-            f"<!doctype html><title>No such run</title><p>No run "
-            f"<code>{_html.escape(run_id)}</code> is recorded here. "
-            "<a href=\"/runs\">Storage</a> lists the runs.</p>",
-            status_code=404)
+        # a page of the console (under Storage, which lists the runs)
+        return output_routes._notice(
+            request, 404, "empty", f"No run {run_id} is recorded here",
+            tip="Storage lists the runs.", action=("/runs", "Open Storage"),
+            active="Storage", heading="Run")
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
@@ -496,10 +496,12 @@ def run_report(request: Request, run_id: str):
     from app.core.runs import APP_STATE
     d = APP_STATE / "workroots" / run_id
     if not (d / "report.html").is_file():
-        # a page of the console with the way back, as Output's notices
+        # a page of the console with the way back, as Output's notices,
+        # under Storage as the run page is
         return output_routes._notice(
             request, 404, "empty", "No report for this run",
-            action=(f"/runs/{run_id}", "Back to the run"))
+            action=(f"/runs/{run_id}", "Back to the run"),
+            active="Storage", heading="Run report")
     # rebuilt if stale, as /output/report
     return HTMLResponse(output_routes._report_for_serving(d))
 
@@ -516,7 +518,10 @@ def run_report_download(request: Request, run_id: str):
             "forecast_date", "")
     except Exception:
         pass                 # no results.json yet: fall back to the run id
-    return output_routes._weekly_report_file(d, date or run_id, request)
+    return output_routes._weekly_report_file(
+        d, date or run_id, request,
+        notice={"action": (f"/runs/{run_id}", "Back to the run"),
+                "active": "Storage", "heading": "Run report"})
 
 
 @router.post("/runs/{run_id}/rerun")

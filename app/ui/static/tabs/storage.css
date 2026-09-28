@@ -12,9 +12,11 @@
      5. run ledger table: facts */
 
 /* ---- 1. one color per counted category, from the data palette (the
-   color-vision mode remaps --season-*); the legend names each one ---- */
-.st-card{--st-c-workroots:var(--accent-ink);--st-c-retro:var(--season-1);
-  --st-c-retro_archives:var(--season-5);--st-c-report_archives:var(--season-3);
+   color-vision mode remaps --season-*): five season tokens that stay apart
+   with the mode on and off, in every theme (never the accent, which the
+   mode's blues sit on); the legend names each one ---- */
+.st-card{--st-c-workroots:var(--season-2);--st-c-retro:var(--season-1);
+  --st-c-retro_archives:var(--season-4);--st-c-report_archives:var(--season-3);
   --st-c-datasets:var(--season-6)}
 .st-c-workroots{background:var(--st-c-workroots)}
 .st-c-retro{background:var(--st-c-retro)}
@@ -63,15 +65,20 @@
   color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .st-act{grid-area:act;justify-self:end;margin:0}
 /* the row's action: a small button or link */
-.st-del{margin-top:0;padding:.22rem .7rem;font-size:var(--fs-label);
-  white-space:nowrap}
+.st-del{min-height:24px;margin-top:0;padding:.22rem .7rem;
+  font-size:var(--fs-label);white-space:nowrap}
 
 /* ---- 5. run ledger: badges and fact chips instead of a sentence ---- */
+/* the table scrolls sideways inside its own box when it must, never the
+   card; headers and the run's label wrap first (the date and the time
+   each hold together) */
+.st-ledger{max-width:100%;overflow-x:auto}
 .st-ledger td{vertical-align:middle}
-.st-ledger th{white-space:nowrap}
-/* the run's label stays on one line; its badges wrap under it */
-.st-run a{white-space:nowrap}
-.st-run{min-width:11rem}
+/* a long badge or fact wraps inside its cell rather than widen the table */
+.st-ledger .uk-badge-pair,.st-ledger .uk-badge{white-space:normal}
+.st-nw{white-space:nowrap}
+/* a relWIS figure's verdict icon */
+.st-verdict{margin-left:.25em;vertical-align:-.1em}
 .st-facts{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .35rem}
 /* one fact and its "?" never part */
 .st-fi{display:inline-flex;align-items:center;max-width:100%}

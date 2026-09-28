@@ -3,8 +3,8 @@
    reported: the name, a short flag ("0 after 1, 4"), a check that marks
    the select while it holds the rule's choice (reported.recommend), the
    reason in an "i" tip after the flag (keyboard and touch reach it; it
-   also describes the select), and the select. The legend's toggletip
-   explains the choices. Each posts as gap.<fips> (forms._gap_form) and is
+   also describes the select), and the select. The toggletip beside the
+   count explains the choices. Each posts as gap.<fips> (forms._gap_form) and is
    recorded with the run (extra["data_choices"], app/core/missing.py) with
    whether the recommendation was followed. Rendered inside #fcform under
    the anchor line, only when the week has such a state; forecast.html's
@@ -16,14 +16,17 @@
 {% set n = issues.rows|length %}
 {% set zeros = issues.rows|selectattr("issue", "equalto", "zero")|list %}
 <fieldset class="ms-group fc-di" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
- <legend>Data issues{{ tips.badge("warn", n ~ " state" ~ ("s" if n != 1 else ""), id="di-count") }}
+ {# the legend is the title alone, so it stays one line on the border at
+    any text size; the count and the explainer open the box #}
+ <legend>Data issues</legend>
+ <div class="fc-di-head">{{ tips.badge("warn", n ~ " state" ~ ("s" if n != 1 else ""), id="di-count") }}
   {%- call tips.toggletip("data-issues", "the data issues", title="Newest week " ~ issues.week) -%}
   <span class="uk-tt-line">States reading 0, under a fifth of a week of 20 or more (collapsed), or not reported. Each select is preset to the recommended choice; pick another if you know better. The choice applies to this run only and is recorded with it.</span>
   <span class="uk-tt-line"><b>Zero:</b> No forecast = the Groundhog abstains. Level = it anchors on the mean of the last 4 weeks (all 0: a Poisson floor). Extend = it carries the last positive week over the 0s. Blend = the mean of level and extend. For all four the Oracle SIHRS keeps the 0.</span>
   <span class="uk-tt-line">Both from a week = both models count the newest week(s) as unreported and forecast from that week, every horizon still from the forecast date (at most 2 weeks). Keep = as reported. From a week (not reported) = the engines' own walk. Leave out = the state is in neither file.</span>
   <span class="uk-tt-line"><b>Recommended:</b> both from the week before when a 0 or a collapse follows counts of 10 or more (a missed or partial report is likely); level for small counts and runs of 0; keep a collapse when the two weeks before already fell by half each.</span>
   {% if issues.facts %}<span class="uk-tt-line">{{ issues.facts }}</span>{% endif %}
-  {%- endcall %}</legend>
+  {%- endcall %}</div>
  <input type="hidden" name="gap._sha" value="{{ sha }}">
  {% if zeros|length > 1 %}
  <div class="di-row di-all">
