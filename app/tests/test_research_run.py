@@ -164,7 +164,9 @@ def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
     html = client.get("/runs").text
     rrow = html.split(f'href="/runs/{rrid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nrid}"', 1)[1].split("</tr>", 1)[0]
-    assert '<span class="pill">research</span>' in rrow
+    # the ledger's badge: an icon and the word, in the info state
+    assert ('uk-badge--info' in rrow
+            and '<span class="uk-badge-t">research</span>' in rrow)
     assert "research" not in nrow
     # the badge follows the run onto its own page, beside its title
     def head(page):
