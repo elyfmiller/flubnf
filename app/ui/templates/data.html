@@ -1,42 +1,43 @@
 {% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
+<link rel="stylesheet" href="/static/tabs/data.css">{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
+{# a date or a range that never splits at its hyphens #}
+{% macro nw(t) %}<span class="dt-nw">{{ t }}</span>{% endmacro %}
 <h1>Data</h1>
 <div class="cols">
- <div><div class="card hubcard"><h2>FluSight hub
-  {# one "?" for the whole card: the sentences that explain, not the
-     numbers that decide #}
+ {# the FluSight hub: what a run reads, the clone against origin, the
+    comparators and the newest week's reporting, one labelled row each;
+    each row's "?" holds what the row means #}
+ <div><div class="card hubcard">
   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
-  {% call tips.tip("hub", "the FluSight hub") -%}
-  <span class="ncline">Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.</span>
-  {% if live_newer %}<span class="ncline">Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.</span>{% endif %}
-  {% if n_shipped %}<span class="ncline">Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.</span>{% endif %}
-  <span class="ncline">Hub clone: Check for new data compares the clone with origin and changes nothing; Update data pulls. Comparators: the hub's baseline and official ensemble, which runs are scored against.</span>
-  {% if newest_report and not newest_report.clean %}<span class="ncline">What a state reading 0 or not reported does in a run is chosen per state in Data issues on the Forecast tab, and recorded with the run.</span>{% endif %}
-  {%- endcall %}</h2>
-  {% if not live_week and not n_vintages %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
-  {# labelled values, then one pill per check: the hub clone against
-     origin, the comparators, the newest week's reporting #}
-  <dl class="hubgrid">
+  {{ tips.heading("FluSight hub", "hub") }}
+  {% if not live_week and not n_vintages %}
+  {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it.{% endcall %}
+  {% endif %}
+  {% call tips.stats("dt-hubstats", label="FluSight hub") %}
    {# the live target file's newest week: what a real-time run reads when
       the hand-kept archive has not caught up (app.core.data.observed_source) #}
    {% if live_week %}
-   <dt>Data through</dt><dd id="live-week"><code>{{ live_week }}</code>{% if live_newer %} <span class="pill warn" id="live-newer">not archived</span>{% endif %}</dd>
+   {% set newer %}{% if live_newer %}{% call tips.badge("warn", "not archived", id="live-newer") %}Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.{% endcall %}{% endif %}{% endset %}
+   {% call tips.stat("Data through", nw(live_week), id="live-week", after=newer) %}Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.{% endcall %}
    {% endif %}
-   {% if n_vintages %}
-   <dt>Latest vintage</dt><dd><code>{{ latest_vintage }}</code></dd>
-   <dt>Vintages</dt><dd>{{ n_vintages }}{% if n_shipped %} <span class="hint">{{ n_shipped }} shipped</span>{% endif %}</dd>
-   {# the latest vintage's own numbers, read from the archived file #}
-   {% if latest %}<dt>Jurisdictions</dt><dd>{{ latest.locations }} <span class="hint">{{ "{:,}".format(latest.rows) }} rows, newest week <span class="wk">{{ latest.newest_week }}</span></span></dd>{% endif %}
-   {% endif %}
-   <dt>Hub clone</dt><dd>{% if freshness %}{% set pc, pw = freshness.pill() %}<span class="pill {{ pc }}" id="hub-pill">{{ pw }}</span> <span class="hint" id="hub-detail">{{ freshness.detail }}</span>{% else %}<span class="pill" id="hub-pill">not checked</span> <span class="hint" id="hub-detail"></span>{% endif %}</dd>
-   <dt>Comparators</dt><dd>{% if comparators_missing %}<span class="pill bad">{{ comparators_missing | join(", ") }} missing</span>{% else %}<span class="pill ok">present</span>{% endif %} <span class="hint">baseline, ensemble</span></dd>
+   {# the clone against origin: a badge for the state, the check's own
+      words in the "?" beside it (the script below fills both) #}
+   {% set pc, pw = freshness.pill() if freshness else ("", "not checked") %}
+   {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
+   {% set clone %}{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span>{% endset %}
+   {% call tips.stat("Hub clone", clone, id="hub-clone") %}Hub clone: Check for new data compares the clone with origin and changes nothing; Update data pulls.{% endcall %}
+   {# the hub models runs are compared against (an older sparse clone may
+      lack them; Update data adds them) #}
+   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
+   {% call tips.stat("Comparators", comp, id="comparators") %}Comparators: the hub's baseline and official ensemble, which runs are scored against.{% endcall %}
    {# did every jurisdiction report the newest week? (the file a real-time
       run reads; app/core/reported.py) #}
-   {% if newest_report %}{% import "_newest.html" as newest %}{% set r = newest_report %}
-   <dt>Newest week</dt><dd>{% if r.clean %}<span class="pill ok">all reported</span>{% elif r.unreported %}<span class="pill warn">{{ r.unreported | length }} not reported</span>{% elif r.zeros %}<span class="pill warn">{{ r.zeros | length }} read 0</span>{% else %}<span class="pill warn">{{ r.collapsed | length }} collapsed</span>{% endif %} {{ newest.check(r, head_only=True) }}</dd>
+   {% if newest_report %}{% import "_newest.html" as newest %}
+   <div class="uk-stat"><dt>Newest week</dt><dd class="dt-newest-dd">{{ newest.row(newest_report) }}</dd></div>
    {% endif %}
-  </dl>
+  {% endcall %}
   {# one row: the primary pull and the quiet check. No confirmation: pulling
      is safe and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}
@@ -45,13 +46,29 @@
    <button class="gold" data-guard="data-pull">Update data</button></form>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
   </div>
-  {# while a pull or check runs (the script below): the run bar, sliding #}
-  <div id="hub-progress" hidden><div class="runbar busy" role="progressbar" aria-label="working"><div class="rfill"></div></div></div>
-  <p class="hint" id="hub-status" role="status" aria-live="polite"></p>
+  {# while a pull or check runs (the script below): a sliding bar labelled
+     with what runs, spoken once by the status line; a failure is an alert #}
+  <div id="hub-progress" hidden>{{ tips.progress("Working", id="hub-bar") }}</div>
+  <p id="hub-status" role="status" aria-live="polite" class="uk-sr"></p>
+  <div id="hub-error"></div>
  </div></div>
- <div><div class="card"><h2>Archive
-  {{ tips.tip("archive", "the archive", "Each dot is one week's snapshot as the runs fit it, on its flu season's row, August 1 at left.") }}</h2>
-  {# one dot per archived vintage on its season's row (August 1 at left) #}
+ {# the archive: its own numbers as tiles, one dot per archived vintage on
+    its season's row (August 1 at left), a ring for a shipped snapshot #}
+ <div><div class="card dt-archive">
+  {{ tips.heading("Archive", "archive", "Each dot is one week's snapshot as the runs fit it, on its flu season's row, August 1 at left.") }}
+  {% if n_vintages %}
+  {% call tips.stats("dt-archstats", label="Archive") %}
+   {% set shp %}{% if n_shipped %}{% call tips.badge("info", n_shipped ~ " shipped", id="n-shipped") %}Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.{% endcall %}{% endif %}{% endset %}
+   {{ tips.stat("Vintages", n_vintages, id="n-vintages", after=shp) }}
+   {{ tips.stat("Latest vintage", nw(latest_vintage), id="latest-vintage") }}
+   {# the latest vintage's own numbers, read from the archived file #}
+   {% if latest %}
+   {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
+   {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
+   {{ tips.stat("Newest week", nw(latest.newest_week), id="latest-newest") }}
+   {% endif %}
+  {% endcall %}
+  {% endif %}
   {% if vintage_rows %}
   <div class="archive-wrap"><svg class="archive-strip" viewBox="0 0 560 {{ 20 + 22 * vintage_rows | length }}" role="img"
    aria-label="archived vintages by season">
@@ -66,7 +83,11 @@
    <text x="{{ 64 + m * 9.4 }}" y="{{ yb + 2 }}" font-size="11" fill="currentColor" fill-opacity=".75" text-anchor="{{ 'end' if loop.last else 'middle' }}">{{ lab }}</text>
    {% endfor %}
   </svg></div>
-  {% else %}<p class="hint">No archived vintages yet.</p>{% endif %}
+  {# the marks named in words: a dot, and a ring when any week is shipped #}
+  {{ tips.legend([("var(--mut)", "archived vintage", "point")] + ([("var(--mut)", "shipped snapshot", "ring")] if n_shipped else []), label="Archive marks", id="archive-legend") }}
+  {% else %}
+  {{ tips.empty("No archived vintages yet", "calendar", id="archive-empty") }}
+  {% endif %}
  </div></div>
 </div>
 
@@ -74,77 +95,88 @@
 
 {# an empty hub: the Archive card already says so; no second empty card #}
 {% if ds or vintages or view_note %}
-<div class="card" id="browser">{% if ds %}<h2>{{ ds.name }}
- {{ tips.tip("ds-browse", "this view", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true.")) }}</h2>
- <p class="hint">Your dataset, {{ "vintage-true" if ds.vintage_true else "final data (not vintage-true)" }}.
-  <a href="/forecast?source={{ ds.id }}">Forecast it</a> ·
-  <a href="/retro?dataset={{ ds.id }}">Replay it</a> ·
-  <a href="/data">Back to the FluSight hub</a></p>
- {% else %}<h2>Vintage browser</h2>
- {% if vintages %}<p class="hint">The archived truth vintages, exactly as runs fit them.
- Read-only.</p>{% endif %}{% endif %}
+<div class="card" id="browser">
+ {% if ds %}
+ {# one of your datasets in the browser's place: its kind as a badge, the
+    pages that use it at the right #}
+ {% set dsb %}{% if ds.vintage_true %}{{ tips.badge("ok", "vintage-true", id="ds-kind") }}{% else %}{{ tips.badge("warn", "final data", id="ds-kind") }}{% endif %}{% endset %}
+ {% set dsa %}<a class="btn quiet dt-act" href="/forecast?source={{ ds.id }}">Forecast it</a><a class="btn quiet dt-act" href="/retro?dataset={{ ds.id }}">Replay it</a><a class="dt-back" href="/data">Back to the FluSight hub</a>{% endset %}
+ {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view") }}
+ {% else %}
+ {{ tips.heading("Vintage browser", "vb", "The archived truth vintages, exactly as runs fit them. Read-only. On the chart, the marker is this vintage's newest week.", after=tips.badge("neutral", "read-only", icon_name="lock")) }}
+ {% endif %}
+ {% if view_note %}{{ tips.alert("warn", view_note, id="vb-note", live="") }}{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit
     reloads per ArrowDown on a closed select in Chrome/Edge on Windows
     (WCAG 3.2.2) #}
  {% if ds or vintages %}
- <form method="get" action="/data" class="row" style="align-items:flex-end">
+ <form method="get" action="/data" class="row dt-pick">
   {% if ds %}<input type="hidden" name="source" value="{{ ds.id }}">{% endif %}
   {% if not ds or ds.vintage_true %}
-  <span><label for="dv-vintage">{{ "Snapshot" if ds else "Vintage" }}</label>
+  <span class="dt-field"><label for="dv-vintage">{{ "Snapshot" if ds else "Vintage" }}</label>
    <select id="dv-vintage" name="vintage">
-    {# a shipped snapshot's label says so; its value stays the bare date #}
-    {% for v in vintages %}<option {% if v == sel_vintage %}selected{% endif %}{% if v in shipped %} value="{{ v }}"{% endif %}>{{ v }}{% if v in shipped %} (shipped snapshot){% endif %}</option>{% endfor %}
+    {# a shipped snapshot's label says so (the hub's alone: a dataset's
+       as_of dates are its own); its value stays the bare date #}
+    {% for v in vintages %}{% set shp = not ds and v in shipped %}<option {% if v == sel_vintage %}selected{% endif %}{% if shp %} value="{{ v }}"{% endif %}>{{ v }}{% if shp %} (shipped snapshot){% endif %}</option>{% endfor %}
    </select></span>
   {% endif %}
-  <span><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
+  <span class="dt-field"><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
    <select id="dv-loc" name="loc">
     {% for n in loc_names %}<option {% if n == sel_loc %}selected{% endif %}>{{ n }}</option>{% endfor %}
    </select></span>
   <button class="quiet">Show</button>
  </form>
- {% else %}<p class="hint">Nothing archived yet.</p>{% endif %}
- {% if view_note %}<p class="warn">{{ view_note }}</p>{% endif %}
+ {% else %}{{ tips.empty("Nothing archived yet", "calendar", compact=True, id="vb-empty") }}{% endif %}
+ {# the chosen vintage's own numbers, labelled #}
  {% if sel_summary %}
- <p class="hint">{% if sel_vintage in shipped %}Shipped snapshot for {{ sel_vintage }} ({{ shipped_labels[sel_vintage] }}){% else %}As archived on {{ sel_vintage }}{% endif %}: {{ "{:,}".format(sel_summary.rows) }}
-  reported rows · {{ sel_summary.locations }} jurisdictions · weeks
-  {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
+ {% call tips.stats("uk-stats--row dt-vsum", label="This vintage") %}
+  {% if sel_vintage in shipped %}
+  {% set src %}{% call tips.badge("info", "shipped snapshot", id="vb-shipped") %}Shipped snapshot for {{ sel_vintage }} ({{ shipped_labels[sel_vintage] }}){% endcall %}{% endset %}
+  {{ tips.stat("Source", src, id="vb-source") }}
+  {% else %}
+  {{ tips.stat("Source", "hub archive", id="vb-source") }}
+  {% endif %}
+  {{ tips.stat("Reported rows", "{:,}".format(sel_summary.rows), id="vb-rows") }}
+  {{ tips.stat("Jurisdictions", sel_summary.locations, id="vb-locs") }}
+  {{ tips.stat("Weeks", nw(sel_summary.oldest_week) ~ ' to ' ~ nw(sel_summary.newest_week), id="vb-weeks") }}
+ {% endcall %}
  {% endif %}
  {% if series_json and series_json != 'null' %}
- {# the forecast data panel's mode pair, same conventions #}
- <div class="row" style="margin:.4rem 0">
-  <button type="button" class="quiet" id="vb-mode-raw" aria-pressed="false">full series</button>
-  <button type="button" class="quiet" id="vb-mode-season" aria-pressed="false">season over season</button>
+ {# the forecast data panel's mode pair, same conventions; beside it the
+    series' own numbers #}
+ <div class="dt-chartbar">
+  <div class="dt-seg" role="group" aria-label="Chart view">
+   <button type="button" class="quiet" id="vb-mode-raw" aria-pressed="false">full series</button>
+   <button type="button" class="quiet" id="vb-mode-season" aria-pressed="false">season over season</button>
+  </div>
+  {% call tips.stats("uk-stats--row dt-series", label=sel_loc) %}
+   {{ tips.stat("Weeks" if ds else "Reported weeks", series_n, id="vb-n") }}
+   {% if peak %}
+   {{ tips.stat("Peak", "{:,.6g}".format(peak[1]) if ds else "{:,.0f}".format(peak[1]), unit="" if ds else "admissions", id="vb-peak") }}
+   {{ tips.stat("Peak week", nw(peak[0]), id="vb-peakwk") }}
+   {% endif %}
+   {% if ds and ds.national == sel_loc %}<div class="uk-stat"><dt class="uk-sr">Group</dt><dd>{{ tips.badge("neutral", "the national group") }}</dd></div>{% endif %}
+  {% endcall %}
  </div>
- {% endif %}
- {% if series_json and series_json != 'null' %}
  {# chart + compact recent-weeks table side by side (.vintagecols) #}
  <div class="vintagecols">
   <div>
    <div id="vintageplot" style="min-height:380px"></div>
-   {% if ds %}
-   <p class="hint">{{ sel_loc }}: {{ series_n }} weeks{% if peak %}
-    · peak {{ "{:,.6g}".format(peak[1]) }}, week of {{ peak[0] }}{% endif %}{%
-    if ds.national == sel_loc %} · the national group{% endif %}.</p>
-   {% else %}
-   <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks{% if peak %}
-    · peak {{ "{:,.0f}".format(peak[1]) }} admissions, week of
-    {{ peak[0] }}{% endif %} · the marker is this vintage's newest week.</p>
-   {% endif %}
   </div>
   {% if series_table %}
   <div class="vintagetable">
+   {{ tips.heading("Newest " ~ (series_table | length) ~ " weeks", "vb-recent", ("As stored." if ds else "As archived; later revisions never appear."), level=3, cls="dt-subhead", tip_label="the newest weeks") }}
    <table class="compact">
     <tr><th>week</th><th class="num">{{ ds.unit if ds else "admissions" }}</th></tr>
     {% for d, v in series_table %}
     <tr><td>{{ d }}</td><td class="num">{{ "{:,.6g}".format(v) if ds else "{:,.0f}".format(v) }}</td></tr>
     {% endfor %}
    </table>
-   <p class="hint">Newest {{ series_table | length }} weeks{{ " as stored" if ds else " as archived; later revisions never appear" }}.</p>
   </div>
   {% endif %}
  </div>
  {% elif sel_loc %}
- <p class="hint">This {{ "dataset" if ds else "vintage" }} holds no reported weeks for {{ sel_loc }}.</p>
+ {{ tips.empty("No reported weeks for " ~ sel_loc ~ " in this " ~ ("dataset" if ds else "vintage"), "calendar", compact=True, id="vb-none") }}
  {% endif %}
 </div>
 {% endif %}
@@ -174,7 +206,7 @@
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
-   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
+   legend:{orientation:'h',x:0,xanchor:'left',yref:'container',y:0,yanchor:'bottom'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  // season helpers: byte-identical to forecast.html's (test-pinned). Parse
@@ -241,41 +273,64 @@
  drawVintage('raw');
  addEventListener('themechange',()=>drawVintage());
  addEventListener('fontsizechange',()=>drawVintage());
+ // a new text size resizes the table beside the chart: the chart takes
+ // its column's new width (Plotly's own resize follows the window only)
+ addEventListener('fontsizechange',()=>{
+   const el=document.getElementById('vintageplot');
+   if(el&&window.Plotly&&Plotly.Plots)Plotly.Plots.resize(el);});
 </script>
 {% endif %}
 <script>
  // Update data and Check for new data post in the background: both buttons
- // off, the run bar sliding and one line meanwhile; then the page reloads
- // (the pull's notice is the banner) or the hub-clone row takes the
- // answer. Without script the forms post as forms.
+ // off and the bar sliding, labelled with what runs (said once by the
+ // status line); then the page reloads (the pull's notice is the banner)
+ // or the hub-clone badge and its "?" take the answer. A failure to reach
+ // the console is an alert. Without script the forms post as forms.
  (function(){
   var prog=document.getElementById('hub-progress'),
+      lab=document.getElementById('hub-bar-l'),
       stat=document.getElementById('hub-status'),
+      err=document.getElementById('hub-error'),
       forms=document.querySelectorAll('.hubacts form'),
       btns=document.querySelectorAll('.hubacts button');
   if(!prog||!stat||!window.fetch)return;
+  // the server's pill class as a badge state
+  var STATES={ok:'ok',warn:'warn',bad:'error'};
   function busy(on,words){
     btns.forEach(function(b){b.disabled=on;});
-    prog.hidden=!on;stat.textContent=words||'';}
+    prog.hidden=!on;
+    if(lab&&words)lab.textContent=words;
+    stat.textContent=on?words:'';}
+  function fail(msg){
+    var ui=window.FluBNFUI;
+    if(err)err.innerHTML='<div class="uk-alert uk-alert--error" role="alert">'
+      +(ui?ui.icon('error'):'')+'<span class="uk-alert-text">'
+      +(ui?ui.esc(msg):msg)+'</span></div>';}
   forms.forEach(function(f){
    f.addEventListener('submit',function(e){
     if(e.defaultPrevented)return;
     e.preventDefault();
     var pull=f.getAttribute('action')==='/data/pull';
-    busy(true,pull?'pulling the hub clone…':'checking origin…');
+    if(err)err.innerHTML='';
+    busy(true,pull?'Pulling the hub clone':'Checking origin');
     fetch(f.getAttribute('action'),{method:'POST',credentials:'same-origin',
           headers:{'Accept':'application/json'}})
      .then(function(r){return r.json();})
      .then(function(d){
        if(pull){location.reload();return;}
        var pill=document.getElementById('hub-pill'),
-           det=document.getElementById('hub-detail');
-       if(pill){pill.className='pill '+(d.pill||'');pill.textContent=d.words||'';}
+           wrap=document.getElementById('hub-detail'),
+           det=document.getElementById('tip-hub-detail');
+       if(pill&&window.FluBNFUI)
+         FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral',d.words||'');
        if(det)det.textContent=d.detail||'';
+       if(wrap)wrap.hidden=!d.detail;
        busy(false,'');
+       stat.textContent=d.words?'Hub clone: '+d.words:'';
      })
      .catch(function(){
-       busy(false,'Could not reach the console. Reload the page to see the result.');
+       busy(false,'');
+       fail('Could not reach the console. Reload the page to see the result.');
      });
    });
   });

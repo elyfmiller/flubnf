@@ -22,6 +22,7 @@ import pytest
 from app.core import datasets as D
 
 from test_datasets_ui import client, isolated  # noqa: F401
+from test_dataset_upload_box import fact
 
 SNAPS = Path(__file__).resolve().parent / "fixtures" / "snapshots"
 FILES = sorted(SNAPS.iterdir())
@@ -270,9 +271,8 @@ def test_a_covid_snapshot_folder_is_one_vintage_true_dataset():
     j = _snap_post("/data/datasets/check?where=replay", covid()).json()
     assert j["ok"] and j["name"] == "covid_snapshots"
     assert j["status"] == "Ready to use: 2 groups, 18 weeks, 6 snapshot files."
-    assert ('<dt>Snapshots</dt><dd>6 files, as_of <span class="nw">'
-            '2024-11-02</span> to <span class="nw">2024-12-07</span></dd>'
-            in j["html"])
+    assert fact(j["html"], "Snapshots") == \
+        "6 files, as_of 2024-11-02 to 2024-12-07"
     # a folder picked without script posts its other files too: skipped
     r = _snap_post("/data/datasets", covid() + [
         ("covid_snapshots/README.md", b"# notes\n"),
@@ -337,9 +337,7 @@ def test_several_files_are_checked_together():
     assert j["ok"] and j["name"] == "flu"
     assert j["status"] == "Ready to use: 3 groups, 50 weeks, 8 snapshot files."
     html = j["html"]
-    assert ('<dt>Snapshots</dt><dd>8 files, as_of <span class="nw">'
-            '2023-11-04</span> to <span class="nw">2023-12-23</span></dd>'
-            in html)
+    assert fact(html, "Snapshots") == "8 files, as_of 2023-11-04 to 2023-12-23"
     assert f"First rows as read, from {FILES[0].name}" in html
     assert D.list_datasets() == []
     # a refusal names the files
