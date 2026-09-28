@@ -38,7 +38,7 @@
     {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations. For a true retrospective, give the data as each week saw it: an as_of column, or snapshot files in the box beside this one.</span>{% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
     <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
-    {{ tips.icon("download", cls="dt-dropicon") }}
+    {{ tips.icon("upload", cls="dt-dropicon") }}
     <span class="dsdrop-t">Drop a CSV here or <span class="dslink">choose a file</span></span>
     <span class="dsdrop-on" aria-hidden="true">Drop to check</span>
     <span class="dsdrop-f" data-file></span>
@@ -51,7 +51,7 @@
     {% call tips.tip(fid ~ "-snaps", "snapshot files") %}<span class="ncline">Optional: dated snapshots, one file per as_of.</span><span class="ncline">Several files at once (or a folder), one snapshot per as_of, each a table like the weekly CSV named by its as_of date (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column. The files must share their columns and groups; they are stored as one vintage-true dataset, and each replayed week then sees the snapshot that held it.</span><span class="ncline">A folder gives its CSV, TSV and TXT files; several files dropped on the first box come here.</span>{% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-snap" data-drop="snap">
     <input type="file" name="snapshots" id="{{ fid }}-snap" data-snap multiple accept="{{ accept }}">
-    {{ tips.icon("download", cls="dt-dropicon") }}
+    {{ tips.icon("upload", cls="dt-dropicon") }}
     <span class="dsdrop-t">Drop snapshots here or <span class="dslink">choose files</span></span>
     <span class="dsdrop-on" aria-hidden="true">Drop to check as snapshots</span>
     <span class="dsdrop-f" data-file></span>

@@ -210,6 +210,29 @@
   {% set live_run = res.run_id == running_id %}
   <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
    {{ tips.heading("Results", "sb-results", after=run_badge(st, "sb-status")) }}
+   {% set h = res.health %}
+   {% set quick = (res.meta.particles | int) < presets.full %}
+   {% set offer_full = quick and not live_run and st in ("ok", "failed", "stopped", "interrupted") %}
+   {% set full_form %}<form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
+    <input type="hidden" name="particles" value="{{ presets.full }}"><input type="hidden" name="jitter" value="{{ res.meta.jitter }}">
+    <input type="hidden" name="forecast_weeks" value="{{ res.meta.forecast_weeks }}"><input type="hidden" name="seed" value="{{ res.meta.seed }}">
+    <button class="gold" data-guard="sandbox-run">Run the full fit ({{ "{:,}".format(presets.full) }} particles)</button>
+    {{ tips.tip("sb-full", "the full fit", "Runs the saved model again with the production 10,000 particles and this run's other settings. Unsaved edits in the editor are not included: Save first.") }}
+   </form>{% endset %}
+   {% if h and not live_run %}
+   {# the outcome in a word and an icon, the sentence in its "?", what to
+      try behind a fold, the full fit beside it: the first line under the
+      heading (the How it works tip says so) #}
+   {% set says %}{{ h.says }}{% if quick and h.level == "good" %} A quick check: the full fit gives the estimates.{% endif %}{% endset %}
+   <div class="sb-health sb-health--{{ h.level }}">
+    {{ tips.alert({"good": "ok", "rough": "warn", "collapsed": "error"}.get(h.level, "info"), h.title, tiptext=says,
+                  id="sb-health", live="", action=(full_form if offer_full else "")) }}
+   </div>
+   {% if h.tries %}{% call tips.fold("What to try", id="sb-tries", cls="sbtries") %}
+    <ul>{% for t in h.tries %}<li>{{ t }}</li>{% endfor %}</ul>
+   {% endcall %}{% endif %}
+   {% elif offer_full %}{{ full_form }}
+   {% endif %}
    {% set facts = [("folder", res.run_id, "Run")] %}
    {% if res.meta.seconds is defined %}{% set facts = facts + [("clock", res.meta.seconds ~ " s", "Wall time")] %}{% endif %}
    {{ tips.meta(facts, label="Run") }}
@@ -229,28 +252,6 @@
    {% endif %}
    {# a failed run's own words first, on the error edge #}
    {% if res.meta.error %}<pre class="sberr sb-err">{{ res.meta.error }}</pre>{% endif %}
-   {% set h = res.health %}
-   {% set quick = (res.meta.particles | int) < presets.full %}
-   {% set offer_full = quick and not live_run and st in ("ok", "failed", "stopped", "interrupted") %}
-   {% set full_form %}<form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
-    <input type="hidden" name="particles" value="{{ presets.full }}"><input type="hidden" name="jitter" value="{{ res.meta.jitter }}">
-    <input type="hidden" name="forecast_weeks" value="{{ res.meta.forecast_weeks }}"><input type="hidden" name="seed" value="{{ res.meta.seed }}">
-    <button class="gold" data-guard="sandbox-run">Run the full fit ({{ "{:,}".format(presets.full) }} particles)</button>
-    {{ tips.tip("sb-full", "the full fit", "Runs the saved model again with the production 10,000 particles and this run's other settings. Unsaved edits in the editor are not included: Save first.") }}
-   </form>{% endset %}
-   {% if h and not live_run %}
-   {# the outcome in a word and an icon, the sentence in its "?", what to
-      try behind a fold, the full fit beside it #}
-   {% set says %}{{ h.says }}{% if quick and h.level == "good" %} A quick check: the full fit gives the estimates.{% endif %}{% endset %}
-   <div class="sb-health sb-health--{{ h.level }}">
-    {{ tips.alert({"good": "ok", "rough": "warn", "collapsed": "error"}.get(h.level, "info"), h.title, tiptext=says,
-                  id="sb-health", live="", action=(full_form if offer_full else "")) }}
-   </div>
-   {% if h.tries %}{% call tips.fold("What to try", id="sb-tries", cls="sbtries") %}
-    <ul>{% for t in h.tries %}<li>{{ t }}</li>{% endfor %}</ul>
-   {% endcall %}{% endif %}
-   {% elif offer_full %}{{ full_form }}
-   {% endif %}
    {% if res.stderr %}{% call tips.fold("Engine messages", open=(st != "ok"), cls="sbengine") %}<pre class="sberr">{{ res.stderr }}</pre>{% endcall %}{% endif %}
    {% if res.traj %}<div id="sbplot" style="min-height:320px"></div>{% endif %}
    {% if res.params and cmp and cmp.params %}

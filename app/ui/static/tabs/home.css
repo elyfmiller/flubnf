@@ -42,16 +42,13 @@ a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
 .hm-over{position:absolute;inset:0 0 2.2rem;display:flex;
   align-items:center;justify-content:center;padding:1rem;
   pointer-events:none}
+/* the card under the empty state: its ground and shadow only, so the
+   kit's dashed empty state is the one outline */
 .hm-over-card{pointer-events:auto;min-width:min(17rem,100%);
-  padding:.2rem .45rem;border:1px solid var(--line);
   border-radius:var(--r-md);background:var(--card);box-shadow:var(--shadow)}
-/* the preparing card's busy bar (decorative; the title says it) */
-.hm-busy{display:block;height:.3rem;margin:0 .7rem .7rem;
-  border-radius:var(--r-pill);background:var(--track);overflow:hidden}
-.hm-busy > span{display:block;width:35%;height:100%;border-radius:inherit;
-  background:var(--accent-ink);animation:hm-slide 1.1s ease-in-out infinite alternate}
-@keyframes hm-slide{from{margin-left:0}to{margin-left:65%}}
-@media (prefers-reduced-motion:reduce){.hm-busy > span{animation:none}}
+.hm-over-card > .uk-empty{margin:0}
+/* the preparing card's busy bar, under its title */
+.hm-prep-bar{width:12rem;max-width:100%;margin:.1rem auto 0}
 
 /* ---- 3. measured performance ---- */
 /* a sub-heading over each table (the kit's level-3 heading) */

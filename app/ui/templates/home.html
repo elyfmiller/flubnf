@@ -64,9 +64,11 @@
   {% if outlook_pending %}
   {# cold first paint: the silhouette under a preparing card #}
   <div class="hm-over"><div class="hm-over-card">
-   {% call tips.empty("Preparing the map", "clock", id="hm-prep") %}Preparing
+   {# under the title, the kit's busy bar, its track only (decorative: the
+      title says it) #}
+   {% set prep_bar %}<div class="uk-progress uk-progress--busy hm-prep-bar" aria-hidden="true"><div class="uk-progress-track"><div class="uk-progress-fill"></div></div></div>{% endset %}
+   {% call tips.empty("Preparing the map", "clock", action=prep_bar, id="hm-prep") %}Preparing
    the map; this page updates by itself in a few seconds.{% endcall %}
-   <span class="hm-busy" aria-hidden="true"><span></span></span>
   </div></div>
   {% elif not outlook_date %}
   <div class="hm-over"><div class="hm-over-card">
@@ -164,9 +166,9 @@
  <div class="card hm-start">
   <h2>Start here</h2>
   {# the weekly loop, one tab per step; what each step is for is its "?" #}
-  {{ tips.stepper([{"label": "Data", "href": "/data", "tip": "Confirm the feed is current."},
-                   {"label": "Forecast", "href": "/forecast", "tip": "Pick a date, run the models."},
-                   {"label": "Output", "href": "/output", "tip": "Submission files and the report."}],
+  {{ tips.stepper([{"label": "Data", "href": "/data", "tip": "Confirm the feed is current.", "tip_label": "the Data step"},
+                   {"label": "Forecast", "href": "/forecast", "tip": "Pick a date, run the models.", "tip_label": "the Forecast step"},
+                   {"label": "Output", "href": "/output", "tip": "Submission files and the report.", "tip_label": "the Output step"}],
                   vertical=True, label="Start here", id="hm-start") }}
   <div class="hm-start-more">
    <a class="btn quiet" href="/retro">{{ tips.icon("refresh") }} Replay a past season</a>
@@ -262,7 +264,7 @@
    &#189; ln <i>G</i><sub><i>T</i></sub> +
    &#189; ln <i>G</i><sub><i>d</i></sub></span>
    {{ tips.namechip("The Oracle step", "hm-eq-oracle",
-   "The Oracle step: each forecast path grows at the geometric mean of the filter's growth and one past season's at the same calendar week.") }}</p>
+   "The Oracle step: each forecast path grows at the geometric mean of the filter's growth and one past season's at the same calendar week.", tip_label="the Oracle step equation") }}</p>
   <p class="uk-figline"><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>
@@ -369,7 +371,7 @@
   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
-  {% call tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else "")) %}Reproducing
+  {% call tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version") %}Reproducing
   the sealed numbers needs bngsim 0.15.1 (setup_engine.sh), whatever version a
   build reports.{% endcall %}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}

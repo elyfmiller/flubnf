@@ -246,9 +246,9 @@ def _pull() -> tuple:
     _invalidate_scans()
     if not ok:
         msg = ("Updating the hub clone FAILED: "
-               + (msg[:200] or "git exited nonzero with no message")
+               + (msg[:200].rstrip(". ") or "git exited nonzero with no message")
                + ". The local archive is unchanged.")
-        _flash(msg)
+        _flash(msg, "error")
         return False, msg
     try:
         after = state.data_mod.newest_week()

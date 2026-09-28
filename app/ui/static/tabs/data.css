@@ -27,6 +27,10 @@
 /* a week in the card's tips stays on one line */
 .hubcard .wk{white-space:nowrap}
 .dt-hubstats{margin:.2rem 0 .1rem}
+/* a long badge in a value (the comparators that are missing) wraps inside
+   the column instead of running under the card's edge */
+.dt-hubstats .uk-stat-v{min-width:0;max-width:100%}
+.dt-hubstats .uk-stat-v .uk-badge{white-space:normal}
 /* the newest week's row: the mark and the head, then the count badges
    and the toggletip */
 .dt-newest-dd{align-items:center}
@@ -71,6 +75,9 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-zonelinks{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;
   margin:0 0 .45rem;font-size:var(--fs-label);color:var(--mut)}
 .dt-zonelinks a{display:inline-flex;align-items:center;gap:.3rem}
+/* the links under both zones in one style (Template CSV, Choose a folder) */
+.dt-zonelinks a,.dt-zonelinks .dslink{font-weight:600;text-decoration:underline;
+  text-underline-offset:2px}
 
 /* ---- 7. the result box ---- */
 /* the preview of a valid file: one sunken panel, apart from the box */
@@ -78,10 +85,16 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
   border:1px solid var(--line);border-radius:var(--r-md);
   background:color-mix(in srgb,var(--bg) 55%,var(--card))}
 .dt-panel > .dt-subhead{margin-top:.6rem}
+/* in a narrow settings column (Forecast's and Retrospective's upload
+   folds) the preview is flat: the fold is its frame */
+.dsup-fold .dt-panel{padding:0;border:0;background:none}
+/* the problems under the fields they follow */
+.dsproblems{margin-top:.6rem}
 .dt-pgroup{margin:.35rem 0 .2rem}
 .dt-pgroup > ul{margin:.15rem 0 .3rem;padding-left:1.2rem}
 .dt-pgroup li{overflow-wrap:break-word}
-.dt-maplbl{display:flex;align-items:center;gap:.35rem;margin:.5rem 0 .2rem}
+.dt-maplbl{display:flex;align-items:center;gap:.35rem;min-height:1.6em;
+  margin:.5rem 0 .2rem}
 .dt-maplbl > label{margin:0}
 .dt-notes{margin:.5rem 0}
 .dt-notes .dsnotes{margin:.2rem 0}

@@ -71,8 +71,9 @@ numbers are rough.
 
 ## 4. Read the result
 
-Under the run's settings in Results, an alert names the state of the fit
-(its "?" gives the sentence, and What to try sits in a fold below it):
+The first line of Results, right under its heading, is an alert that
+names the state of the fit (its "?" gives the sentence, and What to try
+sits in a fold below it):
 
 - **The fit looks healthy**: the particles stayed varied at every week.
 - **The fit is rough**: they thinned out at some week; ranges may be too

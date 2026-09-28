@@ -53,11 +53,11 @@
 {%- endmacro %}
 
 {% macro row(r) -%}
+{#- clean: the "?" inside the head's own box, so it never wraps apart #}
 <span class="newest-check dt-newest" id="newest-check" data-week="{{ r.week }}"
- data-complete="{{ 'yes' if r.complete else 'no' }}">{{ mark(r) }} <span class="dt-newest-head">{{ r.short().split(' · ')[0] }}</span></span>
-{%- if r.clean %}
-{{ tips.tip("newest-gaps", "the newest week's reporting", r.line()) }}
-{%- else %}
+ data-complete="{{ 'yes' if r.complete else 'no' }}">{{ mark(r) }} <span class="dt-newest-head">{{ r.short().split(' · ')[0] }}</span>
+{%- if r.clean %}{{ tips.tip("newest-gaps", "the newest week's reporting", r.line()) }}{% endif %}</span>
+{%- if not r.clean %}
 {%- for c in r.short().split(' · ')[1:] %} {{ tips.badge("warn", c) }}{% endfor %}
 {% call tips.toggletip("newest-gaps", "the jurisdictions to look at for " ~ r.week, title="Newest week " ~ r.week) -%}
 {{ lines(r, link=True) }}

@@ -12,15 +12,20 @@
  <div><div class="card hubcard">
   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
   {{ tips.heading("FluSight hub", "hub") }}
+  {% set data_through = "Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values." %}
   {% if not live_week and not n_vintages %}
-  {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it.{% endcall %}
+  {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it. {{ data_through }}{% endcall %}
   {% endif %}
   {% call tips.stats("dt-hubstats", label="FluSight hub") %}
    {# the live target file's newest week: what a real-time run reads when
       the hand-kept archive has not caught up (app.core.data.observed_source) #}
    {% if live_week %}
    {% set newer %}{% if live_newer %}{% call tips.badge("warn", "not archived", id="live-newer") %}Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.{% endcall %}{% endif %}{% endset %}
-   {% call tips.stat("Data through", nw(live_week), id="live-week", after=newer) %}Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.{% endcall %}
+   {{ tips.stat("Data through", nw(live_week), id="live-week", after=newer, tiptext=data_through) }}
+   {% elif n_vintages %}
+   {# no target-data file yet, but the archive holds weeks: the row says
+      so, and its "?" keeps the rule #}
+   {{ tips.stat("Data through", "none", id="live-week", tiptext=data_through) }}
    {% endif %}
    {# the clone against origin: a badge for the state, the check's own
       words in the "?" beside it (the script below fills both) #}
@@ -65,7 +70,7 @@
    {% if latest %}
    {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
    {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
-   {{ tips.stat("Newest week", nw(latest.newest_week), id="latest-newest") }}
+   {{ tips.stat("Covers through", nw(latest.newest_week), id="latest-newest") }}
    {% endif %}
   {% endcall %}
   {% endif %}
@@ -83,8 +88,9 @@
    <text x="{{ 64 + m * 9.4 }}" y="{{ yb + 2 }}" font-size="11" fill="currentColor" fill-opacity=".75" text-anchor="{{ 'end' if loop.last else 'middle' }}">{{ lab }}</text>
    {% endfor %}
   </svg></div>
-  {# the marks named in words: a dot, and a ring when any week is shipped #}
-  {{ tips.legend([("var(--mut)", "archived vintage", "point")] + ([("var(--mut)", "shipped snapshot", "ring")] if n_shipped else []), label="Archive marks", id="archive-legend") }}
+  {# the marks named in words: a dot when any week is the hub's archive,
+     a ring when any week is shipped #}
+  {{ tips.legend(([("var(--mut)", "archived vintage", "point")] if n_vintages > n_shipped else []) + ([("var(--mut)", "shipped snapshot", "ring")] if n_shipped else []), label="Archive marks", id="archive-legend") }}
   {% else %}
   {{ tips.empty("No archived vintages yet", "calendar", id="archive-empty") }}
   {% endif %}
@@ -202,7 +208,8 @@
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  function vlay(title, h){ const fs=rootPx(), surf=css('--card');
    return {title:{text:title,font:{size:Math.round(fs*.95)}},
-   height:h||380, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
+   // taller at a large text size, so the ticks and legend keep a plot
+   height:Math.max(h||380,Math.round(fs*24)), margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},

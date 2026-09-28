@@ -13,7 +13,7 @@
 {% set _rows = data_source.rows ~ " weeks" ~ ((", " ~ data_source.dropped ~ " dropped missing") if data_source.dropped else "") %}
 {% set _facts = [("folder", data_source.location, "Location"),
                  ("calendar", data_source.start ~ " to " ~ data_source.end, "Weeks"),
-                 ("info", _kind, "Source"), ("", _rows, "Rows")] %}
+                 ("dot", _kind, "Source"), ("", _rows, "Rows")] %}
 {% if data_source.population %}{% set _facts = _facts + [("", "population " ~ "{:,}".format(data_source.population | int), "")] %}{% endif %}
 <div class="sb-src"><span class="sb-src-k">data.exp holds</span>{{ tips.meta(_facts, label="data.exp holds") }}</div>
 {% endif %}

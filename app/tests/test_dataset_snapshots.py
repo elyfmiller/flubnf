@@ -338,7 +338,8 @@ def test_several_files_are_checked_together():
     assert j["status"] == "Ready to use: 3 groups, 50 weeks, 8 snapshot files."
     html = j["html"]
     assert fact(html, "Snapshots") == "8 files, as_of 2023-11-04 to 2023-12-23"
-    assert f"First rows as read, from {FILES[0].name}" in html
+    assert (f'First rows as read, from <span class="dt-nw">{FILES[0].name}'
+            '</span>') in html
     assert D.list_datasets() == []
     # a refusal names the files
     j = _post("/data/datasets/check", [("a.csv", FILES[0].read_bytes()),

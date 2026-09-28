@@ -64,7 +64,7 @@ def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
             'id="latest-locs">3</span>') in joined
     assert ('<dt>Rows</dt><dd><span class="uk-stat-v" id="latest-rows">9'
             '</span>') in joined
-    assert ('<dt>Newest week</dt><dd><span class="uk-stat-v" '
+    assert ('<dt>Covers through</dt><dd><span class="uk-stat-v" '
             'id="latest-newest"><span class="dt-nw">2098-01-03</span>'
             ) in joined
     assert ('<dt>Vintages</dt><dd><span class="uk-stat-v" id="n-vintages">'

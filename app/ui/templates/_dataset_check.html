@@ -50,7 +50,9 @@
 </fieldset>
 {% endif %}
 {% if chk.targets %}
-<div class="dstarget">{{ tips.label("Target", fid ~ "-target", "This file holds several targets; a dataset holds one." ~ ("" if chk.target else " Choose the target to check and store."), for_=fid ~ "-target") }}
+{# the label, its tip and (while unset) the "choose" badge the column
+   selects wear #}
+<div class="dstarget"><div class="lblrow"><label for="{{ fid }}-target">Target</label>{{ tips.tip(fid ~ "-target", "target", "This file holds several targets; a dataset holds one." ~ ("" if chk.target else " Choose the target to check and store.")) }}{% if not chk.target %} {{ tips.badge("warn", "choose") }}{% endif %}</div>
  <select name="target" id="{{ fid }}-target" data-recheck>
   <option value=""{% if not chk.target %} selected{% endif %}>choose…</option>{% for t in chk.targets %}
   <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
@@ -76,6 +78,7 @@
   {{ tips.stat("Snapshots", pv.files, unit=asof) }}
   {% elif pv.snapshots %}{{ tips.stat("Snapshots", pv.snapshots, unit="as_of") }}{% endif %}
   {% if pv.target %}{{ tips.stat("Target", pv.target) }}{% endif %}
+  {{ tips.stat("Read as", pv.read_as) }}
  {% endcall %}
  <div class="dssparks">{% for sp in pv.sparks %}
   <figure class="dsspark"><svg viewBox="0 0 {{ pv.w }} {{ pv.h }}" preserveAspectRatio="none" role="img" aria-label="{{ sp.label }}"><title>{{ sp.label }}</title><polyline points="{{ sp.points }}" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
@@ -84,8 +87,7 @@
  </div>
  {{ notes(chk, fid) }}
  <div class="tablewrap"><table class="compact dsfirst">
-  <caption class="dt-cap">First rows as read{% if pv.files %}, from {{ pv.rows_file }}{% endif %}
-   {% set read_as %}<span class="uk-sr">Read as </span>{{ pv.read_as }}{% endset %}{{ tips.tag(read_as) }}</caption>
+  <caption class="dt-cap">First rows as read{% if pv.files %}, from <span class="dt-nw">{{ pv.rows_file }}</span>{% endif %}</caption>
   <thead><tr><th class="num">Row</th><th>Week{% if pv.dates_differ %} <span class="dsasw">as written</span>{% endif %}</th><th>Group</th><th class="num">Value</th>{% if pv.population %}<th class="num"><abbr title="Population">Pop.</abbr></th>{% endif %}</tr></thead>
   <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td><td class="wk">{{ r.week }}{% if pv.dates_differ %}<span class="dsasw">{{ r.date }}</span>{% endif %}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
  </table></div>
