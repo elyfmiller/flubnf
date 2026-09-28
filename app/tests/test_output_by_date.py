@@ -130,7 +130,10 @@ def test_with_no_complete_run_the_newest_file_shows_marked_incomplete(root):
     (f,) = d["files"]
     assert f["run_id"] == late.name and not f["complete"]
     html = client.get("/output").text
-    assert "(incomplete)</a>" in html
+    # the run link carries a warn badge (its tip: why the file shows)
+    after = html.split(f'href="/runs/{late.name}"', 1)[1][:1200]
+    assert "uk-badge--warn" in after
+    assert '<span class="uk-badge-t">incomplete</span>' in after
 
 
 def test_a_modified_run_sits_under_its_date_with_a_tag(root):
@@ -165,7 +168,8 @@ def test_own_data_runs_are_listed_apart_with_their_exports(root):
     html = client.get("/output").text
     block = html.split('id="own-data"', 1)[1]
     assert "Your data" in html.split('id="own-data"', 1)[0][-200:] + block[:200]
-    assert "Clinic admissions · as of 2098-01-10" in block
+    # one group per run: the dataset's name over its as-of
+    assert ">Clinic admissions</h3>" in block and "as of 2098-01-10" in block
     assert "2098-01-17-FluBNF-Groundhog.csv" in block
 
 
@@ -175,7 +179,11 @@ def test_a_file_that_fails_the_hub_checks_says_so(root):
     (f,) = d["files"]
     assert not f["check"]["ok"] and f["check"]["text"].startswith("Fails ")
     html = client.get("/output").text
-    assert '<span class="bad">Fails ' in html
+    # an error badge, in a word and an icon; its tip lists the problems
+    from markupsafe import escape
+    assert 'uk-badge--error' in html
+    assert '<span class="uk-badge-t">Fails ' in html
+    assert str(escape(f["check"]["text"].split(": ", 1)[1])) in html
 
 
 def test_research_runs_and_retired_names_are_not_listed(root):
@@ -187,3 +195,80 @@ def test_research_runs_and_retired_names_are_not_listed(root):
     assert O.forecast_dates() == ([], [])
     assert res["forecast_date"] == "2098-01-03"
     assert (w / "submission" / "NAU-Ensemble").is_dir()     # kept on disk
+
+
+def test_each_date_card_names_its_hub_window_in_a_badge(root):
+    """The window is a badge after the card's title (a state in a word and
+    an icon); its sentence and the hub's rule are the badge's tip."""
+    import datetime as dt
+    due = O._date_status("2026-10-10", today=dt.date(2026, 10, 6))
+    assert due["state"] == "due"
+    assert due["text"] == "Due Wed 2026-10-07, 11 PM ET."
+    assert due["badge"] == ("warn", "Due Wed 2026-10-07, 11 PM ET")
+    soon = O._date_status("2026-10-10", today=dt.date(2026, 10, 1))
+    assert soon["badge"] == ("pending",
+                             "Due Sun Oct 04 to Wed Oct 07, 11 PM ET")
+    shut = O._date_status("2026-10-10", today=dt.date(2026, 10, 8))
+    assert shut["badge"] == ("neutral", "Window closed")
+    assert shut["text"] == "The window closed Wed 2026-10-07."
+    assert O._date_status("2026-07-11")["badge"] == ("neutral",
+                                                     "Not a FluSight round")
+    _run(root, "2098-01-03", [GH])
+    card = client.get("/output").text.split('id="fc-2098-01-03"', 1)[1]
+    assert '<span class="uk-badge-t">Not a FluSight round</span>' in card
+    tip = card.split('id="tip-out-win-1"', 1)[1].split("</span>", 1)[0]
+    assert ("2098-01-10 is not a FluSight round, so its files are a "
+            "record.") in tip
+
+
+def test_a_seasons_older_dates_sit_behind_one_fold(root):
+    """The newest four dates are cards; older ones are in one closed fold
+    whose summary counts them and names their span, every file still
+    offered for download."""
+    for asof in ("2098-01-03", "2098-01-10", "2098-01-17", "2098-01-24",
+                 "2098-01-31"):
+        _run(root, asof, [GH])
+    html = client.get("/output").text
+    head, fold = html.split('<details class="out-older" id="out-older">', 1)
+    assert head.count('class="card out-day"') == 4
+    assert 'id="fc-2098-01-03"' in fold and 'id="fc-2098-01-03"' not in head
+    assert "1 earlier forecast date<" in fold
+    assert "2098-01-10 to 2098-01-10" in fold
+    assert html.count("/output/download?path=") == 5
+
+
+def test_each_files_coverage_fold_has_its_own_handle(root):
+    """Two files missing a location: two folds, "1 of 2 locations" and
+    "1 missing" each, their ids (and so their tips' ids) distinct."""
+    import re
+    _run(root, "2098-01-03", [OR, GH], tag="location\n39\n",
+         spec=json.dumps({"locations": ["Ohio", "Utah"]}))
+    html = client.get("/output").text
+    ids = re.findall(r'<details class="uk-fold" id="(cov-[0-9a-f]+)"', html)
+    assert len(ids) == 2 and len(set(ids)) == 2
+    assert html.count("1 of 2 locations") == 2
+    assert html.count('<span class="uk-badge-t">1 missing</span>') == 2
+    assert "<b>Utah</b>: no forecast was recorded for it" in html
+
+
+def test_refusals_and_missing_reports_are_console_pages(root):
+    """A bad date, a report that is not there or a refused download is a
+    page of the console (the Output tab: one line and the way back), with
+    the status code it always had."""
+    r = client.get("/output/report?date=nope")
+    assert r.status_code == 400 and 'role="alert"' in r.text
+    assert "Invalid date. Expected YYYY-MM-DD." in r.text
+    assert 'aria-current="page">Output</a>' in r.text
+    r = client.get("/output/report/download?date=nope")
+    assert r.status_code == 400 and 'role="alert"' in r.text
+    r = client.get("/output/report?date=2098-01-03")
+    assert r.status_code == 200
+    assert "No archived report for 2098-01-03" in r.text
+    r = client.get("/output/report")
+    assert r.status_code == 200 and "No report yet" in r.text
+    assert 'href="/forecast"' in r.text and "Run the models first." in r.text
+    r = client.get("/output/report/download")
+    assert r.status_code == 404 and "No report to download" in r.text
+    r = client.get("/output/download", params={"path": "/etc/hosts"})
+    assert r.status_code == 404 and "File not found in app state" in r.text
+    assert 'href="/output"' in r.text                    # the way back
