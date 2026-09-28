@@ -168,7 +168,9 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     page = client.get(f"/runs/{row['run_id']}").text
     assert f"live target-data through {ASOF}" in page
     html = client.get("/output").text
-    assert f"Data: live target-data through {ASOF}" in html
+    # the date card's fact row: the source, spoken as "Data: ..."
+    assert (f'<span class="uk-sr">Data: </span><span>live target-data '
+            f'through {ASOF}</span>') in html
 
 
 def test_update_data_mid_run_does_not_change_what_the_run_reads(console, hubfiles, tmp_path, monkeypatch):
