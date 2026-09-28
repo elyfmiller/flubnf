@@ -286,15 +286,21 @@ def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, mo
     page = client.get("/forecast").text
     box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
     assert f'data-week="{NEW}"' in box and "<legend>Data issues<span" in box
-    assert '<span class="ms-badge warn">2 states</span>' in box
+    assert ('<span class="uk-badge uk-badge--warn" id="di-count" data-state="warn">'
+            in box and '<span class="uk-badge-t">2 states</span>' in box)
     md = WEEKS[-2][5:]
-    # one compact row: the name, the flag, the badge, the select, the reason
-    assert ('<label for="gap-39">Ohio</label><span class="di-flag">0 after 40, 40, 40'
-            '</span><span class="ms-badge ok di-rec">recommended</span>') in box
+    # one compact row: the "recommended" check, the name, the reason's "i",
+    # the flag, then the select
+    assert ('<div class="di-head"><span class="di-rec uk-c-ok">' in box
+            and 'aria-label="recommended"' in box)
+    assert '<label for="gap-39">Ohio</label>' in box
+    assert '<span class="di-flag">0 after 40, 40, 40 <span class="tip">' in box
     assert 'name="gap.39" id="gap-39" data-issue="zero" data-rec="set_aside"' in box
     assert f'<option value="set_aside" selected>Both from {md}</option>' in box
     assert f'<option value="extend">Extend 40 from {md}</option>' in box
-    assert '<span class="hint di-why">0 after 40, 40, 40 looks like a missed report</span>' in box
+    # the reason is the row's "i" tip, and it describes the select
+    assert ('id="tip-di-why-39">0 after 40, 40, 40 looks like a missed report</span>'
+            in box and 'aria-describedby="tip-di-why-39"' in box)
     assert 'name="gap.49" id="gap-49" data-issue="collapsed" data-rec="set_aside"' in box
     assert '<option value="keep">Keep 5</option>' in box
     assert "required" not in box and "Choose…" not in box   # nothing to answer
@@ -368,10 +374,11 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
     # the form comes back pre-filled, the badge off where the choice differs
     page = client.get("/forecast").text
     assert '<option value="omit" selected>Leave out</option>' in page
-    ohio = page[page.index('for="gap-39"'):page.index('id="gap-39"')]
-    assert 'class="ms-badge ok di-rec" hidden>recommended' in ohio
-    utah = page[page.index('for="gap-49"'):page.index('id="gap-49"')]
-    assert 'class="ms-badge ok di-rec">recommended' in utah
+    def row(fips):
+        at = page.index(f'for="gap-{fips}"')
+        return page[page.rindex('<div class="di-head">', 0, at):page.index(f'id="gap-{fips}"')]
+    assert '<span class="di-rec uk-c-ok" hidden>' in row("39")
+    assert '<span class="di-rec uk-c-ok">' in row("49")
     # every listed state is recorded, a default choice too
     _post({"gap.39": "abstain", "gap.49": "keep"})
     assert len(started) == 2

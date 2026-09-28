@@ -4,4 +4,127 @@
    and ui-kit.css; a partial that renders on another tab's page links it
    itself (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the
    nau.css tokens; new classes start "fc-"; kit classes (uk-*) are used as
-   they are, never restyled here. */
+   they are, never restyled here (an fc- class passed through a macro's
+   cls, as fc-kv, fc-flush and fc-ms-locked are, only lays out its box:
+   margins, columns and text size, never its colors).
+
+   CONTENTS
+     1. settings card: the dataset's truth, the anchor line, the
+        locations count, a badge under a field, labelled values
+     2. results column: running, latest run, actions, pagers
+     3. the Data issues box (_data_issues.html)
+     4. the Model settings panel (_model_settings.html)
+     5. the run page (run.html, _dataset_run.html) */
+
+/* ---- 1. settings card ---- */
+/* the dataset's truth badge under its picker */
+.fc-truth{margin:.1rem 0 .55rem}
+/* the anchor week under the date: an icon, the label, the week, the
+   "not archived" badge; or one warn line when no week is on or before */
+.fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}
+.fc-anchor-ok,.fc-anchor-none{display:inline-flex;align-items:center;
+  flex-wrap:wrap;gap:.2rem .4rem}
+.fc-anchor-ok[hidden],.fc-anchor-none[hidden]{display:none}
+.fc-anchor-k{color:var(--mut);font-weight:600}
+.fc-anchor-ok b{color:var(--ink);font-weight:700;
+  font-variant-numeric:tabular-nums}
+.fc-anchor-none{color:var(--warn);font-weight:600}
+/* the pick's count: a small chip inside the Locations label */
+.fc-count{display:inline-block;margin-left:.3rem;padding:0 .5em;
+  border:1px solid var(--line);border-radius:var(--r-pill);
+  background:var(--bg);color:var(--ink);font-size:var(--fs-micro);
+  font-weight:650;font-variant-numeric:tabular-nums;line-height:1.5;
+  vertical-align:.05em}
+.fc-count:empty{display:none}
+/* a badge on its own line under a field (the particle filter off, the
+   engine build) */
+.fc-under{margin:.35rem 0 .2rem}
+/* labelled values in the form's column: a compact key/value pair */
+.fc-kv{margin:.55rem 0 .3rem}
+
+/* ---- 2. results column ---- */
+/* running: the label under the heading, the counts as tiles */
+.fc-running .runlabel{margin:.1rem 0 .35rem}
+/* latest run: the run's link and its status badge on one line */
+.fc-runline{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem .6rem;
+  margin:.1rem 0 .5rem}
+.fc-runline a{font-size:var(--fs-lead);font-weight:700}
+/* a card's actions: link buttons and the re-run form in one row */
+.fc-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .6rem;
+  margin:.8rem 0 .1rem;padding-top:.7rem;border-top:1px solid var(--line)}
+.fc-actions a.btn{display:inline-flex;align-items:center;gap:.4em;
+  font-size:var(--fs-label);padding:.35rem .8rem}
+.fc-actions form.rerun-run{margin:0 0 0 auto}
+/* the pager's "3/53" */
+.fc-pos{color:var(--mut);font-size:var(--fs-label);
+  font-variant-numeric:tabular-nums}
+
+/* ---- 3. the Data issues box ---- */
+/* the Model settings look; one row per state: the check and the name,
+   the flag and its "i" under them, the select beside (under them when
+   the column is too narrow for both: large text, a narrow window) */
+.fc-di legend{display:inline-flex;align-items:center;flex-wrap:wrap;
+  gap:.2rem .4rem}
+.fc-di .di-row{margin:.35rem 0 0}
+.fc-di .di-state{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.3rem .4rem;padding-top:.35rem;border-top:1px solid var(--line)}
+.fc-di .di-state:first-of-type{border-top:0;padding-top:0}
+.fc-di .di-row select{margin:0;font-size:var(--fs-label);
+  padding:.3rem .45rem}
+.fc-di .di-state select{width:auto;flex:1 1 7.5rem;min-width:7.5rem;
+  max-width:15rem}
+.fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
+  margin-bottom:.2rem}
+.fc-di .di-all label{margin:0;white-space:nowrap}
+.fc-di .di-all select{width:auto;flex:1 1 8rem;min-width:0;max-width:100%}
+.fc-di .di-head{flex:1 1 8.5rem;min-width:0;display:flex;align-items:center;
+  gap:.1rem .3rem;flex-wrap:wrap}
+.fc-di .di-head label{margin:0;color:var(--ink);font-weight:600}
+.fc-di .di-flag{flex-basis:100%;color:var(--mut);font-size:var(--fs-hint);
+  font-variant-numeric:tabular-nums}
+.fc-di .di-flag .tip{margin-left:.1rem}
+.fc-di .di-rec{display:inline-flex;font-size:var(--fs-label)}
+.fc-di .di-rec[hidden]{display:none}
+.fc-di[hidden]{display:none}
+
+/* ---- 4. the Model settings panel ---- */
+/* the summary's badge (default / modified) beside its title */
+.fc-ms-state{margin-left:.45rem}
+/* a knob not wired yet: its badge under the disabled field */
+.fc-ms-soon{display:block;margin:.3rem 0 .1rem}
+/* the fixed settings: a fold with one labelled value each */
+.fc-ms-locked{margin-top:.9rem}
+.fc-ms-locked > summary{font-size:var(--fs-label)}
+/* the side column is narrow: each fixed setting's name over its value */
+.fc-ms-locked .fc-kv{grid-template-columns:minmax(0,1fr);row-gap:.1rem;
+  font-size:var(--fs-label)}
+.fc-ms-locked .fc-kv dd{margin-bottom:.45rem;overflow-wrap:anywhere}
+
+/* ---- 5. the run page ---- */
+/* the title and its badges, the re-run at the right */
+.fc-runhead{margin-bottom:.3rem}
+/* a card that is its heading alone (the weekly report and its actions) */
+.fc-flush{margin-bottom:0}
+/* results and settings side by side where the window allows */
+.fc-rungrid{display:grid;gap:0 var(--gap);align-items:start;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))}
+.fc-rungrid > .card{min-width:0}
+/* the partial run's failures: an error icon, the cell, the reason */
+.fc-sub{display:flex;align-items:center;gap:.4rem;margin:.8rem 0 .3rem;
+  font-size:var(--fs-label);color:var(--ink)}
+.fc-faillist{list-style:none;margin:0;padding:0}
+.fc-faillist li{display:flex;align-items:baseline;flex-wrap:wrap;
+  gap:.2rem .5rem;padding:.3rem 0;border-top:1px solid var(--line)}
+.fc-faillist li:first-child{border-top:0}
+/* a file line: the model, the file's link, a badge when named apart */
+.fc-file{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .6rem;
+  margin:.55rem 0 .15rem}
+.fc-file-model{min-width:12rem;color:var(--mut);font-size:var(--fs-label);
+  font-weight:650}
+.fc-file a{display:inline-flex;align-items:center;gap:.35em;
+  overflow-wrap:anywhere}
+.fc-filelist{list-style:none;margin:0;padding:0}
+.fc-filelist li{margin:.35rem 0}
+.fc-archived{margin-top:.9rem}
+/* the per-model medians: numbers right-aligned under their horizon */
+.fc-medians td:first-child{white-space:nowrap}

@@ -1,18 +1,18 @@
-{# The engine build in one line, where a page reports engine readiness.
-   Another build than production: one warn line, the fix in its "?" tip
-   (`eb_short`: the build and "not the production build", the full
-   sentence joining the fix in the tip, for a form's narrow column).
-   Production: the build as a hint line when `eb_ok` is set (Home names it
-   in its versions line instead). Unknown (no engine, or not resolved
-   yet): nothing.
+{# The engine build, where a page reports engine readiness.
+   Another build than production: in a form's narrow column (`eb_short`)
+   a "not the production build" warn badge, the sentence naming the build
+   and the fix in its "?" tip; elsewhere (Home) one warn alert
+   line, the fix in its tip. Production: an ok badge naming the build when
+   `eb_ok` is set (Home names it in its versions line instead). Unknown (no
+   engine, or not resolved yet): nothing. The data-engine-build hook marks
+   which one rendered.
    {% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %} #}
 {% import "_tips.html" as tips %}
 {% set eb = engine_build_view() %}
 {% if eb.warning and eb_short %}
-<p class="warn engine-build-warn" data-engine-build="other">PyBNF {{ eb.label }}: not the production build {{ tips.tip("eb-" ~ (eb_id or "x"), "switching to the production engine", eb.warning ~ " " ~ eb.fix) }}</p>
+<span class="engine-build-warn" data-engine-build="other">{% call tips.badge("warn", "not the production build", id="eb-" ~ (eb_id or "x")) %}{{ eb.warning }} {{ eb.fix }}{% endcall %}</span>
 {% elif eb.warning %}
-<p class="warn engine-build-warn" data-engine-build="other">{{ eb.warning }}
- {{ tips.tip("eb-" ~ (eb_id or "x"), "switching to the production engine", eb.fix) }}</p>
+<div class="engine-build-warn" data-engine-build="other">{% call tips.alert("warn", eb.warning, id="eb-" ~ (eb_id or "x"), live="") %}{{ eb.fix }}{% endcall %}</div>
 {% elif eb.production and eb_ok %}
-<p class="hint" data-engine-build="production">PyBNF {{ eb.label }}</p>
+<span data-engine-build="production">{{ tips.badge("ok", "PyBNF " ~ eb.label) }}</span>
 {% endif %}

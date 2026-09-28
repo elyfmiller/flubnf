@@ -116,10 +116,10 @@ def test_forecast_panel_renders_every_forecast_knob_with_a_tip():
     assert 'name="submit_modified"' in html and 'name="modified_reason"' in html
     assert 'id="ms-reset"' in html and "Reset to defaults" in html
     assert "/static/model_settings.js" in html
-    # the fixed list, with its tip
+    # the fixed list, with its tip; each fixed value's reason in its own tip
     assert "Fixed by the model definition" in html
     for key in ("horizons", "quantile_levels", "epiweek_53", "gamma"):
-        assert f"<dt>{key}</dt>" in html
+        assert f'<dt>{key}<span class="tip">' in html
 
 
 def test_every_panel_input_has_an_associated_label():

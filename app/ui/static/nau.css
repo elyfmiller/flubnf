@@ -1117,54 +1117,16 @@ details.adv[open]>summary::before{content:"\25BE"}
 .adv[open] > summary.advbtn{background:var(--accent-ink);
  border-color:var(--accent-ink);color:var(--card)}
 /* the Model settings panel (templates/_model_settings.html): one fieldset
-   per stage, a live shipped/modified badge in the fold's button */
-.ms-badge{display:inline-block;margin-left:.45rem;padding:0 .45rem;
-  border-radius:99px;border:1px solid currentColor;font-size:var(--fs-micro);
-  font-weight:650;background:var(--card)}
-.ms-badge.ok{color:var(--ok)}
-.ms-badge.warn{color:var(--warn)}
+   per stage (its badges and fixed list: static/tabs/forecast.css) */
 .ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
 .ms-head button{margin-top:0}
 .ms-group{border:1px solid var(--line);border-radius:10px;
   padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
 .ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
 .ms-row input,.ms-row select{max-width:100%}
-/* the Forecast tab's Data issues box (templates/_data_issues.html): the
-   Model settings look, one stacked row per state: name, flag and the
-   "recommended" badge on one line, the select, the reason under it */
-/* one state = one line: a check while the select holds the recommended
-   choice, the name and flag, then the select; the reason is the row's
-   hover text (and a visually hidden line) */
-.dataissues .di-row{margin:.35rem 0 0}
-.dataissues .di-state{display:flex;align-items:center;gap:.4rem;
-  padding-top:.3rem;border-top:1px solid var(--line)}
-.dataissues .di-state:first-of-type{border-top:0;padding-top:0}
-.dataissues .di-row select{margin:0;font-size:var(--fs-label);padding:.3rem .45rem}
-.dataissues .di-state select{width:auto;flex:0 1 46%;min-width:7.5rem}
-.dataissues .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
-  margin-bottom:.2rem}
-.dataissues .di-all label{margin:0;white-space:nowrap}
-.dataissues .di-all select{width:auto;flex:1 1 8rem}
-.dataissues .di-head{flex:1 1 0;min-width:0;display:flex;align-items:baseline;
-  gap:.3rem;flex-wrap:wrap}
-.dataissues .di-head label{margin:0;font-weight:600}
-.dataissues .di-flag{color:var(--mut);font-size:var(--fs-hint);white-space:nowrap}
-/* the check: its text stays "recommended" for assistive tech */
-.dataissues .di-rec{order:-1;margin:0;padding:0;border:0;background:none;
-  font-size:0;line-height:1}
-.dataissues .di-rec::before{content:"\2713";font-size:var(--fs-label);
-  font-weight:700}
-.dataissues .di-rec[hidden]{display:none}
-.dataissues .di-why{position:absolute;width:1px;height:1px;overflow:hidden;
-  clip:rect(0 0 0 0);white-space:nowrap}
-.dataissues[hidden]{display:none}
 .ms-later{opacity:.62}
-.ms-soon{margin-left:.3rem}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
 .ms-override .ck{font-weight:600}
-.ms-locked{margin-top:.8rem}
-.ms-locked>summary{cursor:pointer;display:inline;color:var(--mut);font-size:var(--fs-hint)}
-.ms-locked dl.kv{margin-top:.4rem}
 /* the "?" explainer (templates/_tips.html, static/tips.js): a small round
    button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
    surface (ink on card) so it reads in every theme and a11y mode. */
@@ -1319,8 +1281,6 @@ nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
 #fancard .carousel button,.fanx .carousel button,
 .dataloc button{margin-top:0;padding:.2rem .6rem}
 .dataloc{margin:.6rem 0 .2rem}
-/* a setting with one possible value, stated as text */
-.fixedval{margin:.1rem 0 .2rem;font-weight:600}
 /* forms whose only control is a button and its tip */
 form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 /* Output: the earlier-weeks picker sits under its own label */
@@ -1634,7 +1594,6 @@ details.covfold .covhead{margin:.35rem 0 .1rem}
 ul.covlist{margin:.1rem 0 .2rem;padding-left:1.1rem;font-size:var(--fs-label)}
 ul.covlist li{margin:.1rem 0;overflow-wrap:anywhere}
 p.cov{margin:.1rem 0 .3rem}
-.subline{margin:.45rem 0 .1rem}
 
 /* round8: output */
 /* one card per forecast date: a meta line, then one flat row per file

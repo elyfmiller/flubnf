@@ -1,23 +1,22 @@
 {# A run on a custom dataset (run.html, app/ui/datasets_ui.run_page_extra):
    the fans per group and model, and the export files. Tips imported by
    run.html. #}
-<div class="card" id="ds-fans"><h2>Forecasts on {{ dataset.name }}
- {{ tips.tip("run-ds-fans", "these forecasts", ("Vintage-true: each group was forecast from the as_of snapshot of its week." if dataset.vintage_true else "Final data, not vintage-true: the week was cut from the final series, so later revisions leak in.") ~ " The band is the 10-90% interval; the dotted line is what the dataset holds after the forecast date.") }}</h2>
+<div class="card" id="ds-fans">{{ tips.heading("Forecasts on " ~ dataset.name, "run-ds-fans", ("Vintage-true: each group was forecast from the as_of snapshot of its week." if dataset.vintage_true else "Final data, not vintage-true: the week was cut from the final series, so later revisions leak in.") ~ " The band is the 10-90% interval; the dotted line is what the dataset holds after the forecast date.", tip_label="these forecasts", after=tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data")) }}
  <div class="carousel" id="dsf-models"></div>
  <div class="carousel">
-  <button type="button" class="quiet cnav" id="dsf-prev">◀</button>
+  <button type="button" class="quiet cnav" id="dsf-prev" aria-label="previous group">◀</button>
   <select id="dsf-loc" aria-label="group" style="width:auto;min-width:200px;max-width:100%"></select>
-  <button type="button" class="quiet cnav" id="dsf-next">▶</button>
-  <span class="hint" id="dsf-pos"></span>
+  <button type="button" class="quiet cnav" id="dsf-next" aria-label="next group">▶</button>
+  <span class="fc-pos" id="dsf-pos"></span>
  </div>
  <div id="dsf-plot" style="min-height:380px"></div>
 </div>
 
-<div class="card" id="ds-exports"><h2>Export files
- {{ tips.tip("run-ds-exports", "the export files", "Hubverse model-output CSVs (23 quantiles, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own " ~ (dataset.key_col or "location") ~ " column and target '" ~ (dataset.target or "custom") ~ "'. Named FluBNF-Groundhog and FluBNF-SIHRS-PF, never a registered hub identity; nothing is submitted.") }}</h2>
+<div class="card" id="ds-exports">{{ tips.heading("Export files", "run-ds-exports", "Hubverse model-output CSVs (23 quantiles, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own " ~ (dataset.key_col or "location") ~ " column and target '" ~ (dataset.target or "custom") ~ "'. Named FluBNF-Groundhog and FluBNF-SIHRS-PF, never a registered hub identity; nothing is submitted.") }}
  {% for e in exports %}
- <p>{{ e.model }}: <a href="/output/download?path={{ e.path | urlencode }}">{{ e.name }}</a></p>
- {% else %}<p class="hint">No export files for this run.</p>{% endfor %}
+ <div class="fc-file"><span class="fc-file-model">{{ e.model }}</span>
+  <a href="/output/download?path={{ e.path | urlencode }}">{{ tips.icon("download") }} {{ e.name }}</a></div>
+ {% else %}{{ tips.empty("No export files for this run", "folder", compact=True, id="run-noexports") }}{% endfor %}
 </div>
 <script>
  (function(){

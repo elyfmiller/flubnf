@@ -381,7 +381,9 @@ def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
     ui_state._last_form.update({"forecast_date": "2098-10-20",   # a Monday
                                 "locations": ["all"], "engine": "all"})
     page = client.get("/forecast").text
-    assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
+    # the anchor week as a labelled value under the date
+    line = page[page.find('id="anchor-line"'):][:900]
+    assert "Anchor week</span>" in line and f'<b id="fc-anchor-wk">{W3}</b>' in line, line
     script = page.split('id="anchor-line"')[1].split("</script>")[0]
     # the script's copy: the NEWEST archived week on or before the day (the
     # list runs newest first), with the day read and moved in UTC so a zone
@@ -406,7 +408,14 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     assert ui_state._last_form["forecast_date"] == W3
     page = client.get("/forecast").text
     assert f'value="{W3}"' in page
-    assert f"Anchor week: {W3} (new data, not archived yet" in page
+    # the anchor names the week and, in its "not archived" badge's tip, that
+    # it is new data read from target-data
+    line = page[page.find('id="anchor-line"'):page.find('id="anchor-line"') + 2500]
+    assert f'<b id="fc-anchor-wk">{W3}</b>' in line
+    live = line[line.index('id="fc-anchor-live"'):]
+    assert not live.startswith('id="fc-anchor-live" hidden')
+    assert '<span class="uk-badge-t">not archived</span>' in live
+    assert "New data, not archived yet: read from target-data." in live
     dpage = client.get("/data").text
     assert f'<dd id="live-week"><code>{W3}</code> <span class="pill warn" id="live-newer">not archived</span>' in dpage
     assert f"real-time runs for <span class=\"wk\">{W3}</span> read target-data" in dpage
