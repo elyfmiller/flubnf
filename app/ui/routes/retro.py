@@ -1040,6 +1040,11 @@ def retro_results(request: Request, season: str, week: str = "",
         "n_weeks": len(weeks) if scoreable else 0})
 
 
+#: the player's message when a week cannot be scored for lack of any
+#: observed data
+NO_TRUTH = "No observed data to score against. Update data from the Data tab."
+
+
 @router.get("/api/retro/{season}/playback/{asof}")
 def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retro week as a playback payload (member fans, settled
@@ -1054,6 +1059,9 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
+    except FileNotFoundError:
+        # no observed data at all (no hub clone, no stored vintages)
+        return PlainTextResponse(NO_TRUTH, status_code=503)
 
 
 @router.get("/api/retro/{season}/mapswap/{asof}")
@@ -1098,6 +1106,8 @@ def _season_report(season: str, archive: str):
             build=RUNNING_SHA, versions=VERSIONS)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
+    except FileNotFoundError:
+        return PlainTextResponse(NO_TRUTH, status_code=503)
 
 
 @router.get("/retro/{season}/report")
