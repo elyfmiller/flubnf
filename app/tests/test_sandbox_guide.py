@@ -146,7 +146,9 @@ def test_the_simulate_route_fills_data_exp(box):
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/sandbox?model=mine"
     assert sb.read_model("mine")["data.exp"] != before
-    assert "simulated from the model at the values written" in ui_state._status["flash"]
+    assert "simulated weeks" in ui_state._status["flash"]
+    assert "from the model at the values written" in ui_state._status[
+        "flash_detail"]
 
 
 # ------------------------------------------------ the run in plain words

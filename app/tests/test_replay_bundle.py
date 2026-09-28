@@ -351,8 +351,9 @@ def test_post_import_with_an_upload_lands_and_opens_the_season(tmp_path,
                         follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == f"/retro/{SEASON}?archive={stamp}"
-    assert _flash().startswith(f"Imported {SEASON} (2 weeks, exported from "
-                               f"{rb.hostname()} on ")
+    assert _flash().startswith(f"Imported {SEASON} (2 weeks).")
+    assert ui_state._status.get("flash_detail", "").startswith(
+        f"Exported from {rb.hostname()} on ")
     assert (rr / f"{SEASON}__archived_{stamp}" / "scores.json").is_file()
     assert not (rr / SEASON).exists()                 # never the live root
     # the streamed upload left nothing behind
@@ -383,7 +384,7 @@ def test_post_import_takes_a_local_path_and_refuses_bad_input(tmp_path,
 
     r = client.post("/retro/import", data={}, follow_redirects=False)
     assert r.headers["location"] == "/retro"
-    assert "Choose a replay bundle" in _flash()
+    assert "Not imported: choose a bundle" in _flash()
     notzip = tmp_path / "x.zip"; notzip.write_bytes(b"nope")
     r = client.post("/retro/import", data={"path": str(notzip)},
                     follow_redirects=False)

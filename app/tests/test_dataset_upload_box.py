@@ -626,7 +626,7 @@ def test_replay_this_says_what_it_stored_in_the_card_it_opens():
     # said once; the other buttons still flash it at the top
     assert "dsr-stored" not in client.get(r.headers["location"]).text
     store(grouped_bytes(), name="Other", next="forecast")
-    assert "Stored the dataset Other" in client.get("/forecast").text
+    assert "Stored Other:" in client.get("/forecast").text
 
 
 def test_the_data_list_replay_link_preselects():

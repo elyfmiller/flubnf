@@ -75,7 +75,8 @@ def test_a_one_location_hubverse_upload_loads_with_calendar_weeks(box):
     assert info["asof"] == "dataset" and info["dataset"]["id"] == ds[0].id
     assert info["dates"][2] == "2024-10-19" and info["dropped"] == 0
     html = client.get(r.headers["location"]).text
-    assert "data.exp filled: Springfield, 2024-10-05 to 2024-11-02, dataset counts" in html
+    assert "data.exp filled: 5 weeks of Springfield, 2024-10-05 to 2024-11-02." in html
+    assert "Source: dataset counts." in html
     assert source_facts(html) == ["Springfield", "2024-10-05 to 2024-11-02",
                                   "dataset counts", "5 weeks"]
     assert f'<option value="dataset:{ds[0].id}" selected>counts</option>' in html
@@ -88,7 +89,7 @@ def test_a_grouped_upload_is_stored_then_one_group_loaded(box):
     before = sb.read_model("mine")["data.exp"]
     assert sb.read_model("mine")["data.exp"] == before            # nothing loaded yet
     html = client.get(r.headers["location"]).text
-    assert "pick a group under Load data" in html
+    assert "pick one under Load data" in html
     assert '<details class="uk-fold sbfill" id="sb-fill" open>' in html
     assert f'value="Overall" data-ds="{ds.id}"' in html
     r = client.post("/sandbox/models/mine/fill-data",
@@ -190,7 +191,8 @@ def test_a_client_file_name_is_never_a_path(box, tmp_path):
 def test_rates_load_with_a_word_about_the_objective(box):
     rates = HUBVERSE.replace(",8\n", ",0.8\n")
     r = _upload(rates, kind="rate")
-    assert "rates, not counts" in client.get(r.headers["location"]).text
+    assert "Rates: set objfunc in priors.conf." in client.get(
+        r.headers["location"]).text
 
 
 def test_the_stored_dataset_is_offered_to_other_models(box):

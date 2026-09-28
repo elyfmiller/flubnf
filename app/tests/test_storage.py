@@ -110,11 +110,12 @@ def test_clear_removes_completed_rows_never_the_active_one(state):
     assert r.status_code == 303
     left = led.rows(50)
     assert [x["run_id"] for x in left] == [state["rids"]["running"]]
-    assert "Cleared 3 completed rows" in _flash()
+    assert "Cleared 3 completed ledger rows" in _flash()
     # the confirm copy's promise holds: clearing deleted NO disk data
     for rid in state["rids"].values():
         assert (state["root"] / "workroots" / rid).is_dir()
-    assert "No data on disk was deleted" in _flash()
+    assert "No data on disk was deleted" in ui_state._status.get(
+        "flash_detail", "")
 
 
 def test_clear_refuses_a_stale_count(state):
@@ -122,7 +123,8 @@ def test_clear_refuses_a_stale_count(state):
                     follow_redirects=False)
     assert r.status_code == 303
     assert len(state["ledger"].rows(50)) == 4        # nothing removed
-    assert "Nothing was cleared" in _flash()
+    assert "Not cleared" in _flash()
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_clear_control_names_the_count_and_the_no_disk_promise(state):
@@ -218,7 +220,7 @@ def test_delete_workroot_leaves_an_honest_dangling_ledger_row(state):
                     follow_redirects=False)
     assert r.status_code == 303
     assert not (state["root"] / "workroots" / rid).exists()
-    assert "ledger row remains" in _flash()
+    assert "ledger row remains" in ui_state._status.get("flash_detail", "")
     # the row survives and reads honestly: a dash, not an error
     html = client.get("/runs").text
     assert rid in html
@@ -339,8 +341,8 @@ def test_clear_all_refuses_a_stale_count(state):
     assert r.status_code == 303
     for rid in state["rids"].values():
         assert (state["root"] / "workroots" / rid).is_dir()
-    assert "Nothing was deleted" in _flash() \
-        or "Nothing was\ndeleted" in _flash()
+    assert "Not deleted" in _flash()
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
@@ -354,7 +356,7 @@ def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
     assert (state["root"] / "workroots"
             / state["rids"]["running"]).is_dir()
     assert "Deleted 3 completed run workroots" in _flash()
-    assert "ledger row" in _flash()
+    assert "ledger row" in ui_state._status.get("flash_detail", "")
     # every ledger row remains, the cleared ones honestly dangling
     html = client.get("/runs").text
     for rid in state["rids"].values():
@@ -391,7 +393,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert "No completed run workroots" in _flash()
+    assert "no completed run workroots" in _flash()
     # and the control disappears from the page
     html = client.get("/runs").text
     assert "Delete all" not in html
@@ -412,7 +414,8 @@ def test_seal_and_hub_are_refused_on_any_crafted_request(state):
                         data={"kind": kind, "ident": ident,
                               "confirm": ident}, follow_redirects=False)
         assert r.status_code == 303
-        assert "Nothing was deleted" in _flash(), (kind, ident)
+        assert "Not deleted" in _flash(), (kind, ident)
+        assert ui_state._status.get("flash_kind") == "warn"
     assert (state["seal"] / SEASON / "weeks" / "sealed.json").is_file()
     assert (state["hub"] / "auxiliary-data" / "truth.csv").is_file()
 
@@ -437,7 +440,7 @@ def test_unknown_kind_is_refused(state):
                     data={"kind": "ledger", "ident": "x", "confirm": "x"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert "Nothing was deleted" in _flash()
+    assert "Not deleted" in _flash()
 
 
 # ------------------------------------------------------------- ledger fold

@@ -271,17 +271,17 @@ def runs_clear(request: Request, confirm: str = Form("")):
     ledger = Ledger()
     ids = _clearable_run_ids(ledger)
     if not ids:
-        _flash("The run ledger has no completed rows to clear.")
+        _flash("Nothing to clear: the ledger has no completed rows.", "warn")
         return _back(request, "/storage")
     if confirm != str(len(ids)):
-        _flash("The ledger changed since this page was rendered "
+        _flash("Not cleared: the ledger changed "
                f"({len(ids)} clearable row{'' if len(ids) == 1 else 's'} "
-               "now). Nothing was cleared; review and confirm again.")
+               "now).", "warn", detail="Review and confirm again.")
         return _back(request, "/storage")
     n = ledger.delete_runs(ids)
     _invalidate_scans()
-    _flash(f"Cleared {n} completed row{'' if n == 1 else 's'} from the run "
-           "ledger. No data on disk was deleted: the runs' workroots stay "
+    _flash(f"Cleared {n} completed ledger row{'' if n == 1 else 's'}.", "ok",
+           detail="No data on disk was deleted: the runs' workroots stay "
            "in the storage panel until deleted there.")
     return _back(request, "/storage")
 
@@ -347,25 +347,25 @@ def storage_delete(request: Request, kind: str = Form(""),
     _invalidate_scans()
     p, why = _storage_target(kind, ident)
     if p is None:
-        _flash(f"{why} Nothing was deleted.")
+        _flash(f"Not deleted: {why[:1].lower()}{why[1:]}", "warn")
         return _back(request, "/storage")
     if confirm != ident:
-        _flash("The deletion was not confirmed, so nothing was deleted.")
+        _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/storage")
     size_h = retro.human_bytes(retro.dir_size(p))
     try:
         retro.delete_tree(p)
     except Exception as e:
         _flash(f"Could not delete {ident}: {type(e).__name__}: "
-               f"{str(e)[:160]}. Nothing else changed.")
+               f"{str(e)[:160]}.", "error", detail="Nothing else changed.")
         return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
             "report-archive": "report archive"}.get(kind, "entry")
-    tail = (" Its ledger row remains as the run's record."
+    tail = ("Its ledger row remains as the run's record."
             if kind == "workroot" else "")
-    _flash(f"Deleted the {noun} {ident}: {size_h} freed.{tail}")
+    _flash(f"Deleted the {noun} {ident}: {size_h} freed.", "ok", detail=tail)
     return _back(request, "/storage")
 
 
@@ -378,13 +378,14 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     _invalidate_scans()
     items = _clearable_workroots()
     if not items:
-        _flash("No completed run workroots are on disk to delete.")
+        _flash("Nothing to delete: no completed run workroots on disk.",
+               "warn")
         return _back(request, "/storage")
     if confirm != str(len(items)):
-        _flash("The storage panel changed since this page was rendered "
+        _flash("Not deleted: the storage panel changed "
                f"({len(items)} deletable workroot"
-               f"{'' if len(items) == 1 else 's'} now). Nothing was "
-               "deleted; review and confirm again.")
+               f"{'' if len(items) == 1 else 's'} now).", "warn",
+               detail="Review and confirm again.")
         return _back(request, "/storage")
     live = _live_workroot_ids()
     freed, n = 0, 0
@@ -403,8 +404,8 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
             continue          # one stuck tree must not sink the sweep
     _invalidate_scans()
     _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
-           f"{retro.human_bytes(freed)} freed. Every ledger row is kept "
-           "and shows a dash for disk use.")
+           f"{retro.human_bytes(freed)} freed.", "ok",
+           detail="Every ledger row is kept and shows a dash for disk use.")
     return _back(request, "/storage")
 
 
@@ -481,14 +482,14 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     plan = _reclaim_survey()
     counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
     if plan["total_est"] <= 0 and plan["compress_files"] == 0:
-        _flash("There is nothing to reclaim: no completed week or run "
-               "carries intermediates and every stored week is already "
-               "compressed.")
+        _flash("Nothing to reclaim.", "warn",
+               detail="No completed week or run carries intermediates, and "
+               "every stored week is already compressed.")
         return _back(request, "/storage")
     if confirm != counts:
-        _flash("The storage panel changed since this report was made "
-               "(a run finished or files moved). Nothing was deleted; "
-               "review the reclaim report and confirm again.")
+        _flash("Not reclaimed: the storage panel changed since the report.",
+               "warn", detail="A run finished or files moved. Review the "
+               "reclaim report and confirm again.")
         return _back(request, "/storage")
     skip_seasons, skip_workroots = _reclaim_skips()
     out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
@@ -509,7 +510,9 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
         bits.append(f"{hb(out['compress_saved'])} by compressing "
                     f"{out['compress_files']} stored week"
                     f"{'' if out['compress_files'] == 1 else 's'} in place")
-    _flash(f"Reclaimed {hb(out['total'])}: " + "; ".join(bits) + ". Every "
-           "stored week, score, report, and submission file is kept; the "
-           "sealed validation record and the hub clone were not touched.")
+    _flash(f"Reclaimed {hb(out['total'])}.", "ok",
+           detail=("; ".join(bits) + ". " if bits else "")
+           + "Every stored week, score, report and submission file is "
+           "kept; the sealed validation record and the hub clone were not "
+           "touched.")
     return _back(request, "/storage")

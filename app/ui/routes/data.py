@@ -190,7 +190,8 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
             ctx = _data_context()
             ctx.update(_dsu.data_context(ds, loc, vintage))
             return templates.TemplateResponse(request, "data.html", ctx)
-        _flash("That dataset is not stored; showing the FluSight hub.")
+        _flash("That dataset is not stored; showing the FluSight hub.",
+               "warn")
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(loc, vintage))
 
@@ -231,13 +232,12 @@ def _pull() -> tuple:
         if running and (running == "starting"
                         or "materializing" in phase
                         or "preparing" in phase):
-            msg = ("A run is reading the hub files right now ("
-                   + (_status.get("run_label") or str(running))
-                   + "). Updating data would change those files mid read; "
-                   "nothing was pulled. Try again once fitting starts or "
-                   "the run finishes.")
-            _flash(msg)
-            return False, msg
+            msg = ("Not pulled: a run is reading the hub files ("
+                   + (_status.get("run_label") or str(running)) + ").")
+            why = ("Updating data would change those files mid read. Try "
+                   "again once fitting starts or the run finishes.")
+            _flash(msg, "warn", detail=why)
+            return False, f"{msg} {why}"
     try:
         before = state.data_mod.newest_week()
     except Exception:
@@ -245,11 +245,11 @@ def _pull() -> tuple:
     ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
-        msg = ("Updating the hub clone FAILED: "
+        msg = ("Could not update the hub clone: "
                + (msg[:200].rstrip(". ") or "git exited nonzero with no message")
-               + ". The local archive is unchanged.")
-        _flash(msg, "error")
-        return False, msg
+               + ".")
+        _flash(msg, "error", detail="The local archive is unchanged.")
+        return False, msg + " The local archive is unchanged."
     try:
         after = state.data_mod.newest_week()
     except Exception:
@@ -275,7 +275,7 @@ def _pull() -> tuple:
     if clause:
         bits.append(clause)
     bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
-    _flash(" · ".join(bits))
+    _flash(" · ".join(bits), "ok")
     return True, " · ".join(bits)
 
 

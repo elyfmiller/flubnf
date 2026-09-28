@@ -513,7 +513,8 @@ def test_reclaim_post_refuses_a_stale_confirmation(routed):
                     follow_redirects=False)
     assert r.status_code == 303
     assert _snapshot(routed["tmp"]) == before
-    assert "Nothing was deleted" in ui_state._status.get("flash", "")
+    assert "Not reclaimed" in ui_state._status.get("flash", "")
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_reclaim_post_performs_and_names_what_it_freed(routed):
@@ -525,7 +526,8 @@ def test_reclaim_post_performs_and_names_what_it_freed(routed):
     flash = ui_state._status.get("flash", "")
     assert "Reclaimed" in flash
     assert "sealed validation record and the hub clone were not touched" \
-        in flash
+        in ui_state._status.get("flash_detail", "")
+    assert ui_state._status.get("flash_kind") == "ok"
     # it did the work: intermediates gone, samples compressed, seal intact
     season = routed["retro_root"] / SEASON
     assert not (season / "weeks" / W1 / "Ohio_r0").exists()

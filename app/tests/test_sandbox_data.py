@@ -179,8 +179,9 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/sandbox?model=mine"
     html = client.get("/sandbox?model=mine").text
-    assert ("data.exp filled: Alabama, 2024-10-05 to 2024-10-26, settled "
-            "truth, 3 weeks, 1 missing weeks dropped") in html
+    assert ("data.exp filled: 3 weeks of Alabama, 2024-10-05 to "
+            "2024-10-26.") in html
+    assert "Source: settled truth. 1 missing weeks dropped." in html
     assert source_facts(html) == ["Alabama", "2024-10-05 to 2024-10-26",
                                   "settled truth", "3 weeks, 1 dropped missing"]
     assert "0 8\n1 10\n3 14.5" in html                    # the editor holds it
@@ -191,7 +192,8 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
                     follow_redirects=False)
     assert r.status_code == 303
     html = client.get("/sandbox?model=mine").text
-    assert "vintage of 2024-11-09, 3 weeks, 1 missing weeks dropped" in html
+    assert "3 weeks of Alabama" in html
+    assert "Source: vintage of 2024-11-09. 1 missing weeks dropped." in html
     assert source_facts(html)[2:] == ["vintage of 2024-11-09", "3 weeks, 1 dropped missing"]
     assert 'value="2024-11-09" selected' in html
     # a refused fill flashes the reason and leaves the file alone

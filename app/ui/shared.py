@@ -139,17 +139,29 @@ def _name_workroot(workroot: Path, running: str) -> bool:
     return stop
 
 
-def _flash(msg: str, kind: str = "info") -> None:
+def _flash(msg: str, kind: str = "info", detail: str = "") -> None:
     """Notice for the next page the user sees (also appended to the log).
-    Unconsumed messages join rather than overwrite. `kind` is the kit
-    alert's (info, ok, warn, error); joined notices keep the most severe."""
+    `msg` is one short sentence, the essential fact first; `detail` is an
+    optional extra (the reason's fine print, what to do next) shown in the
+    notice's "?" tip. `kind` is the kit alert's (info, ok, warn, error): a
+    refusal warns, a failure is an error. Unconsumed messages join rather
+    than overwrite; joined notices keep the most severe kind."""
     prev = _status.get("flash")
-    _status["flash"] = f"{prev}  {msg}" if prev and msg not in prev else msg
+    # a repeat of a queued notice keeps the others
+    _status["flash"] = (msg if not prev else prev if msg in prev
+                        else f"{prev}  {msg}")
     rank = ("info", "ok", "warn", "error")
     old = _status.get("flash_kind") if prev else None
     _status["flash_kind"] = max((k for k in (old, kind) if k in rank),
                                 key=rank.index, default="info")
-    _status["log"].append(msg)
+    pd = _status.get("flash_detail") if prev else None
+    if detail and not (pd and detail in pd):
+        pd = f"{pd}  {detail}" if pd else detail
+    if pd:
+        _status["flash_detail"] = pd
+    else:
+        _status.pop("flash_detail", None)
+    _status["log"].append(f"{msg} {detail}" if detail else msg)
 
 
 def _back(request: Request, fallback: str) -> RedirectResponse:

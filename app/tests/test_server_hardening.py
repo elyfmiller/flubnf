@@ -272,7 +272,8 @@ def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
     flash = ui_state._status.get("flash", "")
-    assert "FAILED" in flash
+    assert "Could not update the hub clone" in flash
+    assert ui_state._status.get("flash_kind") == "error"
     assert "fatal: unable to access remote" in flash
     assert "latest vintage" not in flash    # the success trimmings stay off
 

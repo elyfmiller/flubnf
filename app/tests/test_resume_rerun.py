@@ -297,7 +297,8 @@ def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
     assert started == []
     assert ui_state._status.get("running") is None
     flash = ui_state._status.get("flash", "")
-    assert "cannot be reproduced" in flash and "jitter" in flash
+    assert "Not re-run" in flash and "jitter" in flash
+    assert "cannot reproduce" in ui_state._status.get("flash_detail", "")
 
 
 def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):
@@ -315,7 +316,7 @@ def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert started == []
     assert ui_state._status.get("running") is None
-    assert "retrospective replay holds the engine" in ui_state._status.get(
+    assert "Not run: a replay holds the engine" in ui_state._status.get(
         "flash", "")
 
 

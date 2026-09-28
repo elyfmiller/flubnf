@@ -99,7 +99,7 @@ def test_run_refuses_a_season_start_that_is_not_before_the_week(
     assert started == []
     assert ui_state._status.get("running") is None
     page = client.get("/forecast").text
-    assert "run.season_start" in page and "Nothing was run" in page
+    assert "run.season_start" in page and "Not run" in page
 
 
 def test_run_settings_name_the_season_start():

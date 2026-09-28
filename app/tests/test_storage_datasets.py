@@ -162,7 +162,8 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     url = f"/storage/datasets/{ds.id}/delete"
     for wrong in ("", ds.id, "template"):
         client.post(url, data={"confirm": wrong}, follow_redirects=False)
-        assert "not confirmed" in ui_state._status.get("flash", "")
+        assert "did not name Template" in ui_state._status.get("flash", "")
+        assert ui_state._status.get("flash_kind") == "warn"
         assert ds.path.is_dir() and (wr / state["ds_run"]).is_dir()
     size = ui_storage._storage_inventory()["datasets"][0]["size_h"]
     r = client.post(url, data={"confirm": "Template"},
@@ -171,9 +172,9 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     assert r.status_code == 303 and r.headers["location"] == "/storage"
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()             # a hub run stays
-    assert ("Deleted the dataset Template, its replays and 1 run "
-            f"workroot: {size} freed. The runs' ledger rows are kept.") \
-        in ui_state._status["flash"]
+    assert f"Deleted Template: {size} freed." in ui_state._status["flash"]
+    assert ("Its replays and 1 run workroot went with it; the runs' ledger "
+            "rows are kept.") in ui_state._status["flash_detail"]
     # the ledger rows stand, the run's with a dash for disk use
     ids = {r["run_id"] for r in Ledger().rows(10)}
     assert {state["ds_run"], state["hub_run"]} <= ids
@@ -191,7 +192,9 @@ def test_the_data_tab_delete_frees_what_storage_counts(state):
     assert r.status_code == 303
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()
-    assert "its replays and 1 run workroot" in ui_state._status["flash"]
+    assert "its replays and 1 run workroot" in ui_state._status[
+        "flash_detail"].lower()
+    assert ui_state._status["flash_kind"] == "ok"
     assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
 
 
@@ -204,8 +207,9 @@ def test_a_busy_dataset_has_no_delete_and_is_refused(state):
     assert "a replay on it is in progress" in html
     client.post(f"/storage/datasets/{ds.id}/delete",
                 data={"confirm": "Template"}, follow_redirects=False)
-    assert "was not deleted: a replay on it is in progress" in \
+    assert "not deleted: a replay on it is in progress" in \
         ui_state._status["flash"]
+    assert ui_state._status.get("flash_kind") == "warn"
     assert ds.path.is_dir()
 
 

@@ -399,8 +399,9 @@ def test_a_form_built_on_other_data_is_refused(tmp_path, monkeypatch):
     started = _capture_run(monkeypatch)
     _post({"gap.39": "level", "gap._sha": "0" * 64})
     assert started == []
-    assert "The hub data changed since the Forecast tab was loaded" in \
+    assert "Not run: the hub data changed since the tab loaded" in \
         ui_state._status["flash"]
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_a_rerun_carries_the_data_choices(tmp_path, monkeypatch):

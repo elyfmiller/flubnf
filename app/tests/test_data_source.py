@@ -316,7 +316,8 @@ def test_the_run_route_refuses_a_week_past_the_live_file(tmp_path, monkeypatch):
     r = _post(W2)
     assert r.status_code == 303 and not started
     flash = str(ui_state._status.get("flash") or "")
-    assert f"No data for {W2} yet" in flash and f"ends at {W1}" in flash
+    assert f"no data for {W2} yet" in flash and f"ends at {W1}" in flash
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypatch):
@@ -325,7 +326,7 @@ def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypat
     an archived week is still recorded as a vintage run."""
     started = _capture(monkeypatch, tmp_path)
     _hub(tmp_path / "hub", [W1, W2], [W1], monkeypatch)
-    for fd, want in (("", "Give a forecast date"),
+    for fd, want in (("", "Not run: give a forecast date"),
                      ("7/4/2098", "'7/4/2098' is not a date")):
         ui_state._status.pop("flash", None)
         r = _post(fd)
@@ -338,7 +339,8 @@ def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypat
                                   "engine": "bogus"}, follow_redirects=False)
     flash = str(ui_state._status.get("flash") or "")
     assert not started and not ui_state._status.get("running")
-    assert flash == "'bogus' is not one of the available engines. Nothing was run."
+    assert flash == "Not run: 'bogus' is not an available engine."
+    assert ui_state._status.get("flash_kind") == "warn"
     ui_state._status.pop("flash", None)
     _post(W1, mode="weird")
     assert started[0].extra["mode"] == "vintage"

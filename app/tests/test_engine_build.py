@@ -403,7 +403,8 @@ def test_the_retro_route_refuses_a_resume_on_another_build(tmp_path,
     client.post("/retro/run", data=form, follow_redirects=False)
     assert launched == []
     flash = S._status.get("flash", "")
-    assert "mix two engine builds" in flash and "Nothing was started" in flash
+    assert "mix two engine builds" in S._status.get("flash_detail", "")
+    assert flash.startswith("Not started") and S._status["flash_kind"] == "warn"
     assert "4bbc4672 (feature/bngsim, local changes)" in flash
     # the recorded build resumes
     monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(PROD))

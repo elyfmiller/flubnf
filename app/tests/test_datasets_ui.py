@@ -325,7 +325,8 @@ def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
                     follow_redirects=False)
     assert r.status_code == 303 and not got
     assert r.headers["location"] == f"/forecast?source={ds.id}"
-    assert "Give a forecast date" in ui_state._status.get("flash", "")
+    assert "Not run: give a forecast date" in ui_state._status.get("flash", "")
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_run_refuses_the_pf_without_the_engine(monkeypatch):

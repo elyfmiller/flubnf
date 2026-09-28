@@ -195,8 +195,9 @@ def test_post_run_refused_while_a_retrospective_replays(tmp_path,
         assert ui_state._status.get("running") is None    # no claim was made
         assert started == []                         # no worker was launched
         flash = ui_state._status.get("flash", "")
-        assert "retrospective replay holds the engine" in flash
+        assert "Not run: a replay holds the engine" in flash
         assert SEASON in flash
+        assert ui_state._status.get("flash_kind") == "warn"
     finally:
         ui_state._last_form.clear()
         ui_state._last_form.update(form_before)
@@ -229,8 +230,9 @@ def test_post_retro_run_refused_over_another_season(tmp_path, monkeypatch):
     assert SEASON not in ui_retro_seasons._retro_status
     assert ui_retro_seasons._retro_status["2097-98"] == "running"  # untouched
     flash = ui_state._status.get("flash", "")
-    assert "Another season is already replaying" in flash
+    assert "Not started: another season is replaying" in flash
     assert "2097-98" in flash
+    assert ui_state._status.get("flash_kind") == "warn"
 
 
 def test_retro_run_button_clickable_while_running():
