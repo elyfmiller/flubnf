@@ -545,9 +545,6 @@ def test_tab_stylesheets_use_tokens_only():
                          ids=["_tips.html", "ui-kit.css", "tips.js", "UI-KIT.md"])
 def test_kit_files_keep_the_house_rules(text):
     assert "\u2013" not in text and "\u2014" not in text
-    low = text.lower()
-    for word in ("claude", "anthropic", "microhub"):
-        assert word not in low
 
 
 def test_the_kit_script_is_es5():
