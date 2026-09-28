@@ -8,6 +8,8 @@ Request is imported at module level: FastAPI resolves _knob_form's
 """
 from __future__ import annotations
 
+import re
+
 from fastapi import Request
 
 from app.ui import state
@@ -132,12 +134,32 @@ def _int_field(v, default: int = 0) -> int:
         return default
 
 
+def _season_auto(*days) -> set:
+    """August 1 of each day's season (RunSpec's rule), as the panel's
+    script fills Season start: the values that mean "the default"."""
+    out = set()
+    for d in days:
+        m = re.match(r"^(\d{4})-(\d{2})", str(d or ""))
+        if m:
+            y = int(m.group(1)) if int(m.group(2)) >= 8 else int(m.group(1)) - 1
+            out.add(f"{y}-08-01")
+    return out
+
+
 def _knob_panel(scope: str, form: dict | None = None,
-                **panel_kw) -> dict | None:
+                season_auto=(), **panel_kw) -> dict | None:
     """The Model settings panel's context (knobs.panel) with the values a
     form last held: the knob fields, then the older field names. None
     (no panel) if the registry cannot be read, so a page still renders.
-    `panel_kw` passes through to knobs.panel (a dataset's member names)."""
+    `panel_kw` passes through to knobs.panel (a dataset's member names).
+
+    `season_auto`: the Season start values the panel's script fills in by
+    itself (the browser posts that filled value with every run); one of
+    them is the default, not a change, so it neither marks the panel
+    modified nor survives as a typed value. The panel renders closed
+    unless the last submission was refused over its settings
+    (form["ms_refused"]); the page's script remembers the user's own
+    open/closed choice for the session."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
     for fld, key in _knobs.LEGACY_FIELDS.items():
@@ -147,10 +169,14 @@ def _knob_panel(scope: str, form: dict | None = None,
         if fld == "drop_same_day":
             v = "1" if _int_field(v) else "0"
         vals.setdefault(key, str(v))
+    if vals.get("run.season_start") in set(season_auto or ()):
+        del vals["run.season_start"]
     try:
-        return _knobs.panel(scope, vals, **panel_kw)
+        p = _knobs.panel(scope, vals, **panel_kw)
     except Exception:
         return None
+    p["open"] = bool(form.get("ms_refused"))
+    return p
 
 
 def _knob_raw(fields, knobs_json) -> dict:

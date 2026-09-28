@@ -22,7 +22,7 @@ from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
 from app.ui import pipeline, retro_seasons, shared, state, templating
 from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
                           _knob_form, _knob_panel, _knob_raw, _knobs,
-                          _str_field, resolve_anchor)
+                          _season_auto, _str_field, resolve_anchor)
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
@@ -184,7 +184,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "locations_error": locations_error, "form": form,
         "us_choice": US_CHOICE, "us_checked": us_checked,
         "official_json": _script_json(official),
-        "knob_panel": _knob_panel("forecast", form),
+        "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
+            form.get("forecast_date", ""), _anchor)),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(templating._model_names()),
@@ -896,6 +897,7 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
+        _last_form["ms_refused"] = True      # the panel opens on its error
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
@@ -910,7 +912,7 @@ def run_models(request: Request,
                        "knobs": {k: v for k, v in kraw.items()
                                  if isinstance(v, str)},
                        "submit_modified": override,
-                       "modified_reason": reason})
+                       "modified_reason": reason, "ms_refused": False})
     # the Data issues choices come back on the form, keyed by their week
     if isinstance(gap_fields, dict) and newest:
         _last_form["data_choices"] = {
@@ -929,6 +931,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
+        _last_form["ms_refused"] = True      # the panel opens on its error
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     kspec = _knobs.spec_fields(nd)
