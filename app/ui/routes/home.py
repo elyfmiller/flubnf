@@ -22,6 +22,9 @@ from app.ui.versions import VERSIONS
 
 router = APIRouter()
 
+#: the map and its legend sit in this box (its width: static/tabs/home.css)
+MAP_BOX = "hm-mapbox"
+
 
 # === Cold start: has the warm pass landed (the pass: server.py) ===
 def _outlook_ready() -> bool:
@@ -256,7 +259,7 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         gaps = outlook_src.get("gap_fips") if outlook_src else None
         gaps = set(gaps) if gaps is not None else None
         why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
-        map_svg = ("<div style='max-width:880px;margin:0 auto'>"
+        map_svg = (f"<div class='{MAP_BOX}'>"
                    "<script>window.MAP_LINK='/output/report';</script>"
                    + svg_map(cards, clickable=with_data, scope_fips=scope,
                              gap_fips=gaps,
@@ -278,10 +281,11 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                                    gap_fips=gaps, reasons=why.get(m)),
                                "us": {}}
                            for m in order}
+                # a segmented pair in the map's bar (tabs/home.css)
                 outlook_toggle = usmap.model_toggle(
                     order, report_v2.MODEL_LABEL, default, payload,
                     group_id="outlook-model", btn_class="quiet",
-                    active_class="gold", wrap_class="row viewtabs",
+                    active_class="gold", wrap_class="hm-seg",
                     short_labels=report_v2.MODEL_SHORT)
         except Exception:
             outlook_toggle = ""
@@ -296,6 +300,16 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
 
 def _outlook_block(rid: str | None) -> dict:
     return _outlook_block_cached(rid, _outlook_results_mtime(rid))
+
+
+def _has_report(rid: str | None) -> bool:
+    """Whether the latest run wrote its weekly report (the map bar's link
+    and /output/report serve it). Read per request, outside the outlook
+    cache: the report may land after results.json."""
+    if not rid:
+        return False
+    from app.core.runs import APP_STATE
+    return (APP_STATE / "workroots" / rid / "report.html").is_file()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -315,7 +329,7 @@ def home(request: Request):
         # truly cold start: silhouette + preparing note now; the page polls
         # /api/outlook-ready and reloads once
         from app.core.usmap import map_legend, svg_map
-        ob = {"map_svg": ("<div style='max-width:880px;margin:0 auto'>"
+        ob = {"map_svg": (f"<div class='{MAP_BOX}'>"
                           + svg_map({}, clickable=set()) + map_legend()
                           + "</div>"),
               "outlook_date": "", "outlook_n": 0,
@@ -332,6 +346,7 @@ def home(request: Request):
         "outlook_approx": ob["approx"],
         "outlook_toggle": ob["toggle"],
         "outlook_pending": pending,
+        "outlook_report": bool(ob["outlook_date"]) and _has_report(rid),
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 

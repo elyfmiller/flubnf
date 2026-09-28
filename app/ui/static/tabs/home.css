@@ -2,4 +2,117 @@
    {% block head %}, after base.html's nau.css and ui-kit.css; a partial
    that renders on another tab's page links it itself (docs/UI-KIT.md, "Tab
    stylesheets"). Colors only through the nau.css tokens; new classes start
-   "hm-"; kit classes (uk-*) are used as they are, never restyled here. */
+   "hm-"; kit classes (uk-*) are used as they are, never restyled here.
+
+   CONTENTS
+     1. hero: the lead's facts as chips
+     2. outlook: the map bar (model, coverage, report link), the stage and
+        its empty or preparing card
+     3. measured performance: unit chip, table headings
+     4. start here: the secondary action
+     5. how it works: named equations
+     6. component cards: role and links
+     7. setup: missing components */
+
+/* ---- 1. hero: facts as chips on the LANL Blue tile (white ink) ---- */
+.hm-facts{list-style:none;display:flex;flex-wrap:wrap;gap:.45rem .55rem;
+  margin:.9rem 0 0;padding:0}
+.hm-facts li{display:inline-flex;align-items:baseline;gap:.45em;
+  padding:.18rem .8rem;border-radius:var(--r-pill);
+  border:1px solid color-mix(in srgb,currentColor 30%,transparent);
+  background:color-mix(in srgb,currentColor 8%,transparent);
+  color:color-mix(in srgb,currentColor 84%,transparent);
+  font-size:var(--fs-label);line-height:1.5}
+.hm-facts b{color:var(--gold-bright);font-weight:700}
+
+/* ---- 2. outlook ---- */
+/* one bar over the map: the model (its toggle), the coverage, the report */
+.hm-mapbar{display:flex;flex-wrap:wrap;align-items:center;
+  gap:.5rem 1.6rem;margin:0 0 .5rem}
+.hm-model{display:inline-flex;flex-wrap:wrap;align-items:center;
+  gap:.35rem .6rem}
+.hm-k{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+.hm-model-v{font-weight:650}
+/* the model toggle (usmap.model_toggle, wrap_class) as a segmented pair */
+.hm-seg{display:inline-flex}
+.hm-seg button{margin:0;padding:.28rem .85rem;border-radius:0;
+  font-size:var(--fs-label)}
+.hm-seg button:first-child{border-radius:var(--r-sm) 0 0 var(--r-sm)}
+.hm-seg button:last-child{border-radius:0 var(--r-sm) var(--r-sm) 0}
+.hm-seg button + button{margin-left:-1px}
+.hm-mapstats{margin:0}
+a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
+  font-size:var(--fs-label)}
+/* the map and its legend (home.py MAP_BOX); the stage holds the card that
+   sits over an empty or preparing map */
+.hm-mapbox{max-width:55rem;margin:0 auto}
+.hm-stage{position:relative}
+.hm-over{position:absolute;inset:0 0 2.2rem;display:flex;
+  align-items:center;justify-content:center;padding:1rem;
+  pointer-events:none}
+.hm-over-card{pointer-events:auto;min-width:min(17rem,100%);
+  padding:.2rem .45rem;border:1px solid var(--line);
+  border-radius:var(--r-md);background:var(--card);box-shadow:var(--shadow)}
+/* the preparing card's busy bar (decorative; the title says it) */
+.hm-busy{display:block;height:.3rem;margin:0 .7rem .7rem;
+  border-radius:var(--r-pill);background:var(--track);overflow:hidden}
+.hm-busy > span{display:block;width:35%;height:100%;border-radius:inherit;
+  background:var(--accent-ink);animation:hm-slide 1.1s ease-in-out infinite alternate}
+@keyframes hm-slide{from{margin-left:0}to{margin-left:65%}}
+@media (prefers-reduced-motion:reduce){.hm-busy > span{animation:none}}
+
+/* ---- 3. measured performance ---- */
+/* the tables' unit beside the card heading */
+.hm-unit{display:inline-flex;align-items:center;padding:0 .55rem;
+  border:1px solid var(--line);border-radius:var(--r-pill);
+  color:var(--mut);font-size:var(--fs-micro);font-weight:650;
+  line-height:1.6}
+/* a small heading over each table */
+.hm-perfhead{margin:1rem 0 .2rem}
+.hm-perf .hm-perfhead > h3{font-size:var(--fs-hint);font-weight:700;
+  color:var(--ink)}
+
+/* ---- 4. start here ---- */
+.hm-start-more{margin-top:1.1rem;padding-top:.85rem;
+  border-top:1px solid var(--line)}
+.hm-start-more a.btn{display:inline-flex;align-items:center;gap:.45em}
+
+/* ---- 5. how it works ---- */
+/* the pipeline's labels follow the text size up to the A+ step (115%),
+   where they were audited to fit their boxes; past it (the size runs to
+   160%) they hold, so no label spills out of its box */
+.hm-how .pipe .svgt-sm{font-size:min(.875rem,16.1px)}
+.hm-how .pipe .svgt-md{font-size:min(.92rem,16.93px)}
+/* each equation beside its name and "?" */
+p.hm-eq{display:flex;flex-wrap:wrap;align-items:center;
+  justify-content:center;gap:.25rem .8rem;margin:.45rem 0}
+.hm-eqname{display:inline-flex;align-items:center;
+  padding:.05rem .15rem .05rem .65rem;border:1px solid var(--line);
+  border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-label);
+  font-weight:600;white-space:nowrap}
+
+/* ---- 6. component cards: glyph, name, role, links at the foot ---- */
+/* three short cards stay side by side down to a narrow window (nau.css
+   stacks every grid3 at 900px) */
+@media(max-width:900px){.grid3.hm-comps{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))}}
+.hm-comp{display:flex;flex-direction:column}
+.hm-comp .hm-role{margin:.1rem 0 .3rem;text-align:center;
+  font-weight:650}
+.hm-comp .hm-links{display:flex;flex-wrap:wrap;justify-content:center;
+  gap:.2rem 1.2rem;margin:auto 0 0;padding-top:.45rem;
+  font-size:var(--fs-hint)}
+.hm-links a{display:inline-flex;align-items:center;gap:.3em;
+  font-weight:600}
+
+/* ---- 7. setup: what is missing, one row each ---- */
+.hm-missing{list-style:none;display:grid;gap:.3rem;margin:.1rem 0 .6rem;
+  padding:0}
+.hm-missing li{display:flex;align-items:center;gap:.45rem;min-width:0}
+/* a path or setting inside a tooltip (a code chip would vanish on the
+   tooltip's inverted surface) */
+.hm-mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:.92em;overflow-wrap:anywhere}
+.hm-versions{margin:.5rem 0 .1rem}
+/* below a list of what is missing, the versions sit apart from it */
+.hm-missing ~ .hm-versions{padding-top:.6rem;border-top:1px solid var(--line)}

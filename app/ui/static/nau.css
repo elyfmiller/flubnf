@@ -836,7 +836,7 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
 
-/* ---- home: workflow pipeline, performance table, card glyphs, stepper ---- */
+/* ---- home: workflow pipeline, performance table, card glyphs ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
   margin:.4rem auto .1rem}
 /* seal-results table: tight rows, full card width */
@@ -854,22 +854,6 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   margin:.15rem 0 .5rem}
 .cardviz svg{color:var(--ink);height:56px;width:auto;max-width:100%}
 .cardviz img{height:50px;width:50px;border-radius:11px}
-/* start-here numbered badge */
-.stepnum{flex:none;width:1.6rem;height:1.6rem;border-radius:50%;
-  display:inline-flex;align-items:center;justify-content:center;
-  font-weight:750;font-size:.85rem;color:var(--gold);
-  border:2px solid var(--gold)}
-/* start-here vertical stepper: badge, title, hint; a line joins the badges */
-.steps{list-style:none;margin:.5rem 0 .2rem;padding:0}
-.steps .step{position:relative;display:flex;align-items:flex-start;
-  gap:.65rem;padding:0 0 .95rem}
-.steps .step:last-child{padding-bottom:0}
-.steps .step::before{content:"";position:absolute;
-  left:calc(.8rem - 1px);top:1.75rem;bottom:.15rem;width:2px;
-  background:var(--line)}
-.steps .step:last-child::before{display:none}
-.steps .steptext{min-width:0;line-height:1.35;padding-top:.05rem}
-.steps .steptext .hint{display:block}
 
 /* ---- retrospective season player (additive) ---- */
 /* ONE control row: transport, speed, scrubber, week label, then the two
@@ -1228,11 +1212,6 @@ tr[aria-current="true"] td{font-weight:600}
 .mview-draw svg{display:block;max-width:none}
 
 /* polish: home-models-methods */
-/* home: a small heading over each performance table; the setup list */
-h3.perfhead{margin:.9rem 0 .15rem;font-weight:650;display:flex;
-  align-items:center;gap:.1rem}
-.card h2 + p.hint + h3.perfhead{margin-top:.35rem}
-ul.setupmiss{margin:.2rem 0 .5rem;padding-left:1.2rem}
 /* model pages: the intro's full description; a second heading in the
    mechanism card sits apart from the figure above it */
 p.introbody{margin:.55rem 0 .1rem}
