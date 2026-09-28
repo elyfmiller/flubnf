@@ -1209,9 +1209,6 @@ p.introbody{margin:.55rem 0 .1rem}
 .mech h2:not(:first-child){margin-top:1.4rem}
 /* model switcher: the research tag stays readable on the pressed button */
 .viewtabs button.gold[data-model] .hint{color:inherit;opacity:.75}
-/* methods: the in-page contents row */
-nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
-  font-size:var(--fs-hint)}
 /* phone width: equations wrap instead of clipping, wide figures scroll
    with a visible bar (their right side is off-card), tables tighten so they
    fit the card */

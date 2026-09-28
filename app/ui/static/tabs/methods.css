@@ -2,4 +2,94 @@
    {% block head %}, after base.html's nau.css and ui-kit.css; a partial
    that renders on another tab's page links it itself (docs/UI-KIT.md, "Tab
    stylesheets"). Colors only through the nau.css tokens; new classes start
-   "mt-"; kit classes (uk-*) are used as they are, never restyled here. */
+   "mt-"; kit classes (uk-*) are used as they are, never restyled here.
+
+   The public site renders the page's content block without this sheet
+   (site_build.harvest_methods), so nothing here may be needed to read the
+   page: every rule is layout and emphasis on top of plain markup.
+
+   CONTENTS
+     1. contents row (sticky), section anchors
+     2. purpose: the facts row and the two model tiles
+     3. card parts: sub-headings, the facts panel, the rates key, folds,
+        the heading's link button
+     4. tables: the record, performance, the component list
+     5. policies: the "every run" checklist, the scoring definitions */
+
+/* ---- 1. contents row: the bar stays in view while the page scrolls;
+   its chips wrap to a second row rather than hide ---- */
+.mt-tocbar{position:sticky;top:0;z-index:5;margin:0 0 var(--gap);
+  padding:.4rem 0;background:var(--bg)}
+.mt-toc{display:flex;flex-wrap:wrap;gap:.35rem;font-size:var(--fs-label)}
+.mt-toc a{flex:none;padding:.2rem .7rem;border:1px solid var(--line);
+  border-radius:var(--r-pill);background:var(--card);color:var(--ink);
+  font-weight:600;white-space:nowrap}
+.mt-toc a:hover{border-color:var(--accent-ink);color:var(--accent-ink);
+  text-decoration:none}
+/* an anchor jump (and keyboard focus) lands below the sticky bar, one row
+   of chips or two */
+.mt-doc [id],.mt-doc :focus{scroll-margin-top:4.8rem}
+
+/* ---- 2. purpose ---- */
+.mt-lead{margin:.1rem 0 .9rem}
+/* one tile per model */
+.mt-models{display:flex;flex-wrap:wrap;align-items:stretch;gap:.6rem}
+.mt-model{flex:1 1 17rem;min-width:0;display:flex;flex-direction:column;
+  padding:.8rem 1rem .7rem;border:1px solid var(--line);
+  border-top:3px solid var(--accent-ink);border-radius:var(--r-md);
+  background:var(--bg)}
+.mt-kind{display:block;color:var(--mut);font-size:var(--fs-micro);
+  font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.mt-model h3{margin:.1rem 0 .35rem;font-size:var(--fs-lead)}
+.mt-parts{margin:0 0 .5rem;padding-left:1.1rem}
+.mt-parts li{margin:.12rem 0}
+/* the tile's links sit on its bottom edge, level across both tiles */
+.mt-model .mt-links{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:auto 0 0;
+  padding-top:.2rem;font-size:var(--fs-label)}
+
+/* ---- 3. card parts ---- */
+/* sub-headings inside a card: sentence case, the card's ink */
+.mt-h3{margin:1rem 0 .4rem}
+.mt-h3 > h3{font-size:var(--fs-body);font-weight:700}
+/* labelled facts on a sunken panel */
+.mt-facts{margin:.6rem 0 .8rem;padding:.7rem .9rem;border-radius:var(--r-md);
+  background:var(--bg)}
+.mt-cov{margin:.1rem 0 .7rem}
+/* the rates key: a symbol and what it is, entries at their own width,
+   wrapping as the card narrows */
+.mt-key{display:flex;flex-wrap:wrap;gap:.35rem 2rem;margin:.2rem 0 .7rem}
+.mt-key > div{flex:0 1 auto;display:flex;align-items:baseline;gap:.5rem;
+  min-width:0}
+.mt-key dt{flex:none;color:var(--accent-ink);
+  font-family:"DM Mono",ui-monospace,monospace;font-weight:600}
+.mt-key dd{margin:0;min-width:0}
+/* folds: a stack of rows with a rule between them */
+.mt-folds{margin:.7rem 0 .2rem;border-bottom:1px solid var(--line)}
+details.mt-fold{margin:0;border-top:1px solid var(--line)}
+details.mt-fold > summary{padding:.5rem 0}
+details.mt-fold[open] > summary{padding-bottom:.2rem}
+details.mt-fold p{margin:.2rem 0 .6rem}
+/* the heading's link button: small, quiet */
+a.btn.mt-go{padding:.15rem .7rem;font-size:var(--fs-label)}
+
+/* ---- 4. tables ---- */
+/* a table's unit (with its "?" or "i") and color legend on one row */
+.mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem 1rem;
+  margin:-.1rem 0 .3rem}
+.mt-unit{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+.mt-end{margin-left:auto}
+.mt-pooled{margin-top:.7rem}
+.mt-seals code{font-size:.85em}
+/* the component list: names and versions stay on one line */
+.mt-stack td:first-child,.mt-stack td:last-child{white-space:nowrap}
+
+/* ---- 5. policies ---- */
+/* the rules every run keeps, each with a check mark drawn in borders */
+.mt-rules{list-style:none;margin:.2rem 0 .6rem;padding:0;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,30rem),1fr));
+  gap:.35rem 1.2rem}
+.mt-rules li{position:relative;padding-left:1.5rem}
+.mt-rules li::before{content:"";position:absolute;left:.3rem;top:.25em;
+  width:.35em;height:.7em;border-right:2px solid var(--ok);
+  border-bottom:2px solid var(--ok);transform:rotate(45deg)}
+.mt-defs{margin:.2rem 0 .8rem}
