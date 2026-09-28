@@ -46,6 +46,9 @@ HOST="$APP/Contents/MacOS/FluBNF"
 VPY="$REPO/.venv/bin/python"
 CFG="$REPO/.venv/pyvenv.cfg"
 STAMP="$REPO/.venv/.app-host.stamp"
+# the source the installed host was built from: a host from other source is
+# never kept (an older one may predate a fix in it)
+SRCSTAMP="$REPO/.venv/.app-host.src"
 SELF="$HERE/$(basename "$0")"
 MODE="${1:-}"
 WORK=""     # our own scratch folder; never $TMP, which a shell may export
@@ -90,12 +93,14 @@ WHY="$(sed -n 2p "$STAMP" 2>/dev/null)"
 loads() {
   [ -x "$HOST" ] && FLUBNF_HOST_FALLBACK="" "$HOST" -c "" >/dev/null 2>&1
 }
+SRCSUM="$(sha < "$SRC")"
+same_source() { [ "$(cat "$SRCSTAMP" 2>/dev/null)" = "$SRCSUM" ]; }
 # Current = built for this fingerprint AND still loads.
 current() { [ "$LAST" = "ok $FP" ] && loads; }
 known_failure() { [ "$LAST" = "fail $FP $TOOLS" ]; }
 # A rebuild for this fingerprint failed with this compiler, and the host it
 # would have replaced still loads: that host stays in use (see fail).
-kept() { [ "$LAST" = "kept $FP $TOOLS" ] && loads; }
+kept() { [ "$LAST" = "kept $FP $TOOLS" ] && same_source && loads; }
 
 case "$MODE" in
   --check)
@@ -126,11 +131,13 @@ fail() {
   # Line Tools removed by a macOS upgrade, an Xcode licence not accepted
   # again). Stamped "kept" like a failure, so it is not retried on every
   # launch, and a new compiler or fingerprint earns the retry.
-  if loads; then
+  if same_source && loads; then
     say "The host already installed still starts this venv's Python; FluBNF.app keeps using it."
     printf 'kept %s %s\n%s\n' "$FP" "$TOOLS" "$1" > "$STAMP" 2>/dev/null
     exit 0
   fi
+  # built from other source: never run it again
+  [ ! -f "$HOST" ] || chmod a-x "$HOST" 2>/dev/null
   say "FluBNF.app opens the console through Terminal until it is."
   printf 'fail %s %s\n%s\n' "$FP" "$TOOLS" "$1" > "$STAMP" 2>/dev/null
   exit 1
@@ -239,6 +246,7 @@ fi
 # Silicon never sees a signed file change under it
 cp "$OUT" "$HOST.new" && mv -f "$HOST.new" "$HOST" || fail "could not install $HOST"
 printf 'ok %s\n' "$FP" > "$STAMP"
+printf '%s\n' "$SRCSUM" > "$SRCSTAMP"
 if [ -n "$MAC" ]; then
   # LaunchServices re-reads Info.plist and the icon
   touch "$APP"

@@ -15,6 +15,21 @@ needs_terminal() {
   exit 75
 }
 
+# FluBNF.app records each time it reopens this file in Terminal, and opens
+# no second one within ten minutes unless a console started in between
+# (flubnf-launch's `stamp`: this is the same file). A run here that never
+# asks for the app, whether it starts the console itself or stops, clears
+# it, so the next Dock click may open Terminal again. Never once the app
+# was opened: an app that lost its ready signal hands over again, and the
+# record is what ends that chain.
+forget_reopen() {
+  local d key
+  d="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)"
+  [ -n "$d" ] || d="${TMPDIR:-/tmp}"
+  key="$(pwd -P | cksum)"
+  rm -f "${d%/}/edu.nau.flubnf-$(id -u 2>/dev/null)/terminal-handover-${key%% *}" 2>/dev/null
+}
+
 # Stay current (lab-share mode). Fast-forward only, so a real edit is never
 # silently overwritten. Say which cause blocks an update: stray tracked edits
 # (usually accidents) are stashed (git stash list) and fast-forwarded over;
@@ -81,7 +96,7 @@ STAMP=".venv/.pyproject.stamp"
 if [ ! -x .venv/bin/flubnf ]; then
   needs_terminal "first run"
   echo "First run, setting up (a few minutes)..."
-  ./setup.sh || { echo; echo "Setup hit a problem (see above). Press enter to close."; read -r; exit 1; }
+  ./setup.sh || { forget_reopen; echo; echo "Setup hit a problem (see above). Press enter to close."; read -r; exit 1; }
   cp pyproject.toml "$STAMP" 2>/dev/null
 elif ! cmp -s pyproject.toml "$STAMP" 2>/dev/null; then
   needs_terminal "project dependencies changed"
@@ -94,6 +109,7 @@ elif ! cmp -s pyproject.toml "$STAMP" 2>/dev/null; then
 fi
 
 if [ ! -x .venv/bin/flubnf ]; then
+  forget_reopen
   echo
   echo "The FluBNF launcher is missing from .venv: setup did not finish."
   echo "Double-click me again with the network up, or run ./setup.sh in"
@@ -197,34 +213,50 @@ if [ -n "$HOST" ]; then
   # Through LaunchServices, as a Dock click is: a window started as this
   # shell's child is never made the active app on recent macOS (Terminal
   # keeps the focus), so it shows no hover and will not resize. The app
-  # skips its own checks (FLUBNF_LAUNCH=ready: this file just ran them),
-  # prints here, and writes a failure at startup to BOOT instead of opening
-  # another Terminal; the console then starts here in view, as it did
-  # before. Ctrl-C here stops the app (its pidfile).
+  # skips its own checks (ready: this file just ran them), prints here, and
+  # reports a failure at startup in BOOT instead of opening another
+  # Terminal; the console then starts here in view, as it did before.
+  # Ready travels as --args, which a new instance (-n) always gets, and as
+  # --env, which macOS may drop. BOOT starts out saying the app quit early;
+  # the console empties it once its window is up (flubnf/cli.py
+  # _boot_started), so an app that dies without a word (a crash, a refused
+  # folder) is also started here. An app stopped on request before that (a
+  # newer launch taking over, reinstall.sh) empties it too (the host's
+  # SIGTERM handler), so this one stands down. Ctrl-C here stops the app
+  # (its pidfile).
   BOOT="$(mktemp -t flubnf-boot.XXXXXX 2>/dev/null)" || BOOT=""
-  OUT=()
-  TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
-  case "$TTY_NOW" in /dev/*) OUT=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
-  [ -z "$BOOT" ] || OUT+=(--env "FLUBNF_BOOT_STATUS=$BOOT")
   STOPPED=""
-  trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT
-  open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready ${OUT[@]+"${OUT[@]}"}
-  ORC=$?
-  trap - INT
-  if [ -n "$STOPPED" ]; then
-    STATUS=130
-  elif [ "$ORC" -ne 0 ]; then
-    # an older macOS without open --env, or LaunchServices refused
-    echo "· macOS did not open FluBNF.app (code $ORC); starting the console here"
-    run_here
-  elif [ -n "$BOOT" ] && [ -s "$BOOT" ]; then
-    echo "· $(cat "$BOOT"); starting it here to show why"
+  ORC=0
+  if [ -z "$BOOT" ] || ! echo "FluBNF.app quit before the console started" > "$BOOT"; then
+    echo "· no status file for FluBNF.app; starting the console here"
+    forget_reopen
     run_here
   else
-    STATUS=0
+    OUT=(--env "FLUBNF_BOOT_STATUS=$BOOT")
+    TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
+    case "$TTY_NOW" in /dev/*) OUT+=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
+    trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT
+    open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready "${OUT[@]}" \
+      --args --ready "$BOOT"
+    ORC=$?
+    trap - INT
+    if [ -n "$STOPPED" ]; then
+      STATUS=130
+    elif [ "$ORC" -ne 0 ]; then
+      # an older macOS without open --env, or LaunchServices refused
+      echo "· macOS did not open FluBNF.app (code $ORC); starting the console here"
+      forget_reopen
+      run_here
+    elif [ -s "$BOOT" ]; then
+      echo "· $(head -1 "$BOOT"); starting it here to show why"
+      run_here
+    else
+      STATUS=0
+    fi
   fi
   [ -z "$BOOT" ] || rm -f "$BOOT"
 else
+  forget_reopen
   .venv/bin/flubnf app
   STATUS=$?
 fi

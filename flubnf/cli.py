@@ -1086,6 +1086,7 @@ def app_serve(port: int = 8710):
 
     def _open():
         if _wait_ready():
+            _boot_started()
             webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
@@ -1093,6 +1094,23 @@ def app_serve(port: int = 8710):
     # progress poll would log a line a second; matches the window path
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1",
                 log_level="warning", use_colors=False)
+
+
+def _boot_started() -> None:
+    """Tell the Terminal that opened this launch (FluBNF.command, through
+    `open`) that the console is up (its window shown, or its page served):
+    empty the status file it named in FLUBNF_BOOT_STATUS, which says the
+    app quit early until then. A later failure can still write its reason
+    there. No variable, no-op."""
+    import os
+    path = os.environ.get("FLUBNF_BOOT_STATUS")
+    if not path:
+        return
+    try:
+        open(path, "w").close()
+    except OSError:
+        pass
+    _trace("boot: console up, status file emptied")
 
 
 def _start_window_server(sock, port: int, popen=None, platform=None):
@@ -1195,6 +1213,12 @@ def app_window(port: int = 8710):
         window.events.closed += closed.set
     except Exception:
         pass
+    # The console is up once its window is on screen. Not the start
+    # callback: pywebview starts that before it creates the window.
+    try:
+        window.events.shown += _boot_started
+    except Exception:
+        _boot_started()
 
     def _activate():
         # Runs on a secondary, NON-daemon thread of pywebview's: everything
@@ -1204,7 +1228,7 @@ def app_window(port: int = 8710):
         # the main loop. A non-bundled process may start deactivated, hence
         # _bring_window_forward; the watchdog recovers a page that never
         # loaded.
-        _trace("window: start callback fired (window shown)")
+        _trace("window: start callback fired")
         threading.Thread(target=_window_watchdog, args=(window, url),
                          daemon=True).start()
         try:

@@ -1,12 +1,15 @@
-"""Run a console script under FluBNF.app's host, and reopen Terminal when it
-fails at startup.
+"""Run a console script under FluBNF.app's host, and hand a failure at
+startup back to Terminal.
 
 flubnf_host.c runs `<venv python> host_boot.py <script> [args...]` for a
 launch from the Dock (FLUBNF_HOST_FALLBACK, set only by flubnf-launch). This
 behaves as `python <script> [args...]`, except in one case. A failure in the
-first STARTUP seconds also opens FluBNF.command in Terminal, where the launch
-repeats in view. A failure is an uncaught exception or a nonzero exit.
-Without this, a Dock launch that fails shows a bouncing icon that vanishes.
+first STARTUP seconds is reported to the Terminal that asked for this launch
+(FLUBNF_BOOT_STATUS), or else handed to the bundle's launcher
+(`flubnf-launch --handover <why>`), which reopens FluBNF.command in Terminal,
+where the launch repeats in view, unless its guards say that would loop. A
+failure is an uncaught exception or a nonzero exit. Without this, a Dock
+launch that fails shows a bouncing icon that vanishes.
 
 The C host cannot do this itself. An uncaught SystemExit from a script ends
 in Py_Exit() -> exit() (Python/pythonrun.c, handle_system_exit), so
@@ -22,6 +25,8 @@ import time
 STARTUP = 30.0
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#: every automatic reopen of Terminal goes through the launcher's guards
+LAUNCHER = os.path.join(REPO, "FluBNF.app", "Contents", "MacOS", "flubnf-launch")
 
 
 def report(why: str) -> bool:
@@ -43,19 +48,22 @@ def report(why: str) -> bool:
 
 
 def to_terminal(why: str, run=subprocess.run) -> None:
-    """Say why in the launch log, then open FluBNF.command in Terminal.
-    Waits for `open` (it returns once Terminal has the request), so the
-    request is sent before this process exits. Never raises."""
-    sys.stderr.write(f"flubnf-host: {why}; reopening FluBNF.command in Terminal\n")
+    """Say why in the launch log, then hand over to the launcher, which
+    reopens FluBNF.command in Terminal unless its guards say not to (a
+    Terminal already waits on this launch; it reopened a moment ago).
+    Waits for the launcher (`open` returns once Terminal has the request),
+    so the request is sent before this process exits. Never raises."""
+    sys.stderr.write(f"flubnf-host: {why}; handing over to FluBNF.command "
+                     "in Terminal\n")
     sys.stderr.flush()
     if sys.platform != "darwin":
         return
     try:
-        run(["/usr/bin/open", "-a", "Terminal",
-             os.path.join(REPO, "FluBNF.command")],
-            stdin=subprocess.DEVNULL, timeout=30, check=False)
+        # long enough for the alert the launcher may show instead
+        run(["/bin/bash", LAUNCHER, "--handover", why],
+            stdin=subprocess.DEVNULL, timeout=600, check=False)
     except Exception as e:
-        sys.stderr.write(f"flubnf-host: could not open Terminal: {e}\n")
+        sys.stderr.write(f"flubnf-host: could not hand over: {e}\n")
 
 
 def main(argv=None, clock=time.monotonic, run=runpy.run_path) -> None:
