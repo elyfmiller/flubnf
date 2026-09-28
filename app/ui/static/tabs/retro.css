@@ -32,7 +32,8 @@
 /* ---- 2. the index ---- */
 /* the band: the Results button keeps the right edge */
 .rt-go{margin-left:auto}
-.rt-go button{margin-top:0}
+/* an archived run's Results link: the row's small button size */
+.archrow a.btn{padding:.22rem .6rem;font-size:var(--fs-label)}
 /* the live readout, its "?" (what the estimate rests on) and the
    connection badge on one line */
 .rt-readout{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .6rem}
@@ -53,20 +54,31 @@
 /* the band's facts: the timing values and the state badges */
 .rt-bandfacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem}
 /* the settings as a row of facts with the full list in its "?" */
-.rt-settings{display:flex;flex-wrap:wrap;align-items:center;gap:0 .35rem}
+.rt-settings{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:0 .35rem}
+/* the facts wrap in their own box; the "?" stays beside them, never on a
+   line of its own */
+.rt-settings > ul{flex:0 1 auto;min-width:0}
+.rt-settings > .tip{flex:none;margin-top:.15rem}
 .rt-exp{display:inline-flex;align-items:center;gap:.25rem}
 .rt-exp-out{font-size:var(--fs-label)}
 /* a verdict tile: its title and "?" on one line, the figure with its
    verdict icon, the second lines wrapping inside a narrow tile */
-.rt-tile-h{display:flex;align-items:center;flex-wrap:wrap;gap:.1rem .35rem;
-  margin:0 0 .35rem}
-.rt-tile-h > h2{margin:0}
+.rt-tile-h{display:flex;align-items:flex-start;flex-wrap:nowrap;
+  gap:.1rem .35rem;margin:0 0 .35rem}
+.rt-tile-h > h2{flex:0 1 auto;min-width:0;margin:0}
+/* the "?" stays beside a title that wraps */
+.rt-tile-h > .tip{flex:none}
+/* a row of tiles shares its rows (title, figure, second lines), so a title
+   that wraps moves every figure of the row with it and they stay level */
+.verdict .tiles4 > .rt-tile{display:grid;grid-row:span 3;
+  grid-template-rows:subgrid;row-gap:0;align-content:start}
 .rt-big .rt-verdict{font-size:.5em;vertical-align:.45em;margin-left:.35rem}
 .tilekv.rt-tilekv{grid-template-columns:max-content minmax(0,1fr)}
 .rt-tilekv .rt-cov{overflow-wrap:anywhere}
 /* a tile too narrow for label and value side by side (four across, large
-   text) stacks each label over its value */
-.rt-tile{container-type:inline-size}
+   text) stacks each label over its value (the container is the list's
+   box: a container cannot be a subgrid, and the tile is one) */
+.rt-tilemore{container-type:inline-size}
 @container (max-width:17rem){
   .tilekv.rt-tilekv{grid-template-columns:minmax(0,1fr);gap:0}
   .rt-tilekv dd + dt{margin-top:.25rem}

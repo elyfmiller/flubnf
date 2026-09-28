@@ -14,11 +14,11 @@
    (the export prints the same, report_season._metrics_html); a figure the
    scores cannot give (a season scored before these metrics) is left out #}
 {% macro tile_more(log_rel, cov) -%}
-{%- if log_rel is not none or cov %}<dl class="tilekv rt-tilekv">
+{%- if log_rel is not none or cov %}<div class="rt-tilemore"><dl class="tilekv rt-tilekv">
  {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}{{ tips.icon("check" if log_rel < 1 else "warning", "beats the baseline" if log_rel < 1 else "does not beat the baseline", cls="rt-verdict") }}</dd>{% endif %}
  {%- if cov %}<dt>coverage 50/80/95%</dt><dd class="rt-cov">
   {%- for b in ("50", "80", "95") %}{% set cs = cov_state(cov.get(b), b | int) %}<span class="{{ ('cov-' ~ cs) if cs else 'hint' }}">{{ cov_text(cov.get(b)) }}</span>{{ " · " if not loop.last }}{% endfor %}</dd>{% endif %}
-</dl>{% endif %}
+</dl></div>{% endif %}
 {%- endmacro %}
 {# a tile's value with its verdict as an icon too (below 1 beats the
    baseline), so it never rests on the color alone #}
@@ -190,7 +190,8 @@
  <div class="rs-facts rt-bandfacts">
   {% if p_timed %}
   {% call tips.stats("uk-stats--row", label="Replay timing") %}
-   {% call tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") %}Replay wall time {{ prog.elapsed_s | hms }} over {{ prog.done }} weeks{% if prog.mean_s %}, {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}.{% if prog.slowest_week %} Mean over {{ prog.weeks_measured }} timed week{{ "" if prog.weeks_measured == 1 else "s" }}; the slowest, {{ prog.slowest_week }}, took {{ "%.0f"|format(prog.slowest_s) }} s.{% endif %}{% endcall %}
+   {% if not (prog.mean_s or prog.slowest_week) %}{{ tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") }}{% else %}
+   {% call tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") %}Replay wall time {{ prog.elapsed_s | hms }} over {{ prog.done }} weeks{% if prog.mean_s %}, {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}.{% if prog.slowest_week %} Mean over {{ prog.weeks_measured }} timed week{{ "" if prog.weeks_measured == 1 else "s" }}; the slowest, {{ prog.slowest_week }}, took {{ "%.0f"|format(prog.slowest_s) }} s.{% endif %}{% endcall %}{% endif %}
    {{ tips.stat("Weeks", prog.done) }}
    {% if prog.mean_s %}{{ tips.stat("Pace", "%.0f"|format(prog.mean_s), "s per week") }}{% endif %}
   {% endcall %}
@@ -395,9 +396,9 @@
       in the "i" beside the heading (a card-surface panel, so the key's
       colors read as they do in the table); the player fills the key
       (player.js covLegend) #}
-   <div class="rs-h"><span class="rt-hgroup"><h2>{{ live_scores("heading") }}</h2>{% call tips.toggletip("rs-live", "the live scores") %}<span class="uk-tt-line">{{ live_scores("note") }}</span><span class="uk-tt-line"><span class="pblegend" id="pb-legend"></span></span><span class="uk-tt-line">relWIS scale: natural or log. The CDC FluSight dashboard reports both.</span>{% endcall %}
+   <div class="rs-h"><span class="rt-hgroup"><h2>{{ live_scores("heading") }}</h2>{% call tips.toggletip("rs-live", "the live scores") %}<span class="uk-tt-line">{{ live_scores("note") }}</span><span class="uk-tt-line"><span class="pblegend" id="pb-legend"></span></span><span class="uk-tt-line">relWIS scale: natural or log. The CDC FluSight dashboard reports both.</span>
    {#- only when there ARE pairwise scores to be confused with #}
-   {%- if conv == 'pairwise' and not unavailable %}{{ tips.icon_tip("rs-live-pw", "the player's figures", "info", "The player's figures are ratios of sums, not the pairwise scores above; on the same cells the two agree to within about 0.02.", state="info") }}{% endif %}</span>
+   {%- if conv == 'pairwise' and not unavailable %}<span class="uk-tt-line">The player's figures are ratios of sums, not the pairwise scores above; on the same cells the two agree to within about 0.02.</span>{% endif %}{% endcall %}</span>
    {# the scale switch, written by the player, inline with the heading #}
    <div class="pbscale" id="pb-scale"></div></div>
    {# the player writes the table head and body (player.js renderStats) #}
@@ -444,9 +445,11 @@
   <circle data-week="{{ d }}" cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 240 / yspan) | round(1) }}" r="3"
           fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
+ {# the end value in ink beside its line's colored end dot: a member
+    color (the gold) is too light for text on a light card #}
  <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
        text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
-       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
+       style="fill:var(--ink)">{{ "%.3f"|format(cvals[-1]) }}</text>
  {% endfor %}
  {# month ticks on the first scored week of each month
     (month_ticks_for_dates) #}
@@ -571,7 +574,8 @@
   // column groups: the one server table plus copies of it (head cloned,
   // body empty); the sorted, filtered rows are dealt across them in
   // order, top to bottom then left to right. The count follows the
-  // width of the host (.sfcols), one group per SF_COL_PX, at most three.
+  // width of the host (.sfcols), one group per SF_COL_PX (at the standard
+  // text size; it grows with the root size), at most three.
   var host=document.getElementById('sf-cols'),
       SF_COL_PX=tab.classList.contains('pscov')?400:300,
       SF_MAX=3,
@@ -591,8 +595,14 @@
    host.dataset.n=String(n);
   }
   function groups(){
-   var w=host.clientWidth||0;
-   return Math.max(1,Math.min(SF_MAX,Math.floor(w/SF_COL_PX)));
+   var w=host.clientWidth||0,
+       rem=parseFloat(getComputedStyle(document.documentElement).fontSize)/16||1;
+   return Math.max(1,Math.min(SF_MAX,Math.floor(w/(SF_COL_PX*rem))));
+  }
+  // a group wider than its column (long names, large text) overlaps the
+  // next one: one group fewer until they fit
+  function overflows(){
+   return host.scrollWidth>host.clientWidth+1;
   }
   function btns(){
    var out=[];
@@ -618,15 +628,19 @@
    });
    return pinned.concat(out);
   }
-  function layout(){
-   ensureParts(groups());
+  function deal(n){
+   ensureParts(n);
    var vis=order().filter(function(r){return !r.hidden;}),
-       hid=rows.filter(function(r){return r.hidden;}),
        per=Math.ceil(vis.length/parts.length);
    parts.forEach(function(t,i){
     var body=t.tBodies[0];
     vis.slice(i*per,(i+1)*per).forEach(function(r){body.appendChild(r);});
    });
+  }
+  function layout(){
+   deal(groups());
+   while(parts.length>1&&overflows())deal(parts.length-1);
+   var hid=rows.filter(function(r){return r.hidden;});
    // hidden rows stay in the first table (the filter shows them again)
    hid.forEach(function(r){tb.appendChild(r);});
    btns().forEach(function(b){
@@ -666,6 +680,8 @@
    clearTimeout(rt);rt=setTimeout(function(){
     if(groups()!==parts.length)layout();},150);
   });
+  addEventListener('fontsizechange',function(){
+   if(groups()!==parts.length||overflows())layout();});
   if(d)d.addEventListener('toggle',function(){if(d.open)layout();});
   layout();
  })();
@@ -829,6 +845,8 @@
    mode: 'live',
    // the scale switch's hint rides the live-scores "?" tip here
    scaleNote: false,
+   // each relWIS figure says its verdict with an icon, as the tiles do
+   verdictIcons: true,
    // the plot fills the viewport's height (nau.css .fdplot reserves it)
    plotHeight: () => Math.max(360, Math.min(720, Math.round(innerHeight * .55))),
    // server-side, so the toggles are right before the first payload

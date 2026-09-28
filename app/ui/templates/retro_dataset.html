@@ -27,6 +27,9 @@
      if(!d.running){ location.reload(); return; }
      const el=document.getElementById('dsr-prog');
      if(el && d.phase) el.textContent=d.phase;
+     // the bar follows the phase datasets_ui writes: "replayed <date> (i of n weeks)"
+     const m=/\((\d+) of (\d+) weeks\)/.exec(d.phase||'');
+     if(m && window.FluBNFUI) FluBNFUI.setProgress(document.getElementById('rd-progress'), +m[1], +m[2], m[1]+' of '+m[2]+' weeks');
      setTimeout(poll, 2000);
    }).catch(()=>setTimeout(poll, 4000));
  })();
@@ -59,7 +62,7 @@
  {% endcall %}
  {% endfor %}
  {% else %}
- {{ tips.empty("No scored cells" ~ (" yet" if live else ""), "clock", tiptext="A cell needs a later week in the dataset.", id="rd-none") }}
+ {{ tips.empty("No scored cells" ~ (" yet" if live else ""), "clock", tiptext="A cell needs a later week in the dataset.", id="rd-none", compact=True) }}
  {% endif %}
  {% for m, n in abstained.items() if n %}
  <p class="rt-abst">{{ tips.badge("neutral", member_names.get(m, m) ~ " abstained on " ~ n ~ " group-week" ~ ("" if n == 1 else "s"), "The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week, pooled over the groups; early in a short dataset it has too few and says nothing rather than guess.", id="rd-abst-" ~ m) }}</p>

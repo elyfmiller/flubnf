@@ -366,7 +366,12 @@ def test_retro_index_never_fabricates_a_zero_wall_time():
         assert 'class="hint timing"' not in html
     ok = tpl.render(active="Retrospective", state_names=["Ohio"],
                     engine_ok=True, seasons=[_index_card(3725.0)])
-    assert "total wall time 1:02:05" in ok
+    # no per-week timing: the wall time alone (a "?" would only repeat it)
+    assert ">1:02:05</span>" in ok and "total wall time 1:02:05" not in ok
+    timed = dict(_index_card(3725.0), mean_s=124.0, weeks_measured=30)
+    ok = tpl.render(active="Retrospective", state_names=["Ohio"],
+                    engine_ok=True, seasons=[timed])
+    assert "total wall time 1:02:05, mean 124 s per week over 30 timed" in ok
 
 
 def test_season_page_never_fabricates_a_zero_wall_time():
@@ -381,8 +386,12 @@ def test_season_page_never_fabricates_a_zero_wall_time():
                                   "slowest_week": None, "slowest_s": None})
 
     for bad in (None, 0, 0.4):
-        assert "Replay wall time" not in render(bad)
-    assert "Replay wall time 1:02:05" in render(3725.0)
+        assert 'id="rs-timing"' not in render(bad)
+    # a record with no per-week timing: the wall time alone, a plain stat
+    # (its "?" would only repeat it)
+    real = render(3725.0)
+    assert '<span class="uk-stat-v" id="rs-timing">1:02:05</span>' in real
+    assert "Replay wall time" not in real
 
 
 def test_season_report_header_refuses_a_sub_second_record(tmp_path):

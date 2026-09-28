@@ -265,11 +265,11 @@ def test_per_state_table_adds_95_coverage_when_the_scores_carry_it():
         assert f'data-key="{key}"' in body, key
     assert 'aria-label="Oracle SIHRS 95% coverage"' in body
     # rows carry the coverage the client sorts on; 62% of a 95% interval
-    # is too narrow, and a member without the figure prints a dash
+    # is too narrow, and a member without the figure prints "n/a"
     assert 'data-pf-cov="0.620000"' in body
     assert 'data-analogue-cov=""' in body
     assert '<td class="num cov-low">62%</td>' in body
-    assert '<td class="num hint">–</td>' in body
+    assert '<td class="num hint">n/a</td>' in body
     # the column's reading at 95%, said once above the table
     from markupsafe import escape
     from app.core import report_season

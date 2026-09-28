@@ -40,8 +40,8 @@
    {# what each replayed week sees, as a badge: vintage-true, or the final
       series (optimistic scores); the why in its tip #}
    <div class="lblrow rt-kind"><span class="rt-kind-l">Data</span>
-   {% if d.vintage_true %}{% call tips.badge("ok", "vintage-true", id="dsr-kind") %}Vintage-true: each week sees its as_of snapshot. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then.{% endcall %}
-   {% else %}{% call tips.badge("warn", "final data", id="dsr-kind") %}Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did. Without as_of snapshots (an as_of column, or one file per as_of), later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}{% endif %}</div>
+   {% if d.vintage_true %}{% call tips.badge("ok", "vintage-true", id="dsr-kind") %}Vintage-true: each week sees its as_of snapshot. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}
+   {% else %}{% call tips.badge("warn", "final data", id="dsr-kind") %}Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}{% endif %}</div>
    {# the week range on one grid that holds at narrow widths; the newest
       flu season's weeks by default (datasets_ui.replay_window) #}
    <div class="dsr-range">
@@ -86,7 +86,7 @@
     {% set fx = namespace(items=[("", r.kind), ("", r.done ~ "/" ~ r.total ~ " weeks")]) %}
     {% for m, v in r.rels.items() %}{% set t %}{{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}{% endset %}{% set fx.items = fx.items + [("", t)] %}{% endfor %}
     <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}{% if r.rels %}{{ tips.tip("dsr-rel-" ~ rid, "relWIS", "relWIS vs in-house persistence baseline: below 1 beats it.") }}{% endif %}</div></div>
-   <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
+   <a class="btn quiet" href="/retro/dataset/{{ d.id }}/{{ r.stamp }}">Results →</a>
   </div>
   {% else %}
   {{ tips.empty("Not replayed yet", "clock", compact=True, id="dsr-none") }}

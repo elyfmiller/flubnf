@@ -13,9 +13,9 @@
 {% macro rel_item(name, v) -%}
 <span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
 {%- endmacro %}
-{% if own_tab %}<h1>Retrospective</h1>{% else %}
-{{ tips.heading("Retrospective", "rt-page", "Replays a past season week by week on the data each Saturday had, then scores against settled truth.", level=1, cls="rt-h1") }}
-{% endif %}
+{# the page's title and its "?" on both tabs; the tip's second line is
+   the Your data tab's #}
+{{ tips.heading("Retrospective", "rt-page", "Replays a past season week by week on the data each Saturday had, then scores against settled truth. Your data replays a weekly CSV of your own the same way.", level=1, cls="rt-h1") }}
 {# the data source as two tabs, as on Forecast: the FluSight hub's
    seasons, or your own datasets (_dataset_replay.html); plain links, so
    Back, bookmarks and no-script work #}
@@ -161,7 +161,7 @@
     {% if s.status == 'done' and s.added_n %}
     {% call tips.badge("warn", s.added_n ~ " week" ~ ("" if s.added_n == 1 else "s") ~ " added", id="rt-added-" ~ sid) %}{{ s.added_n }} week{{ "" if s.added_n == 1 else "s" }} added to the season since ({{ s.added | join(", ") }}); {% if s.seal %}a sealed record cannot be resumed, so a fresh replay is needed to run {{ "it" if s.added_n == 1 else "them" }}.{% else %}Run resumes it and runs only {{ "that week" if s.added_n == 1 else "those weeks" }}.{% endif %}{% endcall %}
     {% endif %}
-    {% if s.done > 0 %}<a class="rt-go" href="/retro/{{ s.name }}"><button class="quiet" type="button">Results →</button></a>{% endif %}
+    {% if s.done > 0 %}<a class="btn quiet rt-go" href="/retro/{{ s.name }}">Results →</a>{% endif %}
    </div>
    {% if s.active %}
    {# live replay: the console's run bar and its readout, driven by the
@@ -196,7 +196,7 @@
     {% endfor %}{% endif %}
     {# finished replays only (live ones tick above); a sub-second record
        predates timing and would read as a fabricated zero, so say nothing #}
-    {% if s_timed %}{% call tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) %}total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}{% endcall %}{% endif %}
+    {% if s_timed %}{% if s.mean_s %}{% call tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) %}total wall time {{ s.elapsed_s | hms }}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endcall %}{% else %}{{ tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) }}{% endif %}{% endif %}
    {% endcall %}
    {% endif %}
    {% endif %}
@@ -255,8 +255,7 @@
      {% for m, v in a_rels.items() %}{% set fx.items = fx.items + [("", rel_item(((a.pf_name if (m == 'pf' and a.pf_name) else model_name(m)) if m else ''), v))] %}{% endfor %}{% endif %}
      {% set fx.items = fx.items + [("folder", a.size_h, "Size")] %}
      {{ tips.meta(fx.items, label="Archived run facts") }}</div>
-    <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
-      type="button">Results →</button></a>
+    <a class="btn quiet" href="/retro/{{ s.name }}?archive={{ a.id }}">Results →</a>
     <form method="post"
       action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
      <input type="hidden" name="confirm" value="">

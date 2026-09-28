@@ -250,7 +250,9 @@ def test_cumulative_curve_stays_on_the_page(built):
 
 def test_timing_and_settings_match(built):
     app_html, report_html = built
-    t = re.search(r"Replay wall time ([\d:]+)", app_html)
+    # the season band's Wall time value (its "?" says more only when the
+    # record has per-week timing)
+    t = re.search(r'id="rs-timing">([\d:]+)<', app_html)
     assert t, "the fixture's run record must put the wall time on the page"
     assert f"Total wall time {t.group(1)} (h:mm:ss)" in report_html
     pair_re = re.compile(r"<dt>(.*?)</dt><dd>(.*?)</dd>")
