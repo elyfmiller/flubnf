@@ -87,6 +87,14 @@ class BuildError(RuntimeError):
 PF_LABEL_ORACLE = "Oracle SIHRS"
 PF_LABEL_FILTER = "Particle filter alone"
 
+#: the particle filter alone on the production engine's replay (reseal of
+#: 2026-09-07, app/state/retro_reseal, 15,460 cells), per season: what
+#: cross_check holds a site built from trees that predate the Oracle step
+#: to. The console headlines the Oracle SIHRS (home.html's table,
+#: oracle_text.RECORD) and names these only as the filter's ablation
+#: (Methods, the Measured performance card's Oracle row)
+FILTER_RESEAL_REL = {"2023-24": 0.840, "2024-25": 0.797, "2025-26": 0.846}
+
 
 def tree_carries_oracle(root: Path) -> bool:
     """Whether a season tree's pf is the Oracle SIHRS member: its run
@@ -686,7 +694,9 @@ def harvest_placement() -> dict:
     """{season: {rank, field, text, percentile, app_rel}} from the console's
     own performance table.
 
-    `app_rel` (always present) feeds cross_check. The standings columns are
+    `app_rel` (always present) is the table's first score column, the
+    Oracle SIHRS; it feeds cross_check for trees that store the member
+    (reference_for gives the filter's record otherwise). The standings columns are
     optional and absent since the 2026-08-24 withdrawal
     (docs/archive/RELEASE-1.0.md); site_page then prints "placement
     withdrawn". Restored columns would be picked up unchanged.
@@ -838,6 +848,16 @@ def harvest_bngl() -> dict:
 CROSS_CHECK_TOLERANCE = 0.0016
 
 
+def reference_for(placement: dict, label: str) -> dict:
+    """What cross_check compares a build's pf scores to: the console's
+    table (the Oracle SIHRS) when the trees store the member, otherwise
+    the filter's own recorded replay (FILTER_RESEAL_REL), so trees that
+    predate the step are never held to the Oracle's figures."""
+    if label == PF_LABEL_ORACLE:
+        return placement
+    return {s: {"app_rel": v} for s, v in FILTER_RESEAL_REL.items()}
+
+
 def cross_check(scored: list, placement: dict,
                 label: str = PF_LABEL_ORACLE) -> list:
     """Compare every computed season score against the number the console
@@ -853,7 +873,7 @@ def cross_check(scored: list, placement: dict,
     """
     out = []
     for s in scored:
-        # home.html's first score column (app_rel) is the PF
+        # app_rel: reference_for's figure for what the trees store
         rel = (s["models"].get("pf") or {}).get("rel")
         app = (placement.get(s["season"]) or {}).get("app_rel")
         if rel is None or app is None:
@@ -916,7 +936,9 @@ def build_payload(seasons: dict | None = None,
                    for m, a in sorted(pooled.items()) if _rel(a) is not None},
         "model_order": list(MODEL_ORDER),
         "official_order": list(OFFICIAL_ORDER),
-        "consistency": cross_check(scored, placement, pf_label(seasons)),
+        "consistency": cross_check(
+            scored, reference_for(placement, pf_label(seasons)),
+            pf_label(seasons)),
         # the season tables' name for the mechanistic column (pf_label)
         "pf_label": pf_label(seasons),
         "elapsed_s": round(time.time() - t0, 2),

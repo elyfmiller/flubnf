@@ -318,14 +318,27 @@
   {%- endcall %}</span>
  </div>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
-    baseline), members included #}
+    baseline), members included. The Oracle SIHRS row is oracle_text.RECORD
+    (the shipped member); the particle filter alone, its component before
+    the step, stays in the row's "?" as an ablation #}
+ {% set rec = oracle_text.RECORD %}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
-  <tr><td>Particle filter alone (the Oracle SIHRS before its step){{ tips.tip("mt-pf-alone", "the filter alone", "The production engine's replay; its cells differ from the Oracle record above.") }}</td><td class="num ok">0.840{{ rel_verdict(0.840) }}</td><td class="num ok">0.797{{ rel_verdict(0.797) }}</td><td class="num ok">0.846{{ rel_verdict(0.846) }}</td></tr>
+  <tr><td>Oracle SIHRS{% call tips.tip("mt-perf-oracle", "the Oracle SIHRS row") %}The
+  stored forecasts with the Oracle step applied, on the record's cells
+  ({{ oracle_text.cells(rec["2023-24"].cells) }},
+  {{ oracle_text.cells(rec["2024-25"].cells) }} and
+  {{ oracle_text.cells(rec["2025-26"].cells) }}), not the Groundhog's. The
+  particle filter alone, the production engine's replay (reseal of
+  2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.{% endcall %}</td>
+   {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
   <tr><td>Groundhog</td><td class="num ok">0.722{{ rel_verdict(0.722) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
- {% call tips.stats("uk-stats--row mt-pooled", label="Groundhog and bare analogue, pooled") %}
+ {% call tips.stats("uk-stats--row mt-pooled", label="Pooled over three seasons") %}
+  {% call tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), id="mt-pool-oracle", tip_label="the pooled Oracle SIHRS score") %}The
+  record's {{ oracle_text.cells(rec.three.cells) }} cells ({{ oracle_text.fmt(rec.three.filter) }}
+  for the plain filter on them).{% endcall %}
   {% call tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh", tip_label="the pooled Groundhog score") %}Groundhog and
   bare analogue: the same 15,340 cells (pooled 0.666 against 0.771).{% endcall %}
   {{ tips.stat("Bare analogue, pooled", "0.771", id="mt-pool-bare") }}
