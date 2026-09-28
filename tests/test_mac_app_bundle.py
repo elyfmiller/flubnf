@@ -378,10 +378,13 @@ def test_a_terminal_launch_that_fails_at_startup_never_opens_another_terminal(
     (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
     (macos / "flubnf-launch").chmod(0o755)
     # the host: under FluBNF.app's flag the console stops at startup and
-    # hands over, as host_boot.py does; in Terminal (no flag) it fails too
+    # hands over, as host_boot.py does; in Terminal (no flag) it fails too.
+    # A few handovers at most, so a regression fails instead of hanging.
     _script(repo / HOST_REL, f"""echo "host $*" >> "{rec}/console"
 if [ -n "${{FLUBNF_HOST_FALLBACK:-}}" ]; then
-  bash "$(dirname "$0")/flubnf-launch" --handover "the console stopped at startup (exit 1)"
+  echo x >> "{rec}/handovers"
+  [ "$(wc -l < "{rec}/handovers")" -le 3 ] \\
+    && bash "$(dirname "$0")/flubnf-launch" --handover "the console stopped at startup (exit 1)"
 fi
 exit 1
 """)
@@ -409,6 +412,7 @@ exit 0
     said = r.stdout + r.stderr
     assert _read(rec, "terminal") is None, said
     assert _read(rec, "alert") is None, said
+    assert _read(rec, "handovers") == ["x"], said
     guard = _read(rec, "guard")
     assert guard and guard[0].isdigit() and guard[1].startswith("/"), guard
     assert not (repo / "app" / "state" / "terminal-launch").exists()
@@ -417,6 +421,52 @@ exit 0
     assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"] * 2 \
         + ["direct app"], said
     assert "starting it here to show why" in said
+
+
+@posix_only
+def test_a_dock_launch_whose_checks_keep_asking_for_terminal_opens_one(tmp_path):
+    """The Dock half of the endless-Terminals bug: the quiet checks hand over
+    to Terminal for a reason Terminal cannot clear (an engine install that
+    keeps failing while a checkout exists), and FluBNF.command there opens
+    the app again. If macOS drops the --env values, that app used to run the
+    checks again, hand over again, and so on. Now it finds FluBNF.command's
+    file and starts the console: one Terminal, and the chain ends."""
+    repo, rec = _command_repo(tmp_path, engine=False)
+    path = _as_os(tmp_path, repo, rec)
+    checkout = tmp_path / "PyBNF-pf"
+    (checkout / ".git").mkdir(parents=True)
+    _script(repo / "setup_engine.sh",
+            '[ "${1:-}" = --print-bundle ] && exit 0\necho "engine install failed"\nexit 1\n')
+    macos = repo / "FluBNF.app" / "Contents" / "MacOS"
+    # Terminal: runs FluBNF.command (in the foreground here), and refuses
+    # past a few, so a regression fails the test instead of hanging it
+    terminal = _script(tmp_path / "bin" / "open-terminal", f"""echo x >> "{rec}/terminal"
+[ "$(wc -l < "{rec}/terminal")" -le 4 ] || exit 1
+bash "${{@: -1}}"
+""")
+    alert = _script(tmp_path / "bin" / "osascript",
+                    f'printf "%s\\n" "$@" >> "{rec}/alert"\n')
+    (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
+    (macos / "flubnf-launch").chmod(0o755)
+    _script(repo / HOST_REL, f'echo "host $*" >> "{rec}/console"\nexit 0\n')
+    # LaunchServices, dropping the --env values
+    _script(tmp_path / "osbin" / "open", """app=""
+while [ $# -gt 0 ]; do
+  case "$1" in -a) app="$2"; shift ;; --env|--stdout|--stderr) shift ;; esac
+  shift
+done
+bash "$app/Contents/MacOS/flubnf-launch"
+""")
+    r = subprocess.run(["bash", str(macos / "flubnf-launch")],
+                       env=_env(PATH=path, HOME=repo.parent, FLUBNF_PYBNF=checkout),
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                       timeout=120)
+    log = (repo / "app/state/logs/launch.log").read_text()
+    said = log + r.stdout + r.stderr
+    assert _read(rec, "terminal") == ["x"], said
+    assert _read(rec, "alert") is None, said
+    assert "setup work to show" in log
+    assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"], said
 
 
 @posix_only
