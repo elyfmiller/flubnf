@@ -181,3 +181,6 @@ details.sbhow[open] > summary{margin-bottom:.7rem}
 pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
   padding:.5rem .7rem;border-radius:var(--r-sm);background:var(--bg);
   color:var(--mut);font-size:var(--fs-label)}
+/* Save and run repeated at the foot of Run settings */
+.sb-runfoot{display:flex;justify-content:flex-end;margin-top:1rem}
+.sb-runfoot > button{margin-top:0}

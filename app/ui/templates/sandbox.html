@@ -207,6 +207,10 @@
       <span>{{ tips.label("Seed", "sb-seed", "The same seed and inputs reproduce the fit exactly; another seed shows how much a fit varies by chance.", for_="sb-seed-in") }}
        <input id="sb-seed-in" name="seed" type="number" value="{{ form.seed }}" min="0"></span>
      </div>
+     {# the toolbar's primary again, beside the settings it runs with #}
+     <div class="sb-runfoot">
+      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
+     </div>
     </fieldset>
    </div>
   </form>
