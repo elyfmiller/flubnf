@@ -533,7 +533,7 @@ def test_runs_page_shows_elapsed_per_completed_run():
              "chips": "PF 2 fits", "elapsed_s": 3725.0},
             {"run_id": "r0", "label": "2097-12-27 · Dec 27 08:00", "status": "ok",
              "chips": "", "elapsed_s": None}])
-    assert "<th>elapsed</th>" in html
+    assert "<th>elapsed<" in html
     assert "1:02:05" in html
     # a pre-timing row is dashed out, never a fabricated duration or n/a
     assert '<td class="elapsed">--</td>' in html

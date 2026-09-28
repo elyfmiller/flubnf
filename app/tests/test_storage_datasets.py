@@ -113,15 +113,21 @@ def test_the_page_lists_it_with_a_name_confirmed_delete(state):
     html = " ".join(client.get("/storage").text.split())
     (row,) = ui_storage._storage_inventory()["datasets"]
     assert "Your datasets" in html
-    assert (f'<a href="/data?source={ds.id}#browser">Template</a></strong> '
-            f'<span class="hint">· {row["size_h"]} · data') in html
-    assert "· 1 replay " in html and "· 1 run " in html
+    line = html.split(f'<a href="/data?source={ds.id}#browser">Template</a>'
+                      '</strong>', 1)[1].split("</div>", 1)[0]
+    assert f'<span class="st-size">{row["size_h"]}</span>' in line
+    # its parts, one fact each in the row's meta line
+    assert "<li>data " in line
+    assert "<li>1 replay " in line and "<li>1 run " in line
     assert f'action="/storage/datasets/{ds.id}/delete"' in html
     assert 'data-confirm="Template"' in html
     # the shared delete script fills the name when a row carries one
     assert "f.confirm.value=d.confirm||f.ident.value" in html
-    # its run's workroot row names it, and its groups as groups
-    assert "· on Template · 3 groups: Adult, Overall, Pediatric ·" in html
+    # its run's workroot row names it (linked), and its groups as groups
+    wrow = html.split(f'data-wid="{state["ds_run"]}"', 1)[1] \
+               .split("</div>", 1)[0]
+    assert f'on <a href="/data?source={ds.id}#browser">Template</a>' in wrow
+    assert "<li>3 groups: Adult, Overall, Pediatric</li>" in wrow
 
 
 def test_a_dataset_alone_lists_no_empty_parts(state):
@@ -143,8 +149,9 @@ def test_a_dataset_alone_lists_no_empty_parts(state):
     assert tpl["goes"] == ("With it go its 1 replay and its 1 run "
                            "workroot; the runs' ledger rows are kept.")
     html = " ".join(client.get("/storage").text.split())
-    row = html.split(">Alone</a></strong>")[1].split("</span></span>")[0]
-    assert row == f' <span class="hint">· {alone["size_h"]}'
+    row = html.split(">Alone</a></strong>")[1].split("</div>")[0]
+    assert f'<span class="st-size">{alone["size_h"]}</span>' in row
+    assert "uk-meta" not in row                  # no parts line at all
     assert "0 replays" not in html and "0 runs" not in html
     assert 'data-confirm="Alone" data-what="the dataset Alone" ' in html
     assert 'data-hint="">Delete' in html

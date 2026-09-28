@@ -402,7 +402,9 @@ def test_the_storage_tab_lists_the_import_and_deletes_it(tmp_path,
     monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
     html = client.get("/storage").text
     label = rb.imported_label(r.root)
-    assert f"{SEASON} retrospective · {label}" in html
+    row = html.split(f">{SEASON} retrospective</a></strong>", 1)[1] \
+              .split("</div>", 1)[0]
+    assert f"<span>{label}</span>" in row
     assert r.root.name in html
     size_h = retro.human_bytes(retro.dir_size(r.root))
     assert size_h in html

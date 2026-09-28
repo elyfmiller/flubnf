@@ -84,7 +84,7 @@ def test_runs_page_renders_chips_as_markup():
         active="Runs", ledger=[
             {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31",
              "status": "ok", "elapsed_s": 60.0,
-             "chips": ui_shared._outcome_chips(json.dumps(
+             "facts": ui_shared._outcome_items(json.dumps(
                  {"pf_cells": 2, "pf_relwis": 4.067}))}])
     # the span survives unescaped, so the color classes actually apply
     assert '<span class="relwis bad">4.067</span>' in html
