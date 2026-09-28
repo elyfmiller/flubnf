@@ -15,8 +15,12 @@ theme-aware HTML file per week (plotly.js embedded once, no network).
     run', no scope record = 'no data'; legend and hover say the same; fan
     gaps annotated, never smoothed
   * nau.css token blocks embedded verbatim; a boot script resolves the
-    theme at open (console localStorage same-origin, else OS preferences);
-    print is always light
+    theme, the a11y modes and the text size at open (console localStorage
+    same-origin, else OS preferences); print is always light
+  * the console's look: its header lockup (the theme's mark, inlined),
+    DM Sans inlined, and the UI kit (docs/UI-KIT.md) inlined: segmented
+    switches for model and view, card headings with "?" tips instead of
+    captions, legend chips, badges, empty states, a stat for wall time
 
   1. palette, model names and colours (player.js's maps), PLOTLY_CONFIG
   2. the inputs bundle: BUNDLE_VERSION, fan_quantiles*, bundle_asof
@@ -44,6 +48,11 @@ from app.core.html_page import (
     NAU_CSS,
     PLAYER_SRC,
     charts_js,
+    font_face_css,
+    kit_css,
+    kit_js,
+    kit_macros,
+    logo_css,
     marked_json,
     theme_boot_script,
     theme_token_css,
@@ -373,12 +382,14 @@ def _week_ticks_js() -> str:
 
 
 def page_header() -> str:
-    """The report's header lockup, one source: build_report embeds it, and
-    legacy_theme_carry inserts it into stored reports that predate it."""
-    return """<header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
+    """The report's header bar, one source: the console's navbar lockup
+    (the theme's mark, the wordmark) with the report's name and the way
+    back. build_report embeds it, and legacy_theme_carry inserts it into
+    stored reports that predate it."""
+    return """<header class="brandrow"><span class="brand"><span class="mark" aria-hidden="true"></span><span><em>Flu</em>BNF</span></span>
  <span class="brandsub">weekly forecast report</span>
  <span class="spacer"></span>
- <a id="appback" href="#" hidden
+ <a id="appback" class="rp-btn" href="#" hidden
   onclick="history.back();return false">&larr; back to FluBNF</a>
 </header>"""
 
@@ -389,63 +400,130 @@ def page_style() -> str:
     matches (see the class-coverage check there)."""
     return f"""<style>
  /* console identity, theme-aware: the token blocks below are the console's
-    own (nau.css, verbatim -- four themes plus the high-contrast and
-    color-vision modifiers), selected at open by the boot script; the
-    print block at the end flips to the console's light theme so the page
-    always prints as dark ink on a light surface. The inline usmap SVG
-    reads --card, --accent, --map-nodata, and the --cat-* scale: state
-    borders match the card surface, no-data reads as an explicit gap on
-    every ground, and the category fills follow the color-vision mode. */
+    own (nau.css, verbatim: eight themes plus the high-contrast and
+    color-vision modifiers), selected at open by the boot script; then the
+    console's face and header marks, inlined, and the UI kit (nau.css's tip
+    rules and ui-kit.css, verbatim). The print block at the end flips to
+    the console's light theme so the page always prints as dark ink on a
+    light surface. The inline usmap SVG reads --card, --accent,
+    --map-nodata and the --cat-* scale: state borders match the card
+    surface, no-data reads as an explicit gap on every ground, and the
+    category fills follow the color-vision mode. */
 {theme_token_css()}
+{font_face_css()}
+{logo_css()}
+{kit_css()}
+ /* ---- the report's own rules: the console's layout (nau.css) restated,
+    the report's parts prefixed rp- ---- */
  *{{box-sizing:border-box}}
+ html{{color-scheme:var(--scheme,light)}}
  body{{margin:0;background:var(--bg);color:var(--ink);
       font:400 var(--fs-body)/1.5 {FONT_STACK}}}
- main{{width:100%;margin:0 auto;padding:1.4rem 1.4rem 4rem}}
- .brandrow{{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
+ main{{width:100%;max-width:2560px;margin:0 auto;
+      padding:clamp(.9rem,.5rem + .8vw,1.5rem) var(--page-x) 3rem}}
+ a{{color:var(--gold);font-weight:600;text-decoration:none}}
+ a:hover{{text-decoration:underline}}
+ /* the header bar: the console's navbar lockup (mark, wordmark), the
+    report's name, the way back at the right */
+ .brandrow{{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
   margin:0 0 .8rem}}
- .brand{{font-size:1.45rem;font-weight:700;letter-spacing:.01em}}
- .brand em{{color:var(--accent);font-style:normal}}
- .brandsub{{color:var(--mut);font-size:.9rem}}
+ header.brandrow{{margin:0;padding:.55rem var(--page-x);
+  background:var(--nav-bg);color:var(--nav-ink);
+  border-bottom:1px solid var(--line);box-shadow:var(--shadow)}}
+ .brand{{display:inline-flex;align-items:center;gap:.55rem;
+  font-size:clamp(1.25rem,1rem + .5vw,1.45rem);font-weight:700;
+  letter-spacing:.01em}}
+ .brand em{{color:var(--accent-ink);font-style:normal}}
+ .brand .mark{{flex:none;display:block;width:1.45em;height:1.45em;
+  background:var(--logo) center/contain no-repeat;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ .brandsub{{color:var(--mut);font-size:var(--fs-label);font-weight:600;
+  padding:.05em .6em;border:1px solid var(--line);
+  border-radius:var(--r-pill)}}
  .brandrow .spacer{{flex:1}}
- h1{{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .3rem;
-     text-wrap:balance}}
+ h1{{font-size:var(--fs-h1);font-weight:700;margin:0;text-wrap:balance}}
  h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}
- .card h2{{font-size:var(--fs-h2);margin:0 0 .55rem;
-    text-transform:uppercase;
-    letter-spacing:.05em;color:var(--mut);font-weight:600}}
+ .card h2,.rp-kicker{{font-size:var(--fs-h2);margin:0 0 .55rem;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--mut);
+    font-weight:600}}
+ .card .uk-heading > h2{{margin:0}}
  .sub{{color:var(--mut);margin:.2rem 0 1rem;font-size:var(--fs-sub)}}
+ .hint{{color:var(--mut);font-size:var(--fs-hint)}}
+ .card p{{margin:.45rem 0}}
+ /* the title row: title and week, then the controls at the right */
+ .rp-titlerow{{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.6rem 1rem;margin:0 0 var(--sp-3,.75rem)}}
+ .rp-title{{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.35rem .75rem;min-width:0}}
+ .rp-week{{display:inline-flex;align-items:center;gap:.35em;
+  color:var(--mut);font-size:var(--fs-label);font-weight:650;
+  font-variant-numeric:tabular-nums}}
+ .rp-controls{{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.5rem .9rem;margin-left:auto}}
+ .rp-ctl{{display:inline-flex;align-items:center;gap:.4rem}}
+ .rp-ctl > .rp-lbl{{color:var(--mut);font-size:var(--fs-label);
+  font-weight:600}}
+ /* buttons: the console's secondary outline (nau.css button, a.btn) */
+ button{{font:inherit}}
+ .rp-btn,button.backbtn,#natbtn{{display:inline-flex;align-items:center;
+  gap:.35em;padding:.3rem .8rem;border:1px solid var(--btn-ink);
+  border-radius:8px;background:transparent;color:var(--btn-ink);
+  font-size:var(--fs-label);font-weight:650;line-height:1.4;
+  cursor:pointer;text-decoration:none;white-space:nowrap}}
+ .rp-btn:hover,button.backbtn:hover,#natbtn:hover{{text-decoration:none;
+  background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}}
+ header.brandrow .rp-btn{{border-color:var(--field-line);color:var(--nav-ink)}}
+ button:focus-visible,a:focus-visible{{
+  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}}
+ .uk-seg > button{{cursor:pointer}}
  /* run-settings block: the console's compact two-column grid (see
     nau.css .runsettings), restated here because the report is
     self-contained */
  .runsettings{{margin:.45rem 0}}
+ .runsettings > strong{{display:block;color:var(--mut);
+    font-size:var(--fs-label);font-weight:600}}
  .runsettings .kv{{display:grid;
     grid-template-columns:max-content max-content;
     gap:.14rem 1.1rem;align-items:baseline;width:max-content;
     max-width:100%;margin:.25rem 0 0}}
  .runsettings .kv dt{{color:var(--mut)}}
- .runsettings .kv dd{{margin:0;font-weight:650;
+ .runsettings .kv dd{{margin:0;font-weight:650;color:var(--ink);
     font-variant-numeric:tabular-nums;overflow-wrap:anywhere}}
  .card{{background:var(--card);border:1px solid var(--line);
-        border-radius:10px;padding:.85rem 1rem;margin:.75rem 0;
+        border-radius:10px;padding:.85rem 1rem;margin:0 0 .75rem;
         box-shadow:var(--shadow);overflow-x:auto}}
- .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}}
- @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
+ .grid2{{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+        gap:.75rem}}
+ .grid2 > .card{{margin:0}}
+ @media(max-width:820px){{.grid2{{grid-template-columns:minmax(0,1fr)}}}}
  .offseason{{color:var(--mut);font-size:var(--fs-hint);font-style:italic;
              margin:.2rem 0 .8rem}}
- /* in the header flow (not fixed) so it can never cover the title */
- #appback{{display:inline-block;background:var(--card);
-  border:1px solid var(--line);border-radius:99px;padding:.3rem .8rem;
-  color:var(--ink);text-decoration:none;font-size:.85rem}}
- #appback:hover{{border-color:var(--accent)}}
- .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
+ /* the map card: its heading names the model the fills come from */
+ .rp-mapcard{{overflow:visible}}
+ .mapcap{{max-width:min(880px,100%);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
+ .rp-legends{{display:flex;flex-wrap:wrap;align-items:center;
+  justify-content:center;gap:.2rem 1.6rem;margin:.5rem 0 0}}
+ .rp-legends .uk-legend{{margin:.2rem 0}}
+ .rp-legends .rp-lbl{{color:var(--mut);font-size:var(--fs-label);
+  font-weight:600;margin-right:.1rem}}
+ .rp-conf{{display:inline-flex;align-items:center;gap:.5rem}}
+ /* earlier reports' legend rows (legacy_theme_carry) */
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:var(--mut);
           font-size:var(--fs-hint);margin:.4rem 0 0 .2rem}}
  .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
  .sw{{width:13px;height:13px;border-radius:3px;display:inline-block;
      -webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ .uk-sw{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ /* a state's (or the nation's) detail */
+ section.state{{margin:1.2rem 0 0;scroll-margin-top:.5rem}}
+ .rp-sechead{{display:flex;align-items:center;flex-wrap:wrap;
+  gap:.4rem .8rem;margin:0 0 .6rem}}
+ .rp-sechead h2{{margin:0;font-size:var(--fs-lead,1.15rem)}}
+ .rp-sechead .backbtn{{margin:0}}
+ .rp-nat-empty{{margin:0 0 .75rem}}
  table{{border-collapse:collapse;font-size:var(--fs-table);
-        margin:.6rem .4rem;font-variant-numeric:tabular-nums}}
+        margin:.6rem 0 0;font-variant-numeric:tabular-nums}}
  td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
         text-align:left}}
  th{{color:var(--mut);font-weight:600;font-size:.72rem;
@@ -457,24 +535,25 @@ def page_style() -> str:
  .ok{{color:var(--ok)}}.bad{{color:var(--bad)}}
  .relwis{{font-variant-numeric:tabular-nums;font-weight:650}}
  .num.hint{{color:var(--mut)}}
- button{{background:transparent;color:var(--gold);
-         border:1px solid var(--gold);border-radius:8px;
-         padding:.45rem .95rem;font:inherit;font-weight:650;cursor:pointer}}
- button:hover{{background:rgba(52,192,240,.14)}}
- button:focus-visible{{outline:2px solid var(--gold);outline-offset:2px}}
+ /* the run: wall time and settings */
+ .rp-run{{margin-top:1.2rem}}
+ .rp-run .uk-stats{{margin:0 0 .3rem}}
+ /* earlier reports' pill toggles and buttons (legacy_theme_carry) */
  .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
- /* selected toggle: the console's button.gold treatment (gold-bright is
-    the pure cyan in every theme, and near-black ink passes on it) */
+ .viewtoggle button{{background:transparent;color:var(--btn-ink);
+   border:1px solid var(--btn-ink);border-radius:8px;
+   padding:.45rem .95rem;font-weight:650;cursor:pointer}}
  .viewtoggle .on{{background:var(--gold-bright);
-                  border-color:var(--gold-bright);color:{PAPER}}}
+                  border-color:var(--gold-bright);color:var(--on-accent)}}
  .backbtn{{margin:.2rem 0 .6rem}}
- .hint{{color:var(--mut);font-size:var(--fs-hint)}}
  @media print{{
   :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
-   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;
+   --line:#DCD8E9;--accent:#0173A9;--accent-ink:#0173A9;--gold:#0173A9;
+   --nav-bg:#FFFFFF;--nav-ink:#000F7E;
    --ok:#177245;--bad:#C42840;--map-nodata:#C9C5D8;--shadow:none}}
   body{{background:#FFFFFF;color:#000F7E}}
-  button,select,.viewtoggle,#appback,.backbtn{{display:none!important}}
+  button,select,.viewtoggle,.uk-seg,.rp-controls,.tip,.uk-tt,#appback,
+  .backbtn{{display:none!important}}
   .card{{box-shadow:none;break-inside:avoid}}
  }}
 </style>"""
@@ -535,24 +614,28 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     map_html = svg_map(cards_by_fips, clickable=set(state_details),
                        scope_fips=scope, gap_fips=gaps,
                        reasons=no_forecast.get(cards_model or "pf"))
-    # legend/caption: each no-data flavour only when some state wears it
-    _sw = f'<i class="sw" style="background:{NO_DATA}"></i>'
-    legend_bits, caption_bits = [], []
+    # the kit's components (templates/_tips.html), rendered here
+    kit = kit_macros()
+    # legend: the categories, then each no-data flavour only when some
+    # state wears it, its explanation in the chip's "?"
+    legend_items = [{"color": cat_fill(c), "text": CAT_LABEL[c]}
+                    for c in CATS]
+
+    def _nodata(text, tip):
+        legend_items.append({"color": NO_DATA, "text": text, "tip": tip})
+
     if scope is None:
         if no_card:
-            legend_bits.append(f"<span>{_sw}no data in this view</span>")
-            caption_bits.append(
-                " No-data states have no data in this report's inputs.")
+            _nodata("no data in this view",
+                    "No-data states have no data in this report's inputs.")
     else:
         if gap_states:
-            legend_bits.append(f"<span>{_sw}no data (reporting gap)</span>")
-            caption_bits.append(
-                " No-data states were fitted but reported nothing this "
-                "week: shown as gaps, never interpolated.")
+            _nodata("no data (reporting gap)",
+                    "No-data states were fitted but reported nothing this "
+                    "week: shown as gaps, never interpolated.")
         if unfitted_states:
-            legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
-            caption_bits.append(
-                " Not-fitted states were outside this run's scope.")
+            _nodata("not fitted in this run",
+                    "Not-fitted states were outside this run's scope.")
     # in-scope states with data but no forecast, filled like no data
     if scope is None:
         unforecast = blank
@@ -561,12 +644,17 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     else:
         unforecast = ((no_card | blank) & scope) - gaps
     if unforecast:
-        legend_bits.append(f"<span>{_sw}no forecast</span>")
-        caption_bits.append(
-            " No-forecast states have data but no forecast from this model "
-            "this week.")
-    no_data_legend = "".join(legend_bits)
-    no_data_caption = "".join(caption_bits)
+        _nodata("no forecast",
+                "No-forecast states have data but no forecast from this "
+                "model this week.")
+    legend_html = kit.legend(legend_items, label="Categories", id="map-legend")
+    # confidence: the modal category's fill at the three map opacities
+    # (usmap._card_fill), drawn as the same mix over the card
+    conf_html = kit.legend(
+        [(f"color-mix(in srgb,{cat_fill('increase')} {pct}%,var(--card))",
+          word) for pct, word in ((64, "leaning"), (82, "likely"),
+                                  (100, "confident"))],
+        label="Confidence", id="map-conf")
     model_label = model_label or MODEL_LABEL["pf"]
     # model toggle only for 2+ models with usable (fips + probs) cards, the
     # bar the home outlook applies; an empty model would be an inert button
@@ -588,27 +676,44 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                     reasons=no_forecast.get(m)),
                 "us": usmap.nat_swap_payload(
                     (national_map_cards or {}).get(m) or {})}
+        # the kit's segmented switch (aria-pressed marks the choice)
         model_toggle_html = usmap.model_toggle(
             order, MODEL_LABEL, default, payload,
             group_id="outlook-model", btn_class="", active_class="on",
-            wrap_class="viewtoggle", short_labels=MODEL_SHORT)
+            wrap_class="uk-seg", short_labels=MODEL_SHORT)
+    if model_toggle_html:
+        model_toggle_html = ('<span class="rp-ctl"><span class="rp-lbl" '
+                             'aria-hidden="true">Model</span>'
+                             f'{model_toggle_html}</span>')
 
-    # the click invitation only when some state has a section to open
+    # the map's explainer: hover, the click invitation only when some
+    # state has a section to open, zoom
     click_hint = (", click it for detail"
                   if any(a != "US" for a in state_details) else "")
+    map_tip = kit.tip("map", "the map",
+                      f"Hover a state for its category probabilities"
+                      f"{click_hint}; Ctrl+scroll zooms (⌘ on Mac).")
     sections = []
-    back_btn = ('<button class="backbtn" onclick="backToMap()">'
-                '&larr; back to map</button>')
+    back_btn = ('<button type="button" class="backbtn" '
+                'onclick="backToMap()">&larr; back to map</button>')
+
+    def _note(key, note):
+        """A detail's note (the off-season reading) as a badge, the note
+        itself in its "?"."""
+        if not note:
+            return ""
+        word = ("off-season" if str(note).lower().startswith("off-season")
+                else "note")
+        return str(kit.badge("info", word, tiptext=note, id=f"note-{key}"))
+
     for a, d in state_details.items():
         if a == "US":          # national renders in its own curated section
             continue
         rows = "".join(f'<tr><td>{r[0]}</td><td class="num">{r[1]:.0f}</td>'
                        "</tr>" for r in d.get("table_rows", []))
         sections.append(f"""
-<section class="state" id="st-{a}" hidden>
-  {back_btn}
-  <h2>{d['name']}</h2>
-  {('<p class="offseason">' + d['note'] + '</p>') if d.get('note') else ''}
+<section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
+  <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
   <div class="grid2">
     <div class="card">{_html(d['fan'])}</div>
     <div class="card">{_html(d['cat'])}
@@ -616,28 +721,31 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
   </div>
 </section>""")
 
-    # national chart cards only when their figure exists; else one hint line
+    # national chart cards only when their figure exists; else an empty
+    # state whose "?" says when they come
     nat_cards = []
     if national.get("fan"):
         nat_cards.append(f'<div class="card">{_html(national["fan"])}</div>')
-    nat_body = "\n  ".join(nat_cards) or (
-        '<p class="hint">National fan and accuracy charts appear once the '
-        'national model run lands.</p>')
+    nat_body = "\n  ".join(nat_cards) or str(kit.empty(
+        "No national charts yet", "clock", id="nat-wait", compact=True,
+        tiptext="National fan and accuracy charts appear once the "
+                "national model run lands."))
     # A console run fits US directly, so a national forecast here is FITTED
     # (never the constructed sum) and says so. Claim it only when the
     # national fan exists (nat_cards); summary_html is always filled (even
     # unscored), so it is not evidence of a national run.
     from app.core import us_national as _usn
     has_national = bool(nat_cards)
-    nat_prov = (f'<p class="hint">{_usn.LABELS[_usn.FITTED]}. '
-                f'{_usn.NOTES[_usn.FITTED]}</p>') if has_national else ""
+    nat_prov = str(kit.badge(
+        "info", _usn.LABELS[_usn.FITTED], tiptext=_usn.NOTES[_usn.FITTED],
+        id="nat-prov")) if has_national else ""
     nat_summary = national.get('summary_html', '')
     if national_in_run is False and not has_national:
         # the real reason, not "once truth is published" or "once the
         # national model run lands": US was never asked for
-        nat_prov = ('<p class="hint">US (national) was not part of this '
-                    'run.</p>')
-        nat_body = ""
+        nat_prov = ""
+        nat_body = str(kit.empty("US (national) was not part of this run.",
+                                 "info", id="nat-none", compact=True))
         from app.core.scoring import NO_SCORES_HTML
         # only placeholders (the default one, or a model's named one)
         if NO_SCORES_HTML in nat_summary or (
@@ -645,11 +753,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 and "<table" not in nat_summary):
             nat_summary = ""
     nat = f"""
-<section class="state" id="st-US" hidden>
-  {back_btn}
-  <h2>United States</h2>
-  {nat_prov}
-  {('<p class="offseason">' + national['note'] + '</p>') if national.get('note') else ''}
+<section class="state" id="st-US" hidden aria-labelledby="h-st-US">
+  <div class="rp-sechead">{back_btn}<h2 id="h-st-US">United States</h2>{nat_prov}{_note('US', national.get('note'))}</div>
   {nat_summary}
   {nat_body}
 </section>"""
@@ -658,54 +763,57 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     view_toggle = ""
     nat_map_div = ""
     if national_map_html:
-        view_toggle = """
-<div class="viewtoggle">
- <button id="btn-state-view" class="on">state view</button>
- <button id="btn-national-view">national view</button>
-</div>"""
+        view_toggle = """<span class="rp-ctl"><span class="rp-lbl" aria-hidden="true">View</span>
+<div class="uk-seg" role="group" aria-label="Map view">
+ <button type="button" id="btn-state-view" class="on" aria-pressed="true">state view</button>
+ <button type="button" id="btn-national-view" aria-pressed="false">national view</button>
+</div></span>"""
         nat_map_div = f'<div id="map-national" class="mapcap" hidden>{national_map_html}</div>'
 
     # plotly.js in the head, once, iff any figure is embedded
     plotly_js = ("<script>" + html_page.plotly_js() + "</script>"
                  if state_details or national.get("fan") else "")
 
-    # footer: wall time and settings (which run produced this?)
-    footer = ""
+    # the run card: wall time and settings (which run produced this?)
+    run_bits = ""
     if elapsed_s is not None:
         from app.core.runs import fmt_hms
-        footer = (f'<p class="hint" id="runtime">Run wall time: '
-                  f'{fmt_hms(elapsed_s)} (h:mm:ss).</p>')
+        run_bits = ('<dl class="uk-stats uk-stats--row">'
+                    + str(kit.stat("Run wall time", fmt_hms(elapsed_s),
+                                   "h:mm:ss", id="runtime"))
+                    + "</dl>")
     if settings_html:
-        footer += settings_html
+        run_bits += settings_html
+    footer = (f'<section class="card rp-run" aria-labelledby="h-run">'
+              f'<h2 id="h-run">This run</h2>{run_bits}</section>'
+              if run_bits else "")
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF weekly report · {asof}</title>
 {theme_boot_script()}
 {plotly_js}
-{page_style()}</head><body><main>
+{page_style()}</head><body>
 {page_header()}
-<h1>US influenza forecast</h1>
-<p class="sub">week of {asof} ·
- <button id="natbtn">national detail</button></p>
-{model_toggle_html}
-{view_toggle}
-<div class="card" id="map-anchor">
-<p class="hint mapmodel" data-mapmodel-label>{model_label}</p>
-<div id="map-state" class="mapcap">{map_html}</div>
- {nat_map_div}
- <div class="legend">
-  {"".join(f'<span><i class="sw" style="background:{cat_fill(c)}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
-  {no_data_legend}
- </div>
- <div class="legend">
-  <span><i class="sw" style="background:{cat_fill('increase')};opacity:.64"></i>leaning</span>
-  <span><i class="sw" style="background:{cat_fill('increase')};opacity:.82"></i>likely</span>
-  <span><i class="sw" style="background:{cat_fill('increase')};opacity:1"></i>confident</span>
+<main>
+<div class="rp-titlerow">
+ <div class="rp-title"><h1>US influenza forecast</h1>
+  <span class="rp-week">{kit.icon("calendar")}week of {asof}</span></div>
+ <div class="rp-controls">
+  {model_toggle_html}
+  {view_toggle}
+  <button type="button" id="natbtn">national detail</button>
  </div>
 </div>
-<p class="hint">Hover a state for its category probabilities{click_hint};
- Ctrl+scroll zooms (⌘ on Mac).{no_data_caption}</p>
+<div class="card rp-mapcard" id="map-anchor">
+ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>{map_tip}</div>
+ <div id="map-state" class="mapcap">{map_html}</div>
+ {nat_map_div}
+ <div class="rp-legends">
+  {legend_html}
+  <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
+ </div>
+</div>
 {"".join(sections)}
 {nat}
 <script>
@@ -742,6 +850,8 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
     mN.hidden = (v === 'state');
     bS.classList.toggle('on', v === 'state');
     bN.classList.toggle('on', v === 'national');
+    bS.setAttribute('aria-pressed', String(v === 'state'));
+    bN.setAttribute('aria-pressed', String(v === 'national'));
   }};
   bS.addEventListener('click', () => setView('state'));
   bN.addEventListener('click', () => setView('national'));
@@ -750,7 +860,9 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
 {_retint_js() if plotly_js else ""}
 {_week_ticks_js() if plotly_js else ""}
 {footer}
-</main></body></html>"""
+</main>
+<script>{kit_js()}</script>
+</body></html>"""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # atomic (a serve-time rebuild never exposes a half-write), and LF pinned:
@@ -832,11 +944,15 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
 # ---------------------------------------------------------- 6. serve time
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    html_page, scoring, usmap, nau.css, charts.js): a stored report.html
-    older than this is stale."""
+    html_page, scoring, usmap, nau.css, charts.js, and the UI kit it
+    inlines: ui-kit.css, tips.js, _tips.html, the faces and the marks): a
+    stored report.html older than this is stale."""
     srcs = [Path(__file__).with_name(m + ".py")
             for m in ("report_v2", "html_page", "scoring", "usmap")]
-    return max([0.0] + [p.stat().st_mtime for p in srcs + [CHARTS_SRC, NAU_CSS]
+    kit = [html_page.KIT_CSS, html_page.KIT_JS, html_page.TIPS_TPL,
+           html_page.FONTS_CSS, html_page.LOGOS_CSS]
+    return max([0.0] + [p.stat().st_mtime
+                        for p in srcs + [CHARTS_SRC, NAU_CSS] + kit
                         if p.is_file()])
 
 
