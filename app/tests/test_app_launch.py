@@ -1324,3 +1324,31 @@ def test_a_first_launch_does_not_wait_for_a_busy_port():
         assert got != port and slept == []
     finally:
         busy.close()
+
+
+# ------------------------------------------- the Terminal's status file
+def test_boot_started_empties_the_status_file(tmp_path, monkeypatch):
+    """FluBNF.command names a status file that says the app quit early
+    until the console is up; the console empties it then. No variable,
+    nothing happens."""
+    status = tmp_path / "boot"
+    status.write_text("FluBNF.app quit before the console started\n")
+    monkeypatch.setenv("FLUBNF_BOOT_STATUS", str(status))
+    cli._boot_started()
+    assert status.read_text() == ""
+    # still named: a failure after this can write its reason there
+    assert os.environ["FLUBNF_BOOT_STATUS"] == str(status)
+    monkeypatch.delenv("FLUBNF_BOOT_STATUS")
+    cli._boot_started()
+    monkeypatch.setenv("FLUBNF_BOOT_STATUS", str(tmp_path / "gone" / "boot"))
+    cli._boot_started()                       # an unwritable path never raises
+
+
+def test_the_console_reports_it_is_up_once_its_window_or_page_is():
+    """The window's start callback and the browser path (once the server
+    answers) both clear the status file."""
+    window = inspect.getsource(cli.app_window)
+    shown = window.split("def _activate():")[1].split("webview.start(_activate)")[0]
+    assert "_boot_started()" in shown
+    served = inspect.getsource(cli.app_serve)
+    assert "_boot_started()" in served.split("def _open():")[1].split("webbrowser.open")[0]

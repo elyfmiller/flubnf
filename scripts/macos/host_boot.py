@@ -1,5 +1,5 @@
-"""Run a console script under FluBNF.app's host, and reopen Terminal when it
-fails at startup.
+"""Run a console script under FluBNF.app's host, and hand a failure at
+startup back to Terminal.
 
 flubnf_host.c runs `<venv python> host_boot.py <script> [args...]` for a
 launch from the Dock (FLUBNF_HOST_FALLBACK, set only by flubnf-launch). This
@@ -59,8 +59,9 @@ def to_terminal(why: str, run=subprocess.run) -> None:
     if sys.platform != "darwin":
         return
     try:
+        # long enough for the alert the launcher may show instead
         run(["/bin/bash", LAUNCHER, "--handover", why],
-            stdin=subprocess.DEVNULL, timeout=30, check=False)
+            stdin=subprocess.DEVNULL, timeout=600, check=False)
     except Exception as e:
         sys.stderr.write(f"flubnf-host: could not hand over: {e}\n")
 

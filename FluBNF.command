@@ -197,40 +197,41 @@ if [ -n "$HOST" ]; then
   # Through LaunchServices, as a Dock click is: a window started as this
   # shell's child is never made the active app on recent macOS (Terminal
   # keeps the focus), so it shows no hover and will not resize. The app
-  # skips its own checks (FLUBNF_LAUNCH=ready: this file just ran them),
-  # prints here, and writes a failure at startup to BOOT instead of opening
-  # another Terminal; the console then starts here in view, as it did
-  # before. Ctrl-C here stops the app (its pidfile).
-  # macOS may drop those --env values, so the same two facts also wait in
-  # app/state/terminal-launch (this shell's pid, then BOOT) until the app
-  # quits: FluBNF.app, the host and host_boot.py never open another
-  # Terminal while it names a live pid, which is what stops a console that
-  # fails at startup from reopening Terminal without end.
+  # skips its own checks (ready: this file just ran them), prints here, and
+  # reports a failure at startup in BOOT instead of opening another
+  # Terminal; the console then starts here in view, as it did before.
+  # Ready travels as --args, which a new instance (-n) always gets, and as
+  # --env, which macOS may drop. BOOT starts out saying the app quit early;
+  # the console empties it once it is up (flubnf/cli.py _boot_started), so
+  # an app that dies without a word (a crash, a refused folder) is also
+  # started here. Ctrl-C here stops the app (its pidfile).
   BOOT="$(mktemp -t flubnf-boot.XXXXXX 2>/dev/null)" || BOOT=""
-  GUARD="app/state/terminal-launch"
-  mkdir -p app/state 2>/dev/null
-  printf '%s\n%s\n' "$$" "$BOOT" > "$GUARD" 2>/dev/null || GUARD=""
-  OUT=()
-  TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
-  case "$TTY_NOW" in /dev/*) OUT=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
-  [ -z "$BOOT" ] || OUT+=(--env "FLUBNF_BOOT_STATUS=$BOOT")
   STOPPED=""
-  trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT
-  open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready ${OUT[@]+"${OUT[@]}"}
-  ORC=$?
-  trap - INT
-  [ -z "$GUARD" ] || rm -f "$GUARD"
-  if [ -n "$STOPPED" ]; then
-    STATUS=130
-  elif [ "$ORC" -ne 0 ]; then
-    # an older macOS without open --env, or LaunchServices refused
-    echo "· macOS did not open FluBNF.app (code $ORC); starting the console here"
-    run_here
-  elif [ -n "$BOOT" ] && [ -s "$BOOT" ]; then
-    echo "· $(cat "$BOOT"); starting it here to show why"
+  ORC=0
+  if [ -z "$BOOT" ] || ! echo "FluBNF.app quit before the console started" > "$BOOT"; then
+    echo "· no status file for FluBNF.app; starting the console here"
     run_here
   else
-    STATUS=0
+    OUT=(--env "FLUBNF_BOOT_STATUS=$BOOT")
+    TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
+    case "$TTY_NOW" in /dev/*) OUT+=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
+    trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT
+    open -W -n -a "$PWD/FluBNF.app" --env FLUBNF_LAUNCH=ready "${OUT[@]}" \
+      --args --ready "$BOOT"
+    ORC=$?
+    trap - INT
+    if [ -n "$STOPPED" ]; then
+      STATUS=130
+    elif [ "$ORC" -ne 0 ]; then
+      # an older macOS without open --env, or LaunchServices refused
+      echo "· macOS did not open FluBNF.app (code $ORC); starting the console here"
+      run_here
+    elif [ -s "$BOOT" ]; then
+      echo "· $(head -1 "$BOOT"); starting it here to show why"
+      run_here
+    else
+      STATUS=0
+    fi
   fi
   [ -z "$BOOT" ] || rm -f "$BOOT"
 else

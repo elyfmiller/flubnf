@@ -39,8 +39,9 @@
  *
  * STARTUP FAILURE (FLUBNF_HOST_FALLBACK non-empty, which only flubnf-launch
  * sets). Two cases are caught here, before Python starts: no venv, and a
- * venv of another Python minor version. For each, this host reopens
- * FluBNF.command in Terminal, where setup and errors are visible.
+ * venv of another Python minor version. For each, this host hands over to
+ * flubnf-launch --handover, which reopens FluBNF.command in Terminal, where
+ * setup and errors are visible (or reports to the Terminal that asked).
  * Failures inside Python go to scripts/macos/host_boot.py, which runs the
  * script. A C check after Py_BytesMain would miss most of them: an uncaught
  * SystemExit(n) from a script ends in Py_Exit() -> exit()
@@ -49,8 +50,9 @@
  * Neither this host nor host_boot.py opens Terminal itself: both hand over
  * to the bundle's launcher (flubnf-launch --handover "<why>"), whose
  * guards keep that from looping. A launch that FluBNF.command asked for
- * (which runs with the flag too, through `open`) reports to that Terminal
- * instead, and a second automatic reopen within minutes is an alert.
+ * (which runs with the flag too, through `open`) has FLUBNF_LAUNCH=ready
+ * and reports to that Terminal instead, and a second automatic reopen
+ * within minutes is an alert.
  *
  * The file also compiles on Linux (it reads /proc/self/exe there) so the
  * tests can build and run it. Only macOS gives it a purpose.
@@ -164,10 +166,8 @@ static void to_terminal(const char *exe, const char *why)
         || strlen(launcher) + sizeof "/flubnf-launch" > sizeof launcher)
         return;
     strcat(launcher, "/flubnf-launch");
-#ifdef __APPLE__
     execl("/bin/bash", "bash", launcher, "--handover", why, (char *)NULL);
     perror(TAG "flubnf-launch");
-#endif
 }
 
 static int join(char out[PATH_MAX], const char *repo, const char *rel)
@@ -220,8 +220,8 @@ int main(int argc, char **argv)
     if (pargv == NULL)
         return 71;
     pargv[pargc++] = py;               /* argv[0]: getpath finds the venv here */
-    /* A script launch from the Dock runs under host_boot.py, which reopens
-     * Terminal when the script fails at startup. */
+    /* A script launch from the Dock runs under host_boot.py, which hands a
+     * failure at startup to flubnf-launch --handover. */
     if (fallback && argc > 1 && argv[1][0] != '-' && access(boot, R_OK) == 0)
         pargv[pargc++] = boot;
     for (i = 1; i < argc; i++)

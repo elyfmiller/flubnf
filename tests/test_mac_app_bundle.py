@@ -60,6 +60,23 @@ def _env(**extra) -> dict:
     return env
 
 
+@pytest.fixture(autouse=True)
+def _own_tmpdir(tmp_path, monkeypatch):
+    """Each test its own TMPDIR: flubnf-launch keeps its reopen guard in a
+    per-user folder under it, which must not carry over between tests."""
+    d = tmp_path / "tmpdir"
+    d.mkdir()
+    monkeypatch.setenv("TMPDIR", str(d))
+    return d
+
+
+def _handover_stamp() -> Path:
+    """Where flubnf-launch records its last automatic reopen of Terminal
+    (off a Mac: under TMPDIR, per user)."""
+    return Path(os.environ["TMPDIR"]) / f"edu.nau.flubnf-{os.getuid()}" \
+        / "terminal-handover"
+
+
 def _read(rec: Path, name: str):
     """A stand-in's recorded lines, or None when it never ran."""
     p = rec / name
@@ -76,8 +93,8 @@ def _opener(tmp_path: Path, rec: Path) -> Path:
 def _patched_launcher(opener: Path, osascript: Path, limit=None) -> str:
     """flubnf-launch with Terminal and the alert swapped for recorders."""
     src = LAUNCH.read_text()
-    swaps = [("local open=/usr/bin/open", f"local open={opener}"),
-             ("local osascript=/usr/bin/osascript", f"local osascript={osascript}")]
+    swaps = [("local open=/usr/bin/open", f'local open="{opener}"'),
+             ("local osascript=/usr/bin/osascript", f'local osascript="{osascript}"')]
     if limit is not None:
         swaps.append(("local limit=120", f"local limit={limit}"))
     for old, new in swaps:
@@ -175,9 +192,10 @@ def _launch_repo(tmp_path, *, venv=True, command=True, prep="exit 0",
     return repo, rec
 
 
-def _launch(repo: Path, **env):
+def _launch(repo: Path, args=(), **env):
     t0 = time.monotonic()
-    r = subprocess.run(["bash", str(repo / "FluBNF.app/Contents/MacOS/flubnf-launch")],
+    r = subprocess.run(["bash", str(repo / "FluBNF.app/Contents/MacOS/flubnf-launch"),
+                        *args],
                        env=_env(**env), stdin=subprocess.DEVNULL,
                        capture_output=True, text=True, timeout=120)
     log = repo / "app" / "state" / "logs" / "launch.log"
@@ -210,22 +228,47 @@ def test_a_ready_clone_execs_the_host_as_the_window(tmp_path):
 
 
 @posix_only
-def test_a_ready_launch_skips_the_checks_and_starts_the_console(tmp_path):
-    """FLUBNF_LAUNCH=ready: FluBNF.command ran the update, the checks and
-    the build a moment ago and asked LaunchServices for the app. Straight
-    to the host, as `app` (what FluBNF.command runs), output left with the
-    asking Terminal (no launch.log), the status file passed through."""
+@pytest.mark.parametrize("via", ["env", "argv"])
+def test_a_ready_launch_skips_the_checks_and_starts_the_console(tmp_path, via):
+    """Ready (FluBNF.command ran the update, the checks and the build a
+    moment ago, then asked LaunchServices for the app): straight to the
+    host, as `app` (what FluBNF.command runs), output left with the asking
+    Terminal (launch.log gets one line naming how ready arrived), the
+    status file passed through. Ready arrives as FLUBNF_LAUNCH=ready, or as
+    `--ready <status file>` arguments, which macOS cannot drop; either way
+    the host gets FLUBNF_LAUNCH=ready, so its own handover reports too."""
     repo, rec = _launch_repo(tmp_path)
     status = tmp_path / "boot"
-    r, log, _ = _launch(repo, FLUBNF_LAUNCH="ready",
-                        FLUBNF_BOOT_STATUS=str(status))
+    if via == "env":
+        r, log, _ = _launch(repo, FLUBNF_LAUNCH="ready",
+                            FLUBNF_BOOT_STATUS=str(status))
+    else:
+        r, log, _ = _launch(repo, args=["--ready", str(status)])
     assert r.returncode == 0, r.stdout + r.stderr
     assert _read(rec, "prep.env") is None and _read(rec, "build") is None
     assert _read(rec, "host") == [f"{repo}/.venv/bin/flubnf", "app"]
     env = _envfile(_read(rec, "host.env"))
     assert env["FLUBNF_HOST_FALLBACK"] == "1"
     assert env["FLUBNF_BOOT_STATUS"] == str(status)
-    assert log == "" and _read(rec, "open") is None
+    assert env["FLUBNF_LAUNCH"] == "ready"
+    assert log.count("\n") == 1 and "ready launch from FluBNF.command" in log
+    assert f"via {via}" in log
+    assert "starting the console" in r.stdout
+    assert _read(rec, "open") is None
+
+
+@posix_only
+def test_a_ready_launch_ignores_a_launchd_wide_terminal_setting(tmp_path):
+    """`launchctl setenv FLUBNF_LAUNCH terminal` (docs/LAUNCHERS.md) holds
+    for every app until logout and may win over open's --env. The --ready
+    arguments still make the launch ready, and it does not hand back."""
+    repo, rec = _launch_repo(tmp_path)
+    status = tmp_path / "boot"
+    r, _, _ = _launch(repo, args=["--ready", str(status)],
+                      FLUBNF_LAUNCH="terminal")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _read(rec, "host") == [f"{repo}/.venv/bin/flubnf", "app"]
+    assert _read(rec, "open") is None and not status.exists()
 
 
 @posix_only
@@ -241,75 +284,25 @@ def test_a_ready_launch_that_cannot_start_reports_and_never_opens_terminal(tmp_p
     assert _read(rec, "open") is None and _read(rec, "osascript") is None
 
 
-def _guard(repo: Path, pid, boot="") -> Path:
-    """What FluBNF.command leaves while it waits on the app it opened."""
-    g = repo / "app" / "state" / "terminal-launch"
-    g.parent.mkdir(parents=True, exist_ok=True)
-    g.write_text(f"{pid}\n{boot}\n")
-    return g
-
-
-def _waiter():
-    """A live process standing in for FluBNF.command's waiting shell."""
-    return subprocess.Popen(["sleep", "60"])
-
-
-@posix_only
-def test_a_live_terminal_launch_file_makes_a_launch_ready_without_its_env(tmp_path):
-    """macOS may drop the values `open --env` passes. The file FluBNF.command
-    leaves while it waits says the same thing: skip the checks it just ran,
-    start `app`, and report a failure to its status file."""
-    repo, rec = _launch_repo(tmp_path)
-    status = tmp_path / "boot"
-    w = _waiter()
-    try:
-        _guard(repo, w.pid, status)
-        r, log, _ = _launch(repo)
-    finally:
-        w.kill()
-        w.wait()
-    assert r.returncode == 0, log + r.stdout + r.stderr
-    assert _read(rec, "prep.env") is None and _read(rec, "build") is None
-    assert _read(rec, "host") == [f"{repo}/.venv/bin/flubnf", "app"]
-    assert _envfile(_read(rec, "host.env"))["FLUBNF_BOOT_STATUS"] == str(status)
-    assert _read(rec, "open") is None
-
-
-@posix_only
-@pytest.mark.parametrize("stale", ["dead-pid", "old-file", "not-a-pid"])
-def test_a_stale_terminal_launch_file_is_ignored(tmp_path, stale):
-    """A Terminal that is gone, a file from long ago or a garbled one: a
-    normal Dock launch, checks and all."""
-    repo, rec = _launch_repo(tmp_path)
-    if stale == "dead-pid":
-        gone = subprocess.Popen(["true"])
-        gone.wait()
-        _guard(repo, gone.pid)
-    elif stale == "old-file":
-        g = _guard(repo, os.getpid())
-        then = time.time() - 10 * 60
-        os.utime(g, (then, then))
-    else:
-        _guard(repo, "12x")
-    r, log, _ = _launch(repo)
-    assert r.returncode == 0, log
-    assert _read(rec, "prep.env") is not None
-    assert _read(rec, "host") == [str(repo / ".venv" / "bin" / "flubnf"), "window"]
-
-
-def _handover(repo: Path, why="the console stopped at startup (exit 3)", **env):
+def _handover(repo: Path, why="the console stopped at startup (exit 3)",
+              args=(), **env):
     return subprocess.run(
         ["bash", str(repo / "FluBNF.app/Contents/MacOS/flubnf-launch"),
-         "--handover", why],
+         *args, "--handover", why],
         env=_env(**env), stdin=subprocess.DEVNULL, capture_output=True,
         text=True, timeout=60)
+
+
+def _age(stamp: Path, minutes: float) -> None:
+    stamp.write_text(f"{int(time.time() - minutes * 60)}\n")
 
 
 @posix_only
 def test_a_handover_reopens_terminal_once_then_alerts(tmp_path):
     """The host and host_boot.py hand a startup failure to the launcher.
-    It reopens Terminal, but not twice within minutes: the second is an
-    alert, so a failure that repeats cannot open Terminal without end."""
+    It reopens Terminal, but not twice within HANDOVER_MIN minutes: the
+    second is an alert, so a failure that repeats cannot open Terminal
+    without end. The record lives outside the clone, in seconds."""
     repo, rec = _launch_repo(tmp_path)
     r = _handover(repo)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -317,29 +310,62 @@ def test_a_handover_reopens_terminal_once_then_alerts(tmp_path):
     assert _read(rec, "prep.env") is None and _read(rec, "host") is None
     log = (repo / "app/state/logs/launch.log").read_text()
     assert "stopped at startup (exit 3)" in log
+    stamp = _handover_stamp()
+    assert abs(int(stamp.read_text()) - time.time()) < 60
     (rec / "open").unlink()
     r = _handover(repo)
     assert r.returncode == 1
     assert _read(rec, "open") is None
-    assert "already reopened in Terminal" in "\n".join(_read(rec, "osascript"))
-    # the guard covers the launcher's own reasons too
+    said = "\n".join(_read(rec, "osascript"))
+    assert "could not start" in said and "already reopened in Terminal" in said
+    # the launcher's own reasons too, worded as what they are
     (rec / "osascript").unlink()
     r, _, _ = _launch(repo, FLUBNF_LAUNCH="terminal")
     assert r.returncode == 1 and _read(rec, "open") is None
-    assert _read(rec, "osascript")
-    # minutes later a reopen is allowed again
-    stamp = repo / "app" / "state" / "terminal-handover"
-    then = time.time() - 5 * 60
-    os.utime(stamp, (then, then))
-    r = _handover(repo)
-    assert r.returncode == 0
+    said = "\n".join(_read(rec, "osascript"))
+    assert "does not open another so soon" in said and "FLUBNF_LAUNCH=terminal" in said
+    # nine minutes on, still refused; eleven, allowed again
+    (rec / "osascript").unlink()
+    _age(stamp, 9)
+    assert _handover(repo).returncode == 1 and _read(rec, "open") is None
+    _age(stamp, 11)
+    assert _handover(repo).returncode == 0
     assert _read(rec, "open") == ["-a", "Terminal", str(repo / "FluBNF.command")]
 
 
 @posix_only
-@pytest.mark.parametrize("how", ["env", "file"])
+def test_a_ready_launch_that_reaches_the_console_clears_the_record(tmp_path):
+    """The Terminal a handover opened asks for the app again (ready); once
+    that launch reaches the console, the next reopen is allowed, so a
+    quick second Dock click after a good start is never refused."""
+    repo, rec = _launch_repo(tmp_path)
+    assert _handover(repo).returncode == 0
+    assert _handover_stamp().exists()
+    r, _, _ = _launch(repo, args=["--ready", str(tmp_path / "boot")])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not _handover_stamp().exists()
+    (rec / "open").unlink()
+    assert _handover(repo).returncode == 0 and _read(rec, "open")
+
+
+@posix_only
+def test_a_reopen_it_cannot_record_is_an_alert(tmp_path, monkeypatch):
+    """Fail closed: when the record cannot be written, nothing bounds the
+    reopens, so there is none."""
+    repo, rec = _launch_repo(tmp_path)
+    blocker = tmp_path / "a-file"
+    blocker.write_text("")
+    monkeypatch.setenv("TMPDIR", str(blocker / "sub"))
+    r = _handover(repo)
+    assert r.returncode == 1
+    assert _read(rec, "open") is None
+    assert "cannot record reopening Terminal" in "\n".join(_read(rec, "osascript"))
+
+
+@posix_only
+@pytest.mark.parametrize("how", ["env", "argv"])
 def test_a_handover_from_a_launch_a_terminal_asked_for_reports_to_it(tmp_path, how):
-    """A Terminal waits on this launch (FLUBNF_LAUNCH=ready, or its file):
+    """A Terminal waits on this launch (FLUBNF_LAUNCH=ready, or --ready):
     the reason goes to that Terminal's status file, and no Terminal or
     alert opens."""
     repo, rec = _launch_repo(tmp_path)
@@ -347,90 +373,133 @@ def test_a_handover_from_a_launch_a_terminal_asked_for_reports_to_it(tmp_path, h
     if how == "env":
         r = _handover(repo, FLUBNF_LAUNCH="ready", FLUBNF_BOOT_STATUS=status)
     else:
-        w = _waiter()
-        try:
-            _guard(repo, w.pid, status)
-            r = _handover(repo)
-        finally:
-            w.kill()
-            w.wait()
+        r = _handover(repo, args=["--ready", str(status)])
     assert r.returncode == 1
     assert "stopped at startup (exit 3)" in status.read_text()
     assert _read(rec, "open") is None and _read(rec, "osascript") is None
 
 
+def _launchservices(tmp_path: Path, rec: Path, send: str) -> None:
+    """A stand-in for `open -W -n -a FluBNF.app ...`: runs the app's
+    launcher and waits, passing the --env values and/or the --args as
+    `send` says (both, env, argv, none): macOS may drop some."""
+    _script(tmp_path / "osbin" / "open", f"""app="" ; envs=() ; args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -a) app="$2"; shift ;;
+    --env) envs+=("$2"); shift ;;
+    --stdout|--stderr) shift ;;
+    --args) shift; args=("$@"); break ;;
+  esac
+  shift
+done
+echo "{send}" >> "{rec}/launches"
+case "{send}" in both|env) ;; *) envs=() ;; esac
+case "{send}" in both|argv) ;; *) args=() ;; esac
+env "${{envs[@]}}" bash "$app/Contents/MacOS/flubnf-launch" "${{args[@]}}"
+exit 0
+""")
+
+
 @posix_only
-@pytest.mark.parametrize("env_arrives", [True, False])
+@pytest.mark.parametrize("send", ["both", "argv", "env"])
 def test_a_terminal_launch_that_fails_at_startup_never_opens_another_terminal(
-        tmp_path, env_arrives):
+        tmp_path, send):
     """The endless-Terminals bug, end to end, through the real FluBNF.command
     and flubnf-launch: FluBNF.command opens the app through LaunchServices,
-    the console stops at startup and the host hands over. With or without
-    the --env values arriving, the failure goes back to the waiting
-    Terminal, which starts the console in view: no second Terminal."""
+    the console stops at startup and the host hands over. With the ready
+    signal as --env, as --args or both, the failure goes back to the
+    waiting Terminal, which starts the console in view: no second
+    Terminal."""
     repo, rec = _command_repo(tmp_path)
     path = _as_os(tmp_path, repo, rec)
     macos = repo / "FluBNF.app" / "Contents" / "MacOS"
     terminal = _script(tmp_path / "bin" / "open-terminal",
-                       f'printf "%s\n" "$@" >> "{rec}/terminal"\n')
+                       f'printf "%s\\n" "$@" >> "{rec}/terminal"\n')
     alert = _script(tmp_path / "bin" / "osascript",
-                    f'printf "%s\n" "$@" >> "{rec}/alert"\n')
+                    f'printf "%s\\n" "$@" >> "{rec}/alert"\n')
     (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
     (macos / "flubnf-launch").chmod(0o755)
     # the host: under FluBNF.app's flag the console stops at startup and
     # hands over, as host_boot.py does; in Terminal (no flag) it fails too.
     # A few handovers at most, so a regression fails instead of hanging.
     _script(repo / HOST_REL, f"""echo "host $*" >> "{rec}/console"
-if [ -n "${{FLUBNF_HOST_FALLBACK:-}}" ]; then
+fb="${{FLUBNF_HOST_FALLBACK:-}}"
+unset FLUBNF_HOST_FALLBACK            # as the real host does
+if [ -n "$fb" ]; then
   echo x >> "{rec}/handovers"
   [ "$(wc -l < "{rec}/handovers")" -le 3 ] \\
     && bash "$(dirname "$0")/flubnf-launch" --handover "the console stopped at startup (exit 1)"
 fi
 exit 1
 """)
-    # LaunchServices: run the app's launcher and wait (-W); pass the --env
-    # values only when they arrive
-    drop = "" if env_arrives else "honour=\n"
-    _script(tmp_path / "osbin" / "open", f"""cat app/state/terminal-launch > "{rec}/guard" 2>/dev/null
-app="" ; envs=() ; honour=1
-{drop}while [ $# -gt 0 ]; do
-  case "$1" in
-    -a) app="$2"; shift ;;
-    --env) envs+=("$2"); shift ;;
-    --stdout|--stderr) shift ;;
-  esac
-  shift
-done
-if [ -n "$honour" ]; then
-  env "${{envs[@]}}" bash "$app/Contents/MacOS/flubnf-launch"
-else
-  bash "$app/Contents/MacOS/flubnf-launch"
-fi
-exit 0
-""")
+    _launchservices(tmp_path, rec, send)
     r = _command(repo, PATH=path)
     said = r.stdout + r.stderr
     assert _read(rec, "terminal") is None, said
     assert _read(rec, "alert") is None, said
     assert _read(rec, "handovers") == ["x"], said
-    guard = _read(rec, "guard")
-    assert guard and guard[0].isdigit() and guard[1].startswith("/"), guard
-    assert not (repo / "app" / "state" / "terminal-launch").exists()
     # the app's run (fails, reports), then the console in view: under the
     # host, then without it
     assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"] * 2 \
         + ["direct app"], said
-    assert "starting it here to show why" in said
+    assert "stopped at startup (exit 1); starting it here to show why" in said
 
 
 @posix_only
-def test_a_dock_launch_whose_checks_keep_asking_for_terminal_opens_one(tmp_path):
+@pytest.mark.parametrize("state", ["usable", "unwritable"])
+def test_a_chain_that_loses_its_ready_signal_opens_terminal_at_most_once(
+        tmp_path, state):
+    """Worst case: macOS drops both the --env values and the --args, so the
+    app FluBNF.command opened runs as a Dock launch, and its console stops
+    at startup. The first handover opens one Terminal; the app that
+    Terminal opens fails the same way, and its handover is an alert. With
+    no place to record the reopen (a refused or read-only folder), not even
+    the first Terminal opens."""
+    repo, rec = _command_repo(tmp_path)
+    path = _as_os(tmp_path, repo, rec)
+    if state == "unwritable":
+        # the record's folder cannot be made (FluBNF.command's own status
+        # file, beside it in TMPDIR, still can)
+        _handover_stamp().parent.write_text("")
+    macos = repo / "FluBNF.app" / "Contents" / "MacOS"
+    terminal = _script(tmp_path / "bin" / "open-terminal", f"""echo x >> "{rec}/terminal"
+[ "$(wc -l < "{rec}/terminal")" -le 4 ] || exit 1
+# a new Terminal window: a login environment, not the launcher's
+env -u FLUBNF_LAUNCH -u FLUBNF_BOOT_STATUS -u FLUBNF_HOST_FALLBACK \
+  -u FLUBNF_PREPARE_ONLY bash "${{@: -1}}"
+""")
+    alert = _script(tmp_path / "bin" / "osascript",
+                    f'echo x >> "{rec}/alert"\n')
+    (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
+    (macos / "flubnf-launch").chmod(0o755)
+    _script(repo / HOST_REL, f"""echo "host $*" >> "{rec}/console"
+fb="${{FLUBNF_HOST_FALLBACK:-}}"
+unset FLUBNF_HOST_FALLBACK            # as the real host does
+if [ -n "$fb" ]; then
+  echo x >> "{rec}/handovers"
+  [ "$(wc -l < "{rec}/handovers")" -le 6 ] \\
+    && bash "$(dirname "$0")/flubnf-launch" --handover "the console stopped at startup (exit 1)"
+fi
+exit 1
+""")
+    _launchservices(tmp_path, rec, "none")
+    r = _command(repo, PATH=path)
+    said = r.stdout + r.stderr
+    assert _read(rec, "terminal") == (["x"] if state == "usable" else None), said
+    assert _read(rec, "alert") == ["x"], said
+    assert len(_read(rec, "handovers")) == (2 if state == "usable" else 1), said
+
+
+@posix_only
+@pytest.mark.parametrize("send", ["argv", "none"])
+def test_a_dock_launch_whose_checks_keep_asking_for_terminal_opens_one(tmp_path, send):
     """The Dock half of the endless-Terminals bug: the quiet checks hand over
     to Terminal for a reason Terminal cannot clear (an engine install that
     keeps failing while a checkout exists), and FluBNF.command there opens
-    the app again. If macOS drops the --env values, that app used to run the
-    checks again, hand over again, and so on. Now it finds FluBNF.command's
-    file and starts the console: one Terminal, and the chain ends."""
+    the app again. That app used to run the checks again, hand over again,
+    and so on. Now it is ready (--args) and starts the console; or, with
+    every ready signal lost, its handover is an alert. One Terminal."""
     repo, rec = _command_repo(tmp_path, engine=False)
     path = _as_os(tmp_path, repo, rec)
     checkout = tmp_path / "PyBNF-pf"
@@ -442,21 +511,20 @@ def test_a_dock_launch_whose_checks_keep_asking_for_terminal_opens_one(tmp_path)
     # past a few, so a regression fails the test instead of hanging it
     terminal = _script(tmp_path / "bin" / "open-terminal", f"""echo x >> "{rec}/terminal"
 [ "$(wc -l < "{rec}/terminal")" -le 4 ] || exit 1
-bash "${{@: -1}}"
+# a new Terminal window: a login environment, not the launcher's
+env -u FLUBNF_LAUNCH -u FLUBNF_BOOT_STATUS -u FLUBNF_HOST_FALLBACK \
+  -u FLUBNF_PREPARE_ONLY bash "${{@: -1}}"
 """)
     alert = _script(tmp_path / "bin" / "osascript",
                     f'printf "%s\\n" "$@" >> "{rec}/alert"\n')
     (macos / "flubnf-launch").write_text(_patched_launcher(terminal, alert))
     (macos / "flubnf-launch").chmod(0o755)
-    _script(repo / HOST_REL, f'echo "host $*" >> "{rec}/console"\nexit 0\n')
-    # LaunchServices, dropping the --env values
-    _script(tmp_path / "osbin" / "open", """app=""
-while [ $# -gt 0 ]; do
-  case "$1" in -a) app="$2"; shift ;; --env|--stdout|--stderr) shift ;; esac
-  shift
-done
-bash "$app/Contents/MacOS/flubnf-launch"
+    # a console that starts: it empties the status file, as cli.py does
+    _script(repo / HOST_REL, f"""echo "host $*" >> "{rec}/console"
+[ -z "${{FLUBNF_BOOT_STATUS:-}}" ] || : > "$FLUBNF_BOOT_STATUS"
+exit 0
 """)
+    _launchservices(tmp_path, rec, send)
     r = subprocess.run(["bash", str(macos / "flubnf-launch")],
                        env=_env(PATH=path, HOME=repo.parent, FLUBNF_PYBNF=checkout),
                        stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -464,9 +532,12 @@ bash "$app/Contents/MacOS/flubnf-launch"
     log = (repo / "app/state/logs/launch.log").read_text()
     said = log + r.stdout + r.stderr
     assert _read(rec, "terminal") == ["x"], said
-    assert _read(rec, "alert") is None, said
     assert "setup work to show" in log
-    assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"], said
+    if send == "argv":
+        assert _read(rec, "alert") is None, said
+        assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"], said
+    else:
+        assert "does not open another so soon" in "\n".join(_read(rec, "alert")), said
 
 
 @posix_only
@@ -598,17 +669,23 @@ def _as_os(tmp_path, repo, rec, name="Darwin", *, build="exit 0", host_rc=0,
            opened="ok") -> str:
     """PATH under which `uname -s` says `name`, with a host and a build
     stand-in in the clone, and `open` a stand-in for LaunchServices that
-    records its call. `opened`: ok (the app ran and quit), boot-fail (the
-    app wrote a startup failure to FLUBNF_BOOT_STATUS) or refuse (open
-    itself failed, as an older macOS without --env does)."""
+    records its call. `opened`: ok (the console started, emptying the
+    status file, and later quit), boot-fail (the app wrote a startup
+    failure there), silent (the app died without a word, leaving the
+    default) or refuse (open itself failed, as an older macOS without
+    --env does)."""
     _script(tmp_path / "osbin" / "uname", f"echo {name}\n")
     _script(tmp_path / "osbin" / "open", f"""printf "%s\\n" "$@" > "{rec}/open"
+boot=""
+while [ $# -gt 0 ]; do
+  case "$1" in --ready) boot="${{2:-}}"; shift ;; esac
+  shift
+done
+[ -z "$boot" ] || cp "$boot" "{rec}/boot-default"
 case "{opened}" in
   refuse) exit 1 ;;
-  boot-fail)
-    for a in "$@"; do
-      case "$a" in FLUBNF_BOOT_STATUS=*) echo "the console stopped at startup (exit 1)" > "${{a#FLUBNF_BOOT_STATUS=}}" ;; esac
-    done ;;
+  ok) : > "$boot" ;;
+  boot-fail) echo "the console stopped at startup (exit 1)" > "$boot" ;;
 esac
 exit 0
 """)
@@ -662,7 +739,9 @@ def test_the_terminal_launch_opens_the_app_through_launchservices(tmp_path):
     """From Terminal the window starts as a Dock click does (open -W -n -a
     FluBNF.app), not as this shell's child: recent macOS never makes a
     Terminal child the active app, so it showed no hover and would not
-    resize. The app skips the checks this file just ran (ready)."""
+    resize. The app skips the checks this file just ran: ready as --env,
+    and as --args, which macOS cannot drop. The status file starts out
+    saying the app quit early; the console empties it once up."""
     repo, rec = _command_repo(tmp_path)
     path = _as_os(tmp_path, repo, rec)
     r = _command(repo, PATH=path)
@@ -671,7 +750,11 @@ def test_the_terminal_launch_opens_the_app_through_launchservices(tmp_path):
     assert args[:6] == ["-W", "-n", "-a", f"{repo}/FluBNF.app", "--env",
                         "FLUBNF_LAUNCH=ready"], args
     boot = [a for a in args if a.startswith("FLUBNF_BOOT_STATUS=")]
-    assert len(boot) == 1 and not Path(boot[0].split("=", 1)[1]).exists()
+    assert len(boot) == 1
+    path_ = boot[0].split("=", 1)[1]
+    assert args[-3:] == ["--args", "--ready", path_], args
+    assert not Path(path_).exists()
+    assert _read(rec, "boot-default") == ["FluBNF.app quit before the console started"]
     assert _read(rec, "console") is None          # nothing ran as a child
     assert _read(rec, "build") == ["built"]
 
@@ -680,13 +763,13 @@ def test_the_terminal_launch_opens_the_app_through_launchservices(tmp_path):
 @pytest.mark.parametrize("host_rc, again", [
     (0, False), (130, False), (137, False), (143, False),   # quit, Ctrl-C, takeovers
     (1, True), (139, True)])                                # a start that failed
-@pytest.mark.parametrize("opened", ["boot-fail", "refuse"])
+@pytest.mark.parametrize("opened", ["boot-fail", "silent", "refuse"])
 def test_the_terminal_launch_runs_the_console_under_the_host(tmp_path, host_rc,
                                                               again, opened):
-    """When the app fails at startup (it says so in FLUBNF_BOOT_STATUS) or
-    macOS will not open it, the console starts here in view, under the
-    host, as it did before; a start that fails under the host gets one run
-    without it."""
+    """When the app fails at startup (it says so in the status file), dies
+    without a word (the status file keeps its default) or macOS will not
+    open it, the console starts here in view, under the host, as it did
+    before; a start that fails under the host gets one run without it."""
     repo, rec = _command_repo(tmp_path)
     path = _as_os(tmp_path, repo, rec, host_rc=host_rc, opened=opened)
     r = _command(repo, PATH=path)
@@ -696,6 +779,21 @@ def test_the_terminal_launch_runs_the_console_under_the_host(tmp_path, host_rc,
     assert runs[1:] == (["direct app"] if again else [])
     assert r.returncode == (0 if again else host_rc)
     assert _read(rec, "build") == ["built"]
+    if opened == "silent":
+        assert "quit before the console started; starting it here" in r.stdout
+
+
+@posix_only
+def test_without_a_status_file_the_terminal_launch_runs_in_view(tmp_path, monkeypatch):
+    """No status file (mktemp failed): nothing could report a failure back,
+    so the console starts here instead of through LaunchServices."""
+    repo, rec = _command_repo(tmp_path)
+    path = _as_os(tmp_path, repo, rec)
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "no-such-dir"))
+    r = _command(repo, PATH=path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _read(rec, "open") is None
+    assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"]
 
 
 @posix_only
@@ -925,8 +1023,10 @@ def test_the_host_refuses_to_guess(tmp_path):
 @not_on_a_mac
 def test_a_dock_launch_that_stops_at_startup_goes_to_terminal(tmp_path):
     """Through the real host and host_boot.py: only under FluBNF.app's flag
-    and only for a failure. FluBNF.command never sets the flag, so a
-    Terminal launch cannot loop back to Terminal; no child sees it."""
+    and only for a failure. A console run in view by FluBNF.command has no
+    flag, so that
+    Terminal launch cannot reach this path (FluBNF.command's own launch
+    through `open` reports to that Terminal instead); no child sees it."""
     repo, _, host = _built(tmp_path)
     script = repo / ".venv" / "bin" / "flubnf"
     script.write_text("import sys\nsys.exit(3)\n")
@@ -942,6 +1042,32 @@ def test_a_dock_launch_that_stops_at_startup_goes_to_terminal(tmp_path):
                         text=True, env=_env(FLUBNF_HOST_FALLBACK=1), timeout=60)
     assert ok.returncode == 0 and "Terminal" not in ok.stderr
     assert ok.stdout.strip() == "['window'] None"
+
+
+@posix_only
+@embeds
+def test_a_host_that_cannot_start_python_hands_over_to_the_launcher(tmp_path):
+    """The host's own checks (no venv, a venv of another Python) never open
+    Terminal themselves: under FluBNF.app's flag they exec the bundle's
+    flubnf-launch --handover <why>, whose guards decide, and the flag is
+    gone from its environment. Without the flag, just the error."""
+    repo, _, host = _built(tmp_path)
+    rec = tmp_path / "handover"
+    _script(host.parent / "flubnf-launch",
+            f'printf "%s\\n" "$@" > "{rec}.args"\nenv > "{rec}.env"\n')
+    cfg = repo / ".venv" / "pyvenv.cfg"
+    cfg.write_text(cfg.read_text().replace("version", "version = 2.7.18\nold_version"))
+    r = subprocess.run([str(host), str(repo / ".venv/bin/flubnf"), "window"],
+                       capture_output=True, text=True, check=False,
+                       env=_env(FLUBNF_HOST_FALLBACK=1), timeout=60)
+    args = Path(f"{rec}.args").read_text().splitlines()
+    assert args[0] == "--handover" and "is not a Python" in args[1], r.stderr
+    assert "FLUBNF_HOST_FALLBACK=" not in Path(f"{rec}.env").read_text()
+    Path(f"{rec}.args").unlink()
+    plain = subprocess.run([str(host), str(repo / ".venv/bin/flubnf"), "app"],
+                           capture_output=True, text=True, check=False,
+                           env=_env(), timeout=60)
+    assert plain.returncode == 69 and not Path(f"{rec}.args").exists()
 
 
 @posix_only
@@ -1002,7 +1128,7 @@ def _no_compiler_path(tmp_path: Path) -> Path:
     """A PATH with every tool the build uses except a C compiler."""
     nocc = tmp_path / "nocc"
     nocc.mkdir()
-    for tool in ("bash", "basename", "cat", "cp", "cut", "dirname", "grep", "head",
+    for tool in ("bash", "basename", "cat", "chmod", "cp", "cut", "dirname", "grep", "head",
                  "ln", "ls", "mkdir", "mktemp", "mv", "rm", "sed", "sha1sum",
                  "shasum", "tail", "touch", "uname"):
         found = shutil.which(tool)
@@ -1042,6 +1168,26 @@ def test_a_failed_rebuild_keeps_a_host_that_still_loads(tmp_path):
     (purelib / "another").mkdir()
     gone = _build(repo, PATH=nocc)
     assert gone.returncode == 1 and stamp.read_text().startswith("fail ")
+
+
+@posix_only
+@embeds
+def test_a_host_built_from_other_source_is_never_kept(tmp_path):
+    """A host from older source may predate a fix in it (the direct reopen
+    of Terminal that looped): when its rebuild fails it is not kept, and it
+    can no longer run, so the console starts from Terminal until it is."""
+    repo, _, host = _built(tmp_path)
+    src = repo / "scripts" / "macos" / "flubnf_host.c"
+    src.write_text(src.read_text() + "\n/* a newer host */\n")
+    nocc = _no_compiler_path(tmp_path)
+    r = _build(repo, PATH=nocc)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "keeps using it" not in r.stdout
+    assert (repo / ".venv" / ".app-host.stamp").read_text().startswith("fail ")
+    assert not os.access(host, os.X_OK)
+    fixed = _build(repo)
+    assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    assert os.access(host, os.X_OK)
 
 
 @posix_only
