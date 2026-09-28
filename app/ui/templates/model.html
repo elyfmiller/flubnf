@@ -46,15 +46,19 @@
    {% endcall %}
    {# each bar from 0; the dashed mark is the FluSight baseline (1.0),
       so a bar short of it beats the baseline; the scores wear the one
-      relWIS rule (.relwis ok/bad, as everywhere a relWIS prints) #}
+      relWIS rule (.relwis ok/bad, as everywhere a relWIS prints) and its
+      verdict icon, so the color is never the only signal #}
+   {% macro verdict(rule) -%}
+   {{ tips.icon("check" if rule == "ok" else "warning", "beats the baseline" if rule == "ok" else "does not beat the baseline", cls="md-verdict uk-c-" ~ ("ok" if rule == "ok" else "error")) }}
+   {%- endmacro %}
    <dl class="md-bars" style="--one:{{ record.one }}%">
     {% for b in record.bars %}
-    <div class="md-bar{% if b.this %} md-bar--this{% endif %}"><dt>{{ b.label }}</dt><dd><span class="md-bar-v relwis {{ b.rule }}">{{ b.text }}</span><span class="md-bar-track" aria-hidden="true"><span class="md-bar-fill" style="width:{{ b.pct }}%"></span></span></dd></div>
+    <div class="md-bar{% if b.this %} md-bar--this{% endif %}"><dt>{{ b.label }}</dt><dd><span class="md-bar-v relwis {{ b.rule }}">{{ b.text }}{{ verdict(b.rule) }}</span><span class="md-bar-track" aria-hidden="true"><span class="md-bar-fill" style="width:{{ b.pct }}%"></span></span></dd></div>
     {% endfor %}
    </dl>
    <p class="md-axis" style="--one:{{ record.one }}%" aria-hidden="true"><span>baseline 1.0</span></p>
    {% if record.facts %}{% call tips.stats("uk-stats--row md-recfacts", label="Record details") %}
-    {%- for k, v, s in record.facts %}{{ tips.stat(k, v, state=s) }}{% endfor -%}
+    {%- for k, v, s in record.facts %}{{ tips.stat(k, v, state={"bad": "error"}.get(s, s), after=(verdict(s) if s else "")) }}{% endfor -%}
    {% endcall %}{% endif %}
   </div>
  </div>
@@ -140,11 +144,13 @@
  </div></div>
  <div>
   <div class="card md-fc">
-   {{ tips.heading("Forecasts", "md-fc", "The newest stored run's forecasts, one location at a time. Research runs and runs with modified model settings are left out.") }}
+   {{ tips.heading("Forecasts", "md-fc", "The newest stored run's forecasts, one location at a time. Research runs are left out, and so are runs with modified model settings unless an override exported them under the hub names (then badged).") }}
    {% if has_fans %}
-   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% endset %}
+   {# one fact, the run: its forecast date and clock time, its page, and
+      the modified-settings badge an override's run carries #}
+   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% endset %}
    {% call tips.stats("uk-stats--row md-runfacts", label="Latest run") %}
-    {{- tips.stat("Forecast date", date) }}{{ tips.stat("Latest run", run_when, after=run_link) -}}
+    {{- tips.stat("Latest run", (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
    {% endcall %}
    {% endif %}
    <div id="mfan">{% if not has_fans %}

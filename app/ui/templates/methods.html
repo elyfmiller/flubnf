@@ -1,6 +1,10 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · Methods{% endblock %}
-{% block head %}<link rel="stylesheet" href="/static/tabs/methods.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/methods.css">
+{# the equation panels wear the kit on the console (dg.eq_*(kit=true)):
+   their parameter chips are the Models tab's (diagrams.html's partial
+   links its sheet) #}
+<link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
 {# the same shell as every page: no main_class override #}
 {% block content %}
 {# The page reads as headings, figures, labelled facts and folds; every
@@ -20,6 +24,12 @@
 {% macro rel_verdict(v) -%}
 {% if active is defined %}{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="mt-verdict") }}{% endif %}
 {%- endmacro %}
+{# the relWIS legend: on the console each chip shows the icon its cells
+   carry, so the key does not rest on the swatch's color #}
+{% if active is defined %}
+{% set rel_ok %}{{ tips.icon("check", cls="mt-verdict uk-c-ok") }} below 1: beats the baseline{% endset %}
+{% set rel_bad %}{{ tips.icon("warning", cls="mt-verdict uk-c-error") }} 1 or above{% endset %}
+{% else %}{% set rel_ok = "below 1: beats the baseline" %}{% set rel_bad = "1 or above" %}{% endif %}
 {% macro status(state, text) -%}
 {% if active is defined %}{{ tips.badge(state, text) }}{% else %}<em>({{ text }})</em>{% endif %}
 {%- endmacro %}
@@ -40,6 +50,7 @@
  <a href="#oracle">Oracle step</a>
  <a href="#two-strain">Two-strain</a>
  <a href="#analogue">Groundhog</a>
+ {% if active is defined %}<a href="#performance">Performance</a>{% endif %}
  <a href="#stack">Under the hood</a>
  <a href="#policies">Policies</a>
 </nav></div>
@@ -58,23 +69,23 @@
  {% endcall %}
  <div class="mt-models">
   <section class="mt-model" aria-labelledby="mt-m-pf">
-   <span class="mt-kind">Mechanistic</span>
+   {{ tips.tag("Mechanistic") }}
    <h3 id="mt-m-pf">Oracle SIHRS</h3>
    <ul class="mt-parts">
     <li>the SIHRS compartment model</li>
     <li>fitted each week by a particle filter</li>
     <li>its forecast growth blended with past seasons' at the same calendar week</li>
    </ul>
-   <p class="mt-links"><a href="#oracle">The Oracle step</a> <a href="/model/pf">Model tab</a></p>
+   <p class="mt-links"><a href="#oracle">The Oracle step</a>{% if active is defined %} <a href="/model/pf">Model tab</a>{% endif %}</p>
   </section>
   <section class="mt-model" aria-labelledby="mt-m-gh">
-   <span class="mt-kind">Empirical</span>
+   {{ tips.tag("Empirical") }}
    <h3 id="mt-m-gh">Groundhog</h3>
    <ul class="mt-parts">
     <li>a calendar analogue</li>
     <li>with an auxiliary donor bank</li>
    </ul>
-   <p class="mt-links"><a href="#analogue">How it forecasts</a> <a href="/model/analogue">Model tab</a></p>
+   <p class="mt-links"><a href="#analogue">How it forecasts</a>{% if active is defined %} <a href="/model/analogue">Model tab</a>{% endif %}</p>
   </section>
  </div>
 </div>
@@ -88,7 +99,7 @@
   directly, a small severe fraction is <b>Hospitalized</b> first, and
   <b>Recovered</b> immunity wanes back to susceptible.</span>
  {%- endcall %}
- <span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span></div>
+ {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
 
  {{ dg.sihrs(uid='mm') }}
 
@@ -101,7 +112,7 @@
   <div><dt>&#947;&#8341;</dt><dd>discharge</dd></div>
   <div><dt>&#969;</dt><dd>immunity wanes</dd></div>
  </dl>
- {{ dg.eq_pf() }}
+ {{ dg.eq_pf(kit=(active is defined)) }}
  <div class="mt-folds">
  {% call tips.fold("Why this structure", id="mt-why-sihrs", cls="mt-fold") %}
  <p>H is explicit because admissions are the target (the model fits the I
@@ -127,7 +138,7 @@
  {%- endcall %}</div>
  {% call tips.stats("mt-facts", label="The filter") %}
   {{ tips.stat("Particles", "10,000", "per state", "Candidate epidemics per state, each a full trajectory with its own parameters.", id="mt-particles") }}
-  {{ tips.stat("Liu-West kernel", "0.15", "scale", "Jitters the survivors' parameters each week.", id="mt-kernel") }}
+  {{ tips.stat("Liu-West kernel", "0.15", "scale", "Jitters the survivors' parameters each week.", id="mt-kernel", tip_label="the Liu-West kernel") }}
   {{ tips.stat("Each run starts", "August 1", "", "Every forecast is a fresh run from August 1 through that week's vintage, so it sees every revision to earlier weeks.", id="mt-start") }}
   {{ tips.stat("State-season fit", "seconds", "", "The filter integrates the reaction network in process with bngsim.", id="mt-speed") }}
  {% endcall %}
@@ -142,15 +153,15 @@
 
 <div class="card" id="oracle">
  <div class="uk-heading"><h2>The Oracle step: past seasons' growth, blended in</h2>
- <span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span></div>
+ {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
  {{ dg.oracle_pipeline(uid='mp') }}
  {% call tips.stats("mt-facts", label="The step") %}
   {{ tips.stat("Sample paths", "30,000", "per state", "At three replicates; each gets its own donor.", id="mt-paths") }}
   {{ tips.stat("Donors", "1", "per sample path", "One donor per sample, not per forecast, keeps both the filter's uncertainty and the donors' spread.", id="mt-donor") }}
-  {{ tips.stat("Donor window", "2", "epiweeks", "An earlier season's growth path within two epiweeks of the forecast week, any jurisdiction.", id="mt-window") }}
+  {{ tips.stat("Donor window", "2", "epiweeks", "An earlier season's growth path within two epiweeks of the forecast week, any jurisdiction.", id="mt-window", tip_label="the Oracle step's donor window") }}
   {{ tips.stat("Growth blend", "half and half", "", "The geometric mean of the filter's growth and the donor's.", id="mt-blend") }}
  {% endcall %}
- {{ dg.eq_oracle() }}
+ {{ dg.eq_oracle(kit=(active is defined)) }}
  <div class="mt-folds">
  {% call tips.fold("What it does", id="mt-oracle-what", cls="mt-fold") %}
  <p>Each of the filter's forecast sample paths
@@ -184,14 +195,13 @@
  {% call tips.stats("uk-stats--row mt-seals", label="Frozen documents, sha256") %}
   {% set prereg %}<code>{{ oracle_text.PREREG_SHA256[:16] }}</code>{% endset %}
   {% set bank %}<code>{{ oracle_text.B2_SHA256[:16] }}</code>{% endset %}
-  {{ tips.stat("Pre-registration", prereg, id="mt-prereg") }}
-  {{ tips.stat("Donor bank", bank, id="mt-b2") }}
+  {{ tips.stat("Pre-registration", prereg, "sha256 prefix", id="mt-prereg") }}
+  {{ tips.stat("Donor bank", bank, "sha256 prefix", id="mt-b2") }}
  {% endcall %}
  <div class="mt-bar">
   <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums
   {{- tips.tip("mt-rec-cells", "the record's cells", "On the stored forecasts' shared cells (below 1 beats it).") }}</span>
-  {{ tips.legend([("var(--ok)", "below 1: beats the baseline"), ("var(--bad)", "1 or above")],
-                 label="relWIS colors", id="mt-rec-lg") }}
+  {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
  <div style="overflow-x:auto"><table>
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
@@ -219,11 +229,11 @@
 <div class="card" id="two-strain">
  <div class="uk-heading"><h2>Research: the two-strain variant</h2>
  {{- status("neutral", "not a shipped model") }}
- <span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf2s">Model page<span class="uk-sr">: two-strain SIHRS</span></a></span></div>
+ {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf2s">Model page<span class="uk-sr">: two-strain SIHRS</span></a></span>{% endif %}</div>
 
  {{ dg.sihrs2(uid='m2') }}
 
- {{ dg.eq_pf2s() }}
+ {{ dg.eq_pf2s(kit=(active is defined)) }}
  <div class="mt-folds">
  {% call tips.fold("What it does", id="mt-2s-what", cls="mt-fold") %}
  <p>Influenza A and B as independent SIHRS circuits,
@@ -241,17 +251,17 @@
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
  <p>Stronger at turning points but worse on
  the full grid in the August 2026 evaluation; it stays a research run (the
- <a href="/model/pf2s">two-strain model page</a> is reachable by URL).</p>
+ {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %} is reachable by URL).</p>
  {% endcall %}
  </div>
 </div>
 
 <div class="card" id="analogue">
  <div class="uk-heading"><h2>The Groundhog</h2>
- <span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/analogue">Model tab<span class="uk-sr">: Groundhog</span></a></span></div>
+ {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/analogue">Model tab<span class="uk-sr">: Groundhog</span></a></span>{% endif %}</div>
  {{ dg.analogue_ratios(uid='ma') }}
  {% call tips.stats("mt-facts", label="The donors") %}
-  {{ tips.stat("Donor window", "2", "MMWR epiweeks", "Donor weeks from strictly earlier seasons, any state, within two MMWR epiweeks of the forecast date.", id="mt-gh-window") }}
+  {{ tips.stat("Donor window", "2", "MMWR epiweeks", "Donor weeks from strictly earlier seasons, any state, within two MMWR epiweeks of the forecast date.", id="mt-gh-window", tip_label="the Groundhog's donor window") }}
   {{ tips.stat("Minimum", "30", "donors", "Fewer than 30 donors means no forecast.", id="mt-gh-min") }}
   {{ tips.stat("Donors per state", "about 5", "a season", "States are pooled because one state gives about five donors per season.", id="mt-gh-pool") }}
   {{ tips.stat("US row", "about 2%", "of donors", id="mt-gh-us") }}
@@ -290,11 +300,10 @@
    exactly as below, with no class or id of its own, and be followed
    directly by a <div class="card". Kit icons are fine here, as the public
    site never shows it #}
-<div class="card"><h2>Measured performance</h2>
+<div class="card"><h2>Measured performance</h2><span id="performance"></span>
  <div class="mt-bar">
   <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums</span>
-  {{ tips.legend([("var(--ok)", "below 1: beats the baseline"), ("var(--bad)", "1 or above")],
-                 label="relWIS colors", id="mt-perf-lg") }}
+  {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
   <span class="mt-unit mt-end">Replayed weeks
   {%- call tips.toggletip("mt-replay", "the replayed weeks", title="Three seasons replayed on the data each week had") %}
    <span class="uk-tt-line">A replay's weeks are the hub's dated truth vintages
@@ -311,13 +320,13 @@
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
     baseline), members included #}
  <div style="overflow-x:auto"><table>
-  <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
-  <tr><td>Particle filter alone (the Oracle SIHRS before its step){{ tips.tip("mt-pf-alone", "the filter alone", "The production engine's replay; its cells differ from the Oracle record above.") }}</td><td class="ok">0.840{{ rel_verdict(0.840) }}</td><td class="ok">0.797{{ rel_verdict(0.797) }}</td><td class="ok">0.846{{ rel_verdict(0.846) }}</td></tr>
-  <tr><td>Groundhog</td><td class="ok">0.722{{ rel_verdict(0.722) }}</td><td class="ok">0.653{{ rel_verdict(0.653) }}</td><td class="ok">0.651{{ rel_verdict(0.651) }}</td></tr>
-  <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045{{ rel_verdict(1.045) }}</td><td class="ok">0.756{{ rel_verdict(0.756) }}</td><td class="ok">0.618{{ rel_verdict(0.618) }}</td></tr>
+  <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
+  <tr><td>Particle filter alone (the Oracle SIHRS before its step){{ tips.tip("mt-pf-alone", "the filter alone", "The production engine's replay; its cells differ from the Oracle record above.") }}</td><td class="num ok">0.840{{ rel_verdict(0.840) }}</td><td class="num ok">0.797{{ rel_verdict(0.797) }}</td><td class="num ok">0.846{{ rel_verdict(0.846) }}</td></tr>
+  <tr><td>Groundhog</td><td class="num ok">0.722{{ rel_verdict(0.722) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td></tr>
+  <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Groundhog and bare analogue, pooled") %}
-  {% call tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh") %}Groundhog and
+  {% call tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh", tip_label="the pooled Groundhog score") %}Groundhog and
   bare analogue: the same 15,340 cells (pooled 0.666 against 0.771).{% endcall %}
   {{ tips.stat("Bare analogue, pooled", "0.771", id="mt-pool-bare") }}
   {% call tips.stat("Paired difference below zero", "4,000 of 4,000", "bootstrap replicates", id="mt-boot") %}The
@@ -384,8 +393,8 @@
  {{ tips.heading("Scoring", "mt-scoring", level=3, cls="mt-h3") }}
  {% call tips.stats("uk-stats--kv mt-defs", label="Scoring") %}
   {% call tips.stat("Scored cell", "one location, week and horizon", id="mt-cell") %}{{ cell_rule_note() }}{% endcall %}
-  {% call tips.stat("relWIS", "ratio of sums", id="mt-relwis") %}{{ relwis_convention_note }}{% endcall %}
-  {% call tips.stat("relWIS, log scale", "the same ratio on the WIS of log(x+1) counts", id="mt-logwis") %}Retrospectives
+  {% call tips.stat("relWIS", "ratio of sums", id="mt-relwis", tip_label="relWIS") %}{{ relwis_convention_note }}{% endcall %}
+  {% call tips.stat("relWIS, log scale", "the same ratio on the WIS of log(x+1) counts", id="mt-logwis", tip_label="relWIS on the log scale") %}Retrospectives
   also report relWIS on the log scale. The CDC FluSight dashboard reports the
   log scale too.{% endcall %}
   {% call tips.stat("Coverage", "central 50%, 80% and 95% intervals", id="mt-coverage") %}Retrospectives

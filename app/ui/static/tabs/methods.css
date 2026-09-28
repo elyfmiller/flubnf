@@ -38,14 +38,16 @@
   padding:.8rem 1rem .7rem;border:1px solid var(--line);
   border-top:3px solid var(--accent-ink);border-radius:var(--r-md);
   background:var(--bg)}
-.mt-kind{display:block;color:var(--mut);font-size:var(--fs-micro);
-  font-weight:700;letter-spacing:.05em;text-transform:uppercase}
-.mt-model h3{margin:.1rem 0 .35rem;font-size:var(--fs-lead)}
+/* the kind (the kit's tag) over the name */
+.mt-model > .uk-tag{align-self:flex-start}
+.mt-model h3{margin:.35rem 0 .35rem;font-size:var(--fs-lead)}
 .mt-parts{margin:0 0 .5rem;padding-left:1.1rem}
 .mt-parts li{margin:.12rem 0}
 /* the tile's links sit on its bottom edge, level across both tiles */
 .mt-model .mt-links{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:auto 0 0;
   padding-top:.2rem;font-size:var(--fs-label)}
+/* each link a 24px target at any text size */
+.mt-model .mt-links a{display:inline-flex;align-items:center;min-height:24px}
 
 /* ---- 3. card parts ---- */
 /* sub-headings inside a card (the kit's level-3 heading): spacing */
@@ -69,7 +71,7 @@ details.mt-fold > summary{padding:.5rem 0}
 details.mt-fold[open] > summary{padding-bottom:.2rem}
 details.mt-fold p{margin:.2rem 0 .6rem}
 /* the heading's link button: small, quiet */
-a.btn.mt-go{padding:.15rem .7rem;font-size:var(--fs-label)}
+a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 
 /* ---- 4. tables ---- */
 /* a table's unit (with its "?" or "i") and color legend on one row */
@@ -79,6 +81,8 @@ a.btn.mt-go{padding:.15rem .7rem;font-size:var(--fs-label)}
 /* a relWIS figure's verdict icon, in the figure's ok or bad color */
 .mt-verdict{margin-left:.25em;vertical-align:-.1em}
 .mt-end{margin-left:auto}
+/* a score and its verdict icon stay on one line; a season never splits */
+.mt-doc th.num,.mt-doc td.num{white-space:nowrap}
 .mt-pooled{margin-top:.7rem}
 .mt-seals code{font-size:.85em}
 /* the component list: names and versions stay on one line */

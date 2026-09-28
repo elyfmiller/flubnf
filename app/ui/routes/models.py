@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from markupsafe import Markup
 
 from app.core import oracle_text as ot
+from app.core import runs as _runs
 from app.ui import shared, templating
 from app.ui.forms import _default_forecast_date
 from app.ui.shared import _run_label
@@ -194,6 +195,9 @@ def model_page(request: Request, name: str):
         "rid": rid,
         # the run's clock time (its id); the forecast date is `date`
         "run_when": _run_label(rid) if rid else "",
+        # a modified run is here only when an override exported it under
+        # the hub names: badged as Storage and the run page badge it
+        "run_modified": _runs.is_modified((res or {}).get("spec", "")),
         "date": (res or {}).get("forecast_date", ""),
         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
         "overlay_json": _script_json(overlay),

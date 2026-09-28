@@ -11,12 +11,13 @@
    a legible size and scroll sideways on their own, never the page.
 
    The equation panels (eq_*) and the harmonic's caption take kit=true on
-   the console's model pages: each equation wears a name chip whose "?"
-   holds its note, word for word (tips.namechip), and the caption becomes
-   a badge. It needs the UI kit (ui-kit.css, tips.js); the panels' parameter
-   chips also static/tabs/models.css. Home takes harmonic(kit=true) alone.
-   The default (kit=false) stays the plain notes that Methods and the public
-   site (site_build, no kit) render. #}
+   the console's pages (the model pages, and Methods on the console): each
+   equation wears a name chip whose "?" holds its note, word for word
+   (tips.namechip), and the caption becomes a badge. It needs the UI kit
+   (ui-kit.css, tips.js); the panels' parameter chips and the caption's
+   spacing also static/tabs/models.css. Home takes harmonic(kit=true)
+   alone. The default (kit=false) stays the plain notes that the public
+   site (site_build, no kit) renders. #}
 {% import "_tips.html" as tips %}
 
 {# one equation line: the math, then its note beside it; with kit=true a
@@ -540,7 +541,7 @@
  all are fitted per state and week.{% else %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
  <i>&#966;</i><sub>1</sub> = week {{ phi }}, {{ season_week_name(phi) }});
  both are fitted per state and week.{% endif %}{% endset %}
-{% if kit %}<p class="uk-figline"><span>{% call tips.badge("info", "illustrative values", id="dg-illus" ~ ("2" if two else "1")) %}{{ caption }}{% endcall %}</span></p>
+{% if kit %}<p class="uk-figline md-figcap"><span>{% call tips.badge("info", "illustrative values", id="dg-illus" ~ ("2" if two else "1")) %}{{ caption }}{% endcall %}</span></p>
 {% else %}<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
  {{ caption }}</p>
 {% endif %}

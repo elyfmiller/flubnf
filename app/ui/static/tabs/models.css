@@ -18,7 +18,7 @@
 .md-tag{display:inline-block;margin-left:.4rem;padding:0 .45em;
   border:1px solid currentColor;border-radius:var(--r-pill);
   font-size:var(--fs-micro);font-weight:650;line-height:1.45;
-  vertical-align:.06em;opacity:.85}
+  vertical-align:.06em}
 
 /* ---- 2. header card ---- */
 .md-hero{container:md-hero / inline-size}
@@ -42,9 +42,7 @@ a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
 }
 
 /* ---- 3. the record: each bar from 0, the dashed mark at 1.0 ---- */
-.md-record .uk-heading{margin-bottom:.35rem}
-.md-record .uk-heading > h3{font-size:var(--fs-h2);text-transform:uppercase;
-  letter-spacing:.05em;color:var(--mut)}
+.md-verdict{margin-left:.25em;vertical-align:-.1em}
 .md-bars{margin:.2rem 0 0;max-width:34rem}
 .md-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;
   gap:.1rem .6rem;align-items:baseline;margin:0 0 .5rem}
@@ -89,6 +87,9 @@ a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
   border:1px solid var(--line);border-radius:6px;background:var(--bg);
   color:var(--ink);font-weight:600;text-align:center;line-height:1.5}
 .md-par sub{font-size:.68em}
+/* the harmonic's "illustrative values" caption: close under its figure,
+   apart from the equation that follows */
+.eqpanel .md-figcap{margin:-.1rem 0 .8rem}
 
 /* ---- 5. the BNGL source: the file and its size beside the title ---- */
 .md-src-t{font-weight:600}

@@ -87,9 +87,10 @@ def test_the_record_sentences_ride_the_record_toggletip():
             assert needle in pop, (path, needle)
         # one bar per compared score, each value as text beside it
         assert t.count('class="md-bar-track" aria-hidden="true"') == 2, path
-    # the one relWIS rule: tabular, ok below 1
-    assert '<span class="md-bar-v relwis ok">0.731</span>' in \
-        client.get("/models").text
+    # the one relWIS rule: tabular, ok below 1, its verdict an icon too
+    assert ('<span class="md-bar-v relwis ok">0.731<svg class="uk-icon '
+            'md-verdict uk-c-ok"') in client.get("/models").text
+    assert 'aria-label="beats the baseline"' in client.get("/models").text
     gh = client.get("/model/analogue").text
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
                      r'0\.722</span>', gh)
@@ -124,16 +125,26 @@ def test_model_pages_name_each_equation_and_tip_its_note():
 
 def test_methods_and_the_site_keep_the_plain_notes():
     """The public site renders Methods without the UI kit: its equation
-    notes stay visible text, never a tip. Home (console only) takes the
-    harmonic's kit mode: its caption is the badge's tip."""
+    notes stay visible text, never a tip. The console's Methods tab names
+    each equation with its note in the "?", as the model pages do. Home
+    (console only) takes the harmonic's kit mode: its caption is the
+    badge's tip."""
     from app.core import site_build
     versions = {k: "x" for k in ("pybnf", "bngsim", "bionetgen", "fastapi",
                                  "plotly")}
-    for html in (client.get("/methods").text,
-                 site_build.harvest_methods(versions)):
-        assert 'class="eqnote"' in html
-        assert "uk-name" not in html and 'id="tip-dg-' not in html
-    assert "Values shown are illustrative" in client.get("/methods").text
+    site = site_build.harvest_methods(versions)
+    assert 'class="eqnote"' in site
+    # the console's tab links are console-only: no dead link on the site
+    assert 'href="#methods"' not in site
+    assert "uk-name" not in site and 'id="tip-dg-' not in site
+    assert "Values shown are illustrative" in site
+    tab = client.get("/methods").text
+    assert 'class="eqnote"' not in tab
+    for name in ("Growth blend", "Seasonal forcing", "Observation model",
+                 "Admissions channel"):
+        assert f'<span class="uk-name">{name}' in tab, name
+    assert "Values shown are illustrative" in tab   # the caption's tip
+    assert '<link rel="stylesheet" href="/static/tabs/models.css">' in tab
     home = client.get("/").text
     assert 'class="eqnote"' not in home
     assert '<span class="uk-badge-t">illustrative values</span>' in home
@@ -160,10 +171,23 @@ def test_the_latest_run_is_labelled_values_with_its_page_linked(monkeypatch):
     _run(monkeypatch, ["pf", "analogue"])
     t = client.get("/model/analogue").text
     facts = t.split('md-runfacts"', 1)[1].split("</dl>", 1)[0]
-    assert "Forecast date" in facts and "2098-11-14" in facts
-    assert "11-14 09:31" in facts
+    # one fact: the run's forecast date and its clock time
+    assert "<dt>Latest run</dt>" in facts and "2098-11-14 · 11-14 09:31" in facts
+    assert "modified settings" not in facts
     assert 'href="/runs/20981114T093100-abcdef"' in facts
     assert "No forecasts from this model yet" not in t
+
+
+def test_an_overridden_modified_run_is_badged(monkeypatch):
+    """A modified run shows here only when an override exported it under
+    the hub names; the card says so, as Storage and the run page do."""
+    import json
+    _run(monkeypatch, ["pf"])
+    _rid, res = ui_shared._latest_results()
+    res["spec"] = json.dumps({"extra": {"knobs": {"oracle.w": 0.25}}})
+    t = client.get("/models").text
+    facts = t.split('md-runfacts"', 1)[1].split("</dl>", 1)[0]
+    assert '<span class="uk-badge-t">modified settings</span>' in facts
 
 
 def test_the_research_view_has_no_forecasts_card_and_links_storage():
