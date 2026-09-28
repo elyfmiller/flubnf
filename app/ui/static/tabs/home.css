@@ -50,10 +50,6 @@ a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
 /* the preparing card's busy bar, under its title */
 .hm-prep-bar{width:12rem;max-width:100%;margin:.1rem auto 0}
 
-/* ---- 3. measured performance ---- */
-/* a sub-heading over each table (the kit's level-3 heading) */
-.hm-perfhead{margin:1rem 0 .2rem}
-
 /* ---- 4. start here ---- */
 .hm-start-more{margin-top:1.1rem;padding-top:.85rem;
   border-top:1px solid var(--line)}

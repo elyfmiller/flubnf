@@ -840,6 +840,17 @@ svg.cumchart .svgt-md{font-size:11px}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
 .eqpanel .math sub{font-size:.68em}
 .eqpanel .eqnote{color:var(--mut);font-size:var(--fs-hint);font-weight:400}
+/* an equation group's "Variables" fold (diagrams.html _vars): left-aligned
+   under the centered lines; its table scrolls inside itself when narrow.
+   The symbol is a row header in the equations' .math, not a caps label */
+.eqpanel details.eqvars{max-width:56rem;margin:.55rem auto .2rem;text-align:left}
+.eqvars-scroll{overflow-x:auto}
+.eqvars-t td,.eqvars-t th{padding:.3rem .6rem .3rem 0;vertical-align:top}
+.eqvars-t td{font-size:var(--fs-hint)}
+.eqvars-t tbody th{color:var(--ink);font-size:inherit;text-transform:none;
+  letter-spacing:0;white-space:nowrap}
+.eqvars-t tbody th .math{white-space:nowrap}
+.eqvars-t td:nth-child(3){color:var(--mut)}
 /* read-only BNGL source: collapsed, scrolls inside its own well */
 details.bngl > summary{cursor:pointer;list-style:none;font-weight:600}
 details.bngl > summary::-webkit-details-marker{display:none}

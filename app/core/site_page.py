@@ -193,6 +193,12 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--line);
  overflow-x:auto}
 .methods .eqnote{font-family:"DM Sans",system-ui,sans-serif;color:var(--mut);
  font-size:.88rem}
+.methods .eqvars{margin-top:.6rem}
+.methods .eqvars summary{font-family:"DM Sans",system-ui,sans-serif;
+ font-weight:600;cursor:pointer}
+.methods .eqvars td{font-family:"DM Sans",system-ui,sans-serif;font-size:.88rem;
+ vertical-align:top}
+.methods .eqvars tbody th{text-align:left;white-space:nowrap;vertical-align:top}
 /* the console's UI kit without its sheet or script: no inert "?" or "i"
    buttons; each tip's text reads under what it explains; the stepper's
    marks give way to the list's own numbers; swatches drawn; text meant

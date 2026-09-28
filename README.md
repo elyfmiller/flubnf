@@ -127,18 +127,20 @@ CDC dashboard, so the two are not comparable.
 
 | model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
-| particle filter alone, the Oracle SIHRS before its step, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
+| Oracle SIHRS, the stored forecasts with the step and its donor bank applied (docs/ORACLE-SIHRS.md) | 0.767 | 0.697 | 0.781 | 0.738 | 15,300 |
 | Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
-The Oracle SIHRS itself, on the stored forecasts with the step and its
-donor bank applied (docs/ORACLE-SIHRS.md): relWIS 0.731 against the plain
-filter's 0.813 on the same 9,279 cells of 2024-25 and 2025-26 (0.697 and
-0.781 by season), 0.767 against 0.840 in 2023-24 and 0.738 against 0.819
-over the three seasons. Choosing the Groundhog's bank over admissions
-growth alone (0.741 on the same cells) was the project lead's decision on
-a screen that did not resolve it; the record is a frozen-specification
-replication, and the 2026-27 season is the prospective test. The two tables' cells and runs differ and are not read across.
+Without the step, the plain particle filter on the Oracle SIHRS's cells
+scores 0.840, 0.794 and 0.843 (0.819 pooled); on the 9,279 cells of
+2024-25 and 2025-26 together the Oracle SIHRS scores 0.731 against the
+plain filter's 0.813. The particle filter alone on the production
+engine's replay (reseal of 2026-09-07, 15,460 cells) scored 0.840, 0.797
+and 0.846 (0.821 pooled). Choosing the Groundhog's bank over admissions
+growth alone (0.741 on the same 9,279 cells) was the project lead's
+decision on a screen that did not resolve it; the Oracle SIHRS's record is
+a frozen-specification replication, and the 2026-27 season is the
+prospective test. The rows' cells and runs differ and are not read across.
 
 The Groundhog's row reproduces on any machine with a hub clone and no
 engine:

@@ -171,8 +171,16 @@ def test_methods_carries_the_oracle_step_card():
                    "includes zero",
                    "flubnf retro --oracle none"):
         assert needle in t, needle
-    # the three-season table names the filter it scores
-    assert "Particle filter alone (the Oracle SIHRS before its step)" in t
+    # the three-season table's mechanistic row is the shipped member; the
+    # filter alone is its ablation, in the row's "?"
+    assert "Particle filter alone (the Oracle SIHRS before its step)" not in t
+    perf = t[t.index('<span id="performance">'):]
+    perf = perf[:perf.index('id="stack"')]
+    assert "<td>Oracle SIHRS" in perf
+    for s in ("2023-24", "2024-25", "2025-26"):
+        assert ot.fmt(ot.RECORD[s]["oracle"]) in perf, s
+    assert ot.fmt(ot.RECORD["three"]["oracle"]) in perf
+    assert "0.840, 0.797 and 0.846" in perf
 
 
 # --------------------------------------- the member's name on every page
