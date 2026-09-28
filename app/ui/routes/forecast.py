@@ -41,7 +41,8 @@ router = APIRouter()
 #                       _data_choices, _location_list, _official_overlay
 #   console controls    run_stop
 #   run pages           run_page, run_report, run_report_download, run_rerun
-#   forecast APIs       api_series, api_progress
+#   forecast APIs       api_series, api_progress, _abbreviations,
+#                       _read_json, _location_progress
 #   POST /run           _scope_label, _run_extra, _knob_run_parts, _spec_mode,
 #                       _report_v2_retired, run_models
 
@@ -697,10 +698,91 @@ def api_progress():
         if done and total and t0:
             rate = (_time.time() - t0) / done
             out["eta_s"] = int(rate * (total - done))
+        out["locations"] = _location_progress(w)
     elif _status.get("expected_total"):
         # run claimed but workroot not created yet: report 0/N, not silence
         out["done"], out["total"] = 0, int(_status["expected_total"])
     return out
+
+
+def _abbreviations() -> dict:
+    """{location name: two-letter abbreviation} from the hub's locations
+    file, read once it is readable; {} until then (the tiles show names)."""
+    global _ABBR
+    if not _ABBR:
+        try:
+            from flubnf.settings import load_locations
+            _l = load_locations()
+            _ABBR = {str(n): str(a) for n, a in
+                     zip(_l.location_name, _l.abbreviation)}
+        except (OSError, ValueError, KeyError, AttributeError, ImportError):
+            return {}
+    return _ABBR
+
+
+_ABBR: dict | None = None
+
+
+def _read_json(path):
+    """A run file's JSON, or None while it is missing or half written."""
+    import json as _json
+    try:
+        return _json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _location_progress(workroot) -> list:
+    """The running page's per-location tiles, in run order, from the
+    particle filter's own files: cells.json (every fit), each shard's
+    pf_cells_<i>.json and pf_status_<i>.json (the fits it finished; the
+    next one in its list is the fit it is on) and the merged pf_status.json.
+    A research run's pf2s/ has the same layout and adds to the same tiles.
+    [{"name", "abbr", "done", "total", "failed", "live"}]; [] before the
+    cells exist or for a Groundhog-only run (no particle filter fits)."""
+    abbr = _abbreviations()
+    tiles: dict = {}
+    for root in (Path(workroot), Path(workroot) / "pf2s"):
+        cells = _read_json(root / "cells.json")
+        loc_of = {}
+        for c in cells if isinstance(cells, list) else []:
+            if not isinstance(c, dict) or "key" not in c:
+                continue
+            name = str(c.get("location") or c["key"])
+            loc_of[str(c["key"])] = name
+            t = tiles.setdefault(name, {"name": name,
+                                        "abbr": abbr.get(name, ""),
+                                        "done": 0, "total": 0, "failed": 0,
+                                        "live": False})
+            t["total"] += 1
+        if not loc_of:
+            continue
+        status: dict = {}
+        for f in sorted(root.glob("pf_status*.json")):
+            got = _read_json(f)
+            got = got if isinstance(got, dict) else {}
+            status.update(got)
+            # the shard's fit in hand: the first of its cells not reported
+            m = (f.name[len("pf_status_"):-len(".json")]
+                 if f.name.startswith("pf_status_") else "")
+            shard = _read_json(root / f"pf_cells_{m}.json") if m else None
+            for c in shard if isinstance(shard, list) else []:
+                k = str(c.get("key", "")) if isinstance(c, dict) else ""
+                if k and k not in got:
+                    if k in loc_of:
+                        tiles[loc_of[k]]["live"] = True
+                    break
+        for k, v in status.items():
+            name = loc_of.get(str(k))
+            if name is None:
+                continue
+            tiles[name]["done"] += 1
+            if v != "ok":
+                tiles[name]["failed"] += 1
+    for t in tiles.values():
+        t["done"] = min(t["done"], t["total"])
+        t["live"] = t["live"] and t["done"] < t["total"]
+    return list(tiles.values())
 
 
 def _scope_label(locs) -> str:

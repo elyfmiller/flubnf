@@ -49,6 +49,64 @@
 /* ---- 2. results column ---- */
 /* running: the label under the heading, the counts as tiles */
 .fc-running .runlabel{margin:.1rem 0 .35rem}
+/* running: the split's right column holds the place of the results, the
+   location tiles (or the results skeleton) and the quip */
+.fc-runsplit{margin-top:.3rem}
+.fc-wait{display:flex;flex-direction:column;gap:.55rem;min-height:100%}
+.fc-wait > section[hidden]{display:none}
+.fc-wait-head{display:flex;align-items:center;flex-wrap:wrap;gap:.2rem .45rem;
+  margin:.15rem 0 .45rem;font-size:var(--fs-label)}
+.fc-wait-head strong{color:var(--ink)}
+.fc-wait-head .fc-count{margin-left:0}
+.fc-wait .uk-legend{margin:.55rem 0 0;font-size:var(--fs-micro)}
+/* one tile per location: its abbreviation, an icon once fitted or failed
+   (so the state never rests on color alone), a bar of its replicates */
+.fc-locs{list-style:none;margin:0;padding:0;display:grid;gap:.3rem;
+  grid-template-columns:repeat(auto-fill,minmax(3.1em,1fr));
+  font-size:var(--fs-label)}
+.fc-locs--names{display:flex;flex-wrap:wrap}
+.fc-locs--names .fc-loc{max-width:100%;padding-inline:.5em}
+.fc-loc{position:relative;display:flex;align-items:center;justify-content:center;
+  gap:.15em;min-height:2.1em;padding:.15em .25em .3em;
+  border:1px solid var(--field-line);border-radius:6px;background:var(--bg);
+  color:var(--mut);font-weight:650;font-variant-numeric:tabular-nums;
+  line-height:1.1;overflow:hidden;
+  transition:background-color .4s,border-color .4s,color .4s}
+.fc-loc-a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fc-loc-i:empty{display:none}
+.fc-loc-i{display:inline-flex;font-size:.8em}
+.fc-loc-bar{position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:var(--track)}
+.fc-loc-bar i{display:block;height:100%;width:0;background:var(--accent-ink);
+  transition:width .6s}
+.fc-loc[data-state=part]{color:var(--ink)}
+.fc-loc[data-state=live]{color:var(--ink);border:2px dashed var(--accent-ink);
+  background:var(--card);animation:fc-pulse 1.6s ease-in-out infinite}
+.fc-loc[data-state=done]{color:var(--ink);border-color:var(--ok);
+  background:color-mix(in srgb,var(--ok) 13%,var(--card))}
+.fc-loc[data-state=done] .fc-loc-i{color:var(--ok)}
+.fc-loc[data-state=done] .fc-loc-bar i{background:var(--ok)}
+.fc-loc[data-state=fail]{color:var(--ink);border-color:var(--bad);
+  background:color-mix(in srgb,var(--bad) 12%,var(--card))}
+.fc-loc[data-state=fail] .fc-loc-i{color:var(--bad)}
+.fc-loc[data-state=fail] .fc-loc-bar i{background:var(--bad)}
+@keyframes fc-pulse{50%{border-color:var(--line)}}
+/* the results skeleton: label and value bars, a slow shimmer */
+.fc-skel{display:flex;flex-direction:column;gap:.55rem}
+.fc-skel-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);
+  gap:.8rem;align-items:center}
+.fc-skel-row i{display:block;height:.75em;border-radius:4px;
+  background:linear-gradient(90deg,var(--track) 30%,var(--line) 50%,var(--track) 70%)
+    0 0/300% 100%;animation:fc-shimmer 2.4s linear infinite}
+@keyframes fc-shimmer{from{background-position:100% 0}to{background-position:0 0}}
+/* the quip sits under the tiles, lower in the column's space */
+.fc-wait .fc-quip{margin:auto 0 .1rem;padding-top:.6rem;min-height:2.8em;
+  font-size:1.02rem}
+@media (prefers-reduced-motion:reduce){
+  .fc-loc{transition:none}
+  .fc-loc[data-state=live],.fc-skel-row i{animation:none}
+  .fc-loc-bar i{transition:none}
+}
 /* latest run: the run's link and its status badge on one line */
 .fc-runline{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem .6rem;
   margin:.1rem 0 .5rem}
