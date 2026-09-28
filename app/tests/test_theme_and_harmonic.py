@@ -52,9 +52,10 @@ def test_harmonic_figure_renders_on_every_surface():
 
 
 def test_every_surface_calls_the_one_macro():
-    # one parameterized macro: eq_pf/eq_pf2s embed it, home imports it
-    assert "{{ harmonic() }}" in DIAGRAMS_T
-    assert "{{ harmonic(two=true) }}" in DIAGRAMS_T
+    # one parameterized macro: eq_pf/eq_pf2s embed it (passing their kit
+    # mode on), home imports it
+    assert "{{ harmonic(kit=kit) }}" in DIAGRAMS_T
+    assert "{{ harmonic(two=true, kit=kit) }}" in DIAGRAMS_T
     home_t = (UI / "templates" / "home.html").read_text()
     assert "{{ dg.harmonic() }}" in home_t
     assert DIAGRAMS_T.count("{% macro harmonic(") == 1

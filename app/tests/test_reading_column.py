@@ -88,7 +88,7 @@ def test_details_bodies_flow_at_card_width():
                 assert banned not in body, (sel, body)
     for page in ("/models", "/model/pf2s"):
         html = client.get(page).text
-        assert '<details class="card intro">' in html, page
+        assert '<details class="uk-fold md-about" id="md-about">' in html, page
 
 
 def test_figures_and_equations_center():
