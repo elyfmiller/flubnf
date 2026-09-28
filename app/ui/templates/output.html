@@ -37,7 +37,8 @@ their run folders.{% endcall %}</span>{% endif %}</span>
 {# a refused download, a bad date or a report that is not there: one line
    and the way back (routes/output._notice) #}
 <h1>Output</h1>
-{% set back %}<a class="btn quiet" href="{{ notice.href }}">{{ notice.label }}</a>{% endset %}
+{# the way on: primary when it goes forward (run a forecast), else quiet #}
+{% set back %}<a class="btn {{ 'gold' if notice.href == '/forecast' else 'quiet' }}" href="{{ notice.href }}">{{ notice.label }}</a>{% endset %}
 {% if notice.kind == "error" %}
 <div class="out-notice">{{ tips.alert("error", notice.title, tiptext=notice.tip, id="out-notice", action=back) }}</div>
 {% else %}
