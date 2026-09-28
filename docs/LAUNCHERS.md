@@ -48,7 +48,7 @@ A Dock launch (`flubnf-launch`) runs `FluBNF.command` headless, output in `app/s
 
 The host is per machine and gitignored. A fresh clone opens through Terminal until setup has built it. It is rebuilt when the venv, its packages or the source change. A failed build (no Command Line Tools, a static-only Python) is not retried on every launch; installing the tools earns a retry. It is signed ad hoc (`codesign -s -`), which Apple Silicon requires and which is enough for a program built on the same Mac. Gatekeeper only checks quarantined files, and a file compiled locally has no quarantine flag.
 
-On the first Dock launch macOS may ask whether FluBNF can use the Documents folder (and, while the engine is missing, Downloads and Desktop): Terminal held those permissions before. It may ask again after the host is rebuilt for a new Python.
+On the first Dock launch macOS may ask whether FluBNF can use the Documents folder (and, while the engine is missing, Downloads and Desktop): Terminal held those permissions before. It may ask again after the host is rebuilt for a new Python. If that was refused, FluBNF can still write the files it made (`launch.log`) but reads nothing else in its folder (`Operation not permitted`): the launch says so in Terminal, opens System Settings > Privacy & Security > Files and Folders, and runs the console in that Terminal meanwhile. Turn on Documents Folder for FluBNF there (or add FluBNF.app to Full Disk Access); `tccutil reset SystemPolicyDocumentsFolder edu.nau.flubnf` makes macOS ask again.
 
 To check a Mac: `scripts/macos/build_app_host.sh --force` shows the build; `tail app/state/logs/launch.log` shows what the last Dock launch did.
 

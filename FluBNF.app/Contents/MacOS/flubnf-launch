@@ -46,6 +46,7 @@
 main() {
   local open=/usr/bin/open      # tests replace this line with a recorder
   local osascript=/usr/bin/osascript    # and this one
+  local head=/usr/bin/head      # and this one (reads a byte to test access)
   local limit=120               # seconds the headless checks may take
   local HANDOVER_MIN=10         # minutes an automatic Terminal reopen blocks the next
   local here repo host log rc home prep started sdir stamp now last via=""
@@ -105,6 +106,26 @@ main() {
     alert "FluBNF.app could not open FluBNF.command in $repo. It works only inside its FluBNF folder, next to FluBNF.command: open FluBNF.app from that folder, and keep that one in the Dock."
   }
 
+  # macOS privacy (Files and Folders): this app may be refused the folder
+  # its clone lives in (usually ~/Documents) while Terminal is not. It can
+  # still write files it made itself (launch.log), but reading any other
+  # fails with EPERM, "Operation not permitted", the venv included. A launch
+  # that finds this says how to fix it, in the Terminal that asked, and
+  # opens that System Settings page.
+  refused() {
+    [ -f "$repo/FluBNF.command" ] || return 1
+    case "$("$head" -c 1 "$repo/FluBNF.command" 2>&1 >/dev/null)" in
+      *"Operation not permitted"*) return 0 ;;
+    esac
+    return 1
+  }
+  privacy() {
+    if [ -n "$ready" ]; then
+      "$open" "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders" >/dev/null 2>&1
+    fi
+    terminal "macOS has not given FluBNF access to its folder $repo. In System Settings > Privacy & Security > Files and Folders, turn on Documents Folder for FluBNF (or add FluBNF.app to Full Disk Access), then open FluBNF again"
+  }
+
   here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || here="$(dirname "$0")"
   repo="${here%/*/*/*}"         # <repo>/<Name>.app/Contents/MacOS
   host="$here/FluBNF"
@@ -116,6 +137,7 @@ main() {
       mkdir -p "$(dirname "$log")" 2>/dev/null
       exec >>"$log" 2>&1
     fi
+    refused && privacy
     terminal "$handover"
   fi
   # Only a clone gets a log: a copy moved out of it (to the Desktop, to
@@ -145,6 +167,7 @@ main() {
   # follows the renamed folder, so honour that here as well
   [ ! -f FluBNF.command ] || [ -x FluBNF.command ] \
     || alert "This copy of FluBNF, in $repo, was set aside by a reinstall (its FluBNF.command is not executable) and no longer starts. Open FluBNF.app from the new FluBNF folder, and keep that one in the Dock."
+  refused && privacy
   [ -n "$ready" ] || [ "${FLUBNF_LAUNCH:-}" != terminal ] \
     || terminal "FLUBNF_LAUNCH=terminal"
   [ -x .venv/bin/flubnf ] || terminal "first run (no .venv/bin/flubnf yet)"

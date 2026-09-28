@@ -90,11 +90,14 @@ def _opener(tmp_path: Path, rec: Path) -> Path:
                    f'printf "%s\\n" "$@" > "{rec}/open"\n[ -e "${{@: -1}}" ]\n')
 
 
-def _patched_launcher(opener: Path, osascript: Path, limit=None) -> str:
-    """flubnf-launch with Terminal and the alert swapped for recorders."""
+def _patched_launcher(opener: Path, osascript: Path, limit=None, head=None) -> str:
+    """flubnf-launch with Terminal and the alert swapped for recorders (and
+    `head`, which tests the folder's access, for a stand-in if given)."""
     src = LAUNCH.read_text()
     swaps = [("local open=/usr/bin/open", f'local open="{opener}"'),
              ("local osascript=/usr/bin/osascript", f'local osascript="{osascript}"')]
+    if head is not None:
+        swaps.append(("local head=/usr/bin/head", f'local head="{head}"'))
     if limit is not None:
         swaps.append(("local limit=120", f"local limit={limit}"))
     for old, new in swaps:
@@ -163,7 +166,7 @@ def test_the_hosted_command_lines_are_takeover_targets():
 # ---------------------------------------------------- flubnf-launch (Dock)
 
 def _launch_repo(tmp_path, *, venv=True, command=True, prep="exit 0",
-                 build="exit 0", host=True, limit=None):
+                 build="exit 0", host=True, limit=None, refused=False):
     """A clone as FluBNF.app sees it, with a stand-in for every program the
     launcher starts; each records its call in rec/."""
     repo = tmp_path / "clone"
@@ -175,7 +178,11 @@ def _launch_repo(tmp_path, *, venv=True, command=True, prep="exit 0",
     alert = _script(tmp_path / "bin" / "osascript",
                     f'printf "%s\\n" "$@" > "{rec}/osascript"\n')
     launcher = macos / "flubnf-launch"
-    launcher.write_text(_patched_launcher(opener, alert, limit))
+    # macOS privacy refusing this app its folder: reads fail with EPERM
+    head = _script(tmp_path / "bin" / "head",
+                   'echo "head: $3: Operation not permitted" >&2\nexit 1\n') \
+        if refused else None
+    launcher.write_text(_patched_launcher(opener, alert, limit, head))
     launcher.chmod(0o755)
     if command:
         _script(repo / "FluBNF.command", f'env > "{rec}/prep.env"\n{prep}\n')
@@ -538,6 +545,52 @@ exit 0
         assert _read(rec, "console") == [f"host {repo}/.venv/bin/flubnf app"], said
     else:
         assert "does not open another so soon" in "\n".join(_read(rec, "alert")), said
+
+
+PRIVACY_PANE = ("x-apple.systempreferences:com.apple.preference.security"
+                "?Privacy_FilesAndFolders")
+
+
+@posix_only
+def test_a_folder_macos_refuses_is_named_in_the_waiting_terminal(tmp_path):
+    """The Mac Studio's launch.log: `./FluBNF.command: Operation not
+    permitted`. macOS privacy refused FluBNF.app its folder (~/Documents)
+    while Terminal has it. The ready launch writes how to fix it to the
+    waiting Terminal's status file, opens that System Settings page, and
+    never starts a host that cannot read the venv."""
+    repo, rec = _launch_repo(tmp_path, refused=True)
+    status = tmp_path / "boot"
+    r, _, _ = _launch(repo, args=["--ready", str(status)])
+    assert r.returncode == 1, r.stdout + r.stderr
+    said = status.read_text()
+    assert "has not given FluBNF access to its folder" in said
+    assert "Privacy & Security > Files and Folders" in said
+    assert _read(rec, "open") == [PRIVACY_PANE]
+    assert _read(rec, "host") is None and _read(rec, "osascript") is None
+
+
+@posix_only
+def test_a_dock_launch_macos_refuses_its_folder_says_why_in_terminal(tmp_path):
+    """From the Dock: no checks it cannot read, straight to Terminal with
+    the reason in the log; the Terminal's own launch then shows it."""
+    repo, rec = _launch_repo(tmp_path, refused=True)
+    r, log, _ = _launch(repo)
+    assert r.returncode == 0, log
+    assert _read(rec, "open") == ["-a", "Terminal", str(repo / "FluBNF.command")]
+    assert "has not given FluBNF access to its folder" in log
+    assert _read(rec, "prep.env") is None and _read(rec, "host") is None
+
+
+@posix_only
+def test_a_handover_from_a_refused_folder_names_the_refusal(tmp_path):
+    """The host could not read the venv (it reads as missing): its
+    handover reports the real reason, not a first run."""
+    repo, rec = _launch_repo(tmp_path, refused=True)
+    status = tmp_path / "boot"
+    r = _handover(repo, why="no .venv yet (first run, or setup did not finish)",
+                  args=["--ready", str(status)])
+    assert r.returncode == 1
+    assert "has not given FluBNF access" in status.read_text()
 
 
 @posix_only
