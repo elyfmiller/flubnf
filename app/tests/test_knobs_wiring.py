@@ -377,7 +377,8 @@ def test_old_ledger_rows_are_never_marked_modified(tmp_path, monkeypatch):
     orow = html.split(f'href="/runs/{oid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nid}"', 1)[1].split("</tr>", 1)[0]
     assert "modified settings" not in orow
-    assert '<span class="pill warn">modified settings</span>' in nrow
+    assert ('uk-badge--warn' in nrow
+            and '<span class="uk-badge-t">modified settings</span>' in nrow)
     page = client.get(f"/runs/{nid}").text
     assert 'id="modified-note"' in page and "non-hub name" in page
     assert 'id="modified-note"' not in client.get(f"/runs/{oid}").text
