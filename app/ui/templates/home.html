@@ -353,9 +353,17 @@
                  after=setup_state) }}
  {% if missing %}
   {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
-     filename. The one line to act on; what is missing follows #}
+     filename. The one line to act on, for what is missing: the engine
+     install when the engine itself is, the run preflight's Perl message
+     when Perl is (a first Windows open can install Perl the console's PATH
+     does not see yet); what is missing follows #}
+  {% set missing_names = missing | map(attribute="0") | list %}
+  {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names %}
   {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
+  {% elif "perl" in missing_names %}
+  {{ tips.alert("warn", perl_missing_hint(), id="hm-fix", live="") }}
+  {% endif %}
   {# each missing component by name; the rest of its description and the
      path looked at are its "?" #}
   <ul class="hm-missing" aria-label="Not installed on this machine">
@@ -379,8 +387,8 @@
   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
   {% call tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version") %}Reproducing
-  the sealed numbers needs bngsim 0.15.1 (setup_engine.sh), whatever version a
-  build reports.{% endcall %}
+  the sealed numbers needs bngsim 0.15.1 (pinned by every engine installer),
+  whatever version a build reports.{% endcall %}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
   {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}

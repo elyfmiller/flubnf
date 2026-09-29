@@ -102,6 +102,7 @@
   "model_name": "callable <lambda>",
   "month_ticks_for_dates": "callable _month_ticks_for_dates",
   "oracle_text": "module app.core.oracle_text",
+  "perl_missing_hint": "callable _perl_missing_hint",
   "pop_flash": "callable <lambda>",
   "pop_flash_detail": "callable <lambda>",
   "pop_flash_kind": "callable <lambda>",

@@ -328,4 +328,30 @@ def test_the_fix_names_this_machines_launcher():
     assert ('git -C "C:\\Users\\Ely Miller\\AppData\\Local\\FluBNF\\PyBNF-pf"'
             f" checkout {BRANCH}") in text
     assert text.startswith(f"FluBNF moves a clean checkout on {BRANCH} to "
-                           "this build each time it opens.")
+                           "the production build each time it opens.")
+    # the manual step is only to get it clean and onto the branch: the next
+    # open moves it to exactly the production commit, never the branch tip
+    assert f"checkout {BRANCH} and reopen FluBNF." in text
+    assert "git pull" not in text
+
+
+def test_an_archive_or_unreadable_folder_adds_no_note_the_fix_says_it(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(EB, "PRODUCTION_ENGINE_COMMIT", "2fdadee0")
+    monkeypatch.setattr(EU, "STATE_FILE", tmp_path / "state" / "eu.json")
+    d = tmp_path / "PyBNF-Private"
+    (d / "pybnf").mkdir(parents=True)
+    (d / "VERSION").write_text(f"{BRANCH} 1234abcd\n")
+    out = EU.update(d)
+    # the outcome names this machine's archive route, as the fix does
+    assert EB.archive_step() in out["message"]
+    EU.save(out)
+    b = EB.engine_build(d)
+    assert b["source"] == "archive" and EU.last_note(b) == ""
+    # a checkout git would not read: the warning names git's reason itself
+    g = tmp_path / "PyBNF-pf"
+    (g / ".git").mkdir(parents=True)
+    EU.save(EU.update(g))
+    assert EU.load()["status"] == "unreadable"
+    b = EB.engine_build(g)
+    assert b["source"] == "unreadable" and EU.last_note(b) == ""

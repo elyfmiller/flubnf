@@ -46,25 +46,38 @@ def _platform() -> str:
 def _engine_setup_hint():
     """HTML clause telling this machine's user how to enable the PF engine.
 
-    Windows gets setup.ps1 + docs/WINDOWS.md (no setup_engine.sh twin: the
-    PyBNF fork is private). Resolved per render via _platform() so tests can
-    vary it. Not for methods.html: site_build publishes that page, and a
-    platform-specific string would bake in the builder's platform.
+    Windows gets the engine file from the lab and FluBNF.bat, which unpacks
+    it (no setup_engine.sh twin; setup.ps1 only diagnoses, and the GitHub
+    routes need access to the private fork, so docs/ENGINE.md keeps them).
+    Resolved per render via _platform() so tests can vary it. Not for
+    methods.html: site_build publishes that page, and a platform-specific
+    string would bake in the builder's platform.
     """
     from markupsafe import Markup
+    from app.core import engine_build
     if _platform() == "win32":
         return Markup(
-            "run <code>powershell -NoProfile -ExecutionPolicy Bypass -File "
-            "setup.ps1</code>, which reports what is still missing; the "
-            "engine also needs the private PyBNF fork, so read "
-            "<code>docs\\WINDOWS.md</code> first")
+            "save the engine file from the lab (<code>"
+            f"{engine_build.archive_name()}</code>) in your Downloads folder "
+            "and open <code>FluBNF.bat</code> again; no GitHub account is "
+            "needed (<code>docs\\ENGINE.md</code> has the GitHub routes)")
     if _platform() == "darwin":
         return Markup("double-click <code>SetupEngine.command</code> and "
                       "relaunch the console")
     return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
 
 
+def _perl_missing_hint() -> str:
+    """The run preflight's Perl message (engines/pf.perl_missing_message) for
+    this machine: Home's Setup card shows it when Perl is all that is
+    missing, as on a first Windows open whose own PATH predates the
+    Strawberry Perl it just installed."""
+    from app.core.engines import pf
+    return pf.perl_missing_message(_platform())
+
+
 templates.env.globals["engine_setup_hint"] = _engine_setup_hint
+templates.env.globals["perl_missing_hint"] = _perl_missing_hint
 
 # build SHA and restart banner (app/ui/versions.py)
 templates.env.globals["running_sha"] = lambda: versions.RUNNING_SHA

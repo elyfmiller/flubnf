@@ -109,7 +109,7 @@ def test_an_archive_install_reads_its_version_stamp(tmp_path):
     assert b == {"branch": "feature/particle-filter", "commit": "2fdadee0",
                  "dirty": False, "source": "archive", "path": str(d)}
     assert EB.is_production(b)
-    assert "setup_engine.sh" in EB.fix(dict(b, commit="1234abcd"))
+    assert EB.archive_step() in EB.fix(dict(b, commit="1234abcd"))
 
 
 def test_a_missing_folder_is_unknown_and_never_raises(tmp_path):
@@ -145,14 +145,192 @@ def test_the_warning_names_the_build_and_the_fix_names_the_path():
     assert EB.warning(OTHER) == (
         "The engine is feature/bngsim at 4bbc4672, not the production build "
         "2fdadee0 on feature/particle-filter, and has local changes.")
-    fix = EB.fix(OTHER)
+    fix = EB.fix(OTHER, platform="darwin")
     assert fix == ("FluBNF moves a clean checkout on feature/particle-filter "
-                   "to this build each time it opens. To switch by hand: "
+                   "to the production build each time it opens. To switch, "
                    "stash the local edits first (git stash in that folder), "
-                   'then git -C "/x/PyBNF-pf" checkout feature/particle-filter, '
-                   "then git pull there, and reopen FluBNF. Research runs may "
-                   "use other builds on purpose.")
+                   'then run git -C "/x/PyBNF-pf" checkout '
+                   "feature/particle-filter and reopen FluBNF. Without access "
+                   "to the private fork (a checkout cloned from a bundle), "
+                   "rename the engine folder so FluBNF stops using it, then "
+                   "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder "
+                   "and double-click SetupEngine.command in the FluBNF folder "
+                   "(or run ./setup_engine.sh there). Research runs may use "
+                   "other builds on purpose.")
     assert "stash" not in EB.fix(dict(OTHER, dirty=False))
+
+
+# ------------------------------------------------------------- the fix text
+def test_the_archive_step_names_this_machines_installer():
+    assert EB.archive_step("win32") == (
+        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and open "
+        "FluBNF.bat again")
+    assert EB.archive_step("darwin") == (
+        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and "
+        "double-click SetupEngine.command in the FluBNF folder (or run "
+        "./setup_engine.sh there)")
+    assert EB.archive_step("linux") == (
+        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and run "
+        "./setup_engine.sh in the FluBNF folder")
+
+
+@pytest.mark.parametrize("build", [
+    dict(OTHER, source="archive", path="C:\\Users\\Ely Miller\\AppData\\Local"
+         "\\FluBNF\\PyBNF-Private"),
+    dict(OTHER, path="C:\\Users\\Ely Miller\\Documents\\GitHub\\PyBNF-pf"),
+    dict(OTHER, dirty=False, branch=EB.PRODUCTION_ENGINE_BRANCH),
+])
+def test_no_windows_fix_names_a_script_windows_cannot_run(build):
+    text = EB.fix(build, platform="win32")
+    for gone in ("setup_engine.sh", "SetupEngine.command", "git pull"):
+        assert gone not in text, (gone, text)
+    assert "open FluBNF.bat again" in text
+
+
+def test_the_git_fix_quotes_the_path_and_offers_the_archive_to_a_bundle_clone():
+    path = "C:\\Users\\Ely Miller\\Documents\\GitHub\\PyBNF-pf"
+    text = EB.fix(dict(OTHER, path=path, dirty=False), platform="win32")
+    # the command pastes whole: quoted path, nothing stuck to the branch
+    assert (f'run git -C "{path}" checkout feature/particle-filter and '
+            "reopen FluBNF.") in text
+    # the launcher's update then moves it; no pull that overshoots the
+    # pinned commit or needs the access a bundle clone lacks
+    assert "git pull" not in text
+    assert ("Without access to the private fork (a checkout cloned from a "
+            "bundle), rename the engine folder so FluBNF stops using it, then "
+            "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and open "
+            "FluBNF.bat again.") in text
+    assert text.endswith("Research runs may use other builds on purpose.")
+
+
+def test_an_archive_install_is_replaced_by_the_newer_archive():
+    arch = dict(PROD, source="archive", commit="1234abcd")
+    assert EB.fix(arch, platform="win32") == (
+        "This engine was installed from an archive. To replace it, save "
+        "pybnf-pf-2fdadee0.tar.gz in your Downloads folder and open "
+        "FluBNF.bat again.")
+
+
+# -------------------------------------------- a checkout git cannot read
+def _git_says(monkeypatch, rc: int, err: str):
+    """Every git call fails as git would with `err` on stderr."""
+    monkeypatch.setattr(EB, "_git", lambda path, *a, **k: (rc, "", err))
+
+
+DUBIOUS = ("fatal: detected dubious ownership in repository at "
+           "'C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf'\n"
+           "'C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf' is owned by:\n"
+           "\tBUILTIN/Administrators (S-1-5-32-544)\n"
+           "but the current user is:\n"
+           "\tLAB/ely (S-1-5-21-1-2-3-1001)\n"
+           "To add an exception for this directory, call:\n\n"
+           "\tgit config --global --add safe.directory "
+           "'C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf'\n")
+
+
+def test_a_checkout_another_account_owns_is_unreadable_not_unknown(
+        tmp_path, monkeypatch):
+    d = tmp_path / "PyBNF-pf"
+    (d / ".git").mkdir(parents=True)
+    # a VERSION stamp would be a guess: a checkout does not carry one
+    (d / "VERSION").write_text("feature/particle-filter 2fdadee0\n")
+    _git_says(monkeypatch, 128, DUBIOUS)
+    b = EB.engine_build(d)
+    assert b["source"] == "unreadable" and b["commit"] == ""
+    assert b["error"] == ("fatal: detected dubious ownership in repository "
+                          "at 'C:/Users/Ely Miller/AppData/Local/FluBNF/"
+                          "PyBNF-pf'")
+    assert not EB.is_production(b) and EB.record(b) == {}
+    assert EB.warning(b) == (
+        f"git could not read {d}: detected dubious ownership in repository "
+        "at 'C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf'.")
+    # git's own command, the path as git spells it; on Windows in double
+    # quotes, which cmd.exe and PowerShell both read
+    win = EB.fix(b, platform="win32")
+    assert ("run git config --global --add safe.directory "
+            '"C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf" and reopen '
+            "FluBNF.") in win
+    assert ("git config --global --add safe.directory "
+            "'C:/Users/Ely Miller/AppData/Local/FluBNF/PyBNF-pf'") \
+        in EB.fix(b, platform="darwin")
+
+
+def test_a_machine_without_git_is_told_to_install_it(tmp_path, monkeypatch):
+    d = tmp_path / "PyBNF-pf"
+    (d / ".git").mkdir(parents=True)
+
+    def no_git(*a, **k):
+        raise FileNotFoundError("git")
+    monkeypatch.setattr(EB.subprocess, "run", no_git)
+    b = EB.engine_build(d)
+    assert b["source"] == "unreadable"
+    assert b["error"] == "git is not installed or not on PATH"
+    assert EB.warning(b) == (f"git could not read {d}: git is not installed "
+                             "or not on PATH.")
+    assert EB.fix(b, platform="win32") == (
+        "Install Git for Windows (https://git-scm.com/download/win), then "
+        "open FluBNF.bat again.")
+    assert "xcode-select" in EB.fix(b, platform="darwin")
+
+
+def test_a_folder_git_does_not_recognise_names_git_and_the_archive(tmp_path):
+    d = tmp_path / "PyBNF-pf"
+    (d / ".git").mkdir(parents=True)                   # not a repository
+    b = EB.engine_build(d)
+    assert b["source"] == "unreadable"
+    assert b["error"].startswith("fatal: not a git repository")
+    text = EB.fix(b, platform="win32")
+    assert text.startswith(f'Run git -C "{d}" status to see why.')
+    assert EB.archive_step("win32") in text
+
+
+def test_the_unreadable_checkout_shows_on_home_and_in_doctor(
+        tmp_path, monkeypatch):
+    from flubnf import doctor
+    d = tmp_path / "PyBNF-pf"
+    (d / ".git").mkdir(parents=True)
+    _git_says(monkeypatch, 128, DUBIOUS)
+    html = _home_with(monkeypatch, d)
+    assert 'data-engine-build="unreadable"' in html
+    assert f"git could not read {d}: detected dubious ownership" in html
+    assert "safe.directory" in html
+    assert 'data-engine-build="unreadable"' in client.get("/forecast").text
+    assert "engine build unknown" in client.get("/forecast").text
+    # doctor: a WARN with git's reason, never "has no .git"
+    c = doctor._check_engine_build()
+    assert c.status is doctor.Status.WARN
+    assert c.detail.startswith(f"git could not read {d}: ")
+    assert "has no .git" not in c.detail and "safe.directory" in c.hint
+
+
+def test_a_slow_status_is_asked_again_before_it_counts_as_edited(
+        repo, monkeypatch):
+    real = EB._git
+    seen = []
+
+    def slow_once(path, *args, timeout=EB.GIT_TIMEOUT_S):
+        if args[0] == "status":
+            seen.append(timeout)
+            if len(seen) == 1:
+                return -1, "", "git did not answer within 10 s"
+        return real(path, *args, timeout=timeout)
+    monkeypatch.setattr(EB, "_git", slow_once)
+    b = EB.engine_build(repo)
+    assert b["dirty"] is False and b["source"] == "git"
+    # status has its own, longer limit than the other calls
+    assert seen == [EB.STATUS_TIMEOUT_S, EB.STATUS_TIMEOUT_S]
+    assert EB.STATUS_TIMEOUT_S >= 10 > EB.GIT_TIMEOUT_S
+    # twice without an answer: never "production" on a check that did not run
+    seen.clear()
+
+    def never(path, *args, timeout=EB.GIT_TIMEOUT_S):
+        if args[0] == "status":
+            seen.append(timeout)
+            return -1, "", "git did not answer within 10 s"
+        return real(path, *args, timeout=timeout)
+    monkeypatch.setattr(EB, "_git", never)
+    assert EB.engine_build(repo)["dirty"] is True
+    assert len(seen) == 2
 
 
 # ---------------------------------------------------------------------- Home

@@ -11,8 +11,9 @@ Sections, in file order:
                   VARS_1S, VARS_2S
   runner          _RUNNER (the shard script), _publish
   preflight       _short_path_win, conf_safe_path, perl_available,
-                  engine_available, engine_accepts, engine_current,
-                  engine_stale_message, read_anchor_notes, read_prepare_failures
+                  engine_fix, engine_available, engine_accepts,
+                  engine_current, engine_update_hint, engine_stale_message,
+                  read_anchor_notes, read_prepare_failures
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
   prepare         DATASET_REFUSED, dataset_tag, prepare
@@ -162,10 +163,11 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
         "its workroot) to a path without spaces and rerun.")
 
 
-def perl_missing_message() -> str:
+def perl_missing_message(_platform: str | None = None) -> str:
     """Operator message for a machine with no Perl on PATH: BNG2.pl runs once
-    per cell at prepare, and without Perl Windows only says '[WinError 2]'."""
-    if sys.platform == 'win32':
+    per cell at prepare, and without Perl Windows only says '[WinError 2]'.
+    `_platform` is injectable for tests and for Home's Setup card."""
+    if (_platform or sys.platform) == 'win32':
         how = ("install Strawberry Perl (https://strawberryperl.com, or let "
                "FluBNF.bat offer it during engine install) and start the "
                "console again so the new PATH is seen")
@@ -184,13 +186,17 @@ def perl_available() -> bool:
 #: The file that provides fit_type = pf (stock PyBNF from PyPI lacks it).
 PF_MODULE = "pybnf/pf.py"
 
-#: The remedy, shared by the console message and the doctor's hint.
-ENGINE_FIX = ("Put the engine archive in Downloads and run "
-              "./setup_engine.sh, or point FLUBNF_PYBNF at the unpacked "
-              "engine.")
+def engine_fix(_platform: str | None = None) -> str:
+    """The remedy for a missing or half-installed engine, shared by the
+    console message and the doctor's hint: this machine's archive route
+    (engine_build.archive_step; Windows has no setup_engine.sh), or
+    FLUBNF_PYBNF."""
+    from app.core import engine_build as _eb
+    return (f"To install it, {_eb.archive_step(_platform)}, or point "
+            "FLUBNF_PYBNF at the unpacked engine.")
 
 
-def engine_missing_message() -> str:
+def engine_missing_message(_platform: str | None = None) -> str:
     """Operator message for a fork path without pybnf/pf.py. The runner would
     silently import the engine venv's stock PyBNF (no filter) and every cell
     would fail late with an opaque config error. The remedy comes before the
@@ -204,9 +210,9 @@ def engine_missing_message() -> str:
     else:
         found = f"the directory is there but holds no {PF_MODULE}"
     return (f"The PyBNF fork at {p} does not provide fit_type = pf: "
-            f"{found}. {ENGINE_FIX} Without {PF_MODULE} the fit runner "
-            "imports the stock PyBNF in the engine venv instead, which has "
-            "no particle filter, so every fit fails.")
+            f"{found}. {engine_fix(_platform)} Without {PF_MODULE} the fit "
+            "runner imports the stock PyBNF in the engine venv instead, which "
+            "has no particle filter, so every fit fails.")
 
 
 def engine_available() -> bool:
@@ -271,23 +277,38 @@ def sampling_interval_line() -> str:
             if engine_accepts_pf_key(SAMPLING_INTERVAL_KEY) else "")
 
 
-def engine_stale_message() -> str:
+def engine_update_hint(_platform: str | None = None) -> str:
+    """How to bring an older engine up to the production build, in this
+    machine's words: a git checkout by git (a newer archive does not replace
+    one), an unpacked copy by the newer archive. Shared by the stale-engine
+    message and the doctor's hint."""
+    from app.core import engine_build as _eb
+    p = Path(PYBNF_PF)
+    try:
+        checkout = (p / ".git").exists()
+    except OSError:
+        checkout = False
+    if checkout:
+        return _eb.checkout_steps(p, platform=_platform)
+    return (f"To replace it, {_eb.archive_step(_platform)}: a newer archive "
+            "replaces the older copy.")
+
+
+def engine_stale_message(_platform: str | None = None) -> str:
     """Operator message for an engine older than the console, named once at
     prepare instead of once per cell."""
     p = Path(PYBNF_PF)
     missing = ", ".join(engine_missing_keys())
     stamp = ""
     try:
-        v = (p / "VERSION").read_text().strip().splitlines()[0]
+        v = (p / "VERSION").read_text(encoding="utf-8").strip().splitlines()[0]
         stamp = f" Its version stamp is '{v}'."
-    except (OSError, IndexError):
+    except (OSError, IndexError, UnicodeDecodeError):
         pass
     return (f"The PyBNF fork at {p} is older than this console: its parser "
             f"does not accept {missing}, which every fit configuration the "
-            f"console writes carries, so every fit would fail.{stamp} Save "
-            "the current engine archive (pybnf-pf-<sha>.tar.gz) in "
-            "Downloads and open the app again, or run ./setup_engine.sh: "
-            "a newer archive replaces the older copy.")
+            f"console writes carries, so every fit would fail.{stamp} "
+            f"{engine_update_hint(_platform)}")
 
 
 #: Prepare-stage failures keyed by location tag (no _r suffix, so never a

@@ -77,13 +77,8 @@ def _run(path: Path, *args: str, timeout: float = GIT_TIMEOUT_S):
         return -1, "", f"{type(e).__name__}: {e}"
 
 
-def _first_line(text: str) -> str:
-    """git's reason, one line: the first line that says something."""
-    for ln in (text or "").splitlines():
-        ln = ln.strip()
-        if ln and not ln.lower().startswith("hint:"):
-            return ln[:200]
-    return ""
+#: git's reason, one line (the build warning reads git's the same way)
+_first_line = _eb.first_line
 
 
 def _outcome(status: str, message: str, path, before: str = "",
@@ -124,9 +119,8 @@ def _update(path, fetch: bool, fetch_timeout: float) -> dict:
                             b["commit"], b["commit"])
         return _outcome(
             "archive",
-            "an unpacked engine archive, which git cannot update: a newer "
-            f"pybnf-pf-{want}.tar.gz in Downloads replaces it", p,
-            b.get("commit", ""))
+            "an unpacked engine archive, which git cannot update: to "
+            f"replace it, {_eb.archive_step()}", p, b.get("commit", ""))
 
     rc, head, err = _run(p, "rev-parse", "--verify", "HEAD")
     if rc != 0 or not head:
@@ -229,10 +223,13 @@ def load(state_file: Path | None = None) -> dict:
 def last_note(build: dict | None, state_file: Path | None = None) -> str:
     """Why the last open left this engine where it is, as a sentence for the
     build warning; "" when there is nothing to add (no outcome, another
-    checkout or build than the one shown, or it moved)."""
+    checkout or build than the one shown, or it moved). Only for a git
+    checkout at the commit the update saw: for an unpacked archive or a
+    folder git cannot read, the warning and its fix already say why, in
+    this machine's words."""
     b = build or {}
     o = load(state_file)
-    if not o or o.get("status") not in LEFT:
+    if not o or o.get("status") not in LEFT or b.get("source") != "git":
         return ""
     try:
         if Path(o.get("path") or "").resolve() != Path(b.get("path") or "")\
@@ -240,7 +237,8 @@ def last_note(build: dict | None, state_file: Path | None = None) -> str:
             return ""
     except Exception:
         return ""
-    if o.get("before") and str(b.get("commit") or "")[:8] != o["before"][:8]:
+    if not o.get("before") or \
+            str(b.get("commit") or "")[:8] != o["before"][:8]:
         return ""
     msg = str(o.get("message") or "").strip()
     return f"FluBNF tried to update it when it opened: {msg}." if msg else ""
