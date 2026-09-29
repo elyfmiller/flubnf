@@ -70,6 +70,34 @@ def doctor(
         raise typer.Exit(code=1)
 
 
+def engine_update(
+    path: Optional[Path] = typer.Option(
+        None, "--path",
+        help="The engine checkout (default: the one the console uses)."),
+    fetch: bool = typer.Option(
+        True, "--fetch/--no-fetch",
+        help="Fetch the production commit from GitHub when it is not on "
+             "disk yet."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q",
+        help="Print nothing when the engine is already the production "
+             "build."),
+):
+    """Move the particle-filter engine to the production build, when that
+    is safe.
+
+    Only a clean git checkout on the production branch that is behind the
+    production commit moves, by fast-forward. Anything else is left as it
+    is and the reason is printed. The launchers run this on every open.
+    Always exits 0: an engine left where it is never blocks a launch."""
+    from app.core import engine_update as EU
+    out = EU.update(path, fetch=fetch)
+    EU.save(out)
+    if quiet and out["status"] in ("production", "no-engine"):
+        return
+    typer.echo(f"  engine: {out['message']}")
+
+
 def knobs(
     as_json: bool = typer.Option(False, "--json",
                                  help="Print the registry as JSON."),

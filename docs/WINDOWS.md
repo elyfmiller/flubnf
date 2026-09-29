@@ -34,7 +34,10 @@ it keeps working and nothing needs moving.
 
 Double-click `FluBNF.bat` in that folder. The first run creates the
 virtual environment and installs dependencies (a few minutes); every later
-run self-updates with a fast-forward `git pull` and starts the console.
+run self-updates with a fast-forward `git pull`, brings a clean PyBNF
+engine checkout up to the production build the same way
+([ENGINE.md](ENGINE.md), "Which engine am I running?"), and starts the
+console.
 
 If the FluSight data is not on the machine yet, `FluBNF.bat` says so and
 offers to run `setup.ps1` for you. Answering N starts the console anyway

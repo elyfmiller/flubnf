@@ -174,9 +174,11 @@ def _check_engine_build() -> "CheckResult":
         return CheckResult(name, Status.OK,
                            f"{_eb.label(b)}, the production build "
                            f"(read from {how})")
+    from app.core import engine_update as _eu
     return CheckResult(name, Status.WARN,
                        f"{_eb.warning(b).rstrip('.')} (read from {how}).",
-                       _eb.fix(b))
+                       " ".join(x for x in (_eu.last_note(b), _eb.fix(b))
+                                if x))
 
 
 #: what a usable hub clone must hold (a sparse checkout can lack either)

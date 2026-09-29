@@ -146,10 +146,12 @@ def test_the_warning_names_the_build_and_the_fix_names_the_path():
         "The engine is feature/bngsim at 4bbc4672, not the production build "
         "2fdadee0 on feature/particle-filter, and has local changes.")
     fix = EB.fix(OTHER)
-    assert fix == ("To switch: stash the local edits first (git stash in "
-                   "that folder), then git -C /x/PyBNF-pf checkout "
-                   "feature/particle-filter, then git pull there. Research "
-                   "runs may use other builds on purpose.")
+    assert fix == ("FluBNF moves a clean checkout on feature/particle-filter "
+                   "to this build each time it opens. To switch by hand: "
+                   "stash the local edits first (git stash in that folder), "
+                   'then git -C "/x/PyBNF-pf" checkout feature/particle-filter, '
+                   "then git pull there, and reopen FluBNF. Research runs may "
+                   "use other builds on purpose.")
     assert "stash" not in EB.fix(dict(OTHER, dirty=False))
 
 
@@ -181,7 +183,8 @@ def test_home_warns_on_another_build(repo, monkeypatch):
     assert (f"The engine is feature/particle-filter at {sha}, not the "
             "production build 2fdadee0 on feature/particle-filter, and has "
             "local changes.") in html
-    assert f"git -C {repo} checkout feature/particle-filter" in html
+    # the path quoted (a Windows profile folder can hold a space), escaped
+    assert f"git -C &#34;{repo}&#34; checkout feature/particle-filter" in html
     # the forecast tab's engine row says it too, in one line
     assert 'data-engine-build="other"' in client.get("/forecast").text
 
@@ -201,7 +204,7 @@ def test_doctor_names_the_build_and_warns_off_production(repo, monkeypatch):
     assert c.status is doctor.Status.WARN
     assert f"feature/particle-filter at {sha}" in c.detail
     assert "not the production build 2fdadee0" in c.detail
-    assert f"git -C {repo} checkout feature/particle-filter" in c.hint
+    assert f'git -C "{repo}" checkout feature/particle-filter' in c.hint
     assert "PyBNF engine build" in {x.name for x in doctor.run_doctor().checks}
 
 

@@ -176,9 +176,14 @@ def refresh_engine_build() -> dict:
 def engine_build_view() -> dict:
     """What pages show: {label, warning, fix, production, known}."""
     from app.core import engine_build as _eb
+    from app.core import engine_update as _eu
     b = dict(ENGINE_BUILD)
+    fix = _eb.fix(b)
+    if _eb.warning(b):
+        # why the launcher's update left it (a branch, edits, no access)
+        fix = " ".join(x for x in (_eu.last_note(b), fix) if x)
     return {"label": _eb.label(b), "warning": _eb.warning(b),
-            "fix": _eb.fix(b), "production": _eb.is_production(b),
+            "fix": fix, "production": _eb.is_production(b),
             "known": _eb.known(b)}
 
 

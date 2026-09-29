@@ -140,20 +140,30 @@ def warning(build: dict | None) -> str:
     return s + "."
 
 
-def fix(build: dict | None) -> str:
-    """How to switch to the production build, in plain words."""
+def fix(build: dict | None, platform: str | None = None) -> str:
+    """How to switch to the production build, in plain words, for this
+    machine's launcher (`platform`, sys.platform by default: Windows opens
+    FluBNF.bat and has no setup_engine.sh)."""
+    import sys
+    win = (platform or sys.platform) == "win32"
     b = build or {}
     path = str(b.get("path") or "<engine folder>")
     if b.get("source") == "archive":
+        how = ("open FluBNF.bat again, which replaces it" if win else
+               "run ./setup_engine.sh (or double-click SetupEngine.command) "
+               "to replace it")
         return (f"This engine was installed from an archive. Save "
                 f"pybnf-pf-{PRODUCTION_ENGINE_COMMIT}.tar.gz in Downloads and "
-                "run ./setup_engine.sh to replace it.")
-    # the path once: in a tip it is the longest word by far
+                f"{how}.")
+    # the path once: in a tip it is the longest word by far; quoted, as a
+    # Windows profile path can hold a space
     stash = ("stash the local edits first (git stash in that folder), then "
              if b.get("dirty") else "")
-    return (f"To switch: {stash}git -C {path} checkout "
-            f"{PRODUCTION_ENGINE_BRANCH}, then git pull there. Research runs "
-            "may use other builds on purpose.")
+    return (f"FluBNF moves a clean checkout on {PRODUCTION_ENGINE_BRANCH} to "
+            "this build each time it opens. To switch by hand: "
+            f'{stash}git -C "{path}" checkout {PRODUCTION_ENGINE_BRANCH}, '
+            "then git pull there, and reopen FluBNF. Research runs may use "
+            "other builds on purpose.")
 
 
 def record(build: dict | None) -> dict:

@@ -35,7 +35,8 @@ from typer.core import TyperGroup
 #: every top-level command must be listed (the group refuses to build
 #: otherwise, so a new command cannot silently land in the wrong panel).
 HELP_PANELS = {
-    "Console": ("app", "window", "doctor", "knobs", "dataset"),
+    "Console": ("app", "window", "doctor", "engine-update", "knobs",
+                "dataset"),
     "Replay & verification": ("retro", "groundhog", "oracle", "site"),
     "Donor banks": ("bank",),
 }
@@ -1313,7 +1314,7 @@ from .cli_datasets import (  # noqa: F401
     dataset_list_cmd,
     dataset_validate_cmd,
 )
-from .cli_doctor import doctor, knobs
+from .cli_doctor import doctor, engine_update, knobs
 from .cli_retro import (  # noqa: F401
     GROUNDHOG_SEASONS,
     groundhog_app,
@@ -1332,6 +1333,7 @@ from .cli_verify import (  # noqa: F401
 )
 
 app.command()(doctor)
+app.command("engine-update")(engine_update)
 app.command()(knobs)
 app.add_typer(retro_app, name="retro")
 app.add_typer(groundhog_app, name="groundhog")

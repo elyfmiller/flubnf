@@ -216,6 +216,18 @@ if exist "%PYBNFDIR%\pybnf\pf.py" goto :pybnfresolved
 rem nothing on disk yet: the default is where setup.ps1 would clone
 set "PYBNFDIR=%LOCALAPPDATA%\FluBNF\PyBNF-pf"
 :pybnfresolved
+rem Stay current, engine too: FluBNF updates itself above, and this brings a
+rem clean engine checkout on the production branch up to the production build
+rem (fast-forward only; another branch, local edits or newer commits are left
+rem and the reason printed). Twin of FluBNF.command's; FLUBNF_UPDATE=off skips
+rem both. The console's build warning repeats the reason.
+if /I "%FLUBNF_UPDATE%"=="off" goto :engineupdated
+if not exist "%PYBNFDIR%\.git" goto :engineupdated
+if not exist ".venv\Scripts\flubnf.exe" goto :engineupdated
+where git >nul 2>&1
+if errorlevel 1 goto :engineupdated
+".venv\Scripts\flubnf.exe" engine-update --quiet --path "%PYBNFDIR%"
+:engineupdated
 set "ENGINEOK="
 set "ENGINEVENV=%FLUBNF_ENGINE_VENV%"
 if not defined ENGINEVENV set "ENGINEVENV=%USERPROFILE%\.venvs\flubnf-engine"

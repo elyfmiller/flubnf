@@ -194,6 +194,16 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   fi
 fi
 
+# Stay current, engine too: FluBNF updates itself above, and this brings a
+# clean engine checkout on the production branch up to the production build
+# (fast-forward only; another branch, local edits or newer commits are left
+# and the reason printed). Twin of FluBNF.bat's; FLUBNF_UPDATE=off skips both.
+# The console's build warning repeats the reason.
+if [ "${FLUBNF_UPDATE:-}" != "off" ] && [ -x .venv/bin/flubnf ] \
+   && command -v git >/dev/null 2>&1; then
+  .venv/bin/flubnf engine-update --quiet || true
+fi
+
 if [ -n "$PREPARE" ]; then
   echo "· ready"
   exit 0

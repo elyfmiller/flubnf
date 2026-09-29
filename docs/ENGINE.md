@@ -110,15 +110,27 @@ whether tracked files have local edits.
   An empty status means no local edits. An archive install has no `.git`;
   its first `VERSION` line is `<branch> <commit>`.
 
-To switch to production, stash any local edits first, then check out the
-branch and pull:
+Each time FluBNF opens, its launcher (`FluBNF.command`, `FluBNF.app`,
+`FluBNF.bat`) runs `flubnf engine-update`, which brings the engine up to
+production when that is safe: a git checkout on `feature/particle-filter`
+with no local edits, behind the production commit, is fast-forwarded to
+exactly that commit (fetched from GitHub first when it is not on disk, with
+no password prompt and a 30-second limit). Anything else is left as it is
+and the reason printed: another branch, local edits, commits past
+production, no access to the fork. The console's build warning repeats
+that reason. `FLUBNF_UPDATE=off` skips it along with the launcher's own
+update, and `flubnf engine-update` runs it by hand.
 
-    git -C <engine folder> stash
-    git -C <engine folder> checkout feature/particle-filter
-    git -C <engine folder> pull
+To switch by hand, stash any local edits first, then check out the branch
+and pull (quote the folder if its path holds a space):
+
+    git -C "<engine folder>" stash
+    git -C "<engine folder>" checkout feature/particle-filter
+    git -C "<engine folder>" pull
 
 An archive install is replaced by saving `pybnf-pf-2fdadee0.tar.gz` in
-Downloads and running `./setup_engine.sh`. A retrospective season resumes
+Downloads and running `./setup_engine.sh` (Windows: opening `FluBNF.bat`
+again, which replaces its unpacked copy with the newer archive). A retrospective season resumes
 only on the build its weeks were fitted by; after switching, archive or
 discard it to replay on the new one. Seasons from before builds were
 recorded resume as before.
