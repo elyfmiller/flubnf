@@ -7,6 +7,8 @@ The block is sliced out of FluBNF.command, not reimplemented.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -43,13 +45,17 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
                           capture_output=True, check=True)
 
 
-def _origin_and_clone(tmp_path: Path) -> tuple[Path, Path]:
-    """A bare origin one commit ahead of a clone, both on main."""
+def _origin_and_clone(tmp_path: Path,
+                      also: dict[str, str] | None = None) -> tuple[Path, Path]:
+    """A bare origin one commit ahead of a clone, both on main. `also` adds
+    files to the first commit that the second leaves alone."""
     work = tmp_path / "work"
     work.mkdir()
     _git(work, "-c", "init.defaultBranch=main", "init", "-q", ".")
     (work / "app.py").write_text("v1\n")
-    _git(work, "add", "app.py")
+    for name, text in (also or {}).items():
+        (work / name).write_text(text)
+    _git(work, "add", ".")
     _git(work, "commit", "-qm", "v1")
     origin = tmp_path / "origin.git"
     _git(tmp_path, "clone", "-q", "--bare", str(work), str(origin))
@@ -59,6 +65,13 @@ def _origin_and_clone(tmp_path: Path) -> tuple[Path, Path]:
     _git(work, "commit", "-qam", "v2")
     _git(work, "push", "-q", str(origin), "main")
     return origin, clone
+
+
+def _commands(out: str) -> list[tuple[Path, str]]:
+    """The printed `git -C "<folder>" ...` commands, folder resolved: $PWD
+    can be the physical path (/private/var on macOS) of tmp_path."""
+    return [(Path(m.group(1)).resolve(), m.group(2).strip())
+            for m in re.finditer(r'git -C "([^"]+)" ([^\n&]+)', out)]
 
 
 def _run_block(clone: Path, **env_extra) -> subprocess.CompletedProcess:
@@ -119,6 +132,83 @@ def test_local_commits_are_never_discarded(tmp_path):
         "a local commit was discarded")
     assert "1 commit(s) origin does not" in out.stdout, out.stdout + out.stderr
     assert "reset --hard" in out.stdout, "no recovery command was offered"
+
+
+@posix_only
+def test_a_history_rewritten_upstream_is_not_called_this_clones_work(tmp_path):
+    """Origin rewrote its history (main's was, in September 2026), so every
+    commit here is upstream too under a new id. The old message told such a
+    clone it had work to throw away, and it sat on an old console. It now
+    says nothing unique would be lost, still changes nothing, and prints the
+    way across."""
+    origin, clone = _origin_and_clone(tmp_path)
+    _git(clone, "pull", "-q", "--ff-only")          # this clone has v2
+    work = tmp_path / "work"
+    _git(work, "commit", "-q", "--amend", "-m", "v2, reworded upstream")
+    _git(work, "push", "-q", "--force", str(origin), "main")
+    head = _git(clone, "rev-parse", "HEAD").stdout.strip()
+
+    out = _run_block(clone)
+
+    assert "nothing unique would be lost" in out.stdout, out.stdout + out.stderr
+    assert "throw this clone's work away" not in out.stdout
+    assert (clone.resolve(), "reset --hard origin/main") in _commands(out.stdout)
+    assert _git(clone, "rev-parse", "HEAD").stdout.strip() == head, (
+        "the launcher reset the clone itself; it must only say how")
+
+
+@posix_only
+def test_a_branch_deleted_upstream_is_named_and_main_offered(tmp_path):
+    """The branch this clone follows was deleted upstream after its merge. A
+    plain fetch kept its last remote copy, so the clone read "up to date"
+    for ever while main moved on. The fetch now prunes, the launcher says the
+    branch is gone and names main, and nothing is stashed or switched."""
+    origin, clone = _origin_and_clone(tmp_path)
+    work = tmp_path / "work"
+    _git(work, "push", "-q", str(origin), "main:feature")
+    _git(clone, "fetch", "-q")
+    _git(clone, "checkout", "-q", "-b", "feature", "--track", "origin/feature")
+    _git(work, "push", "-q", str(origin), "--delete", "feature")
+    head = _git(clone, "rev-parse", "HEAD").stdout.strip()
+
+    out = _run_block(clone)
+
+    assert "origin/feature no longer exists" in out.stdout, (
+        out.stdout + out.stderr)
+    assert (clone.resolve(), "checkout main") in _commands(out.stdout)
+    assert "up to date with origin" not in out.stdout
+    assert _git(clone, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip() \
+        == "feature"
+    assert _git(clone, "rev-parse", "HEAD").stdout.strip() == head
+    assert _git(clone, "stash", "list").stdout == ""
+
+
+@posix_only
+def test_a_stash_that_failed_never_pops_an_older_one(tmp_path):
+    """When the push fails (another program holds the index lock, the disk is
+    full), the pop that followed applied whatever older stash was on top of
+    the list: someone's earlier edits, dropped into this tree. A git that
+    fails `stash push` and nothing else stands in for the cause."""
+    _, clone = _origin_and_clone(tmp_path, also={"notes.txt": "n1\n"})
+    (clone / "notes.txt").write_text("an older edit, set aside long ago\n")
+    _git(clone, "stash", "push", "-q", "-m", "older")
+    (clone / "app.py").write_text("someone edited this\n")
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "git").write_text(
+        "#!/bin/sh\n"
+        '[ "$1 $2" = "stash push" ] && { echo "fatal: stash failed" >&2; exit 1; }\n'
+        f'exec "{shutil.which("git")}" "$@"\n')
+    (shim / "git").chmod(0o755)
+
+    out = _run_block(clone, PATH=f"{shim}{os.pathsep}{os.environ['PATH']}")
+
+    assert "local edits are blocking the update" in out.stdout, (
+        out.stdout + out.stderr)
+    assert (clone / "notes.txt").read_text() == "n1\n", (
+        "an older stash was popped into the working tree")
+    assert (clone / "app.py").read_text() == "someone edited this\n"
+    assert "older" in _git(clone, "stash", "list").stdout
 
 
 @posix_only
