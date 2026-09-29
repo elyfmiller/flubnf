@@ -1,6 +1,7 @@
 name: tests
 on:
-  push: {branches: [main]}
+  # dev too: its Windows launcher changes get the Windows jobs before a PR.
+  push: {branches: [main, dev]}
   pull_request:
 jobs:
   test:
