@@ -51,13 +51,6 @@ def test_renderer_escapes_values_and_keeps_the_contracts():
     assert settings_html([("a", ""), ("b", None)]) == ""
 
 
-def test_report_freshness_marker_survives():
-    """report_season keys its cache freshness on the literal SETTINGS_MARK
-    ('Run settings') appearing in the rendered block."""
-    from app.core.report_season import SETTINGS_MARK
-    assert SETTINGS_MARK in settings_html(PAIRS, title=SETTINGS_MARK)
-
-
 # ------------------------------------------------------------- the styles
 
 def test_stylesheet_carries_the_grid_at_body_size():
@@ -71,8 +64,9 @@ def test_stylesheet_carries_the_grid_at_body_size():
     assert "font-size:var(--fs-body)" in joined.split(".runsettings .kv{")[1] \
         .split("}")[0]
     assert ".runsettings .kv dt{color:var(--mut)}" in joined
-    # both self-contained report exports restate the grid
-    for mod in ("report_v2", "report_season"):
+    # the weekly report restates the grid (the season report inlines
+    # nau.css itself)
+    for mod in ("report_v2",):
         src = (Path(__file__).resolve().parents[1] / "core"
                / f"{mod}.py").read_text()
         assert ".runsettings .kv" in src, mod

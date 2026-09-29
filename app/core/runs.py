@@ -714,8 +714,7 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
 def settings_html(pairs, title: str = "Run settings",
                   cls: str = "hint runsettings", el_id: str = "") -> str:
     """The one rendering of a settings block (every surface uses it): a
-    two-column dl.kv grid inside the runsettings wrapper. The title is a
-    literal callers key on (report_season.SETTINGS_MARK). Everything is
+    two-column dl.kv grid inside the runsettings wrapper. Everything is
     escaped (values include user-supplied location names).
     """
     import html as _html

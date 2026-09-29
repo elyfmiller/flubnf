@@ -588,8 +588,9 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
     for t in ("home.html", "methods.html"):
         src = (ui / "templates" / t).read_text()
         assert "{{ relwis_convention_note }}" in src, t
-    # builders outside the template environment use the same constant
-    for mod in ("site_page.py", "report_season.py"):
+    # builders outside the template environment use the same constant (the
+    # season report renders the season page, inside it)
+    for mod in ("site_page.py",):
         assert "PUBLISHED_CONVENTION_NOTE" in (core / mod).read_text(), mod
     # and the short label rides beside the figures on the retro surfaces
     for t in ("retro.html", "retro_season.html"):

@@ -507,9 +507,8 @@ def test_no_data_weeks_are_wired_into_the_player():
     assert "var wk = nodata ? 'noround'" in SRC
     assert "? ' · ' + w + '<br>' + noteOf(w)" in SRC
     assert "noDataPayload: noDataPayload" in SRC
-    # both hosts hand the caption over
-    from app.core.report_season import _PAGE
-    assert "noDataNote: NO_DATA_NOTE" in _PAGE
+    # the host hands the caption over (the season page, which the season
+    # report renders too)
     season_t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
                 / "retro_season.html").read_text(encoding="utf-8")
     assert "noDataNote: NO_DATA_NOTE" in season_t

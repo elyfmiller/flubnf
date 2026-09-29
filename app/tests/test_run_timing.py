@@ -643,7 +643,6 @@ def _mini_season(tmp_path, monkeypatch):
                                                     for f in fips_set
                                                     for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = tmp_path / "seasonroot"
     wd = root / "weeks" / W1
     wd.mkdir(parents=True)
@@ -662,16 +661,16 @@ def _mini_season(tmp_path, monkeypatch):
 def test_season_report_header_carries_the_timing(tmp_path, monkeypatch):
     root = _mini_season(tmp_path, monkeypatch)
     # no record: the header says nothing rather than inventing a duration
-    assert "Total wall time" not in report_season.build_season_report(
+    assert "Wall time" not in report_season.build_season_report(
         root, SEASON).read_text()
     retro.write_meta(root, {"status": "done", "elapsed_s": 3725.0,
                             "weeks_completed": 1, "total_weeks": 1,
                             "week_seconds": {W1: 3725.0},
                             "heartbeat_utc": time.time()})
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert "Total wall time 1:02:05" in html      # the record refreshed it
-    assert "1 weeks completed" in html
-    assert "mean 3725 s per week over 1 timed" in html
+    # the record refreshed it: the page's facts, and the full line in the tip
+    assert '<span class="uk-stat-v" id="rs-timing">1:02:05</span>' in html
+    assert "Replay wall time 1:02:05 over 1 weeks, 3725 s per week." in html
 
 
 # ----------------------------------------------------------- page treatments

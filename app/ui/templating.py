@@ -75,6 +75,45 @@ templates.env.globals["engine_build_view"] = versions.engine_build_view
 # one settings/results renderer for progress cards, run page and both report
 # exports (app/core/runs.py), so their wording cannot diverge
 templates.env.globals["settings_html"] = settings_html
+
+# the exported season report (app/core/report_season) renders the season
+# page as one self-contained file: every stylesheet and script it loads is
+# written into the page, and the images and fonts those name become data
+# URIs, so the file needs no server and no network
+_STATIC = Path(__file__).parent / "static"
+_MIME = {".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png",
+         ".ico": "image/x-icon"}
+
+
+def _data_uri(rel: str) -> str:
+    """static/<rel> as a data: URI; the URL unchanged when unreadable."""
+    import base64
+    f = _STATIC / rel
+    try:
+        raw = f.read_bytes()
+    except OSError:
+        return "/static/" + rel
+    mime = _MIME.get(f.suffix.lower(), "application/octet-stream")
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+def inline_static(rel: str):
+    """static/<rel> written into the page: a stylesheet as <style> (its
+    /static/ url()s as data URIs), a script as <script>. "</" inside a
+    script is split so it cannot end the element early."""
+    import re
+    from markupsafe import Markup
+    text = (_STATIC / rel).read_text(encoding="utf-8")
+    if rel.endswith(".css"):
+        text = re.sub(r"""url\((["']?)/static/([^"')]+)\1\)""",
+                      lambda m: f'url("{_data_uri(m.group(2))}")', text)
+        return Markup(f"<style>\n{text}\n</style>")
+    return Markup("<script>\n" + text.replace("</script", "<\\/script")
+                  + "\n</script>")
+
+
+templates.env.globals["inline_static"] = inline_static
+templates.env.globals["static_data_uri"] = _data_uri
 templates.env.globals["results_html"] = results_html
 
 

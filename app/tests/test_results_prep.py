@@ -326,7 +326,6 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
 def test_season_report_carries_the_us_aggregate_with_the_honest_label(
         tmp_path, _stubbed, monkeypatch):
     from app.core import report_season
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)
     retro.finalize_season(root, SEASON)
     html = report_season.build_season_report(root, SEASON).read_text()
@@ -335,42 +334,43 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
     assert "aggregated from state forecasts" in html
     assert "states treated as independent" in html
     # the leading table row, in the console's own distinct class
-    assert '<tr class="usagg"><td>US (aggregated)</td>' in html
-    # the construction stated in full under the table
+    assert '<tr class="usagg" data-name="US (aggregated)"' in html
+    # the construction stated in full in the row's tip
     assert "not a fitted national forecast" in html
     assert "vincentized" not in html               # no blend since 2026-09-22
     assert "aligned by draw index" in html
     # still self-contained
-    assert "<script src" not in html and "fetch(" not in html
+    assert "<script src" not in html
 
 
 def test_unscored_report_states_the_aggregate_absence_never_invents_it(
         tmp_path, _stubbed, monkeypatch):
-    """An unscored season's export invents no aggregate and states its
-    absence in one plain sentence."""
-    from app.core import report_season
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
+    """A season that cannot be scored (no settled truth): the export
+    invents no aggregate, and says why there are no scores, as the page
+    does."""
+    from app.core import report_season, scoring
     root = _mk_tree(tmp_path)                # weeks, never scored
+    monkeypatch.setattr(scoring, "load_truth", lambda: ({}, {}))
+    monkeypatch.setattr(playback, "load_truth", lambda: ({}, {}))
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert 'class="tilename">US (aggregated)' not in html
-    assert '<tr class="usagg">' not in html
+    assert "<h2>US (aggregated)" not in html
+    assert '<tr class="usagg"' not in html
     assert "not a fitted national forecast" not in html
-    assert "is not in this export" in html
-    assert "has not been scored" in html
+    assert "No scoreable weeks yet" in html or "Scoring failed" in html
 
 
 def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
                                                      monkeypatch):
-    """A report exported before the aggregate existed rebuilds once the
-    cache lands: playback_cache/*.json is part of _newest_input."""
+    """A report older than the aggregate cache rebuilds once the cache lands:
+    playback_cache/*.json is part of _newest_input."""
     import os
     from app.core import report_season
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)
     p = report_season.build_season_report(root, SEASON)
-    # the stand-in passes the builder's content test, so only mtime matters
-    sentinel = "sentinel " + report_season._names_line(
-        report_season.names_for_root(root))
+    # the stand-in passes the builder's content test (its marker), so only
+    # mtime matters
+    sentinel = "sentinel " + report_season._report_marker(
+        "", report_season.names_for_root(root))
     p.write_text(sentinel)
     future = p.stat().st_mtime + 60
     os.utime(p, (future, future))

@@ -119,6 +119,30 @@ def _build_label(build) -> str:
     return _eb.recorded_label(build)
 
 
+def season_build_label(meta: dict) -> str:
+    """The PyBNF build a replay's filter weeks were fitted with, from its
+    run record: the season's recorded build, else the builds its weeks
+    recorded (several named when they differ), else "not recorded". Never
+    this machine's engine: an archived or imported replay describes the
+    build that ran it."""
+    m = meta or {}
+    lab = _build_label((m.get("settings") or {}).get("engine_build"))
+    if lab:
+        return lab
+    wb = m.get("week_engine_builds")
+    labs = []
+    if isinstance(wb, dict):
+        for b in wb.values():
+            x = _build_label(b)
+            if x and x not in labs:
+                labs.append(x)
+    if len(labs) == 1:
+        return labs[0]
+    if labs:
+        return "mixed: " + "; ".join(labs)
+    return "not recorded"
+
+
 def settings_summary(meta: dict) -> list:
     """The settings that produced a replay, as (label, value) pairs, from
     its run record; [] when none were recorded (the sealed runs)."""
@@ -141,7 +165,7 @@ def settings_summary(meta: dict) -> list:
              ("replicates", str(s.get("replicates") or "") if pf else ""),
              ("shard width", str(s.get("width") or "") if pf else ""),
              ("engine", engine_label(s["engine"]) if s.get("engine") else ""),
-             ("PyBNF build", _build_label(s.get("engine_build")) if pf else "")]
+             ("PyBNF build", season_build_label(meta) if pf else "")]
     # only a record made through the knob channel says "model settings"
     # (the zero-anchor rule is a data decision, listed on its own line)
     from app.core import knobs as _knobs

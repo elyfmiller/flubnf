@@ -140,7 +140,6 @@ def _synthetic_data(monkeypatch, tmp_path):
                                                     for f in fips_set
                                                     for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     return truth
 
 
@@ -574,7 +573,9 @@ def test_archived_run_builds_a_season_report_labelled_as_archived(
     p = Path(r.json()["path"])
     assert p.parent == arch                      # built inside the archive
     html = p.read_text()
-    assert "Archived run 2098-02-04 10:15 UTC" in html
+    # the page's archived-run banner, without its link to the live season
+    assert "Archived run from 2098-02-04 10:15 UTC." in html
+    assert "Open the live" not in html
     assert W1 in html and W2 in html             # both weeks embedded
 
     d = client.get(f"/retro/{SEASON}/report?archive={STAMP}")

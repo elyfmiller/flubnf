@@ -806,7 +806,6 @@ def retro_results(request: Request, season: str, week: str = "",
     `conv` picks the ONE relWIS convention (app/core/relwis) for the whole
     page: ratio of sums (default) or the CDC's pairwise figure, never mixed;
     panels it cannot express say so."""
-    import pandas as pd
     from app.core import playback as _playback
     from app.core import relwis
     from app.core import retro
@@ -867,6 +866,41 @@ def retro_results(request: Request, season: str, week: str = "",
         covered = _job_covered(root)
         if covered and covered.get("error") and not _scores_scoreable_fast(root):
             score_error = covered["error"]
+    return templates.TemplateResponse(
+        request, "retro_season.html",
+        dict(season_page_context(root, season, archive, week=week, conv=conv,
+                                 score_error=score_error, names=names,
+                                 knobs_label=knobs_label, imported=imported,
+                                 weeks=weeks),
+             active="Retrospective"))
+
+
+def season_page_context(root: Path, season: str, archive: str = "", *,
+                        week: str = "", conv: str = "",
+                        score_error: str = "", names: dict | None = None,
+                        knobs_label: str | None = None,
+                        imported: dict | None = None,
+                        weeks: list | None = None) -> dict:
+    """The scored season page's context (retro_season.html), for the page
+    and for the exported season report (app/core/report_season), which
+    renders the same template. The caller has settled the scores (or
+    passes their failure as `score_error`)."""
+    import pandas as pd
+    from app.core import playback as _playback
+    from app.core import relwis
+    from app.core import retro
+    from app.core import replay_bundle
+    from app.core import site_build as _sb
+    root = Path(root)
+    if names is None:
+        names = _names_for_root(root)
+    if knobs_label is None:
+        _kn = _sb.tree_knobs(root)
+        knobs_label = (_knobs.label(_knobs.from_record(_kn)) if _kn else "")
+    if imported is None:
+        imported = replay_bundle.imported_info(root) if archive else {}
+    if weeks is None:
+        weeks = [p.parent.name for p in retro.season_sample_files(root)]
     from app.core import us_national as usn
     df_all = _scores_df(root)
     if df_all is None:
@@ -889,20 +923,10 @@ def retro_results(request: Request, season: str, week: str = "",
                  if m not in RETIRED_MODELS}
         states = list(figs.states)
     if scoreable and convention == relwis.RATIO_OF_SUMS:
-        # the cumulative curve is a running ratio of sums: this convention only
-        asofs = sorted(df["asof"].unique())
-        # one line per shipped model in the frame (relwis.MODELS order)
-        for m in relwis.MODELS:
-            if m in RETIRED_MODELS:
-                continue
-            g = df[df.model == m]
-            if not len(g):
-                continue
-            cum = g.groupby("asof")[["wis", "base_wis"]].sum() \
-                   .sort_index().cumsum()
-            cum = cum.reindex(asofs).ffill().dropna()
-            curves[m] = [(str(a)[:10], r.wis / r.base_wis)
-                         for a, r in cum.iterrows()]
+        # the cumulative curve is a running ratio of sums: this convention
+        # only; one line per shipped model in the frame
+        from app.core.report_season import cumulative_curves
+        curves = cumulative_curves(df)
         curve = curves.get("pf") or next(iter(curves.values()), [])
     # national series via usn.resolve (fitted > constructed > officials), with
     # its provenance label printed; a failure never costs the page
@@ -1018,8 +1042,9 @@ def retro_results(request: Request, season: str, week: str = "",
     # the player's timeline: the stored weeks plus the season's no-data
     # weeks as placeholders, and the captions (data provenance) per week
     timeline, notes = _playback.week_notes(season, weeks)
-    return templates.TemplateResponse(request, "retro_season.html", {
-        "active": "Retrospective", "season": season, "heads": heads,
+    by_abbr = {a: n for n, a in n2a.items()}
+    return {
+        "season": season, "heads": heads,
         "model_name": _name_fn(names), "knobs_label": knobs_label,
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
@@ -1048,7 +1073,9 @@ def retro_results(request: Request, season: str, week: str = "",
         "archive": archive,
         "archive_when": retro.stamp_human(archive) if archive else "",
         "imported": imported,
-        "n_weeks": len(weeks) if scoreable else 0})
+        # the map's click opens a state's forecast detail (abbr -> name)
+        "state_names": by_abbr,
+        "n_weeks": len(weeks) if scoreable else 0}
 
 
 #: the player's message when a week cannot be scored for lack of any
@@ -1080,7 +1107,6 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     """One stored week's map as a swap payload (fips -> fill, opacity,
     hover) from the cached cards: the player renders the SVG once and
     swaps fills per frame."""
-    from app.core.usmap import state_swap_payload
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
@@ -1092,14 +1118,9 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
-    by_model = _week_map_cards_by_model(root, asof)
-    order = _retro_map_models(by_model)
-    models = {m: {"states": state_swap_payload(by_model[m])} for m in order}
-    default = order[0] if order else ""
     # `states`: the default model's (the pre-per-model shape)
-    return {"default": default, "models": models,
-            "states": (models[default]["states"] if default
-                       else state_swap_payload({}))}
+    from app.ui.season_export import season_map_swap
+    return season_map_swap(root, asof)
 
 
 def _season_report(season: str, archive: str):
