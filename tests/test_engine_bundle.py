@@ -545,6 +545,25 @@ def test_a_present_engine_file_always_earns_a_retry_despite_the_stamp():
     assert "setup_engine.sh in Terminal" not in src
 
 
+def test_the_windows_launcher_retries_whenever_an_engine_file_is_present():
+    """FluBNF.bat's twin of the guard above: a checkout, an unpacked copy, a
+    bundle or an archive each skips the stamp. It once honoured the stamp
+    whatever was present, so a pip timeout on lab Wi-Fi kept a Windows
+    machine on analogue forecasts through every later open."""
+    lines = BAT.replace("\r\n", "\n").split("\n")
+    for source in ('if exist "%PYBNFDIR%\\.git" set "ENGINELOCAL=1"',
+                   'if exist "%PYBNFDIR%\\pybnf\\pf.py" set "ENGINELOCAL=1"',
+                   'if defined BUNDLE set "ENGINELOCAL=1"',
+                   'if defined ARCHIVE set "ENGINELOCAL=1"'):
+        assert source in lines, f"FluBNF.bat no longer counts: {source}"
+    guard = lines.index("if defined ENGINELOCAL goto :engineinstall")
+    compare = lines.index('if "%LAST%"=="%ENGINEFP%" goto :engineskipped')
+    assert guard < compare, (
+        "FluBNF.bat compares the stamp before checking for an engine file, "
+        "so a transient failure with the file present suppresses the retry")
+    assert max(i for i, ln in enumerate(lines) if "ENGINELOCAL=1" in ln) < guard
+
+
 @posix_only
 def test_the_newest_archive_wins_when_an_old_one_is_still_in_downloads(tmp_path):
     """Newest archive by mtime wins (the hex sha in the name makes glob order
