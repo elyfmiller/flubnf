@@ -180,17 +180,19 @@ if not exist ".venv\Scripts\flubnf.exe" goto :firstrun
 rem A folder moved by hand (setup.ps1 advises it when Controlled Folder
 rem Access blocks Documents) keeps a .venv whose .exe launchers name the old
 rem python.exe, so flubnf.exe and pip.exe no longer start. pip.exe is the
-rem test, run once per folder: a pass is noted in folder.stamp.
+rem test, run once per folder: a pass is noted in folder.stamp. It and every
+rem PowerShell here read from nul: PowerShell waits for input that never
+rem comes when it inherits a pipe instead of a console.
 set "VENVAT="
 if exist ".venv\folder.stamp" set /p VENVAT=<".venv\folder.stamp"
 if /I "%VENVAT%"=="%CD%" goto :sync
-".venv\Scripts\pip.exe" --version >nul 2>&1
+".venv\Scripts\pip.exe" --version <nul >nul 2>&1
 if errorlevel 1 goto :venvmoved
 cd >".venv\folder.stamp"
 goto :sync
 :venvmoved
 set "TS="
-for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set "TS=%%T"
+for /f %%T in ('powershell -NoProfile -NonInteractive -Command "Get-Date -Format yyyyMMddHHmmss" ^<nul') do set "TS=%%T"
 if not defined TS set "TS=%RANDOM%"
 echo   .venv was built before this folder moved and no longer starts: it is now .venv.moved-%TS%, and setup runs again
 ren ".venv" ".venv.moved-%TS%" >nul 2>&1
@@ -288,7 +290,7 @@ rem (A Group Policy execution policy can still refuse; the console starts.)
 rem -NoPrompt is required: setup.ps1's Perl question has no timeout, and a
 rem double-click must never park at a prompt (the engine section below offers
 rem Perl with a bounded question).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -NoPrompt
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -NoPrompt <nul
 if errorlevel 1 echo   setup.ps1 reported a problem, see above - starting the console anyway
 rem setup.ps1 rewrote .flubnf.env.cmd: re-read it.
 if exist ".flubnf.env.cmd" call ".flubnf.env.cmd"
@@ -445,10 +447,10 @@ if exist "%PYBNFDIR%\VERSION" set /p OLDVER=<"%PYBNFDIR%\VERSION"
 if "%NEWVER%"=="%OLDVER%" goto :archivedone
 if not exist "%PYBNFDIR%\VERSION" goto :archivereplace
 set "VERFILE=%PYBNFDIR%\VERSION"
-powershell -NoProfile -Command "if ((Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:VERFILE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "if ((Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:VERFILE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" <nul >nul 2>&1
 if errorlevel 1 goto :archivedone
 :archivereplace
-for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set "TS=%%T"
+for /f %%T in ('powershell -NoProfile -NonInteractive -Command "Get-Date -Format yyyyMMddHHmmss" ^<nul') do set "TS=%%T"
 set "KEPT=PyBNF-Private.replaced-%TS%"
 echo   a different engine archive has arrived: on disk %OLDVER%, archive %NEWVER%
 ren "%PYBNFDIR%" "%KEPT%" || goto :archivedone
@@ -683,7 +685,7 @@ if exist "%LOCALAPPDATA%\FluBNF\start-menu.txt" set /p SHORTCUTFOR=<"%LOCALAPPDA
 if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\FluBNF.lnk" goto :shortcutsmake
 if /I "%SHORTCUTFOR%"=="%CD%" goto :shortcutsdone
 :shortcutsmake
-powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\windows\shortcuts.ps1"
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%CD%\scripts\windows\shortcuts.ps1" <nul
 :shortcutsdone
 echo FluBNF console starting - a window (or browser tab) will open. Ctrl-C here to stop.
 ".venv\Scripts\flubnf" app
@@ -754,6 +756,6 @@ set "ARCHIVE=%~f1"
 goto :eof
 :newerarchivecmp
 set "CAND=%~f1"
-powershell -NoProfile -Command "if ((Get-Item -LiteralPath $env:CAND).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "if ((Get-Item -LiteralPath $env:CAND).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" <nul >nul 2>&1
 if not errorlevel 1 set "ARCHIVE=%CAND%"
 goto :eof

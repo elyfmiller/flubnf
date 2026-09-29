@@ -33,8 +33,8 @@ def _hook() -> str:
 # ------------------------------------------------------------- FluBNF.bat
 def test_the_launcher_makes_the_shortcuts_before_the_console_starts():
     hook = _hook()
-    assert ('powershell -NoProfile -ExecutionPolicy Bypass -File '
-            '"%CD%\\scripts\\windows\\shortcuts.ps1"') in hook
+    assert ('powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass '
+            '-File "%CD%\\scripts\\windows\\shortcuts.ps1" <nul') in hook
     start = BAT.index('".venv\\Scripts\\flubnf" app')
     assert BAT.index("\r\n:shortcutsdone\r\n") < start
     # every path to the console passes through it
@@ -128,7 +128,7 @@ def _run(tmp_path: Path) -> subprocess.CompletedProcess:
          "-StartMenu", str(tmp_path / "Start Menu" / "Programs"),
          "-Desktop", str(tmp_path / "Desktop"),
          "-RecordDir", str(tmp_path / "FluBNF")],
-        capture_output=True, text=True, timeout=120)
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
 
 
 def _read_lnk(path: Path) -> dict:
@@ -136,7 +136,8 @@ def _read_lnk(path: Path) -> dict:
           f"'{path}'); $l.TargetPath; $l.Arguments; $l.WorkingDirectory; "
           "$l.IconLocation")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                       capture_output=True, text=True, timeout=60)
+                       stdin=subprocess.DEVNULL, capture_output=True,
+                       text=True, timeout=60)
     target, args, cwd, icon = (r.stdout.splitlines() + [""] * 4)[:4]
     return {"target": target, "args": args, "cwd": cwd, "icon": icon}
 

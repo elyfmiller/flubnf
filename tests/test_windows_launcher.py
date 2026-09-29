@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -218,12 +219,25 @@ def test_a_moved_folder_rebuilds_its_venv():
     were built with, so a folder moved by hand (setup.ps1 advises it under
     Controlled Folder Access) has a .venv whose programs no longer start."""
     check = "\n".join(LINES[_label_at("gitchecked"):_label_at("firstrun")])
-    assert '".venv\\Scripts\\pip.exe" --version >nul 2>&1' in check
+    assert '".venv\\Scripts\\pip.exe" --version <nul >nul 2>&1' in check
     assert 'ren ".venv" ".venv.moved-%TS%"' in check
     assert 'if /I "%VENVAT%"=="%CD%" goto :sync' in check, (
         "the pip.exe check should run once per folder, not on every open")
     assert 'cd >".venv\\folder.stamp"' in check
     assert check.index("--version") < check.index('cd >".venv\\folder.stamp"')
+
+
+def test_every_powershell_and_probe_reads_from_nul():
+    """PowerShell waits for input that never comes when it inherits a pipe
+    instead of a console (a CI runner, a scheduled task): every call the
+    launcher makes, and the pip.exe probe, gets nul for input."""
+    calls = [ln for ln in LINES
+             if "powershell " in ln and not ln.lstrip().startswith("echo")]
+    assert len(calls) >= 6, calls
+    for ln in calls:
+        assert "<nul" in ln, ln
+    probe = next(ln for ln in LINES if "pip.exe\" --version" in ln)
+    assert "<nul" in probe, probe
 
 
 # ------------------------------------------------------------ the engine block
@@ -338,9 +352,12 @@ def _cmd(script: Path, text: str, cwd: Path, **env_extra) -> subprocess.Complete
            "PATH": rf"{root}\System32;" + os.environ.get("PATH", "")}
     env.pop("FLUBNF_UPDATE", None)
     env.update(env_extra)
+    # stdin closed: a program that waits on an inherited pipe (PowerShell
+    # does) would otherwise hold the test to its timeout
     return subprocess.run(["cmd", "/d", "/c", str(script)], cwd=cwd, env=env,
-                          capture_output=True, text=True, errors="replace",
-                          timeout=180, check=False)
+                          stdin=subprocess.DEVNULL, capture_output=True,
+                          text=True, errors="replace", timeout=180,
+                          check=False)
 
 
 def _said(r: subprocess.CompletedProcess) -> str:
@@ -540,7 +557,11 @@ def test_windows_a_moved_folder_sets_its_venv_aside_and_sets_up_again(tmp_path):
     scripts = folder / ".venv" / "Scripts"
     scripts.mkdir(parents=True)
     (scripts / "flubnf.exe").write_bytes(b"")
-    (scripts / "pip.exe").write_bytes(b"")     # does not start, as after a move
+    # a real program that starts and fails on --version, as a moved venv's
+    # pip.exe does ("Fatal error in launcher"); an empty file is no program
+    # at all and could stop at a Windows error box
+    root = os.environ.get("SystemRoot", r"C:\Windows")
+    shutil.copy(Path(root) / "System32" / "where.exe", scripts / "pip.exe")
 
     r = _cmd(tmp_path / "moved.bat", _moved_block(), folder)
 
@@ -559,7 +580,8 @@ def test_windows_a_venv_checked_here_before_is_not_checked_again(tmp_path):
     (scripts / "pip.exe").write_bytes(b"")
     # written as the launcher writes it, so it spells %CD% the same way
     here = subprocess.run(["cmd", "/d", "/c", "cd"], cwd=folder,
-                          capture_output=True, timeout=60, check=True).stdout
+                          stdin=subprocess.DEVNULL, capture_output=True,
+                          timeout=60, check=True).stdout
     (folder / ".venv" / "folder.stamp").write_bytes(here)
 
     r = _cmd(tmp_path / "moved.bat", _moved_block(), folder)
