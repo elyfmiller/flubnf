@@ -989,6 +989,13 @@ def _documents_setup(tmp_path):
         f'export FLUBNF_PY_ENGINE="{engine}/bin/python"\n'
         f'export FLUBNF_PYBNF="{gh}/PyBNF-pf"\n')
     _script(repo / ".venv" / "bin" / "tool", f"#!{old}/.venv/bin/python\n")
+    # as Python 3.12's venv writes it: where the venv was made
+    (repo / ".venv" / "bin" / "activate").write_text(
+        'if [ "${OSTYPE:-}" = "cygwin" ] ; then\n'
+        f'    export VIRTUAL_ENV=$(cygpath "{old}/.venv")\n'
+        'else\n'
+        f'    export VIRTUAL_ENV="{old}/.venv"\n'
+        'fi\n')
     vsite = repo / ".venv" / "lib" / "site-packages"
     vsite.mkdir(parents=True)
     (vsite / "__editable__.flubnf.pth").write_text(f"{old}\n{old}-old/keep\n")
@@ -1030,6 +1037,56 @@ def test_a_clone_in_documents_moves_to_github_with_everything_it_names(tmp_path)
     assert "starting again from" in said
     assert _read(rec, "open")[3] == f"{new}/FluBNF.app", said
     assert "Locate" in said
+
+
+@posix_only
+def test_a_clone_moved_by_hand_is_relinked_on_the_next_open(tmp_path):
+    """The Mac Studio: the folders reached ~/GitHub but the venv still named
+    ~/Documents/GitHub (`bad interpreter`, `No module named 'flubnf'`).
+    Every open reads where the venv was made and where the hub and PyBNF
+    went, and points the paths there, however the folders moved."""
+    home, repo, rec, path, engine = _documents_setup(tmp_path)
+    old = str(repo)
+    gh = home / "GitHub"
+    gh.mkdir()
+    for name in ("FluSight-forecast-hub", "PyBNF-pf", "flubnf"):
+        (home / "Documents" / "GitHub" / name).rename(gh / name)
+    new = gh / "flubnf"
+    r = _command(new, PATH=path, HOME=home)
+    said = r.stdout + r.stderr
+    assert r.returncode == 0, said
+    assert f"#!{new}/.venv/bin/python" in (new / ".venv/bin/tool").read_text()
+    assert (new / ".venv/lib/site-packages/__editable__.flubnf.pth").read_text() \
+        == f"{new}\n{old}-old/keep\n"
+    assert "Documents" not in (new / ".flubnf.env").read_text()
+    assert (engine / "lib/site-packages/__editable__.pybnf.pth").read_text() \
+        == f"{gh}/PyBNF-pf\n"
+    assert "relinked" in (new / "app/state/logs/launch.log").read_text()
+    assert _read(rec, "open")[3] == f"{new}/FluBNF.app", said
+    # nothing left to do: the next open changes nothing
+    assert subprocess.run(["bash", str(MACOS / "move_home.sh"), "--relink"], cwd=new,
+                          env=_env(HOME=home), capture_output=True).returncode == 1
+
+
+@posix_only
+def test_a_venv_that_still_cannot_load_flubnf_is_reinstalled_into(tmp_path):
+    """After the paths are relinked, a venv that still cannot import flubnf
+    gets it reinstalled (pip, no dependencies), not a dead console."""
+    home, repo, rec, path, _ = _documents_setup(tmp_path)
+    gh = home / "GitHub"
+    gh.mkdir()
+    new = gh / "flubnf"
+    repo.rename(new)
+    _script(new / ".venv" / "bin" / "python",
+            f'echo "$*" >> "{rec}/python"\n[ "$1" != -c ]\n')
+    r = subprocess.run(["bash", str(MACOS / "move_home.sh"), "--relink"], cwd=new,
+                       env=_env(HOME=home), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "-m pip install -q --no-deps -e ." in _read(rec, "python"), r.stderr
+    # headless: never pip in the background; Terminal does it
+    r = subprocess.run(["bash", str(MACOS / "move_home.sh"), "--relink"], cwd=new,
+                       env=_env(HOME=home, FLUBNF_PREPARE_ONLY=1), capture_output=True)
+    assert r.returncode in (1, 3)
 
 
 @posix_only
