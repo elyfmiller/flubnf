@@ -88,7 +88,7 @@ def theme_token_css() -> str:
     """nau.css token blocks verbatim, in document order (the cascade
     matters: modifiers retarget type tokens; a page's print block comes
     after and wins)."""
-    css = NAU_CSS.read_text()
+    css = NAU_CSS.read_text(encoding="utf-8")
     blocks = []
     for sel in _THEME_SELECTORS:
         found = [m for m in re.finditer(re.escape(sel) + r"\{[^{}]*\}", css)

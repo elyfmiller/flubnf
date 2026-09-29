@@ -62,7 +62,7 @@ VIEWBOX = "0 0 975 610"
 @lru_cache(maxsize=1)
 def state_paths() -> dict:
     """fips -> (name, svg_path_d). Decoded once per process."""
-    topo = json.loads(ASSET.read_text())
+    topo = json.loads(ASSET.read_text(encoding="utf-8"))
     sc, tr = topo["transform"]["scale"], topo["transform"]["translate"]
 
     def arc_points(idx: int):

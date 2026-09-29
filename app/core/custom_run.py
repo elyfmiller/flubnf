@@ -362,7 +362,8 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
             an_q = {n: floor_quantiles(q, **fkw) for n, q in an_q.items()}
     if rules:
         try:
-            pf_cells = json.loads((workroot / "cells.json").read_text())
+            pf_cells = json.loads(
+                (workroot / "cells.json").read_text(encoding="utf-8"))
         except Exception:
             pf_cells = []
         outcome["data_flags"] = {"analogue": gh_flags,
@@ -428,7 +429,7 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
                                        if m in ran}),
     }
     tmp = workroot / "results.json.tmp"
-    tmp.write_text(json.dumps(body))
+    tmp.write_text(json.dumps(body), encoding="utf-8")
     os.replace(tmp, workroot / "results.json")
     outcome["archived"] = "skipped: custom dataset (research)"
     return outcome, fails

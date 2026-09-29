@@ -113,7 +113,8 @@ def tree_carries_oracle(root: Path) -> bool:
             f = w / "oracle.json"
             if f.is_file():
                 try:
-                    return json.loads(f.read_text()).get("applied") is True
+                    return json.loads(f.read_text(encoding="utf-8")
+                                      ).get("applied") is True
                 except (OSError, ValueError):
                     return False
         return False
@@ -125,8 +126,8 @@ def _week_applied(week_dir: Path) -> bool:
     """Whether one stored week's oracle.json says the step was applied
     (presence alone is not enough)."""
     try:
-        return json.loads((Path(week_dir) / "oracle.json").read_text()
-                          ).get("applied") is True
+        return json.loads((Path(week_dir) / "oracle.json")
+                          .read_text(encoding="utf-8")).get("applied") is True
     except (OSError, ValueError):
         return False
 
@@ -444,8 +445,8 @@ def _newest_run_source() -> tuple:
         if not b.is_file() or not r.is_file():
             continue
         try:
-            bundle = json.loads(b.read_text())
-            results = json.loads(r.read_text())
+            bundle = json.loads(b.read_text(encoding="utf-8"))
+            results = json.loads(r.read_text(encoding="utf-8"))
         except Exception:
             continue
         # research runs never reach the public site (older ones: by their spec)

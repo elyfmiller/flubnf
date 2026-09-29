@@ -185,7 +185,7 @@ def run_season(season: str, aux: str = "", *, with_us: bool = False,
     cov_df.to_csv(out_dir / "coverage.csv.gz", index=False)
     summary = summarise(cells_df, cov_df)
     (out_dir / "run_meta.json").write_text(
-        json.dumps({**meta, "summary": summary}, indent=1) + "\n")
+        json.dumps({**meta, "summary": summary}, indent=1) + "\n", encoding="utf-8")
     return {"meta": meta, "summary": summary, "cells": cells_df,
             "coverage": cov_df, "dir": str(out_dir)}
 

@@ -127,7 +127,7 @@ def load_populations(locations_csv) -> dict:
     """location (2-char FIPS or 'US') -> population, from a hub
     locations.csv. Population enters only convention C."""
     out = {}
-    with open(locations_csv, newline="") as fh:
+    with open(locations_csv, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             out[r["location"].zfill(2)] = float(r["population"])
     return out
@@ -138,7 +138,7 @@ def load_rows(path, as_of: date | None) -> list:
     zero-filled location, rows after the as-of date DROPPED (same-day kept),
     NaN for NA. File order is preserved (it fixes the bank's order)."""
     rows = []
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             y, m, d = (int(x) for x in r["date"].split("-"))
             dd = date(y, m, d)
@@ -659,7 +659,7 @@ def write_paths(dp: DonorPaths, path, diagnostic: bool = False) -> int:
     holds ONE row, donor_location = IDENTITY with rho = 1, so that applying
     the file blindly reproduces the shipped forecast."""
     rows = path_rows(dp, diagnostic)
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh, lineterminator="\n")
         w.writerow(PATH_COLUMNS)
         for r in rows:
@@ -669,7 +669,7 @@ def write_paths(dp: DonorPaths, path, diagnostic: bool = False) -> int:
 
 def read_path_rows(path) -> list:
     """The rows of a written path table, as the dicts csv.DictReader gives."""
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -783,7 +783,8 @@ def write_pool(dp: DonorPaths, vb: VintageBank, out_dir, *, built_utc: str,
            "digest": digest_rows(rows)}
     mp = manifest_path(out_dir, asof)
     tmp = mp.with_name(mp.name + ".tmp")
-    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n",
+                   encoding="utf-8")
     tmp.replace(mp)
     return man
 
@@ -797,7 +798,7 @@ def read_pool(out_dir, asof: str) -> tuple:
         raise FileNotFoundError(f"no written pool at {fp}")
     if not mp.is_file():
         raise FileNotFoundError(f"the pool at {fp} has no manifest at {mp}")
-    man = json.loads(mp.read_text())
+    man = json.loads(mp.read_text(encoding="utf-8"))
     rows = read_path_rows(fp)
     got = digest_rows(rows)
     if got != man.get("digest"):

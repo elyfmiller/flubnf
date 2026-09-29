@@ -286,7 +286,7 @@ def imported_info(root: Path) -> dict:
     """The imported.json marker of an archived root, or {} for a run this
     machine replayed."""
     try:
-        d = json.loads((Path(root) / IMPORTED_MARK).read_text())
+        d = json.loads((Path(root) / IMPORTED_MARK).read_text(encoding="utf-8"))
         return d if isinstance(d, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -356,7 +356,8 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                   "exported_build": str(m.get("flubnf_build") or ""),
                   "imported_build": build or ""}
         (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
-                                                    sort_keys=True))
+                                                    sort_keys=True),
+                                         encoding="utf-8")
         sf = tmp / "scores.json"
         if sf.is_file():
             os.utime(sf)

@@ -15,7 +15,34 @@ from app.core.report_v2 import build_report          # noqa: E402
 
 def _build(tmp_path):
     p = build_report("2098-01-03", {}, {}, {}, tmp_path / "r.html")
-    return p.read_text()
+    return p.read_text(encoding="utf-8")
+
+
+def test_the_report_is_written_and_served_whatever_the_locale(tmp_path):
+    """Windows' default text encoding is its code page (cp1252), which
+    cannot hold the report's symbols (the Cmd sign), and a console started
+    without PYTHONUTF8 ended every run without a report. test-windows runs
+    in UTF-8 mode, which hides that, so a child with UTF-8 mode off and an
+    ASCII locale (the runner's own cp1252 on Windows, where LC_ALL has no
+    say) builds the report and reads it back as /output/report does."""
+    import os
+    import subprocess
+    repo = Path(__file__).resolve().parents[2]
+    out = tmp_path / "r.html"
+    code = ("import sys\n"
+            "from pathlib import Path\n"
+            "from app.core.report_v2 import build_report\n"
+            "from app.ui.routes.output import _stored_report_text\n"
+            f"p = build_report('2098-01-03', {{}}, {{}}, {{}}, Path({str(out)!r}))\n"
+            "print(sys.flags.utf8_mode, '\\u2318' in _stored_report_text(p))\n")
+    env = dict(os.environ, PYTHONUTF8="0", PYTHONCOERCECLOCALE="0",
+               LC_ALL="C", LANG="C", PYTHONPATH=str(repo))
+    r = subprocess.run([sys.executable, "-c", code], cwd=repo, env=env,
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=300)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert r.stdout.split() == ["0", "True"]
+    assert "⌘" in out.read_text(encoding="utf-8")
 
 
 def test_weekly_report_wears_the_console_tokens(tmp_path):
@@ -83,7 +110,7 @@ def test_weekly_report_is_theme_aware(tmp_path):
         "2098-01-03", {}, {"OH": {"name": "Ohio", "fan": fan,
                                   "cat": report_v2.cat_bar({"stable": 1.0}),
                                   "table_rows": []}},
-        {}, tmp_path / "c.html").read_text()
+        {}, tmp_path / "c.html").read_text(encoding="utf-8")
     assert "Plotly.react(g,g.data,g.layout)" in charted
     # the retint map resolves the figures' baked literals from the chrome's
     # tokens (category bars, ok/bad, the accent via --gold), so the CV-safe
@@ -140,7 +167,7 @@ def test_weekly_report_keeps_its_build_contract(tmp_path):
         "2098-01-03", {}, {}, {}, tmp_path / "r.html", elapsed_s=3725.0,
         settings_html='<p class="hint runsettings"><strong>Run settings:'
                       "</strong> engine pf</p>",
-        fitted_fips=["39"]).read_text()
+        fitted_fips=["39"]).read_text(encoding="utf-8")
     # the run card's stat: label, value, unit
     assert "<dt>Run wall time</dt>" in html
     assert '<span class="uk-stat-v" id="runtime">1:02:05</span>' in html
@@ -151,7 +178,7 @@ def test_weekly_report_keeps_its_build_contract(tmp_path):
     assert "not fitted in this run" in html
     # no recorded scope: the gap is not asserted for states nobody checked
     html2 = build_report(
-        "2098-01-03", {}, {}, {}, tmp_path / "r2.html").read_text()
+        "2098-01-03", {}, {}, {}, tmp_path / "r2.html").read_text(encoding="utf-8")
     assert "no data (reporting gap)" not in html2
     assert "no data in this view" in html2
     assert "not fitted in this run" not in html2
@@ -191,11 +218,12 @@ def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
     card = {"fips": "50", "name": "Vermont", "abbr": "VT", "probs": None,
             "hover_html": ""}
     html = build_report("2098-01-03", {"VT": card}, {}, {},
-                        tmp_path / "r.html", fitted_fips=["50"]).read_text()
+                        tmp_path / "r.html", fitted_fips=["50"]
+                        ).read_text(encoding="utf-8")
     assert "</span>no forecast<" in html
     assert "No-forecast states have data but no forecast" in html
     html2 = build_report("2098-01-03", {}, {}, {}, tmp_path / "r2.html",
-                         fitted_fips=["50"]).read_text()
+                         fitted_fips=["50"]).read_text(encoding="utf-8")
     assert "</span>no forecast<" not in html2
 
 
@@ -203,7 +231,8 @@ def test_state_panel_and_national_card_use_the_hub_rate_change_rule():
     """The one-week-ahead state panel reads hub horizon 0, the same cuts as
     its map card, and the national card uses the hub's US population rather
     than a rounded constant."""
-    src = (Path(__file__).resolve().parents[2] / "app/ui/pipeline.py").read_text()
+    src = (Path(__file__).resolve().parents[2]
+           / "app/ui/pipeline.py").read_text(encoding="utf-8")
     assert 'pop_l = us_pop if fips_l == "US" else int(n2p.get(loc, 1e6))' \
         in src
     # both fan sources (PF samples, Groundhog grid) read horizon 0
@@ -220,7 +249,7 @@ def test_weekly_report_carries_the_ui_kit(tmp_path):
     control, whose aria-pressed the page script flips."""
     from app.core import html_page
     html = build_report("2098-01-03", {}, {}, {}, tmp_path / "r.html",
-                        national_map_html="<svg></svg>").read_text()
+                        national_map_html="<svg></svg>").read_text(encoding="utf-8")
     assert html_page.kit_css() in html and html_page.kit_js() in html
     assert "@font-face" in html and "data:font/woff2;base64," in html
     assert '[data-theme="dracula"]{--logo:url("data:image/svg+xml;base64,' \

@@ -28,7 +28,7 @@ RECORD = "archive.json"
 
 def _read(p: Path):
     try:
-        d = json.loads(Path(p).read_text())
+        d = json.loads(Path(p).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return d if isinstance(d, dict) else None
@@ -41,7 +41,7 @@ def read_record(d: Path) -> dict | None:
 
 def _write_json(p: Path, data: dict) -> None:
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=1))
+    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     os.replace(tmp, p)
 
 

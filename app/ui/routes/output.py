@@ -55,8 +55,8 @@ def _legacy_label(dir_name: str, d: Path) -> tuple:
         return "SIHRS filter, before the Oracle step", False
     if member == "analogue":
         try:
-            spec = _json.loads((Path(d) / "results.json").read_text()
-                               ).get("spec") or "{}"
+            spec = _json.loads((Path(d) / "results.json")
+                               .read_text(encoding="utf-8")).get("spec") or "{}"
             spec = _json.loads(spec) if isinstance(spec, str) else spec
             pools = ((spec or {}).get("extra") or {}).get("aux_pools")
         except Exception:
@@ -574,6 +574,20 @@ def output_reveal(path: str = Form(...)):
 _REPORT_REBUILD_FAILED: dict = {}
 
 
+def _stored_report_text(f: Path) -> str:
+    """A stored report's text: utf-8, as report_v2.build_report writes it
+    (the locale's code page, cp1252 on Windows, cannot read the page's
+    symbols). A report an earlier build wrote in that code page still
+    opens: read in it, whatever it cannot map replaced."""
+    raw = f.read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        import locale
+        return raw.decode(locale.getpreferredencoding(False),
+                          errors="replace")
+
+
 def _report_for_serving(dirpath: Path) -> str:
     """The stored weekly report, rebuilt in place from its inputs bundle
     when older than the builder sources (report_v2.builder_sources_mtime).
@@ -581,7 +595,7 @@ def _report_for_serving(dirpath: Path) -> str:
     (file untouched). Any failure serves the stored file: never a 500."""
     from app.core import report_v2
     f = Path(dirpath) / "report.html"
-    text = f.read_text()
+    text = _stored_report_text(f)
     try:
         src_m = report_v2.builder_sources_mtime()
         if f.stat().st_mtime >= src_m:
@@ -593,13 +607,13 @@ def _report_for_serving(dirpath: Path) -> str:
             return text
         try:
             import json as _json
-            bundle = _json.loads(b.read_text())
+            bundle = _json.loads(b.read_text(encoding="utf-8"))
             if bundle.get("version") not in \
                     report_v2.SUPPORTED_BUNDLE_VERSIONS:
                 raise ValueError("unknown report bundle version "
                                  f"{bundle.get('version')!r}")
             report_v2.render_bundle(bundle, f)
-            return f.read_text()
+            return f.read_text(encoding="utf-8")
         except Exception:
             _REPORT_REBUILD_FAILED[str(f)] = src_m
             return text

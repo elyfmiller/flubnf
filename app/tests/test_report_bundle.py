@@ -68,7 +68,7 @@ def test_build_path_writes_bundle_and_report(tmp_path):
     outcome, _ = _synth_run(tmp_path)
     b = tmp_path / report_v2.BUNDLE_NAME
     assert b.is_file()
-    bundle = json.loads(b.read_text())
+    bundle = json.loads(b.read_text(encoding="utf-8"))
     assert bundle["version"] == report_v2.BUNDLE_VERSION
     # v7: the as-of under its own name; reference_date is the hub's (+7)
     assert bundle["asof"] == "2098-01-03"
@@ -82,7 +82,7 @@ def test_build_path_writes_bundle_and_report(tmp_path):
     assert outcome["report_inputs_bytes"] == b.stat().st_size
     assert outcome["report_inputs_bytes"] < 256 * 1024
     # the rendered report is the current design with both drill-down pages
-    html = (tmp_path / "report.html").read_text()
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
     assert "<em>Flu</em>BNF" in html
     assert 'id="st-OH"' in html and 'id="st-US"' in html
     assert "Ohio: weekly admissions" in html
@@ -96,7 +96,7 @@ def test_fans_sit_on_the_submitted_target_weeks(tmp_path):
     those weeks: here the last observation is 2097-12-27, the as-of
     2098-01-03, and the four forecasts end 2098-01-10 to 2098-01-31."""
     _synth_run(tmp_path)
-    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text(encoding="utf-8"))
     for key in ("OH", "US"):
         fan = bundle["details"][key]["fan"]
         assert fan["observed_times"][-1] == "2097-12-27"
@@ -146,7 +146,7 @@ def test_stale_report_with_bundle_rebuilds_on_serve(tmp_path, monkeypatch):
     assert "<em>Flu</em>BNF" in r.text and 'id="st-OH"' in r.text
     assert calls == [1]
     # rebuilt IN PLACE: the next serve neither rebuilds nor transforms
-    disk = (d / "report.html").read_text()
+    disk = (d / "report.html").read_text(encoding="utf-8")
     assert "OLD FACE" not in disk
     assert (d / "report.html").stat().st_mtime >= \
         report_v2.builder_sources_mtime()
@@ -173,7 +173,7 @@ def test_rebuild_failure_serves_stored_file(tmp_path, monkeypatch):
     for _ in (1, 2):        # second hit exercises the tried-once memo
         r = client.get("/output/report?date=2098-01-03")
         assert r.status_code == 200 and "OLD FACE" in r.text
-    assert "OLD FACE" in (d / "report.html").read_text()
+    assert "OLD FACE" in (d / "report.html").read_text(encoding="utf-8")
     # an unknown future bundle version degrades the same way
     ui_output._REPORT_REBUILD_FAILED.clear()
     (d / report_v2.BUNDLE_NAME).write_text(json.dumps({"version": 99}))
@@ -310,7 +310,7 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     rid, res = ui_shared._latest_results()
     assert rid == w.name
     cards, meta = ui_home._outlook_cards(res, rid)
-    bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
+    bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text(encoding="utf-8"))
     assert bundle["cards_model"] == "pf"            # the PF colours the map
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
@@ -321,7 +321,8 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
                     # v6: no in-scope gap, every in-scope state forecast
                     "gap_fips": [], "no_forecast": {}}
     # the model label lands on BOTH surfaces
-    assert "Oracle SIHRS categorical forecast" in (w / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in \
+        (w / "report.html").read_text(encoding="utf-8")
     home = client.get("/")
     assert home.status_code == 200
     assert "Oracle SIHRS categorical forecast" in home.text
@@ -330,9 +331,10 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
 
 def test_pf_only_run_records_and_labels_pf(tmp_path):
     _synth_run(tmp_path)
-    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text(encoding="utf-8"))
     assert bundle["cards_model"] == "pf"
-    assert "Oracle SIHRS categorical forecast" in (tmp_path / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in \
+        (tmp_path / "report.html").read_text(encoding="utf-8")
 
 
 def test_pre_bundle_run_falls_back_and_labels_the_approximation(
@@ -357,7 +359,7 @@ def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):
     """A v1 bundle (no cards_model) rebuilds and wears the PF label."""
     d = _archived(tmp_path, monkeypatch)
     b = d / report_v2.BUNDLE_NAME
-    bundle = json.loads(b.read_text())
+    bundle = json.loads(b.read_text(encoding="utf-8"))
     bundle["version"] = 1
     bundle.pop("cards_model", None)
     b.write_text(json.dumps(bundle))

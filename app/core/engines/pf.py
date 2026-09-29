@@ -304,7 +304,7 @@ ANCHOR_NOTES_NAME = "pf_anchor_notes.json"
 def _read_dict(path: Path) -> dict:
     """A JSON object file; {} if absent, unreadable or not an object."""
     try:
-        d = json.loads(Path(path).read_text())
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return {}
     return d if isinstance(d, dict) else {}
@@ -729,7 +729,7 @@ def prepare(spec, workroot: Path) -> list:
             # newline="\n" on the write below: it is the last write of the
             # model, and Windows text mode would hand BNG2.pl a CRLF file.
             # (Universal-newline read_text needs no such care.)
-            txt = m.read_text().replace("begin parameters\n",
+            txt = m.read_text(encoding="utf-8").replace("begin parameters\n",
                                         DEFAULTS_2S if two_strain
                                         else DEFAULTS_BLOCK, 1)
             if fit_i0:
@@ -742,7 +742,7 @@ def prepare(spec, workroot: Path) -> list:
                 if n_sub != 1:
                     raise RuntimeError(f"{loc}: expected one i0 line in the "
                                        f"model, found {n_sub}")
-            m.write_text(txt, newline="\n")
+            m.write_text(txt, newline="\n", encoding="utf-8")
             if two_strain:
                 lines = ["# time H_weekly A_share_bin A_share_n"]
                 for t_off, v in zip(s.times, s.observed):
@@ -750,13 +750,13 @@ def prepare(spec, workroot: Path) -> list:
                     lines.append(f"{int(t_off)} {v:.6f} {a_k} {n_k}")
                 # newline pinned: PyBNF splits the .exp line-wise.
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
-                                              newline="\n")
+                                              newline="\n", encoding="utf-8")
             elif rep_rec and rep_rec["mode"] in ("lik", "both"):
                 lines = [f"# time H_weekly {_comp.COLUMN}"]
                 for t_off, v, c in zip(s.times, s.observed, rep_rec["row_scales"]):
                     lines.append(f"{int(t_off)} {v:.6f} {c:.6f}")
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
-                                              newline="\n")
+                                              newline="\n", encoding="utf-8")
             else:
                 write_exp(s, d / f"{sfx}.exp")
             try:
@@ -770,7 +770,9 @@ def prepare(spec, workroot: Path) -> list:
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
             # conf: newline="\n" (line-based reader); every path via
-            # conf_safe_path.
+            # conf_safe_path. Left in the locale's encoding: PyBNF opens its
+            # conf without naming one, so the two agree on a path that holds
+            # a letter outside ASCII.
             d_conf = conf_safe_path(d)
             # Pinned to the records' conventions, not engine defaults:
             # pf_bounds = reflect (engine default: logit-scale moves, a
@@ -850,11 +852,13 @@ initialization = {initialization_for(spec)}
         except Exception as e:
             failures[tag_of(loc)] = f"FAIL: prepare: {e}"[:200]
             errors.append(e)
-    (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
+    (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures),
+                                                  encoding="utf-8")
     if anchor_notes:
         # absent when every origin is where the trims put it (shipped runs)
-        (workroot / ANCHOR_NOTES_NAME).write_text(json.dumps(anchor_notes))
-    (workroot / "cells.json").write_text(json.dumps(cells))
+        (workroot / ANCHOR_NOTES_NAME).write_text(json.dumps(anchor_notes),
+                                                  encoding="utf-8")
+    (workroot / "cells.json").write_text(json.dumps(cells), encoding="utf-8")
     if failures and not cells:
         if len(errors) == 1:
             # a single location's error is clearer verbatim
@@ -961,7 +965,7 @@ def runner_popen_kwargs(base: dict | None = None,
 
 def _write_registry(path: Path, reg: dict) -> None:
     tmp = path.parent / (path.name + ".tmp")
-    tmp.write_text(json.dumps(reg))
+    tmp.write_text(json.dumps(reg), encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -974,7 +978,7 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
         path = Path(path) if path else RUNNER_PIDS_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            reg = json.loads(path.read_text())
+            reg = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             reg = {}
         if not isinstance(reg, dict):
@@ -1003,7 +1007,7 @@ def unrecord_runner_pids(procs, path: Path | None = None) -> None:
     other runs' entries stay. Never fatal."""
     try:
         path = Path(path) if path else RUNNER_PIDS_FILE
-        reg = json.loads(path.read_text())
+        reg = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(reg, dict):
             return
         for p in procs:
@@ -1055,7 +1059,7 @@ def _stderr_tail(err_files: list, n: int = 400) -> str:
     """The tail of the first runner stderr that has anything to say."""
     for p in err_files:
         try:
-            txt = Path(p).read_text(errors="replace").strip()
+            txt = Path(p).read_text(errors="replace", encoding="utf-8").strip()
         except Exception:
             continue
         if txt:
@@ -1068,7 +1072,7 @@ def _finished(status_files: list) -> int:
     n = 0
     for p in status_files:
         try:
-            d = json.loads(Path(p).read_text())
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
         except Exception:
             continue
         if isinstance(d, dict):
@@ -1187,12 +1191,12 @@ def execute(workroot: Path, timeout: float | None = None,
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
-    cells = json.loads((workroot / "cells.json").read_text())
+    cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     # prepare-stage failures belong to this run's status (-> pf_failures)
     prep_failures = read_prepare_failures(workroot)
     if not cells:
         # nothing to fit is not a failure; prepare's refusals still surface
-        out_json.write_text(json.dumps(prep_failures))
+        out_json.write_text(json.dumps(prep_failures), encoding="utf-8")
         return dict(prep_failures)
     shards = shard_cells(cells, width)
     sized = not timeout
@@ -1206,16 +1210,19 @@ def execute(workroot: Path, timeout: float | None = None,
     try:
         for i, shard in enumerate(shards):
             sj = workroot / f"pf_cells_{i}.json"
-            sj.write_text(json.dumps(shard))
+            sj.write_text(json.dumps(shard), encoding="utf-8")
             sf = workroot / f"pf_status_{i}.json"
             ef = workroot / f"pf_runner_{i}.err"
             runner = workroot / f"pf_runner_{i}.py"
+            # utf-8, which Python reads a script in whatever the locale:
+            # the paths in it may hold letters outside ASCII
             runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
                                              cells_json=str(sj),
                                              out_json=str(sf),
-                                             halt_path=str(stop)))
+                                             halt_path=str(stop)),
+                              encoding="utf-8")
             # stderr to a FILE: an undrained pipe would fill and hang the runner
-            fh = open(ef, "w")
+            fh = open(ef, "w", encoding="utf-8")
             handles.append(fh)
             # own session/process group: see runner_popen_kwargs
             procs.append(subprocess.Popen(
@@ -1251,7 +1258,7 @@ def execute(workroot: Path, timeout: float | None = None,
     merged = dict(prep_failures)
     for i, shard in enumerate(shards):
         try:
-            part = json.loads(status_files[i].read_text())
+            part = json.loads(status_files[i].read_text(encoding="utf-8"))
         except Exception:
             part = {}
         if not isinstance(part, dict):
@@ -1263,7 +1270,7 @@ def execute(workroot: Path, timeout: float | None = None,
                     f"FAIL: shard {i} reported no result for this cell "
                     f"({_stderr_tail([err_files[i]], 120) or 'no stderr'})"
                 )[:200]
-    out_json.write_text(json.dumps(merged))
+    out_json.write_text(json.dumps(merged), encoding="utf-8")
     return merged
 
 
@@ -1279,11 +1286,13 @@ def _cell_statuses(workroot: Path) -> dict:
     if done.is_dir():
         for p in done.glob("*.json"):
             try:
-                out[p.stem] = str(json.loads(p.read_text()).get("status", ""))
+                out[p.stem] = str(json.loads(p.read_text(encoding="utf-8"))
+                                  .get("status", ""))
             except Exception:
                 out[p.stem] = "unreadable marker"
     try:
-        merged = json.loads((workroot / "pf_status.json").read_text())
+        merged = json.loads(
+            (workroot / "pf_status.json").read_text(encoding="utf-8"))
         if isinstance(merged, dict):
             out.update({k: str(v) for k, v in merged.items()})
     except Exception:
@@ -1296,14 +1305,14 @@ def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
     try:
         out = Path(workroot) / "pf_status.json"
         try:
-            merged = json.loads(out.read_text())
+            merged = json.loads(out.read_text(encoding="utf-8"))
         except Exception:
             merged = {}
         if not isinstance(merged, dict):
             merged = {}
         merged[key] = msg[:200]
         tmp = out.parent / (out.name + ".tmp")
-        tmp.write_text(json.dumps(merged))
+        tmp.write_text(json.dumps(merged), encoding="utf-8")
         os.replace(tmp, out)
     except Exception:
         pass
@@ -1321,11 +1330,11 @@ def _save_cloud(workroot: Path, c: dict) -> None:
         return
     rec = Path(workroot) / STATE_MISSING_NAME
     try:
-        cur = json.loads(rec.read_text()) if rec.is_file() else {}
+        cur = json.loads(rec.read_text(encoding="utf-8")) if rec.is_file() else {}
     except Exception:
         cur = {}
     cur[c["key"]] = f"no cloud file at {src}"
-    rec.write_text(json.dumps(cur, sort_keys=True))
+    rec.write_text(json.dumps(cur, sort_keys=True), encoding="utf-8")
 
 
 def collect(workroot: Path) -> dict:
@@ -1335,7 +1344,7 @@ def collect(workroot: Path) -> dict:
     trajectory (empty, one row, ragged) is recorded as a failure and
     skipped, so one dead cell cannot cost the others their samples."""
     import numpy as np
-    cells = json.loads((workroot / "cells.json").read_text())
+    cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     status = _cell_statuses(workroot)
     by_loc: dict = {}
     for c in cells:

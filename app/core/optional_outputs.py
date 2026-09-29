@@ -67,7 +67,8 @@ def pf_weeks_dropped(workroot, spec, reported: dict, n2f: dict) -> dict:
     import json
     rec = {}
     try:
-        for c in json.loads((Path(workroot) / "cells.json").read_text()):
+        for c in json.loads(
+                (Path(workroot) / "cells.json").read_text(encoding="utf-8")):
             rec.setdefault(c.get("location"), int(c.get("weeks_dropped", 0) or 0))
     except Exception:
         pass

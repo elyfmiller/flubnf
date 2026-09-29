@@ -37,7 +37,7 @@ def _harvest_params(workroot: Path) -> dict:
     import json as _json
     import numpy as _np
     try:
-        cells = _json.loads((workroot / "cells.json").read_text())
+        cells = _json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
     pooled: dict = {}
@@ -46,7 +46,7 @@ def _harvest_params(workroot: Path) -> dict:
             loc = c["location"]
             runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
             for pfile in sorted(runs.glob("params_*.txt")):
-                with open(pfile) as fh:
+                with open(pfile, encoding="utf-8") as fh:
                     names = fh.readline().replace("#", " ").split()
                 arr = _np.atleast_2d(_np.loadtxt(str(pfile), skiprows=1))
                 if arr.size == 0 or arr.shape[1] != len(names):
@@ -159,7 +159,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     us_pop = (int(float(_us_row.population.iloc[0])) if len(_us_row)
               else 340_000_000)
     # cells.json is read only when there are fitted samples
-    cells = (_json.loads((workroot / "cells.json").read_text())
+    cells = (_json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
              if pf_samples else [])
     ens_q = ens_q or {}
     an_q = an_q or {}
@@ -606,7 +606,8 @@ def _run_all(spec: RunSpec) -> None:
             # a location missing from the file is named with its reason
             try:
                 import json as _jcf
-                _st = _jcf.loads((workroot / "pf_status.json").read_text())
+                _st = _jcf.loads((workroot / "pf_status.json")
+                                 .read_text(encoding="utf-8"))
                 fails.update({k: str(v) for k, v in _st.items()
                               if v != "ok" and k not in fails})
                 outcome["pf_failures"] = fails
@@ -650,7 +651,7 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf_skipped"] = ("analogue-only run"
                                      if spec.engine == "analogue"
                                      else "engine venv not installed (Tier A)")
-            (workroot / "cells.json").write_text("[]")
+            (workroot / "cells.json").write_text("[]", encoding="utf-8")
         # 1b. RESEARCH third member: the two-strain SIHRS (members=3, no UI
         # control), in a pf2s subdir of the same workroot (one row, one archive)
         pf2s_samples = {}
@@ -711,7 +712,8 @@ def _run_all(spec: RunSpec) -> None:
             _pf_flags = []
             try:
                 import json as _jfl
-                for c in _jfl.loads((workroot / "cells.json").read_text()):
+                for c in _jfl.loads((workroot / "cells.json")
+                                    .read_text(encoding="utf-8")):
                     if c.get("replicate") == 0:
                         _pf_flags += [{"location": c["location"], **r}
                                       for r in c.get("data_flags") or ()]
@@ -906,7 +908,7 @@ def _run_all(spec: RunSpec) -> None:
                 **({"pf2s": {loc: _qs_from_samples(s)
                              for loc, s in pf2s_samples.items()}}
                    if pf2s_samples else {}),
-            })}))
+            })}), encoding="utf-8")
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
         # 7. forecast archive: one folder per date, latest run wins; only the
         # shipped product's full run archives (audit rr-1)

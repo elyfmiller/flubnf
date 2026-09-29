@@ -74,7 +74,7 @@ def read_samples(fp: Path) -> dict:
     if fp.name.endswith(".gz"):
         with gzip.open(fp, "rt", encoding="utf-8") as f:
             return hz.record_to_canonical(json.load(f))
-    return hz.record_to_canonical(json.loads(fp.read_text()))
+    return hz.record_to_canonical(json.loads(fp.read_text(encoding="utf-8")))
 
 
 def read_week_samples(root: Path, asof: str) -> dict:
@@ -133,7 +133,7 @@ def write_week_quantiles(wd: Path, mq: dict) -> Path:
         {m: {loc: {h: {repr(float(L)): v for L, v in q.items()}
                    for h, q in qs.items()}
              for loc, qs in locs.items()}
-         for m, locs in hz.quantiles_to_stored(mq).items()}))
+         for m, locs in hz.quantiles_to_stored(mq).items()}), encoding="utf-8")
     os.replace(tmp, fp)
     return fp
 
@@ -147,7 +147,7 @@ def read_week_quantiles(wd: Path) -> dict | None:
     if not fp.is_file() or sp is None or fp.stat().st_mtime < sp.stat().st_mtime:
         return None
     try:
-        raw = json.loads(fp.read_text())
+        raw = json.loads(fp.read_text(encoding="utf-8"))
         return hz.quantiles_to_canonical(
             {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
                        for h, q in qs.items()}

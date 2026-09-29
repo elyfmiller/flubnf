@@ -276,7 +276,8 @@ def _live_model(live) -> str:
     if not live:
         return ""
     try:
-        return json.loads((RUNS / str(live) / "meta.json").read_text())["model"]
+        return json.loads((RUNS / str(live) / "meta.json")
+                          .read_text(encoding="utf-8"))["model"]
     except Exception:
         return ""
 
@@ -303,7 +304,8 @@ def delete_run(run_id: str, live=None) -> str:
     if live and run_id == live:
         raise SandboxError(f"sandbox run {run_id} is fitting; stop it first")
     try:
-        model = json.loads((d / "meta.json").read_text()).get("model", "")
+        model = json.loads((d / "meta.json").read_text(encoding="utf-8")
+                           ).get("model", "")
     except Exception:
         model = ""
     shutil.rmtree(d)
@@ -499,9 +501,9 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
                    season_start=ss, extra=extra)
     with tempfile.TemporaryDirectory() as tmp:
         m = materialize_model(s, pf_engine.TEMPLATE, Path(tmp) / "m.bngl", sfx)
-        cell_bngl = m.read_text().replace("begin parameters\n",
+        cell_bngl = m.read_text(encoding="utf-8").replace("begin parameters\n",
                                           pf_engine.DEFAULTS_BLOCK, 1)
-        exp = write_exp(s, Path(tmp) / "data.exp").read_text()
+        exp = write_exp(s, Path(tmp) / "data.exp").read_text(encoding="utf-8")
     where = f"dataset {ref['name']}, group {loc}" if ref else loc
     files = {
         "model.bngl": (f"# The Oracle SIHRS filter for {where} as of {fd}.\n"
@@ -679,7 +681,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
               "particles": particles, "last_observed": float(observed[-1]),
               "weeks_dropped": 0, "last_week_offset": int(times[-1]),
               "sandbox": True}]
-    (workroot / "cells.json").write_text(json.dumps(cells))
+    (workroot / "cells.json").write_text(json.dumps(cells), encoding="utf-8")
     meta = {"model": name,
             "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "particles": particles, "jitter": float(val["pf_jitter"]),
@@ -701,13 +703,13 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
         meta["source"] = src
         if len(src.get("dates") or []) == len(times):
             meta["dates"] = src["dates"]         # the plot's calendar axis
-    (workroot / "meta.json").write_text(json.dumps(meta))
+    (workroot / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return workroot
 
 
 def _write_meta(workroot: Path, meta: dict) -> None:
     tmp = Path(workroot) / "meta.json.tmp"
-    tmp.write_text(json.dumps(meta))
+    tmp.write_text(json.dumps(meta), encoding="utf-8")
     tmp.replace(Path(workroot) / "meta.json")
 
 
@@ -716,7 +718,7 @@ def run(workroot: Path, width: int = 1) -> dict:
     meta.json records the outcome either way: ok, failed, or stopped
     (stop() wrote the STOP flag execute polls)."""
     workroot = Path(workroot)
-    meta = json.loads((workroot / "meta.json").read_text())
+    meta = json.loads((workroot / "meta.json").read_text(encoding="utf-8"))
     meta["status"] = "running"
     _write_meta(workroot, meta)
     t0 = time.monotonic()
@@ -743,7 +745,7 @@ def stop(workroot: Path) -> None:
 
 def mark(workroot: Path, status: str) -> None:
     """Record a status on a run that never reached the engine."""
-    meta = json.loads((Path(workroot) / "meta.json").read_text())
+    meta = json.loads((Path(workroot) / "meta.json").read_text(encoding="utf-8"))
     meta["status"] = status
     _write_meta(workroot, meta)
 
@@ -788,7 +790,7 @@ def list_runs(runs_root: Path | None = None, *, model: str | None = None,
         return out
     for d in sorted((p for p in root.iterdir() if p.is_dir()), reverse=True):
         try:
-            meta = json.loads((d / "meta.json").read_text())
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
         except Exception:
             continue
         if model is not None and meta.get("model") != model:

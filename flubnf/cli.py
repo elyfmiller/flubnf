@@ -105,7 +105,7 @@ def _trace(msg: str) -> None:
             f".{int(t * 1000) % 1000:03d} [pid {os.getpid()} cli] {msg}")
     if path:
         try:
-            with open(path, "a") as fh:
+            with open(path, "a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
         except Exception:
             pass

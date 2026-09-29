@@ -78,7 +78,7 @@ def new_stamp(ds=None) -> str:
 
 def read_meta(d: Path) -> dict:
     try:
-        return json.loads((Path(d) / META).read_text())
+        return json.loads((Path(d) / META).read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -86,7 +86,7 @@ def read_meta(d: Path) -> dict:
 def write_meta(d: Path, meta: dict) -> None:
     p = Path(d) / META
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(meta, indent=1) + "\n")
+    tmp.write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     os.replace(tmp, p)
 
 

@@ -200,7 +200,7 @@ def screen_tables(screen_json) -> dict:
     """The screen's relwis_tables for LB, LB25 and NULL (and, from the B2
     screen, the shipped LBGH and LB25GH), as printed beside the reproduced
     numbers: common and native by scope, seed 1 and the per-seed list."""
-    d = json.loads(Path(screen_json).read_text())
+    d = json.loads(Path(screen_json).read_text(encoding="utf-8"))
     rt = d.get("relwis_tables") or {}
     seeds = [str(s) for s in d.get("seeds") or []]
     out = {"seeds": seeds, "frozen_document_sha256": d.get("frozen_document_sha256"),

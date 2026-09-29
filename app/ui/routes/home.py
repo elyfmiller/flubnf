@@ -56,7 +56,7 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
         try:
             b = APP_STATE / "workroots" / rid / report_v2.BUNDLE_NAME
             if b.is_file():
-                bundle = _json.loads(b.read_text())
+                bundle = _json.loads(b.read_text(encoding="utf-8"))
                 if (bundle.get("version")
                         in report_v2.SUPPORTED_BUNDLE_VERSIONS):
                     cards = {c["fips"]: c
@@ -154,7 +154,7 @@ def _outlook_models(rid: str | None) -> dict:
         b = APP_STATE / "workroots" / rid / report_v2.BUNDLE_NAME
         if not b.is_file():
             return {}
-        bundle = _json.loads(b.read_text())
+        bundle = _json.loads(b.read_text(encoding="utf-8"))
         if bundle.get("version") not in report_v2.SUPPORTED_BUNDLE_VERSIONS:
             return {}
         out = {}
@@ -230,7 +230,7 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         from app.core.runs import APP_STATE
         try:
             res = _json.loads((APP_STATE / "workroots" / rid
-                               / "results.json").read_text())
+                               / "results.json").read_text(encoding="utf-8"))
         except Exception:
             res = None
     # latest run's outlook, else the empty-country silhouette

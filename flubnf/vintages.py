@@ -61,7 +61,7 @@ def manifest(vintages_dir=None) -> dict:
     if not mp.is_file():
         return {"layout_version": LAYOUT_VERSION, "vintages": [],
                 "no_data_weeks": []}
-    man = json.loads(mp.read_text())
+    man = json.loads(mp.read_text(encoding="utf-8"))
     if int(man.get("layout_version") or 0) != LAYOUT_VERSION:
         raise ValueError(
             f"{mp}: layout_version {man.get('layout_version')!r} is not "
