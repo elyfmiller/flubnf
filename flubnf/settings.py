@@ -52,7 +52,16 @@ def _path(env: str, *fallbacks: str) -> Path:
 
 
 def _checkout(env: str, name: str) -> Path:
-    """Where a git checkout lives when `env` is unset.
+    """`env` when it is set, else where the checkout lives by default
+    (_default_checkout)."""
+    v = os.environ.get(env)
+    if v:
+        return Path(v).expanduser()
+    return _default_checkout(name)
+
+
+def _default_checkout(name: str) -> Path:
+    """Where a git checkout lives when no variable names it.
 
     POSIX: ~/GitHub/<name>, because macOS keeps FluBNF.app out of
     Documents (FluBNF.command moves an older checkout there). Windows:
@@ -63,9 +72,6 @@ def _checkout(env: str, name: str) -> Path:
     Documents path still wins when the new one does not exist; nothing here
     moves a directory (docs/WINDOWS.md).
     """
-    v = os.environ.get(env)
-    if v:
-        return Path(v).expanduser()
     legacy = _home() / "Documents" / "GitHub" / name
     if not _windows():
         home = _home() / "GitHub" / name
@@ -126,13 +132,49 @@ PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
                   "~/.venvs/flubnf-engine/Scripts/python.exe")
 
 
+def _holds_engine(p: Path) -> bool:
+    """A git checkout or an unpacked archive: the test both launchers apply
+    (FluBNF.bat, FluBNF.command), never the bare folder."""
+    try:
+        return (p / ".git").exists() or (p / "pybnf" / "pf.py").is_file()
+    except OSError:
+        return False
+
+
+def _engine_search(names) -> list:
+    """Every place a launcher looks for the engine, in its order:
+    FluBNF.bat tries each name under Documents\\GitHub, then under
+    %LOCALAPPDATA%\\FluBNF; FluBNF.command tries every name under ~/GitHub,
+    then under ~/Documents/GitHub."""
+    docs = _home() / "Documents" / "GitHub"
+    if _windows():
+        local = os.environ.get("LOCALAPPDATA")
+        base = (Path(local) if local else _home() / "AppData" / "Local") \
+            / "FluBNF"
+        return [root / n for n in names for root in (docs, base)]
+    return [root / n for root in (_home() / "GitHub", docs) for n in names]
+
+
 def _first_checkout(env: str, *names: str) -> Path:
-    """The first of several checkout names that exists (roots as in
-    _checkout), else the first name's default. The PyBNF fork is PyBNF-pf
-    on the development host and PyBNF-Private (its repo name) elsewhere."""
-    if os.environ.get(env):
-        return _checkout(env, names[0])
-    cands = [_checkout(env, n) for n in names]
+    """The engine folder: `env` when it holds an engine, else the first of
+    several checkout names that holds one (roots as in _checkout), else
+    `env` or the first name's default. The PyBNF fork is PyBNF-pf on the
+    development host and PyBNF-Private (its repo name) elsewhere.
+
+    A pin to a folder with no engine is passed over as the launchers pass
+    it over: an older Windows setup recorded its default before anything
+    was installed, and FluBNF.bat unpacks the lab's archive elsewhere, so
+    `flubnf doctor` in a new window looked in an empty folder while fits
+    ran from the real one."""
+    pinned = _checkout(env, names[0]) if os.environ.get(env) else None
+    if pinned is not None and _holds_engine(pinned):
+        return pinned
+    for c in _engine_search(names):
+        if _holds_engine(c):
+            return c
+    if pinned is not None:
+        return pinned
+    cands = [_default_checkout(n) for n in names]
     for c in cands:
         if c.exists():
             return c

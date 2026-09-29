@@ -202,9 +202,10 @@ def test_an_unpacked_archive_counts_as_an_engine_on_disk():
 
 
 def test_setup_clears_the_launchers_failed_attempt_record():
-    """FluBNF.bat's message says setup.ps1 starts a failed install again;
-    only deleting its record does that."""
-    assert 'set "ATTEMPT=.venv\\engine-attempt.txt"' in BAT
+    """setup.ps1 deletes FluBNF.bat's failed-install record (the same file,
+    .venv\\engine-attempt.txt in the FluBNF folder), so the next open of
+    FluBNF.bat tries the install again."""
+    assert 'set "ATTEMPT=%CD%\\.venv\\engine-attempt.txt"' in BAT
     body = _body("Clear-EngineAttempt")
     assert 'Join-Path $VenvDir "engine-attempt.txt"' in body
     assert "Remove-Item -LiteralPath $stamp" in body

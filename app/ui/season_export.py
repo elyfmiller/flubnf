@@ -11,7 +11,7 @@ stylesheet, script, font and mark into the page).
 
 app/core/report_season.build_season_report caches the result beside the
 season's weeks. A build can take a while (the season scored first, then
-every week), so the page's Download report and Reveal in Finder run it as
+every week), so the page's Download report and Show in folder run it as
 a background job (report_job) and show its progress; the download itself
 then serves the finished file.
 """

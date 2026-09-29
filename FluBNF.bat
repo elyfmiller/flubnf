@@ -301,10 +301,10 @@ rem github.com (setup.ps1 does, once, with a diagnosis). It installs from an
 rem offline file saved where students save files: a git bundle
 rem (git bundle create pybnf.bundle feature/particle-filter) or the
 rem pybnf-pf-<sha>.tar.gz from scripts/cut_engine_archive.sh.
-rem Checkout order mirrors setup.ps1's Resolve-Checkout exactly (a mismatch
-rem installs an engine the other cannot find). A location counts if it has
-rem \.git or pybnf\pf.py, never if merely present: the bundle clone needs an
-rem empty destination.
+rem Checkout order mirrors setup.ps1's Resolve-PyBnf and flubnf\settings.py
+rem exactly (a mismatch installs an engine the others cannot find). A
+rem location counts if it has \.git or pybnf\pf.py, never if merely present:
+rem the bundle clone needs an empty destination.
 rem What .flubnf.env.cmd or the User environment recorded, kept before this
 rem block sets its own: :recordengine writes a verified engine back.
 set "PYBNFREC=%FLUBNF_PYBNF%"
@@ -314,8 +314,9 @@ if not defined PYBNFDIR goto :pybnfprobe
 rem A trailing backslash (setx FLUBNF_PYBNF "D:\engines\PyBNF-pf\") would
 rem escape the closing quote of every "%PYBNFDIR%" handed to a program.
 if "%PYBNFDIR:~-1%"=="\" set "PYBNFDIR=%PYBNFDIR:~0,-1%"
-rem Honour the pin only if an engine is there: setup.ps1 records its DEFAULT
-rem before anything exists, so a dangling pin is the normal first-run state.
+rem Honour the pin only if an engine is there: setup.ps1 from before this
+rem check recorded its DEFAULT before anything existed, so a dangling pin is
+rem still common on machines set up then.
 if exist "%PYBNFDIR%\.git" goto :pybnfresolved
 if exist "%PYBNFDIR%\pybnf\pf.py" goto :pybnfresolved
 :pybnfprobe

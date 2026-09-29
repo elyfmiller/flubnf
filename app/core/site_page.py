@@ -973,7 +973,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         {" and ".join(dict.fromkeys(_e(s["origin"]) for s in seasons)) or "no season"}
         data under the console's own state. Engines: {_e(versions)}.
         Engine versions are self-reported by the builder's install; the
-        sealed record's engine pin is bngsim 0.15.1 per setup_engine.sh,
+        sealed record's engine pin is bngsim 0.15.1, pinned by every engine
+        installer,
         and a locally built engine can self-report an older version
         string.</p>
         </div>

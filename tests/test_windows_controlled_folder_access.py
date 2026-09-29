@@ -141,6 +141,82 @@ def test_the_environment_variable_still_wins_everywhere(monkeypatch, tmp_path):
         tmp_path / "elsewhere")
 
 
+def _engine_folder(monkeypatch, *, windows: bool, home: Path, pin=None):
+    """settings._first_checkout for the engine, the platform and profile
+    faked as in _checkout above."""
+    from flubnf import settings
+
+    monkeypatch.setattr(settings, "_windows", lambda: windows)
+    monkeypatch.setattr(settings, "_home", lambda: home)
+    monkeypatch.setenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
+    if pin is None:
+        monkeypatch.delenv("FLUBNF_PYBNF", raising=False)
+    else:
+        monkeypatch.setenv("FLUBNF_PYBNF", str(pin))
+    return settings._first_checkout("FLUBNF_PYBNF", "PyBNF-pf",
+                                    "PyBNF-Private")
+
+
+def _unpacked(folder: Path) -> Path:
+    (folder / "pybnf").mkdir(parents=True)
+    (folder / "pybnf" / "pf.py").write_text("")
+    return folder
+
+
+def test_a_pin_to_a_folder_with_no_engine_is_passed_over(monkeypatch,
+                                                         tmp_path):
+    """An older setup.ps1 recorded FLUBNF_PYBNF=...\\PyBNF-pf before any
+    engine existed; FluBNF.bat then unpacked the lab's archive into
+    ...\\PyBNF-Private. The console and `flubnf doctor` in a new window
+    must find the engine the launcher found, not the empty pin."""
+    home = tmp_path / "profile"
+    local = home / "AppData" / "Local" / "FluBNF"
+    engine = _unpacked(local / "PyBNF-Private")
+    got = _engine_folder(monkeypatch, windows=True, home=home,
+                         pin=local / "PyBNF-pf")
+    assert got == engine, got
+
+
+def test_a_pin_that_holds_an_engine_still_wins(monkeypatch, tmp_path):
+    home = tmp_path / "profile"
+    _unpacked(home / "AppData" / "Local" / "FluBNF" / "PyBNF-Private")
+    mine = tmp_path / "D" / "engines" / "PyBNF-pf"
+    (mine / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=True, home=home,
+                          pin=mine) == mine
+
+
+def test_a_pin_with_no_engine_anywhere_is_what_the_messages_name(
+        monkeypatch, tmp_path):
+    home = tmp_path / "profile"
+    pin = tmp_path / "unplugged" / "PyBNF-pf"
+    assert _engine_folder(monkeypatch, windows=True, home=home,
+                          pin=pin) == pin
+
+
+def test_windows_looks_under_both_roots_for_each_name(monkeypatch, tmp_path):
+    """FluBNF.bat's order: an empty Documents\\GitHub\\PyBNF-pf does not
+    hide the engine at %LOCALAPPDATA%\\FluBNF\\PyBNF-pf."""
+    home = tmp_path / "profile"
+    (home / "Documents" / "GitHub" / "PyBNF-pf").mkdir(parents=True)
+    engine = home / "AppData" / "Local" / "FluBNF" / "PyBNF-pf"
+    (engine / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=True, home=home) == engine
+    # nothing anywhere: the default, outside Documents
+    assert _engine_folder(monkeypatch, windows=True,
+                          home=tmp_path / "empty") == (
+        tmp_path / "empty" / "AppData" / "Local" / "FluBNF" / "PyBNF-pf")
+
+
+def test_macos_looks_in_github_before_documents(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    old = _unpacked(home / "Documents" / "GitHub" / "PyBNF-Private")
+    assert _engine_folder(monkeypatch, windows=False, home=home) == old
+    new = home / "GitHub" / "PyBNF-Private"
+    (new / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=False, home=home) == new
+
+
 def test_setup_ps1_no_longer_defaults_a_checkout_into_documents():
     for leaf in ("FluSight-forecast-hub", "PyBNF-pf"):
         assert f'Join-Path $HOME "Documents\\GitHub\\{leaf}"' not in PS1, (
