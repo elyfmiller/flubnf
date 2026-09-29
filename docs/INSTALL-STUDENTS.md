@@ -73,10 +73,11 @@ seconds. **You do not need to run
 **macOS, keep it in the Dock**: while the console window is open,
 right-click FluBNF in the Dock and choose **Options > Keep in Dock**. That
 icon opens FluBNF from then on, with no Terminal window unless there is
-something to show you (setup work, an engine install, an error). The first
-time, macOS may ask whether FluBNF can use your Documents folder; click
-Allow. Leave `FluBNF.app` in the FluBNF folder: a copy dragged to
-Applications cannot start.
+something to show you (setup work, an engine install, an error). Keep the
+FluBNF folder out of Documents, Desktop and Downloads (`~/GitHub` is where
+it goes): macOS does not let FluBNF.app open anything there. An older copy
+in Documents moves itself the next time it opens. Leave `FluBNF.app` in the
+FluBNF folder: a copy dragged to Applications cannot start.
 
 ---
 

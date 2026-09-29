@@ -12,14 +12,17 @@ PYBNF_REMOTE="${FLUBNF_PYBNF_REMOTE:-https://github.com/elyfmiller/PyBNF-Private
 # setup.ps1: an existing PyBNF-pf (the dev host's name only), then an existing
 # PyBNF-Private (the repo's real name and the archive's prefix), else create
 # PyBNF-Private. Test the directory, not .git: an unpacked archive has none.
+# ~/GitHub first; ~/Documents/GitHub is where older setups put them (macOS
+# keeps FluBNF.app out of Documents, and FluBNF.command moves them).
+PYBNF=""
 if [ -n "${FLUBNF_PYBNF:-}" ]; then
   PYBNF="$FLUBNF_PYBNF"
-elif [ -d "$HOME/Documents/GitHub/PyBNF-pf" ]; then
-  PYBNF="$HOME/Documents/GitHub/PyBNF-pf"
-elif [ -d "$HOME/Documents/GitHub/PyBNF-Private" ]; then
-  PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
 else
-  PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
+  for c in "$HOME/GitHub/PyBNF-pf" "$HOME/GitHub/PyBNF-Private" \
+           "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/GitHub/PyBNF-Private"; do
+    [ -d "$c" ] && { PYBNF="$c"; break; }
+  done
+  [ -n "$PYBNF" ] || PYBNF="$HOME/GitHub/PyBNF-Private"
 fi
 BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
@@ -342,7 +345,7 @@ if ! have_pybnf; then
     fi
     say "is the fork already on this machine somewhere we do not look?"
     # List as strays only checkouts the automatic search would MISS.
-    SEARCHED="$HOME/Documents/GitHub/PyBNF-Private $HOME/Documents/GitHub/PyBNF-pf $HOME/Documents/PyBNF-Private $HOME/PyBNF-Private"
+    SEARCHED="$HOME/GitHub/PyBNF-Private $HOME/GitHub/PyBNF-pf $HOME/Documents/GitHub/PyBNF-Private $HOME/Documents/GitHub/PyBNF-pf $HOME/Documents/PyBNF-Private $HOME/PyBNF-Private"
     STRAY=""; INPATH=""
     for g in $(find "$HOME" -maxdepth 5 -type d -name '.git' -path '*PyBNF*' 2>/dev/null | head -8); do
       d=$(dirname "$g")
@@ -363,7 +366,7 @@ if ! have_pybnf; then
         warn "  unset FLUBNF_PYBNF; ./setup_engine.sh   (or double-click SetupEngine.command)"
       else
         warn "This script looks at PyBNF-pf and PyBNF-Private under"
-        warn "~/Documents/GitHub only; the launchers look wider. Point it"
+        warn "~/GitHub and ~/Documents/GitHub only; the launchers look wider. Point it"
         warn "straight at the one above and it is done:"
         warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh"
         warn "  (or double-click SetupEngine.command, which searches them all)"

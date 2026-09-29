@@ -6,9 +6,19 @@ ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-HUB="${FLUBNF_HUB:-$HOME/Documents/GitHub/FluSight-forecast-hub}"
+# Checkouts live in ~/GitHub: macOS keeps FluBNF.app out of Documents
+# (FluBNF.command moves an older setup's). One already in ~/Documents/GitHub,
+# and none in ~/GitHub, is used where it is.
+checkout() {
+  if [ ! -e "$HOME/GitHub/$1" ] && [ -e "$HOME/Documents/GitHub/$1" ]; then
+    printf '%s' "$HOME/Documents/GitHub/$1"
+  else
+    printf '%s' "$HOME/GitHub/$1"
+  fi
+}
+HUB="${FLUBNF_HUB:-$(checkout FluSight-forecast-hub)}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
-PYBNF="${FLUBNF_PYBNF:-$HOME/Documents/GitHub/PyBNF-pf}"
+PYBNF="${FLUBNF_PYBNF:-$(checkout PyBNF-pf)}"
 
 say "python"
 # PATH first, then where macOS Pythons live off PATH: a double-clicked .command

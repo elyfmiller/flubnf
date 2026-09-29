@@ -77,7 +77,7 @@ import` takes the same file or folder.
 Requirements: Python 3.11 or newer, git, and about 150 MB for the sparse
 hub clone. Setup installs BioNetGen itself.
 
-macOS, one line (clones to ~/Documents/GitHub/flubnf, runs setup, prints
+macOS, one line (clones to ~/GitHub/flubnf, runs setup, prints
 how to launch):
 
     curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | bash
