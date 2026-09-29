@@ -100,16 +100,21 @@ receive a small engine archive; saved in Downloads, it is installed the
 next time the app opens. The full procedure, including the GitHub routes,
 is docs/ENGINE.md; the student walkthrough is docs/INSTALL-STUDENTS.md.
 
-A machine whose copy is stale or broken reinstalls from scratch with one
-line, after the engine archive is saved in Downloads and any older
-`pybnf-pf-*.tar.gz` downloads are deleted. It sets the old install aside
-with a date stamp (nothing is deleted), moves every other engine file
-(`pybnf*.tar.gz`, `pybnf*.bundle`) out of the folders setup searches into
-`Downloads/old-engine-files`, installs fresh, installs the engine from the
-archive it found, and opens the console. A machine that is already current
-is left alone, and so is a developer's checkout with uncommitted work:
+On macOS and Linux, a machine whose copy is stale or broken reinstalls from
+scratch with one line, after the engine archive is saved in Downloads and
+any older `pybnf-pf-*.tar.gz` downloads are deleted. It sets the old
+install aside with a date stamp (nothing is deleted), moves every other
+engine file (`pybnf*.tar.gz`, `pybnf*.bundle`) out of the folders setup
+searches into `Downloads/old-engine-files`, installs fresh, installs the
+engine from the archive it found, and opens the console. A machine that is
+already current is left alone, and so is a developer's checkout with
+uncommitted work:
 
     curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | bash
+
+That line does not run on Windows. There, a reset in place, which keeps
+the runs, and a reinstall from scratch are a few Command Prompt lines:
+"Resetting or reinstalling (Windows)" in docs/INSTALL-STUDENTS.md.
 
 `flubnf doctor` reports which externals a machine can see. Each resolves
 from `flubnf/settings.py` and can be pointed elsewhere by environment

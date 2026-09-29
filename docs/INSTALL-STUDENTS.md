@@ -64,7 +64,8 @@ folder, if that is where it ended up.)
 * **Windows**: double-click `FluBNF.bat`.
 
 That is the whole install. The first launch sets everything up, which takes a
-few minutes, then the console opens in your browser. On Windows it may ask a
+few minutes, then the console opens in a window of its own (or a browser tab,
+where that cannot be shown). On Windows it may ask a
 question or two along the way (fetching the FluSight data, installing
 Strawberry Perl); left alone, each answers itself with yes after twenty
 seconds. **You do not need to run
@@ -119,12 +120,24 @@ original name, then open FluBNF again.
 If it still says that: on macOS, double-click **`SetupEngine.command`** in the
 FluBNF folder. It does only the engine step, prints a section called **"what
 this machine can see"** naming the actual cause, and installs the engine when
-it can find the file. On Windows, run this in Command Prompt from the FluBNF
-folder:
+it can find the file.
+
+On Windows, read the `FluBNF.bat` window: the lines above
+`Engine setup did not finish` name the cause (a dropped network, a Python
+that is too new, a download that did not finish). Every open tries again
+by itself while the engine file is in Downloads, so deal with the cause and
+open FluBNF again; there is nothing to reset.
+[docs/WINDOWS.md](WINDOWS.md#if-the-install-fails) lists the usual causes.
+To see what the machine itself can see, run these two lines in Command
+Prompt (the first is your FluBNF folder):
 
 ```
+cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
 powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
 ```
+
+It names the engine file FluBNF will install from, or the folders it looked
+in when it found none.
 
 Either way, if it does not finish, send Ely what it prints.
 
@@ -189,6 +202,89 @@ curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh |
 
 ---
 
+## Resetting or reinstalling (Windows)
+
+The line above is for macOS and Linux only. On Windows there are two
+routes; try the first, which keeps your runs.
+
+**Reset in place.** This makes your FluBNF folder match the lab's copy
+exactly. Close FluBNF first (close its window). Open Command Prompt (Start,
+type `cmd`) and run these three lines, one at a time:
+
+```
+cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
+git fetch origin
+git reset --hard origin/main
+```
+
+If your FluBNF folder is somewhere else, for example
+`Documents\GitHub\flubnf`, put that folder in the first line instead and keep
+the quotation marks. Then double-click `FluBNF.bat`.
+
+The reset throws away edits to FluBNF's own files and any commits made in the
+folder. It keeps everything git does not track: `app\state` (your runs,
+uploaded datasets and retrospective seasons), `.venv`, the engine and the
+FluSight data. If FluBNF said `origin/<branch> no longer exists`, the folder
+is on a branch other than `main`: run `git checkout -f main` before the
+reset line.
+
+This is the fix when FluBNF says it cannot fast-forward and you never
+committed anything yourself. Main's history was rewritten once, in September
+2026: the commits made from early September up to the rewrite were given new
+ids. A FluBNF folder that updated itself in between cannot fast-forward past
+that, and on every open it says `this clone has N commit(s) origin does not`
+("throw this clone's work away"), or just
+`offline or local changes - running as-is`, and keeps running the old
+console. Nothing of yours is lost: those commits are the lab's own under
+their old ids. Do not delete the folder and clone again instead: that loses
+`app\state`, and leaves the old engine, which lives outside the folder,
+exactly where it was.
+
+**Reinstalling from scratch.** For when the reset is not enough, or Ely asks
+everyone to reinstall. Nothing is deleted until you choose to delete it.
+
+1. Close FluBNF.
+2. Rename your FluBNF folder, every engine folder and the engine's Python
+   environment with `-old` on the end. In Command Prompt:
+
+   ```
+   ren "%LOCALAPPDATA%\FluBNF\flubnf" flubnf-old
+   ren "%LOCALAPPDATA%\FluBNF\PyBNF-Private" PyBNF-Private-old
+   ren "%LOCALAPPDATA%\FluBNF\PyBNF-pf" PyBNF-pf-old
+   ren "%USERPROFILE%\Documents\GitHub\PyBNF-Private" PyBNF-Private-old
+   ren "%USERPROFILE%\Documents\GitHub\PyBNF-pf" PyBNF-pf-old
+   ren "%USERPROFILE%\.venvs\flubnf-engine" flubnf-engine-old
+   ```
+
+   The first line is your FluBNF folder (change it if yours is elsewhere),
+   the next four are the places the engine can be, and the last is its
+   Python environment. If you ever pointed `FLUBNF_PYBNF` at a folder of
+   your own, rename that one too. A line for a folder you do not have says
+   `The system cannot find the file specified`, which is fine. If one says
+   `A duplicate file name exists`, an `-old` copy is there from before: add
+   the date, as in `flubnf-old-2026-09-29`. `Access is denied` means
+   something still has the folder open; close FluBNF and any window inside
+   that folder.
+3. Delete older `pybnf-pf-….tar.gz` and `pybnf….bundle` files from
+   Downloads, Desktop and Documents, and save the engine file you were sent
+   in Downloads (Step 2), so it is the only one on the machine.
+4. Get FluBNF again, in Command Prompt:
+
+   ```
+   git clone https://github.com/elyfmiller/flubnf "%LOCALAPPDATA%\FluBNF\flubnf"
+   ```
+
+5. Double-click `FluBNF.bat` in the new folder. The first run sets
+   everything up again and installs the engine from the file; the window
+   ends as in "How to tell it worked".
+
+Your old runs stay in `flubnf-old`, and the new console starts without them.
+To bring your uploaded datasets across, close FluBNF and copy the folder
+`app\state\datasets` from `flubnf-old` to the same place in `flubnf`. Once
+the new console works, the `-old` folders can go in the Recycle Bin.
+
+---
+
 ## Notes
 
 The engine you were sent is a **snapshot**, so it does not update itself
@@ -208,14 +304,21 @@ its own next time. Local edits to tracked files are set aside into
 `git stash` and the update goes through; `git stash list` in the FluBNF
 folder shows them and `git stash pop` puts them back. Local commits are left
 alone, and the launcher prints the command that would discard them rather
-than running it. To make a machine match the lab whatever is on it, from
-Terminal in the FluBNF folder:
+than running it. Commits the launcher counts as this folder's own may not
+be: main's history was rewritten once, in September 2026, and in a folder
+that updated between early September and the rewrite, the commits it counts
+are the lab's own under their old ids ("Resetting or reinstalling
+(Windows)" above has the details, which hold on macOS too). To make a
+machine match the lab
+whatever is on it, from Terminal in the FluBNF folder:
 
     git fetch origin && git reset --hard origin/main
 
-That throws away local edits and local commits in the clone. It touches
-nothing outside it: the virtual environment, the engine, `app/state` and the
-data clone are all untracked and stay exactly as they are.
+(On Windows, the Command Prompt lines are under "Resetting or reinstalling
+(Windows)" above.) That throws away local edits and local commits in the
+clone. It touches nothing outside it: the virtual environment, the engine,
+`app/state` and the data clone are all untracked and stay exactly as they
+are.
 
 Each snapshot carries a `VERSION` file naming the exact commit it came from,
 and FluBNF prints that on every setup. If two people's forecasts ever disagree,
