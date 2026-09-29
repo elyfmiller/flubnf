@@ -43,6 +43,15 @@ console. When it cannot update, it says why and prints the commands that
 would do it; see
 [When FluBNF.bat cannot update itself](#when-flubnfbat-cannot-update-itself).
 
+The first open also puts FluBNF where Windows finds it, since the folder
+sits in hidden AppData: a Start menu entry named FluBNF (press the Windows
+key and type `FluBNF`; right-click it to pin it to the taskbar or to
+Start) and, once per Windows account, the same shortcut on the Desktop.
+A deleted Desktop shortcut is not made again. Both run `FluBNF.bat` in
+this folder; open FluBNF from a second clone, or after moving this one,
+and the Start menu entry follows it. `scripts\windows\shortcuts.ps1`
+makes them, and `set FLUBNF_SHORTCUTS=off` before launching skips it.
+
 For the particle-filter engine, save the lab's `pybnf-pf-<sha>.tar.gz` in
 your Downloads folder before that double-click, or before any later one:
 `FluBNF.bat` installs it. The next section has the details.

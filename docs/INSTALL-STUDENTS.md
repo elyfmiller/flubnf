@@ -61,7 +61,13 @@ folder, if that is where it ended up.)
 
 * **macOS**: double-click `FluBNF.command`. The first time only, right-click it
   and choose **Open**, because the app is not signed by Apple.
-* **Windows**: double-click `FluBNF.bat`.
+* **Windows**: double-click `FluBNF.bat` (in File Explorer, paste
+  `%LOCALAPPDATA%\FluBNF\flubnf` into the address bar to get there). You
+  only do this once: the first open adds **FluBNF to the Start menu**, so from
+  then on you press the Windows key, type `FluBNF` and press Enter. Right-click
+  it there and choose **Pin to taskbar** to keep it one click away. A FluBNF
+  shortcut also appears on your Desktop; delete it if you do not want it,
+  and it will not come back.
 
 That is the whole install. The first launch sets everything up, which takes a
 few minutes, then the console opens in a window of its own (or a browser tab,
