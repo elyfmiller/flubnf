@@ -93,6 +93,13 @@ fi
 # ~/GitHub with the hub and PyBNF beside it, once, and starts again from
 # its new folder (scripts/macos/move_home.sh). Headless, that is work to
 # watch.
+# Every open first points the recorded paths (the venv, .flubnf.env) at
+# where things are now, so a clone moved by hand, or a move cut short, is
+# repaired too. Headless, one it cannot finish is work to watch.
+if [ -f scripts/macos/move_home.sh ]; then
+  /bin/bash scripts/macos/move_home.sh --relink
+  [ $? -ne 3 ] || needs_terminal "FluBNF's venv needs reinstalling after a move"
+fi
 if [ "$(uname -s)" = Darwin ] && [ -f scripts/macos/move_home.sh ] \
    && /bin/bash scripts/macos/move_home.sh --check; then
   needs_terminal "FluBNF moves out of Documents"
