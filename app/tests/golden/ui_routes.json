@@ -73,6 +73,8 @@
   ["GET", "/api/retro/{season}/playback/{asof}", "api_retro_playback", "APIRoute", "console"],
   ["GET", "/api/retro/{season}/mapswap/{asof}", "api_retro_mapswap", "APIRoute", "console"],
   ["GET", "/retro/{season}/report", "retro_season_report", "APIRoute", "console"],
+  ["POST", "/api/retro/{season}/report_job", "api_retro_report_job_start", "APIRoute", "console"],
+  ["GET", "/api/retro/{season}/report_status", "api_retro_report_status", "APIRoute", "console"],
   ["GET", "/api/retro/{season}/report_path", "api_retro_report_path", "APIRoute", "console"],
   ["GET", "/retro/{season}/export", "retro_season_export", "APIRoute", "console"],
   ["GET", "/api/retro/{season}/export_path", "api_retro_export_path", "APIRoute", "console"],

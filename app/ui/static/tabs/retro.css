@@ -61,6 +61,10 @@
 .rt-settings > .tip{flex:none;margin-top:.15rem}
 .rt-exp{display:inline-flex;align-items:center;gap:.25rem}
 .rt-exp-out{font-size:var(--fs-label)}
+/* the progress of a file being prepared (report, bundle): a line of its
+   own under the buttons */
+.rs-acts .rs-prog{flex-basis:100%;min-width:min(22rem,100%)}
+.rs-acts .rs-prog .uk-progress{margin:.2rem 0 0}
 /* a verdict tile: its title and "?" on one line, the figure with its
    verdict icon, the second lines wrapping inside a narrow tile */
 .rt-tile-h{display:flex;align-items:flex-start;flex-wrap:nowrap;

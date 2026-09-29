@@ -334,8 +334,8 @@ def test_latest_run_card_links_report_and_files():
 
 def test_download_season_report_is_a_gold_button():
     html = _season()
-    assert re.search(r'<a href="/retro/2098-99/report" download>'
-                     r'<button class="gold"', html)
+    assert re.search(r'<a href="/retro/2098-99/report" download id="dl-report"'
+                     r'[^>]*><button class="gold"', html)
     # Reveal stays quiet beside it
     assert 'class="quiet" id="rev-report"' in html
 

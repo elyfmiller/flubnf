@@ -233,6 +233,83 @@ def test_route_downloads_report(tmp_path, monkeypatch):
     assert "window.FLUBNF_EMBED" in r.text
 
 
+def _served(tmp_path, monkeypatch):
+    """The synthetic season under a retro root the console serves."""
+    from fastapi.testclient import TestClient
+    from app.ui import server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
+    root = _mk_root(tmp_path, monkeypatch)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    root.rename(tmp_path / SEASON)
+    return TestClient(srv.app)
+
+
+def _follow(client, season, timeout=120):
+    """Start the report job as the page does, then poll its status."""
+    import time
+    t0 = time.time()
+    d = client.post(f"/api/retro/{season}/report_job").json()
+    while d["state"] == "running" and time.time() - t0 < timeout:
+        time.sleep(0.1)
+        d = client.get(f"/api/retro/{season}/report_status").json()
+    return d
+
+
+def test_a_build_reports_its_progress_week_by_week(tmp_path, monkeypatch):
+    """The page's progress bar hears each step: scoring, every week
+    counted, writing the file."""
+    root = _mk_root(tmp_path, monkeypatch)
+    seen = []
+    report_season.build_season_report(
+        root, SEASON, progress=lambda phase, done=None, total=None:
+        seen.append((phase, done, total)))
+    phases = [p for p, _, _ in seen]
+    assert phases[0] == "Scoring the season"
+    assert ("Adding the weeks", 0, 2) in seen and ("Adding the weeks", 1, 2) in seen
+    assert phases[-1] == "Writing the file"
+    # a fresh cached report needs no build: no steps
+    seen.clear()
+    report_season.build_season_report(root, SEASON, progress=lambda *a: seen.append(a))
+    assert seen == []
+
+
+def test_the_page_builds_the_report_as_a_job_then_downloads_it(tmp_path,
+                                                             monkeypatch):
+    """Download report no longer waits on one long request: the page starts
+    the build as a job, follows it, then downloads the finished file."""
+    c = _served(tmp_path, monkeypatch)
+    assert c.get(f"/api/retro/{SEASON}/report_status").json() == {"state": "idle"}
+    d = _follow(c, SEASON)
+    assert d["state"] == "done", d
+    assert d["name"] == f"{SEASON}-FluBNF-season-report.html" and d["size_h"]
+    r = c.get(f"/retro/{SEASON}/report")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    # the page wires its buttons to the job and shows the bar
+    page = c.get(f"/retro/{SEASON}").text
+    assert 'id="dl-report"' in page and 'id="rs-prog"' in page
+    assert "/report_job'+q(el)" in page and "/report_status'+q(el)" in page
+    assert "UI().progress(" in page
+
+
+def test_a_failed_build_says_why_on_the_page(tmp_path, monkeypatch):
+    from app.ui import season_export
+    c = _served(tmp_path, monkeypatch)
+
+    def broken(*a, **k):
+        raise RuntimeError("the embedded weeks could not be read")
+    monkeypatch.setattr(season_export, "render_season_report", broken)
+    d = _follow(c, SEASON)
+    assert d["state"] == "error"
+    assert d["error"] == "RuntimeError: the embedded weeks could not be read"
+
+
+def test_a_job_for_an_unknown_season_is_plain_404(tmp_path, monkeypatch):
+    c = _served(tmp_path, monkeypatch)
+    r = c.post("/api/retro/2097-98/report_job")
+    assert r.status_code == 404 and "2097-98" in r.text
+
+
 def test_route_unknown_season_is_plain_404(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv

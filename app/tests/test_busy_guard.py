@@ -256,7 +256,7 @@ def test_download_anchor_and_reveal_button():
         weeks=["2098-11-07"], week="2098-11-07",
         map_html="<div id='usmap-wrap'></div>", n_weeks=1, score_error="")
     # the anchor carries the download attribute (WKWebView download path)
-    assert f'<a href="/retro/{SEASON}/report" download>' in html
+    assert f'<a href="/retro/{SEASON}/report" download id="dl-report"' in html
     # the reveal fallback: fetch the built report's path, post it to the
     # existing reveal endpoint
     assert 'id="rev-report"' in html

@@ -1152,6 +1152,46 @@ def retro_season_report(season: str, archive: str = ""):
                         content_disposition_type="attachment")
 
 
+def _report_root(season: str, archive: str):
+    """The tree whose report a job builds; the 404 response for an unknown
+    archived run or a season with no completed weeks."""
+    from app.core import playback
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    root, _is_seal = retro_seasons._season_root(season, archive)
+    if not playback.season_weeks(root):
+        return PlainTextResponse(
+            f"{season}: no completed weeks yet, so there is no season "
+            "report to build.", status_code=404)
+    return root
+
+
+@router.post("/api/retro/{season}/report_job")
+def api_retro_report_job_start(season: str, archive: str = ""):
+    """Start (or join) building the season report in the background; its
+    status (then /report_status). The page's Download report and Reveal in
+    Finder show its progress, then fetch the finished file
+    (app/ui/season_export)."""
+    from app.ui import season_export
+    root = _report_root(season, archive)
+    if isinstance(root, PlainTextResponse):
+        return root
+    return season_export.report_job(root, season, archive=archive,
+                                    build=RUNNING_SHA, versions=VERSIONS)
+
+
+@router.get("/api/retro/{season}/report_status")
+def api_retro_report_status(season: str, archive: str = ""):
+    """The season report build's status: state (idle, running, done,
+    error), phase, done/total, and the file's name and size once done."""
+    from app.ui import season_export
+    root = _report_root(season, archive)
+    if isinstance(root, PlainTextResponse):
+        return root
+    return season_export.job_status(root)
+
+
 @router.get("/api/retro/{season}/report_path")
 def api_retro_report_path(season: str, archive: str = ""):
     """Build the season report if absent and return its path (the results
