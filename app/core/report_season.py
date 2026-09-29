@@ -244,7 +244,8 @@ def _report_marker(archive: str, names: dict) -> str:
 
 
 def build_season_report(root: Path, season: str, archive: str = "",
-                        build: str = "", versions: dict | None = None) -> Path:
+                        build: str = "", versions: dict | None = None,
+                        progress=None) -> Path:
     """Build (or reuse, when fresh) the season report: the Retrospective
     season page as one self-contained file (app/ui/season_export), cached
     beside the season's weeks.
@@ -252,7 +253,9 @@ def build_season_report(root: Path, season: str, archive: str = "",
     `archive` names the archived run `root` is. `build` and `versions` are
     accepted for older callers and not printed: the file names the build
     that exported it, and the engine build recorded with the season (its
-    run settings), never this machine's installed engine."""
+    run settings), never this machine's installed engine. `progress(phase,
+    done, total)`, when given, hears each step of a build (the page's
+    progress bar, app/ui/season_export.report_job)."""
     root = Path(root)
     weeks = playback.season_weeks(root)
     if not weeks:
@@ -267,9 +270,12 @@ def build_season_report(root: Path, season: str, archive: str = "",
         if marker in out.read_text(encoding="utf-8"):
             return out
     from app.ui.season_export import render_season_report
-    html = render_season_report(root, season, archive) + "\n" + marker + "\n"
-    # atomic: two concurrent downloads must never interleave a garbled file
-    tmp = out.with_suffix(".html.tmp")
+    html = (render_season_report(root, season, archive, progress=progress)
+            + "\n" + marker + "\n")
+    # atomic, and a temporary file per builder: two concurrent builds must
+    # never interleave a garbled file
+    import threading
+    tmp = out.with_suffix(f".html.{os.getpid()}.{threading.get_ident()}.tmp")
     # LF pinned: served as text and downloaded raw, which must match on Windows
     tmp.write_text(html, encoding="utf-8", newline="\n")
     os.replace(tmp, out)

@@ -236,7 +236,12 @@
   {# the download attribute makes WKWebView download rather than navigate
      (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
      button inside the anchor is the app's download idiom (see Output) #}
-  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
+  {# the report can take a while to build (the season scored, then every
+     week): a click runs the build as a job with a progress bar under
+     these buttons, then downloads the finished file. Without scripts the
+     link builds and downloads in one request #}
+  <a href="/retro/{{ season }}/report{{ aq }}" download id="dl-report"
+    data-season="{{ season }}" data-archive="{{ archive }}"><button class="gold"
     type="button">{{ tips.icon("download") }} Download report</button></a>
   <button type="button" class="quiet" id="rev-report"
     data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
@@ -249,6 +254,9 @@
     data-href="/retro/{{ season }}/export{{ aq }}">Export replay</button>
    {{ tips.tip("rs-export", "Export replay", "One zip of this replay (its record, scores and weeks) to import on another machine, under Import a replay on the Retrospective tab.") }}</span>
   <span class="rt-exp-out" id="exp-replay-hint" aria-live="polite"></span>
+  {# the progress of whichever of the three is being prepared, and its
+     outcome if it fails #}
+  <div class="rs-prog" id="rs-prog" aria-live="polite" hidden></div>
  </div>
  {% endif %}
 </div>
@@ -258,52 +266,103 @@
  {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}{% endcall %}</div>
 {% endif %}
 {% endif %}
+{% if not export %}
 <script>
- // build the bundle (same builder as the download route), print its size,
- // then download it through an anchor with the download attribute
+ // Download report, Reveal in Finder and Export replay: each builds its
+ // file first, which can take a while, so a progress bar (the kit's,
+ // FluBNFUI.progress) shows under the buttons meanwhile, and a failure
+ // says why there instead of the click seeming to do nothing
  (function(){
-  var b=document.getElementById('exp-replay'),h=document.getElementById('exp-replay-hint');
-  if(!b)return;
-  b.addEventListener('click',function(){
-    var t=b.textContent;
-    b.disabled=true;b.textContent='Preparing…';
-    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/export_path'
-          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive):''))
+  var prog=document.getElementById('rs-prog');
+  if(!prog)return;
+  var UI=function(){return window.FluBNFUI;};
+  var busy=false;
+  function q(el){return el.dataset.archive?'?archive='+encodeURIComponent(el.dataset.archive):'';}
+  function base(el){return '/api/retro/'+encodeURIComponent(el.dataset.season);}
+  function show(label){
+    prog.hidden=false;
+    prog.innerHTML=UI()?UI().progress(label,null,100,'','rs-prog-bar'):label+'…';
+  }
+  function step(value,max,text){
+    var bar=document.getElementById('rs-prog-bar');
+    if(UI()&&bar)UI().setProgress(bar,value,max,text);
+  }
+  function fail(msg){
+    prog.hidden=false;
+    prog.innerHTML=UI()?UI().alert('error',msg,'Could not prepare the file.')
+                       :'Could not prepare the file: '+msg;
+  }
+  function done(){prog.hidden=true;prog.innerHTML='';}
+  function lock(on,btns){busy=on;btns.forEach(function(b){if(b)b.disabled=on;});}
+  function download(href,name){
+    var a=document.createElement('a');a.href=href;if(name)a.download=name;
+    document.body.appendChild(a);a.click();a.remove();
+  }
+  // the season report: start (or join) its build, follow it, then call
+  // back with the finished job
+  function reportJob(el,then){
+    show('Preparing the season report');
+    var start=base(el)+'/report_job'+q(el),
+        url=base(el)+'/report_status'+q(el);
+    function read(r){
+      if(!r.ok)return r.text().then(function(m){throw new Error(m||('HTTP '+r.status));});
+      return r.json();
+    }
+    function follow(d){
+      if(d.state==='done'){then(d);return;}
+      if(d.state==='error'){throw new Error(d.error||'the build failed');}
+      if(typeof d.done==='number'&&d.total)
+        step(d.done,d.total,d.phase+': week '+(d.done+1)+' of '+d.total);
+      else step(null,100,d.phase||'Working');
+      return new Promise(function(res){setTimeout(res,400);})
+        .then(function(){return fetch(url).then(read).then(follow);});
+    }
+    return fetch(start,{method:'POST'}).then(read).then(follow);
+  }
+  var dl=document.getElementById('dl-report'),
+      rev=document.getElementById('rev-report'),
+      exp=document.getElementById('exp-replay'),
+      hint=document.getElementById('exp-replay-hint'),
+      btns=[dl&&dl.querySelector('button'),rev,exp];
+  if(dl)dl.addEventListener('click',function(e){
+    e.preventDefault();
+    if(busy)return;
+    lock(true,btns);
+    reportJob(dl,function(d){done();download(dl.getAttribute('href'),d.name);})
+      .catch(function(err){fail(err.message);})
+      .then(function(){lock(false,btns);});
+  });
+  if(rev)rev.addEventListener('click',function(){
+    if(busy)return;
+    lock(true,btns);
+    reportJob(rev,function(){done();})
+      .then(function(){return fetch(base(rev)+'/report_path'+q(rev));})
+      .then(function(r){if(!r.ok)throw new Error('report unavailable');return r.json();})
+      .then(function(d){return fetch('/output/reveal',{method:'POST',
+        body:new URLSearchParams({path:d.path})});})
+      .catch(function(err){fail(err.message);})
+      .then(function(){lock(false,btns);});
+  });
+  // the replay bundle: built by one request (no steps to count), so the
+  // bar slides; its size and name land beside the button as a badge
+  if(exp)exp.addEventListener('click',function(){
+    if(busy)return;
+    lock(true,btns);
+    show('Preparing the replay bundle');
+    fetch(base(exp)+'/export_path'+q(exp))
       .then(function(r){if(!r.ok)return r.text().then(function(m){throw new Error(m||'export unavailable');});
         return r.json();})
       .then(function(d){
-        // the bundle's size and name as a badge (FluBNFUI, tips.js)
+        done();
         var ok=d.size_h+' · '+d.name;
-        if(window.FluBNFUI)h.innerHTML=FluBNFUI.badge('ok',ok);else h.textContent=ok;
-        var a=document.createElement('a');a.href=b.dataset.href;a.download=d.name;
-        document.body.appendChild(a);a.click();a.remove();
-        b.disabled=false;b.textContent=t;})
-      .catch(function(e){
-        if(window.FluBNFUI)h.innerHTML=FluBNFUI.badge('error',e.message);else h.textContent=e.message;
-        b.disabled=false;b.textContent=t;});
+        if(UI())hint.innerHTML=UI().badge('ok',ok);else hint.textContent=ok;
+        download(exp.dataset.href,d.name);})
+      .catch(function(err){fail(err.message);})
+      .then(function(){lock(false,btns);});
   });
  })();
 </script>
-<script>
- // build the report if absent (same builder as the download route), then
- // reveal it via /output/reveal
- (function(){
-  var b=document.getElementById('rev-report');
-  if(!b)return;
-  b.addEventListener('click',function(){
-    var t=b.textContent;
-    b.disabled=true;b.textContent='Preparing…';
-    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/report_path'
-          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive):''))
-      .then(function(r){if(!r.ok)throw new Error('report unavailable');
-        return r.json();})
-      .then(function(d){return fetch('/output/reveal',{method:'POST',
-        body:new URLSearchParams({path:d.path})});})
-      .then(function(){b.disabled=false;b.textContent=t;})
-      .catch(function(){b.disabled=false;b.textContent=t;});
-  });
- })();
-</script>
+{% endif %}
 {# the verdict: a heading whose "i" explains the tiles' second lines (log
    scale, coverage and its colors' key: report_season.METRICS_NOTE and
    COV_LEGEND) and what the page leaves out, then one row of tiles. Each
