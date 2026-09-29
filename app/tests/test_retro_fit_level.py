@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest                                         # noqa: E402
 
-from app.core import report_season, retro             # noqa: E402
+from app.core import retro             # noqa: E402
 from app.ui import server as srv                      # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 
@@ -395,15 +395,18 @@ def test_season_page_never_fabricates_a_zero_wall_time():
 
 
 def test_season_report_header_refuses_a_sub_second_record(tmp_path):
+    """The season page, and the season report that renders it, print a wall
+    time only from a record of a second or more: never a fabricated zero."""
+    from app.ui.retro_seasons import _archive_progress
     root = tmp_path / "seasonroot"
     retro.write_meta(root, {"status": "done", "elapsed_s": 0.4,
                             "weeks_completed": 26, "total_weeks": 26,
                             "heartbeat_utc": time.time()})
-    assert report_season._timing_note(root) == ""
-    retro.write_meta(root, {"status": "done", "elapsed_s": 3725.0,
-                            "weeks_completed": 26, "total_weeks": 26,
-                            "heartbeat_utc": time.time()})
-    assert "Total wall time 1:02:05" in report_season._timing_note(root)
+    assert _archive_progress(root, "2098-99")["elapsed_s"] == 0.4
+    season_t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+                / "retro_season.html").read_text(encoding="utf-8")
+    assert ("{% set p_timed = prog and prog.elapsed_s and prog.elapsed_s >= 1 %}"
+            in season_t)
 
 
 def test_startover_api_withholds_a_sub_second_wall_time(tmp_path,

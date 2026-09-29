@@ -95,6 +95,7 @@
   "engine_build_view": "callable engine_build_view",
   "engine_setup_hint": "callable _engine_setup_hint",
   "harmonic_fig": "callable _harmonic_fig",
+  "inline_static": "callable inline_static",
   "live_scores": "callable _live_scores",
   "model_name": "callable <lambda>",
   "month_ticks_for_dates": "callable _month_ticks_for_dates",
@@ -109,7 +110,8 @@
   "sandbox_storage": "callable _sandbox_storage_line",
   "season_months": "value list",
   "season_week_name": "callable _season_week_name",
-  "settings_html": "callable settings_html"
+  "settings_html": "callable settings_html",
+  "static_data_uri": "callable _data_uri"
  },
  "jinja_filters": {
   "hms": "callable fmt_hms"

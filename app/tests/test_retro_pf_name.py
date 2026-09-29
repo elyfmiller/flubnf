@@ -96,7 +96,6 @@ def world(monkeypatch, tmp_path):
                                                         for f in fips_set
                                                         for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     live, seal, reseal = (tmp_path / "retro", tmp_path / "retro_seal",
                           tmp_path / "retro_reseal")
     for d in (live, seal, reseal):
@@ -262,18 +261,14 @@ def test_the_report_names_pf_for_the_tree_it_exports(world):
     _tree(world["live"] / OTHER, oracle="meta", season=OTHER)
 
     html = _report(SEASON)                # the sealed record, filter alone
-    assert f'class="tilename">{FILTER}<' in html
-    assert f'class="tilename">{ORACLE}<' not in html
-    # the per-state head: one column per member, or a group over its
-    # relWIS and 95% coverage when the scores carry coverage
-    assert (f'<th class="num">{FILTER}</th>' in html
-            or f'<th colspan="2" class="grp">{FILTER}</th>' in html)
-    assert f'<th class="num">{ORACLE}</th>' not in html
-    assert f'<th colspan="2" class="grp">{ORACLE}</th>' not in html
-    # the embedded player gets the same names via the overriding line (the
-    # inlined player.js still carries the shared literal)
-    line = report_season._names_line(
-        dict(report_season.MODEL_NAMES, pf=FILTER))
+    assert f'<h2>{FILTER}</h2>' in html
+    assert f'<h2>{ORACLE}</h2>' not in html
+    # the per-state head names the members the same way
+    assert f">{FILTER}</th>" in html or f">{FILTER}<span class=\"dir\"" in html
+    assert f">{ORACLE}</th>" not in html
+    # the embedded player gets the same name through the page's own line
+    # (the inlined player.js still carries the shared literal)
+    line = f'FluBNFPlayer.MODEL_NAMES.pf = "{FILTER}";'
     assert line in html
     assert html.index("var FluBNFPlayer") < html.index(line) \
         < html.rindex("FluBNFPlayer.init(")
@@ -281,9 +276,9 @@ def test_the_report_names_pf_for_the_tree_it_exports(world):
     assert report_season.MODEL_NAMES["pf"] == ORACLE
 
     html = _report(OTHER)                 # a tree that carries the step
-    assert f'class="tilename">{ORACLE}<' in html
-    assert f'class="tilename">{FILTER}<' not in html
-    assert report_season._names_line(dict(report_season.MODEL_NAMES)) in html
+    assert f'<h2>{ORACLE}</h2>' in html
+    assert f'<h2>{FILTER}</h2>' not in html
+    assert f'FluBNFPlayer.MODEL_NAMES.pf = "{ORACLE}";' in html
 
 
 def test_an_export_built_before_names_were_per_tree_is_rebuilt(world):
@@ -292,15 +287,16 @@ def test_an_export_built_before_names_were_per_tree_is_rebuilt(world):
     import os
     root = _tree(world["reseal"] / SEASON)
     p = report_season.build_season_report(root, SEASON)
-    stale = ("Run settings " + report_season._timing_note(root)
-             + f'<div class="tilename">{ORACLE}</div>')
+    # fresh by mtime, but its marker names pf the old way
+    stale = (f"<h2>{ORACLE}</h2>" + report_season._report_marker(
+        "", dict(report_season.MODEL_NAMES)))
     p.write_text(stale)
     future = p.stat().st_mtime + 60
     os.utime(p, (future, future))
     html = _report(SEASON)
     assert html != stale
-    assert f'class="tilename">{FILTER}<' in html
-    assert f'class="tilename">{ORACLE}<' not in html
+    assert f'<h2>{FILTER}</h2>' in html
+    assert f'<h2>{ORACLE}</h2>' not in html
 
 
 # ------------------------------------------------------------ the helper

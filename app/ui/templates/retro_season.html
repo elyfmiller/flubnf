@@ -1,18 +1,44 @@
-{% extends "base.html" %}{% block title %}FluBNF · Retrospective {{ season }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
+{% extends "base.html" %}{% block title %}{% if export %}FluBNF season report {{ season }}{% else %}FluBNF · Retrospective {{ season }}{% endif %}{% endblock %}
+{# `export`: this page as the season report download (app/core/report_season):
+   one self-contained file, every stored week's playback and map embedded
+   (FLUBNF_EMBED), the forecast detail open first, and nothing that needs
+   the console (actions, live progress, links into the app) #}
+{% block head %}{% if export %}{{ inline_static('plotly.min.js') }}{{ inline_static('charts.js') }}
+{{ inline_static('player.js') }}
+{{ inline_static('tabs/retro.css') }}
+<script>window.FLUBNF_EMBED = {{ embed_json | safe }};</script>
+{# on paper the light theme takes over, whichever theme is on screen, and
+   the controls stay behind; tiles and table rows stay whole #}
+<style>
+ @media print{
+  :root,:root[data-theme]{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
+   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;--field-line:#DCD8E9;
+   --shadow:none}
+  body{background:#FFFFFF;color:#000F7E}
+  .ok{color:#177245}.bad{color:#C42840}
+  .cov-ok{color:#177245}.cov-low{color:#C42840}.cov-wide{color:#8A5A14}
+  .display,.playerbar,.fdrow,.fdmodels,.pbscale,.rt-filter,.viewtabs,
+  button:not(.thsort),select,input{display:none!important}
+  .card{box-shadow:none}
+  tr,.rt-tile{break-inside:avoid}
+ }
+</style>
+{% else %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/player.js"></script>
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>
-<link rel="stylesheet" href="/static/tabs/retro.css">{% endblock %}
+<link rel="stylesheet" href="/static/tabs/retro.css">{% endif %}{% endblock %}
+{% block export_title %}Season report{% endblock %}
+{% block export_footer %}Exported {{ exported_at }} by FluBNF build {{ running_sha() }}; a self-contained file that needs no network.{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 {# the player's timeline and captions (playback.week_notes); a context
    without them (an older caller) plays the stored weeks alone #}
 {% set timeline = timeline if (timeline is defined and timeline) else weeks %}
 {% set notes = notes if notes is defined else {} %}
 {% set no_data_note = no_data_note if no_data_note is defined else "" %}
-{# a verdict tile's second line: log-scale relWIS and 50/80/95% coverage
-   (the export prints the same, report_season._metrics_html); a figure the
-   scores cannot give (a season scored before these metrics) is left out #}
+{# a verdict tile's second line: log-scale relWIS and 50/80/95% coverage; a
+   figure the scores cannot give (a season scored before these metrics) is
+   left out #}
 {% macro tile_more(log_rel, cov) -%}
 {%- if log_rel is not none or cov %}<div class="rt-tilemore"><dl class="tilekv rt-tilekv">
  {%- if log_rel is not none %}<dt>log scale</dt><dd class="{{ 'ok' if log_rel < 1 else 'bad' }}">{{ "%.3f"|format(log_rel) }}{{ tips.icon("check" if log_rel < 1 else "warning", "beats the baseline" if log_rel < 1 else "does not beat the baseline", cls="rt-verdict") }}</dd>{% endif %}
@@ -125,7 +151,7 @@
 <div class="rt-title"><h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored</h1>{{ knobs_badge() }}
 {%- if figs and figs.convention == 'pairwise' and figs.available %}{{ tips.badge("info", "pairwise relWIS") }}{% call tips.toggletip("rs-pairwise", "the pairwise view", title="Pairwise relWIS") %}<span class="uk-tt-line">Pairwise relWIS against the teams that submitted this season (jurisdictions only), so it moves with the field; placement is not shown (<a href="/methods">Methods</a>).</span>{% endcall %}{% endif %}</div>
 {% set imported = imported if imported is defined else {} %}
-{% set live_link %}<a href="/retro/{{ season }}">Open the live {{ season }} season</a>{% endset %}
+{% set live_link %}{% if not export %}<a href="/retro/{{ season }}">Open the live {{ season }} season</a>{% endif %}{% endset %}
 {% if archive and imported %}
 {# a replay imported from another machine (app/core/replay_bundle): read
    only, kept beside this machine's own runs of the season #}
@@ -145,7 +171,7 @@
  {%- else %} This is the ratio of sums view; the scores themselves are missing.
  {%- endif %}{% endcall %}
 {% endif %}
-{% if prog and prog.active %}
+{% if prog and prog.active and not export %}
 {# live replay, driven by the shared ticker (retro_progress.js): the run
    bar and its readout, what the estimate rests on in the readout's tip
    (.rbasis), a lost connection as a badge #}
@@ -198,13 +224,14 @@
   {% endif %}
   {% if prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes from the last completed week.", id="rs-state") }}
   {% elif prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay. Run resumes from the last completed week.", id="rs-state") }}{% endif %}
-  {% if prog.added_n and not prog.active %}
+  {% if prog.added_n and not prog.active and not export %}
   {# the season's week list grew after this replay finished (the hub archive
      or the shipped snapshots, data/vintages/): a badge, the weeks in its tip #}
   {{ tips.badge("warn", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added to the season since this replay finished: " ~ (prog.added | join(", ")) ~ ". " ~ ("This is a sealed record and cannot be resumed; a fresh replay from the Retrospective tab is needed to run " ~ ("it" if prog.added_n == 1 else "them") ~ "." if prog.sealed else "Run on the Retrospective tab resumes this season and runs only " ~ ("that week" if prog.added_n == 1 else "those weeks") ~ "; the completed weeks are kept."), id="weeks-added") }}
   {% endif %}
  </div>
  {% endif %}
+ {% if not export %}
  <div class="row rs-acts">
   {# the download attribute makes WKWebView download rather than navigate
      (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
@@ -223,6 +250,7 @@
    {{ tips.tip("rs-export", "Export replay", "One zip of this replay (its record, scores and weeks) to import on another machine, under Import a replay on the Retrospective tab.") }}</span>
   <span class="rt-exp-out" id="exp-replay-hint" aria-live="polite"></span>
  </div>
+ {% endif %}
 </div>
 {% if p_facts and prog.settings %}
 <div class="rs-settings rt-settings">{{ settings_line(prog.settings) }}
@@ -365,8 +393,8 @@
   {# aria-pressed toggles, not a tablist (no tabpanels or roving focus
      here); setView() keeps them true #}
   <span class="viewtabs" role="group" aria-label="Playback view">
-   <button type="button" class="quiet" id="tab-map" aria-pressed="true">Categorical forecast</button>
-   <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
+   <button type="button" class="quiet" id="tab-map" aria-pressed="{{ 'false' if export else 'true' }}">Categorical forecast</button>
+   <button type="button" class="quiet" id="tab-fc" aria-pressed="{{ 'true' if export else 'false' }}">Forecast detail</button>
   </span>
  </div>
  {# the view takes about 62% of the card, the live scores the rest; the
@@ -406,7 +434,7 @@
     <tbody></tbody></table></div>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    {# a season with no official submission at all: where to get them #}
-   <div id="pb-offhint" hidden>{{ tips.alert("info", "Official comparators appear after Update data.", id="rs-offhint", action='<a href="/data">Data tab</a>' | safe, live="") }}</div>
+   <div id="pb-offhint" hidden>{% if export %}{{ tips.alert("info", "No official comparators were loaded when this report was built.", id="rs-offhint", live="") }}{% else %}{{ tips.alert("info", "Official comparators appear after Update data.", id="rs-offhint", action='<a href="/data">Data tab</a>' | safe, live="") }}{% endif %}</div>
 <div class="cumwrap" id="cumwrap"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
 {# a cumulative line is a ratio of sums by construction; no pairwise form #}
@@ -712,9 +740,18 @@
  // ---- payload cache with in-flight dedupe; PERR keeps the failure message
  // for the panel ----
  const PAY = {}, PPROM = {}, PERR = {};
+ // the season report carries every stored week (report_season); the page
+ // fetches them
+ const EMBED = window.FLUBNF_EMBED || null;
  function ensurePayload(w){
    if(noData(w)){ PAY[w] = null; PERR[w] = NOTES[w]; return Promise.resolve(null); }
    if(w in PAY) return Promise.resolve(PAY[w]);
+   if(EMBED){
+     // the export: every stored week is in the file
+     PAY[w] = EMBED.payloads[w] || null;
+     if(!PAY[w]) PERR[w] = 'this week is not in the report';
+     return Promise.resolve(PAY[w]);
+   }
    if(PPROM[w]) return PPROM[w];
    PPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
                     + '/playback/' + encodeURIComponent(w)
@@ -754,6 +791,11 @@
  function fetchMap(w){
    if(noData(w)){ SWAP[w] = null; return Promise.resolve(null); }
    if(w in SWAP) return Promise.resolve(SWAP[w]);
+   if(EMBED){
+     const d = EMBED.maps[w];
+     SWAP[w] = (d && d.models && Object.keys(d.models).length) ? d.models : null;
+     return Promise.resolve(SWAP[w]);
+   }
    if(SPROM[w]) return SPROM[w];
    SPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
                     + '/mapswap/' + encodeURIComponent(w)
@@ -848,7 +890,8 @@
    // each relWIS figure says its verdict with an icon, as the tiles do
    verdictIcons: true,
    // the plot fills the viewport's height (nau.css .fdplot reserves it)
-   plotHeight: () => Math.max(360, Math.min(720, Math.round(innerHeight * .55))),
+   // a taller window, a taller plot (no fixed cap below a very tall screen)
+   plotHeight: () => Math.max(360, Math.min(1200, Math.round(innerHeight * .62))),
    // server-side, so the toggles are right before the first payload
    seasonOfficials: {{ (official_catalog or []) | tojson }},
    // the US series and its provenance (app/core/us_national)
@@ -882,13 +925,25 @@
  }
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');
+ // a state clicked on the map (its "click for details") opens its
+ // forecast detail (usmap's drill-down hook)
+ const STATE_NAMES = {{ (state_names or {}) | tojson }};
+ window.showState = function(id){
+   const name = STATE_NAMES[String(id).replace(/^st-/, '')];
+   const sel = document.getElementById('fd-loc');
+   if(!name || !sel) return;
+   if(![].some.call(sel.options, o => o.value === name)) return;
+   sel.value = name;
+   sel.dispatchEvent(new Event('change'));
+   setView('fc');
+ };
  // the initial week is painted server-side; warm its swap payload
  (function(){
    const w0 = WEEKS[player.idx()];
    document.getElementById('view-map').dataset.week = w0;
    fetchMap(w0);
  })();
- setView('map');
+ setView({{ ('fc' if export else 'map') | tojson }});
 </script>
 {% endif %}
 {% endblock %}

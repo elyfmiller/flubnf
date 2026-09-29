@@ -918,7 +918,7 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   font-weight:600;margin:.2rem 0 .4rem}
 /* the plot reserves the same viewport-sized height (the host's
    plotHeight), so switching views never jumps the page */
-.fdplot{min-height:clamp(360px,55vh,720px)}
+.fdplot{min-height:clamp(360px,62vh,1200px)}
 .fdrow{margin:.2rem 0 .4rem;gap:.4rem 1rem}
 .fdrow .fdmodels{margin:0}
 .playstats{min-width:0}

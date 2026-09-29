@@ -101,7 +101,7 @@ def test_a_fitted_us_row_moves_no_pooled_figure():
         pooled = usn.pooled_frame(df)
         return {"pooled": _rel_of(pooled),
                 "cells": len(pooled),
-                "curve": report_season._cumulative_curve(df)}
+                "curve": report_season.cumulative_curves(df).get("pf")}
 
     a, b = _figures(True), _figures(False)
     assert a == b
@@ -141,29 +141,37 @@ def test_playback_stats_never_pool_a_fitted_us_cell(tmp_path):
 
 
 def test_the_season_report_curve_never_pools_a_fitted_us_cell():
-    """report_season._cumulative_curve draws the season's published line."""
-    curve = report_season._cumulative_curve(_frame())
+    """report_season.cumulative_curves draws the season page's lines (and
+    so the season report's)."""
+    curve = report_season.cumulative_curves(_frame())["pf"]
     assert [round(v, 6) for _w, v in curve] == [POOLED_REL]
     assert curve[-1][1] != pytest.approx(LEAKED_REL)
 
 
 def test_the_season_report_table_reports_us_apart_from_its_pooled_figures(
         tmp_path, monkeypatch):
-    """report_season._summary_block (exported verdict): US appears on its own
-    labelled row; no pooled figure beside it contains it."""
+    """The season page's verdict (which the season report renders): US
+    appears on its own labelled row; no pooled figure beside it contains it."""
+    from app.ui.server import templates
     root = tmp_path / "season"
     root.mkdir()
-    (root / "scores.json").write_text(_frame().to_json(orient="records"))
-    html = report_season._summary_block(root, ["2098-01-03"], {})
+    df = _frame()
+    pooled = usn.pooled_frame(df)
     # the pooled scope: 8 state cells, never the 12 a leak gives
-    pf = report_season.names_for_root(root)["pf"]
-    assert f"the season's 8 scored {pf} cells" in html
-    assert "12 scored" not in html
-    # the cumulative curve endpoint is the state-only value
+    assert len(pooled) == 8
+    curves = report_season.cumulative_curves(df)
+    us = usn.UsNational(usn.FITTED, scores={"pf": 1.5}, cells={"pf": 4},
+                        n_states=2).as_dict()
+    html = templates.env.get_template("retro_season.html").render(
+        season="2098-99", heads={"pf": _rel_of(pooled)}, curves=curves,
+        curve=curves["pf"], states=[], weeks=["2098-01-03"],
+        week="2098-01-03", map_html="", n_weeks=1, score_error="",
+        season_models=["pf"], us_row=us, us=us,
+        pooled_note=usn.POOLED_SCOPE_NOTE, model_name=lambda m: m)
+    # the pooled tile and the curve's endpoint are the state-only value
     assert ">0.500<" in html
-    # the national figure IS reported, on its own labelled row and tile
-    assert "US (fitted)" in html
-    assert "1.500" in html
+    # the national figure IS reported, on its own labelled tile
+    assert "US (fitted)" in html and "1.500" in html
     # 1.462 (US pooled in) appears nowhere
     assert "1.462" not in html
     assert usn.POOLED_SCOPE_NOTE in html
@@ -435,7 +443,8 @@ def test_every_provenance_has_a_distinct_label_and_note():
 def test_the_player_and_python_share_one_wording():
     """Labels are defined once: player.js carries them as a marked JSON
     literal and Python parses that same literal."""
-    js = report_season.player_us_labels()
+    from app.core import html_page
+    js = html_page.marked_json("US_LABELS_JSON", {}, report_season.PLAYER_SRC)
     assert js == usn.LABELS, (js, usn.LABELS)
 
 

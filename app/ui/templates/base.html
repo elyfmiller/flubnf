@@ -11,6 +11,17 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}FluBNF{% endblock %}</title>
+{# `export`: the page written to one self-contained file (the season report,
+   app/core/report_season): the same stylesheets and scripts inlined, no
+   navigation, nothing that asks the console server #}
+{% set export = export if export is defined else false %}
+{% if export %}
+<link rel="icon" type="image/png" sizes="32x32" href="{{ static_data_uri('brand/favicon-32.png') }}">
+{{ inline_static('fonts/dm-sans.css') }}
+{{ inline_static('nau.css') }}
+{{ inline_static('ui-kit.css') }}
+{{ inline_static('brand/logos.css') }}
+{% else %}
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
 {# DM Sans is self-hosted (static/fonts/, OFL): the app loads no external
@@ -22,6 +33,7 @@
 <link rel="stylesheet" href="/static/ui-kit.css">
 {# the header mark per theme (--logo), one line per theme #}
 <link rel="stylesheet" href="/static/brand/logos.css">
+{% endif %}
 <script>
  // before first paint, so the page never flashes the wrong look: the theme
  // (one of the eight; an unknown stored value falls back to the system
@@ -51,6 +63,11 @@
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav">
+  {% if export %}
+  <span class="brand"><span class="mark" aria-hidden="true"></span>
+    <span><em>Flu</em>BNF</span></span>
+  <span class="navtabs export-title">{% block export_title %}{% endblock %}</span>
+  {% else %}
   <a class="brand" href="/" aria-label="FluBNF home">
     {# the theme's mark (--logo, static/brand/logos.css) #}
     <span class="mark" aria-hidden="true"></span>
@@ -68,6 +85,7 @@
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}"{% if active == name %} aria-current="page"{% endif %}>{{ name }}</a>
   {% endfor %}
   </nav>
+  {% endif %}
   <span class="spacer"></span>
   {# text size, theme, a11y modes and zoom behind one Display button, so the
      header stays one row at every desktop width. A plain <details>: it
@@ -202,12 +220,12 @@
 </script>
 {# one shell for every page. No page sets main_class, but tests pin the
    rendered empty class="" #}
-<main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}
+<main id="main" class="{% block main_class %}{% endblock %}">{% if not export and restart_needed() %}
  {# a line to act on now (the kit's alert): the step, the why in its tip #}
  {% call kit.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart", live="alert") %}This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
  reload refreshes the look, not the server logic.{% endcall %}
-{% endif %}{% set _f = pop_flash() %}{% set _fk = pop_flash_kind() %}{% set _fd = pop_flash_detail() %}{% if _f %}
+{% endif %}{% set _f = (pop_flash() if not export else none) %}{% set _fk = pop_flash_kind() %}{% set _fd = pop_flash_detail() %}{% if _f %}
  {# the outcome of the last action (a notice from the server): the kit's
     alert in the notice's kind (a failure is an error, announced at once;
     the rest politely), its detail in the "?" tip #}
@@ -216,6 +234,7 @@
 {# research run control, only when a route sets research_panel (/model/pf2s) #}
 {% include "research_run.html" %}
 {% endif %}</main>
+{% if not export %}
 <div id="guard-modal" class="modal-back" hidden>
  <div class="modal card" role="dialog" aria-modal="true"
       aria-labelledby="guard-title">
@@ -249,6 +268,7 @@
   </div>
  </div>
 </div>
+{% endif %}
 <script>
  // external links open in a new window: the pywebview shell has no back
  // control, and target=_blank hands the URL to the system browser. Capture
@@ -382,6 +402,7 @@
     if(n===null)return;
     e.preventDefault();step(n);});
   if(api())ready();else addEventListener('pywebviewready',ready);})();
+ {% if not export %}
  // slow-page report: a page that took 800 ms or more from navigation to
  // load end is logged (app/state/logs/slow_requests.log) with the server's
  // share (Server-Timing) and the time spent running scripts
@@ -638,7 +659,9 @@
      .catch(function(){startOverGate(el,function(){proceed(el);});});
   },true);
  })();
+ {% endif %}
 </script>
+{% if not export %}
 <script>
  // version spans still 'resolving' (background probe) poll /api/versions
  // until it lands. A span that holds a badge while resolving (Methods)
@@ -668,4 +691,8 @@
 </script>
 <script src="/static/tips.js" defer></script>
 <footer class="hint buildline">FluBNF build {{ running_sha() }}</footer>
+{% else %}
+{{ inline_static('tips.js') }}
+<footer class="hint buildline">{% block export_footer %}FluBNF build {{ running_sha() }}{% endblock %}</footer>
+{% endif %}
 </body></html>

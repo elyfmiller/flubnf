@@ -8,6 +8,14 @@ every week against settled truth. Each season's replay lives under
 `playback_cache/` for the player and, once downloaded, the season report
 HTML. The cache and the report are rebuilt on demand.
 
+The season report (Download report on the season page) is that page as one
+self-contained file: the season scores, the season player (forecast detail
+open first, the categorical map a click away, and a state clicked on the map
+opens its forecast detail), the live scores, the cumulative chart and the
+per-state table, with every stored week embedded. It sizes to the window as
+the page does, prints in the light theme, and names the PyBNF build recorded
+with the season (not the exporting machine's engine).
+
 ## Archived runs
 
 Starting a fresh replay over a season with results offers to archive the

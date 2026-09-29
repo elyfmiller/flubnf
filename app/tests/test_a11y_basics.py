@@ -63,8 +63,10 @@ def test_retro_view_switcher_is_plain_pressed_buttons():
     assert 'role="tab"' not in SEASON_T
     assert "aria-selected" not in SEASON_T
     assert 'role="group" aria-label="Playback view"' in SEASON_T
-    assert 'id="tab-map" aria-pressed="true"' in SEASON_T
-    assert 'id="tab-fc" aria-pressed="false"' in SEASON_T
+    # the page opens on the map, the season report on the forecast detail:
+    # either way exactly one button starts pressed
+    assert 'id="tab-map" aria-pressed="{{ \'false\' if export else \'true\' }}"' in SEASON_T
+    assert 'id="tab-fc" aria-pressed="{{ \'true\' if export else \'false\' }}"' in SEASON_T
     assert "setAttribute('aria-pressed'" in SEASON_T
 
 
@@ -82,18 +84,16 @@ def test_forecast_data_view_toggles_mark_the_selected_mode():
 # ------------------------------------------------- playback announcements
 
 def test_player_labels_play_state_and_announces_weeks():
-    from app.core.report_season import _PAGE
+    # the season report renders the season page (app/ui/season_export), so
+    # this template is both hosts
     # the shared player owns the play button's accessible name, per state
     assert "labelPlay" in PLAYER
     assert "on ? 'Pause' : 'Play'" in PLAYER
     # no host pins the misreporting static label
     assert 'aria-label="Play or pause"' not in SEASON_T
-    assert 'aria-label="Play or pause"' not in _PAGE
-    # week and status readouts are polite live regions in both hosts
+    # week and status readouts are polite live regions
     assert 'id="pb-week" aria-live="polite"' in SEASON_T
     assert 'id="pb-status" aria-live="polite"' in SEASON_T
-    assert 'id="pb-week" aria-live="polite"' in _PAGE
-    assert 'id="pb-status" aria-live="polite"' in _PAGE
 
 
 # ------------------------------------------------------ motion accommodation

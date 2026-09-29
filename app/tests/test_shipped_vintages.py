@@ -260,9 +260,10 @@ def test_the_season_page_hands_the_player_the_timeline_and_notes():
 
 
 def test_the_report_and_player_carry_the_notes():
-    from app.core import report_season
-    assert "notes: NOTES" in report_season._PAGE
-    assert "DATA.notes" in report_season._PAGE
+    # the season report renders the season page, whose host passes them
+    season_t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+                / "retro_season.html").read_text(encoding="utf-8")
+    assert "notes: NOTES" in season_t
     js = (Path(__file__).resolve().parents[1] / "ui" / "static"
           / "player.js").read_text(encoding="utf-8")
     assert "cfg.notes" in js and "noteOf(" in js

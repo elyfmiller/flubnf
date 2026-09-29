@@ -1,12 +1,13 @@
-"""Report-vs-app parity: the exported season report carries the same
-substance as the in-app season page for the same season.
+"""Report-vs-app parity: the exported season report IS the in-app season
+page for the same season (retro_season.html rendered in export mode,
+app/ui/season_export).
 
 Guards the recurring failure class of an artifact silently lacking what the
 console shows. One synthetic season renders through the REAL season route
-and the REAL report builder. Every h2 on the page must map to a report
-marker in APP_TO_REPORT or be declared app-only with a reason; shared
-sections are compared value by value (tiles incl. US aggregate, per-state
-rows incl. US, wall time, settings, the player's week list).
+and the REAL report builder; every section heading must match, and the
+shared regions (the season scores with the US tiles, the per-state table
+with the US row, the cumulative chart, the run facts and settings, the
+player's timeline) must be the same markup.
 """
 import json
 import re
@@ -19,7 +20,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import playback, report_season, retro       # noqa: E402
-from app.core import site_build                           # noqa: E402
 import app.core.scoring as scoring                        # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL     # noqa: E402
 
@@ -27,32 +27,12 @@ W1, W2 = "2098-01-03", "2098-01-10"
 SEASON = "2098-99"
 N2F = {"Ohio": "39", "Utah": "49"}
 
-#: season-page sections that stay in the console ON PURPOSE, each with the
-#: reason. Anything not here and not mapped in APP_TO_REPORT fails the
-#: parity test when it appears on the page.
+#: season-page headings the report leaves out ON PURPOSE: the console's
+#: dialogs (stopping a run, starting a season over), which act on the
+#: running console
 APP_ONLY_HEADINGS = {
-    # base-template dialogs, baked into every console page's chrome
     "A run is in progress",
     "This season already has results",
-    # the scoring-convention switch: a control whose pairwise side needs
-    # every team's per-cell scores, which an offline report cannot carry,
-    # so the export is ratio-of-sums by construction
-    "Scoring convention",
-    # the cumulative chart stays on the page (see
-    # test_cumulative_curve_stays_on_the_page)
-    "Cumulative relWIS through the season",
-}
-
-#: app section heading -> a marker that must appear in the export. The
-#: verdict tiles are handled dynamically (any heading that is a model
-#: display name, or the US aggregate, must appear as a report tile).
-APP_TO_REPORT = {
-    # (the cumulative chart has no export counterpart)
-    "Season player": 'id="pb-scrub"',
-    # the verdict tiles' heading: the report carries the tiles themselves
-    "Season scores": 'class="tilename"',
-    "Live scores": "<h2>Live scores</h2>",
-    "Per-state scores": "Per-state final scores",
 }
 
 
@@ -81,7 +61,6 @@ def _mk_root(tmp_path, monkeypatch):
     # call time, so patch there too
     monkeypatch.setattr(scoring, "load_truth", lambda: (truth, n2f))
     monkeypatch.setattr(scoring, "_baseline_cells", _bases)
-    monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
 
     root = tmp_path / SEASON
     for asof in (W1, W2):
@@ -166,136 +145,91 @@ def built(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------ section parity
 
-def test_every_app_section_has_a_report_counterpart(built):
-    """The data-driven guard: a NEW season-page section must be mapped to a
-    report counterpart or declared app-only, or this fails."""
+def _region(html, start, end):
+    """The markup from `start` up to (not including) `end`."""
+    i = html.index(start)
+    return html[i:html.index(end, i)]
+
+
+def test_every_app_section_is_in_the_report(built):
+    """The same sections in the same order: a new section on the page is in
+    the report without anyone remembering to add it."""
     app_html, report_html = built
-    # pf's tile is named for what the tree stores (no oracle.json here:
-    # the particle filter alone)
-    names = (set(report_season.MODEL_NAMES.values())
-             | {site_build.PF_LABEL_FILTER})
-    tile_names = names | {f"US (aggregated): {n}" for n in names}
-    for h in _headings(app_html):
-        if h in APP_ONLY_HEADINGS:
-            continue
-        if h in tile_names:
-            marker = f'class="tilename">{h}'
-        else:
-            marker = APP_TO_REPORT.get(h)
-        assert marker, (
-            f"season page section {h!r} has no exported-report counterpart: "
-            "either add it to the report and map it in APP_TO_REPORT, or "
-            "declare it in APP_ONLY_HEADINGS with the reason it stays "
-            "in the console")
-        assert marker in report_html, (
-            f"season page section {h!r} is missing from the exported "
-            f"report (expected marker {marker!r})")
+    want = [h for h in _headings(app_html) if h not in APP_ONLY_HEADINGS]
+    assert _headings(report_html) == want
+    for h in ("Season player", "Live scores",
+              "Cumulative relWIS through the season", "Per-state scores"):
+        assert h in want, h
 
-
-# ---------------------------------------------------------- substance parity
 
 def test_verdict_tiles_match_including_us_aggregate(built):
     app_html, report_html = built
-    app_tiles = set(re.findall(
-        r'<div class="card rt-tile"><div class="rt-tile-h"><h2>([^<]+)</h2>',
-        app_html))
-    rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
-    # one national tile per model; pf is named for the stored tree
-    assert "US (aggregated): Particle filter alone" in app_tiles
-    assert "US (aggregated): Groundhog" in app_tiles
-    assert app_tiles == rep_tiles
+    a = _region(app_html, '<div class="verdict">', '<div class="card playcard">')
+    r = _region(report_html, '<div class="verdict">', '<div class="card playcard">')
+    assert a == r
+    assert "<h2>US (aggregated): Groundhog</h2>" in a
 
 
 def test_per_state_rows_match_including_us_row(built):
     app_html, report_html = built
-    app_rows = set(re.findall(r'<tr[^>]*data-name="([^"]+)"', app_html))
-    rep_rows = set(re.findall(r'<tr(?: class="usagg")?><td>([^<]+)</td>',
-                              report_html))
-    assert app_rows == {"US (aggregated)", "Ohio", "Utah"}
-    assert app_rows == rep_rows
-    # both wear the honest independence label on the constructed US figure
-    for html in built:
-        assert "states treated as independent" in html
+    a = _region(app_html, '<table id="sf-table"', "</table>")
+    assert a == _region(report_html, '<table id="sf-table"', "</table>")
+    assert 'class="usagg"' in a and 'data-name="Ohio"' in a
+
+
+def test_the_cumulative_chart_matches(built):
+    app_html, report_html = built
+    a = _region(app_html, '<svg class="cumchart"', "</svg>")
+    assert a == _region(report_html, '<svg class="cumchart"', "</svg>")
+    assert "<polyline" in a
 
 
 def test_player_week_lists_match(built):
     app_html, report_html = built
-    m = re.search(r"const WEEKS = (\[[^\]]*\]);", app_html)
-    assert m, "season page must hand the player its week list"
-    app_weeks = json.loads(m.group(1))
-    d = re.search(r'<script id="pbdata" type="application/json">(.*?)'
-                  r"</script>", report_html, re.S)
-    assert d, "report must embed the playback data block"
-    rep = json.loads(d.group(1).replace("<\\/", "</"))
-    assert app_weeks == rep["weeks"] == [W1, W2]
-    # every listed week carries a real payload: no empty player frames
-    for w in rep["weeks"]:
-        pl = rep["payloads"].get(w)
-        assert pl and pl.get("models"), f"week {w} embedded without forecasts"
-        assert "US" in pl.get("truth", {}), f"week {w} lacks the US truth"
-
-
-def test_cumulative_curve_stays_on_the_page(built):
-    """The season page draws the cumulative chart; the export does not."""
-    app_html, report_html = built
-    app_svg = re.search(r'<svg class="cumchart".*?</svg>', app_html, re.S)
-    assert app_svg, "season page must draw the cumulative chart"
-    # one line per scored model (here including the retired blend's rows)
-    n_models = app_svg.group(0).count("<polyline")
-    assert n_models >= 2
-    assert app_svg.group(0).count("<circle") == 2 * n_models
-    assert report_season.CURVE_HEADING not in report_html
-    assert 'class="cumchart"' not in report_html
+    line = re.search(r"const WEEKS = .*?;", app_html).group(0)
+    assert line in report_html and W1 in line and W2 in line
 
 
 def test_timing_and_settings_match(built):
+    """Wall time and the run settings: the same facts, from the run record."""
     app_html, report_html = built
-    # the season band's Wall time value (its "?" says more only when the
-    # record has per-week timing)
-    t = re.search(r'id="rs-timing">([\d:]+)<', app_html)
-    assert t, "the fixture's run record must put the wall time on the page"
-    assert f"Total wall time {t.group(1)} (h:mm:ss)" in report_html
-    pair_re = re.compile(r"<dt>(.*?)</dt><dd>(.*?)</dd>")
-    # the page lists its settings in the tip beside the one-line summary
-    app_re = re.compile(r'<span class="ncline kv"><b>(.*?)</b> (.*?)</span>')
-    app_pairs = set(app_re.findall(app_html))
-    rep_pairs = set(pair_re.findall(report_html))
-    assert app_pairs, "the fixture's run record must render its settings"
-    assert app_pairs <= rep_pairs, app_pairs - rep_pairs
+    for start, end in (('<div class="rs-facts', "</dl>"),
+                       ('<div class="rs-settings', "</div>")):
+        a = _region(app_html, start, end)
+        assert a in report_html, start
+    assert "1:02:03" in report_html
+    assert "10,000 particles" in report_html
 
-
-# ------------------------------------- absence is stated, never a silent hole
 
 def test_cold_aggregate_cache_is_computed_not_omitted(tmp_path, monkeypatch):
-    """A report downloaded before the page was visited COMPUTES the US
-    aggregate rather than dropping it on a cold cache."""
+    """No warm caches: the builder settles the season as the page's finalize
+    job does, so the US figures are there, never silently absent."""
     root = _mk_root(tmp_path, monkeypatch)
-    cache = root / "playback_cache" / "us_aggregate.json"
-    assert not cache.is_file()
     html = _report(root)
-    assert 'class="tilename">US (aggregated)' in html
-    assert cache.is_file(), "the report build must warm the cache it used"
+    assert "<h2>US (aggregated): Groundhog</h2>" in html
 
 
 def test_unscored_season_states_the_us_absence(tmp_path, monkeypatch):
+    """Nothing scored yet: the report says so as the page does (an empty
+    state), and invents no US figure."""
     root = _mk_root(tmp_path, monkeypatch)
     (root / "scores.json").unlink()
+    monkeypatch.setattr(scoring, "load_truth", lambda: ({}, dict(N2F)))
+    monkeypatch.setattr(playback, "load_truth", lambda: ({}, dict(N2F)))
     html = _report(root)
-    assert 'class="tilename">US (aggregated)' not in html
-    assert "is not in this export" in html
-    assert "has not been scored" in html
-    # the curve card is not in the export at all
-    assert report_season.CURVE_HEADING not in html
+    assert "US (aggregated)" not in html
+    assert "No scoreable weeks yet" in html or "Scoring failed" in html
 
 
-def test_failed_aggregate_states_the_reason(tmp_path, monkeypatch):
+def test_failed_aggregate_states_no_us_figure(tmp_path, monkeypatch):
+    """A US aggregate that cannot be built costs the US figures only: the
+    report still builds, with the states' scores."""
     root = _mk_root(tmp_path, monkeypatch)
+    from app.core import us_national as usn
 
     def boom(*a, **k):
-        raise RuntimeError("cache disk gone")
-    monkeypatch.setattr(retro, "national_aggregate", boom)
+        raise RuntimeError("aggregate broke")
+    monkeypatch.setattr(usn, "resolve", boom)
     html = _report(root)
-    assert 'class="tilename">US (aggregated)' not in html
-    assert "is not in this export" in html
-    assert "construction failed" in html
-    assert "RuntimeError" in html
+    assert 'data-name="Ohio"' in html
+    assert 'class="usagg"' not in html

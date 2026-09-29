@@ -169,12 +169,15 @@ def test_every_console_chart_draws_through_the_helper():
 
 
 def test_reports_inline_the_helper_and_adopt_their_figures(tmp_path):
-    from app.core import report_season, report_v2
+    from app.core import report_v2
     assert report_v2.PLOTLY_CONFIG["showTips"] is False
     src = CHARTS.read_text()
-    # the season report inlines charts.js ahead of the player
-    pj = report_season._player_js()
-    assert pj.startswith(src) and (STATIC / "player.js").read_text() in pj
+    # the season report (the season page, exported) inlines charts.js
+    # ahead of the player
+    season_t = (STATIC.parent / "templates" / "retro_season.html").read_text()
+    head = season_t.split("{% block head %}", 1)[1].split("{% else %}", 1)[0]
+    assert head.index("inline_static('charts.js')") \
+        < head.index("inline_static('player.js')")
     # the weekly report: a figure-bearing page carries the helper and
     # adopts every baked figure; a figure-less one carries neither
     fan = report_v2.fan_figure_from_quantiles(
