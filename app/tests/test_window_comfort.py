@@ -1,6 +1,9 @@
 """The native window's comfort features: the Dock name, page zoom (pinch,
 Cmd +/-/0, the Display menu's Zoom row), the shell filling wide windows,
 and the slow-request log used to chase UI stutter."""
+import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,6 +57,97 @@ def test_the_zoom_bridge_never_raises_without_a_window():
     api = cli._WindowApi()
     assert api.zoom(1) == 1.0                    # no window: level unchanged
     assert api.set_zoom("junk") == 1.0
+    assert api.can_zoom() is False
+
+
+def test_the_windows_window_says_it_cannot_zoom(monkeypatch):
+    """WebView2's window has a bridge but no zoom behind it: can_zoom() says
+    so, and zoom() leaves the level alone (the page then hides the row and
+    leaves Ctrl +/- to the system)."""
+    api = cli._WindowApi()
+    api._window = object()
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert api.can_zoom() is False
+    assert api.zoom(1) == 1.0 and api.zoom(1) == 1.0
+    assert api.set_zoom(1.5) == 1.0
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert api.can_zoom() is True
+
+
+NODE = shutil.which("node")
+
+
+def _zoom_script() -> str:
+    """base.html's page-zoom script, as the page carries it."""
+    html = client.get("/methods").text
+    start = html.index("(function(){\n  var can=false;")
+    end = html.index("addEventListener('pywebviewready',ready);})();", start)
+    return html[start:end + len("addEventListener('pywebviewready',ready);})();")]
+
+
+def _run_zoom(tmp_path, can: bool) -> dict:
+    """The zoom script against a stub page and bridge whose can_zoom() says
+    `can`: whether the row shows and whether Ctrl+= is taken from the
+    system."""
+    drv = tmp_path / "zoom.js"
+    drv.write_text(
+        "var rows=[{hidden:true},{hidden:true}], calls=[], on={};\n"
+        "var label={textContent:''};\n"
+        "var document={querySelector:function(){return label;},\n"
+        "  querySelectorAll:function(s){return s==='.zoomrow'?rows:[];}};\n"
+        "var localStorage={getItem:function(){return null;},"
+        "setItem:function(){}};\n"
+        "function addEventListener(t,f){on[t]=f;}\n"
+        "var window={pywebview:{api:{\n"
+        f"  can_zoom:function(){{return Promise.resolve({str(can).lower()});}},\n"
+        "  zoom:function(n){calls.push(n);return Promise.resolve(1.1);},\n"
+        "  set_zoom:function(z){return Promise.resolve(z);}}}};\n"
+        + _zoom_script() + "\n"
+        "setTimeout(function(){\n"
+        "  var e={metaKey:false,ctrlKey:true,altKey:false,key:'=',\n"
+        "         prevented:false,preventDefault:function(){this.prevented=true;}};\n"
+        "  on.keydown(e);\n"
+        "  setTimeout(function(){console.log(JSON.stringify({\n"
+        "    shown:rows.map(function(r){return !r.hidden;}),\n"
+        "    prevented:e.prevented, calls:calls}));},0);},0);\n",
+        encoding="utf-8")
+    out = subprocess.run([NODE, str(drv)], capture_output=True, text=True,
+                         timeout=60)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(not NODE, reason="no node to run the page's script")
+def test_the_zoom_row_and_keys_are_live_only_where_the_bridge_can_zoom(
+        tmp_path):
+    # Windows: the row stays hidden, and Ctrl+= reaches the system
+    assert _run_zoom(tmp_path, can=False) == {
+        "shown": [False, False], "prevented": False, "calls": []}
+    # macOS: the row shows, and Cmd/Ctrl+= zooms through the bridge
+    assert _run_zoom(tmp_path, can=True) == {
+        "shown": [True, True], "prevented": True, "calls": [1]}
+
+
+# ------------------------------------------------ when the server never answers
+
+def test_the_server_failed_page_says_where_the_error_is_on_this_system():
+    win = cli._server_fail_page("win32")
+    assert "The console server did not start" in win
+    assert ("If it happens again, look at the FluBNF.bat window for the "
+            "error") in win
+    assert ("<code>.venv\\Scripts\\flubnf app</code> in a Command Prompt in "
+            "the FluBNF folder") in win
+    assert "Terminal" not in win and ".venv/bin" not in win
+    mac = cli._server_fail_page("darwin")
+    assert "Terminal (<code>.venv/bin/flubnf app</code>)" in mac
+    assert cli._SERVER_FAIL_PAGE == cli._server_fail_page()
+
+
+def test_the_pywebview_hint_names_this_systems_pip():
+    assert cli._pip_hint("pywebview", "win32") == \
+        ".venv\\Scripts\\pip install pywebview"
+    assert cli._pip_hint("pywebview", "darwin") == \
+        ".venv/bin/pip install pywebview"
 
 
 def test_the_window_is_created_zoomable_with_the_bridge():
@@ -67,6 +161,7 @@ def test_the_display_menu_zoom_row_waits_for_the_window_bridge():
     html = client.get("/methods").text
     assert 'class="zoompick zoomrow" role="group" aria-label="Page zoom" hidden' in html
     assert "addEventListener('pywebviewready',ready)" in html
+    assert "a.can_zoom().then(" in html
     assert ".zoomrow[hidden]{display:none}" in NAU
 
 

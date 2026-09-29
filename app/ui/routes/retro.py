@@ -702,6 +702,17 @@ def _exports_dir():
     return APP_STATE / "exports"
 
 
+def _pasted_path(value) -> str:
+    """The path field as a path: surrounding space trimmed, and one pair of
+    double quotes around it dropped, as File Explorer's Copy as path adds
+    (Ctrl+Shift+C). A Windows path cannot hold a double quote, and a
+    POSIX one with quotes at both ends is not something anyone pastes."""
+    s = str(value or "").strip()
+    if len(s) >= 2 and s[0] == s[-1] == '"':
+        s = s[1:-1].strip()
+    return s
+
+
 def _import_replay_file(src: Path, replace: bool):
     """Import one bundle (a saved upload or a local path) into the retro
     root; (message, kind, detail) for the flash and the season page to
@@ -749,7 +760,7 @@ async def retro_import(request: Request):
             f"Could not import: the upload could not be read ({e}).",
             kind="error")
     up = form.get("file")
-    local = str(form.get("path") or "").strip()
+    local = _pasted_path(form.get("path"))
     replace = str(form.get("replace") or "") == "1"
     if isinstance(up, UploadFile) and up.filename:
         # stream the upload to a temp file beside the exports, in chunks;

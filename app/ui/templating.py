@@ -76,8 +76,19 @@ def _perl_missing_hint() -> str:
     return pf.perl_missing_message(_platform())
 
 
+def _downloads_example(name: str) -> str:
+    """An example path to `name` in this machine's Downloads folder, for a
+    path field's placeholder."""
+    if _platform() == "win32":
+        return f"C:\\Users\\you\\Downloads\\{name}"
+    if _platform() == "darwin":
+        return f"/Users/you/Downloads/{name}"
+    return f"/home/you/Downloads/{name}"
+
+
 templates.env.globals["engine_setup_hint"] = _engine_setup_hint
 templates.env.globals["perl_missing_hint"] = _perl_missing_hint
+templates.env.globals["downloads_example"] = _downloads_example
 
 # build SHA and restart banner (app/ui/versions.py)
 templates.env.globals["running_sha"] = lambda: versions.RUNNING_SHA

@@ -124,8 +124,10 @@
    <input type="file" name="file" id="rt-import-file"
      accept=".zip,.flubnf-replay.zip,application/zip">
    <label for="rt-import-path">or its path on this machine</label>
+   {# this machine's shape of path (templating._downloads_example); a
+      path pasted in quotes (Explorer's Copy as path) is taken as is #}
    <input type="text" name="path" id="rt-import-path"
-     placeholder="/Users/you/Downloads/2025-26-FluBNF-replay-….flubnf-replay.zip">
+     placeholder="{{ downloads_example('2025-26-FluBNF-replay-….flubnf-replay.zip') }}">
    <div class="lblrow"><label class="ck" for="rt-import-rep"><input type="checkbox" name="replace" value="1" id="rt-import-rep"> Replace an earlier import</label>
     {{ tips.tip("rt-import-rep", "replacing an import", "Replace a copy already imported from the same export.") }}</div>
    <button class="quiet">Import replay</button>

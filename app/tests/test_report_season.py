@@ -132,7 +132,7 @@ def test_report_opens_on_the_forecast_detail(tmp_path, monkeypatch):
 def test_report_carries_nothing_that_needs_the_console(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     html = _build(root)
-    for gone in ("Download report", "Reveal in Finder", "Export replay",
+    for gone in ("Download report", "Show in folder", "Export replay",
                  'class="navtabs"', 'id="guard-modal"', "/api/perf",
                  "/api/versions", "Open the live"):
         assert gone not in html, gone

@@ -547,6 +547,23 @@ def output_download(request: Request, path: str):
                         content_disposition_type="attachment")
 
 
+def _reveal_command(p: Path, platform: str | None = None):
+    """What opens the file manager on `p` (selected where it can be): an
+    argv list, or on Windows the command line itself. Explorer reads its
+    own switches and knows /select only when the switch stands outside the
+    quotes, so an argv element "/select,C:\\Users\\Ely Miller\\r.html",
+    which subprocess quotes whole for its space, opens the default folder
+    instead. The string reaches CreateProcess verbatim, and a Windows path
+    cannot hold the double quote around it. `platform` is sys.platform by
+    default; tests pass one."""
+    plat = platform or sys.platform
+    if plat == "darwin":
+        return ["open", "-R", str(p)]
+    if plat == "win32":
+        return f'explorer /select,"{p}"'
+    return ["xdg-open", str(p.parent)]
+
+
 @router.post("/output/reveal")
 def output_reveal(path: str = Form(...)):
     """Show the file in Finder / Explorer (a local desktop app)."""
@@ -559,13 +576,7 @@ def output_reveal(path: str = Form(...)):
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p.is_relative_to(APP_STATE.resolve()) and p.exists():
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-R", str(p)])
-        elif sys.platform == "win32":
-            # one argv element: Explorer's /select, has odd comma quoting
-            subprocess.Popen(["explorer", f"/select,{p}"])
-        else:
-            subprocess.Popen(["xdg-open", str(p.parent)])
+        subprocess.Popen(_reveal_command(p))
     return RedirectResponse("/output", status_code=303)
 
 

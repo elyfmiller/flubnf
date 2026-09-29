@@ -396,6 +396,37 @@ def test_post_import_takes_a_local_path_and_refuses_bad_input(tmp_path,
     assert len(retro.list_archive_dirs(rr, SEASON)) == 1
 
 
+def test_a_path_pasted_in_quotes_imports(tmp_path, monkeypatch):
+    """File Explorer's Copy as path (Ctrl+Shift+C) wraps the path in double
+    quotes: the field takes it as the path inside them."""
+    rr = _roots(tmp_path, monkeypatch)
+    src = tmp_path / "elsewhere"; src.mkdir()
+    _season_tree(src, SEASON)
+    p = rb.export_season(src / SEASON, SEASON, tmp_path / "out")
+    r = client.post("/retro/import", data={"path": f' "{p}" '},
+                    follow_redirects=False)
+    assert r.status_code == 303 and "?archive=" in r.headers["location"]
+    assert _flash().startswith(f"Imported {SEASON}")
+    assert len(retro.list_archive_dirs(rr, SEASON)) == 1
+    from app.ui.routes import retro as ui_retro
+    assert ui_retro._pasted_path('"C:\\Users\\Ely Miller\\x.zip"') == \
+        "C:\\Users\\Ely Miller\\x.zip"
+    assert ui_retro._pasted_path("  /Users/ely/x.zip ") == "/Users/ely/x.zip"
+    assert ui_retro._pasted_path('"') == '"'          # not a pair: as typed
+    assert ui_retro._pasted_path(None) == ""
+
+
+def test_the_path_example_is_this_machines_shape(monkeypatch):
+    from app.ui import templating as ui_templating
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "win32")
+    html = client.get("/retro").text
+    assert ('placeholder="C:\\Users\\you\\Downloads\\2025-26-FluBNF-replay-'
+            '….flubnf-replay.zip"') in html
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "darwin")
+    assert 'placeholder="/Users/you/Downloads/2025-26-FluBNF-replay-' in \
+        client.get("/retro").text
+
+
 def test_the_storage_tab_lists_the_import_and_deletes_it(tmp_path,
                                                          monkeypatch):
     rr, p, r = _import_into_app(tmp_path, monkeypatch)

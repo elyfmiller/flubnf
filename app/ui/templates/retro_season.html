@@ -243,8 +243,9 @@
   <a href="/retro/{{ season }}/report{{ aq }}" download id="dl-report"
     data-season="{{ season }}" data-archive="{{ archive }}"><button class="gold"
     type="button">{{ tips.icon("download") }} Download report</button></a>
+  {# Finder on a Mac, File Explorer on Windows: the Output tab's words #}
   <button type="button" class="quiet" id="rev-report"
-    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
+    data-season="{{ season }}" data-archive="{{ archive }}">{{ tips.icon("folder") }} Show in folder</button>
   {# the replay bundle (app/core/replay_bundle): one zip of this run's
      record, scores and weeks, for Import a replay on another machine.
      Built first (its size and name land beside it), then downloaded the
@@ -268,7 +269,7 @@
 {% endif %}
 {% if not export %}
 <script>
- // Download report, Reveal in Finder and Export replay: each builds its
+ // Download report, Show in folder and Export replay: each builds its
  // file first, which can take a while, so a progress bar (the kit's,
  // FluBNFUI.progress) shows under the buttons meanwhile, and a failure
  // says why there instead of the click seeming to do nothing

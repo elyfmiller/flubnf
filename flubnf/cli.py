@@ -277,16 +277,39 @@ def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
 # MUST match app/core/engines/pf.py RUNNER_PIDS_FILE.
 PF_RUNNER_PIDS_FILE = APP_PID_FILE.parent / "pf_runners.json"
 
-# Shown by the load watchdog when every reload fails. Loaded via load_html:
-# pywebview 6.2.1 misroutes data: URLs as file paths.
-_SERVER_FAIL_PAGE = """<!doctype html><html><head><title>FluBNF</title></head>
+def _server_fail_page(platform: str | None = None) -> str:
+    """The page the load watchdog shows when every reload fails, with where
+    this machine's error output is: on Windows the FluBNF.bat window already
+    holds it, and the console's own command is .venv\\Scripts\\flubnf.
+    Loaded via load_html: pywebview 6.2.1 misroutes data: URLs as file
+    paths. `platform` is sys.platform by default; tests pass one."""
+    import sys
+    if (platform or sys.platform) == "win32":
+        where = ("look at the FluBNF.bat window for the error, or run "
+                 "<code>.venv\\Scripts\\flubnf app</code> in a Command "
+                 "Prompt in the FluBNF folder to see it.")
+    else:
+        where = ("start it from Terminal (<code>.venv/bin/flubnf app</code>) "
+                 "to see the error output.")
+    return f"""<!doctype html><html><head><title>FluBNF</title></head>
 <body style="font-family:-apple-system,Helvetica,sans-serif;background:#101223;
 color:#E9EAF4;padding:2.5rem;max-width:34rem">
 <h2>The console server did not start</h2>
 <p>The FluBNF window opened, but the local server behind it never answered.
-Close this window and relaunch FluBNF. If it happens again, start it from
-Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
+Close this window and relaunch FluBNF. If it happens again, {where}</p>
 </body></html>"""
+
+
+_SERVER_FAIL_PAGE = _server_fail_page()
+
+
+def _pip_hint(package: str, platform: str | None = None) -> str:
+    """The console venv's pip command for `package`, as this machine
+    spells it."""
+    import sys
+    if (platform or sys.platform) == "win32":
+        return f".venv\\Scripts\\pip install {package}"
+    return f".venv/bin/pip install {package}"
 
 
 def _pid_cmdline_windows_native(pid: int, ntdll=None,
@@ -828,17 +851,24 @@ def _zoom_step(current: float, step: int) -> float:
 class _WindowApi:
     """Exposed to the page as window.pywebview.api: whole-page zoom for the
     native macOS window (WKWebView has no zoom menu of its own). The page
-    calls zoom(+1 | -1 | 0) from Cmd+= / Cmd+- / Cmd+0 and the Display
-    menu, and set_zoom(level) to restore the stored level on load."""
+    asks can_zoom() first, and only where it answers true shows the Display
+    menu's Zoom row and takes Cmd+= / Cmd+- / Cmd+0 for zoom(+1 | -1 | 0);
+    set_zoom(level) restores the stored level on load. Elsewhere (the
+    Windows window, WebView2) the bridge cannot zoom, so the page leaves
+    the keys alone and Ctrl+wheel zooms natively."""
 
     def __init__(self):
         self._window = None
         self._level = 1.0
 
-    def _apply(self, level: float) -> float:
+    def can_zoom(self) -> bool:
+        """Whether zoom() changes anything here: the macOS window only."""
         import sys
+        return sys.platform == "darwin" and self._window is not None
+
+    def _apply(self, level: float) -> float:
         level = min(ZOOM_STEPS[-1], max(ZOOM_STEPS[0], float(level)))
-        if sys.platform != "darwin" or self._window is None:
+        if not self.can_zoom():
             return self._level
         try:
             from PyObjCTools import AppHelper
@@ -1168,13 +1198,14 @@ def _start_window_server(sock, port: int, popen=None, platform=None):
 
 @app.command("window")
 def app_window(port: int = 8710):
-    """The console in its own native window (no browser). Needs pywebview:
-    .venv/bin/pip install pywebview"""
+    """The console in its own native window (no browser). Needs pywebview
+    in the console venv (.venv/bin/pip, or .venv\\Scripts\\pip on Windows:
+    pip install pywebview)."""
     import threading
     try:
         import webview
     except ImportError:
-        print("pywebview not installed: .venv/bin/pip install pywebview")
+        print(f"pywebview not installed: {_pip_hint('pywebview')}")
         raise SystemExit(1)
     # pywebview refuses downloads unless ALLOW_DOWNLOADS is set (6.2.1
     # default False); without it "Download season report" is a dead end.
