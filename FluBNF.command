@@ -88,6 +88,20 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
   fi
 fi
 
+# macOS keeps FluBNF.app out of Documents, Desktop and Downloads (it starts
+# as a shell script, which no permission covers). A clone there moves to
+# ~/GitHub with the hub and PyBNF beside it, once, and starts again from
+# its new folder (scripts/macos/move_home.sh). Headless, that is work to
+# watch.
+if [ "$(uname -s)" = Darwin ] && [ -f scripts/macos/move_home.sh ] \
+   && /bin/bash scripts/macos/move_home.sh --check; then
+  needs_terminal "FluBNF moves out of Documents"
+  if NEW="$(/bin/bash scripts/macos/move_home.sh)" && [ -n "$NEW" ] && cd "$NEW"; then
+    echo "· starting again from $NEW"
+    exec /bin/bash ./FluBNF.command
+  fi
+fi
+
 # Dependency refresh policy: the package is editable, so pip runs only when
 # pyproject.toml differs from the last good install's stamp. Never reinstall
 # on every open (slow, and an interrupted reinstall left no .venv/bin/flubnf);
@@ -124,7 +138,8 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   # launch (analogue only). A checkout OR an unpacked archive (no .git) counts,
   # the same test as setup_engine.sh.
   CHECKOUT=""
-  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-pf" \
+  for c in "${FLUBNF_PYBNF:-}" "$HOME/GitHub/PyBNF-pf" "$HOME/GitHub/PyBNF-Private" \
+           "$HOME/Documents/GitHub/PyBNF-pf" \
            "$HOME/Documents/GitHub/PyBNF-Private" "$HOME/Documents/PyBNF-Private" \
            "$HOME/PyBNF-Private"; do
     [ -n "$c" ] || continue

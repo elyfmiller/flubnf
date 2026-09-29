@@ -69,13 +69,22 @@ def test_an_existing_checkout_under_documents_is_reused_where_it_stands(
         "resolution created something on disk; it must only ever look")
 
 
-def test_posix_defaults_are_untouched(monkeypatch, tmp_path):
-    """macOS/Linux have no CFA: settings.py agrees with setup.sh,
-    setup_engine.sh and the .command launchers on ~/Documents/GitHub."""
+def test_posix_defaults_are_outside_documents(monkeypatch, tmp_path):
+    """macOS keeps FluBNF.app out of Documents: settings.py agrees with
+    setup.sh, setup_engine.sh and the .command launchers on ~/GitHub. An
+    older setup's ~/Documents/GitHub checkout is used while no ~/GitHub one
+    exists (FluBNF.command moves it)."""
     home = tmp_path / "profile"
     got = _checkout(monkeypatch, windows=False, home=home,
                     localappdata=tmp_path / "unused")
-    assert got == home / "Documents" / "GitHub" / "FluSight-forecast-hub", got
+    assert got == home / "GitHub" / "FluSight-forecast-hub", got
+    legacy = home / "Documents" / "GitHub" / "FluSight-forecast-hub"
+    legacy.mkdir(parents=True)
+    assert _checkout(monkeypatch, windows=False, home=home,
+                     localappdata=tmp_path / "unused") == legacy
+    (home / "GitHub" / "FluSight-forecast-hub").mkdir(parents=True)
+    assert _checkout(monkeypatch, windows=False, home=home,
+                     localappdata=tmp_path / "unused") == got
 
 
 def test_ntpath_ignores_dollar_home_which_is_why_the_seam_exists(monkeypatch,

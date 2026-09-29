@@ -579,50 +579,70 @@ exit 0
         assert "does not open another so soon" in "\n".join(_read(rec, "alert")), said
 
 
-PRIVACY_PANE = ("x-apple.systempreferences:com.apple.preference.security"
-                "?Privacy_FilesAndFolders")
-
-
 @posix_only
 def test_a_folder_macos_refuses_is_named_in_the_waiting_terminal(tmp_path):
     """The Mac Studio's launch.log: `./FluBNF.command: Operation not
-    permitted`. macOS privacy refused FluBNF.app its folder (~/Documents)
-    while Terminal has it. The ready launch writes how to fix it to the
-    waiting Terminal's status file, opens that System Settings page, and
-    never starts a host that cannot read the venv."""
-    repo, rec = _launch_repo(tmp_path, refused=True)
+    permitted`. macOS refuses FluBNF.app ~/Documents while Terminal has it,
+    and no setting changes that (the app starts as a shell script, so macOS
+    asks about /bin/bash). The ready launch tells the waiting Terminal that
+    FluBNF.command moves the folder, opens no settings page, and never
+    starts a host that cannot read the venv."""
+    home = tmp_path / "home"
+    repo, rec = _launch_repo(home / "Documents" / "GitHub", refused=True)
     status = tmp_path / "boot"
-    r, _, _ = _launch(repo, args=["--ready", str(status)])
+    r, _, _ = _launch(repo, args=["--ready", str(status)], HOME=home)
     assert r.returncode == 1, r.stdout + r.stderr
     said = status.read_text()
-    assert "has not given FluBNF access to its folder" in said
-    assert "Privacy & Security > Files and Folders" in said
-    assert _read(rec, "open") == [PRIVACY_PANE]
+    assert "in your Documents folder" in said and "moves it to ~/GitHub" in said
+    assert "flubnf-launch:" not in r.stdout, "said twice in that Terminal"
+    assert _read(rec, "open") is None
     assert _read(rec, "host") is None and _read(rec, "osascript") is None
 
 
 @posix_only
-def test_a_dock_launch_macos_refuses_its_folder_says_why_in_terminal(tmp_path):
-    """From the Dock: no checks it cannot read, straight to Terminal with
-    the reason in the log; the Terminal's own launch then shows it."""
-    repo, rec = _launch_repo(tmp_path, refused=True)
-    r, log, _ = _launch(repo)
+def test_a_dock_launch_from_documents_goes_to_terminal_then_says_how(tmp_path):
+    """From the Dock: no checks it cannot read, straight to Terminal (where
+    FluBNF.command moves the folder). Clicked again before that: an alert
+    that says what to do, not that Terminal opened moments ago."""
+    home = tmp_path / "home"
+    repo, rec = _launch_repo(home / "Documents" / "GitHub", refused=True)
+    r, log, _ = _launch(repo, HOME=home)
     assert r.returncode == 0, log
     assert _read(rec, "open") == ["-a", "Terminal", str(repo / "FluBNF.command")]
-    assert "has not given FluBNF access to its folder" in log
+    assert "in your Documents folder" in log
     assert _read(rec, "prep.env") is None and _read(rec, "host") is None
+    (rec / "open").unlink()
+    r, _, _ = _launch(repo, HOME=home)
+    assert r.returncode == 1 and _read(rec, "open") is None
+    said = "\n".join(_read(rec, "osascript"))
+    assert "Open FluBNF.command in that folder once" in said
+    assert "FluBNF cannot open from the Dock yet" in said
+    assert "less than" not in said and "as critical" not in said
+
+
+@posix_only
+def test_a_refused_folder_elsewhere_says_to_move_it(tmp_path):
+    """Refused outside Documents, Desktop and Downloads (another guarded
+    place): no setting helps either, so the reason says to move it."""
+    repo, rec = _launch_repo(tmp_path, refused=True)
+    status = tmp_path / "boot"
+    r, _, _ = _launch(repo, args=["--ready", str(status)], HOME=tmp_path / "home")
+    assert r.returncode == 1
+    said = status.read_text()
+    assert "no privacy setting changes that" in said and "~/GitHub" in said
 
 
 @posix_only
 def test_a_handover_from_a_refused_folder_names_the_refusal(tmp_path):
     """The host could not read the venv (it reads as missing): its
     handover reports the real reason, not a first run."""
-    repo, rec = _launch_repo(tmp_path, refused=True)
+    home = tmp_path / "home"
+    repo, rec = _launch_repo(home / "Documents", refused=True)
     status = tmp_path / "boot"
     r = _handover(repo, why="no .venv yet (first run, or setup did not finish)",
-                  args=["--ready", str(status)])
+                  args=["--ready", str(status)], HOME=home)
     assert r.returncode == 1
-    assert "has not given FluBNF access" in status.read_text()
+    assert "in your Documents folder" in status.read_text()
 
 
 @posix_only
@@ -781,8 +801,9 @@ exit 0
 
 
 def _command(repo: Path, **env) -> subprocess.CompletedProcess:
+    env.setdefault("HOME", repo.parent)
     return subprocess.run(["bash", str(repo / "FluBNF.command")],
-                          env=_env(HOME=repo.parent, **env),
+                          env=_env(**env),
                           stdin=subprocess.DEVNULL, capture_output=True,
                           text=True, timeout=60)
 
@@ -942,6 +963,117 @@ def test_without_a_host_the_terminal_launch_is_unchanged(tmp_path, name, build):
     assert r.returncode == 0, r.stdout + r.stderr
     assert _read(rec, "console") == ["direct app"]
     assert _read(rec, "build") == (["built"] if name == "Darwin" else None)
+
+
+# --------------------------------- FluBNF.command: out of Documents, once
+
+def _documents_setup(tmp_path):
+    """An older setup: the clone, the FluSight hub and PyBNF in
+    ~/Documents/GitHub, the engine venv in ~/.venvs importing PyBNF from its
+    checkout, and paths to all of them in .flubnf.env, the venv and
+    app/state."""
+    home = tmp_path / "home"
+    gh = home / "Documents" / "GitHub"
+    repo, rec = _command_repo(gh)
+    repo = repo.rename(gh / "flubnf")
+    old = str(repo)
+    for name in ("FluSight-forecast-hub", "PyBNF-pf"):
+        (gh / name / ".git").mkdir(parents=True)
+    engine = home / ".venvs" / "flubnf-engine"
+    _script(engine / "bin" / "python", "exit 0\n")
+    site = engine / "lib" / "site-packages"
+    site.mkdir(parents=True)
+    (site / "__editable__.pybnf.pth").write_text(f"{gh}/PyBNF-pf\n")
+    (repo / ".flubnf.env").write_text(
+        f'export FLUBNF_HUB="{gh}/FluSight-forecast-hub"\n'
+        f'export FLUBNF_PY_ENGINE="{engine}/bin/python"\n'
+        f'export FLUBNF_PYBNF="{gh}/PyBNF-pf"\n')
+    _script(repo / ".venv" / "bin" / "tool", f"#!{old}/.venv/bin/python\n")
+    vsite = repo / ".venv" / "lib" / "site-packages"
+    vsite.mkdir(parents=True)
+    (vsite / "__editable__.flubnf.pth").write_text(f"{old}\n{old}-old/keep\n")
+    (repo / ".venv" / "bin" / "linked").symlink_to(f"{old}/nowhere")
+    (repo / "app" / "state").mkdir(parents=True)
+    (repo / "app" / "state" / "datasets.json").write_text(f'{{"dir": "{old}/app/state/x"}}\n')
+    path = _as_os(tmp_path, repo, rec)
+    shutil.copy(MACOS / "move_home.sh", repo / "scripts" / "macos" / "move_home.sh")
+    return home, repo, rec, path, engine
+
+
+@posix_only
+def test_a_clone_in_documents_moves_to_github_with_everything_it_names(tmp_path):
+    """macOS never lets FluBNF.app read Documents (it asks about /bin/bash,
+    which no setting covers). So FluBNF.command, in Terminal, moves the
+    clone, the hub and PyBNF to ~/GitHub, rewrites every path that named
+    them, and starts again from there: pull, open, done."""
+    home, repo, rec, path, engine = _documents_setup(tmp_path)
+    old = str(repo)
+    r = _command(repo, PATH=path, HOME=home)
+    said = r.stdout + r.stderr
+    assert r.returncode == 0, said
+    new = home / "GitHub" / "flubnf"
+    assert not repo.exists() and new.is_dir(), said
+    assert (home / "GitHub" / "FluSight-forecast-hub" / ".git").is_dir()
+    assert (home / "GitHub" / "PyBNF-pf" / ".git").is_dir()
+    assert not list((home / "Documents" / "GitHub").glob("[FP]*"))
+    envf = (new / ".flubnf.env").read_text()
+    assert "Documents" not in envf and f"{home}/GitHub/PyBNF-pf" in envf, envf
+    assert f"#!{new}/.venv/bin/python" in (new / ".venv" / "bin" / "tool").read_text()
+    pth = (new / ".venv" / "lib" / "site-packages" / "__editable__.flubnf.pth").read_text()
+    assert pth == f"{new}\n{old}-old/keep\n", "only whole names are rewritten"
+    assert (new / ".venv" / "bin" / "linked").is_symlink()
+    assert str(new) in (new / "app" / "state" / "datasets.json").read_text()
+    assert (engine / "lib" / "site-packages" / "__editable__.pybnf.pth").read_text() \
+        == f"{home}/GitHub/PyBNF-pf\n"
+    assert f"moved here from {old}" in (new / "app/state/logs/launch.log").read_text()
+    # then it started again from the new folder, and opened the app there
+    assert "starting again from" in said
+    assert _read(rec, "open")[3] == f"{new}/FluBNF.app", said
+    assert "Locate" in said
+
+
+@posix_only
+@pytest.mark.parametrize("why", ["taken", "off", "running", "not-a-mac"])
+def test_a_clone_in_documents_stays_when_it_cannot_move(tmp_path, why):
+    """The new folder exists, FLUBNF_MOVE=off, FluBNF is running from this
+    clone, or this is not a Mac: nothing moves, and FluBNF runs in place
+    (through Terminal) as before."""
+    home, repo, rec, path, _ = _documents_setup(tmp_path)
+    env = {"PATH": path, "HOME": home}
+    running = None
+    if why == "taken":
+        (home / "GitHub" / "flubnf").mkdir(parents=True)
+    elif why == "off":
+        env["FLUBNF_MOVE"] = "off"
+    elif why == "running":
+        fake = _script(tmp_path / "bin" / "flubnf", "sleep 60\n")
+        running = subprocess.Popen([str(fake), "app"])
+        (repo / "app" / "state" / "app.pid").write_text(str(running.pid))
+    else:
+        _as_os(tmp_path, repo, rec, "Linux")
+    try:
+        r = _command(repo, **env)
+    finally:
+        if running:
+            running.kill()
+            running.wait()
+    said = r.stdout + r.stderr
+    assert repo.is_dir() and (repo / ".flubnf.env").read_text().count("Documents") == 2, said
+    assert not (home / "GitHub" / "FluSight-forecast-hub").exists()
+    assert {"taken": "already exists", "running": "Quit it", "off": "",
+            "not-a-mac": ""}[why] in said
+    assert r.returncode == 0, said
+    if why != "not-a-mac":
+        assert _read(rec, "open")[3] == f"{repo}/FluBNF.app", said
+
+
+@posix_only
+def test_headless_mode_hands_the_move_to_terminal(tmp_path):
+    """The Dock app's headless run never moves folders out of sight."""
+    home, repo, rec, path, _ = _documents_setup(tmp_path)
+    r = _command(repo, PATH=path, HOME=home, FLUBNF_PREPARE_ONLY="1")
+    assert r.returncode == 75, r.stdout + r.stderr
+    assert "moves out of Documents" in r.stdout and repo.is_dir()
 
 
 # ---------------------------------------------------------------- host_boot

@@ -11,8 +11,8 @@ configures the system by exporting a handful of variables (or editing a
     FLUBNF_PY_ENGINE  python of the engine venv (pybnf + bngsim installed)
     FLUBNF_PYBNF      checkout of the PyBNF fork providing fit_type=pf
 
-Defaults are conventional locations (~/Documents/GitHub on POSIX; see
-_checkout for Windows), so a conventionally laid-out machine needs none.
+Defaults are conventional locations (~/GitHub on POSIX; see _checkout),
+so a conventionally laid-out machine needs none.
 """
 from __future__ import annotations
 
@@ -54,18 +54,23 @@ def _path(env: str, *fallbacks: str) -> Path:
 def _checkout(env: str, name: str) -> Path:
     """Where a git checkout lives when `env` is unset.
 
-    POSIX: ~/Documents/GitHub/<name>. Windows: %LOCALAPPDATA%\\FluBNF\\<name>,
-    because Controlled Folder Access (Defender), where enabled, blocks
-    git.exe and python.exe from writing under Documents. Microsoft ships it
-    off; %LOCALAPPDATA% works either way (never protected, does not roam).
-    An existing checkout at the old Documents path still wins; nothing here
+    POSIX: ~/GitHub/<name>, because macOS keeps FluBNF.app out of
+    Documents (FluBNF.command moves an older checkout there). Windows:
+    %LOCALAPPDATA%\\FluBNF\\<name>, because Controlled Folder Access
+    (Defender), where enabled, blocks git.exe and python.exe from writing
+    under Documents. Microsoft ships it off; %LOCALAPPDATA% works either
+    way (never protected, does not roam). An existing checkout at the old
+    Documents path still wins when the new one does not exist; nothing here
     moves a directory (docs/WINDOWS.md).
     """
     v = os.environ.get(env)
     if v:
         return Path(v).expanduser()
     legacy = _home() / "Documents" / "GitHub" / name
-    if not _windows() or legacy.exists():
+    if not _windows():
+        home = _home() / "GitHub" / name
+        return legacy if legacy.exists() and not home.exists() else home
+    if legacy.exists():
         return legacy
     local = os.environ.get("LOCALAPPDATA")
     base = Path(local) if local else _home() / "AppData" / "Local"

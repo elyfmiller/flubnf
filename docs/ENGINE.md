@@ -44,7 +44,7 @@ having no access. The invitee accepts from their email or from
    `owner/name`. Use the URL tab: the GitHub.com tab lists repositories
    you own plus your organisations', so a private repository you are only a
    collaborator on is usually missing from it. Set the local path to
-   `~/Documents/GitHub/PyBNF-Private`, where setup looks, then reopen
+   `~/GitHub/PyBNF-Private`, where setup looks, then reopen
    `FluBNF.command`. Signing in to Desktop without cloning does not help,
    because Desktop does not share its login with terminal git.
 2. GitHub CLI, two steps: `gh` is not installed by default.
@@ -74,7 +74,7 @@ treat it the way you treat the fork.
 
 Setup clones from it for you. By hand:
 
-    git clone -b feature/particle-filter pybnf.bundle ~/Documents/GitHub/PyBNF-Private
+    git clone -b feature/particle-filter pybnf.bundle ~/GitHub/PyBNF-Private
 
 Two failures are worth knowing apart. A file that is not a bundle at all (a
 browser that saved an error page under the name) is caught by

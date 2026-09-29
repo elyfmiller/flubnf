@@ -13,6 +13,7 @@ The root scripts that install, update and open FluBNF, who calls each, and every
 | `FluBNF.app/` | macOS | App bundle, keepable in the Dock. `Contents/MacOS/flubnf-launch` runs `FluBNF.command` headless, then execs the host `Contents/MacOS/FluBNF` as `flubnf window`; anything to watch opens `FluBNF.command` in Terminal instead. With `FLUBNF_LAUNCH=ready` or `--ready <status file>` (FluBNF.command's own launch) it skips the checks, runs `flubnf app` with `FLUBNF_LAUNCH=ready` exported, and writes a startup failure to the status file rather than opening Terminal. `--handover "<why>"` is the host's and `host_boot.py`'s way back to Terminal: it reports to a waiting Terminal, or reopens one. Every automatic reopen is recorded first, per clone; a second within ten minutes, or one that cannot be recorded, is an alert instead ([below](#flubnfapp-in-the-dock-macos)) | user, Dock |
 | `scripts/macos/build_app_host.sh` | macOS | Compiles `scripts/macos/flubnf_host.c` against the venv's libpython into `FluBNF.app/Contents/MacOS/FluBNF` (gitignored), signs it ad hoc. Quiet when current; `--force`, `--check` | `setup.sh`, `FluBNF.command`, `flubnf-launch` |
 | `scripts/macos/host_boot.py` | macOS | Runs the console script under the host for a Dock launch; a failure in the first 30 s is reported to the Terminal that asked, or handed to `flubnf-launch --handover` | the host |
+| `scripts/macos/move_home.sh` | macOS | Moves a clone in Documents, Desktop or Downloads to `~/GitHub`, with the FluSight hub and PyBNF checkout `.flubnf.env` names, and rewrites the paths that named them (`.flubnf.env`, `.venv`, `app/state`, the engine venv). One rename each on the same disk; nothing is copied. `--check` says whether one is due | `FluBNF.command` |
 | `SetupEngine.command` | macOS | Double click: finds a PyBNF checkout or engine archive, runs `setup_engine.sh` | user |
 | `reinstall.sh` | macOS, Linux | Clean reinstall: sets the old clone and engine venv aside, moves old engine files to `Downloads/old-engine-files`, then `setup.sh` + `setup_engine.sh` with the newest archive | user: `curl … reinstall.sh \| bash` |
 | `FluBNF.bat` | Windows | Twin of `FluBNF.command`: self-update, reads `.flubnf.env.cmd`, offers `setup.ps1` when hub data is missing, installs the engine inline, starts the console | user |
@@ -48,13 +49,13 @@ A Dock launch (`flubnf-launch`) runs `FluBNF.command` headless, output in `app/s
 
 The host is per machine and gitignored. A fresh clone opens through Terminal until setup has built it. It is rebuilt when the venv, its packages or the source change. A failed build (no Command Line Tools, a static-only Python) is not retried on every launch; installing the tools earns a retry. It is signed ad hoc (`codesign -s -`), which Apple Silicon requires and which is enough for a program built on the same Mac. Gatekeeper only checks quarantined files, and a file compiled locally has no quarantine flag.
 
-On the first Dock launch macOS may ask whether FluBNF can use the Documents folder (and, while the engine is missing, Downloads and Desktop): Terminal held those permissions before. It may ask again after the host is rebuilt for a new Python. If that was refused, FluBNF can still write the files it made (`launch.log`) but reads nothing else in its folder (`Operation not permitted`): the launch says so in Terminal, opens System Settings > Privacy & Security > Files and Folders, and runs the console in that Terminal meanwhile. Turn on Documents Folder for FluBNF there (or add FluBNF.app to Full Disk Access); `tccutil reset SystemPolicyDocumentsFolder edu.nau.flubnf` makes macOS ask again.
+FluBNF lives in `~/GitHub`, not `~/Documents/GitHub`. macOS keeps Documents, Desktop and Downloads from apps it has not been told to trust, and FluBNF.app cannot be: its executable is a shell script, so macOS asks whether `/bin/bash` may read the folder (the TCC log says `BUNDLE_ATTRIBUTION: executable path file:///bin/bash resolves to attributed bundle: (null)`), and neither Files and Folders nor Full Disk Access for FluBNF counts. The app can still write the files it made (`launch.log`) but reads nothing else there (`Operation not permitted`). Terminal is allowed, which is why `FluBNF.command` always worked. So a Dock launch that finds its clone refused hands over to Terminal, and `FluBNF.command` there moves the clone to `~/GitHub` (`scripts/macos/move_home.sh`), together with the FluSight hub and the PyBNF checkout, and starts again from its new folder. After that the Dock opens FluBNF directly. GitHub Desktop then lists those repositories as missing: Locate… points it at the new folders. `FLUBNF_MOVE=off` keeps a clone where it is (FluBNF then always runs through Terminal).
 
 To check a Mac: `scripts/macos/build_app_host.sh --force` shows the build; `tail app/state/logs/launch.log` shows what the last Dock launch did.
 
 ## Environment variables
 
-Paths default to `~/Documents/GitHub/<name>`; on Windows, to `%LOCALAPPDATA%\FluBNF\<name>` unless a checkout already exists at the Documents path ([WINDOWS.md](WINDOWS.md)).
+Paths default to `~/GitHub/<name>` (an older setup's `~/Documents/GitHub/<name>` is used until `FluBNF.command` moves it); on Windows, to `%LOCALAPPDATA%\FluBNF\<name>` unless a checkout already exists at the Documents path ([WINDOWS.md](WINDOWS.md)).
 
 **Machine paths** (the console reads them through `flubnf/settings.py`; `flubnf doctor` reports them):
 
@@ -70,7 +71,9 @@ Paths default to `~/Documents/GitHub/<name>`; on Windows, to `%LOCALAPPDATA%\Flu
 
 | Variable | Honored by | Default |
 |---|---|---|
-| `FLUBNF_DIR` | `install.sh`, `reinstall.sh` | `~/Documents/GitHub/flubnf` |
+| `FLUBNF_DIR` | `install.sh`, `reinstall.sh` | `~/GitHub/flubnf` (`reinstall.sh`: an existing `~/Documents/GitHub/flubnf` when there is none) |
+| `FLUBNF_MOVE` | `FluBNF.command`, `move_home.sh` | unset = move a clone out of Documents, Desktop or Downloads; `off` leaves it |
+| `FLUBNF_HOME_DIR` | `move_home.sh` | `~/GitHub` (where a clone moves to) |
 | `FLUBNF_REPO` | `reinstall.sh` | `https://github.com/elyfmiller/flubnf` |
 | `FLUBNF_UPDATE` | `FluBNF.command`, `FluBNF.bat` | unset = fast-forward; `off` skips; `force` resets to origin |
 | `FLUBNF_LAUNCH` | `flubnf-launch` (`FluBNF.app`) | unset = quiet launch; `terminal` opens `FluBNF.command` in Terminal (not twice within ten minutes: the second is an alert); `ready` is FluBNF.command's own launch. `open` does not pass a shell's variables on: run `FLUBNF_LAUNCH=terminal FluBNF.app/Contents/MacOS/flubnf-launch`, or `launchctl setenv FLUBNF_LAUNCH terminal` (until logout) |

@@ -90,10 +90,13 @@ main() {
 
   # `open` itself decides whether FluBNF.command is there: Terminal has its
   # own permission for Documents, which this app may have been refused.
+  # $2: what to say instead, when Terminal opened moments ago
   terminal() {
     if [ -n "$ready" ]; then
-      echo "flubnf-launch: $1"
-      [ -n "${FLUBNF_BOOT_STATUS:-}" ] && echo "$1" > "$FLUBNF_BOOT_STATUS"
+      # the waiting Terminal prints the status file; say it here only
+      # when there is none
+      { [ -n "${FLUBNF_BOOT_STATUS:-}" ] && echo "$1" > "$FLUBNF_BOOT_STATUS"; } 2>/dev/null \
+        || echo "flubnf-launch: $1"
       exit 1
     fi
     # at most one automatic reopen per HANDOVER_MIN minutes, and none that
@@ -103,6 +106,7 @@ main() {
     last="$(sed -n 1p "$stamp" 2>/dev/null)"
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
     if [ "$last" -le "$now" ] && [ $((now - last)) -lt $((HANDOVER_MIN * 60)) ]; then
+      [ -z "${2:-}" ] || alert "$2" "FluBNF cannot open from the Dock yet"
       if [ -n "$handover" ]; then
         alert "FluBNF could not start ($1). It already reopened in Terminal less than $HANDOVER_MIN minutes ago, so it stops here rather than open Terminal again. Open FluBNF.command in $repo to see why; app/state/logs/launch.log there has the details."
       fi
@@ -117,12 +121,15 @@ main() {
     alert "FluBNF.app could not open FluBNF.command in $repo. It works only inside its FluBNF folder, next to FluBNF.command: open FluBNF.app from that folder, and keep that one in the Dock."
   }
 
-  # macOS privacy (Files and Folders): this app may be refused the folder
-  # its clone lives in (usually ~/Documents) while Terminal is not. It can
-  # still write files it made itself (launch.log), but reading any other
-  # fails with EPERM, "Operation not permitted", the venv included. A launch
-  # that finds this says how to fix it, in the Terminal that asked, and
-  # opens that System Settings page.
+  # macOS privacy: this app is refused Documents, Desktop and Downloads
+  # (and other guarded places) while Terminal is not. It can still write
+  # files it made itself (launch.log), but reading any other fails with
+  # EPERM, "Operation not permitted", the venv included. No setting fixes
+  # it: this app starts as a shell script, so macOS asks whether /bin/bash
+  # may read the folder, and Full Disk Access for FluBNF does not count.
+  # So FluBNF.command, in Terminal, moves a clone out of those folders to
+  # ~/GitHub (scripts/macos/move_home.sh), and a launch that finds this
+  # hands over to it.
   refused() {
     [ -f "$repo/FluBNF.command" ] || return 1
     case "$("$head" -c 1 "$repo/FluBNF.command" 2>&1 >/dev/null)" in
@@ -131,10 +138,19 @@ main() {
     return 1
   }
   privacy() {
-    if [ -n "$ready" ]; then
-      "$open" "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders" >/dev/null 2>&1
+    local homep folder
+    homep="$(cd "$HOME" 2>/dev/null && pwd -P)"
+    case "$(cd "$repo" 2>/dev/null && pwd -P)/" in
+      "$homep/Documents/"*) folder=Documents ;;
+      "$homep/Desktop/"*) folder=Desktop ;;
+      "$homep/Downloads/"*) folder=Downloads ;;
+    esac
+    if [ -n "${folder:-}" ]; then
+      terminal "FluBNF is in your $folder folder, which macOS does not let FluBNF.app read; FluBNF.command moves it to ~/GitHub" \
+        "FluBNF is in your $folder folder ($repo), which macOS does not let FluBNF.app read, whatever the privacy settings say. Open FluBNF.command in that folder once: it moves FluBNF to ~/GitHub, and from then on FluBNF opens from the Dock."
     fi
-    terminal "macOS has not given FluBNF access to its folder $repo. In System Settings > Privacy & Security > Files and Folders, turn on Documents Folder for FluBNF (or add FluBNF.app to Full Disk Access), then open FluBNF again"
+    terminal "macOS does not let FluBNF.app read its folder $repo, and no privacy setting changes that. Move the FluBNF folder into your home folder (~/GitHub is the usual place), then open FluBNF from there" \
+      "macOS does not let FluBNF.app read its folder $repo, and no privacy setting changes that. Move the FluBNF folder into your home folder (~/GitHub is the usual place), then open FluBNF from there."
   }
 
   cd "$repo" 2>/dev/null || terminal "cannot open the folder $repo"

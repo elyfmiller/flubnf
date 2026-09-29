@@ -20,7 +20,9 @@
 # shell exporting FluBNF settings; FLUBNF_REINSTALL_FORCE=1 overrides all three.
 #
 # KNOBS, all optional:
-#   FLUBNF_DIR                   where the clone goes (default ~/Documents/GitHub/flubnf)
+#   FLUBNF_DIR                   where the clone goes (default ~/GitHub/flubnf, or
+#                                an older setup's ~/Documents/GitHub/flubnf, which
+#                                FluBNF.command then moves to ~/GitHub)
 #   FLUBNF_ENGINE_VENV           where the engine venv goes (default ~/.venvs/flubnf-engine)
 #   FLUBNF_REPO                  clone URL (default the public GitHub repository)
 #   FLUBNF_REINSTALL_YES=1       do not wait for Return before changing anything
@@ -34,7 +36,10 @@ say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 
-DEST="${FLUBNF_DIR:-$HOME/Documents/GitHub/flubnf}"
+DEST="${FLUBNF_DIR:-$HOME/GitHub/flubnf}"
+if [ -z "${FLUBNF_DIR:-}" ] && [ ! -e "$DEST" ] && [ -e "$HOME/Documents/GitHub/flubnf" ]; then
+  DEST="$HOME/Documents/GitHub/flubnf"
+fi
 DEST="${DEST%/}"   # a trailing slash would put the rename target inside DEST
 REPO="${FLUBNF_REPO:-https://github.com/elyfmiller/flubnf}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
