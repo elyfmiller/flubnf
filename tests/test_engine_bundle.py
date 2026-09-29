@@ -411,15 +411,19 @@ def test_the_windows_launcher_resolves_the_fork_the_way_setup_does():
         "FluBNF.bat no longer probes the four checkout locations in "
         "setup.ps1's order (PyBNF-pf before PyBNF-Private, and the old "
         "Documents default before the new one within each name)")
-    # setup.ps1's order is checked only when its phrasing is found, so a
-    # rewording there does not fail this test
+    # setup.ps1: the same names in the same order, the old Documents root
+    # before %LOCALAPPDATA% within each, and a pin only where an engine is
     ps1 = (REPO / "setup.ps1").read_text(encoding="utf-8")
-    pf_at = ps1.find('Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"')
-    private_at = ps1.find('Resolve-Checkout $null "PyBNF-Private"')
-    if pf_at >= 0 and private_at >= 0:
-        assert pf_at < private_at, (
-            "setup.ps1 now prefers PyBNF-Private over PyBNF-pf; FluBNF.bat "
-            "above still prefers PyBNF-pf, and the two must agree")
+    body = ps1[ps1.index("function Resolve-PyBnf"):]
+    body = body[:body.index("\nfunction ")]
+    assert 'foreach ($name in @("PyBNF-pf", "PyBNF-Private"))' in body, (
+        "setup.ps1 no longer tries PyBNF-pf before PyBNF-Private; FluBNF.bat "
+        "above still does, and the two must agree")
+    assert (body.index("foreach ($root in $LegacyRoots)")
+            < body.index("$local = Join-Path $FluBnfRoot $name")), (
+        "setup.ps1 now prefers %LOCALAPPDATA% over the old Documents default")
+    assert "if (Test-EngineOnDisk $pin) { return $pin }" in body
+    assert 'if exist "%PYBNFDIR%\\.git" goto :pybnfresolved' in BAT
 
 
 @pytest.mark.parametrize("pin", ['"numpy<2"', '"bngsim==0.15.1"',

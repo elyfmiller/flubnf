@@ -148,11 +148,19 @@ def test_setup_ps1_no_longer_defaults_a_checkout_into_documents():
             f"Controlled Folder Access blocks git.exe from writing to")
     assert 'Join-Path $LocalAppData "FluBNF"' in PS1, (
         "setup.ps1 no longer builds its default under %LOCALAPPDATA%")
-    for var, leaf in (("FLUBNF_HUB", "FluSight-forecast-hub"),
-                      ("FLUBNF_PYBNF", "PyBNF-pf")):
-        assert f'Resolve-Checkout $env:{var} "{leaf}"' in PS1, (
-            f"{var} no longer goes through the resolver that reuses an "
-            f"existing checkout at the old location")
+    assert 'Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"' in PS1, (
+        "FLUBNF_HUB no longer goes through the resolver that reuses an "
+        "existing checkout at the old location")
+    # The engine has its own resolver (FluBNF.bat's order, engines only);
+    # it too reuses the old location and defaults under %LOCALAPPDATA%.
+    body = PS1[PS1.index("function Resolve-PyBnf"):]
+    body = body[:body.index("\nfunction ")]
+    assert "$PyBnf = Resolve-PyBnf" in PS1
+    assert "foreach ($root in $LegacyRoots)" in body
+    assert "$script:ReusedLegacy += $legacy" in body
+    assert body.rstrip().endswith(
+        'return (Join-Path $FluBnfRoot "PyBNF-pf")\n}'), (
+        "the engine checkout no longer defaults under %LOCALAPPDATA%")
 
 
 def test_setup_ps1_reuses_an_old_checkout_and_never_relocates_one():
