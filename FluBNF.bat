@@ -671,6 +671,20 @@ echo   again by itself. Analogue forecasts work meanwhile. That attempt is
 echo   recorded in "%ATTEMPT%"
 
 :startconsole
+rem Findable without the path: this folder sits in hidden AppData, so
+rem scripts\windows\shortcuts.ps1 puts FluBNF in the Start menu (type FluBNF
+rem in the Windows search box; right-click to pin it) and, once per account,
+rem on the Desktop. It runs only when the Start menu shortcut is missing or
+rem opens another folder, so a normal open costs two file tests.
+rem FLUBNF_SHORTCUTS=off skips it.
+if /I "%FLUBNF_SHORTCUTS%"=="off" goto :shortcutsdone
+set "SHORTCUTFOR="
+if exist "%LOCALAPPDATA%\FluBNF\start-menu.txt" set /p SHORTCUTFOR=<"%LOCALAPPDATA%\FluBNF\start-menu.txt"
+if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\FluBNF.lnk" goto :shortcutsmake
+if /I "%SHORTCUTFOR%"=="%CD%" goto :shortcutsdone
+:shortcutsmake
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\windows\shortcuts.ps1"
+:shortcutsdone
 echo FluBNF console starting - a window (or browser tab) will open. Ctrl-C here to stop.
 ".venv\Scripts\flubnf" app
 set STATUS=%errorlevel%
