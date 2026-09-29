@@ -11,6 +11,7 @@ setup.ps1 and FluBNF.bat are checked as text (Windows CI executes them).
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -585,6 +586,96 @@ def test_the_windows_doc_quotes_every_path_it_tells_a_user_to_type():
         for var in ("%LOCALAPPDATA%", "%USERPROFILE%"):
             if var in text and f'"{var}' not in text:
                 bad.append(f"docs/WINDOWS.md:{i}: {text}")
+    assert not bad, (
+        "unquoted expansion used as a command argument:\n  " +
+        "\n  ".join(bad))
+
+
+# --- the engine on Windows, and what the doc says about CI ---
+
+
+def _doc_section(heading: str) -> str:
+    """One section of docs/WINDOWS.md, up to the next heading of its level
+    or above."""
+    level = heading.split(" ", 1)[0]
+    start = DOC.index(f"\n{heading}\n")
+    stops = [DOC.find(f"\n{'#' * n} ", start + 1)
+             for n in range(2, len(level) + 1)]
+    stops = [s for s in stops if s > 0]
+    return DOC[start:min(stops)] if stops else DOC[start:]
+
+
+def test_the_windows_doc_lists_the_engine_folders_in_the_launchers_order():
+    """Which engine folder wins decides which build runs, so the list the
+    doc gives is FluBNF.bat's search, in its order, after FLUBNF_PYBNF."""
+    probe = BAT[BAT.index("\n:pybnfprobe"):BAT.index("\n:pybnfresolved")]
+    searched = re.findall(r'^set "PYBNFDIR=([^"]+)"\n'
+                          r'if exist "%PYBNFDIR%\\\.git" goto :pybnfresolved',
+                          probe, re.MULTILINE)
+    assert len(searched) == 4, f"the parse of FluBNF.bat broke: {searched}"
+    section = _doc_section("### Where it goes")
+    listed = re.findall(r"^\d+\. `([^`]+)`", section, re.MULTILINE)
+    assert listed == searched, (listed, searched)
+    assert "1. the folder `FLUBNF_PYBNF` names, if it holds one" in section
+
+
+def test_the_windows_doc_puts_the_engine_where_the_launcher_does():
+    """The folders a reader is sent to are the ones FluBNF.bat uses: where
+    it unpacks the archive, the engine venv, the copy a newer file replaced,
+    and the record of a failed install."""
+    unpacked = re.search(
+        r'if exist "([^"]+)\\pybnf\\pf\.py" set "PYBNFDIR=\1"', BAT).group(1)
+    venv = re.search(r'if not defined ENGINEVENV set "ENGINEVENV=([^"]+)"',
+                     BAT).group(1)
+    replaced = re.search(r'set "KEPT=([^"%]+)%TS%"', BAT).group(1)
+    attempt = re.search(r'set "ATTEMPT=(?:%CD%\\)?([^"]+)"', BAT).group(1)
+    section = _doc_section("## The particle-filter engine on Windows")
+    for where in (unpacked, venv, replaced, attempt):
+        assert where in section, f"the engine section never names {where}"
+    # the defaults table and remedy 1 name the archive's folder too
+    assert f"| `{unpacked}` from the lab's file" in DOC
+    assert f'setx FLUBNF_PYBNF "{unpacked}"' in DOC
+    assert "flubnf engine-update" in section
+    assert "not the production build" in section
+    assert "(ENGINE.md)" in section
+
+
+def test_the_windows_doc_describes_ci_as_the_workflow_runs_it():
+    """The Windows jobs are required: the workflow has no continue-on-error,
+    so the doc neither mentions it nor promises to promote the jobs later,
+    and it quotes each job's fuse as the workflow sets it."""
+    assert "continue-on-error" not in WORKFLOW, (
+        "a job may fail without failing the run now, so 'Windows CI is "
+        "required' in docs/WINDOWS.md is no longer true")
+    assert "continue-on-error" not in DOC
+    bullet = DOC[DOC.index("- **Windows CI is required.**"):]
+    bullet = " ".join(bullet[:bullet.index("\n- **", 1)].split())
+    assert "promoted to required" not in bullet
+    fuses = re.findall(r"^    timeout-minutes: (\d+)", WORKFLOW, re.MULTILINE)
+    assert len(fuses) == 3, fuses
+    for minutes in fuses:
+        assert re.search(rf"\b{minutes}\b", bullet), (
+            f"the workflow gives a job {minutes} minutes and the doc does "
+            f"not say so")
+
+
+def test_every_windows_command_in_the_docs_quotes_the_paths_it_expands():
+    """The rule above, for every doc that gives Windows commands and every
+    command they give: an unquoted %LOCALAPPDATA% or %USERPROFILE% splits in
+    two at a space in the account name."""
+    commands = ("git ", "setx ", "ren ", "cd /d ", "powershell ", "xcopy ",
+                "robocopy ")
+    bad = []
+    for rel in ("docs/WINDOWS.md", "docs/INSTALL-STUDENTS.md",
+                "docs/ENGINE.md", "README.md"):
+        text = (REPO / rel).read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), 1):
+            cmd = line.strip()
+            if not cmd.startswith(commands):
+                continue
+            for var in ("%LOCALAPPDATA%", "%USERPROFILE%"):
+                if cmd.count(var) != cmd.count(f'"{var}'):
+                    bad.append(f"{rel}:{i}: {cmd}")
     assert not bad, (
         "unquoted expansion used as a command argument:\n  " +
         "\n  ".join(bad))

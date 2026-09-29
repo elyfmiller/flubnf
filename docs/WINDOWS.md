@@ -1,8 +1,10 @@
 # FluBNF on Windows
 
 Native Windows support is in active bring-up. The console, the analogue
-engine, data fetching, scoring, and reports are expected to work; the PF
-fitting engine has additional requirements listed under Limitations.
+engine, data fetching, scoring, and reports are expected to work. The PF
+fitting engine is installed separately, from one small file (see
+[The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)),
+and its externals are listed under Limitations.
 
 ## Supported path (lab laptops)
 
@@ -28,16 +30,22 @@ stops with `fatal: Too many arguments.` -- which says nothing about spaces.
 
 Not `Documents`. Whenever Controlled Folder Access is switched on it
 protects `Documents`, `Pictures`, `Music`, `Videos` and `Favorites`, and a
-protected folder is one `git.exe` is not allowed to write into. The next
-section is the whole story; if you already have a clone under `Documents`
-it keeps working and nothing needs moving.
+protected folder is one `git.exe` is not allowed to write into. The
+[Controlled Folder Access](#controlled-folder-access) section is the whole
+story; if you already have a clone under `Documents` it keeps working and
+nothing needs moving.
 
 Double-click `FluBNF.bat` in that folder. The first run creates the
 virtual environment and installs dependencies (a few minutes); every later
 run self-updates with a fast-forward `git pull`, brings a clean PyBNF
-engine checkout up to the production build the same way
-([ENGINE.md](ENGINE.md), "Which engine am I running?"), and starts the
-console.
+engine checkout up to the production build the same way, and starts the
+console. When it cannot update, it says why and prints the commands that
+would do it; see
+[When FluBNF.bat cannot update itself](#when-flubnfbat-cannot-update-itself).
+
+For the particle-filter engine, save the lab's `pybnf-pf-<sha>.tar.gz` in
+your Downloads folder before that double-click, or before any later one:
+`FluBNF.bat` installs it. The next section has the details.
 
 If the FluSight data is not on the machine yet, `FluBNF.bat` says so and
 offers to run `setup.ps1` for you. Answering N starts the console anyway
@@ -50,6 +58,209 @@ That offer is judged on the data, not on the folder: the launcher looks for
 `auxiliary-data\locations.csv` inside the hub, and setup runs with
 `-NoPrompt`, so a double-click can never end at a question with no timeout.
 Nothing on the double-click path waits on input without a deadline.
+
+## The particle-filter engine on Windows
+
+The console, the Groundhog and the reports need nothing more. Fits by the
+particle filter need the engine: a copy of the lab's private PyBNF fork and
+a Python environment of its own. `FluBNF.bat` installs both, and needs no
+GitHub account and no administrator to do it. Without the engine the
+console runs analogue forecasts only.
+
+### Installing it from the lab's file
+
+The lab hands out `pybnf-pf-<sha>.tar.gz`, about 130 KB. Save it in your
+Downloads folder exactly as it is (do not unzip it, do not rename it) and
+double-click `FluBNF.bat`. The window shows
+
+```
+unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
+version stamp: feature/particle-filter XXXX
+Installing the particle filter engine. One time, a few minutes.
+PF engine ready, bngsim 0.15.1 -- engine ready
+```
+
+and the console then starts with both models. On the way it offers to
+install Strawberry Perl through winget, which fits need; left alone, the
+question answers itself with yes after twenty seconds.
+
+The file is found in the FluBNF folder, the folder above it, and your
+Downloads, Desktop and Documents folders, OneDrive's copies of those three
+included. When there is more than one `pybnf*.tar.gz`, the newest wins and
+the window says so, so delete the old ones when a new one arrives.
+`FLUBNF_PYBNF_BUNDLE` names a file kept anywhere else. The lab's other
+format, `pybnf.bundle` (a git bundle of the fork, about 140 MB), is
+installed the same way but becomes a git clone, so it needs Git on PATH.
+
+### Where it goes
+
+| what | where |
+|---|---|
+| the engine, from `pybnf-pf-<sha>.tar.gz` | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` (unpacked, no `.git`) |
+| the engine, from `pybnf.bundle` | `%LOCALAPPDATA%\FluBNF\PyBNF-pf` (a git clone) |
+| its Python environment | `%USERPROFILE%\.venvs\flubnf-engine` (`FLUBNF_ENGINE_VENV` puts it elsewhere) |
+| an unpacked engine a newer file replaced | `%LOCALAPPDATA%\FluBNF\PyBNF-Private.replaced-<date and time>` |
+| the record of a failed install | `.venv\engine-attempt.txt` in the FluBNF folder |
+
+None of these is in a folder Controlled Folder Access protects.
+
+The environment is built with Python 3.12 or 3.11 and no other: the engine
+pins `numpy<2`, which has no Windows wheels past Python 3.12, and an
+environment made with another Python is rebuilt.
+`FluBNF.bat` tries `py -3.12`, `py -3.11`, then a `python` on PATH that is
+one of those, then Anaconda's. When Anaconda's Python is newer, it asks
+conda for a Python 3.12 in `%USERPROFILE%\.venvs\flubnf-engine-py312` and
+builds the environment from that.
+
+When more than one engine folder exists, the first of these that holds an
+engine (a `.git` folder or `pybnf\pf.py`) is used:
+
+1. the folder `FLUBNF_PYBNF` names, if it holds one,
+2. `%USERPROFILE%\Documents\GitHub\PyBNF-pf`,
+3. `%LOCALAPPDATA%\FluBNF\PyBNF-pf`,
+4. `%USERPROFILE%\Documents\GitHub\PyBNF-Private`,
+5. `%LOCALAPPDATA%\FluBNF\PyBNF-Private`.
+
+`setup.ps1` searches the same list the same way, and `flubnf/settings.py`
+the same folders in the same order; the console `FluBNF.bat` starts is told
+which one it found. `%USERPROFILE%\GitHub` is where the macOS setup puts
+things and is not searched on Windows. While a folder higher in the list
+holds an engine, a new engine file is not unpacked at all, so an old clone
+under `Documents\GitHub` keeps winning. Renaming it (to `PyBNF-pf-old`, say)
+takes it out of the search.
+
+### Updates
+
+FluBNF updates itself each time `FluBNF.bat` opens. The engine is a
+separate folder, and what happens to it depends on how it was installed.
+
+- **From `pybnf-pf-<sha>.tar.gz`.** The unpacked copy has no git history,
+  so nothing can update it in place. When the lab sends a newer file, save
+  it in Downloads and open `FluBNF.bat` again. A file whose version stamp
+  differs, and which is newer than the copy on disk, replaces it; an older
+  one never does. The copy it replaces is renamed to
+  `PyBNF-Private.replaced-<date and time>`, never deleted, and is put back
+  if the new file does not unpack.
+- **A git clone** (from `pybnf.bundle`, GitHub Desktop or `git clone`).
+  After its own update, `FluBNF.bat` runs `flubnf engine-update`. A clone
+  on `feature/particle-filter` with no edits to its tracked files, behind
+  the production build, is fast-forwarded to exactly that commit. When the
+  commit is not on disk yet it is fetched from GitHub first, with no
+  password prompt and a 30-second limit. Anything else is left as it is,
+  and the reason is printed in the window on a line starting `engine:`.
+
+To skip both updates for one open, for example while trying another build,
+open Command Prompt in the FluBNF folder and run
+`set FLUBNF_UPDATE=off`, then `FluBNF.bat`, in that window.
+
+### "not the production build"
+
+When the engine is any build other than the production one (`2fdadee0` on
+`feature/particle-filter` for the 2026-27 season), or has local edits, the
+Home page's Setup card and the Forecast tab's Engine row carry a warning:
+
+```
+The engine is feature/particle-filter at 1a2b3c4d, not the production build 2fdadee0 on feature/particle-filter.
+```
+
+For a clone the update left alone, it goes on with
+`FluBNF tried to update it when it opened:` and the reason, and its "?"
+gives the fix for this machine. By what it says:
+
+| the warning says | what to do |
+|---|---|
+| installed from an archive | Save `pybnf-pf-2fdadee0.tar.gz` in Downloads and open `FluBNF.bat` again. |
+| tracked files have local edits | `git -C "<engine folder>" stash`, then open `FluBNF.bat` again. `git -C "<engine folder>" stash pop` brings the edits back. |
+| it is on another branch, or on a detached HEAD | `git -C "<engine folder>" checkout feature/particle-filter`, then open `FluBNF.bat` again. |
+| could not fetch it from GitHub | This machine cannot read the private fork. Give it access ([ENGINE.md](ENGINE.md), "Through GitHub instead"), or change to the lab's file: rename the engine folder (add `-old`), save the file in Downloads and open `FluBNF.bat`. |
+| it has newer commits, or its history does not lead to the production build | A research build, which may be on purpose. To go back, rename the folder and install from the lab's file as in the row above. |
+
+`<engine folder>` is the folder the warning names; keep the quotation
+marks, since a profile path can hold a space. The lines work from any
+folder, in Command Prompt or PowerShell. [ENGINE.md](ENGINE.md), "Which
+engine am I running?", shows how to read the build by hand.
+
+### If the install fails
+
+The console starts anyway, with analogue forecasts only, and the window
+says
+
+```
+Engine setup did not finish (see above). The console still runs,
+analogue forecasts only. With the engine file still in your Downloads
+folder, or the engine folder still in place, the next open tries again.
+```
+
+The lines above it name the cause. The usual ones:
+
+- pip could not download the engine's packages (a dropped or filtered
+  network): open `FluBNF.bat` again on a working connection;
+- no Python 3.12 or 3.11 and no Anaconda: install Python 3.12 from
+  https://www.python.org/downloads/ (`FluBNF.bat` finds it through the
+  `py` launcher that comes with it), then open `FluBNF.bat` again;
+- the archive did not unpack: the download did not finish, so fetch the
+  file again. Windows 10 before version 1803 has no `tar.exe` at all;
+  update Windows, or ask for `pybnf.bundle`;
+- `git is not on PATH`, for a bundle: install Git for Windows, or use the
+  `.tar.gz`, which needs no git.
+
+Nothing needs resetting between tries: every open tries again for as long
+as the engine file or folder is there. `.venv\engine-attempt.txt` records
+the failed attempt and stops the retries only when there is nothing left
+to install from (no engine file, no engine folder); the window then says
+`PF engine still not installed` and asks for the file.
+
+For a fuller account of what this machine can see, run `setup.ps1` in
+Command Prompt:
+
+```
+cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
+```
+
+(with your own FluBNF folder in the first line, if it is elsewhere). It
+reports on the engine environment and names the engine file `FluBNF.bat`
+would install from, in which case it does not check GitHub at all, since
+the file needs no account. With no file, it says where it looked and
+whether this machine can reach the private fork. For the GitHub routes
+(GitHub Desktop, the GitHub CLI, SSH) see [ENGINE.md](ENGINE.md).
+
+## When FluBNF.bat cannot update itself
+
+The update is a fast-forward and nothing else, so it never overwrites
+anything. When it cannot go through, `FluBNF.bat` runs the copy on disk and
+says why:
+
+- `offline (origin unreachable)`: it catches up on the next open.
+- `local edits are blocking the update`: it sets them aside with
+  `git stash` and updates anyway, and prints the commands that list them
+  and put them back.
+- `origin rewrote its history`: every commit here is upstream already,
+  under a new id, so nothing unique would be lost by taking origin's copy.
+- `this clone has N commit(s) origin does not`: work committed in this
+  folder. It prints the reset that would discard it and leaves the choice
+  to you.
+- `origin/<branch> no longer exists`: the branch this folder follows was
+  deleted or renamed upstream. FluBNF ships from `main`, and it prints the
+  `checkout` line that moves the folder there.
+
+The commands it prints name the FluBNF folder (`git -C "<folder>" ...`)
+and stand one to a line, because the console holds that window: open a new
+Command Prompt or PowerShell window and paste them one at a time.
+
+Main's history was rewritten once, in September 2026: the commits made
+from early September up to the rewrite were given new ids. A clone that
+updated itself in between cannot fast-forward past it, and its
+`FluBNF.bat`, the old one, which cannot update either, says
+`offline or local changes - running as-is` or
+`this clone has N commit(s) origin does not ... throw this clone's work away`
+on every open. If you never committed anything in that folder, those
+commits are the lab's own under their old ids, and nothing of yours is lost
+by the reset. The reset in place, which keeps `app\state`, and a
+reinstall from scratch are in
+[INSTALL-STUDENTS.md, "Resetting or reinstalling (Windows)"](INSTALL-STUDENTS.md#resetting-or-reinstalling-windows).
+Deleting the folder and cloning again is not the fix: it loses your runs
+and leaves the old engine, which lives outside the folder, where it was.
 
 ## Controlled Folder Access
 
@@ -181,17 +392,31 @@ variable and prints the one `setx` line that clears it.
 ### Remedies, best first
 
 1. **Put the folder where Controlled Folder Access does not reach.** No
-   administrator, and Defender is not touched at all. Move the folder
-   yourself first if you would rather not download 150 MB again, then:
+   administrator, and Defender is not touched at all. Move the FluSight
+   data folder yourself first if you would rather not download 150 MB
+   again. Move an engine folder first in any case, because setup never
+   fetches the engine. Then:
 
    ```
    setx FLUBNF_HUB "%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub"
-   setx FLUBNF_PYBNF "%LOCALAPPDATA%\FluBNF\PyBNF-pf"
+   setx FLUBNF_PYBNF "%LOCALAPPDATA%\FluBNF\PyBNF-Private"
    ```
+
+   Give the engine line your engine folder's own name: `PyBNF-Private`
+   (GitHub Desktop's name for it) or `PyBNF-pf`. An engine installed from
+   the lab's file is under `%LOCALAPPDATA%` already and needs neither the
+   move nor the line.
 
    Open a **new** window afterwards, so the setting is visible, and re-run
    `setup.ps1`. For the repository itself there is no variable: move the
    whole folder out of `Documents` and run `FluBNF.bat` from its new home.
+   Its `.venv` does not survive a move, because the programs in it still
+   name the old folder. `FluBNF.bat` notices on the next open, renames it to
+   `.venv.moved-<date and time>` and builds a new one, which takes a few
+   minutes; deleting `.venv` yourself before that open does the same.
+   Everything else moves with the folder, `app\state` included. GitHub
+   Desktop then lists the repository as missing, and **Locate...** points
+   it at the new folder.
 
 2. **Allow the specific executables through.** This needs an administrator.
    Windows Security > Virus & threat protection > Ransomware protection >
@@ -230,7 +455,7 @@ variable and prints the one `setx` line that clears it.
 | what | default | protected? |
 |---|---|---|
 | FluSight hub (`FLUBNF_HUB`) | `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub` | no |
-| PyBNF checkout (`FLUBNF_PYBNF`) | `%LOCALAPPDATA%\FluBNF\PyBNF-pf` | no |
+| PyBNF engine (`FLUBNF_PYBNF`) | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` from the lab's file, `%LOCALAPPDATA%\FluBNF\PyBNF-pf` for a clone | no |
 | engine venv (`FLUBNF_ENGINE_VENV`) | `%USERPROFILE%\.venvs\flubnf-engine` | no; the profile **root** is not protected, only the named folders inside it |
 | the repository itself | wherever you cloned it | `Documents` is, `%LOCALAPPDATA%` is not |
 
@@ -246,7 +471,10 @@ system drive requires elevation on a default install.
 `setup.ps1`, `FluBNF.bat` and `flubnf/settings.py` all resolve in the same
 order -- the `FLUBNF_*` variable, then an existing directory at the old
 `Documents\GitHub` path, then the new default -- so a machine set up before
-this change keeps working with no action. Nothing is ever moved or copied
+this change keeps working with no action. The engine follows the same rule
+with two names and one more condition, a folder counting only when an
+engine is in it; the full list is under
+[Where it goes](#where-it-goes). Nothing is ever moved or copied
 for you: the author's own machine has 143 MB of PyBNF checkout and 150 MB of
 hub under `Documents`, and relocating a working tree is not a decision a
 setup script gets to take. The reuse is announced in the plan block, and
@@ -460,7 +688,8 @@ Useful switches and variables:
 | `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without the offer: `FluBNF.bat` asks its own time-bounded Perl question during engine install. Run `setup.ps1` by hand to be asked here too. |
 | `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
-| `FLUBNF_PYBNF` | the PyBNF fork checkout. Same resolution order; default `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
+| `FLUBNF_PYBNF` | the PyBNF engine folder, used only when an engine is in it (a `.git` folder or `pybnf\pf.py`); otherwise the first engine in the list under [Where it goes](#where-it-goes). A clone made by hand defaults to `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
+| `FLUBNF_PYBNF_BUNDLE` | an engine file (`pybnf-pf-<sha>.tar.gz` or `pybnf.bundle`) kept outside the folders searched; `FluBNF.bat` installs from it and `setup.ps1` names it |
 | `FLUBNF_ENGINE_VENV` | the engine virtual environment. Default `%USERPROFILE%\.venvs\flubnf-engine` |
 | `FLUBNF_NO_DATA=1` | skip the data clone entirely |
 | `FLUBNF_NO_PROBE=1` | skip the read-only check for access to the private PyBNF fork |
@@ -495,7 +724,8 @@ standard `setup.sh` instructions inside the Linux environment.
   engine call sites, so fits run at normal priority and the console may
   feel sluggish during a run.
 - **PF engine.** The particle-filter engine needs three externals on
-  Windows:
+  Windows (`FluBNF.bat` installs the first two from the lab's engine file;
+  see [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)):
   - the private PyBNF fork (pure Python; clones and installs normally),
   - `bngsim` (official Windows wheels exist on PyPI for Python 3.10-3.13,
     so `pip install bngsim` works without a compiler),
@@ -525,17 +755,15 @@ standard `setup.sh` instructions inside the Linux environment.
   promised to say. It holds no credentials, so the engine is always missing
   there and the degraded path is what gets tested. It does not cover
   `FluBNF.bat` itself, the Perl/winget branch, or any non-ASCII profile
-  path. Both jobs will be promoted to required checks once they have been
-  green for a few consecutive weeks.
+  path.
 
-  Every job in that workflow now carries a `timeout-minutes`, because none
-  of the test jobs did and a hang would therefore have run to GitHub's
-  6 hour default while `continue-on-error` kept anyone from being told. The
-  budgets are fuses, not targets: 20 minutes on ubuntu, which finishes in
-  about 5, and 90 on windows, which took 71 at its worst. The windows number
-  should come down a long way once the hour is accounted for, because a fuse
-  sized far above the load never blows. `windows-setup-script` already had
-  its own 60.
+  Every job in that workflow carries a `timeout-minutes`, so a hang fails
+  its job rather than running to GitHub's 6 hour default. The budgets are
+  fuses, not targets: 20 minutes on ubuntu, which finishes in about 5, 90
+  on windows, which took 71 at its worst, and 60 for
+  `windows-setup-script`. The windows number should come down a long way
+  once the hour is accounted for, because a fuse sized far above the load
+  never blows.
 - **The windows suite takes an hour and nobody yet knows on what.** 62 and
   71 minutes against ubuntu's 5, with only 6 failures, so the failures are
   not the hour. Defender real-time scanning is the leading explanation and
