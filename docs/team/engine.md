@@ -11,10 +11,13 @@ this file here.
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
   from lanl/PyBNF `main` 0cb92a7f; local, not pushed, no pull request yet.
   - Done locally: the segment integrator that the filter and IBIS
-    (lanl/PyBNF#973) share, with its independent review and fixes (five
-    commits). A final check is still running.
-  - Next: the `lwf` job type, then its docs. The maintainer wants to review
-    the code itself, with no issue first; Ely opens the pull request.
+    (lanl/PyBNF#973) share, reviewed and fixed (five commits, head
+    235fb497). The review found and fixed a silent bug: a particle's
+    starting state could keep the first particle's values.
+  - In progress: the `lwf` job type for one run (build, independent review,
+    fixes). Then: the state file, continuation and several runs; then the
+    docs. The maintainer wants to review the code itself, with no issue
+    first; Ely opens the pull request.
 - 2026-09-30: private branch `pf/forecast-fixes-noauto` (faccccb3, local,
   not pushed) adds three things:
   - per-parameter jitter (`pf_parameter_jitter = <name> <h>`);
