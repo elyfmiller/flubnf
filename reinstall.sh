@@ -115,7 +115,9 @@ say "checks (nothing is changed yet)"
 [ "$(id -u)" -ne 0 ] || stop "do not run this as root or with sudo; run it as yourself"
 case "$(uname -s)" in
   Darwin|Linux) ;;
-  *) stop "this script is for macOS and Linux; on Windows follow the guide's Windows steps" ;;
+  *) stop "this script is for macOS and Linux. On Windows, follow" \
+          "\"Resetting or reinstalling (Windows)\" in docs/INSTALL-STUDENTS.md:" \
+          "https://github.com/elyfmiller/flubnf/blob/main/docs/INSTALL-STUDENTS.md#resetting-or-reinstalling-windows" ;;
 esac
 for t in git curl tar pgrep; do
   command -v "$t" >/dev/null 2>&1 \

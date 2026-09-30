@@ -29,7 +29,7 @@ def _trace(msg: str) -> None:
     line = (f"{t:.3f} {time.strftime('%H:%M:%S', time.localtime(t))}"
             f".{int(t * 1000) % 1000:03d} [pid {_os.getpid()} srv] {msg}")
     try:
-        with open(path, "a") as fh:
+        with open(path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
     except Exception:
         pass

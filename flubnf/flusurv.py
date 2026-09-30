@@ -86,7 +86,7 @@ def catchment(cache_dir=None) -> list:
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / "locations.json"
     if path.exists():
-        return list(json.loads(path.read_text()))
+        return list(json.loads(path.read_text(encoding="utf-8")))
     req = urllib.request.Request(LOCATIONS_URL,
                                  headers={"User-Agent": "flubnf-flusurv"})
     try:
@@ -100,7 +100,7 @@ def catchment(cache_dir=None) -> list:
         raise ValueError(f"FluSurv location list came back empty: {LOCATIONS_URL}")
     cache_dir.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(locs))
+    tmp.write_text(json.dumps(locs), encoding="utf-8")
     tmp.replace(path)
     return locs
 
@@ -113,7 +113,7 @@ def _snapshot(locations, ew_start: int, ew_end: int, cache_dir=None) -> list:
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / "snapshot.json"
     if path.exists():
-        blob = json.loads(path.read_text())
+        blob = json.loads(path.read_text(encoding="utf-8"))
         a, b = blob.get("epiweeks", (0, -1))
         if a <= ew_start and set(blob.get("locations", [])) >= set(locations):
             rows = blob["response"].get("epidata") or []
@@ -128,7 +128,7 @@ def _snapshot(locations, ew_start: int, ew_end: int, cache_dir=None) -> list:
         "epiweeks": [ew_start, max((r["epiweek"] for r in rows),
                                    default=ew_start)],
         "response": env,
-    }, indent=1))
+    }, indent=1), encoding="utf-8")
     tmp.replace(path)
     return rows
 

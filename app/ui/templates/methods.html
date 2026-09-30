@@ -350,10 +350,11 @@
 <div class="card" id="stack">
  <div class="uk-heading"><h2>Under the hood</h2>
  {%- call tips.toggletip("mt-engine", "the engine", title="The particle-filter engine") %}
-  {# platform-NEUTRAL: site_build publishes this page, so name all three #}
+  {# platform-NEUTRAL: site_build publishes this page, so name all three.
+     On Windows FluBNF.bat builds the engine venv (setup.ps1 only reports) #}
   <span class="uk-tt-line">The particle filter runs in a separate engine venv
   (<code>SetupEngine.command</code> on macOS, <code>setup_engine.sh</code> on
-  Linux, <code>setup.ps1</code> on Windows); "not installed" below means it
+  Linux, <code>FluBNF.bat</code> on Windows); "not installed" below means it
   is absent.</span>
  {%- endcall %}</div>
  <div style="overflow-x:auto"><table class="mt-stack">
@@ -367,10 +368,10 @@
       <td>Simulator{{ tips.tip("mt-r-bngsim", "bngsim", "In-process BioNetGen simulator the filter integrates on.") }}</td>
       {# the self-reported bngsim string can mislead (the seal-era build said
          0.13.0 while 50 commits past it; setup_engine.sh), so the pin is
-         stated #}
+         stated. setup_engine.sh and FluBNF.bat both install it #}
       <td>{{ version("bngsim", versions.bngsim) }}{% call tips.tip("mt-r-pin", "the sealed record's bngsim") %}Reproducing
-      the sealed record needs bngsim 0.15.1 (<code>setup_engine.sh</code>),
-      whatever version a build reports.{% endcall %}</td></tr>
+      the sealed record needs bngsim 0.15.1 (pinned by every engine
+      installer), whatever version a build reports.{% endcall %}</td></tr>
   <tr><td><a href="https://bionetgen.org" target="_blank" rel="noopener">BioNetGen</a></td>
       <td>Network generator{{ tips.tip("mt-r-bng", "BioNetGen", "BNGL and BNG2.pl, which generates each state's reaction network.") }}</td>
       <td>{{ version("bionetgen", versions.bionetgen) }}</td></tr>

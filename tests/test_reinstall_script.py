@@ -10,11 +10,17 @@ Pinned: checks run BEFORE anything changes; the right archive is kept and
 everything else moved, not deleted; the old launcher is disabled; a current
 machine is left alone, a stale one is not; a failed clone restores the old
 install. On macOS the tests use /bin/bash 3.2, as lab Macs do.
+
+Windows has no such script: the student guide's "Resetting or reinstalling
+(Windows)" is its counterpart, and the script sends Windows users there. The
+tests on that section hold it to what FluBNF.bat does (the folders it
+searches for an engine, the folder the install clones to).
 """
 from __future__ import annotations
 
 import io
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -131,6 +137,132 @@ def test_the_documented_line_is_the_same_everywhere():
     assert LINE in (REPO / "docs" / "INSTALL-STUDENTS.md").read_text(encoding="utf-8")
     assert LINE.replace("reinstall.sh", "install.sh") in (REPO / "install.sh").read_text(encoding="utf-8")
     assert "FLUBNF_REINSTALL_FORCE" in SRC and "FLUBNF_REINSTALL_NO_INSTALL" in SRC
+
+
+GUIDE = (REPO / "docs" / "INSTALL-STUDENTS.md").read_text(encoding="utf-8")
+WINDOWS_STEPS = "Resetting or reinstalling (Windows)"
+
+
+def _heading_anchor(heading: str) -> str:
+    """GitHub's anchor for a heading: lower case, punctuation other than
+    hyphens dropped, spaces to hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def _guide_section(title: str) -> str:
+    start = GUIDE.index(f"\n## {title}\n")
+    end = GUIDE.find("\n## ", start + 1)
+    return GUIDE[start:] if end < 0 else GUIDE[start:end]
+
+
+def _code_lines(markdown: str) -> list[str]:
+    """The non-blank lines inside ``` fences, stripped."""
+    lines, inside = [], False
+    for line in markdown.splitlines():
+        text = line.strip()
+        if text.startswith("```"):
+            inside = not inside
+        elif inside and text:
+            lines.append(text)
+    return lines
+
+
+def _launcher_engine_folders() -> list[str]:
+    """The engine folders FluBNF.bat searches after FLUBNF_PYBNF, in its
+    order: each PYBNFDIR under :pybnfprobe that is tested for an engine (the
+    last one set there is the default it falls back to, and is not)."""
+    bat = (REPO / "FluBNF.bat").read_text(encoding="utf-8")
+    probe = bat[bat.index("\n:pybnfprobe"):bat.index("\n:pybnfresolved")]
+    return re.findall(r'^set "PYBNFDIR=([^"]+)"\n'
+                      r'if exist "%PYBNFDIR%\\\.git" goto :pybnfresolved',
+                      probe, re.MULTILINE)
+
+
+def test_the_readme_offers_the_one_line_reinstall_to_macos_and_linux_only():
+    """The line is bash, so the README says whose it is and sends Windows to
+    its own steps, which the student guide has."""
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    before = readme[:readme.index(LINE)].rstrip()
+    lead = " ".join(before[before.rindex("\n\n"):].split())
+    assert lead.startswith("On macOS and Linux,"), lead
+    after = " ".join(readme[readme.index(LINE):].split())
+    assert f'"{WINDOWS_STEPS}" in docs/INSTALL-STUDENTS.md' in after[:400]
+    assert f"\n## {WINDOWS_STEPS}\n" in GUIDE
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"),
+                    reason="runs reinstall.sh with bash and a stand-in uname")
+def test_on_windows_it_changes_nothing_and_names_the_windows_steps(tmp_path):
+    """Git Bash on Windows can run the line. The script stops before any
+    check and names the guide's Windows section by title and by link, and
+    that section exists: the message once named steps that did not."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    # Git Bash's uname; a non-root id, so the root refusal does not come first
+    for name, says in (("uname", "MINGW64_NT-10.0-19045"), ("id", "1000")):
+        stub = bin_dir / name
+        stub.write_text(f"#!/bin/sh\necho {says}\n")
+        stub.chmod(0o755)
+    home = _home_with_old_install(tmp_path)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("FLUBNF_")}
+    env.update({"HOME": str(home),
+                "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"})
+    out = subprocess.run([BASH, str(SCRIPT)], env=env, text=True,
+                         capture_output=True, timeout=60)
+    said = " ".join(out.stdout.split())
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert (f'On Windows, follow "{WINDOWS_STEPS}" in '
+            f'docs/INSTALL-STUDENTS.md') in said, said
+    assert "Nothing on this machine was changed." in said
+    assert (home / "Documents/GitHub/flubnf/app/state/ledger.txt").exists()
+    link = re.search(r"https://github\.com/elyfmiller/flubnf/blob/main/"
+                     r"docs/INSTALL-STUDENTS\.md#([\w-]+)", said)
+    assert link, said
+    anchors = {_heading_anchor(line[3:]) for line in GUIDE.splitlines()
+               if line.startswith("## ")}
+    assert link.group(1) in anchors, (link.group(1), sorted(anchors))
+
+
+def test_the_windows_reset_names_its_folder_and_gives_one_command_a_line():
+    """A new Command Prompt starts in the profile folder, so the reset moves
+    to the FluBNF folder first (cd /d, quoted); each command stands alone, as
+    FluBNF.bat prints them; and the folder is the one the install clones to."""
+    section = _guide_section(WINDOWS_STEPS)
+    lines = _code_lines(section)
+    reset = ['cd /d "%LOCALAPPDATA%\\FluBNF\\flubnf"', "git fetch origin",
+             "git reset --hard origin/main"]
+    at = lines.index(reset[0])
+    assert lines[at:at + len(reset)] == reset, lines
+    assert not [line for line in lines if "&&" in line], lines
+    clone = ('git clone https://github.com/elyfmiller/flubnf '
+             '"%LOCALAPPDATA%\\FluBNF\\flubnf"')
+    assert clone in lines, "the reinstall clones somewhere else"
+    for doc in ("INSTALL-STUDENTS.md", "WINDOWS.md"):
+        assert clone in (REPO / "docs" / doc).read_text(encoding="utf-8"), (
+            f"docs/{doc} installs FluBNF somewhere other than the folder the "
+            f"Windows reset changes to")
+    assert "It keeps everything git does not track: `app\\state`" in (
+        " ".join(section.split()))
+
+
+def test_the_windows_reinstall_sets_aside_every_engine_folder_the_launcher_finds():
+    """The engine lives outside the FluBNF folder, so a new clone would find
+    the old one again: the steps rename each folder FluBNF.bat searches, and
+    the engine's venv, to names it does not search."""
+    folders = _launcher_engine_folders()
+    assert len(folders) == 4, f"the parse of FluBNF.bat's search broke: {folders}"
+    bat = (REPO / "FluBNF.bat").read_text(encoding="utf-8")
+    venv = re.search(r'if not defined ENGINEVENV set "ENGINEVENV=([^"]+)"',
+                     bat).group(1)
+    renamed = {}
+    for line in _code_lines(_guide_section(WINDOWS_STEPS)):
+        m = re.fullmatch(r'ren "([^"]+)" (\S+)', line)
+        if m:
+            renamed[m.group(1)] = m.group(2)
+    for folder in (*folders, venv, "%LOCALAPPDATA%\\FluBNF\\flubnf"):
+        assert folder in renamed, f"the Windows reinstall leaves {folder} in place"
+        leaf = folder.rsplit("\\", 1)[-1]
+        assert renamed[folder] == f"{leaf}-old", renamed[folder]
 
 
 def test_the_whole_file_is_parsed_before_any_of_it_runs():

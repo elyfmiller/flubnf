@@ -82,7 +82,7 @@ def load_aux_bank(path: str) -> dict:
             f"auxiliary donor bank not found: {fp}. A pool's 'bank' entry in "
             f"spec.extra['aux_pools'] must name a readable JSON file; use "
             f"'committed': True for the banks carried in data/banks/.")
-    raw = json.load(open(fp))
+    raw = json.load(open(fp, encoding="utf-8"))
     bank = {}
     for k, v in raw.items():
         loc, _, ds = k.partition("|")

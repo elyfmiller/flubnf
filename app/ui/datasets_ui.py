@@ -433,7 +433,7 @@ def latest_results_for(ds_id: str):
     """(run_id, results) of the newest stored run on this dataset."""
     for f in shared._workroot_results():
         try:
-            res = json.loads(f.read_text())
+            res = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
             continue
         if (res.get("dataset") or {}).get("id") == ds_id:

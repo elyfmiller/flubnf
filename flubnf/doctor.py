@@ -95,10 +95,20 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
 ENGINE_PROBE = ("import sys; sys.path.insert(0, {pybnf!r}); import bngsim; "
                 "from pybnf.pf import ParticleFilter; print(bngsim.__version__)")
 
-_ENGINE_ABSENT_HINT = ("Optional: without the engine the console runs "
-                       "Groundhog-only. To add the particle filter, run "
-                       "./setup_engine.sh (or set FLUBNF_PY_ENGINE and "
-                       "FLUBNF_PYBNF), then re-run doctor.")
+# Every engine remedy below names this machine's installer through
+# app.core.engine_build (archive_step, setup_step): Windows has FluBNF.bat
+# and no setup_engine.sh. `platform` is sys.platform unless a test passes one.
+def _engine_absent_hint(platform: str | None = None) -> str:
+    from app.core import engine_build as _eb
+    return ("Optional: without the engine the console runs Groundhog-only. "
+            f"To add the particle filter, {_eb.archive_step(platform)} (or "
+            "set FLUBNF_PY_ENGINE and FLUBNF_PYBNF), then re-run doctor.")
+
+
+def _engine_venv_hint(platform: str | None = None) -> str:
+    from app.core import engine_build as _eb
+    return (f"To reinstall the engine venv, {_eb.setup_step(platform)}, "
+            "then re-run doctor.")
 
 
 def _check_engine_venv() -> "CheckResult":
@@ -109,7 +119,7 @@ def _check_engine_venv() -> "CheckResult":
     if not Path(PY_ENGINE).exists():
         return CheckResult("engine venv", Status.WARN,
                            f"{PY_ENGINE} missing (set FLUBNF_PY_ENGINE)",
-                           _ENGINE_ABSENT_HINT)
+                           _engine_absent_hint())
     try:
         r = subprocess.run([str(PY_ENGINE), "-c",
                             ENGINE_PROBE.format(pybnf=str(PYBNF))],
@@ -121,7 +131,7 @@ def _check_engine_venv() -> "CheckResult":
         return CheckResult("engine venv", Status.FAIL,
                            "bngsim / pybnf.pf not importable in the engine "
                            f"venv: {(r.stderr or '')[-120:]}",
-                           "Re-run ./setup_engine.sh, then re-run doctor.")
+                           _engine_venv_hint())
     return CheckResult("engine venv", Status.OK,
                        f"bngsim {r.stdout.strip()}")
 
@@ -139,44 +149,48 @@ def _check_pf_engine() -> "CheckResult":
         if not Path(_pf.PYBNF_PF).exists():
             return CheckResult("PyBNF fork (fit_type=pf)", Status.WARN,
                                _pf.engine_missing_message(),
-                               _ENGINE_ABSENT_HINT)
+                               _engine_absent_hint())
         return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
                            _pf.engine_missing_message(),
-                           "Run ./setup_engine.sh (or set FLUBNF_PYBNF), then "
-                           "re-run doctor.")
+                           f"{_pf.engine_fix()} Then re-run doctor.")
     if not _pf.engine_current():
         return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
                            _pf.engine_stale_message(),
-                           "Save the current engine archive in Downloads and "
-                           "run ./setup_engine.sh, then re-run doctor.")
+                           f"{_pf.engine_update_hint()} Then re-run doctor.")
     return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
 
 
 def _check_engine_build() -> "CheckResult":
     """Which engine build the fork checkout is (branch and commit, from git
     or an archive's VERSION stamp) and whether it is the production build.
-    Another build is a WARN, never a FAIL: research runs may use one."""
+    Another build is a WARN, never a FAIL: research runs may use one. So is
+    a checkout git will not read (git missing, a folder another account
+    owns): its build cannot be named, and git's own reason is the detail."""
     from app.core import engine_build as _eb
     b = _eb.engine_build()
     name = "PyBNF engine build"
     where = b.get("path") or "the engine folder"
+    if b.get("source") == "unreadable":
+        return CheckResult(name, Status.WARN, _eb.warning(b), _eb.fix(b))
     if not _eb.known(b):
         if not Path(where).is_dir():
             return CheckResult(name, Status.WARN, f"no engine at {where}",
-                               _ENGINE_ABSENT_HINT)
+                               _engine_absent_hint())
         return CheckResult(name, Status.WARN,
                            f"unknown: {where} has no .git and no VERSION "
                            "stamp",
-                           "Re-install the engine from its archive "
-                           "(./setup_engine.sh), which carries the stamp.")
+                           "To re-install the engine from its archive, "
+                           f"which carries the stamp, {_eb.archive_step()}.")
     how = "git" if b["source"] == "git" else "the archive's VERSION file"
     if _eb.is_production(b):
         return CheckResult(name, Status.OK,
                            f"{_eb.label(b)}, the production build "
                            f"(read from {how})")
+    from app.core import engine_update as _eu
     return CheckResult(name, Status.WARN,
                        f"{_eb.warning(b).rstrip('.')} (read from {how}).",
-                       _eb.fix(b))
+                       " ".join(x for x in (_eu.last_note(b), _eb.fix(b))
+                                if x))
 
 
 #: what a usable hub clone must hold (a sparse checkout can lack either)
@@ -235,7 +249,7 @@ def _check_numpy2_pybnf() -> CheckResult:
             return CheckResult(
                 "pybnf NumPy 2.0 patch", Status.WARN,
                 f"no engine pybnf (no {alg_path}); cannot verify patch",
-                _ENGINE_ABSENT_HINT,
+                _engine_absent_hint(),
             )
     try:
         import numpy as _np

@@ -91,7 +91,7 @@ def _component_versions() -> dict:
         from flubnf.settings import BNG
         vf = Path(BNG).parent / "VERSION"
         if vf.is_file():
-            out["bionetgen"] = vf.read_text().strip()
+            out["bionetgen"] = vf.read_text(encoding="utf-8").strip()
         elif Path(BNG).exists():
             out["bionetgen"] = "installed"
     except Exception:
@@ -131,7 +131,7 @@ def _versions_initial() -> dict:
     import json as _json
     out = {k: VERSION_PENDING for k in _VERSION_KEYS}
     try:
-        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text())
+        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text(encoding="utf-8"))
         if isinstance(snap, dict):
             out.update({k: str(v) for k, v in snap.items()
                         if k in _VERSION_KEYS})
@@ -149,7 +149,7 @@ def _build_initial() -> dict:
     until the warm thread resolves it)."""
     import json as _json
     try:
-        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text())
+        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text(encoding="utf-8"))
         b = snap.get("engine_build") if isinstance(snap, dict) else None
         return dict(b) if isinstance(b, dict) else {}
     except Exception:
@@ -176,9 +176,14 @@ def refresh_engine_build() -> dict:
 def engine_build_view() -> dict:
     """What pages show: {label, warning, fix, production, known}."""
     from app.core import engine_build as _eb
+    from app.core import engine_update as _eu
     b = dict(ENGINE_BUILD)
+    fix = _eb.fix(b)
+    if _eb.warning(b):
+        # why the launcher's update left it (a branch, edits, no access)
+        fix = " ".join(x for x in (_eu.last_note(b), fix) if x)
     return {"label": _eb.label(b), "warning": _eb.warning(b),
-            "fix": _eb.fix(b), "production": _eb.is_production(b),
+            "fix": fix, "production": _eb.is_production(b),
             "known": _eb.known(b)}
 
 
@@ -214,7 +219,8 @@ def _warm_versions() -> None:
         _VERSIONS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
         tmp = _VERSIONS_SNAPSHOT.with_suffix(".json.tmp")
         tmp.write_text(_json.dumps(dict(VERSIONS,
-                                        engine_build=dict(ENGINE_BUILD))))
+                                        engine_build=dict(ENGINE_BUILD))),
+                       encoding="utf-8")
         import os as _os
         _os.replace(tmp, _VERSIONS_SNAPSHOT)
     except Exception:

@@ -339,7 +339,7 @@ def manifest_path(out_dir, asof: str) -> Path:
 
 def write_rows(path, rows: list) -> None:
     """The table in the screen's format (csv.DictWriter, default dialect)."""
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=POOL_COLUMNS)
         w.writeheader()
         for r in rows:
@@ -347,7 +347,7 @@ def write_rows(path, rows: list) -> None:
 
 
 def read_rows(path) -> list:
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -370,7 +370,8 @@ def write_pool(week: dict, out_dir, *, built_utc: str = "") -> dict:
            "cells": week["n_paths"], "digest": week["digest"]}
     mp = manifest_path(out_dir, asof)
     tmp = mp.with_name(mp.name + ".tmp")
-    tmp.write_text(json.dumps(man, indent=1, sort_keys=True, default=str) + "\n")
+    tmp.write_text(json.dumps(man, indent=1, sort_keys=True, default=str)
+                   + "\n", encoding="utf-8")
     tmp.replace(mp)
     return man
 
@@ -379,7 +380,7 @@ def read_pool(out_dir, asof: str) -> tuple:
     """(raw pool, manifest) of a written week, digest verified; raises on a
     mismatch (flubnf.bank's rule)."""
     fp, mp = pool_path(out_dir, asof), manifest_path(out_dir, asof)
-    man = json.loads(mp.read_text())
+    man = json.loads(mp.read_text(encoding="utf-8"))
     rows = read_rows(fp)
     got = OB.digest_rows(rows)
     if got != man.get("digest"):

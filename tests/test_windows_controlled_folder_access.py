@@ -11,6 +11,7 @@ setup.ps1 and FluBNF.bat are checked as text (Windows CI executes them).
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,82 @@ def test_the_environment_variable_still_wins_everywhere(monkeypatch, tmp_path):
         tmp_path / "elsewhere")
 
 
+def _engine_folder(monkeypatch, *, windows: bool, home: Path, pin=None):
+    """settings._first_checkout for the engine, the platform and profile
+    faked as in _checkout above."""
+    from flubnf import settings
+
+    monkeypatch.setattr(settings, "_windows", lambda: windows)
+    monkeypatch.setattr(settings, "_home", lambda: home)
+    monkeypatch.setenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
+    if pin is None:
+        monkeypatch.delenv("FLUBNF_PYBNF", raising=False)
+    else:
+        monkeypatch.setenv("FLUBNF_PYBNF", str(pin))
+    return settings._first_checkout("FLUBNF_PYBNF", "PyBNF-pf",
+                                    "PyBNF-Private")
+
+
+def _unpacked(folder: Path) -> Path:
+    (folder / "pybnf").mkdir(parents=True)
+    (folder / "pybnf" / "pf.py").write_text("")
+    return folder
+
+
+def test_a_pin_to_a_folder_with_no_engine_is_passed_over(monkeypatch,
+                                                         tmp_path):
+    """An older setup.ps1 recorded FLUBNF_PYBNF=...\\PyBNF-pf before any
+    engine existed; FluBNF.bat then unpacked the lab's archive into
+    ...\\PyBNF-Private. The console and `flubnf doctor` in a new window
+    must find the engine the launcher found, not the empty pin."""
+    home = tmp_path / "profile"
+    local = home / "AppData" / "Local" / "FluBNF"
+    engine = _unpacked(local / "PyBNF-Private")
+    got = _engine_folder(monkeypatch, windows=True, home=home,
+                         pin=local / "PyBNF-pf")
+    assert got == engine, got
+
+
+def test_a_pin_that_holds_an_engine_still_wins(monkeypatch, tmp_path):
+    home = tmp_path / "profile"
+    _unpacked(home / "AppData" / "Local" / "FluBNF" / "PyBNF-Private")
+    mine = tmp_path / "D" / "engines" / "PyBNF-pf"
+    (mine / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=True, home=home,
+                          pin=mine) == mine
+
+
+def test_a_pin_with_no_engine_anywhere_is_what_the_messages_name(
+        monkeypatch, tmp_path):
+    home = tmp_path / "profile"
+    pin = tmp_path / "unplugged" / "PyBNF-pf"
+    assert _engine_folder(monkeypatch, windows=True, home=home,
+                          pin=pin) == pin
+
+
+def test_windows_looks_under_both_roots_for_each_name(monkeypatch, tmp_path):
+    """FluBNF.bat's order: an empty Documents\\GitHub\\PyBNF-pf does not
+    hide the engine at %LOCALAPPDATA%\\FluBNF\\PyBNF-pf."""
+    home = tmp_path / "profile"
+    (home / "Documents" / "GitHub" / "PyBNF-pf").mkdir(parents=True)
+    engine = home / "AppData" / "Local" / "FluBNF" / "PyBNF-pf"
+    (engine / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=True, home=home) == engine
+    # nothing anywhere: the default, outside Documents
+    assert _engine_folder(monkeypatch, windows=True,
+                          home=tmp_path / "empty") == (
+        tmp_path / "empty" / "AppData" / "Local" / "FluBNF" / "PyBNF-pf")
+
+
+def test_macos_looks_in_github_before_documents(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    old = _unpacked(home / "Documents" / "GitHub" / "PyBNF-Private")
+    assert _engine_folder(monkeypatch, windows=False, home=home) == old
+    new = home / "GitHub" / "PyBNF-Private"
+    (new / ".git").mkdir(parents=True)
+    assert _engine_folder(monkeypatch, windows=False, home=home) == new
+
+
 def test_setup_ps1_no_longer_defaults_a_checkout_into_documents():
     for leaf in ("FluSight-forecast-hub", "PyBNF-pf"):
         assert f'Join-Path $HOME "Documents\\GitHub\\{leaf}"' not in PS1, (
@@ -148,11 +225,19 @@ def test_setup_ps1_no_longer_defaults_a_checkout_into_documents():
             f"Controlled Folder Access blocks git.exe from writing to")
     assert 'Join-Path $LocalAppData "FluBNF"' in PS1, (
         "setup.ps1 no longer builds its default under %LOCALAPPDATA%")
-    for var, leaf in (("FLUBNF_HUB", "FluSight-forecast-hub"),
-                      ("FLUBNF_PYBNF", "PyBNF-pf")):
-        assert f'Resolve-Checkout $env:{var} "{leaf}"' in PS1, (
-            f"{var} no longer goes through the resolver that reuses an "
-            f"existing checkout at the old location")
+    assert 'Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"' in PS1, (
+        "FLUBNF_HUB no longer goes through the resolver that reuses an "
+        "existing checkout at the old location")
+    # The engine has its own resolver (FluBNF.bat's order, engines only);
+    # it too reuses the old location and defaults under %LOCALAPPDATA%.
+    body = PS1[PS1.index("function Resolve-PyBnf"):]
+    body = body[:body.index("\nfunction ")]
+    assert "$PyBnf = Resolve-PyBnf" in PS1
+    assert "foreach ($root in $LegacyRoots)" in body
+    assert "$script:ReusedLegacy += $legacy" in body
+    assert body.rstrip().endswith(
+        'return (Join-Path $FluBnfRoot "PyBNF-pf")\n}'), (
+        "the engine checkout no longer defaults under %LOCALAPPDATA%")
 
 
 def test_setup_ps1_reuses_an_old_checkout_and_never_relocates_one():
@@ -501,6 +586,96 @@ def test_the_windows_doc_quotes_every_path_it_tells_a_user_to_type():
         for var in ("%LOCALAPPDATA%", "%USERPROFILE%"):
             if var in text and f'"{var}' not in text:
                 bad.append(f"docs/WINDOWS.md:{i}: {text}")
+    assert not bad, (
+        "unquoted expansion used as a command argument:\n  " +
+        "\n  ".join(bad))
+
+
+# --- the engine on Windows, and what the doc says about CI ---
+
+
+def _doc_section(heading: str) -> str:
+    """One section of docs/WINDOWS.md, up to the next heading of its level
+    or above."""
+    level = heading.split(" ", 1)[0]
+    start = DOC.index(f"\n{heading}\n")
+    stops = [DOC.find(f"\n{'#' * n} ", start + 1)
+             for n in range(2, len(level) + 1)]
+    stops = [s for s in stops if s > 0]
+    return DOC[start:min(stops)] if stops else DOC[start:]
+
+
+def test_the_windows_doc_lists_the_engine_folders_in_the_launchers_order():
+    """Which engine folder wins decides which build runs, so the list the
+    doc gives is FluBNF.bat's search, in its order, after FLUBNF_PYBNF."""
+    probe = BAT[BAT.index("\n:pybnfprobe"):BAT.index("\n:pybnfresolved")]
+    searched = re.findall(r'^set "PYBNFDIR=([^"]+)"\n'
+                          r'if exist "%PYBNFDIR%\\\.git" goto :pybnfresolved',
+                          probe, re.MULTILINE)
+    assert len(searched) == 4, f"the parse of FluBNF.bat broke: {searched}"
+    section = _doc_section("### Where it goes")
+    listed = re.findall(r"^\d+\. `([^`]+)`", section, re.MULTILINE)
+    assert listed == searched, (listed, searched)
+    assert "1. the folder `FLUBNF_PYBNF` names, if it holds one" in section
+
+
+def test_the_windows_doc_puts_the_engine_where_the_launcher_does():
+    """The folders a reader is sent to are the ones FluBNF.bat uses: where
+    it unpacks the archive, the engine venv, the copy a newer file replaced,
+    and the record of a failed install."""
+    unpacked = re.search(
+        r'if exist "([^"]+)\\pybnf\\pf\.py" set "PYBNFDIR=\1"', BAT).group(1)
+    venv = re.search(r'if not defined ENGINEVENV set "ENGINEVENV=([^"]+)"',
+                     BAT).group(1)
+    replaced = re.search(r'set "KEPT=([^"%]+)%TS%"', BAT).group(1)
+    attempt = re.search(r'set "ATTEMPT=(?:%CD%\\)?([^"]+)"', BAT).group(1)
+    section = _doc_section("## The particle-filter engine on Windows")
+    for where in (unpacked, venv, replaced, attempt):
+        assert where in section, f"the engine section never names {where}"
+    # the defaults table and remedy 1 name the archive's folder too
+    assert f"| `{unpacked}` from the lab's file" in DOC
+    assert f'setx FLUBNF_PYBNF "{unpacked}"' in DOC
+    assert "flubnf engine-update" in section
+    assert "not the production build" in section
+    assert "(ENGINE.md)" in section
+
+
+def test_the_windows_doc_describes_ci_as_the_workflow_runs_it():
+    """The Windows jobs are required: the workflow has no continue-on-error,
+    so the doc neither mentions it nor promises to promote the jobs later,
+    and it quotes each job's fuse as the workflow sets it."""
+    assert "continue-on-error" not in WORKFLOW, (
+        "a job may fail without failing the run now, so 'Windows CI is "
+        "required' in docs/WINDOWS.md is no longer true")
+    assert "continue-on-error" not in DOC
+    bullet = DOC[DOC.index("- **Windows CI is required.**"):]
+    bullet = " ".join(bullet[:bullet.index("\n- **", 1)].split())
+    assert "promoted to required" not in bullet
+    fuses = re.findall(r"^    timeout-minutes: (\d+)", WORKFLOW, re.MULTILINE)
+    assert len(fuses) == 3, fuses
+    for minutes in fuses:
+        assert re.search(rf"\b{minutes}\b", bullet), (
+            f"the workflow gives a job {minutes} minutes and the doc does "
+            f"not say so")
+
+
+def test_every_windows_command_in_the_docs_quotes_the_paths_it_expands():
+    """The rule above, for every doc that gives Windows commands and every
+    command they give: an unquoted %LOCALAPPDATA% or %USERPROFILE% splits in
+    two at a space in the account name."""
+    commands = ("git ", "setx ", "ren ", "cd /d ", "powershell ", "xcopy ",
+                "robocopy ")
+    bad = []
+    for rel in ("docs/WINDOWS.md", "docs/INSTALL-STUDENTS.md",
+                "docs/ENGINE.md", "README.md"):
+        text = (REPO / rel).read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), 1):
+            cmd = line.strip()
+            if not cmd.startswith(commands):
+                continue
+            for var in ("%LOCALAPPDATA%", "%USERPROFILE%"):
+                if cmd.count(var) != cmd.count(f'"{var}'):
+                    bad.append(f"{rel}:{i}: {cmd}")
     assert not bad, (
         "unquoted expansion used as a command argument:\n  " +
         "\n  ".join(bad))

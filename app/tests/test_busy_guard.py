@@ -1,7 +1,7 @@
 """Per-button run-interference guards and the report download: /api/busy,
 the retro stop endpoint and between-weeks stop, the guard modal, the exact
 set of guarded controls, the season-report download attribute, and the
-Reveal-in-Finder fallback.
+Show-in-folder fallback.
 """
 import subprocess
 import sys
@@ -264,6 +264,10 @@ def test_download_anchor_and_reveal_button():
     assert "/report_path'" in html
     assert "'/output/reveal'" in html
     assert "URLSearchParams({path:d.path})" in html
+    # the Output tab's words: Finder on a Mac, File Explorer on Windows
+    button = html.split('id="rev-report"', 1)[1].split("</button>", 1)[0]
+    assert button.endswith(" Show in folder")
+    assert "Finder" not in html
 
 
 def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
@@ -318,7 +322,7 @@ def test_reveal_spawns_open_for_app_state_paths_only(tmp_path, monkeypatch):
     resolved = str(inside.resolve())
     expected = {
         "darwin": [["open", "-R", resolved]],
-        "win32": [["explorer", f"/select,{inside.resolve()}"]],
+        "win32": [f'explorer /select,"{inside.resolve()}"'],
     }.get(sys.platform, [["xdg-open", str(inside.resolve().parent)]])
     assert spawned == expected
     # a path outside the app state is refused without side effects
@@ -333,6 +337,27 @@ def test_reveal_spawns_open_for_app_state_paths_only(tmp_path, monkeypatch):
     assert r.status_code == 303 and spawned == []
     assert client.get("/output/download",
                       params={"path": "a\x00b"}).status_code == 404
+
+
+def test_explorer_gets_the_select_switch_outside_the_quotes():
+    """Explorer knows /select only unquoted: an argv element with the path
+    in it is quoted whole once the path holds a space (a profile such as
+    C:\\Users\\Ely Miller, or a OneDrive folder), and Explorer then opens
+    its default folder. The command line goes as one string, path quoted."""
+    from pathlib import PureWindowsPath
+    from app.ui.routes import output as ui_output
+    p = PureWindowsPath("C:/Users/Ely Miller/OneDrive - Northern Arizona "
+                        "University/flubnf/app/state/retro/2025-26/"
+                        "2025-26-FluBNF-season-report.html")
+    cmd = ui_output._reveal_command(p, "win32")
+    assert cmd == ('explorer /select,"C:\\Users\\Ely Miller\\OneDrive - '
+                   'Northern Arizona University\\flubnf\\app\\state\\retro\\'
+                   '2025-26\\2025-26-FluBNF-season-report.html"')
+    # what the old argv form reached Explorer as: the switch inside quotes
+    assert subprocess.list2cmdline(["explorer", f"/select,{p}"]).startswith(
+        'explorer "/select,')
+    assert ui_output._reveal_command(Path("/x/r.html"), "darwin") == \
+        ["open", "-R", str(Path("/x/r.html"))]
 
 
 def test_cli_enables_pywebview_downloads_before_window_creation():

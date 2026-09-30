@@ -867,9 +867,11 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # atomic (a serve-time rebuild never exposes a half-write), and LF pinned:
     # /output/report (text read) and /output/report/download (raw bytes) must
-    # return identical text on Windows too
+    # return identical text on Windows too. utf-8, as the page's meta says:
+    # the locale's code page (cp1252 on a Windows console started without
+    # PYTHONUTF8) cannot write its symbols, and the run would end reportless
     tmp = out_path.with_name(out_path.name + ".tmp")
-    tmp.write_text(html, newline="\n")
+    tmp.write_text(html, encoding="utf-8", newline="\n")
     os.replace(tmp, out_path)
     return out_path
 
@@ -879,7 +881,8 @@ def save_bundle(bundle: dict, dirpath: Path) -> Path:
     report can be rebuilt after any builder change without rerunning models."""
     p = Path(dirpath) / BUNDLE_NAME
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(bundle, separators=(",", ":"), default=float))
+    tmp.write_text(json.dumps(bundle, separators=(",", ":"), default=float),
+                   encoding="utf-8")
     os.replace(tmp, p)
     return p
 

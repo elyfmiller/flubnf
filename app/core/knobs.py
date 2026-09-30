@@ -943,7 +943,7 @@ def write_record(path, spec) -> bool:
                           for r in effective(spec)]}
     p = Path(path)
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(body, indent=1, sort_keys=True))
+    tmp.write_text(json.dumps(body, indent=1, sort_keys=True), encoding="utf-8")
     os.replace(tmp, p)
     return True
 

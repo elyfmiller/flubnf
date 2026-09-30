@@ -55,8 +55,8 @@ def _legacy_label(dir_name: str, d: Path) -> tuple:
         return "SIHRS filter, before the Oracle step", False
     if member == "analogue":
         try:
-            spec = _json.loads((Path(d) / "results.json").read_text()
-                               ).get("spec") or "{}"
+            spec = _json.loads((Path(d) / "results.json")
+                               .read_text(encoding="utf-8")).get("spec") or "{}"
             spec = _json.loads(spec) if isinstance(spec, str) else spec
             pools = ((spec or {}).get("extra") or {}).get("aux_pools")
         except Exception:
@@ -547,6 +547,23 @@ def output_download(request: Request, path: str):
                         content_disposition_type="attachment")
 
 
+def _reveal_command(p: Path, platform: str | None = None):
+    """What opens the file manager on `p` (selected where it can be): an
+    argv list, or on Windows the command line itself. Explorer reads its
+    own switches and knows /select only when the switch stands outside the
+    quotes, so an argv element "/select,C:\\Users\\Ely Miller\\r.html",
+    which subprocess quotes whole for its space, opens the default folder
+    instead. The string reaches CreateProcess verbatim, and a Windows path
+    cannot hold the double quote around it. `platform` is sys.platform by
+    default; tests pass one."""
+    plat = platform or sys.platform
+    if plat == "darwin":
+        return ["open", "-R", str(p)]
+    if plat == "win32":
+        return f'explorer /select,"{p}"'
+    return ["xdg-open", str(p.parent)]
+
+
 @router.post("/output/reveal")
 def output_reveal(path: str = Form(...)):
     """Show the file in Finder / Explorer (a local desktop app)."""
@@ -559,19 +576,27 @@ def output_reveal(path: str = Form(...)):
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p.is_relative_to(APP_STATE.resolve()) and p.exists():
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-R", str(p)])
-        elif sys.platform == "win32":
-            # one argv element: Explorer's /select, has odd comma quoting
-            subprocess.Popen(["explorer", f"/select,{p}"])
-        else:
-            subprocess.Popen(["xdg-open", str(p.parent)])
+        subprocess.Popen(_reveal_command(p))
     return RedirectResponse("/output", status_code=303)
 
 
 #: report path -> builder-sources mtime of a failed rebuild: retry once per
 #: builder change, never per request
 _REPORT_REBUILD_FAILED: dict = {}
+
+
+def _stored_report_text(f: Path) -> str:
+    """A stored report's text: utf-8, as report_v2.build_report writes it
+    (the locale's code page, cp1252 on Windows, cannot read the page's
+    symbols). A report an earlier build wrote in that code page still
+    opens: read in it, whatever it cannot map replaced."""
+    raw = f.read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        import locale
+        return raw.decode(locale.getpreferredencoding(False),
+                          errors="replace")
 
 
 def _report_for_serving(dirpath: Path) -> str:
@@ -581,7 +606,7 @@ def _report_for_serving(dirpath: Path) -> str:
     (file untouched). Any failure serves the stored file: never a 500."""
     from app.core import report_v2
     f = Path(dirpath) / "report.html"
-    text = f.read_text()
+    text = _stored_report_text(f)
     try:
         src_m = report_v2.builder_sources_mtime()
         if f.stat().st_mtime >= src_m:
@@ -593,13 +618,13 @@ def _report_for_serving(dirpath: Path) -> str:
             return text
         try:
             import json as _json
-            bundle = _json.loads(b.read_text())
+            bundle = _json.loads(b.read_text(encoding="utf-8"))
             if bundle.get("version") not in \
                     report_v2.SUPPORTED_BUNDLE_VERSIONS:
                 raise ValueError("unknown report bundle version "
                                  f"{bundle.get('version')!r}")
             report_v2.render_bundle(bundle, f)
-            return f.read_text()
+            return f.read_text(encoding="utf-8")
         except Exception:
             _REPORT_REBUILD_FAILED[str(f)] = src_m
             return text

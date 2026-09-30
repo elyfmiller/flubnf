@@ -125,7 +125,7 @@ def materialize_model(setup: StateSetup, template: str | Path, out_path: str | P
     """Write the per-state .bngl with every token resolved. Unresolved => error.
     `extra_tokens` lets variant templates carry tokens StateSetup doesn't know
     (e.g. the two-strain {{A0SHARE}})."""
-    txt = Path(template).read_text()
+    txt = Path(template).read_text(encoding="utf-8")
     for tok, val in {**(extra_tokens or {}),
         "{{POP}}": str(int(setup.population)),
         "{{S0FRAC}}": f"{setup.s0:g}",
@@ -155,6 +155,6 @@ def write_exp(setup: StateSetup, out_path: str | Path) -> Path:
     tt = setup.times if setup.times.size else np.arange(setup.n_obs)
     lines += [f"{int(i)} {v:.6f}" for i, v in zip(tt, setup.observed)]
     # newline pinned: PyBNF reads the .exp line-wise
-    out.write_text("\n".join(lines) + "\n", newline="\n")
+    out.write_text("\n".join(lines) + "\n", newline="\n", encoding="utf-8")
     return out
 

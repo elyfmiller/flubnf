@@ -76,7 +76,7 @@ def name_to_fips(locations_csv=None) -> dict:
     """location_name -> two-character FIPS (or 'US'), the hub's map."""
     import csv
     out = {}
-    with open(locations_csv or LOCATIONS, newline="") as fh:
+    with open(locations_csv or LOCATIONS, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             out[r["location_name"]] = r["location"].zfill(2)
     return out
@@ -87,7 +87,8 @@ def weeks_dropped(cells_dir) -> dict:
     (the per-cell `weeks_dropped`, the same-day trim included; the max over
     a location's replicates); {} when the file is absent."""
     try:
-        cells = json.loads((Path(cells_dir) / "cells.json").read_text())
+        cells = json.loads(
+            (Path(cells_dir) / "cells.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
     out: dict = {}
@@ -343,7 +344,7 @@ def write_provenance(out_dir, prov: dict) -> Path:
     """oracle.json beside the week, atomically."""
     fp = Path(out_dir) / PROVENANCE_NAME
     tmp = fp.with_name(fp.name + ".tmp")
-    with open(tmp, "w") as fh:
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(prov, fh)
     os.replace(tmp, fp)
     return fp
@@ -364,7 +365,8 @@ def write_not_applied(out_dir, asof: str, reason: str) -> Path:
 def read_provenance(out_dir) -> dict | None:
     """oracle.json of a week, or None when absent or unreadable."""
     try:
-        return json.loads((Path(out_dir) / PROVENANCE_NAME).read_text())
+        return json.loads(
+            (Path(out_dir) / PROVENANCE_NAME).read_text(encoding="utf-8"))
     except Exception:
         return None
 

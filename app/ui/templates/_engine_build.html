@@ -2,7 +2,9 @@
    Another build than production: in a form's narrow column (`eb_short`)
    a "not the production build" warn badge, the sentence naming the build
    and the fix in its "?" tip; elsewhere (Home) one warn alert
-   line, the fix in its tip. Production: an ok badge naming the commit
+   line, the fix in its tip. A checkout git could not read (a warning with
+   no build: git missing, a folder another account owns) says so the same
+   way, as "engine build unknown". Production: an ok badge naming the commit
    when `eb_ok` is set, the full build (branch too) in its tip (Home names
    it in its versions line instead). Unknown (no
    engine, or not resolved yet): nothing. The data-engine-build hook marks
@@ -10,10 +12,11 @@
    {% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %} #}
 {% import "_tips.html" as tips %}
 {% set eb = engine_build_view() %}
+{% set eb_kind = "other" if eb.known else "unreadable" %}
 {% if eb.warning and eb_short %}
-<span class="engine-build-warn" data-engine-build="other">{% call tips.badge("warn", "not the production build", id="eb-" ~ (eb_id or "x")) %}{{ eb.warning }} {{ eb.fix }}{% endcall %}</span>
+<span class="engine-build-warn" data-engine-build="{{ eb_kind }}">{% call tips.badge("warn", "not the production build" if eb.known else "engine build unknown", id="eb-" ~ (eb_id or "x")) %}{{ eb.warning }} {{ eb.fix }}{% endcall %}</span>
 {% elif eb.warning %}
-<div class="engine-build-warn" data-engine-build="other">{% call tips.alert("warn", eb.warning, id="eb-" ~ (eb_id or "x"), live="", tip_label="switching to the production engine") %}{{ eb.fix }}{% endcall %}</div>
+<div class="engine-build-warn" data-engine-build="{{ eb_kind }}">{% call tips.alert("warn", eb.warning, id="eb-" ~ (eb_id or "x"), live="", tip_label=("switching to the production engine" if eb.known else "letting git read the engine folder")) %}{{ eb.fix }}{% endcall %}</div>
 {% elif eb.production and eb_ok %}
 <span data-engine-build="production">{{ tips.badge("ok", "PyBNF " ~ (eb.label.split(" ")[0]), "Production build: " ~ eb.label ~ ".", id="eb-" ~ (eb_id or "x")) }}</span>
 {% endif %}

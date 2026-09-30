@@ -48,7 +48,7 @@ RUN_SETTINGS = ("particles", "jitter", "forecast_weeks", "seed", "cumulative",
 
 def _run_meta(run_id: str) -> tuple:
     d = run_dir(run_id)
-    return d, json.loads((d / "meta.json").read_text())
+    return d, json.loads((d / "meta.json").read_text(encoding="utf-8"))
 
 
 def run_files(run_id: str) -> dict:
@@ -279,7 +279,7 @@ def oracle_step(run_id: str, w: float | None = None) -> dict:
            "reference_date": prov["quantiles"]["horizons"]["reference_date"],
            "label": "sandbox, not a submission", "utc": _stamp()}
     tmp = d / (ORACLE_FILE + ".tmp")
-    tmp.write_text(json.dumps(out, indent=1))
+    tmp.write_text(json.dumps(out, indent=1), encoding="utf-8")
     tmp.replace(d / ORACLE_FILE)
     return out
 
@@ -287,6 +287,7 @@ def oracle_step(run_id: str, w: float | None = None) -> dict:
 def read_oracle(run_id: str) -> dict | None:
     """The run's Oracle step summary, or None."""
     try:
-        return json.loads((run_dir(run_id) / ORACLE_FILE).read_text())
+        return json.loads(
+            (run_dir(run_id) / ORACLE_FILE).read_text(encoding="utf-8"))
     except Exception:
         return None

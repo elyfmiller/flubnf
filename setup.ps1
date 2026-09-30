@@ -91,6 +91,49 @@ function Resolve-Checkout {
     return (Join-Path $FluBnfRoot $Name)
 }
 
+function Test-EngineOnDisk {
+    <# Is there an engine at $Path: a git checkout, or an archive unpacked by
+       FluBNF.bat (pybnf\pf.py, no .git)? A folder that is merely there does
+       not count. [IO.Path]::Combine, not Join-Path: Join-Path fails on a
+       drive that is not attached, and a pin to an unplugged D: is allowed. #>
+    param([string]$Path)
+    if (-not $Path) { return $false }
+    try {
+        $git = [IO.Path]::Combine($Path, ".git")
+        $pf = [IO.Path]::Combine($Path, "pybnf\pf.py")
+    } catch { return $false }
+    return ((Test-Path -LiteralPath $git) -or (Test-Path -LiteralPath $pf))
+}
+
+$script:IgnoredPyBnfPin = $null
+function Resolve-PyBnf {
+    <# The engine checkout, in FluBNF.bat's order: the two must agree, or one
+       installs an engine the other cannot find. FLUBNF_PYBNF counts only when
+       an engine is there, because earlier releases recorded the default
+       before anything existed. Then PyBNF-pf (the dev host's name) before
+       PyBNF-Private (the repo's name, and where the archive unpacks), each at
+       the old Documents default before %LOCALAPPDATA%; else the default a
+       clone would go to. A trailing backslash is trimmed: inside the quotes
+       of a printed command it would escape the closing one. #>
+    if ($env:FLUBNF_PYBNF) {
+        $pin = $env:FLUBNF_PYBNF.TrimEnd('\', '/')
+        if (Test-EngineOnDisk $pin) { return $pin }
+        $script:IgnoredPyBnfPin = $pin
+    }
+    foreach ($name in @("PyBNF-pf", "PyBNF-Private")) {
+        foreach ($root in $LegacyRoots) {
+            $legacy = Join-Path $root $name
+            if (Test-EngineOnDisk $legacy) {
+                $script:ReusedLegacy += $legacy
+                return $legacy
+            }
+        }
+        $local = Join-Path $FluBnfRoot $name
+        if (Test-EngineOnDisk $local) { return $local }
+    }
+    return (Join-Path $FluBnfRoot "PyBNF-pf")
+}
+
 function Resolve-ProfilePath {
     <# A profile-relative path: %USERPROFILE%'s, unless only another root's
        copy exists (an earlier install must not be stranded). #>
@@ -250,14 +293,8 @@ function Get-RealtimeState {
 }
 
 $Hub = Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"
-$PyBnf = Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"
-# No PyBNF-pf (the dev host's name): an existing PyBNF-Private (the repo's
-# real name) wins over cloning fresh. Mirrors flubnf/settings.py.
-if (-not $env:FLUBNF_PYBNF -and -not (Test-Path -LiteralPath $PyBnf)) {
-    $alt = Resolve-Checkout $null "PyBNF-Private"
-    if (Test-Path -LiteralPath $alt) { $PyBnf = $alt }
-}
-$EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV }
+$PyBnf = Resolve-PyBnf
+$EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV.TrimEnd('\', '/') }
               # Resolve-ProfilePath: settings.py uses %USERPROFILE%, and a
               # venv built under the other root is still found.
               else { Resolve-ProfilePath ".venvs\flubnf-engine" }
@@ -289,12 +326,22 @@ if ($script:ReusedLegacy.Count -gt 0) {
     Info "Do note that these sit under Documents, which Controlled Folder"
     Info "Access protects by default; the next section says what that means."
 }
+if ($script:IgnoredPyBnfPin -and ($script:IgnoredPyBnfPin -ne $PyBnf)) {
+    Info ""
+    Info "FLUBNF_PYBNF names $($script:IgnoredPyBnfPin),"
+    Info "which holds no engine (no .git, no pybnf\pf.py), so this run looks past"
+    Info "it, as FluBNF.bat does. An engine found elsewhere replaces it at the"
+    Info "end of this run; to keep that folder, move or clone the engine into it."
+}
 Info ""
 Info "To put any of these somewhere else, set the variable first, open a NEW"
 Info "window so the setting is visible, then re-run this script:"
-Info "  setx FLUBNF_HUB D:\FluSight-forecast-hub"
-Info "  setx FLUBNF_ENGINE_VENV D:\venvs\flubnf-engine"
-Info "  setx FLUBNF_PYBNF D:\Projects\PyBNF-pf"
+Info "  setx FLUBNF_HUB `"D:\FluSight-forecast-hub`""
+Info "  setx FLUBNF_ENGINE_VENV `"D:\venvs\flubnf-engine`""
+Info "The engine folder counts only once it holds the engine, so clone or move"
+Info "the engine there first, then point FLUBNF_PYBNF at it:"
+Info "  git clone -b feature/particle-filter $PyBnfRemote `"D:\Projects\PyBNF-pf`""
+Info "  setx FLUBNF_PYBNF `"D:\Projects\PyBNF-pf`""
 if ($Hub -like "*OneDrive*") {
     Warn "the data path is inside OneDrive. A git clone of this size in a"
     Warn "synced folder syncs tens of thousands of small files; putting it"
@@ -333,7 +380,7 @@ $Resolved = @(
     @{ Label = "engine venv";    Path = $EngineVenv; Var = "FLUBNF_ENGINE_VENV"
        FromEnv = [bool]$env:FLUBNF_ENGINE_VENV },
     @{ Label = "PyBNF checkout"; Path = $PyBnf;      Var = "FLUBNF_PYBNF"
-       FromEnv = [bool]$env:FLUBNF_PYBNF }
+       FromEnv = ([bool]$env:FLUBNF_PYBNF -and -not $script:IgnoredPyBnfPin) }
 )
 # Defaults UNION the machine's list: a false warning costs a paragraph, a
 # missed one a day. The inner parentheses bound what the pipeline claims.
@@ -422,6 +469,11 @@ if ($Cfa.State -eq "off") {
         Info "     exactly where it is and the new location is fetched from"
         Info "     scratch, so if you would rather not download it again, move"
         Info "     the folder there yourself first and then run the setx line."
+        if (@($AtRisk | Where-Object { $_.Var -eq "FLUBNF_PYBNF" }).Count -gt 0) {
+            Info "     The engine checkout is the exception: this script never"
+            Info "     fetches it, and a FLUBNF_PYBNF folder with no engine in it"
+            Info "     is looked past, so move that one there before the setx."
+        }
     }
     foreach ($e in $AtRisk) {
         if (-not $e.Var) {
@@ -430,6 +482,9 @@ if ($Cfa.State -eq "off") {
             Info "     folders listed above) and run FluBNF.bat from its new"
             Info "     home. This one matters even if setup succeeds, because"
             Info "     a fit writes into app\state\workroots inside it."
+            Info "     After the move, delete the .venv folder inside it: the"
+            Info "     programs in it still name the old location. FluBNF.bat"
+            Info "     builds a fresh one on its next open."
         }
     }
     Info ""
@@ -553,7 +608,7 @@ if ($Rt.State -eq "off") {
         Info "those folders, and it is often blocked on a managed laptop. This"
         Info "script will not do it. To see what it would involve, with the"
         Info "folders that resolved on THIS machine, and change nothing:"
-        Info "  powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -ShowDefenderExclusion"
+        Info "  powershell -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $Here 'setup.ps1')`" -ShowDefenderExclusion"
     } else {
         # Opt-in only (the switch): prints the trade and the route, changes nothing.
         Info ""
@@ -968,16 +1023,67 @@ function Test-RemoteAccess {
     }
 }
 
+function Find-EngineFile {
+    <# The engine file FluBNF.bat would install from, found where it looks:
+       FLUBNF_PYBNF_BUNDLE (which ends its search), then pybnf*.tar.gz, the
+       newest wins, then pybnf*.bundle, in this folder, the one above it,
+       Downloads, Desktop and Documents, each also under %OneDrive% (Known
+       Folder Move). The archive comes before a bundle because the launcher
+       unpacks it first and then has no use for the bundle. #>
+    $b = $env:FLUBNF_PYBNF_BUNDLE
+    if ($b -and (Test-Path -LiteralPath $b -PathType Leaf)) { return $b }
+    $dirs = @($Here, (Split-Path -Parent $Here))
+    foreach ($n in @("Downloads", "Desktop", "Documents")) {
+        $dirs += (Join-Path $ProfileRoot $n)
+        # guarded: an unset %OneDrive% would make these drive-root folders
+        if ($env:OneDrive) { $dirs += (Join-Path $env:OneDrive $n) }
+    }
+    $dirs = @($dirs | Where-Object { $_ } | Select-Object -Unique)
+    $archives = @(foreach ($d in $dirs) {
+        Get-ChildItem -LiteralPath $d -Filter "pybnf*.tar.gz" -File -ErrorAction SilentlyContinue
+    })
+    if ($archives.Count -gt 0) {
+        return ($archives | Sort-Object LastWriteTimeUtc -Descending |
+                Select-Object -First 1).FullName
+    }
+    foreach ($d in $dirs) {
+        $f = Get-ChildItem -LiteralPath $d -Filter "pybnf*.bundle" -File -ErrorAction SilentlyContinue |
+             Select-Object -First 1
+        if ($f) { return $f.FullName }
+    }
+    return $null
+}
+
+function Clear-EngineAttempt {
+    <# FluBNF.bat records a failed engine install in .venv\engine-attempt.txt
+       and then stops retrying on every open; running this script is what its
+       message says starts it again, so this is where the record goes. #>
+    $stamp = Join-Path $VenvDir "engine-attempt.txt"
+    if (-not (Test-Path -LiteralPath $stamp)) { return }
+    Remove-Item -LiteralPath $stamp -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $stamp) {
+        Warn "could not delete $stamp, so FluBNF.bat will not retry the engine"
+        Warn "install until it is gone; delete it by hand."
+    } else {
+        Info "cleared FluBNF.bat's record of a failed engine install; its next"
+        Info "open tries again."
+    }
+}
+
 Say "engine venv (pybnf + bngsim)"
 $EngineReady = $false
 if (Test-Path $EnginePy) {
     # Probe as runners load the fork (checkout on sys.path, see
     # app/core/engines/pf.py), not pip's view: the editable install can fail
     # on Windows while fits work. ParticleFilter is what stock pybnf lacks.
-    $probe = "import sys; sys.path.insert(0, r'$PyBnf'); import bngsim; " +
+    # The path is an argument, never spliced into the source: r'...' breaks
+    # on an apostrophe (C:\Users\O'Neil) or a trailing backslash. Trimmed,
+    # because PowerShell quotes an argument holding a space, and a final
+    # backslash would escape that closing quote.
+    $probe = "import sys; sys.path.insert(0, sys.argv[1]); import bngsim; " +
              "from pybnf.pf import ParticleFilter; " +
              "print('pf ok, bngsim ' + bngsim.__version__)"
-    $imp = Invoke-Captured $EnginePy @("-c", $probe)
+    $imp = Invoke-Captured $EnginePy @("-c", $probe, $PyBnf.TrimEnd('\'))
     if ($imp.Code -eq 0) {
         $EngineReady = $true
     } else {
@@ -989,25 +1095,55 @@ if (Test-Path $EnginePy) {
 if ($EngineReady) {
     Ok "engine venv ready: $EngineVenv"
 } else {
-    Warn "engine venv not ready. The PF engine (fit_type=pf) needs the PyBNF"
-    Warn "fork with fit_type=pf, which is a PRIVATE repository."
+    Warn "engine venv not ready."
+    # FluBNF.bat installs from an engine on disk (a clone, or an unpacked
+    # archive) or from an engine file, with no GitHub account; either way the
+    # GitHub probe below would only mislead, so it is skipped.
+    $EngineOnDisk = Test-EngineOnDisk $PyBnf
+    $EngineFile = $null
+    if (-not $EngineOnDisk) { $EngineFile = Find-EngineFile }
     $access = "unknown"
-    if (Test-Path (Join-Path $PyBnf ".git")) {
+    if ($EngineOnDisk) {
         $access = "local"
-    } elseif ($env:FLUBNF_NO_PROBE -eq "1") {
-        Info "access probe skipped (FLUBNF_NO_PROBE=1)"
+    } elseif ($EngineFile) {
+        $access = "file"
     } else {
-        Info "checking whether this machine can already reach it (up to 15 s;"
-        Info "read-only, and it cannot ask you for a password)..."
-        $access = Test-RemoteAccess $PyBnfRemote 15000
+        Warn "The PF engine (fit_type=pf) needs the PyBNF fork with fit_type=pf,"
+        Warn "which is a PRIVATE repository."
+        Info "The route with no GitHub account: ask the lab for the engine file"
+        Info "(pybnf-pf-XXXX.tar.gz or pybnf.bundle), save it in your Downloads"
+        Info "folder, and open FluBNF.bat again. None was found in this folder,"
+        Info "the one above it, Downloads, Desktop or Documents."
+        Info "The route through GitHub needs access to the fork."
+        if ($env:FLUBNF_NO_PROBE -eq "1") {
+            Info "access probe skipped (FLUBNF_NO_PROBE=1)"
+        } else {
+            Info "checking whether this machine can already reach the fork (up to"
+            Info "15 s; read-only, and it cannot ask you for a password)..."
+            $access = Test-RemoteAccess $PyBnfRemote 15000
+        }
     }
     if ($access -eq "local") {
-        Ok "a PyBNF checkout is already on disk: $PyBnf"
-        Info "Finish with:"
+        Ok "engine on disk: $PyBnf; FluBNF.bat finishes the install, no GitHub account needed"
+        Info "(right after this, when FluBNF.bat started this setup; otherwise open FluBNF.bat)"
+        Clear-EngineAttempt
+        Info "Or finish by hand, in Command Prompt:"
+    } elseif ($access -eq "file") {
+        Ok "engine file found: $EngineFile"
+        Clear-EngineAttempt
+        if ($EngineFile -like "*.bundle" -and -not $GitPresent) {
+            # FluBNF.bat clones a bundle with git; an archive needs none
+            Warn "git is not on PATH, so FluBNF.bat cannot clone this bundle. Install"
+            Warn "Git for Windows (https://git-scm.com/download/win) and open a new"
+            Warn "window, or ask the lab for pybnf-pf-XXXX.tar.gz, which needs no git."
+        } else {
+            Info "FluBNF.bat installs it, no GitHub account needed: right after this,"
+            Info "when FluBNF.bat started this setup; otherwise open FluBNF.bat."
+        }
     } elseif ($access -eq "yes") {
         Ok "this machine can read $PyBnfRemote -- no invitation needed."
-        Info "Run these four commands:"
-        Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
+        Info "Run these commands in Command Prompt:"
+        Info "  git clone -b feature/particle-filter $PyBnfRemote `"$PyBnf`""
     } elseif ($access -eq "no") {
         Warn "this machine cannot read $PyBnfRemote. git said:"
         if ($script:LastRemoteError) {
@@ -1039,38 +1175,46 @@ if ($EngineReady) {
             Warn "     manager can authenticate you interactively"
         }
         Warn "  Prefer SSH? setx FLUBNF_PYBNF_REMOTE git@github.com:elyfmiller/PyBNF-Private.git"
-        Info "With access, the remaining steps are:"
-        Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
+        Info "With access, the remaining steps, in Command Prompt, are:"
+        Info "  git clone -b feature/particle-filter $PyBnfRemote `"$PyBnf`""
     } else {
         Warn "access to the fork was not checked, or could not be determined:"
         Warn "no git, no network, the probe was skipped, or it timed out."
-        Info "If you do have access:"
-        Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
+        Info "If you do have access, in Command Prompt:"
+        Info "  git clone -b feature/particle-filter $PyBnfRemote `"$PyBnf`""
     }
-    # Engine venv needs Python 3.11/3.12 (numpy<2 wheels stop at cp312; a
-    # source build dies on MAX_PATH): print a suitable interpreter, else conda.
-    $EngineBootCmd = $null
-    foreach ($c in @(@{exe="py"; args=@("-3.12")}, @{exe="py"; args=@("-3.11")})) {
-        try { $vv = & $c.exe @($c.args + @("-c", "import sys; print(sys.version_info[1])")) 2>$null }
-        catch { $vv = $null }
-        if ($vv) { $EngineBootCmd = "$($c.exe) $($c.args -join ' ')"; break }
+    # Printed for Command Prompt, where the docs start this script, with
+    # every path quoted: a profile path can hold a space, and unquoted, git
+    # stops at "Too many arguments" and venv quietly makes two folders.
+    if ($access -ne "file") {
+        # Engine venv needs Python 3.11/3.12 (numpy<2 wheels stop at cp312; a
+        # source build dies on MAX_PATH): print a suitable interpreter, else conda.
+        $EngineBootCmd = $null
+        foreach ($c in @(@{exe="py"; args=@("-3.12")}, @{exe="py"; args=@("-3.11")})) {
+            try { $vv = & $c.exe @($c.args + @("-c", "import sys; print(sys.version_info[1])")) 2>$null }
+            catch { $vv = $null }
+            if ($vv) { $EngineBootCmd = "$($c.exe) $($c.args -join ' ')"; break }
+        }
+        if (-not $EngineBootCmd -and $v) {
+            # a found python.exe is a full path (Anaconda's may hold a space)
+            $exe = if ($PyExe -match '\\') { "`"$PyExe`"" } else { $PyExe }
+            try { if ([version]"$v" -lt [version]"3.13") { $EngineBootCmd = "$exe $($PyArgs -join ' ')".Trim() } } catch { }
+        }
+        if ($EngineBootCmd) {
+            Info "  $EngineBootCmd -m venv `"$EngineVenv`""
+        } else {
+            Info "  (your Python is newer than the engine's numpy pin supports; make a 3.12 first)"
+            Info "  conda create -y -p `"$env:USERPROFILE\.venvs\flubnf-engine-py312`" python=3.12"
+            Info "  `"$env:USERPROFILE\.venvs\flubnf-engine-py312\python.exe`" -m venv `"$EngineVenv`""
+        }
+        # Same pins as setup_engine.sh: the runtime set explicitly (all have
+        # win_amd64 wheels), then the fork --no-deps (its msgpack==0.6.2 pin has
+        # no Windows wheel and needs MSVC).
+        Info "  `"$EngineVenv\Scripts\pip.exe`" install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
+        Info "  `"$EngineVenv\Scripts\pip.exe`" install -e `"$PyBnf`" --no-deps"
+        Info "  then re-run this script"
+        Info "(In PowerShell, put & and a space in front of a line that starts with a quote.)"
     }
-    if (-not $EngineBootCmd -and $v) {
-        try { if ([version]"$v" -lt [version]"3.13") { $EngineBootCmd = "$PyExe $($PyArgs -join ' ')".Trim() } } catch { }
-    }
-    if ($EngineBootCmd) {
-        Info "  $EngineBootCmd -m venv $EngineVenv"
-    } else {
-        Info "  (your Python is newer than the engine's numpy pin supports; make a 3.12 first)"
-        Info "  conda create -y -p $env:USERPROFILE\.venvs\flubnf-engine-py312 python=3.12"
-        Info "  $env:USERPROFILE\.venvs\flubnf-engine-py312\python.exe -m venv $EngineVenv"
-    }
-    # Same pins as setup_engine.sh: the runtime set explicitly (all have
-    # win_amd64 wheels), then the fork --no-deps (its msgpack==0.6.2 pin has
-    # no Windows wheel and needs MSVC).
-    Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
-    Info "  $EngineVenv\Scripts\pip install -e $PyBnf --no-deps"
-    Info "  then re-run this script"
     Warn "Without the engine: the console, analogue engine, and reports all work."
 }
 
@@ -1080,7 +1224,18 @@ Say "environment"
 # PYTHONUTF8: Windows defaults text I/O to cp1252, breaking the UTF-8 assets.
 [Environment]::SetEnvironmentVariable("PYTHONUTF8", "1", "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PY_ENGINE", $EnginePy, "User")
-[Environment]::SetEnvironmentVariable("FLUBNF_PYBNF", $PyBnf, "User")
+$Recorded = @("FLUBNF_PY_ENGINE")
+# No FLUBNF_PYBNF for a folder with no engine in it: settings.py (flubnf
+# doctor, the CLI) honours a recorded value whether or not anything is there,
+# so a pin to the empty default outlived the engine FluBNF.bat later unpacked
+# into PyBNF-Private. Skipped, never cleared, like FLUBNF_HUB below.
+$PyBnfRecorded = Test-EngineOnDisk $PyBnf
+if ($PyBnfRecorded) {
+    [Environment]::SetEnvironmentVariable("FLUBNF_PYBNF", $PyBnf, "User")
+    $Recorded += "FLUBNF_PYBNF"
+} else {
+    Info "FLUBNF_PYBNF not recorded: $PyBnf holds no engine yet"
+}
 # No FLUBNF_HUB after a failed clone: a User value wins every later
 # Resolve-Checkout and would pin the unwritable path (the launcher and
 # settings.py resolve the same default without it). Skipped, never cleared:
@@ -1093,10 +1248,10 @@ if ($HubCloneFailed) {
     Warn "setup could not create would send every future run straight back to"
     Warn "it. Whatever FLUBNF_HUB was before this run, it still is. Fix the"
     Warn "cause above and re-run; nothing else was left half-done."
-    Ok "user environment recorded (FLUBNF_PY_ENGINE, FLUBNF_PYBNF)"
+    Ok "user environment recorded ($($Recorded -join ', '))"
 } else {
     [Environment]::SetEnvironmentVariable("FLUBNF_HUB", $Hub, "User")
-    Ok "user environment recorded (FLUBNF_HUB, FLUBNF_PY_ENGINE, FLUBNF_PYBNF)"
+    Ok "user environment recorded ($((@("FLUBNF_HUB") + $Recorded) -join ', '))"
 }
 
 $EnvCmd = Join-Path $Here ".flubnf.env.cmd"
@@ -1106,9 +1261,9 @@ $EnvLines = @(
     "rem Delete it and re-run setup.ps1 to regenerate.",
     "set `"PYTHONUTF8=1`"",
     "set `"FLUBNF_HUB=$Hub`"",
-    "set `"FLUBNF_PY_ENGINE=$EnginePy`"",
-    "set `"FLUBNF_PYBNF=$PyBnf`""
+    "set `"FLUBNF_PY_ENGINE=$EnginePy`""
 )
+if ($PyBnfRecorded) { $EnvLines += "set `"FLUBNF_PYBNF=$PyBnf`"" }
 try {
     # cmd reads batch files in the OEM code page (not Set-Content's ANSI; only
     # accented paths differ, untested). No BOM: it breaks "@echo off".

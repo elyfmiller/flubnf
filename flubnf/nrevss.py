@@ -148,7 +148,7 @@ def _snapshot(region: str, issue: int, ew_start: int, ew_end: int,
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / f"{region}_{issue}.json"
     if path.exists():
-        blob = json.loads(path.read_text())
+        blob = json.loads(path.read_text(encoding="utf-8"))
         a, b = blob.get("epiweeks", (0, -1))
         if a <= ew_start and ew_end <= b:
             env = blob["response"]
@@ -162,7 +162,7 @@ def _snapshot(region: str, issue: int, ew_start: int, ew_end: int,
         "issue": issue,
         "epiweeks": [ew_start, ew_end],
         "response": env,
-    }, indent=1))
+    }, indent=1), encoding="utf-8")
     tmp.replace(path)
     return env.get("epidata") or []
 

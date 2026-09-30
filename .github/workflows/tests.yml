@@ -1,6 +1,7 @@
 name: tests
 on:
-  push: {branches: [main]}
+  # dev too: its Windows launcher changes get the Windows jobs before a PR.
+  push: {branches: [main, dev]}
   pull_request:
 jobs:
   test:
@@ -112,8 +113,9 @@ jobs:
   # credentials by design, so the engine is always missing and setup must
   # still exit 0); 3 idempotent re-run; 4 a by-hand --sparse clone must be
   # widened; 5 a legacy Documents checkout is reused in place.
-  # Not covered: FluBNF.bat itself, winget/Perl, the probe timeout, non-ASCII
-  # paths, the no-git branch.
+  # Not covered here: winget/Perl, the probe timeout, non-ASCII paths, the
+  # no-git branch. FluBNF.bat's update, engine-file and moved-.venv blocks run
+  # in test-windows (tests/test_windows_launcher.py).
   windows-setup-script:
     name: "windows-setup-script"
     runs-on: windows-latest

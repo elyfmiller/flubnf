@@ -21,7 +21,7 @@ def results(workroot: Path, live=_RAW) -> dict:
     percentiles over particles) with the observed counts beside it. With
     live=, the status reads as shown_status says."""
     workroot = Path(workroot)
-    meta = json.loads((workroot / "meta.json").read_text())
+    meta = json.loads((workroot / "meta.json").read_text(encoding="utf-8"))
     meta["status"] = shown_status(meta, workroot.name, live)
     out = {"meta": meta, "run_id": workroot.name, "params": [], "ess": [],
            "traj": None, "stderr": ""}
@@ -30,7 +30,7 @@ def results(workroot: Path, live=_RAW) -> dict:
     pf = next(runs.glob("params_*.txt"), None) if runs.is_dir() else None
     if pf is not None:
         try:
-            names = pf.read_text().splitlines()[0].split("\t")
+            names = pf.read_text(encoding="utf-8").splitlines()[0].split("\t")
             arr = np.loadtxt(pf, skiprows=1, ndmin=2)
             for j, nme in enumerate(names):
                 q = np.percentile(arr[:, j], [5, 50, 95])
@@ -62,7 +62,7 @@ def results(workroot: Path, live=_RAW) -> dict:
             out["stderr"] += f"trajectory unreadable: {exc}\n"
     for err in sorted(workroot.glob("pf_runner_*.err")):
         try:
-            txt = err.read_text(errors="replace").strip()
+            txt = err.read_text(errors="replace", encoding="utf-8").strip()
         except OSError:
             continue
         if txt:

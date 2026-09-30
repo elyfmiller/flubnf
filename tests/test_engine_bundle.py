@@ -411,15 +411,19 @@ def test_the_windows_launcher_resolves_the_fork_the_way_setup_does():
         "FluBNF.bat no longer probes the four checkout locations in "
         "setup.ps1's order (PyBNF-pf before PyBNF-Private, and the old "
         "Documents default before the new one within each name)")
-    # setup.ps1's order is checked only when its phrasing is found, so a
-    # rewording there does not fail this test
+    # setup.ps1: the same names in the same order, the old Documents root
+    # before %LOCALAPPDATA% within each, and a pin only where an engine is
     ps1 = (REPO / "setup.ps1").read_text(encoding="utf-8")
-    pf_at = ps1.find('Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"')
-    private_at = ps1.find('Resolve-Checkout $null "PyBNF-Private"')
-    if pf_at >= 0 and private_at >= 0:
-        assert pf_at < private_at, (
-            "setup.ps1 now prefers PyBNF-Private over PyBNF-pf; FluBNF.bat "
-            "above still prefers PyBNF-pf, and the two must agree")
+    body = ps1[ps1.index("function Resolve-PyBnf"):]
+    body = body[:body.index("\nfunction ")]
+    assert 'foreach ($name in @("PyBNF-pf", "PyBNF-Private"))' in body, (
+        "setup.ps1 no longer tries PyBNF-pf before PyBNF-Private; FluBNF.bat "
+        "above still does, and the two must agree")
+    assert (body.index("foreach ($root in $LegacyRoots)")
+            < body.index("$local = Join-Path $FluBnfRoot $name")), (
+        "setup.ps1 now prefers %LOCALAPPDATA% over the old Documents default")
+    assert "if (Test-EngineOnDisk $pin) { return $pin }" in body
+    assert 'if exist "%PYBNFDIR%\\.git" goto :pybnfresolved' in BAT
 
 
 @pytest.mark.parametrize("pin", ['"numpy<2"', '"bngsim==0.15.1"',
@@ -543,6 +547,25 @@ def test_a_present_engine_file_always_earns_a_retry_despite_the_stamp():
     assert "./setup_engine.sh\n" not in src.replace(
         "in Terminal", "")  # no lingering "run ./setup_engine.sh in Terminal"
     assert "setup_engine.sh in Terminal" not in src
+
+
+def test_the_windows_launcher_retries_whenever_an_engine_file_is_present():
+    """FluBNF.bat's twin of the guard above: a checkout, an unpacked copy, a
+    bundle or an archive each skips the stamp. It once honoured the stamp
+    whatever was present, so a pip timeout on lab Wi-Fi kept a Windows
+    machine on analogue forecasts through every later open."""
+    lines = BAT.replace("\r\n", "\n").split("\n")
+    for source in ('if exist "%PYBNFDIR%\\.git" set "ENGINELOCAL=1"',
+                   'if exist "%PYBNFDIR%\\pybnf\\pf.py" set "ENGINELOCAL=1"',
+                   'if defined BUNDLE set "ENGINELOCAL=1"',
+                   'if defined ARCHIVE set "ENGINELOCAL=1"'):
+        assert source in lines, f"FluBNF.bat no longer counts: {source}"
+    guard = lines.index("if defined ENGINELOCAL goto :engineinstall")
+    compare = lines.index('if "%LAST%"=="%ENGINEFP%" goto :engineskipped')
+    assert guard < compare, (
+        "FluBNF.bat compares the stamp before checking for an engine file, "
+        "so a transient failure with the file present suppresses the retry")
+    assert max(i for i, ln in enumerate(lines) if "ENGINELOCAL=1" in ln) < guard
 
 
 @posix_only

@@ -752,7 +752,8 @@ def test_a_copy_reinstall_set_aside_never_starts(tmp_path):
 
 def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True):
     """A clone for the real FluBNF.command (no .git: the update is skipped),
-    its console a stand-in that records each run."""
+    its console a stand-in that records each run (the engine update the
+    launcher runs first is recorded apart, in "engine-update")."""
     repo = tmp_path / "clone"
     rec = tmp_path / "rec"
     rec.mkdir(parents=True)
@@ -761,6 +762,8 @@ def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True):
     (repo / "pyproject.toml").write_text("[project]\n")
     if venv:
         _script(repo / ".venv" / "bin" / "flubnf",
+                f'if [ "$1" = engine-update ]; then\n'
+                f'  echo "$*" >> "{rec}/engine-update"; exit 0\nfi\n'
                 f'echo "direct $*" >> "{rec}/console"\nexit 0\n')
         if stamp:
             shutil.copy(repo / "pyproject.toml", repo / ".venv" / ".pyproject.stamp")
@@ -962,6 +965,8 @@ def test_without_a_host_the_terminal_launch_is_unchanged(tmp_path, name, build):
     r = _command(repo, PATH=path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert _read(rec, "console") == ["direct app"]
+    # the engine is brought up to production first, once (ENGINE.md)
+    assert _read(rec, "engine-update") == ["engine-update --quiet"]
     assert _read(rec, "build") == (["built"] if name == "Darwin" else None)
 
 

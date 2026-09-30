@@ -181,7 +181,7 @@ def pause_path(root: Path) -> Path:
 def read_meta(root: Path) -> dict:
     """The season's run record, or {} when absent or unreadable (never raises)."""
     try:
-        d = json.loads(meta_path(root).read_text())
+        d = json.loads(meta_path(root).read_text(encoding="utf-8"))
         return d if isinstance(d, dict) else {}
     except Exception:
         return {}
@@ -192,7 +192,7 @@ def write_meta(root: Path, meta: dict) -> None:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     tmp = meta_path(root).with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(meta, sort_keys=True))
+    tmp.write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
     os.replace(tmp, meta_path(root))
 
 
@@ -560,7 +560,7 @@ def cells_failed(wd: Path) -> dict:
     if d.is_dir():
         for p in d.glob("*.json"):
             try:
-                m = json.loads(p.read_text())
+                m = json.loads(p.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 out[p.stem] = "unreadable marker"
                 continue
@@ -576,7 +576,7 @@ def mark_cell_done(wd: Path, key: str, status: str = "ok") -> None:
     d = _cell_done_dir(wd)
     d.mkdir(parents=True, exist_ok=True)
     tmp = d / f"{key}.tmp"
-    tmp.write_text(json.dumps({"key": key, "status": status}))
+    tmp.write_text(json.dumps({"key": key, "status": status}), encoding="utf-8")
     os.replace(tmp, d / f"{key}.json")
 
 
@@ -588,8 +588,8 @@ def _prepare_week(root: Path, asof: str, spec, manifest: dict) -> list:
     cj, mf = wd / "cells.json", wd / PREP_NAME
     if cj.is_file() and mf.is_file():
         try:
-            if json.loads(mf.read_text()) == manifest:
-                return json.loads(cj.read_text())
+            if json.loads(mf.read_text(encoding="utf-8")) == manifest:
+                return json.loads(cj.read_text(encoding="utf-8"))
         except Exception:
             pass
     if wd.exists():
@@ -598,7 +598,7 @@ def _prepare_week(root: Path, asof: str, spec, manifest: dict) -> list:
     wd.mkdir(parents=True)
     cells = pf_engine.prepare(spec, wd)
     _cell_done_dir(wd).mkdir(exist_ok=True)
-    mf.write_text(json.dumps(manifest, sort_keys=True))
+    mf.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
     return cells
 
 
@@ -610,11 +610,11 @@ def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
     done.mkdir(parents=True, exist_ok=True)   # the runners write into it
     for i, shard in enumerate(shards):
         sj = wd / f"cells_{i}.json"
-        sj.write_text(json.dumps(shard))
+        sj.write_text(json.dumps(shard), encoding="utf-8")
         runner = wd / f"runner_{i}.py"
         runner.write_text(_RETRO_RUNNER.format(
             pybnf_path=str(pf_engine.PYBNF_PF), cells_json=str(sj),
-            halt_path=str(halt), done_dir=str(done)))
+            halt_path=str(halt), done_dir=str(done)), encoding="utf-8")
         # own session/process group, as the forecast path does: this daemon
         # thread can die without a finally, and the recorded group is what the
         # relaunch sweeps (flubnf/cli.py)
@@ -745,7 +745,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         # the analogue alone; the manifest still records what produced the week
         manifest["engine"] = "analogue"
         wd.mkdir(parents=True, exist_ok=True)
-        (wd / "manifest.json").write_text(json.dumps(manifest, indent=1))
+        (wd / "manifest.json").write_text(json.dumps(manifest, indent=1),
+                                          encoding="utf-8")
         an_q = {loc: floor_quantiles(q)
                 for loc, q in an_engine.run(spec, **an_kw).items()}
         out = {"asof": asof,
@@ -780,7 +781,7 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         raise RuntimeError("every fitted cell's trajectory was unreadable "
                            "at collect; the week is not stored")
     if failed:
-        (Path(root) / "failures.log").open("a").write(
+        (Path(root) / "failures.log").open("a", encoding="utf-8").write(
             f"{asof}: {len(failed)} PF cell(s) failed and are absent from "
             f"the stored week: {sorted(failed)[:6]}\n")
     # the Oracle step before storage; the member is stored under pf (the
@@ -974,7 +975,8 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 _record_partial(root, asof, elapsed_now(read_meta(root)) - e0)
                 raise
             except Exception as e:              # a bad week never kills the season
-                (root / "failures.log").open("a").write(f"{asof}: {e}\n")
+                (root / "failures.log").open("a", encoding="utf-8").write(
+                    f"{asof}: {e}\n")
             if progress:
                 progress(asof)
     except (SeasonStopped, EngineBuildChanged):
@@ -1121,7 +1123,7 @@ def national_aggregate(root: Path) -> dict | None:
     key = _national_cache_key(root)
     cf = root / "playback_cache" / "us_aggregate.json"
     try:
-        cached = json.loads(cf.read_text())
+        cached = json.loads(cf.read_text(encoding="utf-8"))
         if cached.get("key") == key:
             return cached["result"]
     except Exception:
@@ -1207,7 +1209,7 @@ def national_aggregate(root: Path) -> dict | None:
     try:
         cf.parent.mkdir(parents=True, exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(json.dumps({"key": key, "result": result}))
+        tmp.write_text(json.dumps({"key": key, "result": result}), encoding="utf-8")
         os.replace(tmp, cf)
     except OSError:
         pass
@@ -1233,7 +1235,7 @@ def national_aggregate_fresh(root: Path) -> bool:
         return True                     # nothing to aggregate: nothing stale
     cf = root / "playback_cache" / "us_aggregate.json"
     try:
-        cached = json.loads(cf.read_text())
+        cached = json.loads(cf.read_text(encoding="utf-8"))
         return cached.get("key") == _national_cache_key(root)
     except Exception:
         return False

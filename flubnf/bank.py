@@ -80,7 +80,8 @@ def write(stream: str, bank, *, source_url: str, built_utc: str,
            "builder": builder, **summarise(bank)}
     mp = manifest_path(stream, banks_dir)
     tmp = mp.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n",
+                   encoding="utf-8")
     tmp.replace(mp)
     return man
 
@@ -103,8 +104,8 @@ def read(stream: str, banks_dir=None) -> tuple:
             f"the {stream!r} bank at {bp} has no manifest at {mp}. A bank "
             f"without provenance is a pile of numbers: rebuild it with "
             f"`flubnf bank build {stream}` rather than using it.")
-    man = json.loads(mp.read_text())
-    raw = json.loads(bp.read_text())
+    man = json.loads(mp.read_text(encoding="utf-8"))
+    raw = json.loads(bp.read_text(encoding="utf-8"))
     bank = {}
     for k, v in raw.items():
         loc, _, ds = k.partition("|")

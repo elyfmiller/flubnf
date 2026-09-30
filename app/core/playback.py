@@ -139,7 +139,7 @@ def _write_cache(cf: Path, obj) -> None:
     complete; the .tmp sits beside its target to stay on one filesystem."""
     cf.parent.mkdir(parents=True, exist_ok=True)
     tmp = cf.with_name(cf.name + ".tmp")
-    tmp.write_text(json.dumps(obj))
+    tmp.write_text(json.dumps(obj), encoding="utf-8")
     os.replace(tmp, cf)
 
 
@@ -382,7 +382,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     upto = [w for w in season_weeks(root) if w <= asof]
     cf = _cache_dir(root) / "stats_cells.json"
     try:
-        cache = json.loads(cf.read_text())
+        cache = json.loads(cf.read_text(encoding="utf-8"))
         assert isinstance(cache.get("weeks"), dict)
     except Exception:
         cache = {"weeks": {}}
@@ -537,7 +537,7 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                  + [truth_mtime()])       # the payload embeds the truth
     if cf.is_file() and cf.stat().st_mtime >= newest:
         try:
-            payload = json.loads(cf.read_text())
+            payload = json.loads(cf.read_text(encoding="utf-8"))
             if payload.get("_v") != CACHE_V:
                 raise ValueError("cache version bump")
             # rebuild once official files appear (Update data changes no sample mtime)

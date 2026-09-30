@@ -11,8 +11,9 @@ Sections, in file order:
                   VARS_1S, VARS_2S
   runner          _RUNNER (the shard script), _publish
   preflight       _short_path_win, conf_safe_path, perl_available,
-                  engine_available, engine_accepts, engine_current,
-                  engine_stale_message, read_anchor_notes, read_prepare_failures
+                  engine_fix, engine_available, engine_accepts,
+                  engine_current, engine_update_hint, engine_stale_message,
+                  read_anchor_notes, read_prepare_failures
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
   prepare         DATASET_REFUSED, dataset_tag, prepare
@@ -162,10 +163,11 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
         "its workroot) to a path without spaces and rerun.")
 
 
-def perl_missing_message() -> str:
+def perl_missing_message(_platform: str | None = None) -> str:
     """Operator message for a machine with no Perl on PATH: BNG2.pl runs once
-    per cell at prepare, and without Perl Windows only says '[WinError 2]'."""
-    if sys.platform == 'win32':
+    per cell at prepare, and without Perl Windows only says '[WinError 2]'.
+    `_platform` is injectable for tests and for Home's Setup card."""
+    if (_platform or sys.platform) == 'win32':
         how = ("install Strawberry Perl (https://strawberryperl.com, or let "
                "FluBNF.bat offer it during engine install) and start the "
                "console again so the new PATH is seen")
@@ -184,13 +186,24 @@ def perl_available() -> bool:
 #: The file that provides fit_type = pf (stock PyBNF from PyPI lacks it).
 PF_MODULE = "pybnf/pf.py"
 
-#: The remedy, shared by the console message and the doctor's hint.
-ENGINE_FIX = ("Put the engine archive in Downloads and run "
-              "./setup_engine.sh, or point FLUBNF_PYBNF at the unpacked "
-              "engine.")
+def engine_fix(_platform: str | None = None) -> str:
+    """The remedy for a missing or half-installed engine, shared by the
+    console message and the doctor's hint: this machine's archive route
+    (engine_build.archive_step; Windows has no setup_engine.sh), or
+    FLUBNF_PYBNF."""
+    from app.core import engine_build as _eb
+    try:
+        checkout = (Path(PYBNF_PF) / ".git").exists()
+    except OSError:
+        checkout = False
+    if checkout:
+        # no launcher unpacks an archive over a git checkout
+        return _eb.checkout_steps(PYBNF_PF, platform=_platform)
+    return (f"To install it, {_eb.archive_step(_platform)}, or point "
+            "FLUBNF_PYBNF at the unpacked engine.")
 
 
-def engine_missing_message() -> str:
+def engine_missing_message(_platform: str | None = None) -> str:
     """Operator message for a fork path without pybnf/pf.py. The runner would
     silently import the engine venv's stock PyBNF (no filter) and every cell
     would fail late with an opaque config error. The remedy comes before the
@@ -204,9 +217,9 @@ def engine_missing_message() -> str:
     else:
         found = f"the directory is there but holds no {PF_MODULE}"
     return (f"The PyBNF fork at {p} does not provide fit_type = pf: "
-            f"{found}. {ENGINE_FIX} Without {PF_MODULE} the fit runner "
-            "imports the stock PyBNF in the engine venv instead, which has "
-            "no particle filter, so every fit fails.")
+            f"{found}. {engine_fix(_platform)} Without {PF_MODULE} the fit "
+            "runner imports the stock PyBNF in the engine venv instead, which "
+            "has no particle filter, so every fit fails.")
 
 
 def engine_available() -> bool:
@@ -271,23 +284,38 @@ def sampling_interval_line() -> str:
             if engine_accepts_pf_key(SAMPLING_INTERVAL_KEY) else "")
 
 
-def engine_stale_message() -> str:
+def engine_update_hint(_platform: str | None = None) -> str:
+    """How to bring an older engine up to the production build, in this
+    machine's words: a git checkout by git (a newer archive does not replace
+    one), an unpacked copy by the newer archive. Shared by the stale-engine
+    message and the doctor's hint."""
+    from app.core import engine_build as _eb
+    p = Path(PYBNF_PF)
+    try:
+        checkout = (p / ".git").exists()
+    except OSError:
+        checkout = False
+    if checkout:
+        return _eb.checkout_steps(p, platform=_platform)
+    return (f"To replace it, {_eb.archive_step(_platform)}: a newer archive "
+            "replaces the older copy.")
+
+
+def engine_stale_message(_platform: str | None = None) -> str:
     """Operator message for an engine older than the console, named once at
     prepare instead of once per cell."""
     p = Path(PYBNF_PF)
     missing = ", ".join(engine_missing_keys())
     stamp = ""
     try:
-        v = (p / "VERSION").read_text().strip().splitlines()[0]
+        v = (p / "VERSION").read_text(encoding="utf-8").strip().splitlines()[0]
         stamp = f" Its version stamp is '{v}'."
-    except (OSError, IndexError):
+    except (OSError, IndexError, UnicodeDecodeError):
         pass
     return (f"The PyBNF fork at {p} is older than this console: its parser "
             f"does not accept {missing}, which every fit configuration the "
-            f"console writes carries, so every fit would fail.{stamp} Save "
-            "the current engine archive (pybnf-pf-<sha>.tar.gz) in "
-            "Downloads and open the app again, or run ./setup_engine.sh: "
-            "a newer archive replaces the older copy.")
+            f"console writes carries, so every fit would fail.{stamp} "
+            f"{engine_update_hint(_platform)}")
 
 
 #: Prepare-stage failures keyed by location tag (no _r suffix, so never a
@@ -304,7 +332,7 @@ ANCHOR_NOTES_NAME = "pf_anchor_notes.json"
 def _read_dict(path: Path) -> dict:
     """A JSON object file; {} if absent, unreadable or not an object."""
     try:
-        d = json.loads(Path(path).read_text())
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return {}
     return d if isinstance(d, dict) else {}
@@ -729,7 +757,7 @@ def prepare(spec, workroot: Path) -> list:
             # newline="\n" on the write below: it is the last write of the
             # model, and Windows text mode would hand BNG2.pl a CRLF file.
             # (Universal-newline read_text needs no such care.)
-            txt = m.read_text().replace("begin parameters\n",
+            txt = m.read_text(encoding="utf-8").replace("begin parameters\n",
                                         DEFAULTS_2S if two_strain
                                         else DEFAULTS_BLOCK, 1)
             if fit_i0:
@@ -742,7 +770,7 @@ def prepare(spec, workroot: Path) -> list:
                 if n_sub != 1:
                     raise RuntimeError(f"{loc}: expected one i0 line in the "
                                        f"model, found {n_sub}")
-            m.write_text(txt, newline="\n")
+            m.write_text(txt, newline="\n", encoding="utf-8")
             if two_strain:
                 lines = ["# time H_weekly A_share_bin A_share_n"]
                 for t_off, v in zip(s.times, s.observed):
@@ -750,13 +778,13 @@ def prepare(spec, workroot: Path) -> list:
                     lines.append(f"{int(t_off)} {v:.6f} {a_k} {n_k}")
                 # newline pinned: PyBNF splits the .exp line-wise.
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
-                                              newline="\n")
+                                              newline="\n", encoding="utf-8")
             elif rep_rec and rep_rec["mode"] in ("lik", "both"):
                 lines = [f"# time H_weekly {_comp.COLUMN}"]
                 for t_off, v, c in zip(s.times, s.observed, rep_rec["row_scales"]):
                     lines.append(f"{int(t_off)} {v:.6f} {c:.6f}")
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
-                                              newline="\n")
+                                              newline="\n", encoding="utf-8")
             else:
                 write_exp(s, d / f"{sfx}.exp")
             try:
@@ -770,7 +798,9 @@ def prepare(spec, workroot: Path) -> list:
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
             # conf: newline="\n" (line-based reader); every path via
-            # conf_safe_path.
+            # conf_safe_path. Left in the locale's encoding: PyBNF opens its
+            # conf without naming one, so the two agree on a path that holds
+            # a letter outside ASCII.
             d_conf = conf_safe_path(d)
             # Pinned to the records' conventions, not engine defaults:
             # pf_bounds = reflect (engine default: logit-scale moves, a
@@ -850,11 +880,13 @@ initialization = {initialization_for(spec)}
         except Exception as e:
             failures[tag_of(loc)] = f"FAIL: prepare: {e}"[:200]
             errors.append(e)
-    (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
+    (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures),
+                                                  encoding="utf-8")
     if anchor_notes:
         # absent when every origin is where the trims put it (shipped runs)
-        (workroot / ANCHOR_NOTES_NAME).write_text(json.dumps(anchor_notes))
-    (workroot / "cells.json").write_text(json.dumps(cells))
+        (workroot / ANCHOR_NOTES_NAME).write_text(json.dumps(anchor_notes),
+                                                  encoding="utf-8")
+    (workroot / "cells.json").write_text(json.dumps(cells), encoding="utf-8")
     if failures and not cells:
         if len(errors) == 1:
             # a single location's error is clearer verbatim
@@ -961,7 +993,7 @@ def runner_popen_kwargs(base: dict | None = None,
 
 def _write_registry(path: Path, reg: dict) -> None:
     tmp = path.parent / (path.name + ".tmp")
-    tmp.write_text(json.dumps(reg))
+    tmp.write_text(json.dumps(reg), encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -974,7 +1006,7 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
         path = Path(path) if path else RUNNER_PIDS_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            reg = json.loads(path.read_text())
+            reg = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             reg = {}
         if not isinstance(reg, dict):
@@ -1003,7 +1035,7 @@ def unrecord_runner_pids(procs, path: Path | None = None) -> None:
     other runs' entries stay. Never fatal."""
     try:
         path = Path(path) if path else RUNNER_PIDS_FILE
-        reg = json.loads(path.read_text())
+        reg = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(reg, dict):
             return
         for p in procs:
@@ -1055,7 +1087,7 @@ def _stderr_tail(err_files: list, n: int = 400) -> str:
     """The tail of the first runner stderr that has anything to say."""
     for p in err_files:
         try:
-            txt = Path(p).read_text(errors="replace").strip()
+            txt = Path(p).read_text(errors="replace", encoding="utf-8").strip()
         except Exception:
             continue
         if txt:
@@ -1068,7 +1100,7 @@ def _finished(status_files: list) -> int:
     n = 0
     for p in status_files:
         try:
-            d = json.loads(Path(p).read_text())
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
         except Exception:
             continue
         if isinstance(d, dict):
@@ -1187,12 +1219,12 @@ def execute(workroot: Path, timeout: float | None = None,
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
-    cells = json.loads((workroot / "cells.json").read_text())
+    cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     # prepare-stage failures belong to this run's status (-> pf_failures)
     prep_failures = read_prepare_failures(workroot)
     if not cells:
         # nothing to fit is not a failure; prepare's refusals still surface
-        out_json.write_text(json.dumps(prep_failures))
+        out_json.write_text(json.dumps(prep_failures), encoding="utf-8")
         return dict(prep_failures)
     shards = shard_cells(cells, width)
     sized = not timeout
@@ -1206,16 +1238,19 @@ def execute(workroot: Path, timeout: float | None = None,
     try:
         for i, shard in enumerate(shards):
             sj = workroot / f"pf_cells_{i}.json"
-            sj.write_text(json.dumps(shard))
+            sj.write_text(json.dumps(shard), encoding="utf-8")
             sf = workroot / f"pf_status_{i}.json"
             ef = workroot / f"pf_runner_{i}.err"
             runner = workroot / f"pf_runner_{i}.py"
+            # utf-8, which Python reads a script in whatever the locale:
+            # the paths in it may hold letters outside ASCII
             runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
                                              cells_json=str(sj),
                                              out_json=str(sf),
-                                             halt_path=str(stop)))
+                                             halt_path=str(stop)),
+                              encoding="utf-8")
             # stderr to a FILE: an undrained pipe would fill and hang the runner
-            fh = open(ef, "w")
+            fh = open(ef, "w", encoding="utf-8")
             handles.append(fh)
             # own session/process group: see runner_popen_kwargs
             procs.append(subprocess.Popen(
@@ -1251,7 +1286,7 @@ def execute(workroot: Path, timeout: float | None = None,
     merged = dict(prep_failures)
     for i, shard in enumerate(shards):
         try:
-            part = json.loads(status_files[i].read_text())
+            part = json.loads(status_files[i].read_text(encoding="utf-8"))
         except Exception:
             part = {}
         if not isinstance(part, dict):
@@ -1263,7 +1298,7 @@ def execute(workroot: Path, timeout: float | None = None,
                     f"FAIL: shard {i} reported no result for this cell "
                     f"({_stderr_tail([err_files[i]], 120) or 'no stderr'})"
                 )[:200]
-    out_json.write_text(json.dumps(merged))
+    out_json.write_text(json.dumps(merged), encoding="utf-8")
     return merged
 
 
@@ -1279,11 +1314,13 @@ def _cell_statuses(workroot: Path) -> dict:
     if done.is_dir():
         for p in done.glob("*.json"):
             try:
-                out[p.stem] = str(json.loads(p.read_text()).get("status", ""))
+                out[p.stem] = str(json.loads(p.read_text(encoding="utf-8"))
+                                  .get("status", ""))
             except Exception:
                 out[p.stem] = "unreadable marker"
     try:
-        merged = json.loads((workroot / "pf_status.json").read_text())
+        merged = json.loads(
+            (workroot / "pf_status.json").read_text(encoding="utf-8"))
         if isinstance(merged, dict):
             out.update({k: str(v) for k, v in merged.items()})
     except Exception:
@@ -1296,14 +1333,14 @@ def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
     try:
         out = Path(workroot) / "pf_status.json"
         try:
-            merged = json.loads(out.read_text())
+            merged = json.loads(out.read_text(encoding="utf-8"))
         except Exception:
             merged = {}
         if not isinstance(merged, dict):
             merged = {}
         merged[key] = msg[:200]
         tmp = out.parent / (out.name + ".tmp")
-        tmp.write_text(json.dumps(merged))
+        tmp.write_text(json.dumps(merged), encoding="utf-8")
         os.replace(tmp, out)
     except Exception:
         pass
@@ -1321,11 +1358,11 @@ def _save_cloud(workroot: Path, c: dict) -> None:
         return
     rec = Path(workroot) / STATE_MISSING_NAME
     try:
-        cur = json.loads(rec.read_text()) if rec.is_file() else {}
+        cur = json.loads(rec.read_text(encoding="utf-8")) if rec.is_file() else {}
     except Exception:
         cur = {}
     cur[c["key"]] = f"no cloud file at {src}"
-    rec.write_text(json.dumps(cur, sort_keys=True))
+    rec.write_text(json.dumps(cur, sort_keys=True), encoding="utf-8")
 
 
 def collect(workroot: Path) -> dict:
@@ -1335,7 +1372,7 @@ def collect(workroot: Path) -> dict:
     trajectory (empty, one row, ragged) is recorded as a failure and
     skipped, so one dead cell cannot cost the others their samples."""
     import numpy as np
-    cells = json.loads((workroot / "cells.json").read_text())
+    cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     status = _cell_statuses(workroot)
     by_loc: dict = {}
     for c in cells:

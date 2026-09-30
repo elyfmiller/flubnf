@@ -35,6 +35,8 @@ forget_reopen() {
 # (usually accidents) are stashed (git stash list) and fast-forwarded over;
 # local commits are never touched (the reset command is printed instead).
 # FLUBNF_UPDATE=off skips; FLUBNF_UPDATE=force resets to origin, discarding both.
+# The fetch prunes: a branch deleted or renamed upstream otherwise keeps its
+# last remote-tracking copy, and a clone on it read "up to date" for ever.
 if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
   UP="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)"
@@ -42,7 +44,7 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
   RESET="git -C \"$PWD\" fetch origin && git -C \"$PWD\" reset --hard $UP"
   if [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ]; then
     echo "· not on a branch, running the copy on disk"
-  elif ! git fetch -q origin 2>/dev/null; then
+  elif ! git fetch -q --prune origin 2>/dev/null; then
     echo "· offline (origin unreachable), running the copy on disk"
   elif [ "${FLUBNF_UPDATE:-}" = "force" ]; then
     if git reset --hard -q "$UP" 2>/dev/null; then
@@ -50,12 +52,29 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
     else
       echo "· could not reset to $UP, running the copy on disk"
     fi
+  elif ! git rev-parse -q --verify "$UP^{commit}" >/dev/null 2>&1; then
+    echo "· $UP no longer exists (the branch was deleted or renamed upstream),"
+    echo "  so this copy cannot update, running the copy on disk. FluBNF ships"
+    echo "  from main; to follow it:"
+    echo "      git -C \"$PWD\" checkout main"
   elif FF="$(git merge --ff-only "$UP" 2>&1)"; then
     echo "· up to date with origin"
   else
     AHEAD="$(git rev-list --count "$UP..HEAD" 2>/dev/null || echo 0)"
     DIRTY="$(git status --porcelain --untracked-files=no 2>/dev/null)"
-    if [ "${AHEAD:-0}" != "0" ]; then
+    # Commits with an equal one upstream under another id: origin rewrote
+    # its history (main's was, in September 2026), and nothing here is
+    # this clone's own.
+    UNIQUE="$AHEAD"
+    [ "${AHEAD:-0}" = "0" ] \
+      || UNIQUE="$(git rev-list --left-only --cherry-pick --count "HEAD...$UP" 2>/dev/null || echo "$AHEAD")"
+    if [ "${AHEAD:-0}" != "0" ] && [ "$UNIQUE" = "0" ]; then
+      echo "· origin rewrote its history: the $AHEAD commit(s) here are all"
+      echo "  upstream already under new ids, so nothing unique would be lost."
+      echo "  Running as-is. To take origin's copy:"
+      [ -z "$DIRTY" ] || echo "      git -C \"$PWD\" stash push -m \"FluBNF update\""
+      echo "      $RESET"
+    elif [ "${AHEAD:-0}" != "0" ]; then
       echo "· this clone has $AHEAD commit(s) origin does not, so it cannot"
       echo "  fast-forward. Nothing here will discard them. Running as-is. To"
       echo "  take origin's copy and throw this clone's work away:"
@@ -68,13 +87,17 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
         echo "· local edits: handing over to Terminal"
         exit 75
       fi
+      # Put back only a stash this run made: after a push that failed, the
+      # top of the stack is someone's older one.
+      STASHWAS="$(git rev-parse -q --verify refs/stash 2>/dev/null)"
       if git stash push -q -m "FluBNF update $(date '+%Y-%m-%d %H:%M')" 2>/dev/null \
          && git merge --ff-only -q "$UP" 2>/dev/null; then
         echo "· updated anyway; those edits were set aside, not lost. In this"
         echo "  folder, git stash list shows them and git stash pop puts them"
         echo "  back."
       else
-        git stash pop -q 2>/dev/null
+        [ "$(git rev-parse -q --verify refs/stash 2>/dev/null)" = "$STASHWAS" ] \
+          || git stash pop -q 2>/dev/null
         echo "· could not update around them, running the copy on disk. To"
         echo "  take origin's copy and discard the edits above:"
         echo "      $RESET"
@@ -192,6 +215,16 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
       echo "  whole GitHub question is pybnf-pf-<sha>.tar.gz in Downloads."
     fi
   fi
+fi
+
+# Stay current, engine too: FluBNF updates itself above, and this brings a
+# clean engine checkout on the production branch up to the production build
+# (fast-forward only; another branch, local edits or newer commits are left
+# and the reason printed). Twin of FluBNF.bat's; FLUBNF_UPDATE=off skips both.
+# The console's build warning repeats the reason.
+if [ "${FLUBNF_UPDATE:-}" != "off" ] && [ -x .venv/bin/flubnf ] \
+   && command -v git >/dev/null 2>&1; then
+  .venv/bin/flubnf engine-update --quiet || true
 fi
 
 if [ -n "$PREPARE" ]; then

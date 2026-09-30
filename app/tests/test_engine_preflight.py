@@ -49,7 +49,7 @@ def test_the_message_names_the_path_the_file_and_the_fix(monkeypatch,
                                               with_pf=False))
     msg = pf.engine_missing_message()
     assert str(tmp_path / "empty") in msg
-    assert "pybnf/pf.py" in msg and "setup_engine.sh" in msg
+    assert "pybnf/pf.py" in msg and pf.engine_fix() in msg
     assert "holds no pybnf/pf.py" in msg
     # the two other shapes a wrong FLUBNF_PYBNF takes
     monkeypatch.setattr(pf, "PYBNF_PF", tmp_path / "gone")
@@ -63,10 +63,25 @@ def test_the_message_names_the_path_the_file_and_the_fix(monkeypatch,
     monkeypatch.setattr(pf, "PYBNF_PF", _fork(tmp_path / "empty2",
                                               with_pf=False))
     m = pf.engine_missing_message()
-    assert "setup_engine.sh" in m
+    assert "Downloads" in m
     # the remedy precedes the explanation, which is the ordering the
     # docstring promises and the only part truncation could take away
-    assert m.index("setup_engine.sh") < m.index("stock PyBNF")
+    assert m.index("Downloads") < m.index("stock PyBNF")
+
+
+def test_the_remedy_names_this_machines_installer(monkeypatch, tmp_path):
+    """Windows has FluBNF.bat and no bash: the remedy there is the archive in
+    Downloads and FluBNF.bat, never setup_engine.sh or SetupEngine.command."""
+    monkeypatch.setattr(pf, "PYBNF_PF", _fork(tmp_path / "half",
+                                              with_pf=False))
+    win = pf.engine_missing_message("win32")
+    assert ("To install it, save pybnf-pf-2fdadee0.tar.gz in your Downloads "
+            "folder and open FluBNF.bat again, or point FLUBNF_PYBNF at the "
+            "unpacked engine.") in win
+    for gone in ("setup_engine.sh", "SetupEngine.command"):
+        assert gone not in win, gone
+    assert "SetupEngine.command" in pf.engine_missing_message("darwin")
+    assert "./setup_engine.sh" in pf.engine_missing_message("linux")
 
 
 # ------------------------------------------------------------ the preflight
@@ -177,7 +192,7 @@ def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
 
     table = results_html({"pf_engine_broken": msg}, "{}")
     assert "engine install incomplete" in table
-    assert str(tmp_path / "half") in table and "setup_engine.sh" in table
+    assert str(tmp_path / "half") in table and "Downloads" in table
 
     chips = ui_shared._outcome_chips({"pf_engine_broken": msg, "error": msg})
     assert "PF engine install incomplete" in chips
@@ -203,7 +218,7 @@ def test_doctor_and_the_setup_check_report_the_fork(monkeypatch, tmp_path):
     bad = doctor._check_pf_engine()
     assert bad.status is doctor.Status.FAIL
     assert str(tmp_path / "half") in bad.detail
-    assert "setup_engine.sh" in bad.hint
+    assert bad.hint == f"{pf.engine_fix()} Then re-run doctor."
 
     # the setup table names the file, not the directory, and says why
     rows = {name: (path, why) for name, path, why in settings.check(verbose=False)}
@@ -215,3 +230,52 @@ def test_doctor_and_the_setup_check_report_the_fork(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "PYBNF", tmp_path / "real")
     assert not any(name == "FLUBNF_PYBNF"
                    for name, _, _ in settings.check(verbose=False))
+
+
+def test_every_doctor_engine_hint_on_windows_names_flubnf_bat(monkeypatch,
+                                                              tmp_path):
+    """doctor on Windows: no engine, no engine venv, a half install, an
+    older engine and an unstamped folder each name the archive in Downloads
+    and FluBNF.bat, never a bash script (engine_build owns the wording, so
+    its platform decides)."""
+    from types import SimpleNamespace
+    from app.core import engine_build
+    from flubnf import doctor, settings
+    monkeypatch.setattr(engine_build, "sys", SimpleNamespace(platform="win32"))
+    hints = {}
+    monkeypatch.setattr(settings, "PY_ENGINE", tmp_path / "no-python")
+    hints["engine venv absent"] = doctor._check_engine_venv().hint
+    hints["engine venv broken"] = doctor._engine_venv_hint()
+    monkeypatch.setattr(settings, "PYBNF", tmp_path / "nowhere")
+    monkeypatch.setattr(pf, "PYBNF_PF", tmp_path / "nowhere")
+    hints["no fork"] = doctor._check_pf_engine().hint
+    hints["no build"] = doctor._check_engine_build().hint
+    half = _fork(tmp_path / "half", with_pf=False)
+    monkeypatch.setattr(pf, "PYBNF_PF", half)
+    hints["half"] = doctor._check_pf_engine().hint
+    old = _fork(tmp_path / "old")
+    (old / "pybnf" / "parse.py").write_text("numkeys_int = ['pf_particles']\n")
+    monkeypatch.setattr(pf, "PYBNF_PF", old)
+    hints["stale"] = doctor._check_pf_engine().hint
+    monkeypatch.setattr(settings, "PYBNF", old)
+    hints["unstamped"] = doctor._check_engine_build().hint
+    for what, hint in hints.items():
+        assert "FluBNF.bat" in hint, (what, hint)
+        for gone in ("setup_engine.sh", "SetupEngine.command"):
+            assert gone not in hint, (what, hint)
+    assert "pybnf-pf-2fdadee0.tar.gz in your Downloads folder" in \
+        hints["stale"]
+    assert "stock PyBNF" not in hints["half"]          # the remedy alone
+
+
+def test_an_older_git_checkout_is_told_the_git_route(monkeypatch, tmp_path):
+    """A newer archive does not replace a git checkout, so an older one is
+    told to go onto the production branch (the launcher then moves it)."""
+    old = _fork(tmp_path / "PyBNF-pf")
+    (old / "pybnf" / "parse.py").write_text("numkeys_int = ['pf_particles']\n")
+    (old / ".git").mkdir()
+    monkeypatch.setattr(pf, "PYBNF_PF", old)
+    msg = pf.engine_stale_message("win32")
+    assert f'git -C "{old}" checkout feature/particle-filter' in msg
+    assert "open FluBNF.bat again" in msg              # the bundle-clone route
+    assert "setup_engine.sh" not in msg

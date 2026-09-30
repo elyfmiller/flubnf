@@ -18,14 +18,22 @@ clone. Both are found in any of these places, on both platforms:
 
 * the FluBNF folder itself, or the folder beside it,
 * `~/Downloads`, `~/Desktop` or `~/Documents` (on Windows, the same three
-  folders under your user profile).
+  folders under your user profile, and their OneDrive copies).
 
 Then double click `FluBNF.command` (macOS) or `FluBNF.bat` (Windows), or run
-`./setup_engine.sh`. The console says which file it used and, when it finds
-none, exactly which folders it looked in. `FLUBNF_PYBNF_BUNDLE` points at
-one kept somewhere else. Because it is one file on a shared drive or a USB
+`./setup_engine.sh` (macOS and Linux). The launcher says which file it used.
+When it finds none, `setup_engine.sh` names exactly which folders it looked
+in, and on Windows so does `setup.ps1`. `FLUBNF_PYBNF_BUNDLE` points at one
+kept somewhere else. Because it is one file on a shared drive or a USB
 stick, this is also the only route that works with no administrator rights
 or no network at all.
+
+On Windows the archive is unpacked into
+`%LOCALAPPDATA%\FluBNF\PyBNF-Private`, and the engine's Python environment
+is built at `%USERPROFILE%\.venvs\flubnf-engine` with Python 3.12 or 3.11.
+[WINDOWS.md](WINDOWS.md#the-particle-filter-engine-on-windows) has the
+whole Windows story: where things go, updates, and what to do when the
+install fails.
 
 ## Through GitHub instead
 
@@ -43,10 +51,18 @@ having no access. The invitee accepts from their email or from
    itself: File, Clone repository, then the URL tab, and paste the fork's
    `owner/name`. Use the URL tab: the GitHub.com tab lists repositories
    you own plus your organisations', so a private repository you are only a
-   collaborator on is usually missing from it. Set the local path to
-   `~/GitHub/PyBNF-Private`, where setup looks, then reopen
-   `FluBNF.command`. Signing in to Desktop without cloning does not help,
-   because Desktop does not share its login with terminal git.
+   collaborator on is usually missing from it. Set the local path to a
+   folder setup looks in, then open FluBNF again:
+   * macOS: `~/GitHub/PyBNF-Private`, then reopen `FluBNF.command`;
+   * Windows: `C:\Users\<you>\AppData\Local\FluBNF\PyBNF-Private` (that is
+     `%LOCALAPPDATA%\FluBNF\PyBNF-Private`, which Controlled Folder Access
+     never protects), or Desktop's own default,
+     `C:\Users\<you>\Documents\GitHub\PyBNF-Private`, which is searched
+     too; then open `FluBNF.bat` again. `%USERPROFILE%\GitHub` is not
+     searched on Windows.
+
+   Signing in to Desktop without cloning does not help, because Desktop
+   does not share its login with terminal git.
 2. GitHub CLI, two steps: `gh` is not installed by default.
 
        brew install gh && gh auth login
@@ -54,16 +70,34 @@ having no access. The invitee accepts from their email or from
    Without Homebrew, download the macOS `.pkg` from
    <https://github.com/cli/cli/releases> (the file ending
    `_macOS_universal.pkg`) and double click it, then run `gh auth login`.
-   On Windows, `winget install --id GitHub.cli`. Then re-run
-   `./setup_engine.sh`.
+   Then re-run `./setup_engine.sh`.
+
+   On Windows, `winget install --id GitHub.cli`, then `gh auth login` in a
+   new Command Prompt window. `FluBNF.bat` never clones from GitHub, so
+   clone the fork yourself: `setup.ps1` prints the `git clone` line for
+   this machine (into `%LOCALAPPDATA%\FluBNF\PyBNF-pf`). Then open
+   `FluBNF.bat` again, which installs the engine from that clone.
 3. An SSH key already registered with GitHub:
 
        FLUBNF_PYBNF_REMOTE=git@github.com:<owner>/<fork>.git ./setup_engine.sh
 
-Already tried and still stuck? macOS caches the first answer it gets, so one
-wrong entry keeps failing silently. Clear it, then use route 1 or 2:
+   On Windows, record the remote and open a new Command Prompt window, so
+   the setting is visible there:
+
+       setx FLUBNF_PYBNF_REMOTE "git@github.com:<owner>/<fork>.git"
+
+   `setup.ps1` then checks access and prints its `git clone` line with that
+   remote; clone, then open `FluBNF.bat` again.
+
+Already tried and still stuck? git keeps using the credential it stored
+first, so one wrong entry, or a login for another GitHub account, keeps
+failing silently. Clear it, then use route 1 or 2. On macOS:
 
     printf 'protocol=https\nhost=github.com\n\n' | git credential-osxkeychain erase
+
+On Windows, Git Credential Manager keeps it in Windows Credential Manager:
+Control Panel, User Accounts, Credential Manager, Windows Credentials, then
+remove the entry named `git:https://github.com`.
 
 ## Making and handing over the bundle
 
@@ -72,9 +106,16 @@ USB stick, or a release asset on the fork. Nothing in it expires and
 nothing in it is secret to the lab, but it is the fork's whole history, so
 treat it the way you treat the fork.
 
-Setup clones from it for you. By hand:
+Setup clones from it for you. By hand, on macOS:
 
     git clone -b feature/particle-filter pybnf.bundle ~/GitHub/PyBNF-Private
+
+and on Windows, in Command Prompt, where `~` means nothing and a profile
+path can hold a space:
+
+    git clone -b feature/particle-filter "%USERPROFILE%\Downloads\pybnf.bundle" "%LOCALAPPDATA%\FluBNF\PyBNF-Private"
+
+then open `FluBNF.bat` again, which installs the engine from that clone.
 
 Two failures are worth knowing apart. A file that is not a bundle at all (a
 browser that saved an error page under the name) is caught by
@@ -101,24 +142,43 @@ whether tracked files have local edits.
   fix when it is not production. It stays a warning: research runs may use
   another build on purpose.
 * By hand, in the engine folder (`FLUBNF_PYBNF`, else `PyBNF-pf` or
-  `PyBNF-Private` in the checkout folder):
+  `PyBNF-Private` in the checkout folder; on Windows, the first engine in
+  the list under [WINDOWS.md, "Where it goes"](WINDOWS.md#where-it-goes)),
+  quoting the folder, since its path can hold a space:
 
-      git -C <engine folder> rev-parse --short=8 HEAD
-      git -C <engine folder> symbolic-ref --short HEAD
-      git -C <engine folder> status --porcelain --untracked-files=no
+      git -C "<engine folder>" rev-parse --short=8 HEAD
+      git -C "<engine folder>" symbolic-ref --short HEAD
+      git -C "<engine folder>" status --porcelain --untracked-files=no
 
   An empty status means no local edits. An archive install has no `.git`;
   its first `VERSION` line is `<branch> <commit>`.
 
-To switch to production, stash any local edits first, then check out the
-branch and pull:
+Each time FluBNF opens, its launcher (`FluBNF.command`, `FluBNF.app`,
+`FluBNF.bat`) runs `flubnf engine-update`, which brings the engine up to
+production when that is safe: a git checkout on `feature/particle-filter`
+with no local edits, behind the production commit, is fast-forwarded to
+exactly that commit (fetched from GitHub first when it is not on disk, with
+no password prompt and a 30-second limit). Anything else is left as it is
+and the reason printed: another branch, local edits, commits past
+production, no access to the fork. The console's build warning repeats
+that reason. `FLUBNF_UPDATE=off` skips it along with the launcher's own
+update, and `flubnf engine-update` runs it by hand (on Windows,
+`.venv\Scripts\flubnf engine-update` in Command Prompt, from the FluBNF
+folder).
 
-    git -C <engine folder> stash
-    git -C <engine folder> checkout feature/particle-filter
-    git -C <engine folder> pull
+To switch by hand, stash any local edits first, then check out the branch
+and pull (quote the folder if its path holds a space), and open FluBNF
+again. The lines are the same in Terminal, Command Prompt and PowerShell:
+
+    git -C "<engine folder>" stash
+    git -C "<engine folder>" checkout feature/particle-filter
+    git -C "<engine folder>" pull
 
 An archive install is replaced by saving `pybnf-pf-2fdadee0.tar.gz` in
-Downloads and running `./setup_engine.sh`. A retrospective season resumes
-only on the build its weeks were fitted by; after switching, archive or
-discard it to replay on the new one. Seasons from before builds were
-recorded resume as before.
+Downloads, then, on macOS, running `./setup_engine.sh` or double clicking
+`SetupEngine.command`, and on Windows, opening `FluBNF.bat` again, which
+replaces the copy it unpacked into `%LOCALAPPDATA%\FluBNF\PyBNF-Private`
+with the newer archive (the old copy is renamed, never deleted). A
+retrospective season resumes only on the build its weeks were fitted by;
+after switching, archive or discard it to replay on the new one. Seasons
+from before builds were recorded resume as before.

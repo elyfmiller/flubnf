@@ -342,7 +342,7 @@ def _latest_results():
     from app.core.runs import is_contained
     for f in _workroot_results():
         try:
-            res = _json.loads(f.read_text())
+            res = _json.loads(f.read_text(encoding="utf-8"))
         except (_json.JSONDecodeError, OSError):
             continue
         # research, or modified model settings exported under the non-hub

@@ -103,7 +103,7 @@ def _txt(v) -> str:
 
 def load_tasks(path=None) -> dict:
     """tasks.json as a dict: `path`, else the vendored copy."""
-    return json.loads(Path(path or VENDORED_TASKS).read_text())
+    return json.loads(Path(path or VENDORED_TASKS).read_text(encoding="utf-8"))
 
 
 def rules_from_tasks(tasks: dict) -> dict:

@@ -54,7 +54,7 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
         return {}
     cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
     try:
-        cached = _json.loads(cf.read_text())
+        cached = _json.loads(cf.read_text(encoding="utf-8"))
         if cached.get("mtime") == mtime and cached.get("v") == 2:
             return cached["cards"]
     except Exception:
@@ -108,7 +108,8 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
         # write beside, then replace
         cf.parent.mkdir(parents=True, exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(_json.dumps({"mtime": mtime, "v": 2, "cards": by_model}))
+        tmp.write_text(_json.dumps({"mtime": mtime, "v": 2,
+                                    "cards": by_model}), encoding="utf-8")
         _os.replace(tmp, cf)
     except Exception:
         pass                      # an unwritable cache costs speed, not truth

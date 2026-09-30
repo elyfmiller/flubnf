@@ -419,7 +419,7 @@ def run_page(request: Request, run_id: str):
             active="Storage", heading="Run")
     res = {}
     if (w / "results.json").is_file():
-        res = _json.loads((w / "results.json").read_text())
+        res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
     subs = output_routes._submission_files(w)
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
@@ -517,7 +517,7 @@ def run_report_download(request: Request, run_id: str):
     date = ""
     try:
         import json as _json
-        date = _json.loads((d / "results.json").read_text()).get(
+        date = _json.loads((d / "results.json").read_text(encoding="utf-8")).get(
             "forecast_date", "")
     except Exception:
         pass                 # no results.json yet: fall back to the run id
@@ -688,7 +688,7 @@ def api_progress():
         for f in (glob.glob(ew + "/pf_status*.json.prog")
                   + glob.glob(ew + "/pf2s/pf_status*.json.prog")):
             try:
-                d = _json.loads(open(f).read())
+                d = _json.loads(open(f, encoding="utf-8").read())
                 done += d["done"]; total += d["total"]
                 t0 = min(t0 or d["t0"], d["t0"])
             except Exception:
@@ -728,7 +728,7 @@ def _read_json(path):
     """A run file's JSON, or None while it is missing or half written."""
     import json as _json
     try:
-        return _json.loads(Path(path).read_text())
+        return _json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 

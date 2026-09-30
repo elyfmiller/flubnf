@@ -149,10 +149,11 @@
      {% endfor %}
      </div>
     </section>
-    {# whole-page zoom: the native window only (a browser has its own);
-       shown once pywebview's bridge is up #}
+    {# whole-page zoom: the native macOS window only (a browser has its
+       own, and the Windows window zooms with Ctrl and the mouse wheel);
+       shown once pywebview's bridge says it can zoom (can_zoom) #}
     <section class="dm-sec zoomrow" hidden>
-     {{ kit.heading("Zoom", "dm-zoom", level=3, tiptext="The whole window, text and layout together: Cmd + to zoom in, Cmd - to zoom out, Cmd 0 for actual size (Ctrl on Windows and Linux), or pinch on a trackpad.") }}
+     {{ kit.heading("Zoom", "dm-zoom", level=3, tiptext="The whole window, text and layout together: Cmd + to zoom in, Cmd - to zoom out, Cmd 0 for actual size, or pinch on a trackpad.") }}
      <div class="zoompick zoomrow" role="group" aria-label="Page zoom" hidden>
       <button type="button" data-zoom="-1" aria-label="Zoom out">&minus;</button>
       <button type="button" data-zoom="0"><span class="uk-sr">Actual size, now </span><span class="dm-zoom-v">100%</span></button>
@@ -377,12 +378,16 @@
     apply(n>0?Math.floor(p/5)*5+5:Math.ceil(p/5)*5-5,true);};});
   // Reset turns itself off at 100%: focus moves on to the slider
   reset.onclick=function(){apply(100,true);r.focus();};})();
- // page zoom in the native window: the Display menu's Zoom row, Cmd+= /
- // Cmd+- / Cmd+0 (Ctrl on other systems), and trackpad pinch (native).
+ // page zoom in the native macOS window: the Display menu's Zoom row,
+ // Cmd+= / Cmd+- / Cmd+0, and trackpad pinch (native). Only where the
+ // bridge's can_zoom() answers true: elsewhere (the Windows window) the
+ // row stays hidden and no key is swallowed, so Ctrl+wheel zooms natively.
  // The level is kept per machine and restored on every page.
  (function(){
-  function api(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.zoom
+  var can=false;
+  function bridge(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.can_zoom
     ? window.pywebview.api : null;}
+  function api(){return can?bridge():null;}
   var label=document.querySelector('.zoompick .dm-zoom-v');
   function show(z){
     if(typeof z!=='number')return;
@@ -390,10 +395,13 @@
     try{localStorage.setItem('zoom',String(z));}catch(e){}}
   function step(n){var a=api();if(a)a.zoom(n).then(show);}
   function ready(){
-    var a=api();if(!a)return;
-    document.querySelectorAll('.zoomrow').forEach(function(el){el.hidden=false;});
-    var z=1;try{z=parseFloat(localStorage.getItem('zoom'))||1;}catch(e){}
-    if(z!==1)a.set_zoom(z).then(show);else show(1);}
+    var a=bridge();if(!a)return;
+    a.can_zoom().then(function(ok){
+      if(ok!==true)return;
+      can=true;
+      document.querySelectorAll('.zoomrow').forEach(function(el){el.hidden=false;});
+      var z=1;try{z=parseFloat(localStorage.getItem('zoom'))||1;}catch(e){}
+      if(z!==1)a.set_zoom(z).then(show);else show(1);});}
   document.querySelectorAll('.zoompick button').forEach(function(b){
     b.onclick=function(){step(parseInt(b.dataset.zoom,10));};});
   addEventListener('keydown',function(e){
@@ -401,7 +409,7 @@
     var n=(e.key==='='||e.key==='+')?1:e.key==='-'?-1:e.key==='0'?0:null;
     if(n===null)return;
     e.preventDefault();step(n);});
-  if(api())ready();else addEventListener('pywebviewready',ready);})();
+  if(bridge())ready();else addEventListener('pywebviewready',ready);})();
  {% if not export %}
  // slow-page report: a page that took 800 ms or more from navigation to
  // load end is logged (app/state/logs/slow_requests.log) with the server's

@@ -115,7 +115,7 @@ def _snapshot(region: str, issue, ew_start: int, ew_end: int,
     tag = "latest" if issue is None else str(issue)
     path = cache_dir / f"{region}_{tag}.json"
     if path.exists():
-        blob = json.loads(path.read_text())
+        blob = json.loads(path.read_text(encoding="utf-8"))
         a, b = blob.get("epiweeks", (0, -1))
         # A "latest" snapshot is requested open-ended, so only the lower bound
         # is checked (else every build misses and refetches: 429). Delete the
@@ -135,7 +135,7 @@ def _snapshot(region: str, issue, ew_start: int, ew_end: int,
         # record what was covered, not the open-ended request
         "epiweeks": [ew_start, ew_end if issue is not None else upper],
         "response": env,
-    }, indent=1))
+    }, indent=1), encoding="utf-8")
     tmp.replace(path)
     return env.get("epidata") or []
 
@@ -208,7 +208,7 @@ def _warm(url: str, regions, issue, ew_start: int, ew_end: int,
                          else max((r["epiweek"] for r in mine),
                                   default=ew_start)],
             "response": {"result": 1, "message": "warmed", "epidata": mine},
-        }, indent=1))
+        }, indent=1), encoding="utf-8")
         tmp.replace(path)
 
 
@@ -275,7 +275,8 @@ def _reported_pct(region: str, asof_iso, cache_dir=None) -> dict:
         path = cache_dir / name
         if not path.exists():
             continue
-        rows = (json.loads(path.read_text())["response"].get("epidata") or [])
+        rows = (json.loads(path.read_text(encoding="utf-8"))["response"]
+                .get("epidata") or [])
         best: dict = {}
         for r in rows:
             k = r["epiweek"]
@@ -364,7 +365,7 @@ def _latest_typed(region: str, season_start_iso, cache_dir):
     cache_dir = Path(cache_dir) if cache_dir is not None else nrevss.CACHE_DIR
     path = cache_dir / f"{region}_latest.json"
     if path.exists():
-        blob = json.loads(path.read_text())
+        blob = json.loads(path.read_text(encoding="utf-8"))
         rows = blob["response"].get("epidata") or []
     else:
         url = (nrevss.BASE_URL + "?" + urllib.parse.urlencode(
@@ -374,7 +375,7 @@ def _latest_typed(region: str, season_start_iso, cache_dir):
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps({"region": region, "issue": None,
                                    "epiweeks": [ew_start, 999999],
-                                   "response": env}, indent=1))
+                                   "response": env}, indent=1), encoding="utf-8")
         tmp.replace(path)
         rows = env.get("epidata") or []
     best: dict = {}
@@ -404,6 +405,6 @@ def write_bank(bank: dict, path) -> Path:
                for (r, d), v in sorted(bank.items(), key=lambda kv: (kv[0][0],
                                                                      kv[0][1]))}
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload))
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
     tmp.replace(path)
     return path
