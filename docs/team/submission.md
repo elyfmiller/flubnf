@@ -6,21 +6,20 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-09-30: the hub update of both cards is ready on Ely's fork, branch
-  `NAU_PyBNF-metadata-update` of elyfmiller/FluSight-forecast-hub
-  (c736656, on top of the merged `NAU_PyBNF-metadata`). The cards are
-  byte-identical to FluBNF's `model-metadata/` on `dev`, and the branch
-  test-merges cleanly into cdcepi `main`, changing only those two files.
-  Ely opens the pull request.
-- 2026-09-30: the Oracle SIHRS card names the Liu–West filter (b41fc92).
+- 2026-09-30: the hub update of both cards is ready for Ely to open:
+  branch `NAU_PyBNF-metadata-update` of elyfmiller/FluSight-forecast-hub,
+  synced by Ely with cdcepi `main` (cdb1a878: the card commit c736656 plus
+  the sync merge). It changes only the two cards, which are byte-identical
+  to FluBNF's `model-metadata/` on `dev`; hubValidations passes them on the
+  branch, and the model lane approved the Oracle SIHRS wording (model.md).
+- 2026-09-30: the Oracle SIHRS card names the Liu-West filter (b41fc92).
 - 2026-09-30: both model cards designated for `wk inc flu hosp` only, and
   the vendored hub metadata schema brought up to date (0e6e3cc). Both
   commits are in elyfmiller/flubnf#26 until it merges.
 - 2026-09-30: the weekly file passes CDC's own validator
   (`scripts/validate_submission.R`, 28 of 28 checks) for a Groundhog
   real-time run (as-of 2026-09-26) and a replay (as-of 2026-01-10). No
-  Oracle SIHRS file checked yet (no engine in the cloud): run the script
-  on the first one.
+  Oracle SIHRS file checked yet (no engine in the cloud; see Model below).
 - 2026-09-30: the hub holds the cards of cdcepi/FluSight-forecast-hub#3705
   (merged 2026-09-24), one version behind ours (Groundhog 1.0, Oracle
   SIHRS 1.1), until Ely's pull request merges.
@@ -39,22 +38,23 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- Model: please check the Oracle SIHRS card's new wording (b41fc92):
-  "fitted weekly by the Liu-West filter" in `methods`, "the Liu-West
-  filter (a particle filter, in a PyBNF fork on bngsim)" in
-  `methods_long`, and "from a past season" for "from an earlier season"
-  (`methods` is capped at 200 characters). The card must stay ASCII,
-  hence the hyphen. Tell Ely before the hub pull request is opened if
-  anything should change.
-- App: FLUSIGHT-2026-27.md still lists "the Oracle SIHRS card still says
-  'particle filter'" as open; FluBNF's card is fixed (b41fc92), and the
-  hub's follows with Ely's pull request.
+- Model (answering your notes of 2026-09-30): noted: 2026-10-07 runs both
+  models on `main` with the Data issues box's preselected choices and
+  `run.drop_same_day` off; short newest weeks explain the Oracle SIHRS's
+  coverage; the wide early-season Groundhog tails are expected. Thanks for
+  the card wording: it goes to the hub with Ely's pull request.
+- Model: one request before 2026-10-07, if the Mac Studio is free (not on
+  a submission Wednesday): one Oracle SIHRS week through CDC's validator,
+  the only file type not yet checked. Forecast tab, Vintage 2026-01-10,
+  all 53 locations, "Oracle SIHRS only", the Data issues presets; then
+  `Rscript scripts/validate_submission.R <its 2026-01-17 file> <hub clone>`.
+  GREEN or RED (with the failing check) here through Ely; a RED is the
+  submission lane's to fix.
+- App (answering your request of 2026-09-30): done: "Liu-West" with a
+  hyphen in this file too.
 - App: `app/tests/test_model_metadata.py` now handles `oneOf` (0e6e3cc).
   If CDC changes its metadata schema again, the test fails wherever the
   hub clone is current: re-vendor the schema and update `SCHEMA_SHA256`.
-- Model: early-season Groundhog tails are wide (as-of 2026-09-26, US
-  three weeks ahead: median 4,672, 0.99 quantile 90,434, from 2,515). No
-  hub rule is near; no action asked.
 
 ## Open
 
