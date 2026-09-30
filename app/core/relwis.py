@@ -110,7 +110,8 @@ PUBLISHED_CONVENTION_NOTE = (
     "come from which weeks are scored.")
 
 #: our member keys in the field's naming, so our rows and the hub's share a frame
-SEAL_MODEL_NAMES = {"pf": "FluBNF-PF", "analogue": "FluBNF-analogue",
+SEAL_MODEL_NAMES = {"pf": "FluBNF-PF", "pf_filter": "FluBNF-LWF",
+                    "analogue": "FluBNF-analogue",
                     "ensemble": "FluBNF-ensemble"}
 
 #: where the field-cells cache is looked for: $FLUBNF_FIELD_CELLS, else
@@ -421,8 +422,10 @@ def load_field_cells(directory=None) -> FieldCells:
 # --------------------------------------------------------------------------
 
 #: print order, the retired blend last (present only in older scores frames).
-#: Same as us_national.MODELS, repeated so this module stands alone.
-MODELS = ("pf", "analogue", "ensemble")
+#: us_national.MODELS plus the Liu-West filter alone (pf_filter, beside
+#: the Oracle SIHRS it feeds), which has no national row: the Oracle step
+#: never touches US. Repeated so this module stands alone.
+MODELS = ("pf", "pf_filter", "analogue", "ensemble")
 
 
 @dataclass(frozen=True)

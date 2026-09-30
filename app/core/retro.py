@@ -62,7 +62,7 @@ from app.core.runs import RunSpec                     # noqa: E402
 # the samples store moved to app/core/retro_store.py; re-exported so
 # `retro.X` keeps working
 from app.core.retro_store import (  # noqa: F401
-    QUANTILES_NAME, SAMPLES_GZ, SAMPLES_JSON, _week_dir, compress_samples_file,
+    FILTER_MEMBER, QUANTILES_NAME, filter_quantiles, SAMPLES_GZ, SAMPLES_JSON, _week_dir, compress_samples_file,
     member_quantiles, read_samples, read_week_quantiles, read_week_samples,
     samples_file, season_sample_files, week_done, week_member_quantiles,
     week_samples_path, write_week_quantiles, write_week_samples)
@@ -1016,6 +1016,19 @@ def scores_version(df) -> int:
         return 1
 
 
+def filter_scores_missing(root: Path, df) -> bool:
+    """Whether a live root's scores lack the Liu-West filter alone although
+    its newest week's oracle.json carries it (scores written before the
+    filter was scored): then the root is rescored once. A sealed or
+    imported root without oracle.json never asks for it."""
+    if df is None or not len(df) or "model" not in getattr(df, "columns", ()):
+        return False
+    if FILTER_MEMBER in set(df["model"].unique()):
+        return False
+    weeks = season_sample_files(Path(root))
+    return bool(weeks) and filter_quantiles(weeks[-1].parent) is not None
+
+
 def scores_frame_current(df) -> bool:
     """Whether a parsed scores frame is this version's: the version column
     says so, or the frame has no rows (an empty file scores nothing under
@@ -1027,9 +1040,15 @@ def scores_frame_current(df) -> bool:
     return scores_version(df) >= SCORES_V
 
 
+#: the members score_season scores: the shipped Oracle SIHRS, the
+#: Liu-West filter alone before the Oracle step (present only where the
+#: step ran; retro_store.FILTER_MEMBER), and the Groundhog
+SCORED_MEMBERS = ("pf", FILTER_MEMBER, "analogue")
+
+
 def score_season(root: Path, season: str) -> pd.DataFrame:
     """Score every stored week vs settled truth: one row per (member,
-    location, as-of, horizon), pf and analogue, under THE cell rule
+    location, as-of, horizon) of SCORED_MEMBERS, under THE cell rule
     (scoring.cell_scored) with the per-cell metrics (scoring.cell_metrics)
     and the baseline's WIS and log-scale WIS on the same cell. Nothing is
     blended (older files' "ensemble" rows are not reproduced by a rescore).
@@ -1043,13 +1062,13 @@ def score_season(root: Path, season: str) -> pd.DataFrame:
     for wk in season_sample_files(root):
         asof = wk.parent.name; T = pd.Timestamp(asof)
         mq = week_member_quantiles(root, asof)
-        pf_all, an_all = mq.get("pf", {}), mq.get("analogue", {})
-        for loc in set(pf_all) | set(an_all):
+        by_model = {m: mq.get(m, {}) for m in SCORED_MEMBERS}
+        for loc in set().union(*by_model.values()):
             fips = n2f.get(loc)
             if not fips:
                 continue
-            for model, qs in (("pf", pf_all.get(loc, {})),
-                              ("analogue", an_all.get(loc, {}))):
+            for model, qs in ((m, q.get(loc, {}))
+                              for m, q in by_model.items()):
                 for h in hz.HORIZONS:
                     q = qs.get(h)
                     # canonical horizon h is h+1 weeks past the as-of
@@ -1243,9 +1262,10 @@ def national_aggregate_fresh(root: Path) -> bool:
 
 def scores_current(root: Path) -> bool:
     """Whether scores.json exists, parses, is this SCORES_V's (a file
-    scored under the earlier cell rule is not), and is newer than every
-    stored week and the truth (see scores_scoreable for whether it has
-    rows)."""
+    scored under the earlier cell rule is not), carries the Liu-West filter
+    alone where its weeks do (filter_scores_missing), and is newer than
+    every stored week and the truth (see scores_scoreable for whether it
+    has rows)."""
     root = Path(root)
     sf = root / "scores.json"
     weeks = season_sample_files(root)
@@ -1258,7 +1278,8 @@ def scores_current(root: Path) -> bool:
         if sf.stat().st_mtime < max([p.stat().st_mtime for p in weeks]
                                     + [truth_mtime()]):
             return False           # older than a sample, or than the truth
-        return scores_frame_current(pd.read_json(sf))
+        df = pd.read_json(sf)
+        return scores_frame_current(df) and not filter_scores_missing(root, df)
     except Exception:
         return False
 

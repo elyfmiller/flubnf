@@ -226,7 +226,8 @@ def test_seal_cells_applies_the_frozen_reference_date_join():
     ours = cells[cells["model"] != relwis.BASELINE]
     base = cells[cells["model"] == relwis.BASELINE]
     assert len(ours) == 6 and len(base) == 2
-    assert set(ours["model"]) == set(relwis.SEAL_MODEL_NAMES.values())
+    assert set(ours["model"]) == {relwis.SEAL_MODEL_NAMES[m] for m in
+                                  ("pf", "analogue", "ensemble")}
     # and the arithmetic reads through: PF (1 + 3) / (4 + 4)
     v, n = relwis.ratio_of_sums(cells, "FluBNF-PF")
     assert (v, n) == (0.5, 2)

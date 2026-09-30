@@ -307,8 +307,16 @@ def test_run_week_stores_the_member_under_pf_and_not_the_filter(hubfiles, tmp_pa
     assert oracle_mod.FILTER_KEY not in back
     assert set(back) >= {"pf", "analogue"}
     assert back["pf"]["Ohio"]["3"] == out["pf"]["Ohio"]["3"]
+    # the sidecar adds the Liu-West filter alone, from oracle.json's null
+    # block with the analogue's output floor, so it is scored beside pf
     side = retro.read_week_quantiles(wd)
-    assert set(side) == {"pf", "analogue"}
+    assert set(side) == {"pf", "pf_filter", "analogue"}
+    from app.core.floor import floor_quantiles
+    from flubnf import oracle as OR
+    prov0 = oracle_mod.read_provenance(wd)
+    want = floor_quantiles({h: dict(zip(OR.QL, e["unrounded"]))
+                            for h, e in prov0["quantiles"]["null"]["Ohio"].items()})
+    assert side["pf_filter"]["Ohio"]["2"] == pytest.approx(want["2"])
     # the provenance beside the week, and it survived the prune
     prov = oracle_mod.read_provenance(wd)
     assert prov["applied"] and prov["bank"]["label"].startswith("admissions-fbase@")

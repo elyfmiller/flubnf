@@ -134,6 +134,7 @@ function pickLoc(map, loc){
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "ensemble": "FluBNF Ensemble (retired)",
   "pf": "Oracle SIHRS",
+  "pf_filter": "Liu-West filter",
   "analogue": "Groundhog",
   "pf2s": "Two-strain SIHRS",
   "FluSight-ensemble": "FluSight ensemble (official)",
@@ -149,6 +150,7 @@ var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
 var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
   "ensemble": "#34C0F0",
   "pf": "#1979FF",
+  "pf_filter": "#C77100",
   "analogue": "#FFC72C",
   "pf2s": "#A66395"
 }/*END_MODEL_COLORS_JSON*/;
@@ -517,11 +519,13 @@ function scaleSwitch(scale, note){
     + 'both.</span>');
 }
 
-// models offered, in display order: the ones that ship. A stored season's
-// retired blend is never offered (report_v2.RETIRED_MODELS is the same set)
+// models offered, in display order: the ones that ship, and the Liu-West
+// filter alone (pf_filter, the Oracle SIHRS before its step; off until
+// ticked). A stored season's retired blend is never offered
+// (report_v2.RETIRED_MODELS is the same set)
 var RETIRED_MODELS = ['ensemble'];
 function offeredModels(have){
-  return ['pf', 'analogue', 'pf2s'].filter(function(m){
+  return ['pf', 'pf_filter', 'analogue', 'pf2s'].filter(function(m){
     return have[m] && RETIRED_MODELS.indexOf(m) < 0;
   });
 }

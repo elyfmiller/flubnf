@@ -121,7 +121,7 @@ def test_every_stored_model_gets_map_cards_from_the_one_rule(tmp_path):
     assert ui_retro_prep._week_map_cards(root, W1) == by_model["pf"]
     # cached per week, version 2 (the per-model shape)
     cf = root / "playback_cache" / "map_cards" / f"{W1}.json"
-    assert json.loads(cf.read_text())["v"] == 2
+    assert json.loads(cf.read_text())["v"] == ui_retro_prep._MAP_CARDS_V
 
 
 def test_an_analogue_only_week_takes_its_baseline_from_the_vintage(

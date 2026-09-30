@@ -88,6 +88,17 @@ def _engine_root(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _results_grace_waits_for_the_job(monkeypatch):
+    """The season page waits _RESULTS_GRACE_S (1.5 s) for its finalize job,
+    then renders the preparing state. A slow runner (Windows CI) can overrun
+    that, and a page test then read the stub: a wait of up to a minute
+    returns as soon as the job is done. Tests of the preparing state set
+    their own short grace."""
+    from app.ui.routes import retro as _retro_routes
+    monkeypatch.setattr(_retro_routes, "_RESULTS_GRACE_S", 60.0)
+
+
+@pytest.fixture(autouse=True)
 def _engine_in_tmp(_engine_root, monkeypatch):
     monkeypatch.setattr(pf, "PYBNF_PF", _engine_root)
 

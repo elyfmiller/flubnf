@@ -187,7 +187,23 @@ samples are not stored. Its 23 quantiles per location and horizon are in
 the week's oracle.json (`quantiles.null`), which is all the paired
 comparison and the season-end reading need. A live console run keeps the
 filter's samples as `pf_filter.json.gz` in its workroot, the courtesy copy
-the 2026-27 shadow run reads; nothing displays, scores or exports it.
+the 2026-27 shadow run reads; the console's weekly pages do not show it.
+
+**Scored in the Retrospective (from 2026-09-30, Ely's decision).** Since
+the Oracle step changes the filter's output, a replay's season page also
+scores the Liu-West filter alone, as its own model beside the Oracle SIHRS
+and the Groundhog: a tile, a column of the per-state table, a cumulative
+line, and a player toggle (off until ticked). Its quantiles are the week's
+`quantiles.null` with the output floor the Groundhog gets
+(`app/core/floor.py` `floor_quantiles`), stored in the week's quantile
+sidecar as `pf_filter` (`app/core/retro_store.py` `filter_quantiles`), so
+no second replay is needed and it scores on exactly the Oracle SIHRS's
+cells. A season scored before this is rescored once when its page next
+opens. It has no US figure: the Oracle step never touches the fitted US
+row, which is already the filter alone. Weeks without the step (a replay
+with `--oracle none`, a sealed record) have no such member. It is never
+submitted and never on the public site; the plain-filter research run
+above is unchanged.
 
 ## 5. Backfill and reproduce: a verification tool
 

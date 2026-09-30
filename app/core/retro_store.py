@@ -8,8 +8,8 @@ beside the draws for playback, the report and the scorer.
 
 Sections: paths (SAMPLES_JSON, _week_dir, samples_file, season_sample_files)
 | draws (read_samples, read_week_samples, write_week_samples) | quantile
-sidecar (member_quantiles, write/read_week_quantiles, week_member_quantiles)
-| migration (compress_samples_file) | week_done.
+sidecar (member_quantiles, filter_quantiles, write/read_week_quantiles,
+week_member_quantiles) | migration (compress_samples_file) | week_done.
 """
 from __future__ import annotations
 
@@ -33,6 +33,13 @@ SAMPLES_GZ = "samples.json.gz"
 #: draws. Written on store, backfilled on first read. The national aggregate
 #: still reads the draws.
 QUANTILES_NAME = "quantiles.json"
+#: the Liu-West filter alone, before the Oracle step: scored beside the
+#: shipped member (pf) so the step's effect shows. Its quantiles come from
+#: the week's oracle.json (quantiles.null, app/core/oracle.py), or from a
+#: record that stores the filter's samples under this key.
+FILTER_MEMBER = "pf_filter"
+#: the Oracle step's provenance file (app/core/oracle.PROVENANCE_NAME)
+ORACLE_NAME = "oracle.json"
 
 
 def samples_file(wd: Path) -> Path | None:
@@ -99,20 +106,22 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
     os.replace(tmp, fp)
     (wd / SAMPLES_JSON).unlink(missing_ok=True)
     try:
-        write_week_quantiles(wd, member_quantiles(obj))
+        write_week_quantiles(wd, member_quantiles(obj, wd))
     except Exception:
         pass
     return fp
 
 
-def member_quantiles(d: dict) -> dict:
+def member_quantiles(d: dict, wd: Path | None = None) -> dict:
     """{member: {location: {"0".."3": {level: value}}}} from one week's
     stored record: the sample-shaped members (pf, pf2s) through the member
     quantile formula, the analogue's stored quantiles with float levels.
     A week replayed by the Groundhog alone (engine "analogue") stores no
-    pf block and yields no pf member."""
+    pf block and yields no pf member. With the week folder `wd`, the
+    Liu-West filter alone (FILTER_MEMBER) joins from its oracle.json when
+    the Oracle step ran there (filter_quantiles)."""
     out = {}
-    for m in ("pf", "pf2s"):
+    for m in ("pf", "pf2s", FILTER_MEMBER):
         if m in d:
             out[m] = {loc: ens.member_quantiles_from_samples(s)
                       for loc, s in d[m].items()}
@@ -120,6 +129,55 @@ def member_quantiles(d: dict) -> dict:
         out["analogue"] = {loc: {h: {float(k): float(v) for k, v in q.items()}
                                  for h, q in qs.items()}
                            for loc, qs in d["analogue"].items()}
+    if wd is not None and "pf" in out and FILTER_MEMBER not in out:
+        fq = filter_quantiles(wd)
+        if fq:
+            out[FILTER_MEMBER] = fq
+    return out
+
+
+#: parsed oracle.json null blocks keyed by (path, mtime_ns, size); a few
+#: MB each, read once per week per process
+_FILTER_CACHE: dict = {}
+
+
+def filter_quantiles(wd: Path) -> dict | None:
+    """The Liu-West filter's own quantiles for one week, before the Oracle
+    step: oracle.json's quantiles.null, {location: {"0".."3": {level:
+    value}}}, with the output floor the analogue gets (floor.floor_quantiles),
+    so the filter is scored as a submission would carry it. None when the
+    step did not run there (no file, "applied": false, a sealed record).
+    The fitted US is not in the block: the step never touches it, so the
+    US pf is already the filter alone."""
+    fp = Path(wd) / ORACLE_NAME
+    try:
+        st = fp.stat()
+    except OSError:
+        return None
+    key = (str(fp), st.st_mtime_ns, st.st_size)
+    if key in _FILTER_CACHE:
+        return _FILTER_CACHE[key]
+    out = None
+    try:
+        prov = json.loads(fp.read_text(encoding="utf-8"))
+        qb = (prov.get("quantiles") or {}) if prov.get("applied") else {}
+        levels = [float(L) for L in qb.get("levels") or ()]
+        null = qb.get("null") or {}
+        if levels and null:
+            from app.core.floor import floor_quantiles
+            out = {}
+            for loc, by_h in null.items():
+                qs = {h: dict(zip(levels, (float(v) for v in e["unrounded"])))
+                      for h, e in (by_h or {}).items()
+                      if h in hz.HORIZONS and isinstance(e, dict)
+                      and e.get("unrounded")
+                      and len(e["unrounded"]) == len(levels)}
+                if qs:
+                    out[loc] = floor_quantiles(qs)
+            out = out or None
+    except Exception:
+        out = None
+    _FILTER_CACHE[key] = out
     return out
 
 
@@ -159,12 +217,16 @@ def read_week_quantiles(wd: Path) -> dict | None:
 
 def week_member_quantiles(root: Path, asof: str) -> dict:
     """The members' quantiles for one stored week: the sidecar when it is
-    current, else computed from the samples and written for next time."""
+    current, else computed from the samples (and the week's oracle.json)
+    and written for next time."""
     wd = _week_dir(root, asof)
     mq = read_week_quantiles(wd)
-    if mq is not None:
+    # a sidecar written before the Liu-West filter was scored lacks it:
+    # rebuilt once when the week's oracle.json carries it
+    if mq is not None and (FILTER_MEMBER in mq or "pf" not in mq
+                           or not filter_quantiles(wd)):
         return mq
-    mq = member_quantiles(read_week_samples(root, asof))
+    mq = member_quantiles(read_week_samples(root, asof), wd)
     try:
         write_week_quantiles(wd, mq)
     except Exception:

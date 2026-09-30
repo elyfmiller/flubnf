@@ -133,7 +133,7 @@ CDC dashboard, so the two are not comparable.
 | model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
 | Oracle SIHRS, the stored forecasts with the step and its donor bank applied (docs/ORACLE-SIHRS.md) | 0.767 | 0.697 | 0.781 | 0.738 | 15,300 |
-| Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
+| Groundhog (replay of 2026-09-21, scored under the cell rule before 2026-09-25) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
 Without the step, the plain particle filter on the Oracle SIHRS's cells
@@ -151,6 +151,12 @@ The Groundhog's row reproduces on any machine with a hub clone and no
 engine:
 
     flubnf groundhog retro all --aux flusurv
+
+Since 2026-09-25 the scorer follows FluSight's cell rule, which also
+scores zero truths and zero medians, so the command now prints 0.722,
+0.659 and 0.660 (0.6705 pooled) on 17,116 cells (hub at 99cc45a). On the
+row's 15,340 cells its WIS equals the 2026-09-21 replay bit for bit; the
+1,776 cells added are the ones the old rule skipped.
 
 or from the console, Retrospective tab, engine preset "Groundhog only"
 (minutes per season; the two paths agree cell for cell). A season's
