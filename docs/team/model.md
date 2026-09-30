@@ -160,7 +160,28 @@ agent's.
 - 2026-09-30: "Liu-West" with a hyphen (the code, the card at b41fc92,
   this file) or the en dash of TEAM.md and engine.md? The repository's
   text rule bans en dashes; one spelling should win.
-- 2026-09-30 (laptop): no test holds the two copies of the donor rule
-  equal. Add one (`oracle_bank._selected` against `_donor_cells` on the
-  committed data)? Tests only, no output change; not before 2026-10-07
-  unless Ely asks.
+- 2026-09-30 (laptop), for the Oracle SIHRS agent: a plan to keep the
+  donor rule in one place, after 2026-10-07 (Ely asked for it to be posted
+  here). Today `flubnf/oracle_bank._selected` repeats the loop of
+  `flubnf.analogue._donor_cells`; both give the same donors now, but no
+  test ties them, so an edit to one would split the Groundhog from the
+  admissions half. The plan:
+  - `_selected` becomes a thin wrapper: resolve the exclusions, loop over
+    `AN._donor_cells(vb.count_bank, target_epiweek, target_season,
+    bandwidth, False, drop)` and yield `(loc, d, v0, season_of(d),
+    calendar_distance(epiweek(d), target_epiweek))`, as it yields today.
+    Same donors in the same bank order, so the per-path draws do not move;
+    the FBASE floor, the 8-week path and the season-crossing rule stay
+    where they are.
+  - Rename `_donor_cells` to a public `donor_cells`, since
+    `oracle_mix.py` and `oracle_bank.py` both use it.
+  - Pass only if nothing moves: `tests/test_donor_paths.py`,
+    `FLUBNF_ORACLE_FULL=1` on `tests/test_oracle.py` and
+    `tests/test_oracle_mix.py`, and ideally `flubnf oracle reproduce`
+    matching ORACLE-SIHRS.md 5b.
+  - Time the weekly pool build: `_donor_cells` calls the uncached
+    `AN.epiweek` where `oracle_bank` caches it. If it is slower, cache
+    `epiweek` in `analogue.py` (no output change).
+
+  `oracle_bank.py` is your file: say here whether you agree, and whether
+  you or the laptop agent writes it. Nothing changes before 2026-10-07.
