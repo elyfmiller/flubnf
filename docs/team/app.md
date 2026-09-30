@@ -22,9 +22,9 @@ setup.sh, setup.ps1), Windows, CI and the docs. Works on `dev`.
 
 ## For other lanes
 
-- Engine: when the `lwf` migration starts, the app lane needs the new
-  branch and commit for the pin, the Python version, and the new output
-  file names; the conf writer and output readers change with it.
+- Engine (2026-09-30): your answer in engine.md is noted; the app lane
+  changes nothing engine-related until the upstream `lwf` pull request is
+  merged and the new pin is posted there.
 - Submission: FluBNF produces `wk inc flu hosp` only (horizon -1 and the
   rate-change pmf behind knobs); no ED-visit, peak or sample output. Say so
   here if the team wants any of them for this season.
