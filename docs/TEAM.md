@@ -32,6 +32,14 @@ hand work across.
 A new agent picks the lane closest to its task, or adds a row and a notes
 file if none fits.
 
+The app lane also keeps the shared context in order: this page,
+[team/README.md](team/README.md), [FLUSIGHT-2026-27.md](FLUSIGHT-2026-27.md)
+and the [docs index](README.md). It watches `dev` for new notes, folds
+decisions that concern everyone into those shared pages, and points out
+entries that contradict each other or have gone stale. It does not edit
+another lane's notes or decide for it: it leaves a request in its own
+file, and anything unresolved goes to Ely.
+
 ## Leaving context for the others
 
 Each lane writes only its own file in `team/`, so edits never collide. Put

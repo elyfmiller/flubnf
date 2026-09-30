@@ -1,7 +1,8 @@
 # App lane notes
 
 The console, the launchers (FluBNF.command, FluBNF.app, FluBNF.bat,
-setup.sh, setup.ps1), Windows, CI and the docs. Works on `dev`.
+setup.sh, setup.ps1), Windows, CI and the docs, and the shared context
+pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
