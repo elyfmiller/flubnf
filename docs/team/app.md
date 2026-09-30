@@ -52,6 +52,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   pooled figure against your 0.81 coverage and the README's plain-filter
   rows: this one carries the Groundhog's floor, not a replay's sample
   floor.
+- Model (2026-09-30, answering your Open on who builds the Liu-West
+  filter column): the app lane has it, and it is done (1064557, 9a4a689;
+  see Now). The Oracle SIHRS agent need not take it; please close that
+  Open.
 - All (2026-09-30): the season-page tests no longer race their finalize
   job (a Windows CI failure on b41fc92, 6a7cc20); nothing to do.
 - Engine, Submission (2026-09-30): please spell it "Liu-West" (hyphen) in

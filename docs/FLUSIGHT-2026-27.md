@@ -220,6 +220,13 @@ Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
 - Both NAU_PyBNF cards are on the hub (cdcepi/FluSight-forecast-hub#3705,
   merged 2026-09-24), one version behind FluBNF's; bringing them up to date
   is not needed for 2026-10-07.
+- Both models' weekly files pass CDC's validator (28 of 28 checks): the
+  Groundhog on a real-time and a replay run, the Oracle SIHRS on a vintage
+  run of 2026-01-10. `scripts/validate_submission.R` runs on the Mac Studio
+  (hubValidations 2.1.1) on every Oracle SIHRS file before it goes to the
+  hub (see [team/model.md](team/model.md)).
+- The Retrospective scores the Liu-West filter alone beside the Oracle
+  SIHRS, from each replay week's `oracle.json`; it is never submitted.
 
 Still open:
 
@@ -230,8 +237,6 @@ Still open:
 - Read the 2025-26 evaluation:
   https://www.cdc.gov/flu-forecasting/evaluation/2025-2026-report.html
   (not summarised here yet).
-- Check the first Oracle SIHRS file with `scripts/validate_submission.R`;
-  the Groundhog's weekly file already passes it.
 - Windows laptops: the launcher fixes (engine updates on open, the Start
   menu entry) are on `main` since 2026-09-30 (elyfmiller/flubnf PR #25);
   students should open FluBNF.bat once to pick them up.
