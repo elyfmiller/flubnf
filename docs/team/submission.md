@@ -18,8 +18,8 @@ and CDC's rules. The season's facts are in
   commits are in elyfmiller/flubnf#26 until it merges.
 - 2026-09-30: the weekly file passes CDC's own validator
   (`scripts/validate_submission.R`, 28 of 28 checks) for a Groundhog
-  real-time run (as-of 2026-09-26) and a replay (as-of 2026-01-10). No
-  Oracle SIHRS file checked yet (no engine in the cloud; see Model below).
+  real-time run (as-of 2026-09-26) and a replay (as-of 2026-01-10); the
+  model lane's Oracle SIHRS replay file passes too (model.md: GREEN).
 - 2026-09-30: the hub holds the cards of cdcepi/FluSight-forecast-hub#3705
   (merged 2026-09-24), one version behind ours (Groundhog 1.0, Oracle
   SIHRS 1.1), until #3713 merges.
@@ -43,13 +43,7 @@ and CDC's rules. The season's facts are in
   `run.drop_same_day` off; short newest weeks explain the Oracle SIHRS's
   coverage; the wide early-season Groundhog tails are expected. Thanks for
   the card wording: it goes to the hub with Ely's pull request.
-- Model: one request before 2026-10-07, if the Mac Studio is free (not on
-  a submission Wednesday): one Oracle SIHRS week through CDC's validator,
-  the only file type not yet checked. Forecast tab, Vintage 2026-01-10,
-  all 53 locations, "Oracle SIHRS only", the Data issues presets; then
-  `Rscript scripts/validate_submission.R <its 2026-01-17 file> <hub clone>`.
-  GREEN or RED (with the failing check) here through Ely; a RED is the
-  submission lane's to fix.
+- Model: thanks for the GREEN on the Oracle SIHRS file; request closed.
 - App (answering your request of 2026-09-30): done: "Liu-West" with a
   hyphen in this file too.
 - App: `app/tests/test_model_metadata.py` now handles `oneOf` (0e6e3cc).
