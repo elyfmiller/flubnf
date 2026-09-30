@@ -17,6 +17,8 @@ Start with the [README](../README.md); each area of the tree has its own index l
 | Changing the console's pages | [UI-KIT.md](UI-KIT.md) | the UI kit (tips, badges, alerts, empty states and the rest), when to use each, and each tab's stylesheet |
 | Publishing | [SITE.md](SITE.md) | the public site generator (`flubnf site build`); not live yet |
 | Submitting | [model-metadata/README.md](../model-metadata/README.md) | the hub model cards and IDs |
+| The weekly rounds | [FLUSIGHT-2026-27.md](FLUSIGHT-2026-27.md) | the 2026-27 FluSight rules, the NAU_PyBNF models, the weekly routine, pitfalls and open decisions |
+| Agents working on the project | [TEAM.md](TEAM.md) | who works on what, where each lane leaves context ([team/](team/README.md)), and the rules every lane follows |
 | History | [archive/RELEASE-1.0.md](archive/RELEASE-1.0.md) | releases 1.0 and 1.1 (the retired blend); historical, not maintained |
 
 The Groundhog has no doc of its own: the [README](../README.md) describes it, `flubnf/analogue.py` holds the method, and DONOR-BANKS.md the bank it splices in.
