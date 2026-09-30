@@ -151,8 +151,10 @@ def test_backfill_writes_the_member_into_a_new_root_and_leaves_the_source(source
             disk = json.load(fh)
         assert set(disk["pf"]["Ohio"]) == {"0", "1", "2", "3", "4"}
         assert disk["pf_filter"]["Ohio"]["0"] == src["pf"]["Ohio"][hz.ORIGIN]
-        # the sidecar carries the shown members only
-        assert set(retro.read_week_quantiles(wd)) == {"pf", "analogue"}
+        # the sidecar carries the shown members: the Liu-West filter alone
+        # (the source's pf, before the step) is scored beside the member
+        assert set(retro.read_week_quantiles(wd)) == {"pf", "pf_filter",
+                                                      "analogue"}
         # the provenance, with the backfill's own record folded in
         prov = oracle_mod.read_provenance(wd)
         assert prov["applied"] and prov["bank"]["label"].startswith("admissions-fbase@")

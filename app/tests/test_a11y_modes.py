@@ -316,7 +316,7 @@ def test_member_palette_audit_and_its_non_color_redundancy():
 
     from app.core.report_v2 import model_colors
     mem = model_colors()
-    assert set(mem) == {"ensemble", "pf", "analogue", "pf2s"}
+    assert set(mem) == {"ensemble", "pf", "pf_filter", "analogue", "pf2s"}
     # the anchors: the gold and cyan identities stay themselves
     assert mem["analogue"] == "#FFC72C" and mem["ensemble"] == "#34C0F0"
     # dark and light variant, and every theme's --gold (the console draws
@@ -341,7 +341,7 @@ def test_member_palette_audit_and_its_non_color_redundancy():
         r = resolve(th)
         grounds[th] = (r["bg"], r["card"])
     assert len(grounds) == 8
-    for m in ("pf", "pf2s"):
+    for m in ("pf", "pf_filter", "pf2s"):
         for th, (bg, card) in grounds.items():
             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
             assert _cr(mem[m], card) >= 3.0, (m, th, "card")

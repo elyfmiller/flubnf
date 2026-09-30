@@ -31,6 +31,10 @@ _results_jobs: dict = {}          # str(root) -> job record
 _results_lock = threading.Lock()
 
 
+#: the map-card cache's shape (v3: the Liu-West filter alone joins)
+_MAP_CARDS_V = 3
+
+
 def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     """{model: {fips: card}} for one stored retro week, every model it
     stored: each member's 23-level quantile sidecar
@@ -55,7 +59,7 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
     try:
         cached = _json.loads(cf.read_text(encoding="utf-8"))
-        if cached.get("mtime") == mtime and cached.get("v") == 2:
+        if cached.get("mtime") == mtime and cached.get("v") == _MAP_CARDS_V:
             return cached["cards"]
     except Exception:
         pass
@@ -108,7 +112,7 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
         # write beside, then replace
         cf.parent.mkdir(parents=True, exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(_json.dumps({"mtime": mtime, "v": 2,
+        tmp.write_text(_json.dumps({"mtime": mtime, "v": _MAP_CARDS_V,
                                     "cards": by_model}), encoding="utf-8")
         _os.replace(tmp, cf)
     except Exception:
@@ -298,8 +302,11 @@ def _scores_current_fast(root: Path) -> bool:
             return False           # older than a sample, or than the truth
     except OSError:
         return False
-    # a file scored under the earlier cell rule (retro.SCORES_V) is stale
-    return retro.scores_frame_current(_scores_df(root))
+    # a file scored under the earlier cell rule (retro.SCORES_V), or before
+    # the Liu-West filter alone was scored, is stale
+    df = _scores_df(root)
+    return (retro.scores_frame_current(df)
+            and not retro.filter_scores_missing(root, df))
 
 
 def _scores_scoreable_fast(root: Path) -> bool:

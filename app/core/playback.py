@@ -69,8 +69,9 @@ from flubnf.settings import HUB
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
 #: bump when cached shapes or scoring logic change (v3: stored members only,
-#: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage)
-CACHE_V = 5
+#: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage;
+#: v6: the Liu-West filter alone, from oracle.json, joins the members)
+CACHE_V = 6
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS

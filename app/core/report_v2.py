@@ -69,7 +69,8 @@ CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
 
 #: equal to the player's map; used only if its marked JSON cannot be read
 _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
-                          "analogue": "#FFC72C", "pf2s": "#A66395"}
+                          "pf_filter": "#C77100", "analogue": "#FFC72C",
+                          "pf2s": "#A66395"}
 
 
 def model_colors() -> dict:
@@ -108,11 +109,12 @@ CAT_FORECAST = "categorical forecast"
 #: names, imports this module): keep in step. The retired blend's entry
 #: serves only older bundles.
 MODEL_SHORT = {"ensemble": "FluBNF Ensemble (retired)",
-               "pf": "Oracle SIHRS", "analogue": "Groundhog"}
+               "pf": "Oracle SIHRS", "pf_filter": "Liu-West filter",
+               "analogue": "Groundhog"}
 #: map labels: the display name + " categorical forecast"
 MODEL_LABEL = {m: f"{n} {CAT_FORECAST}" for m, n in MODEL_SHORT.items()}
 #: outlook toggle order: the shipped models, PF first; a stored blend last
-MODEL_ORDER = ("pf", "analogue", "ensemble")
+MODEL_ORDER = ("pf", "pf_filter", "analogue", "ensemble")
 
 #: never offered on a toggle (older bundles may still render them, label only)
 RETIRED_MODELS = ("ensemble",)
