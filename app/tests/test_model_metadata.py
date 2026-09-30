@@ -145,11 +145,14 @@ def test_the_oracle_card_says_what_the_member_is():
         (REPO / "model-metadata" / "NAU_PyBNF-OracleSIHRS.yml").read_text())
     assert meta["model_name"] == "Oracle SIHRS"
     assert len(meta["methods"]) <= 200
+    # the team's name for the filter (docs/TEAM.md), ASCII hyphen in the card
+    assert "Liu-West filter" in meta["methods"]
     long = meta["methods_long"]
     # the one marked place for the donor bank's streams, verbatim
     assert ot.BANK_TEXT["card"] in long
     assert ot.PREREG_SHA256 in long
-    for needle in ("SIHRS compartment model", "particle filter",
+    for needle in ("SIHRS compartment model", "Liu-West filter",
+                   "particle filter",
                    "geometric mean", "same calendar week",
                    "own state", "Uncertainty:", "Spatial correlation:",
                    "frozen-specification replication",
