@@ -512,11 +512,18 @@ rem An archive that did not unpack is all there is: say why, and skip the
 rem Perl question, which nothing here would use.
 if not exist "%PYBNFDIR%\.git" if not exist "%PYBNFDIR%\pybnf\pf.py" if not defined BUNDLE goto :enginebadarchive
 echo.
-echo Installing the particle filter engine. One time, a few minutes.
+if exist "%ATTEMPT%" (
+  echo Trying the particle filter engine install again, a few minutes.
+) else (
+  echo Installing the particle filter engine. One time, a few minutes.
+)
 rem Perl (BNG2.pl, engine fits only), offered like the data question: 20 s,
 rem default Y; without winget, name the link. setup.ps1 cannot ask here (-NoPrompt).
 where perl >nul 2>&1
 if not errorlevel 1 goto :perldone
+rem Offered once: a retry (the stamp from a failed attempt exists) does not
+rem ask again, so a declined or failed winget is not back on every open.
+if exist "%ATTEMPT%" goto :perldone
 where winget >nul 2>&1
 if errorlevel 1 (
   echo   perl not found and winget unavailable: the engine installs fine but
@@ -686,6 +693,9 @@ if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\FluBNF.lnk" goto :
 if /I "%SHORTCUTFOR%"=="%CD%" goto :shortcutsdone
 :shortcutsmake
 powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%CD%\scripts\windows\shortcuts.ps1" <nul
+rem The record is written here, by cmd, so it reads back in the code page
+rem cmd uses (an accented profile name would never match one PowerShell wrote).
+if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\FluBNF.lnk" cd >"%LOCALAPPDATA%\FluBNF\start-menu.txt"
 :shortcutsdone
 echo FluBNF console starting - a window (or browser tab) will open. Ctrl-C here to stop.
 ".venv\Scripts\flubnf" app

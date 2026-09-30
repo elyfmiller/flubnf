@@ -338,6 +338,9 @@ Info "To put any of these somewhere else, set the variable first, open a NEW"
 Info "window so the setting is visible, then re-run this script:"
 Info "  setx FLUBNF_HUB `"D:\FluSight-forecast-hub`""
 Info "  setx FLUBNF_ENGINE_VENV `"D:\venvs\flubnf-engine`""
+Info "The engine folder counts only once it holds the engine, so clone or move"
+Info "the engine there first, then point FLUBNF_PYBNF at it:"
+Info "  git clone -b feature/particle-filter $PyBnfRemote `"D:\Projects\PyBNF-pf`""
 Info "  setx FLUBNF_PYBNF `"D:\Projects\PyBNF-pf`""
 if ($Hub -like "*OneDrive*") {
     Warn "the data path is inside OneDrive. A git clone of this size in a"
@@ -1121,13 +1124,22 @@ if ($EngineReady) {
         }
     }
     if ($access -eq "local") {
-        Ok "engine on disk: $PyBnf; FluBNF.bat finishes the install on its next open, no GitHub account needed"
+        Ok "engine on disk: $PyBnf; FluBNF.bat finishes the install, no GitHub account needed"
+        Info "(right after this, when FluBNF.bat started this setup; otherwise open FluBNF.bat)"
         Clear-EngineAttempt
         Info "Or finish by hand, in Command Prompt:"
     } elseif ($access -eq "file") {
-        Ok "engine file found: $EngineFile; FluBNF.bat installs it on its next open, no GitHub account needed"
+        Ok "engine file found: $EngineFile"
         Clear-EngineAttempt
-        Info "Open FluBNF.bat again to install it."
+        if ($EngineFile -like "*.bundle" -and -not $GitPresent) {
+            # FluBNF.bat clones a bundle with git; an archive needs none
+            Warn "git is not on PATH, so FluBNF.bat cannot clone this bundle. Install"
+            Warn "Git for Windows (https://git-scm.com/download/win) and open a new"
+            Warn "window, or ask the lab for pybnf-pf-XXXX.tar.gz, which needs no git."
+        } else {
+            Info "FluBNF.bat installs it, no GitHub account needed: right after this,"
+            Info "when FluBNF.bat started this setup; otherwise open FluBNF.bat."
+        }
     } elseif ($access -eq "yes") {
         Ok "this machine can read $PyBnfRemote -- no invitation needed."
         Info "Run these commands in Command Prompt:"

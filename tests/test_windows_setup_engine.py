@@ -175,10 +175,11 @@ def test_an_engine_file_is_looked_for_where_the_launcher_looks():
 
 def test_a_found_engine_file_or_checkout_skips_the_github_probe():
     """A student with the engine file is never sent to GitHub."""
-    assert ("engine file found: $EngineFile; FluBNF.bat installs it on its "
-            "next open, no GitHub account needed") in ENGINE
-    assert ("engine on disk: $PyBnf; FluBNF.bat finishes the install on its "
-            "next open, no GitHub account needed") in ENGINE
+    assert 'Ok "engine file found: $EngineFile"' in ENGINE
+    assert ("FluBNF.bat installs it, no GitHub account needed: right after "
+            "this,") in ENGINE
+    assert ("engine on disk: $PyBnf; FluBNF.bat finishes the install, no "
+            "GitHub account needed") in ENGINE
     assert ENGINE.count("Test-RemoteAccess $PyBnfRemote") == 1
     after_file = ENGINE.index("} elseif ($EngineFile) {")
     neither = _block(ENGINE, ENGINE.index("} else {", after_file) + 1)
@@ -244,3 +245,15 @@ def test_moving_the_repository_out_of_documents_says_to_drop_its_venv():
     flat = " ".join(" ".join(_printed(remedy)).split())
     assert "delete the .venv folder inside it" in flat
     assert "FluBNF.bat builds a fresh one on its next open" in flat
+
+
+def test_a_bundle_on_a_machine_without_git_is_not_promised():
+    """FluBNF.bat clones a bundle with git; without git it cannot, so setup
+    says so and names the archive, which needs none."""
+    i = PS1.index('Ok "engine file found: $EngineFile"')
+    body = PS1[i:PS1.index("} elseif ($access -eq", i)]
+    assert 'if ($EngineFile -like "*.bundle" -and -not $GitPresent) {' in body
+    assert "FluBNF.bat cannot clone this bundle" in body
+    assert "pybnf-pf-XXXX.tar.gz, which needs no git" in body
+    assert "on its next open" not in body, (
+        "when FluBNF.bat runs setup.ps1 it installs in the same window")

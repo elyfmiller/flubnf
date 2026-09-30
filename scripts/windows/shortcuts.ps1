@@ -64,9 +64,8 @@ try {
         Set-Content -LiteralPath $offered -Value "made once; FluBNF does not remake a deleted Desktop shortcut" -Encoding Ascii
     }
 
-    # the folder the Start menu shortcut opens, one line, for FluBNF.bat's
-    # quick check on later opens (Default = the ANSI code page cmd reads)
-    Set-Content -LiteralPath (Join-Path $RecordDir "start-menu.txt") -Value $Repo -Encoding Default
+    # start-menu.txt, the folder this entry opens, is written by FluBNF.bat
+    # itself after this script: cmd reads it back in its own code page
 } catch {
     Write-Host ("  could not add FluBNF to the Start menu: " + $_.Exception.Message)
 }

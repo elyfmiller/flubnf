@@ -125,10 +125,12 @@ def engine_build(path=None) -> dict:
     except Exception:
         return out
     if checkout:
-        rc, top, err = _git(p, "rev-parse", "--show-toplevel")
+        rc, top, err = _git(p, "rev-parse", "--show-toplevel",
+                          timeout=STATUS_TIMEOUT_S)
         if rc != 0:
             return _unreadable(out, err, rc)
-        rc, sha, err = _git(p, "rev-parse", "HEAD")
+        rc, sha, err = _git(p, "rev-parse", "HEAD",
+                          timeout=STATUS_TIMEOUT_S)
         if rc != 0 or not sha:
             return _unreadable(out, err, rc)
         same = False
@@ -256,12 +258,20 @@ def checkout_steps(path, dirty: bool = False,
     quoted, as a Windows profile folder can hold a space, and named once:
     in a tip it is the longest word by far. No punctuation touches a
     command: a pasted "feature/particle-filter," names no branch."""
+    import sys
     stash = ("stash the local edits first (git stash in that folder), then "
              if dirty else "")
-    return (f"FluBNF moves a clean checkout on {PRODUCTION_ENGINE_BRANCH} to "
-            f"the production build each time it opens. To switch, {stash}run "
-            f'git -C "{path}" checkout {PRODUCTION_ENGINE_BRANCH} and reopen '
-            "FluBNF. Without access to the private fork (a checkout cloned "
+    if (platform or sys.platform) in ("win32", "darwin"):
+        lead = (f"FluBNF moves a clean checkout on {PRODUCTION_ENGINE_BRANCH}"
+                " to the production build each time it opens. To switch, "
+                f'{stash}run git -C "{path}" checkout '
+                f"{PRODUCTION_ENGINE_BRANCH} and reopen FluBNF.")
+    else:
+        # no launcher runs engine-update here: the console is started by hand
+        lead = (f'To switch, {stash}run git -C "{path}" checkout '
+                f"{PRODUCTION_ENGINE_BRANCH}, then flubnf engine-update, "
+                "which fast-forwards it to the production build.")
+    return (lead + " Without access to the private fork (a checkout cloned "
             "from a bundle), rename the engine folder so FluBNF stops using "
             f"it, then {archive_step(platform)}.")
 
@@ -330,5 +340,8 @@ def change(prior: dict | None, now: dict | None) -> str | None:
     if n and p["commit"][:8] == n["commit"][:8] and p["dirty"] == n["dirty"]:
         return None
     had = label(p)
+    if (now or {}).get("source") == "unreadable":
+        return (f"were fitted by engine {had}; git could not read this "
+                f"machine's engine ({warning(now)} {fix(now)})")
     return (f"were fitted by engine {had}; this machine's engine is "
             f"{label(n) if n else 'not found'}")

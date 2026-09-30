@@ -81,10 +81,18 @@ def test_the_start_menu_and_desktop_come_from_windows_not_from_guesses():
     assert 'GetFolderPath("LocalApplicationData")) "FluBNF"' in PS1
 
 
-def test_the_record_the_launcher_reads_is_the_one_the_script_writes():
-    assert ('Set-Content -LiteralPath (Join-Path $RecordDir '
-            '"start-menu.txt") -Value $Repo') in PS1
-    assert "\\FluBNF\\start-menu.txt" in _hook()
+def test_cmd_writes_the_record_it_reads_so_an_accented_path_matches():
+    """PowerShell's Default encoding is the ANSI code page, cmd reads the
+    OEM one: for C:\\Users\\José a record PowerShell wrote never matched,
+    and every open ran PowerShell again. cmd writes it, after the call."""
+    lines = _hook().split("\r\n")
+    call = next(i for i, ln in enumerate(lines) if ln.startswith("powershell"))
+    write = lines.index('if exist "%APPDATA%\\Microsoft\\Windows\\Start Menu\\'
+                        'Programs\\FluBNF.lnk" cd >"%LOCALAPPDATA%\\FluBNF\\'
+                        'start-menu.txt"')
+    assert call < write
+    assert "start-menu.txt" not in PS1.split("#>", 1)[1].replace(
+        "# start-menu.txt", "")
 
 
 def test_it_never_fails_a_launch():
@@ -160,8 +168,6 @@ def test_a_first_run_puts_it_in_the_start_menu_and_on_the_desktop(tmp_path):
     assert _same(lnk["cwd"], REPO), lnk
     assert "flubnf.ico" in lnk["icon"].lower(), lnk
     assert (tmp_path / "Desktop" / "FluBNF.lnk").is_file()
-    rec = (tmp_path / "FluBNF" / "start-menu.txt").read_text().strip()
-    assert _same(rec, REPO), rec
 
 
 @windows_only

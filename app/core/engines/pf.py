@@ -192,6 +192,13 @@ def engine_fix(_platform: str | None = None) -> str:
     (engine_build.archive_step; Windows has no setup_engine.sh), or
     FLUBNF_PYBNF."""
     from app.core import engine_build as _eb
+    try:
+        checkout = (Path(PYBNF_PF) / ".git").exists()
+    except OSError:
+        checkout = False
+    if checkout:
+        # no launcher unpacks an archive over a git checkout
+        return _eb.checkout_steps(PYBNF_PF, platform=_platform)
     return (f"To install it, {_eb.archive_step(_platform)}, or point "
             "FLUBNF_PYBNF at the unpacked engine.")
 

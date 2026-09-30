@@ -240,6 +240,17 @@ def test_every_powershell_and_probe_reads_from_nul():
     assert "<nul" in probe, probe
 
 
+def test_the_perl_offer_comes_once_not_on_every_retry():
+    """A declined or failed winget must not be back on every open: once a
+    failed attempt is stamped, a retry skips the question."""
+    i = LINES.index(":engineinstall")
+    block = LINES[i:LINES.index(":perldone")]
+    skip = block.index('if exist "%ATTEMPT%" goto :perldone')
+    ask = next(k for k, ln in enumerate(block) if ln.startswith("choice "))
+    assert skip < ask
+    assert "  echo Trying the particle filter engine install again, a few minutes." in block
+
+
 # ------------------------------------------------------------ the engine block
 def test_a_named_engine_file_leaves_every_archive_variable_set():
     """FLUBNF_PYBNF_BUNDLE jumped past `set "ARCHIVES=0"`, and the unquoted

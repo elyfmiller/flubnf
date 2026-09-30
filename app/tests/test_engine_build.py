@@ -592,3 +592,37 @@ def test_the_retro_route_refuses_a_resume_on_another_build(tmp_path,
     RS._retro_status.pop(SEASON, None)
     client.post("/retro/run", data=form, follow_redirects=False)
     assert len(launched) == 1
+
+
+# ------------------------------------------------ remedies the launchers keep
+def test_only_the_platforms_whose_launcher_updates_promise_it():
+    """FluBNF.bat and FluBNF.command run engine-update on every open; on
+    Linux the console is started by hand, so the step is the command."""
+    for plat in ("win32", "darwin"):
+        assert "each time it opens" in EB.checkout_steps("/x", platform=plat)
+    linux = EB.checkout_steps("/x/PyBNF-pf", platform="linux")
+    assert "each time it opens" not in linux
+    assert ('git -C "/x/PyBNF-pf" checkout feature/particle-filter, then '
+            "flubnf engine-update") in linux
+
+
+def test_a_checkout_without_pf_py_is_not_sent_to_the_archive(tmp_path,
+                                                             monkeypatch):
+    """No launcher unpacks an archive over a git checkout, so the missing-
+    engine remedy for one names git, not the archive."""
+    from app.core.engines import pf
+    (tmp_path / "PyBNF-pf" / ".git").mkdir(parents=True)
+    monkeypatch.setattr(pf, "PYBNF_PF", str(tmp_path / "PyBNF-pf"))
+    fix = pf.engine_fix("win32")
+    assert "checkout feature/particle-filter" in fix
+    assert not fix.startswith("To install it")
+    monkeypatch.setattr(pf, "PYBNF_PF", str(tmp_path / "nothing"))
+    assert pf.engine_fix("win32").startswith("To install it, save ")
+
+
+def test_a_resume_over_an_unreadable_checkout_names_git_not_a_missing_engine():
+    now = {"branch": "", "commit": "", "dirty": False, "source": "unreadable",
+           "path": "/x/PyBNF-pf", "error": "git did not answer within 10 s"}
+    said = EB.change(PROD, now)
+    assert "git could not read this machine's engine" in said, said
+    assert "not found" not in said
