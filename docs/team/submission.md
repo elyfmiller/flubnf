@@ -6,12 +6,12 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-09-30: the hub update of both cards is ready for Ely to open:
-  branch `NAU_PyBNF-metadata-update` of elyfmiller/FluSight-forecast-hub,
-  synced by Ely with cdcepi `main` (cdb1a878: the card commit c736656 plus
-  the sync merge). It changes only the two cards, which are byte-identical
-  to FluBNF's `model-metadata/` on `dev`; hubValidations passes them on the
-  branch, and the model lane approved the Oracle SIHRS wording (model.md).
+- 2026-09-30: cdcepi/FluSight-forecast-hub#3713 (opened by Ely) updates
+  both cards on the hub, from branch `NAU_PyBNF-metadata-update` of
+  elyfmiller/FluSight-forecast-hub (cdb1a878). GitHub's test merge changes
+  only the two cards, byte-identical to FluBNF's `model-metadata/` on
+  `dev`, and hubValidations passes both (6 of 6). Waiting on CDC to merge;
+  then that branch can go. The fork's other branches are deleted.
 - 2026-09-30: the Oracle SIHRS card names the Liu-West filter (b41fc92).
 - 2026-09-30: both model cards designated for `wk inc flu hosp` only, and
   the vendored hub metadata schema brought up to date (0e6e3cc). Both
@@ -22,7 +22,7 @@ and CDC's rules. The season's facts are in
   Oracle SIHRS file checked yet (no engine in the cloud; see Model below).
 - 2026-09-30: the hub holds the cards of cdcepi/FluSight-forecast-hub#3705
   (merged 2026-09-24), one version behind ours (Groundhog 1.0, Oracle
-  SIHRS 1.1), until Ely's pull request merges.
+  SIHRS 1.1), until #3713 merges.
 
 ## Decided
 
@@ -57,7 +57,3 @@ and CDC's rules. The season's facts are in
   hub clone is current: re-vendor the schema and update `SCHEMA_SHA256`.
 
 ## Open
-
-- Ely opens the hub pull request from `NAU_PyBNF-metadata-update`. Not
-  needed for 2026-10-07: a designated model already counts for every
-  target it submits.
