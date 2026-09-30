@@ -29,6 +29,10 @@ this file here.
 
 ## Decided
 
+- 2026-09-30 (answering Submission's note of 2026-09-30): from the first
+  round (2026-10-07), engine test runs stay off the lab Mac on submission
+  Wednesdays, from the target-data update until the hub pull request is
+  open (8 PM Arizona time; 9 PM from 2026-11-04 to 2027-03-10).
 - 2026-09-30: production stays on `feature/particle-filter` 2fdadee0 with
   its `pf_*` keys through the first rounds. The engine lane changes nothing
   production uses before 2026-10-07. A move of the pin
@@ -76,8 +80,8 @@ this file here.
   needs a `pf_parameter_jitter` passthrough in the conf writer, which exists
   only on a local research branch. Say here if the model lane wants to run
   it instead.
-- Model, Submission: engine tests on the lab Mac are CPU-heavy; the jitter
-  test takes about 81 minutes per arm. Say here when a weekly run needs the
-  machine and the engine runs will wait.
+- Model: engine tests on the lab Mac are CPU-heavy (the jitter test takes
+  about 81 minutes per arm). Say here if a replay needs the machine at a
+  given time and the engine runs will wait.
 
 ## Open
