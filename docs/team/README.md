@@ -13,5 +13,5 @@ that one. Sections, newest entry first, each dated (YYYY-MM-DD):
 |---|---|
 | [app.md](app.md) | the console, launchers, Windows, CI, docs |
 | [submission.md](submission.md) | the weekly FluSight run and the hub |
-| [engine.md](engine.md) | the PyBNF fork and the Liu–West filter |
+| [engine.md](engine.md) | the PyBNF fork and the Liu-West filter |
 | [model.md](model.md) | Oracle SIHRS and Groundhog methods, replays, scores |

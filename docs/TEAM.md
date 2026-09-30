@@ -26,7 +26,7 @@ hand work across.
 |---|---|---|---|
 | App | the console, launchers (FluBNF.command, FluBNF.app, FluBNF.bat, setup scripts), Windows, CI, docs | cloud; branch `dev` | [team/app.md](team/app.md) |
 | Submission | the weekly FluSight run: data checks, validation, the hub pull requests, CDC rules | cloud | [team/submission.md](team/submission.md) |
-| Engine | the private PyBNF fork, the Liu–West filter, its port to public PyBNF as `lwf` | lab Mac | [team/engine.md](team/engine.md) |
+| Engine | the private PyBNF fork, the Liu-West filter, its port to public PyBNF as `lwf` | lab Mac | [team/engine.md](team/engine.md) |
 | Model | the Oracle SIHRS and Groundhog methods, replays and scores | lab Mac | [team/model.md](team/model.md) |
 
 A new agent picks the lane closest to its task, or adds a row and a notes
@@ -80,7 +80,7 @@ paste, or has a lane that can push commit it.
   owns.
 - Never open a pull request to cdcepi/FluSight-forecast-hub or email CDC
   unless Ely asks.
-- Say "Liu–West filter" for the filter and "forecasting sample" for its
+- Say "Liu-West filter" for the filter and "forecasting sample" for its
   output, not "posterior"; the code keeps its `pf` names until the engine
   lane starts the `lwf` migration.
 - Nothing reaches a student's machine until it is on `main`: the launchers

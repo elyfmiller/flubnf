@@ -84,11 +84,14 @@ two-per-target limit for the admissions target.
 
 | Model id | Key | Method |
 |---|---|---|
-| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu–West filter (10,000 particles per jurisdiction from Aug 1) in a private PyBNF fork, whose output is a forecasting sample (not an exact posterior), then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
+| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in a private PyBNF fork, whose output is a forecasting sample (not an exact posterior), then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
 | `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions, with a FluSurv-NET donor bank; no fitting, no engine needed |
 
 Recorded pooled relative WIS (ratio of sums vs FluSight-baseline, replays of
 2023-24 to 2025-26, not real-time): Oracle SIHRS 0.738, Groundhog 0.666.
+These are the pre-registration screens' figures; in-app replays on build
+2132f15 gave the Oracle SIHRS 0.767 / 0.702 / 0.782 by season (see
+[team/model.md](team/model.md)).
 The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### What FluBNF produces
@@ -141,12 +144,12 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### Naming and the public PyBNF port (agreed 2026-09-30)
 
-- The PyBNF maintainer (Bill Hlavacek) agreed that the Liu–West filter goes
-  into public lanl/PyBNF as `job_type = lwf` ("Liu–West Particle Filter", its
+- The PyBNF maintainer (Bill Hlavacek) agreed that the Liu-West filter goes
+  into public lanl/PyBNF as `job_type = lwf` ("Liu-West Particle Filter", its
   own `filter` family, settings prefixed `lwf_`), beside an exact sampler,
-  IBIS (lanl/PyBNF#973), to be built later. The Liu–West filter is the fast
+  IBIS (lanl/PyBNF#973), to be built later. The Liu-West filter is the fast
   real-time option; IBIS will give the exact fixed-parameter posterior.
-- Wording: "The Oracle SIHRS is fitted weekly by the Liu–West filter." Its
+- Wording: "The Oracle SIHRS is fitted weekly by the Liu-West filter." Its
   output is a forecasting sample of drifting parameters, never a posterior.
   Once IBIS exists, do not say "particle filter" unqualified.
 - Production SIHRS fits five parameters (Reff, eps1, phi1, mult, r); notes
@@ -220,9 +223,10 @@ Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
 
 Still open:
 
-- Keep the Liu–West naming consistent in anything written for the team;
+- Keep the Liu-West naming consistent in anything written for the team;
   leave the code's `pf` names alone until the port lands. The Oracle SIHRS
-  card still says "particle filter" (the model lane's text).
+  card on `dev` names the Liu-West filter (b41fc92); the hub's copy changes
+  with the submission lane's cards pull request.
 - Read the 2025-26 evaluation:
   https://www.cdc.gov/flu-forecasting/evaluation/2025-2026-report.html
   (not summarised here yet).
