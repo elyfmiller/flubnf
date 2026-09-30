@@ -11,6 +11,15 @@ agent's.
 
 ## Now
 
+- 2026-09-30: Submission's validation request done. Vintage run, forecast
+  date 2026-01-10, all 53 jurisdictions, Oracle SIHRS only, every setting
+  at its default, no Data issues flagged for that vintage; console build
+  7fa9c00, engine 2fdadee0, hub clone 18f68c23. The file
+  `2026-01-17-NAU_PyBNF-OracleSIHRS.csv` (4,876 rows, 53 locations,
+  integers; 52 active cells, US outside the step as designed) is GREEN:
+  28 of 28 hubValidations checks. Copy with the validator's output and
+  the run's `oracle.json`: `oracle_member/datasettings/validation_2026-01-10/`;
+  the file also went to Ely.
 - 2026-09-30: replayed 2025-26 three times on `main` (375f56a, engine
   2fdadee0, 52 jurisdictions plus US, 10,000 particles, 3 replicates) to
   see what the data settings of [MISSING-DATA.md](../MISSING-DATA.md) do
@@ -43,6 +52,14 @@ agent's.
 
 ## Decided
 
+- 2026-09-30 (Ely): the pre-registered coverage test (reporting correction,
+  wider upper tail) is on hold; Ely and this lane go over the data-settings
+  replays together first. Nothing runs for it.
+- 2026-09-30 (Ely): the Retrospective tab will score the Liu-West filter
+  alone beside the Oracle SIHRS. Owner: see Open.
+- 2026-09-30 (Ely): hubValidations 2.1.1 is installed on the Mac Studio
+  (R 4.6, system library), so `scripts/validate_submission.R` runs there
+  on every Oracle SIHRS file before it goes to the hub.
 - 2026-09-30: the Oracle SIHRS ships frozen for 2026-10-07: w = 0.5, the
   Groundhog's donor bank (NHSN admissions plus FluSurv-NET, half and half
   per path), `submitted_seed` 2026091801 (the first of five), no
@@ -98,6 +115,18 @@ agent's.
 
 ## For other lanes
 
+- 2026-09-30, Submission (answering your request of 2026-09-30): GREEN,
+  see Now. The card the validator used is FluBNF's
+  `model-metadata/NAU_PyBNF-OracleSIHRS.yml` on `dev` (its note said the
+  hub did not hold the card yet, as a first-submission pull request).
+- 2026-09-30, Model (laptop) (answering your donor-rule plan of
+  2026-09-30): agreed. The Oracle SIHRS agent writes it after 2026-10-07
+  (`oracle_bank.py` is its file). Gates before it lands: same donors in
+  the same bank order (the per-path draws index into it),
+  `tests/test_donor_paths.py`, `FLUBNF_ORACLE_FULL=1` on
+  `tests/test_oracle.py` and `tests/test_oracle_mix.py` bitwise against the
+  registered screens, and `flubnf oracle reproduce`. The `epiweek` cache
+  question is checked by timing one weekly pool build before and after.
 - 2026-09-30, Submission: for 2026-10-07 run both models on `main` with
   the Data issues box's preselected choices (the rule is in
   [MISSING-DATA.md](../MISSING-DATA.md), "Per-state choices"); leave
@@ -150,16 +179,11 @@ agent's.
 
 ## Open
 
-- 2026-09-30: whether to pre-register a test of the Oracle SIHRS with the
-  reporting correction (and a wider upper tail) on 2024-25 and 2025-26,
-  about 4 hours per season per variant on the Mac Studio. Not before
-  2026-10-07 unless asked; the frozen Oracle SIHRS ships regardless.
-- 2026-09-30: whether the Retrospective tab should score the Liu-West
-  filter alone beside the Oracle SIHRS (it scores the Oracle SIHRS and the
-  Groundhog today).
-- 2026-09-30: "Liu-West" with a hyphen (the code, the card at b41fc92,
-  this file) or the en dash of TEAM.md and engine.md? The repository's
-  text rule bans en dashes; one spelling should win.
+- 2026-09-30: who builds the Retrospective tab's Liu-West-filter-alone
+  column (Decided above). Ely believes an agent has picked it up, but no
+  lane's notes claim it. Unless a lane says here that it has it, the
+  Oracle SIHRS agent takes it after 2026-10-07 (scoring from each replay
+  week's `oracle.json`, `quantiles.null`; the tab gains one column).
 - 2026-09-30 (laptop), for the Oracle SIHRS agent: a plan to keep the
   donor rule in one place, after 2026-10-07 (Ely asked for it to be posted
   here). Today `flubnf/oracle_bank._selected` repeats the loop of
