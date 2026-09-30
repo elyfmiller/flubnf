@@ -19,7 +19,11 @@ for which data streams form the pool; the test holds the two equal). The
 Groundhog is the calendar analogue with a committed FluSurv-NET donor bank
 spliced in. Both are designated: a team may designate at most two models,
 and designation makes a model eligible for the hub ensemble and the public
-visualisation.
+visualisation. Both cards also carry
+`designated_targets: ["wk inc flu hosp"]` (optional, new for 2026-27): the
+team submits only the weekly admissions target this season, so each
+designation covers that target alone. Without the field, a designated model
+counts for every target it submits.
 
 The previous registration, `LosAlamos_NAU`, submitted from 2023 through
 2026-09 (`LosAlamos_NAU-CModel_Flu` and `LosAlamos_NAU-SIHRS`). Those
@@ -47,7 +51,7 @@ Validate against the hub's own schema before opening a pull request:
 
 `app/tests/test_model_metadata.py` does that on every run: it validates
 both cards against `app/tests/hub_model_metadata_schema.json`, a byte copy
-of that schema (sha256 7fb27f66e7e2a573, checked against the hub clone
+of that schema (sha256 bf9b14cdf8243155, checked against the hub clone
 whenever one is present), including the 200-character limit on `methods`.
 
 A submission CSV is checked the way the hub's CI checks it, with the hub's
