@@ -5,6 +5,9 @@ The Oracle SIHRS and Groundhog methods, replays and scores; see
 Works on the lab Mac (the Mac Studio); its research record lives in the
 lab's private FluBNF-local tree, `research/groundhog-beta/oracle_member/`,
 not in this repository.
+Entries marked (laptop) are the Groundhog and donor-bank agent's, on
+Ely's laptop, which pushes them itself; the others are the Oracle SIHRS
+agent's.
 
 ## Now
 
@@ -28,6 +31,13 @@ not in this repository.
   - `run.drop_same_day=on`: 0.918, 0.927, 0.42/0.71/0.91; 0.833.
   Record: `oracle_member/datasettings/` (README with the tables, the score
   script, per-cell scores). Nothing from this is in a branch or PR.
+- 2026-09-30 (laptop): nothing in flight for the Groundhog or the donor
+  banks; no branch, no pull request. The Groundhog replayed on `dev`
+  (453dcd8, the same code as 7fa9c00; hub at 99cc45a) scores relWIS 0.6705
+  on 17,116 cells under FluSight's cell rule (0.722, 0.659, 0.660 by
+  season). On the README record's 15,340 cells its WIS equals the
+  2026-09-21 replay bit for bit (0.666); the other 1,776 cells are the zero
+  truths and zero medians that rule now scores.
 - 2026-09-23: the Oracle SIHRS wiring (PR #13) and replays without a
   stored-forecast backfill (PR #14) are on `main`.
 
@@ -63,6 +73,28 @@ not in this repository.
   no fits, forecasts or particles are kept for retrospectives beyond what a
   replay stores. `flubnf oracle backfill` and `reproduce` are verification
   tools only.
+- 2026-09-23 (laptop): the donor selection rule has two copies.
+  `flubnf.analogue._donor_cells` picks the donor weeks for the Groundhog
+  (through `donor_ratios`) and for the Oracle SIHRS's FluSurv-NET half
+  (through `donor_paths`, in `flubnf/oracle_mix.py`); the admissions half
+  repeats it in `flubnf/oracle_bank._selected`, then adds the FBASE count
+  floor of 10. All three pools share the bandwidth (2), the calendar
+  distance and the exclusion registry. Changing any of it moves both
+  submissions: it needs a pre-registration and Ely's decision, and both
+  copies change in the same commit. The rule:
+  [DONOR-BANKS.md](../DONOR-BANKS.md).
+- 2026-09-22 (laptop): a donor bank changes only as a new committed file
+  with a new digest; `flubnf.bank.read` refuses a mismatch, and each run
+  records the digest it used. Both models ship `flusurv@06eff6a7` as their
+  auxiliary bank; `iliplus@f6ee2840` is research only. The FluSurv-NET
+  shrink is refitted in every run for its target season
+  (`fit_log_ratio_shrink`), never a constant. A donor season leaves the
+  pool only through a registered `DonorSeasonExclusion` (today 2020-21 and
+  2021-22).
+- 2026-09-17 (laptop, wording): the Groundhog claims no coverage
+  guarantee, in cards, papers and on the site. Say "conformal in
+  construction only" or "Mondrian-style", never "Mondrian split-conformal";
+  avoid "seasonal pool" (Conformal Seasonal Pools is another method).
 
 ## For other lanes
 
@@ -103,6 +135,18 @@ not in this repository.
   the Oracle SIHRS in the Retrospective tab (Open below), the tab gains a
   column; the model lane does the scoring, from each replay week's
   `oracle.json` (`quantiles.null`), so no second replay is needed.
+- 2026-09-30 (laptop), App and Engine: a change to `flubnf/analogue.py`,
+  `flubnf/bank.py`, `app/core/engines/analogue.py` or `data/banks/` can be
+  checked without the engine or the lab Mac: `flubnf groundhog retro all
+  --aux flusurv --no-compare` (about 5 minutes) must give relWIS 0.6705 on
+  17,116 cells with the hub at 99cc45a. `tests/test_donor_paths.py` pins
+  `donor_ratios` at four points on the committed banks, and skips rather
+  than fails when a bank is rebuilt.
+- 2026-09-30 (laptop), App: the README's Groundhog row (0.666 on 15,340
+  cells) was scored under the cell rule before 2026-09-25, and its
+  "reproduces on any machine" command now prints 0.6705 on 17,116 cells
+  for the same forecasts (see Now). Relabel the row as the old rule's, or
+  update it.
 
 ## Open
 
@@ -116,3 +160,7 @@ not in this repository.
 - 2026-09-30: "Liu-West" with a hyphen (the code, the card at b41fc92,
   this file) or the en dash of TEAM.md and engine.md? The repository's
   text rule bans en dashes; one spelling should win.
+- 2026-09-30 (laptop): no test holds the two copies of the donor rule
+  equal. Add one (`oracle_bank._selected` against `_donor_cells` on the
+  committed data)? Tests only, no output change; not before 2026-10-07
+  unless Ely asks.
