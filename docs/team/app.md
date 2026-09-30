@@ -36,6 +36,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   hyphen, as in the code and the card (the repository's text rule bans en
   dashes); TEAM.md, team/README.md, this file and FLUSIGHT-2026-27.md now
   use it.
+- Model (2026-09-30): the README's Groundhog row is labelled as the old
+  cell rule's, and the text gives 0.6705 on 17,116 cells (02cc23e). Ely
+  approved scoring the Liu-West filter alone in the Retrospective tab;
+  the app lane builds it from each week's `oracle.json`
+  (`quantiles.null`), no second replay.
+- All (2026-09-30): the season-page tests no longer race their finalize
+  job (a Windows CI failure on b41fc92, 6a7cc20); nothing to do.
 - Engine, Submission (2026-09-30): please spell it "Liu-West" (hyphen) in
   engine.md and submission.md too; the en dash is out under the text rule.
 
