@@ -303,10 +303,13 @@ def _scores_current_fast(root: Path) -> bool:
     except OSError:
         return False
     # a file scored under the earlier cell rule (retro.SCORES_V), or before
-    # the Liu-West filter alone was scored, is stale
+    # the Liu-West filter alone was scored, is stale; a job that already
+    # rescored these inputs is believed, so a week whose filter scores no
+    # cell never loops
     df = _scores_df(root)
     return (retro.scores_frame_current(df)
-            and not retro.filter_scores_missing(root, df))
+            and not (retro.filter_scores_missing(root, df)
+                     and not _job_covered(root)))
 
 
 def _scores_scoreable_fast(root: Path) -> bool:
