@@ -98,8 +98,7 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 - Optional knobs: `output.horizon_minus1` (adds h -1) and
   `output.rate_change_pmf` (adds the rate-change pmf).
 - Not produced: the ED-visit target, both peak targets, sample output.
-  These are the obvious gaps if the team wants to cover more targets or
-  designate models for the ED target.
+  For 2026-27 the team submits the weekly admissions target only (below).
 
 ## Weekly routine (Sunday to Wednesday)
 
@@ -206,19 +205,29 @@ Engine findings to respect:
   (through 2026-10-28 and from 2027-03-17), 9 PM from 2026-11-04 to
   2027-03-10.
 
-## Open items before 2026-10-07
+## Decided for 2026-27, and what is still open
 
-- Confirm the two NAU_PyBNF metadata cards are merged into the hub's
-  `model-metadata/` (the first model-output PR fails without them). Consider
-  adding `designated_targets` now that the field exists.
-- Decide whether to turn on the rate-change pmf and horizon -1 for the season.
-- Decide whether to add the ED-visit target (up to two designated models)
-  and the peak targets; FluBNF does not produce them today.
+Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
+
+- Scope: `wk inc flu hosp` only: quantiles, horizons 0 to 3, all 53
+  locations. No ED-visit, peak, rate-change or horizon -1 rows; the knobs
+  `output.horizon_minus1` and `output.rate_change_pmf` stay off.
+- Both models are designated for that target alone
+  (`designated_targets: ["wk inc flu hosp"]` in both cards).
+- Both NAU_PyBNF cards are on the hub (cdcepi/FluSight-forecast-hub#3705,
+  merged 2026-09-24), one version behind FluBNF's; bringing them up to date
+  is not needed for 2026-10-07.
+
+Still open:
+
 - Keep the Liu–West naming consistent in anything written for the team;
-  leave the code's `pf` names alone until the port lands.
+  leave the code's `pf` names alone until the port lands. The Oracle SIHRS
+  card still says "particle filter" (the model lane's text).
 - Read the 2025-26 evaluation:
   https://www.cdc.gov/flu-forecasting/evaluation/2025-2026-report.html
   (not summarised here yet).
+- Check the first Oracle SIHRS file with `scripts/validate_submission.R`;
+  the Groundhog's weekly file already passes it.
 - Windows laptops: the launcher fixes (engine updates on open, the Start
   menu entry) are on `main` since 2026-09-30 (elyfmiller/flubnf PR #25);
   students should open FluBNF.bat once to pick them up.

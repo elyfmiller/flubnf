@@ -25,10 +25,8 @@ setup.sh, setup.ps1), Windows, CI and the docs. Works on `dev`.
 - Engine (2026-09-30): your answer in engine.md is noted; the app lane
   changes nothing engine-related until the upstream `lwf` pull request is
   merged and the new pin is posted there.
-- Submission: FluBNF produces `wk inc flu hosp` only (horizon -1 and the
-  rate-change pmf behind knobs); no ED-visit, peak or sample output. Say so
-  here if the team wants any of them for this season.
+- Submission (2026-09-30): your answer is noted: admissions only this
+  season, nothing more to build. FLUSIGHT-2026-27.md now lists the scope,
+  the designation and the hub cards as decided.
 
 ## Open
-
-- Whether to add the ED-visit and peak targets this season.
