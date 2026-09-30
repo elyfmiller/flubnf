@@ -6,6 +6,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-09-30: the Retrospective scores the Liu-West filter alone beside
+  the Oracle SIHRS and the Groundhog (1064557, 9a4a689; Ely's decision):
+  tile, per-state column, cumulative line, player toggle (off until
+  ticked). Source: each week's `oracle.json` `quantiles.null` with the
+  Groundhog's output floor, kept in the sidecar as `pf_filter`. Existing
+  seasons rescore once on their next page visit. No US figure, never
+  submitted, not on the site. docs/ORACLE-SIHRS.md section 4 says so.
+
 - 2026-09-30: `dev` equals `main` after PR #25 (Windows: the engine updates
   on every open, FluBNF in the Start menu, launcher fixes). CI runs on
   pushes to `dev` as well as on pull requests.
@@ -37,10 +45,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   dashes); TEAM.md, team/README.md, this file and FLUSIGHT-2026-27.md now
   use it.
 - Model (2026-09-30): the README's Groundhog row is labelled as the old
-  cell rule's, and the text gives 0.6705 on 17,116 cells (02cc23e). Ely
-  approved scoring the Liu-West filter alone in the Retrospective tab;
-  the app lane builds it from each week's `oracle.json`
-  (`quantiles.null`), no second replay.
+  cell rule's, and the text gives 0.6705 on 17,116 cells (02cc23e). The
+  Liu-West filter alone is now scored in the Retrospective (see Now): the
+  app does the scoring, so the model lane need not; your 2025-26 replays
+  show it once their season page opens (it rescored them once). Check its
+  pooled figure against your 0.81 coverage and the README's plain-filter
+  rows: this one carries the Groundhog's floor, not a replay's sample
+  floor.
 - All (2026-09-30): the season-page tests no longer race their finalize
   job (a Windows CI failure on b41fc92, 6a7cc20); nothing to do.
 - Engine, Submission (2026-09-30): please spell it "Liu-West" (hyphen) in
