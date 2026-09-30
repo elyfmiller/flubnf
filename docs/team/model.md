@@ -55,8 +55,9 @@ agent's.
 - 2026-09-30 (Ely): the pre-registered coverage test (reporting correction,
   wider upper tail) is on hold; Ely and this lane go over the data-settings
   replays together first. Nothing runs for it.
-- 2026-09-30 (Ely): the Retrospective tab will score the Liu-West filter
-  alone beside the Oracle SIHRS. Owner: see Open.
+- 2026-09-30 (Ely): the Retrospective tab scores the Liu-West filter
+  alone beside the Oracle SIHRS; the App lane built it (1064557, 9a4a689)
+  and the model lane checked it (For other lanes).
 - 2026-09-30 (Ely): hubValidations 2.1.1 is installed on the Mac Studio
   (R 4.6, system library), so `scripts/validate_submission.R` runs there
   on every Oracle SIHRS file before it goes to the hub.
@@ -115,6 +116,14 @@ agent's.
 
 ## For other lanes
 
+- 2026-09-30, App (answering your note of 2026-09-30): checked. On the
+  2025-26 no-settings replay your `pf_filter` scoring gives, on the 26
+  weeks, relWIS 0.846, log relWIS 1.011, coverage 0.369 / 0.621 / 0.807
+  (31 weeks: 0.849, 1.009, 0.363 / 0.617 / 0.814); this lane's own
+  scoring of the same `quantiles.null` without the floor gave 0.846,
+  1.012, 0.369 / 0.621 / 0.806 (31 weeks: 0.849, 1.010, 0.362 / 0.617 /
+  0.814). The Groundhog's floor moves nothing past the third decimal. The
+  Oracle SIHRS and Groundhog rows match too.
 - 2026-09-30, Submission (answering your request of 2026-09-30): GREEN,
   see Now. The card the validator used is FluBNF's
   `model-metadata/NAU_PyBNF-OracleSIHRS.yml` on `dev` (its note said the
@@ -160,10 +169,6 @@ agent's.
   cards pull request whenever Ely asks (not needed for 2026-10-07).
 - 2026-09-30, App: FLUSIGHT-2026-27.md still says the Oracle SIHRS card
   "still says particle filter"; stale since b41fc92.
-- 2026-09-30, App: if Ely wants the Liu-West filter alone scored beside
-  the Oracle SIHRS in the Retrospective tab (Open below), the tab gains a
-  column; the model lane does the scoring, from each replay week's
-  `oracle.json` (`quantiles.null`), so no second replay is needed.
 - 2026-09-30 (laptop), App and Engine: a change to `flubnf/analogue.py`,
   `flubnf/bank.py`, `app/core/engines/analogue.py` or `data/banks/` can be
   checked without the engine or the lab Mac: `flubnf groundhog retro all
@@ -179,11 +184,6 @@ agent's.
 
 ## Open
 
-- 2026-09-30: who builds the Retrospective tab's Liu-West-filter-alone
-  column (Decided above). Ely believes an agent has picked it up, but no
-  lane's notes claim it. Unless a lane says here that it has it, the
-  Oracle SIHRS agent takes it after 2026-10-07 (scoring from each replay
-  week's `oracle.json`, `quantiles.null`; the tab gains one column).
 - 2026-09-30 (laptop), for the Oracle SIHRS agent: a plan to keep the
   donor rule in one place, after 2026-10-07 (Ely asked for it to be posted
   here). Today `flubnf/oracle_bank._selected` repeats the loop of
