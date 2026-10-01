@@ -96,8 +96,10 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     p = playback.build_week(root, SEASON, ASOF)
     assert set(p) == {"_v", "asof", "locations", "truth", "seen", "models", "official",
-                      "stats"}
+                      "stats", "us_step"}
     assert p["asof"] == ASOF
+    # no oracle.json beside the week: it does not say what its US pf is
+    assert p["us_step"] is None
     assert p["locations"] == ["Ohio", "Utah"]
 
     # the stored members and nothing computed (no blend)
@@ -173,6 +175,32 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
     sp = root / "weeks" / ASOF / "samples.json"
     os.utime(sp, (future + 60, future + 60))
     assert playback.build_week(root, SEASON, ASOF)["asof"] == ASOF
+
+
+def test_the_payload_says_which_us_pf_the_week_stored(tmp_path, monkeypatch):
+    """us_step, from the week's oracle.json: the Oracle step on the US cell
+    since addendum A3, the Liu-West filter alone before it. A payload cached
+    before the key existed (CACHE_V 6) is rebuilt."""
+    root = _mk_root(tmp_path, monkeypatch)
+    wd = root / "weeks" / ASOF
+    cf = root / "playback_cache" / f"{ASOF}.json"
+    for us, outside, want in ((("both", "0"), [], "stepped"),
+                              (("outside", None), ["US"], "filter")):
+        loc = {"fips": "US", "state": us[0]}
+        if us[1]:
+            loc["rng_key"] = us[1]
+        (wd / "oracle.json").write_text(json.dumps({
+            "applied": True, "cells": {"outside_member": outside},
+            "locations": {"US": loc}}))
+        cf.unlink(missing_ok=True)
+        assert playback.build_week(root, SEASON, ASOF)["us_step"] == want
+    old = json.loads(cf.read_text())
+    old.pop("us_step")
+    old["_v"] = 6
+    cf.write_text(json.dumps(old))
+    future = cf.stat().st_mtime + 60
+    os.utime(cf, (future, future))
+    assert playback.build_week(root, SEASON, ASOF)["us_step"] == "filter"
 
 
 # ------------------------------------------------------------ stats sourcing

@@ -9,13 +9,15 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | Module | Holds | Imports |
 |---|---|---|
 | **Assembly** | | |
-| `server.py` | builds the app, in this order: `app` and the `/static` mount; the middleware (the same-host guard, then the sandbox engine guard, which wraps it); the tab routers, in the order of the **Tabs** rows below; the `sandbox_storage` Jinja global; `datasets_ui.py`'s router, last, and the `dataset_upload_mb` global; then the startup warm thread (`_start_background_warm`: version probe, home template and outlook, latest vintage frame, report modules), started last. Its public names are `app`, `templates`, `VERSIONS` and `RUNNING_SHA` (`app/core/site_build.py` reads the last three there) | every module here |
+| `server.py` | builds the app, in this order: `app` and the `/static` mount; the middleware (the same-host guard, then the sandbox engine guard, which wraps it, then the no-store header around both, then the slow-request log, outermost); the tab routers, in the order of the **Tabs** rows below; the `sandbox_storage` Jinja global; `datasets_ui.py`'s router, last, and the `dataset_upload_mb` global; then the startup warm thread (`_start_background_warm`: version probe, home template and outlook, latest vintage frame, report modules), started last. Its public names are `app`, `templates`, `VERSIONS` and `RUNNING_SHA` (`app/core/site_build.py` reads the last three there) | every module here |
 | **Support** (`app/ui/`) | | |
 | `state.py` | `REPO` and `UI_DIR`; the startup trace (`_trace`, on `FLUBNF_STARTUP_TRACE`); `ENGINES`; `_status` (flash, log, phase, the run claim), `_last_form`, `_engine_lock`, `_WARM_DONE`, `_sandbox_status`; `data_mod` (`app.core.data`, loaded on first use) | none (stdlib only) |
 | `versions.py` | the build SHA (`RUNNING_SHA`) and restart banner; component versions (`VERSIONS`, probed by `_warm_versions`); the engine versions a run records | none |
 | `templating.py` | `templates`, the one Jinja env, with its globals and filters; model names and colors; the season month axis; the harmonic figure | `state`, `versions` |
-| `shared.py` | the same-host (CSRF) guard; request helpers (`_flash`, `_back`, `_phase`, `_console_elapsed`); the cached disk scans and their one invalidation hook; run labels, outcome chips, `_latest_results`; the readers of the sandbox's engine claim | `state` |
+| `shared.py` | the same-host (CSRF) guard; the no-store header (`_no_store`: `Cache-Control: no-store` on every response but `/static/`'s, a route's own header kept); request helpers (`_flash`, `_back`, `_phase`, `_console_elapsed`); the cached disk scans and their one invalidation hook; run labels, outcome chips, `_latest_results`; the readers of the sandbox's engine claim | `state` |
 | `forms.py` | the model-settings (knob) form channel and field coercions; anchor dates (`resolve_anchor`) | `state` |
+| `perflog.py` | the slow-request log (`app/state/logs/slow_requests.log`, middleware `slow_request_log` and `POST /api/perf`), and `append`, the rolling append both logs here use | none |
+| `downloadlog.py` | the download log (`app/state/logs/downloads.log`): one line per file served as a download from a run (`/output/download`, the weekly report downloads): local time, route, run, size, sha256 prefix, path | `perflog` |
 | `retro_seasons.py` | the retro roots (`RETRO_ROOT`, `RETRO_RESEAL`, `RETRO_SEAL`) and season claims; the season registry and status; completed weeks; live progress and ETA | `templating` |
 | `retro_prep.py` | season results preparation (one finalize job per root); the scores and relWIS caches; week map cards | `state`, `shared`, `retro_seasons` |
 | `pipeline.py` | the forecast pipeline `_run_all` (engines, submissions, scoring, weekly report, forecast archive); the OS sleep guard | `state`, `shared`, `forms`, `versions` |
@@ -25,7 +27,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `routes/data.py` | Data: the TTL-cached vintage readers, `_data_context` (also `datasets_ui.py`'s), hub pull, freshness (`data.html`) | support modules |
 | `routes/storage.py` | Storage: the disk inventory, the ledger, delete, clear and reclaim (`runs.html`) | support modules |
 | `routes/forecast.py` | Forecast: POST `/run` and the builders of its spec, stop, the progress and series APIs, the run pages (`forecast.html`, `run.html`) | support modules, `routes/data.py`, `routes/output.py` |
-| `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt (`output.html`) | support modules |
+| `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt, and the page's reload check (`output_stamp`) (`output.html`) | support modules |
 | `routes/sandbox.py` | Sandbox (`sandbox.html`), with the sandbox engine guard (middleware) and the Storage panel's sandbox line (`sandbox_storage`) | support modules |
 | `routes/models.py` | Models (`model.html`) | support modules |
 | `routes/methods.py` | Methods (`methods.html`) | support modules |
@@ -43,7 +45,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 - **Imports point down the layers.** No module imports `server.py` or `datasets_ui.py` at top level: a tab that hands a request to `datasets_ui.py` imports it inside the function. No tab module imports another, except `routes/forecast.py`, which reads a run's vintage, files and report from `routes/data.py` and `routes/output.py`. `server.py` imports with `from ... import x as x_routes` only: `import app.ui.x` would rebind its name `app` to the package.
 - **No alias is shadowed.** No module alias is rebound in its file: `datasets_ui.py` imports `state` as `ui_state`, because its workers bind a local `state`.
 - **Paths.** The support modules sit in `app/ui/` and compute their paths from `__file__`; the tab modules sit one directory deeper, so they use `state.REPO` and `state.UI_DIR` and never their own `__file__`.
-- **Order.** The same-host guard is added first and the sandbox guard second (Starlette puts the last one outermost). No two routes serve one concrete path with the same method, but the first route a path matches names the `Allow` header of a wrong-method request: so `routes/storage.py` is included before `routes/forecast.py` (POST `/runs/clear` before GET `/runs/{run_id}`), `routes/retro.py` keeps POST `/retro/stop` and `/retro/run` above GET `/retro/{season}`, and `datasets_ui.py` comes last. The warm thread starts at import, last, and only from `server.py`.
+- **Order.** The same-host guard is added first, the sandbox guard second, the no-store header third and the slow-request log last (Starlette puts the last one outermost). No two routes serve one concrete path with the same method, but the first route a path matches names the `Allow` header of a wrong-method request: so `routes/storage.py` is included before `routes/forecast.py` (POST `/runs/clear` before GET `/runs/{run_id}`), `routes/retro.py` keeps POST `/retro/stop` and `/retro/run` above GET `/retro/{season}`, and `datasets_ui.py` comes last. The warm thread starts at import, last, and only from `server.py`.
 - **Annotations.** Every module has `from __future__ import annotations`, so FastAPI resolves a handler's `Request`, `Form` or `BackgroundTasks` from the module's globals: each module imports what its handlers name (`ruff check --select F821` flags a missing one).
 
 ## Routes by console tab
@@ -70,15 +72,16 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/api/progress` | `routes/forecast.py` | `api_progress` | | `forecast.html` progress poll |
 | GET | `/api/series` | `routes/forecast.py` | `api_series` (`source=<dataset>`: `datasets_ui.api_series`) | | `forecast.html`, `model.html` charts |
 | GET | `/runs/{run_id}` | `routes/forecast.py` | `run_page` | `run.html` | links in `forecast.html`, `runs.html` |
-| GET | `/runs/{run_id}/report` | `routes/forecast.py` | `run_report` | the run's `report.html` | `forecast.html`, `run.html` |
-| GET | `/runs/{run_id}/report/download` | `routes/forecast.py` | `run_report_download` | | `run.html` |
+| GET | `/runs/{run_id}/report` | `routes/forecast.py` | `run_report` (a run id's shape only, else the 404 notice) | the run's `report.html` | `forecast.html`, `run.html`, `output.html` (the latest report, by its run) |
+| GET | `/runs/{run_id}/report/download` | `routes/forecast.py` | `run_report_download` (as `run_report`) | | `run.html`, `output.html` |
 | POST | `/runs/{run_id}/rerun` | `routes/forecast.py` | `run_rerun` | | `forecast.html`, `run.html` forms |
 | **Output** | | | | | |
 | GET | `/output` | `routes/output.py` | `output_page` | `output.html` | nav |
-| GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html` |
+| GET | `/api/output/stamp` | `routes/output.py` | `api_output_stamp` (`output_stamp`: the newest run with a `results.json`, and whether a run is on) | | `output.html` reload check |
+| GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html`, `_dataset_run.html` |
 | POST | `/output/reveal` | `routes/output.py` | `output_reveal` | redirect | `output.html` form, `retro_season.html` fetch |
-| GET | `/output/report` | `routes/output.py` | `output_report` | weekly report | `output.html` link and date picker |
-| GET | `/output/report/download` | `routes/output.py` | `output_report_download` | | `output.html` |
+| GET | `/output/report` | `routes/output.py` | `output_report` (no date: the newest run's) | weekly report | `output.html` date picker; Home's Weekly report button (`home.html`) and map link (`home.py` MAP_LINK) |
+| GET | `/output/report/download` | `routes/output.py` | `output_report_download` (no date: as `output_report`) | | `output.html` date picker |
 | **Retrospective** | | | | | |
 | GET | `/retro` | `routes/retro.py` | `retro_index` (two tabs: the FluSight hub, or Your data: `?tab=own` opens the first dataset, `?dataset=<id>` that one) | `retro.html` | nav; the upload box's "Replay this" |
 | POST | `/retro/run` | `routes/retro.py` | `retro_run` | redirect | `retro.html` start and resume forms |

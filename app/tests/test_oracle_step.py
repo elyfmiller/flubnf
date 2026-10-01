@@ -213,6 +213,25 @@ def test_a_location_without_a_fips_key_is_outside_the_member(hubfiles, tmp_path)
     assert "rng_key" not in prov["locations"]["Atlantis"]
     assert prov["cells"]["outside_member"] == ["Atlantis"]
     assert prov["cells"]["active"] == 2 and "Atlantis" not in prov["quantiles"]["null"]
+    # the console reads this file's US cell as stepped (us_national)
+    from app.core import us_national as usn
+    assert usn.us_step_week(tmp_path / "w") == usn.STEPPED
+
+
+def test_the_console_reads_each_weeks_us_cell_from_this_file(hubfiles,
+                                                            tmp_path):
+    """us_national.us_step_week on what apply_week and write_not_applied
+    write: the US cell stepped since addendum A3; a run without a US cell,
+    or one where the step did not run (the A3 hash notwithstanding), says
+    nothing."""
+    from app.core import us_national as usn
+    oracle_mod.apply_week(_samples(), ASOF, tmp_path / "a3")
+    assert usn.us_step_week(tmp_path / "a3") == usn.STEPPED
+    oracle_mod.apply_week(_samples(locs=("Ohio", "Utah")), ASOF,
+                          tmp_path / "states")
+    assert usn.us_step_week(tmp_path / "states") is None
+    oracle_mod.write_not_applied(tmp_path / "plain", ASOF, "the plain filter")
+    assert usn.us_step_week(tmp_path / "plain") is None
 
 
 def test_an_ineligible_cell_is_the_identity_and_named(hubfiles, tmp_path):

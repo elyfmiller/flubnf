@@ -5,7 +5,8 @@ Run:  .venv/bin/uvicorn app.ui.server:app --port 8710
 
 This module only assembles the console, in this order: the app and its
 /static mount; the middleware (the CSRF guard, the sandbox engine guard
-around it, and the slow-request log outermost); the tab routers; the sandbox_storage Jinja global;
+around it, the no-store header around both, and the slow-request log
+outermost); the tab routers; the sandbox_storage Jinja global;
 datasets_ui's router, last, and the dataset_upload_mb global; then the
 startup warm pass, started last. Its public names are app, templates,
 VERSIONS and RUNNING_SHA (app/core/site_build.py reads the last three
@@ -49,6 +50,8 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 # wraps it (Starlette puts the last-added middleware outermost)
 app.middleware("http")(shared._same_host_guard)
 app.middleware("http")(sandbox_routes._sandbox_engine_guard)
+# no-store on every page and download (not /static), refusals included
+app.middleware("http")(shared._no_store)
 # outermost: the slow-request log times everything, guards included
 app.middleware("http")(perflog.slow_request_log)
 # the tab routers. Order matters only where one path reaches two routes:

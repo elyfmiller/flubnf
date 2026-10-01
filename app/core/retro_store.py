@@ -147,8 +147,10 @@ def filter_quantiles(wd: Path) -> dict | None:
     value}}}, with the output floor the analogue gets (floor.floor_quantiles),
     so the filter is scored as a submission would carry it. None when the
     step did not run there (no file, "applied": false, a sealed record).
-    The fitted US is not in the block: the step never touches it, so the
-    US pf is already the filter alone."""
+    The fitted US is in the block for a week stored since addendum A3,
+    when the step covers it; before A3 the step left US outside, so the
+    block lacks it and that week's US pf is already the filter alone
+    (us_national.us_step_week tells the two apart)."""
     fp = Path(wd) / ORACLE_NAME
     try:
         st = fp.stat()

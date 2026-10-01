@@ -52,13 +52,14 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `oracle_backfill.py` | VERIFICATION CLI ONLY | backfill a stored season into a new root, reproduce the screen | `flubnf oracle backfill` / `reproduce` |
 | `submit.py` | PRODUCTION | hub submission CSVs and their validation; an invalid location is dropped, a file-level defect refuses the file | server `pipeline._run_all`, `oracle` |
 | `coverage.py` | PRODUCTION | which locations a submission file covers and why the others are missing, from the run record | server Output and run pages |
-| `archive_record.py` | PRODUCTION | which run a forecast date's files come from: the archive's record and the never-a-downgrade rule (newest complete run, else newest) | server `pipeline._archive_run`, Output page |
+| `archive_record.py` | PRODUCTION | which run a forecast date's files come from: the archive's record and the never-a-downgrade rule (newest complete run, else newest; runs started in one second by the ledger's order) | server `pipeline._archive_run`, Output page |
 
 ## Reports
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `report_v2.py` | PRODUCTION | the weekly run report | server `pipeline._write_weekly_report`, `/output/report` |
+| `report_v2.py` | PRODUCTION | the weekly run report | server `pipeline._write_weekly_report`, `/runs/<id>/report`, `/output/report` |
+| `report_grid.py` | PRODUCTION | the weekly report's "All locations" pages: a panel per location, both models, last season's same weeks; prints 3 by 5 per Letter page | `pipeline._write_weekly_report` (bundle v8 `grid`), `report_v2.build_report` |
 | `report_season.py` | PRODUCTION | self-contained season HTML export | server `/retro/{season}/report` |
 | `html_page.py` | PRODUCTION | what the page builders share: asset paths, the Plotly and chart scripts, `esc`, the embedded-JSON reader, theme tokens | `report_v2`, `report_season`, `site_page`, `site_build` |
 | `usmap.py` | PRODUCTION | build-time US map | `report_v2`, server home outlook, `site_build` |

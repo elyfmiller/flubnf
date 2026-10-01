@@ -32,6 +32,7 @@
   ["GET", "/api/series", "api_series", "APIRoute", "console"],
   ["GET", "/api/progress", "api_progress", "APIRoute", "console"],
   ["GET", "/output", "output_page", "APIRoute", "console"],
+  ["GET", "/api/output/stamp", "api_output_stamp", "APIRoute", "console"],
   ["GET", "/output/download", "output_download", "APIRoute", "console"],
   ["POST", "/output/reveal", "output_reveal", "APIRoute", "console"],
   ["GET", "/output/report", "output_report", "APIRoute", "console"],
@@ -88,7 +89,7 @@
   ["POST", "/retro/dataset/{ds_id}/{stamp}/stop", "replay_stop", "APIRoute", "datasets_ui"],
   ["GET", "/retro/dataset/{ds_id}/{stamp}", "replay_page", "APIRoute", "datasets_ui"]
  ],
- "middleware": ["slow_request_log", "_sandbox_engine_guard", "_same_host_guard"],
+ "middleware": ["slow_request_log", "_no_store", "_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
   "cell_rule_note": "callable _cell_rule_note",
   "cov_state": "callable _cov_state",

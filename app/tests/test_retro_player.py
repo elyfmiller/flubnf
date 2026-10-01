@@ -5,6 +5,8 @@ import re
 import sys
 from pathlib import Path
 
+from markupsafe import escape
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import us_national                    # noqa: E402
@@ -93,7 +95,8 @@ def test_js_reads_only_contract_fields():
     # every `pl.` field is a top-level contract key (page and player checked
     # together as one JS surface)
     both = html + PLAYER_JS
-    contract = {"asof", "locations", "truth", "seen", "models", "official", "stats"}
+    contract = {"asof", "locations", "truth", "seen", "models", "official",
+                "stats", "us_step"}
     fields = set(re.findall(r"\bpl\.(\w+)", both))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
@@ -285,39 +288,101 @@ def test_per_state_table_keeps_one_column_per_member_without_coverage():
     assert "Cov" not in body and "95%" not in body
 
 
-def test_fitted_us_pf_says_it_is_the_plain_filter():
-    """The Oracle step skips the national row: under the Oracle SIHRS name,
-    the fitted US figure is the particle filter without it, on the tile
-    and under the table (us_national.PF_US_NOTE)."""
-    fit = us_national.UsNational(
+def _us_fit(step, weeks=None, pf_filter=None):
+    """A fitted US row of the given era (us_national.STEPPED, FILTER,
+    MIXED), with the Liu-West filter's own US figure when the weeks carry
+    one (addendum A3)."""
+    cov = {"50": 0.2, "80": 0.48, "95": 0.7}
+    return us_national.UsNational(
         us_national.FITTED,
-        scores={"pf": 0.9, "analogue": 0.58},
-        cells={"pf": 96, "analogue": 96}, n_states=52,
-        log_scores={"pf": 0.75, "analogue": None},
-        covs={"pf": {"50": 0.2, "80": 0.48, "95": 0.7},
-              "analogue": None}).as_dict()
-    html = _season(figs=_figs(), us=fit, us_row=fit)
-    flat = " ".join(html.split())
-    tile = flat.split("<h2>US (fitted): Oracle SIHRS</h2>", 1)[1].split(
-        "</div></div>", 1)[0]
-    assert us_national.PF_US_SHORT + ", fitted nationally" in tile
-    assert '<dd class="ok">0.750<svg class="uk-icon rt-verdict"' in tile
-    assert '<span class="cov-low">20%</span>' in tile
-    an = flat.split("<h2>US (fitted): Groundhog</h2>", 1)[1].split(
-        "</div></div>", 1)[0]
-    assert us_national.PF_US_SHORT not in an
-    # the note rides the US row's "?" in the per-state table
-    assert f'<span class="ncline">{us_national.PF_US_NOTE}</span>' in flat
+        scores={"pf": 0.9, "pf_filter": pf_filter, "analogue": 0.58},
+        cells={"pf": 96, "pf_filter": 48 if pf_filter else 0,
+               "analogue": 96}, n_states=52,
+        log_scores={"pf": 0.75, "pf_filter": 0.8 if pf_filter else None,
+                    "analogue": None},
+        covs={"pf": cov, "pf_filter": cov if pf_filter else None,
+              "analogue": None},
+        pf_step=step, pf_weeks=weeks or {}).as_dict()
+
+
+def _us_page(fit, **kw):
+    """The season page with a fitted US row, up to the player's host
+    script (whose cfg.us carries the same words as data), whitespace
+    flattened; the US tiles by member name and the US table row."""
+    html = _season(figs=_figs(), us=fit, us_row=fit,
+                   season_models=["pf", "pf_filter", "analogue"], **kw)
+    page = " ".join(html.split("// live host for the shared player", 1)[0]
+                    .split())
+
+    def tile(name):
+        h = f"<h2>US (fitted): {name}</h2>"
+        return page.split(h, 1)[1].split("</div></div>", 1)[0] \
+            if h in page else None
+
+    row = page.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
+    return page, tile, row
+
+
+def test_a_filter_era_us_pf_says_it_is_the_filter_alone():
+    """Weeks stored before addendum A3 kept US outside the step: under the
+    Oracle SIHRS name the fitted US figure is the Liu-West filter without
+    it, on the tile and under the table, and the filter's own US figure
+    does not exist (n/a, with why)."""
+    page, tile, row = _us_page(_us_fit(us_national.FILTER))
+    pf = tile("Oracle SIHRS")
+    assert us_national.PF_US_SHORT + ", fitted nationally" in pf
+    assert '<dd class="ok">0.750<svg class="uk-icon rt-verdict"' in pf
+    assert '<span class="cov-low">20%</span>' in pf
+    assert us_national.PF_US_SHORT not in tile("Groundhog")
+    assert tile("Liu-West filter") is None
+    # the era's note rides the US row's "?" in the per-state table
+    note = us_national.PF_US_NOTES[us_national.FILTER]
+    assert f'<span class="ncline">{note}</span>' in page
     # the US row's coverage joins the table beside its relWIS
-    row = flat.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
     assert 'data-pf-cov="0.700000"' in row
     assert '<td class="num cov-low">70%</td>' in row
+    # the filter's own column: n/a, and its tip says why
+    assert 'data-pf_filter=""' in row and 'data-pf_filter-cov=""' in row
+    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in row
     # a tree without the step names pf for the filter: nothing to add
-    plain = _season(figs=_figs(), us=fit, us_row=fit,
-                    model_name=lambda m: {"pf": "Particle filter alone",
-                                          "analogue": "Groundhog"}.get(m, m))
-    # (the player's us block still carries pf_note: it makes the same test
-    # of pf's name, player.js usPfNote)
-    page = plain.split("// live host for the shared player", 1)[0]
-    assert us_national.PF_US_NOTE not in page
+    plain, _t, _r = _us_page(
+        _us_fit(us_national.FILTER),
+        model_name=lambda m: {"pf": "Particle filter alone",
+                              "analogue": "Groundhog"}.get(m, m))
+    assert note not in plain
+    assert us_national.PF_US_SHORT not in plain
+
+
+def test_a_stepped_us_pf_adds_nothing_and_the_filter_has_its_own_figure():
+    """Every week stored since addendum A3: the US pf carries the step like
+    the states, so the tile adds nothing, and the Liu-West filter's own US
+    figure is shown beside it, tile and column."""
+    page, tile, row = _us_page(_us_fit(us_national.STEPPED, pf_filter=0.85))
+    pf = tile("Oracle SIHRS")
+    assert ">relWIS vs the FluSight baseline; fitted nationally, apart" in pf
     assert us_national.PF_US_SHORT not in page
+    assert us_national.PF_US_SHORT_MIXED not in page
+    lw = tile("Liu-West filter")
+    assert lw is not None and "0.850" in lw
+    assert '<dd class="ok">0.800<svg' in lw
+    assert 'data-pf_filter="0.850000"' in row and 'data-pf_filter-cov="0.700000"' in row
+    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) not in page
+    note = us_national.PF_US_NOTES[us_national.STEPPED]
+    assert f'<span class="ncline">{note}</span>' in page
+
+
+def test_a_mixed_season_says_which_weeks_and_withholds_the_filters_figure():
+    """Some weeks stored before addendum A3, some since: the tile says the
+    filter alone before A3 and the step since, the note names the weeks,
+    and the Liu-West filter's US figure (A3 weeks only) is withheld."""
+    weeks = {us_national.FILTER: ["2098-11-07"],
+             us_national.STEPPED: ["2098-11-14"]}
+    page, tile, row = _us_page(_us_fit(us_national.MIXED, weeks,
+                                       pf_filter=0.85))
+    assert us_national.PF_US_SHORT_MIXED + ", fitted nationally" in \
+        tile("Oracle SIHRS")
+    assert tile("Liu-West filter") is None
+    assert 'data-pf_filter=""' in row and "0.850" not in row
+    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in row
+    assert ("The filter alone: 1 week, 2098-11-07; the Oracle step: 1 "
+            "week, 2098-11-14.") in page

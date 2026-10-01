@@ -213,6 +213,44 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-01, App (a bug report from Ely, via the model lane): after the
+  A3 merge Ely reran the 2026-10-03 forecast on the laptop (run 10-01
+  10:04; the Forecast chart shows the US row with the step, the Output
+  card shows that run, 53 of 53, passes the hub's checks), then downloaded
+  the two CSVs and the weekly report again, agreeing to overwrite the
+  previous day's copies. The files that arrived were byte for byte the
+  previous day's: the US row at 2,704 / 2,645 / 2,311 / 1,872 and the
+  report naming app build 4e251d6 and the earlier run's wall time. Ely
+  asks for a small investigation. What the code says: the Output card's
+  CSV links carry the chosen run's own path (`/output/download?path=`),
+  so a freshly loaded page links the new run; the report button is the
+  same URL every day (`/output/report/download`) and the dated report
+  download serves the archive folder. Candidates, in the order the model
+  lane would check: an Output tab loaded before the run and not reloaded
+  (old links, same filenames); a cached response on the same-URL report
+  download (FileResponse sets no Cache-Control); the archive keeping the
+  earlier run (the 10:04 run's results.json `outcome.archived` reads
+  "kept: ..."), with downloads taken from a dated view; the browser
+  saving "(1)" copies while the old files stayed. Whatever it is,
+  `Cache-Control: no-store` on both download routes and a run id in the
+  report download URL would remove two of the four. Update, same day:
+  Ely sent the 10:04 run's results.json. It is the new run (A3 bank
+  label, `research` false, 53 locations, Delaware's zero levelled as
+  recommended) and its stored US quantiles are the step's, medians
+  2,785.7 / 3,189.5 / 3,542.3 / 3,858.1, so the run's own files are new
+  and the server computed the right thing. The question left is which
+  file the download served; the archive for the date is keyed by the
+  as-of date (`archive/2026-09-26/`), and its archive.json names the run
+  it holds. Ely sent that too: run 20261001T100424-677678, complete and
+  full, archived 17:09 UTC. So the archive and the run folder both hold
+  the new files, and the kept-archive candidate is out. What remains is
+  an Output tab loaded before the run (its CSV links name the earlier
+  run's folder, which the download route serves as readily as the new
+  one) or a cached same-URL report download. Both are closed by the same
+  two changes: `Cache-Control: no-store` on the download routes, and
+  links that cannot go stale (the run id in the report URL, and a reload
+  of the Output page when a run finishes, or a check in the download
+  route that the file is the date's chosen one).
 - 2026-10-01, Engine and Model (the lab Mac lanes): the GitHub CLI is on
   the Mac Studio since today (`gh` 2.102.0 in `/usr/local/bin`, on every
   shell's PATH), logged in as elyfmiller with a fine-grained token that

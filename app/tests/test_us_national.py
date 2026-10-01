@@ -458,3 +458,174 @@ def test_the_serialised_form_carries_the_label_with_the_numbers():
         assert key in d, key
     assert d["fallback"] is True
     json.dumps(d)                                 # JSON-safe for both hosts
+
+
+def test_the_member_order_is_one_tuple_in_both_modules():
+    from app.core import relwis
+    assert relwis.MODELS == usn.MODELS
+    assert "pf_filter" in usn.MODELS
+
+
+# ------------------------------------- the Oracle step on US (addendum A3)
+
+A3_SHA = "8a3552bc28a37565ab85aa36a76fd336ce0f02e69e7bcdb4a7030fe3926b3e7b"
+
+
+def _oracle_json(wd, us_state=None, outside=(), applied=True):
+    """One week's oracle.json in the shapes app/core/oracle.apply_week
+    writes: before addendum A3 the US cell stays outside the member (state
+    "outside", listed under cells.outside_member); since, it is stepped
+    like a state. `us_state` None leaves the week without a US cell."""
+    wd.mkdir(parents=True, exist_ok=True)
+    locs = {"Ohio": {"fips": "39", "rng_key": "39", "state": "both"}}
+    if us_state is not None:
+        locs["US"] = {"fips": "US", "state": us_state}
+        if us_state != "outside":
+            locs["US"]["rng_key"] = "0"
+    prov = {"written_by": "test", "applied": applied,
+            "addendum_a3_sha256": A3_SHA,
+            "cells": {"outside_member": list(outside)}, "locations": locs}
+    (wd / usn.ORACLE_JSON).write_text(json.dumps(prov), encoding="utf-8")
+    return wd
+
+
+def test_a_week_reads_its_era_from_its_oracle_json(tmp_path):
+    from app.core import oracle as oracle_mod
+    w = tmp_path / "weeks"
+    # before A3: US outside the member, said both ways or either one
+    assert usn.us_step_week(_oracle_json(w / "a", "outside", ["US"])) == usn.FILTER
+    assert usn.us_step_week(_oracle_json(w / "b", None, ["US"])) == usn.FILTER
+    assert usn.us_step_week(_oracle_json(w / "c", "outside")) == usn.FILTER
+    # since A3: the step ran on the cell, whatever it made of it
+    for i, state in enumerate(("both", "admissions_only", "flusurv_only",
+                               "identity", "not eligible")):
+        wd = _oracle_json(w / f"s{i}", state)
+        assert usn.us_step_week(wd) == usn.STEPPED, state
+    # the step not applied: the A3 hash alone decides nothing
+    na = w / "na"
+    oracle_mod.write_not_applied(na, "2098-01-03", "the plain filter")
+    assert json.loads((na / usn.ORACLE_JSON).read_text())["addendum_a3_sha256"]
+    assert usn.us_step_week(na) is None
+    assert usn.us_step_week(_oracle_json(w / "nb", "both", applied=False)) is None
+    # no file, an unreadable one, a week without a US cell
+    assert usn.us_step_week(w / "missing") is None
+    bad = w / "bad"
+    bad.mkdir()
+    (bad / usn.ORACLE_JSON).write_text("{not json", encoding="utf-8")
+    assert usn.us_step_week(bad) is None
+    assert usn.us_step_week(_oracle_json(w / "states", None)) is None
+
+
+def test_a_weeks_answer_is_cached_until_its_file_changes(tmp_path,
+                                                         monkeypatch):
+    wd = _oracle_json(tmp_path / "w", "outside", ["US"])
+    assert usn.us_step_week(wd) == usn.FILTER
+
+    def boom(*a, **k):
+        raise AssertionError("parsed again")
+
+    monkeypatch.setattr(usn.json, "loads", boom)
+    assert usn.us_step_week(wd) == usn.FILTER         # (path, mtime, size)
+    monkeypatch.undo()
+    _oracle_json(wd, "both")                           # rewritten since
+    assert usn.us_step_week(wd) == usn.STEPPED
+
+
+def _season_root(tmp_path, eras):
+    """A season root whose stored weeks carry the given eras ({asof:
+    us_state}, None for a week whose step was not applied)."""
+    root = tmp_path / "season"
+    for asof, state in eras.items():
+        wd = root / "weeks" / asof
+        if state is None:
+            _oracle_json(wd, "both", applied=False)
+        else:
+            _oracle_json(wd, state, ["US"] if state == "outside" else [])
+        (wd / "samples.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+def test_a_season_is_stepped_filter_or_mixed(tmp_path):
+    pre, a3 = "outside", "both"
+    root = _season_root(tmp_path / "m", {"2098-01-03": pre,
+                                         "2098-01-10": pre,
+                                         "2098-01-17": a3,
+                                         "2098-01-24": None})
+    assert usn.us_step_weeks(root) == {"2098-01-03": usn.FILTER,
+                                       "2098-01-10": usn.FILTER,
+                                       "2098-01-17": usn.STEPPED}
+    assert usn.us_step_season(root) == usn.MIXED
+    assert usn.us_step_season(_season_root(tmp_path / "s", {
+        "2098-01-03": a3, "2098-01-10": "identity", "2098-01-17": None})) \
+        == usn.STEPPED
+    assert usn.us_step_season(_season_root(tmp_path / "f", {
+        "2098-01-03": pre})) == usn.FILTER
+    assert usn.us_step_season(_season_root(tmp_path / "n", {
+        "2098-01-03": None})) is None
+    assert usn.us_step_season(tmp_path / "nothing") is None
+    assert usn.season_step([usn.FILTER, None, usn.FILTER]) == usn.FILTER
+    assert usn.season_step([]) is None
+
+
+def test_the_us_row_says_what_pf_is_in_each_era():
+    def d(step, weeks=None):
+        return usn.UsNational(usn.FITTED, scores={"pf": 0.7},
+                              pf_step=step, pf_weeks=weeks or {}).as_dict()
+
+    stepped, filt = d(usn.STEPPED), d(usn.FILTER)
+    assert stepped["pf_step"] == usn.STEPPED
+    assert stepped["pf_note"] == usn.PF_US_NOTES[usn.STEPPED]
+    assert "since addendum A3" in stepped["pf_note"]
+    assert "without the Oracle step" not in stepped["pf_note"]
+    assert stepped["pf_short"] == "" and stepped["pf_filter_withheld"] == ""
+    assert filt["pf_note"] == usn.PF_US_NOTES[usn.FILTER]
+    assert "Liu-West filter without the Oracle step" in filt["pf_note"]
+    assert filt["pf_short"] == usn.PF_US_SHORT
+    assert filt["pf_filter_withheld"] == usn.PF_FILTER_US_WITHHELD
+    # a mixed season names the weeks of each era
+    mixed = d(usn.MIXED, {usn.FILTER: ["2098-01-03", "2098-01-10"],
+                          usn.STEPPED: ["2098-01-17"]})
+    assert mixed["pf_note"].startswith(usn.PF_US_NOTES[usn.MIXED])
+    assert ("The filter alone: 2 weeks, 2098-01-03 to 2098-01-10; the "
+            "Oracle step: 1 week, 2098-01-17.") in mixed["pf_note"]
+    assert mixed["pf_short"] == usn.PF_US_SHORT_MIXED
+    assert mixed["pf_filter_withheld"] == usn.PF_FILTER_US_WITHHELD
+    # weeks that do not say keep the wording that covers both eras
+    unknown = d(None)
+    assert unknown["pf_note"] == usn.PF_US_NOTE and unknown["pf_short"] == ""
+    # every era sends the one-week note the player shows
+    for x in (stepped, filt, mixed, unknown):
+        assert x["pf_note_filter"] == usn.PF_US_NOTES[usn.FILTER]
+    # the sum of states is a sum of stepped state forecasts: nothing to say
+    agg = usn.UsNational(usn.AGGREGATED, scores={"pf": 0.7},
+                         pf_step=usn.FILTER).as_dict()
+    assert agg["pf_step"] is None
+    assert agg["pf_note"] == agg["pf_short"] == agg["pf_note_filter"] == ""
+    assert agg["pf_filter_withheld"] == ""
+    # the Liu-West name, never "particle filter"
+    assert "Liu-West" in usn.PF_US_SHORT
+    for text in (usn.PF_US_SHORT, usn.PF_US_NOTE, *usn.PF_US_NOTES.values()):
+        assert "particle filter" not in text.lower()
+
+
+def test_resolution_reads_the_era_from_the_stored_weeks(tmp_path,
+                                                        monkeypatch):
+    from app.core import retro
+    monkeypatch.setattr(retro, "national_aggregate",
+                        lambda *a, **k: pytest.fail("not reached"))
+    root = _season_root(tmp_path, {"2098-01-03": "outside",
+                                   "2098-01-10": "both"})
+    frame = _frame()
+    frame = pd.concat([frame, frame[frame.location == "US"].assign(
+        model="pf_filter", wis=120.0)])
+    us = usn.resolve(root, frame)
+    assert us.pf_step == usn.MIXED
+    assert us.pf_weeks == {usn.FILTER: ["2098-01-03"],
+                           usn.STEPPED: ["2098-01-10"]}
+    # the Liu-West filter's own US rows are carried, apart from the pooled
+    assert us.scores["pf_filter"] == pytest.approx(1.2)
+    assert us.cells["pf_filter"] == 4
+    d = us.as_dict()
+    assert d["pf_filter"] == pytest.approx(1.2)
+    assert "pf_filter" in d["cov"] and "pf_filter" in d["log_rel"]
+    assert not usn.pooled_frame(frame).location.map(usn.is_us).any()

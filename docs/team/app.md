@@ -6,20 +6,48 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-01: the weekly report has "All locations" pages (Ely's
+  request): a panel per location, US first, both models' medians and 95%
+  intervals over the last ten weeks, last season's counts for the same
+  weeks dashed, the latest count; the US panel also large under the
+  map. Flags for a horizon-3 median below the latest count or
+  two models outside each other's 95% bands. Printed: 3 across, 5 down,
+  four Letter pages (Save as PDF). `app/core/report_grid.py`, report
+  bundle v8; reports from earlier runs gain it on their next run.
+- 2026-10-01: Ely's stale-download report (see model.md) is fixed on
+  `dev`, not yet checked on a Mac or on Windows. The likeliest cause: in
+  the macOS window, Replace in the save panel only answered the question;
+  WebKit refuses a taken name and drops the download without a word, so
+  the old file stayed byte for byte. The window now removes the file you
+  agreed to replace (bc63c81, 09fb1c7; pywebview 6 only). Also: every
+  download is an `<a download>` link and no console response is cached
+  (fe02d4d); the report buttons name their run (`/runs/<id>/report`) and
+  the Output page reloads once a newer run lands (3181fc4); each file
+  served goes to `app/state/logs/downloads.log` with its sha256 (c710997).
+- 2026-10-01: the US row follows addendum A3 per stored week (820b24b,
+  09d6a39, d6cb101): the season page, the player and the weekly report
+  read each week's `oracle.json` (a store from before A3 lists US under
+  `cells.outside_member`) and call the US pf the Liu-West filter alone
+  only for such weeks. The Liu-West filter's own US figure shows for a
+  season stored wholly since A3, n/a otherwise.
 - 2026-09-30: the Retrospective scores the Liu-West filter alone beside
   the Oracle SIHRS and the Groundhog (1064557, 9a4a689; Ely's decision):
   tile, per-state column, cumulative line, player toggle (off until
   ticked). Source: each week's `oracle.json` `quantiles.null` with the
   Groundhog's output floor, kept in the sidecar as `pf_filter`. Existing
-  seasons rescore once on their next page visit. No US figure, never
-  submitted, not on the site. docs/ORACLE-SIHRS.md section 4 says so.
-
-- 2026-09-30: `dev` equals `main` after PR #25 (Windows: the engine updates
-  on every open, FluBNF in the Start menu, launcher fixes). CI runs on
-  pushes to `dev` as well as on pull requests.
+  seasons rescore once on their next page visit. Never submitted, not
+  on the site. docs/ORACLE-SIHRS.md section 4 says so.
+- CI runs on pushes to `dev` as well as on pull requests.
 
 ## Decided
 
+- 2026-10-01 (Ely): the Liu-West filter's US figure is shown for seasons
+  stored since addendum A3 (the step makes it the right comparison), n/a
+  for seasons stored before it. The saved weekly report is named by its hub reference date, as
+  the CSVs are: `2026-10-03-NAU_PyBNF-weekly-report.html` for as-of
+  2026-09-26. pywebview is pinned to `>=6.2,<7` (the window's download fix
+  copies pywebview 6's code). The report card keeps the newest run with
+  results, labelled with its run time.
 - 2026-09-30: `flubnf engine-update` runs on every launcher open and only
   fast-forwards a clean checkout on `feature/particle-filter` to the pinned
   production commit (`app/core/engine_build.py`); it never resets, and
@@ -30,6 +58,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- Model (2026-10-01, answering your download bug report): your four
+  candidates are closed (a stale Output tab, a cached same-URL report,
+  the kept archive, which you ruled out, and "(1)" copies), and a fifth,
+  the macOS window dropping a download over an existing file, is the
+  likeliest; see Now. Ely's check on the laptop decides it: files in
+  Downloads still dated 09-30. Nothing for the model lane to do.
+- Model (2026-10-01, answering the three US-wording places): all three
+  done with your provenance split (820b24b, 87403f0): the FLUSIGHT
+  bullets, the season page's tile phrase and comment (PF_US_SHORT is now
+  "the Liu-West filter without the Oracle step", shown only for weeks
+  stored before A3), and player.js's note. The era is read from
+  `cells.outside_member` and the US state, never from the A3 hash. The
+  guide's Evaluation row has your CDC line, with Puerto Rico for 2025-26
+  only, as your note gives it.
+- Submission (2026-10-01): the Oracle SIHRS card
+  (model-metadata/NAU_PyBNF-OracleSIHRS.yml) does not say the US row has
+  the step since A3, and its model_version is unchanged. Yours, with Ely,
+  before 2026-10-07 or not.
 
 - Model (2026-10-01, answering your two notes): thanks for the Groundhog
   coverage by size and the US findings. The README paragraph is whole
@@ -89,3 +136,8 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- 2026-10-01, for Ely: on the laptop, run
+  `ls -lT ~/Downloads/2026-10-03-NAU_PyBNF-*.csv ~/Downloads/FluBNF-weekly-report-2026-09-26.html`;
+  09-30 times confirm the window cause. Then, once on `main`, download a
+  file twice choosing Replace: the copy must match the run's file.

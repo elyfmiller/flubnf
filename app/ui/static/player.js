@@ -103,16 +103,25 @@ function locLabel(loc, us){
   return isUS(loc) ? usLabel(us) : String(loc);
 }
 
-// the Oracle step skips the national row, so a FITTED US forecast under
-// pf is the plain particle filter. The host's cfg.us.pf_note says so
-// (us_national.PF_US_NOTE, sent only when fitted); it applies only while
-// pf wears the Oracle SIHRS name (a tree without the step already names pf
-// for the filter). US_PF_LABEL, pf's legend entry there, is
-// us_national.PF_US_SHORT without its article (a test holds them equal).
-var US_PF_LABEL = 'Particle filter without the Oracle step';
-function usPfNote(us){
-  return (us && us.pf_note && /Oracle/.test(nameOf('pf')))
-    ? String(us.pf_note) : '';
+// a FITTED US forecast under pf carries the Oracle step since addendum A3;
+// a week stored before it kept US outside the member, so its US pf is the
+// Liu-West filter alone. The week's payload says which (pl.us_step, from
+// its oracle.json: playback.build_week) and only a 'filter' week gets the
+// note, the host's cfg.us.pf_note_filter (sent only when fitted). A week
+// that does not say, or a payload from before us_step, falls back on the
+// season's note (cfg.us.pf_note), none when every week had the step. It
+// applies only while pf wears the Oracle SIHRS name (a tree without the
+// step already names pf for the filter). US_PF_LABEL, pf's legend entry
+// in such a week, is us_national.PF_US_SHORT without its article (a test
+// holds them equal).
+var US_PF_LABEL = 'Liu-West filter without the Oracle step';
+function usPfNote(us, pl){
+  if(!(us && us.pf_note && /Oracle/.test(nameOf('pf')))) return '';
+  // null: an imported replay bundle carries no oracle.json
+  if(pl && pl.us_step)
+    return pl.us_step === 'filter'
+      ? String(us.pf_note_filter || us.pf_note) : '';
+  return us.pf_step === 'stepped' ? '' : String(us.pf_note);
 }
 
 // one location's entry in a payload map; the national row matches any US
@@ -891,8 +900,9 @@ function createPlayer(cfg){
       var ay = seenY.length ? seenY[seenY.length - 1]
              : (pastY.length ? pastY[pastY.length - 1] : null);
       var traces = [], avail = 0, drawn = 0;
-      // a fitted US pf fan is the plain filter: its legend entry says so
-      var pfNote = isUS(loc) ? usPfNote(cfg.us) : '', pfDrawn = false;
+      // a fitted US pf fan stored before addendum A3 is the Liu-West filter
+      // alone: in such a week its legend entry says so
+      var pfNote = isUS(loc) ? usPfNote(cfg.us, pl) : '', pfDrawn = false;
       ALLM.forEach(function(m){
         var src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
                                        : (pl.models || {})[m];

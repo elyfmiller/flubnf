@@ -238,8 +238,9 @@ def test_the_no_data_week_is_a_placeholder_in_its_own_season_only(shipped_vintag
     assert tl4 == ["2024-04-20", "2024-04-27", "2024-05-04"]
     assert n4["2024-05-04"] == playback.NO_DATA_NOTE
     # the placeholder adds no payload field of its own (the "seen" series
-    # is the contract's, playback.CACHE_V 5; 6 added the Liu-West filter)
-    assert playback.CACHE_V == 6
+    # is the contract's, playback.CACHE_V 5; 6 added the Liu-West filter,
+    # 7 the week's Oracle step on the US cell, us_step)
+    assert playback.CACHE_V == 7
 
 
 def test_the_season_page_hands_the_player_the_timeline_and_notes():

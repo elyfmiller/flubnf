@@ -77,9 +77,15 @@ def scope_of(spec) -> bool:
 def choose(candidates):
     """The candidate a date shows: the newest complete one from a run on
     the whole hub set, then the newest complete one, then the newest.
-    Each candidate is a dict with "run_id" (run ids sort by start time),
-    "complete" and "full"; None for none."""
-    cands = sorted(candidates or [], key=lambda c: str(c.get("run_id") or ""))
+    Each candidate is a dict with "run_id" (run ids sort by start time, to
+    the second), "complete" and "full", and may carry "order", the
+    ledger's (created_utc, rowid): runs that started in the same second
+    are newest by it, as app/ui/shared._scan_results orders them, never by
+    the id's random suffix. None for none."""
+    def newest_last(c):
+        rid = str(c.get("run_id") or "")
+        return rid[:15], tuple(c.get("order") or (0.0, 0)), rid
+    cands = sorted(candidates or [], key=newest_last)
     if not cands:
         return None
     done = [c for c in cands if c.get("complete", True)]

@@ -414,13 +414,15 @@ def _delivery_mismatch(a: str, b: str) -> str:
 
 
 def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
-    """The weekly report downloads as an attachment named for its forecast
-    date (not report.html), so saved weeks do not collide."""
+    """The weekly report downloads as an attachment named for its hub
+    reference date, as the submission CSVs are (as of 2098-01-03 ->
+    2098-01-10-NAU_PyBNF-weekly-report.html), not report.html, so saved
+    weeks do not collide and each sorts beside its CSVs."""
     d = _archived(tmp_path, monkeypatch)
     r = client.get("/output/report/download?date=2098-01-03")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == (
-        'attachment; filename="FluBNF-weekly-report-2098-01-03.html"')
+        'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report.html"')
     assert r.headers["content-type"].startswith("text/html")
     # the same bytes the inline view serves: one file, two deliveries
     assert r.content == (d / "report.html").read_bytes()
@@ -465,7 +467,7 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
     r = client.get(f"/runs/{rid}/report/download")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == (
-        'attachment; filename="FluBNF-weekly-report-2098-01-03.html"')
+        'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report.html"')
     # no results.json yet: fall back to the run id, never bare report.html
     bare = "20980108T000000-bbbbbb"
     b = tmp_path / "workroots" / bare
@@ -494,8 +496,9 @@ def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
     ui_shared._invalidate_scans()
     out = client.get("/output")
     assert out.status_code == 200
-    assert 'href="/output/report"' in out.text          # inline view kept
-    assert 'href="/output/report/download"' in out.text
+    # the latest report by the run it is (inline view kept)
+    assert f'href="/runs/{rid}/report"' in out.text
+    assert f'href="/runs/{rid}/report/download"' in out.text
     assert "/output/report/download?date=" in out.text  # archived ones too
     run = client.get(f"/runs/{rid}")
     assert run.status_code == 200

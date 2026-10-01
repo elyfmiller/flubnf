@@ -3,6 +3,7 @@ date, newest first, each model's hub-format CSV from the run the date
 shows (app/core/archive_record.choose), the own-data runs' exports,
 download rules, reveal in the file manager, and the weekly report, served
 as stored or rebuilt from its bundle when the report builder is newer.
+GET /api/output/stamp is the page's reload check after a run.
 
 The run pages (routes/forecast.py) list a run's files through
 _submission_files and serve its report through _report_for_serving and
@@ -11,15 +12,17 @@ _weekly_report_file here. An APIRouter server.py includes.
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.ui import shared
+from app.ui import downloadlog, shared
 from app.ui.forms import _knobs
 from app.ui.shared import _archive_dates, _run_label
+from app.ui.state import _status
 from app.ui.templating import templates
 
 router = APIRouter()
@@ -344,10 +347,11 @@ def _file_complete(row, model_dir: str) -> bool:
 def _hub_candidates(app_state: Path, ledger) -> tuple:
     """(hub candidates, own-data runs). A hub candidate is one run's file
     for one registered or -modified model: {"asof", "dir", "run_id",
-    "path", "complete", "row", "spec", "wr"}; research runs and folders
-    under retired names are left out (they stay on disk and in Storage).
-    Files an archive folder holds count too when their run's workroot is
-    gone. Own-data runs: [{"run_id", "res", "wr"}]."""
+    "path", "complete", "full", "row", "spec", "wr", "order" (the ledger's
+    (created_utc, rowid) for runs that share a start second)}; research
+    runs and folders under retired names are left out (they stay on disk
+    and in Storage). Files an archive folder holds count too when their
+    run's workroot is gone. Own-data runs: [{"run_id", "res", "wr"}]."""
     from app.core import archive_record as _ar
     from app.core.runs import is_research
     listed = _registered_model_ids() | _modified_model_ids()
@@ -390,7 +394,24 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
                           "full": bool(rec.get("full", True)),
                           "row": ledger.row(rid) if (ledger and rid) else None,
                           "spec": res.get("spec", ""), "wr": d})
+    # runs that started in the same second take the ledger's order, as
+    # shared._scan_results orders them, never their random suffix
+    from collections import Counter
+    from app.core.runs import run_order
+    ids = {c["run_id"] for c in cands if c["run_id"]}
+    second = Counter(r[:15] for r in ids)
+    tied = [r for r in ids if second[r[:15]] > 1]
+    order = run_order(app_state / "ledger.sqlite", tied) if tied else {}
+    for c in cands:
+        c["order"] = order.get(c["run_id"], (0.0, 0))
     return cands, own
+
+
+def _run_when(run_id: str) -> str:
+    """A run's start as the page shows it beside a file or the report:
+    "MM-DD HH:MM" (_run_label's time); "" for no run."""
+    return (_run_label(run_id, "", tag=False).split(" · ")[-1]
+            if run_id else "")
 
 
 def _file_entry(c: dict) -> dict:
@@ -401,8 +422,7 @@ def _file_entry(c: dict) -> dict:
     e = {"model": name[:-len(_knobs.MODIFIED_SUFFIX)] if modified else name,
          "dir": name, "name": Path(c["path"]).name, "path": c["path"],
          "modified": modified, "run_id": c["run_id"],
-         "run_when": (_run_label(c["run_id"], "", tag=False).split(" · ")[-1]
-                      if c["run_id"] else ""),
+         "run_when": _run_when(c["run_id"]),
          "complete": c["complete"]}
     if not modified:
         e["check"] = _check_line(c["path"])
@@ -475,9 +495,21 @@ def forecast_dates(today=None, now=None) -> tuple:
     return dates, own
 
 
+def output_stamp() -> dict:
+    """What the Output page was rendered from, for its reload check:
+    "stamp", the newest run with a results.json (shared._workroot_results;
+    "" for none), and "running", whether a console run holds the engine
+    (/api/busy's console_run). The page reloads once no run is on and the
+    stamp differs, or it was rendered during a run."""
+    paths = shared._workroot_results()
+    return {"stamp": paths[0].parent.name if paths else "",
+            "running": bool(_status.get("running"))}
+
+
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
     from app.core.runs import APP_STATE
+    stamp = output_stamp()
     rid, res = shared._latest_results()
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
@@ -485,11 +517,24 @@ def output_page(request: Request):
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
-        "archive_dates": list(reversed(_archive_dates())),
+        # the earlier weeks the picker offers: those whose archive holds a
+        # report (a run whose report failed is archived without one)
+        "archive_dates": [d for d in reversed(_archive_dates())
+                          if (APP_STATE / "archive" / d
+                              / "report.html").is_file()],
         "has_report": has_report,
-        # the week the latest report is for, beside its buttons
+        # the week the latest report is for and the run that wrote it,
+        # beside its buttons (which name that run)
         "report_asof": str((res or {}).get("forecast_date") or "")
-        if has_report else ""})
+        if has_report else "",
+        "report_when": _run_when(rid) if has_report else "",
+        "stamp": stamp})
+
+
+@router.get("/api/output/stamp")
+def api_output_stamp():
+    """The Output page's reload check (output_stamp)."""
+    return output_stamp()
 
 
 def _notice(request: Request, status: int, kind: str, title: str,
@@ -543,6 +588,7 @@ def output_download(request: Request, path: str):
                 "is kept on disk as a record, not for submission; Storage "
                 "lists its run folder.",
             action=("/storage", "Open Storage"))
+    downloadlog.write("/output/download", p)
     return FileResponse(p, filename=p.name, media_type="text/csv",
                         content_disposition_type="attachment")
 
@@ -664,16 +710,25 @@ def output_report(request: Request, date: str = ""):
 
 
 def _weekly_report_name(date: str) -> str:
-    """Saved weekly report name, dated (every run writes report.html)."""
+    """Saved weekly report name (every run writes report.html). An as-of
+    date names it by its hub reference date, as the submission CSVs are
+    (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
+    sorts beside the files it describes; anything else (a run id with no
+    results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
+        ref = _reference_date(date)
+        if ref:
+            return f"{ref}-NAU_PyBNF-weekly-report.html"
     return f"FluBNF-weekly-report-{date}.html" if date \
         else "FluBNF-weekly-report.html"
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
-                        notice: dict | None = None):
+                        notice: dict | None = None, route: str = ""):
     """The weekly report as a download, refreshed first (same bytes as the
     page); missing -> 404 (a console page when `request` is given;
-    `notice` holds _notice's action, active and heading for a run's)."""
+    `notice` holds _notice's action, active and heading for a run's).
+    The download log names `route` (app/ui/downloadlog.py)."""
     from fastapi.responses import FileResponse
     f = Path(dirpath) / "report.html"
     if not f.is_file():
@@ -682,6 +737,7 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
                            **(notice or {}))
         return HTMLResponse("<p>No report to download.</p>", status_code=404)
     _report_for_serving(dirpath)
+    downloadlog.write(route or "report download", f)
     return FileResponse(f, filename=_weekly_report_name(date),
                         media_type="text/html",
                         content_disposition_type="attachment")
@@ -695,7 +751,9 @@ def output_report_download(request: Request, date: str = ""):
         if bad := _bad_date(date, request):
             return bad
         return _weekly_report_file(APP_STATE / "archive" / date, date,
-                                   request)
+                                   request,
+                                   route=f"/output/report/download?date={date}")
     rid, res = shared._latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
-                               (res or {}).get("forecast_date", ""), request)
+                               (res or {}).get("forecast_date", ""), request,
+                               route="/output/report/download")

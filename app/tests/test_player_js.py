@@ -298,8 +298,26 @@ def test_us_pf_note_only_under_the_oracle_name(tmp_path):
               "[I.usPfNote({pf_note: 'N'}), I.usPfNote({pf_note: ''}),"
               " I.usPfNote(null),"
               " (I.MODEL_NAMES.pf = 'Particle filter alone',"
-              "  I.usPfNote({pf_note: 'N'}))]")
+              "  I.usPfNote({pf_note: 'N'}, {us_step: 'filter'}))]")
     assert got == ["N", "", "", ""]
+
+
+@needs_jsc
+def test_us_pf_note_only_in_a_week_stored_before_addendum_a3(tmp_path):
+    # the week's payload says (us_step): the one-week note in a filter
+    # week, nothing in a stepped one; a week that does not say (null, as in
+    # an imported bundle, which has no oracle.json) or a payload from
+    # before the key falls back on the season's note, none when every week
+    # of the season had the step
+    us = "{pf_note: 'N', pf_note_filter: 'F'}"
+    got = _js(tmp_path,
+              f"[I.usPfNote({us}, {{us_step: 'filter'}}),"
+              f" I.usPfNote({us}, {{us_step: 'stepped'}}),"
+              f" I.usPfNote({us}, {{us_step: null}}),"
+              f" I.usPfNote({us}, {{}}), I.usPfNote({us}),"
+              " I.usPfNote({pf_note: 'N', pf_step: 'stepped'}, {}),"
+              " I.usPfNote({pf_note: 'N'}, {us_step: 'filter'})]")
+    assert got == ["F", "", "N", "N", "N", "", "N"]
 
 
 @needs_jsc
@@ -440,14 +458,18 @@ def test_coverage_rule_matches_the_python_verdicts():
 
 
 def test_us_pf_label_is_the_national_note():
-    # a fitted US pf fan is the plain filter: the legend entry is
-    # us_national.PF_US_SHORT without its article, and the frame's note
-    # the host-sent pf_note, while pf wears the Oracle SIHRS name
+    # a fitted US pf fan stored before addendum A3 is the Liu-West filter
+    # alone: the legend entry is us_national.PF_US_SHORT without its
+    # article, and the frame's note the host-sent one, while pf wears the
+    # Oracle SIHRS name, in a week whose payload says so
     from app.core import us_national as usn
     m = re.search(r"var US_PF_LABEL = '([^']+)';", SRC)
     assert m
     assert m.group(1).lower() == usn.PF_US_SHORT.lower().removeprefix("the ")
+    assert m.group(1) == "Liu-West filter without the Oracle step"
     assert "us && us.pf_note && /Oracle/.test(nameOf('pf'))" in SRC
+    assert "pl.us_step === 'filter'" in SRC
+    assert "usPfNote(cfg.us, pl)" in SRC
     assert "|| (pfDrawn ? pfNote : '')" in SRC
 
 

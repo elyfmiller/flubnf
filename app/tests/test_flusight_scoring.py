@@ -17,6 +17,7 @@ Pinned:
   * the replay applies the console's output floor to both members before
     storage and records it in the season's run record.
 """
+import dataclasses
 import json
 import math
 import os
@@ -305,9 +306,15 @@ def test_the_us_row_carries_log_and_coverage_and_says_what_pf_is():
     assert d["log_rel"]["pf"] == pytest.approx(1.5)
     assert d["cov"]["pf"] == {"50": 0.0, "80": 1.0, "95": 1.0}
     assert us.log_rel("pf") == pytest.approx(1.5)
-    # the fitted pf US row never had the Oracle step, and says so; the
-    # sum of states is a sum of Oracle SIHRS state forecasts
-    assert "without the Oracle step" in d["pf_note"]
+    # what the fitted pf US row is follows its era (resolve reads it from
+    # the stored weeks); a frame alone does not say, so the note covers
+    # both; the sum of states is a sum of Oracle SIHRS state forecasts
+    assert d["pf_step"] is None and d["pf_note"] == usn.PF_US_NOTE
+    stepped = dataclasses.replace(us, pf_step=usn.STEPPED).as_dict()
+    assert stepped["pf_note"] == usn.PF_US_NOTES[usn.STEPPED]
+    assert "without the Oracle step" not in stepped["pf_note"]
+    filt = dataclasses.replace(us, pf_step=usn.FILTER).as_dict()
+    assert "Liu-West filter without the Oracle step" in filt["pf_note"]
     assert usn.UsNational(usn.AGGREGATED).as_dict()["pf_note"] == ""
 
 
@@ -425,9 +432,60 @@ def test_the_weekly_table_states_the_rule_and_what_the_us_row_is():
          "base_wis": 10.0}])
     html = scoring.summary_table_html(df)
     assert scoring.CELL_RULE_NOTE in html
+    # a run that does not say what its US pf is gets the note for both eras
     assert usn.PF_US_NOTE in html
+    # a run's own oracle.json says: the note for its era alone
+    for step in (usn.STEPPED, usn.FILTER):
+        html = scoring.summary_table_html(df, us_step=step)
+        assert usn.PF_US_NOTES[step] in html and usn.PF_US_NOTE not in html
+    assert "without the Oracle step" not in scoring.summary_table_html(
+        df, us_step=usn.STEPPED)
     # the Groundhog's US row is its own forecast: no such note
-    assert usn.PF_US_NOTE not in scoring.summary_table_html(df, "analogue")
+    for step in (None, usn.STEPPED, usn.FILTER):
+        an = scoring.summary_table_html(df, "analogue", us_step=step)
+        assert "under Oracle SIHRS" not in an
+
+
+def test_the_weekly_report_follows_the_runs_oracle_json(tmp_path):
+    """pipeline._write_weekly_report reads the run's workroot: a run whose
+    oracle.json stepped the US cell (addendum A3) says so on the accuracy
+    card, and a run that kept it outside says the filter alone."""
+    from app.ui import pipeline as ui_pipeline
+    from app.core import report_v2, runs as runs_mod
+    from flubnf.settings import load_locations
+    locs = load_locations()
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
+                            locations=["Ohio", "US"])
+    rng = np.random.default_rng(7)
+    pf = {loc: {h: rng.gamma(5.0, 20.0, 200).tolist()
+                for h in (hz.ORIGIN, *hz.HORIZONS)} for loc in ("Ohio", "US")}
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "US")}
+    df = pd.DataFrame([
+        {"location": "Ohio", "fips": "39", "horizon": 1, "wis": 1.0,
+         "base_wis": 2.0},
+        {"location": "US", "fips": "US", "horizon": 1, "wis": 9.0,
+         "base_wis": 10.0}])
+
+    def card(us_state, outside):
+        wr = tmp_path / us_state
+        wr.mkdir()
+        (wr / "cells.json").write_text(json.dumps(
+            [{"location": l, "last_observed": 127.0} for l in ("Ohio", "US")]))
+        (wr / "oracle.json").write_text(json.dumps({
+            "applied": True, "cells": {"outside_member": outside},
+            "locations": {"US": {"fips": "US", "state": us_state}}}))
+        ui_pipeline._write_weekly_report(spec, wr, pf, obs, df, locs, n2f,
+                                         1.0, {})
+        bundle = json.loads((wr / report_v2.BUNDLE_NAME).read_text())
+        return bundle["national"]["summary_html"]
+
+    stepped = card("both", [])
+    assert usn.PF_US_NOTES[usn.STEPPED] in stepped
+    assert usn.PF_US_NOTE not in stepped
+    filt = card("outside", ["US"])
+    assert usn.PF_US_NOTES[usn.FILTER] in filt
 
 
 def test_the_earlier_rule_note_names_each_set_of_figures():

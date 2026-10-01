@@ -123,6 +123,35 @@ def test_a_newer_run_on_a_few_states_does_not_replace_the_whole_set(root):
     assert by[GH]["run_id"] == whole.name and by[OR]["run_id"] == whole.name
 
 
+def test_runs_started_in_the_same_second_show_the_one_opened_last(root):
+    """A run id carries only its start second; its random suffix says
+    nothing of order. Of two complete runs started in one second, the card
+    shows the one the ledger opened last, the run the report button
+    (shared._latest_results) and the archive hold, not the one whose
+    suffix sorts last."""
+    import time
+    first, second = "20981001T100424-ffffff", "20981001T100424-000000"
+    led = Ledger()
+    now = time.time()
+    for k, rid in enumerate((first, second)):
+        w = root / "workroots" / rid
+        for m in (OR, GH):
+            d = w / "submission" / m
+            d.mkdir(parents=True)
+            (d / f"{O._reference_date('2098-01-03')}-{m}.csv").write_text(rid)
+        (w / "results.json").write_text(json.dumps(
+            {"forecast_date": "2098-01-03", "spec": ""}))
+        led._db.execute(
+            "INSERT INTO runs (run_id, created_utc, spec_json, workroot, "
+            "status, outcome_json) VALUES (?,?,?,?,?,?)",
+            (rid, now + 0.5 * k, "{}", str(w), "ok", "{}"))
+    led._db.commit()
+    ui_shared._invalidate_scans()
+    assert ui_shared._latest_results()[0] == second
+    (d,) = O.forecast_dates()[0]
+    assert [f["run_id"] for f in d["files"]] == [second, second]
+
+
 def test_with_no_complete_run_the_newest_file_shows_marked_incomplete(root):
     _run(root, "2098-01-03", [GH], status="stopped")
     late = _run(root, "2098-01-03", [GH], status="partial")

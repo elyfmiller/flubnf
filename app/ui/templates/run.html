@@ -103,7 +103,7 @@
 {% for s in current %}
  {% if s.submittable or s.modified %}
  <div class="fc-file"><span class="fc-file-model">{{ s.model }}</span>
-  <a href="/output/download?path={{ s.path | urlencode }}">{{ tips.icon("download") }} {{ s.name }}</a>
+  <a href="/output/download?path={{ s.path | urlencode }}" download>{{ tips.icon("download") }} {{ s.name }}</a>
   {% if s.modified and not s.submittable %}{% call tips.badge("warn", "non-hub name", id="run-sub-mod-" ~ loop.index) %}Non-hub name: this run's model settings differ from the defaults.{% endcall %}{% endif %}</div>
  {{ covm.line(s.cov) }}
  {% endif %}

@@ -1,10 +1,11 @@
 """Helpers two or more tabs use, so no tab imports another for them.
 
-The same-host (CSRF) guard, which server.py registers as middleware; the
-request helpers (flash notice, redirect back, run phase, console clock);
-the cached disk scans and their one invalidation hook; run labels, outcome
-chips and the latest shipped results; and the readers of the sandbox's
-engine claim. Among app.ui modules it imports only state.
+The same-host (CSRF) guard and the no-store header, which server.py
+registers as middleware; the request helpers (flash notice, redirect
+back, run phase, console clock); the cached disk scans and their one
+invalidation hook; run labels, outcome chips and the latest shipped
+results; and the readers of the sandbox's engine claim. Among app.ui
+modules it imports only state.
 """
 from __future__ import annotations
 
@@ -58,6 +59,19 @@ async def _same_host_guard(request: Request, call_next):
                 "Refused: cross-origin request, the Origin header does "
                 "not name localhost.\n", status_code=403)
     return await call_next(request)
+
+
+# registered by server.py around the two guards, inside the slow-request log
+async def _no_store(request: Request, call_next):
+    """Cache-Control: no-store on every response but /static/'s. A page or
+    a download is always fetched afresh: a cached Output page names an
+    earlier run's files, and a report download keeps one URL from run to
+    run. The static files keep their ETag and 304s. setdefault, so a
+    route's own header (the sandbox zips') stands."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 # === Cached filesystem scans ===

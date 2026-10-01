@@ -1298,6 +1298,15 @@ def app_window(port: int = 8710):
                              kwargs={"stop": closed}, daemon=True).start()
         except Exception:
             pass
+    # macOS: a download saved over an existing file replaces it (the save
+    # panel's Replace deletes nothing, and WebKit then drops the download:
+    # flubnf/window_downloads.py). Done here rather than beside
+    # ALLOW_DOWNLOADS: it imports pywebview's Cocoa module, which creates
+    # the NSApplication, and so waits, as webview.start would, until the
+    # predecessor is gone and the port is held.
+    from flubnf import window_downloads
+    _trace("window: save over an existing file: "
+           + window_downloads.install(webview, trace=_trace))
     _trace("window: entering webview.start (main loop)")
     webview.start(_activate)
     # The window is gone: leave now. Every helper thread is a daemon, but

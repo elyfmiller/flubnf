@@ -36,7 +36,7 @@ Issues = "https://github.com/elyfmiller/flubnf/issues"
 Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/archive/RELEASE-1.0.md"
 
 [project.optional-dependencies]
-app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]
+app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview>=6.2,<7"]
 # pyyaml: the hub metadata tests parse YAML; nothing at runtime does.
 dev = ["pytest", "httpx2", "pyyaml"]
 

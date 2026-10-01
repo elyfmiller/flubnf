@@ -19,10 +19,17 @@ result carries the label and note saying which, and surfaces print them.
 
 SCORING POLICY (POOLED_INCLUDES_US): the pooled headline covers the
 jurisdictions only; US never joins it, so fitting US changes no headline.
+
+THE ORACLE STEP ON US, three eras read from each stored week's oracle.json
+(us_step_week), never from the code version: STEPPED (addendum A3, from
+2026-10-01: the step covers the national cell), FILTER (a week stored
+before it: US outside the member, its pf the Liu-West filter alone), and
+MIXED for a season holding weeks of both (us_step_season).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 #: the hub's national FIPS, and every spelling of it ever written by the app
@@ -35,8 +42,10 @@ AGGREGATED = "aggregated"
 OFFICIALS_ONLY = "officials_only"
 PROVENANCES = (FITTED, AGGREGATED, OFFICIALS_ONLY)
 
-#: print order; the retired blend last (older scores frames carry its rows)
-MODELS = ("pf", "analogue", "ensemble")
+#: print order; the retired blend last (older scores frames carry its rows).
+#: The Liu-West filter alone (pf_filter) has US rows for weeks stored since
+#: addendum A3 only, when oracle.json's quantiles.null carries US
+MODELS = ("pf", "pf_filter", "analogue", "ensemble")
 
 #: THE long label (pickers, titles, legends); `label()` adds the state count
 LABELS = {
@@ -68,20 +77,48 @@ NOTES = {
         "view carries the CDC comparators alone."),
 }
 
+#: the Oracle step on the US cell, by era (the module docstring)
+STEPPED = "stepped"
+FILTER = "filter"
+MIXED = "mixed"
+
 #: what the Oracle SIHRS member's US row is, wherever a table or tile puts
 #: it under that name. From addendum A3 (2026-10-01) the Oracle step covers
 #: the national cell too (app/core/oracle.py, docs/ORACLE-SIHRS.md 5c); a
-#: store written before it carries the filter alone there, and its
-#: oracle.json says so (cells.outside_member lists US). The wording covers
-#: both; a provenance-aware split is the console's to make.
+#: week stored before it carries the Liu-West filter alone there, and its
+#: oracle.json says so (cells.outside_member lists US). PF_US_NOTES words
+#: each era; PF_US_NOTE covers both, for a store whose weeks do not say.
 PF_US_NOTE = (
     "The US row under Oracle SIHRS: from addendum A3 (2026-10-01) the "
     "Oracle step is applied to the national cell as to the states, DC and "
-    "Puerto Rico. A season or week stored before that carries the filter "
-    "alone there, without the Oracle step; its oracle.json lists US under "
-    "outside_member.")
-#: the short form, for a tile or a label beside the US figure
-PF_US_SHORT = "the particle filter without the Oracle step"
+    "Puerto Rico. A season or week stored before that carries the Liu-West "
+    "filter alone there, without the Oracle step; its oracle.json lists US "
+    "under outside_member.")
+PF_US_NOTES = {
+    STEPPED: (
+        "The US row under Oracle SIHRS carries the Oracle step, as the "
+        "states, DC and Puerto Rico do: the step covers the national cell "
+        "since addendum A3 (2026-10-01)."),
+    FILTER: (
+        "The US row under Oracle SIHRS is the Liu-West filter without the "
+        "Oracle step: it was stored before addendum A3 (2026-10-01), when "
+        "the step covered the states, DC and Puerto Rico only; its "
+        "oracle.json lists US under outside_member."),
+    MIXED: (
+        "The US row under Oracle SIHRS mixes two eras: weeks stored before "
+        "addendum A3 (2026-10-01) carry the Liu-West filter alone there, "
+        "weeks stored since carry the Oracle step."),
+}
+#: the short forms, for a tile beside the US figure; a stepped row needs none
+PF_US_SHORT = "the Liu-West filter without the Oracle step"
+PF_US_SHORT_MIXED = ("the Liu-West filter alone before addendum A3, the "
+                     "Oracle step since")
+#: what a page says in place of the Liu-West filter's own US figure, which
+#: it shows only for a season whose every week has one
+PF_FILTER_US_WITHHELD = (
+    "The Liu-West filter's own US forecast exists only for weeks stored "
+    "since addendum A3 (2026-10-01), so its US figure is shown only for a "
+    "season whose every week has one.")
 
 #: the word flagging a non-preferred answer
 FALLBACK_WORD = "fallback"
@@ -159,6 +196,101 @@ def pooled_locations(names) -> list:
     return state_names(names)
 
 
+# ------------------------------------------------- the Oracle step on US
+
+#: a stored week's Oracle step provenance (app/core/oracle.PROVENANCE_NAME)
+ORACLE_JSON = "oracle.json"
+
+#: us_step_week's answers keyed by (path, mtime_ns, size): each week's
+#: oracle.json (a few MB) is parsed once per process
+_STEP_CACHE: dict = {}
+
+
+def us_step_week(week_dir) -> str | None:
+    """What one stored week, or a run's workroot, did with the US cell, from
+    its oracle.json: FILTER when US stayed outside the member (named under
+    cells.outside_member, or its location entry's state is "outside"),
+    STEPPED when the US cell went through the step (any other state, the
+    identity and "not eligible" included), None when the step was not
+    applied, the file is missing or unreadable, or the week has no US cell.
+
+    Never decided from addendum_a3_sha256: write_not_applied records that
+    hash on a week where no step ran."""
+    fp = Path(week_dir) / ORACLE_JSON
+    try:
+        st = fp.stat()
+    except OSError:
+        return None
+    key = (str(fp), st.st_mtime_ns, st.st_size)
+    if key in _STEP_CACHE:
+        return _STEP_CACHE[key]
+    out = None
+    try:
+        prov = json.loads(fp.read_text(encoding="utf-8"))
+        if prov.get("applied") is True:
+            outside = (prov.get("cells") or {}).get("outside_member") or ()
+            us = [e or {} for loc, e in (prov.get("locations") or {}).items()
+                  if is_us(loc) or is_us((e or {}).get("fips"))]
+            if (any(is_us(l) for l in outside)
+                    or any(e.get("state") == "outside" for e in us)):
+                out = FILTER
+            elif us:
+                out = STEPPED
+    except Exception:
+        out = None
+    _STEP_CACHE[key] = out
+    return out
+
+
+def us_step_weeks(root) -> dict:
+    """{asof: STEPPED or FILTER} for each stored week of a season root
+    whose oracle.json says (us_step_week); the others are left out."""
+    from app.core.retro_store import season_sample_files
+    out = {}
+    for fp in season_sample_files(Path(root)):
+        step = us_step_week(fp.parent)
+        if step is not None:
+            out[fp.parent.name] = step
+    return out
+
+
+def season_step(steps) -> str | None:
+    """One era for a season from its weeks' answers (a us_step_weeks dict
+    or any iterable of them): the one value they share, MIXED when they
+    differ, None when no week says."""
+    seen = set(steps.values() if isinstance(steps, dict) else steps)
+    seen.discard(None)
+    if not seen:
+        return None
+    return seen.pop() if len(seen) == 1 else MIXED
+
+
+def us_step_season(root) -> str | None:
+    """STEPPED, FILTER or MIXED over a season root's stored weeks, or None
+    when no week says (no oracle.json, the step not applied, a sealed
+    record, no US cell)."""
+    return season_step(us_step_weeks(root))
+
+
+def _weeks_text(weeks) -> str:
+    """'1 week, 2025-10-04' or '12 weeks, 2025-10-04 to 2025-12-20'."""
+    ws = sorted(weeks)
+    if len(ws) == 1:
+        return f"1 week, {ws[0]}"
+    return f"{len(ws)} weeks, {ws[0]} to {ws[-1]}"
+
+
+def pf_us_note(step, weeks: dict | None = None) -> str:
+    """The note for one era (PF_US_NOTES), or PF_US_NOTE when the era is
+    not known. A MIXED note names the weeks of each era when `weeks`
+    ({FILTER: [asof, ...], STEPPED: [...]}) gives them."""
+    text = PF_US_NOTES.get(step, PF_US_NOTE)
+    if step == MIXED and weeks and weeks.get(FILTER) and weeks.get(STEPPED):
+        text += (f" The filter alone: {_weeks_text(weeks[FILTER])}; the "
+                 f"Oracle step: {_weeks_text(weeks[STEPPED])}.")
+    return text
+
+
 # ------------------------------------------------------------- the answer
 
 def label(provenance: str, n_states: int | None = None) -> str:
@@ -186,7 +318,12 @@ class UsNational:
     the log-scale relWIS and `covs` to the coverage fractions ({"50", "80",
     "95"}), each None where the source cannot give it (a scores.json or
     national cache from before these metrics). All are empty under
-    `officials_only`."""
+    `officials_only`.
+
+    `pf_step` is the era of a fitted Oracle SIHRS US row (STEPPED, FILTER,
+    MIXED, or None when the stored weeks do not say) and `pf_weeks` its
+    weeks by era ({FILTER: [asof, ...], STEPPED: [...]}); `resolve` fills
+    both."""
 
     provenance: str
     scores: dict = field(default_factory=dict)
@@ -195,10 +332,35 @@ class UsNational:
     reason: str = ""
     log_scores: dict = field(default_factory=dict)
     covs: dict = field(default_factory=dict)
+    pf_step: str | None = None
+    pf_weeks: dict = field(default_factory=dict)
 
     @property
     def is_fitted(self) -> bool:
         return self.provenance == FITTED
+
+    @property
+    def pf_note(self) -> str:
+        """What the fitted Oracle SIHRS US row is, for its era; "" unless
+        fitted (a sum of states is a sum of stepped state forecasts)."""
+        return pf_us_note(self.pf_step, self.pf_weeks) if self.is_fitted else ""
+
+    @property
+    def pf_short(self) -> str:
+        """The tile's short form; "" when there is nothing to add (a stepped
+        row, an era the weeks do not say, a row that is not fitted)."""
+        if not self.is_fitted:
+            return ""
+        return {FILTER: PF_US_SHORT, MIXED: PF_US_SHORT_MIXED}.get(
+            self.pf_step, "")
+
+    @property
+    def pf_filter_withheld(self) -> str:
+        """Why a page withholds the Liu-West filter's own fitted US figure
+        (shown only when every stored week has one: STEPPED), or ""."""
+        if not self.is_fitted or self.pf_step == STEPPED:
+            return ""
+        return PF_FILTER_US_WITHHELD
 
     @property
     def is_fallback(self) -> bool:
@@ -244,8 +406,12 @@ class UsNational:
     def as_dict(self) -> dict:
         """The JSON-safe form; provenance and wording travel with the numbers.
         Member keys carry relWIS; "log_rel" and "cov" map member to its
-        log-scale relWIS and coverage fractions (None when unknown), and
-        "pf_note" says what the Oracle SIHRS member's US figure is."""
+        log-scale relWIS and coverage fractions (None when unknown).
+        For a fitted row, "pf_step" is the era, "pf_note" says what the
+        Oracle SIHRS member's US figure is in it, "pf_short" is the tile's
+        short form, "pf_note_filter" the note for one week stored before
+        addendum A3 (the player's), and "pf_filter_withheld" why the
+        Liu-West filter's US figure is not shown (empty when it is)."""
         d = {"provenance": self.provenance, "label": self.label,
              "short_label": self.short_label, "note": self.note,
              "fitted": self.is_fitted, "fallback": self.is_fallback,
@@ -253,7 +419,11 @@ class UsNational:
              "n_states": self.n_states, "cells": dict(self.cells),
              "log_rel": {m: self.log_scores.get(m) for m in MODELS},
              "cov": {m: self.covs.get(m) for m in MODELS},
-             "pf_note": PF_US_NOTE if self.is_fitted else ""}
+             "pf_step": self.pf_step if self.is_fitted else None,
+             "pf_note": self.pf_note,
+             "pf_short": self.pf_short,
+             "pf_note_filter": PF_US_NOTES[FILTER] if self.is_fitted else "",
+             "pf_filter_withheld": self.pf_filter_withheld}
         d.update({m: self.scores.get(m) for m in MODELS})
         if self.reason:
             d["reason"] = self.reason
@@ -301,7 +471,12 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
 
     fitted = from_scores(scores_df)
     if fitted is not None and fitted.has_scores:
-        return fitted
+        # the Oracle SIHRS US row's era, from the stored weeks' oracle.json
+        steps = us_step_weeks(root)
+        weeks: dict = {}
+        for asof, step in sorted(steps.items()):
+            weeks.setdefault(step, []).append(asof)
+        return replace(fitted, pf_step=season_step(steps), pf_weeks=weeks)
 
     n_states = None
     if scores_df is not None and "location" in getattr(scores_df,

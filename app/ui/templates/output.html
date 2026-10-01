@@ -90,10 +90,13 @@ their run folders.{% endcall %}</span>{% endif %}</span>
 {{ tips.heading("Output", "out-files", about, level=1, rich=True, tip_label="the submission files", cls="out-title") }}
 {% if rid or archive_dates %}
 {# the weekly report: the latest run's at the right of the title, an
-   earlier week's from the picker #}
-{% set rep_when %}{% if has_report and report_asof %}{{ tips.meta([("calendar", "as of " ~ report_asof)]) }}{% endif %}{% endset %}
-{% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/output/report" target="_blank">{{ tips.icon("external") }} Open report</a>
-<a class="btn gold" href="/output/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
+   earlier week's from the picker. The buttons name the run whose report
+   they are, the one beside "as of", so a page left open never hands out
+   a later run's report under an earlier one's label #}
+{% set rep_run %}<a href="/runs/{{ rid }}">run {{ report_when }}</a>{% endset %}
+{% set rep_when %}{% if has_report and report_asof %}{{ tips.meta([("calendar", "as of " ~ report_asof), ("clock", rep_run, "Run")]) }}{% endif %}{% endset %}
+{% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/runs/{{ rid }}/report" target="_blank">{{ tips.icon("external") }} Open report</a>
+<a class="btn gold" href="/runs/{{ rid }}/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
 <div class="card out-report" id="weekly-report">
  {{ tips.heading("Weekly report", "out-report", "Generated automatically with each full run.", after=rep_when, aside=rep_acts) }}
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
@@ -105,9 +108,17 @@ their run folders.{% endcall %}</span>{% endif %}</span>
   </select>
   <button class="quiet" type="button"
    onclick="var d=document.getElementById('archreport').value;if(d)window.open('/output/report?date='+d,'_blank')">{{ tips.icon("external") }} Open</button>
-  <button class="quiet" type="button"
-   onclick="var d=document.getElementById('archreport').value;if(d)window.location='/output/report/download?date='+d">{{ tips.icon("download") }} Download</button>
+  {# a link with the download attribute, as every download in the console,
+     so the window saves it the one way; its date follows the picker #}
+  <a class="btn quiet" id="archreport-dl" href="/output/report/download?date={{ archive_dates[0] }}" download>{{ tips.icon("download") }} Download</a>
  </div>
+ <script>
+  (function(){
+   var s=document.getElementById('archreport'),a=document.getElementById('archreport-dl');
+   function follow(){a.href='/output/report/download?date='+encodeURIComponent(s.value);}
+   s.addEventListener('change',follow);a.addEventListener('click',follow);follow();
+  })();
+ </script>
  {% endif %}
 </div>
 {% endif %}
@@ -138,6 +149,38 @@ their run folders.{% endcall %}</span>{% endif %}</span>
  </section>
  {% endfor %}
 </div>
+{% endif %}
+{# an older server (a pull while the console runs reloads templates,
+   not routes) renders no stamp: the page then goes without the check #}
+{% if stamp is defined %}
+<script>
+ // fresh after a run: the page lists the files of the runs it was
+ // rendered from. Once no run is on, it reloads when a newer run's
+ // results.json has landed (/api/output/stamp) or when it was rendered
+ // during a run; it looks when shown, focused or back in view, and every
+ // few seconds while a run is on. The reload waits, as forecast.html's
+ // does, while a form has focus or the guard modal is open (GUARD_BUSY).
+ (function(){
+  var S={{ stamp | tojson }},T=null,ASKING=false,ON=!!S.running,POLL_MS=3000;
+  function later(){clearTimeout(T);T=setTimeout(look,POLL_MS);}
+  function look(){
+   if(document.hidden||ASKING)return;
+   ASKING=true;
+   // a refusal or a reply without a stamp is a failed check, not a change
+   fetch('/api/output/stamp').then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(d){
+    if(!d||typeof d.stamp!=='string')throw new Error('no stamp');
+    ASKING=false;ON=!!d.running;
+    if(ON){later();return;}
+    if(d.stamp===S.stamp&&!S.running)return;
+    if(window.GUARD_BUSY||(document.activeElement&&document.activeElement.form)){later();return;}
+    location.reload();
+   }).catch(function(){ASKING=false;if(ON)later();});
+  }
+  addEventListener('pageshow',look);
+  addEventListener('focus',look);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)look();});
+ })();
+</script>
 {% endif %}
 {% endif %}
 {% endblock %}

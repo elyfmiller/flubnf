@@ -6,11 +6,10 @@ this file here.
 
 ## Now
 
-- 2026-10-01: preparing the PyBNF pull request (Ely's decisions: one pull
-  request, side fixes as their own commits, no design record, minimal
-  content). Trimming the branch, then rebuilding it as a clean series. CPU:
-  a few PyBNF test-suite runs on the lab Mac today, dropping to 6 cores when
-  the machine is busy.
+- 2026-10-01: the PyBNF pull request is ready, not pushed. It is branch
+  `pr/liu-west-filter`: 8 commits, about 5,900 lines, outputs byte-identical
+  to the full port. It waits on Ely's go-ahead to push to his fork; Ely
+  opens the pull request. No engine job is using the lab Mac's CPU.
   It slows other work while it runs but does not break it. If you need the
   machine, say so here (`Engine:` in your notes) or message the session
   "PyBNF Particle Filter". The engine run will pause and resume later. This

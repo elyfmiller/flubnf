@@ -204,9 +204,13 @@ line, and a player toggle (off until ticked). Its quantiles are the week's
 sidecar as `pf_filter` (`app/core/retro_store.py` `filter_quantiles`), so
 no second replay is needed and it scores on exactly the Oracle SIHRS's
 cells. A season scored before this is rescored once when its page next
-opens. It has no US figure: the Oracle step never touches the fitted US
-row, which is already the filter alone. Weeks without the step (a replay
-with `--oracle none`, a sealed record) have no such member. It is never
+opens. Before addendum A3 it has no US figure: the step left the fitted
+US row outside the member, so that row is already the filter alone. Since
+A3 (section 5c) `quantiles.null` carries US too, and the filter's US cell
+is scored apart from the pooled figures like every US cell; the season
+page shows that US figure only for a season whose every week was stored
+since A3, and n/a otherwise. Weeks without the step (a replay with
+`--oracle none`, a sealed record) have no such member. It is never
 submitted and never on the public site; the plain-filter research run
 above is unchanged.
 
@@ -468,7 +472,8 @@ against the FluSight baseline, five seeds within 0.001 of each other:
 As on the states, the gain is in the rise and the decline and the loss is
 across the peak turn, and part of the 95% gain is wider upper bands at
 h2 and h3. On the 2026-10-03 dry run the US medians move from 2,704 /
-2,645 / 2,311 / 1,872 to 2,785 / 3,189 / 3,542 / 3,858.
+2,645 / 2,311 / 1,872 to 2,786 / 3,190 / 3,542 / 3,858 (the file's whole
+numbers; `results.json` gives 2,785.7 / 3,189.5 / 3,542.3 / 3,858.1).
 
 Checked on 2026-10-01, the day it was wired: on the dry run's stored filter
 samples the new `apply_week` reproduces the shipped provenance of the six
@@ -479,8 +484,12 @@ every week (the fidelity record is in the research tree beside the
 addendum).
 
 Stores written before A3 keep their US row as the filter made it and say
-so (`cells.outside_member` lists US); the console's US-row note
-(`us_national.PF_US_NOTE`) covers both eras in words.
+so (`cells.outside_member` lists US). The console reads each stored week's
+oracle.json (`us_national.us_step_week`; never `addendum_a3_sha256`, which
+a week without the step carries too) and words the US row by era: the
+step, the Liu-West filter alone, or a season that mixes the two, naming
+the weeks of each (`us_national.PF_US_NOTES`). The weekly report reads
+its run's own file, and the season player each week's.
 
 ## 6. The engine key
 
