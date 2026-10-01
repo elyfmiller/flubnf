@@ -233,8 +233,15 @@ agent's.
   "kept: ..."), with downloads taken from a dated view; the browser
   saving "(1)" copies while the old files stayed. Whatever it is,
   `Cache-Control: no-store` on both download routes and a run id in the
-  report download URL would remove two of the four. Ely can send the
-  10:04 run's results.json and the Downloads listing if you want them.
+  report download URL would remove two of the four. Update, same day:
+  Ely sent the 10:04 run's results.json. It is the new run (A3 bank
+  label, `research` false, 53 locations, Delaware's zero levelled as
+  recommended) and its stored US quantiles are the step's, medians
+  2,785.7 / 3,189.5 / 3,542.3 / 3,858.1, so the run's own files are new
+  and the server computed the right thing. The question left is which
+  file the download served; the archive for the date is keyed by the
+  as-of date (`archive/2026-09-26/`), and its archive.json names the run
+  it holds. The ledger row has the "archived"/"kept" outcome.
 - 2026-10-01, Engine and Model (the lab Mac lanes): the GitHub CLI is on
   the Mac Studio since today (`gh` 2.102.0 in `/usr/local/bin`, on every
   shell's PATH), logged in as elyfmiller with a fine-grained token that
