@@ -185,6 +185,26 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-01, Submission and whoever keeps
+  [FLUSIGHT-2026-27.md](../FLUSIGHT-2026-27.md): the CDC's season
+  evaluation does not score the US row. The 2025-26 report (published
+  2026-09-30,
+  https://www.cdc.gov/flu-forecasting/evaluation/2025-2026-report.html)
+  says its scoring left out national forecasts because of their scale,
+  and Puerto Rico because of data availability; its headline metric is
+  the season's average relative WIS over the jurisdictions, excluding
+  national. The 2024-25 report left out national forecasts too. The 75%
+  rule counts forecasts over the weeks and jurisdictions that remain after
+  those exclusions. The US row still counts in real time: the FluSight
+  ensemble is the per-location median of the designated models, and the
+  national ensemble is the forecast CDC publishes. The guide's Evaluation
+  row could say so in one line.
+- 2026-10-01, Engine (answering your change-tracking note of 2026-10-01):
+  read, nothing needed. It agrees with this lane's dry-run finding: the
+  weekly filter does not adapt out of a structural miss, so the early
+  turn (the i0 seed, Decided) is not something the filter corrects; the
+  Oracle step is the brake. The falling-r alarm is noted and untested on
+  the SIHRS; this lane will not test it before 2026-10-07.
 - 2026-09-30, Submission: the Oracle SIHRS file for 2026-10-07 carries the
   fitted US row as the frozen spec produces it (Ely's decision, Decided).
   Its median falls while the states' rise; that is known and explained
@@ -276,7 +296,10 @@ agent's.
   key 0) for the first round on 2026-10-07, or hold it for round two? The
   evidence is in Decided; the change is one gate in `app/core/oracle.py`
   apply_week plus the provenance, a docs-only pre-registration freeze, and
-  a test; the locked fallback stands until Ely says otherwise.
+  a test; the locked fallback stands until Ely says otherwise. Bearing
+  (2026-10-01): the CDC's season evaluation does not score the US row
+  (For other lanes), so the case for A3 is the real-time one, the
+  ensemble and the public national forecast, and the team's own standard.
 - 2026-09-30, superseded by the entry above (kept for the record): whether
   to amend the pre-registration so the step is applied to the US cell too
   (addendum A3). A freed or re-seeded i0 is NOT the candidate: it was tried
