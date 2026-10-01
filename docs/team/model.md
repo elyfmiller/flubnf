@@ -11,6 +11,14 @@ agent's.
 
 ## Now
 
+- 2026-09-30: testing, at Ely's request, the registered Oracle step applied
+  to the US cell (the frozen spec keeps US outside it), before 2026-10-07;
+  the locked fallback is the fitted US row as is. Mac Studio use: two
+  US-only season replays (2023-24 and 2024-25, 3 fits a week, about 30 to
+  40 minutes each) between 2026-09-30 and 2026-10-06, never on Wednesday;
+  2025-26 and the dry-run week come from stored samples. Nothing in
+  production changes; a research script applies the step to stored US
+  samples. Result and, if it holds, a draft addendum A3 go here.
 - 2026-09-30: the dry run's falling US forecast (Ely's question of
   2026-09-30), investigated and answered; the findings and the options are
   under Decided and Open, the full record with the diagnostics is
