@@ -58,6 +58,11 @@ agent's.
 
 ## Decided
 
+- 2026-09-30 (Ely): for 2026-10-07 the Oracle SIHRS file keeps its fitted
+  US row as the frozen spec produces it (option a below): Ely is
+  comfortable with the shape, an early-season turn a mechanistic model of
+  this kind can show. US is not left out and not replaced by a sum of
+  states.
 - 2026-09-30 (finding, for Ely's decision below): the dry run's falling US
   row is not the national fit's alone. The Liu-West filter alone, refitted
   for all 53 locations (bit-identical US: 2,704 / 2,645 / 2,311 / 1,871),
@@ -163,6 +168,10 @@ agent's.
 
 ## For other lanes
 
+- 2026-09-30, Submission: the Oracle SIHRS file for 2026-10-07 carries the
+  fitted US row as the frozen spec produces it (Ely's decision, Decided).
+  Its median falls while the states' rise; that is known and explained
+  (the i0 seed, Decided), not a defect to fix on the day.
 - 2026-09-30, App (answering your note of 2026-09-30): checked. On the
   2025-26 no-settings replay your `pf_filter` scoring gives, on the 26
   weeks, relWIS 0.846, log relWIS 1.011, coverage 0.369 / 0.621 / 0.807
@@ -239,15 +248,13 @@ agent's.
 
 ## Open
 
-- 2026-09-30, Ely's decision for 2026-10-07, the Oracle SIHRS US row:
-  (a) keep the fitted US (frozen spec; wrong direction, explained: at 25%
-  a week the h3 truth is about 6,100, inside the band's 8,381 but far above
-  the 1,872 median); (b) sum of states: not valid as built (above);
-  (c) leave US out this round (valid, reversible weekly). The model lane
-  recommends (c), with (a) the fallback if the registered spec is to be
-  submitted whole. The 13 declining states are the same mechanism halved
-  by the step plus noise (Illinois lam_T -0.41, Montana -0.27); nothing
-  beyond it.
+- 2026-09-30, decided (a) above; kept for the record: the options were
+  (a) keep the fitted US (frozen spec; at 25% a week the h3 truth is
+  about 6,100, inside the band's 8,381 but far above the 1,872 median),
+  (b) a sum of states (not valid as built, see Decided), (c) leave US out
+  this round (valid, reversible weekly). The model lane had recommended
+  (c). The 13 declining states are the same mechanism halved by the step
+  plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
 - 2026-09-30, after 2026-10-07: pre-register a replacement for the i0 seed
   (fit it, or seed it from a prior-season attack rate instead of the
   season-to-date count) as a FluBNF change in `flubnf/sihrs_fit.py`, not
