@@ -59,6 +59,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
 | `report_v2.py` | PRODUCTION | the weekly run report | server `pipeline._write_weekly_report`, `/runs/<id>/report`, `/output/report` |
+| `report_grid.py` | PRODUCTION | the weekly report's "All locations" pages: a panel per location, both models, last season's same weeks; prints 3 by 5 per Letter page | `pipeline._write_weekly_report` (bundle v8 `grid`), `report_v2.build_report` |
 | `report_season.py` | PRODUCTION | self-contained season HTML export | server `/retro/{season}/report` |
 | `html_page.py` | PRODUCTION | what the page builders share: asset paths, the Plotly and chart scripts, `esc`, the embedded-JSON reader, theme tokens | `report_v2`, `report_season`, `site_page`, `site_build` |
 | `usmap.py` | PRODUCTION | build-time US map | `report_v2`, server home outlook, `site_build` |

@@ -117,7 +117,13 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    (per-state choices for gaps, zeros, partial weeks) before running.
 4. Run both models. Real-time runs read the live file only when its newest
    week equals the as-of; otherwise they use a dated vintage.
-5. Output tab: check the hub-check badge and the due / soon / closed badge.
+5. Output tab: open the weekly report and scroll to "All locations": every
+   location's two forecasts beside last season's same weeks, with flags on
+   the panels worth a second look (a horizon-3 median below the latest
+   count, or two models outside each other's 95% bands). Print, Save as
+   PDF gives four pages of 3 by 5 panels. The report saves as
+   `<reference_date>-NAU_PyBNF-weekly-report.html`, beside the CSVs.
+   Then check the hub-check badge and the due / soon / closed badge.
    Files land in `app/state/archive/<forecast_date>/`. For the authoritative
    check: `Rscript scripts/validate_submission.R <file.csv> <hub_clone> --window`
    (or `python scripts/validate_submission.py ...`).

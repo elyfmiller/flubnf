@@ -141,7 +141,7 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # Fans are reduced to the 23-level grid (FAN_LEVELS), never raw samples,
 # keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 7
+BUNDLE_VERSION = 8
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
 #: render without it: v2 cards_model (else PF), v3 cards_by_model +
 #: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
@@ -150,8 +150,9 @@ BUNDLE_VERSION = 7
 #: reported; elsewhere "no forecast" with its reason) and a detail's
 #: "model" (a Groundhog fan where the state has no PF samples), v7 asof
 #: (before it, "reference_date" held the as-of; it now holds the hub's
-#: reference date, as-of + 7; read the as-of through bundle_asof)
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7)
+#: reference date, as-of + 7; read the as-of through bundle_asof), v8
+#: grid (the "All locations" pages, report_grid; absent: no such pages)
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -570,7 +571,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                  national_map_cards: dict | None = None,
                  cards_model: str = "",
                  fitted_fips=None, national_in_run=None,
-                 gap_fips=None, no_forecast=None) -> Path:
+                 gap_fips=None, no_forecast=None, grid=None) -> Path:
     """asof: the run's as-of date (the page's "week of").
     state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
@@ -589,7 +590,9 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     gap_fips: in-scope fips with no reported data (the only reporting
     gaps); None (older bundles): a card-less state in scope is the gap and
     a bare card is "no forecast". no_forecast: model -> {fips: reason} for
-    in-scope states that have data but no forecast from that model."""
+    in-scope states that have data but no forecast from that model.
+    grid: the bundle's "grid" (report_grid), drawn as the "All locations"
+    pages under the map; None (older bundles): no such pages."""
     # build-time SVG map (usmap): plotly geo fetches its geometry from a CDN
     cat_fill, svg_map = usmap.cat_fill, usmap.svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
@@ -790,12 +793,23 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
               f'<h2 id="h-run">This run</h2>{run_bits}</section>'
               if run_bits else "")
 
+    # every location at a glance (report_grid): a panel title opens the
+    # location's detail section where there is one
+    from app.core import report_grid
+    have_detail = {a for a in state_details if a != "US"}
+    if national.get("fan"):
+        have_detail.add("US")
+    grid_section = report_grid.grid_html(grid, MEMBER_COLORS,
+                                         details=have_detail)
+    grid_style = (f"<style>{report_grid.grid_css()}</style>"
+                  if grid_section else "")
+
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF weekly report · {asof}</title>
 {theme_boot_script()}
 {plotly_js}
-{page_style()}</head><body>
+{page_style()}{grid_style}</head><body>
 {page_header()}
 <main>
 <div class="rp-titlerow">
@@ -816,6 +830,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
  </div>
 </div>
+{grid_section}
 {"".join(sections)}
 {nat}
 <script>
@@ -943,7 +958,9 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         national_in_run=bundle.get("national_in_run"),
         # v6 fields (absent: None, a card-less state in scope is the gap)
         gap_fips=bundle.get("gap_fips"),
-        no_forecast=bundle.get("no_forecast"))
+        no_forecast=bundle.get("no_forecast"),
+        # v8 field (absent: no "All locations" pages)
+        grid=bundle.get("grid"))
 
 
 # ---------------------------------------------------------- 6. serve time

@@ -355,6 +355,34 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             continue
     # national card from the same model as the rendered state cards
     nat_card = nat_cards.get(cards_model)
+    # v8: every location at a glance (report_grid), with last season's
+    # counts from the newest vintage (settled for a year ago)
+    grid = None
+    try:
+        from app.core import report_grid
+        history = {}
+        try:
+            _vs = state.data_mod.vintages()
+            if _vs:
+                hdf = pd.read_csv(state.data_mod.vintage_path(_vs[-1]),
+                                  dtype={"location": str})
+                hdf["location"] = hdf["location"].str.zfill(2)
+                _f2n = {f: n for n, f in n2f.items() if f}
+                hdf = hdf[hdf.location.isin(_f2n)].dropna(subset=["value"])
+                for f, g in hdf.groupby("location"):
+                    history[_f2n[f]] = [(str(d)[:10], float(v))
+                                        for d, v in zip(g.date, g.value)]
+        except Exception:
+            history = {}
+        g_keys = {l: ("US" if n2f.get(l) == "US" else n2a.get(l, l))
+                  for l in spec.locations}
+        g_names = {l: ("United States" if n2f.get(l) == "US" else l)
+                   for l in spec.locations}
+        grid = report_grid.grid_data(
+            spec.forecast_date, list(spec.locations), g_keys, g_names, obs,
+            {"pf": pf_q, "analogue": an_q}, history)
+    except Exception as e:     # the report never waits on its grid
+        outcome["report_grid_error"] = str(e)[:200]
     bundle = {"version": report_v2.BUNDLE_VERSION,
               # v7: the as-of, and the hub reference date under its own
               # name (older bundles held the as-of in reference_date)
@@ -378,6 +406,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "national_map_cards": nat_cards,
               "national": {"summary_html": wis_html},
               "national_map_card": nat_card,
+              # v8: the "All locations" pages (report_grid)
+              "grid": grid,
               "elapsed_s": elapsed_s,
               # run settings, app build and engine versions: the run's
               # recorded ones (the run page's), never a later server's
