@@ -6,6 +6,7 @@ never fails a request, and the log rolls over like the slow-request log.
 """
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -85,7 +86,10 @@ def test_each_download_leaves_a_line_naming_the_bytes_served(run, tmp_path):
         last = _lines(tmp_path)[-1]
         assert f"  {url}  run {rid}  " in last, last
         assert f"sha256 {_sha(r.content)}" in last
-        assert f"/{served}/" in last and last.endswith("report.html")
+        # the served path in the machine's own spelling (backslashes on
+        # Windows)
+        assert f"{os.sep}{served}{os.sep}" in last
+        assert last.endswith("report.html")
     assert len(_lines(tmp_path)) == 4
     # a refused or missing file is not a download
     client.get("/output/download", params={"path": "/nowhere.csv"})
