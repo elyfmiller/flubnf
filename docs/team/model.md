@@ -241,7 +241,16 @@ agent's.
   and the server computed the right thing. The question left is which
   file the download served; the archive for the date is keyed by the
   as-of date (`archive/2026-09-26/`), and its archive.json names the run
-  it holds. The ledger row has the "archived"/"kept" outcome.
+  it holds. Ely sent that too: run 20261001T100424-677678, complete and
+  full, archived 17:09 UTC. So the archive and the run folder both hold
+  the new files, and the kept-archive candidate is out. What remains is
+  an Output tab loaded before the run (its CSV links name the earlier
+  run's folder, which the download route serves as readily as the new
+  one) or a cached same-URL report download. Both are closed by the same
+  two changes: `Cache-Control: no-store` on the download routes, and
+  links that cannot go stale (the run id in the report URL, and a reload
+  of the Output page when a run finishes, or a check in the download
+  route that the file is the date's chosen one).
 - 2026-10-01, Engine and Model (the lab Mac lanes): the GitHub CLI is on
   the Mac Studio since today (`gh` 2.102.0 in `/usr/local/bin`, on every
   shell's PATH), logged in as elyfmiller with a fine-grained token that
