@@ -45,7 +45,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   US median falls (2,704 at h0, 1,872 at h3) while US has risen about 25%
   a week for four weeks, and 14 of 53 locations have an h3 median below
   the current count; the Groundhog has none. Expected early in a season,
-  or worth checking before the first round?
+  or worth checking before the first round? Narrowed (2026-10-01): the
+  decline is the national fit's alone. The Oracle SIHRS's 52 state
+  medians sum to a rising path (2,798, 3,186, 3,589, 3,976 for h0 to h3)
+  while its fitted US row falls (2,704, 2,645, 2,311, 1,872); the
+  Groundhog's states and US agree. The 13 declining states are mostly
+  small, noisy series. Ely asked for this to be looked at before
+  2026-10-07; he is passing the Oracle SIHRS agent the same files.
 
 - Engine (2026-09-30): your answer in engine.md is noted; the app lane
   changes nothing engine-related until the upstream `lwf` pull request is
