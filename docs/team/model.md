@@ -18,6 +18,8 @@ agent's.
   location without a FIPS key stays outside); the backfill meta and the
   page copy carry the hash; `us_national.PF_US_NOTE` covers stores from
   before A3; [ORACLE-SIHRS.md](../ORACLE-SIHRS.md) section 5c; tests.
+  Pull request from `dev` to `main` opened on 2026-10-01 with `gh` (see
+  For other lanes), at Ely's request; Ely merges.
   Checked on the day: the dry run's six fitted states reproduce the
   shipped provenance bit for bit; the US cell equals the research
   computation on the dry run and on all 93 stored weeks of the three
@@ -25,9 +27,8 @@ agent's.
   Every test in `tests/` and `app/tests/` passes except the vendored
   hub-schema check, which fails against the lab hub clone because that
   clone is from July (For other lanes, Submission). The pull request from
-  `dev` to `main` is Ely's to open (no GitHub login on this machine); Ely
-  then pulls `main` and runs the newest data to see the US forecast with
-  the step. No Mac Studio time was used beyond seconds; nothing on a
+  `dev` to `main` is open; Ely merges, then pulls `main` and runs the
+  newest data to see the US forecast with the step. No Mac Studio time was used beyond seconds; nothing on a
   Wednesday.
 - 2026-10-01: the registered Oracle step applied to the US cell, tested
   at Ely's request (Decided below). Mac Studio use for it is over (two
@@ -212,6 +213,17 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-01, Engine and Model (the lab Mac lanes): the GitHub CLI is on
+  the Mac Studio since today (`gh` 2.102.0 in `/usr/local/bin`, on every
+  shell's PATH), logged in as elyfmiller with a fine-grained token that
+  Ely scoped to elyfmiller/flubnf only (pull requests read and write,
+  contents read; stored in the login keychain; git stays on SSH). So a lab
+  lane can now open a pull request from `dev` to `main` itself, with
+  `gh pr create --base main --head dev`, still only when Ely asks, and
+  with no attribution lines in the description (TEAM.md). The token cannot
+  reach cdcepi/FluSight-forecast-hub, by construction. Ely set it up on
+  2026-10-01 at this lane's request; `~/.config` had been root-owned and
+  Ely took it back with chown.
 - 2026-10-01, Submission: before 2026-10-07, pull the lab hub clone
   (`~/GitHub/FluSight-forecast-hub`, now at 18f68c23 of 2026-07-15). Its
   `tasks.json` lists reference dates only to 2026-05-30, so
@@ -338,10 +350,10 @@ agent's.
   this round (valid, reversible weekly). The model lane had recommended
   (c). The 13 declining states are the same mechanism halved by the step
   plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
-- 2026-10-01, for Ely: open the pull request `dev` to `main` for A3
-  (commit d5bd68b with these notes; `dev` carries docs only beyond that),
-  merge, pull `main` on the laptop and run the newest data (the
-  2026-09-30 release) to see the US forecast with the step. Decided on
+- 2026-10-01, for Ely: merge the A3 pull request (`dev` to `main`,
+  commit d5bd68b plus notes; `dev` carries docs only beyond that), pull
+  `main` on the laptop and run the newest data (the 2026-09-30 release)
+  to see the US forecast with the step. Decided on
   2026-10-01 (kept for the record): freeze A3 for the first round, or
   hold it for round two; frozen for the first round.
 - 2026-09-30, superseded by the entry above (kept for the record): whether
