@@ -5,7 +5,7 @@ One small panel per location (US first, then the states and territories
 by name), three across: the last weeks observed, both models' forecasts
 for horizons 0 to 3 (the median and the 95% interval, one colour per
 model) and last season's counts over the same weeks of the year, shifted
-52 weeks forward, dashed. The national panel also sits, larger, beside
+52 weeks forward, dashed. The national panel also sits, larger, under
 the map (us_feature_html). Printed, each page holds 3 by 5 panels, so the 53
 locations fill four pages; a browser's or the window's Print, Save as PDF
 gives the PDF.
@@ -327,7 +327,7 @@ def _flag_spans(p: dict) -> str:
 
 
 def us_feature_html(grid: dict | None, colors: dict) -> str:
-    """The national panel at a larger size, for the space beside the map
+    """The national panel at a larger size, for the space under the map
     ("" when the run has no US panel)."""
     us = next((p for p in (grid or {}).get("panels") or []
                if p.get("key") == "US"), None)
@@ -414,10 +414,9 @@ def grid_css() -> str:
  .g-flag.g-none{color:var(--mut)}
  .g-flags{margin-left:auto;display:inline-flex;flex-wrap:wrap;gap:.25rem}
  .g-svg{display:block;width:100%;height:auto}
- /* the national panel, larger, beside the map */
- .rp-mapsplit{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);
-   gap:1rem;align-items:start}
- @media(max-width:900px){.rp-mapsplit{grid-template-columns:minmax(0,1fr)}}
+ /* the national panel, larger, under the map */
+ .rp-usfeature{margin:1rem auto 0;padding-top:.8rem;
+   border-top:1px solid var(--line);max-width:900px}
  .rp-usfeature .g-feature{border:0;padding:0}
  .rp-usfeature .g-feature figcaption{font-size:1rem;margin-bottom:.3rem}
  .rp-usfeature .g-head{margin-top:.4rem}
@@ -430,7 +429,9 @@ def grid_css() -> str:
  .g-dot{fill:var(--ink)}
  @media print{
   @page{size:letter portrait;margin:9mm}
-  .rp-mapsplit{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  .rp-mapcard{break-inside:avoid}
+  .rp-usfeature{margin-top:3mm;padding-top:2mm;max-width:none}
+  .rp-usfeature .g-svg{max-height:60mm}
   .rp-grid{break-before:page;border:0;padding:0;margin:0}
   .rp-grid > .uk-heading,.g-lede{display:none}
   .gpage{break-after:page;margin:0}

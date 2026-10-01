@@ -9,7 +9,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 - 2026-10-01: the weekly report has "All locations" pages (Ely's
   request): a panel per location, US first, both models' medians and 95%
   intervals over the last ten weeks, last season's counts for the same
-  weeks dashed, the latest count; the US panel also large beside the
+  weeks dashed, the latest count; the US panel also large under the
   map. Flags for a horizon-3 median below the latest count or
   two models outside each other's 95% bands. Printed: 3 across, 5 down,
   four Letter pages (Save as PDF). `app/core/report_grid.py`, report

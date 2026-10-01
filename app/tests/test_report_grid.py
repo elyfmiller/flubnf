@@ -160,7 +160,7 @@ def test_a_panel_is_plain_one_band_per_model():
     assert "latest: 1 admission<" in G._latest({"observed": [[ASOF, 1.0]]})
 
 
-def test_the_us_panel_sits_large_beside_the_map(tmp_path):
+def test_the_us_panel_sits_large_under_the_map(tmp_path):
     g = _grid()
     side = G.us_feature_html(g, COLORS)
     assert 'class="rp-usfeature"' in side and "United States" in side
@@ -171,8 +171,9 @@ def test_the_us_panel_sits_large_beside_the_map(tmp_path):
     html = report_v2.render_bundle(b, tmp_path / "r.html").read_text(
         encoding="utf-8")
     card = html.split('id="map-anchor"', 1)[1].split('id="all-locations"')[0]
-    assert 'class="rp-mapsplit"' in card and 'class="rp-usfeature"' in card
-    assert card.index('id="map-state"') < card.index("rp-usfeature")
+    assert 'class="rp-usfeature"' in card and "rp-mapsplit" not in card
+    # under the map and its legends, inside the map's card
+    assert card.index('class="rp-legends"') < card.index("rp-usfeature")
 
 
 def test_the_report_carries_the_pages_and_an_older_bundle_does_not(tmp_path):

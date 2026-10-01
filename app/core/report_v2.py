@@ -803,11 +803,9 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                                          details=have_detail)
     grid_style = (f"<style>{report_grid.grid_css()}</style>"
                   if grid_section else "")
-    # the national forecast, larger, in the map card's spare width
+    # the national forecast, larger, under the map (the first printed
+    # page's spare height)
     us_feature = report_grid.us_feature_html(grid, MEMBER_COLORS)
-    split_open = ('<div class="rp-mapsplit"><div class="rp-mapcol">'
-                  if us_feature else "")
-    split_close = f"</div>{us_feature}</div>" if us_feature else ""
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -828,12 +826,13 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 </div>
 <div class="card rp-mapcard" id="map-anchor">
  <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>{map_tip}</div>
- {split_open}<div id="map-state" class="mapcap">{map_html}</div>
+ <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="rp-legends">
   {legend_html}
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
- </div>{split_close}
+ </div>
+ {us_feature}
 </div>
 {grid_section}
 {"".join(sections)}
