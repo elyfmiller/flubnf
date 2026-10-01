@@ -137,17 +137,42 @@ def test_the_pages_are_fifteen_panels_three_across():
     assert "repeat(3,minmax(0,1fr))" in css and ".gpage{break-after:page" in css
 
 
-def test_a_name_is_escaped_and_the_scale_says_when_it_clips():
-    p = {"key": "XX", "name": "<b>A&B</b>", "observed": [[ASOF, 10.0]],
-         "last_season": [],
-         "models": {"analogue": {"times": ["2098-01-10"] * 4,
-                                 "q": [[1, 9, 10, 11, 900]] * 4}}}
+def test_a_panel_is_plain_one_band_per_model():
+    """One shaded band per model (the 95% interval), last season dashed,
+    the latest count in full with its unit, the flags beside it; no
+    off-scale note, and a name is escaped."""
+    p = {"key": "XX", "name": "<b>A&B</b>", "observed": [[ASOF, 2515.0]],
+         "last_season": [[ASOF, 2000.0], ["2098-01-10", 2100.0]],
+         "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
+                                           "2098-01-24", "2098-01-31"],
+                                 "q": [[1, 9, 2000, 11, 90000]] * 4}}}
     html = G.grid_html({"panels": [p], "asof": ASOF}, COLORS)
     assert "&lt;b&gt;A&amp;B&lt;/b&gt;" in html and "<b>A&B</b>" not in html
-    assert "95% off scale" in html
-    p["models"]["analogue"]["q"] = [[8, 9, 10, 11, 12]] * 4
-    assert "95% off scale" not in G.grid_html({"panels": [p], "asof": ASOF},
-                                              COLORS)
+    assert "latest: 2,515 admissions" in html
+    assert html.count("<polygon") == 1               # the 95% band alone
+    assert "off scale" not in html
+    assert "shaded: 95% interval" in html and "50%" not in html
+    assert "stroke-dasharray:4 3" in G.grid_css()    # last season, dashed
+    # the flags sit in their own group at the right of the caption
+    p["observed"] = [[ASOF, 5000.0]]
+    assert '<span class="g-flags"><span class="g-flag"' in G.grid_html(
+        {"panels": [p], "asof": ASOF}, COLORS)
+    assert "latest: 1 admission<" in G._latest({"observed": [[ASOF, 1.0]]})
+
+
+def test_the_us_panel_sits_large_beside_the_map(tmp_path):
+    g = _grid()
+    side = G.us_feature_html(g, COLORS)
+    assert 'class="rp-usfeature"' in side and "United States" in side
+    assert "Oracle SIHRS" in side and "last season" in side
+    assert G.us_feature_html(_grid(("Ohio",)), COLORS) == ""
+    b = {"version": report_v2.BUNDLE_VERSION, "asof": ASOF, "cards": {},
+         "details": {}, "national": {}, "grid": g}
+    html = report_v2.render_bundle(b, tmp_path / "r.html").read_text(
+        encoding="utf-8")
+    card = html.split('id="map-anchor"', 1)[1].split('id="all-locations"')[0]
+    assert 'class="rp-mapsplit"' in card and 'class="rp-usfeature"' in card
+    assert card.index('id="map-state"') < card.index("rp-usfeature")
 
 
 def test_the_report_carries_the_pages_and_an_older_bundle_does_not(tmp_path):

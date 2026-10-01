@@ -3,9 +3,10 @@ a glance, before the files go to the hub.
 
 One small panel per location (US first, then the states and territories
 by name), three across: the last weeks observed, both models' forecasts
-for horizons 0 to 3 (median, 50% and 95% bands, in the members' colours)
-and last season's counts over the same weeks of the year, shifted 52
-weeks forward. Printed, each page holds 3 by 5 panels, so the 53
+for horizons 0 to 3 (the median and the 95% interval, one colour per
+model) and last season's counts over the same weeks of the year, shifted
+52 weeks forward, dashed. The national panel also sits, larger, beside
+the map (us_feature_html). Printed, each page holds 3 by 5 panels, so the 53
 locations fill four pages; a browser's or the window's Print, Save as PDF
 gives the PDF.
 
@@ -26,7 +27,7 @@ from datetime import date, timedelta
 
 #: observed weeks a panel shows before the as-of (the as-of's included)
 OBS_WEEKS = 10
-#: the quantile levels a panel draws: 95% band, 50% band, median
+#: the quantile levels a panel keeps (it draws the 95% band and median)
 LEVELS = (0.025, 0.25, 0.5, 0.75, 0.975)
 #: the models a panel draws, in drawing order (the Oracle SIHRS on top)
 MODELS = ("analogue", "pf")
@@ -156,7 +157,7 @@ _SHORT = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 # ------------------------------------------------------------- drawing
 W, H = 300, 180
 #: a 95% band may stretch the scale to this many times the rest of the
-#: panel (counts, last season, medians, 50% bands); beyond, it is clipped
+#: panel (counts, last season, medians); beyond, it runs off the top
 CLIP_X = 1.6
 ML, MR, MT, MB = 36, 8, 8, 18
 
@@ -202,13 +203,14 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
     d0 = min(date.fromisoformat(x) for x in xs)
     d1 = max(date.fromisoformat(x) for x in xs)
     span = max((d1 - d0).days, 1)
-    # the scale: the counts, last season and the 50% bands in full; the
-    # 95% bands up to CLIP_X times that, clipped beyond (the caption says)
+    # the scale: the counts, last season and the medians in full; the 95%
+    # bands up to CLIP_X times that, clipped beyond (a Groundhog band can
+    # reach ten times its median and would flatten the rest)
     core = [v for _, v in o] + [v for _, v in ls]
     wide = []
     for f in fans.values():
         for r in f["q"]:
-            core += [r[2], r[3]]
+            core.append(r[2])
             wide.append(r[4])
     top = max(core + [1.0])
     if wide and max(wide) > top:
@@ -259,7 +261,8 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
             continue
         c = colors.get(m, "#888888")
         ts, q = f["times"], f["q"]
-        for lo, hi, op in ((0, 4, 0.16), (1, 3, 0.30)):
+        # one band per model, the 95% interval: one colour each
+        for lo, hi, op in ((0, 4, 0.22),):
             up = " ".join(f"{X(t):.1f},{Y(r[hi]):.1f}" for t, r in zip(ts, q))
             dn = " ".join(f"{X(t):.1f},{Y(r[lo]):.1f}"
                           for t, r in reversed(list(zip(ts, q))))
@@ -289,7 +292,54 @@ def _legend(colors: dict, label: str) -> str:
     return (f'{sw}<span class="g-key"><i class="g-k-obs"></i>observed</span>'
             f'<span class="g-key"><i class="g-k-last"></i>last season '
             f'({_html.escape(label)}), same weeks</span>'
-            '<span class="g-key g-k-bands">bands: 50% and 95%</span>')
+            '<span class="g-key g-k-bands">shaded: 95% interval</span>')
+
+
+def _latest(p: dict) -> str:
+    """The latest week's count, in full: 'latest: 2,515 admissions'."""
+    o = p.get("observed") or []
+    if not o:
+        return ""
+    v = o[-1][1]
+    word = "admission" if v == 1 else "admissions"
+    return f'<span class="g-cur">latest: {v:,.0f} {word}</span>'
+
+
+def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
+            cls: str = "gpanel") -> str:
+    """One panel: the name and latest count, then the flags at the
+    right, then the chart."""
+    svg, _clipped = panel_svg(p, idx, colors)
+    key = _html.escape(str(p.get("key", "")))
+    flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
+    return (f'<figure class="{cls}" id="g-{key}">'
+            f'<figcaption><b>{title}</b>{_latest(p)}{flags_html}'
+            f'</figcaption>{svg}</figure>')
+
+
+def _flag_spans(p: dict) -> str:
+    fl = "".join(
+        f'<span class="g-flag" title="{_html.escape(why)}">{w}</span>'
+        for w, why in flags(p))
+    if not p.get("models"):
+        fl += '<span class="g-flag g-none">no forecast</span>'
+    return fl
+
+
+def us_feature_html(grid: dict | None, colors: dict) -> str:
+    """The national panel at a larger size, for the space beside the map
+    ("" when the run has no US panel)."""
+    us = next((p for p in (grid or {}).get("panels") or []
+               if p.get("key") == "US"), None)
+    if not us:
+        return ""
+    head = ('<div class="g-head">'
+            + _legend(colors, (grid or {}).get("last_season_label", ""))
+            + "</div>")
+    return ('<aside class="rp-usfeature" aria-label="United States forecast">'
+            + _figure(dict(us, key="US-feature"), "United States",
+                      _flag_spans(us), 999, colors, cls="gpanel g-feature")
+            + head + "</aside>")
 
 
 def grid_html(grid: dict | None, colors: dict, details=()) -> str:
@@ -325,21 +375,9 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
             title = (f'<a href="#st-{key}" onclick="if(window.showState)'
                      f'{{showState(\'st-{key}\');return false;}}">{name}</a>'
                      if key in details else name)
-            fl = "".join(
-                f'<span class="g-flag" title="{_html.escape(why)}">{w}</span>'
-                for w, why in flags(p))
-            if not p.get("models"):
-                fl += '<span class="g-flag g-none">no forecast</span>'
-            o = p.get("observed") or []
-            cur = (f'<span class="g-cur">latest {_num(o[-1][1])}</span>'
-                   if o else "")
-            svg, clipped = panel_svg(p, (k - 1) * PER_PAGE + i, colors)
-            off = ('<span class="g-off" title="a 95% band runs past the '
-                   'top of this scale">95% off scale</span>'
-                   if clipped else "")
-            out.append(f'<figure class="gpanel" id="g-{key}">'
-                       f'<figcaption><b>{title}</b>{cur}{fl}{off}'
-                       f'</figcaption>{svg}</figure>')
+            fl = _flag_spans(p)
+            out.append(_figure(p, title, fl, (k - 1) * PER_PAGE + i,
+                               colors))
         out.append("</div></div>")
     out.append("</section>")
     return "".join(out)
@@ -358,7 +396,8 @@ def grid_css() -> str:
  .g-key{display:inline-flex;align-items:center;gap:.3rem}
  .g-key i{display:inline-block;width:14px;height:8px;border-radius:2px}
  .g-key i.g-k-obs{background:var(--ink);height:3px}
- .g-key i.g-k-last{background:var(--mut);height:3px;opacity:.7}
+ .g-key i.g-k-last{height:0;border-top:2px dashed var(--mut);
+   background:none;opacity:.8}
  .g-cells{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
    gap:.5rem}
  @media(max-width:820px){.g-cells{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -373,16 +412,25 @@ def grid_css() -> str:
    border:1px solid currentColor;border-radius:999px;padding:0 .35rem;
    cursor:help}
  .g-flag.g-none{color:var(--mut)}
- .g-off{margin-left:auto;color:var(--mut);font-size:.7rem}
+ .g-flags{margin-left:auto;display:inline-flex;flex-wrap:wrap;gap:.25rem}
  .g-svg{display:block;width:100%;height:auto}
+ /* the national panel, larger, beside the map */
+ .rp-mapsplit{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);
+   gap:1rem;align-items:start}
+ @media(max-width:900px){.rp-mapsplit{grid-template-columns:minmax(0,1fr)}}
+ .rp-usfeature .g-feature{border:0;padding:0}
+ .rp-usfeature .g-feature figcaption{font-size:1rem;margin-bottom:.3rem}
+ .rp-usfeature .g-head{margin-top:.4rem}
  .g-grid{stroke:var(--line);stroke-width:1}
  .g-ax{fill:var(--mut);font-size:9px}
  .g-asof{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3}
- .g-last{fill:none;stroke:var(--mut);stroke-width:1.6;opacity:.75}
+ .g-last{fill:none;stroke:var(--mut);stroke-width:1.5;opacity:.8;
+   stroke-dasharray:4 3}
  .g-obs{fill:none;stroke:var(--ink);stroke-width:1.4}
  .g-dot{fill:var(--ink)}
  @media print{
   @page{size:letter portrait;margin:9mm}
+  .rp-mapsplit{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
   .rp-grid{break-before:page;border:0;padding:0;margin:0}
   .rp-grid > .uk-heading,.g-lede{display:none}
   .gpage{break-after:page;margin:0}
