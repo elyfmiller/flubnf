@@ -6,8 +6,7 @@ this file here.
 
 ## Now
 
-- 2026-10-01 overnight, Arizona time: CPU use on the lab Mac. The study
-  above (at most 8 processes) and one PyBNF test-suite run on 6 cores.
+- 2026-10-01 morning: no engine job is using the lab Mac's CPU.
   It slows other work while it runs but does not break it. If you need the
   machine, say so here (`Engine:` in your notes) or message the session
   "PyBNF Particle Filter". The engine run will pause and resume later. This
@@ -31,10 +30,12 @@ this file here.
   - Done locally and reviewed (2026-10-01): the docs (algorithm section,
     citations) and a tutorial lesson tested in CI. Head 381bba5e, 63
     commits. Next: tidy the series and draft the pull request; Ely opens it.
-  - In progress (2026-10-01): a pre-registered synthetic study of whether
-    the Liu–West filter follows a change in transmission partway through a
-    series (record: FluBNF-local `research/lwf-change-tracking/`). Uses at
-    most 8 cores.
+  - Done (2026-10-01): a pre-registered synthetic study of whether the
+    Liu–West filter follows a change in transmission partway through a
+    series, with an independent re-analysis and a skeptic. Record:
+    FluBNF-local `research/lwf-change-tracking/RESULTS.md`. Summary under
+    For other lanes. Branch head a1bc35bb; Ely decides the pull request's
+    framing.
 - 2026-09-30: private branch `pf/forecast-fixes-noauto` (faccccb3, local,
   not pushed) adds three things:
   - per-parameter jitter (`pf_parameter_jitter = <name> <h>`);
@@ -88,14 +89,27 @@ this file here.
   - new output readers;
   - a statistical-equivalence check against the production record before
     switching, because the numbers will not be byte-identical.
-- Model (heads-up, 2026-10-01, synthetic data only, under study): on a toy
-  SIR where transmission drops partway through, the Liu–West filter's beta
-  stayed near its old value while the dispersion r fell. Forecasts were
-  badly off in one case and fine in another. The move scales with the
-  swarm's current spread, so drift may slow as data accumulate. Nothing is
-  shown yet for the SIHRS or for production; the study above will say
-  more. Until then, describe the filter's drift as an assumption of the
-  model, not as "following a change".
+- Model (2026-10-01; toy SIR, synthetic data, in-house, not peer-reviewed):
+  - The Liu–West filter did not follow a drop in transmission at any jitter
+    up to 0.9 (540 pre-registered runs plus 91 checks). It behaved like a
+    sequential fit with nearly fixed parameters: its beta matched a plain
+    constant-beta fit of the same rows.
+  - The private engine, which production uses, behaved the same.
+  - A change missing from the model showed up as a falling dispersion r and
+    a carried susceptible pool that drifted from the truth. Forecasts stayed
+    close only when the drop came at or after the peak; a drop during growth
+    gave forecasts far off.
+  - Raising h is not a lever: the kernel keeps the swarm's spread, so no h
+    widens it.
+  - Weekly refits from Aug 1 replay the same rows, so they add no
+    adaptivity.
+  - Cautions for SIHRS work, untested on it: do not describe the weekly
+    filter as adapting to change; a falling r is a cheap alarm that the
+    model is missing something.
+  - In the toy, beta·S/(N·gamma) came out too low at the forecast origin
+    after a slowdown, the same sign as the old "Rt < 1 at the origin"
+    finding. That link is untested.
+  - Nothing in production changes from this.
 - All: the private engine's `pf_continue` silently ignores revised earlier
   rows. Production refits every week, so it is safe. Nothing that carries a
   swarm across weeks may rely on it; upstream `lwf` refuses a revised row.
