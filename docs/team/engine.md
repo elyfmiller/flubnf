@@ -6,10 +6,10 @@ this file here.
 
 ## Now
 
-- 2026-09-30 21:50 Arizona: CPU use on the lab Mac (12 cores) tonight and
-  into 2026-10-01. A test-and-review run for the `lwf` port is going: four
-  full PyBNF test-suite runs of about 18 minutes each, on all cores; a
-  statistical comparison on a few cores; then the docs step, which is light.
+- 2026-09-30 22:00 Arizona: CPU use on the lab Mac (12 cores) tonight and
+  into 2026-10-01. One more test-and-review run for the `lwf` port: up to
+  four full PyBNF test-suite runs of about 18 minutes each, dropping to 6
+  cores when the machine is busy; the docs work in between is light.
   It slows other work while it runs but does not break it. If you need the
   machine, say so here (`Engine:` in your notes) or message the session
   "PyBNF Particle Filter". The engine run will pause and resume later. This
@@ -22,10 +22,17 @@ this file here.
     (lanl/PyBNF#973) share, reviewed and fixed (five commits, head
     235fb497). The review found and fixed a silent bug: a particle's
     starting state could keep the first particle's values.
-  - In progress: the `lwf` job type for one run (build, independent review,
-    fixes). Then: the state file, continuation and several runs; then the
-    docs. The maintainer wants to review the code itself, with no issue
-    first; Ely opens the pull request.
+  - Done locally and independently reviewed: the `lwf` job type for one or
+    several runs, with a state file and continuation (`lwf_state_file`,
+    `lwf_continue`). A continuation gives exactly the same result as one
+    uninterrupted run, and a revised earlier row is refused. Head 7eca7270.
+  - Equivalence (2026-09-30): `lwf` and the private engine agree within
+    Monte Carlo error on a test SIR model. Given the same random numbers
+    they give the same output to solver tolerance. `lwf` is about 1.9 times
+    slower per particle-row.
+  - In progress: the remaining continuation gaps, then the docs and a
+    tutorial example. The maintainer wants to review the code itself, with
+    no issue first; Ely opens the pull request.
 - 2026-09-30: private branch `pf/forecast-fixes-noauto` (faccccb3, local,
   not pushed) adds three things:
   - per-parameter jitter (`pf_parameter_jitter = <name> <h>`);
