@@ -378,10 +378,12 @@ def test_the_favicon_is_served():
 # -------------------------------------------------------- 3. the middleware
 
 def test_the_middleware_order():
-    """The slow-request log times everything; inside it the sandbox engine
-    guard wraps the same-host (CSRF) guard."""
+    """The slow-request log times everything; inside it the no-store
+    header covers the guards' refusals too, and the sandbox engine guard
+    wraps the same-host (CSRF) guard."""
     assert middleware_names(srv.app) == golden()["middleware"] == [
-        "slow_request_log", "_sandbox_engine_guard", "_same_host_guard"]
+        "slow_request_log", "_no_store", "_sandbox_engine_guard",
+        "_same_host_guard"]
 
 
 # ------------------------------------------------ 4. the Jinja environment

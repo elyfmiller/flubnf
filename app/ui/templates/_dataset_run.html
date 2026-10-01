@@ -15,7 +15,7 @@
 <div class="card" id="ds-exports">{{ tips.heading("Export files", "run-ds-exports", "Hubverse model-output CSVs (23 quantiles, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own " ~ (dataset.key_col or "location") ~ " column and target '" ~ (dataset.target or "custom") ~ "'. Named FluBNF-Groundhog and FluBNF-SIHRS-PF, never a registered hub identity; nothing is submitted.") }}
  {% for e in exports %}
  <div class="fc-file"><span class="fc-file-model">{{ e.model }}</span>
-  <a href="/output/download?path={{ e.path | urlencode }}">{{ tips.icon("download") }} {{ e.name }}</a></div>
+  <a href="/output/download?path={{ e.path | urlencode }}" download>{{ tips.icon("download") }} {{ e.name }}</a></div>
  {% else %}{{ tips.empty("No export files for this run", "folder", compact=True, id="run-noexports") }}{% endfor %}
 </div>
 <script>

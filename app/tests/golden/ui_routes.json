@@ -88,7 +88,7 @@
   ["POST", "/retro/dataset/{ds_id}/{stamp}/stop", "replay_stop", "APIRoute", "datasets_ui"],
   ["GET", "/retro/dataset/{ds_id}/{stamp}", "replay_page", "APIRoute", "datasets_ui"]
  ],
- "middleware": ["slow_request_log", "_sandbox_engine_guard", "_same_host_guard"],
+ "middleware": ["slow_request_log", "_no_store", "_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
   "cell_rule_note": "callable _cell_rule_note",
   "cov_state": "callable _cov_state",

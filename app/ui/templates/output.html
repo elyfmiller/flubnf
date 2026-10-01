@@ -105,9 +105,17 @@ their run folders.{% endcall %}</span>{% endif %}</span>
   </select>
   <button class="quiet" type="button"
    onclick="var d=document.getElementById('archreport').value;if(d)window.open('/output/report?date='+d,'_blank')">{{ tips.icon("external") }} Open</button>
-  <button class="quiet" type="button"
-   onclick="var d=document.getElementById('archreport').value;if(d)window.location='/output/report/download?date='+d">{{ tips.icon("download") }} Download</button>
+  {# a link with the download attribute, as every download in the console,
+     so the window saves it the one way; its date follows the picker #}
+  <a class="btn quiet" id="archreport-dl" href="/output/report/download?date={{ archive_dates[0] }}" download>{{ tips.icon("download") }} Download</a>
  </div>
+ <script>
+  (function(){
+   var s=document.getElementById('archreport'),a=document.getElementById('archreport-dl');
+   function follow(){a.href='/output/report/download?date='+encodeURIComponent(s.value);}
+   s.addEventListener('change',follow);a.addEventListener('click',follow);follow();
+  })();
+ </script>
  {% endif %}
 </div>
 {% endif %}
