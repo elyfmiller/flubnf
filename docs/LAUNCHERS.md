@@ -102,4 +102,5 @@ Paths default to `~/GitHub/<name>` (an older setup's `~/Documents/GitHub/<name>`
 | `FLUBNF_PROTECT_ROOTS` | `app/core/reclaim.py` | unset; extra roots storage reclaim must not touch |
 | `FLUBNF_FIELD_CELLS` | `app/core/relwis.py` | `app/state/field_cells` |
 | `FLUBNF_STARTUP_TRACE` | `flubnf/cli.py`, `app/ui/state.py`, `scripts/open_cycle.py` | unset; a file path turns on the launch trace |
+| `FLUBNF_DOWNLOAD_REPLACE` | `flubnf/window_downloads.py` (the macOS window) | unset = a download saved over an existing file replaces it once you confirm Replace; `off` keeps pywebview's own save, which leaves the old file in place |
 | `FLUBNF_ORACLE_RECORD`, `FLUBNF_ORACLE_FULL` | `tests/test_oracle*.py` | lab-only record; `FULL=1` compares every screened date |
