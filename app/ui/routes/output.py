@@ -12,6 +12,7 @@ _weekly_report_file here. An APIRouter server.py includes.
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -709,7 +710,15 @@ def output_report(request: Request, date: str = ""):
 
 
 def _weekly_report_name(date: str) -> str:
-    """Saved weekly report name, dated (every run writes report.html)."""
+    """Saved weekly report name (every run writes report.html). An as-of
+    date names it by its hub reference date, as the submission CSVs are
+    (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
+    sorts beside the files it describes; anything else (a run id with no
+    results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
+        ref = _reference_date(date)
+        if ref:
+            return f"{ref}-NAU_PyBNF-weekly-report.html"
     return f"FluBNF-weekly-report-{date}.html" if date \
         else "FluBNF-weekly-report.html"
 

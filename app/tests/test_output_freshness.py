@@ -86,7 +86,7 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
     # the link serves that run's report, under the dated name
     r = client.get(f"/runs/{latest}/report/download")
     assert r.status_code == 200 and "REPORT latest" in r.text
-    assert "FluBNF-weekly-report-2098-01-10.html" in \
+    assert "2098-01-17-NAU_PyBNF-weekly-report.html" in \
         r.headers["content-disposition"]
     # a page left open keeps naming its own run's report
     _run(root, "2098-01-17", "newer")
