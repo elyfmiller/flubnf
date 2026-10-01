@@ -535,7 +535,8 @@ def run_report_download(request: Request, run_id: str):
     return output_routes._weekly_report_file(
         d, date or run_id, request,
         notice={"action": (f"/runs/{run_id}", "Back to the run"),
-                "active": "Storage", "heading": "Run report"})
+                "active": "Storage", "heading": "Run report"},
+        route=f"/runs/{run_id}/report/download")
 
 
 @router.post("/runs/{run_id}/rerun")

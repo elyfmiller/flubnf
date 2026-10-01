@@ -46,7 +46,15 @@ def write(kind: str, ms: float, what: str) -> None:
     line = (f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {kind:<6}  "
             f"{ms:7.0f} ms  {what}  {_load()}\n")
     try:
-        p = log_path()
+        append(log_path(), line)
+    except Exception:
+        pass
+
+
+def append(p: Path, line: str) -> None:
+    """Append one line to the log at `p`, rolling it over to .1 past
+    MAX_BYTES (app/ui/downloadlog.py's log too). Never raises."""
+    try:
         with _LOCK:
             p.parent.mkdir(parents=True, exist_ok=True)
             try:

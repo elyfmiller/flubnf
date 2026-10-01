@@ -16,6 +16,8 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `templating.py` | `templates`, the one Jinja env, with its globals and filters; model names and colors; the season month axis; the harmonic figure | `state`, `versions` |
 | `shared.py` | the same-host (CSRF) guard; the no-store header (`_no_store`: `Cache-Control: no-store` on every response but `/static/`'s, a route's own header kept); request helpers (`_flash`, `_back`, `_phase`, `_console_elapsed`); the cached disk scans and their one invalidation hook; run labels, outcome chips, `_latest_results`; the readers of the sandbox's engine claim | `state` |
 | `forms.py` | the model-settings (knob) form channel and field coercions; anchor dates (`resolve_anchor`) | `state` |
+| `perflog.py` | the slow-request log (`app/state/logs/slow_requests.log`, middleware `slow_request_log` and `POST /api/perf`), and `append`, the rolling append both logs here use | none |
+| `downloadlog.py` | the download log (`app/state/logs/downloads.log`): one line per file served as a download from a run (`/output/download`, the weekly report downloads): local time, route, run, size, sha256 prefix, path | `perflog` |
 | `retro_seasons.py` | the retro roots (`RETRO_ROOT`, `RETRO_RESEAL`, `RETRO_SEAL`) and season claims; the season registry and status; completed weeks; live progress and ETA | `templating` |
 | `retro_prep.py` | season results preparation (one finalize job per root); the scores and relWIS caches; week map cards | `state`, `shared`, `retro_seasons` |
 | `pipeline.py` | the forecast pipeline `_run_all` (engines, submissions, scoring, weekly report, forecast archive); the OS sleep guard | `state`, `shared`, `forms`, `versions` |

@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.ui import shared
+from app.ui import downloadlog, shared
 from app.ui.forms import _knobs
 from app.ui.shared import _archive_dates, _run_label
 from app.ui.state import _status
@@ -583,6 +583,7 @@ def output_download(request: Request, path: str):
                 "is kept on disk as a record, not for submission; Storage "
                 "lists its run folder.",
             action=("/storage", "Open Storage"))
+    downloadlog.write("/output/download", p)
     return FileResponse(p, filename=p.name, media_type="text/csv",
                         content_disposition_type="attachment")
 
@@ -710,10 +711,11 @@ def _weekly_report_name(date: str) -> str:
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
-                        notice: dict | None = None):
+                        notice: dict | None = None, route: str = ""):
     """The weekly report as a download, refreshed first (same bytes as the
     page); missing -> 404 (a console page when `request` is given;
-    `notice` holds _notice's action, active and heading for a run's)."""
+    `notice` holds _notice's action, active and heading for a run's).
+    The download log names `route` (app/ui/downloadlog.py)."""
     from fastapi.responses import FileResponse
     f = Path(dirpath) / "report.html"
     if not f.is_file():
@@ -722,6 +724,7 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
                            **(notice or {}))
         return HTMLResponse("<p>No report to download.</p>", status_code=404)
     _report_for_serving(dirpath)
+    downloadlog.write(route or "report download", f)
     return FileResponse(f, filename=_weekly_report_name(date),
                         media_type="text/html",
                         content_disposition_type="attachment")
@@ -735,7 +738,9 @@ def output_report_download(request: Request, date: str = ""):
         if bad := _bad_date(date, request):
             return bad
         return _weekly_report_file(APP_STATE / "archive" / date, date,
-                                   request)
+                                   request,
+                                   route=f"/output/report/download?date={date}")
     rid, res = shared._latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
-                               (res or {}).get("forecast_date", ""), request)
+                               (res or {}).get("forecast_date", ""), request,
+                               route="/output/report/download")
