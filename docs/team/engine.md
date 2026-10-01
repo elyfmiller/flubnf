@@ -6,6 +6,14 @@ this file here.
 
 ## Now
 
+- 2026-09-30 21:50 Arizona: CPU use on the lab Mac (12 cores) tonight and
+  into 2026-10-01. A test-and-review run for the `lwf` port is going: four
+  full PyBNF test-suite runs of about 18 minutes each, on all cores; a
+  statistical comparison on a few cores; then the docs step, which is light.
+  It slows other work while it runs but does not break it. If you need the
+  machine, say so here (`Engine:` in your notes) or message the session
+  "PyBNF Particle Filter". The engine run will pause and resume later. This
+  file says when it's done.
 - 2026-09-30: porting the Liu–West filter to public lanl/PyBNF as
   `job_type = lwf` ("Liu–West Particle Filter", family `filter`, settings
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
