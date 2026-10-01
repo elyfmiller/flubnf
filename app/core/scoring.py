@@ -355,12 +355,16 @@ def _member_name(model: str) -> str:
         return fallback.get(model, model)
 
 
-def summary_table_html(df: pd.DataFrame, model: str | None = None) -> str:
+def summary_table_html(df: pd.DataFrame, model: str | None = None,
+                       us_step: str | None = None) -> str:
     """The report's WIS-breakdown card for one member (`model`, default the
     Oracle SIHRS): the member named in the header, ok/bad classes, each
     score with its cell count; a placeholder when empty, naming the member
     when `model` is given. The US row keeps its own (fitted) line but stays
-    out of the pooled total (us_national.POOLED_INCLUDES_US)."""
+    out of the pooled total (us_national.POOLED_INCLUDES_US). `us_step` is
+    the run's Oracle step on the US cell (us_national.us_step_week of its
+    workroot), which the Oracle SIHRS US row's note follows; None (the run
+    does not say) keeps the note that covers both eras."""
     from app.core import us_national as usn
     if df.empty:
         if model is None:
@@ -402,8 +406,9 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None) -> str:
     rule = ('<p class="hint">' + CELL_RULE_NOTE
             + (f" Truth source: {src}."
                if src != "settled" else "") + '</p>')
-    # what the Oracle SIHRS member's US row is (addendum A3, and before it)
-    us_note = (f'<p class="hint">{usn.PF_US_NOTE}</p>'
+    # what the Oracle SIHRS member's US row is in this run: with the step
+    # (addendum A3) or the Liu-West filter alone
+    us_note = (f'<p class="hint">{usn.pf_us_note(us_step)}</p>'
                if has_us and (model or "pf") == "pf" else "")
     return ('<table><thead><tr><th>Location</th>'
             f'<th class="num">{member} relWIS</th>'

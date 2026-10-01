@@ -263,11 +263,15 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     # Groundhog-only run is never shown the (empty) PF frame's placeholder
     frames = {"pf": df, **(scores or {})}
     ran = [m for m, q in (("pf", pf_samples), ("analogue", an_q)) if q]
+    # the run's own oracle.json says what its US pf is (addendum A3)
+    from app.core.us_national import us_step_week
+    us_step = us_step_week(workroot)
     if ran:
         wis_body = "".join(summary_table_html(
-            frames.get(m, pd.DataFrame()), model=m) for m in ran)
+            frames.get(m, pd.DataFrame()), model=m, us_step=us_step)
+            for m in ran)
     else:
-        wis_body = summary_table_html(df)
+        wis_body = summary_table_html(df, us_step=us_step)
     wis_html = ("<div class='card'><h2>forecast accuracy "
                 "(retrospective)</h2>" + wis_body + "</div>")
     # settled outcomes for backdated runs: the LATEST vintage's values
