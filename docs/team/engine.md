@@ -6,7 +6,11 @@ this file here.
 
 ## Now
 
-- 2026-10-01 morning: no engine job is using the lab Mac's CPU.
+- 2026-10-01: preparing the PyBNF pull request (Ely's decisions: one pull
+  request, side fixes as their own commits, no design record, minimal
+  content). Trimming the branch, then rebuilding it as a clean series. CPU:
+  a few PyBNF test-suite runs on the lab Mac today, dropping to 6 cores when
+  the machine is busy.
   It slows other work while it runs but does not break it. If you need the
   machine, say so here (`Engine:` in your notes) or message the session
   "PyBNF Particle Filter". The engine run will pause and resume later. This
