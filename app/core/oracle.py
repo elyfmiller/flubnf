@@ -13,7 +13,9 @@ the filter is fitted unchanged and the step reads its output
 WHAT IT DOES. Builds the week's B2 donor bank (admissions half via
 flubnf.oracle_bank from the week's own vintage; FluSurv-NET half via
 flubnf.oracle_mix from the committed bank by digest, shrink fitted on the
-vintage), applies flubnf.oracle.member_for_cell per jurisdiction, and
+vintage), applies flubnf.oracle.member_for_cell per location (the 52
+jurisdictions and, by addendum A3, the US national cell under the RNG key
+flubnf.oracle.US_KEY), and
 returns the member (stored under `pf`) plus the provenance written to
 oracle.json (see the prov dict in apply_week for its fields).
 
@@ -211,8 +213,10 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         y = yT.get(fips) if fips else None
         y = float(y) if (y is not None and np.isfinite(y)) else None
         k = k_cells.get(loc, int(weeks_to_drop or 0))
-        if fips is None or not fips.isdigit():
-            # US (or unknown): outside the registered member, samples untouched
+        if fips == "US":
+            key = OR.US_KEY                 # the national cell (addendum A3)
+        elif fips is None or not fips.isdigit():
+            # unknown: outside the registered member, samples untouched
             member[loc] = {h: list(v) for h, v in blocks.items()}
             entry.update({"eligible": None, "active": 0, "k": k, "state": "outside",
                           "reason": "outside the registered member (no integer FIPS key)",
@@ -220,13 +224,16 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             outside.append(loc)
             locs_prov[loc] = entry
             continue
+        else:
+            key = fips
+        entry["rng_key"] = key
         xh = [blocks.get(h, []) for h in hz.HORIZONS]      # physical 1..4, in order
-        r = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
+        r = OR.member_for_cell(origin, xh, pool, T, key, w=w, seeds=seeds,
                                submitted_seed=submitted_seed, aux_pool=auxp,
                                **primary_kw)
-        r2 = OR.member_for_cell(origin, xh, pool, T, fips, w=OR.W_SECONDARY,
+        r2 = OR.member_for_cell(origin, xh, pool, T, key, w=OR.W_SECONDARY,
                                 seeds=seeds, submitted_seed=submitted_seed, aux_pool=auxp)
-        r0 = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
+        r0 = OR.member_for_cell(origin, xh, pool, T, key, w=w, seeds=seeds,
                                 submitted_seed=submitted_seed)
         member[loc] = {hz.ORIGIN: list(origin),
                        **{h: r.samples[hi].tolist() for hi, h in enumerate(hz.HORIZONS)}}
@@ -271,6 +278,7 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         "member": MEMBER_NAME, "applied": True, "reading": "F", "transform": "REPLACE",
         "prereg_sha256": OR.PREREG_SHA256,
         "b2_sha256": OR.B2_SHA256, "addendum_a2_sha256": OR.ADDENDUM_A2_SHA256,
+        "addendum_a3_sha256": OR.ADDENDUM_A3_SHA256,
         "asof": asof, "season_index": OR.season_index(T),
         "bank": {"label": bank_label, "stream": MX.STREAM,
                  "admissions": {"label": built["label"], "stream": man["stream"],
@@ -359,6 +367,7 @@ def write_not_applied(out_dir, asof: str, reason: str) -> Path:
         "member": MEMBER_NAME, "applied": False, "asof": asof, "reason": reason,
         "prereg_sha256": OR.PREREG_SHA256,
         "b2_sha256": OR.B2_SHA256, "addendum_a2_sha256": OR.ADDENDUM_A2_SHA256,
+        "addendum_a3_sha256": OR.ADDENDUM_A3_SHA256,
         "stored_pf": "the filter's own samples (the plain filter, a research configuration)"})
 
 

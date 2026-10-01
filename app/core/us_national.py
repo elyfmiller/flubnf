@@ -69,13 +69,17 @@ NOTES = {
 }
 
 #: what the Oracle SIHRS member's US row is, wherever a table or tile puts
-#: it under that name: the Oracle step skips the national row
-#: (app/core/oracle.py, docs/ORACLE-SIHRS.md), so the fitted US forecast is
-#: the plain particle filter
+#: it under that name. From addendum A3 (2026-10-01) the Oracle step covers
+#: the national cell too (app/core/oracle.py, docs/ORACLE-SIHRS.md 5c); a
+#: store written before it carries the filter alone there, and its
+#: oracle.json says so (cells.outside_member lists US). The wording covers
+#: both; a provenance-aware split is the console's to make.
 PF_US_NOTE = (
-    "The US row under Oracle SIHRS is the particle filter without the "
-    "Oracle step: the step is applied to the states, DC and Puerto Rico "
-    "only.")
+    "The US row under Oracle SIHRS: from addendum A3 (2026-10-01) the "
+    "Oracle step is applied to the national cell as to the states, DC and "
+    "Puerto Rico. A season or week stored before that carries the filter "
+    "alone there, without the Oracle step; its oracle.json lists US under "
+    "outside_member.")
 #: the short form, for a tile or a label beside the US figure
 PF_US_SHORT = "the particle filter without the Oracle step"
 

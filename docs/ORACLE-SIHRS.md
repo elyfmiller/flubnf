@@ -17,7 +17,9 @@ document's.
 Since 2026-09-23 the member ships on the Groundhog's own donor bank (bank
 change B2, section 5b): the admissions pool described in section 1 is one
 half of it, unchanged, and a FluSurv-NET half is the other. Sections 1 to
-5 describe the admissions half and the machinery both halves share.
+5 describe the admissions half and the machinery both halves share. Since
+2026-10-01 the member covers the US national cell too (addendum A3,
+section 5c); before that the US row was the filter alone.
 
 Vocabulary of this repository: a MEMBER is one of the two models the
 console submits (the Oracle SIHRS and the Groundhog); the ENGINE is the
@@ -29,7 +31,7 @@ ones. The step touches none of those conventions.
 
 ## 1. What the member is (sections 3, 4.1, 4.2, 4.3 LB, 10.3)
 
-For one cell (jurisdiction, as-of Saturday T) the filter's stored samples
+For one cell (location, as-of Saturday T) the filter's stored samples
 are x_ih over the sample paths i, h = 1..4 the physical forecast weeks;
 block "0" is the anchored origin. From the filter's own output alone:
 
@@ -119,7 +121,7 @@ run's workroot, with the pool under `oracle_bank/` next to it:
 
     applied            true; "member": "Oracle SIHRS"; "reading": "F"; "transform": "REPLACE"
     prereg_sha256      the frozen document's hash; b2_sha256 and addendum_a2_sha256
-                       beside it (section 5b)
+                       beside it (section 5b), and addendum_a3_sha256 (section 5c)
     bank.label         "admissions-fbase@<digest8>+flusurv@<digest8>": the admissions
                        pool's content digest and the committed FluSurv-NET bank's, the
                        stamp the Groundhog writes for its own bank ("flusurv@06eff6a7");
@@ -136,8 +138,11 @@ run's workroot, with the pool under `oracle_bank/` next to it:
     trimmed_weeks      k per location (from cells.json when the week has one, else the
                        spec) and where it came from; m_0 and y_T are compared per location
     cells              locations, eligible, active, the identity cells, the ineligible
-                       cells, the US row (outside the registered member)
-    locations.<name>   fips, eligible, active, k, m_0, y_T, m_0 / y_T, the medians m_h,
+                       cells, outside_member (a location without a FIPS key; empty on a
+                       hub run since addendum A3, which brought the US cell in; a week
+                       stored before it lists US here)
+    locations.<name>   fips, rng_key (the FIPS, "0" for the US cell), eligible, active,
+                       k, m_0, y_T, m_0 / y_T, the medians m_h,
                        lam_T, G_T, sample counts, abstentions, guard hits, a reason
     quantiles          the NULL (the filter's own), the primary per seed and its seed
                        mean, the secondary per seed and its seed mean; keyed by FluSight
@@ -424,6 +429,58 @@ screen's NULL likewise; the seed mean differs by the seed noise (at most
 record definition and the common set coincide (6,021 + 4,859 + 4,420 =
 15,300). The last two columns are the grid's own bare calendar analogue,
 copied verbatim by the backfill, not the shipped Groundhog.
+
+## 5c. The US national cell (addendum A3)
+
+The lead decided on 2026-10-01 to apply the step to the US national cell
+from the first 2026-27 week: `PREREG_oracle_member_ADDENDUM_A3.md` (sha256
+`8a3552bc28a37565ab85aa36a76fd336ce0f02e69e7bcdb4a7030fe3926b3e7b`,
+`flubnf.oracle.ADDENDUM_A3_SHA256`, a separate file again, so no earlier
+hash moves) records it. The hash joins the other three in every week's
+oracle.json.
+
+What changed. `apply_week` used to keep every location without an integer
+FIPS key outside the member, which in a hub run meant the US row alone:
+stored and submitted as the filter made it. Now the US cell goes through
+the registered step exactly as a jurisdiction does, same reading, weight,
+bank, seeds, identity and eligibility rules, under the RNG key
+`flubnf.oracle.US_KEY` = "0" for its two uniform streams (the streams are
+keyed by the integer FIPS and no jurisdiction has 0). The provenance
+records `rng_key` per location and the US cell's state like any other;
+`outside_member` is empty on a hub run. Nothing else moves: the donor pool
+already held the US rows of earlier seasons, the states' numbers are
+unchanged, and the pooled headline still scores the US cell apart
+(`us_national.POOLED_INCLUDES_US`).
+
+Why. The filter alone turns down early in every season because the pinned
+initial infected fraction depletes the model's susceptibles; the step is
+what corrects that in the states, and the US row had no step. The research
+record is `us_national/README.md` in the research tree (sections 1 to 6).
+On the US cell, FluSight's cell rule, relWIS as a ratio of WIS sums
+against the FluSight baseline, five seeds within 0.001 of each other:
+
+| season | cells | filter alone (shipped before A3) | with the step | 50 / 80 / 95% coverage before | after |
+|---|---|---|---|---|---|
+| 2023-24 | 120 | 0.724 | 0.656 | 0.48 / 0.87 / 0.97 | 0.75 / 0.94 / 0.99 |
+| 2024-25 | 108 | 0.754 | 0.584 | 0.38 / 0.59 / 0.83 | 0.46 / 0.85 / 0.95 |
+| 2025-26 | 108 | 0.871 | 0.763 | 0.24 / 0.47 / 0.73 | 0.29 / 0.65 / 0.93 |
+
+As on the states, the gain is in the rise and the decline and the loss is
+across the peak turn, and part of the 95% gain is wider upper bands at
+h2 and h3. On the 2026-10-03 dry run the US medians move from 2,704 /
+2,645 / 2,311 / 1,872 to 2,785 / 3,189 / 3,542 / 3,858.
+
+Checked on 2026-10-01, the day it was wired: on the dry run's stored filter
+samples the new `apply_week` reproduces the shipped provenance of the six
+fitted states bit for bit (every quantile block and location entry) and
+gives the US cell the research script's numbers exactly; on the three
+replayed seasons' stored US samples it equals the research computation on
+every week (the fidelity record is in the research tree beside the
+addendum).
+
+Stores written before A3 keep their US row as the filter made it and say
+so (`cells.outside_member` lists US); the console's US-row note
+(`us_national.PF_US_NOTE`) covers both eras in words.
 
 ## 6. The engine key
 

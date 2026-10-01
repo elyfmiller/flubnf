@@ -402,7 +402,7 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None) -> str:
     rule = ('<p class="hint">' + CELL_RULE_NOTE
             + (f" Truth source: {src}."
                if src != "settled" else "") + '</p>')
-    # the Oracle SIHRS member's US row never had the Oracle step
+    # what the Oracle SIHRS member's US row is (addendum A3, and before it)
     us_note = (f'<p class="hint">{usn.PF_US_NOTE}</p>'
                if has_us and (model or "pf") == "pf" else "")
     return ('<table><thead><tr><th>Location</th>'

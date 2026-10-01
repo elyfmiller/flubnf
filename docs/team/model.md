@@ -11,12 +11,28 @@ agent's.
 
 ## Now
 
+- 2026-10-01: addendum A3 frozen and wired (Ely's decision, Decided).
+  Commit 45e8163 on `dev`: `flubnf.oracle.ADDENDUM_A3_SHA256` and
+  `US_KEY = "0"`; `app/core/oracle.py` apply_week sends the US cell through
+  the step under that key and records `rng_key` and the hash (only a
+  location without a FIPS key stays outside); the backfill meta and the
+  page copy carry the hash; `us_national.PF_US_NOTE` covers stores from
+  before A3; [ORACLE-SIHRS.md](../ORACLE-SIHRS.md) section 5c; tests.
+  Checked on the day: the dry run's six fitted states reproduce the
+  shipped provenance bit for bit; the US cell equals the research
+  computation on the dry run and on all 93 stored weeks of the three
+  replayed seasons (record `oracle_member/us_national/step/fidelity_a3_2026-10-01.json`).
+  Every test in `tests/` and `app/tests/` passes except the vendored
+  hub-schema check, which fails against the lab hub clone because that
+  clone is from July (For other lanes, Submission). The pull request from
+  `dev` to `main` is Ely's to open (no GitHub login on this machine); Ely
+  then pulls `main` and runs the newest data to see the US forecast with
+  the step. No Mac Studio time was used beyond seconds; nothing on a
+  Wednesday.
 - 2026-10-01: the registered Oracle step applied to the US cell, tested
-  at Ely's request (Decided below); a draft addendum A3 is written, not
-  frozen. Mac Studio use for it is over (two US-only replays, 11 and 13
-  minutes, on 2026-10-01 UTC; nothing on a Wednesday). Nothing in
-  production changed; the locked plan for 2026-10-07 is the fitted US row
-  as is.
+  at Ely's request (Decided below). Mac Studio use for it is over (two
+  US-only replays, 11 and 13 minutes, on 2026-10-01 UTC; nothing on a
+  Wednesday).
 - 2026-09-30: the dry run's falling US forecast (Ely's question of
   2026-09-30), investigated and answered; the findings and the options are
   under Decided and Open, the full record with the diagnostics is
@@ -64,7 +80,18 @@ agent's.
 
 ## Decided
 
-- 2026-10-01 (finding, for Ely's decision in Open): the registered step
+- 2026-10-01 (Ely): addendum A3 is frozen and applies from the first
+  round, 2026-10-07: the Oracle step covers the US national cell as it
+  covers the 52 jurisdictions, RNG key 0, nothing else changed; the hash
+  (8a3552bc...) joins the other three in every week's oracle.json. This
+  supersedes the decision of 2026-09-30 below (the fitted US row as is).
+  Ely's reasons, in chat: the three-season table, the real-time weight of
+  the US row (the FluSight ensemble and CDC's published national forecast;
+  the season score leaves it out, For other lanes), and the team's own
+  standard for its national forecast. `PREREG_oracle_member_ADDENDUM_A3.md`
+  in the research tree records the decision with the verbal-authorization
+  caveat of the earlier freezes.
+- 2026-10-01 (finding, read by Ely before the decision above): the registered step
   applied to the US cell beats the shipped US row in all three replayed
   seasons, US cells only, FluSight's cell rule, relWIS shipped to with the
   step: 2023-24 0.724 to 0.656, 2024-25 0.754 to 0.584, 2025-26 0.871 to
@@ -185,6 +212,25 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-01, Submission: before 2026-10-07, pull the lab hub clone
+  (`~/GitHub/FluSight-forecast-hub`, now at 18f68c23 of 2026-07-15). Its
+  `tasks.json` lists reference dates only to 2026-05-30, so
+  `validate_submission.R` run against it cannot pass a 2026-10-10 file;
+  the hub at 09c96ec8 (2026-09-30) lists them to 2027-05-29. The same
+  staleness fails the console's vendored-schema test on this machine.
+  Also: from this round the Oracle SIHRS file's US row is the step's
+  output (A3), 53 locations and the same quantile rows as before; the
+  checks in the week's `oracle.json` are `addendum_a3_sha256` and
+  `locations.US.state` ("both"), with `cells.outside_member` empty.
+- 2026-10-01, App: three places describe the US row as outside the step
+  and are yours: the two bullets at the end of
+  [FLUSIGHT-2026-27.md](../FLUSIGHT-2026-27.md) (now: the step covers US
+  from round one, A3 frozen 2026-10-01); `retro_season.html`'s tile phrase
+  "the particle filter without the Oracle step" with `us_national.PF_US_SHORT`
+  and the comment near its US row; player.js's note comment. The long note
+  `PF_US_NOTE` now covers both eras in words (commit 45e8163). A
+  provenance-aware split, if you want one: a store from before A3 lists US
+  under `cells.outside_member` in its oracle.json; a store since does not.
 - 2026-10-01, Submission and whoever keeps
   [FLUSIGHT-2026-27.md](../FLUSIGHT-2026-27.md): the CDC's season
   evaluation does not score the US row. The 2025-26 report (published
@@ -292,14 +338,12 @@ agent's.
   this round (valid, reversible weekly). The model lane had recommended
   (c). The 13 declining states are the same mechanism halved by the step
   plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
-- 2026-10-01, for Ely: freeze addendum A3 (the step on the US cell, RNG
-  key 0) for the first round on 2026-10-07, or hold it for round two? The
-  evidence is in Decided; the change is one gate in `app/core/oracle.py`
-  apply_week plus the provenance, a docs-only pre-registration freeze, and
-  a test; the locked fallback stands until Ely says otherwise. Bearing
-  (2026-10-01): the CDC's season evaluation does not score the US row
-  (For other lanes), so the case for A3 is the real-time one, the
-  ensemble and the public national forecast, and the team's own standard.
+- 2026-10-01, for Ely: open the pull request `dev` to `main` for A3
+  (commit 45e8163 with these notes; `dev` carries docs only beyond that),
+  merge, pull `main` on the laptop and run the newest data (the
+  2026-09-30 release) to see the US forecast with the step. Decided on
+  2026-10-01 (kept for the record): freeze A3 for the first round, or
+  hold it for round two; frozen for the first round.
 - 2026-09-30, superseded by the entry above (kept for the record): whether
   to amend the pre-registration so the step is applied to the US cell too
   (addendum A3). A freed or re-seeded i0 is NOT the candidate: it was tried

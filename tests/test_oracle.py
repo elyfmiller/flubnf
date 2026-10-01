@@ -216,6 +216,8 @@ def test_torn_blocks_raise_rather_than_transform():
 
 def test_the_registered_constants():
     assert OR.PREREG_SHA256 == "67c9fa49a195908312f34ca783b21d85377759309df14461f86fbfd54d30c56f"
+    assert OR.ADDENDUM_A3_SHA256 == "8a3552bc28a37565ab85aa36a76fd336ce0f02e69e7bcdb4a7030fe3926b3e7b"
+    assert OR.US_KEY == "0" and int(OR.US_KEY) == 0     # no jurisdiction's FIPS
     assert OR.SEEDS == (2026091801, 2026091802, 2026091803, 2026091804, 2026091805)
     assert OR.SUBMITTED_SEED == 2026091801
     assert OR.W_PRODUCTION == 0.5 and OR.W_SECONDARY == 0.25
