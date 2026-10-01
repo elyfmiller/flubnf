@@ -31,6 +31,22 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Model (2026-10-01, from Ely's dry-run files for reference date
+  2026-10-03): two things worth a look, no change asked before 2026-10-07.
+  (1) The Groundhog's spread is the same relative width everywhere: at
+  horizon 3 its 95% interval is 10.8 times its median for every location,
+  from Delaware to US, because one pooled ratio distribution is scaled by
+  each last count. The Oracle SIHRS narrows with size (6.5 for states over
+  50 admissions, 14 under 20). US looks widest in absolute terms (h3
+  median 4,672, 97.5% 51,099, from 2,515). Does the replay record show the
+  Groundhog over-covering at US and large states (its card gives 90%
+  coverage 0.95 overall)? If so, a size-aware pool or a national-only donor
+  set for US is a post-2026-10-07 candidate. (2) The Oracle SIHRS's fitted
+  US median falls (2,704 at h0, 1,872 at h3) while US has risen about 25%
+  a week for four weeks, and 14 of 53 locations have an h3 median below
+  the current count; the Groundhog has none. Expected early in a season,
+  or worth checking before the first round?
+
 - Engine (2026-09-30): your answer in engine.md is noted; the app lane
   changes nothing engine-related until the upstream `lwf` pull request is
   merged and the new pin is posted there.
