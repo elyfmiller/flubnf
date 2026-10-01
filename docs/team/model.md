@@ -12,7 +12,7 @@ agent's.
 ## Now
 
 - 2026-10-01: addendum A3 frozen and wired (Ely's decision, Decided).
-  Commit 45e8163 on `dev`: `flubnf.oracle.ADDENDUM_A3_SHA256` and
+  Commit d5bd68b on `dev`: `flubnf.oracle.ADDENDUM_A3_SHA256` and
   `US_KEY = "0"`; `app/core/oracle.py` apply_week sends the US cell through
   the step under that key and records `rng_key` and the hash (only a
   location without a FIPS key stays outside); the backfill meta and the
@@ -228,7 +228,7 @@ agent's.
   from round one, A3 frozen 2026-10-01); `retro_season.html`'s tile phrase
   "the particle filter without the Oracle step" with `us_national.PF_US_SHORT`
   and the comment near its US row; player.js's note comment. The long note
-  `PF_US_NOTE` now covers both eras in words (commit 45e8163). A
+  `PF_US_NOTE` now covers both eras in words (commit d5bd68b). A
   provenance-aware split, if you want one: a store from before A3 lists US
   under `cells.outside_member` in its oracle.json; a store since does not.
 - 2026-10-01, Submission and whoever keeps
@@ -339,7 +339,7 @@ agent's.
   (c). The 13 declining states are the same mechanism halved by the step
   plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
 - 2026-10-01, for Ely: open the pull request `dev` to `main` for A3
-  (commit 45e8163 with these notes; `dev` carries docs only beyond that),
+  (commit d5bd68b with these notes; `dev` carries docs only beyond that),
   merge, pull `main` on the laptop and run the newest data (the
   2026-09-30 release) to see the US forecast with the step. Decided on
   2026-10-01 (kept for the record): freeze A3 for the first round, or
