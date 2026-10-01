@@ -40,7 +40,8 @@ router = APIRouter()
 #   Data issues box     US_CHOICE, _source_sha, _data_issues_context,
 #                       _data_choices, _location_list, _official_overlay
 #   console controls    run_stop
-#   run pages           run_page, run_report, run_report_download, run_rerun
+#   run pages           run_page, _no_run_report, run_report,
+#                       run_report_download, run_rerun
 #   forecast APIs       api_series, api_progress, _abbreviations,
 #                       _read_json, _location_progress
 #   POST /run           _scope_label, _run_extra, _knob_run_parts, _spec_mode,
@@ -494,17 +495,25 @@ def run_page(request: Request, run_id: str):
         "report": report})
 
 
+def _no_run_report(request: Request, run_id: str):
+    """The run report's 404: a page of the console with the way back, as
+    Output's notices, under Storage as the run page is (to Storage when
+    the id is not a run id's shape)."""
+    back = ((f"/runs/{run_id}", "Back to the run") if _runs.is_run_id(run_id)
+            else ("/runs", "Open Storage"))
+    return output_routes._notice(
+        request, 404, "empty", "No report for this run", action=back,
+        active="Storage", heading="Run report")
+
+
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)
 def run_report(request: Request, run_id: str):
     from app.core.runs import APP_STATE
+    # the id names a folder: only a run id's shape may (the Output page
+    # links here by the run it shows)
     d = APP_STATE / "workroots" / run_id
-    if not (d / "report.html").is_file():
-        # a page of the console with the way back, as Output's notices,
-        # under Storage as the run page is
-        return output_routes._notice(
-            request, 404, "empty", "No report for this run",
-            action=(f"/runs/{run_id}", "Back to the run"),
-            active="Storage", heading="Run report")
+    if not (_runs.is_run_id(run_id) and (d / "report.html").is_file()):
+        return _no_run_report(request, run_id)
     # rebuilt if stale, as /output/report
     return HTMLResponse(output_routes._report_for_serving(d))
 
@@ -513,6 +522,8 @@ def run_report(request: Request, run_id: str):
 def run_report_download(request: Request, run_id: str):
     """Save this run's weekly report, named for the run's forecast date."""
     from app.core.runs import APP_STATE
+    if not _runs.is_run_id(run_id):
+        return _no_run_report(request, run_id)
     d = APP_STATE / "workroots" / run_id
     date = ""
     try:

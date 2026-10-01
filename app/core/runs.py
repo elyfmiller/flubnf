@@ -35,7 +35,8 @@ APP_STATE = Path(__file__).resolve().parents[1] / "state"
 #                                zero_anchor_row, data_issues_row,
 #                                results_html, dataset_results_html,
 #                                settings_html
-#   run ids, seeds, season       run_id_time, run_display, derive_seed,
+#   run ids, seeds, season       RUN_ID_RE, is_run_id, run_id_time,
+#                                run_display, derive_seed,
 #                                default_season_start
 #   RunSpec                      RunSpec
 #   ledger and workroots         _git_sha, Ledger, run_order, lease_workroot
@@ -732,6 +733,16 @@ def settings_html(pairs, title: str = "Run settings",
 
 
 # --- run ids, seeds, the season start ------------------------------------------
+
+#: a run id as open_run mints it: the local start second, a dash, six hex
+RUN_ID_RE = re.compile(r"\d{8}T\d{6}-[0-9a-f]{6}")
+
+
+def is_run_id(run_id) -> bool:
+    """Whether `run_id` has a run id's shape (RUN_ID_RE), so it can name a
+    workroot without leaving app/state/workroots."""
+    return isinstance(run_id, str) and bool(RUN_ID_RE.fullmatch(run_id))
+
 
 def run_id_time(run_id: str) -> str:
     """The local time a workroot id carries ('20260821T163029-5dbec2' ->

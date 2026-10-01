@@ -25,7 +25,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `routes/data.py` | Data: the TTL-cached vintage readers, `_data_context` (also `datasets_ui.py`'s), hub pull, freshness (`data.html`) | support modules |
 | `routes/storage.py` | Storage: the disk inventory, the ledger, delete, clear and reclaim (`runs.html`) | support modules |
 | `routes/forecast.py` | Forecast: POST `/run` and the builders of its spec, stop, the progress and series APIs, the run pages (`forecast.html`, `run.html`) | support modules, `routes/data.py`, `routes/output.py` |
-| `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt (`output.html`) | support modules |
+| `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt, and the page's reload check (`output_stamp`) (`output.html`) | support modules |
 | `routes/sandbox.py` | Sandbox (`sandbox.html`), with the sandbox engine guard (middleware) and the Storage panel's sandbox line (`sandbox_storage`) | support modules |
 | `routes/models.py` | Models (`model.html`) | support modules |
 | `routes/methods.py` | Methods (`methods.html`) | support modules |
@@ -70,15 +70,16 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/api/progress` | `routes/forecast.py` | `api_progress` | | `forecast.html` progress poll |
 | GET | `/api/series` | `routes/forecast.py` | `api_series` (`source=<dataset>`: `datasets_ui.api_series`) | | `forecast.html`, `model.html` charts |
 | GET | `/runs/{run_id}` | `routes/forecast.py` | `run_page` | `run.html` | links in `forecast.html`, `runs.html` |
-| GET | `/runs/{run_id}/report` | `routes/forecast.py` | `run_report` | the run's `report.html` | `forecast.html`, `run.html` |
-| GET | `/runs/{run_id}/report/download` | `routes/forecast.py` | `run_report_download` | | `run.html` |
+| GET | `/runs/{run_id}/report` | `routes/forecast.py` | `run_report` (a run id's shape only, else the 404 notice) | the run's `report.html` | `forecast.html`, `run.html`, `output.html` (the latest report, by its run) |
+| GET | `/runs/{run_id}/report/download` | `routes/forecast.py` | `run_report_download` (as `run_report`) | | `run.html`, `output.html` |
 | POST | `/runs/{run_id}/rerun` | `routes/forecast.py` | `run_rerun` | | `forecast.html`, `run.html` forms |
 | **Output** | | | | | |
 | GET | `/output` | `routes/output.py` | `output_page` | `output.html` | nav |
-| GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html` |
+| GET | `/api/output/stamp` | `routes/output.py` | `api_output_stamp` (`output_stamp`: the newest run with a `results.json`, and whether a run is on) | | `output.html` reload check |
+| GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html`, `_dataset_run.html` |
 | POST | `/output/reveal` | `routes/output.py` | `output_reveal` | redirect | `output.html` form, `retro_season.html` fetch |
-| GET | `/output/report` | `routes/output.py` | `output_report` | weekly report | `output.html` link and date picker |
-| GET | `/output/report/download` | `routes/output.py` | `output_report_download` | | `output.html` |
+| GET | `/output/report` | `routes/output.py` | `output_report` (no date: the newest run's, for old links) | weekly report | `output.html` date picker |
+| GET | `/output/report/download` | `routes/output.py` | `output_report_download` (no date: as `output_report`) | | `output.html` date picker |
 | **Retrospective** | | | | | |
 | GET | `/retro` | `routes/retro.py` | `retro_index` (two tabs: the FluSight hub, or Your data: `?tab=own` opens the first dataset, `?dataset=<id>` that one) | `retro.html` | nav; the upload box's "Replay this" |
 | POST | `/retro/run` | `routes/retro.py` | `retro_run` | redirect | `retro.html` start and resume forms |

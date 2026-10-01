@@ -3,6 +3,7 @@ date, newest first, each model's hub-format CSV from the run the date
 shows (app/core/archive_record.choose), the own-data runs' exports,
 download rules, reveal in the file manager, and the weekly report, served
 as stored or rebuilt from its bundle when the report builder is newer.
+GET /api/output/stamp is the page's reload check after a run.
 
 The run pages (routes/forecast.py) list a run's files through
 _submission_files and serve its report through _report_for_serving and
@@ -20,6 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.ui import shared
 from app.ui.forms import _knobs
 from app.ui.shared import _archive_dates, _run_label
+from app.ui.state import _status
 from app.ui.templating import templates
 
 router = APIRouter()
@@ -344,10 +346,11 @@ def _file_complete(row, model_dir: str) -> bool:
 def _hub_candidates(app_state: Path, ledger) -> tuple:
     """(hub candidates, own-data runs). A hub candidate is one run's file
     for one registered or -modified model: {"asof", "dir", "run_id",
-    "path", "complete", "row", "spec", "wr"}; research runs and folders
-    under retired names are left out (they stay on disk and in Storage).
-    Files an archive folder holds count too when their run's workroot is
-    gone. Own-data runs: [{"run_id", "res", "wr"}]."""
+    "path", "complete", "full", "row", "spec", "wr", "order" (the ledger's
+    (created_utc, rowid) for runs that share a start second)}; research
+    runs and folders under retired names are left out (they stay on disk
+    and in Storage). Files an archive folder holds count too when their
+    run's workroot is gone. Own-data runs: [{"run_id", "res", "wr"}]."""
     from app.core import archive_record as _ar
     from app.core.runs import is_research
     listed = _registered_model_ids() | _modified_model_ids()
@@ -390,7 +393,24 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
                           "full": bool(rec.get("full", True)),
                           "row": ledger.row(rid) if (ledger and rid) else None,
                           "spec": res.get("spec", ""), "wr": d})
+    # runs that started in the same second take the ledger's order, as
+    # shared._scan_results orders them, never their random suffix
+    from collections import Counter
+    from app.core.runs import run_order
+    ids = {c["run_id"] for c in cands if c["run_id"]}
+    second = Counter(r[:15] for r in ids)
+    tied = [r for r in ids if second[r[:15]] > 1]
+    order = run_order(app_state / "ledger.sqlite", tied) if tied else {}
+    for c in cands:
+        c["order"] = order.get(c["run_id"], (0.0, 0))
     return cands, own
+
+
+def _run_when(run_id: str) -> str:
+    """A run's start as the page shows it beside a file or the report:
+    "MM-DD HH:MM" (_run_label's time); "" for no run."""
+    return (_run_label(run_id, "", tag=False).split(" · ")[-1]
+            if run_id else "")
 
 
 def _file_entry(c: dict) -> dict:
@@ -401,8 +421,7 @@ def _file_entry(c: dict) -> dict:
     e = {"model": name[:-len(_knobs.MODIFIED_SUFFIX)] if modified else name,
          "dir": name, "name": Path(c["path"]).name, "path": c["path"],
          "modified": modified, "run_id": c["run_id"],
-         "run_when": (_run_label(c["run_id"], "", tag=False).split(" · ")[-1]
-                      if c["run_id"] else ""),
+         "run_when": _run_when(c["run_id"]),
          "complete": c["complete"]}
     if not modified:
         e["check"] = _check_line(c["path"])
@@ -475,9 +494,21 @@ def forecast_dates(today=None, now=None) -> tuple:
     return dates, own
 
 
+def output_stamp() -> dict:
+    """What the Output page was rendered from, for its reload check:
+    "stamp", the newest run with a results.json (shared._workroot_results;
+    "" for none), and "running", whether a console run holds the engine
+    (/api/busy's console_run). The page reloads once no run is on and the
+    stamp differs, or it was rendered during a run."""
+    paths = shared._workroot_results()
+    return {"stamp": paths[0].parent.name if paths else "",
+            "running": bool(_status.get("running"))}
+
+
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
     from app.core.runs import APP_STATE
+    stamp = output_stamp()
     rid, res = shared._latest_results()
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
@@ -487,9 +518,18 @@ def output_page(request: Request):
         "dates": dates, "own": own,
         "archive_dates": list(reversed(_archive_dates())),
         "has_report": has_report,
-        # the week the latest report is for, beside its buttons
+        # the week the latest report is for and the run that wrote it,
+        # beside its buttons (which name that run)
         "report_asof": str((res or {}).get("forecast_date") or "")
-        if has_report else ""})
+        if has_report else "",
+        "report_when": _run_when(rid) if has_report else "",
+        "stamp": stamp})
+
+
+@router.get("/api/output/stamp")
+def api_output_stamp():
+    """The Output page's reload check (output_stamp)."""
+    return output_stamp()
 
 
 def _notice(request: Request, status: int, kind: str, title: str,

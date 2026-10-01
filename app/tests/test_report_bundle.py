@@ -494,8 +494,9 @@ def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
     ui_shared._invalidate_scans()
     out = client.get("/output")
     assert out.status_code == 200
-    assert 'href="/output/report"' in out.text          # inline view kept
-    assert 'href="/output/report/download"' in out.text
+    # the latest report by the run it is (inline view kept)
+    assert f'href="/runs/{rid}/report"' in out.text
+    assert f'href="/runs/{rid}/report/download"' in out.text
     assert "/output/report/download?date=" in out.text  # archived ones too
     run = client.get(f"/runs/{rid}")
     assert run.status_code == 200

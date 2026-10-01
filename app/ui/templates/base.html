@@ -284,6 +284,9 @@
  // preserve scroll across form posts/reloads -- keyed by page so it never
  // carries to a different tab, and never stomps a deliberate #anchor redirect
  addEventListener('beforeunload',()=>sessionStorage.setItem('scy:'+location.pathname,scrollY));
+ // a page brought back from the back/forward cache names what was true
+ // when it was rendered (an earlier run's files): fetch it afresh
+ addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
  // pin scroll across ANY in-page redraw: record on every click, re-assert next frame
  addEventListener('click',e=>{const y=scrollY;
    requestAnimationFrame(()=>requestAnimationFrame(()=>{

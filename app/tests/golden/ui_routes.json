@@ -32,6 +32,7 @@
   ["GET", "/api/series", "api_series", "APIRoute", "console"],
   ["GET", "/api/progress", "api_progress", "APIRoute", "console"],
   ["GET", "/output", "output_page", "APIRoute", "console"],
+  ["GET", "/api/output/stamp", "api_output_stamp", "APIRoute", "console"],
   ["GET", "/output/download", "output_download", "APIRoute", "console"],
   ["POST", "/output/reveal", "output_reveal", "APIRoute", "console"],
   ["GET", "/output/report", "output_report", "APIRoute", "console"],
