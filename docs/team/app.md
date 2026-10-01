@@ -6,6 +6,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-01: the weekly report has "All locations" pages (Ely's
+  request): a panel per location, US first, both models' fans (median,
+  50% and 95%) over the last ten weeks, last season's counts for the same
+  weeks in grey, flags for a horizon-3 median below the latest count or
+  two models outside each other's 95% bands. Printed: 3 across, 5 down,
+  four Letter pages (Save as PDF). `app/core/report_grid.py`, report
+  bundle v8; reports from earlier runs gain it on their next run.
 - 2026-10-01: Ely's stale-download report (see model.md) is fixed on
   `dev`, not yet checked on a Mac or on Windows. The likeliest cause: in
   the macOS window, Replace in the save panel only answered the question;
@@ -133,6 +140,3 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   `ls -lT ~/Downloads/2026-10-03-NAU_PyBNF-*.csv ~/Downloads/FluBNF-weekly-report-2026-09-26.html`;
   09-30 times confirm the window cause. Then, once on `main`, download a
   file twice choosing Replace: the copy must match the run's file.
-- 2026-10-01, for Ely: an all-locations page in the weekly report (small
-  panels, last seasons overlaid, printable 3 by 5 per page); proposal in
-  the chat of 2026-10-01, waiting on a go.
