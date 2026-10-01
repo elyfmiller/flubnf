@@ -33,6 +33,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-01 (Ely): the Liu-West filter's US figure is shown for seasons
+  stored since addendum A3 (the step makes it the right comparison), n/a
+  for seasons stored before it. The saved weekly report is named by its hub reference date, as
+  the CSVs are: `2026-10-03-NAU_PyBNF-weekly-report.html` for as-of
+  2026-09-26. pywebview is pinned to `>=6.2,<7` (the window's download fix
+  copies pywebview 6's code). The report card keeps the newest run with
+  results, labelled with its run time.
 - 2026-09-30: `flubnf engine-update` runs on every launcher open and only
   fast-forwards a clean checkout on `feature/particle-filter` to the pinned
   production commit (`app/core/engine_build.py`); it never resets, and
@@ -122,13 +129,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
-- 2026-10-01, for Ely: (1) on the laptop, run
+- 2026-10-01, for Ely: on the laptop, run
   `ls -lT ~/Downloads/2026-10-03-NAU_PyBNF-*.csv ~/Downloads/FluBNF-weekly-report-2026-09-26.html`;
-  09-30 times confirm the window cause. Then, after pulling, download a
-  file twice choosing Replace: the copy must match the run's file. (2)
-  The Liu-West filter's US figure: only for a season stored wholly since
-  A3 (now), always with cell counts, or never? (3) The report card: the
-  newest run with results (now, labelled with its run time) or the
-  newest date card's run? (4) Pin pywebview to 6.x in pyproject.toml (the
-  window fix runs only under 6)? (5) The saved report name
-  (FluBNF-weekly-report-<as-of>.html): add the run time?
+  09-30 times confirm the window cause. Then, once on `main`, download a
+  file twice choosing Replace: the copy must match the run's file.
+- 2026-10-01, for Ely: an all-locations page in the weekly report (small
+  panels, last seasons overlaid, printable 3 by 5 per page); proposal in
+  the chat of 2026-10-01, waiting on a go.
