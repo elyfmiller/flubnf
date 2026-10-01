@@ -11,14 +11,12 @@ agent's.
 
 ## Now
 
-- 2026-09-30: testing, at Ely's request, the registered Oracle step applied
-  to the US cell (the frozen spec keeps US outside it), before 2026-10-07;
-  the locked fallback is the fitted US row as is. Mac Studio use: two
-  US-only season replays (2023-24 and 2024-25, 3 fits a week, about 30 to
-  40 minutes each) between 2026-09-30 and 2026-10-06, never on Wednesday;
-  2025-26 and the dry-run week come from stored samples. Nothing in
-  production changes; a research script applies the step to stored US
-  samples. Result and, if it holds, a draft addendum A3 go here.
+- 2026-10-01: the registered Oracle step applied to the US cell, tested
+  at Ely's request (Decided below); a draft addendum A3 is written, not
+  frozen. Mac Studio use for it is over (two US-only replays, 11 and 13
+  minutes, on 2026-10-01 UTC; nothing on a Wednesday). Nothing in
+  production changed; the locked plan for 2026-10-07 is the fitted US row
+  as is.
 - 2026-09-30: the dry run's falling US forecast (Ely's question of
   2026-09-30), investigated and answered; the findings and the options are
   under Decided and Open, the full record with the diagnostics is
@@ -66,6 +64,17 @@ agent's.
 
 ## Decided
 
+- 2026-10-01 (finding, for Ely's decision in Open): the registered step
+  applied to the US cell beats the shipped US row in all three replayed
+  seasons, US cells only, FluSight's cell rule, relWIS shipped to with the
+  step: 2023-24 0.724 to 0.656, 2024-25 0.754 to 0.584, 2025-26 0.871 to
+  0.763; 95% coverage 0.97 to 0.99, 0.83 to 0.95, 0.73 to 0.93; five seeds
+  within 0.001. The dry-run week would read 2,785 / 3,189 / 3,542 / 3,858.
+  The research script reproduces the shipped step bit for bit on states;
+  the only new convention is RNG key 0 for US. As on the states, the gain
+  sits in the rise and the decline and the step loses across the peak
+  turn. Record: `oracle_member/us_national/README.md` section 6; draft
+  `PREREG_oracle_member_ADDENDUM_A3_draft.md`; two independent checks.
 - 2026-09-30 (Ely): for 2026-10-07 the Oracle SIHRS file keeps its fitted
   US row as the frozen spec produces it (option a below): Ely is
   comfortable with the shape, an early-season turn a mechanistic model of
@@ -263,8 +272,13 @@ agent's.
   this round (valid, reversible weekly). The model lane had recommended
   (c). The 13 declining states are the same mechanism halved by the step
   plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
-- 2026-09-30, after 2026-10-07, for Ely: whether to amend the Oracle
-  SIHRS pre-registration so the step is applied to the US cell too
+- 2026-10-01, for Ely: freeze addendum A3 (the step on the US cell, RNG
+  key 0) for the first round on 2026-10-07, or hold it for round two? The
+  evidence is in Decided; the change is one gate in `app/core/oracle.py`
+  apply_week plus the provenance, a docs-only pre-registration freeze, and
+  a test; the locked fallback stands until Ely says otherwise.
+- 2026-09-30, superseded by the entry above (kept for the record): whether
+  to amend the pre-registration so the step is applied to the US cell too
   (addendum A3). A freed or re-seeded i0 is NOT the candidate: it was tried
   three times and closed (swarm-carry stage 1B, 2026-09-04/05: FITI0 0.889
   and hindsight ORACLE 1.047 against 0.749 for production, declined by Ely
