@@ -11,16 +11,12 @@ agent's.
 
 ## Now
 
-- 2026-09-30: investigating, at Ely's request, the Oracle SIHRS US forecast
-  of the 2026-10-03 dry run (data through 2026-09-26): the national
-  Liu-West fit turns down (medians 2,704 / 2,645 / 2,311 / 1,872) while the
-  52 states' medians sum to a rise (2,798 to 3,976) and US admissions have
-  risen about 25% a week for four weeks. The US row never goes through the
-  Oracle step. Findings and a recommendation for 2026-10-07 go here by
-  2026-10-05. Mac Studio use: short US-only vintage fits (about 3 fits,
-  minutes each) and reads of stored replays, between 2026-09-30 and
-  2026-10-05, never on a Wednesday. Nothing in the frozen Oracle SIHRS,
-  the code or the submission changes without Ely's decision.
+- 2026-09-30: the dry run's falling US forecast (Ely's question of
+  2026-09-30), investigated and answered; the findings and the options are
+  under Decided and Open, the full record with the diagnostics is
+  `oracle_member/us_national/README.md`. Mac Studio use for it is over
+  (five short fits on 2026-09-30). Nothing in the frozen Oracle SIHRS, the
+  code or the submission changed.
 - 2026-09-30: Submission's validation request done. Vintage run, forecast
   date 2026-01-10, all 53 jurisdictions, Oracle SIHRS only, every setting
   at its default, no Data issues flagged for that vintage; console build
@@ -62,6 +58,42 @@ agent's.
 
 ## Decided
 
+- 2026-09-30 (finding, for Ely's decision below): the dry run's falling US
+  row is not the national fit's alone. The Liu-West filter alone, refitted
+  for all 53 locations (bit-identical US: 2,704 / 2,645 / 2,311 / 1,871),
+  has its h3 median below the current count in 42 of 52 states and in 24
+  of the 28 states that rose 50% or more over four weeks; the states'
+  filter-alone medians sum to 2,705 / 2,717 / 2,442 / 1,995, the US path.
+  The states rise in the dry run only because the Oracle step blends in
+  past-season donor growth (California: filter alone 410 to 230, Oracle
+  SIHRS 424 to 574). Not filter health (ESS 754 to 5,500 of 10,000, no
+  degenerate step), not the newest week (the h0 median is above it), not
+  the harmonic (phi1 19.8, factor 1.04 and rising).
+- 2026-09-30 (finding): the cause is the pinned initial infected fraction
+  (`flubnf/sihrs_fit.py resolve_state`): i0 = first week x 0.18 /
+  (season-to-date admissions x gamma), large while the cumulative is small
+  (US 4.9e-3, 1.65 million infectious on August 1). To match 657 weekly
+  admissions from that many infections the filter takes mult 0.0077, which
+  makes the 11,107 admissions since August 1 mean 72 million infections
+  (21% of the US): S/N 0.85 to 0.65 by week 8, R_eff below 1 at week 9, a
+  peak at week 10. A deterministic SIHRS at the fitted medians reproduces
+  the data and the forecast. The filter moves parameters, never the
+  depleted state. Refitting with i0 free (the research option `fit_i0`)
+  gives i0 9e-4, mult 0.045 and a rising US forecast (3,070 to 5,454, h3
+  band 440 to 108,000). The same early-season turn is in every stored
+  replay (2025-26 at 2025-08-30 and 09-20, 2023-24 at epiweeks 38 to 41,
+  fitted US flat to falling while the truth rose, inside the 95% band) and
+  fades by November as the cumulative grows.
+- 2026-09-30 (finding, option b): the console's sum-of-states US
+  (`retro.national_aggregate`, draws summed by index, states independent)
+  is a scoring device with no writer path, and on the 2025-26 replay it
+  scores relWIS 1.038 with 50/80/95 coverage 0.10 / 0.28 / 0.46 against
+  0.871 and 0.24 / 0.47 / 0.73 for the fitted US: far too narrow. Not
+  valid for a submission as built.
+- 2026-09-30 (finding, option c): leaving US out of the Oracle SIHRS file
+  is valid: every location is optional in the hub's tasks.json, the
+  Forecast form unticks US without a code change, the Groundhog file keeps
+  its US row, CDC's inclusion rule is 75% of targets.
 - 2026-09-30 (Ely): the pre-registered coverage test (reporting correction,
   wider upper tail) is on hold; Ely and this lane go over the data-settings
   replays together first. Nothing runs for it.
@@ -194,6 +226,20 @@ agent's.
 
 ## Open
 
+- 2026-09-30, Ely's decision for 2026-10-07, the Oracle SIHRS US row:
+  (a) keep the fitted US (frozen spec; wrong direction, explained: at 25%
+  a week the h3 truth is about 6,100, inside the band's 8,381 but far above
+  the 1,872 median); (b) sum of states: not valid as built (above);
+  (c) leave US out this round (valid, reversible weekly). The model lane
+  recommends (c), with (a) the fallback if the registered spec is to be
+  submitted whole. The 13 declining states are the same mechanism halved
+  by the step plus noise (Illinois lam_T -0.41, Montana -0.27); nothing
+  beyond it.
+- 2026-09-30, after 2026-10-07: pre-register a replacement for the i0 seed
+  (fit it, or seed it from a prior-season attack rate instead of the
+  season-to-date count) as a FluBNF change in `flubnf/sihrs_fit.py`, not
+  the engine; it moves every state's fit and the registered numbers, so it
+  is scored on the Oracle SIHRS over three seasons before anything ships.
 - 2026-09-30 (laptop), for the Oracle SIHRS agent: a plan to keep the
   donor rule in one place, after 2026-10-07 (Ely asked for it to be posted
   here). Today `flubnf/oracle_bank._selected` repeats the loop of
