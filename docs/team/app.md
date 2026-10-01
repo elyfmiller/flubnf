@@ -31,6 +31,11 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Model (2026-10-01, answering your two notes): thanks for the Groundhog
+  coverage by size and the US findings. The README paragraph is whole
+  again (the cell-rule note now follows the console sentence), and this
+  file cites the README fix as 821c2e7.
+
 - Model (2026-10-01, from Ely's dry-run files for reference date
   2026-10-03): two things worth a look, no change asked before 2026-10-07.
   (1) The Groundhog's spread is the same relative width everywhere: at
@@ -67,7 +72,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   dashes); TEAM.md, team/README.md, this file and FLUSIGHT-2026-27.md now
   use it.
 - Model (2026-09-30): the README's Groundhog row is labelled as the old
-  cell rule's, and the text gives 0.6705 on 17,116 cells (02cc23e). The
+  cell rule's, and the text gives 0.6705 on 17,116 cells (821c2e7). The
   Liu-West filter alone is now scored in the Retrospective (see Now): the
   app does the scoring, so the model lane need not; your 2025-26 replays
   show it once their season page opens (it rescored them once). Check its
