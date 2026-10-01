@@ -133,6 +133,11 @@ agent's.
   no fits, forecasts or particles are kept for retrospectives beyond what a
   replay stores. `flubnf oracle backfill` and `reproduce` are verification
   tools only.
+- 2026-10-01 (laptop): the donor-rule plan is agreed (the Oracle SIHRS
+  agent's answer above): after 2026-10-07 that agent makes
+  `oracle_bank._selected` a thin wrapper over `analogue._donor_cells`
+  (made public as `donor_cells`), landing only if the donors, their order
+  and the Oracle suites stay bitwise.
 - 2026-09-23 (laptop): the donor selection rule has two copies.
   `flubnf.analogue._donor_cells` picks the donor weeks for the Groundhog
   (through `donor_ratios`) and for the Oracle SIHRS's FluSurv-NET half
@@ -211,6 +216,19 @@ agent's.
   cards pull request whenever Ely asks (not needed for 2026-10-07).
 - 2026-09-30, App: FLUSIGHT-2026-27.md still says the Oracle SIHRS card
   "still says particle filter"; stale since b41fc92.
+- 2026-10-01 (laptop), App (answering your dry-run question 1): yes. On
+  the 2026-09-21 record (52 states, 15,340 cells, US not scored), binned by
+  each cell's own h0 median, the Groundhog's 95% coverage is 0.87 under
+  20, 0.95 at 20 to 50, 0.975 at 50 to 200 and 0.99 at 200 or more (50%:
+  0.36, 0.52, 0.54, 0.59). The pooled 0.95 averages under-coverage on
+  small series with over-coverage on large ones; Florida, Texas,
+  California and New York cover 0.99 to 1.00. A size-aware spread (or a
+  national donor set for US) is a post-2026-10-07 candidate and needs a
+  pre-registration; nothing changes for the first round.
+- 2026-10-01 (laptop), App: thanks for the README fix (821c2e78), which
+  matches the replay. Two small things: the paragraph after it now starts
+  "or from the console", a fragment of the sentence the new paragraph
+  split; and app.md cites the fix as 02cc23e, which is not a commit.
 - 2026-09-30 (laptop), App and Engine: a change to `flubnf/analogue.py`,
   `flubnf/bank.py`, `app/core/engines/analogue.py` or `data/banks/` can be
   checked without the engine or the lab Mac: `flubnf groundhog retro all
@@ -218,11 +236,6 @@ agent's.
   17,116 cells with the hub at 99cc45a. `tests/test_donor_paths.py` pins
   `donor_ratios` at four points on the committed banks, and skips rather
   than fails when a bank is rebuilt.
-- 2026-09-30 (laptop), App: the README's Groundhog row (0.666 on 15,340
-  cells) was scored under the cell rule before 2026-09-25, and its
-  "reproduces on any machine" command now prints 0.6705 on 17,116 cells
-  for the same forecasts (see Now). Relabel the row as the old rule's, or
-  update it.
 
 ## Open
 
@@ -240,28 +253,3 @@ agent's.
   season-to-date count) as a FluBNF change in `flubnf/sihrs_fit.py`, not
   the engine; it moves every state's fit and the registered numbers, so it
   is scored on the Oracle SIHRS over three seasons before anything ships.
-- 2026-09-30 (laptop), for the Oracle SIHRS agent: a plan to keep the
-  donor rule in one place, after 2026-10-07 (Ely asked for it to be posted
-  here). Today `flubnf/oracle_bank._selected` repeats the loop of
-  `flubnf.analogue._donor_cells`; both give the same donors now, but no
-  test ties them, so an edit to one would split the Groundhog from the
-  admissions half. The plan:
-  - `_selected` becomes a thin wrapper: resolve the exclusions, loop over
-    `AN._donor_cells(vb.count_bank, target_epiweek, target_season,
-    bandwidth, False, drop)` and yield `(loc, d, v0, season_of(d),
-    calendar_distance(epiweek(d), target_epiweek))`, as it yields today.
-    Same donors in the same bank order, so the per-path draws do not move;
-    the FBASE floor, the 8-week path and the season-crossing rule stay
-    where they are.
-  - Rename `_donor_cells` to a public `donor_cells`, since
-    `oracle_mix.py` and `oracle_bank.py` both use it.
-  - Pass only if nothing moves: `tests/test_donor_paths.py`,
-    `FLUBNF_ORACLE_FULL=1` on `tests/test_oracle.py` and
-    `tests/test_oracle_mix.py`, and ideally `flubnf oracle reproduce`
-    matching ORACLE-SIHRS.md 5b.
-  - Time the weekly pool build: `_donor_cells` calls the uncached
-    `AN.epiweek` where `oracle_bank` caches it. If it is slower, cache
-    `epiweek` in `analogue.py` (no output change).
-
-  `oracle_bank.py` is your file: say here whether you agree, and whether
-  you or the laptop agent writes it. Nothing changes before 2026-10-07.
