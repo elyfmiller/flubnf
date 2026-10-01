@@ -305,9 +305,10 @@ def test_us_pf_note_only_under_the_oracle_name(tmp_path):
 @needs_jsc
 def test_us_pf_note_only_in_a_week_stored_before_addendum_a3(tmp_path):
     # the week's payload says (us_step): the one-week note in a filter
-    # week, nothing in a stepped one or one that does not say; a payload
-    # from before the key falls back on the season's note, none when every
-    # week of the season had the step
+    # week, nothing in a stepped one; a week that does not say (null, as in
+    # an imported bundle, which has no oracle.json) or a payload from
+    # before the key falls back on the season's note, none when every week
+    # of the season had the step
     us = "{pf_note: 'N', pf_note_filter: 'F'}"
     got = _js(tmp_path,
               f"[I.usPfNote({us}, {{us_step: 'filter'}}),"
@@ -316,7 +317,7 @@ def test_us_pf_note_only_in_a_week_stored_before_addendum_a3(tmp_path):
               f" I.usPfNote({us}, {{}}), I.usPfNote({us}),"
               " I.usPfNote({pf_note: 'N', pf_step: 'stepped'}, {}),"
               " I.usPfNote({pf_note: 'N'}, {us_step: 'filter'})]")
-    assert got == ["F", "", "", "N", "N", "", "N"]
+    assert got == ["F", "", "N", "N", "N", "", "N"]
 
 
 @needs_jsc

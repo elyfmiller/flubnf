@@ -107,16 +107,18 @@ function locLabel(loc, us){
 // a week stored before it kept US outside the member, so its US pf is the
 // Liu-West filter alone. The week's payload says which (pl.us_step, from
 // its oracle.json: playback.build_week) and only a 'filter' week gets the
-// note, the host's cfg.us.pf_note_filter (sent only when fitted). A payload
-// from before us_step falls back on the season's note (cfg.us.pf_note),
-// none when every week had the step. It applies only while pf wears the
-// Oracle SIHRS name (a tree without the step already names pf for the
-// filter). US_PF_LABEL, pf's legend entry in such a week, is
-// us_national.PF_US_SHORT without its article (a test holds them equal).
+// note, the host's cfg.us.pf_note_filter (sent only when fitted). A week
+// that does not say, or a payload from before us_step, falls back on the
+// season's note (cfg.us.pf_note), none when every week had the step. It
+// applies only while pf wears the Oracle SIHRS name (a tree without the
+// step already names pf for the filter). US_PF_LABEL, pf's legend entry
+// in such a week, is us_national.PF_US_SHORT without its article (a test
+// holds them equal).
 var US_PF_LABEL = 'Liu-West filter without the Oracle step';
 function usPfNote(us, pl){
   if(!(us && us.pf_note && /Oracle/.test(nameOf('pf')))) return '';
-  if(pl && pl.us_step !== undefined)
+  // null: an imported replay bundle carries no oracle.json
+  if(pl && pl.us_step)
     return pl.us_step === 'filter'
       ? String(us.pf_note_filter || us.pf_note) : '';
   return us.pf_step === 'stepped' ? '' : String(us.pf_note);

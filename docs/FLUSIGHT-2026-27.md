@@ -20,7 +20,7 @@ something; say what changed and when.
 | Locations | "US", 50 states, "11" (DC), "72" (PR): 53 FIPS strings |
 | Quantiles | 0.01, 0.025, 0.05 to 0.95 by 0.05, 0.975, 0.99 (23 levels) |
 | Ensemble | built Thursday mornings from valid files received by the deadline |
-| Evaluation | at least 75% of hospital-admission quantile targets (h0-h3); WIS, relative WIS (log scale), 50/95% coverage; scored on end-of-season data. CDC's season evaluation (2024-25, 2025-26) leaves out national forecasts and Puerto Rico, and the 75% rule counts over the jurisdictions that remain; the US row still counts in real time (the FluSight ensemble is the per-location median, and its national forecast is the one CDC publishes) |
+| Evaluation | at least 75% of hospital-admission quantile targets (h0-h3); WIS, relative WIS (log scale), 50/95% coverage; scored on end-of-season data. CDC's season evaluation leaves out national forecasts (2024-25 and 2025-26) and, in 2025-26, Puerto Rico, and the 75% rule counts over the weeks and jurisdictions that remain; the US row still counts in real time (the FluSight ensemble is the per-location median, and its national forecast is the one CDC publishes) |
 
 ### Targets (all optional; the first is the primary one)
 
@@ -210,7 +210,8 @@ Engine findings to respect:
 
 ## Decided for 2026-27, and what is still open
 
-Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
+Decided by Ely on 2026-09-30 and 2026-10-01 (see
+[team/submission.md](team/submission.md) and [team/model.md](team/model.md)):
 
 - Scope: `wk inc flu hosp` only: quantiles, horizons 0 to 3, all 53
   locations. No ED-visit, peak, rate-change or horizon -1 rows; the knobs
@@ -228,7 +229,6 @@ Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
 - The Retrospective scores the Liu-West filter alone beside the Oracle
   SIHRS, from each replay week's `oracle.json` (its US figure only for
   weeks stored since addendum A3); it is never submitted.
-
 - From the 2026-10-07 round the Oracle SIHRS US row carries the Oracle
   step like the states (addendum A3, Ely 2026-10-01, PR #27). On the dry
   run (as of 2026-09-26) the US medians were 2,704 / 2,645 / 2,311 /
@@ -243,6 +243,13 @@ Still open:
   leave the code's `pf` names alone until the port lands. The Oracle SIHRS
   card on `dev` names the Liu-West filter (b41fc92); the hub's copy changes
   with the submission lane's cards pull request.
+- Windows laptops: the launcher fixes (engine updates on open, the Start
+  menu entry) are on `main` since 2026-09-30 (elyfmiller/flubnf PR #25);
+  students should open FluBNF.bat once to pick them up.
+
+## Contacts and sources
+
+- flusight@cdc.gov (Rebecca Borchering, Sarabeth Mathis, Annabella Hines).
 - CDC's 2025-26 evaluation (published 2026-09-30):
   https://www.cdc.gov/flu-forecasting/evaluation/2025-2026-report.html.
   Its scoring leaves out national forecasts (their scale) and Puerto Rico
@@ -252,13 +259,6 @@ Still open:
   still counts in real time: the FluSight ensemble is the per-location
   median of the designated models, and its national forecast is the one
   CDC publishes.
-- Windows laptops: the launcher fixes (engine updates on open, the Start
-  menu entry) are on `main` since 2026-09-30 (elyfmiller/flubnf PR #25);
-  students should open FluBNF.bat once to pick them up.
-
-## Contacts and sources
-
-- flusight@cdc.gov (Rebecca Borchering, Sarabeth Mathis, Annabella Hines).
 - https://github.com/cdcepi/FluSight-forecast-hub (README.md,
   hub-config/tasks.json, model-output/README.md, model-metadata/README.md,
   target-data/README.md).
