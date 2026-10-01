@@ -84,6 +84,11 @@
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
 {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
 {% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
+{# the US figures as the tiles and the table show them: the Liu-West
+   filter's own (pf_filter) only when every stored week has one (addendum
+   A3; us_row.pf_filter_withheld says why otherwise) #}
+{% set us_fig = {} %}
+{% if us_row %}{% for m in season_models %}{% set _ = us_fig.update({m: none if (m == 'pf_filter' and us_row.pf_filter_withheld) else us_row[m]}) %}{% endfor %}{% endif %}
 {# every link and fetch carries the archive id, so all read the same tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
 {# a replay with modified model settings wears a badge; what was changed
@@ -372,7 +377,7 @@
    tiles give way to an empty state, or to the scoring failure #}
 {% set tm = namespace(more=false, cov=false, us=false) %}
 {% for m in heads %}{% set d = (figs.detail.get(m) if figs and figs.detail else None) %}{% if d and d.get('log_rel') is not none %}{% set tm.more = true %}{% endif %}{% if d and d.get('cov') %}{% set tm.cov = true %}{% endif %}{% endfor %}
-{% if us_row %}{% for m in season_models %}{% if us_row[m] %}{% set tm.us = true %}{% endif %}{% if us_row[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_row[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
+{% if us_row %}{% for m in season_models %}{% if us_fig[m] %}{% set tm.us = true %}{% endif %}{% if us_fig[m] and (us_row.log_rel or {}).get(m) is not none %}{% set tm.more = true %}{% endif %}{% if us_fig[m] and (us_row.cov or {}).get(m) %}{% set tm.cov = true %}{% endif %}{% endfor %}{% endif %}
 {% set score_error = score_error if score_error is defined else "" %}
 {% set unsettled = unsettled if unsettled is defined else false %}
 {% if not unavailable and (heads or tm.us or score_error or unsettled or pooled_note) %}
@@ -413,13 +418,15 @@
  {% endfor %}
  {# the national tile ALWAYS names its provenance (fitted vs sum of
     states); it is outside the pooled headline by policy. A fitted US pf
-    is the particle filter without the Oracle step (us_row.pf_note), said
-    while pf wears the Oracle SIHRS name #}
- {% for m in season_models %}{% if us_row and us_row[m] %}
- {% set pf_plain = m == 'pf' and us_row.pf_note and 'Oracle' in model_name('pf') %}
+    from weeks stored before addendum A3 is the Liu-West filter without
+    the Oracle step, all of them or some (us_row.pf_short, by the weeks'
+    era), said while pf wears the Oracle SIHRS name; since A3 the step
+    covers it and there is nothing to add #}
+ {% for m in season_models %}{% if us_row and us_fig[m] %}
+ {% set pf_plain = m == 'pf' and us_row.pf_short and 'Oracle' in model_name('pf') %}
  <div class="card rt-tile"><div class="rt-tile-h"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2>
    {% call tips.tip("rs-us-" ~ m, us_row.short_label ~ " " ~ model_name(m) ~ " score") %}relWIS vs the FluSight baseline;
-   {% if us_row.fitted %}{% if pf_plain %}the particle filter without the Oracle step, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}.{% endcall %}</div>
+   {% if us_row.fitted %}{% if pf_plain %}{{ us_row.pf_short }}, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}.{% endcall %}</div>
    {{ big(us_row[m]) }}
    {{ tile_more((us_row.log_rel or {}).get(m), (us_row.cov or {}).get(m)) }}</div>
  {% endif %}{% endfor %}
@@ -622,14 +629,17 @@
     sorts and filters with the states but is NOT in the pooled figures #}
  {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
-  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% if show_cov %}{{ cov95_data(m, (us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}>
+  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_fig[m]) if us_fig[m] else '' }}"{% if show_cov %}{{ cov95_data(m, (us_row.cov or {}).get(m) if us_fig[m] else none) }}{% endif %}{% endfor %}>
   <td>{{ us_row.short_label }}{% call tips.tip("rs-usrow", "the US row") %}<span class="ncline">{{ us_row.note }}</span>
-   {#- the fitted US row of Oracle SIHRS had no Oracle step #}
+   {#- what the fitted US row of Oracle SIHRS is, by the stored weeks' era
+       (us_national.PF_US_NOTES): with the Oracle step since addendum A3,
+       the Liu-West filter alone before it #}
    {%- if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="ncline">{{ us_row.pf_note }}</span>{% endif %}{% endcall %}</td>
   {% for m in season_models %}
-  <td class="num{% if show_cov %} g1{% endif %}{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
-   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}{% if us_row[m] and us_row[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}</td>
-   {%- if show_cov %}{{ cov95((us_row.cov or {}).get(m)) }}{% endif %}{% endfor %}</tr>
+  <td class="num{% if show_cov %} g1{% endif %}{% if us_fig[m] and us_fig[m] >= 1 %} bad{% endif %}">
+   {{ "%.3f"|format(us_fig[m]) if us_fig[m] else "n/a" }}{% if us_fig[m] and us_fig[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}
+   {%- if m == 'pf_filter' and us_row.pf_filter_withheld %}{{ tips.tip("rs-us-pf_filter-na", "the " ~ model_name(m) ~ " US figure", us_row.pf_filter_withheld) }}{% endif %}</td>
+   {%- if show_cov %}{{ cov95((us_row.cov or {}).get(m) if us_fig[m] else none) }}{% endif %}{% endfor %}</tr>
  {% endif %}
  {% for r in states %}<tr data-name="{{ r.name }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% if show_cov %}{{ cov95_data(m, ((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}>

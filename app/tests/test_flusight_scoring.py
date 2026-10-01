@@ -17,6 +17,7 @@ Pinned:
   * the replay applies the console's output floor to both members before
     storage and records it in the season's run record.
 """
+import dataclasses
 import json
 import math
 import os
@@ -305,9 +306,15 @@ def test_the_us_row_carries_log_and_coverage_and_says_what_pf_is():
     assert d["log_rel"]["pf"] == pytest.approx(1.5)
     assert d["cov"]["pf"] == {"50": 0.0, "80": 1.0, "95": 1.0}
     assert us.log_rel("pf") == pytest.approx(1.5)
-    # the fitted pf US row never had the Oracle step, and says so; the
-    # sum of states is a sum of Oracle SIHRS state forecasts
-    assert "without the Oracle step" in d["pf_note"]
+    # what the fitted pf US row is follows its era (resolve reads it from
+    # the stored weeks); a frame alone does not say, so the note covers
+    # both; the sum of states is a sum of Oracle SIHRS state forecasts
+    assert d["pf_step"] is None and d["pf_note"] == usn.PF_US_NOTE
+    stepped = dataclasses.replace(us, pf_step=usn.STEPPED).as_dict()
+    assert stepped["pf_note"] == usn.PF_US_NOTES[usn.STEPPED]
+    assert "without the Oracle step" not in stepped["pf_note"]
+    filt = dataclasses.replace(us, pf_step=usn.FILTER).as_dict()
+    assert "Liu-West filter without the Oracle step" in filt["pf_note"]
     assert usn.UsNational(usn.AGGREGATED).as_dict()["pf_note"] == ""
 
 

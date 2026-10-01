@@ -421,10 +421,11 @@ def load_field_cells(directory=None) -> FieldCells:
 # what a page asks for
 # --------------------------------------------------------------------------
 
-#: print order, the retired blend last (present only in older scores frames).
-#: us_national.MODELS plus the Liu-West filter alone (pf_filter, beside
-#: the Oracle SIHRS it feeds), which has no national row: the Oracle step
-#: never touches US. Repeated so this module stands alone.
+#: print order, the retired blend last (present only in older scores frames),
+#: with the Liu-West filter alone (pf_filter) beside the Oracle SIHRS it
+#: feeds. The same tuple as us_national.MODELS (the filter has a national
+#: row for weeks stored since addendum A3); repeated so this module stands
+#: alone, and a test holds the two equal.
 MODELS = ("pf", "pf_filter", "analogue", "ensemble")
 
 

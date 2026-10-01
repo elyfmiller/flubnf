@@ -345,8 +345,9 @@ def test_member_palette_audit_and_its_non_color_redundancy():
         for th, (bg, card) in grounds.items():
             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
             assert _cr(mem[m], card) >= 3.0, (m, th, "card")
-    # redundancy still backs up the color channel (a fitted US pf fan's
-    # legend entry names what it is instead, player.js US_PF_LABEL)
+    # redundancy still backs up the color channel (a fitted US pf fan
+    # stored before addendum A3 names what it is instead, player.js
+    # US_PF_LABEL)
     assert "name: label || nameOf(m)" in PLAYER
     assert "+ '\"></span>' + nameOf(m)" in PLAYER
 

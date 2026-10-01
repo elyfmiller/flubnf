@@ -34,7 +34,11 @@ shows (the stored members, pf2s, FluSight-baseline and FluSight-ensemble):
 
 Beside "truth" (the settled series) a payload carries "seen": the week's
 own vintage per location, what the models fitted on, up to the as-of
-week; {} when that vintage is not on this machine.
+week; {} when that vintage is not on this machine. And "us_step": what the
+week's oracle.json did with the US cell (us_national.us_step_week):
+"stepped" (addendum A3: the US pf is the Oracle SIHRS), "filter" (stored
+before it: the US pf is the Liu-West filter alone), or None when the week
+does not say.
 
 FluSight-baseline's rel and log rel are 1.0 by definition; its coverage is
 its own. A scores.json written before the log-scale and coverage columns (a
@@ -70,8 +74,9 @@ from flubnf.settings import HUB
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
 #: bump when cached shapes or scoring logic change (v3: stored members only,
 #: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage;
-#: v6: the Liu-West filter alone, from oracle.json, joins the members)
-CACHE_V = 6
+#: v6: the Liu-West filter alone, from oracle.json, joins the members;
+#: v7: "us_step", the week's Oracle step on the US cell)
+CACHE_V = 7
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS
@@ -595,6 +600,8 @@ def build_week(root: Path, season: str, asof: str) -> dict:
         "official": {om: {name: _strq(hq) for name, hq in oq.items()}
                      for om, oq in official_q.items() if oq},
         "stats": _stats(root, season, asof, truth, n2f, model_q, official_q),
+        # which US pf this week stored: the Oracle step's or the filter's
+        "us_step": usn.us_step_week(retro_store._week_dir(root, asof)),
     }
     _write_cache(cf, payload)
     return payload
