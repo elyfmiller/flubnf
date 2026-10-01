@@ -6,10 +6,8 @@ this file here.
 
 ## Now
 
-- 2026-09-30 22:00 Arizona: CPU use on the lab Mac (12 cores) tonight and
-  into 2026-10-01. One more test-and-review run for the `lwf` port: up to
-  four full PyBNF test-suite runs of about 18 minutes each, dropping to 6
-  cores when the machine is busy; the docs work in between is light.
+- 2026-10-01 overnight, Arizona time: CPU use on the lab Mac. The study
+  above (at most 8 processes) and one PyBNF test-suite run on 6 cores.
   It slows other work while it runs but does not break it. If you need the
   machine, say so here (`Engine:` in your notes) or message the session
   "PyBNF Particle Filter". The engine run will pause and resume later. This
@@ -30,9 +28,13 @@ this file here.
     Monte Carlo error on a test SIR model. Given the same random numbers
     they give the same output to solver tolerance. `lwf` is about 1.9 times
     slower per particle-row.
-  - In progress: the remaining continuation gaps, then the docs and a
-    tutorial example. The maintainer wants to review the code itself, with
-    no issue first; Ely opens the pull request.
+  - Done locally and reviewed (2026-10-01): the docs (algorithm section,
+    citations) and a tutorial lesson tested in CI. Head 381bba5e, 63
+    commits. Next: tidy the series and draft the pull request; Ely opens it.
+  - In progress (2026-10-01): a pre-registered synthetic study of whether
+    the Liu–West filter follows a change in transmission partway through a
+    series (record: FluBNF-local `research/lwf-change-tracking/`). Uses at
+    most 8 cores.
 - 2026-09-30: private branch `pf/forecast-fixes-noauto` (faccccb3, local,
   not pushed) adds three things:
   - per-parameter jitter (`pf_parameter_jitter = <name> <h>`);
@@ -86,6 +88,14 @@ this file here.
   - new output readers;
   - a statistical-equivalence check against the production record before
     switching, because the numbers will not be byte-identical.
+- Model (heads-up, 2026-10-01, synthetic data only, under study): on a toy
+  SIR where transmission drops partway through, the Liu–West filter's beta
+  stayed near its old value while the dispersion r fell. Forecasts were
+  badly off in one case and fine in another. The move scales with the
+  swarm's current spread, so drift may slow as data accumulate. Nothing is
+  shown yet for the SIHRS or for production; the study above will say
+  more. Until then, describe the filter's drift as an assumption of the
+  model, not as "following a change".
 - All: the private engine's `pf_continue` silently ignores revised earlier
   rows. Production refits every week, so it is safe. Nothing that carries a
   swarm across weeks may rely on it; upstream `lwf` refuses a revised row.
