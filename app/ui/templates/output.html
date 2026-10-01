@@ -150,6 +150,9 @@ their run folders.{% endcall %}</span>{% endif %}</span>
  {% endfor %}
 </div>
 {% endif %}
+{# an older server (a pull while the console runs reloads templates,
+   not routes) renders no stamp: the page then goes without the check #}
+{% if stamp is defined %}
 <script>
  // fresh after a run: the page lists the files of the runs it was
  // rendered from. Once no run is on, it reloads when a newer run's
@@ -158,12 +161,14 @@ their run folders.{% endcall %}</span>{% endif %}</span>
  // few seconds while a run is on. The reload waits, as forecast.html's
  // does, while a form has focus or the guard modal is open (GUARD_BUSY).
  (function(){
-  var S={{ stamp | tojson }},T=null,ASKING=false,ON=false,POLL_MS=3000;
+  var S={{ stamp | tojson }},T=null,ASKING=false,ON=!!S.running,POLL_MS=3000;
   function later(){clearTimeout(T);T=setTimeout(look,POLL_MS);}
   function look(){
    if(document.hidden||ASKING)return;
    ASKING=true;
-   fetch('/api/output/stamp').then(function(r){return r.json();}).then(function(d){
+   // a refusal or a reply without a stamp is a failed check, not a change
+   fetch('/api/output/stamp').then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(d){
+    if(!d||typeof d.stamp!=='string')throw new Error('no stamp');
     ASKING=false;ON=!!d.running;
     if(ON){later();return;}
     if(d.stamp===S.stamp&&!S.running)return;
@@ -176,5 +181,6 @@ their run folders.{% endcall %}</span>{% endif %}</span>
   document.addEventListener('visibilitychange',function(){if(!document.hidden)look();});
  })();
 </script>
+{% endif %}
 {% endif %}
 {% endblock %}

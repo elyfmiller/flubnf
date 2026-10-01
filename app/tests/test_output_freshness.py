@@ -170,7 +170,10 @@ function setTimeout(f){timers.push(f);return timers.length;}
 function clearTimeout(){}
 var replies=[];
 function fetch(url){said.push(url);var d=replies.shift();
-  return Promise.resolve({json:function(){return Promise.resolve(d);}});}
+  if(d&&d.down)return Promise.reject(new Error('no server'));
+  var st=(d&&d.status)||200, b=(d&&d.status)?d.body:d;
+  return Promise.resolve({ok:st<400,status:st,
+    json:function(){return Promise.resolve(b);}});}
 async function settle(){for(var i=0;i<8;i++)await Promise.resolve();}
 async function tick(){var f=timers.shift();if(f)f();await settle();}
 """
@@ -226,3 +229,54 @@ def test_the_script_reloads_once_a_run_has_ended(root):
     assert _js(js, idle, "document.hidden=true;on.focus();await settle();"
                "document.hidden=false;replies=[{stamp:'B',running:false}];"
                "don.visibilitychange();await settle();") == [url, "reload"]
+
+
+@pytest.mark.skipif(not NODE, reason="no node")
+def test_a_failed_check_is_never_a_change(root):
+    """An older server's 404 for the stamp route, a reply without a stamp,
+    or no server at all: no reload (a reload there would repeat on every
+    load). A page rendered mid-run keeps looking after a failed check."""
+    _run(root, "2098-01-03", "only")
+    js = _script(client.get("/output").text)
+    url = "/api/output/stamp"
+    idle = {"stamp": "A", "running": False}
+    assert _js(js, idle, "replies=[{status:404,body:{detail:'Not Found'}}];"
+               "on.pageshow();await settle();") == [url]
+    assert _js(js, idle, "replies=[{detail:'x'}];"
+               "on.pageshow();await settle();") == [url]
+    assert _js(js, idle, "replies=[{down:true}];"
+               "on.pageshow();await settle();") == [url]
+    assert _js(js, {"stamp": "A", "running": True},
+               "replies=[{down:true},{stamp:'B',running:false}];"
+               "on.pageshow();await settle();await tick();"
+               ) == [url, url, "reload"]
+
+
+def test_a_page_rendered_without_a_stamp_has_no_check(root, monkeypatch):
+    """A pull while the console runs reloads templates, not routes: an
+    older output_page renders no stamp, and the page still renders."""
+    _run(root, "2098-01-03", "only")
+    real = O.templates.TemplateResponse
+
+    def old_route(request, name, context, *a, **k):
+        context = {k2: v for k2, v in context.items() if k2 != "stamp"}
+        return real(request, name, context, *a, **k)
+    monkeypatch.setattr(O.templates, "TemplateResponse", old_route)
+    r = client.get("/output")
+    assert r.status_code == 200 and "Weekly report" in r.text
+    assert "// fresh after a run" not in r.text
+
+
+def test_the_week_picker_offers_only_weeks_with_a_report(root):
+    """A run whose report failed is archived without one; the picker's
+    Download would save the 404 notice as a file, so that week is not
+    offered."""
+    _run(root, "2098-01-10", "only")
+    (root / "archive" / "2098-01-03" / "submission").mkdir(parents=True)
+    with_report = root / "archive" / "2098-01-10"
+    with_report.mkdir(parents=True, exist_ok=True)
+    (with_report / "report.html").write_text("<html>REPORT</html>")
+    ui_shared._invalidate_scans()
+    html = client.get("/output").text
+    assert '<option value="2098-01-10">' in html
+    assert '<option value="2098-01-03">' not in html

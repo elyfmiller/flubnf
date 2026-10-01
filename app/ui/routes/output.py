@@ -516,7 +516,11 @@ def output_page(request: Request):
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
-        "archive_dates": list(reversed(_archive_dates())),
+        # the earlier weeks the picker offers: those whose archive holds a
+        # report (a run whose report failed is archived without one)
+        "archive_dates": [d for d in reversed(_archive_dates())
+                          if (APP_STATE / "archive" / d
+                              / "report.html").is_file()],
         "has_report": has_report,
         # the week the latest report is for and the run that wrote it,
         # beside its buttons (which name that run)

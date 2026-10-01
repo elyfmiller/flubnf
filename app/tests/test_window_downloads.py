@@ -146,18 +146,24 @@ def _stand_ins(monkeypatch, downloads, answer=OK, chosen=None):
     monkeypatch.setitem(sys.modules, "AppKit", appkit)
     monkeypatch.setitem(sys.modules, "Foundation", foundation)
     monkeypatch.delenv(wd.ENV, raising=False)
+    monkeypatch.delenv("PYWEBVIEW_GUI", raising=False)
+    monkeypatch.setattr(wd, "pywebview_version", lambda: "6.2.1")
     return BrowserView, DownloadDelegate, panel
 
 
 WEBVIEW = types.ModuleType("webview")
 
 
-def _decide(delegate_cls, suggested="2026-10-03-NAU_PyBNF-OracleSIHRS.csv"):
+INSTALLED = "installed (pywebview 6.2.1)"
+
+
+def _decide(delegate_cls, suggested="2026-10-03-NAU_PyBNF-OracleSIHRS.csv",
+            response=None):
     """WebKit asking the delegate where to save: what the completion
     handler got, each call."""
     got = []
-    getattr(delegate_cls(), wd.METHOD)(object(), object(), suggested,
-                                       got.append)
+    getattr(delegate_cls(), wd.METHOD)(object(), response or object(),
+                                       suggested, got.append)
     return got
 
 
@@ -170,7 +176,7 @@ def test_on_macos_the_delegate_is_swapped_for_one_that_replaces(
     view, stock, panel = _stand_ins(monkeypatch, tmp_path, chosen=str(chosen))
     # the stock delegate hands WebKit a taken name (WebKit then drops it)
     assert _decide(stock) == [("file-url", str(chosen))] and chosen.exists()
-    assert wd.install(WEBVIEW, platform="darwin") == "installed"
+    assert wd.install(WEBVIEW, platform="darwin") == INSTALLED
     new = view.DownloadDelegate
     assert new is not stock and issubclass(new, stock)
     assert new.__name__ == wd.CLASS_NAME
@@ -192,7 +198,7 @@ def test_cancel_and_a_folder_both_cancel_the_download(tmp_path, monkeypatch):
     kept.write_text("old")
     view, _stock, panel = _stand_ins(monkeypatch, tmp_path, answer=CANCEL,
                                      chosen=str(kept))
-    assert wd.install(WEBVIEW, platform="darwin") == "installed"
+    assert wd.install(WEBVIEW, platform="darwin") == INSTALLED
     assert _decide(view.DownloadDelegate) == [None]
     assert kept.read_text() == "old"
     panel.answer, panel.chosen = OK, str(tmp_path)
@@ -205,9 +211,70 @@ def test_a_failing_panel_still_answers_webkit_once(tmp_path, monkeypatch):
     sys.modules["AppKit"].NSSavePanel = types.SimpleNamespace()
     lines = []
     assert wd.install(WEBVIEW, trace=lines.append,
-                      platform="darwin") == "installed"
+                      platform="darwin") == INSTALLED
     assert _decide(view.DownloadDelegate) == [None]
     assert len(lines) == 1 and "download destination failed" in lines[0]
+
+
+def test_a_failing_trace_never_keeps_webkit_waiting(tmp_path, monkeypatch):
+    """A trace that raises (stderr closed under a Dock launch) in the
+    folder branch and again in the except branch: WebKit still gets its
+    one answer."""
+    view, _stock, panel = _stand_ins(monkeypatch, tmp_path, chosen=str(tmp_path))
+
+    def broken(msg):
+        raise BrokenPipeError(32, "Broken pipe")
+    assert wd.install(WEBVIEW, trace=broken, platform="darwin") == INSTALLED
+    assert _decide(view.DownloadDelegate) == [None]          # a folder
+    sys.modules["AppKit"].NSSavePanel = types.SimpleNamespace()
+    assert _decide(view.DownloadDelegate) == [None]          # a failing panel
+
+
+class _Response:
+    def __init__(self, code):
+        self.code = code
+
+    def statusCode(self):
+        return self.code
+
+
+def test_an_http_error_replaces_nothing(tmp_path, monkeypatch):
+    """A 404 notice downloaded under a CSV's name: WebKit gets the path as
+    pywebview gives it (so it keeps the old file), nothing is removed."""
+    kept = tmp_path / "2026-10-03-NAU_PyBNF-OracleSIHRS.csv"
+    kept.write_text("the saved copy")
+    view, _stock, _panel = _stand_ins(monkeypatch, tmp_path, chosen=str(kept))
+    lines = []
+    assert wd.install(WEBVIEW, trace=lines.append, platform="darwin") == \
+        INSTALLED
+    got = _decide(view.DownloadDelegate, response=_Response(404))
+    assert got == [("file-url", str(kept))] and kept.read_text() == \
+        "the saved copy"
+    assert lines and "HTTP error" in lines[0]
+    assert _decide(view.DownloadDelegate, response=_Response(200)) == \
+        [("file-url", str(kept))]
+    assert not kept.exists()                     # a success replaces it
+    assert wd.http_error(_Response(500)) and not wd.http_error(_Response(304))
+    assert not wd.http_error(object()) and not wd.http_error(None)
+
+
+def test_another_pywebview_major_or_gui_is_left_alone(tmp_path, monkeypatch):
+    """The override copies pywebview 6's body: another major version, an
+    unreadable version, or a GUI other than Cocoa keeps pywebview's own."""
+    view, stock, _panel = _stand_ins(monkeypatch, tmp_path)
+    for ver in ("7.0.0", "5.4", None):
+        monkeypatch.setattr(wd, "pywebview_version", lambda v=ver: v)
+        said = wd.install(WEBVIEW, platform="darwin")
+        assert said.startswith("skipped (pywebview ") and "not checked" in said
+        assert view.DownloadDelegate is stock
+    monkeypatch.setattr(wd, "pywebview_version", lambda: "6.3.0")
+    monkeypatch.setenv("PYWEBVIEW_GUI", "qt")
+    assert wd.install(WEBVIEW, platform="darwin") == \
+        "skipped (PYWEBVIEW_GUI=qt)"
+    assert view.DownloadDelegate is stock
+    monkeypatch.setenv("PYWEBVIEW_GUI", "Cocoa")
+    assert wd.install(WEBVIEW, platform="darwin") == \
+        "installed (pywebview 6.3.0)"
 
 
 def test_off_macos_or_switched_off_nothing_changes(tmp_path, monkeypatch):

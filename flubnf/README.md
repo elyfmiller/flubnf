@@ -34,7 +34,7 @@ Each module's docstring opens with its role tag; this page groups them. `flubnf/
 | `baseline_forecast.py` | persistence baseline, the relWIS denominator of custom-dataset runs | `app/core/custom_run.py` |
 | `doctor.py` | `flubnf doctor` environment checks | `cli.py` |
 | `window_server.py` | the console server for `flubnf window`, in its own process: it takes the window's held socket and exits with the window, so no forecast step can freeze the window (hover, resizing) | `cli.py` |
-| `window_downloads.py` | the macOS window's downloads: a file saved over an existing one replaces it (pywebview's save panel only asks, and WebKit then drops the download); `FLUBNF_DOWNLOAD_REPLACE=off` keeps pywebview's own | `cli.py` |
+| `window_downloads.py` | the macOS window's downloads: a file saved over an existing one replaces it (pywebview's save panel only asks, and WebKit then drops the download); pywebview 6 only; `FLUBNF_DOWNLOAD_REPLACE=off` keeps pywebview's own | `cli.py` |
 
 Removed 2026-09 (legacy DE/AMCMC CLI, COVID seam, research helpers): git history and lab archive.
 

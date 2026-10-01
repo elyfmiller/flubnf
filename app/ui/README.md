@@ -80,7 +80,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/api/output/stamp` | `routes/output.py` | `api_output_stamp` (`output_stamp`: the newest run with a `results.json`, and whether a run is on) | | `output.html` reload check |
 | GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html`, `_dataset_run.html` |
 | POST | `/output/reveal` | `routes/output.py` | `output_reveal` | redirect | `output.html` form, `retro_season.html` fetch |
-| GET | `/output/report` | `routes/output.py` | `output_report` (no date: the newest run's, for old links) | weekly report | `output.html` date picker |
+| GET | `/output/report` | `routes/output.py` | `output_report` (no date: the newest run's) | weekly report | `output.html` date picker; Home's Weekly report button (`home.html`) and map link (`home.py` MAP_LINK) |
 | GET | `/output/report/download` | `routes/output.py` | `output_report_download` (no date: as `output_report`) | | `output.html` date picker |
 | **Retrospective** | | | | | |
 | GET | `/retro` | `routes/retro.py` | `retro_index` (two tabs: the FluSight hub, or Your data: `?tab=own` opens the first dataset, `?dataset=<id>` that one) | `retro.html` | nav; the upload box's "Replay this" |
