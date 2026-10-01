@@ -228,7 +228,18 @@ Decided by Ely on 2026-09-30 (see [team/submission.md](team/submission.md)):
 - The Retrospective scores the Liu-West filter alone beside the Oracle
   SIHRS, from each replay week's `oracle.json`; it is never submitted.
 
+- For 2026-10-07 the Oracle SIHRS file keeps its fitted US row as the
+  frozen spec makes it (Ely, 2026-09-30). Early in a season that row can
+  turn down while the data rise: the pinned initial infected fraction
+  depletes the model's susceptibles, and the Oracle step, which corrects
+  this in the states, never touches US. Detail in
+  [team/model.md](team/model.md).
+
 Still open:
+
+- Whether to apply the Oracle step to the US row too (addendum A3, drafted
+  by the model lane; better on US in all three replayed seasons): from
+  2026-10-07 or from round two. Ely decides.
 
 - Keep the Liu-West naming consistent in anything written for the team;
   leave the code's `pf` names alone until the port lands. The Oracle SIHRS

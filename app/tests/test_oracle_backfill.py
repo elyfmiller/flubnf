@@ -171,6 +171,7 @@ def test_backfill_writes_the_member_into_a_new_root_and_leaves_the_source(source
     assert meta["settings"]["output_floor"] == OBF.FLOOR_NOT_REAPPLIED
     assert meta["backfill"]["source_root"] == str(source.resolve())
     assert meta["backfill"]["prereg_sha256"] == oracle_mod.OR.PREREG_SHA256
+    assert meta["backfill"]["addendum_a3_sha256"] == oracle_mod.OR.ADDENDUM_A3_SHA256
     # a second backfill into the same root is refused, and forced it reruns
     with pytest.raises(ValueError, match="not empty"):
         OBF.backfill_season(source, out, "2097-98")

@@ -85,6 +85,10 @@ B2_SHA256 = (
     "2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249")
 ADDENDUM_A2_SHA256 = (
     "85ac546416bbb20ed1b87ce9289f50645ff1e22169b0bed9ae0a054e3e449f27")
+#: addendum A3 (flubnf.oracle.ADDENDUM_A3_SHA256; the test holds them
+#: equal): the step on the US national cell, from the first 2026-27 week
+ADDENDUM_A3_SHA256 = (
+    "8a3552bc28a37565ab85aa36a76fd336ce0f02e69e7bcdb4a7030fe3926b3e7b")
 
 #: the record: the shipped Oracle SIHRS (LBGH) against the plain filter on
 #: the same scored cells, per season, for the two seasons with admissions

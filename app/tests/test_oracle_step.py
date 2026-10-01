@@ -103,15 +103,18 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
     member, prov = oracle_mod.apply_week(raw, ASOF, wd)
     # the member: every location, the anchor untouched, the forecasts moved
     assert set(member) == {"Ohio", "Utah", "US"}
-    for loc in ("Ohio", "Utah"):
+    for loc in ("Ohio", "Utah", "US"):
         assert member[loc][hz.ORIGIN] == raw[loc][hz.ORIGIN]
         for h in hz.HORIZONS:
             assert len(member[loc][h]) == len(raw[loc][h])
             assert member[loc][h] != raw[loc][h]
-    # the US row is outside the registered member: untouched, and said so
-    assert member["US"] == raw["US"]
-    assert prov["locations"]["US"]["reason"].startswith("outside the registered member")
-    assert prov["cells"]["outside_member"] == ["US"]
+    # the US national cell is in the member (addendum A3), under the RNG
+    # key 0, and nothing is outside it
+    assert prov["locations"]["US"]["rng_key"] == OR.US_KEY == "0"
+    assert prov["locations"]["US"]["fips"] == "US"
+    assert prov["locations"]["US"]["state"] == "both" and prov["locations"]["US"]["active"] == 1
+    assert prov["locations"]["Ohio"]["rng_key"] == "39"
+    assert prov["cells"]["outside_member"] == []
     # the library's own answer, bit for bit: the mixture of the two written
     # halves (bank change B2)
     pool, man = OB.read_pool(wd / oracle_mod.BANK_DIRNAME, ASOF)
@@ -124,6 +127,15 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
         assert member["Ohio"][h] == r.samples[hi].tolist()
     lb = OR.member_for_cell(raw["Ohio"][hz.ORIGIN], [raw["Ohio"][h] for h in hz.HORIZONS],
                             pool, date.fromisoformat(ASOF), "39")
+    ru = OR.member_for_cell(raw["US"][hz.ORIGIN], [raw["US"][h] for h in hz.HORIZONS],
+                            pool, date.fromisoformat(ASOF), OR.US_KEY, aux_pool=auxp)
+    assert ru.active and 0 < ru.n_aux_drawn < len(raw["US"]["0"])
+    for hi, h in enumerate(hz.HORIZONS):
+        assert member["US"][h] == ru.samples[hi].tolist()
+    assert prov["locations"]["US"]["n_flusurv_drawn"] == ru.n_aux_drawn
+    for s in OR.SEEDS:
+        assert prov["quantiles"]["primary"]["per_seed"][str(s)]["US"]["1"]["unrounded"] == \
+            [float(z) for z in ru.q_seed[s][1]]
     # the provenance
     fp = wd / oracle_mod.PROVENANCE_NAME
     assert fp.is_file() and json.loads(fp.read_text()) == prov
@@ -131,6 +143,7 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
     assert prov["prereg_sha256"] == OR.PREREG_SHA256
     assert prov["b2_sha256"] == OR.B2_SHA256
     assert prov["addendum_a2_sha256"] == OR.ADDENDUM_A2_SHA256
+    assert prov["addendum_a3_sha256"] == OR.ADDENDUM_A3_SHA256
     aux_digest = hubfiles["aux"]["manifest"]["digest"]
     assert prov["bank"]["label"] == f"admissions-fbase@{man['digest'][:8]}+flusurv@{aux_digest[:8]}"
     assert prov["bank"]["stream"] == MX.STREAM == "admissions-fbase+flusurv"
@@ -156,10 +169,10 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
     assert o["m_0"] == float(np.median(raw["Ohio"][hz.ORIGIN]))
     assert o["y_T"] is not None and o["m0_over_yT"] == o["m_0"] / o["y_T"]
     assert o["abstentions"] == 0 and o["guard_hits"] == 0
-    assert prov["cells"] == {"locations": 3, "eligible": 2, "active": 2,
-                             "identity_pool": [], "not_eligible": [], "outside_member": ["US"]}
+    assert prov["cells"] == {"locations": 3, "eligible": 3, "active": 3,
+                             "identity_pool": [], "not_eligible": [], "outside_member": []}
     q = prov["quantiles"]
-    assert q["levels"] == OR.QL and set(q["null"]) == {"Ohio", "Utah"}
+    assert q["levels"] == OR.QL and set(q["null"]) == {"Ohio", "Utah", "US"}
     assert set(q["primary"]["per_seed"]) == {str(s) for s in OR.SEEDS}
     assert set(q["secondary"]["per_seed"]) == {str(s) for s in OR.SEEDS}
     for s in OR.SEEDS:
@@ -191,12 +204,23 @@ def test_k_comes_from_cells_json_when_the_week_has_one(hubfiles, tmp_path):
     assert prov["trimmed_weeks"]["source"].startswith("cells.json")
 
 
+def test_a_location_without_a_fips_key_is_outside_the_member(hubfiles, tmp_path):
+    raw = _samples(locs=("Ohio", "US", "Atlantis"))
+    member, prov = oracle_mod.apply_week(raw, ASOF, tmp_path / "w")
+    assert member["Atlantis"] == raw["Atlantis"] and member["US"] != raw["US"]
+    assert prov["locations"]["Atlantis"]["state"] == "outside"
+    assert prov["locations"]["Atlantis"]["reason"].startswith("outside the registered member")
+    assert "rng_key" not in prov["locations"]["Atlantis"]
+    assert prov["cells"]["outside_member"] == ["Atlantis"]
+    assert prov["cells"]["active"] == 2 and "Atlantis" not in prov["quantiles"]["null"]
+
+
 def test_an_ineligible_cell_is_the_identity_and_named(hubfiles, tmp_path):
     raw = _samples()
     raw["Utah"] = {h: [0.0] * 50 for h in (hz.ORIGIN, *hz.HORIZONS)}
     member, prov = oracle_mod.apply_week(raw, ASOF, tmp_path / "w")
     assert member["Utah"] == raw["Utah"]
-    assert prov["cells"]["not_eligible"] == ["Utah"] and prov["cells"]["active"] == 1
+    assert prov["cells"]["not_eligible"] == ["Utah"] and prov["cells"]["active"] == 2
     assert prov["locations"]["Utah"]["active"] == 0
 
 

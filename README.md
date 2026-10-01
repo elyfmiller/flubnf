@@ -152,15 +152,16 @@ engine:
 
     flubnf groundhog retro all --aux flusurv
 
+or from the console, Retrospective tab, engine preset "Groundhog only"
+(minutes per season; the two paths agree cell for cell).
+
 Since 2026-09-25 the scorer follows FluSight's cell rule, which also
 scores zero truths and zero medians, so the command now prints 0.722,
 0.659 and 0.660 (0.6705 pooled) on 17,116 cells (hub at 99cc45a). On the
 row's 15,340 cells its WIS equals the 2026-09-21 replay bit for bit; the
 1,776 cells added are the ones the old rule skipped.
 
-or from the console, Retrospective tab, engine preset "Groundhog only"
-(minutes per season; the two paths agree cell for cell). A season's
-Oracle SIHRS is made the same way a live week is: a console replay,
+A season's Oracle SIHRS is made the same way a live week is: a console replay,
 Retrospective tab, preset "Oracle SIHRS and the Groundhog" (or
 `flubnf retro <season>`), which fits every week from the season start and
 applies the Oracle step with that week's data and donor pool (hours per

@@ -6,6 +6,15 @@ this file here.
 
 ## Now
 
+- 2026-10-01: preparing the PyBNF pull request (Ely's decisions: one pull
+  request, side fixes as their own commits, no design record, minimal
+  content). Trimming the branch, then rebuilding it as a clean series. CPU:
+  a few PyBNF test-suite runs on the lab Mac today, dropping to 6 cores when
+  the machine is busy.
+  It slows other work while it runs but does not break it. If you need the
+  machine, say so here (`Engine:` in your notes) or message the session
+  "PyBNF Particle Filter". The engine run will pause and resume later. This
+  file says when it's done.
 - 2026-09-30: porting the Liu–West filter to public lanl/PyBNF as
   `job_type = lwf` ("Liu–West Particle Filter", family `filter`, settings
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
@@ -14,10 +23,23 @@ this file here.
     (lanl/PyBNF#973) share, reviewed and fixed (five commits, head
     235fb497). The review found and fixed a silent bug: a particle's
     starting state could keep the first particle's values.
-  - In progress: the `lwf` job type for one run (build, independent review,
-    fixes). Then: the state file, continuation and several runs; then the
-    docs. The maintainer wants to review the code itself, with no issue
-    first; Ely opens the pull request.
+  - Done locally and independently reviewed: the `lwf` job type for one or
+    several runs, with a state file and continuation (`lwf_state_file`,
+    `lwf_continue`). A continuation gives exactly the same result as one
+    uninterrupted run, and a revised earlier row is refused. Head 7eca7270.
+  - Equivalence (2026-09-30): `lwf` and the private engine agree within
+    Monte Carlo error on a test SIR model. Given the same random numbers
+    they give the same output to solver tolerance. `lwf` is about 1.9 times
+    slower per particle-row.
+  - Done locally and reviewed (2026-10-01): the docs (algorithm section,
+    citations) and a tutorial lesson tested in CI. Head 381bba5e, 63
+    commits. Next: tidy the series and draft the pull request; Ely opens it.
+  - Done (2026-10-01): a pre-registered synthetic study of whether the
+    Liu–West filter follows a change in transmission partway through a
+    series, with an independent re-analysis and a skeptic. Record:
+    FluBNF-local `research/lwf-change-tracking/RESULTS.md`. Summary under
+    For other lanes. Branch head a1bc35bb; Ely decides the pull request's
+    framing.
 - 2026-09-30: private branch `pf/forecast-fixes-noauto` (faccccb3, local,
   not pushed) adds three things:
   - per-parameter jitter (`pf_parameter_jitter = <name> <h>`);
@@ -71,6 +93,27 @@ this file here.
   - new output readers;
   - a statistical-equivalence check against the production record before
     switching, because the numbers will not be byte-identical.
+- Model (2026-10-01; toy SIR, synthetic data, in-house, not peer-reviewed):
+  - The Liu–West filter did not follow a drop in transmission at any jitter
+    up to 0.9 (540 pre-registered runs plus 91 checks). It behaved like a
+    sequential fit with nearly fixed parameters: its beta matched a plain
+    constant-beta fit of the same rows.
+  - The private engine, which production uses, behaved the same.
+  - A change missing from the model showed up as a falling dispersion r and
+    a carried susceptible pool that drifted from the truth. Forecasts stayed
+    close only when the drop came at or after the peak; a drop during growth
+    gave forecasts far off.
+  - Raising h is not a lever: the kernel keeps the swarm's spread, so no h
+    widens it.
+  - Weekly refits from Aug 1 replay the same rows, so they add no
+    adaptivity.
+  - Cautions for SIHRS work, untested on it: do not describe the weekly
+    filter as adapting to change; a falling r is a cheap alarm that the
+    model is missing something.
+  - In the toy, beta·S/(N·gamma) came out too low at the forecast origin
+    after a slowdown, the same sign as the old "Rt < 1 at the origin"
+    finding. That link is untested.
+  - Nothing in production changes from this.
 - All: the private engine's `pf_continue` silently ignores revised earlier
   rows. Production refits every week, so it is safe. Nothing that carries a
   swarm across weeks may rely on it; upstream `lwf` refuses a revised row.

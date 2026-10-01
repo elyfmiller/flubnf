@@ -130,6 +130,7 @@ def backfill_season(source, out, season: str, *, force: bool = False,
                          "prereg_sha256": oracle_mod.OR.PREREG_SHA256,
                          "b2_sha256": oracle_mod.OR.B2_SHA256,
                          "addendum_a2_sha256": oracle_mod.OR.ADDENDUM_A2_SHA256,
+                         "addendum_a3_sha256": oracle_mod.OR.ADDENDUM_A3_SHA256,
                          "bank_stream": oracle_mod.MX.STREAM,
                          "utc": oracle_mod._utc()}}
     retro.write_meta(dst, meta)

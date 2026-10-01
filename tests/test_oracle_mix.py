@@ -277,12 +277,13 @@ def _sha(p) -> str:
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
-@pytest.mark.skipif(not (OM / "PREREG_oracle_member_ADDENDUM_A2.md").is_file(),
+@pytest.mark.skipif(not (OM / "PREREG_oracle_member_ADDENDUM_A3.md").is_file(),
                     reason="the registered documents are not on this machine")
-def test_the_three_document_hashes_are_the_files():
+def test_the_four_document_hashes_are_the_files():
     assert _sha(OM / "PREREG_oracle_member_FROZEN.md") == OR.PREREG_SHA256
     assert _sha(B2 / "PREREG_b2_FROZEN.md") == OR.B2_SHA256
     assert _sha(OM / "PREREG_oracle_member_ADDENDUM_A2.md") == OR.ADDENDUM_A2_SHA256
+    assert _sha(OM / "PREREG_oracle_member_ADDENDUM_A3.md") == OR.ADDENDUM_A3_SHA256
 
 
 def _record_dates() -> list:

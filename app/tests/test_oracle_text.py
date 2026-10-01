@@ -50,6 +50,7 @@ def test_the_document_hashes_are_the_librarys():
     assert ot.PREREG_SHA256 == oracle.PREREG_SHA256
     assert ot.B2_SHA256 == oracle.B2_SHA256
     assert ot.ADDENDUM_A2_SHA256 == oracle.ADDENDUM_A2_SHA256
+    assert ot.ADDENDUM_A3_SHA256 == oracle.ADDENDUM_A3_SHA256
 
 
 def test_no_template_types_the_bank_itself():

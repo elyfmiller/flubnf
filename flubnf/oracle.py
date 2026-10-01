@@ -3,7 +3,7 @@ with their growth replaced by a blend of the filter's own origin growth and one
 calendar-matched donor growth path from past seasons.
 
 THE MEMBER (pre-registration PREREG_oracle_member_FROZEN.md, sha256
-PREREG_SHA256 below; sections 4.1, 4.2, 4.3 LB, 10.3, addendum A1)
+PREREG_SHA256 below; sections 4.1, 4.2, 4.3 LB, 10.3, addenda A1 and A3)
 --------------------------------------------------------------------
 For one cell (location L, as-of Saturday T) the stored particle-filter
 samples are x_ih (h = 1..4 PHYSICAL weeks; block "0" the anchored origin).
@@ -73,6 +73,13 @@ B2_SHA256 = "2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249"
 #: Addendum A2 (a separate file so PREREG_SHA256 does not move): ship on
 #: the B2 bank (LBGH). All three hashes go into every week's provenance.
 ADDENDUM_A2_SHA256 = "85ac546416bbb20ed1b87ce9289f50645ff1e22169b0bed9ae0a054e3e449f27"
+#: Addendum A3 (dated 2026-10-01, a separate file too): the member covers
+#: the US national cell, exactly as a jurisdiction, with the RNG key US_KEY.
+#: All four hashes go into every week's provenance.
+ADDENDUM_A3_SHA256 = "8a3552bc28a37565ab85aa36a76fd336ce0f02e69e7bcdb4a7030fe3926b3e7b"
+#: the US national cell's key for uniforms and two_uniforms, which take the
+#: integer FIPS; no jurisdiction has 0 (addendum A3)
+US_KEY = "0"
 
 GAMMA = OB.GAMMA
 H4 = 4
