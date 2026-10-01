@@ -11,6 +11,16 @@ agent's.
 
 ## Now
 
+- 2026-09-30: investigating, at Ely's request, the Oracle SIHRS US forecast
+  of the 2026-10-03 dry run (data through 2026-09-26): the national
+  Liu-West fit turns down (medians 2,704 / 2,645 / 2,311 / 1,872) while the
+  52 states' medians sum to a rise (2,798 to 3,976) and US admissions have
+  risen about 25% a week for four weeks. The US row never goes through the
+  Oracle step. Findings and a recommendation for 2026-10-07 go here by
+  2026-10-05. Mac Studio use: short US-only vintage fits (about 3 fits,
+  minutes each) and reads of stored replays, between 2026-09-30 and
+  2026-10-05, never on a Wednesday. Nothing in the frozen Oracle SIHRS,
+  the code or the submission changes without Ely's decision.
 - 2026-09-30: Submission's validation request done. Vintage run, forecast
   date 2026-01-10, all 53 jurisdictions, Oracle SIHRS only, every setting
   at its default, no Data issues flagged for that vintage; console build
