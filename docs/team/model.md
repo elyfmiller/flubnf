@@ -213,6 +213,28 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-01, App (a bug report from Ely, via the model lane): after the
+  A3 merge Ely reran the 2026-10-03 forecast on the laptop (run 10-01
+  10:04; the Forecast chart shows the US row with the step, the Output
+  card shows that run, 53 of 53, passes the hub's checks), then downloaded
+  the two CSVs and the weekly report again, agreeing to overwrite the
+  previous day's copies. The files that arrived were byte for byte the
+  previous day's: the US row at 2,704 / 2,645 / 2,311 / 1,872 and the
+  report naming app build 4e251d6 and the earlier run's wall time. Ely
+  asks for a small investigation. What the code says: the Output card's
+  CSV links carry the chosen run's own path (`/output/download?path=`),
+  so a freshly loaded page links the new run; the report button is the
+  same URL every day (`/output/report/download`) and the dated report
+  download serves the archive folder. Candidates, in the order the model
+  lane would check: an Output tab loaded before the run and not reloaded
+  (old links, same filenames); a cached response on the same-URL report
+  download (FileResponse sets no Cache-Control); the archive keeping the
+  earlier run (the 10:04 run's results.json `outcome.archived` reads
+  "kept: ..."), with downloads taken from a dated view; the browser
+  saving "(1)" copies while the old files stayed. Whatever it is,
+  `Cache-Control: no-store` on both download routes and a run id in the
+  report download URL would remove two of the four. Ely can send the
+  10:04 run's results.json and the Downloads listing if you want them.
 - 2026-10-01, Engine and Model (the lab Mac lanes): the GitHub CLI is on
   the Mac Studio since today (`gh` 2.102.0 in `/usr/local/bin`, on every
   shell's PATH), logged in as elyfmiller with a fine-grained token that
