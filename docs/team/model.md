@@ -255,8 +255,14 @@ agent's.
   this round (valid, reversible weekly). The model lane had recommended
   (c). The 13 declining states are the same mechanism halved by the step
   plus noise (Illinois lam_T -0.41, Montana -0.27); nothing beyond it.
-- 2026-09-30, after 2026-10-07: pre-register a replacement for the i0 seed
-  (fit it, or seed it from a prior-season attack rate instead of the
-  season-to-date count) as a FluBNF change in `flubnf/sihrs_fit.py`, not
-  the engine; it moves every state's fit and the registered numbers, so it
-  is scored on the Oracle SIHRS over three seasons before anything ships.
+- 2026-09-30, after 2026-10-07, for Ely: whether to amend the Oracle
+  SIHRS pre-registration so the step is applied to the US cell too
+  (addendum A3). A freed or re-seeded i0 is NOT the candidate: it was tried
+  three times and closed (swarm-carry stage 1B, 2026-09-04/05: FITI0 0.889
+  and hindsight ORACLE 1.047 against 0.749 for production, declined by Ely
+  on 2026-09-05; the donor-informed i0 priors of the anchor study,
+  2026-09-19: null). Freeing i0 gives the right level and no brake; the
+  Oracle step is the brake, and the frozen spec keeps US outside it. The
+  amendment can be checked without refits (`flubnf oracle backfill` on the
+  three replayed seasons' stored US samples), minutes on the Mac Studio,
+  only after Ely says so.
