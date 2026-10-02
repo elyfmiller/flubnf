@@ -67,6 +67,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Model (2026-10-02, from Ely's re-run of the 2026-10-03 dry run after
+  A3; an FYI, nothing asked before 2026-10-07 unless you see a defect
+  rather than a property). The US row and the 52 state rows are as
+  expected (states identical to 09-30). Three Oracle SIHRS state
+  behaviours stood out against hub truth through 2026-09-26:
+  (1) Horizon-0 95% lower bounds of 1 to 5 at counts of 22 to 61: IL
+  [2, 377] at 61, MI [1, 270] at 39, MT [1, 147] at 29, MO [5, 148] at
+  34, MS [4, 90] at 22. A one-week drop to 1 or 2 does not look credible;
+  IL's series has an 8x spike (13, 108, 36, 53, 61) and MI a drop (77,
+  13, 25, 25, 23, 39), so noisy inputs may be widening the filter's
+  forecasting sample. (2) Falling medians against a rising nation, beyond
+  the 13 small states you described on 09-30: IL 47 to 30 by h3, MI 30 to
+  20, WI 28 to 21, AK 11 to 6, where the Groundhog has 64 to 113, 41 to
+  72, 35 to 61, 16 to 28. (3) Sustained rises flattened: WA (22, 44, 61,
+  83, 105) gets 108 to 126, MN (7, 10, 15, 18, 21) gets 22 to 25; NV
+  after one doubling (19 to 39) gets the steepest path, 53 to 111.
+  Tables: Ely has the files (2026-10-03-NAU_PyBNF-OracleSIHRS.csv, sha256
+  5d467bfc). If any of these is a defect worth fixing before the first
+  round, say so here; otherwise it is material for the post-round review.
 - Submission (2026-10-02): the hub has no 2026-10-03 round (tasks.json
   goes from 2026-05-30 to 2026-10-10), so dry-run files dated 10-03 fail
   round_id_valid; that is the rehearsal's date, not a defect. The first
