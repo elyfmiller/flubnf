@@ -472,7 +472,7 @@ against the FluSight baseline, five seeds within 0.001 of each other:
 As on the states, the gain is in the rise and the decline and the loss is
 across the peak turn, and part of the 95% gain is wider upper bands at
 h2 and h3. On the 2026-10-03 dry run the US medians move from 2,704 /
-2,645 / 2,311 / 1,872 to 2,786 / 3,190 / 3,542 / 3,858 (the file's whole
+2,645 / 2,311 / 1,872 to 2,786 / 3,189 / 3,542 / 3,858 (the file's whole
 numbers; `results.json` gives 2,785.7 / 3,189.5 / 3,542.3 / 3,858.1).
 
 Checked on 2026-10-01, the day it was wired: on the dry run's stored filter

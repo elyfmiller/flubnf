@@ -381,6 +381,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         grid = report_grid.grid_data(
             spec.forecast_date, list(spec.locations), g_keys, g_names, obs,
             {"pf": pf_q, "analogue": an_q}, history)
+        # what this run's Oracle SIHRS US row is (its own oracle.json)
+        grid["us_step"] = us_step
     except Exception as e:     # the report never waits on its grid
         outcome["report_grid_error"] = str(e)[:200]
     bundle = {"version": report_v2.BUNDLE_VERSION,

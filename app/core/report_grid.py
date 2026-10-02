@@ -61,16 +61,26 @@ def _h(qd: dict, h: int):
     return (qd or {}).get(str(h), (qd or {}).get(h))
 
 
+def _whole(v: float) -> float:
+    """A value as the CSV writes it: whole admissions, half to even
+    (submit._hub_values' np.rint)."""
+    return float(round(v))
+
+
 def model_fan(qd: dict, times: list) -> dict | None:
     """One model's panel fan: {"times": the four target dates, "q": per
-    horizon [q2.5, q25, q50, q75, q97.5]}; None without all four
-    horizons."""
+    horizon [q2.5, q25, q50, q75, q97.5]} in whole admissions, the values
+    the submitted CSV carries (so the panel and its flags read the file,
+    not the unrounded forecast); None without all four horizons."""
     rows = []
     for h in range(4):
         g = _h(qd, h)
         if not isinstance(g, dict) or not g:
             return None
-        rows.append([round(_q(g, L), 2) for L in LEVELS])
+        row = [_whole(_q(g, L)) for L in LEVELS]
+        for i in range(1, len(row)):          # monotone, as submitted
+            row[i] = max(row[i], row[i - 1])
+        rows.append(row)
     return {"times": list(times), "q": rows}
 
 
@@ -163,6 +173,8 @@ ML, MR, MT, MB = 36, 8, 8, 18
 
 
 def _num(v: float) -> str:
+    if v < 100 and v != int(v):
+        return f"{v:.1f}"                     # a half-way tick of 15: 7.5
     if v >= 10_000:
         return f"{v / 1000:.0f}k"
     if v >= 1000:
@@ -228,7 +240,8 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
     parts = [f'<svg class="g-svg" viewBox="0 0 {W} {H}" role="img" '
              f'aria-label="{_html.escape(panel.get("name", ""))}">',
              f'<defs><clipPath id="{cid}"><rect x="{ML}" y="{MT}" '
-             f'width="{W - ML - MR}" height="{H - MT - MB}"/></clipPath>'
+             f'width="{W - ML - MR}" height="{H - MT - MB + 3}"/>'
+             '</clipPath>'
              '</defs>']
     # axes: 0, half and the top
     for v in (0, top / 2, top):
@@ -255,19 +268,25 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
     if ls:
         pts = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in ls)
         body.append(f'<polyline class="g-last" points="{pts}"/>')
+    # one band per model, the 95% interval: both bands first, then both
+    # medians, so no band tints the other model's median line
     for m in MODELS:
         f = fans.get(m)
         if not f:
             continue
         c = colors.get(m, "#888888")
         ts, q = f["times"], f["q"]
-        # one band per model, the 95% interval: one colour each
-        for lo, hi, op in ((0, 4, 0.22),):
-            up = " ".join(f"{X(t):.1f},{Y(r[hi]):.1f}" for t, r in zip(ts, q))
-            dn = " ".join(f"{X(t):.1f},{Y(r[lo]):.1f}"
-                          for t, r in reversed(list(zip(ts, q))))
-            body.append(f'<polygon points="{up} {dn}" fill="{c}" '
-                        f'fill-opacity="{op}" stroke="none"/>')
+        up = " ".join(f"{X(t):.1f},{Y(r[4]):.1f}" for t, r in zip(ts, q))
+        dn = " ".join(f"{X(t):.1f},{Y(r[0]):.1f}"
+                      for t, r in reversed(list(zip(ts, q))))
+        body.append(f'<polygon points="{up} {dn}" fill="{c}" '
+                    'fill-opacity="0.22" stroke="none"/>')
+    for m in MODELS:
+        f = fans.get(m)
+        if not f:
+            continue
+        c = colors.get(m, "#888888")
+        ts, q = f["times"], f["q"]
         med = [(t, r[2]) for t, r in zip(ts, q)]
         if o:
             med = [(o[-1][0], o[-1][1])] + med
@@ -293,6 +312,20 @@ def _legend(colors: dict, label: str) -> str:
             f'<span class="g-key"><i class="g-k-last"></i>last season '
             f'({_html.escape(label)}), same weeks</span>'
             '<span class="g-key g-k-bands">shaded: 95% interval</span>')
+
+
+#: the flag words, explained once per page (a paper copy has no hover)
+FLAG_KEY = ("flags: falls = a horizon-3 median below the latest count; "
+            "disagree = horizon-3 medians outside each other's 95% intervals")
+
+#: what the Oracle SIHRS national row is, by the run's own oracle.json
+#: (us_national.us_step_week: "stepped" since addendum A3, "filter" before)
+US_NOTES = {
+    "stepped": "Oracle SIHRS: the national row carries the Oracle step, like "
+               "the states (addendum A3).",
+    "filter": "Oracle SIHRS: the national row is the Liu-West filter alone "
+              "(a run stored before addendum A3).",
+}
 
 
 def _latest(p: dict) -> str:
@@ -336,10 +369,12 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
     head = ('<div class="g-head">'
             + _legend(colors, (grid or {}).get("last_season_label", ""))
             + "</div>")
+    note = US_NOTES.get((grid or {}).get("us_step") or "")
+    note = f'<p class="g-usnote">{_html.escape(note)}</p>' if note else ""
     return ('<aside class="rp-usfeature" aria-label="United States forecast">'
             + _figure(dict(us, key="US-feature"), "United States",
                       _flag_spans(us), 999, colors, cls="gpanel g-feature")
-            + head + "</aside>")
+            + head + note + "</aside>")
 
 
 def grid_html(grid: dict | None, colors: dict, details=()) -> str:
@@ -367,7 +402,9 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
         out.append('<div class="gpage">'
                    f'<div class="g-head"><span class="g-pg">Week of {asof} '
                    f'&middot; locations {a} to {a + len(page) - 1} of '
-                   f'{len(panels)}</span>{_legend(colors, label)}</div>'
+                   f'{len(panels)}</span>{_legend(colors, label)}'
+                   f'<span class="g-key g-fkey">{_html.escape(FLAG_KEY)}'
+                   '</span></div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):
             key = str(p.get("key", ""))
@@ -394,7 +431,10 @@ def grid_css() -> str:
    font-size:var(--fs-hint);color:var(--mut);margin:0 0 .4rem}
  .g-pg{font-weight:650;color:var(--ink)}
  .g-key{display:inline-flex;align-items:center;gap:.3rem}
- .g-key i{display:inline-block;width:14px;height:8px;border-radius:2px}
+ .g-key i{display:inline-block;width:14px;height:8px;border-radius:2px;
+   -webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .g-fkey{flex-basis:100%;font-size:.72rem}
+ .g-usnote{margin:.3rem 0 0;font-size:var(--fs-hint);color:var(--mut)}
  .g-key i.g-k-obs{background:var(--ink);height:3px}
  .g-key i.g-k-last{height:0;border-top:2px dashed var(--mut);
    background:none;opacity:.8}
@@ -440,6 +480,8 @@ def grid_css() -> str:
   .g-cells{grid-template-columns:repeat(3,minmax(0,1fr));gap:2mm}
   .gpanel{padding:1mm 1.5mm 0;border-radius:2mm}
   .gpanel figcaption{font-size:8pt}
+  .g-cur,.g-flag{font-size:7pt}
+  .g-fkey{font-size:7pt}
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
  }

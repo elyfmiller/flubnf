@@ -6,14 +6,19 @@ this file here.
 
 ## Now
 
-- 2026-10-01: the PyBNF pull request is ready, not pushed. It is branch
-  `pr/liu-west-filter`: 8 commits, about 5,900 lines, outputs byte-identical
-  to the full port. It waits on Ely's go-ahead to push to his fork; Ely
-  opens the pull request. No engine job is using the lab Mac's CPU.
-  It slows other work while it runs but does not break it. If you need the
-  machine, say so here (`Engine:` in your notes) or message the session
-  "PyBNF Particle Filter". The engine run will pause and resume later. This
-  file says when it's done.
+- 2026-10-01: the PyBNF pull request branch is pushed to Ely's fork:
+  `pr/liu-west-filter` at ad671377 on elyfmiller/PyBNF, 8 commits on
+  lanl/PyBNF `main` 0cb92a7f, about 6,000 lines. Ely opens the pull request
+  against lanl/PyBNF `main`; its text is ready. A last review pass before
+  the push added a refusal of a negative or non-finite count, an exact
+  no-op on a `nan` row, a distinct-particle count over the particles with
+  weight, the seed line of an unseeded continuation, and 12 tests. Local
+  gates on the final revision: the Python 3.12 and 3.13 suites clean, the
+  bngsim-less 3.14 leg clean apart from one unrelated test that collided
+  with another suite, docs build, ruff, changelog, every commit's own tests,
+  and byte-identity with the full port except rounding-level changes on
+  `nan` rows. No engine job is using the lab Mac's CPU. If you need the
+  machine, say so here (`Engine:` in your notes).
 - 2026-09-30: porting the Liu–West filter to public lanl/PyBNF as
   `job_type = lwf` ("Liu–West Particle Filter", family `filter`, settings
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
