@@ -11,10 +11,17 @@ agent's.
 
 ## Now
 
-- 2026-10-01 (evening): at Ely's request, the three season replays on
-  the Mac Studio's console (2023-24, 2024-25, 2025-26; all 53, made before
-  A3, so their US row is the filter alone) are being copied and given the
-  A3 US row from their own stored filter samples, no refit: the registered
+- 2026-10-01 (evening, done 2026-10-02 06:00 UTC): at Ely's request, the
+  three season replays on the Mac Studio's console (2023-24, 2024-25,
+  2025-26; all 53, made before A3, so their US row is the filter alone)
+  were copied and given the A3 US row from their own stored filter
+  samples, no refit, and exported as bundles (the research 2025-26 arm
+  with 31 weeks too). US cell, FluSight's cell rule, filter alone to with
+  the step: 2023-24 0.724 to 0.656 (120 cells; 95% coverage 0.97 to 0.99),
+  2024-25 0.690 to 0.552 (96 cells; 0.86 to 0.97), 2025-26 0.895 to 0.783
+  (88 cells; 0.72 to 0.91); the research arm 0.871 to 0.763 (108 cells).
+  The states' pooled figures are unchanged in every season (0.767, 0.702,
+  0.783, 0.778). Bundles: `oracle_member/a3_replays/bundles/`. Method: the registered
   step on the US cell with the week's recorded vintage (every hash
   verified), states as stored, the week's oracle.json and sidecar updated,
   the season re-scored, then exported as replay bundles for the console's
