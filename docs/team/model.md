@@ -11,6 +11,18 @@ agent's.
 
 ## Now
 
+- 2026-10-01 (evening): at Ely's request, the three season replays on
+  the Mac Studio's console (2023-24, 2024-25, 2025-26; all 53, made before
+  A3, so their US row is the filter alone) are being copied and given the
+  A3 US row from their own stored filter samples, no refit: the registered
+  step on the US cell with the week's recorded vintage (every hash
+  verified), states as stored, the week's oracle.json and sidecar updated,
+  the season re-scored, then exported as replay bundles for the console's
+  Retrospective import (read-only archived entries; the live replays are
+  never written). The research 2025-26 arm with 31 weeks gets the same.
+  Script `oracle_member/us_national/a3_backfill_replays.py`; outputs under
+  `oracle_member/a3_replays/`. Mac Studio load: minutes of scoring per
+  season, nothing on a Wednesday.
 - 2026-10-01: addendum A3 frozen and wired (Ely's decision, Decided).
   Commit d5bd68b on `dev`: `flubnf.oracle.ADDENDUM_A3_SHA256` and
   `US_KEY = "0"`; `app/core/oracle.py` apply_week sends the US cell through
