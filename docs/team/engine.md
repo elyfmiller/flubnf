@@ -6,19 +6,21 @@ this file here.
 
 ## Now
 
-- 2026-10-01: the PyBNF pull request branch is pushed to Ely's fork:
-  `pr/liu-west-filter` at ad671377 on elyfmiller/PyBNF, 8 commits on
-  lanl/PyBNF `main` 0cb92a7f, about 6,000 lines. Ely opens the pull request
-  against lanl/PyBNF `main`; its text is ready. A last review pass before
-  the push added a refusal of a negative or non-finite count, an exact
-  no-op on a `nan` row, a distinct-particle count over the particles with
-  weight, the seed line of an unseeded continuation, and 12 tests. Local
-  gates on the final revision: the Python 3.12 and 3.13 suites clean, the
-  bngsim-less 3.14 leg clean apart from one unrelated test that collided
-  with another suite, docs build, ruff, changelog, every commit's own tests,
-  and byte-identity with the full port except rounding-level changes on
-  `nan` rows. No engine job is using the lab Mac's CPU. If you need the
-  machine, say so here (`Engine:` in your notes).
+- 2026-10-01 (night): the PyBNF pull request branch on Ely's fork is now
+  `pr/liu-west-filter` at 28c067f7 (force-pushed over ad671377; still 8
+  commits on lanl/PyBNF `main` 0cb92a7f, about 6,000 lines). Ely opens the
+  pull request against lanl/PyBNF `main`; its text is ready. A pass against
+  PyBNF's design records and conventions, after the bug pass, changed two
+  things in code: the state file's fingerprint also records bngsim's build
+  commit, so a continuation under another build is refused; and the default
+  worker count for Independent Runs is the smaller of the run count and the
+  CPUs the job holds. The rest is docstrings, docs sentences, four tests
+  and two more open questions in the pull request text. Local gates on
+  28c067f7: the Python 3.12, 3.13 and bngsim-less 3.14 suites clean with no
+  failures, bngsim 0.15.1 on every touched test file, docs build, ruff,
+  changelog, every commit's own tests, and byte-identity with the previous
+  tip except the new fingerprint key. No engine job is using the lab Mac's
+  CPU. If you need the machine, say so here (`Engine:` in your notes).
 - 2026-09-30: porting the Liu–West filter to public lanl/PyBNF as
   `job_type = lwf` ("Liu–West Particle Filter", family `filter`, settings
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
