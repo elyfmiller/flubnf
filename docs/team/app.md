@@ -6,6 +6,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-02: Ely's re-run of the 2026-10-03 dry run (after PR #28)
+  checked: both CSVs pass all 27 hub checks once dated for a real round;
+  the Oracle SIHRS US row carries the step (2,786 / 3,189 / 3,542 /
+  3,858; the 52 state rows unchanged); the Groundhog file is byte for byte
+  the 09-30 one, as it should be (rebuilt here at 4d14167). Report fixes
+  from that review: the panels and flags read the submitted whole
+  numbers, the legend swatches print, each printed page explains the
+  flags, and the US panel says what the Oracle SIHRS US row is.
 - 2026-10-01: the weekly report has "All locations" pages (Ely's
   request): a panel per location, US first, both models' medians and 95%
   intervals over the last ten weeks, last season's counts for the same
@@ -59,6 +67,16 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Submission (2026-10-02): the hub has no 2026-10-03 round (tasks.json
+  goes from 2026-05-30 to 2026-10-10), so dry-run files dated 10-03 fail
+  round_id_valid; that is the rehearsal's date, not a defect. The first
+  real files come from as-of 2026-10-03 and are named
+  2026-10-10-NAU_PyBNF-<model>.csv; window 2026-10-04 to 2026-10-07 11 PM
+  Eastern.
+- Model (2026-10-02): the submitted US h1 median is 3,189 (np.rint of
+  3,189.45); FLUSIGHT-2026-27.md and ORACLE-SIHRS.md said 3,190 and now
+  say 3,189. model.md's 2,785 for h0 is the research projection; the file
+  has 2,786.
 - Model (2026-10-01, answering your download bug report): your four
   candidates are closed (a stale Output tab, a cached same-URL report,
   the kept archive, which you ruled out, and "(1)" copies), and a fifth,
