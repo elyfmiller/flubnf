@@ -59,7 +59,8 @@ def test_the_grid_holds_each_location_us_first_then_by_name():
     for f in p["models"].values():
         assert f["times"] == g["times"] and len(f["q"]) == 4
         assert all(len(r) == 5 and r == sorted(r) for r in f["q"])
-    assert p["models"]["pf"]["q"][0][2] == round(23.0 * 1.1, 2)
+    # whole admissions, as the submitted CSV writes them
+    assert p["models"]["pf"]["q"][0][2] == 25.0
 
 
 def test_last_season_is_the_same_weeks_a_year_earlier():
@@ -106,6 +107,25 @@ def test_flags_name_a_falling_median_and_models_that_disagree():
     # one model alone cannot disagree; no counts, nothing falls
     assert G.flags({"observed": [], "models": {
         "pf": {"times": [], "q": [[1, 2, 3, 4, 5]] * 4}}}) == []
+
+
+def test_the_panel_reads_the_submitted_integers():
+    """The CSV holds whole admissions (submit._hub_values: np.rint, half
+    to even, then monotone); the panel and its flags read the same values.
+    On the 2026-10-03 dry run Rhode Island's Oracle h3 median was 2.89 and
+    its latest count 3: the file says 3, so nothing falls."""
+    import numpy as np
+    from app.core.submit import _hub_values
+    raw = [0.4, 1.5, 2.5, 2.89, 7.49]
+    assert [G._whole(v) for v in raw] == [float(v) for v in
+                                          _hub_values(raw)]
+    q = {str(h): {0.025: 0.4, 0.25: 1.5, 0.5: 2.89, 0.75: 2.5, 0.975: 7.49}
+         for h in range(4)}
+    f = G.model_fan(q, ["t"] * 4)
+    assert f["q"][3] == [0.0, 2.0, 3.0, 3.0, 7.0]      # monotone after rint
+    p = {"observed": [[ASOF, 3.0]], "models": {"pf": f}}
+    assert G.flags(p) == []
+    assert np.rint(2.5) == G._whole(2.5) == 2.0
 
 
 def test_the_pages_are_fifteen_panels_three_across():
@@ -217,3 +237,40 @@ def test_the_weekly_run_writes_the_grid(tmp_path, monkeypatch):
         assert all(d >= p["observed"][0][0] for d, _ in p["last_season"])
     html = (tmp_path / "w" / "report.html").read_text(encoding="utf-8")
     assert 'id="all-locations"' in html
+
+
+def test_print_keeps_the_key_and_explains_the_flags():
+    """Browsers print without background colours by default: the legend
+    swatches ask to be printed exactly. Each page head says what the flag
+    words mean (a paper copy has no hover)."""
+    css = G.grid_css()
+    i_rule = css[css.index(".g-key i{"):].split("}", 1)[0]
+    assert "print-color-adjust:exact" in i_rule
+    assert "-webkit-print-color-adjust:exact" in i_rule
+    html = G.grid_html(_grid(), COLORS)
+    assert html.count(G.FLAG_KEY.replace("'", "&#x27;")) == 1   # one page
+
+
+def test_bands_first_then_medians_and_the_zero_line_draws_whole():
+    """Both 95% bands go down before either median, so no band tints the
+    other model's line; the clip reaches a little below zero, so a 0
+    median or count is not cut in half; a half-way tick reads 7.5."""
+    svg, _ = G.panel_svg(_grid()["panels"][2], 0, COLORS)
+    polys = [m.start() for m in re.finditer("<polygon", svg)]
+    meds = [m.start() for m in re.finditer('stroke-width="1.8"', svg)]
+    assert len(polys) == 2 and len(meds) == 2 and max(polys) < min(meds)
+    h = float(re.search(r'clipPath id="gclip0"><rect [^>]*height="([\d.]+)"',
+                        svg).group(1))
+    assert h > G.H - G.MT - G.MB
+    assert G._num(7.5) == "7.5" and G._num(15.0) == "15"
+    assert G._num(2500.0) == "2.5k"
+
+
+def test_the_us_panel_says_what_the_oracle_sihrs_us_row_is():
+    g = _grid()
+    for step, words in (("stepped", "carries the Oracle step"),
+                        ("filter", "Liu-West filter alone")):
+        g["us_step"] = step
+        assert words in G.us_feature_html(g, COLORS)
+    g["us_step"] = None
+    assert "g-usnote" not in G.us_feature_html(g, COLORS)

@@ -238,7 +238,7 @@ Decided by Ely on 2026-09-30 and 2026-10-01 (see
 - From the 2026-10-07 round the Oracle SIHRS US row carries the Oracle
   step like the states (addendum A3, Ely 2026-10-01, PR #27). On the dry
   run (as of 2026-09-26) the US medians were 2,704 / 2,645 / 2,311 /
-  1,872 before and are 2,786 / 3,190 / 3,542 / 3,858 with the step
+  1,872 before and are 2,786 / 3,189 / 3,542 / 3,858 with the step
   (`results.json`: 2,785.7 / 3,189.5 / 3,542.3 / 3,858.1). Detail in
   [ORACLE-SIHRS.md](ORACLE-SIHRS.md) section 5c and
   [team/model.md](team/model.md).
