@@ -6,6 +6,8 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-02: the stale-download fix works on Ely's Mac: a download
+  saved over an existing file now replaces it (PR #28).
 - 2026-10-02: Ely's re-run of the 2026-10-03 dry run (after PR #28)
   checked: both CSVs pass all 27 hub checks once dated for a real round;
   the Oracle SIHRS US row carries the step (2,786 / 3,189 / 3,542 /
@@ -23,7 +25,8 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   four Letter pages (Save as PDF). `app/core/report_grid.py`, report
   bundle v8; reports from earlier runs gain it on their next run.
 - 2026-10-01: Ely's stale-download report (see model.md) is fixed on
-  `dev`, not yet checked on a Mac or on Windows. The likeliest cause: in
+  `main` and confirmed on Ely's Mac on 2026-10-02 (a placeholder file in
+  Downloads was replaced by the real CSV); Windows not yet checked. The cause: in
   the macOS window, Replace in the save panel only answered the question;
   WebKit refuses a taken name and drops the download without a word, so
   the old file stayed byte for byte. The window now removes the file you
@@ -174,7 +177,3 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
-- 2026-10-01, for Ely: on the laptop, run
-  `ls -lT ~/Downloads/2026-10-03-NAU_PyBNF-*.csv ~/Downloads/FluBNF-weekly-report-2026-09-26.html`;
-  09-30 times confirm the window cause. Then, once on `main`, download a
-  file twice choosing Replace: the copy must match the run's file.
