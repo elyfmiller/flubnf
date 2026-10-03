@@ -6,6 +6,16 @@ this file here.
 
 ## Now
 
+- 2026-10-03 (overnight): measured whether upstream `lwf` reproduces
+  FluBNF production forecasts. Fed production's random numbers, it gives
+  identical forecast draws on 144 of 144 SIHRS cells from the console's own
+  prepare(). With its own random numbers its total WIS is 1.0013 of
+  production's (95% 0.986 to 1.016) on the six-state panel, three seasons,
+  inside production's own seed-to-seed spread; a missing week and a trimmed
+  week also show no difference. lwf is about 2.1x slower per cell. Nothing
+  in production changes: FluBNF stays on the private engine until a
+  deliberate migration (checklist in FluBNF-local, lwf-production-equivalence
+  SUMMARY.md). The lab Mac's CPU is free again.
 - 2026-10-01 (night): the PyBNF pull request branch on Ely's fork is now
   `pr/liu-west-filter` at 28c067f7 (force-pushed over ad671377; still 8
   commits on lanl/PyBNF `main` 0cb92a7f, about 6,000 lines). Ely opens the
