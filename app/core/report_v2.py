@@ -605,7 +605,7 @@ def _report_css() -> str:
    border:1px solid var(--field-line);border-radius:6px;padding:.15rem .3rem;
    max-width:12rem}
  #map-anchor,#all-locations,#accuracy,#run,section.state,#us-feature{
-   scroll-margin-top:3.2rem}
+   scroll-margin-top:4.2rem}
  /* pooled relWIS beside the map heading */
  .rp-pooled{display:inline-flex;flex-wrap:wrap;align-items:baseline;
    gap:.1rem .8rem;font-size:var(--fs-label);color:var(--mut)}
@@ -793,7 +793,7 @@ def page_style() -> str:
      -webkit-print-color-adjust:exact;print-color-adjust:exact}}
  .uk-sw{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
  /* a state's (or the nation's) detail */
- section.state{{margin:0;scroll-margin-top:3.2rem}}
+ section.state{{margin:0;scroll-margin-top:4.2rem}}
  .rp-sechead{{display:flex;align-items:center;flex-wrap:wrap;
   gap:.4rem .8rem;margin:0 0 .6rem}}
  .rp-sechead h2{{margin:0;font-size:var(--fs-lead,1.15rem)}}
