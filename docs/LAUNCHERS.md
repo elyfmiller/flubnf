@@ -42,6 +42,14 @@ PyBNF checkout search order (every script and `flubnf/settings.py`): `FLUBNF_PYB
 
 Tests that pin these scripts: `tests/test_engine_bundle.py`, `tests/test_launcher_update.py`, `tests/test_mac_app_bundle.py`, `tests/test_reinstall_script.py`, `tests/test_first_run_sparse_hub.py`, `tests/test_windows_controlled_folder_access.py` ([tests/README.md](../tests/README.md)).
 
+## Reinstalling from scratch (macOS and Linux)
+
+The [README](../README.md#install-and-run) gives the one line; this is what it does. Save the engine archive in Downloads and delete any older `pybnf-pf-*.tar.gz` downloads first, then:
+
+    curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | bash
+
+`reinstall.sh` sets the old install aside with a date stamp (nothing is deleted), moves every other engine file (`pybnf*.tar.gz`, `pybnf*.bundle`) out of the folders setup searches into `Downloads/old-engine-files`, installs fresh, installs the engine from the archive it found, and opens the console. A machine that is already current is left alone, and so is a developer's checkout with uncommitted work. The `FLUBNF_REINSTALL_*` variables below change those choices; the script's header lists each. The line does not run on Windows: "Resetting or reinstalling (Windows)" in [INSTALL-STUDENTS.md](INSTALL-STUDENTS.md#resetting-or-reinstalling-windows) has the Command Prompt steps.
+
 ## FluBNF.app in the Dock (macOS)
 
 The Dock names a window, picks its icon and decides what Keep in Dock pins from the app bundle that holds the running program. A venv's `python` is `Python.app` (python.org, Homebrew) or a bare `python3.12` (Anaconda), so a console started that way shows as "Python" or "python3.12", and a kept icon cannot reopen FluBNF. Renaming at run time does not change this.
@@ -60,7 +68,7 @@ To check a Mac: `scripts/macos/build_app_host.sh --force` shows the build; `tail
 
 Paths default to `~/GitHub/<name>` (an older setup's `~/Documents/GitHub/<name>` is used until `FluBNF.command` moves it); on Windows, to `%LOCALAPPDATA%\FluBNF\<name>` unless a checkout already exists at the Documents path ([WINDOWS.md](WINDOWS.md)).
 
-**Machine paths** (the console reads them through `flubnf/settings.py`; `flubnf doctor` reports them):
+**Machine paths** (the console reads them through `flubnf/settings.py`; `flubnf doctor` reports which externals a machine can see, and each resolves from `flubnf/settings.py` unless one of these points it elsewhere: `FLUBNF_HUB` the hub clone, `FLUBNF_BNG` BNG2.pl, `FLUBNF_PY_ENGINE` the python of the engine venv, `FLUBNF_PYBNF` the PyBNF checkout):
 
 | Variable | Honored by | Default |
 |---|---|---|

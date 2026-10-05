@@ -4,8 +4,8 @@ Start with the [README](../README.md); each area of the tree has its own index l
 
 | Reader | Doc | Covers |
 |---|---|---|
-| Students, first install | [INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) | two files, two double clicks, no GitHub account; resetting or reinstalling, on macOS and on Windows |
-| Anyone installing or updating | [LAUNCHERS.md](LAUNCHERS.md) | what each launcher and setup script does, who calls it, every `FLUBNF_*` variable |
+| Students, first install | [INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) | two files, two double clicks, no GitHub account; where it lands; a first forecast; resetting or reinstalling, on macOS and on Windows |
+| Anyone installing or updating | [LAUNCHERS.md](LAUNCHERS.md) | what each launcher and setup script does, who calls it, what the one-line reinstall moves where, every `FLUBNF_*` variable |
 | Getting the engine | [ENGINE.md](ENGINE.md) | the private PyBNF fork: archive, bundle or GitHub routes |
 | Windows users | [WINDOWS.md](WINDOWS.md) | `setup.ps1`, `FluBNF.bat`, the particle-filter engine (install, updates, the production build, failures), when an update cannot go through, Controlled Folder Access, limitations |
 | The mechanistic model | [ORACLE-SIHRS.md](ORACLE-SIHRS.md) | the Oracle SIHRS: filter plus the Oracle step, and its record |
