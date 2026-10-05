@@ -71,7 +71,7 @@
 {% if name == "pf" %}
 <div class="card mech">
  <h2>How the forecast is made</h2>
- {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle(kit=true) }}
+ {{ dg.oracle_pipeline(uid='mo', vertical=true) }}{{ dg.eq_oracle(kit=true) }}
 </div>
 <div class="card mech">
  <h2>The compartment model the filter fits</h2>

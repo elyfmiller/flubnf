@@ -1252,7 +1252,27 @@ tr[aria-current="true"] td{font-weight:600}
     scrollbar-color:var(--mut) transparent}
   .pipe svg,.figscroll > svg{min-width:620px}
   .perf td,.perf th{padding:.28rem .3rem}
+  /* a figure that scrolls says so: a soft shadow at the edge with more
+     drawing past it (the classic local/scroll background pair, so it
+     follows the scroll with no script) */
+  .figscroll{background:
+    linear-gradient(to right,var(--card) 40%,transparent) left/1.5rem 100% no-repeat local,
+    linear-gradient(to left,var(--card) 40%,transparent) right/1.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%,color-mix(in srgb,var(--ink) 40%,transparent),transparent) left/1rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%,color-mix(in srgb,var(--ink) 40%,transparent),transparent) right/1rem 100% no-repeat scroll}
+  /* the Oracle pipeline: top to bottom on a phone, nothing to scroll */
+  /* (!important: the wide drawing carries an inline display for the
+     public site, which has no nau.css) */
+  .figpipe:has(> svg.pipe-v) > svg.pipe-h{display:none!important}
+  .figscroll.figpipe > svg.pipe-v{display:block;min-width:0}
+  .figpipe:has(> svg.pipe-v){background:none}
 }
+/* a scrolling figure is a focusable region (diagrams.html): its ring */
+.figscroll:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
+  outline-offset:2px;border-radius:var(--r-sm)}
+.figpipe > svg.pipe-v{display:none}
+/* the Hospitalized letter: slate pulled toward the ink, 4.5:1 on its box */
+svg .dg-h-ink{fill:color-mix(in srgb,var(--slate) 55%,var(--ink))}
 
 /* polish: forecast-output-runs */
 /* view toggles (data view, fan model): small pills like the Real-time /

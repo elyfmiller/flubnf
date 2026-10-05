@@ -69,7 +69,7 @@
   ("<i>r</i>", "negative-binomial dispersion", "prior 0.1 to 40, log-uniform", "fitted")] %}
 
 {% macro sihrs(uid='s') -%}
-<div class="figscroll"><svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
+<div class="figscroll" tabindex="0" role="region" aria-label="SIHRS compartment diagram (scrolls)"><svg viewBox="0 40 840 308" role="img" aria-label="SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Susceptible to Infected via seasonal transmission; Infected splits
  along an admission arrow to Hospitalized and directly to Recovered;
@@ -107,7 +107,7 @@
  <g text-anchor="middle" font-weight="700" class="svgt-xl">
   <text x="87"  y="147" fill="var(--mut)">S</text>
   <text x="312" y="147" fill="var(--gold)">I</text>
-  <text x="537" y="147" fill="var(--slate)">H</text>
+  <text x="537" y="147" class="dg-h-ink">H</text>
   <text x="762" y="147" fill="var(--ok)">R</text>
  </g>
  <g text-anchor="middle" class="svgt-sm" fill="currentColor">
@@ -120,7 +120,7 @@
  <g text-anchor="middle" fill="currentColor">
   <text x="199" y="138" class="svgt-md">&#946;(t)</text>
   <text x="424" y="138" class="svgt-md">&#961;&#183;&#947;</text>
-  <text x="649" y="138" class="svgt-md">&#947;&#8341;</text>
+  <text x="649" y="138" class="svgt-md">&#947;<tspan dy="3" class="svgt-sub">H</tspan></text>
   <text x="537" y="80"  class="svgt-md">(1-&#961;)&#183;&#947;</text>
   <text x="537" y="100" class="svgt-sm">recovery without admission (most infections)</text>
   <text x="199" y="204" class="svgt-sm">seasonal transmission</text>
@@ -134,56 +134,61 @@
 </svg></div>
 {%- endmacro %}
 
+{# one circuit, 720 units wide from its own origin: boxes 200 apart with
+   room for each rate and its words between them; the recovery arc's label
+   rides above its apex, the flux words sit above the waning arc, which
+   dips well below them #}
 {% macro _sihrs_row(oy, strain, uid) -%}
- <g transform="translate(90,{{ oy }})">
+ <g transform="translate(60,{{ oy }})">
   <text x="0" y="16" class="svgt-md" font-weight="700"
         fill="currentColor">Influenza {{ strain }} circuit</text>
   <g fill="none" stroke="currentColor" stroke-width="1.6">
-   <path d="M128,90 H192" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M308,90 H372" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M488,90 H552" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M250,66 C250,24 596,24 596,66" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M610,114 C610,178 70,178 70,114" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M122,90 H198" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M322,90 H398" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M522,90 H598" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M260,66 C260,20 660,20 660,66" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M660,114 C660,205 60,205 60,114" marker-end="url(#arr-{{ uid }})"/>
   </g>
   {# boxes fit the widest sublabel at A+; the strain is in the subscript #}
   <g stroke-width="1.8">
-   <rect x="15"  y="68" width="110" height="44" rx="8"
+   <rect x="0"   y="68" width="120" height="44" rx="8"
          fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
-   <rect x="195" y="68" width="110" height="44" rx="8"
+   <rect x="200" y="68" width="120" height="44" rx="8"
          fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
-   {# Hospitalized in slate, as in the single-strain diagram #}
-   <rect x="375" y="68" width="110" height="44" rx="8"
+   {# Hospitalized in slate, as in the single-strain diagram; its letter
+      a darker slate (toward the ink) to hold 4.5:1 on the tint #}
+   <rect x="400" y="68" width="120" height="44" rx="8"
          fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
-   <rect x="555" y="68" width="110" height="44" rx="8"
+   <rect x="600" y="68" width="120" height="44" rx="8"
          fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
   </g>
   <g text-anchor="middle" font-weight="700" class="svgt-lg">
-   <text x="70"  y="89" fill="var(--mut)">S<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
-   <text x="250" y="89" fill="var(--gold)">I<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
-   <text x="430" y="89" fill="var(--slate)">H<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
-   <text x="610" y="89" fill="var(--ok)">R<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="60"  y="89" fill="var(--mut)">S<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="260" y="89" fill="var(--gold)">I<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="460" y="89" class="dg-h-ink">H<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="660" y="89" fill="var(--ok)">R<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
   </g>
   <g text-anchor="middle" class="svgt-sm" fill="currentColor">
-   <text x="70"  y="104">Susceptible</text>
-   <text x="250" y="104">Infected</text>
-   <text x="430" y="104">Hospitalized</text>
-   <text x="610" y="104">Recovered</text>
+   <text x="60"  y="104">Susceptible</text>
+   <text x="260" y="104">Infected</text>
+   <text x="460" y="104">Hospitalized</text>
+   <text x="660" y="104">Recovered</text>
   </g>
   <g text-anchor="middle" fill="currentColor">
-   <text x="160" y="78" class="svgt-md">&#946;<tspan dy="3" class="svgt-sub">{{ strain }}</tspan><tspan dy="-3">(t)</tspan></text>
-   <text x="340" y="78" class="svgt-md">&#961;&#183;&#947;</text>
-   <text x="520" y="78" class="svgt-md">&#947;&#8341;</text>
-   <text x="425" y="14" class="svgt-sm">(1-&#961;)&#183;&#947;</text>
-   <text x="160" y="128" class="svgt-sm">seasonal transmission</text>
-   <text x="340" y="128" class="svgt-sm">admission flux {{ strain }}</text>
-   <text x="520" y="128" class="svgt-sm">discharge</text>
-   <text x="340" y="184" class="svgt-sm">&#969; &#183; waning immunity</text>
+   <text x="160" y="80" class="svgt-md">&#946;<tspan dy="3" class="svgt-sub">{{ strain }}</tspan><tspan dy="-3">(t)</tspan></text>
+   <text x="360" y="80" class="svgt-md">&#961;&#183;&#947;</text>
+   <text x="560" y="80" class="svgt-md">&#947;<tspan dy="3" class="svgt-sub">H</tspan></text>
+   <text x="460" y="22"><tspan class="svgt-md">(1-&#961;)&#183;&#947;</tspan><tspan class="svgt-sm" dx="8">recovery without admission</tspan></text>
+   <text x="160" y="132" class="svgt-sm">seasonal transmission</text>
+   <text x="360" y="132" class="svgt-sm">admission flux {{ strain }}</text>
+   <text x="560" y="132" class="svgt-sm">discharge</text>
+   <text x="360" y="202" class="svgt-sm">&#969; &#183; waning immunity</text>
   </g>
  </g>
 {%- endmacro %}
 
 {% macro sihrs2(uid='t') -%}
-<div class="figscroll"><svg viewBox="0 0 840 400" role="img"
+<div class="figscroll" tabindex="0" role="region" aria-label="Two-strain SIHRS compartment diagram (scrolls)"><svg viewBox="0 0 840 430" role="img"
      aria-label="Two-strain SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Two parallel SIHRS circuits, one for influenza A and one for influenza
@@ -198,13 +203,13 @@
    <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
   </marker>
  </defs>
- {{ _sihrs_row(8, 'A', uid) }}
- {{ _sihrs_row(206, 'B', uid) }}
+ {{ _sihrs_row(4, 'A', uid) }}
+ {{ _sihrs_row(222, 'B', uid) }}
 </svg></div>
 {%- endmacro %}
 
 {% macro analogue_mech(uid='a') -%}
-<div class="figscroll"><svg viewBox="0 0 840 296" role="img" aria-label="Calendar analogue mechanism"
+<div class="figscroll" tabindex="0" role="region" aria-label="Calendar analogue mechanism (scrolls)"><svg viewBox="0 0 840 296" role="img" aria-label="Calendar analogue mechanism"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Faint historical season curves, the current season observed so far, and
  a forecast fan formed by scaling the last observed value by quantiles of the
@@ -258,20 +263,21 @@
           fill-opacity=".22"/>
  <path d="M430,140 C470,132 510,140 545,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
- {# key in the clear zone; long entries wrap (one line clipped at A+) #}
+ {# key in the clear zone, well right of the fan's wedge; long entries
+    wrap (one line clipped at A+) #}
  <g class="svgt-sm">
-  <path d="M560,54 H592" stroke="currentColor" stroke-width="2.6" fill="none"/>
-  <text x="600" y="58" fill="currentColor">this season so far</text>
-  <path d="M560,72 H592" stroke="var(--mut)" stroke-opacity=".4"
+  <path d="M600,54 H632" stroke="currentColor" stroke-width="2.6" fill="none"/>
+  <text x="640" y="58" fill="currentColor">this season so far</text>
+  <path d="M600,72 H632" stroke="var(--mut)" stroke-opacity=".4"
         stroke-width="1.6" fill="none"/>
-  <text x="600" y="76" fill="var(--mut)">past seasons</text>
-  <path d="M560,90 H592" stroke="var(--slate)" stroke-width="2.4" fill="none"/>
-  <text x="600" y="94" fill="var(--slate)">same calendar weeks,</text>
-  <text x="600" y="111" fill="var(--slate)">prior seasons</text>
-  <rect x="560" y="122" width="32" height="9" fill="var(--gold-bright)"
+  <text x="640" y="76" fill="var(--mut)">past seasons</text>
+  <path d="M600,90 H632" stroke="var(--slate)" stroke-width="2.4" fill="none"/>
+  <text x="640" y="94" fill="var(--slate)">same calendar weeks,</text>
+  <text x="640" y="111" fill="var(--slate)">prior seasons</text>
+  <rect x="600" y="122" width="32" height="9" fill="var(--gold-bright)"
         fill-opacity=".3"/>
-  <path d="M560,126 H592" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
-  <text x="600" y="130" fill="var(--gold)">forecast fan</text>
+  <path d="M600,126 H632" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
+  <text x="640" y="130" fill="var(--gold)">forecast fan</text>
  </g>
 </svg></div>
 {%- endmacro %}
@@ -282,8 +288,10 @@
    oracle_text.BANK_TEXT only, never typed here. Lines <= 22 characters to
    fit a 210-unit box at A+. #}
 
-{% macro oracle_pipeline(uid='o') -%}
-<div class="figscroll"><svg viewBox="0 28 1000 302" role="img"
+{# vertical=true (the console's pages) adds the top-to-bottom drawing a
+   phone shows instead; the public site, without nau.css, keeps the one #}
+{% macro oracle_pipeline(uid='o', vertical=false) -%}
+<div class="figscroll figpipe" tabindex="0" role="region" aria-label="Oracle SIHRS pipeline (scrolls)"><svg class="pipe-h" viewBox="0 28 1000 302" role="img"
      aria-label="Oracle SIHRS pipeline: weekly fit, filter forecast samples, donor pool from earlier seasons, per-sample growth blend, Oracle SIHRS forecast"
      style="width:100%;max-width:940px;display:block;margin:.6rem auto;color:inherit">
  <desc>Four boxes left to right. First, the weekly fit: the particle filter
@@ -350,7 +358,63 @@
   <text x="635" y="286" class="svgt-sm">half and half from</text>
   <text x="635" y="304" class="svgt-sm">{{ oracle_text.BANK_TEXT.diagram }}</text>
  </g>
-</svg></div>
+</svg>{% if vertical %}
+{# the same pipeline top to bottom, for a phone (nau.css shows it under
+   640px in place of the wide drawing): the donor pool under the blend
+   feeds it upward, and the blend's output runs down the left edge to the
+   forecast #}
+<svg class="pipe-v" viewBox="0 0 320 636" role="img"
+     aria-label="Oracle SIHRS pipeline, top to bottom: weekly fit, filter forecast samples, donor pool from earlier seasons, per-sample growth blend, Oracle SIHRS forecast"
+     style="width:100%;max-width:360px;margin:.6rem auto;color:inherit">
+ <defs>
+  <marker id="arr-{{ uid }}v" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+   <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+  </marker>
+ </defs>
+ <g fill="none" stroke="currentColor" stroke-width="1.7">
+  <path d="M170,106 V128" marker-end="url(#arr-{{ uid }}v)"/>
+  <path d="M170,226 V248" marker-end="url(#arr-{{ uid }}v)"/>
+  <path d="M170,380 V350" marker-end="url(#arr-{{ uid }}v)"/>
+  <path d="M40,298 H16 V578 H38" marker-end="url(#arr-{{ uid }}v)"/>
+ </g>
+ <text x="180" y="370" class="svgt-sm" fill="var(--mut)">one donor per path</text>
+ <g stroke-width="2">
+  <rect x="40" y="10"  width="260" height="96" rx="10"
+        fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
+  <rect x="40" y="130" width="260" height="96" rx="10"
+        fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
+  <rect x="40" y="250" width="260" height="96" rx="10"
+        fill="var(--gold)" fill-opacity=".12" stroke="var(--gold)"/>
+  <rect x="40" y="382" width="260" height="118" rx="10"
+        fill="var(--warn)" fill-opacity=".12" stroke="var(--warn)"/>
+  <rect x="40" y="530" width="260" height="96" rx="10"
+        fill="var(--gold-bright)" fill-opacity=".14" stroke="var(--gold-bright)"/>
+ </g>
+ <g text-anchor="middle" fill="currentColor">
+  <text x="170" y="36"  class="svgt-md" font-weight="700">Weekly fit</text>
+  <text x="170" y="58"  class="svgt-sm">particle filter on the</text>
+  <text x="170" y="76"  class="svgt-sm">SIHRS compartment</text>
+  <text x="170" y="94"  class="svgt-sm">model, Aug 1 to date</text>
+  <text x="170" y="156" class="svgt-md" font-weight="700">Filter forecast</text>
+  <text x="170" y="178" class="svgt-sm">30,000 sample paths</text>
+  <text x="170" y="196" class="svgt-sm">per state, 4 weeks,</text>
+  <text x="170" y="214" class="svgt-sm">filter growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
+  <text x="170" y="276" class="svgt-md" font-weight="700">Growth blend</text>
+  <text x="170" y="298" class="svgt-sm">per sample path:</text>
+  <text x="170" y="316" class="svgt-sm">half filter growth,</text>
+  <text x="170" y="334" class="svgt-sm">half its donor's</text>
+  <text x="170" y="408" class="svgt-md" font-weight="700">Donor pool</text>
+  <text x="170" y="430" class="svgt-sm">earlier seasons, this</text>
+  <text x="170" y="448" class="svgt-sm">calendar week &#177; 2,</text>
+  <text x="170" y="466" class="svgt-sm">half and half from</text>
+  <text x="170" y="484" class="svgt-sm">{{ oracle_text.BANK_TEXT.diagram }}</text>
+  <text x="170" y="556" class="svgt-md" font-weight="700">Oracle SIHRS</text>
+  <text x="170" y="578" class="svgt-sm">from the filter's</text>
+  <text x="170" y="596" class="svgt-sm">own current state,</text>
+  <text x="170" y="614" class="svgt-sm">23 quantiles</text>
+ </g>
+</svg>{% endif %}</div>
 {%- endmacro %}
 
 {% macro eq_oracle(kit=false) -%}
@@ -401,40 +465,46 @@
 {# ---- what the analogue MEASURES: one growth ratio per donor season and
    horizon (admissions h weeks after the matched week over admissions at
    it), pooled on a ratio axis whose quantiles scale the fan. Illustrative
-   values. Defines an arrow marker, so the uid matters. #}
+   values. Defines an arrow marker, so the uid matters. The donor curves
+   stop at W + h, so each ratio's label sits beside its end, clear of
+   every curve; the title sits above the dashed weeks. The ratio axis is
+   logarithmic (0.5, 1.0 and 2.0 evenly spaced) and the three measured
+   bars end at their own ratios on it. #}
 
 {% macro analogue_ratios(uid='r') -%}
-<svg viewBox="0 0 560 252" role="img"
+<svg viewBox="0 30 560 222" role="img"
      aria-label="Each donor season contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Three prior-season curves crossing the matched calendar week. On each,
  a marked segment runs from that week to h weeks later, and the ratio of the
  two values is written beside it: 1.6, 1.0 and 0.7. Those ratios, with every
- other donor's, appear as ticks on a ratio axis at right, where the shaded
- span between the 10th and 90th percentiles is what scales the last observed
- value into the forecast fan.</desc>
+ other donor's, appear as bars on a ratio axis at right, from 0.5 through
+ 1.0 to 2.0, where the shaded span between the 10th and 90th percentiles is
+ what scales the last observed value into the forecast fan.</desc>
 
  <!-- ---------- left: the measurement ---------- -->
+ <text x="195" y="48" text-anchor="middle" class="svgt-md" font-weight="600"
+       fill="currentColor">one ratio per donor season</text>
  <g stroke="currentColor" stroke-width="1.3" fill="none">
   <path d="M46,224 H322"/>
  </g>
  <!-- the two calendar weeks the ratio is taken between -->
  <g stroke="var(--mut)" stroke-width="1.1" stroke-dasharray="4 4" fill="none">
-  <path d="M140,52 V224"/><path d="M250,52 V224"/>
+  <path d="M140,62 V224"/><path d="M250,62 V224"/>
  </g>
  <g text-anchor="middle" class="svgt-sm" fill="var(--mut)">
   <text x="140" y="243">week W</text>
   <text x="250" y="243">W + h</text>
  </g>
- <text x="22" y="140" text-anchor="middle" class="svgt-sm" fill="currentColor"
-       transform="rotate(-90 22 140)">admissions</text>
+ <text x="22" y="145" text-anchor="middle" class="svgt-sm" fill="currentColor"
+       transform="rotate(-90 22 145)">admissions</text>
 
  {# donors at different magnitudes (ratios are scale-free); y = 224 - v/2
-    so the slopes match the printed ratios; spaced so labels clear at A+ #}
+    so the slopes match the printed ratios; each curve ends at W + h #}
  <g fill="none" stroke="var(--mut)" stroke-opacity=".45" stroke-width="1.6">
-  <path d="M46,214 C90,210 116,207 140,204 C186,199 220,194 250,192 C280,190 302,192 322,196"/>
-  <path d="M46,196 C92,184 118,174 140,169 C186,161 220,166 250,169 C282,173 302,182 322,190"/>
-  <path d="M46,206 C92,170 120,134 140,124 C188,104 222,136 250,154 C280,172 302,190 322,202"/>
+  <path d="M46,214 C90,210 116,207 140,204 C186,199 220,194 250,192"/>
+  <path d="M46,196 C92,184 118,174 140,169 C186,161 220,166 250,169"/>
+  <path d="M46,206 C92,170 120,134 140,124 C188,104 222,136 250,154"/>
  </g>
 
  <!-- the measured segments: donor value at W, and h weeks later -->
@@ -448,16 +518,14 @@
   <circle cx="140" cy="169" r="4"/><circle cx="250" cy="169" r="4"/>
   <circle cx="140" cy="124" r="4"/><circle cx="250" cy="154" r="4"/>
  </g>
- <g class="svgt-sm" fill="var(--gold)" text-anchor="start">
-  <text x="258" y="196">&#215;1.6</text>
-  <text x="258" y="173">&#215;1.0</text>
-  <text x="258" y="150">&#215;0.7</text>
+ <g class="svgt-sm" fill="var(--gold)" text-anchor="start" font-weight="600">
+  <text x="260" y="201">&#215;1.6</text>
+  <text x="260" y="177">&#215;1.0</text>
+  <text x="260" y="154">&#215;0.7</text>
  </g>
- <text x="184" y="70" text-anchor="middle" class="svgt-sm" fill="currentColor">
-   one ratio per donor season</text>
 
  <!-- ---------- right: the pooled ratios ---------- -->
- <path d="M352,140 H372" stroke="currentColor" stroke-width="1.4" fill="none"
+ <path d="M346,140 H368" stroke="currentColor" stroke-width="1.4" fill="none"
        marker-end="url(#arr-{{ uid }})"/>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
@@ -465,13 +533,12 @@
    <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
   </marker>
  </defs>
- <!-- the interval the quantiles span, drawn behind the ticks -->
- <rect x="416" y="96" width="86" height="88" fill="var(--gold-bright)"
+ <text x="454" y="84" text-anchor="middle" class="svgt-sm" fill="var(--gold)">
+   10th to 90th percentile</text>
+ <!-- the interval the quantiles span, drawn behind the bars -->
+ <rect x="416" y="94" width="86" height="92" fill="var(--gold-bright)"
        fill-opacity=".20"/>
- <g stroke="currentColor" stroke-width="1.3" fill="none">
-  <path d="M392,190 V96"/>
- </g>
- <!-- every donor's ratio as a tick; the three measured above are solid -->
+ <!-- every donor's ratio as a bar from 0.5; the three measured are gold -->
  <g stroke="var(--mut)" stroke-opacity=".55" stroke-width="1.4" fill="none">
   <path d="M392,178 H420"/><path d="M392,170 H434"/><path d="M392,162 H448"/>
   <path d="M392,154 H470"/><path d="M392,146 H462"/><path d="M392,138 H486"/>
@@ -479,16 +546,22 @@
   <path d="M392,106 H410"/>
  </g>
  <g stroke="var(--gold)" stroke-width="2.4" fill="none">
-  <path d="M392,166 H444"/>
-  <path d="M392,142 H468"/>
-  <path d="M392,118 H430"/>
+  <path d="M392,166 H496"/>
+  <path d="M392,142 H454"/>
+  <path d="M392,118 H422"/>
  </g>
+ <!-- the ratio axis: 0.5, 1.0 (no change) and 2.0, evenly spaced -->
+ <g stroke="currentColor" stroke-width="1.3" fill="none">
+  <path d="M392,94 V192 H516"/>
+  <path d="M392,192 v5"/><path d="M454,192 v5"/><path d="M516,192 v5"/>
+ </g>
+ <path d="M454,94 V192" stroke="currentColor" stroke-opacity=".5"
+       stroke-width="1" stroke-dasharray="2 4" fill="none"/>
  <g class="svgt-sm" fill="var(--mut)" text-anchor="middle">
-  <text x="392" y="204">0.5</text><text x="459" y="204">ratio</text>
-  <text x="516" y="204">2.0</text>
+  <text x="392" y="212">0.5</text><text x="454" y="212">1.0</text>
+  <text x="516" y="212">2.0</text>
+  <text x="454" y="232">ratio</text>
  </g>
- <text x="459" y="86" text-anchor="middle" class="svgt-sm" fill="var(--gold)">
-   10th to 90th percentile</text>
 </svg>
 {%- endmacro %}
 

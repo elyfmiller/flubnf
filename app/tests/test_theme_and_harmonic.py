@@ -221,7 +221,9 @@ def test_navbar_theme_picker_lists_every_theme():
     assert "themebtn" not in html                   # the two-state toggle is gone
     # the current theme is checked on load and on every change
     assert "b.dataset.th" in html
-    assert "b.checked=(b.dataset.th===t)" in BASE_T
+    # (a stored theme checks its preview; none checks Match system)
+    assert "b.checked=!free&&(b.dataset.th===t)" in BASE_T
+    assert "if(sys)sys.checked=free;" in BASE_T
     # persistence rides the existing preference key
     assert "localStorage.setItem('theme',t)" in BASE_T
     # every change dispatches themechange so Plotly and the player recolor

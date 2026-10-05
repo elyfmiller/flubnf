@@ -109,7 +109,7 @@
   <div><dt>&#946;(t)</dt><dd>transmission, a smooth annual harmonic</dd></div>
   <div><dt>&#947;</dt><dd>infections resolve (from the measured generation time)</dd></div>
   <div><dt>&#961;</dt><dd>the fixed fraction hospitalized</dd></div>
-  <div><dt>&#947;&#8341;</dt><dd>discharge</dd></div>
+  <div><dt>&#947;<sub>H</sub></dt><dd>discharge</dd></div>
   <div><dt>&#969;</dt><dd>immunity wanes</dd></div>
  </dl>
  {{ dg.eq_pf(kit=(active is defined)) }}
@@ -154,7 +154,7 @@
 <div class="card" id="oracle">
  <div class="uk-heading"><h2>The Oracle step: past seasons' growth, blended in</h2>
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
- {{ dg.oracle_pipeline(uid='mp') }}
+ {{ dg.oracle_pipeline(uid='mp', vertical=(active is defined)) }}
  {% call tips.stats("mt-facts", label="The step") %}
   {{ tips.stat("Sample paths", "30,000", "per state", "At three replicates; each gets its own donor.", id="mt-paths") }}
   {{ tips.stat("Donors", "1", "per sample path", "One donor per sample, not per forecast, keeps both the filter's uncertainty and the donors' spread.", id="mt-donor") }}

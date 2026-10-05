@@ -132,7 +132,11 @@ def test_pipeline_figure_keeps_the_house_rules():
 def test_pipeline_and_blend_equation_reach_the_model_tab_and_methods():
     for page in ("/models", "/methods"):
         t = client.get(page).text
-        assert t.count('aria-label="Oracle SIHRS pipeline') == 1, page
+        # the wide drawing once, and once the phone's top-to-bottom one
+        # (nau.css shows one or the other), inside one scrolling region
+        assert t.count('aria-label="Oracle SIHRS pipeline:') == 1, page
+        assert t.count('<svg class="pipe-v"') == 1, page
+        assert t.count('aria-label="Oracle SIHRS pipeline (scrolls)"') == 1, page
         assert "the growth blend" in t, page
     # the donor pool's full description lives on Methods
     assert str(escape(ot.BANK_TEXT["pool"])) in client.get("/methods").text
