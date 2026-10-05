@@ -195,10 +195,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             med1 = float(min(q1.items(),
                              key=lambda kv: abs(float(kv[0]) - 0.5))[1])
             # hover_html reaches innerHTML: escape the name
-            hover = (f"<b>{_htmlmod.escape(loc)}</b><br>current: {lo:.0f}"
-                     f"<br>1-wk median: {med1:.0f}<br>" +
+            hover = (f"<b>{_htmlmod.escape(loc)}</b><br>latest: {lo:,.0f}"
+                     f"<br>next week's median: {med1:,.0f}<br>" +
                      "<br>".join(f"{c.replace('_',' ')}: "
-                                 f"{probs.get(c,0):.0%}" for c in CATS))
+                                 f"{probs.get(c,0):.0%}" for c in CATS
+                                 if probs.get(c, 0) >= 0.005))
             out[n2a[loc]] = {"probs": probs, "name": loc,
                              "abbr": n2a[loc], "fips": n2f.get(loc, ""),
                              "hover_html": hover}
@@ -221,8 +222,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             return None
         med_us = float(min(q1.items(),
                            key=lambda kv: abs(float(kv[0]) - 0.5))[1])
-        hover_us = ("<b>United States</b><br>current: "
-                    f"{lo_us:.0f}<br>1-wk median: {med_us:.0f}")
+        hover_us = ("<b>United States</b><br>latest: "
+                    f"{lo_us:,.0f}<br>next week's median: {med_us:,.0f}")
         return {"probs": probs_us, "name": "United States",
                 "abbr": "US", "fips": "US", "hover_html": hover_us}
 
@@ -272,8 +273,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             for m in ran)
     else:
         wis_body = summary_table_html(df, us_step=us_step)
-    wis_html = ("<div class='card'><h2>forecast accuracy "
-                "(retrospective)</h2>" + wis_body + "</div>")
+    wis_html = ("<div class='card' id='accuracy'><h2>Forecast accuracy, "
+                "past weeks</h2>" + wis_body + "</div>")
     # settled outcomes for backdated runs: the LATEST vintage's values
     # past the forecast origin, framed to the 4-week horizon
     settled_by_loc = {}
