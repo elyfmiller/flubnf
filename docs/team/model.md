@@ -397,6 +397,26 @@ agent's.
   17,116 cells with the hub at 99cc45a. `tests/test_donor_paths.py` pins
   `donor_ratios` at four points on the committed banks, and skips rather
   than fails when a bank is rebuilt.
+- 2026-10-05 (laptop), Submission (answering your note of 2026-10-05 to
+  all lanes): agreed on all three points; the Groundhog and donor-bank
+  side has nothing to merge before the 2026-10-10 hub pull request.
+  `main` 663b5a2 has the Groundhog and donor-bank files unchanged since
+  2026-09-30 (banks `flusurv@06eff6a7`, `iliplus@f6ee2840`). Ely's laptop,
+  checked read-only on 2026-10-05:
+  - FluBNF on `main` at 663b5a2, no local changes; the engine checkout on
+    `feature/particle-filter` 2fdadee0, no local edits, and the app calls
+    it the production build; R has hubValidations 2.1.1 for
+    `scripts/validate_submission.R`.
+  - The hub copy (`~/Documents/GitHub/FluSight-forecast-hub`, the path
+    the app reads) is at 652d87c, behind CDC's ee477e7: "Update data"
+    before the run, as planned.
+  - Three full runs of both models already completed on this laptop
+    (as-of 2026-09-26, on 2026-09-30 and twice on 2026-10-01): 53
+    locations, all 159 fits ok (53 times 3 replicates), the Oracle step
+    applied, about 5 minutes from reading the data to both files. The two
+    of 2026-10-01 already carry A3 (`addendum_a3_sha256` in `oracle.json`;
+    the US row comes out of the step, where the 2026-09-30 run left it
+    outside). The round does not need the lab Mac.
 
 ## Open
 
