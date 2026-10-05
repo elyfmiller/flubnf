@@ -43,8 +43,8 @@ button.mt-print{flex:none;margin:0;padding:.2rem .75rem;font-size:var(--fs-label
    short, and the print button drops (a phone prints from its share menu) */
 @media (max-width:640px){
   .mt-toc{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
-    -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 1.5rem),transparent);
-    mask-image:linear-gradient(to right,#000 calc(100% - 1.5rem),transparent);
+    -webkit-mask-image:linear-gradient(to right,var(--ink) calc(100% - 1.5rem),transparent);
+    mask-image:linear-gradient(to right,var(--ink) calc(100% - 1.5rem),transparent);
     padding-right:1.5rem}
   .mt-toc::-webkit-scrollbar{display:none}
   button.mt-print{display:none}
@@ -144,12 +144,12 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
    splits across pages ---- */
 @media print{
   html{color-scheme:light}
-  body{background:#fff}
+  body{background:var(--card)}
   header.nav,.mt-tocbar,a.skip,footer.buildline,.tipbtn,.uk-tt-btn,
   button.mt-anchor,.mt-said,.uk-heading-aside,#flash,#restart{display:none!important}
   main{padding:0;max-width:none}
   .mt-doc .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none;
-    border-color:#bbb}
+    border-color:var(--line)}
   .mt-doc .card h2{break-after:avoid;page-break-after:avoid}
   .figscroll{overflow:visible;background:none}
   .figscroll > svg{min-width:0}
