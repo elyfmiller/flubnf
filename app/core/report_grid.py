@@ -564,7 +564,7 @@ def grid_css() -> str:
  @media(max-width:820px){.g-cells{grid-template-columns:repeat(2,minmax(0,1fr))}}
  @media(max-width:520px){.g-cells{grid-template-columns:minmax(0,1fr)}}
  .gpanel{margin:0;border:1px solid var(--line);border-radius:8px;
-   padding:.3rem .4rem .1rem;break-inside:avoid;scroll-margin-top:3.5rem}
+   padding:.3rem .4rem .1rem;break-inside:avoid;scroll-margin-top:4.2rem}
  .gpanel figcaption{display:flex;flex-wrap:wrap;align-items:baseline;
    gap:.1rem .45rem;font-size:var(--fs-label);line-height:1.3}
  .gpanel figcaption a{color:inherit}
