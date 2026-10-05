@@ -33,6 +33,7 @@ N2F = {"Ohio": "39", "Utah": "49"}
 APP_ONLY_HEADINGS = {
     "A run is in progress",
     "This season already has results",
+    "Keyboard shortcuts",            # base.html's "?" list, console chrome
 }
 
 

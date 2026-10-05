@@ -3,22 +3,25 @@
 {% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
 {% block content %}
+{# a keyboard user reaches the run form without walking the diagrams and
+   their equation chips (shown on focus, as the page's own skip link) #}
+{% if not header.research %}<a class="skip" href="#h-md-quick">Skip to Quick run</a>{% endif %}
 {# the switcher below names the model; the heading names the tab #}
 <h1>Models</h1>
-{# model switcher: aria-pressed buttons that navigate (PF -> /models, others
-   -> /model/<name>); the research-only page has no nav tab, and its button
-   wears a "research" tag #}
-<div class="row viewtabs" role="group" aria-label="Model view">
+{# model switcher: the kit's segmented switch in its link form, one link
+   per model (PF -> /models, others -> /model/<name>), the current one
+   marked aria-current and drawn as a selection, not a primary action
+   (ui-kit.css .uk-seg--quiet); the research-only page has no nav tab, and
+   its link wears a "research" tag #}
+<nav class="uk-seg uk-seg--quiet md-switch" aria-label="Model view">
  {# labels from the shared model-name map #}
  {% for mn, mhref in [("pf", "/models"),
                       ("analogue", "/model/analogue"),
                       ("pf2s", "/model/pf2s")] %}
- <button type="button" class="quiet{% if name == mn %} gold{% endif %}"
-   aria-pressed="{{ 'true' if name == mn else 'false' }}"
-   data-model="{{ mn }}"
-   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ model_name(mn) }}{% if mn == "pf2s" %} <span class="md-tag">research</span>{% endif %}</button>
+ <a href="{{ mhref }}"{% if name == mn %} aria-current="page"{% endif %}
+   data-model="{{ mn }}">{{ model_name(mn) }}{% if mn == "pf2s" %} <span class="md-tag">research</span>{% endif %}</a>
  {% endfor %}
-</div>
+</nav>
 
 {# the model at a glance (routes/models.py HEADERS and _record): its name
    with kind and status, the one line under it, the relWIS record drawn
@@ -40,7 +43,7 @@
   </div>
   <div class="md-record" role="group" aria-labelledby="h-md-rec">
    {% set rec_after %}{{ tips.tag("relWIS") }}
-   {%- if record.worse %}{{ tips.badge("warn", "scored worse") }}{% endif %}{% endset %}
+   {%- if record.behind %}{{ tips.badge("warn", record.behind.text, record.behind.tip, id="md-behind") }}{% endif %}{% endset %}
    {% call tips.heading("Record", "md-rec", level=3, rich=True, after=rec_after, tip_label="the record") %}
     {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
    {% endcall %}
@@ -69,21 +72,21 @@
    two cards (the forecast pipeline, then the compartment model the filter
    fits) #}
 {% if name == "pf" %}
-<div class="card mech">
+<div class="card mech md-mech">
  <h2>How the forecast is made</h2>
- {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle(kit=true) }}
+ {{ dg.oracle_pipeline(uid='mo', vertical=true) }}{{ dg.eq_oracle(kit=true) }}
 </div>
-<div class="card mech">
+<div class="card mech md-mech">
  <h2>The compartment model the filter fits</h2>
  {{ dg.sihrs(uid='m') }}{{ dg.eq_pf(kit=true) }}
 </div>
 {% elif name == "pf2s" %}
-<div class="card mech">
+<div class="card mech md-mech">
  <h2>The two circuits the filter fits</h2>
  {{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s(kit=true) }}
 </div>
 {% else %}
-<div class="card mech">
+<div class="card mech md-mech">
  <h2>How the forecast is made</h2>
  {{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue(kit=true) }}
 </div>
@@ -95,11 +98,47 @@
 <details class="card bngl">
  <summary><span class="md-src-t">View model source (BNGL)</span>
   <span class="md-src-f">{{ tips.icon("folder") }}<span class="uk-sr">File: </span>flubnf/templates/{{ bngl_file }}</span>
-  <span class="md-src-f">{{ bngl_lines }} lines</span>
+  {# the "?" rides inside the last fact, so it never wraps alone #}
+  <span class="md-src-f">{{ bngl_lines }} lines
   {%- call tips.tip("md-bngl", "the model source") %}flubnf/templates/{{ bngl_file }} as stored; tokens such as
-  <code class="md-code">{{ '{{POP}}' }}</code> are filled in per state and week.{% endcall %}</summary>
+  <code class="md-code">{{ '{{POP}}' }}</code> are filled in per state and week.{% endcall %}</span></summary>
+ {# the file out: copy (the page script below), download (a data link with
+    the file's own name, built by the script from the text shown, no
+    server round trip), and for the Oracle SIHRS a
+    sandbox model started from the shipped filter (the gallery's New model
+    form, its start preselected by sandbox.js) #}
+ <div class="row md-src-acts">
+  <button type="button" class="quiet" id="md-src-copy">Copy</button>
+  <a class="btn quiet" id="md-src-dl" download="{{ bngl_file }}" hidden>{{ tips.icon("download") }} Download .bngl</a>
+  {% if name == "pf" %}<a class="btn quiet" href="/sandbox?start=shipped:sihrs#sbnew-start">Open in Sandbox</a>
+  {{ tips.tip("md-src-sb", "Open in Sandbox", "Starts a sandbox model from the shipped Oracle SIHRS filter: pick a location and forecast date, then Create. Nothing in the sandbox is submitted.") }}{% endif %}
+  <span class="md-src-said" id="md-src-said" aria-live="polite"></span>
+ </div>
  <pre>{{ bngl_src }}</pre>
 </details>
+<script>
+ // Copy: the clipboard where the page may write it, else the text
+ // selected for Cmd or Ctrl C; the outcome said beside the button
+ (function () {
+   var b = document.getElementById('md-src-copy'), pre = document.querySelector('details.bngl > pre'),
+       said = document.getElementById('md-src-said');
+   if (!b || !pre) return;
+   var dl = document.getElementById('md-src-dl');
+   if (dl) { dl.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(pre.textContent); dl.hidden = false; }
+   function say(t) { said.textContent = t; setTimeout(function () { said.textContent = ''; }, 2500); }
+   function select() {
+     var r = document.createRange(); r.selectNodeContents(pre);
+     var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+     var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+     say(ok ? 'Copied' : 'Selected: press Cmd or Ctrl C');
+   }
+   b.addEventListener('click', function () {
+     if (navigator.clipboard && navigator.clipboard.writeText)
+       navigator.clipboard.writeText(pre.textContent).then(function () { say('Copied'); }, select);
+     else select();
+   });
+ })();
+</script>
 {% endif %}
 
 {# the research view has no quick run and no forecasts card: its run

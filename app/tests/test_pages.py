@@ -123,7 +123,9 @@ def _nav_tabs(html):
 
 
 def _pressed_model(html):
-    m = re.search(r'aria-pressed="true"\s+data-model="(\w+)"', html)
+    # the switcher is links (the kit's uk-seg link form): the current
+    # model's carries aria-current
+    m = re.search(r'aria-current="page"\s+data-model="(\w+)"', html)
     return m.group(1) if m else None
 
 
@@ -166,7 +168,8 @@ def test_old_model_routes_stay_live_with_the_right_switcher_state():
     for name in ("pf", "analogue", "pf2s"):
         t = client.get(f"/model/{name}").text
         assert _pressed_model(t) == name, name
-        assert t.count('aria-pressed="true"') == 1, name
+        assert len(re.findall(r'aria-current="page"\s+data-model=', t)) == 1, name
+        assert "onclick=" not in t.split('class="uk-seg uk-seg--quiet md-switch"', 1)[1].split("</nav>", 1)[0]
         assert re.search(r'<a class="tab active" href="/models" aria-current="page">Models</a>',
                          t), name
     # the blend's page went with the blend
@@ -178,7 +181,7 @@ def test_switcher_lists_two_strain_as_the_research_option():
     assert t.count("data-model=") == 3
     assert "Two-strain SIHRS" in t
     # the research option wears a "research" tag inside its own button
-    pf2s = t.split('data-model="pf2s"', 1)[1].split("</button>", 1)[0]
+    pf2s = t.split('data-model="pf2s"', 1)[1].split("</a>", 1)[0]
     assert '<span class="md-tag">research</span>' in pf2s
 
 

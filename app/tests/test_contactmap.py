@@ -299,9 +299,18 @@ def test_editor_page_carries_the_view_pills(box):
     assert 'id="cmap"' in html and 'id="cmap-svg"' in html
     assert '<h2 id="h-sb-diagram">Diagram</h2>' in html            # its "?" beside it
     # the rules' flow first; the other two only for a model with sites
-    assert 'data-view="flow" role="tab" aria-selected="true">Model<' in html
-    assert 'data-view="contactmap" role="tab" aria-selected="false" hidden>Binding sites<' in html
-    assert 'data-view="network" role="tab" aria-selected="false" hidden>Reaction network<' in html
+    # each tab names the one panel it controls; the shown one is the tab stop
+    assert ('id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" '
+            'aria-controls="cmap-svg">Model<') in html
+    assert ('data-view="contactmap" role="tab" aria-selected="false" '
+            'aria-controls="cmap-svg" tabindex="-1" hidden>Binding sites<') in html
+    assert ('data-view="network" role="tab" aria-selected="false" '
+            'aria-controls="cmap-svg" tabindex="-1" hidden>Reaction network<') in html
+    assert ('id="cmap-svg" class="mview-draw" role="tabpanel" '
+            'aria-labelledby="mv-tab-flow"') in html
+    # arrow keys, Home and End move among the shown tabs
+    for key in ("'ArrowRight'", "'ArrowLeft'", "'Home'", "'End'"):
+        assert key in html, key
     assert '<div class="mviews" role="tablist" aria-label="model view" hidden>' in html
     assert "url('network')" in html                             # the card's own script fetches it
 
