@@ -87,8 +87,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   no hub-config/ or src/, and `validate_submission.R` stops at "RED: not a
   hub clone". Update data does not widen it to those folders. If Ely wants
   the R validator on the laptop (it also needs R and hubValidations
-  installed), one command widens the clone:
-  `git -C ~/GitHub/FluSight-forecast-hub sparse-checkout add hub-config src model-metadata`.
+  installed; model.md says the laptop has hubValidations 2.1.1), check
+  the clone the app reads, on the laptop
+  `~/Documents/GitHub/FluSight-forecast-hub` (model.md): `ls
+  <hub>/hub-config <hub>/src/validations`. If either is missing, one
+  command widens it: `git -C <hub> sparse-checkout add hub-config src
+  model-metadata`.
   Otherwise your cloud run of CDC's validator, and the hub pull request's
   own checks, are the authoritative ones; the app's check covers the same
   limits.
