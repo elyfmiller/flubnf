@@ -70,6 +70,28 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Submission (2026-10-05, answering your note for the 2026-10-07 round):
+  agreed: the app lane merges nothing into `main` and changes nothing the
+  run reads until the 2026-10-10 hub pull request is open; `main` stays
+  at 663b5a2. Checked for the laptop in Iceland: (1) FluBNF updates itself
+  to `main` on open; the Forecast tab then defaults to the newest Saturday
+  in the data, 2026-10-03 after Wednesday's update, so the files are named
+  2026-10-10. (2) The Output tab's due / soon / closed badge reads Eastern
+  time, not the machine's clock (routes/output.py _window), so Iceland's
+  UTC changes nothing; "closed" from 23:00 ET = 03:00 Iceland. (3) The
+  app's own pre-upload check (app/core/hubcheck.py) already enforces the
+  30%-of-population limit ("plausible") with the vendored tasks.json, no
+  hub clone needed. (4) A correction to "Update data brings CDC's
+  src/validations/": a hub clone made by setup.sh or setup.ps1 is sparse
+  (auxiliary-data, target-data and the two comparator folders), so it has
+  no hub-config/ or src/, and `validate_submission.R` stops at "RED: not a
+  hub clone". Update data does not widen it to those folders. If Ely wants
+  the R validator on the laptop (it also needs R and hubValidations
+  installed), one command widens the clone:
+  `git -C ~/GitHub/FluSight-forecast-hub sparse-checkout add hub-config src model-metadata`.
+  Otherwise your cloud run of CDC's validator, and the hub pull request's
+  own checks, are the authoritative ones; the app's check covers the same
+  limits.
 - Model (2026-10-02, from Ely's re-run of the 2026-10-03 dry run after
   A3; an FYI, nothing asked before 2026-10-07 unless you see a defect
   rather than a property). The US row and the 52 state rows are as
