@@ -94,6 +94,8 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["live_week"] = state.data_mod.live_newest_week()
     except Exception:
         ctx["live_week"] = None
+    ctx["live_age"] = _data_age(ctx["live_week"])
+    ctx["hub_behind"] = _clone_behind(freshness)
     # the newest week's reporting, from the file a real-time run reads
     ctx["newest_report"] = _newest_report()
     # the hub models runs are compared against (an older sparse clone may
@@ -149,6 +151,46 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["view_note"] = (f"Could not read the {sel_v} vintage "
                             f"({type(e).__name__}).")
     return ctx
+
+
+#: days past a week's Saturday after which its data counts as overdue: the
+#: hub adds each week on the Wednesday after it (4 days), so a week's data
+#: is due by day 11 at the latest
+STALE_AFTER_DAYS = 11
+
+
+def _data_age(week, today=None) -> dict | None:
+    """The "Data through" week's age as a badge: {"text": "9 days",
+    "state": neutral, or warn past STALE_AFTER_DAYS}; None without a
+    readable week."""
+    from datetime import date as _d
+    try:
+        wk = _d.fromisoformat(str(week)[:10])
+    except (TypeError, ValueError):
+        return None
+    days = ((today or _d.today()) - wk).days
+    if days < 0:
+        return None
+    text = "today" if days == 0 else f"{days} day{'s' if days != 1 else ''}"
+    return {"text": text,
+            "state": "warn" if days > STALE_AFTER_DAYS else "neutral"}
+
+
+def _clone_behind(f) -> bool:
+    """Whether a freshness check found origin ahead of the clone (new
+    weeks, a new vintage or commits): Update data is then the page's
+    primary action. False when unchecked or offline."""
+    if f is None:
+        return False
+    try:
+        if f.remote_live and (not f.local_live or f.remote_live > f.local_live):
+            return True
+        if (f.remote_latest and f.local_latest
+                and f.remote_latest > f.local_latest):
+            return True
+        return bool(f.behind)
+    except Exception:
+        return False
 
 
 def _vintage_rows(vs) -> list:
@@ -222,6 +264,44 @@ def _pull_clause(rep, comp: dict) -> str:
     return ""
 
 
+def _live_values():
+    """{(date, location): value} of the live target file, or None when it
+    is absent or unreadable (read before and after a pull, to count what
+    the pull revised)."""
+    try:
+        import pandas as pd
+        p = state.data_mod.live_path()
+        if not p.is_file():
+            return None
+        df = pd.read_csv(p, usecols=["date", "location", "value"],
+                         dtype={"date": str, "location": str})
+        vals = pd.to_numeric(df["value"], errors="coerce")
+        return {(str(d)[:10], str(l).zfill(2)): (None if pd.isna(v) else float(v))
+                for d, l, v in zip(df["date"], df["location"], vals)}
+    except Exception:
+        return None
+
+
+def _pull_changes(before, after, vals_before, vals_after) -> list:
+    """The flash's change clauses after a pull: "+N weeks" when the data
+    moved on, "N revised values" when values already held changed; []
+    when nothing is known to have changed."""
+    out = []
+    from datetime import date as _d
+    try:
+        n = (_d.fromisoformat(after) - _d.fromisoformat(before)).days // 7
+    except (TypeError, ValueError):
+        n = 0
+    if n > 0:
+        out.append(f"+{n} week{'s' if n != 1 else ''}")
+    if vals_before and vals_after:
+        rev = sum(1 for k, v in vals_before.items()
+                  if k in vals_after and vals_after[k] != v)
+        if rev:
+            out.append(f"{rev:,} revised value{'s' if rev != 1 else ''}")
+    return out
+
+
 def _pull() -> tuple:
     """Run the hub pull and flash its outcome; (ok, message)."""
     # server-side mirror of /api/busy under _engine_lock: refuse only while a
@@ -242,6 +322,8 @@ def _pull() -> tuple:
         before = state.data_mod.newest_week()
     except Exception:
         before = None
+    # the live file's values, to say what the pull changed (None: unread)
+    values_before = _live_values()
     ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
@@ -271,6 +353,8 @@ def _pull() -> tuple:
     else:
         lead = "Updated"
     bits = [lead]
+    # what changed, in counts: weeks added and earlier values revised
+    bits += _pull_changes(before, after, values_before, _live_values())
     clause = _pull_clause(_newest_report(), state.data_mod.comparators())
     if clause:
         bits.append(clause)
@@ -294,7 +378,8 @@ def freshness(request: Request):
     if _wants_json(request):
         cls, words = f.pill()
         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
-                             "words": words, "detail": f.detail})
+                             "words": words, "detail": f.detail,
+                             "behind": _clone_behind(f)})
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
 

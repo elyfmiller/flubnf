@@ -13,7 +13,8 @@
      4. vintage and dataset browser: the pick row, the chart bar
      5. Your datasets: the stored list's row actions
      6. the upload box: zone titles, the icon, the links under a zone
-     7. the result box: problem groups, the mapping, the preview */
+     7. the result box: problem groups, the mapping, the preview
+     8. design pass: the hub card's track, the weeks' change column */
 
 /* ---- 1. shared bits ---- */
 /* a date or a range never splits at its hyphens */
@@ -106,3 +107,18 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-more-n{color:var(--ink);font-weight:700;font-size:var(--fs-label)}
 .dt-cap{caption-side:top;text-align:left;padding:.3rem 0;color:var(--mut);
   font-size:var(--fs-label);font-weight:600}
+
+/* ---- 8. design pass (2026-10-05) ---- */
+/* the hub card's track: wide enough that Update data and Check for new
+   data sit side by side (a 1024px window gave it 285px) */
+@media(min-width:901px){
+  .dt-cols{grid-template-columns:minmax(22rem,var(--side-col)) minmax(0,1fr)}
+}
+.hubcard .hubacts form{margin:0}
+/* the newest weeks' change on the week before: the arrow and the
+   spoken word say the direction; flat is muted */
+.dt-wow{white-space:nowrap;font-variant-numeric:tabular-nums}
+.dt-wow--up,.dt-wow--down{color:var(--ink)}
+.dt-wow--flat{color:var(--mut)}
+/* the stored datasets fill their card; the actions column at the right */
+table.dstable{width:100%}

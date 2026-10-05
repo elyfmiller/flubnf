@@ -617,7 +617,7 @@ def test_replay_this_says_what_it_stored_in_the_card_it_opens():
     # the confirmation as the card's alert, its notices folded under it
     note = card.split('<div class="dsr-stored rt-stored">')[1]
     note = note.split('<form method="get"')[0]
-    assert f"Stored the dataset Kids: 3 group(s), {len(ds.weeks())} week(s)." \
+    assert f"Stored the dataset Kids: 3 groups, {len(ds.weeks())} weeks." \
         in note
     assert "Not UTF-8 text: read as Windows-1252" in note
     assert "Check these names: Adúlt" in note

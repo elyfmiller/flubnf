@@ -42,7 +42,7 @@ router = APIRouter()
 #   console controls    run_stop
 #   run pages           run_page, _no_run_report, run_report,
 #                       run_report_download, run_rerun
-#   forecast APIs       api_series, api_progress, _abbreviations,
+#   forecast APIs       api_series, api_week_info, api_progress, _abbreviations,
 #                       _read_json, _location_progress
 #   POST /run           _scope_label, _run_extra, _knob_run_parts, _spec_mode,
 #                       _report_v2_retired, run_models
@@ -86,7 +86,11 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
                            "runs will cover all 53 jurisdictions.")
     # the default run is the full hub submission: "all" is the 53, the 52
     # jurisdictions AND US national (US stays ticked with it, so a custom
-    # pick starts with US in; the user unticks it to leave it out)
+    # pick starts with US in; the user unticks it to leave it out). After a
+    # restart the last form's non-date fields come back from
+    # app/state/last_form.json (forecast_aids), dated the newest week
+    from app.ui import forecast_aids as _fa
+    _fa.restore_last_form(_last_form, _default_forecast_date)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"],
                                 "engine": "all",
@@ -196,6 +200,12 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", ""),
+        # display-only aids (app/ui/forecast_aids.py): the fans' run, the
+        # next round, the location presets, the last run's values
+        "aids": _fa.page_aids(ledger_rows, rid, all_locs, US_CHOICE,
+                              _default_forecast_date()),
+        "week_info": _fa.week_info(_anchor) if _anchor else {},
+        "error_head": _fa.error_head,
         "dataset": None, "source_choices": _dsu.choices(), "own_tab": own_tab})
 
 
@@ -677,6 +687,14 @@ def api_series(request: Request, locs: str = "", source: str = ""):
     return out
 
 
+@router.get("/api/forecast/week-info")
+def api_week_info(week: str = ""):
+    """The Forecast form's round row (read-only): a week's reference date
+    and FluSight window badge (app/ui/forecast_aids.week_info)."""
+    from app.ui import forecast_aids as _fa
+    return _fa.week_info(week)
+
+
 @router.get("/api/progress")
 def api_progress():
     import glob
@@ -799,17 +817,17 @@ def _location_progress(workroot) -> list:
 
 
 def _scope_label(locs) -> str:
-    """The progress label's scope: '3 state(s)', '3 state(s) + US',
+    """The progress label's scope: '3 states', '1 state + US',
     'all 53 jurisdictions' (the form's "all": the 52 and US) or
     'US only'."""
     from app.core import us_national as _usn
     n = len(_usn.state_names(locs))
     us = len(locs) > n
     if not n:
-        return "US only" if us else "0 state(s)"
+        return "US only" if us else "0 states"
     if n == 52 and us:
         return "all 53 jurisdictions"
-    return f"{n} state(s)" + (" + US" if us else "")
+    return f"{n} state{'s' if n != 1 else ''}" + (" + US" if us else "")
 
 
 def _run_extra(members: int, mode: str, aux: str | None = None,
@@ -1008,6 +1026,9 @@ def run_models(request: Request,
                                  if isinstance(v, str)},
                        "submit_modified": override,
                        "modified_reason": reason, "ms_refused": False})
+    # kept across a restart (its non-date fields; display memory only)
+    from app.ui import forecast_aids as _fa
+    _fa.save_last_form(_last_form)
     # the Data issues choices come back on the form, keyed by their week
     if isinstance(gap_fields, dict) and newest:
         _last_form["data_choices"] = {

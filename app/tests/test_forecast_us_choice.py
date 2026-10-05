@@ -96,10 +96,10 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
 
 def test_the_progress_label_names_us_only_when_it_runs(started):
     _post(["Ohio"])
-    assert ui_state._status["run_label"].endswith("1 state(s) · queued")
+    assert ui_state._status["run_label"].endswith("1 state · queued")
     ui_state._status.update({"running": None})
     _post(["Ohio", "US (national)"])
-    assert ui_state._status["run_label"].endswith("1 state(s) + US · queued")
+    assert ui_state._status["run_label"].endswith("1 state + US · queued")
 
 
 def test_the_run_scope_reads_without_us_for_a_state_run():
@@ -112,7 +112,7 @@ def test_the_run_scope_reads_without_us_for_a_state_run():
 def test_all_queues_the_53_in_the_progress_label(started):
     _post(["all"])
     assert started[0].locations[-1] == "US"
-    assert ui_state._status["run_label"].endswith("2 state(s) + US · queued")
+    assert ui_state._status["run_label"].endswith("2 states + US · queued")
 
 
 def test_the_default_form_ticks_all_53_with_us(monkeypatch):
@@ -136,11 +136,14 @@ def test_the_default_form_ticks_all_53_with_us(monkeypatch):
 def test_the_form_script_keeps_us_in_a_custom_pick():
     """Ticking all ticks US; a state pick turns all off and leaves US as
     it is; unticking US under all becomes the 52 without it. The count
-    reads "all 53", or "1 + US selected" for a pick."""
-    assert "if(CKUS) CKUS.checked=true;" in TEMPLATE
-    assert "if(c.checked && all.checked) all.checked=false;" in TEMPLATE
-    assert "if(!CKUS.checked && all.checked){" in TEMPLATE
-    assert "(us?' + US':'')" in TEMPLATE
+    reads "all 53", or "1 + US selected" for a pick. While all is ticked
+    the state boxes show ticked and are off (posting nothing), never "all"
+    beside 52 empty boxes."""
+    assert "if (this.checked) { if (CKUS) CKUS.checked = true; }" in TEMPLATE
+    assert "if (all) c.checked = true;" in TEMPLATE
+    assert "c.disabled = all;" in TEMPLATE
+    assert "if (!CKUS.checked && CKALL.checked) {" in TEMPLATE
+    assert "(us ? ' + US' : '')" in TEMPLATE
     assert "dataset else 53) | tojson" in TEMPLATE
 
 
