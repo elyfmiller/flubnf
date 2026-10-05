@@ -27,8 +27,10 @@
 {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
    filename. What to do now, one line across the page; the how in its tip #}
 {% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
-<div class="cols">
- <div><div class="card rt-runcard"><h2>Settings</h2>
+{# the forms beside the seasons; on a phone the seasons (the results)
+   come first (tabs/retro.css .rt-cols) #}
+<div class="cols rt-cols">
+ <div class="rt-forms"><div class="card rt-runcard"><h2>Settings</h2>
   <form method="post" action="/retro/run">
    <label for="rt-season">Season</label>
    <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -133,7 +135,7 @@
    <button class="quiet">Import replay</button>
   </form>
  </div></div>
- <div>
+ <div class="rt-seasons">
   {% for s in seasons %}
   <div class="card season-card" data-season="{{ s.name }}"
        data-status="{{ s.status }}" data-active="{{ 1 if s.active else 0 }}"

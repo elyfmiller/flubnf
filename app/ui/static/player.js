@@ -46,6 +46,20 @@
                    every other relWIS carries one); the standalone report
                    keeps the color and the cell's title
      ids           optional DOM id overrides, see DEFAULT_IDS
+     initialLoc    optional location to open the forecast detail on (a
+                   deep link); default US
+     store         optional {get(key), set(key, value)}: the host's
+                   per-season memory (guarded localStorage). The player
+                   keeps the model checkboxes ('models'), the location
+                   ('loc') and the time window ('window') in it
+     onLoc         optional function(loc): the location changed
+     onView        optional function(view): a key asked for a view, 'map'
+                   or 'fc' (M and F); the host switches its views
+
+   Keys (not while a field has focus): left and right arrows step a
+   week, Home and End jump to the first and last, Space or K plays and
+   pauses (Space not while a button has focus), [ and ] step the
+   location, L locks the axes, M and F ask the host for a view.
 
    The stats table (renderStats) shows, per enabled model, "This week" and
    "Season so far": relWIS on the natural or log scale (the scale switch,
@@ -204,7 +218,7 @@ var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
   speed: 'pb-speed', scrub: 'pb-scrub', week: 'pb-week', loc: 'fd-loc',
   lock: 'fd-lock', models: 'fd-models', plot: 'fd-plot', msg: 'fd-msg',
   stats: 'pb-stats', status: 'pb-status', offhint: 'pb-offhint',
-  scale: 'pb-scale', legend: 'pb-legend'};
+  scale: 'pb-scale', legend: 'pb-legend', window: 'fd-window'};
 
 // the report's fixed dark kit (the console passes its CSS variables).
 // `card` is the explicit chart background so a saved PNG has an opaque ground.
@@ -222,12 +236,56 @@ var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
 function frameConf(loc, week){
   var c = {}, k;
   for(k in PCONF) c[k] = PCONF[k];
+  // the modebar shows on hover only, and not at all on a phone-width
+  // window, where a tap left it over the plot's title
+  c.displayModeBar = narrowWindow() ? false : 'hover';
   c.toImageButtonOptions = {format: 'png', scale: 2,
     filename: ('flubnf_' + loc + '_' + week).replace(/[^\w-]+/g, '_')};
   return c;
 }
 
 // ---------------------------------------------------------- pure helpers
+
+// a phone-width window (40rem at the standard text size)
+function narrowWindow(){
+  try{ return window.innerWidth < 640; }catch(e){ return false; }
+}
+
+// the forecast detail's time windows: the whole season, or the last
+// RECENT_WEEKS weeks up to the shown week (the default)
+var WINDOWS = ['recent', 'season'];
+var RECENT_WEEKS = 12;
+
+// the x range of the recent window at week w: RECENT_WEEKS weeks back,
+// and the four horizons (plus a few days) ahead
+function recentRange(w){
+  return [addDays(w, -7 * RECENT_WEEKS), addDays(w, 7 * 4 + 3)];
+}
+
+// the y range that holds every point of the traces inside [x0, x1]:
+// [0, 1.12 x their largest value], or null with nothing inside
+function yRangeIn(traces, x0, x1){
+  var mx = 0, any = false;
+  (traces || []).forEach(function(t){
+    var xs = t.x || [], ys = t.y || [];
+    for(var i = 0; i < xs.length; i++){
+      var y = ys[i];
+      if(xs[i] >= x0 && xs[i] <= x1 && typeof y === 'number' && isFinite(y)){
+        any = true;
+        if(y > mx) mx = y;
+      }
+    }
+  });
+  return any ? [0, 1.12 * (mx || 1)] : null;
+}
+
+// the next location in a list, cycling: step +1 or -1
+function stepLoc(list, cur, step){
+  if(!list.length) return cur;
+  var i = list.indexOf(cur);
+  if(i < 0) return list[0];
+  return list[(i + step + list.length) % list.length];
+}
 
 // root font size in px, so plotly text (px only) tracks the text-size slider
 function rootFont(){
@@ -574,11 +632,21 @@ function createPlayer(cfg){
   };
   var detailVisible = cfg.detailVisible || function(){ return true; };
   var isCached = cfg.isCached || function(){ return true; };
+  // the host's per-season memory; every read and write guarded
+  var store = cfg.store || null;
+  function recall(k){
+    try{ return store ? store.get(k) : null; }catch(e){ return null; }
+  }
+  function remember(k, v){
+    try{ if(store) store.set(k, v); }catch(e){}
+  }
+  var win0 = recall('window');
 
   var P = {idx: (el.scrub && +el.scrub.value) || 0, playing: false,
            timer: null, loc: null, built: false, on: {}, pl: null,
            user: {x: null, y: null}, bound: false, applying: false,
-           suppress: false, scale: readScale()};
+           suppress: false, scale: readScale(),
+           win: WINDOWS.indexOf(win0) >= 0 ? win0 : 'recent', locs: []};
   var ALLM = [], OFFS = OFFICIALS.slice();
 
   // season-level official availability: seeded from the host, then grown
@@ -649,8 +717,16 @@ function createPlayer(cfg){
     // the models that ship, never the retired blend (offeredModels)
     var ours = offeredModels(have);
     ALLM = ours.concat(OFFS);
-    var dflt = {ensemble: true, pf: true, analogue: true};
-    ALLM.forEach(function(m){ if(!(m in P.on)) P.on[m] = !!dflt[m]; });
+    // on at first: every member and the official ensemble; the baseline
+    // (relWIS 1 by definition) is a tick away. The season's remembered
+    // choice wins
+    var dflt = {ensemble: true, pf: true, pf_filter: true, analogue: true,
+                'FluSight-ensemble': true};
+    var saved = recall('models') || {};
+    ALLM.forEach(function(m){
+      if(!(m in P.on))
+        P.on[m] = (typeof saved[m] === 'boolean') ? saved[m] : !!dflt[m];
+    });
     el.models.innerHTML = ALLM.map(function(m){
       return '<label class="ck"><input type="checkbox" data-m="' + m + '"'
         + (P.on[m] ? ' checked' : '') + '> <span class="sw" '
@@ -660,6 +736,7 @@ function createPlayer(cfg){
     el.models.querySelectorAll('input').forEach(function(c){
       c.addEventListener('change', function(){
         P.on[c.dataset.m] = c.checked;
+        remember('models', P.on);
         if(detailVisible()) drawFC(); else renderStats(P.pl);
       });
     });
@@ -671,13 +748,53 @@ function createPlayer(cfg){
       '<option value="US">' + usLabel(cfg.us) + '</option>'
       + locs.map(function(l){ return '<option>' + l + '</option>'; })
         .join('');
-    P.loc = P.loc || locs[0] || 'US';
+    P.locs = ['US'].concat(locs);
+    // a deep link's location, else the season's remembered one, else US
+    var want = [cfg.initialLoc, recall('loc')];
+    P.loc = null;
+    for(var i = 0; i < want.length && !P.loc; i++){
+      var l = want[i];
+      if(l && isUS(l)) P.loc = 'US';
+      else if(l && locs.indexOf(l) >= 0) P.loc = l;
+    }
+    P.loc = P.loc || 'US';
     el.loc.value = P.loc;
-    el.loc.addEventListener('change', function(){
-      P.loc = el.loc.value;
-      P.user = {x: null, y: null};   // a new location voids the hand zoom
-      drawFC();
+    el.loc.addEventListener('change', function(){ setLoc(el.loc.value); });
+  }
+
+  // the forecast detail's location: the select, the memory, the host
+  function setLoc(loc){
+    if(isUS(loc)) loc = 'US';
+    if(P.built && P.locs.indexOf(loc) < 0) return;
+    P.loc = loc;
+    if(el.loc && el.loc.value !== loc) el.loc.value = loc;
+    P.user = {x: null, y: null};   // a new location voids the hand zoom
+    remember('loc', loc);
+    if(cfg.onLoc) cfg.onLoc(loc);
+    if(detailVisible()) drawFC();
+  }
+
+  // the time window switch (the kit's uk-seg): Last 12 weeks or Season
+  function paintWindow(){
+    if(!el.window) return;
+    el.window.querySelectorAll('button[data-win]').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.dataset.win === P.win));
     });
+  }
+  function setWindow(w){
+    if(WINDOWS.indexOf(w) < 0 || w === P.win) return;
+    P.win = w;
+    P.user = {x: null, y: null};
+    remember('window', w);
+    paintWindow();
+    if(detailVisible()) drawFC();
+  }
+  if(el.window){
+    el.window.addEventListener('click', function(e){
+      var b = e.target.closest ? e.target.closest('button[data-win]') : null;
+      if(b) setWindow(b.dataset.win);
+    });
+    paintWindow();
   }
 
   // ---- per-model availability, refreshed on every payload (tiers: see
@@ -935,13 +1052,22 @@ function createPlayer(cfg){
       if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
         name: 'truth beyond now', opacity: .65,
         line: {color: p.ink, width: 1.3, dash: 'dot'}});
-      // locked ranges, else autoscale; a stored user view beats both. The
-      // title names US provenance on the figure itself.
+      // the season window: locked ranges, else autoscale. The recent
+      // window: the last 12 weeks up to w and the horizons ahead, the y
+      // range fitted to what falls inside it (the lock is the season
+      // window's). A stored user view beats them all. The title names
+      // US provenance on the figure itself.
       var title = locLabel(loc, cfg.us);
-      var lock = (el.lock && el.lock.checked) ? lockRanges(pl, loc) : null;
+      var lock = (P.win === 'season' && el.lock && el.lock.checked)
+        ? lockRanges(pl, loc) : null;
       // automargin: tick labels size the margins (nothing clips at A+)
       var xa = {gridcolor: p.line, automargin: true};
       var ya = {gridcolor: p.line, rangemode: 'tozero', automargin: true};
+      if(P.win === 'recent'){
+        var rr = recentRange(w), ry = yRangeIn(traces, rr[0], rr[1]);
+        xa.range = rr; xa.autorange = false;
+        if(ry){ ya.range = ry; ya.autorange = false; }
+      }
       if(lock && lock.x){ xa.range = lock.x.slice(); xa.autorange = false; }
       if(lock && lock.y){ ya.range = lock.y.slice(); ya.autorange = false; }
       if(P.user.x){ xa.range = P.user.x.slice(); xa.autorange = false; }
@@ -1024,10 +1150,7 @@ function createPlayer(cfg){
   }
   el.prev.onclick = function(){ seek(P.idx - 1); };
   el.next.onclick = function(){ seek(P.idx + 1); };
-  el.play.onclick = function(){
-    if(!P.playing && P.idx >= weeks.length - 1) seek(0);  // replay from top
-    setPlay(!P.playing);
-  };
+  el.play.onclick = function(){ togglePlay(); };
   el.speed.onchange = function(){ if(P.playing) setPlay(true); };
   // scrub draws coalesce to one per animation frame (a fast drag otherwise
   // queues seconds of Plotly.react); other seeks stay immediate
@@ -1046,21 +1169,52 @@ function createPlayer(cfg){
   if(el.lock){
     try{ el.lock.checked = localStorage.getItem('flubnf-axis-lock') !== '0'; }
     catch(e){}
-    el.lock.addEventListener('change', function(){
-      try{
-        localStorage.setItem('flubnf-axis-lock',
-                             el.lock.checked ? '1' : '0');
-      }catch(e){}
-      P.user = {x: null, y: null};
-      if(detailVisible()) drawFC();
-    });
+    el.lock.addEventListener('change', lockChanged);
   }
+  function togglePlay(){
+    if(!P.playing && P.idx >= weeks.length - 1) seek(0);  // replay from top
+    setPlay(!P.playing);
+  }
+  function lockChanged(){
+    try{
+      localStorage.setItem('flubnf-axis-lock', el.lock.checked ? '1' : '0');
+    }catch(e){}
+    P.user = {x: null, y: null};
+    if(detailVisible()) drawFC();
+  }
+  function toggleLock(){
+    if(!el.lock) return;
+    el.lock.checked = !el.lock.checked;
+    lockChanged();
+  }
+  // the player's keys (listed in the host's Season player "?")
   addEventListener('keydown', function(e){
-    if(e.altKey || e.ctrlKey || e.metaKey) return;
-    var t = e.target && e.target.tagName;
-    if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
-    if(e.key === 'ArrowLeft'){ seek(P.idx - 1); e.preventDefault(); }
-    else if(e.key === 'ArrowRight'){ seek(P.idx + 1); e.preventDefault(); }
+    if(e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented) return;
+    var tg = e.target || {}, t = tg.tagName;
+    if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA'
+       || tg.isContentEditable) return;
+    // a key inside an open dialog or toggletip belongs to it
+    if(tg.closest && tg.closest('.modal-back,[role="dialog"]')) return;
+    var k = e.key, done = true;
+    if(k === 'ArrowLeft') seek(P.idx - 1);
+    else if(k === 'ArrowRight') seek(P.idx + 1);
+    else if(k === 'Home') seek(0);
+    else if(k === 'End') seek(weeks.length - 1);
+    // Space presses a focused button; K plays from anywhere
+    else if(k === ' ' || k === 'Spacebar'){
+      if(t === 'BUTTON' || t === 'A' || t === 'SUMMARY') return;
+      togglePlay();
+    }
+    else if(k === 'k' || k === 'K') togglePlay();
+    else if(k === '[' || k === ']'){
+      if(!P.built) return;
+      setLoc(stepLoc(P.locs, P.loc || 'US', k === ']' ? 1 : -1));
+    }
+    else if(k === 'l' || k === 'L') toggleLock();
+    else if((k === 'm' || k === 'M') && cfg.onView) cfg.onView('map');
+    else if((k === 'f' || k === 'F') && cfg.onView) cfg.onView('fc');
+    else done = false;
+    if(done) e.preventDefault();
   });
   addEventListener('themechange', function(){
     renderStats(P.pl);
@@ -1084,6 +1238,9 @@ function createPlayer(cfg){
     drawFC: drawFC,
     renderStats: renderStats,
     setPlay: setPlay,
+    togglePlay: togglePlay,
+    setLoc: setLoc,
+    loc: function(){ return P.loc || cfg.initialLoc || 'US'; },
     viewState: function(){ return {x: P.user.x, y: P.user.y}; }
   };
 }
@@ -1135,7 +1292,12 @@ var FluBNFPlayer = {
     nameOf: nameOf,
     relayoutRange: relayoutRange,
     viewStateUpdate: viewStateUpdate,
-    officialAvailability: officialAvailability
+    officialAvailability: officialAvailability,
+    WINDOWS: WINDOWS,
+    RECENT_WEEKS: RECENT_WEEKS,
+    recentRange: recentRange,
+    yRangeIn: yRangeIn,
+    stepLoc: stepLoc
   }
 };
 root.FluBNFPlayer = FluBNFPlayer;

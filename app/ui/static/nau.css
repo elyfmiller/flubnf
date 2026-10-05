@@ -1525,7 +1525,12 @@ p.newest-check[hidden]{display:none}
 /* per-state scores in column groups (the page script deals the rows
    across up to three copies of the table, .sfcols[data-n]) */
 .sfcols{display:grid;grid-template-columns:repeat(var(--sfn,1),minmax(0,1fr));
-  gap:0 1.4rem;align-items:start}
+  gap:0 1.4rem;align-items:start;overflow-x:auto;scrollbar-width:thin}
+/* one group wider than the card (a phone) scrolls sideways, its names
+   column held in view */
+.sfcols[data-n="1"] tbody tr > :first-child,
+.sfcols[data-n="1"] thead tr:first-child > :first-child{position:sticky;
+  left:0;z-index:1;background:var(--card)}
 .sfcols[data-n="2"]{--sfn:2}
 .sfcols[data-n="3"]{--sfn:3}
 .sfcols #sf-table.pscov,.sfcols table.sfpart{width:100%;min-width:0}

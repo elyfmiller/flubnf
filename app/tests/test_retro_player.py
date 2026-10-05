@@ -314,10 +314,14 @@ def _us_page(fit, **kw):
     page = " ".join(html.split("// live host for the shared player", 1)[0]
                     .split())
 
+    # the US tiles sit in their own group, named by member alone
+    us_group = page.split('<h3 id="rs-g-us">US national</h3>', 1)[1] \
+        .split("</section>", 1)[0]
+
     def tile(name):
-        h = f"<h2>US (fitted): {name}</h2>"
-        return page.split(h, 1)[1].split("</div></div>", 1)[0] \
-            if h in page else None
+        h = f"<h2>{name}</h2>"
+        return us_group.split(h, 1)[1].split("</div></div>", 1)[0] \
+            if h in us_group else None
 
     row = page.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
     return page, tile, row

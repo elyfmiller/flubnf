@@ -164,10 +164,20 @@ def test_every_app_section_is_in_the_report(built):
 
 def test_verdict_tiles_match_including_us_aggregate(built):
     app_html, report_html = built
-    a = _region(app_html, '<div class="verdict">', '<div class="card playcard">')
-    r = _region(report_html, '<div class="verdict">', '<div class="card playcard">')
+    a = _region(app_html, '<div class="verdict">', '<div class="card playcard')
+    r = _region(report_html, '<div class="verdict">', '<div class="card playcard')
     assert a == r
-    assert "<h2>US (aggregated): Groundhog</h2>" in a
+    assert _us_tile(a, "Groundhog")
+
+
+def _us_tile(html, member):
+    """The US group of tiles (named once, its provenance a tag) holds a
+    tile named by the member alone."""
+    if '<h3 id="rs-g-us">US national</h3>' not in html:
+        return False
+    group = html.split('<h3 id="rs-g-us">US national</h3>', 1)[1] \
+        .split("</section>", 1)[0]
+    return ">sum of states</span>" in group and f"<h2>{member}</h2>" in group
 
 
 def test_per_state_rows_match_including_us_row(built):
@@ -191,14 +201,19 @@ def test_player_week_lists_match(built):
 
 
 def test_timing_and_settings_match(built):
-    """Wall time and the run settings: the same facts, from the run record."""
+    """The run settings: the same facts, from the run record. The page
+    states the replay's wall time; the report states its evidence instead
+    (the weeks, the build, the project), never the wall time."""
     app_html, report_html = built
-    for start, end in (('<div class="rs-facts', "</dl>"),
-                       ('<div class="rs-settings', "</div>")):
-        a = _region(app_html, start, end)
-        assert a in report_html, start
-    assert "1:02:03" in report_html
+    a = _region(app_html, '<div class="rs-settings', "</div>")
+    assert a in report_html
     assert "10,000 particles" in report_html
+    assert "1:02:03" in _region(app_html, '<div class="rs-facts', "</dl>")
+    facts = _region(report_html, '<ul class="uk-meta" aria-label="Report facts"',
+                    "</ul>")
+    assert f"{W1} to {W2}" in facts
+    assert "github.com/elyfmiller/flubnf" in facts
+    assert 'id="rs-timing"' not in report_html
 
 
 def test_cold_aggregate_cache_is_computed_not_omitted(tmp_path, monkeypatch):
@@ -206,7 +221,7 @@ def test_cold_aggregate_cache_is_computed_not_omitted(tmp_path, monkeypatch):
     job does, so the US figures are there, never silently absent."""
     root = _mk_root(tmp_path, monkeypatch)
     html = _report(root)
-    assert "<h2>US (aggregated): Groundhog</h2>" in html
+    assert _us_tile(html, "Groundhog")
 
 
 def test_unscored_season_states_the_us_absence(tmp_path, monkeypatch):
