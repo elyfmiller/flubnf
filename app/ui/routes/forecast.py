@@ -34,9 +34,6 @@ from app.ui.templating import (_member_colors, _script_json, _season_colors,
                                templates)
 
 router = APIRouter()
-# the form's read-only date row (GET /api/forecast/week-info)
-from app.ui import forecast_aids as _forecast_aids  # noqa: E402
-router.include_router(_forecast_aids.router)
 
 # Sections, in file order:
 #   /forecast           RERUN_STATUSES, forecast_page
@@ -45,7 +42,7 @@ router.include_router(_forecast_aids.router)
 #   console controls    run_stop
 #   run pages           run_page, _no_run_report, run_report,
 #                       run_report_download, run_rerun
-#   forecast APIs       api_series, api_progress, _abbreviations,
+#   forecast APIs       api_series, api_week_info, api_progress, _abbreviations,
 #                       _read_json, _location_progress
 #   POST /run           _scope_label, _run_extra, _knob_run_parts, _spec_mode,
 #                       _report_v2_retired, run_models
@@ -688,6 +685,14 @@ def api_series(request: Request, locs: str = "", source: str = ""):
     except Exception:
         pass
     return out
+
+
+@router.get("/api/forecast/week-info")
+def api_week_info(week: str = ""):
+    """The Forecast form's round row (read-only): a week's reference date
+    and FluSight window badge (app/ui/forecast_aids.week_info)."""
+    from app.ui import forecast_aids as _fa
+    return _fa.week_info(week)
 
 
 @router.get("/api/progress")

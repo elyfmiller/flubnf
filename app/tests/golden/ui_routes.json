@@ -30,6 +30,7 @@
   ["GET", "/runs/{run_id}/report/download", "run_report_download", "APIRoute", "console"],
   ["POST", "/runs/{run_id}/rerun", "run_rerun", "APIRoute", "console"],
   ["GET", "/api/series", "api_series", "APIRoute", "console"],
+  ["GET", "/api/forecast/week-info", "api_week_info", "APIRoute", "console"],
   ["GET", "/api/progress", "api_progress", "APIRoute", "console"],
   ["GET", "/output", "output_page", "APIRoute", "console"],
   ["GET", "/api/output/stamp", "api_output_stamp", "APIRoute", "console"],

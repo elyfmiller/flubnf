@@ -229,8 +229,8 @@
 .checklist .ck[hidden]{display:none}
 .fc-nomatch{margin:.2rem 0;color:var(--mut);font-size:var(--fs-label)}
 /* more boxes below the fold: the list's foot fades */
-.checklist.fc-more{-webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent);
-  mask-image:linear-gradient(to bottom,#000 78%,transparent)}
+.checklist.fc-more{-webkit-mask-image:linear-gradient(to bottom,black 78%,transparent);
+  mask-image:linear-gradient(to bottom,black 78%,transparent)}
 /* "all 53" ticked: the state boxes show ticked and off */
 .checklist .ck-one:disabled{opacity:.75}
 /* the Run row: held at the foot of the window while the open settings

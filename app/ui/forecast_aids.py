@@ -5,9 +5,8 @@ what the form changes against the last run.
 
 Nothing here touches a run: the form still posts explicit values, and the
 only state written is app/state/last_form.json (the form's non-date fields,
-restored when the console starts with no form in memory). GET
-/api/forecast/week-info is read-only; routes/forecast.py includes the
-router.
+restored when the console starts with no form in memory). The read-only
+GET /api/forecast/week-info (routes/forecast.py) answers with week_info.
 """
 from __future__ import annotations
 
@@ -16,10 +15,6 @@ import re
 import time
 from datetime import date, timedelta
 from pathlib import Path
-
-from fastapi import APIRouter
-
-router = APIRouter()
 
 #: the file the last form's non-date fields live in (under runs.APP_STATE,
 #: read at call time so the test suite's state folder applies)
@@ -129,13 +124,6 @@ def week_info(week: str, today=None, now=None) -> dict:
     badge = list(st.get("badge") or ("neutral", "window unknown"))
     return {"week": w.isoformat(), "reference": ref, "badge": badge,
             "state": st.get("state", ""), "text": st.get("text", "")}
-
-
-@router.get("/api/forecast/week-info")
-def api_week_info(week: str = ""):
-    """The Forecast form's date row (read-only): a week's reference date
-    and FluSight window badge."""
-    return week_info(week)
 
 
 def next_round(default_week: str, today=None) -> dict | None:
