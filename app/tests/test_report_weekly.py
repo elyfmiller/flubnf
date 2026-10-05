@@ -124,15 +124,21 @@ def test_weekly_report_is_theme_aware(tmp_path):
                  'MAP["#34C0F0"]=css("--gold"'):
         assert pair in charted, pair
     # the pass re-runs from a per-plot snapshot on themechange, retinting in
-    # both directions; member colors are deliberately not in the map
+    # both directions; the two shipped members' colours and band fills
+    # follow the report's own tokens (the Groundhog's gold is darker on a
+    # light card), the other members' literals are left alone
     assert "addEventListener('themechange',pass)" in charted
     assert "_flubnfBaked" in charted
-    from app.core.report_v2 import MEMBER_COLORS
+    from app.core.report_v2 import MEMBER_COLORS, band_literal
     retint = charted.split("function pass()", 1)[1].split("</script>", 1)[0]
-    for m, col in MEMBER_COLORS.items():
-        if m == "ensemble":        # the ensemble literal IS the accent cyan
-            continue
-        assert f'MAP["{col}"]' not in retint, m
+    for m in ("pf", "analogue"):
+        assert f'MAP["{MEMBER_COLORS[m]}"]=css("--model-{m}"' in retint, m
+        for lvl in ("95", "50"):
+            assert (f'MAP["{band_literal(m, lvl)}"]=css("--rp-band-{m}-{lvl}"'
+                    in retint), (m, lvl)
+    assert f'MAP["{MEMBER_COLORS["pf_filter"]}"]' not in retint
+    for tok in ("--model-pf:", "--model-analogue:", "--rp-band-pf-95:"):
+        assert tok in charted, tok
 
 
 def test_weekly_report_map_swatches_ride_the_category_tokens(tmp_path):
@@ -168,18 +174,20 @@ def test_weekly_report_keeps_its_build_contract(tmp_path):
         settings_html='<p class="hint runsettings"><strong>Run settings:'
                       "</strong> engine pf</p>",
         fitted_fips=["39"]).read_text(encoding="utf-8")
-    # the run card's stat: label, value, unit
-    assert "<dt>Run wall time</dt>" in html
-    assert '<span class="uk-stat-v" id="runtime">1:02:05</span>' in html
-    assert '<span class="uk-stat-u">h:mm:ss</span>' in html
+    # the run card's stat in words (h:mm:ss in its "?"), the settings
+    # folded under "Run details"
+    assert "<dt>Run time" in html
+    assert '<span class="uk-stat-v" id="runtime">1 h 2 min 5 s</span>' in html
+    assert "Wall time 1:02:05 (h:mm:ss)" in html
+    assert '<span class="uk-fold-sum">Run details</span>' in html
     assert "Run settings" in html
-    assert "no data (reporting gap)" in html
-    assert "shown as gaps, never interpolated" in html
+    assert "</span>no data<" in html
+    assert "Gaps are shown, never filled in." in html
     assert "not fitted in this run" in html
     # no recorded scope: the gap is not asserted for states nobody checked
     html2 = build_report(
         "2098-01-03", {}, {}, {}, tmp_path / "r2.html").read_text(encoding="utf-8")
-    assert "no data (reporting gap)" not in html2
+    assert "</span>no data<" not in html2
     assert "no data in this view" in html2
     assert "not fitted in this run" not in html2
 

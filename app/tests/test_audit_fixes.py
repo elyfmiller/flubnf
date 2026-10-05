@@ -80,7 +80,8 @@ def test_wis_card_discloses_the_cell_rule():
         "horizon": [1, 1], "wis": [10.0, 12.0], "base_wis": [20.0, 12.0],
         "rel": [0.5, 1.0]})
     html = scoring.summary_table_html(df)
-    assert "A cell is scored when settled truth exists" in html
+    # the weekly report's words for the rule (scoring.REPORT_CELL_RULE)
+    assert "A scored week is one forecast of one week's admissions" in html
     # FluSight's rule: a week of 0 is scored, as the official scores do
     assert "a week of 0 included" in html
     assert "as in FluSight's own scoring" in html

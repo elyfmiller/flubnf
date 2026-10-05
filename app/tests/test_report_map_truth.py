@@ -56,10 +56,12 @@ def test_a_bare_card_in_scope_hovers_no_forecast_like_its_legend(tmp_path):
         fitted_fips=["50", "39"]).read_text()
     assert "</span>no forecast<" in _legend(html)
     hv = _hover(html, "50")
-    assert "no forecast" in hv and "reporting gap" not in hv
-    # a card-less state in scope (an older bundle's gap) still reads the gap
-    assert "reporting gap" in _hover(html, "39")
-    assert "reporting gap" in _legend(html)
+    assert "no forecast" in hv and "no data" not in hv
+    # a card-less state in scope (an older bundle's gap) still reads the
+    # gap: "no data" in hover and legend, hatched on the map
+    assert _hover(html, "39").endswith("<br>no data")
+    assert "</span>no data<" in _legend(html)
+    assert 'fill="url(#nodata-hatch)"' in html
 
 
 def test_pipeline_report_names_the_reason_and_keeps_gap_for_real_gaps(
@@ -82,11 +84,11 @@ def test_pipeline_report_names_the_reason_and_keeps_gap_for_real_gaps(
                                      an_q={"Ohio": _gh_q()})
     html = (tmp_path / "report.html").read_text()
     leg = _legend(html)
-    assert "</span>no forecast<" in leg and "reporting gap" in leg
+    assert "</span>no forecast<" in leg and "</span>no data<" in leg
     ut = _hover(html, n2f["Utah"])
     assert "no forecast: newest week reads 0" in ut
-    assert "reporting gap" not in ut
-    assert "reporting gap" in _hover(html, n2f["Vermont"])
+    assert "no data" not in ut
+    assert _hover(html, n2f["Vermont"]).endswith("<br>no data")
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     assert bundle["gap_fips"] == [n2f["Vermont"]]
     assert bundle["no_forecast"]["analogue"] == {
@@ -107,7 +109,8 @@ def _gh_run(tmp_path, scores=None):
         spec, tmp_path, {}, obs, pd.DataFrame(), locs, n2f, 1.0, {},
         an_q={"Ohio": _gh_q(), "US": _gh_q(1000.0)}, **kw)
     html = (tmp_path / "report.html").read_text()
-    return html[html.index('id="st-US"'):]
+    i = html.index('id="st-US"')
+    return html[i:html.index("</section>", i)]
 
 
 def test_groundhog_only_accuracy_card_names_the_model_it_waits_on(tmp_path):
@@ -201,7 +204,9 @@ def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
     assert b["reference_date"] == str(hub_reference_date("2098-01-03").date())
     assert report_v2.bundle_asof(b) == "2098-01-03"
     report_v2.render_bundle(b, tmp_path / "again.html")
-    assert "week of 2098-01-03" in (tmp_path / "again.html").read_text()
+    again = (tmp_path / "again.html").read_text()
+    assert "Data through Fri Jan 3, 2098" in again
+    assert "FluSight reference date 2098-01-10" in again
 
 
 def test_report_names_the_runs_recorded_build_like_the_run_page(tmp_path,
@@ -249,4 +254,4 @@ def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):
            "details": {}, "national": {"summary_html": ""}}
     assert report_v2.bundle_asof(old) == "2098-01-03"
     html = report_v2.render_bundle(old, tmp_path / "r.html").read_text()
-    assert "week of 2098-01-03" in html
+    assert "Data through Fri Jan 3, 2098" in html

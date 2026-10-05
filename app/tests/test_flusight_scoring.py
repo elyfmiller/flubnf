@@ -431,15 +431,21 @@ def test_the_weekly_table_states_the_rule_and_what_the_us_row_is():
         {"location": "US", "fips": "US", "horizon": 1, "wis": 9.0,
          "base_wis": 10.0}])
     html = scoring.summary_table_html(df)
-    assert scoring.CELL_RULE_NOTE in html
-    # a run that does not say what its US pf is gets the note for both eras
-    assert usn.PF_US_NOTE in html
-    # a run's own oracle.json says: the note for its era alone
+    # the weekly report goes to collaborators: the rule and the US row in
+    # public words (the console keeps CELL_RULE_NOTE and PF_US_NOTES)
+    assert scoring.REPORT_CELL_RULE in html
+    # a run that does not say what its US pf is gets the current era's line
+    assert usn.REPORT_PF_US_NOTE in html
+    # a run's own oracle.json says: the line for its era
     for step in (usn.STEPPED, usn.FILTER):
         html = scoring.summary_table_html(df, us_step=step)
-        assert usn.PF_US_NOTES[step] in html and usn.PF_US_NOTE not in html
+        assert usn.REPORT_PF_US_NOTES[step] in html
+        for words in ("addendum", "oracle.json", "outside_member"):
+            assert words not in html, words
     assert "without the Oracle step" not in scoring.summary_table_html(
         df, us_step=usn.STEPPED)
+    assert "without the Oracle step" in scoring.summary_table_html(
+        df, us_step=usn.FILTER)
     # the Groundhog's US row is its own forecast: no such note
     for step in (None, usn.STEPPED, usn.FILTER):
         an = scoring.summary_table_html(df, "analogue", us_step=step)
@@ -481,11 +487,15 @@ def test_the_weekly_report_follows_the_runs_oracle_json(tmp_path):
         bundle = json.loads((wr / report_v2.BUNDLE_NAME).read_text())
         return bundle["national"]["summary_html"]
 
+    # the report's public wording for each era (the console keeps
+    # PF_US_NOTES)
     stepped = card("both", [])
-    assert usn.PF_US_NOTES[usn.STEPPED] in stepped
-    assert usn.PF_US_NOTE not in stepped
+    assert usn.REPORT_PF_US_NOTES[usn.STEPPED] in stepped
+    assert usn.REPORT_PF_US_NOTES[usn.FILTER] not in stepped
     filt = card("outside", ["US"])
-    assert usn.PF_US_NOTES[usn.FILTER] in filt
+    assert usn.REPORT_PF_US_NOTES[usn.FILTER] in filt
+    for words in ("addendum", "oracle.json", "outside_member"):
+        assert words not in stepped and words not in filt
 
 
 def test_the_earlier_rule_note_names_each_set_of_figures():

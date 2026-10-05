@@ -341,6 +341,16 @@ def earlier_rule_note(stored: list, fresh: list) -> str:
             "The two rules can give slightly different figures.")
 
 
+#: the cell rule in the weekly report's words (it goes to collaborators):
+#: the same rule as CELL_RULE_NOTE, which the console's Methods keeps
+REPORT_CELL_RULE = (
+    "A scored week is one forecast of one week's admissions. It counts once "
+    "that week's settled count exists (a week of 0 included), when the "
+    "model forecast it and FluSight's baseline forecast it too, as in "
+    "FluSight's own scoring.")
+#: the relWIS explanation beside the weekly report's accuracy tables
+RELWIS_HINT = "relative WIS, below 1 beats the FluSight baseline"
+
 #: the empty-table placeholder (the weekly report recognises it)
 NO_SCORES_HTML = ("<p class='hint'>No scored weeks yet. relWIS appears once "
                   "truth for forecast weeks is published.</p>")
@@ -357,14 +367,17 @@ def _member_name(model: str) -> str:
 
 def summary_table_html(df: pd.DataFrame, model: str | None = None,
                        us_step: str | None = None) -> str:
-    """The report's WIS-breakdown card for one member (`model`, default the
-    Oracle SIHRS): the member named in the header, ok/bad classes, each
-    score with its cell count; a placeholder when empty, naming the member
+    """The weekly report's accuracy table for one member (`model`, default
+    the Oracle SIHRS), folded: the summary line names the member and its
+    pooled relWIS over its scored weeks (data-model, data-pooled and data-n
+    carry them for the page), the table opens beneath with ok/bad classes
+    and each score's count; a placeholder when empty, naming the member
     when `model` is given. The US row keeps its own (fitted) line but stays
     out of the pooled total (us_national.POOLED_INCLUDES_US). `us_step` is
     the run's Oracle step on the US cell (us_national.us_step_week of its
     workroot), which the Oracle SIHRS US row's note follows; None (the run
-    does not say) keeps the note that covers both eras."""
+    does not say) keeps the current era's line. Public wording throughout
+    (us_national.REPORT_*, REPORT_CELL_RULE)."""
     from app.core import us_national as usn
     if df.empty:
         if model is None:
@@ -382,8 +395,11 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
     has_us = len(pooled) != len(df)
     total = (pooled.wis.sum() / pooled.base_wis.sum()) if len(pooled) else None
 
+    def cls(v):
+        return "ok" if v < 1 else "bad"
+
     def score_td(v):
-        return f'<td class="num {"ok" if v < 1 else "bad"}">{v:.3f}</td>'
+        return f'<td class="num {cls(v)}">{v:.3f}</td>'
 
     def label_of(l):
         return (usn.SHORT_LABELS[usn.FITTED] if usn.is_us(l) else str(l))
@@ -399,18 +415,30 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
         f'<tr class="total"><td>{total_label}</td>{score_td(total)}'
         f'<td class="num hint">{len(pooled)}</td></tr>'
         if total is not None else "")
-    note = (f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>' if has_us else "")
+    note = (f'<p class="hint">{usn.REPORT_POOLED_NOTE}</p>' if has_us else "")
     # disclose the cell rule where the counts render; the frame's own
     # truth_source stamp wins over the (racy) module global
     src = getattr(df, "attrs", {}).get("truth_source", TRUTH_SOURCE)
-    rule = ('<p class="hint">' + CELL_RULE_NOTE
+    rule = ('<p class="hint">' + REPORT_CELL_RULE
             + (f" Truth source: {src}."
                if src != "settled" else "") + '</p>')
     # what the Oracle SIHRS member's US row is in this run: with the step
-    # (addendum A3) or the Liu-West filter alone
-    us_note = (f'<p class="hint">{usn.pf_us_note(us_step)}</p>'
+    # or the Liu-West filter alone
+    us_note = (f'<p class="hint">{usn.report_pf_us_note(us_step)}</p>'
                if has_us and (model or "pf") == "pf" else "")
-    return ('<table><thead><tr><th>Location</th>'
-            f'<th class="num">{member} relWIS</th>'
-            '<th class="num">Cells</th></tr></thead><tbody>'
-            + rows + total_row + "</tbody></table>" + note + us_note + rule)
+    if total is not None:
+        head = (f'<span class="rp-acc-m">{member}</span> pooled relWIS '
+                f'<b class="relwis {cls(total)}">{total:.3f}</b> over '
+                f'{len(pooled):,} scored weeks')
+        data = f' data-pooled="{total:.3f}" data-n="{len(pooled)}"'
+    else:
+        head = f'<span class="rp-acc-m">{member}</span> US row only'
+        data = ""
+    return (f'<details class="rp-acc" data-model="{model or "pf"}"{data}>'
+            f'<summary>{head}</summary>'
+            '<table><thead><tr><th>Location</th>'
+            f'<th class="num"><abbr title="{RELWIS_HINT}">{member} relWIS'
+            '</abbr></th>'
+            '<th class="num">Scored weeks</th></tr></thead><tbody>'
+            + rows + total_row + "</tbody></table>" + note + us_note + rule
+            + "</details>")

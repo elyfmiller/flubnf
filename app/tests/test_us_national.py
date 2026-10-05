@@ -300,7 +300,7 @@ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
     assert "US (fitted)" in html                  # its own labelled row
     assert "All jurisdictions (US excluded)" in html
     assert '<td class="num ok">0.500</td>' in html   # Ohio alone, not 0.892
-    assert "never joins the pooled average" in html
+    assert "is not part of the pooled average" in html
     # 0.892 would be the figure with US pooled in
     assert "0.892" not in html
 

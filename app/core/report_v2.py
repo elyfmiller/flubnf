@@ -7,8 +7,13 @@ theme-aware HTML file per week (plotly.js embedded once, no network).
   * build-time SVG US map (usmap), states shaded by modal rate-change
     category, intensity by probability, hover card; optional national map
     view and a per-model outlook toggle
-  * click a state -> its section (fan vs observed, categorical bar, recent
-    data), each with a back-to-map button; a National section likewise
+  * click a state (or Tab to it, Enter) -> its section, right under the
+    map: both members' fans vs observed, the categorical bar, recent data
+    and the forecast numbers, with a back-to-map button; a National
+    section likewise, its accuracy tables folded
+  * a summary line, a sticky jump bar, the states by category in words,
+    the color-blind safe switch in the header; print is light with the
+    color-vision category scale
   * no-data states are explicit and claim only what was checked: in the
     run's recorded scope with no reported data = reporting gap, in scope
     with data = 'no forecast' (and why), outside = 'not fitted in this
@@ -57,7 +62,7 @@ from app.core.html_page import (
     theme_boot_script,
     theme_token_css,
 )
-from app.core.usmap import CAT_COLOR, CATS, NO_DATA
+from app.core.usmap import CAT_COLOR, CATS, NO_DATA, cat_fill
 
 # --------------------------------------------------- 1. palette and names
 # build-time chart palette (nau.css dark theme): figures are built with these
@@ -127,8 +132,9 @@ def toggle_models(available) -> list:
     order = [m for m in MODEL_ORDER if m in avail]
     return order + [m for m in avail if m not in MODEL_ORDER]
 
-# wheel zoom, double-click reset, pruned hover modebar, responsive sizing
-PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
+# no wheel zoom (a detail chart must not catch the page's scroll),
+# double-click reset, pruned hover modebar, responsive sizing
+PLOTLY_CONFIG = {"scrollZoom": False, "doubleClick": "reset+autosize",
                  "responsive": True,
                  "displayModeBar": "hover", "displaylogo": False,
                  # Plotly's legend hint covered nearby controls
@@ -151,7 +157,10 @@ BUNDLE_VERSION = 8
 #: "model" (a Groundhog fan where the state has no PF samples), v7 asof
 #: (before it, "reference_date" held the as-of; it now holds the hub's
 #: reference date, as-of + 7; read the as-of through bundle_asof), v8
-#: grid (the "All locations" pages, report_grid; absent: no such pages)
+#: grid (the "All locations" pages, report_grid; absent: no such pages).
+#: render_bundle also reads the grid for the detail sections' second
+#: member (its interval and the forecast numbers), so no new field was
+#: needed for them: a bundle without a grid draws its one stored member
 SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
@@ -199,6 +208,30 @@ def fan_quantiles_from_grid(forecast_times, grid_by_time,
 
 
 # ------------------------------------------------------------- 3. figures
+#: the detail fan's members in drawing order: the Groundhog first, the
+#: Oracle SIHRS on top (report_grid draws its panels the same way)
+FAN_MODELS = ("analogue", "pf")
+#: the two intervals a member's detail fan draws, widest first
+FAN_BANDS = ((0.025, 0.975, "95"), (0.25, 0.75, "50"))
+#: baked band fills: a member's colour at these alphas; _retint_js swaps
+#: each literal for its --rp-band-<model>-<level> token (page_style sets
+#: one alpha for light cards, a stronger one for dark cards)
+_BAND_ALPHA = {"95": 0.17, "50": 0.36}
+#: the light-card Groundhog colour (3:1 or more on every light card; the
+#: player's yellow stays for dark cards)
+ANALOGUE_ON_LIGHT = "#A87300"
+
+
+def _member_hex(model: str) -> str:
+    return MEMBER_COLORS.get(model, _MEMBER_COLOR_FALLBACK.get(model,
+                                                               "#888888"))
+
+
+def band_literal(model: str, level: str) -> str:
+    """The baked fill of one member's band ("95" or "50")."""
+    return _rgba(_member_hex(model), _BAND_ALPHA[level])
+
+
 def _fig_layout(fig, height=340, title="", legend=False):
     # 14px chart text (above the 13.1px hint floor), title a step up;
     # automargin sizes margins to the labels; a legend adds figure height
@@ -213,8 +246,9 @@ def _fig_layout(fig, height=340, title="", legend=False):
                    tickformat="%b %-d"),
         yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True),
         showlegend=legend,
+        # one row under the plot, left-aligned
         legend=dict(orientation="h", x=0, xanchor="left",
-                    y=-0.16, yanchor="top",
+                    y=-0.14, yanchor="top",
                     font=dict(size=14, color=INK),
                     bgcolor="rgba(0,0,0,0)"))
     return fig
@@ -249,43 +283,93 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
         gaps=gaps, title=title, settled=settled)
 
 
+def grid_quantiles(fan: dict) -> dict:
+    """A report_grid panel fan ({"times", "q": per horizon [q2.5, q25,
+    q50, q75, q97.5]}) as a {time: {level: value}} grid."""
+    from app.core.report_grid import LEVELS
+    return {str(t): {str(lv): float(v) for lv, v in zip(LEVELS, row)}
+            for t, row in zip(fan.get("times") or [], fan.get("q") or [])}
+
+
 def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                               quantiles_by_time, gaps=(), title="",
-                              settled=None, band_color=None):
-    """The same fan, drawn from a stored quantile grid (see fan_quantiles).
-    This is the path render_bundle takes, so a rebuilt report draws its
-    fans with the current design code rather than replaying baked figures.
-    `band_color`: the member's colour for the bands (None: the PF's)."""
+                              settled=None, band_color=None, model=None,
+                              others=None):
+    """The detail fan, drawn from a stored quantile grid (see
+    fan_quantiles). This is the path render_bundle takes, so a rebuilt
+    report draws its fans with the current design code rather than
+    replaying baked figures.
+
+    Each member (`model`, default the Oracle SIHRS, or the member whose
+    colour `band_color` is; plus `others`, model -> a {time: {level:
+    value}} grid) draws its 95% and 50% bands and its median in its own
+    colour, the median joined to the last observed week; the Groundhog's
+    95% band is outlined so an overlap never turns grey. The y axis starts
+    at 0; the card heading names the chart (`title` is kept for callers
+    and not drawn); the legend is one row, one entry per member."""
     import plotly.graph_objects as go
+    if model is None:
+        model = next((m for m, c in MEMBER_COLORS.items()
+                      if band_color and c.lower() == band_color.lower()),
+                     "pf")
+    members = {model: quantiles_by_time}
+    for m, q in (others or {}).items():
+        if m not in members and q:
+            members[m] = q
+    order = ([m for m in FAN_MODELS if m in members]
+             + [m for m in members if m not in FAN_MODELS])
+    ft = list(forecast_times)
+    o_t, o_v = list(observed_times), list(observed)
     fig = go.Figure()
-    for lo, hi, color, band_name in _bands(band_color):
-        upper = [_q_at(quantiles_by_time[str(t)], hi)
-                 for t in forecast_times]
-        lower = [_q_at(quantiles_by_time[str(t)], lo)
-                 for t in forecast_times]
-        fig.add_scatter(x=list(forecast_times) + list(forecast_times)[::-1],
-                        y=upper + lower[::-1], fill="toself", fillcolor=color,
-                        # a band is its fill: Plotly's default for a short
-                        # trace adds markers in its own palette at the edges
-                        mode="lines",
-                        line=dict(width=0), hoverinfo="skip",
-                        name=band_name, showlegend=True)
-    med = [_q_at(quantiles_by_time[str(t)], 0.5) for t in forecast_times]
-    fig.add_scatter(x=list(forecast_times), y=med, mode="lines+markers",
-                    line=dict(color=ACCENT, width=2.2),
-                    name="median forecast",
-                    hovertemplate="%{x|%b %-d}: %{y:.0f}<extra>forecast</extra>")
-    fig.add_scatter(x=list(observed_times), y=list(observed),
+    for m in order:
+        qm = members[m]
+        col = _member_hex(m)
+        short = MODEL_SHORT.get(m, m)
+        for lo, hi, lvl in FAN_BANDS:
+            upper = [_q_at(qm[str(t)], hi) for t in ft]
+            lower = [_q_at(qm[str(t)], lo) for t in ft]
+            outline = m == "analogue" and lvl == "95"
+            fig.add_scatter(
+                x=ft + ft[::-1], y=upper + lower[::-1], fill="toself",
+                fillcolor=band_literal(m, lvl),
+                # a band is its fill: Plotly's default for a short trace
+                # adds markers in its own palette at the edges
+                mode="lines",
+                line=(dict(color=col, width=1.2, dash="dot") if outline
+                      else dict(width=0)),
+                hoverinfo="skip", name=f"{short}: {lvl}% interval",
+                legendgroup=m, showlegend=False)
+    for m in order:
+        qm = members[m]
+        col = _member_hex(m)
+        short = MODEL_SHORT.get(m, m)
+        xs = list(ft)
+        ys = [_q_at(qm[str(t)], 0.5) for t in ft]
+        tips = ["%{x|%b %-d}: %{y:,.0f}<extra>" + short + " median</extra>"
+                ] * len(ft)
+        sizes = [6] * len(ft)
+        if o_t:
+            xs, ys = [o_t[-1]] + xs, [o_v[-1]] + ys
+            tips = ["%{x|%b %-d}: %{y:,.0f}<extra>latest</extra>"] + tips
+            sizes = [0] + sizes
+        fig.add_scatter(x=xs, y=ys, mode="lines+markers",
+                        line=dict(color=col, width=2.2),
+                        marker=dict(size=sizes, color=col),
+                        name=short, legendgroup=m, hovertemplate=tips,
+                        # the legend reads Oracle SIHRS, Groundhog, observed
+                        legendrank=(1 if m == "pf" else 2))
+    fig.add_scatter(x=o_t, y=o_v,
                     mode="lines+markers",
                     line=dict(color=INK, width=1.6),
-                    marker=dict(size=5), name="observed",
-                    hovertemplate="%{x|%b %-d}: %{y:.0f}<extra>observed</extra>")
+                    marker=dict(size=5), name="observed", legendrank=3,
+                    hovertemplate="%{x|%b %-d}: %{y:,.0f}"
+                                  "<extra>observed</extra>")
     if settled:
         fig.add_scatter(x=[d for d, _ in settled], y=[v for _, v in settled],
                         mode="lines+markers", name="what happened (settled)",
                         line=dict(color=INK, width=1.3, dash="dot"),
                         marker=dict(size=4),
-                        hovertemplate="%{x|%b %-d}: %{y:.0f}"
+                        hovertemplate="%{x|%b %-d}: %{y:,.0f}"
                                       "<extra>settled</extra>")
     for g in gaps:
         if isinstance(g, str):          # ISO week date -> +/- 3.5 days
@@ -298,17 +382,28 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                       opacity=0.5, line_width=0,
                       annotation_text="no data", annotation_font_color=MUT,
                       annotation_font_size=13)
-    return _fig_layout(fig, title=title, legend=True)
+    fig = _fig_layout(fig, legend=True)
+    # counts from 0, thousands as "2.5k"
+    fig.update_yaxes(rangemode="tozero", tickformat="~s")
+    return fig
+
+
+#: the categorical bars' labels, two short lines each (never rotated)
+CAT_TICK = {"large_decrease": "large<br>decrease", "decrease": "decrease",
+            "stable": "stable", "increase": "increase",
+            "large_increase": "large<br>increase"}
 
 
 def cat_bar(probs):
     import plotly.graph_objects as go
     fig = go.Figure(go.Bar(
-        x=[CAT_LABEL[c] for c in CATS], y=[probs.get(c, 0) for c in CATS],
+        x=[CAT_TICK[c] for c in CATS], y=[probs.get(c, 0) for c in CATS],
+        customdata=[CAT_LABEL[c] for c in CATS],
         marker_color=[CAT_COLOR[c] for c in CATS],
-        hovertemplate="%{x}: %{y:.0%}<extra></extra>"))
-    f = _fig_layout(fig, height=230, title="categorical forecast (1 wk)")
+        hovertemplate="%{customdata}: %{y:.0%}<extra></extra>"))
+    f = _fig_layout(fig, height=230)
     f.update_yaxes(tickformat=".0%", range=[0, 1])
+    f.update_xaxes(tickangle=0)
     return f
 
 
@@ -326,13 +421,19 @@ def _html(fig, include_js=False, div_id=None):
 # --------------------------------------------------------- 4. page chrome
 def _retint_js() -> str:
     """Rewrite the baked dark-kit literals to the resolved theme tokens
-    (incl. --cat-*, --ok/--bad, the accent via --gold). Member colours are
-    deliberately excluded (already dichromat-spaced). Re-runs from a
-    snapshot of the baked figure on every themechange."""
+    (incl. --cat-*, --ok/--bad, the accent via --gold), the two shipped
+    members' colours to --model-pf / --model-analogue and their band fills
+    to --rp-band-* (page_style: the Groundhog's gold and the band alphas
+    differ between light and dark cards). Re-runs from a snapshot of the
+    baked figure on every themechange."""
     pairs = [(CARD, "--card"), (INK, "--ink"), (MUT, "--mut"),
              (LINE, "--line"), (OK, "--ok"), (BAD, "--bad"),
              (ACCENT, "--gold")]
     pairs += [(CAT_COLOR[c], "--cat-" + c.replace("_", "-")) for c in CATS]
+    for m in FAN_MODELS:
+        pairs.append((_member_hex(m), f"--model-{m}"))
+        pairs += [(band_literal(m, lvl), f"--rp-band-{m}-{lvl}")
+                  for _lo, _hi, lvl in FAN_BANDS]
     lines = "".join(
         f"MAP[{json.dumps(col)}]=css({json.dumps(var)},{json.dumps(col)});"
         for col, var in pairs)
@@ -384,17 +485,185 @@ def _week_ticks_js() -> str:
             "FluCharts.adoptAll();</script>")
 
 
+def _print_charts_js() -> str:
+    """The charts' print step (the page's beforeprint and afterprint call
+    it): each shown chart takes the printed card's width (a Letter page
+    less its margins), its week ticks refitted, then its own width again.
+    Synchronous, as a browser prints right after its beforeprint
+    handlers, before any timer runs."""
+    return """<script>
+window.rpPrintCharts = function(printing) {
+  if (!window.Plotly) return;
+  var PRINT_W = 680;
+  var gs = document.querySelectorAll('.js-plotly-plot');
+  for (var i = 0; i < gs.length; i++) {
+    var g = gs[i];
+    if (!g.offsetParent) continue;
+    if (printing) Plotly.relayout(g, {width: PRINT_W, autosize: false});
+    else Plotly.relayout(g, {width: null, autosize: true});
+    if (window.FluCharts && FluCharts.refit) {
+      g._fluFitting = false;
+      FluCharts.refit(g);
+    }
+  }
+};
+</script>"""
+
+
+#: the header's color-blind safe switch: sets data-vision on the page (the
+#: console's own modifier, so the map, the categories and the status
+#: colours follow) and redraws the charts; works from a file:// copy
+_VISION_BTN = (
+    '<button type="button" id="visionbtn" class="rp-btn" aria-pressed="false"'
+    ' onclick="(function(b){var de=document.documentElement,'
+    "on=de.getAttribute('data-vision')!=='cvd';"
+    "if(on)de.setAttribute('data-vision','cvd');"
+    "else de.removeAttribute('data-vision');"
+    "b.setAttribute('aria-pressed',String(on));"
+    "try{dispatchEvent(new Event('themechange'));}catch(e){}"
+    '})(this)">Color-blind safe</button>'
+    "<script>(function(){var b=document.getElementById('visionbtn');"
+    "if(b)b.setAttribute('aria-pressed',String(document.documentElement"
+    ".getAttribute('data-vision')==='cvd'));})();</script>")
+
+
 def page_header() -> str:
     """The report's header bar, one source: the console's navbar lockup
-    (the theme's mark, the wordmark) with the report's name and the way
-    back. build_report embeds it, and legacy_theme_carry inserts it into
-    stored reports that predate it."""
+    (the theme's mark, the wordmark) with the report's name, the
+    color-blind safe switch and the way back. build_report embeds it, and
+    legacy_theme_carry inserts it into stored reports that predate it."""
     return """<header class="brandrow"><span class="brand"><span class="mark" aria-hidden="true"></span><span><em>Flu</em>BNF</span></span>
  <span class="brandsub">weekly forecast report</span>
  <span class="spacer"></span>
+ """ + _VISION_BTN + """
  <a id="appback" class="rp-btn" href="#" hidden
   onclick="history.back();return false">&larr; back to FluBNF</a>
 </header>"""
+
+
+def _report_tokens_css() -> str:
+    """The report's own colour tokens, after nau.css's blocks: the
+    members' colours (--model-pf, --model-analogue), the detail fans' band
+    fills (--rp-band-*), the grid band alpha (--rp-band-a) and a no-data
+    fill at 3:1 or more on every card (--map-nodata), each for light and
+    for dark cards. Plain CSS (no format fields)."""
+    pf = _member_hex("pf")
+    an = _member_hex("analogue")
+
+    def rgb(h):
+        return ",".join(str(int(h.lstrip("#")[i:i + 2], 16))
+                        for i in (0, 2, 4))
+    light = (f"--model-pf:{pf};--model-analogue:{ANALOGUE_ON_LIGHT};"
+             "--rp-band-a:.22;"
+             f"--rp-band-pf-95:rgba({rgb(pf)},.13);"
+             f"--rp-band-pf-50:rgba({rgb(pf)},.30);"
+             f"--rp-band-analogue-95:rgba({rgb(ANALOGUE_ON_LIGHT)},.10);"
+             f"--rp-band-analogue-50:rgba({rgb(ANALOGUE_ON_LIGHT)},.26);"
+             "--map-nodata:#8E89A6")
+    dark = (f"--model-analogue:{an};--rp-band-a:.36;"
+            f"--rp-band-pf-95:rgba({rgb(pf)},.30);"
+            f"--rp-band-pf-50:rgba({rgb(pf)},.52);"
+            f"--rp-band-analogue-95:rgba({rgb(an)},.12);"
+            f"--rp-band-analogue-50:rgba({rgb(an)},.30);"
+            "--map-nodata:#7D83A3")
+    darks = ",".join(f'[data-theme="{t}"]'
+                     for t in ("dim", "dark", "nord", "dracula"))
+    return f"""
+ /* the report's colour tokens (members, bands, no data), light cards
+    then dark cards */
+ :root{{{light}}}
+ {darks}{{{dark}}}"""
+
+
+def _report_css() -> str:
+    """The report's newer rules (jump bar, summary line, category list,
+    accuracy fold, detail tables, forced colours, phone width); plain CSS,
+    page_style appends it before its print block."""
+    return """
+ /* one spacing step between the top-level cards */
+ main > .card,main > section,main > aside{margin:0 0 var(--rp-gap)}
+ main > section.state{margin:0}
+ main > section.state:not([hidden]){margin:0 0 var(--rp-gap)}
+ .card h3{font-size:var(--fs-h2);margin:0 0 .55rem;text-transform:uppercase;
+   letter-spacing:.05em;color:var(--mut);font-weight:600}
+ .card .uk-heading > h3{margin:0}
+ .card > .uk-heading{margin:0 0 .45rem}
+ /* the summary line under the title */
+ .rp-summary{margin:0 0 var(--sp-3);max-width:80rem;color:var(--ink);
+   font-size:var(--fs-sub);line-height:1.45}
+ .rp-summary b{font-weight:700;font-variant-numeric:tabular-nums}
+ .rp-summary .rp-up{color:var(--bad)}.rp-summary .rp-down{color:var(--ok)}
+ /* the jump bar: sticky on screen, gone on paper */
+ .rp-jump{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;
+   align-items:center;gap:.25rem .9rem;margin:0 0 var(--sp-3);
+   padding:.4rem .2rem;background:var(--bg);
+   border-bottom:1px solid var(--line);font-size:var(--fs-label)}
+ .rp-jump a{font-weight:650}
+ .rp-jump .rp-jumpsel{margin-left:auto;display:inline-flex;
+   align-items:center;gap:.4rem;color:var(--mut);font-weight:600}
+ .rp-jump select{font:inherit;color:var(--ink);background:var(--card);
+   border:1px solid var(--field-line);border-radius:6px;padding:.15rem .3rem;
+   max-width:12rem}
+ #map-anchor,#all-locations,#accuracy,#run,section.state,#us-feature{
+   scroll-margin-top:3.2rem}
+ /* pooled relWIS beside the map heading */
+ .rp-pooled{display:inline-flex;flex-wrap:wrap;align-items:baseline;
+   gap:.1rem .8rem;font-size:var(--fs-label);color:var(--mut)}
+ .rp-pooled a{color:var(--ink);font-weight:600}
+ .rp-pooled b{font-variant-numeric:tabular-nums;font-weight:750}
+ /* states by category, in words (screen readers and paper) */
+ .rp-catlist{margin:.6rem auto 0;max-width:min(980px,100%);
+   font-size:var(--fs-label);color:var(--mut)}
+ .rp-catlist dl{display:grid;grid-template-columns:max-content minmax(0,1fr);
+   gap:.1rem .8rem;margin:0}
+ .rp-catlist dt{font-weight:650;color:var(--ink);white-space:nowrap;
+   display:inline-flex;align-items:center;gap:.35rem}
+ .rp-catlist dd{margin:0}
+ .rp-catlist > summary{cursor:pointer;font-weight:600;color:var(--mut)}
+ /* the detail sections */
+ .rp-detail{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
+   gap:var(--rp-gap)}
+ .rp-detail > .card{margin:0;align-self:start}
+ @media(max-width:820px){.rp-detail{grid-template-columns:minmax(0,1fr)}}
+ .rp-fcnum{margin-top:var(--rp-gap)}
+ .rp-fcnum table{margin:0}
+ .rp-fcnum th[scope=colgroup]{text-align:center;color:var(--ink)}
+ .rp-fcnum th[scope=row]{text-transform:none;letter-spacing:0;
+   font-size:var(--fs-table);color:var(--ink);font-weight:600}
+ .rp-fcnum .rp-sw{display:inline-block;width:.8em;height:.8em;
+   border-radius:2px;margin-right:.35em;vertical-align:-.05em;
+   -webkit-print-color-adjust:exact;print-color-adjust:exact}
+ /* the accuracy card: each member's table folded under its pooled line */
+ details.rp-acc{margin:.35rem 0;border-top:1px solid var(--line);
+   padding:.45rem 0 0}
+ details.rp-acc > summary{cursor:pointer;font-size:var(--fs-body)}
+ details.rp-acc > summary .rp-acc-m{font-weight:700}
+ .rp-acc-hint{color:var(--mut);font-size:var(--fs-label);font-weight:500}
+ abbr[title]{text-decoration:none}
+ /* the run card */
+ .rp-run .uk-fold-body{margin-left:0}
+ /* the header's color-blind safe switch */
+ .rp-btn[aria-pressed="true"]{background:var(--gold-bright);
+   border-color:var(--gold-bright);color:var(--on-accent)}
+ /* phones: the run settings wrap inside the card, and the view switch
+    keeps the national button beside it */
+ .rp-ctlpair{display:inline-flex;align-items:center;gap:.5rem .9rem;
+   flex-wrap:wrap}
+ @media(max-width:520px){
+  .runsettings .kv{grid-template-columns:auto minmax(0,1fr);width:auto}
+  .rp-controls{margin-left:0}
+  .rp-jump .rp-jumpsel{margin-left:0}
+  .brandsub{display:none}
+ }
+ /* Windows high contrast: a selected switch keeps its text, and the
+    charts and the map keep their colours */
+ @media (forced-colors:active){
+  .uk-seg > button[aria-pressed="true"],.rp-btn[aria-pressed="true"],
+  .viewtoggle .on{forced-color-adjust:none;background:Highlight;
+   color:HighlightText;border-color:Highlight}
+  .usmap-wrap svg,.g-svg,.g-key i,.rp-fcnum .rp-sw,.plotly-graph-div{
+   forced-color-adjust:none}
+ }"""
 
 
 def page_style() -> str:
@@ -405,20 +674,24 @@ def page_style() -> str:
  /* console identity, theme-aware: the token blocks below are the console's
     own (nau.css, verbatim: eight themes plus the high-contrast and
     color-vision modifiers), selected at open by the boot script; then the
-    console's face and header marks, inlined, and the UI kit (nau.css's tip
-    rules and ui-kit.css, verbatim). The print block at the end flips to
-    the console's light theme so the page always prints as dark ink on a
-    light surface. The inline usmap SVG reads --card, --accent,
-    --map-nodata and the --cat-* scale: state borders match the card
-    surface, no-data reads as an explicit gap on every ground, and the
-    category fills follow the color-vision mode. */
+    report's own tokens (members, bands, no data); then the console's face
+    and header marks, inlined, and the UI kit (nau.css's tip rules and
+    ui-kit.css, verbatim). The print block at the end flips to the
+    console's light theme and the color-vision category scale so the page
+    always prints as dark ink on a light surface. The inline usmap SVG
+    reads --card, --accent, --map-nodata and the --cat-* scale: state
+    borders match the card surface, no data reads as an explicit gap on
+    every ground (hatched where nothing was reported), and the category
+    fills follow the color-vision mode. */
 {theme_token_css()}
+{_report_tokens_css()}
 {font_face_css()}
 {logo_css()}
 {kit_css()}
  /* ---- the report's own rules: the console's layout (nau.css) restated,
     the report's parts prefixed rp- ---- */
  *{{box-sizing:border-box}}
+ :root{{--rp-gap:var(--sp-4,1.1rem)}}
  html{{color-scheme:var(--scheme,light)}}
  body{{margin:0;background:var(--bg);color:var(--ink);
       font:400 var(--fs-body)/1.5 {FONT_STACK}}}
@@ -455,7 +728,7 @@ def page_style() -> str:
  .card p{{margin:.45rem 0}}
  /* the title row: title and week, then the controls at the right */
  .rp-titlerow{{display:flex;align-items:center;flex-wrap:wrap;
-  gap:.6rem 1rem;margin:0 0 var(--sp-3,.75rem)}}
+  gap:.6rem 1rem;margin:0 0 var(--sp-2,.6rem)}}
  .rp-title{{display:flex;align-items:center;flex-wrap:wrap;
   gap:.35rem .75rem;min-width:0}}
  .rp-week{{display:inline-flex;align-items:center;gap:.35em;
@@ -493,16 +766,17 @@ def page_style() -> str:
  .runsettings .kv dd{{margin:0;font-weight:650;color:var(--ink);
     font-variant-numeric:tabular-nums;overflow-wrap:anywhere}}
  .card{{background:var(--card);border:1px solid var(--line);
-        border-radius:10px;padding:.85rem 1rem;margin:0 0 .75rem;
+        border-radius:10px;padding:.85rem 1rem;margin:0 0 var(--rp-gap);
         box-shadow:var(--shadow);overflow-x:auto}}
  .grid2{{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-        gap:.75rem}}
+        gap:var(--rp-gap)}}
  .grid2 > .card{{margin:0}}
  @media(max-width:820px){{.grid2{{grid-template-columns:minmax(0,1fr)}}}}
  .offseason{{color:var(--mut);font-size:var(--fs-hint);font-style:italic;
              margin:.2rem 0 .8rem}}
  /* the map card: its heading names the model the fills come from */
  .rp-mapcard{{overflow:visible}}
+ .rp-mapcard > .uk-heading{{flex-wrap:wrap;row-gap:.3rem}}
  .mapcap{{max-width:min(880px,100%);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
  .rp-legends{{display:flex;flex-wrap:wrap;align-items:center;
@@ -519,7 +793,7 @@ def page_style() -> str:
      -webkit-print-color-adjust:exact;print-color-adjust:exact}}
  .uk-sw{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
  /* a state's (or the nation's) detail */
- section.state{{margin:1.2rem 0 0;scroll-margin-top:.5rem}}
+ section.state{{margin:0;scroll-margin-top:3.2rem}}
  .rp-sechead{{display:flex;align-items:center;flex-wrap:wrap;
   gap:.4rem .8rem;margin:0 0 .6rem}}
  .rp-sechead h2{{margin:0;font-size:var(--fs-lead,1.15rem)}}
@@ -529,7 +803,7 @@ def page_style() -> str:
         margin:.6rem 0 0;font-variant-numeric:tabular-nums}}
  td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
         text-align:left}}
- th{{color:var(--mut);font-weight:600;font-size:.72rem;
+ th{{color:var(--mut);font-weight:600;font-size:var(--fs-micro);
      text-transform:uppercase;letter-spacing:.04em}}
  td.num,th.num{{text-align:right}}
  tr.total td{{font-weight:750;border-top:2px solid var(--line);
@@ -539,7 +813,6 @@ def page_style() -> str:
  .relwis{{font-variant-numeric:tabular-nums;font-weight:650}}
  .num.hint{{color:var(--mut)}}
  /* the run: wall time and settings */
- .rp-run{{margin-top:1.2rem}}
  .rp-run .uk-stats{{margin:0 0 .3rem}}
  /* earlier reports' pill toggles and buttons (legacy_theme_carry) */
  .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
@@ -549,20 +822,284 @@ def page_style() -> str:
  .viewtoggle .on{{background:var(--gold-bright);
                   border-color:var(--gold-bright);color:var(--on-accent)}}
  .backbtn{{margin:.2rem 0 .6rem}}
+{_report_css()}
  @media print{{
   :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
    --line:#DCD8E9;--accent:#0173A9;--accent-ink:#0173A9;--gold:#0173A9;
    --nav-bg:#FFFFFF;--nav-ink:#000F7E;
-   --ok:#177245;--bad:#C42840;--map-nodata:#C9C5D8;--shadow:none}}
+   --ok:#177245;--warn:#8A5A14;--bad:#C42840;--map-nodata:#8E89A6;
+   --shadow:none;--model-analogue:{ANALOGUE_ON_LIGHT};--rp-band-a:.22;
+   --cat-large-decrease:#2C7BB6;--cat-decrease:#ABD9E9;
+   --cat-stable:#B9B09B;--cat-increase:#FDAE61;
+   --cat-large-increase:#D7191C}}
   body{{background:#FFFFFF;color:#000F7E}}
   button,select,.viewtoggle,.uk-seg,.rp-controls,.tip,.uk-tt,#appback,
-  .backbtn{{display:none!important}}
+  .backbtn,.rp-jump,.rp-pooled{{display:none!important}}
   .card{{box-shadow:none;break-inside:avoid}}
+  main > .card,main > section,main > aside{{margin-bottom:3mm}}
+  .rp-summary{{font-size:9.5pt;margin-bottom:2mm}}
+  .rp-titlerow{{margin-bottom:1mm}}
+  .rp-catlist{{font-size:7pt;margin-top:1.5mm}}
+  .rp-catlist > summary{{display:none}}
+  .mapcap{{max-width:150mm}}
+  .mapcap svg{{max-height:80mm}}
+  .rp-legends{{margin-top:1mm;font-size:8pt}}
+  .rp-mapcard{{padding:3mm 4mm}}
+  .rp-catlist dl{{gap:0 3mm}}
+  /* a detail section opened before printing starts its own page, its
+     heading kept with what follows */
+  section.state{{break-before:page}}
+  .rp-sechead,.uk-heading,h2,h3{{break-after:avoid}}
+  .rp-detail{{grid-template-columns:minmax(0,1fr)}}
+  /* "This run" under the last grid page: compact, two pairs a row */
+  .rp-run{{break-before:auto;padding:2mm 3mm;font-size:8pt}}
+  .rp-run .uk-stats{{font-size:8pt}}
+  .rp-run .runsettings .kv{{grid-template-columns:repeat(2,max-content minmax(0,1fr));
+   width:100%;gap:0 4mm;font-size:7.5pt}}
+  .rp-run details > summary{{display:none}}
  }}
 </style>"""
 
 
 # --------------------------------------------------------- 5. the report
+def _md(iso: str) -> str:
+    """'2026-08-29' -> 'Aug 29' (the value back when it does not parse)."""
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return str(iso)
+    return f"{d.strftime('%b')} {d.day}"
+
+
+def report_dates(asof: str) -> dict:
+    """The report's dates from its as-of: the reference date (as-of + 7,
+    submit.hub_reference_date's rule) and the four target weeks (horizons
+    0 to 3: the reference date and the three Saturdays after it)."""
+    from datetime import date as _date, timedelta as _td
+    try:
+        a = _date.fromisoformat(str(asof)[:10])
+    except ValueError:
+        return {}
+    ref = a + _td(days=7)
+    targets = [ref + _td(days=7 * h) for h in range(4)]
+    return {"asof": a, "ref": ref.isoformat(), "targets": targets,
+            "line": (f"Data through {a.strftime('%a %b')} {a.day}, {a.year}"
+                     f" · forecasts for {_md(targets[0].isoformat())} "
+                     f"to {_md(targets[-1].isoformat())} (FluSight reference"
+                     f" date {ref.isoformat()})")}
+
+
+def _run_time(seconds) -> str:
+    """Wall time in words: "30 min 34 s", "1 h 2 min 5 s" ("" if unknown)."""
+    try:
+        s = int(round(float(seconds)))
+    except (TypeError, ValueError):
+        return ""
+    if s < 0:
+        return ""
+    h, m, sec = s // 3600, (s % 3600) // 60, s % 60
+    parts = ([f"{h} h"] if h else []) + ([f"{m} min"] if h or m else []) \
+        + [f"{sec} s"]
+    return " ".join(parts)
+
+
+#: run-settings rows a saved report leaves out: an engine the run machine
+#: did not have, or a version the run never resolved
+_HIDDEN_SETTING = re.compile(
+    r"<dt>[^<]*</dt>\s*<dd>\s*(?:not installed|resolving(?:…|\.\.\.)?)"
+    r"\s*</dd>")
+
+
+def _pooled_figures(summary_html: str) -> list:
+    """[(member, pooled relWIS, scored weeks)] from the accuracy card: the
+    folded tables' data attributes, else (older reports) each table's
+    header and pooled row."""
+    out = []
+    for m, v, n in re.findall(r'class="rp-acc" data-model="([^"]+)" '
+                              r'data-pooled="([\d.]+)" data-n="(\d+)"',
+                              summary_html or ""):
+        out.append((MODEL_SHORT.get(m, m), float(v), int(n)))
+    if out:
+        return out
+    for tbl in (summary_html or "").split("<table")[1:]:
+        h = re.search(r'<th class="num">(?:<abbr[^>]*>)?([^<]+?) relWIS', tbl)
+        t = re.search(r'<tr class="total"><td>[^<]*</td><td class="num '
+                      r'(?:ok|bad)">([\d.]+)</td><td class="num hint">'
+                      r'(\d+)</td>', tbl)
+        if h and t:
+            out.append((h.group(1), float(t.group(1)), int(t.group(2))))
+    return out
+
+
+def _accuracy_card(summary_html: str, kit) -> str:
+    """The accuracy card in the current design: its heading in sentence
+    case with the relWIS reading beside it and the rule in its "?"; an
+    older report's tables pass through unchanged."""
+    if not summary_html:
+        return ""
+    from markupsafe import Markup
+    from app.core.scoring import RELWIS_HINT
+    head = str(kit.heading(
+        "Forecast accuracy, past weeks", id="acc",
+        tiptext="relWIS is a model's weighted interval score (WIS) divided "
+                "by the FluSight baseline's on the same weeks, pooled as a "
+                "ratio of sums. Open a model's line for its table by "
+                "location.",
+        after=Markup(f'<span class="rp-acc-hint">relWIS: {RELWIS_HINT}'
+                     '</span>')))
+    out, n = re.subn(
+        r"<div class='card'(?: id='accuracy')?><h2>(?:forecast accuracy "
+        r"\(retrospective\)|Forecast accuracy, past weeks)</h2>",
+        '<div class="card" id="accuracy">' + head.replace("\\", "\\\\"),
+        summary_html, count=1)
+    return out
+
+
+def _forecast_numbers(key: str, members: dict, times: list) -> str:
+    """The detail's forecast numbers: for each target week and member the
+    median and the 50% and 95% intervals. members: model -> {time: {level:
+    value}} (whole admissions where they come from the grid)."""
+    order = ([m for m in reversed(FAN_MODELS) if m in members]
+             + [m for m in members if m not in FAN_MODELS])
+    if not order or not times:
+        return ""
+
+    def f(v):
+        return f"{v:,.0f}"
+    head1 = "".join(
+        f'<th scope="colgroup" colspan="3"><span class="rp-sw" '
+        f'style="background:var(--model-{m},{_member_hex(m)})"></span>'
+        f'{MODEL_SHORT.get(m, m)}</th>' for m in order)
+    head2 = "".join('<th class="num">Median</th><th class="num">50%</th>'
+                    '<th class="num">95%</th>' for _m in order)
+    rows = []
+    for t in times:
+        tds = []
+        for m in order:
+            q = members[m].get(str(t))
+            if not q:
+                tds.append('<td class="num hint" colspan="3">none</td>')
+                continue
+            tds.append(f'<td class="num">{f(_q_at(q, 0.5))}</td>'
+                       f'<td class="num">{f(_q_at(q, 0.25))} to '
+                       f'{f(_q_at(q, 0.75))}</td>'
+                       f'<td class="num">{f(_q_at(q, 0.025))} to '
+                       f'{f(_q_at(q, 0.975))}</td>')
+        rows.append(f'<tr><th scope="row">{_md(t)}</th>{"".join(tds)}</tr>')
+    return (f'<div class="card rp-fcnum" id="num-{key}">'
+            '<div class="uk-heading"><h3>Forecast numbers</h3></div>'
+            '<table><thead><tr><th rowspan="2">Week ending</th>'
+            f'{head1}</tr><tr>{head2}</tr></thead><tbody>'
+            + "".join(rows) + "</tbody></table></div>")
+
+
+def _summary_line(grid, state_cards: dict, model: str) -> str:
+    """One paragraph under the title, from the grid panels at render time:
+    the US latest count and its week-on-week change, the Oracle SIHRS
+    median and 95% interval for the last target week, how many states
+    lean toward an increase or a decrease next week (the map's model) and
+    how many panels are flagged."""
+    from app.core import report_grid
+    panels = (grid or {}).get("panels") or []
+    bits = []
+    us = next((p for p in panels if p.get("key") == "US"), None)
+    if us and us.get("observed"):
+        o = us["observed"]
+        s = (f"United States: <b>{o[-1][1]:,.0f}</b> admissions in the week "
+             f"ending {_md(o[-1][0])}")
+        if len(o) > 1 and o[-2][1] > 0:
+            ch = (o[-1][1] - o[-2][1]) / o[-2][1]
+            if abs(ch) < 0.005:
+                s += ", about the same as the week before"
+            else:
+                word, cls = ("up", "rp-up") if ch > 0 else ("down", "rp-down")
+                s += (f', <span class="{cls}">{word} {abs(ch):.0%}</span> '
+                      "on the week before")
+        bits.append(s + ".")
+        fan = (us.get("models") or {}).get("pf") or \
+            next(iter((us.get("models") or {}).values()), None)
+        if fan and fan.get("q") and fan.get("times"):
+            r = fan["q"][-1]
+            who = "Oracle SIHRS" if (us.get("models") or {}).get("pf") \
+                else "Groundhog"
+            bits.append(f"{who} median for {_md(fan['times'][-1])}: "
+                        f"<b>{r[2]:,.0f}</b> (95% interval {r[0]:,.0f} to "
+                        f"{r[4]:,.0f}).")
+    up = down = 0
+    for c in (state_cards or {}).values():
+        probs = (c or {}).get("probs") or {}
+        if not probs:
+            continue
+        modal = max(probs, key=probs.get)
+        up += modal in ("increase", "large_increase")
+        down += modal in ("decrease", "large_decrease")
+    if up or down:
+        def n(k):
+            return f"{k} state" + ("" if k == 1 else "s")
+        verb = "leans" if up == 1 else "lean"
+        bits.append(f"Next week ({MODEL_SHORT.get(model, model)}): "
+                    f"{n(up)} {verb} toward an increase, {n(down)} toward a "
+                    "decrease.")
+    if panels:
+        k = sum(1 for p in panels if report_grid.flags(p))
+        bits.append(f"{k} of {len(panels)} locations flagged for a closer "
+                    "look." if k else "No location flagged for a closer look.")
+    if not bits:
+        return ""
+    return '<p class="rp-summary" id="summary">' + " ".join(bits) + "</p>"
+
+
+def _category_lists(by_model: dict, order: list, default: str, names: dict,
+                    gap: set, nofc: dict, unfitted: set) -> str:
+    """The states by category in words, under the map (a screen reader and
+    a paper copy read the map through it); one list per model on the
+    toggle, the shown one following it."""
+    if not by_model:
+        return ""
+    blocks = []
+    for m in order:
+        cards = by_model.get(m) or {}
+        groups = {c: [] for c in reversed(CATS)}
+        have = set()
+        for card in cards.values():
+            f = (card or {}).get("fips")
+            probs = (card or {}).get("probs") or {}
+            if not f or not probs or f not in names:
+                continue
+            groups[max(probs, key=probs.get)].append(names[f])
+            have.add(f)
+        rows = []
+        for c, ns in groups.items():
+            if ns:
+                rows.append((cat_fill(c), CAT_LABEL[c].capitalize(), ns))
+        nf = sorted(names[f] for f in (nofc.get(m) or set())
+                    if f in names and f not in have)
+        gp = sorted(names[f] for f in gap if f in names)
+        un = sorted(names[f] for f in unfitted if f in names)
+        if gp:
+            rows.append((usmap.GAP_SWATCH, "No data", gp))
+        if nf:
+            rows.append((NO_DATA, "No forecast", nf))
+        if un:
+            rows.append((NO_DATA, "Not fitted", un))
+        if not rows:
+            continue
+        dl = "".join(
+            f'<dt><span class="uk-sw" style="--sw:{col}" aria-hidden="true">'
+            f'</span>{lbl}</dt><dd>{", ".join(sorted(ns))}</dd>'
+            for col, lbl, ns in rows)
+        hidden = "" if m == default else " hidden"
+        blocks.append(f'<div class="rp-catmodel" data-catmodel="{m}"{hidden}>'
+                      f'<dl aria-label="States by category, '
+                      f'{MODEL_SHORT.get(m, m)}">{dl}</dl></div>')
+    if not blocks:
+        return ""
+    return ('<details class="rp-catlist" id="catlist" open>'
+            '<summary>States by category</summary>' + "".join(blocks)
+            + "</details>")
+
+
 def build_report(asof: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
@@ -572,12 +1109,14 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                  cards_model: str = "",
                  fitted_fips=None, national_in_run=None,
                  gap_fips=None, no_forecast=None, grid=None) -> Path:
-    """asof: the run's as-of date (the page's "week of").
+    """asof: the run's as-of date (the page names it with the reference
+    date and the target weeks).
     state_cards: abbr -> hover-card data (choropleth).
-    state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
-    national: dict(fan=…, acc=…, summary_html=str).
+    state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…],
+    numbers={model: {time: {level: value}}}, times=[…]).
+    national: dict(fan=…, acc=…, summary_html=str, numbers, times).
     national_map_html: usmap.national_svg output; adds the state/national view toggle.
-    elapsed_s, settings_html: footer lines; omitted when not given.
+    elapsed_s, settings_html: the run card; omitted when not given.
     model_label: who computed the map's cards (MODEL_LABEL); default PF.
     cards_by_model / national_map_cards: per-model cards; with two or more
     models a model toggle swaps fills, hovers and label client-side.
@@ -592,9 +1131,9 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     a bare card is "no forecast". no_forecast: model -> {fips: reason} for
     in-scope states that have data but no forecast from that model.
     grid: the bundle's "grid" (report_grid), drawn as the "All locations"
-    pages under the map; None (older bundles): no such pages."""
+    pages under the detail sections; None (older bundles): no such pages."""
     # build-time SVG map (usmap): plotly geo fetches its geometry from a CDN
-    cat_fill, svg_map = usmap.cat_fill, usmap.svg_map
+    svg_map = usmap.svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
     # card-less states: gaps (in scope) vs not fitted (out); no record: 'no data'
     scope = set(fitted_fips) if fitted_fips is not None else None
@@ -626,8 +1165,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     legend_items = [{"color": cat_fill(c), "text": CAT_LABEL[c]}
                     for c in CATS]
 
-    def _nodata(text, tip):
-        legend_items.append({"color": NO_DATA, "text": text, "tip": tip})
+    def _nodata(text, tip, color=NO_DATA):
+        legend_items.append({"color": color, "text": text, "tip": tip})
 
     if scope is None:
         if no_card:
@@ -635,9 +1174,10 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                     "No-data states have no data in this report's inputs.")
     else:
         if gap_states:
-            _nodata("no data (reporting gap)",
-                    "No-data states were fitted but reported nothing this "
-                    "week: shown as gaps, never interpolated.")
+            # hatched, as on the map: nothing reported
+            _nodata("no data",
+                    "Nothing was reported for these states this week. Gaps "
+                    "are shown, never filled in.", usmap.GAP_SWATCH)
         if unfitted_states:
             _nodata("not fitted in this run",
                     "Not-fitted states were outside this run's scope.")
@@ -668,6 +1208,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
            if any(isinstance(v, dict) and v.get("fips") and v.get("probs")
                   for v in (c or {}).values())}
     order = toggle_models(cbm)
+    default = cards_model or "pf"
     if len(order) >= 2:
         default = cards_model if cards_model in order else order[0]
         payload = {}
@@ -691,9 +1232,24 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                              'aria-hidden="true">Model</span>'
                              f'{model_toggle_html}</span>')
 
+    # the states by category in words, one list per model on the toggle
+    names = {f: n for f, (n, _d) in usmap.state_paths().items()}
+    nofc = {}
+    for m in (order if len(order) >= 2 else [default]):
+        have = {c.get("fips") for c in (cbm.get(m) or {}).values()
+                if isinstance(c, dict) and c.get("probs")}
+        if m == default and not cbm.get(m):
+            have = {f for f, c in cards_by_fips.items() if c.get("probs")}
+        nofc[m] = (unforecast | set(no_forecast.get(m) or {})) - have
+    lists_by_model = dict(cbm) if len(order) >= 2 else {
+        default: {a: c for a, c in state_cards.items()}}
+    cat_lists = _category_lists(
+        lists_by_model, order if len(order) >= 2 else [default], default,
+        names, gap_states, nofc, unfitted_states)
+
     # the map's explainer: hover, the click invitation only when some
     # state has a section to open, zoom
-    click_hint = (", click it for detail"
+    click_hint = (", click it for detail (or Tab to it and press Enter)"
                   if any(a != "US" for a in state_details) else "")
     map_tip = kit.tip("map", "the map",
                       f"Hover a state for its category probabilities"
@@ -711,26 +1267,47 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 else "note")
         return str(kit.badge("info", word, tiptext=note, id=f"note-{key}"))
 
+    fan_tip = ("Weekly hospital admissions: the observed weeks, then each "
+               "model's median (joined to the latest week) with its 50% and "
+               "95% intervals shaded; the Groundhog's 95% interval is "
+               "outlined. Click a legend entry to hide that model.")
     for a, d in state_details.items():
         if a == "US":          # national renders in its own curated section
             continue
-        rows = "".join(f'<tr><td>{r[0]}</td><td class="num">{r[1]:.0f}</td>'
-                       "</tr>" for r in d.get("table_rows", []))
+        rows = "".join(f'<tr><td>{_md(r[0])}</td><td class="num">'
+                       f'{float(r[1]):,.0f}</td></tr>'
+                       for r in d.get("table_rows", []))
+        fan_head = str(kit.heading("Weekly admissions", id=f"fan-{a}",
+                                   tiptext=fan_tip, level=3))
+        cat_head = str(kit.heading(
+            "Rate-change outlook, next week", id=f"cat-{a}", level=3,
+            tiptext="FluSight's rate-change categories for next week, from "
+                    "the model the map shows: the chance of each."))
+        numbers = _forecast_numbers(a, d.get("numbers") or {},
+                                    d.get("times") or [])
         sections.append(f"""
 <section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
   <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
-  <div class="grid2">
-    <div class="card">{_html(d['fan'])}</div>
-    <div class="card">{_html(d['cat'])}
-      <table><tr><th>week</th><th class="num">admissions</th></tr>{rows}</table></div>
+  <div class="rp-detail">
+    <div class="card">{fan_head}{_html(d['fan'])}</div>
+    <div class="card">{cat_head}{_html(d['cat'])}
+      <table><tr><th>Week ending</th><th class="num">Admissions</th></tr>{rows}</table></div>
   </div>
+  {numbers}
 </section>""")
 
     # national chart cards only when their figure exists; else an empty
     # state whose "?" says when they come
     nat_cards = []
     if national.get("fan"):
-        nat_cards.append(f'<div class="card">{_html(national["fan"])}</div>')
+        nat_head = str(kit.heading("Weekly admissions, United States",
+                                   id="fan-US", tiptext=fan_tip, level=3))
+        nat_cards.append(f'<div class="card">{nat_head}'
+                         f'{_html(national["fan"])}</div>')
+        nat_num = _forecast_numbers("US", national.get("numbers") or {},
+                                    national.get("times") or [])
+        if nat_num:
+            nat_cards.append(nat_num)
     nat_body = "\n  ".join(nat_cards) or str(kit.empty(
         "No national charts yet", "clock", id="nat-wait", compact=True,
         tiptext="National fan and accuracy charts appear once the "
@@ -757,11 +1334,14 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 "no scored weeks yet" in nat_summary.lower()
                 and "<table" not in nat_summary):
             nat_summary = ""
+    pooled = _pooled_figures(nat_summary)
+    nat_summary = _accuracy_card(nat_summary, kit)
+    # the US chart first, then the accuracy tables (folded)
     nat = f"""
 <section class="state" id="st-US" hidden aria-labelledby="h-st-US">
   <div class="rp-sechead">{back_btn}<h2 id="h-st-US">United States</h2>{nat_prov}{_note('US', national.get('note'))}</div>
-  {nat_summary}
   {nat_body}
+  {nat_summary}
 </section>"""
 
     # view toggle + second (national) map, only when a national map was given
@@ -770,8 +1350,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national_map_html:
         view_toggle = """<span class="rp-ctl"><span class="rp-lbl" aria-hidden="true">View</span>
 <div class="uk-seg" role="group" aria-label="Map view">
- <button type="button" id="btn-state-view" class="on" aria-pressed="true">state view</button>
- <button type="button" id="btn-national-view" aria-pressed="false">national view</button>
+ <button type="button" id="btn-state-view" class="on" aria-pressed="true">States</button>
+ <button type="button" id="btn-national-view" aria-pressed="false">Nation</button>
 </div></span>"""
         nat_map_div = f'<div id="map-national" class="mapcap" hidden>{national_map_html}</div>'
 
@@ -779,18 +1359,27 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     plotly_js = ("<script>" + html_page.plotly_js() + "</script>"
                  if state_details or national.get("fan") else "")
 
-    # the run card: wall time and settings (which run produced this?)
+    # the run card: run time, then the settings folded (which run produced
+    # this?); rows that only say an engine was missing on that machine stay
+    # out of a shared copy
     run_bits = ""
     if elapsed_s is not None:
         from app.core.runs import fmt_hms
+        words = _run_time(elapsed_s) or fmt_hms(elapsed_s)
         run_bits = ('<dl class="uk-stats uk-stats--row">'
-                    + str(kit.stat("Run wall time", fmt_hms(elapsed_s),
-                                   "h:mm:ss", id="runtime"))
+                    + str(kit.stat("Run time", words, id="runtime",
+                                   tiptext=f"Wall time {fmt_hms(elapsed_s)} "
+                                           "(h:mm:ss), the whole run on its "
+                                           "machine."))
                     + "</dl>")
     if settings_html:
-        run_bits += settings_html
-    footer = (f'<section class="card rp-run" aria-labelledby="h-run">'
-              f'<h2 id="h-run">This run</h2>{run_bits}</section>'
+        shown = _HIDDEN_SETTING.sub("", settings_html)
+        run_bits += ('<details class="uk-fold rp-rundetails" id="run-details">'
+                     '<summary><span class="uk-fold-sum">Run details</span>'
+                     f'</summary><div class="uk-fold-body">{shown}</div>'
+                     "</details>")
+    footer = (f'<section class="card rp-run" id="run" aria-labelledby="h-run">'
+              f'{kit.heading("This run", id="run")}{run_bits}</section>'
               if run_bits else "")
 
     # every location at a glance (report_grid): a panel title opens the
@@ -807,9 +1396,56 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     # page's spare height)
     us_feature = report_grid.us_feature_html(grid, MEMBER_COLORS)
 
+    dates = report_dates(asof)
+    week_line = dates.get("line") or f"week of {asof}"
+    ref = dates.get("ref") or asof
+    summary = _summary_line(grid, state_cards, default)
+
+    # pooled relWIS per model beside the map heading, linking to the
+    # accuracy tables in the national detail
+    pooled_html = ""
+    if pooled:
+        pooled_html = ('<span class="rp-pooled" aria-label="Pooled relWIS">'
+                       + "".join(
+                           f'<a href="#accuracy" onclick="openAccuracy();'
+                           f'return false">{_esc(m)} <b class="'
+                           f'{"ok" if v < 1 else "bad"}">{v:.3f}</b></a>'
+                           for m, v, _n in pooled)
+                       + '<span>pooled relWIS</span></span>')
+
+    # the jump bar: the page's parts, then any location's panel
+    jumps = [("#map-anchor", "Map")]
+    if us_feature:
+        jumps.append(("#us-feature", "United States"))
+    elif national.get("fan"):
+        jumps.append(("#st-US", "United States"))
+    if grid_section:
+        jumps.append(("#all-locations", "All locations"))
+    if "id=\"accuracy\"" in nat_summary:
+        jumps.append(("#accuracy", "Accuracy"))
+    if footer:
+        jumps.append(("#run", "This run"))
+    jump_links = " ".join(
+        f'<a href="{h}" data-jump="{h[1:]}">{t}</a>' for h, t in jumps)
+    loc_opts = ""
+    if grid_section:
+        loc_opts = "".join(
+            f'<option value="g-{_esc(str(p.get("key", "")))}">'
+            f'{_esc(str(p.get("name", p.get("key", ""))))}</option>'
+            for p in (grid or {}).get("panels") or [])
+        loc_opts = ('<label class="rp-jumpsel">Jump to location '
+                    '<select id="jumploc"><option value="">Choose</option>'
+                    f'{loc_opts}</select></label>')
+    jump_bar = (f'<nav class="rp-jump" aria-label="Sections">{jump_links}'
+                f'{loc_opts}</nav>')
+
+    natbtn = '<button type="button" id="natbtn">US forecast detail</button>'
+    controls = (f'{model_toggle_html}'
+                f'<span class="rp-ctlpair">{view_toggle}{natbtn}</span>')
+
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF weekly report · {asof}</title>
+<title>FluBNF weekly report, reference date {ref}</title>
 {theme_boot_script()}
 {plotly_js}
 {page_style()}{grid_style}</head><body>
@@ -817,56 +1453,95 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 <main>
 <div class="rp-titlerow">
  <div class="rp-title"><h1>US influenza forecast</h1>
-  <span class="rp-week">{kit.icon("calendar")}week of {asof}</span></div>
+  <span class="rp-week">{kit.icon("calendar")}{week_line}</span></div>
  <div class="rp-controls">
-  {model_toggle_html}
-  {view_toggle}
-  <button type="button" id="natbtn">national detail</button>
+  {controls}
  </div>
 </div>
+{summary}
+{jump_bar}
 <div class="card rp-mapcard" id="map-anchor">
- <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>{map_tip}</div>
+ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>{map_tip}{('<span class="uk-heading-aside">' + pooled_html + '</span>') if pooled_html else ''}</div>
  <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="rp-legends">
   {legend_html}
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
  </div>
+ {cat_lists}
  {us_feature}
 </div>
-{grid_section}
 {"".join(sections)}
 {nat}
+{grid_section}
 <script>
 window.showState = show;
 var _ab = document.getElementById('appback');
 if (_ab && history.length > 1) {{ _ab.hidden = false; }}
-if (location.hash && location.hash.startsWith('#st-') &&
+if (location.hash && location.hash.indexOf('#st-') === 0 &&
     document.getElementById(location.hash.slice(1))) {{
   show(location.hash.slice(1));
 }}
-function show(id) {{
-  const el = document.getElementById(id);
+function show(id, then) {{
+  var el = document.getElementById(id);
   if (!el) return;
-  document.querySelectorAll('section.state').forEach(s => s.hidden = true);
+  var all = document.querySelectorAll('section.state');
+  for (var i = 0; i < all.length; i++) all[i].hidden = true;
   el.hidden = false;
-  if (window.Plotly)
-    el.querySelectorAll('.js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
-  el.scrollIntoView({{behavior: 'smooth'}});
+  if (window.Plotly) {{
+    var gs = el.querySelectorAll('.js-plotly-plot');
+    for (var j = 0; j < gs.length; j++) Plotly.Plots.resize(gs[j]);
+  }}
+  var target = (then && document.getElementById(then)) || el;
+  target.scrollIntoView({{behavior: 'smooth'}});
 }}
 window.backToMap = function() {{
-  document.querySelectorAll('section.state').forEach(s => s.hidden = true);
-  const m = document.getElementById('map-anchor');
+  var all = document.querySelectorAll('section.state');
+  for (var i = 0; i < all.length; i++) all[i].hidden = true;
+  var m = document.getElementById('map-anchor');
   if (m) m.scrollIntoView({{behavior: 'smooth'}});
 }};
-document.getElementById('natbtn').addEventListener('click', () => show('st-US'));
+window.openAccuracy = function() {{
+  show('st-US', 'accuracy');
+}};
+document.getElementById('natbtn').addEventListener('click', function() {{ show('st-US'); }});
 (function() {{
-  const mS = document.getElementById('map-state'),
-        mN = document.getElementById('map-national'),
-        bS = document.getElementById('btn-state-view'),
-        bN = document.getElementById('btn-national-view');
+  // the jump bar: a hidden target (the national detail) opens first
+  var nav = document.querySelector('.rp-jump');
+  if (nav) nav.addEventListener('click', function(e) {{
+    var a = e.target.closest ? e.target.closest('a[data-jump]') : null;
+    if (!a) return;
+    var id = a.getAttribute('data-jump');
+    if (id === 'accuracy') {{ e.preventDefault(); window.openAccuracy(); }}
+    else if (id === 'st-US') {{ e.preventDefault(); show('st-US'); }}
+  }});
+  var sel = document.getElementById('jumploc');
+  if (sel) sel.addEventListener('change', function() {{
+    var t = sel.value && document.getElementById(sel.value);
+    if (!t) return;
+    if (history.replaceState) history.replaceState(null, '', '#' + sel.value);
+    else location.hash = sel.value;
+    t.scrollIntoView({{behavior: 'smooth'}});
+    var a = t.querySelector('figcaption a');
+    if (a) a.focus({{preventScroll: true}});
+  }});
+  // the category lists follow the model toggle
+  var g = document.getElementById('outlook-model');
+  if (g) g.addEventListener('click', function(e) {{
+    var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
+    if (!b) return;
+    var ls = document.querySelectorAll('[data-catmodel]');
+    for (var i = 0; i < ls.length; i++)
+      ls[i].hidden = ls[i].getAttribute('data-catmodel') !== b.dataset.mmodel;
+  }});
+}})();
+(function() {{
+  var mS = document.getElementById('map-state'),
+      mN = document.getElementById('map-national'),
+      bS = document.getElementById('btn-state-view'),
+      bN = document.getElementById('btn-national-view');
   if (!mN || !bS || !bN) return;
-  const setView = v => {{
+  var setView = function(v) {{
     mS.hidden = (v === 'national');
     mN.hidden = (v === 'state');
     bS.classList.toggle('on', v === 'state');
@@ -874,12 +1549,46 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
     bS.setAttribute('aria-pressed', String(v === 'state'));
     bN.setAttribute('aria-pressed', String(v === 'national'));
   }};
-  bS.addEventListener('click', () => setView('state'));
-  bN.addEventListener('click', () => setView('national'));
+  bS.addEventListener('click', function() {{ setView('state'); }});
+  bN.addEventListener('click', function() {{ setView('national'); }});
+}})();
+(function() {{
+  // print: the light theme with the color-vision categories (the print
+  // stylesheet's tokens), the charts redrawn to the page width, and the
+  // folded run details open; the screen comes back after
+  var saved = null, opened = [];
+  function fire() {{ try {{ dispatchEvent(new Event('themechange')); }} catch (e) {{}} }}
+  // the charts' step (_print_charts_js), on a page that has charts
+  function resize(printing) {{
+    if (window.rpPrintCharts) window.rpPrintCharts(printing);
+  }}
+  addEventListener('beforeprint', function() {{
+    var de = document.documentElement;
+    saved = [de.getAttribute('data-theme'), de.getAttribute('data-contrast'),
+             de.getAttribute('data-vision')];
+    de.setAttribute('data-theme', 'light');
+    de.removeAttribute('data-contrast');
+    de.setAttribute('data-vision', 'cvd');
+    var ds = document.querySelectorAll('details.rp-rundetails:not([open])');
+    for (var i = 0; i < ds.length; i++) {{ ds[i].open = true; opened.push(ds[i]); }}
+    fire(); resize(true);
+  }});
+  addEventListener('afterprint', function() {{
+    if (!saved) return;
+    var de = document.documentElement, names = ['data-theme', 'data-contrast', 'data-vision'];
+    for (var i = 0; i < 3; i++) {{
+      if (saved[i] === null) de.removeAttribute(names[i]);
+      else de.setAttribute(names[i], saved[i]);
+    }}
+    for (var j = 0; j < opened.length; j++) opened[j].open = false;
+    saved = null; opened = [];
+    fire(); resize(false);
+  }});
 }})();
 </script>
 {_retint_js() if plotly_js else ""}
 {_week_ticks_js() if plotly_js else ""}
+{_print_charts_js() if plotly_js else ""}
 {footer}
 </main>
 <script>{kit_js()}</script>
@@ -897,6 +1606,10 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
     return out_path
 
 
+def _esc(s: str) -> str:
+    return html_page.esc(s)
+
+
 def save_bundle(bundle: dict, dirpath: Path) -> Path:
     """Persist the inputs bundle beside report.html, atomically, so the
     report can be rebuilt after any builder change without rerunning models."""
@@ -910,25 +1623,35 @@ def save_bundle(bundle: dict, dirpath: Path) -> Path:
 
 def render_bundle(bundle: dict, out_path: Path) -> Path:
     """Render the weekly report from its inputs bundle: the one render path
-    (live run and stale-report refresh alike)."""
+    (live run and stale-report refresh alike). A v8 bundle's grid also
+    gives each detail fan the other member's interval (its whole-admission
+    quantiles) and the forecast numbers; an older bundle draws the one
+    member its detail stored."""
+    grid = bundle.get("grid")
+    by_key = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     details = {}
     for key, d in (bundle.get("details") or {}).items():
         fan_in = d.get("fan") or {}
         try:
             settled = [tuple(p) for p in (fan_in.get("settled") or [])]
-            # v6 "model": a Groundhog fan wears the Groundhog's colour
+            # v6 "model": whose fan the detail stored (absent: the PF's)
             model = d.get("model") or "pf"
+            ft = fan_in["forecast_times"]
+            panel_fans = (by_key.get(key) or {}).get("models") or {}
+            others = {m: grid_quantiles(f) for m, f in panel_fans.items()
+                      if m != model and f.get("times") == list(ft)}
             fan = fan_figure_from_quantiles(
                 fan_in.get("observed_times") or [],
                 fan_in.get("observed") or [],
-                fan_in["forecast_times"], fan_in["quantiles"],
+                ft, fan_in["quantiles"],
                 title=fan_in.get("title", ""), settled=settled or None,
-                band_color=(MEMBER_COLORS.get(model)
-                            if model != "pf" else None))
+                model=model, others=others)
+            numbers = {model: fan_in["quantiles"], **others}
             details[key] = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
-                "table_rows": [tuple(r) for r in (d.get("table_rows") or [])]}
+                "table_rows": [tuple(r) for r in (d.get("table_rows") or [])],
+                "numbers": numbers, "times": list(ft)}
         except Exception:
             continue      # one broken state must not sink the whole report
     nat_map_html = ""
@@ -947,6 +1670,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         bundle_asof(bundle), bundle.get("cards") or {}, details,
         {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
+         "numbers": us_d.get("numbers"), "times": us_d.get("times"),
          "summary_html": national.get("summary_html", "")},
         Path(out_path), national_map_html=nat_map_html,
         elapsed_s=bundle.get("elapsed_s"),
@@ -964,7 +1688,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         gap_fips=bundle.get("gap_fips"),
         no_forecast=bundle.get("no_forecast"),
         # v8 field (absent: no "All locations" pages)
-        grid=bundle.get("grid"))
+        grid=grid)
 
 
 # ---------------------------------------------------------- 6. serve time
@@ -974,7 +1698,8 @@ def builder_sources_mtime() -> float:
     inlines: ui-kit.css, tips.js, _tips.html, the faces and the marks): a
     stored report.html older than this is stale."""
     srcs = [Path(__file__).with_name(m + ".py")
-            for m in ("report_v2", "html_page", "scoring", "usmap")]
+            for m in ("report_v2", "report_grid", "html_page", "scoring",
+                      "us_national", "usmap")]
     kit = [html_page.KIT_CSS, html_page.KIT_JS, html_page.TIPS_TPL,
            html_page.FONTS_CSS, html_page.LOGOS_CSS]
     return max([0.0] + [p.stat().st_mtime

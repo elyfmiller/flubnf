@@ -171,11 +171,11 @@ def test_a_panel_is_plain_one_band_per_model():
     assert "latest: 2,515 admissions" in html
     assert html.count("<polygon") == 1               # the 95% band alone
     assert "off scale" not in html
-    assert "shaded: 95% interval" in html and "50%" not in html
+    assert "bands: 95% interval" in html and "50%" not in html
     assert "stroke-dasharray:4 3" in G.grid_css()    # last season, dashed
     # the flags sit in their own group at the right of the caption
     p["observed"] = [[ASOF, 5000.0]]
-    assert '<span class="g-flags"><span class="g-flag"' in G.grid_html(
+    assert '<span class="g-flags"><span class="g-flag g-flag--warn"' in G.grid_html(
         {"panels": [p], "asof": ASOF}, COLORS)
     assert "latest: 1 admission<" in G._latest({"observed": [[ASOF, 1.0]]})
 
@@ -248,7 +248,8 @@ def test_print_keeps_the_key_and_explains_the_flags():
     assert "print-color-adjust:exact" in i_rule
     assert "-webkit-print-color-adjust:exact" in i_rule
     html = G.grid_html(_grid(), COLORS)
-    assert html.count(G.FLAG_KEY.replace("'", "&#x27;")) == 1   # one page
+    key = G.flag_key("Jan 31").replace("'", "&#x27;")   # the last target
+    assert html.count(key) == 1                           # one page
 
 
 def test_bands_first_then_medians_and_the_zero_line_draws_whole():
@@ -268,9 +269,71 @@ def test_bands_first_then_medians_and_the_zero_line_draws_whole():
 
 def test_the_us_panel_says_what_the_oracle_sihrs_us_row_is():
     g = _grid()
-    for step, words in (("stepped", "carries the Oracle step"),
+    for step, words in (("stepped", "uses the same Oracle step as the states"),
                         ("filter", "Liu-West filter alone")):
         g["us_step"] = step
         assert words in G.us_feature_html(g, COLORS)
     g["us_step"] = None
     assert "g-usnote" not in G.us_feature_html(g, COLORS)
+
+
+# ------------------------------------------------ design pass (2026-10-05)
+
+def test_panels_wear_the_member_tokens_and_the_groundhog_band_is_an_outline():
+    """Member colours come from the page's --model-* tokens (a light card
+    takes a darker Groundhog gold); the Groundhog's 95% band is an outline
+    over a faint fill, the Oracle SIHRS band a fill, so an overlap never
+    turns grey."""
+    svg, _ = G.panel_svg(_grid()["panels"][2], 0, COLORS)
+    assert "fill:var(--model-pf, #1979FF)" in svg
+    assert "stroke:var(--model-analogue, #FFC72C)" in svg
+    assert 'class="g-band g-band-analogue"' in svg
+    assert 'class="g-band g-band-pf"' in svg
+    assert 'fill="#FFC72C"' not in svg and 'stroke="#1979FF"' not in svg
+    css = G.grid_css()
+    assert ".g-band-analogue{fill-opacity:.07;stroke-width:1.1" in css
+    assert ".g-band-pf{fill-opacity:var(--rp-band-a" in css
+
+
+def test_flags_falls_in_the_warning_colour_disagree_in_red():
+    p = {"key": "XX", "name": "X", "observed": [[ASOF, 100.0]], "models": {
+        "pf": {"times": ["2098-01-31"] * 4, "q": [[10, 20, 30, 40, 50]] * 4},
+        "analogue": {"times": ["2098-01-31"] * 4,
+                     "q": [[300, 400, 500, 600, 900]] * 4}}}
+    html = G.grid_html({"panels": [p], "asof": ASOF}, COLORS)
+    assert 'g-flag g-flag--warn" title="4-week-ahead median below' in html
+    assert 'g-flag g-flag--bad" title="by Jan 31 one model' in html
+    assert ".g-flag--warn{color:var(--warn)}" in G.grid_css()
+    # no reported data says so; data without a fan is "no forecast"
+    assert "no data</span>" in G._flag_spans({"observed": [], "models": {}})
+    assert "no forecast</span>" in G._flag_spans(
+        {"observed": [[ASOF, 3.0]], "models": {}})
+
+
+def test_a_clipped_band_shows_where_it_continues():
+    p = {"key": "XX", "name": "X", "observed": [[ASOF, 20.0]],
+         "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
+                                           "2098-01-24", "2098-01-31"],
+                                 "q": [[1, 9, 20, 30, 900]] * 4}}}
+    svg, clipped = G.panel_svg(p, 0, COLORS)
+    assert clipped and svg.count('class="g-cont"') == 4
+    assert "continues above the scale (to 900)" in svg
+
+
+def test_the_us_feature_is_wide_and_short_with_panel_sized_text():
+    side = G.us_feature_html(_grid(), COLORS)
+    assert f'viewBox="0 0 {G.FEATURE_W} {G.FEATURE_H}"' in side
+    assert f'font-size="{G.FEATURE_FS}"' in side
+    assert G.FEATURE_W / G.FEATURE_H > 3
+
+
+def test_pages_name_the_reference_date_and_number_themselves():
+    html = G.grid_html(_grid(), COLORS)
+    assert "Reference date 2098-01-10 &middot; locations 1 to 3 of 3" in html
+    assert ("FluBNF &middot; reference date 2098-01-10 &middot; All "
+            "locations, page 1 of 1") in html
+    assert "Every location&#x27;s forecast" in html or \
+        "Every location's forecast" in html
+    # a link mark per panel, and a spoken summary with each model's numbers
+    assert 'class="g-anchor" href="#g-OH"' in html
+    assert "Oracle SIHRS median for Jan 31" in html
