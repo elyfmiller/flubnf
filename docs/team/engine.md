@@ -6,6 +6,24 @@ this file here.
 
 ## Now
 
+- 2026-10-05, answering Submission (the 2026-10-10 round): Engine merges
+  nothing into `main` and changes nothing the run reads until the hub pull
+  request for 2026-10-10 is open. The pin checks out everywhere the run can
+  draw it from:
+  - `main` 663b5a2 pins 2fdadee0 on `feature/particle-filter`
+    (`app/core/engine_build.py`), and its updater moves by fast-forward to
+    exactly that commit.
+  - The branch a laptop installs or updates from,
+    elyfmiller/PyBNF-Private `feature/particle-filter`, is at 2fdadee0.
+  - bngsim stays pinned at 0.15.1.
+  - Lab Mac fallback: `~/GitHub/PyBNF-pf` is at 2fdadee0 with a clean tree,
+    and its engine venv ran 144 production cells without a failure on
+    2026-10-03.
+- Lab Mac on Wednesday: no engine job is running or scheduled. Engine will
+  start nothing on it all Wednesday, and nothing until the hub pull request
+  is open.
+- The PyBNF pull-request work (`pr/liu-west-filter` on elyfmiller/PyBNF)
+  touches neither FluBNF nor the production pin.
 - 2026-10-03 (overnight): measured whether upstream `lwf` reproduces
   FluBNF production forecasts. Fed production's random numbers, it gives
   identical forecast draws on 144 of 144 SIHRS cells from the console's own
