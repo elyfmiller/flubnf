@@ -85,7 +85,8 @@ def test_build_path_writes_bundle_and_report(tmp_path):
     html = (tmp_path / "report.html").read_text(encoding="utf-8")
     assert "<em>Flu</em>BNF" in html
     assert 'id="st-OH"' in html and 'id="st-US"' in html
-    assert "Ohio: weekly admissions" in html
+    # the fan's card heading names it (no chart title inside the figure)
+    assert 'id="h-fan-OH">Weekly admissions</h3>' in html
     assert outcome["report"] == str(tmp_path / "report.html")
 
 

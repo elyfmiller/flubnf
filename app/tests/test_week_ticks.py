@@ -206,7 +206,8 @@ def test_report_fan_bands_are_fills_without_markers():
         {t: {str(lv): 10.0 + lv for lv in report_v2.FAN_LEVELS}
          for t in ("2026-01-10", "2026-01-17")})
     bands = [t for t in fig.data if t.fill == "toself"]
-    assert len(bands) == 3 and all(t.mode == "lines" for t in bands)
+    # the 95% and 50% intervals of the one member drawn
+    assert len(bands) == 2 and all(t.mode == "lines" for t in bands)
 
 
 def test_public_site_fan_ticks_on_saturdays():
