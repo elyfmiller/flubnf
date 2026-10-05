@@ -136,7 +136,7 @@ def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
 def test_cumulative_chart_prints_terminal_value_dates_and_both_gridlines():
     html = _season()
     assert ">0.900</text>" in html            # the final cumulative value
-    assert ">1.0</text>" in html and ">0.5</text>" in html
+    assert ">1.0 baseline</text>" in html and ">0.5</text>" in html
     assert ">2098-11-07</text>" in html       # first week under the corner
     assert ">2098-11-14</text>" in html       # last week under the corner
     # labels ride the rem classes, never fixed viewBox-unit sizes
