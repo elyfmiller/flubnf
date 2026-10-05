@@ -1,7 +1,10 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
 {% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
+{# the file rows (_filerow.html), the coverage fold and this page's own
+   layout ("out-rp" rules) are Output's #}
+<link rel="stylesheet" href="/static/tabs/output.css">
 {% if dataset %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endif %}{% endblock %}
-{% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
+{% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}{% import "_filerow.html" as fr with context %}
 {# a status word in a badge: the ledger's run statuses by kind #}
 {% set RUN_STATE = {"ok": "ok", "done": "ok", "running": "pending",
                     "stopped": "warn", "interrupted": "warn", "partial": "warn"} %}
@@ -24,6 +27,22 @@
  {%- if status %}{{ tips.badge(RUN_STATE.get(status, "error"), status) }}{% endif %}
 {% endset %}
 <div class="fc-runhead">{{ tips.heading("Run: " ~ (label or "details"), level=1, after=badges | trim, aside=(rerun if can_rerun and not error else "")) }}</div>
+
+{# which run's files Output shows for this date (archive_record.choose):
+   a run Output passes over names the one it shows; a run it shows says so #}
+{% set sup = run_supersession(run_id) if (status != "running" and not dataset) else {} %}
+{% if sup %}
+<div class="out-rp-sup" id="run-supersession">
+{% if sup.by and not sup.shown %}
+ {% set to_run %}<a class="btn quiet" href="/runs/{{ sup.by }}">Open run {{ sup.by_when }}</a>{% endset %}
+ {% call tips.alert("info", "Output shows run " ~ sup.by_when ~ " for " ~ sup.ref ~ ".", title="Superseded.", id="run-sup", live="", action=to_run) %}When a date was run more than once, Output shows each model's file from the newest run that finished complete, else from the newest run that wrote one. This run's files stay in its folder.{% endcall %}
+{% elif sup.shown %}
+ {% set to_out %}<a class="btn quiet" href="/output#fc-{{ sup.asof }}">Open Output</a>{% endset %}
+ {% set said = ("Output shows this run's files for " ~ sup.ref ~ ".") if not sup.by else ("Output shows " ~ (sup.shown | length) ~ " of this run's files for " ~ sup.ref ~ "; its hub-named files there are from run " ~ sup.by_when ~ ".") %}
+ {% call tips.alert("ok", said, id="run-sup", live="", action=to_out) %}Output picks, per model, the newest run of a date that finished complete, else the newest run that wrote a file.{% endcall %}
+{% endif %}
+</div>
+{% endif %}
 
 {% if modified %}
 {# the knobs record from the ledger spec; the settings card's "model
@@ -55,7 +74,7 @@
  {{ tips.heading("Partial-run detail", "run-partial", "Recorded on this run's ledger row; copy this block when reporting a partial run.") }}
  {% if pf_failures %}
  {% set n = pf_failures | length %}
- {{ tips.heading("PF fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
+ {{ tips.heading("Oracle SIHRS fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
                  after=tips.badge("neutral", n ~ (" cell" if n == 1 else " cells"))) }}
  <ul class="fc-faillist">
  {% for cell, why in pf_failures.items() | sort %}
@@ -76,12 +95,25 @@
 </div>
 {% endif %}
 
+{% set live = status == "running" %}
+{% if live %}
+{# a run still going: one card with what it is doing and the way to its
+   progress, in place of results and files it has not written yet #}
+<div class="card out-rp-prog" id="run-progress">
+ {% set fc_link %}<a class="btn gold" href="/forecast">{{ tips.icon("clock") }} Follow it on Forecast</a>{% endset %}
+ {{ tips.heading("In progress", "run-prog", "Results, the submission files and the report appear here when the run finishes; the Forecast tab follows it location by location.", aside=fc_link) }}
+ {% set phase = console_phase() %}
+ {{ tips.progress("Phase", none, text=phase or "starting", id="run-phase") }}
+</div>
+{% endif %}
+
 {% if settings %}
 {# settings and versions from the ledger row only (the viewer's own
    versions did not produce this run); no recorded versions, no block.
-   Results and settings side by side where the window allows #}
-<div class="fc-rungrid">
-{% if results %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
+   Results first, settings second, side by side where the window allows,
+   both in one key and value style (out-rp-kv) #}
+<div class="fc-rungrid out-rp-kv">
+{% if results and not live %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
 <div class="card runrec">{{ tips.heading("Run settings", "run-settings") }}
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
@@ -96,16 +128,19 @@
  {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions, cls="fc-flush") }}
 </div>{% endif %}
 
-{% if not dataset %}
+{% if not dataset and not live %}
+{# each file as Output shows it (_filerow.html): the hub checks, the
+   coverage, Download, Show in folder and the copy buttons; the Oracle
+   SIHRS first, as there #}
 <div class="card fc-subs">{{ tips.heading("Submission files", "run-subs") }}
 {% set archived = subs | selectattr("archived") | list %}
 {% set current = subs | rejectattr("archived") | list %}
 {% for s in current %}
- {% if s.submittable or s.modified %}
- <div class="fc-file"><span class="fc-file-model">{{ s.model }}</span>
-  <a href="/output/download?path={{ s.path | urlencode }}" download>{{ tips.icon("download") }} {{ s.name }}</a>
-  {% if s.modified and not s.submittable %}{% call tips.badge("warn", "non-hub name", id="run-sub-mod-" ~ loop.index) %}Non-hub name: this run's model settings differ from the defaults.{% endcall %}{% endif %}</div>
- {{ covm.line(s.cov) }}
+ {% if s.submittable or s.modified %}{% set fi = loop.index %}
+ {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "This run's model settings differ from the defaults, so its file carries a non-hub name (<model>-modified): a record, not for the hub.", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
+ {% set status %}{% if s.check_head %}{{ fr.checks(s.check_ok, s.check_head, s.problems, "run-chk-" ~ fi) }}{% endif %}
+ {% if s.cov %}<div class="out-cov">{{ covm.line(s.cov) }}</div>{% endif %}{% endset %}
+ {{ fr.filerow(s.model, s.name, s.path, tag=tag, status=status, validate=(validator_command(s.path) if s.submittable else "")) }}
  {% endif %}
 {% endfor %}
 {% if not current and not archived %}{{ tips.empty("No submission files", "folder", tiptext="Submissions appear when a run completes.", id="run-nosubs", compact=True) }}{% endif %}
@@ -120,22 +155,52 @@
  </ul>
 {% endcall %}
 {% endif %}
+{{ fr.copy_script() }}
 </div>
 {% endif %}
 
 {% if dataset %}{% include "_dataset_run.html" %}{% endif %}
 
-{% for model, locs in models.items() %}
-<div class="card"><h2>{{ (dataset_members or {}).get(model) or model_name(model) }}: median {{ "values" if dataset else "admissions" }}, 1-4 weeks ahead</h2>
-<table class="fc-medians"><tr><th>{{ "group" if dataset else "location" }}</th><th class="num">1 wk</th><th class="num">2 wk</th><th class="num">3 wk</th><th class="num">4 wk</th></tr>
-{% for loc, m in locs.items() %}
-<tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
-  {% set v = m.get(h) %}
-  <td class="num">{{ "%.0f"|format(v["0.5"] if v is mapping else (v or 0)) }}</td>{% endfor %}</tr>
-{% endfor %}</table></div>
-{% else %}
-{% if not error %}
-<div class="card">{% if status == 'running' %}{{ tips.empty("No results stored for this run yet", "clock", action='<a class="btn quiet" href="/forecast">Open Forecast</a>' | safe, tiptext="It is still running; the Forecast tab follows it.", id="run-noresults") }}{% else %}{{ tips.empty("No results stored for this run", "folder", id="run-noresults") }}{% endif %}</div>
+{# the medians: one table, a switch for the model; the hub's horizons
+   (h0 the week ending on the reference date), as Output's files are #}
+{% set med = median_table(models) %}
+{% if med.models %}
+<div class="card out-rp-med" id="run-medians">
+ {% set hz_tip = "The hub's horizons: h0 is the week ending on the reference date (one week after the newest data week), h1 to h3 the three weeks after it. US first, then the locations as the run stored them." if not dataset else "Horizons 0 to 3: h0 is the week after your data's newest week, h1 to h3 the three after it." %}
+ {{ tips.heading(("Median values" if dataset else "Median admissions") ~ ", h0 to h3", "run-med", hz_tip) }}
+ {% set names = namespace(list=[]) %}
+ {% for model in med.models %}{% set names.list = names.list + [(dataset_members or {}).get(model) or model_name(model)] %}{% endfor %}
+ {% if med.models | length > 1 %}
+ <div class="out-rp-sw"><div class="uk-seg" role="group" aria-label="Model">
+ {% for model in med.models %}<button type="button" data-med="{{ loop.index }}" aria-controls="run-med-{{ loop.index }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ names.list[loop.index0] }}</button>{% endfor %}
+ </div></div>
+ {% endif %}
+ {% for model, rows in med.models.items() %}
+ <div class="out-rp-wrap" id="run-med-{{ loop.index }}"{% if not loop.first %} hidden{% endif %}>
+ <table class="fc-medians"><caption class="uk-sr">{{ names.list[loop.index0] }}: median {{ "values" if dataset else "admissions" }}</caption>
+ <tr><th>{{ "group" if dataset else "location" }}</th>{% for h in med.hs %}<th class="num">{{ h }}</th>{% endfor %}</tr>
+ {% for loc, cells in rows %}
+ <tr><td>{{ loc }}</td>{% for c in cells %}<td class="num">{{ c }}</td>{% endfor %}</tr>
+ {% endfor %}</table></div>
+ {% endfor %}
+ {% if med.models | length > 1 %}
+ <script>
+  (function(){
+   var bs=document.querySelectorAll('#run-medians [data-med]');
+   function show(n){
+    for(var i=0;i<bs.length;i++){
+     var on=bs[i].getAttribute('data-med')===n;
+     bs[i].setAttribute('aria-pressed',on?'true':'false');
+     var t=document.getElementById('run-med-'+bs[i].getAttribute('data-med'));
+     if(t)t.hidden=!on;
+    }
+   }
+   for(var i=0;i<bs.length;i++){bs[i].addEventListener('click',function(){show(this.getAttribute('data-med'));});}
+  })();
+ </script>
+ {% endif %}
+</div>
+{% elif not error and not live %}
+<div class="card">{{ tips.empty("No results stored for this run", "folder", id="run-noresults") }}</div>
 {% endif %}
-{% endfor %}
 {% endblock %}

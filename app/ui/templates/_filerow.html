@@ -1,0 +1,100 @@
+{# One submission file as a row, shared by Output (output.html) and a run's
+   page (run.html): its model (and a badge), its name and run, Download,
+   Show in folder and the copy buttons at the right; `status` is a row of
+   badges under it (the hub checks, the location coverage). Styles:
+   static/tabs/output.css (a page that imports this links that sheet).
+   Import with context: {% import "_filerow.html" as fr with context %}. #}
+{% import "_tips.html" as tips %}
+
+{# a file name that breaks only after "_" or "-", never inside a word #}
+{% macro fname(name) -%}
+{{ name | e | replace("_", "_<wbr>" | safe) | replace("-", "-<wbr>" | safe) }}
+{%- endmacro %}
+
+{# the copy buttons' marks, drawn as the kit's icons are (16 by 16, the
+   text's color); the kit has no copy or terminal icon #}
+{% macro copy_icon() -%}
+<svg class="uk-icon out-ci" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5.2" y="5.2" width="8.6" height="8.6" rx="1.3"/><path d="M10.8 5.2V3.1c0-.6-.4-1-1-1H3.1c-.6 0-1 .4-1 1v6.7c0 .6.4 1 1 1h2.1"/></svg>
+{%- endmacro %}
+{% macro term_icon() -%}
+<svg class="uk-icon out-ci" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.8" y="2.6" width="12.4" height="10.8" rx="1.4"/><path d="m4.6 6.2 2.2 1.9-2.2 1.9M8.6 10.4h3"/></svg>
+{%- endmacro %}
+
+{# a file's hub checks: a badge when it passes; an error badge and an "i"
+   whose panel lists every problem (dozens of lines can scroll there, a
+   tooltip cannot) when it does not #}
+{% macro checks(ok, head, problems, id) -%}
+{% if ok %}{{ tips.badge("ok", head) }}{% else %}<span class="uk-badge-pair">{{ tips.badge("error", head, id=id) }}{% call tips.toggletip(id, "the hub check problems", title=head) %}{% for p in problems %}<span class="uk-tt-line">{{ p }}</span>{% endfor %}{% endcall %}</span>{% endif %}
+{%- endmacro %}
+
+{# the run that wrote a file: a link to its page, and a badge when that run
+   did not finish complete #}
+{% macro runref(run_id, when, incomplete=False, id="") -%}
+<span class="out-run"><a href="/runs/{{ run_id }}">{{ tips.icon("clock") }} run {{ when }}</a>
+{%- if incomplete %} <span class="out-bt">{% call tips.badge("warn", "incomplete", id=id) %}The run that wrote this file
+did not finish complete: it did not finish ok, or it dropped a location from
+this file or recorded an error for it. With no complete run for this date,
+the card shows the newest run that wrote one; the other runs' files stay in
+their run folders.{% endcall %}</span>{% endif %}</span>
+{%- endmacro %}
+
+{# `primary` makes Download the gold button (the round that is open now);
+   `validate` is the hub validator's command line for this file (Copy
+   validator command), "" for none. `tag`, `run` and `status` are markup. #}
+{% macro filerow(model, name, path, tag="", run="", status="", primary=False, validate="") -%}
+<div class="out-file">
+ <div class="out-file-head">
+  <div class="out-file-id">
+   <div class="out-model"><b>{{ model }}</b>{% if tag %} {{ tag }}{% endif %}</div>
+   <div class="out-file-sub"><code class="out-fname">{{ fname(name) }}</code>{% if run %} {{ run }}{% endif %}</div>
+  </div>
+  <div class="out-acts">
+   <a class="btn{{ ' gold' if primary }}" href="/output/download?path={{ path | urlencode }}" download="{{ name }}">{{ tips.icon("download") }} Download</a>
+   <form method="post" action="/output/reveal">
+    <input type="hidden" name="path" value="{{ path }}">
+    <button class="quiet" type="submit">{{ tips.icon("folder") }} Show in folder</button></form>
+   <span class="out-copies"><button class="quiet out-copy" type="button" data-copy="{{ path }}" data-copied="Path copied" aria-label="Copy path of {{ name }}" title="Copy path">{{ copy_icon() }}</button>
+   {%- if validate %}
+   <button class="quiet out-copy" type="button" data-copy="{{ validate }}" data-copied="Validator command copied" aria-label="Copy validator command for {{ name }}" title="Copy validator command">{{ term_icon() }}</button>
+   {%- endif %}</span>
+  </div>
+ </div>
+ {%- if status | trim %}
+ <div class="out-status">{{ status }}</div>
+ {%- endif %}
+</div>
+{%- endmacro %}
+
+{# once per page, after the rows: the copy buttons' handler. The clipboard
+   API where the page may use it, else a selected textarea and the copy
+   command (an older WKWebView); a polite line announces the copy. ES5. #}
+{% macro copy_script() -%}
+<span class="uk-sr" id="out-copy-live" aria-live="polite"></span>
+<script>
+ (function(){
+  var live=document.getElementById('out-copy-live');
+  function fallback(text){
+   var t=document.createElement('textarea');
+   t.value=text;t.setAttribute('readonly','');
+   t.style.position='fixed';t.style.top='-1000px';
+   document.body.appendChild(t);t.select();
+   var ok=false;try{ok=document.execCommand('copy');}catch(e){}
+   document.body.removeChild(t);return ok;
+  }
+  function done(b,ok){
+   live.textContent=ok?b.getAttribute('data-copied'):'Copy failed: select the text and copy it by hand.';
+   b.setAttribute('data-state',ok?'ok':'error');
+   setTimeout(function(){b.removeAttribute('data-state');},1600);
+  }
+  var bs=document.querySelectorAll('button.out-copy[data-copy]');
+  for(var i=0;i<bs.length;i++){(function(b){
+   b.addEventListener('click',function(){
+    var text=b.getAttribute('data-copy');
+    if(navigator.clipboard&&navigator.clipboard.writeText&&window.isSecureContext){
+     navigator.clipboard.writeText(text).then(function(){done(b,true);},function(){done(b,fallback(text));});
+    }else{done(b,fallback(text));}
+   });
+  })(bs[i]);}
+ })();
+</script>
+{%- endmacro %}

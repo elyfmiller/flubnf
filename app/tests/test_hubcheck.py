@@ -249,7 +249,7 @@ def test_the_output_page_names_the_due_date(tmp_path):
     # Wed 20:30 EDT is already Thursday in UTC: still open
     ("2026-10-08T00:30", "Due Wed 2026-10-07, 11 PM ET."),
     # Sat 2026-10-03 23:30 EDT is Sunday in UTC: the window opens Sunday ET
-    ("2026-10-04T03:30", "Due Sun Oct 04 to Wed Oct 07, 11 PM ET."),
+    ("2026-10-04T03:30", "Due Sun 2026-10-04 to Wed 2026-10-07, 11 PM ET."),
 ])
 def test_the_due_line_reads_the_clock_in_eastern_time(tmp_path, utc, text):
     """The hub closes at 11 PM Eastern on the Wednesday: the line follows

@@ -468,9 +468,20 @@ def run_page(request: Request, run_id: str):
         # (its data is the upload's; shared._same_host_guard keeps it local)
         from app.ui import datasets_ui as _dsu
         dsx = _dsu.run_page_extra(w, res)
+    # a real-time hub run is the Forecast tab's work (its runs are opened
+    # from there); research, retrospective-vintage and own-data runs sit
+    # under Storage, whose ledger lists every run
+    try:
+        _sd = _json.loads(spec_json or "{}")
+    except (ValueError, TypeError):
+        _sd = {}
+    _sd = _sd if isinstance(_sd, dict) else {}
+    hub_live = bool(spec_json) and not dsx and not is_research(spec_json) \
+        and _spec_mode(_sd) == "realtime"
     return templates.TemplateResponse(request, "run.html", {
         **dsx,
-        "active": "Storage", "run_id": run_id, "status": status, "error": err,
+        "active": "Forecast" if hub_live else "Storage",
+        "run_id": run_id, "status": status, "error": err,
         "results": results_html(o, spec_json, heading=False),
         "results_tip": results_tip(spec_json),
         # the page shows a research badge, so the label stays untagged

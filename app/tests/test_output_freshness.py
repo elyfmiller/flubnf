@@ -270,7 +270,7 @@ def test_a_page_rendered_without_a_stamp_has_no_check(root, monkeypatch):
 def test_the_week_picker_offers_only_weeks_with_a_report(root):
     """A run whose report failed is archived without one; the picker's
     Download would save the 404 notice as a file, so that week is not
-    offered."""
+    offered; nor is the week the report above it already offers."""
     _run(root, "2098-01-10", "only")
     (root / "archive" / "2098-01-03" / "submission").mkdir(parents=True)
     with_report = root / "archive" / "2098-01-10"
@@ -278,5 +278,12 @@ def test_the_week_picker_offers_only_weeks_with_a_report(root):
     (with_report / "report.html").write_text("<html>REPORT</html>")
     ui_shared._invalidate_scans()
     html = client.get("/output").text
-    assert '<option value="2098-01-10">' in html
-    assert '<option value="2098-01-03">' not in html
+    assert 'value="2098-01-10"' not in html              # shown above
+    assert 'value="2098-01-03"' not in html              # no report
+    older = root / "archive" / "2097-12-27"
+    older.mkdir(parents=True)
+    (older / "report.html").write_text("<html>OLDER</html>")
+    ui_shared._invalidate_scans()
+    html = client.get("/output").text
+    assert ('<option value="2097-12-27">2098-01-03 (as of 2097-12-27)'
+            '</option>') in html
