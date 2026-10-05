@@ -279,7 +279,7 @@ def _outcome_items(outcome_json) -> list:
                                    + _verdict(float(v), "st-verdict"), 1))
     if "pf_cells" in o:
         n = o["pf_cells"]
-        add(f"PF {n} fit{'s' if n != 1 else ''}")
+        add(f"{n} Oracle SIHRS fit{'s' if n != 1 else ''}")
     if o.get("pf_failures"):
         nf = len(o["pf_failures"])
         word = f"{nf} failure{'s' if nf != 1 else ''}"

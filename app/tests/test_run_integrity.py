@@ -128,7 +128,7 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
-    """All PF fits fail: only the Oracle SIHRS file is lost; the Groundhog
+    """All Oracle SIHRS fits fail: only the Oracle SIHRS file is lost; the Groundhog
     still writes under its own name."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,

@@ -579,7 +579,7 @@ def test_runs_page_shows_elapsed_per_completed_run():
     html = srv.templates.env.get_template("runs.html").render(
         active="Runs", ledger=[
             {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31", "status": "ok",
-             "chips": "PF 2 fits", "elapsed_s": 3725.0},
+             "chips": "2 Oracle SIHRS fits", "elapsed_s": 3725.0},
             {"run_id": "r0", "label": "2097-12-27 · Dec 27 08:00", "status": "ok",
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed<" in html

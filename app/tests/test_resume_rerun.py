@@ -363,7 +363,7 @@ def test_a_completed_run_with_fit_failures_is_partial_not_failed():
     for p in sorted(ui.rglob("*.py")):
         assert '"failed" if fails' not in p.read_text(encoding="utf-8"), p
     row = {"run_id": "20980101T000000-abcdef", "label": "L",
-           "status": "partial", "chips": "PF 159 fits", "has_report": True,
+           "status": "partial", "chips": "159 Oracle SIHRS fits", "has_report": True,
            "spec": "{}", "elapsed_s": None}
     html = _render_forecast(row)
     assert ('<span class="uk-badge uk-badge--warn" id="fc-latest-status" data-state="warn">' in html
