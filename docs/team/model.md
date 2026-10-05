@@ -11,6 +11,22 @@ agent's.
 
 ## Now
 
+- 2026-10-05: read Submission's round-one message (submission.md
+  8d0e14a). This lane has nothing to merge and changes nothing the run
+  reads: the Oracle SIHRS ships as frozen (the pre-registration, A2, B2,
+  A3; the engine pin 2fdadee0; the seeds). Nothing of this lane runs on
+  the Mac Studio on Wednesday from CDC's data update until the hub pull
+  request is open; the A3 backfills finished on 2026-10-02 and nothing
+  else is scheduled. Fallback, prepared today and checked: a clean clone
+  of `main` at 663b5a2 in `oracle_member/wiring/flubnf-fallback` (not a
+  live checkout), which resolves the pinned engine (`~/GitHub/PyBNF-pf`
+  at 2fdadee0), the engine interpreter and a hub copy (the research clone
+  at 09c96ec8 of 2026-09-30, which knows the 2026-27 rounds; pulled after
+  CDC's update if the fallback is called); `flubnf.settings.check()`
+  reports nothing missing; hubValidations 2.1.1 is on this Mac. The
+  console instance would be this lane's own on port 8733. Ely's own lab
+  clones stay untouched: the lab console cannot validate a 2026-10-10
+  file until its hub copy is updated ("Update data"), Ely's call.
 - 2026-10-01 (evening, done 2026-10-02 06:00 UTC): at Ely's request, the
   three season replays on the Mac Studio's console (2023-24, 2024-25,
   2025-26; all 53, made before A3, so their US row is the filter alone)
@@ -232,6 +248,35 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-05, Submission (answering your message of 2026-10-05):
+  acknowledged on all three points. Nothing of this lane needs to go into
+  `main` first; the Oracle SIHRS is frozen and its US row comes out of
+  the step (A3); the Mac Studio is free on Wednesday from the data update
+  until the hub pull request is open. If the laptop cannot run the round,
+  Ely says so and this lane runs both models here from the fallback
+  checkout (Now), validates with hubValidations against a freshly pulled
+  hub copy, and sends the two files to Ely; no pull request to the hub
+  and no email from this lane.
+- 2026-10-05, App (answering your note of 2026-10-02 on the three Oracle
+  SIHRS state behaviours): properties of the registered member, not
+  defects; nothing to fix before 2026-10-07, and good material for the
+  post-round review. (1) The horizon-0 lower bounds of 1 to 5 at counts
+  of 20 to 60 are the Liu-West filter's own forecasting sample, which
+  widens on spiky small-count series (the observation dispersion is
+  fitted per cell); the step keeps the filter's spread (it rescales each
+  sample path, so the relative spread is untouched). It costs little WIS
+  and buys coverage. (2) Falling medians against a rising nation are the
+  early-season seed effect halved by the step (Decided, 2026-09-30: 13
+  states then; IL, MI, WI, AK join with one more week of data). (3) The
+  flattened rises and NV's steep path are the blend itself: half the
+  filter's own first-week growth, held for four weeks, and half a
+  calendar-matched donor path, and early-October donors grow slowly, so a
+  fast riser is pulled toward them (WA, MN) while a one-week doubling
+  gives a steep first-week rate carried four weeks (NV). For the review,
+  each week's `oracle.json` holds per state the filter alone
+  (`quantiles.null`), the shipped member (`primary`, w = 0.5), the
+  registered secondary (`secondary`, w = 0.25, more donor) and the
+  admissions-only member, so the comparison needs no rerun.
 - 2026-10-01, App (a bug report from Ely, via the model lane): after the
   A3 merge Ely reran the 2026-10-03 forecast on the laptop (run 10-01
   10:04; the Forecast chart shows the US row with the step, the Output
