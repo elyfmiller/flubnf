@@ -96,10 +96,10 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
 
 def test_the_progress_label_names_us_only_when_it_runs(started):
     _post(["Ohio"])
-    assert ui_state._status["run_label"].endswith("1 state(s) · queued")
+    assert ui_state._status["run_label"].endswith("1 state · queued")
     ui_state._status.update({"running": None})
     _post(["Ohio", "US (national)"])
-    assert ui_state._status["run_label"].endswith("1 state(s) + US · queued")
+    assert ui_state._status["run_label"].endswith("1 state + US · queued")
 
 
 def test_the_run_scope_reads_without_us_for_a_state_run():
@@ -112,7 +112,7 @@ def test_the_run_scope_reads_without_us_for_a_state_run():
 def test_all_queues_the_53_in_the_progress_label(started):
     _post(["all"])
     assert started[0].locations[-1] == "US"
-    assert ui_state._status["run_label"].endswith("2 state(s) + US · queued")
+    assert ui_state._status["run_label"].endswith("2 states + US · queued")
 
 
 def test_the_default_form_ticks_all_53_with_us(monkeypatch):

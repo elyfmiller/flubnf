@@ -799,17 +799,17 @@ def _location_progress(workroot) -> list:
 
 
 def _scope_label(locs) -> str:
-    """The progress label's scope: '3 state(s)', '3 state(s) + US',
+    """The progress label's scope: '3 states', '1 state + US',
     'all 53 jurisdictions' (the form's "all": the 52 and US) or
     'US only'."""
     from app.core import us_national as _usn
     n = len(_usn.state_names(locs))
     us = len(locs) > n
     if not n:
-        return "US only" if us else "0 state(s)"
+        return "US only" if us else "0 states"
     if n == 52 and us:
         return "all 53 jurisdictions"
-    return f"{n} state(s)" + (" + US" if us else "")
+    return f"{n} state{'s' if n != 1 else ''}" + (" + US" if us else "")
 
 
 def _run_extra(members: int, mode: str, aux: str | None = None,
