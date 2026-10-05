@@ -38,6 +38,14 @@ CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "large_increase": "#c0392b"}
 # a CSS variable so each theme can set it; near-black without tokens
 NO_DATA = "var(--map-nodata, #0a0a0a)"
+#: a reporting gap (in scope, nothing reported): the no-data colour hatched
+#: over the card (the pattern _shell defines), so it never reads as the
+#: solid "no forecast" fill beside it
+GAP_PATTERN_ID = "nodata-hatch"
+GAP_FILL = f"url(#{GAP_PATTERN_ID})"
+#: the same hatch for a legend chip or any HTML swatch
+GAP_SWATCH = ("repeating-linear-gradient(45deg,var(--map-nodata) 0 2px,"
+              "var(--card) 2px 4.5px)")
 
 
 def cat_fill(cat: str) -> str:
@@ -174,6 +182,26 @@ _JS = """
     tip.style.left = x + 'px'; tip.style.top = y + 'px';
   });
   svg.addEventListener('mouseleave', () => tip.style.display = 'none');
+  // keyboard: a focused state shows its card; Enter or Space opens it
+  svg.addEventListener('focusin', function(ev) {
+    var t = ev.target.closest ? ev.target.closest('[data-hover]') : null;
+    if (!t) return;
+    tip.innerHTML = t.dataset.hover;
+    tip.style.display = 'block';
+    var r = wrap.getBoundingClientRect(), b = t.getBoundingClientRect();
+    var x = Math.min(b.right - r.left + 6, r.width - tip.offsetWidth - 4);
+    tip.style.left = Math.max(4, x) + 'px';
+    tip.style.top = Math.max(4, b.top - r.top) + 'px';
+  });
+  svg.addEventListener('focusout', function() { tip.style.display = 'none'; });
+  svg.addEventListener('keydown', function(ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ' && ev.key !== 'Spacebar') return;
+    var t = ev.target.closest ? ev.target.closest('[data-abbr]') : null;
+    if (!t) return;
+    ev.preventDefault();
+    if (window.showState) window.showState('st-' + t.dataset.abbr);
+    else if (window.MAP_LINK) location = window.MAP_LINK + '#st-' + t.dataset.abbr;
+  });
   // click drill-down, suppressed after a real drag (pointer moved >= 5px)
   // and delayed 250ms so a double-click resets instead of drilling down
   svg.addEventListener('click', ev => {
@@ -200,7 +228,16 @@ _JS = """
 
 
 def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> str:
-    """Wrap SVG body in the fluid container + tooltip div + interaction JS."""
+    """Wrap SVG body in the fluid container + tooltip div + interaction JS.
+    A body that uses the reporting-gap hatch gets its pattern."""
+    defs = ""
+    if GAP_FILL in inner or 'class="st' in inner:
+        defs = (f'<defs><pattern id="{GAP_PATTERN_ID}" width="7" height="7" '
+                'patternUnits="userSpaceOnUse" '
+                'patternTransform="rotate(45)">'
+                '<rect width="7" height="7" fill="var(--card, #FFFFFF)"/>'
+                '<rect width="3" height="7" fill="var(--map-nodata, #8E89A6)"/>'
+                '</pattern></defs>')
     return f"""
 <div id="{dom_id}-wrap" class="usmap-wrap" style="position:relative">
 <svg id="{dom_id}" viewBox="{VIEWBOX}" xmlns="http://www.w3.org/2000/svg"
@@ -217,7 +254,11 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
  #{dom_id} .st.sel{{stroke:var(--accent,#34C0F0);stroke-width:2.6;
    stroke-linejoin:round}}
  #{dom_id} .nat.sel path{{stroke:var(--accent,#34C0F0);stroke-width:2}}
+ #{dom_id} .st:focus{{outline:none}}
+ #{dom_id} .st:focus-visible,#{dom_id} .nat:focus-visible path{{
+   stroke:var(--gold,{ink});stroke-width:3}}
 </style>
+{defs}
 {inner}
 </svg>
 <div id="{dom_id}-tip" style="position:absolute;pointer-events:none;display:none;
@@ -250,21 +291,53 @@ def _no_card_hover(name: str, fips: str, scope_fips, card=None,
         if fips in scope_fips:
             gap = (fips in gap_fips) if gap_fips is not None else not card
             if gap:
-                return f"<b>{name}</b><br>no reported data (reporting gap)"
+                return f"<b>{name}</b><br>no data"
             line = no_forecast_line((reasons or {}).get(fips, ""))
             return f"<b>{name}</b><br>{_h.escape(line, quote=False)}"
         return f"<b>{name}</b><br>not fitted in this run"
     return f"<b>{name}</b><br>no data in this view"
 
 
+def _is_gap(fips: str, card: dict, scope_fips, gap_fips) -> bool:
+    """A reporting gap: in the run's scope with nothing reported (as
+    _no_card_hover decides it)."""
+    if (card or {}).get("probs") or scope_fips is None or fips not in scope_fips:
+        return False
+    return (fips in gap_fips) if gap_fips is not None else not card
+
+
+def _plain(html_text: str) -> str:
+    """A hover's text without its markup, for an aria-label."""
+    import re as _re
+    import html as _h
+    t = _re.sub(r"<br\s*/?>", "; ", str(html_text or ""))
+    return " ".join(_h.unescape(_re.sub(r"<[^>]+>", "", t)).split())
+
+
+def state_label(name: str, card: dict, hover: str = "") -> str:
+    """One state's spoken name: "Ohio: stable 72%" from its modal
+    category, else its hover's words ("Wyoming; no data")."""
+    probs = (card or {}).get("probs") or {}
+    if probs:
+        modal = max(probs, key=probs.get)
+        return f"{name}: {modal.replace('_', ' ')} {probs[modal]:.0%}"
+    words = _plain(hover)
+    if words.startswith(name):
+        words = words[len(name):].lstrip("; ")
+    return f"{name}: {words}" if words else name
+
+
 def _state_view(fips: str, topo_name: str, card: dict, scope_fips,
                 gap_fips, reasons) -> tuple:
-    """(fill, opacity, hover) for one state: the ONE computation behind
-    svg_map's paths and state_swap_payload's swap data."""
+    """(fill, opacity, hover, label) for one state: the ONE computation
+    behind svg_map's paths and state_swap_payload's swap data."""
     fill, op = _card_fill(card)
+    if _is_gap(fips, card, scope_fips, gap_fips):
+        fill = GAP_FILL
+    name = card.get("name", topo_name)
     hover = card.get("hover_html") or _no_card_hover(
-        card.get("name", topo_name), fips, scope_fips, card, gap_fips, reasons)
-    return fill, op, hover
+        name, fips, scope_fips, card, gap_fips, reasons)
+    return fill, op, hover, state_label(name, card, hover)
 
 
 def _nat_view(us_card: dict) -> tuple:
@@ -290,14 +363,21 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
     paths = []
     for fips, (topo_name, d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
-        fill, op, hover = _state_view(fips, topo_name, card, scope_fips,
-                                      gap_fips, reasons)
+        fill, op, hover, label = _state_view(fips, topo_name, card,
+                                             scope_fips, gap_fips, reasons)
         abbr = card.get("abbr", "")
         can_click = bool(abbr) and (clickable is None or abbr in clickable)
         if can_click:
             hover += "<br>click for details"
         cls = "st" if can_click else "st noclick"
-        click_attr = f'data-abbr="{abbr}" ' if can_click else ""
+        # a state with a section is a button for the keyboard too (Tab,
+        # then Enter or Space); every state is named for a screen reader
+        click_attr = (f'data-abbr="{abbr}" role="button" tabindex="0" '
+                      if can_click else 'role="img" ')
+        click_attr += f'aria-label="{_esc(label)}" '
+        if fill == GAP_FILL:
+            click_attr += 'data-gap="1" '
+
         # data-fips is the model toggle's hook: the swap script recolors
         # each state by fips without re-rendering the geometry
         paths.append(
@@ -340,9 +420,10 @@ def state_swap_payload(cards_by_fips: dict, scope_fips=None,
     `reasons`), or swapped hovers tell a different story."""
     out = {}
     for fips, (topo_name, _d) in state_paths().items():
-        fill, op, hover = _state_view(fips, topo_name, cards_by_fips.get(fips, {}),
-                                      scope_fips, gap_fips, reasons)
-        out[fips] = {"f": fill, "o": round(op, 2), "h": hover}
+        fill, op, hover, label = _state_view(
+            fips, topo_name, cards_by_fips.get(fips, {}), scope_fips,
+            gap_fips, reasons)
+        out[fips] = {"f": fill, "o": round(op, 2), "h": hover, "a": label}
     return out
 
 
@@ -423,6 +504,7 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
         // with a drill-down keeps its hint whichever model colors it
         p.dataset.hover = s.h + (p.dataset.abbr
                                  ? '<br>click for details' : '');
+        if (s.a) p.setAttribute('aria-label', s.a);
       }});
     var nat = document.querySelector('#{nat_dom_id} g.nat');
     if (nat && d.us) {{
