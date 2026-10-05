@@ -93,6 +93,7 @@
  "middleware": ["slow_request_log", "_no_store", "_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
   "cell_rule_note": "callable _cell_rule_note",
+  "console_phase": "callable console_phase",
   "cov_state": "callable _cov_state",
   "cov_text": "callable _cov_text",
   "dataset_upload_mb": "callable max_mb",
@@ -102,6 +103,7 @@
   "harmonic_fig": "callable _harmonic_fig",
   "inline_static": "callable inline_static",
   "live_scores": "callable _live_scores",
+  "median_table": "callable median_table",
   "model_name": "callable <lambda>",
   "month_ticks_for_dates": "callable _month_ticks_for_dates",
   "oracle_text": "module app.core.oracle_text",
@@ -112,12 +114,14 @@
   "relwis_convention_note": "value str",
   "restart_needed": "callable _restart_needed",
   "results_html": "callable results_html",
+  "run_supersession": "callable run_supersession",
   "running_sha": "callable <lambda>",
   "sandbox_storage": "callable _sandbox_storage_line",
   "season_months": "value list",
   "season_week_name": "callable _season_week_name",
   "settings_html": "callable settings_html",
-  "static_data_uri": "callable _data_uri"
+  "static_data_uri": "callable _data_uri",
+  "validator_command": "callable validator_command"
  },
  "jinja_filters": {
   "hms": "callable fmt_hms"

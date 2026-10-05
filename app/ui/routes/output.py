@@ -17,11 +17,12 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 
 from app.ui import downloadlog, shared
 from app.ui.forms import _knobs
 from app.ui.shared import _archive_dates, _run_label
+from app.ui.state import REPO as _REPO
 from app.ui.state import _status
 from app.ui.templating import templates
 
@@ -88,11 +89,15 @@ def _submission_files(d: Path) -> list:
     `archived`: kept as the run's record, named by the model it is
     (_legacy_label), never downloadable (the hub would reject the old name).
     A modified run's <hub id>-modified files are downloadable exports
-    (`modified`), not submissions."""
+    (`modified`), not submissions. In Output's order (_member_order: the
+    Oracle SIHRS first); a submittable file carries its hub checks as
+    Output's rows do ("check_head", "problems")."""
     ok = _registered_model_ids()
     mod = _modified_model_ids()
     out = []
-    for p in sorted(Path(d).glob("submission/*/*.csv")):
+    files = sorted(Path(d).glob("submission/*/*.csv"),
+                   key=lambda p: (_member_order(p.parent.name), str(p)))
+    for p in files:
         name = p.parent.name
         entry = {"model": name, "name": p.name, "path": str(p),
                  "submittable": name in ok, "modified": name in mod,
@@ -100,6 +105,14 @@ def _submission_files(d: Path) -> list:
         if name not in ok and name not in mod:
             entry["model"], _same = _legacy_label(name, Path(d))
             entry["archived"] = True
+        elif name in ok:
+            try:
+                s = _check_summary(str(p))
+                entry["check_head"] = _check_head(s)
+                entry["problems"] = list(s["problems"])
+                entry["check_ok"] = bool(s["ok"])
+            except Exception:
+                pass
         out.append(entry)
     return out
 
@@ -188,12 +201,51 @@ def _eastern(now):
         tzinfo=_dt.timezone(_dt.timedelta(hours=off)))
 
 
+def _deadline_utc(last):
+    """The instant a round's window closes (HUB_CLOSE_HOUR, Eastern, on its
+    last day) as an aware UTC datetime. zoneinfo when the tz database is
+    there; else _eastern's US rule, which holds the same offsets."""
+    import datetime as _dt
+    wall = _dt.datetime(last.year, last.month, last.day, HUB_CLOSE_HOUR)
+    try:
+        from zoneinfo import ZoneInfo
+        return wall.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(
+            _dt.timezone.utc)
+    except Exception:
+        pass
+    # the US switches at 2 AM, never near 11 PM: the offset in force a few
+    # hours later is the one at the close
+    guess = (wall + _dt.timedelta(hours=5)).replace(tzinfo=_dt.timezone.utc)
+    off = _eastern(guess).utcoffset()
+    return (wall - off).replace(tzinfo=_dt.timezone.utc)
+
+
+#: under this many hours left, the due badge turns from warn to error
+URGENT_HOURS = 12
+
+
+def _time_left(deadline, now) -> str:
+    """Time until `deadline` in a few words: "2 days 8 h left", "3 h left",
+    "40 min left"; "" once it has passed."""
+    secs = int((deadline - now).total_seconds())
+    if secs <= 0:
+        return ""
+    days, rem = divmod(secs, 86400)
+    hours, rem = divmod(rem, 3600)
+    if days:
+        return (f"{days} day{'s' if days != 1 else ''}"
+                + (f" {hours} h" if hours else "") + " left")
+    if hours:
+        return f"{hours} h left"
+    return f"{max(1, rem // 60)} min left"
+
+
 def _window(due, today=None, now=None) -> tuple:
     """(state, sentence) of the hub's window for a round: "due" (open now,
     until 11 PM Eastern on the last day), "soon" (it opens later: from, to)
     or "closed". `due` is (first, last) dates. The clock is Eastern time,
     not the machine's: `now` (an aware datetime, default the current time)
-    or, for a whole-day answer, `today`."""
+    or, for a whole-day answer, `today`. Every date reads "Wed 2026-10-07"."""
     import datetime as _dt
     first, last = due
     if today is None:
@@ -204,7 +256,8 @@ def _window(due, today=None, now=None) -> tuple:
     if today > last:
         return "closed", f"The window closed {last:%a %Y-%m-%d}."
     if today < first:
-        return "soon", f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
+        return "soon", (f"Due {first:%a %Y-%m-%d} to {last:%a %Y-%m-%d}, "
+                        "11 PM ET.")
     return "due", f"Due {last:%a %Y-%m-%d}, 11 PM ET."
 
 
@@ -224,21 +277,42 @@ def _date_status(ref: str, today=None, now=None) -> dict:
     """A forecast date's window for its card: {"state": due, soon, closed,
     or record (the reference date is not a FluSight round:
     hub-config/tasks.json, vendored), "text": the one-line sentence,
-    "badge": (kit state, words)}; {} when the rules cannot be read."""
+    "badge": (kit state, words)}; {} when the rules cannot be read. A due or
+    coming round also carries "deadline" (the close as ISO UTC, for the
+    page to name in the reader's own time); a due one "left" (time left,
+    _time_left; "" when `today` stands in for the clock) and "urgent"
+    (under URGENT_HOURS left: the badge turns error)."""
+    import datetime as _dt
     from app.core import hubcheck
+    window = None
     try:
         rounds = hubcheck.vendored_rules()["rounds"]
         if ref not in rounds:
             state = "record"
             text = f"{ref} is not a FluSight round, so its files are a record."
         else:
-            state, text = _window(hubcheck.submission_window(ref),
-                                  today=today, now=now)
+            window = hubcheck.submission_window(ref)
+            state, text = _window(window, today=today, now=now)
     except Exception:
         return {}
     kind, words = _WINDOW_BADGE[state]
-    return {"state": state, "text": text,
-            "badge": (kind, words or text.rstrip("."))}
+    out = {"state": state, "text": text, "left": "", "urgent": False,
+           "deadline": ""}
+    if window and state in ("due", "soon"):
+        close = _deadline_utc(window[1])
+        out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if state == "due" and today is None:
+            clock = now or _dt.datetime.now(_dt.timezone.utc)
+            out["left"] = _time_left(close, clock)
+            out["urgent"] = bool(out["left"]) and (
+                close - clock).total_seconds() < URGENT_HOURS * 3600
+            if out["urgent"]:
+                kind = "error"
+    words = words or text.rstrip(".")
+    if out["left"]:
+        words = f"{words} · {out['left']}"
+    out["badge"] = (kind, words)
+    return out
 
 
 def _date_window(ref: str, today=None, now=None) -> str:
@@ -514,19 +588,35 @@ def output_page(request: Request):
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
+    report_asof = (str((res or {}).get("forecast_date") or "")
+                   if has_report else "")
+    # each file gets the hub validator's command (--window for a round
+    # that is open or coming)
+    for d in dates:
+        win = (d.get("status") or {}).get("state") in ("due", "soon")
+        for f in d["files"]:
+            f["validate"] = validator_command(f["path"], window=win)
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
         # the earlier weeks the picker offers: those whose archive holds a
-        # report (a run whose report failed is archived without one)
-        "archive_dates": [d for d in reversed(_archive_dates())
-                          if (APP_STATE / "archive" / d
-                              / "report.html").is_file()],
+        # report (a run whose report failed is archived without one), less
+        # the week the card already offers above it; each (as-of,
+        # reference date)
+        "archive_dates": [(d, _reference_date(d) or d)
+                          for d in reversed(_archive_dates())
+                          if d != report_asof
+                          and (APP_STATE / "archive" / d
+                               / "report.html").is_file()],
         "has_report": has_report,
+        # a round open now: its files' Download is the page's primary
+        "has_due": any((d.get("status") or {}).get("state") == "due"
+                       for d in dates),
+        # the date a console run is writing now (its card says so)
+        "running_asof": _running_run()[1],
         # the week the latest report is for and the run that wrote it,
         # beside its buttons (which name that run)
-        "report_asof": str((res or {}).get("forecast_date") or "")
-        if has_report else "",
+        "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
         "stamp": stamp})
 
@@ -611,19 +701,32 @@ def _reveal_command(p: Path, platform: str | None = None):
 
 
 @router.post("/output/reveal")
-def output_reveal(path: str = Form(...)):
-    """Show the file in Finder / Explorer (a local desktop app)."""
+def output_reveal(request: Request, path: str = Form(...)):
+    """Show the file in Finder / Explorer (a local desktop app), then back
+    to the page that asked (a run page or Output); a warning there when no
+    file manager could be opened on it."""
     import subprocess
     from app.core.runs import APP_STATE
     try:
         p = Path(path).resolve()
     except (OSError, ValueError):       # a NUL byte or an unusable name
-        return RedirectResponse("/output", status_code=303)
+        p = None
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
-    if p.is_relative_to(APP_STATE.resolve()) and p.exists():
+    if p is None or not (p.is_relative_to(APP_STATE.resolve())
+                         and p.exists()):
+        shared._flash("Nothing opened: the file is not in app state any "
+                      "more.", "warn",
+                      detail="It may have been deleted or moved; Storage "
+                             "lists what is on disk.")
+        return shared._back(request, "/output")
+    try:
         subprocess.Popen(_reveal_command(p))
-    return RedirectResponse("/output", status_code=303)
+    except OSError as e:
+        shared._flash("Nothing opened: no file manager could be started.",
+                      "warn", detail=f"{type(e).__name__}: {e}. The file "
+                                     f"is at {p}.")
+    return shared._back(request, "/output")
 
 
 #: report path -> builder-sources mtime of a failed rebuild: retry once per
@@ -757,3 +860,126 @@ def output_report_download(request: Request, date: str = ""):
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""), request,
                                route="/output/report/download")
+
+
+# === Shared with the run pages (run.html, through template globals) ===
+#: the hub validator, in the repository (docs/FLUSIGHT-2026-27.md)
+VALIDATOR = _REPO / "scripts" / "validate_submission.R"
+
+
+def validator_command(path: str, window=None) -> str:
+    """The command that runs one file through the hub's own checks
+    (scripts/validate_submission.R <submission.csv> <hub_clone_path>
+    [--window]), paths quoted; --window for a round whose window is open
+    or coming (a past reference date always fails the window check).
+    window=None reads the round from the file name's reference date."""
+    from flubnf.settings import HUB
+    if window is None:
+        ref = Path(str(path)).name[:10]
+        window = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", ref)) and \
+            _date_status(ref).get("state") in ("due", "soon")
+    cmd = f'Rscript "{VALIDATOR}" "{path}" "{HUB}"'
+    return cmd + " --window" if window else cmd
+
+
+def _running_run() -> tuple:
+    """(run id, as-of) of the console run in progress, read from its
+    ledger spec; ("", "") when none, and no as-of for a research or
+    own-data run (those never reach a date card)."""
+    import json as _json
+    from app.core.runs import Ledger, is_research
+    running = _status.get("running") or ""
+    if ":" not in running:
+        return "", ""
+    rid = running.split(":", 1)[1]
+    try:
+        row = Ledger().row(rid) or {}
+        spec = row.get("spec") or "{}"
+        d = _json.loads(spec) if isinstance(spec, str) else spec
+    except Exception:
+        return rid, ""
+    if not isinstance(d, dict) or is_research(spec) \
+            or (d.get("extra") or {}).get("dataset"):
+        return rid, ""
+    return rid, str(d.get("forecast_date") or "")
+
+
+def run_supersession(run_id: str) -> dict:
+    """Whether Output shows this run's files for its date
+    (archive_record.choose, as forecast_dates picks): {"shown": the
+    folders Output shows from this run, "by": the run whose hub files it
+    shows instead ("" when none), "by_when", "ref", "asof"}; {} for a run
+    with no hub date (research, own data, still running) or nothing to
+    say."""
+    import json as _json
+    from app.core import archive_record as _ar
+    from app.core.runs import APP_STATE, Ledger, is_research
+    try:
+        ledger = Ledger()
+        row = ledger.row(run_id) or {}
+        spec = row.get("spec") or "{}"
+        d = _json.loads(spec) if isinstance(spec, str) else (spec or {})
+        if not isinstance(d, dict) or row.get("status") == "running" \
+                or is_research(spec) or (d.get("extra") or {}).get("dataset"):
+            return {}
+        asof = str(d.get("forecast_date") or "")
+        if not asof:
+            return {}
+        cands, _own = _hub_candidates(APP_STATE, ledger)
+    except Exception:
+        return {}
+    by = {}
+    for c in cands:
+        if c["asof"] == asof:
+            by.setdefault(c["dir"], []).append(c)
+    order = sorted(by, key=lambda k: (_member_order(k), k))
+    chosen = {k: _ar.choose(by[k]) for k in order}
+    shown = [k for k in order if chosen[k]["run_id"] == run_id]
+    hub = [k for k in order if k in _registered_model_ids()
+           and chosen[k]["run_id"] and chosen[k]["run_id"] != run_id]
+    other = chosen[hub[0]]["run_id"] if hub else ""
+    if not shown and not other:
+        return {}
+    return {"shown": shown, "by": other,
+            "by_when": _run_when(other) if other else "",
+            "ref": _reference_date(asof) or asof, "asof": asof}
+
+
+def median_table(models: dict) -> dict:
+    """A run's median forecasts for the run page: {"hs": ["h0".."h3"],
+    "models": {model: [(location, [cells])]}}, the stored horizons read as
+    the hub's (app/core/horizons.py), US first, values with thousands
+    separators."""
+    from app.core.horizons import HORIZONS, models_to_canonical
+    canon = models_to_canonical(models or {})
+    out = {}
+    for model, locs in (canon or {}).items():
+        if not isinstance(locs, dict):
+            continue
+        rows = []
+        for loc, hz in locs.items():
+            hz = hz if isinstance(hz, dict) else {}
+            cells = []
+            for h in HORIZONS:
+                v = hz.get(h)
+                v = v.get("0.5") if isinstance(v, dict) else v
+                try:
+                    cells.append(f"{float(v):,.0f}")
+                except (TypeError, ValueError):
+                    cells.append("")
+            rows.append((str(loc), cells))
+        rows.sort(key=lambda r: r[0] != "US")       # stable: US, then as stored
+        out[model] = rows
+    return {"hs": [f"h{h}" for h in HORIZONS], "models": out}
+
+
+def console_phase() -> str:
+    """What the console run is doing now (the Forecast tab's phase line);
+    "" when idle."""
+    return str(_status.get("phase") or "") if _status.get("running") else ""
+
+
+templates.env.globals["validator_command"] = validator_command
+templates.env.globals["run_supersession"] = run_supersession
+templates.env.globals["median_table"] = median_table
+templates.env.globals["console_phase"] = console_phase

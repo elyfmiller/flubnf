@@ -490,7 +490,8 @@ def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
     (w / "results.json").write_text(json.dumps(
         {"forecast_date": "2098-01-03", "models": {"ensemble": {}},
          "observed": {}}))
-    a = tmp_path / "archive" / "2098-01-03"
+    # an earlier week (the latest run's own week is the card's buttons)
+    a = tmp_path / "archive" / "2097-12-27"
     a.mkdir(parents=True)
     (a / "report.html").write_text("<html>A</html>")
     ui_shared._invalidate_scans()

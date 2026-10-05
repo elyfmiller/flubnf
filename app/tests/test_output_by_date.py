@@ -91,7 +91,10 @@ def test_dates_are_listed_newest_first_one_card_each(root):
                re.findall(r"/output/download\?path=([^\"'&>\s]+)", html)}
     assert offered == {str(p) for w in (a, b, c)
                        for p in w.glob("submission/*/*.csv")}
-    assert html.count("Show in folder") == 4
+    # the newest date is a card (Show in folder per file); the earlier
+    # ones are lines with a download per file
+    assert html.count("Show in folder") == 2
+    assert html.count('class="out-line"') == 2
     for gone in ("Mark as submitted", "Unmark", "Submitted</span>",
                  "Archived files", "holds an earlier run",
                  "No current submission files"):
@@ -236,7 +239,10 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
     assert due["badge"] == ("warn", "Due Wed 2026-10-07, 11 PM ET")
     soon = O._date_status("2026-10-10", today=dt.date(2026, 10, 1))
     assert soon["badge"] == ("pending",
-                             "Due Sun Oct 04 to Wed Oct 07, 11 PM ET")
+                             "Due Sun 2026-10-04 to Wed 2026-10-07, 11 PM ET")
+    # the close in UTC for the page to name in the reader's clock
+    # (11 PM EDT on Wed 2026-10-07 is 03:00 UTC on the Thursday)
+    assert due["deadline"] == soon["deadline"] == "2026-10-08T03:00:00Z"
     shut = O._date_status("2026-10-10", today=dt.date(2026, 10, 8))
     assert shut["badge"] == ("neutral", "Window closed")
     assert shut["text"] == "The window closed Wed 2026-10-07."
@@ -251,15 +257,16 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
 
 
 def test_a_seasons_older_dates_sit_behind_one_fold(root):
-    """The newest four dates are cards; older ones are in one closed fold
-    whose summary counts them and names their span, every file still
-    offered for download."""
+    """The newest date is a card and the next three are lines; older ones
+    are in one closed fold whose summary counts them and names their span,
+    every file still offered for download."""
     for asof in ("2098-01-03", "2098-01-10", "2098-01-17", "2098-01-24",
                  "2098-01-31"):
         _run(root, asof, [GH])
     html = client.get("/output").text
     head, fold = html.split('<details class="out-older" id="out-older">', 1)
-    assert head.count('class="card out-day"') == 4
+    assert head.count('class="card out-day"') == 1
+    assert head.count('class="out-line"') == 3
     assert 'id="fc-2098-01-03"' in fold and 'id="fc-2098-01-03"' not in head
     assert "1 earlier forecast date<" in fold
     assert "2098-01-10 to 2098-01-10" in fold
