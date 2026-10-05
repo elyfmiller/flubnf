@@ -5,16 +5,19 @@ on 2026-09-22. The hub builds a model_id as `<team_abbr>-<model_abbr>`, so
 the hyphen is the separator and neither field may contain one: both must
 match `^[a-zA-Z0-9_+]+$` and be at most 16 characters.
 
-  NAU_PyBNF-OracleSIHRS.yml   the Oracle SIHRS (the particle filter plus the Oracle step), designated
-  NAU_PyBNF-GroundHogCGR.yml  the Groundhog, designated
+* [NAU_PyBNF-OracleSIHRS.yml](NAU_PyBNF-OracleSIHRS.yml): the Oracle SIHRS
+  (the particle filter plus the Oracle step), designated
+* [NAU_PyBNF-GroundHogCGR.yml](NAU_PyBNF-GroundHogCGR.yml): the Groundhog,
+  designated
 
 Two models, submitted separately. The Oracle SIHRS is the mechanistic
 model: the SIHRS compartment model fitted weekly by the particle filter,
 plus a post-fit step that blends each stored forward sample's growth with
 one donor growth path from an earlier season at the same calendar week
-(docs/ORACLE-SIHRS.md); its card's `methods_long` describes both, carries
+([docs/ORACLE-SIHRS.md](../docs/ORACLE-SIHRS.md)); its card's `methods_long` describes both, carries
 the frozen pre-registration's hash, and carries verbatim the donor-bank
-sentence of `app/core/oracle_text.BANK_TEXT["card"]` (the one marked place
+sentence of `BANK_TEXT["card"]` in
+[`app/core/oracle_text.py`](../app/core/oracle_text.py) (the one marked place
 for which data streams form the pool; the test holds the two equal). The
 Groundhog is the calendar analogue with a committed FluSurv-NET donor bank
 spliced in. Both are designated: a team may designate at most two models,
@@ -33,10 +36,10 @@ old cards are in this repository's history, not in this directory, because
 the drift test below requires every card here to carry this team's
 abbreviation.
 
-`app/core/submit.py` holds `TEAM_ABBR`, `MODEL_ABBR` and `RETIRED_ABBR` as
+[`app/core/submit.py`](../app/core/submit.py) holds `TEAM_ABBR`, `MODEL_ABBR` and `RETIRED_ABBR` as
 constants (model-metadata/ is not packaged into the wheel, so a submission
 cannot depend on reading these files at run time).
-`app/tests/test_submit_join.py` parses every YAML here and asserts that the
+[`app/tests/test_submit_join.py`](../app/tests/test_submit_join.py) parses every YAML here and asserts that the
 written and the retired identities together are exactly the registered
 cards, so the two cannot drift apart.
 
@@ -45,17 +48,17 @@ cards added to `model-metadata/` of cdcepi/FluSight-forecast-hub before the
 first `model-output/NAU_PyBNF-<model>/` file. The hub's READMEs name no
 other registration step; the FluSight contact is flusight@cdc.gov.
 
-Validate against the hub's own schema before opening a pull request:
+Validate against the hub's own schema, `hub-config/model-metadata-schema.json`
+in the hub clone, before opening a pull request.
 
-  hub-config/model-metadata-schema.json
-
-`app/tests/test_model_metadata.py` does that on every run: it validates
-both cards against `app/tests/hub_model_metadata_schema.json`, a byte copy
+[`app/tests/test_model_metadata.py`](../app/tests/test_model_metadata.py) does that on every run: it validates
+both cards against [`app/tests/hub_model_metadata_schema.json`](../app/tests/hub_model_metadata_schema.json), a byte copy
 of that schema (sha256 bf9b14cdf8243155, checked against the hub clone
 whenever one is present), including the 200-character limit on `methods`.
 
 A submission CSV is checked the way the hub's CI checks it, with the hub's
-own hubValidations R package, by `scripts/validate_submission.R` (or its
-Python wrapper `scripts/validate_submission.py`). It copies the matching
+own hubValidations R package, by
+[`scripts/validate_submission.R`](../scripts/validate_submission.R) (or its
+Python wrapper [`scripts/validate_submission.py`](../scripts/validate_submission.py)). It copies the matching
 card from this directory into a throwaway worktree of the hub clone when
 the hub does not carry it yet.
