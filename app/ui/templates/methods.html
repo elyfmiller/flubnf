@@ -85,14 +85,20 @@
   pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
   pb.addEventListener('click', function () { window.print(); });
   bar.appendChild(pb);
-  var closed = [], theme = null;
+  // (once per print: a second beforeprint before afterprint keeps the
+  // first one's record of what to restore)
+  var closed = [], theme = null, printing = false;
   addEventListener('beforeprint', function () {
+    if (printing) return;
+    printing = true;
     closed = Array.prototype.filter.call(document.querySelectorAll('.mt-doc details:not([open])'),
                                          function (d) { d.open = true; return true; });
     theme = de.getAttribute('data-theme');
     de.setAttribute('data-theme', 'light');
   });
   addEventListener('afterprint', function () {
+    if (!printing) return;
+    printing = false;
     closed.forEach(function (d) { d.open = false; });
     closed = [];
     if (theme) de.setAttribute('data-theme', theme);
