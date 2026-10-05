@@ -6,6 +6,23 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-05: design and convenience pass on `dev` (Ely's request), not
+  on `main` while `main` is frozen for the 2026-10-10 round. Display and
+  wording only; nothing a run or the submission CSVs read changed.
+  Weekly report: member colours that pass contrast in every theme, a
+  colour-blind switch that works in a saved file, plain public wording
+  (reference date in the title, no internal names), a summary line, a
+  jump bar, states listed by category, a numbers table per detail,
+  print fixes (5 pages, no orphaned headings). Output: the due round
+  stands out with time left, copy-path and validator-command buttons,
+  "newer run in progress", superseded runs named. Forecast: reference
+  date and window under the date, location presets and filter, the
+  last form kept across restarts (`app/state/last_form.json`, the date
+  always resets to the newest week). Retrospective: opens on US over
+  the last 12 weeks, every member on, deep links, keys. Shell: phone
+  tabs wrap, "Match system" theme, g-key shortcuts ("?" lists them).
+  Public site and README: one name for the mechanistic member, no
+  builder-machine details, a status block and quick start.
 - 2026-10-02: the stale-download fix works on Ely's Mac: a download
   saved over an existing file now replaces it (PR #28).
 - 2026-10-02: Ely's re-run of the 2026-10-03 dry run (after PR #28)
@@ -203,3 +220,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
+- For Ely (2026-10-05 design pass), not built yet: a live "This week"
+  card on Home; a submission checklist and "Mark as submitted" on the
+  due round; this week against last week before submitting; score CSV,
+  score map and season comparison in the Retrospective; a smaller
+  exported season file (23 MB now). Also Ely's: CITATION.cff version,
+  date and authors; the TEAM.md row in the docs index.
+- Number conflicts the docs pass could not settle from the repo: Oracle
+  SIHRS season figures 0.767 / 0.697 / 0.781 (README, home) against
+  in-app replays 0.767 / 0.702 / 0.782 (FLUSIGHT-2026-27.md); bare
+  analogue 2025-26 0.618 (README, ORACLE-SIHRS.md) against 0.621
+  (SITE.md, the sealed tree).
