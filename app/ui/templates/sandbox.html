@@ -115,7 +115,8 @@
    {%- if note %}{{ tips.tip("sb-note", name, note) }}{% endif %}
    {%- if shipped and shipped.shipped and not shipped.intact %}{{ tips.badge("warn", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter, and cannot take the Oracle step.", id="sb-modified") }}{% endif %}
   </div>
-  {% if origin %}<div class="sb-headmeta">{{ tips.meta([("folder", "from " ~ origin, "Origin")], label="Model") }}</div>{% endif %}
+  {% set ons = namespace(o=origin) %}{% for e in (templates or []) + (examples or []) %}{% if ons.o == "example " ~ e %}{% set ons.o = exname(e) %}{% endif %}{% endfor %}
+  {% if origin %}<div class="sb-headmeta">{{ tips.meta([("folder", "from " ~ ons.o, "Origin")], label="Model") }}</div>{% endif %}
  </div>
  <div class="sbhead-menus">
  <details class="sbmanage sbhelp">
