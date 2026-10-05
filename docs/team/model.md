@@ -20,15 +20,29 @@ agent's.
   (an antigenic-evolution agent-based model through an observation model)
   plus pre-2020 respiratory histories forecast COVID-19 cases better than
   one trained on histories alone, and forecasting each variant and
-  summing beat forecasting the total. For FluBNF the recommended first
-  step is a BNGL-simulated donor stream in the Oracle and Groundhog bank
-  (LANL's own "synthetic method of analogues" is the precedent), testable
-  by backfill on the stored grid without a refit, preceded by the paper's
-  covariate-shift classifier test, which needs no fit and no scoring. The
-  two-strain coupled fit stays closed (2026-08-21) and the neural-member
-  verdict stands; the paper's recipe is a research question, not a round
-  member. Nothing runs before the 2026-10-07 round; nothing in production
-  changes. Ely picks the path.
+  summing beat forecasting the total. Reviewed the same day by three
+  independent checks (section 10 of the memo) and rewritten. The paper's
+  mechanism (synthetic data covering a target absent from the real
+  history) does not apply to influenza admissions, which sit inside the
+  real history; what transfers is Q2 (adding synthetic did not hurt) and
+  the existence proof of a synthetic-only forecaster that could have run
+  in real time. The recommendation is now: one frozen BNGL synthetic
+  season set (calendar-true 52-week SIHRS seasons, NHSN-calibrated noise,
+  bounds fixed before any look at the grid), then B-syn, a quantile
+  forecaster trained on synthetic seasons only with its context from the
+  as-of vintage, scored on the stored grid, the 2026-08-21 width screen
+  first and the gradient-boosted learner before any transformer; that
+  reopens the 2026-08-21 neural verdict as a research question only if
+  Ely says so. The synthetic donor stream in the Oracle bank (the first
+  draft's first step) has a low prior on the record (B2 unresolved, four
+  ensemble-level nulls, the GAMEPLAN ceilings) and is a seconds-long side
+  reading in the b2/screen harness if wanted: the donor code takes
+  exactly two halves, `flubnf oracle backfill` takes no bank, and V6
+  tested the bank's stamps, not donor realism. The covariate-shift
+  classifier is demoted to a path-B diagnostic. The two-strain coupled
+  fit stays closed (2026-08-21; its ensemble value was never measured).
+  Nothing runs before the 2026-10-07 round; nothing in production
+  changes. Ely and Bill pick the path.
 - 2026-10-05: read Submission's round-one message (submission.md
   8d0e14a). This lane has nothing to merge and changes nothing the run
   reads: the Oracle SIHRS ships as frozen (the pre-registration, A2, B2,
