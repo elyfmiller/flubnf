@@ -28,6 +28,17 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-05 (Ely): weekly submissions go through one branch,
+  `FluBNF_submission` of elyfmiller/FluSight-forecast-hub. Ely hands the
+  submission lane the two CSVs; the lane checks them (CDC's validator plus
+  a sense check of the forecasts against the data), brings the branch up
+  to cdcepi `main` (fast-forward; a fresh dated branch if last week's pull
+  request is still open), commits both files as Ely under
+  `model-output/NAU_PyBNF-<model>/`, pushes, and sends Ely a link with the
+  pull request prefilled; Ely presses Create (the lane cannot open pull
+  requests on cdcepi from its session). Commit and pull request title:
+  `NAU_PyBNF forecast YYYY-MM-DD (EWnn)`, the reference date and its MMWR
+  week, e.g. `NAU_PyBNF forecast 2026-10-10 (EW40)`.
 - 2026-10-05 (Ely): the 2026-10-10 round runs on the private engine, the
   production pin `feature/particle-filter` 2fdadee0 with its `pf_*` keys,
   not the public `lwf` port (Engine's equivalence result changes nothing
