@@ -138,11 +138,33 @@ def grid_data(asof: str, locations: list, keys: dict, names: dict,
             "panels": panels}
 
 
+
 # ------------------------------------------------------------- the flags
+_SHORT = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+
+
+def _md(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{d.strftime('%b')} {d.day}"
+
+
+def _last_target(panel: dict) -> str:
+    """The panel's last target week as "Oct 31" ("" without a fan)."""
+    for f in (panel.get("models") or {}).values():
+        ts = f.get("times") or []
+        if ts:
+            try:
+                return _md(ts[-1])
+            except (TypeError, ValueError):
+                return ""
+    return ""
+
+
 def flags(panel: dict) -> list:
     """What makes a panel worth a second look, in a few words each:
-    a model whose horizon-3 median is below the latest count, and two
-    models whose horizon-3 medians fall outside each other's 95% bands."""
+    a model whose 4-week-ahead median (horizon 3) is below the latest
+    count, and two models whose medians for the last target week fall
+    outside each other's 95% intervals."""
     out = []
     o = panel.get("observed") or []
     fans = panel.get("models") or {}
@@ -151,25 +173,51 @@ def flags(panel: dict) -> list:
         low = [m for m in MODELS
                if m in fans and fans[m]["q"][3][2] < last]
         if low:
-            out.append(("falls", "the horizon-3 median is below the latest "
+            out.append(("falls", "4-week-ahead median below the latest "
                         "count (" + ", ".join(_SHORT[m] for m in low) + ")"))
     if all(m in fans for m in MODELS):
         a, p = fans["analogue"]["q"][3], fans["pf"]["q"][3]
         if not (a[0] <= p[2] <= a[4]) or not (p[0] <= a[2] <= p[4]):
-            out.append(("disagree", "at horizon 3 one model's median is "
-                        "outside the other's 95% band"))
+            when = _last_target(panel) or "the last target week"
+            out.append(("disagree", f"by {when} one model's median is "
+                        "outside the other's 95% interval"))
     return out
 
 
-_SHORT = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+def flag_key(when: str = "the last target week") -> str:
+    """The flag words, explained once per page (a paper copy has no
+    hover). `when`: the last target week ("Oct 31")."""
+    return ("falls: a 4-week-ahead median below the latest count · "
+            f"disagree: by {when} one model's median is outside the "
+            "other's 95% interval")
+
+
+#: the flag key without a date (kept for callers that have no grid)
+FLAG_KEY = flag_key()
+
+#: what the Oracle SIHRS national row is, by the run's own oracle.json
+#: (us_national.us_step_week: "stepped" from the 2026-10-07 round, as
+#: docs/FLUSIGHT-2026-27.md dates it; "filter" before). Public wording:
+#: the report goes to collaborators.
+US_NOTES = {
+    "stepped": "Oracle SIHRS: since the Oct 7, 2026 round the US forecast "
+               "uses the same Oracle step as the states; earlier weeks "
+               "used the Liu-West filter alone.",
+    "filter": "Oracle SIHRS: this run's US forecast uses the Liu-West "
+              "filter alone, without the Oracle step the states get (runs "
+              "before the Oct 7, 2026 round).",
+}
 
 
 # ------------------------------------------------------------- drawing
-W, H = 300, 180
+W, H = 300, 200
 #: a 95% band may stretch the scale to this many times the rest of the
 #: panel (counts, last season, medians); beyond, it runs off the top
 CLIP_X = 1.6
 ML, MR, MT, MB = 36, 8, 8, 18
+#: the national panel under the map: wide and short, its axis text the
+#: grid panels' size where both render at their usual widths
+FEATURE_W, FEATURE_H, FEATURE_FS = 900, 280, 13
 
 
 def _num(v: float) -> str:
@@ -194,24 +242,62 @@ def _nice(v: float) -> float:
     return 10 * e
 
 
-def _md(iso: str) -> str:
-    d = date.fromisoformat(iso)
-    return f"{d.strftime('%b')} {d.day}"
+def model_color(m: str, colors: dict) -> str:
+    """A member's colour as the page token (--model-pf, --model-analogue:
+    report_v2's stylesheet sets them per theme) with the player's literal
+    as the fallback."""
+    return f"var(--model-{m}, {colors.get(m, '#888888')})"
 
 
-def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
+def _fmt(v: float) -> str:
+    return f"{v:,.0f}"
+
+
+def panel_label(panel: dict) -> str:
+    """A panel's spoken summary: the name, the latest count, each model's
+    median and 95% interval for the last target week, and the flags."""
+    name = str(panel.get("name") or panel.get("key") or "")
+    o = panel.get("observed") or []
+    fans = panel.get("models") or {}
+    bits = [name]
+    if o:
+        bits.append(f"latest {_fmt(o[-1][1])} admissions in the week "
+                    f"ending {_md(o[-1][0])}")
+    else:
+        bits.append("no data")
+    when = _last_target(panel)
+    for m in reversed(MODELS):
+        f = fans.get(m)
+        if f:
+            r = f["q"][3]
+            bits.append(f"{_SHORT.get(m, m)} median for {when} {_fmt(r[2])}, "
+                        f"95% interval {_fmt(r[0])} to {_fmt(r[4])}")
+    if o and not fans:
+        bits.append("no forecast")
+    fl = flags(panel)
+    if fl:
+        bits.append("flagged: " + "; ".join(why for _w, why in fl))
+    return ". ".join(bits)
+
+
+def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
+              fs: float = 9) -> tuple:
     """One location's panel as inline SVG, and whether a 95% band runs
-    off its scale."""
+    off its scale. `w`, `h`: the viewBox (the national panel under the map
+    is wide and short); `fs`: the axis text size in viewBox units, the
+    margins scaled with it."""
+    k = fs / 9.0
+    ml, mr, mt, mb = ML * k, MR * k, MT * k, MB * k
     o = panel.get("observed") or []
     ls = panel.get("last_season") or []
     fans = panel.get("models") or {}
     times = next((f["times"] for f in fans.values()), None)
     xs = [d for d, _ in o] + [d for d, _ in ls] + list(times or [])
     if not xs:
-        return ('<svg class="g-svg" viewBox="0 0 300 180" role="img" '
-                'aria-label="no data"><text x="150" y="92" '
-                'text-anchor="middle" class="g-ax">no data</text></svg>',
-                False)
+        return (f'<svg class="g-svg" viewBox="0 0 {w} {h}" role="img" '
+                'aria-label="no data"><text x="{:.0f}" y="{:.0f}" '
+                'text-anchor="middle" class="g-ax" font-size="{}">no data'
+                '</text></svg>'.format(w / 2, h / 2, fs), False)
     d0 = min(date.fromisoformat(x) for x in xs)
     d1 = max(date.fromisoformat(x) for x in xs)
     span = max((d1 - d0).days, 1)
@@ -231,29 +317,30 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
     clipped = bool(wide) and max(wide) > top
 
     def X(iso):
-        return ML + (W - ML - MR) * (date.fromisoformat(iso) - d0).days / span
+        return ml + (w - ml - mr) * (date.fromisoformat(iso) - d0).days / span
 
     def Y(v):
-        return MT + (H - MT - MB) * (1 - min(max(v, 0.0), top * 1.2) / top)
+        return mt + (h - mt - mb) * (1 - min(max(v, 0.0), top * 1.2) / top)
 
     cid = f"gclip{idx}"
-    parts = [f'<svg class="g-svg" viewBox="0 0 {W} {H}" role="img" '
-             f'aria-label="{_html.escape(panel.get("name", ""))}">',
-             f'<defs><clipPath id="{cid}"><rect x="{ML}" y="{MT}" '
-             f'width="{W - ML - MR}" height="{H - MT - MB + 3}"/>'
+    parts = [f'<svg class="g-svg" viewBox="0 0 {w} {h}" role="img" '
+             f'aria-label="{_html.escape(panel_label(panel))}">',
+             f'<defs><clipPath id="{cid}"><rect x="{ml:.1f}" y="{mt:.1f}" '
+             f'width="{w - ml - mr:.1f}" height="{h - mt - mb + 3 * k:.1f}"/>'
              '</clipPath>'
              '</defs>']
     # axes: 0, half and the top
     for v in (0, top / 2, top):
         y = Y(v)
-        parts.append(f'<line class="g-grid" x1="{ML}" x2="{W - MR}" '
+        parts.append(f'<line class="g-grid" x1="{ml:.1f}" x2="{w - mr:.1f}" '
                      f'y1="{y:.1f}" y2="{y:.1f}"/>'
-                     f'<text class="g-ax" x="{ML - 4}" y="{y + 3:.1f}" '
+                     f'<text class="g-ax" font-size="{fs}" '
+                     f'x="{ml - 4 * k:.1f}" y="{y + fs / 3:.1f}" '
                      f'text-anchor="end">{_num(v)}</text>')
     if o:
         xa = X(o[-1][0])
         parts.append(f'<line class="g-asof" x1="{xa:.1f}" x2="{xa:.1f}" '
-                     f'y1="{MT}" y2="{H - MB}"/>')
+                     f'y1="{mt:.1f}" y2="{h - mb:.1f}"/>')
     ticks = [d0.isoformat()] + ([o[-1][0]] if o else []) + [d1.isoformat()]
     seen = set()
     for i, t in enumerate(ticks):
@@ -262,70 +349,79 @@ def panel_svg(panel: dict, idx: int, colors: dict) -> tuple:
         seen.add(t)
         anchor = "start" if i == 0 else ("end" if t == d1.isoformat()
                                          else "middle")
-        parts.append(f'<text class="g-ax" x="{X(t):.1f}" y="{H - 5}" '
+        parts.append(f'<text class="g-ax" font-size="{fs}" x="{X(t):.1f}" '
+                     f'y="{h - 5 * k:.1f}" '
                      f'text-anchor="{anchor}">{_md(t)}</text>')
     body = [f'<g clip-path="url(#{cid})">']
     if ls:
         pts = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in ls)
         body.append(f'<polyline class="g-last" points="{pts}"/>')
     # one band per model, the 95% interval: both bands first, then both
-    # medians, so no band tints the other model's median line
+    # medians, so no band tints the other model's median line. The
+    # Groundhog's band is an outline over a faint fill and the Oracle
+    # SIHRS band a fill, so where they overlap neither turns grey.
     for m in MODELS:
         f = fans.get(m)
         if not f:
             continue
-        c = colors.get(m, "#888888")
+        c = model_color(m, colors)
         ts, q = f["times"], f["q"]
         up = " ".join(f"{X(t):.1f},{Y(r[4]):.1f}" for t, r in zip(ts, q))
         dn = " ".join(f"{X(t):.1f},{Y(r[0]):.1f}"
                       for t, r in reversed(list(zip(ts, q))))
-        body.append(f'<polygon points="{up} {dn}" fill="{c}" '
-                    'fill-opacity="0.22" stroke="none"/>')
+        body.append(f'<polygon class="g-band g-band-{m}" '
+                    f'points="{up} {dn}" style="fill:{c};stroke:{c}"/>')
     for m in MODELS:
         f = fans.get(m)
         if not f:
             continue
-        c = colors.get(m, "#888888")
+        c = model_color(m, colors)
         ts, q = f["times"], f["q"]
         med = [(t, r[2]) for t, r in zip(ts, q)]
         if o:
             med = [(o[-1][0], o[-1][1])] + med
         pts = " ".join(f"{X(t):.1f},{Y(v):.1f}" for t, v in med)
-        body.append(f'<polyline points="{pts}" fill="none" stroke="{c}" '
-                    'stroke-width="1.8"/>')
+        body.append(f'<polyline points="{pts}" fill="none" style="stroke:{c}" '
+                    f'stroke-width="{1.8 * k:.1f}"/>')
     if o:
         pts = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in o)
         body.append(f'<polyline class="g-obs" points="{pts}"/>')
         body += [f'<circle class="g-dot" cx="{X(d):.1f}" cy="{Y(v):.1f}" '
-                 'r="2"/>' for d, v in o]
+                 f'r="{2 * k:.1f}"/>' for d, v in o]
     body.append("</g>")
     parts += body
+    # a band cut by the top of the scale gets a small mark where it leaves,
+    # so a clipped interval never reads as a bounded one
+    if clipped:
+        for m in MODELS:
+            f = fans.get(m)
+            if not f:
+                continue
+            c = model_color(m, colors)
+            for t, r in zip(f["times"], f["q"]):
+                if r[4] <= top:
+                    continue
+                x, y = X(t), mt
+                parts.append(
+                    f'<path class="g-cont" d="M{x - 3.5 * k:.1f},'
+                    f'{y + 5 * k:.1f}L{x:.1f},{y + 1 * k:.1f}'
+                    f'L{x + 3.5 * k:.1f},{y + 5 * k:.1f}" '
+                    f'style="stroke:{c}" stroke-width="{1.6 * k:.1f}">'
+                    f'<title>{_SHORT.get(m, m)} 95% interval continues '
+                    f'above the scale (to {_fmt(r[4])})</title></path>')
     parts.append("</svg>")
     return "".join(parts), clipped
 
 
 def _legend(colors: dict, label: str) -> str:
     sw = "".join(
-        f'<span class="g-key"><i style="background:{colors.get(m, "#888")}">'
-        f'</i>{_SHORT[m]}</span>' for m in reversed(MODELS))
+        f'<span class="g-key"><i class="g-k-{m}" '
+        f'style="background:{model_color(m, colors)}"></i>{_SHORT[m]}</span>'
+        for m in reversed(MODELS))
     return (f'{sw}<span class="g-key"><i class="g-k-obs"></i>observed</span>'
             f'<span class="g-key"><i class="g-k-last"></i>last season '
             f'({_html.escape(label)}), same weeks</span>'
-            '<span class="g-key g-k-bands">shaded: 95% interval</span>')
-
-
-#: the flag words, explained once per page (a paper copy has no hover)
-FLAG_KEY = ("flags: falls = a horizon-3 median below the latest count; "
-            "disagree = horizon-3 medians outside each other's 95% intervals")
-
-#: what the Oracle SIHRS national row is, by the run's own oracle.json
-#: (us_national.us_step_week: "stepped" since addendum A3, "filter" before)
-US_NOTES = {
-    "stepped": "Oracle SIHRS: the national row carries the Oracle step, like "
-               "the states (addendum A3).",
-    "filter": "Oracle SIHRS: the national row is the Liu-West filter alone "
-              "(a run stored before addendum A3).",
-}
+            '<span class="g-key g-k-bands">bands: 95% interval</span>')
 
 
 def _latest(p: dict) -> str:
@@ -339,24 +435,41 @@ def _latest(p: dict) -> str:
 
 
 def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
-            cls: str = "gpanel") -> str:
-    """One panel: the name and latest count, then the flags at the
-    right, then the chart."""
-    svg, _clipped = panel_svg(p, idx, colors)
+            cls: str = "gpanel", anchor: bool = True, **size) -> str:
+    """One panel: the name (and its link mark) and latest count, then the
+    flags at the right, then the chart."""
+    svg, _clipped = panel_svg(p, idx, colors, **size)
     key = _html.escape(str(p.get("key", "")))
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
+    name = _html.escape(str(p.get("name", key)))
+    link = (f'<a class="g-anchor" href="#g-{key}" '
+            f'aria-label="Link to the {name} panel" title="Link to this '
+            'panel">#</a>' if anchor else "")
     return (f'<figure class="{cls}" id="g-{key}">'
-            f'<figcaption><b>{title}</b>{_latest(p)}{flags_html}'
+            f'<figcaption><b>{title}</b>{link}{_latest(p)}{flags_html}'
             f'</figcaption>{svg}</figure>')
 
 
 def _flag_spans(p: dict) -> str:
     fl = "".join(
-        f'<span class="g-flag" title="{_html.escape(why)}">{w}</span>'
+        f'<span class="g-flag g-flag--{"warn" if w == "falls" else "bad"}" '
+        f'title="{_html.escape(why)}">{w}</span>'
         for w, why in flags(p))
     if not p.get("models"):
-        fl += '<span class="g-flag g-none">no forecast</span>'
+        # nothing reported: "no data"; data but no fan: "no forecast"
+        word = "no forecast" if p.get("observed") else "no data"
+        fl += f'<span class="g-flag g-none">{word}</span>'
     return fl
+
+
+def reference_date(asof: str) -> str:
+    """The hub's reference date for an as-of: the Saturday a week later
+    (submit.hub_reference_date), "" when the as-of does not parse."""
+    try:
+        return (date.fromisoformat(str(asof)[:10])
+                + timedelta(days=7)).isoformat()
+    except ValueError:
+        return ""
 
 
 def us_feature_html(grid: dict | None, colors: dict) -> str:
@@ -371,9 +484,11 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
             + "</div>")
     note = US_NOTES.get((grid or {}).get("us_step") or "")
     note = f'<p class="g-usnote">{_html.escape(note)}</p>' if note else ""
-    return ('<aside class="rp-usfeature" aria-label="United States forecast">'
+    return ('<aside class="rp-usfeature" id="us-feature" '
+            'aria-label="United States forecast">'
             + _figure(dict(us, key="US-feature"), "United States",
-                      _flag_spans(us), 999, colors, cls="gpanel g-feature")
+                      _flag_spans(us), 999, colors, cls="gpanel g-feature",
+                      anchor=False, w=FEATURE_W, h=FEATURE_H, fs=FEATURE_FS)
             + head + note + "</aside>")
 
 
@@ -385,26 +500,27 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
     panels = grid["panels"]
     label = grid.get("last_season_label", "")
     asof = grid.get("asof", "")
+    ref = reference_date(asof) or asof
+    times = grid.get("times") or []
+    when = _md(times[-1]) if times else "the last target week"
     n_flag = sum(1 for p in panels if flags(p))
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
+    flagged = (f"{n_flag} of {len(panels)} are flagged for a closer look."
+               if n_flag else "None is flagged for a closer look.")
     out = ['<section class="card rp-grid" id="all-locations" '
            'aria-labelledby="h-grid">',
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>',
-           '<p class="g-lede">Every location at a glance, before the files '
-           'go to the hub. Each panel has its own scale. '
-           + (f"{n_flag} of {len(panels)} flagged for a second look "
-              "(hover a flag for why)." if n_flag else
-              "None flagged for a second look.")
-           + " To keep a copy, print this page and choose Save as PDF: "
-             f"{PER_PAGE} panels to a page.</p>"]
+           '<p class="g-lede">Every location\'s forecast, one panel each '
+           f'with its own scale. {flagged} Print or Save as PDF for '
+           f'{PER_PAGE} panels a page.</p>']
     for k, page in enumerate(pages, 1):
         a = (k - 1) * PER_PAGE + 1
         out.append('<div class="gpage">'
-                   f'<div class="g-head"><span class="g-pg">Week of {asof} '
-                   f'&middot; locations {a} to {a + len(page) - 1} of '
+                   f'<div class="g-head"><span class="g-pg">Reference date '
+                   f'{ref} &middot; locations {a} to {a + len(page) - 1} of '
                    f'{len(panels)}</span>{_legend(colors, label)}'
-                   f'<span class="g-key g-fkey">{_html.escape(FLAG_KEY)}'
-                   '</span></div>'
+                   f'<span class="g-key g-fkey">'
+                   f'{_html.escape(flag_key(when))}</span></div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):
             key = str(p.get("key", ""))
@@ -415,7 +531,10 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
             fl = _flag_spans(p)
             out.append(_figure(p, title, fl, (k - 1) * PER_PAGE + i,
                                colors))
-        out.append("</div></div>")
+        out.append("</div>"
+                   f'<p class="g-foot">FluBNF &middot; reference date {ref} '
+                   f'&middot; All locations, page {k} of {len(pages)}</p>'
+                   "</div>")
     out.append("</section>")
     return "".join(out)
 
@@ -424,16 +543,18 @@ def grid_css() -> str:
     """The section's style (report_v2.page_style appends it; braces are
     literal here, not format fields)."""
     return """
- .rp-grid{margin-top:1rem}
- .g-lede{color:var(--mut);margin:.2rem 0 .8rem}
+ .g-lede{color:var(--mut);margin:.2rem 0 .8rem;font-size:var(--fs-hint)}
  .gpage{margin-bottom:1rem}
  .g-head{display:flex;flex-wrap:wrap;gap:.3rem 1rem;align-items:center;
-   font-size:var(--fs-hint);color:var(--mut);margin:0 0 .4rem}
+   font-size:var(--fs-label);color:var(--mut);margin:0 0 .4rem}
  .g-pg{font-weight:650;color:var(--ink)}
  .g-key{display:inline-flex;align-items:center;gap:.3rem}
  .g-key i{display:inline-block;width:14px;height:8px;border-radius:2px;
    -webkit-print-color-adjust:exact;print-color-adjust:exact}
- .g-fkey{flex-basis:100%;font-size:.72rem}
+ .g-key i.g-k-analogue{background:none!important;height:8px;
+   border:1.5px dashed var(--model-analogue,#A87300)}
+ .g-fkey{flex-basis:100%}
+ .g-foot{display:none}
  .g-usnote{margin:.3rem 0 0;font-size:var(--fs-hint);color:var(--mut)}
  .g-key i.g-k-obs{background:var(--ink);height:3px}
  .g-key i.g-k-last{height:0;border-top:2px dashed var(--mut);
@@ -443,25 +564,39 @@ def grid_css() -> str:
  @media(max-width:820px){.g-cells{grid-template-columns:repeat(2,minmax(0,1fr))}}
  @media(max-width:520px){.g-cells{grid-template-columns:minmax(0,1fr)}}
  .gpanel{margin:0;border:1px solid var(--line);border-radius:8px;
-   padding:.3rem .4rem .1rem;break-inside:avoid}
+   padding:.3rem .4rem .1rem;break-inside:avoid;scroll-margin-top:3.5rem}
  .gpanel figcaption{display:flex;flex-wrap:wrap;align-items:baseline;
-   gap:.1rem .45rem;font-size:.82rem;line-height:1.25}
+   gap:.1rem .45rem;font-size:var(--fs-label);line-height:1.3}
  .gpanel figcaption a{color:inherit}
- .g-cur{color:var(--mut);font-size:.75rem}
- .g-flag{font-size:.7rem;font-weight:650;color:var(--bad);
+ .gpanel:target{outline:2px solid var(--gold);outline-offset:2px}
+ .g-anchor{color:var(--mut)!important;font-weight:600;opacity:.55;
+   text-decoration:none;margin-left:-.25rem}
+ .g-anchor:hover,.g-anchor:focus-visible{opacity:1}
+ .g-cur{color:var(--mut);font-size:var(--fs-label)}
+ .g-flag{font-size:var(--fs-micro);font-weight:650;color:var(--bad);
    border:1px solid currentColor;border-radius:999px;padding:0 .35rem;
    cursor:help}
+ .g-flag--warn{color:var(--warn)}
+ .g-flag--bad{color:var(--bad)}
  .g-flag.g-none{color:var(--mut)}
  .g-flags{margin-left:auto;display:inline-flex;flex-wrap:wrap;gap:.25rem}
  .g-svg{display:block;width:100%;height:auto}
+ /* the members' bands: the Oracle SIHRS filled, the Groundhog an outline
+    over a faint fill (--rp-band-a: stronger on dark cards) */
+ .g-band{stroke-width:0}
+ .g-band-pf{fill-opacity:var(--rp-band-a,.22)}
+ .g-band-analogue{fill-opacity:.07;stroke-width:1.1;stroke-dasharray:3 2;
+   stroke-opacity:.9}
+ .g-cont{fill:none;stroke-linecap:round;stroke-linejoin:round}
  /* the national panel, larger, under the map */
  .rp-usfeature{margin:1rem auto 0;padding-top:.8rem;
-   border-top:1px solid var(--line);max-width:900px}
+   border-top:1px solid var(--line);max-width:1100px}
  .rp-usfeature .g-feature{border:0;padding:0}
- .rp-usfeature .g-feature figcaption{font-size:1rem;margin-bottom:.3rem}
+ .rp-usfeature .g-feature figcaption{font-size:var(--fs-sub);
+   margin-bottom:.3rem}
  .rp-usfeature .g-head{margin-top:.4rem}
  .g-grid{stroke:var(--line);stroke-width:1}
- .g-ax{fill:var(--mut);font-size:9px}
+ .g-ax{fill:var(--mut)}
  .g-asof{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3}
  .g-last{fill:none;stroke:var(--mut);stroke-width:1.5;opacity:.8;
    stroke-dasharray:4 3}
@@ -471,18 +606,20 @@ def grid_css() -> str:
   @page{size:letter portrait;margin:9mm}
   .rp-mapcard{break-inside:avoid}
   .rp-usfeature{margin-top:3mm;padding-top:2mm;max-width:none}
-  .rp-usfeature .g-svg{max-height:60mm}
+  .rp-usfeature .g-svg{max-height:50mm}
   .rp-grid{break-before:page;border:0;padding:0;margin:0}
-  .rp-grid > .uk-heading,.g-lede{display:none}
+  .rp-grid > .uk-heading,.g-lede,.g-anchor{display:none}
   .gpage{break-after:page;margin:0}
   .gpage:last-child{break-after:auto}
-  .g-head{font-size:8pt;margin-bottom:2mm}
+  .g-head{font-size:6.6pt;margin-bottom:1.5mm;gap:.5mm 2.2mm}
+  .g-head .g-key,.g-head .g-pg{white-space:nowrap}
   .g-cells{grid-template-columns:repeat(3,minmax(0,1fr));gap:2mm}
   .gpanel{padding:1mm 1.5mm 0;border-radius:2mm}
   .gpanel figcaption{font-size:8pt}
   .g-cur,.g-flag{font-size:7pt}
-  .g-fkey{font-size:7pt}
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
+  .g-foot{display:block;margin:1.5mm 0 0;font-size:6.5pt;color:var(--mut);
+   text-align:right}
  }
 """
