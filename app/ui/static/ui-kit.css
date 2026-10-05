@@ -367,6 +367,13 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:-3px}
 .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current]{
   background:var(--gold-bright);color:var(--on-accent)}
+/* .uk-seg--quiet: a switch between pages (links), where the current one
+   reads as where you are, never as the page's primary action: a light
+   tint, the ink, and an accent bar under it */
+.uk-seg--quiet{flex-wrap:wrap}
+.uk-seg--quiet > button[aria-pressed="true"],.uk-seg--quiet > [aria-current]{
+  background:color-mix(in srgb,var(--accent-ink) 12%,var(--card));
+  color:var(--ink);box-shadow:inset 0 -3px 0 var(--accent-ink)}
 
 /* ---- 14. high contrast and forced colors ---- */
 /* high contrast: flat surfaces, heavier boundaries */

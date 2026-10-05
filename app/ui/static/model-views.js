@@ -38,6 +38,13 @@
   var MARGIN = 36;               // kept clear inside the drawing's edge
   var ITER = 300, SEED = 20240907;
   var BEND = 30;                 // between parallel arrows on one pair of species
+
+  // the drawing's height: HEIGHT, but at most 70% of a phone's width
+  // (min(420px, 70vw)), so a drawing never fills a phone's whole screen
+  function tall() {
+    var vw = root.innerWidth || 0;
+    return vw ? Math.min(HEIGHT, Math.max(240, Math.round(0.7 * vw))) : HEIGHT;
+  }
   var CELL = 200;                // the most a small unjoined part gets along the side strip
   var TOOLS = 32;                // the zoom buttons' band at the top of the drawing
   // the contact map's panels, the same measures as the server's drawing
@@ -396,8 +403,8 @@
   function network(box, graph) {
     var W = Math.max(320, box.clientWidth || 640), n0 = 0;
     (graph.nodes || []).forEach(function (nd) { if (nd.kind === 'species') n0 += 1; });
-    // a small model gets a shorter drawing; a narrow one a taller drawing
-    var H = n0 <= 3 ? 280 : (W < 520 ? HEIGHT + 60 : HEIGHT);
+    // a small model gets a shorter drawing; a phone a shorter one too
+    var H = n0 <= 3 ? Math.min(280, tall()) : tall();
     var v = new View(box, W, H), svg = v.svg;
     svg.style.height = H + 'px';
     var nodes = graph.nodes || [], edges = graph.edges || [], infs = graph.influences || [];
@@ -628,7 +635,7 @@
 
   // ------------------------------------------------------ the contact map
   function contactmap(box, graph) {
-    var W = Math.max(320, box.clientWidth || 640), H = HEIGHT;
+    var W = Math.max(320, box.clientWidth || 640), H = tall();
     var v = new View(box, W, H), svg = v.svg;
     var mols = graph.molecules || [], bonds = graph.bonds || [];
     var gMols = el('g', {}, svg), gBonds = el('g', {}, svg);

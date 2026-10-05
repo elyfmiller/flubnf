@@ -40,7 +40,7 @@
   background:var(--bg)}
 /* the kind (the kit's tag) over the name */
 .mt-model > .uk-tag{align-self:flex-start}
-.mt-model h3{margin:.35rem 0 .35rem;font-size:var(--fs-lead)}
+.mt-model h3{margin:.35rem 0 .35rem;font-size:var(--fs-sub)}
 .mt-parts{margin:0 0 .5rem;padding-left:1.1rem}
 .mt-parts li{margin:.12rem 0}
 /* the tile's links sit on its bottom edge, level across both tiles */
@@ -50,6 +50,12 @@
 .mt-model .mt-links a{display:inline-flex;align-items:center;min-height:24px}
 
 /* ---- 3. card parts ---- */
+/* each card's title is the section's: a heading in the ink, sentence case,
+   a step above the sub-headings (the console's cards elsewhere keep the
+   small-caps kicker) */
+.mt-doc .card > h2,.mt-doc .card > .uk-heading > h2{font-size:var(--fs-lead);
+  font-weight:700;text-transform:none;letter-spacing:0;color:var(--ink);
+  line-height:1.3}
 /* sub-headings inside a card (the kit's level-3 heading): spacing */
 .mt-h3{margin:1rem 0 .4rem}
 /* labelled facts on a sunken panel */
