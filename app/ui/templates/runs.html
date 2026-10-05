@@ -27,6 +27,137 @@
 {% if n %}{{ tips.badge("neutral", n ~ (" entry" if n == 1 else " entries")) }}{% endif %}
 {%- endmacro %}
 
+{# a run status in a badge: the ledger's statuses by kind (shared by the
+   ledger table and the workroot rows) #}
+{% set ST = {"ok": "ok", "running": "pending", "interrupted": "warn",
+             "stopped": "warn", "partial": "warn"} %}
+
+<div class="card st-card">
+{% set ledger_tip = "One row per console run, newest first; each links to its run page. Clearing rows never deletes data on disk." %}
+{% if ledger %}
+{# ledger fold: the heading, count and newest entry in the summary; it
+   leads the page and ships open, a reader's closed state persists #}
+<details class="ledgerfold" id="ledgerfold" open>
+ <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
+  {{- tips.tip("st-ledger", "the run ledger", ledger_tip) }}
+  <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
+  recorded</strong>
+  <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
+  <span class="uk-sr">(</span>{{ tips.badge(ST.get(ledger[0].status, "error"), ledger[0].status) }}<span class="uk-sr">)</span></span></summary>
+{# a filter on the rows the page holds (a script: every row shows without
+   it): a status or kind, and a date typed in part ("10-03") #}
+<div class="st-filter" id="st-filter" hidden>
+ <div class="uk-seg" role="group" aria-label="Show runs">
+  {% for key, word in [("all", "All"), ("ok", "ok"), ("failed", "failed"), ("running", "running"), ("research", "research"), ("modified", "modified")] %}<button type="button" data-lf="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ word }}</button>{% endfor %}
+ </div>
+ <label class="st-find"><span class="uk-sr">Find a date</span><input type="search" id="st-find" placeholder="Find a date, e.g. 10-03" autocomplete="off"></label>
+ <span class="st-shown" id="st-shown" aria-live="polite"></span>
+</div>
+{% if (ledger_total | default(0)) > (ledger | length) %}
+{{ tips.alert("info", "Showing the newest " ~ (ledger | length) ~ " of " ~ ledger_total ~ " runs.", id="st-cap", live="", tiptext="The table holds the newest runs only; older rows stay in the ledger, and each run's page opens from its workroot under On disk.") }}
+{% endif %}
+{# rows from before elapsed was recorded show a dash (hms renders None);
+   under 40rem each row is a card (storage.css), its cells labelled #}
+<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed{{ tips.tip("st-elapsed", "elapsed", "Elapsed is wall time (a dash: recorded before timing existed).") }}</th><th class="num">on disk{{ tips.tip("st-ondisk", "on disk", "A dash under on disk: the workroot was deleted and the ledger row remains.") }}</th><th>summary</th></tr>
+{% for r in ledger %}{% set ri = loop.index %}
+ <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
+ {# research badge (the spec asked for the third member) #}
+ {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
+ {# model settings off the default ones (a knobs record in the spec) #}
+ {%- if r.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}</td>
+ <td class="st-stat">{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
+ <td class="elapsed">{{ r.elapsed_s | hms }}</td>
+ {# a dash = the workroot was deleted; the ledger row stands #}
+ <td class="num" data-l="on disk">{{ r.disk_h or "--" }}</td>
+ {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items) #}
+ <td class="st-sumcell"><span class="st-facts">{% for f in (r.facts or []) %}
+  <span class="st-fi">{% if f.state %}{{ tips.badge(f.state, f.text, f.tip, id="st-f-" ~ ri ~ "-" ~ loop.index) }}
+  {%- else %}<span class="st-fact">{{ f.text }}</span>{% if f.tip %}{{ tips.tip("st-f-" ~ ri ~ "-" ~ loop.index, f.text, f.tip) }}{% endif %}{% endif %}</span>
+ {%- endfor %}</span></td></tr>
+{% endfor %}
+</table></div>
+<p class="st-none" id="st-none" hidden>{{ tips.icon("info") }} No run matches.</p>
+<script>
+ // the ledger's filter: a kind and a date, both on the rows the page holds
+ (function(){
+  var bar=document.getElementById('st-filter'),find=document.getElementById('st-find'),
+      shown=document.getElementById('st-shown'),none=document.getElementById('st-none');
+  if(!bar)return;
+  var rows=document.querySelectorAll('.st-ledger tr[data-st]'),bs=bar.querySelectorAll('[data-lf]'),kind='all';
+  function fits(r){
+   var st=r.getAttribute('data-st');
+   if(kind==='ok'&&st!=='ok')return false;
+   if(kind==='failed'&&st!=='failed'&&st!=='error')return false;
+   if(kind==='running'&&st!=='running')return false;
+   if(kind==='research'&&!r.hasAttribute('data-research'))return false;
+   if(kind==='modified'&&!r.hasAttribute('data-modified'))return false;
+   var q=(find.value||'').replace(/^\s+|\s+$/g,'');
+   return !q||r.getAttribute('data-find').indexOf(q)>=0;
+  }
+  function apply(){
+   var n=0;
+   for(var i=0;i<rows.length;i++){var on=fits(rows[i]);rows[i].hidden=!on;if(on)n++;}
+   shown.textContent=n===rows.length?'':n+' of '+rows.length+' shown';
+   none.hidden=n>0;
+  }
+  for(var i=0;i<bs.length;i++){bs[i].addEventListener('click',function(){
+   kind=this.getAttribute('data-lf');
+   for(var j=0;j<bs.length;j++)bs[j].setAttribute('aria-pressed',bs[j]===this?'true':'false');
+   apply();});}
+  find.addEventListener('input',apply);
+  bar.hidden=false;
+ })();
+</script>
+{% if clear_count %}
+{# clear via the shared confirmation (names the count); the server refuses a
+   stale count, skips the active run, and never deletes workroot data #}
+<form method="post" action="/runs/clear" id="clear-ledger" class="st-foot">
+ <input type="hidden" name="confirm" value="">
+ <button type="button" class="quiet st-btn" id="clear-ledger-btn"
+   data-count="{{ clear_count }}">Clear {{ clear_count }} completed
+   row{{ "" if clear_count == 1 else "s" }}</button>
+</form>
+<script>
+ (function(){
+  var b=document.getElementById('clear-ledger-btn');
+  if(!b)return;
+  b.addEventListener('click',function(){
+   var f=b.form,n=b.dataset.count;
+   if(!f||!window.FluBNFConfirm)return;
+   window.FluBNFConfirm({
+    title:'Clear the run ledger?',
+    msg:'This removes '+n+' completed row'+(n==='1'?'':'s')+' (statuses ok, '
+      +'failed, stopped, error, and interrupted) from the ledger. A row '
+      +'whose run is still active is never removed.',
+    hint:'Clearing the ledger does NOT delete run data on disk: every '
+      +'workroot stays exactly where it is and remains listed in the '
+      +'storage panel until deleted there.',
+    okLabel:'Clear '+n+' row'+(n==='1'?'':'s'),
+    onOk:function(){f.confirm.value=n;f.submit();}
+   });
+  });
+ })();
+</script>
+{% endif %}
+</details>
+<script>
+ // open by default; a reader who closes it keeps it closed (localStorage);
+ // a link to #ledgerfold (the research card on /model/pf2s) opens it
+ (function(){
+  var d=document.getElementById('ledgerfold');
+  if(!d)return;
+  try{var k=localStorage.getItem('ledgerfold-open');if(k==='1')d.open=true;else if(k==='0')d.open=false;}catch(e){}
+  if(location.hash==='#ledgerfold')d.open=true;
+  d.addEventListener('toggle',function(){
+   try{localStorage.setItem('ledgerfold-open',d.open?'1':'0');}catch(e){}});
+ })();
+</script>
+{% else %}
+{{ tips.heading("Run ledger", "st-ledger", ledger_tip) }}
+{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
+{% endif %}
+</div>
+
 {# each row reads title, facts, size, action (the grid places them; the
    order is the keyboard's and a screen reader's) #}
 {% if storage %}
@@ -135,7 +266,8 @@
   <span class="st-title"><strong>{% if w.recorded %}<a href="/runs/{{ w.id }}">{{ w.label }}</a>{% else %}{{ w.label }}{% endif %}</strong>
    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
    {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
-   {%- if w.busy %} {{ tips.badge("pending", "running now") }}{% endif %}</span>
+   {%- if w.busy %} {{ tips.badge("pending", "running now") }}
+   {%- elif w.status and w.status != "ok" %} {{ tips.badge(ST.get(w.status, "error"), w.status) }}{% endif %}</span>
   {% set items = [] %}
   {% if w.when %}{% set _ = items.append(("clock", "run " ~ w.when, "")) %}{% endif %}
   {% if w.dataset_name %}{% set ds_link %}on <a href="/data?source={{ w.dataset }}#browser">{{ w.dataset_name }}</a>{% endset %}{% set _ = items.append(("folder", ds_link, "")) %}{% endif %}
@@ -185,11 +317,13 @@
 
  {% if storage.report_archives %}
  <section class="st-sec" aria-labelledby="h-st-rp">
- {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=count(storage.report_archives | length), cls="st-h") }}
+ {# while a console run may write the archive, one notice on the heading;
+    each row's Delete stays off with its reason #}
+ {% set rp_after %}{{ count(storage.report_archives | length) }}{% if storage.report_archives | selectattr("busy") | list %} {{ tips.badge("pending", "console run in progress", id="st-rp-busy") }}{% endif %}{% endset %}
+ {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
  {% for f in storage.report_archives %}
  <div class="st-row">
-  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong>
-   {%- if f.busy %} {{ tips.badge("pending", "console run in progress") }}{% endif %}</span>
+  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong></span>
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
   {{ tips.meta([rlink]) }}{% endif %}
   <span class="st-size">{{ f.size_h }}</span>
@@ -303,86 +437,4 @@
 </script>
 {% endif %}
 
-<div class="card st-card">
-{% set ST = {"ok": "ok", "running": "pending", "interrupted": "warn",
-             "stopped": "warn", "partial": "warn"} %}
-{% set ledger_tip = "One row per console run, newest first; each links to its run page. Clearing rows never deletes data on disk." %}
-{% if ledger %}
-{# ledger fold: the heading, count and newest entry in the summary; closed
-   by default, open state persists #}
-<details class="ledgerfold" id="ledgerfold">
- <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
-  {{- tips.tip("st-ledger", "the run ledger", ledger_tip) }}
-  <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
-  recorded</strong>
-  <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
-  <span class="uk-sr">(</span>{{ tips.badge(ST.get(ledger[0].status, "error"), ledger[0].status) }}<span class="uk-sr">)</span></span></summary>
-{# rows from before elapsed was recorded show a dash (hms renders None) #}
-<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed{{ tips.tip("st-elapsed", "elapsed", "Elapsed is wall time (a dash: recorded before timing existed).") }}</th><th class="num">on disk{{ tips.tip("st-ondisk", "on disk", "A dash under on disk: the workroot was deleted and the ledger row remains.") }}</th><th>summary</th></tr>
-{% for r in ledger %}{% set ri = loop.index %}
- <tr><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.label.split(" · ") %}<span class="st-nw">{{ part }}</span>{{ " · " if not loop.last }}{% endfor %}</a>
- {# research badge (the spec asked for the third member) #}
- {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
- {# model settings off the default ones (a knobs record in the spec) #}
- {%- if r.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}</td>
- <td>{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
- <td class="elapsed">{{ r.elapsed_s | hms }}</td>
- {# a dash = the workroot was deleted; the ledger row stands #}
- <td class="num">{{ r.disk_h or "--" }}</td>
- {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items) #}
- <td><span class="st-facts">{% for f in (r.facts or []) %}
-  <span class="st-fi">{% if f.state %}{{ tips.badge(f.state, f.text, f.tip, id="st-f-" ~ ri ~ "-" ~ loop.index) }}
-  {%- else %}<span class="st-fact">{{ f.text }}</span>{% if f.tip %}{{ tips.tip("st-f-" ~ ri ~ "-" ~ loop.index, f.text, f.tip) }}{% endif %}{% endif %}</span>
- {%- endfor %}</span></td></tr>
-{% endfor %}
-</table></div>
-{% if clear_count %}
-{# clear via the shared confirmation (names the count); the server refuses a
-   stale count, skips the active run, and never deletes workroot data #}
-<form method="post" action="/runs/clear" id="clear-ledger" class="st-foot">
- <input type="hidden" name="confirm" value="">
- <button type="button" class="quiet st-btn" id="clear-ledger-btn"
-   data-count="{{ clear_count }}">Clear {{ clear_count }} completed
-   row{{ "" if clear_count == 1 else "s" }}</button>
-</form>
-<script>
- (function(){
-  var b=document.getElementById('clear-ledger-btn');
-  if(!b)return;
-  b.addEventListener('click',function(){
-   var f=b.form,n=b.dataset.count;
-   if(!f||!window.FluBNFConfirm)return;
-   window.FluBNFConfirm({
-    title:'Clear the run ledger?',
-    msg:'This removes '+n+' completed row'+(n==='1'?'':'s')+' (statuses ok, '
-      +'failed, stopped, error, and interrupted) from the ledger. A row '
-      +'whose run is still active is never removed.',
-    hint:'Clearing the ledger does NOT delete run data on disk: every '
-      +'workroot stays exactly where it is and remains listed in the '
-      +'storage panel until deleted there.',
-    okLabel:'Clear '+n+' row'+(n==='1'?'':'s'),
-    onOk:function(){f.confirm.value=n;f.submit();}
-   });
-  });
- })();
-</script>
-{% endif %}
-</details>
-<script>
- // closed by default; a reader who opens it keeps it open (localStorage);
- // a link to #ledgerfold (the research card on /model/pf2s) opens it
- (function(){
-  var d=document.getElementById('ledgerfold');
-  if(!d)return;
-  try{if(localStorage.getItem('ledgerfold-open')==='1')d.open=true;}catch(e){}
-  if(location.hash==='#ledgerfold')d.open=true;
-  d.addEventListener('toggle',function(){
-   try{localStorage.setItem('ledgerfold-open',d.open?'1':'0');}catch(e){}});
- })();
-</script>
-{% else %}
-{{ tips.heading("Run ledger", "st-ledger", ledger_tip) }}
-{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
-{% endif %}
-</div>
 {% endblock %}

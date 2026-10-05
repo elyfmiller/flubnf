@@ -165,8 +165,9 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     html = client.get("/storage").text
     rid = state["rids"]["ok"]
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
-    assert (f'<strong><a href="/runs/{rid}">Forecast for 2098-01-03</a>'
-            '</strong>') in row
+    # a hub forecast reads by its round, as Output heads its cards
+    assert (f'<strong><a href="/runs/{rid}">Round 2098-01-10 (as of '
+            '2098-01-03)</a></strong>') in row
     meta = row.split('class="uk-meta"', 1)[1]
     assert "<span>run 2" in meta                  # the wall-clock moment
     assert f"<code" in meta and rid in meta       # the id, small and mono
@@ -445,26 +446,24 @@ def test_unknown_kind_is_refused(state):
 
 # ------------------------------------------------------------- ledger fold
 
-def test_ledger_collapses_behind_a_summary_by_default(state):
-    """The ledger folds behind a summary (row count, newest entry), closed by
-    default; the storage panel stays visible."""
+def test_ledger_leads_the_page_in_a_fold_open_by_default(state):
+    """The ledger folds behind a summary (row count, newest entry); it leads
+    the page and ships open, the disk inventory folded below it."""
     html = client.get("/runs").text
     joined = " ".join(html.split())
-    assert '<details class="ledgerfold" id="ledgerfold">' in html
-    # closed by default: the fold never ships an open attribute
-    assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
+    assert '<details class="ledgerfold" id="ledgerfold" open>' in html
     assert "4 runs recorded" in joined
     # the newest entry (the live run) is named in the summary line, which
     # carries the ledger's own heading on the Storage page
-    summary = html.split('id="ledgerfold">', 1)[1].split("</summary>", 1)[0]
+    summary = html.split('id="ledgerfold" open>', 1)[1].split("</summary>", 1)[0]
     assert 'id="h-st-ledger">Run ledger</h2>' in summary
     assert "newest" in summary
     # the table and the clear control live INSIDE the fold
-    fold = html.split('<details class="ledgerfold" id="ledgerfold">', 1)[1] \
-               .split("</details>", 1)[0]
+    fold = html.split('<details class="ledgerfold" id="ledgerfold" open>',
+                      1)[1].split("</details>", 1)[0]
     assert "<table>" in fold and "clear-ledger-btn" in fold
-    # the storage panel leads the page, in its own fold above the ledger
-    assert html.index('id="storagefold"') < html.index('id="ledgerfold"')
+    # the ledger leads the page, the disk inventory in its fold below
+    assert html.index('id="ledgerfold"') < html.index('id="storagefold"')
 
 
 def test_ledger_fold_state_persists_per_local_storage(state):
