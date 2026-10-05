@@ -561,6 +561,16 @@ label.dm-th input:checked ~ .dm-th-check{display:inline-flex}
 label.dm-th input:checked ~ .dm-th-name{font-weight:750}
 label.dm-th input:focus-visible ~ .dm-th-sw{outline:var(--focus-w,2px) solid var(--dm-focus);
   outline-offset:3px}
+/* Match system: a plain radio row over the previews, the theme it now
+   resolves to (Light or Dark) beside it */
+label.dm-sys{display:flex;align-items:center;gap:.5rem;margin:0 0 .55rem;
+  padding:.3rem .45rem .3rem .25rem;border-radius:var(--r-sm);
+  color:var(--nav-ink);font-size:var(--fs-label);font-weight:600;cursor:pointer}
+label.dm-sys:hover{background:color-mix(in srgb,var(--nav-ink) 7%,transparent)}
+label.dm-sys input{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent-ink)}
+label.dm-sys input:focus-visible{outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
+label.dm-sys input:checked ~ .dm-sys-name{font-weight:750}
+.dm-sys-now{margin-left:auto;color:var(--mut);font-weight:500}
 /* the previews show the two a11y modes as well: each preview's data-theme
    restates the literal tokens, so the modes' remaps apply again inside it */
 [data-contrast="high"] .dm-th-sw{--ink:var(--ink-hc);--nav-ink:var(--nav-ink-hc);
@@ -998,6 +1008,23 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
 /* dialog titles: undo the .card h2 kicker style; wins by coming later */
 .modal h2{font-size:var(--fs-lead);font-weight:700;text-transform:none;
   letter-spacing:0;color:var(--ink);margin:0 0 .35rem}
+/* the keyboard shortcuts list (base.html, "?"): two columns of key, what
+   it does; one column on a phone */
+.kbsheet{max-height:90vh;overflow:auto}
+.kb-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));
+  gap:.4rem 1.6rem}
+.kbsheet h3{margin:.6rem 0 .3rem;font-size:var(--fs-label);font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.kb-list{margin:0}
+.kb-list > div{display:flex;align-items:baseline;gap:.7rem;padding:.2rem 0;
+  border-top:1px solid var(--line)}
+.kb-list > div:first-child{border-top:0}
+.kb-list dt{flex:0 0 6.5rem;white-space:nowrap}
+.kb-list dd{margin:0;min-width:0}
+kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid var(--field-line);
+  border-bottom-width:2px;border-radius:5px;background:var(--bg);color:var(--ink);
+  font:600 var(--fs-label)/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  text-align:center}
 /* archived runs on the retro index: secondary entries under their season */
 .archrow{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   padding:.35rem 0;border-top:1px solid var(--line)}
@@ -1470,6 +1497,22 @@ header.nav .navtabs.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(
 header.nav .navtabs.more-l.more-r{
   -webkit-mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent);
   mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}
+/* phone header (under 640px): the brand and the Display button (its icon
+   alone, named by its aria-label) share the first row; the nine tabs take
+   the rows under it and wrap, so every tab is in view, none behind a
+   scroll */
+@media (max-width:640px){
+  header.nav{flex-wrap:wrap;row-gap:0;padding-bottom:0}
+  header.nav .navtabs{order:3;flex:1 1 100%;flex-wrap:wrap;overflow:visible;
+    gap:0 .1rem;margin:0 calc(-.45em)}
+  header.nav .navtabs.more-l,header.nav .navtabs.more-r,
+  header.nav .navtabs.more-l.more-r{-webkit-mask-image:none;mask-image:none}
+  header.nav .navtabs a.tab{padding:.45rem .45em .4rem;font-size:.9rem}
+  header.nav details.display > summary{padding:.4rem .55rem;min-height:2.25rem}
+  header.nav details.display > summary .dm-word{position:absolute;width:1px;
+    height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  header.nav details.display > summary .uk-icon{font-size:1.3em}
+}
 
 /* round6: ui */
 /* run settings: a long value (a location list) wraps inside the card

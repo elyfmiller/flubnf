@@ -79,7 +79,9 @@
                  ("/output","Output"),("/retro","Retrospective"),
                  ("/storage","Storage"),("/models","Models"),
                  ("/methods","Methods"),("/sandbox","Sandbox")] %}
-  {# one row that scrolls sideways in a narrow window, never three rows #}
+  {# one row that scrolls sideways in a narrow window; on a phone (under
+     640px) the tabs take a row of their own under the brand and wrap, so
+     all nine stay in view (nau.css, "phone header") #}
   <nav class="navtabs" aria-label="Main">
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}"{% if active == name %} aria-current="page"{% endif %}>{{ name }}</a>
@@ -95,7 +97,7 @@
      h1/h2 outline); every control is a native one (styles: nau.css, "the
      Display menu") #}
   <details class="display" id="displaymenu">
-   <summary aria-label="Display settings"><svg class="uk-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M2 4.5h6.2M12.8 4.5H14M2 11.5h1.2M7.8 11.5H14"/><circle cx="10.5" cy="4.5" r="2"/><circle cx="5.5" cy="11.5" r="2"/></svg>Display</summary>
+   <summary aria-label="Display settings"><svg class="uk-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M2 4.5h6.2M12.8 4.5H14M2 11.5h1.2M7.8 11.5H14"/><circle cx="10.5" cy="4.5" r="2"/><circle cx="5.5" cy="11.5" r="2"/></svg><span class="dm-word">Display</span></summary>
    <div class="displaypop" role="group" aria-label="Display settings">
     {# text size: 80% to 160% of the standard size in 5% steps; the step
        buttons are the scale's ends (a small and a large A) #}
@@ -134,8 +136,12 @@
     {# theme: one radio per theme, drawn as a preview that wears the theme
        (data-theme on the preview: its own tokens and mark) #}
     <section class="dm-sec">
-     {{ kit.heading("Theme", "dm-theme", level=3, tiptext="Colors for every page, chart and map. Paper is a warm off-white, Dim a softened dark. GitHub Light, Solarized Light, Nord and Dracula take their colors from the code-editor themes of those names. Every theme holds the same contrast bars.") }}
+     {{ kit.heading("Theme", "dm-theme", level=3, tiptext="Colors for every page, chart and map. Match system follows the computer's light or dark setting. Paper is a warm off-white, Dim a softened dark. GitHub Light, Solarized Light, Nord and Dracula take their colors from the code-editor themes of those names. Every theme holds the same contrast bars.") }}
      <div class="themepick" role="radiogroup" aria-labelledby="h-dm-theme">
+      {# no stored theme: the page follows the system's light or dark
+         setting, and changes with it (the script below) #}
+      <label class="dm-sys"><input type="radio" data-sys name="dm-theme" value="system"
+        ><span class="dm-sys-name">Match system</span><span class="dm-sys-now" aria-hidden="true"></span></label>
      {% for ground in ("light", "dark") %}
       <span class="dm-grp" aria-hidden="true">{{ ground | capitalize }}</span>
       <div class="dm-grid">
@@ -269,6 +275,36 @@
   </div>
  </div>
 </div>
+{# keyboard shortcuts: "?" opens this sheet, g then a letter goes to a tab
+   (the script after it). The tab keys come from the header's own links,
+   so the sheet and the nav never disagree #}
+<div id="keys-modal" class="modal-back" hidden>
+ <div class="modal wide card kbsheet" role="dialog" aria-modal="true"
+      aria-labelledby="keys-title">
+  <h2 id="keys-title">Keyboard shortcuts</h2>
+  <div class="kb-cols">
+   <section aria-labelledby="kb-go">
+    <h3 id="kb-go">Go to a tab</h3>
+    <dl class="kb-list" id="kb-tabs"></dl>
+   </section>
+   <section aria-labelledby="kb-any">
+    <h3 id="kb-any">Anywhere</h3>
+    <dl class="kb-list">
+     <div><dt><kbd>?</kbd></dt><dd>This list</dd></div>
+     <div><dt><kbd>Esc</kbd></dt><dd>Close a menu or this list</dd></div>
+    </dl>
+    <h3 id="kb-ed">Sandbox editor</h3>
+    <dl class="kb-list" aria-labelledby="kb-ed">
+     <div><dt><kbd class="kb-mod">Ctrl</kbd> <kbd>S</kbd></dt><dd>Save the model</dd></div>
+     <div><dt><kbd class="kb-mod">Ctrl</kbd> <kbd>/</kbd></dt><dd>Comment lines</dd></div>
+     <div><dt><kbd>Tab</kbd></dt><dd>Indent</dd></div>
+     <div><dt><kbd>Esc</kbd> <kbd>Tab</kbd></dt><dd>Leave the editor</dd></div>
+    </dl>
+   </section>
+  </div>
+  <div class="row"><button type="button" class="quiet" id="keys-close">Close</button></div>
+ </div>
+</div>
 {% endif %}
 <script>
  // external links open in a new window: the pywebview shell has no back
@@ -299,15 +335,37 @@
  // theme checked on load; a change applies and persists it and dispatches
  // themechange so charts re-resolve their tokens
  (function(){
-  var picks=document.querySelectorAll('.themepick input[data-th]');
-  function mark(t){picks.forEach(function(b){b.checked=(b.dataset.th===t);});}
+  // "Match system" (data-sys) clears the stored theme: the page then
+  // follows prefers-color-scheme, now and whenever the system changes
+  var picks=document.querySelectorAll('.themepick input[data-th]'),
+      sys=document.querySelector('.themepick input[data-sys]'),
+      now=document.querySelector('.dm-sys-now'),
+      mq=matchMedia('(prefers-color-scheme: dark)');
+  function stored(){var s=null,ok=false;
+    try{s=localStorage.getItem('theme');}catch(e){}
+    picks.forEach(function(b){if(b.dataset.th===s)ok=true;});
+    return ok?s:null;}
+  function mark(t){var free=!stored();
+    picks.forEach(function(b){b.checked=!free&&(b.dataset.th===t);});
+    if(sys)sys.checked=free;
+    if(now)now.textContent=mq.matches?'Dark':'Light';}
+  function apply(t){document.documentElement.setAttribute('data-theme',t);
+    mark(t);dispatchEvent(new Event('themechange'));}
   mark(document.documentElement.getAttribute('data-theme'));
   picks.forEach(function(b){b.addEventListener('change',function(){
     if(!b.checked)return;
     var t=b.dataset.th;
-    document.documentElement.setAttribute('data-theme',t);
-    localStorage.setItem('theme',t);mark(t);
-    dispatchEvent(new Event('themechange'));});});})();
+    try{localStorage.setItem('theme',t);}catch(e){}
+    apply(t);});});
+  if(sys)sys.addEventListener('change',function(){
+    if(!sys.checked)return;
+    try{localStorage.removeItem('theme');}catch(e){}
+    apply(mq.matches?'dark':'light');});
+  function follow(){
+    if(!stored())apply(mq.matches?'dark':'light');
+    else mark(document.documentElement.getAttribute('data-theme'));}
+  if(mq.addEventListener)mq.addEventListener('change',follow);
+  else if(mq.addListener)mq.addListener(follow);})();
  // accessibility modes: two independent switches (role=switch,
  // aria-checked), persisted (an explicit 'normal' stops the OS preference
  // re-enabling contrast); dispatches themechange so charts recolor
@@ -392,6 +450,10 @@
     ? window.pywebview.api : null;}
   function api(){return can?bridge():null;}
   var label=document.querySelector('.zoompick .dm-zoom-v');
+  // the Zoom tip names the platform's key: Cmd on macOS, Ctrl elsewhere
+  var ztip=document.getElementById('tip-dm-zoom');
+  if(ztip&&!/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||''))
+    ztip.textContent=ztip.textContent.replace(/Cmd/g,'Ctrl');
   function show(z){
     if(typeof z!=='number')return;
     if(label)label.textContent=Math.round(z*100)+'%';
@@ -700,10 +762,70 @@
   })();
  })();
 </script>
+<script>
+ // keyboard shortcuts: g then a letter opens a tab, "?" opens the list of
+ // shortcuts. Never while typing: an input, a textarea (the sandbox's code
+ // editor is one), a select or anything contenteditable keeps every key,
+ // and a key held with Ctrl, Cmd or Alt passes through
+ (function(){
+  var KEYS={'/':'h','/data':'d','/forecast':'f','/output':'o','/retro':'r',
+            '/storage':'s','/models':'m','/methods':'t','/sandbox':'b'};
+  var back=document.getElementById('keys-modal'),
+      list=document.getElementById('kb-tabs'),
+      closeBtn=document.getElementById('keys-close');
+  if(!back||!list)return;
+  var mac=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'');
+  var go={},ret=null,armed=false,timer=null;
+  document.querySelectorAll('.navtabs a.tab').forEach(function(a){
+    var k=KEYS[a.getAttribute('href')];if(!k)return;
+    go[k]=a.getAttribute('href');
+    var row=document.createElement('div'),dt=document.createElement('dt'),
+        dd=document.createElement('dd');
+    dt.innerHTML='<kbd>g</kbd> <kbd>'+k+'</kbd>';
+    dd.textContent=a.textContent;
+    row.appendChild(dt);row.appendChild(dd);list.appendChild(row);});
+  if(mac)back.querySelectorAll('.kb-mod').forEach(function(k){k.textContent='Cmd';});
+  function typing(el){
+    if(!el||el===document.body)return false;
+    var t=el.tagName;
+    return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||el.isContentEditable||
+      !!(el.closest&&el.closest('.ce,[contenteditable],[contenteditable="true"]'));}
+  function open(){
+    ret=document.activeElement;back.hidden=false;closeBtn.focus();}
+  function close(){
+    back.hidden=true;
+    if(ret&&ret.focus&&document.contains(ret)){try{ret.focus();}catch(e){}}
+    ret=null;}
+  closeBtn.onclick=close;
+  back.addEventListener('click',function(e){if(e.target===back)close();});
+  // one control inside: Tab stays on it while the list is open
+  back.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){e.preventDefault();closeBtn.focus();}});
+  addEventListener('keydown',function(e){
+    if(!back.hidden){
+      if(e.key==='Escape'||e.key==='?'){e.preventDefault();close();}
+      return;}
+    if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(typing(e.target)||window.GUARD_BUSY)return;
+    var dm=document.getElementById('displaymenu');
+    if(dm&&dm.open)return;
+    if(armed){
+      armed=false;clearTimeout(timer);
+      var k=(e.key||'').toLowerCase();
+      if(go[k]){e.preventDefault();location.href=go[k];}
+      return;}
+    if(e.key==='?'){e.preventDefault();open();return;}
+    if(e.key==='g'&&!e.shiftKey){
+      armed=true;clearTimeout(timer);
+      timer=setTimeout(function(){armed=false;},1500);}
+  });})();
+</script>
 <script src="/static/tips.js" defer></script>
-<footer class="hint buildline">FluBNF build {{ running_sha() }}</footer>
+{# the build line only when the build is known: a bare "FluBNF build" with
+   no hash says nothing #}
+{% if running_sha() %}<footer class="hint buildline">FluBNF build {{ running_sha() }}</footer>{% endif %}
 {% else %}
 {{ inline_static('tips.js') }}
-<footer class="hint buildline">{% block export_footer %}FluBNF build {{ running_sha() }}{% endblock %}</footer>
+<footer class="hint buildline">{% block export_footer %}{% if running_sha() %}FluBNF build {{ running_sha() }}{% endif %}{% endblock %}</footer>
 {% endif %}
 </body></html>
