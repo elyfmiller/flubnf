@@ -34,6 +34,9 @@ from app.ui.templating import (_member_colors, _script_json, _season_colors,
                                templates)
 
 router = APIRouter()
+# the form's read-only date row (GET /api/forecast/week-info)
+from app.ui import forecast_aids as _forecast_aids  # noqa: E402
+router.include_router(_forecast_aids.router)
 
 # Sections, in file order:
 #   /forecast           RERUN_STATUSES, forecast_page
@@ -86,7 +89,11 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
                            "runs will cover all 53 jurisdictions.")
     # the default run is the full hub submission: "all" is the 53, the 52
     # jurisdictions AND US national (US stays ticked with it, so a custom
-    # pick starts with US in; the user unticks it to leave it out)
+    # pick starts with US in; the user unticks it to leave it out). After a
+    # restart the last form's non-date fields come back from
+    # app/state/last_form.json (forecast_aids), dated the newest week
+    from app.ui import forecast_aids as _fa
+    _fa.restore_last_form(_last_form, _default_forecast_date)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"],
                                 "engine": "all",
@@ -196,6 +203,12 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", ""),
+        # display-only aids (app/ui/forecast_aids.py): the fans' run, the
+        # next round, the location presets, the last run's values
+        "aids": _fa.page_aids(ledger_rows, rid, all_locs, US_CHOICE,
+                              _default_forecast_date()),
+        "week_info": _fa.week_info(_anchor) if _anchor else {},
+        "error_head": _fa.error_head,
         "dataset": None, "source_choices": _dsu.choices(), "own_tab": own_tab})
 
 
@@ -1008,6 +1021,9 @@ def run_models(request: Request,
                                  if isinstance(v, str)},
                        "submit_modified": override,
                        "modified_reason": reason, "ms_refused": False})
+    # kept across a restart (its non-date fields; display memory only)
+    from app.ui import forecast_aids as _fa
+    _fa.save_last_form(_last_form)
     # the Data issues choices come back on the form, keyed by their week
     if isinstance(gap_fields, dict) and newest:
         _last_form["data_choices"] = {

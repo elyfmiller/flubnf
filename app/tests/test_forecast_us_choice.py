@@ -136,11 +136,14 @@ def test_the_default_form_ticks_all_53_with_us(monkeypatch):
 def test_the_form_script_keeps_us_in_a_custom_pick():
     """Ticking all ticks US; a state pick turns all off and leaves US as
     it is; unticking US under all becomes the 52 without it. The count
-    reads "all 53", or "1 + US selected" for a pick."""
-    assert "if(CKUS) CKUS.checked=true;" in TEMPLATE
-    assert "if(c.checked && all.checked) all.checked=false;" in TEMPLATE
-    assert "if(!CKUS.checked && all.checked){" in TEMPLATE
-    assert "(us?' + US':'')" in TEMPLATE
+    reads "all 53", or "1 + US selected" for a pick. While all is ticked
+    the state boxes show ticked and are off (posting nothing), never "all"
+    beside 52 empty boxes."""
+    assert "if (this.checked) { if (CKUS) CKUS.checked = true; }" in TEMPLATE
+    assert "if (all) c.checked = true;" in TEMPLATE
+    assert "c.disabled = all;" in TEMPLATE
+    assert "if (!CKUS.checked && CKALL.checked) {" in TEMPLATE
+    assert "(us ? ' + US' : '')" in TEMPLATE
     assert "dataset else 53) | tojson" in TEMPLATE
 
 

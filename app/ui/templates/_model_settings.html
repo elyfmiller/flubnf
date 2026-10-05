@@ -15,24 +15,9 @@
    id, and knob_panel.engine, the id of its form's model select; a row
    with `only` shows for that kind of data alone. The FluSight panels set
    none of these and render exactly as before. #}
-{% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
-{# the panel renders on the Retrospective tab too: it links its sheet #}
-<link rel="stylesheet" href="/static/tabs/forecast.css">
-{# kp.open: after a refusal over these settings, or when the values
-   differ from the defaults and no run is in progress; closed during a
-   run. model_settings.js restores the user's own open/closed choice #}
-<details class="adv"{% if kp.open %} open{% endif %} id="{{ px }}model-settings"
-  data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
- <summary class="advbtn">Model settings
-  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", "modified" if kp.modified else "default", id=px ~ "ms-badge") }}</span></summary>
- <div class="ms-head">
-  <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
-  {{ tips.tip(px ~ "ms-about", "model settings", kp.about or ("Every value starts at its default. Changing any of them marks the run modified on every page it appears on" ~ (", and its files are exported under a non-hub name unless you tick the box below." if kp.override else ", and the season's results are not published."))) }}
- </div>
- {% for g in kp.groups %}
- <fieldset class="ms-group" data-affects="{{ g.affects }}" id="{{ px }}ms-{{ g.id }}">
-  <legend>{{ g.title }} {{ tips.tip(px ~ "ms-g-" ~ g.id, g.title | lower, g.tip) }}</legend>
-  {% for r in g.rows %}{% set rid = px ~ r.id %}
+{# one knob's row: its label and "?", its control (a later knob's
+   off, its group named as a tag) #}
+{% macro ms_row(r, px, tips, group="") -%}{% set rid = px ~ r.id %}
   <div class="ms-row{% if r.later %} ms-later{% endif %}" data-affects="{{ r.affects }}"{% if r.only %} data-only="{{ r.only }}"{% endif %}>
    {{ tips.label(r.label, rid ~ "-tip", r.tip, for_=rid) }}
    {% if r.kind in ("choice", "bool") %}
@@ -62,11 +47,39 @@
      {% if r.max is not none %}max="{{ r.max }}"{% endif %}
      step="{{ r.step }}"{% if r.later %} disabled{% endif %}>
    {% endif %}
-   {% if r.later %}<span class="fc-ms-soon">{{ tips.badge("pending", "coming later") }}</span>{% endif %}
+   {% if group %}<span class="fc-ms-soon">{{ tips.tag(group) }}</span>{% endif %}
   </div>
-  {% endfor %}
+{%- endmacro %}
+{% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
+{# the panel renders on the Retrospective tab too: it links its sheet #}
+<link rel="stylesheet" href="/static/tabs/forecast.css">
+{# kp.open: after a refusal over these settings, or when the values
+   differ from the defaults and no run is in progress; closed during a
+   run. model_settings.js restores the user's own open/closed choice #}
+<details class="adv"{% if kp.open %} open{% endif %} id="{{ px }}model-settings"
+  data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
+ <summary class="advbtn">Model settings
+  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", "modified" if kp.modified else "default", id=px ~ "ms-badge") }}</span></summary>
+ <div class="ms-head">
+  <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
+  {{ tips.tip(px ~ "ms-about", "model settings", kp.about or ("Every value starts at its default. Changing any of them marks the run modified on every page it appears on" ~ (", and its files are exported under a non-hub name unless you tick the box below." if kp.override else ", and the season's results are not published."))) }}
+ </div>
+ {# the groups side by side when the panel spans the page (forecast.css) #}
+ <div class="ms-grid">
+ {% for g in kp.groups %}{% if g.rows | rejectattr("later") | list %}
+ <fieldset class="ms-group" data-affects="{{ g.affects }}" id="{{ px }}ms-{{ g.id }}">
+  <legend>{{ g.title }} {{ tips.tip(px ~ "ms-g-" ~ g.id, g.title | lower, g.tip) }}</legend>
+  {% for r in g.rows if not r.later %}{{ ms_row(r, px, tips) }}{% endfor %}
  </fieldset>
- {% endfor %}
+ {% endif %}{% endfor %}
+ </div>
+ {# the knobs not settable yet, in one fold: each row off, its group named #}
+ {% set ns = namespace(n=0) %}{% for g in kp.groups %}{% for r in g.rows if r.later %}{% set ns.n = ns.n + 1 %}{% endfor %}{% endfor %}
+ {% if ns.n %}
+ {% call tips.fold(ns.n ~ " coming later", id=px ~ "ms-later-fold", cls="ms-later-fold", after=tips.tip(px ~ "ms-later", "the settings coming later", "Shown at their fixed values and off; a later release makes them settable.")) %}
+  {% for g in kp.groups %}{% for r in g.rows if r.later %}{{ ms_row(r, px, tips, g.title) }}{% endfor %}{% endfor %}
+ {% endcall %}
+ {% endif %}
  {% if kp.override %}
  <div class="ms-override" id="{{ px }}ms-override"{% if not kp.modified %} hidden{% endif %}>
   <div class="lblrow"><label class="ck" for="{{ px }}ms-ovr"><input type="checkbox" name="submit_modified"

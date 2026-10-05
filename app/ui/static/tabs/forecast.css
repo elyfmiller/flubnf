@@ -15,7 +15,9 @@
         panel's view switch
      3. the Data issues box (_data_issues.html)
      4. the Model settings panel (_model_settings.html)
-     5. the run page (run.html, _dataset_run.html) */
+     5. the run page (run.html, _dataset_run.html)
+     6. the form's aids: the round row, location presets and filter, the
+        Run row against the last run, the panel across the page */
 
 /* ---- 1. settings card ---- */
 /* the dataset's truth badge under its picker */
@@ -169,7 +171,7 @@
 /* ---- 4. the Model settings panel ---- */
 /* the summary's badge (default / modified) beside its title */
 .fc-ms-state{margin-left:.45rem}
-/* a knob not wired yet: its badge under the disabled field */
+/* a knob not wired yet: its group as a tag under the disabled field */
 .fc-ms-soon{display:block;margin:.3rem 0 .1rem}
 /* the fixed settings: a fold with one labelled value each */
 .fc-ms-locked{margin-top:.9rem}
@@ -208,3 +210,54 @@
 .fc-archived{margin-top:.9rem}
 /* the per-model medians: numbers right-aligned under their horizon */
 .fc-medians td:first-child{white-space:nowrap}
+
+/* ---- 6. the form's aids ---- */
+/* the round row under the date: the reference date, the window badge */
+.fc-datestats{margin:.15rem 0 .35rem;font-size:var(--fs-label)}
+#fc-datestats[hidden],.fc-anchor-kv[hidden]{display:none}
+.fc-anchor-kv{display:inline-flex;align-items:center;gap:.2rem .4rem}
+/* the location presets: small toggle chips over the list */
+.fc-presets{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .35rem}
+.fc-presets .fc-chip{margin:0;padding:.12rem .6rem;font-size:var(--fs-micro);
+  border-radius:var(--r-pill)}
+.fc-presets .fc-chip[aria-pressed="true"]{border-color:var(--accent-ink);
+  color:var(--accent-ink);font-weight:700}
+.fc-chip-n{margin-left:.2rem;padding:0 .35em;border-radius:var(--r-pill);
+  background:var(--bg);font-variant-numeric:tabular-nums}
+/* the filter over the list, as wide as it */
+.fc-locfilter{width:100%;margin:0 0 .3rem}
+.checklist .ck[hidden]{display:none}
+.fc-nomatch{margin:.2rem 0;color:var(--mut);font-size:var(--fs-label)}
+/* more boxes below the fold: the list's foot fades */
+.checklist.fc-more{-webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent);
+  mask-image:linear-gradient(to bottom,#000 78%,transparent)}
+/* "all 53" ticked: the state boxes show ticked and off */
+.checklist .ck-one:disabled{opacity:.75}
+/* the Run row: held at the foot of the window while the open settings
+   panel scrolls past (the card must not clip it) */
+.fc-settings{overflow:visible}
+.fc-runrow{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .7rem;
+  margin-top:.7rem}
+.fc-runrow > button{margin:0}
+.fc-col-wide .fc-runrow{position:sticky;bottom:0;z-index:2;
+  margin:.6rem calc(-1 * var(--card-px)) 0;padding:.55rem var(--card-px);
+  background:var(--card);border-top:1px solid var(--line);
+  border-radius:0 0 10px 10px}
+/* the open panel across the page: its column spans the grid, the form's
+   other fields keep the side column's width, the groups in columns */
+.cols > .fc-col-wide,.cols > .fc-col-wide ~ #results{grid-column:1 / -1}
+.fc-col-wide #fcform > :not(#model-settings):not(.fc-runrow):not(script){max-width:var(--side-col)}
+.fc-col-wide .ms-grid{display:grid;gap:0 var(--gap);align-items:start;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr))}
+.fc-col-wide .ms-grid > .ms-group{margin-top:.6rem;min-width:0}
+/* a field off its default: a bar at its row's edge and a word by its label */
+.ms-row.ms-changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:.5rem}
+.ms-row.ms-changed > .lblrow > label::after{content:"changed";margin-left:.4rem;
+  padding:0 .4em;border:1px solid var(--warn);border-radius:var(--r-pill);
+  color:var(--warn);font-size:var(--fs-micro);font-weight:650}
+/* the knobs coming later, folded under the groups */
+.ms-later-fold{margin-top:.7rem}
+.ms-later-fold > summary{font-size:var(--fs-label)}
+.ms-later-fold[hidden]{display:none}
+/* the fan chart takes focus for its arrow keys */
+#fanplot:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
