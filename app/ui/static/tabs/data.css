@@ -112,7 +112,7 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 /* the hub card's track: wide enough that Update data and Check for new
    data sit side by side (a 1024px window gave it 285px) */
 @media(min-width:901px){
-  .dt-cols{grid-template-columns:minmax(21rem,var(--side-col)) minmax(0,1fr)}
+  .dt-cols{grid-template-columns:minmax(22rem,var(--side-col)) minmax(0,1fr)}
 }
 .hubcard .hubacts form{margin:0}
 /* the newest weeks' change on the week before: the arrow and the
@@ -121,4 +121,4 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-wow--up,.dt-wow--down{color:var(--ink)}
 .dt-wow--flat{color:var(--mut)}
 /* the stored datasets fill their card; the actions column at the right */
-.dstable{width:100%}
+table.dstable{width:100%}
