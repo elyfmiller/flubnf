@@ -439,6 +439,11 @@
     apply(n>0?Math.floor(p/5)*5+5:Math.ceil(p/5)*5-5,true);};});
   // Reset turns itself off at 100%: focus moves on to the slider
   reset.onclick=function(){apply(100,true);r.focus();};})();
+ // the Zoom tip names the platform's key: Cmd on macOS, Ctrl elsewhere
+ (function(){
+  var ztip=document.getElementById('tip-dm-zoom');
+  if(ztip&&!/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||''))
+    ztip.textContent=ztip.textContent.replace(/Cmd/g,'Ctrl');})();
  // page zoom in the native macOS window: the Display menu's Zoom row,
  // Cmd+= / Cmd+- / Cmd+0, and trackpad pinch (native). Only where the
  // bridge's can_zoom() answers true: elsewhere (the Windows window) the
@@ -450,10 +455,6 @@
     ? window.pywebview.api : null;}
   function api(){return can?bridge():null;}
   var label=document.querySelector('.zoompick .dm-zoom-v');
-  // the Zoom tip names the platform's key: Cmd on macOS, Ctrl elsewhere
-  var ztip=document.getElementById('tip-dm-zoom');
-  if(ztip&&!/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||''))
-    ztip.textContent=ztip.textContent.replace(/Cmd/g,'Ctrl');
   function show(z){
     if(typeof z!=='number')return;
     if(label)label.textContent=Math.round(z*100)+'%';

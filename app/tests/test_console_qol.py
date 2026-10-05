@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
-from app.ui import versions                              # noqa: E402
+from app.ui import templating                            # noqa: E402
 
 client = TestClient(srv.app)
 UI = Path(srv.__file__).parent
@@ -83,9 +83,10 @@ def test_keyboard_shortcuts_cover_every_tab_and_skip_typing():
 
 
 def test_build_line_only_when_the_build_is_known(monkeypatch):
-    monkeypatch.setattr(versions, "RUNNING_SHA", "")
+    g = templating.templates.env.globals
+    monkeypatch.setitem(g, "running_sha", lambda: "")
     assert "FluBNF build" not in client.get("/methods").text
-    monkeypatch.setattr(versions, "RUNNING_SHA", "abc1234")
+    monkeypatch.setitem(g, "running_sha", lambda: "abc1234")
     assert '<footer class="hint buildline">FluBNF build abc1234</footer>' in client.get("/methods").text
 
 
