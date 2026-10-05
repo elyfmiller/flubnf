@@ -11,6 +11,24 @@ agent's.
 
 ## Now
 
+- 2026-10-05: at Ely's request (with Bill), a deep dive on Osthus et al.
+  2026, "Leveraging synthetic and genetic data to improve epidemic
+  forecasting" (PLOS Comput Biol 22(8) e1014630): the paper, its
+  supplement, the public code and the LANL time-series repository, read
+  in full; the memo is `research/osthus-synthetic-genetic/README.md` in
+  the lab tree. In one line: a transformer trained on simulated outbreaks
+  (an antigenic-evolution agent-based model through an observation model)
+  plus pre-2020 respiratory histories forecast COVID-19 cases better than
+  one trained on histories alone, and forecasting each variant and
+  summing beat forecasting the total. For FluBNF the recommended first
+  step is a BNGL-simulated donor stream in the Oracle and Groundhog bank
+  (LANL's own "synthetic method of analogues" is the precedent), testable
+  by backfill on the stored grid without a refit, preceded by the paper's
+  covariate-shift classifier test, which needs no fit and no scoring. The
+  two-strain coupled fit stays closed (2026-08-21) and the neural-member
+  verdict stands; the paper's recipe is a research question, not a round
+  member. Nothing runs before the 2026-10-07 round; nothing in production
+  changes. Ely picks the path.
 - 2026-10-05: read Submission's round-one message (submission.md
   8d0e14a). This lane has nothing to merge and changes nothing the run
   reads: the Oracle SIHRS ships as frozen (the pre-registration, A2, B2,
