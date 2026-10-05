@@ -103,26 +103,28 @@
   {%- call tips.tip("md-bngl", "the model source") %}flubnf/templates/{{ bngl_file }} as stored; tokens such as
   <code class="md-code">{{ '{{POP}}' }}</code> are filled in per state and week.{% endcall %}</span></summary>
  {# the file out: copy (the page script below), download (a data link with
-    the file's own name, no server round trip), and for the Oracle SIHRS a
+    the file's own name, built by the script from the text shown, no
+    server round trip), and for the Oracle SIHRS a
     sandbox model started from the shipped filter (the gallery's New model
     form, its start preselected by sandbox.js) #}
  <div class="row md-src-acts">
   <button type="button" class="quiet" id="md-src-copy">Copy</button>
-  <a class="btn quiet" id="md-src-dl" download="{{ bngl_file }}"
-     href="data:text/plain;charset=utf-8,{{ bngl_src | urlencode }}">{{ tips.icon("download") }} Download .bngl</a>
+  <a class="btn quiet" id="md-src-dl" download="{{ bngl_file }}" hidden>{{ tips.icon("download") }} Download .bngl</a>
   {% if name == "pf" %}<a class="btn quiet" href="/sandbox?start=shipped:sihrs#sbnew-start">Open in Sandbox</a>
   {{ tips.tip("md-src-sb", "Open in Sandbox", "Starts a sandbox model from the shipped Oracle SIHRS filter: pick a location and forecast date, then Create. Nothing in the sandbox is submitted.") }}{% endif %}
   <span class="md-src-said" id="md-src-said" aria-live="polite"></span>
  </div>
- <pre id="md-src-pre">{{ bngl_src }}</pre>
+ <pre>{{ bngl_src }}</pre>
 </details>
 <script>
  // Copy: the clipboard where the page may write it, else the text
  // selected for Cmd or Ctrl C; the outcome said beside the button
  (function () {
-   var b = document.getElementById('md-src-copy'), pre = document.getElementById('md-src-pre'),
+   var b = document.getElementById('md-src-copy'), pre = document.querySelector('details.bngl > pre'),
        said = document.getElementById('md-src-said');
    if (!b || !pre) return;
+   var dl = document.getElementById('md-src-dl');
+   if (dl) { dl.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(pre.textContent); dl.hidden = false; }
    function say(t) { said.textContent = t; setTimeout(function () { said.textContent = ''; }, 2500); }
    function select() {
      var r = document.createRange(); r.selectNodeContents(pre);
