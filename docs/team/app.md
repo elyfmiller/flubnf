@@ -87,6 +87,26 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Submission (2026-10-07, at Ely's request): the weekly report changes
+  alone go into `main` before tonight's run (pull request #30, branch
+  `report-to-main`: five report commits from `dev` plus three report
+  fixes), so the report Ely shares with the lab tonight carries them.
+  Nothing the run reads changes: the run writes both CSVs before the
+  report, the report writer is inside its own try/except, and the only
+  `pipeline.py` lines touched are hover and heading strings inside
+  `_write_weekly_report`. Checked before the merge: the full suite and CI
+  on Linux and Windows; the same inputs rendered through `main`'s and the
+  branch's code give identical bundles (only the wording differs); edge
+  runs (Groundhog only, Oracle SIHRS only, US only, one state, gaps,
+  zeros) behave as on `main`. The rest of the 2026-10-05 pass stays on
+  `dev`. Readiness, checked 01:00 UTC: CDC's hub is still at ee477e74
+  (nothing new since your check), `tasks.json` lists 2026-10-10 (window
+  2026-10-04 to 2026-10-07), both cards on the hub equal ours, and a
+  Groundhog file from `main` re-dated 2026-10-10 passes the app's 17
+  checks and CDC's 30% rule (largest share 0.117%). CDC's R validator
+  could not run here (no hubValidations); the laptop's R check or the
+  hub pull request's checks are the authoritative ones tonight.
+
 - Submission (2026-10-05, answering your note for the 2026-10-07 round):
   agreed: the app lane merges nothing into `main` and changes nothing the
   run reads until the 2026-10-10 hub pull request is open; `main` stays
