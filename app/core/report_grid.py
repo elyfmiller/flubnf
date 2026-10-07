@@ -266,6 +266,33 @@ def panel_label(panel: dict) -> str:
     return ". ".join(bits)
 
 
+def _scale(panel: dict):
+    """(top, first date, last date, clipped) for one panel: the counts,
+    last season and the medians in full; the 95% bands up to CLIP_X times
+    that, clipped beyond (a Groundhog band can reach ten times its median
+    and would flatten the rest). None without any date."""
+    o = panel.get("observed") or []
+    ls = panel.get("last_season") or []
+    fans = panel.get("models") or {}
+    times = next((f["times"] for f in fans.values()), None)
+    xs = [d for d, _ in o] + [d for d, _ in ls] + list(times or [])
+    if not xs:
+        return None
+    d0 = min(date.fromisoformat(x) for x in xs)
+    d1 = max(date.fromisoformat(x) for x in xs)
+    core = [v for _, v in o] + [v for _, v in ls]
+    wide = []
+    for f in fans.values():
+        for r in f["q"]:
+            core.append(r[2])
+            wide.append(r[4])
+    top = max(core + [1.0])
+    if wide and max(wide) > top:
+        top = min(max(wide), top * CLIP_X)
+    top = _nice(top * 1.05)
+    return top, d0, d1, bool(wide) and max(wide) > top
+
+
 def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
               fs: float = 9) -> tuple:
     """One location's panel as inline SVG, and whether a 95% band runs
@@ -277,30 +304,14 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
     o = panel.get("observed") or []
     ls = panel.get("last_season") or []
     fans = panel.get("models") or {}
-    times = next((f["times"] for f in fans.values()), None)
-    xs = [d for d, _ in o] + [d for d, _ in ls] + list(times or [])
-    if not xs:
+    sc = _scale(panel)
+    if sc is None:
         return (f'<svg class="g-svg" viewBox="0 0 {w} {h}" role="img" '
                 'aria-label="no data"><text x="{:.0f}" y="{:.0f}" '
                 'text-anchor="middle" class="g-ax" font-size="{}">no data'
                 '</text></svg>'.format(w / 2, h / 2, fs), False)
-    d0 = min(date.fromisoformat(x) for x in xs)
-    d1 = max(date.fromisoformat(x) for x in xs)
+    top, d0, d1, clipped = sc
     span = max((d1 - d0).days, 1)
-    # the scale: the counts, last season and the medians in full; the 95%
-    # bands up to CLIP_X times that, clipped beyond (a Groundhog band can
-    # reach ten times its median and would flatten the rest)
-    core = [v for _, v in o] + [v for _, v in ls]
-    wide = []
-    for f in fans.values():
-        for r in f["q"]:
-            core.append(r[2])
-            wide.append(r[4])
-    top = max(core + [1.0])
-    if wide and max(wide) > top:
-        top = min(max(wide), top * CLIP_X)
-    top = _nice(top * 1.05)
-    clipped = bool(wide) and max(wide) > top
 
     def X(iso):
         return ml + (w - ml - mr) * (date.fromisoformat(iso) - d0).days / span
@@ -341,7 +352,8 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
     body = [f'<g clip-path="url(#{cid})">']
     if ls:
         pts = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in ls)
-        body.append(f'<polyline class="g-last" points="{pts}"/>')
+        body.append(f'<polyline class="g-last" data-s="last" '
+                    f'points="{pts}"/>')
     # one band per model, the 95% interval, filled in the member's colour:
     # both bands first, then both medians, so no band tints the other
     # model's median line
@@ -354,8 +366,8 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
         up = " ".join(f"{X(t):.1f},{Y(r[4]):.1f}" for t, r in zip(ts, q))
         dn = " ".join(f"{X(t):.1f},{Y(r[0]):.1f}"
                       for t, r in reversed(list(zip(ts, q))))
-        body.append(f'<polygon class="g-band" points="{up} {dn}" '
-                    f'style="fill:{c}"/>')
+        body.append(f'<polygon class="g-band" data-s="{m}" '
+                    f'points="{up} {dn}" style="fill:{c}"/>')
     for m in MODELS:
         f = fans.get(m)
         if not f:
@@ -366,13 +378,14 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
         if o:
             med = [(o[-1][0], o[-1][1])] + med
         pts = " ".join(f"{X(t):.1f},{Y(v):.1f}" for t, v in med)
-        body.append(f'<polyline points="{pts}" fill="none" style="stroke:{c}" '
+        body.append(f'<polyline class="g-med" data-s="{m}" points="{pts}" '
+                    f'fill="none" style="stroke:{c}" '
                     f'stroke-width="{1.8 * k:.1f}"/>')
     if o:
         pts = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in o)
-        body.append(f'<polyline class="g-obs" points="{pts}"/>')
-        body += [f'<circle class="g-dot" cx="{X(d):.1f}" cy="{Y(v):.1f}" '
-                 f'r="{2 * k:.1f}"/>' for d, v in o]
+        body.append(f'<polyline class="g-obs" data-s="obs" points="{pts}"/>')
+        body += [f'<circle class="g-dot" data-s="obs" cx="{X(d):.1f}" '
+                 f'cy="{Y(v):.1f}" r="{2 * k:.1f}"/>' for d, v in o]
     body.append("</g>")
     parts += body
     parts.append("</svg>")
@@ -380,13 +393,17 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
 
 
 def _legend(colors: dict, label: str) -> str:
+    def key(s, inner, title=""):
+        t = f' title="{_html.escape(title)}"' if title else ""
+        return (f'<span class="g-key" data-s="{s}" role="button" '
+                f'tabindex="0" aria-pressed="true"{t}>{inner}</span>')
     sw = "".join(
-        f'<span class="g-key"><i class="g-k-{m}" '
-        f'style="background:{model_color(m, colors)}"></i>{_SHORT[m]}</span>'
+        key(m, f'<i class="g-k-{m}" style="background:'
+               f'{model_color(m, colors)}"></i>{_SHORT[m]}')
         for m in reversed(MODELS))
-    return (f'{sw}<span class="g-key"><i class="g-k-obs"></i>observed</span>'
-            f'<span class="g-key" title="{_html.escape(label)}, same weeks">'
-            '<i class="g-k-last"></i>last season</span>')
+    return (sw + key("obs", '<i class="g-k-obs"></i>observed')
+            + key("last", '<i class="g-k-last"></i>last season',
+                  f"{label}, same weeks"))
 
 
 def _latest(p: dict) -> str:
@@ -406,7 +423,8 @@ def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
     svg, _clipped = panel_svg(p, idx, colors, **size)
     key = _html.escape(str(p.get("key", "")))
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
-    return (f'<figure class="{cls}" id="g-{key}">'
+    data_key = _html.escape(str(p.get("data_key", p.get("key", ""))))
+    return (f'<figure class="{cls}" id="g-{key}" data-key="{data_key}">'
             f'<figcaption><b>{title}</b>{_latest(p)}{flags_html}'
             f'</figcaption>{svg}</figure>')
 
@@ -445,7 +463,8 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
             + "</div>")
     return ('<aside class="rp-usfeature" id="us-feature" '
             'aria-label="United States forecast">'
-            + _figure(dict(us, key="US-feature"), "United States",
+            + _figure(dict(us, key="US-feature", data_key="US"),
+                      "United States",
                       _flag_spans(us), 999, colors, cls="gpanel g-feature",
                       anchor=False, w=FEATURE_W, h=FEATURE_H, fs=FEATURE_FS)
             + head + "</aside>")
@@ -491,6 +510,19 @@ def grid_css() -> str:
  .g-head{display:flex;flex-wrap:wrap;gap:.3rem 1rem;align-items:center;
    font-size:var(--fs-label);color:var(--mut);margin:0 0 .4rem}
  .g-key{display:inline-flex;align-items:center;gap:.3rem}
+ /* the legend keys switch a series on or off in every panel */
+ .g-key[data-s]{cursor:pointer;border-radius:4px;padding:0 .15rem;
+   user-select:none}
+ .g-key[data-s]:hover{color:var(--ink)}
+ .g-key[data-s]:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+ .g-key[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+ html.g-off-pf .g-svg [data-s="pf"],html.g-off-analogue .g-svg [data-s="analogue"],
+ html.g-off-obs .g-svg [data-s="obs"],html.g-off-last .g-svg [data-s="last"]{
+   display:none}
+ /* on screen a live chart stands in for the drawing (paper keeps it) */
+ .g-plot{width:100%;aspect-ratio:300/200}
+ .g-feature .g-plot{aspect-ratio:900/280}
+ @media screen{.g-live > .g-svg{display:none}}
  .g-key i{display:inline-block;width:14px;height:8px;border-radius:2px;
    -webkit-print-color-adjust:exact;print-color-adjust:exact}
  .g-key i.g-k-obs{background:var(--ink);height:3px}
@@ -534,6 +566,8 @@ def grid_css() -> str:
  .g-dot{fill:var(--ink)}
  @media print{
   @page{size:letter portrait;margin:9mm}
+  .g-plot{display:none!important}
+  .g-key[aria-pressed="false"]{display:none}
   .rp-mapcard{break-inside:avoid}
   .rp-usfeature{margin-top:3mm;padding-top:2mm;max-width:none}
   .rp-usfeature .g-svg{max-height:50mm}
@@ -550,4 +584,196 @@ def grid_css() -> str:
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
  }
+"""
+
+
+# ------------------------------------------------------------- live charts
+def grid_payload(grid: dict | None) -> dict:
+    """What the live charts draw, by panel key: the observed weeks, last
+    season, each member's times and five levels, and the drawing's own
+    scale (top, first and last date)."""
+    out = {}
+    for p in (grid or {}).get("panels") or []:
+        sc = _scale(p)
+        if sc is None:
+            continue
+        top, d0, d1, _c = sc
+        out[str(p.get("key", ""))] = {
+            "o": p.get("observed") or [],
+            "ls": p.get("last_season") or [],
+            "m": {m: {"t": f["times"], "q": f["q"]}
+                  for m, f in (p.get("models") or {}).items()},
+            "top": top, "d0": d0.isoformat(), "d1": d1.isoformat()}
+    return out
+
+
+def grid_js(grid: dict | None, colors: dict) -> str:
+    """The panels as live charts on screen (the drawings stay for paper
+    and for a page without plotly.js): hover for the values, drag to zoom,
+    double-click for the whole 95% band. The legend keys switch a series
+    on or off in every panel, the drawings too, and the choice is kept."""
+    data = grid_payload(grid)
+    if not data:
+        return ""
+    import json as _json
+    payload = _json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    hexes = _json.dumps({m: colors.get(m, "#888888") for m in MODELS})
+    names = _json.dumps(_SHORT)
+    return ('<script type="application/json" id="grid-data">' + payload
+            + "</script><script>(function(){\n"
+            "var HEX=" + hexes + ",NAME=" + names + ";\n" + _GRID_JS
+            + "\n})();</script>")
+
+
+_GRID_JS = r"""
+var el = document.getElementById('grid-data');
+if (!el) return;
+var D = JSON.parse(el.textContent);
+var ON = {pf: true, analogue: true, obs: true, last: true};
+try {
+  var saved = JSON.parse(localStorage.getItem('rpGridOn') || 'null');
+  if (saved) for (var s in ON) if (s in saved) ON[s] = !!saved[s];
+} catch (e) {}
+var de = document.documentElement;
+function marks() {
+  for (var s in ON) {
+    if (ON[s]) de.classList.remove('g-off-' + s);
+    else de.classList.add('g-off-' + s);
+  }
+  var ks = document.querySelectorAll('.g-key[data-s]');
+  for (var i = 0; i < ks.length; i++)
+    ks[i].setAttribute('aria-pressed', String(!!ON[ks[i].getAttribute('data-s')]));
+}
+marks();
+if (!window.Plotly) return;
+function css(n, fb) {
+  var v = getComputedStyle(de).getPropertyValue(n).trim();
+  return v || fb;
+}
+function rgba(hex, a) {
+  var h = hex.replace('#', '');
+  return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16)
+    + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')';
+}
+function day(iso, n) {
+  var t = new Date(iso + 'T00:00:00Z');
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
+  'Oct', 'Nov', 'Dec'];
+function md(iso) { return MON[+iso.slice(5, 7) - 1] + ' ' + (+iso.slice(8, 10)); }
+// the drawing's ticks: the first week, the latest observed, the last target
+function ticks(p) {
+  var t = [p.d0];
+  if (p.o.length && t.indexOf(p.o[p.o.length - 1][0]) < 0) t.push(p.o[p.o.length - 1][0]);
+  if (t.indexOf(p.d1) < 0) t.push(p.d1);
+  return t;
+}
+function col(p, i) { return p.map(function (r) { return r[i]; }); }
+function traces(p) {
+  var ink = css('--ink', '#000F7E'), mut = css('--mut', '#5B5F7A');
+  var a = parseFloat(css('--rp-band-a', '.22')) || 0.22, t = [];
+  if (p.ls.length) t.push({x: col(p.ls, 0), y: col(p.ls, 1), mode: 'lines',
+    line: {color: mut, width: 1.5, dash: 'dash'}, meta: 'last',
+    name: 'last season', hovertemplate: '%{y:,.0f}<extra>last season</extra>'});
+  ['analogue', 'pf'].forEach(function (m) {
+    var f = p.m[m]; if (!f) return;
+    var up = col(f.q, 4), dn = col(f.q, 0).slice().reverse();
+    t.push({x: f.t.concat(f.t.slice().reverse()), y: up.concat(dn),
+      fill: 'toself', fillcolor: rgba(HEX[m], a), line: {width: 0},
+      mode: 'lines', hoverinfo: 'skip', meta: m, name: NAME[m] + ' 95%'});
+  });
+  ['analogue', 'pf'].forEach(function (m) {
+    var f = p.m[m]; if (!f) return;
+    var x = f.t.slice(), y = col(f.q, 2), cd = f.q.map(function (r) {
+      return [r[0], r[4]]; });
+    var tpl = f.t.map(function () {
+      return '%{y:,.0f} (95%: %{customdata[0]:,.0f} to %{customdata[1]:,.0f})'
+        + '<extra>' + NAME[m] + '</extra>'; });
+    if (p.o.length) {
+      var last = p.o[p.o.length - 1];
+      x.unshift(last[0]); y.unshift(last[1]); cd.unshift([last[1], last[1]]);
+      tpl.unshift('<extra></extra>');
+    }
+    t.push({x: x, y: y, customdata: cd, hovertemplate: tpl, mode: 'lines',
+      line: {color: css('--model-' + m, HEX[m]), width: 2}, meta: m,
+      name: NAME[m]});
+  });
+  if (p.o.length) t.push({x: col(p.o, 0), y: col(p.o, 1),
+    mode: 'lines+markers', line: {color: ink, width: 1.4},
+    marker: {size: 4, color: ink}, meta: 'obs', name: 'observed',
+    hovertemplate: '%{y:,.0f}<extra>observed</extra>'});
+  t.forEach(function (tr) { tr.visible = ON[tr.meta] ? true : false; });
+  return t;
+}
+function layout(p) {
+  var mut = css('--mut', '#5B5F7A'), line = css('--line', '#DCD8E9');
+  var lay = {margin: {l: 36, r: 8, t: 6, b: 24}, showlegend: false,
+    hovermode: 'x unified', paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)', font: {size: 10, color: mut},
+    hoverlabel: {font: {size: 11, color: css('--ink', '#000F7E')},
+      bgcolor: css('--card', '#FFFFFF'), bordercolor: line},
+    xaxis: {type: 'date', range: [day(p.d0, -2), day(p.d1, 2)],
+      tickvals: ticks(p), ticktext: ticks(p).map(md), showgrid: false,
+      zeroline: false, linecolor: line},
+    yaxis: {range: [0, p.top], rangemode: 'tozero', tickformat: p.top >= 1000 ? '~s' : ',~g',
+      nticks: 4, gridcolor: line, zeroline: false}};
+  if (p.o.length) {
+    var x0 = p.o[p.o.length - 1][0];
+    lay.shapes = [{type: 'line', xref: 'x', yref: 'paper', x0: x0, x1: x0,
+      y0: 0, y1: 1, line: {color: mut, width: 1, dash: 'dot'}}];
+  }
+  return lay;
+}
+var CFG = {displayModeBar: false, scrollZoom: false, responsive: true,
+  doubleClick: 'reset+autosize'};
+var live = [];
+function draw(fig) {
+  if (fig._gplot) return;
+  var p = D[fig.getAttribute('data-key')];
+  if (!p) return;
+  var div = document.createElement('div');
+  div.className = 'g-plot';
+  fig.appendChild(div);
+  fig.classList.add('g-live');
+  fig._gplot = div;
+  Plotly.newPlot(div, traces(p), layout(p), CFG);
+  live.push([div, p]);
+}
+var figs = document.querySelectorAll('figure.gpanel[data-key]');
+if ('IntersectionObserver' in window) {
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (e.isIntersecting) { io.unobserve(e.target); draw(e.target); }
+    });
+  }, {rootMargin: '400px'});
+  for (var i = 0; i < figs.length; i++) io.observe(figs[i]);
+} else {
+  for (var j = 0; j < figs.length; j++) draw(figs[j]);
+}
+function flip(s) {
+  ON[s] = !ON[s];
+  try { localStorage.setItem('rpGridOn', JSON.stringify(ON)); } catch (e) {}
+  marks();
+  live.forEach(function (lp) {
+    var g = lp[0], idx = [], vis = [];
+    g.data.forEach(function (tr, k) {
+      if (tr.meta === s) { idx.push(k); vis.push(ON[s]); }
+    });
+    if (idx.length) Plotly.restyle(g, {visible: vis}, idx);
+  });
+}
+document.addEventListener('click', function (e) {
+  var k = e.target.closest && e.target.closest('.g-key[data-s]');
+  if (k) flip(k.getAttribute('data-s'));
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var k = e.target.closest && e.target.closest('.g-key[data-s]');
+  if (k) { e.preventDefault(); flip(k.getAttribute('data-s')); }
+});
+addEventListener('themechange', function () {
+  live.forEach(function (lp) { Plotly.react(lp[0], traces(lp[1]), layout(lp[1]), CFG); });
+});
 """
