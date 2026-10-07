@@ -349,9 +349,10 @@ def read_prepare_failures(workroot: Path) -> dict:
 
 
 # --- research knobs (spec.extra; none set on the shipped path) ---------------
-# variant (2strain|natg), iota, fit_i0, anchor_asof, reporting, neff_cap,
-# pf_keys, prior_ranges, initialization, seed_anchor, seed_salt,
-# continue_states, save_states. All are read by prepare() or the helpers below.
+# variant (2strain|natg), iota, fit_i0, seed_denominator, anchor_asof,
+# reporting, neff_cap, pf_keys, prior_ranges, initialization, seed_anchor,
+# seed_salt, continue_states, save_states. All are read by prepare() or the
+# helpers below.
 
 #: A cell's saved/continued particle cloud; outside out/, which runners clear.
 CLOUD_NAME = "cloud.npz"
@@ -486,7 +487,8 @@ def prepare(spec, workroot: Path) -> list:
     pf_prepare_failures.json in execute()'s FAIL-string shape. A run where
     every location fails still raises; a single-location run re-raises its
     one error verbatim."""
-    from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
+    from flubnf.sihrs_fit import (materialize_model, pin_from, resolve_state,
+                                  write_exp)
     from flubnf.settings import BNG
     from app.core.data import LOCATIONS, spec_source, vintage_path
     from app.core.runs import derive_seed
@@ -549,6 +551,18 @@ def prepare(spec, workroot: Path) -> list:
                 f"below 1 - s0 = {1 - S0_DEFAULT:g} (s0, the susceptible "
                 f"fraction, is {S0_DEFAULT:g}), or the model would start "
                 "with a negative recovered count")
+    # seed_denominator: what pins rho*mult and i0 (research knob
+    # pf.seed_denominator): the shipped to-date rule, or the expected
+    # season total floored at it (flubnf.sihrs_priors.SEED_DENOMINATORS).
+    from flubnf.sihrs_priors import SEED_DENOMINATOR, SEED_DENOMINATORS
+    seed_den = str((spec.extra or {}).get("seed_denominator")
+                   or SEED_DENOMINATOR)
+    if seed_den not in SEED_DENOMINATORS:
+        raise ValueError(f"seed_denominator must be one of {SEED_DENOMINATORS}, "
+                         f"not {seed_den!r}")
+    if seed_den != SEED_DENOMINATOR and fit_i0 is not None:
+        raise ValueError(f"fit_i0 and seed_denominator = {seed_den} cannot be "
+                         "combined: both set the seed")
     two_strain = variant == "2strain"
     natg = variant == "natg"
     if natg:
@@ -582,7 +596,7 @@ def prepare(spec, workroot: Path) -> list:
         """Every prepared cell for one location; the caller contains raises."""
         s = resolve_state(loc, truth_csv=vintage, locations_csv=loc_csv,
                           season_start=spec.season_start,
-                          as_of=spec.forecast_date)
+                          as_of=spec.forecast_date, seed_denominator=seed_den)
         # i0/rhomult derive from the season-to-date count, so they drift
         # weekly even with no revision; spec.extra["anchor_asof"] pins them
         # to one as-of week's vintage (needed when a cloud is carried).
@@ -593,8 +607,12 @@ def prepare(spec, workroot: Path) -> list:
                                    else spec_source(spec, anchor,
                                                     archive=vintage_path)[0]),
                                locations_csv=loc_csv,
-                               season_start=spec.season_start, as_of=anchor)
+                               season_start=spec.season_start, as_of=anchor,
+                               seed_denominator=seed_den)
             s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call
+            for k in ("expected_total_pc", "seed_factor", "seed_record"):
+                if hasattr(sa, k):
+                    setattr(s, k, getattr(sa, k))
         # Optional nowcast rule (RunSpec.drop_same_day, off by default): trim
         # the same-day row on top of weeks_to_drop; weeks_dropped and
         # pf_forecast_intervals keep horizon labels as-of-relative.
@@ -676,13 +694,9 @@ def prepare(spec, workroot: Path) -> list:
             # Re-derive rhomult/i0 from the trimmed series (resolve_state
             # used the untrimmed one) unless anchor_asof pins them.
             if not (spec.extra or {}).get("anchor_asof"):
-                from flubnf.sihrs_priors import (initial_infected_fraction
-                                                 as _iif, pin_rho_mult as _prm)
-                import numpy as _np0
-                _obs = _np0.asarray(s.observed, dtype=float)
-                s.rhomult = _prm(float(_obs.sum()) / s.population, s.attack_rate)
-                s.i0 = _iif(max(float(_obs[0]), 1.0), s.population,
-                            s.rhomult, s.gamma)
+                s.rhomult, s.i0, s.seed_factor = pin_from(
+                    s.observed, s.population, s.attack_rate,
+                    getattr(s, "expected_total_pc", None), s.gamma)
         # RESEARCH reporting model, spec.extra["reporting"]["mode"]: edge rows
         # are corrected by app.core.completeness' per-lag factors. anchor:
         # only rhomult/i0 see the corrected rows; lik: also
@@ -693,8 +707,6 @@ def prepare(spec, workroot: Path) -> list:
         if rep:
             import numpy as _np
             from app.core import completeness as _comp
-            from flubnf.sihrs_priors import (initial_infected_fraction,
-                                             pin_rho_mult)
             mode = str(rep.get("mode") or "")
             if mode not in ("anchor", "lik", "both"):
                 raise ValueError("reporting mode must be anchor, lik or both, "
@@ -712,10 +724,9 @@ def prepare(spec, workroot: Path) -> list:
             scales = _comp.row_scales(s.times, _asof_off, fac)
             corrected = (_np.asarray(s.observed, dtype=float)
                          / _np.asarray(scales, dtype=float))
-            s.rhomult = pin_rho_mult(float(corrected.sum()) / s.population,
-                                     s.attack_rate)
-            s.i0 = initial_infected_fraction(max(float(corrected[0]), 1.0),
-                                             s.population, s.rhomult, s.gamma)
+            s.rhomult, s.i0, s.seed_factor = pin_from(
+                corrected, s.population, s.attack_rate,
+                getattr(s, "expected_total_pc", None), s.gamma)
             rep_rec = {"mode": mode,
                        "factors": {str(k): float(v) for k, v in fac["factors"].items()},
                        "pairs": {str(k): int(v) for k, v in fac["pairs"].items()},
@@ -864,6 +875,14 @@ initialization = {initialization_for(spec)}
                                  ((spec.extra or {}).get("prior_ranges") or {}).items()},
                 "anchor_asof": anchor or spec.forecast_date,
                 "i0": float(s.i0),
+                # only off the shipped denominator: shipped cells unchanged
+                **({"seed_pin": {
+                    "denominator": seed_den,
+                    "rhomult": float(s.rhomult),
+                    "factor": float(getattr(s, "seed_factor", 1.0)),
+                    "expected_total_pc": getattr(s, "expected_total_pc", None),
+                    **dict(getattr(s, "seed_record", {}) or {})}}
+                   if seed_den != SEED_DENOMINATOR else {}),
                 "fit_i0": list(fit_i0) if fit_i0 else None,
                 "reporting": rep_rec,
                 **(cont or {"state_file": None, "continued_from": None,
