@@ -892,22 +892,26 @@ _HIDDEN_SETTING = re.compile(
     r"\s*</dd>")
 
 
-#: notes an older run baked under its accuracy tables, and the "over N
-#: scored weeks" tail of a fold's line: a rebuilt report drops them
-_BAKED_NOTE = re.compile(r"<p class=[\"']hint[\"']>.*?</p>", re.S)
+#: what an older run baked into its accuracy card that a rebuilt report
+#: drops: the notes right after a table (the rule, the scope, the US era;
+#: never a member's own "no scored weeks yet" line, which stands alone),
+#: the "over N scored weeks" tail of a fold's line, and the "relWIS appears
+#: once ..." tail of a placeholder
+_BAKED_NOTE = re.compile(r"(?<=</table>)(?:<p class=[\"']hint[\"']>.*?</p>)+",
+                         re.S)
 _BAKED_OVER = re.compile(r" over [\d,]+ scored weeks")
+_BAKED_TAIL = re.compile(r"\s*relWIS appears once truth for forecast weeks "
+                         r"is published\.")
 
 
 def _accuracy_card(summary_html: str, kit) -> str:
-    """The accuracy card in the current design: its heading in sentence
-    case with the relWIS reading beside it and the rule in its "?"; an
-    older report's tables pass through unchanged."""
+    """The accuracy card in the current design: a plain heading, then the
+    folded tables, with what an older run baked beside them dropped."""
     if not summary_html:
         return ""
     head = str(kit.heading("Forecast accuracy", id="acc"))
-    if "<table" in summary_html:
-        summary_html = _BAKED_NOTE.sub("", summary_html)
-        summary_html = _BAKED_OVER.sub("", summary_html)
+    for baked in (_BAKED_NOTE, _BAKED_OVER, _BAKED_TAIL):
+        summary_html = baked.sub("", summary_html)
     out, n = re.subn(
         r"<div class='card'(?: id='accuracy')?><h2>(?:forecast accuracy "
         r"\(retrospective\)|Forecast accuracy, past weeks)</h2>",
@@ -1091,8 +1095,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 'onclick="backToMap()">&larr; back to map</button>')
 
     def _note(key, note):
-        """A detail's note (the off-season reading) as a badge, the note
-        itself in its "?"."""
+        """A detail's note (the off-season reading) as a one-word badge."""
         if not note:
             return ""
         word = ("off-season" if str(note).lower().startswith("off-season")

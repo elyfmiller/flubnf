@@ -211,3 +211,29 @@ def test_rate_change_bar_names_its_member(tmp_path):
     sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
     assert "Next week (Oracle SIHRS)" in sec
     assert "the model the map shows" not in html
+
+
+def test_a_run_without_scores_keeps_a_short_line_per_member():
+    """A run before any truth (the 2026-10-10 round) baked two long
+    placeholders; a rebuild keeps each member's short line. With one
+    member scored, the other's line stays beside the first's table."""
+    kit = report_v2.kit_macros()
+    baked = ("<div class='card' id='accuracy'><h2>Forecast accuracy, past "
+             "weeks</h2><p class='hint'>Oracle SIHRS: no scored weeks yet. "
+             "relWIS appears once truth for forecast weeks is published.</p>"
+             "<p class='hint'>Groundhog: no scored weeks yet. relWIS appears "
+             "once truth for forecast weeks is published.</p></div>")
+    out = report_v2._accuracy_card(baked, kit)
+    assert "Oracle SIHRS: no scored weeks yet.</p>" in out
+    assert "Groundhog: no scored weeks yet.</p>" in out
+    assert "relWIS appears" not in out
+    df = pd.DataFrame([{"location": "Ohio", "fips": "39", "horizon": 1,
+                        "wis": 1.0, "base_wis": 2.0}])
+    mixed = ("<div class='card' id='accuracy'><h2>Forecast accuracy, past "
+             "weeks</h2>" + scoring.summary_table_html(df, model="pf")
+             + scoring.summary_table_html(df.iloc[0:0], model="analogue")
+             + "</div>")
+    out = report_v2._accuracy_card(mixed, kit)
+    assert 'data-model="pf"' in out
+    assert "Groundhog: no scored weeks yet.</p>" in out
+    assert scoring.NO_SCORES_HTML == "<p class='hint'>No scored weeks yet.</p>"

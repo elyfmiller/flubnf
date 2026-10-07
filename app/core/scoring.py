@@ -345,8 +345,7 @@ def earlier_rule_note(stored: list, fresh: list) -> str:
 RELWIS_HINT = "relative WIS, below 1 beats the FluSight baseline"
 
 #: the empty-table placeholder (the weekly report recognises it)
-NO_SCORES_HTML = ("<p class='hint'>No scored weeks yet. relWIS appears once "
-                  "truth for forecast weeks is published.</p>")
+NO_SCORES_HTML = "<p class='hint'>No scored weeks yet.</p>"
 
 
 def _member_name(model: str) -> str:
