@@ -33,7 +33,8 @@ def test_the_report_is_written_and_served_whatever_the_locale(tmp_path):
             "from pathlib import Path\n"
             "from app.core.report_v2 import build_report\n"
             "from app.ui.routes.output import _stored_report_text\n"
-            f"p = build_report('2098-01-03', {{}}, {{}}, {{}}, Path({str(out)!r}))\n"
+            f"p = build_report('2098-01-03', {{}}, {{}}, {{}}, Path({str(out)!r}), "
+            "model_label='\\u2318')\n"
             "print(sys.flags.utf8_mode, '\\u2318' in _stored_report_text(p))\n")
     env = dict(os.environ, PYTHONUTF8="0", PYTHONCOERCECLOCALE="0",
                LC_ALL="C", LANG="C", PYTHONPATH=str(repo))
@@ -174,15 +175,15 @@ def test_weekly_report_keeps_its_build_contract(tmp_path):
         settings_html='<p class="hint runsettings"><strong>Run settings:'
                       "</strong> engine pf</p>",
         fitted_fips=["39"]).read_text(encoding="utf-8")
-    # the run card's stat in words (h:mm:ss in its "?"), the settings
-    # folded under "Run details"
+    # the run card's stat in words, the settings folded under "Run
+    # details"; no explainers (Ely, 2026-10-07: the figures speak)
     assert "<dt>Run time" in html
     assert '<span class="uk-stat-v" id="runtime">1 h 2 min 5 s</span>' in html
-    assert "Wall time 1:02:05 (h:mm:ss)" in html
+    assert "Wall time" not in html
     assert '<span class="uk-fold-sum">Run details</span>' in html
     assert "Run settings" in html
     assert "</span>no data<" in html
-    assert "Gaps are shown, never filled in." in html
+    assert "Gaps are shown, never filled in." not in html
     assert "not fitted in this run" in html
     # no recorded scope: the gap is not asserted for states nobody checked
     html2 = build_report(
@@ -229,7 +230,7 @@ def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
                         tmp_path / "r.html", fitted_fips=["50"]
                         ).read_text(encoding="utf-8")
     assert "</span>no forecast<" in html
-    assert "No-forecast states have data but no forecast" in html
+    assert "No-forecast states have data but no forecast" not in html
     html2 = build_report("2098-01-03", {}, {}, {}, tmp_path / "r2.html",
                          fitted_fips=["50"]).read_text(encoding="utf-8")
     assert "</span>no forecast<" not in html2
@@ -263,7 +264,7 @@ def test_weekly_report_carries_the_ui_kit(tmp_path):
     assert '[data-theme="dracula"]{--logo:url("data:image/svg+xml;base64,' \
         in html
     assert 'class="mark" aria-hidden="true"' in html
-    assert 'aria-describedby="tip-map"' in html
+    assert 'aria-describedby="tip-map"' not in html     # no "?" here
     assert '<div class="uk-seg" role="group" aria-label="Map view">' in html
     assert 'id="btn-state-view" class="on" aria-pressed="true"' in html
     assert "bN.setAttribute('aria-pressed'" in html

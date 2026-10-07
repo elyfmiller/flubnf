@@ -60,12 +60,10 @@ def test_title_and_page_name_the_reference_date(tmp_path):
     html = _render(tmp_path)
     assert "<title>FluBNF weekly report, reference date 2098-01-10</title>" \
         in html
-    assert ("Data through Fri Jan 3, 2098 · forecasts for Jan 10 to "
-            "Jan 31 (FluSight reference date 2098-01-10)") in html
+    assert "Reference date 2098-01-10 · data through Jan 3" in html
     d = report_v2.report_dates("2026-10-03")
     assert d["ref"] == "2026-10-10"
-    assert d["line"].startswith("Data through Sat Oct 3, 2026")
-    assert "forecasts for Oct 10 to Oct 31" in d["line"]
+    assert d["line"] == "Reference date 2026-10-10 · data through Oct 3"
 
 
 def test_member_tokens_bands_and_no_data_per_card(tmp_path):
@@ -86,8 +84,7 @@ def test_reporting_gap_is_hatched_and_reads_no_data(tmp_path):
     assert 'fill="url(#nodata-hatch)"' in m.group(0)
     assert 'aria-label="Wyoming: no data"' in m.group(0)
     assert f"--sw:{usmap.GAP_SWATCH}" in html
-    assert ("Nothing was reported for these states this week. Gaps are "
-            "shown, never filled in.") in html
+    assert "Gaps are shown" not in html          # the hatch is enough
 
 
 def test_map_states_take_the_keyboard(tmp_path):
@@ -115,21 +112,25 @@ def test_vision_switch_forced_colors_and_print_palette(tmp_path):
     assert "de.setAttribute('data-vision', 'cvd')" in html
 
 
-def test_summary_jump_bar_and_category_list(tmp_path):
+def test_the_page_is_figures_without_prose(tmp_path):
+    """Ely, 2026-10-07: the figures speak for themselves. No summary
+    paragraph, no states-in-words list, no "?" explainers, no notes under
+    the tables; the jump bar and the location picker stay."""
     html = _render(tmp_path)
-    s = html[html.index('id="summary"'):].split("</p>", 1)[0]
-    assert "United States: <b>23</b> admissions in the week ending Jan 3" \
-        in s
-    assert "Oracle SIHRS median for Jan 31" in s
-    assert "1 state leans toward an increase" in s
+    # no "?" buttons in the markup (the kit's inlined script names one)
+    assert not re.search(r'aria-label="About [A-Za-z]', html)
+    for gone in ('id="summary"', 'id="catlist"', 'class="rp-pooled"',
+                 "Gaps are shown",
+                 "flagged for a closer look", "is scored separately",
+                 "Since the Oct 7", "A scored week is", "Wall time",
+                 "Print or Save as PDF", "same weeks</span>"):
+        assert gone not in html, gone
     nav = html[html.index('<nav class="rp-jump"'):].split("</nav>", 1)[0]
     for h in ("#map-anchor", "#us-feature", "#all-locations", "#accuracy",
               "#run"):
         assert f'href="{h}"' in nav, h
     assert '<option value="g-OH">Ohio</option>' in nav
-    cl = html[html.index('id="catlist"'):].split("</details>", 1)[0]
-    assert "Increase</dt><dd>Ohio</dd>" in cl
-    assert "No data</dt><dd>Wyoming</dd>" in cl
+    assert 'aria-label="Jump to location"' in nav
 
 
 def test_detail_sections_sit_before_the_grid_with_both_members(tmp_path):
@@ -138,7 +139,7 @@ def test_detail_sections_sit_before_the_grid_with_both_members(tmp_path):
             < html.index('id="st-US"') < html.index('id="all-locations"'))
     sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
     assert 'id="h-fan-OH">Weekly admissions</h3>' in sec
-    assert "Rate-change outlook, next week" in sec
+    assert "Next week (Oracle SIHRS)" in sec
     assert "<td>Dec 27</td><td class=\"num\">1,234</td>" in sec
     # the forecast numbers: both members, four target weeks
     num = sec[sec.index('id="num-OH"'):]
@@ -156,25 +157,24 @@ def test_detail_sections_sit_before_the_grid_with_both_members(tmp_path):
     assert pf_med.x[0] == "2098-01-03" and pf_med.y[0] == 23.0
 
 
-def test_accuracy_card_folds_and_pooled_figures_show_by_the_map(tmp_path):
+def test_accuracy_card_folds_with_no_notes(tmp_path):
     html = _render(tmp_path)
     acc = html[html.index('id="accuracy"'):]
-    assert "Forecast accuracy, past weeks" in acc
-    assert "relWIS: relative WIS, below 1 beats the FluSight baseline" in acc
+    assert '<h2 id="h-acc">Forecast accuracy</h2>' in acc
     assert '<details class="rp-acc" data-model="pf" data-pooled="0.500"' \
         in acc
     assert "Scored weeks" in acc and ">Cells<" not in acc
-    head = html[html.index('id="map-anchor"'):].split("</div>", 1)[0]
-    assert 'class="rp-pooled"' in head and "0.500" in head
-    assert "openAccuracy()" in head
-    # an older report's tables still give the figure
-    old = ("<div class='card'><h2>forecast accuracy (retrospective)</h2>"
-           "<table><thead><tr><th>Location</th><th class=\"num\">Oracle "
-           "SIHRS relWIS</th><th class=\"num\">Cells</th></tr></thead><tbody>"
-           "<tr class=\"total\"><td>All locations</td><td class=\"num ok\">"
-           "0.812</td><td class=\"num hint\">40</td></tr></tbody></table>"
-           "</div>")
-    assert report_v2._pooled_figures(old) == [("Oracle SIHRS", 0.812, 40)]
+    assert "scored weeks</summary>" not in acc
+    # notes an earlier run baked under its tables are dropped on rebuild
+    baked = ("<div class='card' id='accuracy'><h2>Forecast accuracy, past "
+             "weeks</h2><details class=\"rp-acc\"><summary>Oracle SIHRS "
+             "pooled relWIS <b>0.812</b> over 1,234 scored weeks</summary>"
+             "<table><tr><td>x</td></tr></table><p class=\"hint\">The US "
+             "row is scored separately.</p><p class=\"hint\">A scored week "
+             "is one forecast.</p></details></div>")
+    out = report_v2._accuracy_card(baked, report_v2.kit_macros())
+    assert "scored separately" not in out and "A scored week" not in out
+    assert "over 1,234 scored weeks" not in out and "0.812" in out
 
 
 def test_run_card_words_its_time_and_hides_missing_engines(tmp_path):
@@ -196,20 +196,6 @@ def test_an_older_bundle_still_renders_one_member(tmp_path):
     assert 'id="all-locations"' not in html
 
 
-def test_summary_counts_states_only(tmp_path):
-    # the nation and Puerto Rico lean too, but they are not states
-    up = {"increase": .8, "stable": .2}
-    cards = {"OH": {"fips": "39", "name": "Ohio", "abbr": "OH",
-                    "probs": up, "hover_html": "<b>Ohio</b>"},
-             "US": {"fips": "US", "name": "United States", "abbr": "US",
-                    "probs": up, "hover_html": "<b>US</b>"},
-             "PR": {"fips": "72", "name": "Puerto Rico", "abbr": "PR",
-                    "probs": up, "hover_html": "<b>PR</b>"}}
-    html = _render(tmp_path, cards=cards)
-    s = html[html.index('id="summary"'):].split("</p>", 1)[0]
-    assert "1 state leans toward an increase" in s
-
-
 def test_small_count_fans_never_print_si_prefixes():
     t = ["2098-01-10", "2098-01-17"]
     small = {x: {str(lv): 2.0 * lv for lv in report_v2.FAN_LEVELS} for x in t}
@@ -223,5 +209,5 @@ def test_small_count_fans_never_print_si_prefixes():
 def test_rate_change_bar_names_its_member(tmp_path):
     html = _render(tmp_path)
     sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
-    assert "Rate-change outlook, next week (Oracle SIHRS)" in sec
+    assert "Next week (Oracle SIHRS)" in sec
     assert "the model the map shows" not in html

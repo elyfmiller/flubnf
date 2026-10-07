@@ -130,7 +130,7 @@ def test_the_panel_reads_the_submitted_integers():
 
 def test_the_pages_are_fifteen_panels_three_across():
     """53 locations: four pages of 15, 15, 15 and 8, each headed with the
-    week, its range and the legend; print CSS makes each a Letter page."""
+    legend alone; print CSS makes each a Letter page."""
     names = [f"Place {i:02d}" for i in range(52)] + ["US"]
     keys = {n: ("US" if n == "US" else f"P{i:02d}")
             for i, n in enumerate(names)}
@@ -142,8 +142,7 @@ def test_the_pages_are_fifteen_panels_three_across():
     pages = html.split('<div class="gpage">')[1:]
     assert [p.count('<figure class="gpanel"') for p in pages] == \
         [15, 15, 15, 8]
-    assert "locations 1 to 15 of 53" in pages[0]
-    assert "locations 46 to 53 of 53" in pages[3]
+    assert "locations 1 to" not in html
     for p in pages:
         assert "Oracle SIHRS" in p and "Groundhog" in p and "last season" in p
     # a panel title opens the location's detail section where there is one
@@ -159,8 +158,8 @@ def test_the_pages_are_fifteen_panels_three_across():
 
 def test_a_panel_is_plain_one_band_per_model():
     """One shaded band per model (the 95% interval), last season dashed,
-    the latest count in full with its unit, the flags beside it; no
-    off-scale note, and a name is escaped."""
+    the latest count in full, the flags beside it; no off-scale note or
+    mark, and a name is escaped."""
     p = {"key": "XX", "name": "<b>A&B</b>", "observed": [[ASOF, 2515.0]],
          "last_season": [[ASOF, 2000.0], ["2098-01-10", 2100.0]],
          "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
@@ -168,16 +167,17 @@ def test_a_panel_is_plain_one_band_per_model():
                                  "q": [[1, 9, 2000, 11, 90000]] * 4}}}
     html = G.grid_html({"panels": [p], "asof": ASOF}, COLORS)
     assert "&lt;b&gt;A&amp;B&lt;/b&gt;" in html and "<b>A&B</b>" not in html
-    assert "latest: 2,515 admissions" in html
+    assert "latest 2,515</span>" in html
     assert html.count("<polygon") == 1               # the 95% band alone
     assert "off scale" not in html
-    assert "bands: 95% interval" in html and "50%" not in html
+    assert "bands: 95% interval" not in html and "50%" not in html
+    assert 'class="g-cont"' not in html
     assert "stroke-dasharray:4 3" in G.grid_css()    # last season, dashed
     # the flags sit in their own group at the right of the caption
     p["observed"] = [[ASOF, 5000.0]]
     assert '<span class="g-flags"><span class="g-flag g-flag--warn"' in G.grid_html(
         {"panels": [p], "asof": ASOF}, COLORS)
-    assert "latest: 1 admission<" in G._latest({"observed": [[ASOF, 1.0]]})
+    assert "latest 1<" in G._latest({"observed": [[ASOF, 1.0]]})
 
 
 def test_the_us_panel_sits_large_under_the_map(tmp_path):
@@ -267,32 +267,29 @@ def test_bands_first_then_medians_and_the_zero_line_draws_whole():
     assert G._num(2500.0) == "2.5k"
 
 
-def test_the_us_panel_says_what_the_oracle_sihrs_us_row_is():
+def test_the_us_panel_carries_no_note():
+    """The national panel is the figure and its legend (Ely, 2026-10-07:
+    the figures speak for themselves), whatever the run's US era."""
     g = _grid()
-    for step, words in (("stepped", "uses the same Oracle step as the states"),
-                        ("filter", "Liu-West filter alone")):
+    for step in ("stepped", "filter", None):
         g["us_step"] = step
-        assert words in G.us_feature_html(g, COLORS)
-    g["us_step"] = None
-    assert "g-usnote" not in G.us_feature_html(g, COLORS)
+        side = G.us_feature_html(g, COLORS)
+        assert "g-usnote" not in side and "Oracle step" not in side
 
 
-# ------------------------------------------------ design pass (2026-10-05)
-
-def test_panels_wear_the_member_tokens_and_the_groundhog_band_is_an_outline():
-    """Member colours come from the page's --model-* tokens (a light card
-    takes a darker Groundhog gold); the Groundhog's 95% band is an outline
-    over a faint fill, the Oracle SIHRS band a fill, so an overlap never
-    turns grey."""
+def test_bands_are_filled_in_each_members_colour():
+    """Both 95% bands are fills in the member's own colour at one alpha
+    (Ely's choice of 2026-10-01; no outline); the median lines take the
+    page's --model-* tokens (a light card's Groundhog line is a darker
+    gold)."""
     svg, _ = G.panel_svg(_grid()["panels"][2], 0, COLORS)
-    assert "fill:var(--model-pf, #1979FF)" in svg
+    bands = re.findall(r'<polygon class="g-band" points="[^"]*" '
+                       r'style="fill:([^"]+)"/>', svg)
+    assert bands == ["#FFC72C", "#1979FF"]          # Groundhog under
+    assert "stroke:var(--model-pf, #1979FF)" in svg
     assert "stroke:var(--model-analogue, #FFC72C)" in svg
-    assert 'class="g-band g-band-analogue"' in svg
-    assert 'class="g-band g-band-pf"' in svg
-    assert 'fill="#FFC72C"' not in svg and 'stroke="#1979FF"' not in svg
-    css = G.grid_css()
-    assert ".g-band-analogue{fill-opacity:.07;stroke-width:1.1" in css
-    assert ".g-band-pf{fill-opacity:var(--rp-band-a" in css
+    assert "dasharray:3 2" not in G.grid_css()
+    assert ".g-band{stroke:none;fill-opacity:var(--rp-band-a" in G.grid_css()
 
 
 def test_flags_falls_in_the_warning_colour_disagree_in_red():
@@ -310,14 +307,15 @@ def test_flags_falls_in_the_warning_colour_disagree_in_red():
         {"observed": [[ASOF, 3.0]], "models": {}})
 
 
-def test_a_clipped_band_shows_where_it_continues():
+def test_a_clipped_band_runs_off_the_top_without_a_mark():
+    """Ely, 2026-10-01 and 2026-10-07: no off-scale note, no arrows."""
     p = {"key": "XX", "name": "X", "observed": [[ASOF, 20.0]],
          "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
                                            "2098-01-24", "2098-01-31"],
                                  "q": [[1, 9, 20, 30, 900]] * 4}}}
     svg, clipped = G.panel_svg(p, 0, COLORS)
-    assert clipped and svg.count('class="g-cont"') == 4
-    assert "continues above the scale (to 900)" in svg
+    assert clipped and 'class="g-cont"' not in svg
+    assert "continues above the scale" not in svg
 
 
 def test_the_us_feature_is_wide_and_short_with_panel_sized_text():
@@ -327,13 +325,12 @@ def test_the_us_feature_is_wide_and_short_with_panel_sized_text():
     assert G.FEATURE_W / G.FEATURE_H > 3
 
 
-def test_pages_name_the_reference_date_and_number_themselves():
+def test_pages_carry_the_legend_and_the_panels_alone():
     html = G.grid_html(_grid(), COLORS)
-    assert "Reference date 2098-01-10 &middot; locations 1 to 3 of 3" in html
-    assert ("FluBNF &middot; reference date 2098-01-10 &middot; All "
-            "locations, page 1 of 1") in html
-    assert "Every location&#x27;s forecast" in html or \
-        "Every location's forecast" in html
-    # a link mark per panel, and a spoken summary with each model's numbers
-    assert 'class="g-anchor" href="#g-OH"' in html
+    for gone in ("Reference date", "g-foot", "Every location", "g-anchor",
+                 "g-lede", "flagged for a closer look"):
+        assert gone not in html, gone
+    # the flag words' meaning rides the page head's hover
+    assert 'class="g-head" title="falls: ' in html
+    # each panel keeps its spoken summary with each model's numbers
     assert "Oracle SIHRS median for Jan 31" in html

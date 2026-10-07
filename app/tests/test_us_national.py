@@ -300,7 +300,6 @@ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
     assert "US (fitted)" in html                  # its own labelled row
     assert "All jurisdictions (US excluded)" in html
     assert '<td class="num ok">0.500</td>' in html   # Ohio alone, not 0.892
-    assert "is not part of the pooled average" in html
     # 0.892 would be the figure with US pooled in
     assert "0.892" not in html
 
@@ -309,13 +308,13 @@ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
 
 def test_the_weekly_report_claims_a_fitted_national_only_when_it_has_one(
         tmp_path):
-    """The weekly report says "US (fitted)" only when a national forecast
-    landed; provenance is derived from the run, never hardcoded."""
+    """The weekly report never badges the national section (Ely,
+    2026-10-07: no subtext); an empty one says so in a word."""
     from app.core.report_v2 import build_report
 
     empty = build_report("2098-01-03", {}, {}, {},
                          tmp_path / "none.html").read_text()
-    assert "National fan and accuracy charts appear once" in empty
+    assert "No national charts yet" in empty
     assert usn.LABELS[usn.FITTED] not in empty
     assert usn.NOTES[usn.FITTED] not in empty
     assert usn.SHORT_LABELS[usn.FITTED] not in empty
@@ -333,10 +332,10 @@ def test_the_weekly_report_claims_a_fitted_national_only_when_it_has_one(
     import plotly.graph_objects as go
     landed = build_report("2098-01-03", {}, {}, {"fan": go.Figure()},
                           tmp_path / "some.html").read_text()
-    assert usn.LABELS[usn.FITTED] in landed
-    assert usn.NOTES[usn.FITTED] in landed
+    assert usn.NOTES[usn.FITTED] not in landed
+    assert 'id="h-fan-US"' in landed
     # and the placeholder is gone
-    assert "National fan and accuracy charts appear once" not in landed
+    assert "No national charts yet" not in landed
 
 
 # ----------------------------------------------------------- resolution order

@@ -341,14 +341,7 @@ def earlier_rule_note(stored: list, fresh: list) -> str:
             "The two rules can give slightly different figures.")
 
 
-#: the cell rule in the weekly report's words (it goes to collaborators):
-#: the same rule as CELL_RULE_NOTE, which the console's Methods keeps
-REPORT_CELL_RULE = (
-    "A scored week is one forecast of one week's admissions. It counts once "
-    "that week's settled count exists (a week of 0 included), when the "
-    "model forecast it and FluSight's baseline forecast it too, as in "
-    "FluSight's own scoring.")
-#: the relWIS explanation beside the weekly report's accuracy tables
+#: the relWIS reading, the hover on the weekly report's table heading
 RELWIS_HINT = "relative WIS, below 1 beats the FluSight baseline"
 
 #: the empty-table placeholder (the weekly report recognises it)
@@ -376,15 +369,15 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
     out of the pooled total (us_national.POOLED_INCLUDES_US). `us_step` is
     the run's Oracle step on the US cell (us_national.us_step_week of its
     workroot), which the Oracle SIHRS US row's note follows; None (the run
-    does not say) keeps the current era's line. Public wording throughout
-    (us_national.REPORT_*, REPORT_CELL_RULE)."""
+    does not say) is accepted and unused. No notes under the table: the
+    rule and the US row's era are the console's to explain (Ely,
+    2026-10-07: the figures speak for themselves)."""
     from app.core import us_national as usn
     if df.empty:
         if model is None:
             return NO_SCORES_HTML
         return (f"<p class='hint'>{_member_name(model)}: no scored weeks "
-                "yet. relWIS appears once truth for forecast weeks is "
-                "published.</p>")
+                "yet.</p>")
     member = _member_name(model or "pf")
     per_loc = (df.groupby("location")
                  .apply(lambda g: g.wis.sum() / g.base_wis.sum(),
@@ -415,21 +408,9 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
         f'<tr class="total"><td>{total_label}</td>{score_td(total)}'
         f'<td class="num hint">{len(pooled)}</td></tr>'
         if total is not None else "")
-    note = (f'<p class="hint">{usn.REPORT_POOLED_NOTE}</p>' if has_us else "")
-    # disclose the cell rule where the counts render; the frame's own
-    # truth_source stamp wins over the (racy) module global
-    src = getattr(df, "attrs", {}).get("truth_source", TRUTH_SOURCE)
-    rule = ('<p class="hint">' + REPORT_CELL_RULE
-            + (f" Truth source: {src}."
-               if src != "settled" else "") + '</p>')
-    # what the Oracle SIHRS member's US row is in this run: with the step
-    # or the Liu-West filter alone
-    us_note = (f'<p class="hint">{usn.report_pf_us_note(us_step)}</p>'
-               if has_us and (model or "pf") == "pf" else "")
     if total is not None:
         head = (f'<span class="rp-acc-m">{member}</span> pooled relWIS '
-                f'<b class="relwis {cls(total)}">{total:.3f}</b> over '
-                f'{len(pooled):,} scored weeks')
+                f'<b class="relwis {cls(total)}">{total:.3f}</b>')
         data = f' data-pooled="{total:.3f}" data-n="{len(pooled)}"'
     else:
         head = f'<span class="rp-acc-m">{member}</span> US row only'
@@ -440,5 +421,4 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
             f'<th class="num"><abbr title="{RELWIS_HINT}">{member} relWIS'
             '</abbr></th>'
             '<th class="num">Scored weeks</th></tr></thead><tbody>'
-            + rows + total_row + "</tbody></table>" + note + us_note + rule
-            + "</details>")
+            + rows + total_row + "</tbody></table></details>")
