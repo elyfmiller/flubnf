@@ -283,8 +283,8 @@ def test_bands_are_filled_in_each_members_colour():
     page's --model-* tokens (a light card's Groundhog line is a darker
     gold)."""
     svg, _ = G.panel_svg(_grid()["panels"][2], 0, COLORS)
-    bands = re.findall(r'<polygon class="g-band" points="[^"]*" '
-                       r'style="fill:([^"]+)"/>', svg)
+    bands = re.findall(r'<polygon class="g-band" data-s="\w+" '
+                       r'points="[^"]*" style="fill:([^"]+)"/>', svg)
     assert bands == ["#FFC72C", "#1979FF"]          # Groundhog under
     assert "stroke:var(--model-pf, #1979FF)" in svg
     assert "stroke:var(--model-analogue, #FFC72C)" in svg
@@ -334,3 +334,52 @@ def test_pages_carry_the_legend_and_the_panels_alone():
     assert 'class="g-head" title="falls: ' in html
     # each panel keeps its spoken summary with each model's numbers
     assert "Oracle SIHRS median for Jan 31" in html
+
+
+# ------------------------------------------------ live panels (2026-10-07)
+
+def test_each_panel_goes_live_and_the_legend_switches_series():
+    """Ely, 2026-10-07: every panel works like the national chart: hover
+    for values, zoom, double-click for the whole band, and the legend keys
+    switch a series on or off in every panel (the drawing too, so paper
+    follows). The drawing stays for print and for a page without
+    plotly.js."""
+    g = _grid()
+    html = G.grid_html(g, COLORS)
+    # every figure names its data; the US panel under the map uses US's
+    assert 'id="g-OH" data-key="OH"' in html
+    side = G.us_feature_html(g, COLORS)
+    assert 'id="g-US-feature" data-key="US"' in side
+    # the legend keys are switches, one per series
+    for s in ("pf", "analogue", "obs", "last"):
+        assert (f'class="g-key" data-s="{s}" role="button" tabindex="0" '
+                'aria-pressed="true"') in html, s
+    # each drawn series carries its tag, so a switch hides it on paper too
+    svg, _ = G.panel_svg(g["panels"][2], 0, COLORS)
+    for s in ("pf", "analogue", "obs", "last"):
+        assert f'data-s="{s}"' in svg, s
+    css = G.grid_css()
+    assert 'html.g-off-pf .g-svg [data-s="pf"]' in css
+    assert ".g-live > .g-svg{display:none}" in css     # screen only
+    assert ".g-plot{display:none!important}" in css     # print keeps SVG
+    # the data: each panel's series and the drawing's own scale
+    data = G.grid_payload(g)
+    oh = data["OH"]
+    assert set(oh) == {"o", "ls", "m", "top", "d0", "d1"}
+    top, d0, d1, _c = G._scale(g["panels"][2])
+    assert oh["top"] == top and oh["d0"] == d0.isoformat()
+    assert oh["m"]["pf"]["q"] == g["panels"][2]["models"]["pf"]["q"]
+    js = G.grid_js(g, COLORS)
+    assert 'id="grid-data"' in js and "doubleClick: 'reset+autosize'" in js
+    assert "Plotly.restyle" in js and "rpGridOn" in js
+    assert G.grid_js({"panels": []}, COLORS) == ""
+
+
+def test_the_report_carries_the_live_panels(tmp_path):
+    from app.core import report_v2
+    from app.tests.test_report_design_pass import _render
+    html = _render(tmp_path)
+    assert 'id="grid-data"' in html and "Plotly.newPlot(div" in html
+    # the theme pass leaves the live panels to their own redraw
+    assert "if(g.closest&&g.closest('.gpanel')) continue;" in html
+    assert report_v2.BUNDLE_VERSION >= 8
