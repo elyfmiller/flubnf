@@ -6,13 +6,27 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-05: preparing the first real round for Ely, who runs it from
-  Iceland (UTC+0, no daylight saving) on Wednesday 2026-10-07. Files:
-  `2026-10-10-NAU_PyBNF-OracleSIHRS.csv` and
-  `2026-10-10-NAU_PyBNF-GroundHogCGR.csv` (as-of 2026-10-03). Deadline
-  11 PM Eastern = 8 PM Arizona = 03:00 Thursday in Iceland. Last week's
-  target-data update landed at 19:49 UTC (15:49 Eastern), so the working
-  window in Iceland is roughly 20:00 Wednesday to 03:00 Thursday.
+- 2026-10-07: round 2026-10-10 (EW40) submitted as is:
+  cdcepi/FluSight-forecast-hub#3730 from `FluBNF_submission` (2605672,
+  plus Ely's sync merge ab91b74). It adds only the two files, and both
+  are byte-identical to the files Ely ran (both 4,877 lines). Both pass
+  `validate_submission.R`, 31 checks with `--window`, against the hub
+  (target data of 2026-10-07; the hub's later commits are other teams'
+  files). The Groundhog file is byte-identical to a cloud regeneration
+  from `main`. The Data issues box was empty: all 53 locations reported
+  2026-10-03, with no zero or collapsed newest week.
+- 2026-10-07, sense check (for the post-round review; no blockers): every
+  2026-10-03 count is inside both models' h0 50% and 95% intervals, and
+  every trend projection is inside both 95% intervals at h0 and h1. The
+  two models' 95% intervals overlap everywhere. Both medians sit 15-25%
+  below the US growth path (about 27% a week; the season is 3x the
+  same week of 2022-25 and 4-7 weeks ahead of it, so the calendar-matched
+  donors grow too slowly). Oracle SIHRS: medians fall in 11 locations
+  (IL, MI, WI, MT, AK, OR, ME among them), CA, WA and MN flatten, and NH
+  rises 5x by h3; all are documented dry-run behaviour (model.md). The
+  Groundhog puts its 2.00x path on every location. Hawaii (28 to 64) is
+  above its all-time weekly maximum in both files at h3. Ely chose to
+  untick nothing.
 - 2026-10-05: the hub changed since 09-30: PR validation now runs CDC's
   custom 30%-of-population check (`max_hosp_popn_frac`, in
   `src/validations/R/`), so `validate_submission.R` reports 30 checks, not
@@ -55,12 +69,8 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- All lanes (2026-10-05, for the 2026-10-07 round): Ely runs both models
-  on `main` from Iceland. Please merge nothing into `main`, and change
-  nothing the run reads (engine pin, donor banks, knobs, the Oracle step,
-  launchers), until the hub pull request for 2026-10-10 is open
-  (Wednesday 11 PM Eastern); `dev` pushes are fine. Say here if something
-  must go in before then.
+- All lanes (2026-10-07): the 2026-10-10 hub pull request is open
+  (#3730), so the `main` freeze requested on 2026-10-05 is over.
 - Engine, Model: no Mac Studio time is needed for this round if Ely's
   laptop runs it; keep the Wednesday rule anyway (free from the
   target-data update until the hub pull request is open) as the fallback.
