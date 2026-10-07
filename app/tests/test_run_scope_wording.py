@@ -12,6 +12,7 @@
     on legend" hint covered the expanded view's Close button).
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -85,12 +86,17 @@ def test_click_invitation_only_with_sections(tmp_path):
     none = report_v2.build_report(
         "2026-01-03", _cards(), {}, {}, tmp_path / "a.html",
         fitted_fips=["39"]).read_text()
-    assert "click it" not in none
-    assert "Hover a state for its category probabilities;" in none
+    # no prose explainer on the map (Ely, 2026-10-07); a state invites a
+    # click by its look alone, and only when it has a section to open
+    assert "Hover a state" not in none
+    assert re.search(r'<path [^>]*class="st noclick"[^>]*data-fips="39"',
+                     none) or 'class="st noclick"' in none
+    assert 'data-abbr="OH"' not in none
     some = report_v2.build_report(
         "2026-01-03", _cards(), _detail(), {}, tmp_path / "b.html",
         fitted_fips=["39"]).read_text()
-    assert "Hover a state for its category probabilities, click it" in some
+    assert "Hover a state" not in some
+    assert 'data-abbr="OH"' in some and 'id="st-OH"' in some
 
 
 def test_states_without_a_section_do_not_look_clickable():
@@ -156,8 +162,8 @@ def test_groundhog_only_pipeline_run_records_scope_and_says_so(tmp_path):
     assert bundle["version"] == report_v2.BUNDLE_VERSION >= 5
     assert bundle["national_in_run"] is False
     html = (tmp_path / "report.html").read_text()
-    # the Groundhog's fan gives Ohio a section, so the map invites a click
-    assert "click it" in html and 'id="st-OH"' in html
+    # the Groundhog's fan gives Ohio a section, so its state is clickable
+    assert 'data-abbr="OH"' in html and 'id="st-OH"' in html
     assert "US (national) was not part of this run." in html
     assert "No scored weeks yet" not in html
     # a run that includes US records it
