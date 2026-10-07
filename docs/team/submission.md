@@ -6,6 +6,41 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-07 (23:25 UTC): the direction check ran clean with the real
+  engine, both arms (`flubnf retro run 2026-27`, vintages 2026-09-26 and
+  2026-10-03, 19 locations x 3 seeds, 2 runners, about 500 s a week-arm, 17
+  s a cell-runner). Branch `seed-denominator` (e916dac) is pushed (Ely's
+  go-ahead, 2026-10-07). Findings:
+  - The cloud engine reproduces production: the shipped arm's Oracle medians
+    at the 2026-10-03 vintage equal the submitted file's to the rounding at
+    all 19 locations and 4 horizons (CA 466 / 504 / 541 / 575 against 466 /
+    504 / 540 / 575; TX 364 / 413 / 468 / 522 against 364 / 413 / 467 /
+    522), and its 11 decliners are exactly the submitted ones (IL, MI, WI,
+    MT, AK, OR, ME, PR, DC, SD, WY).
+  - The mechanism is visible in the filter alone: under the shipped seed the
+    Liu-West filter's own medians decline by h3 in 19 of 19 locations this
+    week (CA 451 -> 242, TX 326 -> 289, FL 559 -> 450); the Oracle step
+    rescues 8 of them.
+  - With the knob (season_total), the Oracle member declines in 5 of 19 (MT
+    0.59 of last, DC 0.68, WY 0.85, AK 0.87, SD 0.99), the filter alone also
+    in 5 (MT, AK, ME, DC, WY: the data turned down there). The turned-around
+    locations rise steeply: over four weeks CA x2.1, WA x2.2, TX x2.4, FL
+    x3.4, NY x3.4, NC x4.2, HI x5.7 (filter alone FL x7.2, NY x7.4, NC
+    x10.9; the Oracle step halves these in growth terms). Against the
+    Groundhog's US x2.0 that is the no-brake overshoot the verifier warned
+    of, now in the real filter; IL, MI, WI go from declines to
+    flat-to-rising (x1.1-1.3). Truth in four weeks tells which arm was right
+    this week; the replay tells in general.
+  - The early-week replay started at 23:26 UTC in the cloud session,
+    unattended: 2023-24, 2024-25, 2025-26, first 8 vintages each, all 52
+    jurisdictions x 3 seeds, shipped arm then knob arm per season, 4
+    runners; roots replays/early-<season>-<arm> in the Submission
+    scratchpad; about 9 hours, so scored around 09:00 UTC Thursday (02:00
+    Arizona). Scoring: `app.core.retro.score_season` per root, members `pf`
+    (Oracle SIHRS), `pf_filter` (the filter alone) and `analogue`; pooled
+    relWIS and coverage on the common cells of the two arms, plus the share
+    of cells with the h3 median below the origin; the stop rules above
+    decide.
 - 2026-10-07 (night): the diagnosis was checked twice by agents reading the
   code and the hub data, and the fix was tested on a deterministic stand-in.
   None of it is a filter run; the replay below decides.
