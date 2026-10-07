@@ -6,6 +6,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-07: weekly report trimmed at Ely's request (PR #31, on `main`): both
+  95% bands plain fills in each model's colour, no off-scale arrows, and
+  about 90% of the explanatory text removed. A stored run rebuilds
+  trimmed when served, so the 2026-10-10 report needs no re-run.
 - 2026-10-05: design and convenience pass on `dev` (Ely's request), not
   on `main` while `main` is frozen for the 2026-10-10 round. Display and
   wording only; nothing a run or the submission CSVs read changed.
