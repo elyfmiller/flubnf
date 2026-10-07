@@ -424,38 +424,29 @@ def test_ratio_figures_carry_log_and_coverage_per_member_and_state():
     assert figs.detail["pf"]["cov"] is None
 
 
-def test_the_weekly_table_states_the_rule_and_what_the_us_row_is():
+def test_the_weekly_table_is_the_table_alone():
+    """The weekly report goes to collaborators and its figures speak for
+    themselves (Ely, 2026-10-07): no rule, scope or US-era note under the
+    table, whatever the run's US era; nothing internal either."""
     df = pd.DataFrame([
         {"location": "Ohio", "fips": "39", "horizon": 1, "wis": 1.0,
          "base_wis": 2.0},
         {"location": "US", "fips": "US", "horizon": 1, "wis": 9.0,
          "base_wis": 10.0}])
-    html = scoring.summary_table_html(df)
-    # the weekly report goes to collaborators: the rule and the US row in
-    # public words (the console keeps CELL_RULE_NOTE and PF_US_NOTES)
-    assert scoring.REPORT_CELL_RULE in html
-    # a run that does not say what its US pf is gets the current era's line
-    assert usn.REPORT_PF_US_NOTE in html
-    # a run's own oracle.json says: the line for its era
-    for step in (usn.STEPPED, usn.FILTER):
-        html = scoring.summary_table_html(df, us_step=step)
-        assert usn.REPORT_PF_US_NOTES[step] in html
-        for words in ("addendum", "oracle.json", "outside_member"):
-            assert words not in html, words
-    assert "without the Oracle step" not in scoring.summary_table_html(
-        df, us_step=usn.STEPPED)
-    assert "without the Oracle step" in scoring.summary_table_html(
-        df, us_step=usn.FILTER)
-    # the Groundhog's US row is its own forecast: no such note
-    for step in (None, usn.STEPPED, usn.FILTER):
-        an = scoring.summary_table_html(df, "analogue", us_step=step)
-        assert "under Oracle SIHRS" not in an
+    for model in (None, "analogue"):
+        for step in (None, usn.STEPPED, usn.FILTER):
+            html = scoring.summary_table_html(df, model, us_step=step)
+            assert "<p" not in html
+            assert "</table></details>" in html
+            for words in ("addendum", "oracle.json", "outside_member",
+                          "Oracle step", "scored week is"):
+                assert words not in html, words
 
 
 def test_the_weekly_report_follows_the_runs_oracle_json(tmp_path):
-    """pipeline._write_weekly_report reads the run's workroot: a run whose
-    oracle.json stepped the US cell (addendum A3) says so on the accuracy
-    card, and a run that kept it outside says the filter alone."""
+    """pipeline._write_weekly_report reads the run's workroot whatever its
+    oracle.json says about the US cell, and the accuracy card it bakes
+    carries no era note either way."""
     from app.ui import pipeline as ui_pipeline
     from app.core import report_v2, runs as runs_mod
     from flubnf.settings import load_locations
@@ -487,15 +478,14 @@ def test_the_weekly_report_follows_the_runs_oracle_json(tmp_path):
         bundle = json.loads((wr / report_v2.BUNDLE_NAME).read_text())
         return bundle["national"]["summary_html"]
 
-    # the report's public wording for each era (the console keeps
+    # either era, the card is the tables alone (the console keeps
     # PF_US_NOTES)
     stepped = card("both", [])
-    assert usn.REPORT_PF_US_NOTES[usn.STEPPED] in stepped
-    assert usn.REPORT_PF_US_NOTES[usn.FILTER] not in stepped
     filt = card("outside", ["US"])
-    assert usn.REPORT_PF_US_NOTES[usn.FILTER] in filt
-    for words in ("addendum", "oracle.json", "outside_member"):
-        assert words not in stepped and words not in filt
+    for html in (stepped, filt):
+        assert 'class="rp-acc"' in html and "Oracle step" not in html
+        for words in ("addendum", "oracle.json", "outside_member"):
+            assert words not in html
 
 
 def test_the_earlier_rule_note_names_each_set_of_figures():

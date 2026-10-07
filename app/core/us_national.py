@@ -146,29 +146,6 @@ POOLED_SCOPE_NOTE = (
     "average.")
 
 
-#: the weekly report's public wording (it goes to collaborators, who know
-#: neither the addendum numbers nor oracle.json): the same facts as
-#: POOLED_SCOPE_NOTE and PF_US_NOTES, which the console keeps. The date is
-#: the first round with the step on US (docs/FLUSIGHT-2026-27.md).
-REPORT_POOLED_NOTE = ("The US row is scored separately and is not part of "
-                      "the pooled average.")
-REPORT_PF_US_NOTES = {
-    "stepped": ("Since the Oct 7, 2026 round the US forecast uses the same "
-                "Oracle step as the states; earlier weeks used the Liu-West "
-                "filter alone."),
-    "filter": ("The US forecast in these weeks uses the Liu-West filter "
-               "alone, without the Oracle step the states get; from the "
-               "Oct 7, 2026 round it uses the same Oracle step."),
-}
-#: an era the run does not record, or a mix of both
-REPORT_PF_US_NOTE = REPORT_PF_US_NOTES["stepped"]
-
-
-def report_pf_us_note(step) -> str:
-    """The weekly report's line on the Oracle SIHRS US row for one era."""
-    return REPORT_PF_US_NOTES.get(step, REPORT_PF_US_NOTE)
-
-
 # ---------------------------------------------------------- identification
 
 def is_us(loc) -> bool:

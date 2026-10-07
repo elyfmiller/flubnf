@@ -303,8 +303,7 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
     Each member (`model`, default the Oracle SIHRS, or the member whose
     colour `band_color` is; plus `others`, model -> a {time: {level:
     value}} grid) draws its 95% and 50% bands and its median in its own
-    colour, the median joined to the last observed week; the Groundhog's
-    95% band is outlined so an overlap never turns grey. The y axis starts
+    colour, the median joined to the last observed week. The y axis starts
     at 0; the card heading names the chart (`title` is kept for callers
     and not drawn); the legend is one row, one entry per member."""
     import plotly.graph_objects as go
@@ -328,15 +327,13 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
         for lo, hi, lvl in FAN_BANDS:
             upper = [_q_at(qm[str(t)], hi) for t in ft]
             lower = [_q_at(qm[str(t)], lo) for t in ft]
-            outline = m == "analogue" and lvl == "95"
             fig.add_scatter(
                 x=ft + ft[::-1], y=upper + lower[::-1], fill="toself",
                 fillcolor=band_literal(m, lvl),
                 # a band is its fill: Plotly's default for a short trace
                 # adds markers in its own palette at the edges
                 mode="lines",
-                line=(dict(color=col, width=1.2, dash="dot") if outline
-                      else dict(width=0)),
+                line=dict(width=0),
                 hoverinfo="skip", name=f"{short}: {lvl}% interval",
                 legendgroup=m, showlegend=False)
     for m in order:
@@ -568,14 +565,14 @@ def _report_tokens_css() -> str:
              "--rp-band-a:.22;"
              f"--rp-band-pf-95:rgba({rgb(pf)},.13);"
              f"--rp-band-pf-50:rgba({rgb(pf)},.30);"
-             f"--rp-band-analogue-95:rgba({rgb(ANALOGUE_ON_LIGHT)},.10);"
-             f"--rp-band-analogue-50:rgba({rgb(ANALOGUE_ON_LIGHT)},.26);"
+             f"--rp-band-analogue-95:rgba({rgb(an)},.22);"
+             f"--rp-band-analogue-50:rgba({rgb(an)},.42);"
              "--map-nodata:#8E89A6")
     dark = (f"--model-analogue:{an};--rp-band-a:.36;"
             f"--rp-band-pf-95:rgba({rgb(pf)},.30);"
             f"--rp-band-pf-50:rgba({rgb(pf)},.52);"
-            f"--rp-band-analogue-95:rgba({rgb(an)},.12);"
-            f"--rp-band-analogue-50:rgba({rgb(an)},.30);"
+            f"--rp-band-analogue-95:rgba({rgb(an)},.20);"
+            f"--rp-band-analogue-50:rgba({rgb(an)},.38);"
             "--map-nodata:#7D83A3")
     darks = ",".join(f'[data-theme="{t}"]'
                      for t in ("dim", "dark", "nord", "dracula"))
@@ -587,8 +584,7 @@ def _report_tokens_css() -> str:
 
 
 def _report_css() -> str:
-    """The report's newer rules (jump bar, summary line, category list,
-    accuracy fold, detail tables, forced colours, phone width); plain CSS,
+    """The report's newer rules (jump bar, accuracy fold, detail tables, forced colours, phone width); plain CSS,
     page_style appends it before its print block."""
     return """
  /* one spacing step between the top-level cards */
@@ -599,11 +595,6 @@ def _report_css() -> str:
    letter-spacing:.05em;color:var(--mut);font-weight:600}
  .card .uk-heading > h3{margin:0}
  .card > .uk-heading{margin:0 0 .45rem}
- /* the summary line under the title */
- .rp-summary{margin:0 0 var(--sp-3);max-width:80rem;color:var(--ink);
-   font-size:var(--fs-sub);line-height:1.45}
- .rp-summary b{font-weight:700;font-variant-numeric:tabular-nums}
- .rp-summary .rp-up{color:var(--bad)}.rp-summary .rp-down{color:var(--ok)}
  /* the jump bar: sticky on screen, gone on paper */
  .rp-jump{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;
    align-items:center;gap:.25rem .9rem;margin:0 0 var(--sp-3);
@@ -617,20 +608,6 @@ def _report_css() -> str:
    max-width:12rem}
  #map-anchor,#all-locations,#accuracy,#run,section.state,#us-feature{
    scroll-margin-top:4.2rem}
- /* pooled relWIS beside the map heading */
- .rp-pooled{display:inline-flex;flex-wrap:wrap;align-items:baseline;
-   gap:.1rem .8rem;font-size:var(--fs-label);color:var(--mut)}
- .rp-pooled a{color:var(--ink);font-weight:600}
- .rp-pooled b{font-variant-numeric:tabular-nums;font-weight:750}
- /* states by category, in words (screen readers and paper) */
- .rp-catlist{margin:.6rem auto 0;max-width:min(980px,100%);
-   font-size:var(--fs-label);color:var(--mut)}
- .rp-catlist dl{display:grid;grid-template-columns:max-content minmax(0,1fr);
-   gap:.1rem .8rem;margin:0}
- .rp-catlist dt{font-weight:650;color:var(--ink);white-space:nowrap;
-   display:inline-flex;align-items:center;gap:.35rem}
- .rp-catlist dd{margin:0}
- .rp-catlist > summary{cursor:pointer;font-weight:600;color:var(--mut)}
  /* the detail sections */
  .rp-detail{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
    gap:var(--rp-gap)}
@@ -649,7 +626,6 @@ def _report_css() -> str:
    padding:.45rem 0 0}
  details.rp-acc > summary{cursor:pointer;font-size:var(--fs-body)}
  details.rp-acc > summary .rp-acc-m{font-weight:700}
- .rp-acc-hint{color:var(--mut);font-size:var(--fs-label);font-weight:500}
  abbr[title]{text-decoration:none}
  /* the run card */
  .rp-run .uk-fold-body{margin-left:0}
@@ -845,18 +821,14 @@ def page_style() -> str:
    --cat-large-increase:#D7191C}}
   body{{background:#FFFFFF;color:#000F7E}}
   button,select,.viewtoggle,.uk-seg,.rp-controls,.tip,.uk-tt,#appback,
-  .backbtn,.rp-jump,.rp-pooled{{display:none!important}}
+  .backbtn,.rp-jump{{display:none!important}}
   .card{{box-shadow:none;break-inside:avoid}}
   main > .card,main > section,main > aside{{margin-bottom:3mm}}
-  .rp-summary{{font-size:9.5pt;margin-bottom:2mm}}
   .rp-titlerow{{margin-bottom:1mm}}
-  .rp-catlist{{font-size:7pt;margin-top:1.5mm}}
-  .rp-catlist > summary{{display:none}}
   .mapcap{{max-width:150mm}}
   .mapcap svg{{max-height:80mm}}
   .rp-legends{{margin-top:1mm;font-size:8pt}}
   .rp-mapcard{{padding:3mm 4mm}}
-  .rp-catlist dl{{gap:0 3mm}}
   /* a detail section opened before printing starts its own page, its
      heading kept with what follows */
   section.state{{break-before:page}}
@@ -895,10 +867,8 @@ def report_dates(asof: str) -> dict:
     ref = a + _td(days=7)
     targets = [ref + _td(days=7 * h) for h in range(4)]
     return {"asof": a, "ref": ref.isoformat(), "targets": targets,
-            "line": (f"Data through {a.strftime('%a %b')} {a.day}, {a.year}"
-                     f" · forecasts for {_md(targets[0].isoformat())} "
-                     f"to {_md(targets[-1].isoformat())} (FluSight reference"
-                     f" date {ref.isoformat()})")}
+            "line": (f"Reference date {ref.isoformat()} · data through "
+                     f"{_md(a.isoformat())}")}
 
 
 def _run_time(seconds) -> str:
@@ -922,43 +892,26 @@ _HIDDEN_SETTING = re.compile(
     r"\s*</dd>")
 
 
-def _pooled_figures(summary_html: str) -> list:
-    """[(member, pooled relWIS, scored weeks)] from the accuracy card: the
-    folded tables' data attributes, else (older reports) each table's
-    header and pooled row."""
-    out = []
-    for m, v, n in re.findall(r'class="rp-acc" data-model="([^"]+)" '
-                              r'data-pooled="([\d.]+)" data-n="(\d+)"',
-                              summary_html or ""):
-        out.append((MODEL_SHORT.get(m, m), float(v), int(n)))
-    if out:
-        return out
-    for tbl in (summary_html or "").split("<table")[1:]:
-        h = re.search(r'<th class="num">(?:<abbr[^>]*>)?([^<]+?) relWIS', tbl)
-        t = re.search(r'<tr class="total"><td>[^<]*</td><td class="num '
-                      r'(?:ok|bad)">([\d.]+)</td><td class="num hint">'
-                      r'(\d+)</td>', tbl)
-        if h and t:
-            out.append((h.group(1), float(t.group(1)), int(t.group(2))))
-    return out
+#: what an older run baked into its accuracy card that a rebuilt report
+#: drops: the notes right after a table (the rule, the scope, the US era;
+#: never a member's own "no scored weeks yet" line, which stands alone),
+#: the "over N scored weeks" tail of a fold's line, and the "relWIS appears
+#: once ..." tail of a placeholder
+_BAKED_NOTE = re.compile(r"(?<=</table>)(?:<p class=[\"']hint[\"']>.*?</p>)+",
+                         re.S)
+_BAKED_OVER = re.compile(r" over [\d,]+ scored weeks")
+_BAKED_TAIL = re.compile(r"\s*relWIS appears once truth for forecast weeks "
+                         r"is published\.")
 
 
 def _accuracy_card(summary_html: str, kit) -> str:
-    """The accuracy card in the current design: its heading in sentence
-    case with the relWIS reading beside it and the rule in its "?"; an
-    older report's tables pass through unchanged."""
+    """The accuracy card in the current design: a plain heading, then the
+    folded tables, with what an older run baked beside them dropped."""
     if not summary_html:
         return ""
-    from markupsafe import Markup
-    from app.core.scoring import RELWIS_HINT
-    head = str(kit.heading(
-        "Forecast accuracy, past weeks", id="acc",
-        tiptext="relWIS is a model's weighted interval score (WIS) divided "
-                "by the FluSight baseline's on the same weeks, pooled as a "
-                "ratio of sums. Open a model's line for its table by "
-                "location.",
-        after=Markup(f'<span class="rp-acc-hint">relWIS: {RELWIS_HINT}'
-                     '</span>')))
+    head = str(kit.heading("Forecast accuracy", id="acc"))
+    for baked in (_BAKED_NOTE, _BAKED_OVER, _BAKED_TAIL):
+        summary_html = baked.sub("", summary_html)
     out, n = re.subn(
         r"<div class='card'(?: id='accuracy')?><h2>(?:forecast accuracy "
         r"\(retrospective\)|Forecast accuracy, past weeks)</h2>",
@@ -1003,113 +956,6 @@ def _forecast_numbers(key: str, members: dict, times: list) -> str:
             '<table><thead><tr><th rowspan="2">Week ending</th>'
             f'{head1}</tr><tr>{head2}</tr></thead><tbody>'
             + "".join(rows) + "</tbody></table></div>")
-
-
-def _summary_line(grid, state_cards: dict, model: str) -> str:
-    """One paragraph under the title, from the grid panels at render time:
-    the US latest count and its week-on-week change, the Oracle SIHRS
-    median and 95% interval for the last target week, how many states
-    lean toward an increase or a decrease next week (the map's model) and
-    how many panels are flagged."""
-    from app.core import report_grid
-    panels = (grid or {}).get("panels") or []
-    bits = []
-    us = next((p for p in panels if p.get("key") == "US"), None)
-    if us and us.get("observed"):
-        o = us["observed"]
-        s = (f"United States: <b>{o[-1][1]:,.0f}</b> admissions in the week "
-             f"ending {_md(o[-1][0])}")
-        if len(o) > 1 and o[-2][1] > 0:
-            ch = (o[-1][1] - o[-2][1]) / o[-2][1]
-            if abs(ch) < 0.005:
-                s += ", about the same as the week before"
-            else:
-                word, cls = ("up", "rp-up") if ch > 0 else ("down", "rp-down")
-                s += (f', <span class="{cls}">{word} {abs(ch):.0%}</span> '
-                      "on the week before")
-        bits.append(s + ".")
-        fan = (us.get("models") or {}).get("pf") or \
-            next(iter((us.get("models") or {}).values()), None)
-        if fan and fan.get("q") and fan.get("times"):
-            r = fan["q"][-1]
-            who = "Oracle SIHRS" if (us.get("models") or {}).get("pf") \
-                else "Groundhog"
-            bits.append(f"{who} median for {_md(fan['times'][-1])}: "
-                        f"<b>{r[2]:,.0f}</b> (95% interval {r[0]:,.0f} to "
-                        f"{r[4]:,.0f}).")
-    up = down = 0
-    states = {f for f in usmap.state_paths()}
-    for c in (state_cards or {}).values():
-        probs = (c or {}).get("probs") or {}
-        if not probs or (c or {}).get("fips") not in states:
-            continue        # the nation and Puerto Rico are not states
-        modal = max(probs, key=probs.get)
-        up += modal in ("increase", "large_increase")
-        down += modal in ("decrease", "large_decrease")
-    if up or down:
-        def n(k):
-            return f"{k} state" + ("" if k == 1 else "s")
-        verb = "leans" if up == 1 else "lean"
-        bits.append(f"Next week ({MODEL_SHORT.get(model, model)}): "
-                    f"{n(up)} {verb} toward an increase, {n(down)} toward a "
-                    "decrease.")
-    if panels:
-        k = sum(1 for p in panels if report_grid.flags(p))
-        bits.append(f"{k} of {len(panels)} locations flagged for a closer "
-                    "look." if k else "No location flagged for a closer look.")
-    if not bits:
-        return ""
-    return '<p class="rp-summary" id="summary">' + " ".join(bits) + "</p>"
-
-
-def _category_lists(by_model: dict, order: list, default: str, names: dict,
-                    gap: set, nofc: dict, unfitted: set) -> str:
-    """The states by category in words, under the map (a screen reader and
-    a paper copy read the map through it); one list per model on the
-    toggle, the shown one following it."""
-    if not by_model:
-        return ""
-    blocks = []
-    for m in order:
-        cards = by_model.get(m) or {}
-        groups = {c: [] for c in reversed(CATS)}
-        have = set()
-        for card in cards.values():
-            f = (card or {}).get("fips")
-            probs = (card or {}).get("probs") or {}
-            if not f or not probs or f not in names:
-                continue
-            groups[max(probs, key=probs.get)].append(names[f])
-            have.add(f)
-        rows = []
-        for c, ns in groups.items():
-            if ns:
-                rows.append((cat_fill(c), CAT_LABEL[c].capitalize(), ns))
-        nf = sorted(names[f] for f in (nofc.get(m) or set())
-                    if f in names and f not in have)
-        gp = sorted(names[f] for f in gap if f in names)
-        un = sorted(names[f] for f in unfitted if f in names)
-        if gp:
-            rows.append((usmap.GAP_SWATCH, "No data", gp))
-        if nf:
-            rows.append((NO_DATA, "No forecast", nf))
-        if un:
-            rows.append((NO_DATA, "Not fitted", un))
-        if not rows:
-            continue
-        dl = "".join(
-            f'<dt><span class="uk-sw" style="--sw:{col}" aria-hidden="true">'
-            f'</span>{lbl}</dt><dd>{", ".join(sorted(ns))}</dd>'
-            for col, lbl, ns in rows)
-        hidden = "" if m == default else " hidden"
-        blocks.append(f'<div class="rp-catmodel" data-catmodel="{m}"{hidden}>'
-                      f'<dl aria-label="States by category, '
-                      f'{MODEL_SHORT.get(m, m)}">{dl}</dl></div>')
-    if not blocks:
-        return ""
-    return ('<details class="rp-catlist" id="catlist" open>'
-            '<summary>States by category</summary>' + "".join(blocks)
-            + "</details>")
 
 
 def build_report(asof: str, state_cards: dict, state_details: dict,
@@ -1178,7 +1024,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                     for c in CATS]
 
     def _nodata(text, tip, color=NO_DATA):
-        legend_items.append({"color": color, "text": text, "tip": tip})
+        legend_items.append({"color": color, "text": text})
 
     if scope is None:
         if no_card:
@@ -1244,45 +1090,18 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                              'aria-hidden="true">Model</span>'
                              f'{model_toggle_html}</span>')
 
-    # the states by category in words, one list per model on the toggle
-    names = {f: n for f, (n, _d) in usmap.state_paths().items()}
-    nofc = {}
-    for m in (order if len(order) >= 2 else [default]):
-        have = {c.get("fips") for c in (cbm.get(m) or {}).values()
-                if isinstance(c, dict) and c.get("probs")}
-        if m == default and not cbm.get(m):
-            have = {f for f, c in cards_by_fips.items() if c.get("probs")}
-        nofc[m] = (unforecast | set(no_forecast.get(m) or {})) - have
-    lists_by_model = dict(cbm) if len(order) >= 2 else {
-        default: {a: c for a, c in state_cards.items()}}
-    cat_lists = _category_lists(
-        lists_by_model, order if len(order) >= 2 else [default], default,
-        names, gap_states, nofc, unfitted_states)
-
-    # the map's explainer: hover, the click invitation only when some
-    # state has a section to open, zoom
-    click_hint = (", click it for detail (or Tab to it and press Enter)"
-                  if any(a != "US" for a in state_details) else "")
-    map_tip = kit.tip("map", "the map",
-                      f"Hover a state for its category probabilities"
-                      f"{click_hint}; Ctrl+scroll zooms (⌘ on Mac).")
     sections = []
     back_btn = ('<button type="button" class="backbtn" '
                 'onclick="backToMap()">&larr; back to map</button>')
 
     def _note(key, note):
-        """A detail's note (the off-season reading) as a badge, the note
-        itself in its "?"."""
+        """A detail's note (the off-season reading) as a one-word badge."""
         if not note:
             return ""
         word = ("off-season" if str(note).lower().startswith("off-season")
                 else "note")
-        return str(kit.badge("info", word, tiptext=note, id=f"note-{key}"))
+        return str(kit.badge("info", word, id=f"note-{key}"))
 
-    fan_tip = ("Weekly hospital admissions: the observed weeks, then each "
-               "model's median (joined to the latest week) with its 50% and "
-               "95% intervals shaded; the Groundhog's 95% interval is "
-               "outlined. Click a legend entry to hide that model.")
     for a, d in state_details.items():
         if a == "US":          # national renders in its own curated section
             continue
@@ -1290,13 +1109,10 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                        f'{float(r[1]):,.0f}</td></tr>'
                        for r in d.get("table_rows", []))
         fan_head = str(kit.heading("Weekly admissions", id=f"fan-{a}",
-                                   tiptext=fan_tip, level=3))
+                                   level=3))
         who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
-        cat_head = str(kit.heading(
-            f"Rate-change outlook, next week ({who})", id=f"cat-{a}",
-            level=3,
-            tiptext=f"FluSight's rate-change categories for next week, from "
-                    f"the {who} forecast: the chance of each."))
+        cat_head = str(kit.heading(f"Next week ({who})", id=f"cat-{a}",
+                                   level=3))
         numbers = _forecast_numbers(a, d.get("numbers") or {},
                                     d.get("times") or [])
         sections.append(f"""
@@ -1314,8 +1130,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     # state whose "?" says when they come
     nat_cards = []
     if national.get("fan"):
-        nat_head = str(kit.heading("Weekly admissions, United States",
-                                   id="fan-US", tiptext=fan_tip, level=3))
+        nat_head = str(kit.heading("Weekly admissions", id="fan-US",
+                                   level=3))
         nat_cards.append(f'<div class="card">{nat_head}'
                          f'{_html(national["fan"])}</div>')
         nat_num = _forecast_numbers("US", national.get("numbers") or {},
@@ -1323,18 +1139,13 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         if nat_num:
             nat_cards.append(nat_num)
     nat_body = "\n  ".join(nat_cards) or str(kit.empty(
-        "No national charts yet", "clock", id="nat-wait", compact=True,
-        tiptext="National fan and accuracy charts appear once the "
-                "national model run lands."))
+        "No national charts yet", "clock", id="nat-wait", compact=True))
     # A console run fits US directly, so a national forecast here is FITTED
     # (never the constructed sum) and says so. Claim it only when the
     # national fan exists (nat_cards); summary_html is always filled (even
     # unscored), so it is not evidence of a national run.
-    from app.core import us_national as _usn
     has_national = bool(nat_cards)
-    nat_prov = str(kit.badge(
-        "info", _usn.LABELS[_usn.FITTED], tiptext=_usn.NOTES[_usn.FITTED],
-        id="nat-prov")) if has_national else ""
+    nat_prov = ""
     nat_summary = national.get('summary_html', '')
     if national_in_run is False and not has_national:
         # the real reason, not "once truth is published" or "once the
@@ -1348,7 +1159,6 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 "no scored weeks yet" in nat_summary.lower()
                 and "<table" not in nat_summary):
             nat_summary = ""
-    pooled = _pooled_figures(nat_summary)
     nat_summary = _accuracy_card(nat_summary, kit)
     # the US chart first, then the accuracy tables (folded)
     nat = f"""
@@ -1381,10 +1191,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         from app.core.runs import fmt_hms
         words = _run_time(elapsed_s) or fmt_hms(elapsed_s)
         run_bits = ('<dl class="uk-stats uk-stats--row">'
-                    + str(kit.stat("Run time", words, id="runtime",
-                                   tiptext=f"Wall time {fmt_hms(elapsed_s)} "
-                                           "(h:mm:ss), the whole run on its "
-                                           "machine."))
+                    + str(kit.stat("Run time", words, id="runtime"))
                     + "</dl>")
     if settings_html:
         shown = _HIDDEN_SETTING.sub("", settings_html)
@@ -1413,19 +1220,6 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     dates = report_dates(asof)
     week_line = dates.get("line") or f"week of {asof}"
     ref = dates.get("ref") or asof
-    summary = _summary_line(grid, state_cards, default)
-
-    # pooled relWIS per model beside the map heading, linking to the
-    # accuracy tables in the national detail
-    pooled_html = ""
-    if pooled:
-        pooled_html = ('<span class="rp-pooled" aria-label="Pooled relWIS">'
-                       + "".join(
-                           f'<a href="#accuracy" onclick="openAccuracy();'
-                           f'return false">{_esc(m)} <b class="'
-                           f'{"ok" if v < 1 else "bad"}">{v:.3f}</b></a>'
-                           for m, v, _n in pooled)
-                       + '<span>pooled relWIS</span></span>')
 
     # the jump bar: the page's parts, then any location's panel
     jumps = [("#map-anchor", "Map")]
@@ -1447,9 +1241,9 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
             f'<option value="g-{_esc(str(p.get("key", "")))}">'
             f'{_esc(str(p.get("name", p.get("key", ""))))}</option>'
             for p in (grid or {}).get("panels") or [])
-        loc_opts = ('<label class="rp-jumpsel">Jump to location '
-                    '<select id="jumploc"><option value="">Choose</option>'
-                    f'{loc_opts}</select></label>')
+        loc_opts = ('<label class="rp-jumpsel"><select id="jumploc" '
+                    'aria-label="Jump to location"><option value="">'
+                    f'Jump to location</option>{loc_opts}</select></label>')
     jump_bar = (f'<nav class="rp-jump" aria-label="Sections">{jump_links}'
                 f'{loc_opts}</nav>')
 
@@ -1472,17 +1266,15 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
   {controls}
  </div>
 </div>
-{summary}
 {jump_bar}
 <div class="card rp-mapcard" id="map-anchor">
- <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>{map_tip}{('<span class="uk-heading-aside">' + pooled_html + '</span>') if pooled_html else ''}</div>
+ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2></div>
  <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="rp-legends">
   {legend_html}
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
  </div>
- {cat_lists}
  {us_feature}
 </div>
 {"".join(sections)}
