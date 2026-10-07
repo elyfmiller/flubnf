@@ -6,6 +6,10 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-07: cdcepi/FluSight-forecast-hub#3730 merged at 18:54 UTC
+  (1e47fc5); both files on the hub's `main` are byte-identical to the
+  checked ones. Next round (2026-10-17, due 2026-10-14) reuses
+  `FluBNF_submission`: fast-forward it to cdcepi `main` first.
 - 2026-10-07: round 2026-10-10 (EW40) submitted as is:
   cdcepi/FluSight-forecast-hub#3730 from `FluBNF_submission` (2605672,
   plus Ely's sync merge ab91b74). It adds only the two files, and both
