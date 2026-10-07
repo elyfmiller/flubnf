@@ -6,6 +6,96 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-07 (night): the diagnosis was checked twice by agents reading the
+  code and the hub data, and the fix was tested on a deterministic stand-in.
+  None of it is a filter run; the replay below decides.
+  - Mechanism confirmed, with two corrections of framing. The model is not
+    past its peak AT the origin: the filter fits Reff about 1.34, so the h0
+    and h1 medians sit above the last count. The turn comes from depletion
+    over the horizon (about 4% of N a week for the US under the shipped
+    seed, 0.2% under the fix), so the peak lands at h1-h2. The Oracle step
+    is a geometric mean in G = gamma + lam and replaces the filter's own
+    weeks 2-4; "halves the decline" holds only against a flat donor, and a
+    cell still declines iff (gamma + lam_T)(gamma + lam_d) < gamma^2.
+  - REFUTED, correcting the evening entry: the turn does not fade "because
+    the season fills in". By Nov 28 only 2.5-26% of a season's total has
+    accrued (US 0.256, 0.100, 0.025, 0.064 in 2022-23 to 2025-26), and the
+    weekly-to-cumulative ratio that sets the depletion speed is higher in
+    late November than now. A deterministic mini-replay puts the shipped
+    seed's turn at its worst at the Nov 29/30 vintages of 2025-26 and
+    2024-25 (US 2025-11-29: 6179 / 7336 / 7661 / 6988 against truth 7450 /
+    11137 / 21057 / 37502). Whatever fades in the real replays is the fitted
+    harmonic or slowing growth, not the cumulative.
+  - The stand-in (one least-squares SIHRS per location on log(1 +
+    admissions) over 2026-08-01 to 10-03, the template's constants and
+    bounds; no particles, jitter, negative binomial or Oracle step; files in
+    the Submission scratchpad, round-2026-10-10/work/patch/demo): shipped
+    seed, 30 of 53 locations decline by h3; season-total seed, 13. US 3677 /
+    3790 / 3521 / 2978 against 3942 / 4528 / 4891 / 4923 (submitted Oracle
+    3648 / 4180 / 4707 / 5304; Groundhog 3426 / 4291 / 5800 / 6480; last
+    observed 3246). The fix turns US, OR, CA, NC, NY, TX and HI around; WI,
+    MT, AK, ME, PR, DC, WY, WA and MN decline under both seeds (data
+    downturns in the last 1-2 weeks, or the annual harmonic fitting the
+    recent deceleration). Its cost: with 0.2-2.6% of N infected (46 of 53)
+    there is no brake yet, 18 small locations climb faster than 1.5x a week
+    (9 at the Reff bound; 11 had 20 or fewer admissions last week), and in
+    DC, WY, ME, MT and AK the fit pulls mult 2.4-141x below the seed and
+    re-creates the depletion.
+  - The verifier's caution: "removes the early-season turn" is overstated.
+    At the same stage last season (the 2025-10-04 vintage) both seeds
+    declined alike (US shipped 874 / 760 / 629 / 497, fix 875 / 755 / 614 /
+    468, truth 1018 to 1358): when the recent weeks decelerate, the annual
+    harmonic absorbs it under the fix as depletion does under the shipped
+    seed. This year's rise under the fix rests on that harmonic (28 of 53
+    fits put peak transmission before mid-October), so only "rises at h0-h1"
+    is identified, not the h2-h3 level. Over eight autumn vintages of
+    2025-26 and 2024-25 (six locations, deterministic) the fix is a wash on
+    point forecasts (mean absolute log error 0.87 against 0.90): clearly
+    better at the late-November vintages, clearly worse where it overshoots
+    (US 2024-11-02: 2414 / 5347 / 13652 / 38832 against truth 2176 / 2611 /
+    3278 / 4436), because the expected-total pin sets the scale but not the
+    SIR's final size.
+  - So the fix is a candidate, not a ship. The replay decides under the stop
+    rules above; expect a mixed result and read it with the Oracle step on
+    and off (the scorer scores the filter alone as `pf_filter` beside the
+    Oracle member, so one run gives both) and at the peaks, not only the
+    early weeks. Pre-specified for the replay: the expectation is the median
+    of however many completed seasons the vintage holds (one for 2023-24,
+    namely 2022-23; two for 2024-25; three for 2025-26); a location with
+    none falls back to the shipped rule, recorded. A growth-limiting variant
+    for small states (a tighter Reff or eps1 prior, or a cap) is the Model
+    lane's call and is not in the knob.
+  - Carried from the skeptic: the closed trials "swarm-carry 1B hindsight
+    ORACLE 1.047" and "donor-informed i0 priors: null" may already be
+    P1-like; Model, please read those records (FluBNF-local research/)
+    before the replay result is interpreted. fit_i0's 0.889 is not evidence
+    against the fix: it opened the i0 x mult ridge, the fix keeps one pinned
+    product.
+- 2026-10-07 (night): the knob is implemented on branch `seed-denominator`
+  (e916dac, from `dev` 1176d9e), by the Submission lane with Ely's go-ahead
+  since the Model and App lanes could not be reached; please review rather
+  than re-implement. As designed, with two differences: the cell record key
+  is `seed_pin` (`seed` is the engine's RNG seed) and the knob help is
+  shorter; `pf.seed_denominator` sits in `_FIT_ORDER` after
+  `pf.initialization`. Full suite: 3104 passed, 82 skipped, 0 failed. A
+  real-data check on the 2025-11-22 vintage resolves all 52 jurisdictions
+  with three completed seasons each (factor 1.9 to 163, median 19.7). Ely
+  (2026-10-07): the branch is pushed once the knob arm runs clean with the
+  real engine; `dev` is untouched.
+- 2026-10-07 (night): the private engine now runs in the Submission lane's
+  cloud session. Ely granted the Claude GitHub App access to
+  elyfmiller/PyBNF-Private; `feature/particle-filter` 2fdadee0 is installed
+  in an engine venv with BioNetGen 2.9.3 (the bionetgen 0.8.7 wheel), bngsim
+  0.15.1 and numpy 1.26.4; `flubnf.settings.check()` passes; the hub clone
+  is a mirror of cdcepi `main` with this week's live file added as the
+  2026-10-03 vintage. Running: the direction check, `flubnf retro run
+  2026-27` on the 2026-09-26 and 2026-10-03 vintages, 19 locations x 3
+  seeds, shipped arm and knob arm, about 8 minutes a week-arm on 2 runners
+  (about 20 s a cell). Next, unattended: the early-week replay above, all 52
+  jurisdictions, both arms, 4 runners, about 10-12 hours, scored Thursday;
+  whole seasons after that if the early weeks pass. The shipped arm is rerun
+  here because the stored shipped replays are on the lab Mac; Model, if you
+  can export them (`flubnf retro export`), say so.
 - 2026-10-07 (evening): THE SEED FIX IS THE TOP PRIORITY OF EVERY LANE
   UNTIL THE 2026-10-14 ROUND (Ely). A collaborator's six-member ensemble
   (NAU plus UGA) flagged the Oracle SIHRS declines (WI, WY); Ely answered
@@ -137,44 +227,29 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- Model (2026-10-07, top priority): please implement the seed knob on
-  `dev` (flubnf/sihrs_priors.py: `SEED_DENOMINATORS`, `SEED_DENOMINATOR`,
-  `MIN_COMPLETE_WEEKS = 35`, `expected_total_per_capita(truth, fips,
-  population, season_start, as_of)` returning the median and a record
-  with the seasons, median, mean; flubnf/sihrs_fit.py: `pin_from(obs,
-  population, attack_rate, expected_pc, gamma)` -> (rhomult, i0, factor),
-  `resolve_state(..., seed_denominator=SEED_DENOMINATOR)`, StateSetup
-  fields `seed_denominator`, `expected_total_pc`, `seed_factor`,
-  `seed_record` with shipped defaults so the fake states in app/tests
-  keep working; app/core/engines/pf.py prepare(): read
-  `extra["seed_denominator"]`, refuse it together with `fit_i0`, pass it
-  to both resolve_state calls, use `pin_from` in the trim re-derivation
-  and the reporting model, record `seed` in the cell only when the knob
-  is on so the shipped cells.json and test_pf_anchor_lag's SHIPPED_KEYS
-  hold). Tests: median/floor/fallback/default-identical in
-  tests/test_sihrs_fit.py; prepare records `seed` only with the knob;
-  fit_i0 + season_total refused. Then the 5-minute live-data direction
-  check and the early-week replay above; post the scores in model.md.
-  Please also check the mechanism statement above against your own
-  reading and say if the median (not mean) and the floor are right.
-  If the method ships: addendum A4 and the card's i0 sentence are yours;
-  Submission copies the card to the hub.
-- App (2026-10-07, top priority): the knob registry entry
-  `pf.seed_denominator` (choice, stage fit, PF only, default
-  `flubnf.sihrs_priors:SEED_DENOMINATOR`, no card phrase) in
-  app/core/knobs.py with `_read` / `write_extra`, the retro form and the
-  Model settings panel, and the `SOURCES` entry in app/tests/test_knobs.py,
-  so `flubnf retro run <season> --knob pf.seed_denominator=season_total`
-  works, the run record marks it modified, and a tree built with the
-  other value is refused rather than resumed. Nothing else in the console
+- Model (2026-10-07, top priority): please review the knob on branch
+  `seed-denominator` (e916dac; see Now) rather than implement it: the median
+  (not the mean) and the floor, `MIN_COMPLETE_WEEKS = 35`, the one-season
+  expectation for 2023-24, and whether a growth-limiting variant for small
+  states should be a second knob. Please also read the two closed trial
+  records named under Now. The replays run in the cloud session unless the
+  lab Mac is back; post or compare the scores in model.md. If the method
+  ships: addendum A4 and the card's i0 sentence are yours; Submission copies
+  the card to the hub.
+- App (2026-10-07, top priority): the registry entry is on the branch
+  (`pf.seed_denominator` with `_read`, `write_extra` and `_FIT_ORDER`, the
+  `SOURCES` entry in app/tests/test_knobs.py, and
+  app/tests/test_seed_denominator.py); please review it for the console's
+  conventions before it merges to `dev`. Nothing else in the console
   changes; production stays bit-identical.
 - Engine (2026-10-07): please keep the lab Mac's CPU free for the Model
   lane's replays until 2026-10-14 (no engine arms); say in engine.md if
   anything in pf.conf or the private engine needs to change for the knob
   (the design expects none: the seed only changes `{{I0FRAC}}`).
-- All lanes (2026-10-07): the Oracle SIHRS is not a frozen test this
-  season (Decided). The hub card still says "frozen-specification
-  replication"; it changes only if the method ships, with the version.
+- All lanes (2026-10-07): the Oracle SIHRS is not a frozen test this season
+  (Decided). The hub card on `dev` is mechanism-only since 1.3 (1176d9e) and
+  staged on the fork branch `NAU_PyBNF-OracleSIHRS-1.3`; Ely opens that pull
+  request with next week's forecast.
 - All lanes (2026-10-07): the 2026-10-10 hub pull request is open
   (#3730), so the `main` freeze requested on 2026-10-05 is over.
 - Engine, Model: no Mac Studio time is needed for this round if Ely's
