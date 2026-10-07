@@ -186,6 +186,58 @@ def initial_infected_fraction(first_week_reported: float, population: int,
     return float(first_week_reported) / denom
 
 
+# ---------------------------------------------------------------------------
+# RESEARCH: the seed denominator (research knob pf.seed_denominator). Off the
+# shipped value only; the shipped pin above is untouched.
+# ---------------------------------------------------------------------------
+
+#: Seed denominators for pin_rho_mult (flubnf.sihrs_fit.resolve_state).
+#: "to_date" (shipped): rho*mult pinned on the season-to-date admissions.
+#: "season_total": pinned on the EXPECTED season total, the median per-capita
+#: total of the completed past seasons in the same vintage, floored at the
+#: to-date value (the factor expected/to-date is never below 1).
+SEED_DENOMINATORS = ("to_date", "season_total")
+SEED_DENOMINATOR = "to_date"
+#: a past season counts as completed with at least this many finite weeks
+#: (the May-Oct 2024 voluntary months are NaN in 3 jurisdictions; the hub
+#: file starts 2022-02-05, so 2021-22 has 25-26 rows and never counts)
+MIN_COMPLETE_WEEKS = 35
+
+
+def expected_total_per_capita(truth: pd.DataFrame, fips: str, population: int,
+                              season_start: str, as_of: str, *,
+                              min_weeks: int = MIN_COMPLETE_WEEKS):
+    """(median per-capita total of the completed past seasons, record).
+
+    A season runs Aug 1..Jul 31 and counts when it starts strictly before
+    season_start, ends at or before as_of, and holds >= min_weeks finite
+    weeks (NaN weeks drop, never zero-filled). `truth` is the as-of vintage
+    resolve_state already read (columns date as Timestamp, location as a
+    zero-padded str, value): the archive's dated files carry the whole
+    history from 2022-02, so nothing newer than as_of is visible.
+    (None, record) when no season qualifies (custom dataset, new location).
+    """
+    asof = pd.Timestamp(as_of)
+    t = truth[(truth.location == fips) & (truth.date <= asof)]
+    ss = pd.Timestamp(season_start)
+    totals = {}
+    if len(t):
+        for y in range(int(t.date.min().year) - 1, ss.year + 1):
+            lo, hi = pd.Timestamp(f"{y}-08-01"), pd.Timestamp(f"{y + 1}-07-31")
+            if lo >= ss or hi > asof:
+                break
+            v = t.loc[(t.date >= lo) & (t.date <= hi), "value"].to_numpy(dtype=float)
+            v = v[np.isfinite(v)]
+            if v.size >= min_weeks and v.sum() > 0:
+                totals[f"{y}-{str(y + 1)[2:]}"] = float(v.sum()) / float(population)
+    rec = {"seasons": totals, "min_weeks": int(min_weeks)}
+    if not totals:
+        return None, rec
+    vals = np.fromiter(totals.values(), dtype=float)
+    rec["median"], rec["mean"] = float(np.median(vals)), float(vals.mean())
+    return rec["median"], rec
+
+
 def provenance_table() -> pd.DataFrame:
     """Every fixed value with its source — paste into a methods section."""
     g = gamma_per_week()

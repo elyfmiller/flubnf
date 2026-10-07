@@ -15,12 +15,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 
 from .sihrs_priors import (S0_DEFAULT, ATTACK_RATE_RANGE, gamma_per_week,
-                           initial_infected_fraction, pin_rho_mult)
+                           initial_infected_fraction, pin_rho_mult,
+                           SEED_DENOMINATOR, SEED_DENOMINATORS,
+                           expected_total_per_capita)
 
 _TOKEN_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
@@ -51,6 +54,12 @@ class StateSetup:
     # TRUE week offsets from season_start per `observed` row (non-contiguous
     # across reporting gaps); renumbering would shift the fitted phase phi1.
     times: np.ndarray = field(repr=False, default_factory=lambda: np.array([]))
+    # the pin's record (research knob pf.seed_denominator); the defaults are
+    # the shipped path, so every fake StateSetup in app/tests keeps working
+    seed_denominator: str = SEED_DENOMINATOR
+    expected_total_pc: Optional[float] = None    # None under to_date / no season
+    seed_factor: float = 1.0                      # pinned per-capita / to-date
+    seed_record: dict = field(default_factory=dict, repr=False)
 
     @property
     def last_week_offset(self) -> int:
@@ -59,15 +68,37 @@ class StateSetup:
         return int(self.times[-1]) if self.times.size else self.n_obs - 1
 
 
+def pin_from(obs, population: int, attack_rate: float, expected_pc,
+             gamma: float) -> tuple:
+    """(rhomult, i0, factor) from a series: the to-date rule, or, with
+    expected_pc, the season-total rule floored at to-date. The ONE place
+    the pin is computed (resolve_state, the trim re-derivation and the
+    reporting model in pf.prepare all call it)."""
+    obs = np.asarray(obs, dtype=float)
+    cum_pc = float(obs.sum()) / float(population)
+    pin_pc = max(cum_pc, float(expected_pc)) if expected_pc else cum_pc
+    rhomult = pin_rho_mult(pin_pc, attack_rate)
+    i0 = initial_infected_fraction(max(float(obs[0]), 1.0), population,
+                                   rhomult, gamma)
+    return rhomult, i0, (pin_pc / cum_pc if cum_pc > 0 else float("nan"))
+
+
 def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Path,
-                  season_start: str, as_of: str) -> StateSetup:
+                  season_start: str, as_of: str,
+                  seed_denominator: str = SEED_DENOMINATOR) -> StateSetup:
     """Resolve every fixed SIHRS input for one state from data + sourced priors.
 
     Observations are as-of filtered. The POPULATION is not: callers pass the
     CURRENT locations.csv, so a revision upstream changes bit-level replay
     output (N only sets the demographic-noise scale; a reproducibility
     hazard, not a measured score distortion).
+
+    seed_denominator (sihrs_priors.SEED_DENOMINATORS): what pins rho*mult
+    and i0; the default is the shipped to-date rule.
     """
+    if seed_denominator not in SEED_DENOMINATORS:
+        raise ValueError(f"seed_denominator must be one of {SEED_DENOMINATORS}, "
+                         f"not {seed_denominator!r}")
     ar = float(np.mean(ATTACK_RATE_RANGE))
     locs = pd.read_csv(locations_csv, dtype={"location": str})
     locs["location"] = locs["location"].str.zfill(2)
@@ -110,14 +141,20 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
                          "zero), so the starting state cannot be derived "
                          "from the data yet")
 
-    rhomult = pin_rho_mult(float(obs.sum()) / pop, ar)
     g = gamma_per_week()
-    i0 = initial_infected_fraction(max(float(obs[0]), 1.0), pop, rhomult, g)
+    expected, rec = None, {}
+    if seed_denominator == "season_total":
+        expected, rec = expected_total_per_capita(t, fips, pop, season_start, as_of)
+        if expected is None:
+            rec["fallback"] = "no completed season in the vintage: to-date rule"
+    rhomult, i0, factor = pin_from(obs, pop, ar, expected, g)
     return StateSetup(state=state, fips=fips, population=pop, gamma=g,
                       rho=RHO_IHR, rhomult=rhomult, gammaH=GAMMAH_PER_WEEK,
                       omega=OMEGA_PER_WEEK, s0=float(S0_DEFAULT), i0=i0,
                       attack_rate=ar, n_obs=int(obs.size), observed=obs,
-                      times=week_off)
+                      times=week_off, seed_denominator=seed_denominator,
+                      expected_total_pc=expected, seed_factor=factor,
+                      seed_record=rec)
 
 
 def materialize_model(setup: StateSetup, template: str | Path, out_path: str | Path,

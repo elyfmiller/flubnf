@@ -40,6 +40,7 @@ from flubnf import analogue as AN
 from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
+from flubnf import sihrs_priors as SP
 from app.core import floor as FL
 from app.core import horizons as HZ
 from app.core import missing as MS
@@ -204,6 +205,16 @@ REGISTRY: tuple = (
          "method", "choice", "rand", "app.core.engines.pf:initialization_for",
          "rand draws the first cloud from the priors; lh is Latin hypercube.",
          choices=("rand", "lh"), check=_check_initialization),
+    Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
+         "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
+         "What pins rho*mult and i0: season-to-date admissions, or the "
+         "expected season total floored at it.",
+         choices=SP.SEED_DENOMINATORS,
+         note=("season_total: the expected total is the median per-capita "
+               "total of the completed past seasons in the vintage; i0 "
+               "shrinks by expected/to-date and the model's implied "
+               "depletion grows with the season instead of sitting at the "
+               "attack rate from the first week. Research; no card phrase.")),
     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
          default_season_start, "app.core.runs:default_season_start",
          "First week the filter fits; August 1 of the forecast's season.",
@@ -601,6 +612,8 @@ def _read(knob: Knob, spec, extra: Mapping):
         return tuple(float(x) for x in got) if got else knob.default
     if key == "pf.initialization":
         return str(extra.get("initialization") or "rand")
+    if key == "pf.seed_denominator":
+        return str(extra.get("seed_denominator") or SP.SEED_DENOMINATOR)
     if key == "groundhog.aux":
         return _aux_preset_of(extra)
     if key == "groundhog.aux_weight":
@@ -793,6 +806,8 @@ def write_extra(nd: Mapping, extra: dict, *, retro: bool = False,
             extra.setdefault("prior_ranges", {})[name] = [float(x) for x in v]
         elif key == "pf.initialization":
             extra["initialization"] = v
+        elif key == "pf.seed_denominator":
+            extra["seed_denominator"] = str(v)
         elif retro and key == "pf.jitter":
             extra["jitter"] = float(v)
         elif retro and key == "run.season_start":
@@ -992,7 +1007,7 @@ PANEL_GROUPS = (
 )
 #: the fit group's order: run-class first (what a person changes most)
 _FIT_ORDER = ("pf.replicates", "pf.particles", "pf.jitter",
-              "pf.initialization")
+              "pf.initialization", "pf.seed_denominator")
 MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
