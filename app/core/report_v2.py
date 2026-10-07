@@ -383,8 +383,19 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                       annotation_text="no data", annotation_font_color=MUT,
                       annotation_font_size=13)
     fig = _fig_layout(fig, legend=True)
-    # counts from 0, thousands as "2.5k"
-    fig.update_yaxes(rangemode="tozero", tickformat="~s")
+    # counts from 0; thousands as "2.5k", small counts plain ("~s" would
+    # print 0.5 as "500m")
+    ymax = 0.0
+    for tr in fig.data:
+        for v in (getattr(tr, "y", None) or ()):
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                continue
+            if v == v and v > ymax:
+                ymax = v
+    fig.update_yaxes(rangemode="tozero",
+                     tickformat="~s" if ymax >= 1000 else ",~g")
     return fig
 
 
@@ -1027,10 +1038,11 @@ def _summary_line(grid, state_cards: dict, model: str) -> str:
                         f"<b>{r[2]:,.0f}</b> (95% interval {r[0]:,.0f} to "
                         f"{r[4]:,.0f}).")
     up = down = 0
+    states = {f for f in usmap.state_paths()}
     for c in (state_cards or {}).values():
         probs = (c or {}).get("probs") or {}
-        if not probs:
-            continue
+        if not probs or (c or {}).get("fips") not in states:
+            continue        # the nation and Puerto Rico are not states
         modal = max(probs, key=probs.get)
         up += modal in ("increase", "large_increase")
         down += modal in ("decrease", "large_decrease")
@@ -1279,10 +1291,12 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                        for r in d.get("table_rows", []))
         fan_head = str(kit.heading("Weekly admissions", id=f"fan-{a}",
                                    tiptext=fan_tip, level=3))
+        who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
         cat_head = str(kit.heading(
-            "Rate-change outlook, next week", id=f"cat-{a}", level=3,
-            tiptext="FluSight's rate-change categories for next week, from "
-                    "the model the map shows: the chance of each."))
+            f"Rate-change outlook, next week ({who})", id=f"cat-{a}",
+            level=3,
+            tiptext=f"FluSight's rate-change categories for next week, from "
+                    f"the {who} forecast: the chance of each."))
         numbers = _forecast_numbers(a, d.get("numbers") or {},
                                     d.get("times") or [])
         sections.append(f"""
@@ -1650,6 +1664,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
             details[key] = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
+                "model": model,
                 "table_rows": [tuple(r) for r in (d.get("table_rows") or [])],
                 "numbers": numbers, "times": list(ft)}
         except Exception:

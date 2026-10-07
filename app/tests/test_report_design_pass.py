@@ -194,3 +194,34 @@ def test_an_older_bundle_still_renders_one_member(tmp_path):
     sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
     assert "Oracle SIHRS</th>" in sec and "Groundhog</th>" not in sec
     assert 'id="all-locations"' not in html
+
+
+def test_summary_counts_states_only(tmp_path):
+    # the nation and Puerto Rico lean too, but they are not states
+    up = {"increase": .8, "stable": .2}
+    cards = {"OH": {"fips": "39", "name": "Ohio", "abbr": "OH",
+                    "probs": up, "hover_html": "<b>Ohio</b>"},
+             "US": {"fips": "US", "name": "United States", "abbr": "US",
+                    "probs": up, "hover_html": "<b>US</b>"},
+             "PR": {"fips": "72", "name": "Puerto Rico", "abbr": "PR",
+                    "probs": up, "hover_html": "<b>PR</b>"}}
+    html = _render(tmp_path, cards=cards)
+    s = html[html.index('id="summary"'):].split("</p>", 1)[0]
+    assert "1 state leans toward an increase" in s
+
+
+def test_small_count_fans_never_print_si_prefixes():
+    t = ["2098-01-10", "2098-01-17"]
+    small = {x: {str(lv): 2.0 * lv for lv in report_v2.FAN_LEVELS} for x in t}
+    fig = report_v2.fan_figure_from_quantiles(["2098-01-03"], [1.0], t, small)
+    assert fig.layout.yaxis.tickformat == ",~g"
+    big = {x: {str(lv): 3000.0 * lv for lv in report_v2.FAN_LEVELS} for x in t}
+    fig = report_v2.fan_figure_from_quantiles(["2098-01-03"], [2500.0], t, big)
+    assert fig.layout.yaxis.tickformat == "~s"
+
+
+def test_rate_change_bar_names_its_member(tmp_path):
+    html = _render(tmp_path)
+    sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
+    assert "Rate-change outlook, next week (Oracle SIHRS)" in sec
+    assert "the model the map shows" not in html
