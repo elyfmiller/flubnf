@@ -470,6 +470,7 @@ def _retint_js() -> str:
     for(var i=0;i<plots.length;i++){
       var g=plots[i];
       if(!g.data||!g.layout) continue;
+      if(g.closest&&g.closest('.gpanel')) continue;
       if(!dirty&&!g._flubnfBaked) continue;
       if(!g._flubnfBaked)
         g._flubnfBaked=JSON.stringify({d:g.data,l:g.layout});
@@ -1181,7 +1182,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 
     # plotly.js in the head, once, iff any figure is embedded
     plotly_js = ("<script>" + html_page.plotly_js() + "</script>"
-                 if state_details or national.get("fan") else "")
+                 if state_details or national.get("fan")
+                 or (grid or {}).get("panels") else "")
 
     # the run card: run time, then the settings folded (which run produced
     # this?); rows that only say an engine was missing on that machine stay
@@ -1280,6 +1282,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 {"".join(sections)}
 {nat}
 {grid_section}
+{report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
 <script>
 window.showState = show;
 var _ab = document.getElementById('appback');
