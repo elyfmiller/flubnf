@@ -218,7 +218,7 @@ def test_summary_table_applies_the_relwis_rule():
     assert '<td class="num hint">3</td>' in html
     # empty frame: honest placeholder, no invented numbers
     empty = summary_table_html(pd.DataFrame())
-    assert "hint" in empty and "relWIS" in empty and "<table" not in empty
+    assert "No scored weeks yet." in empty and "<table" not in empty
 
 
 def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
