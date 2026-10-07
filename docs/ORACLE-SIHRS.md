@@ -488,8 +488,9 @@ so (`cells.outside_member` lists US). The console reads each stored week's
 oracle.json (`us_national.us_step_week`; never `addendum_a3_sha256`, which
 a week without the step carries too) and words the US row by era: the
 step, the Liu-West filter alone, or a season that mixes the two, naming
-the weeks of each (`us_national.PF_US_NOTES`). The weekly report reads
-its run's own file, and the season player each week's.
+the weeks of each (`us_national.PF_US_NOTES`). The season player reads
+each week's; the weekly report carries no such note (its figures stand
+alone, Ely's call of 2026-10-07).
 
 ## 6. The engine key
 

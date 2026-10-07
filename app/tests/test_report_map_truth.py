@@ -161,7 +161,7 @@ def test_groundhog_only_run_has_state_sections_from_its_quantiles(tmp_path):
     assert sum(oh["cat_probs"].values()) > 0.99
     assert bundle["details"]["US"]["model"] == "analogue"
     html = (tmp_path / "report.html").read_text()
-    assert 'id="st-OH"' in html and "click it for detail" in html
+    assert 'id="st-OH"' in html and "showState('st-OH')" in html
     assert re.search(r'data-fips="39" [^>]*data-abbr="OH"', html)
     # the national section draws its (Groundhog) fan
     sec = html[html.index('id="st-US"'):]
@@ -205,8 +205,8 @@ def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
     assert report_v2.bundle_asof(b) == "2098-01-03"
     report_v2.render_bundle(b, tmp_path / "again.html")
     again = (tmp_path / "again.html").read_text()
-    assert "Data through Fri Jan 3, 2098" in again
-    assert "FluSight reference date 2098-01-10" in again
+    assert "Reference date 2098-01-10 · data through Jan 3" in again
+    assert "<title>FluBNF weekly report, reference date 2098-01-10</title>" in again
 
 
 def test_report_names_the_runs_recorded_build_like_the_run_page(tmp_path,
@@ -254,4 +254,4 @@ def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):
            "details": {}, "national": {"summary_html": ""}}
     assert report_v2.bundle_asof(old) == "2098-01-03"
     html = report_v2.render_bundle(old, tmp_path / "r.html").read_text()
-    assert "Data through Fri Jan 3, 2098" in html
+    assert "Reference date 2098-01-10 · data through Jan 3" in html
