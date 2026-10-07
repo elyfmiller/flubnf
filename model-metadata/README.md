@@ -14,8 +14,9 @@ Two models, submitted separately. The Oracle SIHRS is the mechanistic
 model: the SIHRS compartment model fitted weekly by the particle filter,
 plus a post-fit step that blends each stored forward sample's growth with
 one donor growth path from an earlier season at the same calendar week
-([docs/ORACLE-SIHRS.md](../docs/ORACLE-SIHRS.md)); its card's `methods_long` describes both, carries
-the frozen pre-registration's hash, and carries verbatim the donor-bank
+([docs/ORACLE-SIHRS.md](../docs/ORACLE-SIHRS.md)); its card's `methods_long` describes both, as
+mechanism only (no pre-registration hash, no self-scored record: the
+lead's call of 2026-10-07), and carries verbatim the donor-bank
 sentence of `BANK_TEXT["card"]` in
 [`app/core/oracle_text.py`](../app/core/oracle_text.py) (the one marked place
 for which data streams form the pool; the test holds the two equal). The
