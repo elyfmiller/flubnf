@@ -6,6 +6,25 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (23:35 UTC, peak replay, 2025-26 complete in both arms; the
+  2024-25 and 2023-24 peaks run overnight): the eight vintages around the
+  2025-26 US peak (as-of 2025-12-27 to 2026-02-14), 1,664 common Oracle
+  cells: shipped relWIS 1.036, log-scale 1.181, coverage 50/95 = 0.42/0.92,
+  h3 median below the origin in 84% of cells; knob 1.351, log 1.225,
+  0.40/0.93, 76%. By week (log, shipped against knob): 12-27 1.176 / 1.645,
+  01-03 0.732 / 0.960, 01-10 0.666 / 0.629, 01-17 1.564 / 1.291, 01-24 1.915
+  / 1.754, 01-31 1.625 / 1.589, 02-07 1.301 / 1.326, 02-14 1.051 / 1.075. So
+  the knob loses at the two peak vintages, wins the four weeks after, and is
+  level on the last two; over the window it is behind by 0.044 on the log
+  scale and 0.31 on the natural scale. Both arms score worse than the
+  FluSight baseline through the decline (log relWIS above 1 in five of the
+  eight weeks; the Groundhog is at 0.80 there), which is the Oracle SIHRS's
+  known post-peak weakness, not the seed's. The filter alone: shipped 0.927
+  (log 1.503), knob 1.601 (log 1.603). Against the early-season gain of 0.17
+  on the log scale in this season (0.509 against 0.675 over six weeks), the
+  peak-window loss of 0.04 over eight weeks leaves the knob ahead for
+  2025-26 as a whole on the weeks run so far; stop rule 3 is read once the
+  other two seasons' peaks are in.
 - 2026-10-08 (21:00 UTC, peak replay interim; the rest still running): AT
   THE PEAK THE KNOB LOSES. 2025-26, the two vintages at the US peak (as-of
   2025-12-27 and 2026-01-03; peak week 2026-01-03), 416 common Oracle cells:
