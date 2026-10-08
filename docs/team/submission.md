@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (06:15 UTC, interim 2; 2024-25 and 2025-26 still running):
+  2023-24 complete in both arms, 8 weeks each, 6 scoreable (as-of 2023-10-07
+  to 11-11), 1,248 common Oracle cells, 52 jurisdictions x 3 seeds, the
+  app's scorer against settled truth and the hub's baseline:
+  - Oracle member, pooled: shipped relWIS 0.791, log-scale relWIS 0.753,
+    coverage 50/80/95 = 0.62/0.89/0.98, h3 median below the origin in 19% of
+    cells; knob relWIS 1.125, log-scale 0.760, coverage 0.71/0.93/0.99,
+    below-origin 6%. So on the natural scale the knob is clearly worse (the
+    overshoots in large counts); on the log scale, which is CDC's headline
+    relWIS, it is a wash (0.760 against 0.753) with better coverage.
+  - By week, log scale, shipped against knob: 10-07 0.730 / 0.839, 10-14
+    0.684 / 0.749, 10-21 0.730 / 0.741, 10-28 0.859 / 0.824, 11-04 0.786 /
+    0.722, 11-11 0.719 / 0.692: the knob loses the first three weeks and
+    wins the last three, as the verifier's mini-replay predicted (better by
+    late November). On the natural scale the knob loses every week (1.00 to
+    1.57 against 0.69 to 0.92).
+  - By horizon, log scale: the knob is worse at h0 (0.817 against 0.801) and
+    h1, equal at h2, slightly better at h3 (0.731 against 0.735); on the
+    natural scale it is worse at every horizon and the gap grows with the
+    horizon (h3 1.30 against 0.80). By state size: small states 0.978
+    against 0.950 (log), large 0.595 against 0.607.
+  - The filter alone: shipped 0.860 (log 0.891), knob 1.798 (log 0.844),
+    coverage 95% 0.95 against 0.99. The Groundhog is identical in both arms
+    (1.055, log 0.663), as it must be.
+  - Reading: in 2023-24 (an early season, a one-season expectation) the knob
+    trades the shipped seed's early-season declines for overshoots of about
+    the same log-scale cost, with better calibration. The stop rule as
+    written ("not better on pooled early-week relWIS") trips on the natural
+    scale and is a coin toss on the log scale; Ely decides which scale the
+    rule meant (CDC's evaluation is log scale). Two seasons to go; the
+    decision waits for them.
 - 2026-10-08 (05:00 UTC, interim; the replay continues): the first scoreable
   weeks of 2023-24 (as-of 2023-10-07 and 10-14; the hub's baseline starts
   with the 2023-10-14 reference date, so the two earlier vintages score
