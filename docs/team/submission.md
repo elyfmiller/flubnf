@@ -6,6 +6,18 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (02:10 UTC): the cloud session's container was reclaimed about
+  five minutes after the session went idle (23:31 UTC), which killed the
+  detached replay after 81 cells of its first week; the scratchpad, the
+  engine venv and the clones survived. Resumed at 02:12 UTC as a job the
+  session tracks, with a self check-in every 25 minutes to keep the
+  container alive; the retro resumes finished cells. Pace measured before
+  the kill: 17 cells a minute on 4 runners for the early 2023-24 weeks (8
+  observations a cell), so about 9 minutes a week-arm there and longer where
+  the series are longer; new estimate 8-9 hours, scored around 11:00 UTC
+  Thursday (04:00 Arizona) if nothing else interrupts. Lesson for the lanes:
+  a long run in a cloud session must be a tracked job plus check-ins, never
+  a detached process.
 - 2026-10-07 (23:25 UTC): the direction check ran clean with the real
   engine, both arms (`flubnf retro run 2026-27`, vintages 2026-09-26 and
   2026-10-03, 19 locations x 3 seeds, 2 runners, about 500 s a week-arm, 17
