@@ -6,6 +6,60 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (17:00 UTC): THE EARLY-WEEK REPLAY IS COMPLETE AND THE KNOB
+  PASSES ITS STOP RULES. Three seasons, first 8 vintages each, all 52
+  jurisdictions x 3 seeds, both arms, the real engine (feature/particle-
+  filter 2fdadee0), scored with the app's scorer against settled truth and
+  the hub's baseline on the common cells (20 scoreable weeks; the 2023-09-23
+  and 09-30 and the 2025-08-30 and 09-20 vintages have no baseline). Oracle
+  SIHRS member, 4,160 common cells, pooled: shipped relWIS 0.741, log-scale
+  relWIS 0.814, coverage 50/80/95 = 0.42/0.70/0.90, h3 median below the
+  origin in 30% of cells; knob 0.689, log 0.662, 0.58/0.87/0.98, 13%. By
+  season (relWIS, log): 2023-24 shipped 0.791 / 0.753 against knob 1.125 /
+  0.760; 2024-25 0.804 / 0.962 against 0.748 / 0.744; 2025-26 0.655 / 0.675
+  against 0.575 / 0.509. By horizon (log): knob better at every horizon,
+  0.716 / 0.669 / 0.645 / 0.647 against 0.813 / 0.803 / 0.804 / 0.830. By
+  state size (log): small 0.796 against 0.983, mid 0.635 against 0.771,
+  large 0.550 against 0.684. By location: the knob's pooled log WIS is lower
+  in 52 of 52 jurisdictions. The filter alone: shipped 0.917 (log 1.068, 95%
+  coverage 0.78), knob 0.832 (log 0.710, 0.97). The Groundhog is identical
+  in both arms (0.643, log 0.588), as it must be. Files: the Submission
+  scratchpad, replays/score_early_final.txt, pooled_breakdown.txt,
+  breakdown_<season>.txt; roots replays/early-<season>-<arm>.
+  - Stop rules (set 2026-10-07 before any run): (1) "not better on pooled
+    early-week relWIS": the knob is better on both scales (passes); (2)
+    "loses more than 0.05 of 95% coverage": it gains 0.08 (passes); (3)
+    "wins early but loses whole seasons by more than 0.02 (the brake near
+    the peak)": open, whole seasons not run; the 2024-25 early weeks reach
+    that season's peak (2024-12-28 and 2025-01-04) and the knob is still
+    ahead there (log 0.938 against 1.113, 1.056 against 1.064). The
+    pre-registered next step is whole seasons; on this machine that is about
+    50 hours, so a PEAK replay runs first: the two vintages at or before
+    each season's US peak week (2023-12-30, 2025-02-08, 2026-01-03) and the
+    six after it, 8 x 3 seasons, both arms, started 17:00 UTC, about 20
+    hours (roots replays/peak-<season>-<arm>; `REPLAY_PREFIX=peak python
+    replays/score_early.py` scores it). If it holds, rule 3 is as answered
+    as it can be before Monday; the rest of the seasons can follow over the
+    weekend.
+  - 2023-24 is the one honest reservation: the knob overshot the large
+    counts there (natural-scale relWIS 1.125 against 0.791; a wash on the
+    log scale), with a one-season expectation (2022-23) and an early season.
+    2024-25 and 2025-26, with two and three past seasons, are wins on every
+    cut. For 2026-27 the expectation comes from four seasons.
+- Decision for Ely (by Tuesday 2026-10-13 for the 2026-10-14 run), the
+  Submission lane's reading: ship the knob. What shipping takes: (a) make
+  season_total the shipped rule (`SEED_DENOMINATOR = "season_total"` in
+  flubnf/sihrs_priors.py, the tests that pin the shipped path updated,
+  `to_date` kept as the research value), or run Wednesday with the knob on
+  and the override reason given (the console marks the run modified); the
+  first is cleaner and is what the record should show; (b) merge
+  `seed-denominator` to `dev`, then `main`, by Tuesday night (Model and App
+  review first; the Submission lane can do the merge with Ely's go-ahead);
+  (c) card 1.4: methods_long's i0 sentence says the pin is on the expected
+  season total (the median of the completed past seasons' per-capita totals,
+  floored at the to-date count); Submission copies it to the hub with next
+  week's forecast, replacing the staged 1.3; (d) the collaborator hears that
+  the fix is in. Plan C stays if Ely prefers to wait for whole seasons.
 - 2026-10-08 (12:15 UTC, interim 4; 2025-26 running): 2024-25 complete in
   both arms, 8 weeks (as-of 2024-11-16 to 2025-01-04, through the peak),
   1,664 common Oracle cells: the knob wins on both scales and in every cut.
