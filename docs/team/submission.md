@@ -6,6 +6,24 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (21:00 UTC, peak replay interim; the rest still running): AT
+  THE PEAK THE KNOB LOSES. 2025-26, the two vintages at the US peak (as-of
+  2025-12-27 and 2026-01-03; peak week 2026-01-03), 416 common Oracle cells:
+  shipped relWIS 1.087, log-scale 0.897, coverage 50/95 = 0.46/0.97; knob
+  1.741, log 1.214, 0.30/0.88. By week (log): 12-27 1.176 against 1.645,
+  01-03 0.732 against 0.960. The filter alone: shipped 0.624 (log 0.677, 95%
+  coverage 0.99), knob 2.049 (log 1.327, 0.78). So the shipped seed's
+  depletion, wrong in October, is about right at the peak (the filter alone
+  turns on time), and the knob, with cumulative infections still only about
+  half the expected total, keeps rising through it: the no-brake failure the
+  verifier predicted, now measured. The six post-peak weeks of 2025-26 and
+  the 2024-25 and 2023-24 peaks follow (about 12 hours). Reading for the
+  decision: the knob is a clear win in the early season (this week's
+  problem) and a loss at the peak; a stage-aware rule (season_total while
+  the to-date count is a small fraction of the expectation, the shipped rule
+  after) can be scored from the runs already stored, both arms at both
+  stages, without new compute; that is a post-hoc design and the Model
+  lane's and Ely's call, not the Submission lane's.
 - 2026-10-08 (17:00 UTC): THE EARLY-WEEK REPLAY IS COMPLETE AND THE KNOB
   PASSES ITS STOP RULES. Three seasons, first 8 vintages each, all 52
   jurisdictions x 3 seeds, both arms, the real engine (feature/particle-
