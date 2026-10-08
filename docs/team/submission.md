@@ -6,6 +6,26 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (10:05 UTC, interim 3; the 2024-25 knob arm and 2025-26 still
+  running): 2024-25, the first three vintages both arms share (as-of
+  2024-11-16, 11-23, 11-30; a late, large season; expectation from two
+  seasons), 624 common Oracle cells: the knob WINS on the log scale. Oracle
+  member: shipped relWIS 0.770, log-scale 0.936, coverage 50/95 = 0.38/0.89,
+  h3 median below the origin in 40% of cells; knob 0.804, log 0.734,
+  0.63/0.99, 15%. By week, log scale, shipped against knob: 11-16 0.762 /
+  0.747, 11-23 0.948 / 0.720, 11-30 1.042 / 0.738: the shipped seed's turn
+  costs most in late November, as the verifier's mini-replay said, and the
+  knob removes it. The filter alone: shipped 1.017 (log 1.293, 95% coverage
+  0.76), knob 1.031 (log 0.826, 0.98).
+  - Pooled so far (2023-24's six scoreable weeks plus these three, 1,872
+    common Oracle cells): shipped relWIS 0.776, log-scale 0.834, coverage
+    50/80/95 = 0.54/0.82/0.95, below-origin 24%; knob 0.892, log 0.748,
+    0.68/0.92/0.99, 8%. On CDC's log scale the knob is ahead pooled and
+    better calibrated; on the natural scale it is behind (its overshoots in
+    the large counts of 2023-24). Still to come: five more 2024-25 weeks
+    (through 2025-01-04, around the peak) and 2025-26 (two August and
+    September vintages and six from mid-November to December). Decision
+    waits for the full set; the scale question is Ely's.
 - 2026-10-08 (06:15 UTC, interim 2; 2024-25 and 2025-26 still running):
   2023-24 complete in both arms, 8 weeks each, 6 scoreable (as-of 2023-10-07
   to 11-11), 1,248 common Oracle cells, 52 jurisdictions x 3 seeds, the
