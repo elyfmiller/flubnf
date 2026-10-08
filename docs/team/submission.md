@@ -6,6 +6,20 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (05:00 UTC, interim; the replay continues): the first scoreable
+  weeks of 2023-24 (as-of 2023-10-07 and 10-14; the hub's baseline starts
+  with the 2023-10-14 reference date, so the two earlier vintages score
+  nothing), 416 common Oracle cells, the app's scorer against settled truth:
+  the knob arm is WORSE. Oracle member: shipped relWIS 0.849 (log scale
+  0.707), knob 1.347 (0.793); 95% coverage 0.99 in both, 50% coverage 0.71
+  against 0.76; share of h3 medians below the origin 0.19 against 0.05. The
+  filter alone: shipped 0.877 (0.784), knob 2.011 (0.884). The Groundhog is
+  identical in both arms (1.373), as it must be. The loss is the overshoot
+  the verifier predicted, in the real filter. Two weeks of one season, with
+  a one-season expectation (2022-23); 2024-25 and 2025-26 follow. The stop
+  rule "not better on pooled early-week relWIS" is on course to trip; if it
+  does, the knob does not ship for 2026-10-14 and Plan C applies unless the
+  Model lane has a growth-limited variant it can test in time.
 - 2026-10-08 (02:10 UTC): the cloud session's container was reclaimed about
   five minutes after the session went idle (23:31 UTC), which killed the
   detached replay after 81 cells of its first week; the scratchpad, the
