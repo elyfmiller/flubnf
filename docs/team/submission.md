@@ -6,6 +6,32 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-08 (12:15 UTC, interim 4; 2025-26 running): 2024-25 complete in
+  both arms, 8 weeks (as-of 2024-11-16 to 2025-01-04, through the peak),
+  1,664 common Oracle cells: the knob wins on both scales and in every cut.
+  Oracle member: shipped relWIS 0.804, log-scale 0.962, coverage 50/95 =
+  0.35/0.88, h3 median below the origin in 55% of cells; knob 0.748, log
+  0.744, 0.53/0.98, 25%. Log scale by week, shipped against knob: 11-16
+  0.762 / 0.747, 11-23 0.948 / 0.720, 11-30 1.042 / 0.738, 12-07 0.991 /
+  0.690, 12-14 0.896 / 0.662, 12-21 0.956 / 0.718, 12-28 1.113 / 0.938,
+  01-04 1.064 / 1.056 (the knob better in all eight, narrowly at the peak).
+  By horizon (log): knob better at every horizon, the gap widening to h3
+  (0.720 against 0.999). By state size (log): small 0.840 against 1.117, mid
+  0.714 against 0.900, large 0.680 against 0.873. By location: the knob's
+  log WIS is lower in 51 of 52 jurisdictions (Minnesota 1.02 the exception;
+  California 0.59, Texas 0.61, New York 0.62 the largest gains). The filter
+  alone: shipped 0.964 (log 1.267, 95% coverage 0.74), knob 0.841 (log
+  0.812, 0.96).
+  - Pooled, 2023-24 (6 scoreable weeks) plus 2024-25 (8), 2,912 common
+    Oracle cells: shipped relWIS 0.803, log-scale 0.894, coverage 50/80/95 =
+    0.46/0.75/0.92, below-origin 39%; knob 0.772, log 0.749, 0.61/0.88/0.98,
+    17%. The knob is now ahead on both scales pooled: its 2023-24 overshoot
+    cost is outweighed by 2024-25. Stop rules so far: better on pooled
+    early-week relWIS on either scale (passes); 95% coverage up, not down
+    (passes); whole seasons not run yet (the third rule, the brake near the
+    peak, is open; the 2024-25 peak weeks above are the first hint and they
+    favour the knob narrowly). 2025-26 (two August-September vintages and
+    six from mid-November to December) finishes this afternoon UTC.
 - 2026-10-08 (10:05 UTC, interim 3; the 2024-25 knob arm and 2025-26 still
   running): 2024-25, the first three vintages both arms share (as-of
   2024-11-16, 11-23, 11-30; a late, large season; expectation from two
