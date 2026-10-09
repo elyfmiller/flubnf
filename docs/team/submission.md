@@ -6,6 +6,55 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-09 (14:30 UTC): THE PEAK REPLAY IS COMPLETE; STOP RULE 3 TRIPS ON
+  THE NATURAL SCALE AND PASSES ON THE LOG SCALE. Eight vintages around each
+  season's US peak, three seasons, both arms, all 52 jurisdictions x 3 seeds
+  (roots replays/peak-<season>-<arm>; replays/score_peak_final.txt,
+  stage_rule_final.txt). Peak windows pooled, 4,992 common Oracle cells:
+  shipped relWIS 0.797, log-scale 0.956, coverage 50/80/95 = 0.56/0.85/0.96;
+  knob 0.974, log 0.994, 0.55/0.85/0.97. By season (relWIS / log): 2023-24
+  shipped 1.123 / 1.125 against knob 1.535 / 1.223; 2024-25 0.522 / 0.664
+  against 0.525 / 0.660 (identical: the floor had returned the shipped
+  rule); 2025-26 1.036 / 1.181 against 1.351 / 1.225. The knob loses at the
+  peak vintages themselves (2023-24: log 1.274 / 1.661 against 1.061 / 1.173
+  on 12-23 and 12-30) and is level or slightly ahead in the weeks after; the
+  filter alone loses more (peaks pooled 1.136 / 1.283 against 0.750 /
+  1.215).
+  - Early and peak windows together, 44 weeks, 9,152 common Oracle cells,
+    the nearest thing to whole seasons available: shipped relWIS 0.767,
+    log-scale 0.864; knob 0.822, log 0.779. Stop rule 3 ("wins early but
+    loses whole seasons by more than 0.02"): on the natural scale the knob
+    loses by 0.055 (trips); on CDC's log scale it wins by 0.085 (passes).
+    Rules 1 and 2 pass on both scales. So the knob as drafted is a log-scale
+    improvement with a natural-scale cost concentrated at early peaks.
+  - The stage-aware rule, scored from the same stored runs (per
+    location-week, the knob arm while the season-to-date count is below a
+    fraction of the expected total, the shipped arm after; the fraction is
+    computed from the vintage exactly as the knob computes its expectation):
+    at the 0.25 threshold named before the peak replay ran, pooled relWIS
+    0.752, log 0.773, knob share 45% of cells; against shipped 0.767 / 0.864
+    and knob 0.822 / 0.779. It beats the shipped rule on both scales, beats
+    the knob on the natural scale, and is within 0.006 of it on the log
+    scale; by block it is never the worst of the three. Exploratory sweep
+    (not pre-specified): 0.1 gives 0.741 / 0.787, 0.5 gives 0.805 / 0.779,
+    1.0 gives 0.822 / 0.779. Caveat: the rule as scored switches the pin
+    abruptly at the threshold (the seeded i0 jumps by the factor in one
+    week); the filter refits every week so the stored forecasts already
+    carry that jump, but a smooth version was not scored and must not be
+    assumed to behave the same.
+- Submission lane's reading for Ely's decision (needed by Tuesday 2026-10-13
+  for the 2026-10-14 run): (a) the stage-aware rule at 0.25, implemented as
+  a third knob value (season_total_early, threshold 0.25), is the only
+  option that is better than the shipped rule on both scales everywhere it
+  was scored; it is a post-hoc design scored once, which the record must
+  say; (b) the knob as drafted is the better choice if CDC's log-scale
+  relWIS is the target the team optimizes, and the worse one on the natural
+  scale; (c) Plan C (untick the declining locations) changes no method. This
+  week's situation (to-date at 2-7% of the expectation) is the regime where
+  (a) and (b) coincide. Whatever ships, the card's i0 sentence changes (1.4)
+  and the Model lane owns the method statement. The cloud engine, the roots
+  and the scorer stay available for a further arm if the Model lane wants
+  one before Tuesday.
 - 2026-10-09 (07:05 UTC, peak replay, 2024-25 complete in both arms; 2023-24
   running, about 6.5 hours): the eight vintages around the 2024-25 US peak
   (as-of 2025-02-01 to 03-22; peak week 2025-02-08), 1,664 common Oracle
