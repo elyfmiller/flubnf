@@ -6,6 +6,67 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-09 (20:10 UTC): ELY CHOSE THE STAGE-AWARE RULE; IT IS ON THE
+  BRANCH AND THIS WEEK'S FORECASTS WERE RERUN WITH IT. Branch
+  `seed-denominator` c09e7bc adds the third knob value
+  `pf.seed_denominator=season_total_early`: while the season-to-date
+  per-capita count is below `EARLY_FRACTION = 0.25` of the expected total
+  (strict), rho*mult and i0 are pinned on the expectation exactly as
+  season_total pins them; from there the shipped to-date rule, bit for bit.
+  The seed_pin record names the stage (expected or to_date) and the
+  fraction; shipped cells are unchanged. Tests: the pin at 1,899 against
+  1,900 of 7,600, an all-zero trimmed series, the guards (an expectation
+  handed to the to-date rule raises), the prepare-level record. Full suite
+  on the branch: 3,108 passed, 82 skipped (two earlier runs showed one error
+  in app/tests/test_window_downloads.py that passes alone on the branch and
+  on dev and did not recur: an ordering interaction, not this diff). An
+  adversarial review of the diff found one defect, fixed before the commit:
+  the stage was read off the factor, which is NaN on a series a trim leaves
+  all-zero, so the record would have said to_date while the pin was the
+  expectation; the stage now comes from the pin itself and one helper in
+  pf.prepare re-derives pin and stage together after a trim or a reporting
+  correction. The rule is post-hoc, named after the early-week replay and
+  before the peak replay, and scored once from those stored runs (the entry
+  of 14:30 UTC); the code and the record say so.
+  - The rerun (root replays/2026-27-stage, both 2026-27 vintages, all 52
+    jurisdictions x 3 seeds, Oracle step applied; replays/compare_stage.py,
+    compare_stage_result.txt), Oracle SIHRS member medians as-of 2026-10-03
+    against the submitted file: of the 11 submitted decliners (horizon-3
+    median below the last observed week), 6 now rise (Illinois 67 -> 74 at
+    horizon 3 instead of 44; Michigan 41 -> 48 instead of 27; Wisconsin 32
+    -> 42 instead of 18; Oregon 35 -> 80 instead of 31; Maine 14 -> 18
+    instead of 11; Puerto Rico 81 -> 110 instead of 73) and 5 small
+    jurisdictions still decline, less steeply (Montana 15 -> 8.8, was 5;
+    Alaska 22 -> 19, was 15; District of Columbia 2 -> 1.4, was 1; South
+    Dakota 4 -> 4.0, was 3; Wyoming 3 -> 2.5, was 1). Declining
+    jurisdictions 11 of 52 -> 5 of 52. Every jurisdiction's horizon-3 median
+    rises relative to the submitted one (Vermont unchanged at 1): median
+    horizon-3/last 1.40 -> 2.25 across the 52, 1.67 -> 2.56 among the 17
+    with 50 or more admissions last week; above 3x in 17 jurisdictions (was
+    1), above 4x in 5 (New Hampshire 9 -> 99, Hawaii 64 -> 365, Delaware 9
+    -> 45, North Carolina 78 -> 329, Indiana 58 -> 239; the large states
+    steepen too: Florida 559 -> 1,875 at horizon 3 instead of 1,037,
+    California 451 -> 953 instead of 575, Texas 326 -> 769 instead of 522).
+    All 52 are in the expected stage this week (to-date at 0.8% to 21.6% of
+    the expectation, median 2.9%; Alaska 21.6% and Hawaii 17.4% are nearest
+    the quarter), so the rerun equals the season_total arm of 2026-10-07 bit
+    for bit where the two overlap; the stage rule changes nothing until a
+    jurisdiction crosses the quarter. The US cell is not in a retro run (the
+    retro scores the nation as the sum of the states), so the national row
+    was not rerun. Reading: the downward trajectories are fixed where counts
+    are large and softened where they are small; the cost is a steeper
+    upward tail, which the early-week replay scored as a net gain (all 52
+    better on the log scale) but which Ely should look at before Wednesday:
+    the Oracle step and the fitted growth, not the seed, set the slope once
+    depletion stops braking it.
+  - Next (Submission lane, for Wednesday 2026-10-14): Ely confirms the rerun
+    picture; Model/App review the branch (see For other lanes); merge
+    seed-denominator -> dev -> main by Tuesday night; card 1.4 with the new
+    i0 sentence replaces the staged 1.3 and goes to the hub with the
+    2026-10-17 forecast; a note to Spencer after Ely's go. Whether
+    season_total_early becomes the shipped default or runs as the knob with
+    an override reason is Ely's call with the Model lane; either way the
+    record says the rule is post-hoc and scored once.
 - 2026-10-09 (14:30 UTC): THE PEAK REPLAY IS COMPLETE; STOP RULE 3 TRIPS ON
   THE NATURAL SCALE AND PASSES ON THE LOG SCALE. Eight vintages around each
   season's US peak, three seasons, both arms, all 52 jurisdictions x 3 seeds
@@ -486,6 +547,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-09 (Ely): the stage-aware rule (season_total_early at 0.25) is the
+  fix to implement on the branch; this week's forecasts are rerun with it to
+  see whether the downward trajectories are gone. No resubmission this week.
+  Ely wants their understanding of the rule tested later.
 - 2026-10-07 (Ely): the Oracle SIHRS is not run as a frozen test this
   season: a clear fix gets made. The seed fix above takes priority over
   every lane's other work until the 2026-10-14 round. Plan C for that
@@ -517,8 +582,9 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- Model (2026-10-07, top priority): please review the knob on branch
-  `seed-denominator` (e916dac; see Now) rather than implement it: the median
+- Model (2026-10-07, top priority; updated 2026-10-09): please review the
+  knob on branch `seed-denominator` (c09e7bc, the stage-aware rule Ely chose;
+  see Now) rather than implement it: the median
   (not the mean) and the floor, `MIN_COMPLETE_WEEKS = 35`, the one-season
   expectation for 2023-24, and whether a growth-limiting variant for small
   states should be a second knob. Please also read the two closed trial
@@ -526,7 +592,8 @@ and CDC's rules. The season's facts are in
   lab Mac is back; post or compare the scores in model.md. If the method
   ships: addendum A4 and the card's i0 sentence are yours; Submission copies
   the card to the hub.
-- App (2026-10-07, top priority): the registry entry is on the branch
+- App (2026-10-07, top priority; updated 2026-10-09, c09e7bc adds the third
+  choice): the registry entry is on the branch
   (`pf.seed_denominator` with `_read`, `write_extra` and `_FIT_ORDER`, the
   `SOURCES` entry in app/tests/test_knobs.py, and
   app/tests/test_seed_denominator.py); please review it for the console's
