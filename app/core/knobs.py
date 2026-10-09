@@ -207,14 +207,18 @@ REGISTRY: tuple = (
          choices=("rand", "lh"), check=_check_initialization),
     Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
          "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
-         "What pins rho*mult and i0: season-to-date admissions, or the "
-         "expected season total floored at it.",
+         "What pins rho*mult and i0: admissions to date, the expected season "
+         "total, or that early only.",
          choices=SP.SEED_DENOMINATORS,
          note=("season_total: the expected total is the median per-capita "
-               "total of the completed past seasons in the vintage; i0 "
-               "shrinks by expected/to-date and the model's implied "
-               "depletion grows with the season instead of sitting at the "
-               "attack rate from the first week. Research; no card phrase.")),
+               "total of the completed past seasons in the vintage, floored "
+               "at the to-date count; i0 shrinks by expected/to-date and the "
+               "model's implied depletion grows with the season instead of "
+               "sitting at the attack rate from the first week. "
+               "season_total_early: the same while the to-date count is "
+               f"below EARLY_FRACTION ({SP.EARLY_FRACTION:g}) of the expected "
+               "total, the shipped rule after (the brake near the peak). "
+               "Research; no card phrase.")),
     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
          default_season_start, "app.core.runs:default_season_start",
          "First week the filter fits; August 1 of the forecast's season.",

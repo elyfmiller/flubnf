@@ -196,8 +196,15 @@ def initial_infected_fraction(first_week_reported: float, population: int,
 #: "season_total": pinned on the EXPECTED season total, the median per-capita
 #: total of the completed past seasons in the same vintage, floored at the
 #: to-date value (the factor expected/to-date is never below 1).
-SEED_DENOMINATORS = ("to_date", "season_total")
+#: "season_total_early": the expected total pins rho*mult only while the
+#: season-to-date count is below EARLY_FRACTION of it; from there the shipped
+#: to-date rule (the brake the peak needs). A post-hoc rule: named after the
+#: early-week replay and before the peak replay, then scored once from those
+#: stored runs (docs/team/submission.md has the replay).
+SEED_DENOMINATORS = ("to_date", "season_total", "season_total_early")
 SEED_DENOMINATOR = "to_date"
+#: the switch point of season_total_early, a fraction of the expected total
+EARLY_FRACTION = 0.25
 #: a past season counts as completed with at least this many finite weeks
 #: (the May-Oct 2024 voluntary months are NaN in 3 jurisdictions; the hub
 #: file starts 2022-02-05, so 2021-22 has 25-26 rows and never counts)

@@ -488,6 +488,7 @@ def prepare(spec, workroot: Path) -> list:
     every location fails still raises; a single-location run re-raises its
     one error verbatim."""
     from flubnf.sihrs_fit import (materialize_model, pin_from, resolve_state,
+                                  seed_stage,
                                   write_exp)
     from flubnf.settings import BNG
     from app.core.data import LOCATIONS, spec_source, vintage_path
@@ -552,8 +553,9 @@ def prepare(spec, workroot: Path) -> list:
                 f"fraction, is {S0_DEFAULT:g}), or the model would start "
                 "with a negative recovered count")
     # seed_denominator: what pins rho*mult and i0 (research knob
-    # pf.seed_denominator): the shipped to-date rule, or the expected
-    # season total floored at it (flubnf.sihrs_priors.SEED_DENOMINATORS).
+    # pf.seed_denominator): the shipped to-date rule, the expected season
+    # total floored at it, or that expectation only early in the season
+    # (season_total_early; flubnf.sihrs_priors.SEED_DENOMINATORS).
     from flubnf.sihrs_priors import SEED_DENOMINATOR, SEED_DENOMINATORS
     seed_den = str((spec.extra or {}).get("seed_denominator")
                    or SEED_DENOMINATOR)
@@ -690,13 +692,22 @@ def prepare(spec, workroot: Path) -> list:
                     _missing.NOT_APPLIED_NOTE):
                 anchor_notes[loc] = anchor_note
         k_total = lag
+
+        def _repin(series):
+            """Re-derive rhomult/i0 from `series` under the cell's rule;
+            season_total_early's recorded stage follows the new pin."""
+            rule = getattr(s, "seed_denominator", SEED_DENOMINATOR)
+            expected = getattr(s, "expected_total_pc", None)
+            s.rhomult, s.i0, s.seed_factor = pin_from(
+                series, s.population, s.attack_rate, expected, s.gamma, rule)
+            if rule == "season_total_early":
+                s.seed_record["stage"] = seed_stage(series, s.population,
+                                                    expected, rule)
         if n_trim:
             # Re-derive rhomult/i0 from the trimmed series (resolve_state
             # used the untrimmed one) unless anchor_asof pins them.
             if not (spec.extra or {}).get("anchor_asof"):
-                s.rhomult, s.i0, s.seed_factor = pin_from(
-                    s.observed, s.population, s.attack_rate,
-                    getattr(s, "expected_total_pc", None), s.gamma)
+                _repin(s.observed)
         # RESEARCH reporting model, spec.extra["reporting"]["mode"]: edge rows
         # are corrected by app.core.completeness' per-lag factors. anchor:
         # only rhomult/i0 see the corrected rows; lik: also
@@ -724,9 +735,7 @@ def prepare(spec, workroot: Path) -> list:
             scales = _comp.row_scales(s.times, _asof_off, fac)
             corrected = (_np.asarray(s.observed, dtype=float)
                          / _np.asarray(scales, dtype=float))
-            s.rhomult, s.i0, s.seed_factor = pin_from(
-                corrected, s.population, s.attack_rate,
-                getattr(s, "expected_total_pc", None), s.gamma)
+            _repin(corrected)
             rep_rec = {"mode": mode,
                        "factors": {str(k): float(v) for k, v in fac["factors"].items()},
                        "pairs": {str(k): int(v) for k, v in fac["pairs"].items()},
@@ -881,6 +890,8 @@ initialization = {initialization_for(spec)}
                     "rhomult": float(s.rhomult),
                     "factor": float(getattr(s, "seed_factor", 1.0)),
                     "expected_total_pc": getattr(s, "expected_total_pc", None),
+                    # season_total_early's "stage" is the one after any trim
+                    # or reporting re-derivation (_repin keeps it current)
                     **dict(getattr(s, "seed_record", {}) or {})}}
                    if seed_den != SEED_DENOMINATOR else {}),
                 "fit_i0": list(fit_i0) if fit_i0 else None,
