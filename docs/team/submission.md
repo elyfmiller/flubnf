@@ -6,6 +6,18 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-09 (07:05 UTC, peak replay, 2024-25 complete in both arms; 2023-24
+  running, about 6.5 hours): the eight vintages around the 2024-25 US peak
+  (as-of 2025-02-01 to 03-22; peak week 2025-02-08), 1,664 common Oracle
+  cells: the two arms are the same forecast. Shipped relWIS 0.522, log-scale
+  0.664, coverage 50/95 = 0.69/0.99; knob 0.525, log 0.660, 0.69/0.99; by
+  week (log) 1.275 / 1.248, 0.890 / 0.884, then identical to three decimals
+  from 02-22 on. That is the floor working as designed: by February of a
+  season this large the to-date count had passed the expected total, so
+  season_total and to_date coincide. The knob's peak weakness is therefore
+  specific to a peak that arrives while the to-date count is still well
+  below the expectation (2025-26, a January peak at about half the expected
+  total); it does not appear in a late, large season.
 - 2026-10-08 (23:35 UTC, peak replay, 2025-26 complete in both arms; the
   2024-25 and 2023-24 peaks run overnight): the eight vintages around the
   2025-26 US peak (as-of 2025-12-27 to 2026-02-14), 1,664 common Oracle
