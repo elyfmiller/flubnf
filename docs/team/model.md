@@ -11,6 +11,31 @@ agent's.
 
 ## Now
 
+- 2026-10-09 (laptop, a finding; no change proposed): after the first
+  round the Groundhog's intervals looked wide beside other teams' on the
+  FluSight dashboard, and Ely asked, out of curiosity, whether narrower
+  bands would lower its relWIS. Method: the current Groundhog replayed on
+  `main` 811310c for 2023-24 to 2025-26, every quantile scaled about its
+  median on the log scale (q' = m (q/m)^k), rescored with
+  `app.core.groundhog.score_week` (k = 1 gives 0.6701 on 17,116 cells,
+  the record under today's truth). Results:
+  - Uniform k on all three seasons: 0.670 at k = 1, 0.661 at 0.9, 0.659
+    at 0.8 (the best), 0.663 at 0.7; 95% coverage 0.94, 0.92, 0.89, 0.85.
+    2023-24 and 2025-26 prefer k of 0.6 to 0.8; 2024-25 about 1.0.
+  - Out of sample (k chosen on two seasons, scored on the third): pooled
+    0.668 against 0.670, and the 2024-25 fold gets worse (0.679 against
+    0.659). A size-aware k (narrow large states, widen small ones) scores
+    0.654 in-sample but 0.6696 out of sample.
+  - Why: cells with an h0 median of 200 or more carry 72% of the baseline
+    WIS and are over-covered (95% coverage 0.99), so narrowing helps there,
+    except in the December to January 2024-25 surge, where k = 0.8 would
+    have cost about 0.018 of that season's relWIS. October carries about
+    4% of a season's baseline WIS, so wide early-season bands barely move
+    a season's score.
+
+  The submitted Groundhog stays as it is. If Ely wants prospective
+  evidence later, a pre-registered k = 0.8 shadow arm (logged each week,
+  never submitted, scored at season end) is the cheap route.
 - 2026-10-05: at Ely's request (with Bill), a deep dive on Osthus et al.
   2026, "Leveraging synthetic and genetic data to improve epidemic
   forecasting" (PLOS Comput Biol 22(8) e1014630): the paper, its
