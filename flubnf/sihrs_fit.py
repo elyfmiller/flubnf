@@ -22,7 +22,7 @@ import pandas as pd
 
 from .sihrs_priors import (S0_DEFAULT, ATTACK_RATE_RANGE, gamma_per_week,
                            initial_infected_fraction, pin_rho_mult,
-                           SEED_DENOMINATOR, SEED_DENOMINATORS,
+                           SEED_DENOMINATOR, SEED_DENOMINATORS, EARLY_FRACTION,
                            expected_total_per_capita)
 
 _TOKEN_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
@@ -68,19 +68,53 @@ class StateSetup:
         return int(self.times[-1]) if self.times.size else self.n_obs - 1
 
 
+def pinned_per_capita(cum_pc: float, expected_pc, rule: str) -> float:
+    """The per-capita count rho*mult is pinned on under `rule`
+    (sihrs_priors.SEED_DENOMINATORS): to_date, the season-to-date count
+    `cum_pc`; season_total, the expectation floored at the to-date count;
+    season_total_early, the expectation while the to-date count is below
+    EARLY_FRACTION of it and the to-date count after. Without an
+    expectation every rule is the to-date rule; an expectation handed to
+    the to-date rule is a caller's mistake and raises."""
+    if rule not in SEED_DENOMINATORS:
+        raise ValueError(f"unknown seed denominator {rule!r}; one of "
+                         f"{', '.join(SEED_DENOMINATORS)}")
+    if not expected_pc:
+        return cum_pc
+    if rule == "to_date":
+        raise ValueError("an expected season total was given with the "
+                         "to-date rule; pass the rule the expectation is for")
+    if rule == "season_total":
+        return max(cum_pc, float(expected_pc))
+    if cum_pc < EARLY_FRACTION * float(expected_pc):
+        return float(expected_pc)
+    return cum_pc
+
+
 def pin_from(obs, population: int, attack_rate: float, expected_pc,
-             gamma: float) -> tuple:
-    """(rhomult, i0, factor) from a series: the to-date rule, or, with
-    expected_pc, the season-total rule floored at to-date. The ONE place
+             gamma: float, rule: str = SEED_DENOMINATOR) -> tuple:
+    """(rhomult, i0, factor) from a series under `rule`, the pin being
+    pinned_per_capita of the series' season-to-date count. The ONE place
     the pin is computed (resolve_state, the trim re-derivation and the
-    reporting model in pf.prepare all call it)."""
+    reporting model in pf.prepare all call it). The factor is pinned /
+    to-date, NaN on an all-zero series (so never read the stage off it:
+    seed_stage)."""
     obs = np.asarray(obs, dtype=float)
     cum_pc = float(obs.sum()) / float(population)
-    pin_pc = max(cum_pc, float(expected_pc)) if expected_pc else cum_pc
+    pin_pc = pinned_per_capita(cum_pc, expected_pc, rule)
     rhomult = pin_rho_mult(pin_pc, attack_rate)
     i0 = initial_infected_fraction(max(float(obs[0]), 1.0), population,
                                    rhomult, gamma)
     return rhomult, i0, (pin_pc / cum_pc if cum_pc > 0 else float("nan"))
+
+
+def seed_stage(obs, population: int, expected_pc, rule: str) -> str:
+    """season_total_early's stage for a series: "expected" while the pin
+    is the expectation, "to_date" once it is the to-date count. Read off
+    the pin itself, not the factor (NaN on an all-zero trimmed series)."""
+    cum_pc = float(np.asarray(obs, dtype=float).sum()) / float(population)
+    return ("expected" if pinned_per_capita(cum_pc, expected_pc, rule) > cum_pc
+            else "to_date")
 
 
 def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Path,
@@ -94,7 +128,8 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
     hazard, not a measured score distortion).
 
     seed_denominator (sihrs_priors.SEED_DENOMINATORS): what pins rho*mult
-    and i0; the default is the shipped to-date rule.
+    and i0; the default is the shipped to-date rule (pin_from has the
+    three rules).
     """
     if seed_denominator not in SEED_DENOMINATORS:
         raise ValueError(f"seed_denominator must be one of {SEED_DENOMINATORS}, "
@@ -143,11 +178,14 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
 
     g = gamma_per_week()
     expected, rec = None, {}
-    if seed_denominator == "season_total":
+    if seed_denominator in ("season_total", "season_total_early"):
         expected, rec = expected_total_per_capita(t, fips, pop, season_start, as_of)
         if expected is None:
             rec["fallback"] = "no completed season in the vintage: to-date rule"
-    rhomult, i0, factor = pin_from(obs, pop, ar, expected, g)
+    rhomult, i0, factor = pin_from(obs, pop, ar, expected, g, seed_denominator)
+    if seed_denominator == "season_total_early":
+        rec["early_fraction"] = EARLY_FRACTION
+        rec["stage"] = seed_stage(obs, pop, expected, seed_denominator)
     return StateSetup(state=state, fips=fips, population=pop, gamma=g,
                       rho=RHO_IHR, rhomult=rhomult, gammaH=GAMMAH_PER_WEEK,
                       omega=OMEGA_PER_WEEK, s0=float(S0_DEFAULT), i0=i0,

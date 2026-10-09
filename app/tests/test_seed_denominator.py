@@ -19,7 +19,7 @@ import pytest                                            # noqa: E402
 from app.core import knobs as K                          # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 from app.core.runs import RunSpec, derive_seed           # noqa: E402
-from flubnf.sihrs_fit import pin_from                    # noqa: E402
+from flubnf.sihrs_fit import pin_from, seed_stage        # noqa: E402
 from flubnf.sihrs_priors import SEED_DENOMINATOR         # noqa: E402
 
 FD = "2098-11-07"
@@ -39,12 +39,17 @@ class _State:
         self.last_week_offset = 14
         self.population, self.attack_rate, self.gamma = POP, AR, GAMMA
         self.seed_denominator = seed_denominator
-        if seed_denominator == "season_total":
+        if seed_denominator in ("season_total", "season_total_early"):
             self.expected_total_pc, self.seed_record = EXPECTED_PC, dict(RECORD)
         else:
             self.expected_total_pc, self.seed_record = None, {}
         self.rhomult, self.i0, self.seed_factor = pin_from(
-            self.observed, POP, AR, self.expected_total_pc, GAMMA)
+            self.observed, POP, AR, self.expected_total_pc, GAMMA,
+            seed_denominator)
+        if seed_denominator == "season_total_early":
+            self.seed_record["early_fraction"] = 0.25
+            self.seed_record["stage"] = seed_stage(
+                self.observed, POP, self.expected_total_pc, seed_denominator)
 
 
 def _spec(extra=None, weeks_to_drop=0):
@@ -109,6 +114,27 @@ def test_prepare_records_the_pin_off_the_shipped_denominator(monkeypatch,
     assert cells[0]["seed_pin"]["denominator"] == "season_total"
 
 
+def test_prepare_records_the_stage_of_season_total_early(monkeypatch,
+                                                           tmp_path):
+    """season_total_early: the fake to-date count (15 of 2,000 per
+    million) is far below a quarter of the expectation, so the pin is the
+    expectation and the record says so; the shipped engine seed is
+    untouched."""
+    asked = _prep_env(monkeypatch, tmp_path)
+    c = pf.prepare(_spec({"seed_denominator": "season_total_early"}),
+                   tmp_path / "wr")[0]
+    assert asked == ["season_total_early"]
+    want = _State("season_total_early")
+    assert c["seed_pin"]["denominator"] == "season_total_early"
+    assert c["seed_pin"]["stage"] == "expected"
+    assert c["seed_pin"]["early_fraction"] == 0.25
+    assert c["seed_pin"]["factor"] == pytest.approx(EXPECTED_PC / (15.0 / POP))
+    assert c["seed_pin"]["rhomult"] == want.rhomult and c["i0"] == want.i0
+    # identical to season_total at this stage
+    assert c["i0"] == _State("season_total").i0
+    assert c["seed"] == derive_seed("Ohio", FD, 0)
+
+
 def test_the_shipped_prepare_records_no_pin(monkeypatch, tmp_path):
     """Without the key, or with it at the shipped value, the cell has no
     seed_pin: cells.json is byte-identical to before the knob."""
@@ -129,7 +155,7 @@ def test_a_trim_rederives_the_pin_with_the_expectation(monkeypatch, tmp_path):
     _prep_env(monkeypatch, tmp_path)
     c = pf.prepare(_spec({"seed_denominator": "season_total"}, weeks_to_drop=1),
                    tmp_path / "wr")[0]
-    rm, i0, factor = pin_from([4.0, 5.0], POP, AR, EXPECTED_PC, GAMMA)
+    rm, i0, factor = pin_from([4.0, 5.0], POP, AR, EXPECTED_PC, GAMMA, "season_total")
     assert c["weeks_dropped"] == 1 and c["n_obs"] == 2
     assert c["seed_pin"]["rhomult"] == rm and c["seed_pin"]["factor"] == factor
     assert c["i0"] == i0 and factor > _State("season_total").seed_factor
@@ -185,4 +211,5 @@ def test_the_knob_round_trips_through_the_registry():
     assert keys.index("pf.seed_denominator") == keys.index("pf.initialization") + 1
     row = rows[keys.index("pf.seed_denominator")]
     assert row["kind"] == "choice"
-    assert [v for v, _ in row["choices"]] == ["to_date", "season_total"]
+    assert [v for v, _ in row["choices"]] == ["to_date", "season_total",
+                                              "season_total_early"]

@@ -213,3 +213,73 @@ def test_expected_total_counts_only_seasons_ended_by_the_as_of(tmp_path):
     # a location the vintage lacks
     assert expected_total_per_capita(t, "06", POP, "2025-08-01", "2025-10-04") == (
         None, {"seasons": {}, "min_weeks": 35})
+
+
+def test_season_total_early_is_the_expectation_early_and_the_shipped_rule_after(tmp_path):
+    """season_total_early: below a quarter of the expectation (261 of 7,600
+    here) it is the season_total pin, bit for bit; at or above it, the
+    shipped pin, bit for bit; the record names the stage."""
+    import pytest
+    from flubnf.sihrs_fit import resolve_state
+    from flubnf.sihrs_priors import EARLY_FRACTION
+    assert EARLY_FRACTION == 0.25
+    kw = _seasons_csv(tmp_path, CURRENT)
+    shipped = resolve_state("Ohio", **kw)
+    total = resolve_state("Ohio", seed_denominator="season_total", **kw)
+    early = resolve_state("Ohio", seed_denominator="season_total_early", **kw)
+    assert early.seed_denominator == "season_total_early"
+    assert (early.rhomult, early.i0, early.seed_factor) == (
+        total.rhomult, total.i0, total.seed_factor)
+    assert early.seed_record["stage"] == "expected"
+    assert early.seed_record["early_fraction"] == 0.25
+    assert early.expected_total_pc == pytest.approx(7600 / POP)
+    assert early.i0 == pytest.approx(shipped.i0 / early.seed_factor)
+    # the same season with 2,000 a week: 20,000 to date, above the expectation
+    kw = _seasons_csv(tmp_path, [2000.0] * 10)
+    shipped = resolve_state("Ohio", **kw)
+    late = resolve_state("Ohio", seed_denominator="season_total_early", **kw)
+    assert (late.rhomult, late.i0) == (shipped.rhomult, shipped.i0)
+    assert late.seed_factor == 1.0 and late.seed_record["stage"] == "to_date"
+    assert late.expected_total_pc == pytest.approx(7600 / POP)   # still recorded
+
+
+def test_season_total_early_switches_exactly_at_the_quarter(tmp_path):
+    """One admission below a quarter of the expectation (1,899 of 7,600)
+    pins on the expectation; exactly a quarter (1,900) pins on the to-date
+    count: the comparison is strict."""
+    from flubnf.sihrs_fit import pin_from, resolve_state
+    from flubnf.sihrs_priors import gamma_per_week
+    g = gamma_per_week()
+    kw = _seasons_csv(tmp_path, [1.0] + [0.0] * 8 + [1898.0])   # 1,899 to date
+    below = resolve_state("Ohio", seed_denominator="season_total_early", **kw)
+    assert below.seed_factor > 1 and below.seed_record["stage"] == "expected"
+    kw = _seasons_csv(tmp_path, [1.0] + [0.0] * 8 + [1899.0])   # 1,900 to date
+    at = resolve_state("Ohio", seed_denominator="season_total_early", **kw)
+    assert at.seed_factor == 1.0 and at.seed_record["stage"] == "to_date"
+    # pin_from directly: no expectation means the to-date rule for every value
+    rm, i0, f = pin_from([4.0, 5.0], POP, 0.18, None, g, "season_total_early")
+    assert f == 1.0 and (rm, i0) == pin_from([4.0, 5.0], POP, 0.18, None, g)[:2]
+
+
+
+def test_the_stage_is_read_off_the_pin_not_the_factor():
+    """An all-zero series (a trim can leave one: weeks_to_drop=1 on
+    [0, 0, 3]) still pins on the expectation under season_total_early, and
+    its factor is NaN, so seed_stage reads the stage off the pin: expected.
+    The to-date rule with an expectation is a caller's mistake and raises;
+    so is a rule that is not a seed denominator."""
+    import math, pytest
+    from flubnf.sihrs_fit import pin_from, seed_stage
+    from flubnf.sihrs_priors import gamma_per_week
+    g = gamma_per_week()
+    rm, i0, f = pin_from([0.0, 0.0], POP, 0.18, 2e-3, g, "season_total_early")
+    assert math.isnan(f) and rm > 0 and i0 > 0
+    assert seed_stage([0.0, 0.0], POP, 2e-3, "season_total_early") == "expected"
+    # a to-date count past the quarter: the shipped stage
+    assert seed_stage([2000.0] * 10, POP, 2e-3, "season_total_early") == "to_date"
+    # no expectation: the to-date stage whatever the count
+    assert seed_stage([0.0, 0.0], POP, None, "season_total_early") == "to_date"
+    with pytest.raises(ValueError, match="to-date rule"):
+        pin_from([4.0, 5.0], POP, 0.18, 2e-3, g)
+    with pytest.raises(ValueError, match="unknown seed denominator"):
+        pin_from([4.0, 5.0], POP, 0.18, None, g, "season_totl")
