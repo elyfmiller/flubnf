@@ -6,6 +6,107 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-10 (15:20 UTC): WHY FLORIDA TRIPLES UNDER THE NEW RULE, AND THE
+  ORACLE WEIGHT 0.25 SCORED FROM THE STORED RUNS. Ely asked why Florida's
+  horizon-3 median goes 559 -> 1,875 (3.35x) under season_total_early. The
+  data: Florida grew 1.36, 1.37, 1.56, 1.35, 1.32 a week over the last five
+  weeks (146 -> 559), the longest run above 1.25x in its record; the US
+  total grew 1.24-1.34 a week over the same weeks. The path 802, 1,073,
+  1,422, 1,875 rises 1.43x then about 1.32x a week: the data's own recent
+  rate continued. Against the hub (the 2026-10-10 round, 47 other models,
+  files read from cdcepi main 7011bc394): the ensemble's Florida horizon-3
+  median is 977, ours as submitted 1,037 ranked mid-field, 1,875 would rank
+  44th of 45. Across the 52 jurisdictions the new rule's horizon-3 medians
+  sit at the 78th percentile of the field on average (submitted: 20th),
+  above the field's 90th percentile in 13, above every model in 1 (New
+  Hampshire 99 against a field maximum 53); the decliners it fixed are still
+  below the field (Illinois 74 against an ensemble 126). Florida's history:
+  its three earlier runs of 3+ weeks above 1.25x were each followed by three
+  weeks that together rose at most 1.5x. replays/field_rank_2026-10-10.csv,
+  scratchpad hub-2026-10-10-full/.
+  - Mechanism (an adversarial reader reproduced the stored Oracle output
+    bitwise from the samples): the Oracle step takes from the filter only
+    the anchored origin (559) and the filter's first-week growth lam_T =
+    ln(m1/m0), and REPLACES the filter's own path with the blend (w = 0.5 in
+    log G) of that growth and a calendar-matched donor's growth; the
+    filter's weeks 2-4 are discarded; the Groundhog's forecast is not an
+    input (shared donor banks only). Shipped rule: lam_T 0.149 (16% a week),
+    the filter's own path turns down (649, 666, 582, 450), the Oracle lifts
+    it to 655-1,037. New rule: lam_T 0.422 (52% a week), the filter alone
+    accelerates to 4,049 (7.2x); constant-rate extrapolation of its first
+    week is 5.4x; the w = 0.5 blend 3.35x; donors only 2.2x. Had the filter
+    said the data's 1.33x, the Oracle would return 1,396 (2.5x): the
+    calendar donors grow 1.16-1.21x a week in early October and brake. Every
+    +0.1 in the filter's first-week log growth adds about 24% to the
+    horizon-3 median. Why the filter's first week says 1.52x when the data
+    say 1.32-1.35x is still being traced (its fitted Reff and seasonal
+    forcing); the Model lane's question.
+  - The five remaining decliners (Montana 15 -> 8.8, Alaska 22 -> 19, DC 2
+    -> 1.4, South Dakota 4 -> 4, Wyoming 3 -> 2.5) are not an S drain: their
+    implied infected-so-far is 0.4-3.9% of N; their counts are tiny and
+    noisy (Montana 18, 6, 29, 15), the filter's first-week growth is
+    negative in all five and the donor blend only lifts that to flat. The
+    attack rate (0.18, Vinh et al. 2021, Vietnam serology; the code calls it
+    the weakest link) is a seed-time conversion, not a model parameter:
+    under the new rule it scales a starting pool of a few percent and cannot
+    fix either symptom; a state-specific attack rate would be an assumption
+    swap against ascertainment (only rho*mult is identified). Explained to
+    Ely with Florida's numbers (old pin 0.000528, i0 5.15e-3, 18% implied
+    infected; new pin 0.00641, i0 4.24e-4, 1.5%).
+  - Oracle weight w = 0.25 (the pre-registered logged secondary; production
+    0.5) scored from every stored replay week, no engine time
+    (replays/score_w025.py, score_w025_tail.py, score_w025_result.txt,
+    score_w025_cells.csv; 44 weeks, 9,152 common cells, 5-seed-mean
+    quantiles, pre-floor for both weights). relWIS / log relWIS, w 0.5 ->
+    0.25: shipped seed 0.768/0.884 -> 0.736/0.806; season_total 0.823/0.793
+    -> 0.755/0.740; stage-aware 0.753/0.787 -> 0.720/0.736. Early pooled
+    (stage) 0.679/0.681 -> 0.668/0.668; peak pooled 0.836/0.980 ->
+    0.779/0.861; the gain grows with horizon (h3 0.744/0.756 ->
+    0.696/0.694). Better on the log scale in 40 of 44 weeks and 50 of 52
+    jurisdictions, on the natural scale in 46 of 52; loses on the natural
+    scale in the 2024-25 peak block (0.522 -> 0.549, overprediction during
+    the decline) and the 2023-24 early block (0.795 -> 0.815). Checker
+    (independent loader, bitwise match on all 9,152 cells; its scripts under
+    scratchpad skeptic_w025/): the comparison is symmetric and survives the
+    output floor (floored, stage: 0.752/0.772 -> 0.720/0.723; so the
+    record's 0.864 is not comparable to the pre-floor 0.806), identity-cell
+    removal, a week-level bootstrap (every interval excludes zero) and
+    leave-one-season-out; caveats: the log-scale win is not universal (stage
+    2025-26 early 0.522 -> 0.523), part of the win is width (95% coverage
+    0.97 -> 0.99 in the knob and stage arms, 50% 0.56 -> 0.62), 2023-24 ran
+    on the FluSurv-NET-only bank, and choosing the secondary after seeing
+    these 44 weeks is a choice between two pre-registered values on the data
+    they were logged on.
+  - This week at w = 0.25 under the new rule (replays/w025_thisweek.txt):
+    decliners 3 of 52 (DC, Montana, Wyoming, flat); above the field's 90th
+    percentile 7 (was 13), above the field maximum none (was 1); median
+    jurisdiction 1.10x the ensemble (was 1.15x); Florida 777, 980, 1,217,
+    1,496 (2.7x); Hawaii 237 (was 367), New York 375 (was 463); Illinois 93,
+    Michigan 60, Wisconsin 49, Oregon 75, Maine 21, Puerto Rico 126, Alaska
+    26. The lever is the research knob oracle.w in the Forecast tab's Model
+    settings panel (group Oracle SIHRS: Oracle step; no refit; a hub-named
+    export with it needs the typed override reason; the card says "at weight
+    one half"). Lower w = more donor; w = 1 is the constant-rate
+    extrapolation of the filter's first week, not the plain filter. The
+    knob's help text says the opposite ("weight of the donor's growth"): App
+    lane, see For other lanes.
+  - Partial submissions (Ely's question): the hub's README says teams are
+    not required to submit all locations or horizons; an omitted cell is not
+    scored; CDC's season evaluation needs at least 75% of the admissions
+    quantile targets over the remaining weeks and jurisdictions
+    (FLUSIGHT-2026-27.md). Unticking a handful of states for a few early
+    weeks stays far above the line; the cost is the visible gap on the
+    dashboard, not the score. Offered as a standing Wednesday step before
+    the compare link: decliners below the last observed week, cells above 3x
+    at horizon 3, the medians against the previous round's ensemble path,
+    and each cell's recorded stage and weight; pending Ely's yes.
+  - For the Wednesday meeting of the NAU teams Ely asked for a broken-down
+    explanation (before/now, the weekly update and propagation, how i0 is
+    set, where 0.18 comes from): written as a Claude doc Ely can edit,
+    "Oracle SIHRS seeding explained"
+    (https://claude.ai/code/artifact/42279b08-d776-4455-8a3d-420807ac15ba),
+    eight sections with Florida as the worked example, a chart of the data
+    and the three forecast paths, and a drawn flow of one filter update.
 - 2026-10-09 (20:10 UTC): ELY CHOSE THE STAGE-AWARE RULE; IT IS ON THE
   BRANCH AND THIS WEEK'S FORECASTS WERE RERUN WITH IT. Branch
   `seed-denominator` c09e7bc adds the third knob value
@@ -547,6 +648,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-10 (Ely): score the Oracle weight 0.25 from the stored runs (done,
+  see Now). Whether it ships for 2026-10-14 is open; state-specific attack
+  rates are not pursued (an assumption swap, no forecast effect under the
+  new rule).
 - 2026-10-09 (Ely): the stage-aware rule (season_total_early at 0.25) is the
   fix to implement on the branch; this week's forecasts are rerun with it to
   see whether the downward trajectories are gone. No resubmission this week.
@@ -582,6 +687,22 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- App (2026-10-10): the help text of the research knob oracle.w
+  (app/core/knobs.py, "Weight of the donor's growth in the geometric blend")
+  says the opposite of what the code does: w weights the filter's own
+  first-week growth (flubnf/oracle.py blend: exp(w ln G_T + (1 - w) ln G_d);
+  w = 1 reproduces the filter's growth, w = 0 the donor's). Please reword
+  before anyone turns it the wrong way; no behavior change.
+- Model (2026-10-10): two findings for Wednesday's decision, both under Now:
+  (1) the Oracle weight 0.25 beats 0.5 on both scales pooled over the 44
+  stored weeks, with the caveats listed (width, two small-loss blocks,
+  post-hoc choice between two registered values); if it ships, the card's
+  "at weight one half" changes with the i0 sentence; (2) under the new seed
+  rule the filter's first-week growth for Florida is 1.52x against the
+  data's 1.32-1.35x, and the Oracle output is a steep function of that one
+  number; the fitted Reff and seasonal-forcing priors are where that lives.
+  Both are yours to weigh; the cloud engine, the roots and the scorers stay
+  available.
 - Model (2026-10-07, top priority; updated 2026-10-09): please review the
   knob on branch `seed-denominator` (c09e7bc, the stage-aware rule Ely chose;
   see Now) rather than implement it: the median
