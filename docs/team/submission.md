@@ -6,6 +6,38 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-10 (16:15 UTC): THE FILTER'S 1.52x FIRST WEEK FOR FLORIDA IS THE
+  FITTED SEASONAL FORCING, VERIFIED. Three read-only code readers (filter,
+  Oracle step, seed rule), each checked by a skeptic that re-ran their
+  computations (36 claims confirmed, 3 refuted on wording or a mislabelled
+  ratio, 1 unresolved). The filter fits five parameters (Reff, eps1, phi1,
+  mult, r; s0, gamma, rho, gammaH, omega fixed); the seed changes only i0,
+  and through the first weeks' likelihood the fitted mult (0.026 under
+  to_date, 0.32 under season_total_early), hence the infections each
+  admission removes from S (about 1,900 vs 160). Florida's profile, five
+  flat weeks then five at about 1.4x, can only come from a constant-Reff
+  SIHRS whose annual cosine forcing is on its rising limb inside the data
+  window: the cloud has eps1 median 0.36 (prior U(0, 1)), Reff 1.28, the
+  forcing peak about 17 weeks ahead; beta keeps rising 2.3% a week through
+  the horizon, each particle's own growth goes 1.54, 1.63, 1.70, 1.65 a week
+  (per particle, not a median-of-exponentials artifact; robust across
+  seeds), S/N drifts only 0.86 -> 0.78. Under to_date the same rising
+  forcing is fitted (eps1 0.48) but S/N falls 0.66 -> 0.43 and the brake
+  wins (the turn-down 649, 666, 582, 450). With eps1 held at zero the
+  new-rule forecast grows 1.22, 1.23, 1.21, 1.20 a week, near the ensemble's
+  path. Neither the seed transient (I0/I_T 0.249 under both rules) nor the
+  last-week state contributes. A numpy re-implementation of the filter
+  (scratchpad lwcheck/lw_check.py, lw_check_noharm.py) reproduced the stored
+  medians within 1-3% (stage) and the mechanism under other seeds. So the
+  Oracle weight damps the symptom; the cause is the prior on the forcing
+  amplitude (and Reff), which the console exposes as the per-parameter
+  research knobs pf.prior.<name> (Prior range for eps1 etc., a fit-stage
+  knob: a refit, about 25 minutes for all 52 in the cloud). Model lane's
+  call; the Submission lane can run a narrowed-eps1 arm of this week on
+  request. Minor corrections from the skeptics, for the record: the calendar
+  donors sit at epiweeks 37-41 (not 38-42); Florida's N in the hub's
+  locations.csv is 23,372,215 (the 22.6 M in an earlier brief was the
+  2024-25 file); the code's expected-total window is Aug 1 - Jul 31.
 - 2026-10-10 (15:20 UTC): WHY FLORIDA TRIPLES UNDER THE NEW RULE, AND THE
   ORACLE WEIGHT 0.25 SCORED FROM THE STORED RUNS. Ely asked why Florida's
   horizon-3 median goes 559 -> 1,875 (3.35x) under season_total_early. The
