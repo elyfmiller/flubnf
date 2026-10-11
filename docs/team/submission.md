@@ -6,6 +6,31 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-11 (15:10 UTC): ELY'S OWN SENSE CHECK, A STANDALONE SCRIPT.
+  Instead of a standing check by this lane, Ely asked for a script to run on
+  the laptop: sense_check.py (pandas only, no FluBNF import; sent to Ely in
+  chat, copy in the session scratchpad; not committed, the lane's docs-only
+  rule; say the word and it goes under tools/). Inputs: the week's
+  <date>-NAU_PyBNF-<model>.csv (searched under --files, default the hub
+  clone's model-output/) and the hub clone (--hub, default $FLUBNF_HUB or
+  ~/GitHub/FluSight-forecast-hub as the app resolves it). Per jurisdiction
+  it prints the last four observed weeks, the data's recent weekly growth,
+  the h0-h3 medians, h3/last, the implied weekly growth, the 95% width at
+  h3, the medians against the previous round's ensemble at the same target
+  weeks, this round's ensemble h3 when the clone has it, the actual against
+  h0 once the next week is in, and the seed stage from a run's cells.json
+  when given. Flags: DECLINE (h3 below the last week while the last three
+  weeks grew at least 1.10 a week), DROP (h3 below 0.75 of the last week on
+  flat data, or below half of it), STEEP (implied growth above 1.35 a week
+  and 15% above the data's, with h3 above twice the last week), SMALL (last
+  week under 10), WIDE (95% width over 30x the median; informational), FAR
+  (outside half to double the previous ensemble). Recommendation: submit /
+  check / consider unticking. On the 2026-10-10 files it flags Illinois,
+  Michigan, Maine and Oregon as DECLINE (consider unticking), Wisconsin,
+  Alaska and Montana as DROP (check), the small-count jurisdictions as
+  SMALL, and reads the ensemble from the clone (our h3 medians at 0.74 of
+  the ensemble's, below half in 10 jurisdictions). The thresholds are
+  constants at the top of the file.
 - 2026-10-10 (16:15 UTC): THE FILTER'S 1.52x FIRST WEEK FOR FLORIDA IS THE
   FITTED SEASONAL FORCING, VERIFIED. Three read-only code readers (filter,
   Oracle step, seed rule), each checked by a skeptic that re-ran their
