@@ -8,7 +8,7 @@ and CDC's rules. The season's facts are in
 
 - 2026-10-12 (15:20 UTC): ELY'S DECISION FOR 2026-10-14: THE STAGE RULE AND
   THE ORACLE WEIGHT 0.25. Shipping plan, executed as far as this lane can:
-  (1) branch seed-denominator merged into dev (4002987, no conflicts; the
+  (1) branch seed-denominator merged into dev (its two commits now 20336c6 and 9d69bef after a rebase, no conflicts; the
   full suite on the merged tree is in replays/fullsuite_merged_dev.txt); (2)
   card 1.4 on dev (3120697): the seed sentence (an assumed 18% attack rate
   against the expected season total while the season-to-date count is below
