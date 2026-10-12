@@ -5,7 +5,7 @@
 {# a date or a range that never splits at its hyphens #}
 {% macro nw(t) %}<span class="dt-nw">{{ t }}</span>{% endmacro %}
 <h1>Data</h1>
-<div class="cols">
+<div class="cols dt-cols">
  {# the FluSight hub: what a run reads, the clone against origin, the
     comparators and the newest week's reporting, one labelled row each;
     each row's "?" holds what the row means #}
@@ -20,7 +20,9 @@
    {# the live target file's newest week: what a real-time run reads when
       the hand-kept archive has not caught up (app.core.data.observed_source) #}
    {% if live_week %}
-   {% set newer %}{% if live_newer %}{% call tips.badge("warn", "not archived", id="live-newer") %}Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.{% endcall %}{% endif %}{% endset %}
+   {# the data's age beside it (routes/data.py _data_age): a badge, warn
+      once a round's data is overdue #}
+   {% set newer %}{% if live_age %}{{ tips.badge(live_age.state, live_age.text, tiptext="Days since the week the data runs through (a Saturday) ended; the hub adds a week each Wednesday.", id="live-age") }}{% endif %}{% if live_newer %}{% call tips.badge("warn", "not archived", id="live-newer") %}Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.{% endcall %}{% endif %}{% endset %}
    {{ tips.stat("Data through", nw(live_week), id="live-week", after=newer, tiptext=data_through) }}
    {% elif n_vintages %}
    {# no target-data file yet, but the archive holds weeks: the row says
@@ -31,7 +33,9 @@
       words in the "?" beside it (the script below fills both) #}
    {% set pc, pw = freshness.pill() if freshness else ("", "not checked") %}
    {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
-   {% set clone %}{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span>{% endset %}
+   {# the badge and its "?" held together (uk-badge-pair), so a wrapping
+      line never splits them; #hub-detail stays the span the script shows #}
+   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span></span>{% endset %}
    {% call tips.stat("Hub clone", clone, id="hub-clone") %}Hub clone: Check for new data compares the clone with origin and changes nothing; Update data pulls.{% endcall %}
    {# the hub models runs are compared against (an older sparse clone may
       lack them; Update data adds them) #}
@@ -46,10 +50,14 @@
   {# one row: the primary pull and the quiet check. No confirmation: pulling
      is safe and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}
+  {# the primary is what to do next: Update data once a check shows the
+     clone behind (or with no data at all), else the check (the script
+     swaps them when a check answers) #}
+  {% set pull_first = hub_behind or (not live_week and not n_vintages) %}
   <div class="row hubacts">
   <form method="post" action="/data/pull">
-   <button class="gold" data-guard="data-pull">Update data</button></form>
-  <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
+   <button class="{{ 'gold' if pull_first else 'quiet' }}" id="hub-pull" data-guard="data-pull">Update data</button></form>
+  <form method="post" action="/freshness"><button class="{{ 'quiet' if pull_first else 'gold' }}" id="hub-check">Check for new data</button></form>
   </div>
   {# while a pull or check runs (the script below): a sliding bar labelled
      with what runs, spoken once by the status line; a failure is an alert #}
@@ -70,7 +78,10 @@
    {% if latest %}
    {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
    {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
+   {# only when it says something the Latest vintage tile does not #}
+   {% if latest.newest_week != latest_vintage %}
    {{ tips.stat("Covers through", nw(latest.newest_week), id="latest-newest") }}
+   {% endif %}
    {% endif %}
   {% endcall %}
   {% endif %}
@@ -173,9 +184,12 @@
   <div class="vintagetable">
    {{ tips.heading("Newest " ~ (series_table | length) ~ " weeks", "vb-recent", ("As stored." if ds else "As archived; later revisions never appear."), level=3, cls="dt-subhead", tip_label="the newest weeks") }}
    <table class="compact">
-    <tr><th>week</th><th class="num">{{ ds.unit if ds else "admissions" }}</th></tr>
-    {% for d, v in series_table %}
-    <tr><td>{{ d }}</td><td class="num">{{ "{:,.6g}".format(v) if ds else "{:,.0f}".format(v) }}</td></tr>
+    <tr><th>week</th><th class="num">{{ ds.unit if ds else "admissions" }}</th><th class="num">change</th></tr>
+    {# the change on the week before (the next row down, newest first);
+       the oldest row has no week before it in the table #}
+    {% for d, v in series_table %}{% set pv = series_table[loop.index][1] if loop.index < series_table | length else none %}
+    <tr><td>{{ d }}</td><td class="num">{{ "{:,.6g}".format(v) if ds else "{:,.0f}".format(v) }}</td>
+     <td class="num dt-wow">{% if pv is not none and pv %}{% set pct = 100 * (v - pv) / pv %}{% set dirn = "up" if pct >= 0.05 else ("down" if pct <= -0.05 else "flat") %}<span class="dt-wow--{{ dirn }}"><span aria-hidden="true">{{ {"up": "↑", "down": "↓", "flat": "→"}[dirn] }}</span><span class="uk-sr">{{ dirn }} </span>{{ "{:.1f}".format(pct | abs) }}%</span>{% endif %}</td></tr>
     {% endfor %}
    </table>
   </div>
@@ -326,6 +340,13 @@
          FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral',d.words||'');
        if(det)det.textContent=d.detail||'';
        if(wrap)wrap.hidden=!d.detail;
+       // the next step is the primary: Update data when the clone is behind
+       var pb=document.getElementById('hub-pull'),
+           cb=document.getElementById('hub-check');
+       if(pb&&cb){
+         pb.className=d.behind?'gold':'quiet';
+         cb.className=d.behind?'quiet':'gold';
+       }
        busy(false,'');
        stat.textContent=d.words?'Hub clone: '+d.words:'';
      })

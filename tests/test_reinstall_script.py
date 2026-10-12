@@ -186,7 +186,10 @@ def test_the_readme_offers_the_one_line_reinstall_to_macos_and_linux_only():
     lead = " ".join(before[before.rindex("\n\n"):].split())
     assert lead.startswith("On macOS and Linux,"), lead
     after = " ".join(readme[readme.index(LINE):].split())
-    assert f'"{WINDOWS_STEPS}" in docs/INSTALL-STUDENTS.md' in after[:400]
+    # the guide's path is a link to the section (README paths are links)
+    assert (f'"{WINDOWS_STEPS}" in [docs/INSTALL-STUDENTS.md]'
+            '(docs/INSTALL-STUDENTS.md#resetting-or-reinstalling-windows)'
+            in after[:400])
     assert f"\n## {WINDOWS_STEPS}\n" in GUIDE
 
 

@@ -124,7 +124,8 @@ def test_report_opens_on_the_forecast_detail(tmp_path, monkeypatch):
     html = _build(root)
     assert 'id="tab-fc" aria-pressed="true"' in html
     assert 'id="tab-map" aria-pressed="false"' in html
-    assert 'setView("fc");' in html
+    # the first view: a deep link's or the remembered one, else "fc"
+    assert ': ok(sv) ? sv : "fc";' in html
     assert "window.showState = function(id)" in html
     assert 'id="usmap"' in html
 

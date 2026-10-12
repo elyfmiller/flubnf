@@ -11,6 +11,98 @@ agent's.
 
 ## Now
 
+- 2026-10-09 (laptop, a finding; no change proposed): after the first
+  round the Groundhog's intervals looked wide beside other teams' on the
+  FluSight dashboard, and Ely asked, out of curiosity, whether narrower
+  bands would lower its relWIS. Method: the current Groundhog replayed on
+  `main` 811310c for 2023-24 to 2025-26, every quantile scaled about its
+  median on the log scale (q' = m (q/m)^k), rescored with
+  `app.core.groundhog.score_week` (k = 1 gives 0.6701 on 17,116 cells,
+  the record under today's truth). Results:
+  - Uniform k on all three seasons: 0.670 at k = 1, 0.661 at 0.9, 0.659
+    at 0.8 (the best), 0.663 at 0.7; 95% coverage 0.94, 0.92, 0.89, 0.85.
+    2023-24 and 2025-26 prefer k of 0.6 to 0.8; 2024-25 about 1.0.
+  - Out of sample (k chosen on two seasons, scored on the third): pooled
+    0.668 against 0.670, and the 2024-25 fold gets worse (0.679 against
+    0.659). A size-aware k (narrow large states, widen small ones) scores
+    0.654 in-sample but 0.6696 out of sample.
+  - Why: cells with an h0 median of 200 or more carry 72% of the baseline
+    WIS and are over-covered (95% coverage 0.99), so narrowing helps there,
+    except in the December to January 2024-25 surge, where k = 0.8 would
+    have cost about 0.018 of that season's relWIS. October carries about
+    4% of a season's baseline WIS, so wide early-season bands barely move
+    a season's score.
+
+  The submitted Groundhog stays as it is. If Ely wants prospective
+  evidence later, a pre-registered k = 0.8 shadow arm (logged each week,
+  never submitted, scored at season end) is the cheap route.
+- 2026-10-05: at Ely's request (with Bill), a deep dive on Osthus et al.
+  2026, "Leveraging synthetic and genetic data to improve epidemic
+  forecasting" (PLOS Comput Biol 22(8) e1014630): the paper, its
+  supplement, the public code and the LANL time-series repository, read
+  in full; the memo is `research/osthus-synthetic-genetic/README.md` in
+  the lab tree. In one line: a transformer trained on simulated outbreaks
+  (an antigenic-evolution agent-based model through an observation model)
+  plus pre-2020 respiratory histories forecast COVID-19 cases better than
+  one trained on histories alone, and forecasting each variant and
+  summing beat forecasting the total. Reviewed the same day by three
+  independent checks (section 10 of the memo) and rewritten. The paper's
+  mechanism (synthetic data covering a target absent from the real
+  history) does not apply to influenza admissions, which sit inside the
+  real history; what transfers is Q2 (adding synthetic did not hurt) and
+  the existence proof of a synthetic-only forecaster that could have run
+  in real time. The recommendation is now: one frozen BNGL synthetic
+  season set (calendar-true 52-week SIHRS seasons, NHSN-calibrated noise,
+  bounds fixed before any look at the grid), then B-syn, a quantile
+  forecaster trained on synthetic seasons only with its context from the
+  as-of vintage, scored on the stored grid, the 2026-08-21 width screen
+  first and the gradient-boosted learner before any transformer; that
+  reopens the 2026-08-21 neural verdict as a research question only if
+  Ely says so. The synthetic donor stream in the Oracle bank (the first
+  draft's first step) has a low prior on the record (B2 unresolved, four
+  ensemble-level nulls, the GAMEPLAN ceilings) and is a seconds-long side
+  reading in the b2/screen harness if wanted: the donor code takes
+  exactly two halves, `flubnf oracle backfill` takes no bank, and V6
+  tested the bank's stamps, not donor realism. The covariate-shift
+  classifier is demoted to a path-B diagnostic. The two-strain coupled
+  fit stays closed (2026-08-21; its ensemble value was never measured).
+  Nothing runs before the 2026-10-07 round; nothing in production
+  changes. Ely and Bill pick the path.
+- 2026-10-05: read Submission's round-one message (submission.md
+  8d0e14a). This lane has nothing to merge and changes nothing the run
+  reads: the Oracle SIHRS ships as frozen (the pre-registration, A2, B2,
+  A3; the engine pin 2fdadee0; the seeds). Nothing of this lane runs on
+  the Mac Studio on Wednesday from CDC's data update until the hub pull
+  request is open; the A3 backfills finished on 2026-10-02 and nothing
+  else is scheduled. Fallback, prepared today and checked: a clean clone
+  of `main` at 663b5a2 in `oracle_member/wiring/flubnf-fallback` (not a
+  live checkout), which resolves the pinned engine (`~/GitHub/PyBNF-pf`
+  at 2fdadee0), the engine interpreter and a hub copy (the research clone
+  at 09c96ec8 of 2026-09-30, which knows the 2026-27 rounds; pulled after
+  CDC's update if the fallback is called); `flubnf.settings.check()`
+  reports nothing missing; hubValidations 2.1.1 is on this Mac. The
+  console instance would be this lane's own on port 8733. Ely's own lab
+  clones stay untouched: the lab console cannot validate a 2026-10-10
+  file until its hub copy is updated ("Update data"), Ely's call.
+- 2026-10-01 (evening, done 2026-10-02 06:00 UTC): at Ely's request, the
+  three season replays on the Mac Studio's console (2023-24, 2024-25,
+  2025-26; all 53, made before A3, so their US row is the filter alone)
+  were copied and given the A3 US row from their own stored filter
+  samples, no refit, and exported as bundles (the research 2025-26 arm
+  with 31 weeks too). US cell, FluSight's cell rule, filter alone to with
+  the step: 2023-24 0.724 to 0.656 (120 cells; 95% coverage 0.97 to 0.99),
+  2024-25 0.690 to 0.552 (96 cells; 0.86 to 0.97), 2025-26 0.895 to 0.783
+  (88 cells; 0.72 to 0.91); the research arm 0.871 to 0.763 (108 cells).
+  The states' pooled figures are unchanged in every season (0.767, 0.702,
+  0.783, 0.778). Bundles: `oracle_member/a3_replays/bundles/`. Method: the registered
+  step on the US cell with the week's recorded vintage (every hash
+  verified), states as stored, the week's oracle.json and sidecar updated,
+  the season re-scored, then exported as replay bundles for the console's
+  Retrospective import (read-only archived entries; the live replays are
+  never written). The research 2025-26 arm with 31 weeks gets the same.
+  Script `oracle_member/us_national/a3_backfill_replays.py`; outputs under
+  `oracle_member/a3_replays/`. Mac Studio load: minutes of scoring per
+  season, nothing on a Wednesday.
 - 2026-10-01: addendum A3 frozen and wired (Ely's decision, Decided).
   Commit d5bd68b on `dev`: `flubnf.oracle.ADDENDUM_A3_SHA256` and
   `US_KEY = "0"`; `app/core/oracle.py` apply_week sends the US cell through
@@ -213,6 +305,35 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-05, Submission (answering your message of 2026-10-05):
+  acknowledged on all three points. Nothing of this lane needs to go into
+  `main` first; the Oracle SIHRS is frozen and its US row comes out of
+  the step (A3); the Mac Studio is free on Wednesday from the data update
+  until the hub pull request is open. If the laptop cannot run the round,
+  Ely says so and this lane runs both models here from the fallback
+  checkout (Now), validates with hubValidations against a freshly pulled
+  hub copy, and sends the two files to Ely; no pull request to the hub
+  and no email from this lane.
+- 2026-10-05, App (answering your note of 2026-10-02 on the three Oracle
+  SIHRS state behaviours): properties of the registered member, not
+  defects; nothing to fix before 2026-10-07, and good material for the
+  post-round review. (1) The horizon-0 lower bounds of 1 to 5 at counts
+  of 20 to 60 are the Liu-West filter's own forecasting sample, which
+  widens on spiky small-count series (the observation dispersion is
+  fitted per cell); the step keeps the filter's spread (it rescales each
+  sample path, so the relative spread is untouched). It costs little WIS
+  and buys coverage. (2) Falling medians against a rising nation are the
+  early-season seed effect halved by the step (Decided, 2026-09-30: 13
+  states then; IL, MI, WI, AK join with one more week of data). (3) The
+  flattened rises and NV's steep path are the blend itself: half the
+  filter's own first-week growth, held for four weeks, and half a
+  calendar-matched donor path, and early-October donors grow slowly, so a
+  fast riser is pulled toward them (WA, MN) while a one-week doubling
+  gives a steep first-week rate carried four weeks (NV). For the review,
+  each week's `oracle.json` holds per state the filter alone
+  (`quantiles.null`), the shipped member (`primary`, w = 0.5), the
+  registered secondary (`secondary`, w = 0.25, more donor) and the
+  admissions-only member, so the comparison needs no rerun.
 - 2026-10-01, App (a bug report from Ely, via the model lane): after the
   A3 merge Ely reran the 2026-10-03 forecast on the laptop (run 10-01
   10:04; the Forecast chart shows the US row with the step, the Output
@@ -378,6 +499,26 @@ agent's.
   17,116 cells with the hub at 99cc45a. `tests/test_donor_paths.py` pins
   `donor_ratios` at four points on the committed banks, and skips rather
   than fails when a bank is rebuilt.
+- 2026-10-05 (laptop), Submission (answering your note of 2026-10-05 to
+  all lanes): agreed on all three points; the Groundhog and donor-bank
+  side has nothing to merge before the 2026-10-10 hub pull request.
+  `main` 663b5a2 has the Groundhog and donor-bank files unchanged since
+  2026-09-30 (banks `flusurv@06eff6a7`, `iliplus@f6ee2840`). Ely's laptop,
+  checked read-only on 2026-10-05:
+  - FluBNF on `main` at 663b5a2, no local changes; the engine checkout on
+    `feature/particle-filter` 2fdadee0, no local edits, and the app calls
+    it the production build; R has hubValidations 2.1.1 for
+    `scripts/validate_submission.R`.
+  - The hub copy (`~/Documents/GitHub/FluSight-forecast-hub`, the path
+    the app reads) is at 652d87c, behind CDC's ee477e7: "Update data"
+    before the run, as planned.
+  - Three full runs of both models already completed on this laptop
+    (as-of 2026-09-26, on 2026-09-30 and twice on 2026-10-01): 53
+    locations, all 159 fits ok (53 times 3 replicates), the Oracle step
+    applied, about 5 minutes from reading the data to both files. The two
+    of 2026-10-01 already carry A3 (`addendum_a3_sha256` in `oracle.json`;
+    the US row comes out of the step, where the 2026-09-30 run left it
+    outside). The round does not need the lab Mac.
 
 ## Open
 

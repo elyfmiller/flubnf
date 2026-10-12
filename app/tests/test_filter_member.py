@@ -216,8 +216,13 @@ def _season_page(season):
     assert "preparing results" not in html and "Season player" in html
     page = " ".join(html.split("// live host for the shared player", 1)[0]
                     .split())
-    tiles = dict(re.findall(r"<h2>(US \(fitted\): [^<]+)</h2>(.*?)</div></div>",
-                            page))
+    # the US tiles sit in their own group (its heading and "fitted" tag),
+    # each named by its member; keyed here as before, "US (fitted): <name>"
+    us = page.split('<h3 id="rs-g-us">US national</h3>', 1)
+    assert len(us) == 1 or '<span class="uk-tag">fitted</span>' in us[1][:200]
+    group = us[1].split("</section>", 1)[0] if len(us) == 2 else ""
+    tiles = {"US (fitted): " + name: body for name, body in
+             re.findall(r"<h2>([^<]+)</h2>(.*?)</div></div>", group)}
     row = page.split('<tr class="usagg"', 1)[1].split("</tr>", 1)[0]
     return page, tiles, row
 

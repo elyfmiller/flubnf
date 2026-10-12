@@ -1376,7 +1376,11 @@ def record_finalize(root: Path, seconds: dict) -> None:
         write_meta(root, m)
 
 
-HEADLINE_MODELS = ("pf", "analogue")
+#: the season list's headline figures, in the season page's order
+#: (relwis.MODELS): the Liu-West filter (pf_filter, the Oracle SIHRS before
+#: its step) beside the shipped members, so a season card and its page
+#: show the same figures. Display only: scoring is untouched
+HEADLINE_MODELS = ("pf", "pf_filter", "analogue")
 
 
 def _headline_metrics(scores_path: Path) -> dict:

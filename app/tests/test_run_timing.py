@@ -579,7 +579,7 @@ def test_runs_page_shows_elapsed_per_completed_run():
     html = srv.templates.env.get_template("runs.html").render(
         active="Runs", ledger=[
             {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31", "status": "ok",
-             "chips": "PF 2 fits", "elapsed_s": 3725.0},
+             "chips": "2 Oracle SIHRS fits", "elapsed_s": 3725.0},
             {"run_id": "r0", "label": "2097-12-27 · Dec 27 08:00", "status": "ok",
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed<" in html
@@ -658,7 +658,7 @@ def _mini_season(tmp_path, monkeypatch):
     return root
 
 
-def test_season_report_header_carries_the_timing(tmp_path, monkeypatch):
+def test_season_report_header_carries_its_evidence_not_the_timing(tmp_path, monkeypatch):
     root = _mini_season(tmp_path, monkeypatch)
     # no record: the header says nothing rather than inventing a duration
     assert "Wall time" not in report_season.build_season_report(
@@ -668,9 +668,13 @@ def test_season_report_header_carries_the_timing(tmp_path, monkeypatch):
                             "week_seconds": {W1: 3725.0},
                             "heartbeat_utc": time.time()})
     html = report_season.build_season_report(root, SEASON).read_text()
-    # the record refreshed it: the page's facts, and the full line in the tip
-    assert '<span class="uk-stat-v" id="rs-timing">1:02:05</span>' in html
-    assert "Replay wall time 1:02:05 over 1 weeks, 3725 s per week." in html
+    # the record refreshed it, but the report states its evidence (the
+    # weeks it covers, the build), not the replay's wall time; the page
+    # keeps that
+    assert 'id="rs-timing"' not in html
+    assert "Wall time" not in html
+    assert 'aria-label="Report facts"' in html
+    assert f"{W1} to {W1}" in html
 
 
 # ----------------------------------------------------------- page treatments

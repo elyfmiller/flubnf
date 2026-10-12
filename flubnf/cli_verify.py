@@ -129,7 +129,8 @@ def site_build_cmd(
     check: bool = typer.Option(
         False, "--check",
         help="Exit non-zero if any computed score disagrees with the "
-             "figure the console publishes for the same season."),
+             "figure the console publishes for the same season, or if "
+             "an engine component reports not installed."),
 ):
     """Read the app's state and write the static site.
 
@@ -170,3 +171,10 @@ def site_build_cmd(
     else:
         console.print("[green]  scores match the console's published "
                       "figures[/green]")
+    missing = res.get("engines_missing") or []
+    if missing:
+        console.print("[red]engine not installed on this machine: "
+                      f"{', '.join(missing)}[/red] (the page omits it; "
+                      "publish from a machine with the engine)")
+        if check:
+            raise typer.Exit(1)

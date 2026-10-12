@@ -17,8 +17,9 @@
   body{background:#FFFFFF;color:#000F7E}
   .ok{color:#177245}.bad{color:#C42840}
   .cov-ok{color:#177245}.cov-low{color:#C42840}.cov-wide{color:#8A5A14}
-  .display,.playerbar,.fdrow,.fdmodels,.pbscale,.rt-filter,.viewtabs,
-  button:not(.thsort),select,input{display:none!important}
+  .display,.playerbar,.fdrow,.fdmodels,.pbscale,.rt-filter,.viewtabs,.rt-views,.rt-mapbar,
+  button:not(.thsort):not(.rt-locbtn),select,input,.rt-models,.rt-ticks{display:none!important}
+  .rt-locbtn{color:inherit!important}
   .card{box-shadow:none}
   tr,.rt-tile{break-inside:avoid}
  }
@@ -57,7 +58,9 @@
 {% macro settings_line(pairs) -%}
 {%- set ns = namespace(items=[]) -%}
 {%- for k, v in pairs -%}
- {%- set v0 = (v ~ '').split(' (')[0] -%}
+ {#- the preset is named for this tree's pf (a sealed record's is the
+     Liu-West filter alone, never the Oracle SIHRS) #}
+ {%- set v0 = (v ~ '').replace('Oracle SIHRS', model_name('pf')).split(' (')[0] -%}
  {%- if k == 'season' %}{% set t = v0 %}
  {%- elif k == 'locations' %}{% set t = v0.replace('all ', '').replace(' jurisdictions plus US national', ' jurisdictions + US').replace(' plus US national', ' + US') %}
  {%- elif k == 'particles' %}{% set t = v0 ~ ' particles' %}
@@ -214,17 +217,33 @@
    the state in tips and badges) beside the report buttons; under it the
    settings as a row of facts, the full list (the shared renderer's
    pairs) in its tip #}
+{# the report (export) states its evidence instead of the replay's wall
+   time: the weeks it covers, the truth it was scored against, the build
+   that wrote it and where the project lives #}
 {% set p_timed = prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
+{% if export %}{% set p_timed = false %}{% endif %}
 {% set p_facts = prog and (p_timed or prog.added_n or prog.status in ('stopped', 'interrupted')) %}
 <div class="rs-band">
- {% if p_facts %}
+ {% if export %}
+ <div class="rs-facts rt-bandfacts">
+  {% set ex = export_facts if export_facts is defined else {} %}
+  {% set ns_ex = namespace(items=[("calendar", (weeks[0] ~ " to " ~ weeks[-1]) if weeks else "", "Weeks")]) %}
+  {% if ex.truth %}{% set ns_ex.items = ns_ex.items + [("check", ex.truth)] %}{% endif %}
+  {% set ns_ex.items = ns_ex.items + [("info", "build " ~ running_sha(), "Build")] %}
+  {% set proj %}<a href="https://github.com/elyfmiller/flubnf">github.com/elyfmiller/flubnf</a>{% endset %}
+  {% set ns_ex.items = ns_ex.items + [("external", proj, "Project")] %}
+  {{ tips.meta(ns_ex.items, label="Report facts") }}
+  {% if prog and prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "The replay stopped before the season's last week.", id="rs-state") }}
+  {% elif prog and prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay.", id="rs-state") }}{% endif %}
+ </div>
+ {% elif p_facts %}
  <div class="rs-facts rt-bandfacts">
   {% if p_timed %}
   {% call tips.stats("uk-stats--row", label="Replay timing") %}
    {% if not (prog.mean_s or prog.slowest_week) %}{{ tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") }}{% else %}
    {% call tips.stat("Wall time", prog.elapsed_s | hms, id="rs-timing") %}Replay wall time {{ prog.elapsed_s | hms }} over {{ prog.done }} weeks{% if prog.mean_s %}, {{ "%.0f"|format(prog.mean_s) }} s per week{% endif %}.{% if prog.slowest_week %} Mean over {{ prog.weeks_measured }} timed week{{ "" if prog.weeks_measured == 1 else "s" }}; the slowest, {{ prog.slowest_week }}, took {{ "%.0f"|format(prog.slowest_s) }} s.{% endif %}{% endcall %}{% endif %}
    {{ tips.stat("Weeks", prog.done) }}
-   {% if prog.mean_s %}{{ tips.stat("Pace", "%.0f"|format(prog.mean_s), "s per week") }}{% endif %}
+   {% if prog.mean_s %}{{ tips.stat("Pace", ("%.0f"|format(prog.mean_s / 60)) if prog.mean_s >= 90 else ("%.1f"|format(prog.mean_s / 60)), "min per week") }}{% endif %}
   {% endcall %}
   {% endif %}
   {% if prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes from the last completed week.", id="rs-state") }}
@@ -266,10 +285,10 @@
  </div>
  {% endif %}
 </div>
-{% if p_facts and prog.settings %}
+{% if prog and prog.settings %}
 <div class="rs-settings rt-settings">{{ settings_line(prog.settings) }}
  {# the full list, one line per setting (a tooltip cannot hold a dl) #}
- {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}{% endcall %}</div>
+ {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ (v ~ '').replace('Oracle SIHRS', model_name('pf')) }}</span>{% endfor %}{% endcall %}</div>
 {% endif %}
 {% endif %}
 {% if not export %}
@@ -401,6 +420,13 @@
  {{ tips.empty("No scoreable weeks yet", "clock", tiptext="Truth for these forecast dates has not settled, so relWIS arrives later; the weekly maps below are available now.", id="rs-unsettled") }}
  {% endif %}
  {% if heads or tm.us %}
+ {# two groups of tiles, each named once: the pooled jurisdictions and
+    the US national row (its provenance as a tag), so a tile is named by
+    its member alone; two up and compact on a phone (tabs/retro.css) #}
+<div class="rt-vgroups">
+ {% if heads %}
+ <section class="rt-vgroup" style="--n:{{ heads | length }}" aria-labelledby="rs-g-pool">
+ <div class="rt-vgroup-h"><h3 id="rs-g-pool">{{ (states | length ~ " jurisdiction" ~ ("" if states | length == 1 else "s")) if states else "Jurisdictions" }}</h3>{{ tips.tag("pooled") }}</div>
 <div class="grid2 tiles4">
  {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
@@ -416,30 +442,71 @@
    {# log scale and coverage on the same cells (ratio of sums only) #}
    {{ tile_more(d.get('log_rel') if d else None, d.get('cov') if d else None) }}</div>
  {% endfor %}
+</div></section>
+ {% endif %}
  {# the national tile ALWAYS names its provenance (fitted vs sum of
     states); it is outside the pooled headline by policy. A fitted US pf
     from weeks stored before addendum A3 is the Liu-West filter without
     the Oracle step, all of them or some (us_row.pf_short, by the weeks'
     era), said while pf wears the Oracle SIHRS name; since A3 the step
     covers it and there is nothing to add #}
+ {% if tm.us %}
+ {% set us_n = namespace(n=0) %}{% for m in season_models %}{% if us_fig[m] %}{% set us_n.n = us_n.n + 1 %}{% endif %}{% endfor %}
+ <section class="rt-vgroup rt-vgroup-us" style="--n:{{ us_n.n }}" aria-labelledby="rs-g-us">
+ <div class="rt-vgroup-h"><h3 id="rs-g-us">US national</h3>{{ tips.tag("fitted" if us_row.fitted else "sum of states") }}</div>
+<div class="grid2 tiles4">
  {% for m in season_models %}{% if us_row and us_fig[m] %}
  {% set pf_plain = m == 'pf' and us_row.pf_short and 'Oracle' in model_name('pf') %}
- <div class="card rt-tile"><div class="rt-tile-h"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2>
+ <div class="card rt-tile"><div class="rt-tile-h"><h2>{{ model_name(m) }}</h2>
    {% call tips.tip("rs-us-" ~ m, us_row.short_label ~ " " ~ model_name(m) ~ " score") %}relWIS vs the FluSight baseline;
    {% if us_row.fitted %}{% if pf_plain %}{{ us_row.pf_short }}, {% endif %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}.{% endcall %}</div>
    {{ big(us_row[m]) }}
    {{ tile_more((us_row.log_rel or {}).get(m), (us_row.cov or {}).get(m)) }}</div>
  {% endif %}{% endfor %}
+</div></section>
+ {% endif %}
 </div>
  {% endif %}
 </div>
 {% endif %}
 
-<div class="card playcard">
- {{ tips.heading("Season player", "rs-player", "Play steps through the season a week at a time at the chosen speed; drag the scrubber to any week. The left and right arrow keys step back and forward a week.") }}
+<script>
+ // the season's memory in this browser (guarded localStorage: file:,
+ // private windows): the player's model checkboxes, location and time
+ // window, the page's view and the per-state sort. Read by the player
+ // (cfg.store) and the per-state table
+ window.FluBNFRetroStore = (function(){
+  var K = 'flubnf-retro:' + {{ season | tojson }};
+  function all(){
+   try{ return JSON.parse(localStorage.getItem(K) || '{}') || {}; }
+   catch(e){ return {}; }
+  }
+  return {
+   get: function(k){ var v = all()[k]; return v === undefined ? null : v; },
+   set: function(k, v){
+    try{
+     var a = all();
+     if(v === null) delete a[k]; else a[k] = v;
+     localStorage.setItem(K, JSON.stringify(a));
+    }catch(e){}
+   }
+  };
+ })();
+</script>
+<div class="card playcard rt-playcard" id="rs-playcard">
+ {# the explanation and the player's keys (player.js) in the "i" #}
+ {% call tips.heading("Season player", "rs-player", rich=True, tip_label="the season player") %}<span class="uk-tt-line">Play steps through the season a week at a time at the chosen speed; drag the scrubber to any week.</span>
+ <span class="uk-tt-line"><b>Keys</b></span>
+ <span class="uk-tt-line"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> a week back or forward</span>
+ <span class="uk-tt-line"><kbd>Home</kbd> <kbd>End</kbd> the first or last week</span>
+ <span class="uk-tt-line"><kbd>Space</kbd> or <kbd>K</kbd> play or pause</span>
+ <span class="uk-tt-line"><kbd>M</kbd> categorical forecast, <kbd>F</kbd> forecast detail</span>
+ <span class="uk-tt-line"><kbd>[</kbd> <kbd>]</kbd> the previous or next location</span>
+ <span class="uk-tt-line"><kbd>L</kbd> lock the axes</span>{% endcall %}
  {# ONE control row: transport, speed, scrubber, week label and the two
-    views as a segmented pair; it wraps on a phone #}
- <div class="row playerbar">
+    views as a segmented pair; it wraps on a phone, where it stays at the
+    top of the window while the card scrolls (rt-pbar) #}
+ <div class="row playerbar rt-pbar">
   <button type="button" class="quiet" id="pb-prev"
     aria-label="Previous week">&#9664;</button>
   {# the play button's aria-label is state-managed by the shared player #}
@@ -453,31 +520,50 @@
   </select>
   {# the scrubber walks the timeline: the stored weeks plus the season's
      no-data weeks as placeholders (playback.week_notes) #}
-  <input type="range" id="pb-scrub" min="0" max="{{ (timeline|length) - 1 }}" step="1"
+  {# the month of each month's first week under the scrubber
+     (month_ticks_for_dates), placed along the track #}
+  {% set nt = (timeline|length) - 1 %}
+  <span class="rt-scrub"><input type="range" id="pb-scrub" min="0" max="{{ nt }}" step="1"
          value="{{ timeline.index(week) if week in timeline else 0 }}" aria-label="Week scrubber">
-  {# polite live regions announce the player advancing #}
-  <span class="hint" id="pb-week" aria-live="polite"></span>
+   {% if nt > 0 %}<span class="rt-ticks" aria-hidden="true">{% for i, lab in month_ticks_for_dates(timeline) %}<span style="--f:{{ '%.4f' | format(i / nt) }}">{{ lab }}</span>{% endfor %}</span>{% endif %}</span>
+  {# polite live regions announce the player advancing; the link button
+     copies the address of this week, location and view #}
+  <span class="rt-weekl"><span class="hint" id="pb-week" aria-live="polite"></span>
+   <button type="button" class="quiet rt-copy" id="pb-copy" aria-label="Copy link to this week and view" title="Copy link">{{ tips.icon("external") }}</button>
+   <span class="rt-copied" id="pb-copied" aria-live="polite"></span></span>
   {# aria-pressed toggles, not a tablist (no tabpanels or roving focus
-     here); setView() keeps them true #}
-  <span class="viewtabs" role="group" aria-label="Playback view">
+     here); setView() keeps them true. The kit's segmented switch #}
+  <div class="uk-seg rt-views" role="group" aria-label="Playback view">
    <button type="button" class="quiet" id="tab-map" aria-pressed="{{ 'false' if export else 'true' }}">Categorical forecast</button>
    <button type="button" class="quiet" id="tab-fc" aria-pressed="{{ 'true' if export else 'false' }}">Forecast detail</button>
-  </span>
+  </div>
  </div>
+ {# the model checkboxes serve both views: the forecast detail's fans and
+    the live scores' rows (player.js) #}
+ <div class="rt-models"><span class="rt-seg-l" id="fd-models-l">Models</span>
+  <div class="fdmodels" id="fd-models" role="group" aria-labelledby="fd-models-l"></div></div>
  {# the view takes about 62% of the card, the live scores the rest; the
     scores stack under the view on a narrow window (.playgrid) #}
  <div class="playgrid">
   <div class="playview">
    {# a no-data week keeps the last map, greyed, under its note #}
    <div id="view-map" class="playmap"><p class="rt-note" id="map-note" hidden
-     aria-live="polite">{{ tips.icon("info", cls="rt-note-i") }}<span class="rt-note-t"></span></p>{{ map_html | safe }}</div>
+     aria-live="polite">{{ tips.icon("info", cls="rt-note-i") }}<span class="rt-note-t"></span></p>{{ map_html | safe }}
+    {# the categories' colors, and which horizon the map shows #}
+    {% if map_legend is defined and map_legend %}<div class="rt-mapfoot">{{ tips.legend(map_legend, label="Categorical forecast colors", id="rs-map-lg") }}
+     <span class="uk-badge-pair">{{ tips.tag(map_horizon) }}{{ tips.tip("rs-map-h", "the horizon shown", map_horizon_tip) }}</span></div>{% endif %}</div>
    <div id="view-fc" hidden>
     <div class="row fdrow">
      <select id="fd-loc" aria-label="Forecast location"
        style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
+     {# the x window: the last 12 weeks up to the shown week (the
+        default), or the whole season (player.js setWindow) #}
+     <div class="uk-seg" role="group" aria-label="Time window" id="fd-window">
+      <button type="button" data-win="recent" aria-pressed="true">Last 12 weeks</button>
+      <button type="button" data-win="season" aria-pressed="false">Season</button>
+     </div>
      <span class="lblrow rt-lock"><label class="ck" style="margin:0"><input type="checkbox" id="fd-lock"
-       checked> Lock axes</label>{{ tips.tip("rs-lock", "locked axes", "Keeps each location's axes fixed through playback, so the frames never jump. A zoom or pan by hand overrides them until a double click, another location, or this box.") }}</span>
-     <div class="fdmodels" id="fd-models"></div>
+       checked> Lock axes</label>{{ tips.tip("rs-lock", "locked axes", "Season window: keeps each location's axes fixed through playback, so the frames never jump. Last 12 weeks: the axes follow the shown week, the height fitted to the weeks in view. A zoom or pan by hand overrides them until a double click, another location, or this box.") }}</span>
     </div>
     {# the reserved height follows the viewport (the host's plotHeight) #}
     <div id="fd-plot" class="fdplot"></div>
@@ -502,14 +588,16 @@
    <p class="hint" id="pb-status" aria-live="polite"></p>
    {# a season with no official submission at all: where to get them #}
    <div id="pb-offhint" hidden>{% if export %}{{ tips.alert("info", "No official comparators were loaded when this report was built.", id="rs-offhint", live="") }}{% else %}{{ tips.alert("info", "Official comparators appear after Update data.", id="rs-offhint", action='<a href="/data">Data tab</a>' | safe, live="") }}{% endif %}</div>
-<div class="cumwrap" id="cumwrap"><h2>Cumulative relWIS through the season</h2>
+<div class="cumwrap rt-cumwrap" id="cumwrap"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
 {# a cumulative line is a ratio of sums by construction; no pairwise form #}
 {{ tips.empty("Not available under this convention", "info", tiptext="The curve is a running ratio of sums.", id="rs-cum-pw", compact=True) }}
 {% elif curves %}
 {# one line per scored model in its member colour; the y range hugs the data
-   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
-   final value are printed #}
+   (always showing the 1.0 and 0.5 gridlines, the 1.0 line named the
+   baseline); corner dates and each line's final value are printed in the
+   right margin, sorted by height and kept apart (the page script spaces
+   them again by their drawn size) #}
 {% set ns = namespace(vals=[]) %}
 {% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
 {% set vals = ns.vals %}
@@ -517,22 +605,24 @@
 {% set hi = [vals | max, 1.05] | max %}
 {% set lo = [vals | min, 0.45] | min %}
 {% set yspan = hi - lo %}
-{% set xs = 635 / (n - 1 if n > 1 else 1) %}
-{# cumchart: labels in viewBox units (scoped rules in nau.css); the plot
-   band runs y = 12..252, the month ticks and corner dates below it #}
+{% set xs = 610 / (n - 1 if n > 1 else 1) %}
+{# cumchart: labels in viewBox units, sized by the chart's width
+   (tabs/retro.css .rt-cumwrap); the plot band runs x = 20..630 and
+   y = 12..252, the end values right of it, the month ticks and corner
+   dates below it #}
 <svg class="cumchart" viewBox="0 0 720 300" style="width:100%">
  <line id="cum-marker" x1="-10" y1="8" x2="-10" y2="256" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".6"/>
- {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
+ {% for gv, gl in [(1.0, "1.0 baseline"), (0.5, "0.5")] %}
  {% set gy = (12 + (hi - gv) * 240 / yspan) | round(1) %}
- <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
- <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
+ <line x1="20" y1="{{ gy }}" x2="630" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
+ <text x="626" y="{{ (gy - 5) if gy >= 40 else (gy + 5) }}"{% if gy < 40 %} dominant-baseline="hanging"{% endif %} text-anchor="end" fill="var(--mut)" class="svgt-sm rt-gridl">{{ gl }}</text>
  {% endfor %}
+ {% set el = namespace(items=[]) %}
  {% for m, c in curves.items() %}
  {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
  {% set cn = c | length %}
- {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
+ {% set cxs = 610 / (cn - 1 if cn > 1 else 1) %}
  {% set cvals = c | map('last') | list %}
- {% set lx = 20 + (cn - 1) * cxs %}
  {% set ly = 12 + (hi - cvals[-1]) * 240 / yspan %}
  <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
   {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 240 / yspan) | round(1) }} {% endfor %}"/>
@@ -540,11 +630,20 @@
   <circle data-week="{{ d }}" cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 240 / yspan) | round(1) }}" r="3"
           fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
- {# the end value in ink beside its line's colored end dot: a member
-    color (the gold) is too light for text on a light card #}
- <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
-       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
-       style="fill:var(--ink)">{{ "%.3f"|format(cvals[-1]) }}</text>
+ {% set el.items = el.items + [{"y": ly, "v": cvals[-1], "m": m}] %}
+ {% endfor %}
+ {# the end values in ink in the right margin, top to bottom by height,
+    at least 12 units apart: a member color (the gold) is too light for
+    text on a light card, and close finishes no longer overprint #}
+ {% set elab = namespace(prev=-100.0, out=[]) %}
+ {% for it in el.items | sort(attribute="y") %}
+ {% set y = [it.y + 4, elab.prev + 12] | max %}
+ {% set elab.prev = y %}
+ {% set elab.out = elab.out + [{"y": y, "v": it.v, "m": it.m, "y0": it.y + 4}] %}
+ {% endfor %}
+ {% for it in elab.out %}
+ <text x="637" y="{{ it.y | round(1) }}" data-y0="{{ it.y0 | round(1) }}" font-weight="700" class="svgt-md rt-endl"
+       style="fill:var(--ink)"><title>{{ model_name(it.m) if it.m }}</title>{{ "%.3f"|format(it.v) }}</text>
  {% endfor %}
  {# month ticks on the first scored week of each month
     (month_ticks_for_dates) #}
@@ -552,9 +651,9 @@
  <line x1="{{ (20 + i * xs) | round(1) }}" y1="254" x2="{{ (20 + i * xs) | round(1) }}" y2="260" stroke="var(--mut)"/>
  <text x="{{ (20 + i * xs) | round(1) }}" y="272" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
  {% endfor %}
- <text x="20" y="288" fill="var(--mut)" class="svgt-sm corner">{{ curve[0][0] }}</text>
+ <text x="20" y="294" fill="var(--mut)" class="svgt-sm corner">{{ curve[0][0] }}</text>
  {% if n > 1 %}
- <text x="655" y="288" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
+ <text x="630" y="294" text-anchor="end" fill="var(--mut)" class="svgt-sm corner">{{ (curve|last)[0] }}</text>
  {% endif %}
 </svg>
 {% if curves | length > 1 or '' not in curves %}{% set lg = namespace(items=[]) %}{% for m in curves %}{% set lg.items = lg.items + [('var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)'), model_name(m), 'line')] %}{% endfor %}{{ tips.legend(lg.items, label="Cumulative relWIS lines", id="rs-cum-lg") }}{% endif %}
@@ -586,11 +685,14 @@
  <summary><h2 style="display:inline">Per-state scores</h2>{% call tips.tip("rs-states", "the per-state scores") %}relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
  {%- if conv == 'pairwise' %} Each jurisdiction is scored against its own field, a figure CDC does not publish.{% endif %}
  {%- if show_cov %} {{ live_scores("states") }}{% endif %}{% endcall %}
-  {{ tips.badge("neutral", states|length ~ " state" ~ ('' if states|length == 1 else 's') ~ " scored") }}</summary>
+  {{ tips.badge("neutral", states|length ~ " jurisdiction" ~ ('' if states|length == 1 else 's') ~ " scored") }}</summary>
+ {# the filter, its count, and the reset of a remembered sort (shown
+    while the table is sorted) #}
  <div class="row rt-filter">
-  <input type="search" id="sf-filter" placeholder="Filter by state name"
-         aria-label="Filter rows by state name">
+  <input type="search" id="sf-filter" placeholder="Filter jurisdictions"
+         aria-label="Filter rows by jurisdiction name">
   <span class="rt-count" id="sf-count" aria-live="polite"></span>
+  <button type="button" class="quiet rt-sortreset" id="sf-reset" hidden>{{ tips.icon("refresh") }} Reset sort</button>
  </div>
  {# the rows are laid out in up to three side-by-side column groups at
     wide widths (the script below moves rows into copies of this table;
@@ -602,7 +704,7 @@
     column sortable #}
  <thead><tr>
   <th rowspan="2"><button type="button" class="thsort" data-key="name"
-    aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
+    aria-pressed="false">Location<span class="dir" aria-hidden="true"></span></button></th>
   {% for mk in season_models %}
   <th colspan="2" scope="colgroup" class="grp g1">{{ model_name(mk) }}</th>
   {% endfor %}
@@ -617,7 +719,7 @@
  {% else %}
  <thead><tr>
   <th><button type="button" class="thsort" data-key="name"
-    aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
+    aria-pressed="false">Location<span class="dir" aria-hidden="true"></span></button></th>
   {% for mk in season_models %}
   <th class="num"><button type="button" class="thsort" data-key="{{ mk }}"
     aria-pressed="false">{{ model_name(mk) }}<span class="dir" aria-hidden="true"></span></button></th>
@@ -630,11 +732,11 @@
  {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_fig[m]) if us_fig[m] else '' }}"{% if show_cov %}{{ cov95_data(m, (us_row.cov or {}).get(m) if us_fig[m] else none) }}{% endif %}{% endfor %}>
-  <td>{{ us_row.short_label }}{% call tips.tip("rs-usrow", "the US row") %}<span class="ncline">{{ us_row.note }}</span>
+  <td class="rt-namec"><span class="rt-nameus"><button type="button" class="rt-locbtn" data-loc="US" title="{{ us_row.short_label }}: open in Forecast detail">{{ us_row.short_label }}</button>{% call tips.tip("rs-usrow", "the US row") %}<span class="ncline">{{ us_row.note }}</span>
    {#- what the fitted US row of Oracle SIHRS is, by the stored weeks' era
        (us_national.PF_US_NOTES): with the Oracle step since addendum A3,
        the Liu-West filter alone before it #}
-   {%- if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="ncline">{{ us_row.pf_note }}</span>{% endif %}{% endcall %}</td>
+   {%- if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="ncline">{{ us_row.pf_note }}</span>{% endif %}{% endcall %}</span></td>
   {% for m in season_models %}
   <td class="num{% if show_cov %} g1{% endif %}{% if us_fig[m] and us_fig[m] >= 1 %} bad{% endif %}">
    {{ "%.3f"|format(us_fig[m]) if us_fig[m] else "n/a" }}{% if us_fig[m] and us_fig[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}
@@ -643,7 +745,7 @@
  {% endif %}
  {% for r in states %}<tr data-name="{{ r.name }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% if show_cov %}{{ cov95_data(m, ((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}>
-  <td>{{ r.name }}</td>
+  <td class="rt-namec"><button type="button" class="rt-locbtn" data-loc="{{ r.name }}" title="{{ r.name }}: open in Forecast detail">{{ r.name }}</button></td>
  {% for m in season_models %}
  <td class="num{% if show_cov %} g1{% endif %}{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}{% if r[m] and r[m] >= 1 %}{{ tips.icon("warning", "does not beat the baseline", cls="rt-verdict") }}{% endif %}</td>
@@ -652,15 +754,17 @@
  </div>
 </details>
 <script>
- // the fold state persists (open by default); sort and filter are
- // per-visit, so the page always loads in the server's order
+ // the fold state persists (open by default), and the sort per season
+ // (FluBNFRetroStore; Reset sort returns the server's order); the filter
+ // is per visit
  (function(){
   var d=document.getElementById('statefold');
   if(d){
-   if(localStorage.getItem('statefold-open')==='0')d.open=false;
+   try{if(localStorage.getItem('statefold-open')==='0')d.open=false;}catch(e){}
    d.addEventListener('toggle',function(){
-    localStorage.setItem('statefold-open',d.open?'1':'0');});
+    try{localStorage.setItem('statefold-open',d.open?'1':'0');}catch(e){}});
   }
+  var store=window.FluBNFRetroStore||null;
   var tab=document.getElementById('sf-table');
   if(!tab)return;
   var tb=tab.tBodies[0],
@@ -693,6 +797,7 @@
    host.dataset.n=String(n);
   }
   function groups(){
+   if(key)return 1;
    var w=host.clientWidth||0,
        rem=parseFloat(getComputedStyle(document.documentElement).fontSize)/16||1;
    return Math.max(1,Math.min(SF_MAX,Math.floor(w/(SF_COL_PX*rem))));
@@ -754,7 +859,12 @@
     }
    });
   }
-  function resort(){layout();}
+  var reset=document.getElementById('sf-reset');
+  function resort(){
+   if(reset)reset.hidden=!key;
+   if(store)store.set('sort',key?{key:key,dir:dir}:null);
+   layout();
+  }
   host.addEventListener('click',function(e){
    var b=e.target.closest?e.target.closest('button.thsort'):null;
    if(!b)return;
@@ -762,6 +872,15 @@
    else{key=b.dataset.key;dir=1;}
    resort();
   });
+  if(reset)reset.addEventListener('click',function(){key=null;dir=1;resort();});
+  // the season's remembered sort, when its column is on this page
+  (function(){
+   var sv=store?store.get('sort'):null;
+   if(sv&&sv.key&&btns().some(function(b){return b.dataset.key===sv.key;})){
+    key=sv.key;dir=sv.dir<0?-1:1;
+    if(reset)reset.hidden=false;
+   }
+  })();
   var f=document.getElementById('sf-filter'),
       c=document.getElementById('sf-count');
   f.addEventListener('input',function(){
@@ -949,9 +1068,48 @@
  // ---- the two page views (outlook map, forecast detail) stay host-side;
  // the shared player drives everything inside the forecast detail view ----
  const V = {view: 'map'};
- const player = FluBNFPlayer.init({
+ // deep links: ?week=&loc=&view= on the page (archive and conv kept),
+ // #week=&loc=&view= in the exported file (a file has no query of its
+ // own); both are read, the hash winning
+ const LINK = (function(){
+   const out = {};
+   const read = q => {
+     try{ new URLSearchParams(q).forEach((v, k) => { if(v) out[k] = v; }); }
+     catch(e){}
+   };
+   read(location.search);
+   read((location.hash || '').replace(/^#/, ''));
+   return out;
+ })();
+ if(LINK.week && WEEKS.indexOf(LINK.week) >= 0)
+   document.getElementById('pb-scrub').value = WEEKS.indexOf(LINK.week);
+ const STORE = window.FluBNFRetroStore || null;
+ let player = null;
+ // the address follows the week, the location and the view (replaced,
+ // never pushed: Back leaves the page as before)
+ function writeLink(){
+   if(!player) return;
+   const p = {week: player.week(), loc: player.loc(), view: V.view};
+   try{
+     if(EMBED){
+       history.replaceState(null, '', '#' + new URLSearchParams(p).toString());
+       return;
+     }
+     const q = new URLSearchParams(location.search);
+     Object.keys(p).forEach(k => q.set(k, p[k]));
+     history.replaceState(null, '', location.pathname + '?' + q.toString());
+   }catch(e){}
+ }
+ player = FluBNFPlayer.init({
    weeks: WEEKS,
    notes: NOTES,
+   // a deep link's location, and the season's memory (checkboxes,
+   // location, time window)
+   initialLoc: LINK.loc || '',
+   store: STORE,
+   onLoc: () => writeLink(),
+   // M and F
+   onView: v => setView(v),
    // marks the placeholder weeks: truth only, no forecast, scores carried
    noDataNote: NO_DATA_NOTE,
    mode: 'live',
@@ -970,7 +1128,7 @@
    payloadError: w => PERR[w],
    isCached: w => (w in PAY),
    detailVisible: () => V.view === 'fc',
-   onSeek: w => {if(V.view === 'map') showMap(w); cumMarker(w);},
+   onSeek: w => {if(V.view === 'map') showMap(w); cumMarker(w); writeLink();},
    preload: w => {if(V.view === 'map') fetchMap(w);},
    // re-read per redraw; card = the explicit chart background (saved PNGs)
    palette: () => ({ink: css('--ink'), mut: css('--mut'),
@@ -991,10 +1149,71 @@
    tm.setAttribute('aria-pressed', String(v === 'map'));
    tf.classList.toggle('gold', v === 'fc');
    tf.setAttribute('aria-pressed', String(v === 'fc'));
+   if(STORE) STORE.set('view', v);
    player.seek(player.idx());
  }
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');
+ // a name in the per-state table opens that location's forecast detail
+ // and brings the player into view
+ document.addEventListener('click', function(e){
+   const b = e.target.closest ? e.target.closest('button.rt-locbtn[data-loc]') : null;
+   if(!b) return;
+   player.setLoc(b.dataset.loc);
+   setView('fc');
+   const card = document.getElementById('rs-playcard');
+   if(card) card.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+                                           ? 'auto' : 'smooth', block: 'start'});
+ });
+ // Copy link: the address of this week, location and view
+ (function(){
+   const btn = document.getElementById('pb-copy'),
+         out = document.getElementById('pb-copied');
+   if(!btn) return;
+   let t = null;
+   function said(ok){
+     out.textContent = ok ? 'Link copied' : 'Copy failed';
+     clearTimeout(t); t = setTimeout(() => {out.textContent = '';}, 2500);
+   }
+   function fallback(url){
+     const ta = document.createElement('textarea');
+     ta.value = url; ta.setAttribute('readonly', '');
+     ta.style.position = 'fixed'; ta.style.opacity = '0';
+     document.body.appendChild(ta); ta.select();
+     let ok = false;
+     try{ ok = document.execCommand('copy'); }catch(e){}
+     ta.remove(); said(ok);
+   }
+   btn.addEventListener('click', function(){
+     writeLink();
+     const url = location.href;
+     if(navigator.clipboard && navigator.clipboard.writeText)
+       navigator.clipboard.writeText(url).then(() => said(true), () => fallback(url));
+     else fallback(url);
+   });
+ })();
+ // the cumulative chart's end values, spaced again by their drawn height
+ // (the server keeps them 12 units apart; the labels grow on a narrow
+ // chart), top to bottom in the order of their lines
+ function cumLabels(){
+   const svg = document.querySelector('svg.cumchart');
+   if(!svg) return;
+   const ls = [].slice.call(svg.querySelectorAll('text.rt-endl'));
+   if(!ls.length) return;
+   let h = 12;
+   try{ ls.forEach(t => { const b = t.getBBox(); if(b.height > h) h = b.height; }); }
+   catch(e){}
+   const gap = Math.max(12, h * .9);
+   ls.sort((a, b) => (+a.dataset.y0) - (+b.dataset.y0));
+   let prev = -1e9;
+   const ys = ls.map(t => { const y = Math.max(+t.dataset.y0, prev + gap); prev = y; return y; });
+   const over = ys[ys.length - 1] - 256;
+   ls.forEach((t, i) => t.setAttribute('y', (ys[i] - Math.max(0, over)).toFixed(1)));
+ }
+ cumLabels();
+ let cumT = null;
+ addEventListener('resize', () => {clearTimeout(cumT); cumT = setTimeout(cumLabels, 150);});
+ addEventListener('fontsizechange', cumLabels);
  // a state clicked on the map (its "click for details") opens its
  // forecast detail (usmap's drill-down hook)
  const STATE_NAMES = {{ (state_names or {}) | tojson }};
@@ -1009,11 +1228,18 @@
  };
  // the initial week is painted server-side; warm its swap payload
  (function(){
-   const w0 = WEEKS[player.idx()];
+   const w0 = {{ week | tojson }};
    document.getElementById('view-map').dataset.week = w0;
    fetchMap(w0);
  })();
- setView({{ ('fc' if export else 'map') | tojson }});
+ // the first view: a deep link's, else the season's last, else the
+ // report's forecast detail or the page's map
+ setView((function(){
+   const ok = v => v === 'map' || v === 'fc';
+   const sv = STORE ? STORE.get('view') : null;
+   return ok(LINK.view) ? LINK.view
+        : ok(sv) ? sv : {{ ('fc' if export else 'map') | tojson }};
+ })());
 </script>
 {% endif %}
 {% endblock %}

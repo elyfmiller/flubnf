@@ -6,6 +6,29 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-07: weekly report trimmed at Ely's request (PR #31, on `main`): both
+  95% bands plain fills in each model's colour, no off-scale arrows, and
+  about 90% of the explanatory text removed. A stored run rebuilds
+  trimmed when served, so the 2026-10-10 report needs no re-run.
+- 2026-10-05: design and convenience pass on `dev` (Ely's request), not
+  on `main` while `main` is frozen for the 2026-10-10 round. Display and
+  wording only; nothing a run or the submission CSVs read changed.
+  Weekly report: member colours that pass contrast in every theme, a
+  colour-blind switch that works in a saved file, plain public wording
+  (reference date in the title, no internal names), a summary line, a
+  jump bar, states listed by category, a numbers table per detail,
+  print fixes (5 pages, no orphaned headings). Output: the due round
+  stands out with time left, copy-path and validator-command buttons,
+  "newer run in progress", superseded runs named. Forecast: reference
+  date and window under the date, location presets and filter, the
+  last form kept across restarts (`app/state/last_form.json`, the date
+  always resets to the newest week). Retrospective: opens on US over
+  the last 12 weeks, every member on, deep links, keys. Shell: phone
+  tabs wrap, "Match system" theme, g-key shortcuts ("?" lists them).
+  Public site and README: one name for the mechanistic member, no
+  builder-machine details, a status block and quick start.
+- 2026-10-02: the stale-download fix works on Ely's Mac: a download
+  saved over an existing file now replaces it (PR #28).
 - 2026-10-02: Ely's re-run of the 2026-10-03 dry run (after PR #28)
   checked: both CSVs pass all 27 hub checks once dated for a real round;
   the Oracle SIHRS US row carries the step (2,786 / 3,189 / 3,542 /
@@ -23,7 +46,8 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   four Letter pages (Save as PDF). `app/core/report_grid.py`, report
   bundle v8; reports from earlier runs gain it on their next run.
 - 2026-10-01: Ely's stale-download report (see model.md) is fixed on
-  `dev`, not yet checked on a Mac or on Windows. The likeliest cause: in
+  `main` and confirmed on Ely's Mac on 2026-10-02 (a placeholder file in
+  Downloads was replaced by the real CSV); Windows not yet checked. The cause: in
   the macOS window, Replace in the save panel only answered the question;
   WebKit refuses a taken name and drops the download without a word, so
   the old file stayed byte for byte. The window now removes the file you
@@ -67,6 +91,52 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Submission (2026-10-07, at Ely's request): the weekly report changes
+  alone go into `main` before tonight's run (pull request #30, branch
+  `report-to-main`: five report commits from `dev` plus three report
+  fixes), so the report Ely shares with the lab tonight carries them.
+  Nothing the run reads changes: the run writes both CSVs before the
+  report, the report writer is inside its own try/except, and the only
+  `pipeline.py` lines touched are hover and heading strings inside
+  `_write_weekly_report`. Checked before the merge: the full suite and CI
+  on Linux and Windows; the same inputs rendered through `main`'s and the
+  branch's code give identical bundles (only the wording differs); edge
+  runs (Groundhog only, Oracle SIHRS only, US only, one state, gaps,
+  zeros) behave as on `main`. The rest of the 2026-10-05 pass stays on
+  `dev`. Readiness, checked 01:00 UTC: CDC's hub is still at ee477e74
+  (nothing new since your check), `tasks.json` lists 2026-10-10 (window
+  2026-10-04 to 2026-10-07), both cards on the hub equal ours, and a
+  Groundhog file from `main` re-dated 2026-10-10 passes the app's 17
+  checks and CDC's 30% rule (largest share 0.117%). CDC's R validator
+  could not run here (no hubValidations); the laptop's R check or the
+  hub pull request's checks are the authoritative ones tonight.
+
+- Submission (2026-10-05, answering your note for the 2026-10-07 round):
+  agreed: the app lane merges nothing into `main` and changes nothing the
+  run reads until the 2026-10-10 hub pull request is open; `main` stays
+  at 663b5a2. Checked for the laptop in Iceland: (1) FluBNF updates itself
+  to `main` on open; the Forecast tab then defaults to the newest Saturday
+  in the data, 2026-10-03 after Wednesday's update, so the files are named
+  2026-10-10. (2) The Output tab's due / soon / closed badge reads Eastern
+  time, not the machine's clock (routes/output.py _window), so Iceland's
+  UTC changes nothing; "closed" from 23:00 ET = 03:00 Iceland. (3) The
+  app's own pre-upload check (app/core/hubcheck.py) already enforces the
+  30%-of-population limit ("plausible") with the vendored tasks.json, no
+  hub clone needed. (4) A correction to "Update data brings CDC's
+  src/validations/": a hub clone made by setup.sh or setup.ps1 is sparse
+  (auxiliary-data, target-data and the two comparator folders), so it has
+  no hub-config/ or src/, and `validate_submission.R` stops at "RED: not a
+  hub clone". Update data does not widen it to those folders. If Ely wants
+  the R validator on the laptop (it also needs R and hubValidations
+  installed; model.md says the laptop has hubValidations 2.1.1), check
+  the clone the app reads, on the laptop
+  `~/Documents/GitHub/FluSight-forecast-hub` (model.md): `ls
+  <hub>/hub-config <hub>/src/validations`. If either is missing, one
+  command widens it: `git -C <hub> sparse-checkout add hub-config src
+  model-metadata`.
+  Otherwise your cloud run of CDC's validator, and the hub pull request's
+  own checks, are the authoritative ones; the app's check covers the same
+  limits.
 - Model (2026-10-02, from Ely's re-run of the 2026-10-03 dry run after
   A3; an FYI, nothing asked before 2026-10-07 unless you see a defect
   rather than a property). The US row and the 52 state rows are as
@@ -174,7 +244,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
-- 2026-10-01, for Ely: on the laptop, run
-  `ls -lT ~/Downloads/2026-10-03-NAU_PyBNF-*.csv ~/Downloads/FluBNF-weekly-report-2026-09-26.html`;
-  09-30 times confirm the window cause. Then, once on `main`, download a
-  file twice choosing Replace: the copy must match the run's file.
+- For Ely (2026-10-05 design pass), not built yet: a live "This week"
+  card on Home; a submission checklist and "Mark as submitted" on the
+  due round; this week against last week before submitting; score CSV,
+  score map and season comparison in the Retrospective; a smaller
+  exported season file (23 MB now). Also Ely's: CITATION.cff version,
+  date and authors; the TEAM.md row in the docs index.
+- Number conflicts the docs pass could not settle from the repo: Oracle
+  SIHRS season figures 0.767 / 0.697 / 0.781 (README, home) against
+  in-app replays 0.767 / 0.702 / 0.782 (FLUSIGHT-2026-27.md); bare
+  analogue 2025-26 0.618 (README, ORACLE-SIHRS.md) against 0.621
+  (SITE.md, the sealed tree).

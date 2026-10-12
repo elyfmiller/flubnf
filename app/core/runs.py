@@ -563,7 +563,8 @@ def _verdict(fv: float, cls: str = "fc-verdict") -> str:
 
 
 def _pf_fits(o: dict) -> str:
-    """The "PF fits" cell: fits done, failures (if any) marked bad."""
+    """The "Oracle SIHRS fits" cell (the mechanistic member's filter fits;
+    the pf_* keys keep their names): fits done, failures marked bad."""
     nf = len(o.get("pf_failures") or {})
     fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
     if nf:
@@ -579,7 +580,7 @@ def _results_table(body: str, d: dict, heading: bool) -> str:
 
 def results_html(outcome, spec, heading: bool = True) -> str:
     """One run's results as a small table: run type, each member's relWIS
-    with its cells, PF fits and failures, submissions, report. Markup from
+    with its cells, Oracle SIHRS fits and failures, submissions, report. Markup from
     fixed phrases and numbers only; unreadable input yields "". The table
     carries its own "Results" heading with the relWIS convention in a "?"
     tip; heading=False leaves both to the page (results_tip)."""
@@ -612,13 +613,13 @@ def results_html(outcome, spec, heading: bool = True) -> str:
         rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
                            f"{fv:.3f}</span>{_verdict(fv)}{cov}"))
     if "pf_cells" in o:
-        rows.append(("PF fits", _pf_fits(o)))
+        rows.append(("Oracle SIHRS fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
-        rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+        rows.append(("Oracle SIHRS fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
         # installed but broken (a different remedy from "no engine"); the
         # message (it carries a path) is the "?" tip's, escaped there
-        rows.append(("PF fits", '<span class="bad">none (engine install '
+        rows.append(("Oracle SIHRS fits", '<span class="bad">none (engine install '
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))

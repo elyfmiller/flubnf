@@ -85,3 +85,33 @@
 .st-fact{display:inline-block;padding:.05em .5em;border-radius:var(--r-sm);
   background:var(--bg);color:var(--ink);font-size:var(--fs-label)}
 .st-foot{margin:.7rem 0 0}
+
+/* ---- 6. run ledger: the filter row and, on a phone, rows as cards ---- */
+.st-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .9rem;
+  margin:.7rem 0 .5rem}
+.st-filter[hidden]{display:none}
+.st-find{display:inline-flex;margin:0;flex:0 1 15rem;min-width:0}
+.st-find input{width:100%;margin:0}
+.st-shown{color:var(--mut);font-size:var(--fs-label)}
+.st-none{display:flex;align-items:center;gap:.35em;margin:.4rem 0;
+  color:var(--mut)}
+.st-none[hidden]{display:none}
+.st-ledger tr[hidden]{display:none}
+/* under 40rem: one card per run, the label and status on top, then the
+   elapsed time and the disk use labelled, then the facts */
+@media (max-width:40rem){
+  .st-ledger{overflow-x:visible}
+  .st-ledger table,.st-ledger tbody{display:block;width:100%}
+  .st-ledger tr:first-child{display:none}
+  .st-ledger tr[data-st]{display:grid;grid-template-columns:minmax(0,1fr) auto;
+    gap:.3rem .8rem;padding:.6rem .1rem;border-top:1px solid var(--line)}
+  .st-ledger tr[data-st][hidden]{display:none}
+  .st-ledger tr[data-st] > td{display:block;padding:0;border:0;text-align:left}
+  .st-ledger td.st-run{grid-column:1}
+  .st-ledger td.st-stat{grid-column:2;grid-row:1;justify-self:end}
+  .st-ledger td[data-l]::before,.st-ledger td.elapsed::before{
+    content:attr(data-l) " ";color:var(--mut);
+    font-size:var(--fs-label);font-weight:600}
+  .st-ledger td.elapsed::before{content:"elapsed "}
+  .st-ledger td.st-sumcell{grid-column:1 / -1}
+}

@@ -222,7 +222,8 @@ def test_the_buttons_answer_json_when_asked(hub, monkeypatch):
         None, None, 0, True, "up to date with origin"))
     r = client.post("/freshness", headers={"Accept": "application/json"})
     assert r.json() == {"ok": True, "fresh": True, "pill": "ok",
-                        "words": "up to date", "detail": "up to date with origin"}
+                        "words": "up to date", "detail": "up to date with origin",
+                        "behind": False}
     r = client.post("/freshness")
     assert r.status_code == 200
     assert ('<span class="uk-badge uk-badge--ok" id="hub-pill" '

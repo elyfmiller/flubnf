@@ -223,7 +223,41 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--line);
  clip:rect(0 0 0 0);white-space:nowrap}
 .methods svg.uk-icon{display:inline-block;width:1em;height:1em;margin:0;
  vertical-align:-.125em}
-@media (max-width:640px){nav.tabs{margin-left:0}.a11y{margin-left:0}}
+/* the record card: the pooled figures lead, the convention waits behind
+   a disclosure */
+.standing .figs{display:flex;flex-wrap:wrap;gap:.6rem 2.2rem;margin:.6rem 0 .5rem}
+.standing .fig{display:flex;flex-direction:column}
+.standing .fv{font-family:"DM Mono",ui-monospace,monospace;font-size:1.9rem;
+ font-weight:500;line-height:1.15}
+.standing .fl{color:var(--mut);font-size:.85rem}
+.standing p{margin:.2rem 0 0;font-size:.95rem}
+.standing details{margin-top:.6rem;font-size:.88rem;color:var(--mut)}
+.standing summary{cursor:pointer;color:var(--accent);font-weight:600}
+.standing details p{font-size:.88rem}
+.alarm{border:1px solid var(--bad);color:var(--bad);border-radius:14px;
+ padding:1rem 1.2rem;margin-top:1rem;background:var(--card)}
+.alarm ul{margin:.4rem 0}
+/* the map: capped on wide screens, its legend beside it */
+.mapgrid{display:block}
+.mapgrid .mapbox{width:100%;max-width:50rem;margin:0 auto}
+@media (min-width:1000px){
+ .mapgrid{display:grid;grid-template-columns:minmax(0,50rem) 11rem;
+  gap:2rem;justify-content:center;align-items:center}
+ .mapgrid .legend{flex-direction:column;align-items:flex-start;gap:.45rem;
+  margin:0 0 1rem}
+}
+#fan{width:100%;height:420px}
+.cumlegend{display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;font-size:.85rem;
+ color:var(--mut);margin-bottom:.4rem}
+.cumlegend .ln{display:inline-block;width:1.4em;height:0;vertical-align:.3em;
+ margin-right:.4em;border-top:2px solid}
+.cumgrid{display:grid;gap:1rem;
+ grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr))}
+.cumgrid h3{font-size:1rem;margin:0 0 .2rem}
+.cumchart{width:100%;height:220px}
+.dl{font-size:.85rem}
+@media (max-width:640px){nav.tabs{margin-left:0}.a11y{margin-left:0}
+ #fan{height:320px}}
 """
 
 BOOT = """
@@ -241,16 +275,33 @@ JS = r"""
                  || 'Oracle SIHRS') === 'Oracle SIHRS'
                 ? 'Oracle SIHRS' : 'particle filter';
   window.FLUBNF = D;
+  // phones: no Plotly toolbar over the chart, a two-column legend
+  var NARROW = !!(window.matchMedia &&
+                  window.matchMedia('(max-width:640px)').matches);
+  function PLT(){ return window.FluCharts || Plotly; }
+
+  // ---- the address: #retro, #methods or #fan=<location> ----------------
+  function setHash(h){
+    try { history.replaceState(null, '', h ? '#'+h
+                               : location.href.split('#')[0]); }
+    catch(e){ if (h) location.hash = h; }
+  }
 
   // ---- tabs -------------------------------------------------------------
   var tabs = document.getElementById('tabs');
-  tabs.addEventListener('click', function(e){
-    var b = e.target.closest('button'); if(!b) return;
+  function showTab(p){
+    var b = tabs.querySelector('button[data-p="'+p+'"]'); if(!b) return;
     tabs.querySelectorAll('button').forEach(function(x){
       x.setAttribute('aria-pressed', x===b ? 'true':'false'); });
-    document.querySelectorAll('.page').forEach(function(p){
-      p.classList.remove('on'); });
-    document.getElementById('p-'+b.dataset.p).classList.add('on');
+    document.querySelectorAll('.page').forEach(function(pg){
+      pg.classList.remove('on'); });
+    document.getElementById('p-'+p).classList.add('on');
+    if (p === 'retro') drawCum();    // sized only once the tab is visible
+  }
+  tabs.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    showTab(b.dataset.p);
+    setHash(b.dataset.p === 'home' ? '' : b.dataset.p);
     window.scrollTo(0,0);
   });
 
@@ -321,39 +372,42 @@ JS = r"""
         line=css('--line'), card=css('--card'), gold=css('--gold');
     var T = [
       {x:obs.map(function(o){return o[0];}), y:obs.map(function(o){return o[1];}),
-       mode:'lines+markers', name:'observed (as of '+last[0]+')',
+       mode:'lines+markers', name:NARROW ? 'observed' : 'observed (as of '+last[0]+')',
        line:{color:ink,width:2}, marker:{size:5},
        hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>observed</extra>'},
       {x:fx, y:hi8, mode:'lines', line:{width:0}, showlegend:false,
        hoverinfo:'skip'},
       {x:fx, y:lo8, mode:'lines', fill:'tonexty', fillcolor:rgba(acc,.16),
-       line:{width:0}, name:'80% interval', hoverinfo:'skip'},
+       line:{width:0}, name:NARROW ? '80%' : '80% interval', hoverinfo:'skip'},
       {x:fx, y:hi5, mode:'lines', line:{width:0}, showlegend:false,
        hoverinfo:'skip'},
       {x:fx, y:lo5, mode:'lines', fill:'tonexty', fillcolor:rgba(acc,.28),
-       line:{width:0}, name:'50% interval', hoverinfo:'skip'},
-      {x:fx, y:med, mode:'lines+markers', name:FANNAME+' median',
+       line:{width:0}, name:NARROW ? '50%' : '50% interval', hoverinfo:'skip'},
+      {x:fx, y:med, mode:'lines+markers', name:NARROW ? (FANNAME === 'Oracle SIHRS' ? 'Oracle' : 'filter') + ' median' : FANNAME+' median',
        line:{color:acc,width:2.5}, marker:{size:6},
        hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>'+FANNAME+' median</extra>'}
     ];
-    // The Groundhog's median is drawn when the source stored it, and
-    // starts hidden: it is the other submission, on the same axes.
+    // The Groundhog's median is drawn when the source stored it: it is
+    // the other submission, on the same axes (the legend toggles it).
     if (d.an) T.push({x:fx, y:an, mode:'lines',
-      name:'Groundhog median', visible:'legendonly',
-      line:{color:gold||'#FFC72C',width:1.4,dash:'dash'}});
+      name:NARROW ? 'Groundhog' : 'Groundhog median',
+      line:{color:gold||'#FFC72C',width:1.8,dash:'dash'},
+      hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>Groundhog median</extra>'});
     // The settled overlay exists only where truth has arrived. A live
     // forecast has none, so the trace and its legend entry are ABSENT
     // rather than empty, and mid-season it grows a week at a time.
     var st = (d.settled||[]).filter(function(s){ return s[1] != null; });
     if (st.length) T.push({
       x:st.map(function(s){return s[0];}), y:st.map(function(s){return s[1];}),
-      mode:'lines+markers', name:'settled outcome',
+      mode:'lines+markers', name:NARROW ? 'settled' : 'settled outcome',
       line:{color:ink,dash:'dot',width:1.4}, marker:{size:4},
       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>what happened</extra>'});
     var fs = parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
     var lay = {
       margin:{l:64,r:16,t:14,b:40}, showlegend:true,
-      legend:{orientation:'h', y:-0.16, font:{size:fs*.85, color:mut}},
+      legend:NARROW
+        ? {orientation:'h', y:-0.12, x:0, font:{size:fs*.75, color:mut}}
+        : {orientation:'h', y:-0.16, font:{size:fs*.85, color:mut}},
       paper_bgcolor:card, plot_bgcolor:card, hovermode:'x unified',
       font:{family:'"DM Sans",system-ui,sans-serif', size:fs*.85, color:mut},
       xaxis:{gridcolor:line, zeroline:false, showline:true, linecolor:line},
@@ -369,21 +423,28 @@ JS = r"""
     if (lock.checked && lockRange) lay.yaxis.range = lockRange;
     // FluCharts (charts.js, inlined below plotly): Saturday week ticks,
     // refit after zoom, pan and resize, like the console and the reports
-    var PL = window.FluCharts || Plotly;
-    PL.react('fan', T, lay, {displaylogo:false, responsive:true,
+    // phones: short legend names, no y title (the sentence above names it)
+    if (NARROW){ lay.margin = {l:44,r:8,t:14,b:40}; lay.yaxis.title = null; }
+    var cfg = {displaylogo:false, responsive:true,
       modeBarButtonsToRemove:['select2d','lasso2d'],
       toImageButtonOptions:{scale:2,
         filename:'flubnf_'+name.replace(/[^A-Za-z0-9]+/g,'_')+'_'+
-                 (D.outlook.source.asof||'')}})
+                 (D.outlook.source.asof||'')}};
+    if (NARROW) cfg.displayModeBar = false;
+    var PL = window.FluCharts || Plotly;
+    PL.react('fan', T, lay, cfg)
       .then(function(gd){
         if(!lock.checked) lockRange = gd._fullLayout.yaxis.range.slice(); });
   }
+  function pick(name){
+    sel.value = name; draw(name);
+    setHash('fan=' + encodeURIComponent(name)); }
   function step(d){
     var i = (NAMES.indexOf(sel.value) + d + NAMES.length) % NAMES.length;
-    sel.value = NAMES[i]; draw(sel.value); }
+    pick(NAMES[i]); }
   document.getElementById('fprev').addEventListener('click', function(){ step(-1); });
   document.getElementById('fnext').addEventListener('click', function(){ step(1); });
-  sel.addEventListener('change', function(){ draw(sel.value); });
+  sel.addEventListener('change', function(){ pick(sel.value); });
   lock.addEventListener('change', function(){ draw(sel.value); });
   sel.value = NAMES.indexOf('Texas') >= 0 ? 'Texas' : NAMES[0];
 
@@ -413,7 +474,7 @@ JS = r"""
       Math.round(h.current).toLocaleString()+' · 1-wk median '+
       Math.round(h.median1).toLocaleString()+'</div>'+rows+
       (F[h.name] ? '<div style="color:var(--accent);margin-top:.35rem;'+
-        'font-size:.8rem">click for the full forecast</div>' : '');
+        'font-size:.8rem">tap or click for the full forecast</div>' : '');
     TIP.style.display='block';
     TIP.style.left = Math.min(e.clientX+14, window.innerWidth-260)+'px';
     TIP.style.top  = Math.min(e.clientY+14, window.innerHeight-230)+'px';
@@ -424,7 +485,9 @@ JS = r"""
     var p = e.target.closest('[data-fips]'); if(!p) return;
     var name = F2N[p.getAttribute('data-fips')];
     if (name && F[name]){
-      sel.value = name; draw(name);
+      // a tap fires mousemove too: the card would stay over the fan
+      TIP.style.display = 'none';
+      pick(name);
       document.getElementById('fan').closest('.card')
         .scrollIntoView({behavior:'smooth', block:'center'}); }
   });
@@ -440,6 +503,53 @@ JS = r"""
         b.setAttribute('aria-pressed', b.dataset.v===v ? 'true':'false'); });
     });
     draw(sel.value);          // token-coloured chart follows the mode
+    if (document.getElementById('p-retro').classList.contains('on'))
+      drawCum();
+  }
+
+  // ---- cumulative relWIS, one small chart per season --------------------
+  function drawCum(){
+    var boxes = document.querySelectorAll('[data-cum]');
+    if (!boxes.length) return;
+    var acc=css('--accent'), mut=css('--mut'),
+        line=css('--line'), card=css('--card');
+    var fs = parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+    var BY = {}, MODELS = [], lo = 1, hi = 1;
+    // one y range for every season, so the small multiples compare
+    D.seasons.forEach(function(s){ BY[s.season] = s;
+      (s.weekly || []).forEach(function(w){
+        for (var k in (w.cum || {})){
+          if (!{pf:1, analogue:1, ensemble:1}[k]) continue;
+          lo = Math.min(lo, w.cum[k]); hi = Math.max(hi, w.cum[k]); } }); });
+    var pad = (hi - lo) * 0.06 || 0.05;
+    try { MODELS = JSON.parse(
+      document.getElementById('cumgrid').getAttribute('data-members')); }
+    catch(e){}
+    MODELS.forEach(function(m){ m[2] = css(m[2]) || acc; });
+    Array.prototype.forEach.call(boxes, function(el){
+      var s = BY[el.getAttribute('data-cum')];
+      if (!s || !s.weekly || !s.weekly.length) return;
+      var x = s.weekly.map(function(w){ return w.asof; });
+      var T = [{x:[x[0], x[x.length-1]], y:[1, 1], mode:'lines',
+                name:'CDC baseline', hoverinfo:'skip',
+                line:{color:mut, width:1, dash:'dot'}}];
+      MODELS.forEach(function(m){
+        var y = s.weekly.map(function(w){
+          var v = (w.cum || {})[m[0]]; return v == null ? null : v; });
+        var any = y.some(function(v){ return v != null; });
+        if (any) T.push({x:x, y:y, mode:'lines', name:m[1],
+          line:{color:m[2], width:2, dash:m[3]},
+          hovertemplate:'%{x|%b %e, %Y}<br>%{y:.3f}<extra>'+m[1]+'</extra>'});
+      });
+      var lay = {margin:{l:44,r:10,t:8,b:28}, showlegend:false,
+        paper_bgcolor:card, plot_bgcolor:card, hovermode:'x unified',
+        font:{family:'"DM Sans",system-ui,sans-serif', size:fs*.75, color:mut},
+        xaxis:{gridcolor:line, zeroline:false, showline:true, linecolor:line},
+        yaxis:{gridcolor:line, zeroline:false, tickformat:'.2f',
+               range:[lo - pad, hi + pad]}};
+      PLT().react(el, T, lay, {displaylogo:false, responsive:true,
+                               displayModeBar:false});
+    });
   }
   A.addEventListener('click', function(e){
     var b = e.target.closest('button'); if(!b) return;
@@ -453,6 +563,18 @@ JS = r"""
   });
   applyA11y();
   paint(OL.default_model);
+
+  // ---- open where the address points ----------------------------------
+  (function(){
+    var h = '';
+    try { h = decodeURIComponent((location.hash || '').slice(1)); } catch(e){}
+    if (h === 'retro' || h === 'methods') { showTab(h); return; }
+    if (h.indexOf('fan=') === 0 && F[h.slice(4)]){
+      sel.value = h.slice(4); draw(sel.value);
+      document.getElementById('fan').closest('.card')
+        .scrollIntoView({block:'center'});
+    }
+  })();
 })();
 """.replace("__HORIZONS__", json.dumps(list(hz.HORIZONS)))
 # the fan reads site_build's canonical keys; app.core.horizons owns them
@@ -517,11 +639,10 @@ def _season_table(payload: dict) -> str:
     head = ('<tr><th>Season</th><th class="n">' + _e(pf_name) + '</th>'
             '<th class="n">Groundhog</th>'
             '<th class="n">FluSight Ensemble</th>'
-            '<th class="n">Cells</th><th>FluSight field</th></tr>')
+            '<th class="n">Cells</th></tr>')
 
     rows = []
     for s in seasons:
-        pl = s.get("placement") or {}
         pf = (s["models"].get("pf") or {})
         gh = (s["models"].get("analogue") or {})
         cells = pf.get("cells") or gh.get("cells")
@@ -531,10 +652,7 @@ def _season_table(payload: dict) -> str:
              + _score_td((s["models"].get("FluSight-ensemble")
                           or {}).get("rel")))
         r += f'<td class="n">{cells:,}</td>' if cells else \
-             '<td class="n na">--</td>'
-        # withdrawn, not pending: the placement was measured and retracted
-        r += (f'<td>{_e(pl["text"])}</td>' if pl.get("text")
-              else '<td class="na">placement withdrawn, see Methods</td>')
+             '<td class="n na">not scored</td>'
         rows.append(r + "</tr>")
 
     p = pooled.get("pf") or {}
@@ -542,8 +660,8 @@ def _season_table(payload: dict) -> str:
     prow = ('<tr class="total"><td>Pooled</td>' + _score_td(p.get("rel"))
             + _score_td(pg.get("rel"))
             + _score_td((pooled.get("FluSight-ensemble") or {}).get("rel")))
-    prow += (f'<td class="n">{(p.get("cells") or pg.get("cells") or 0):,}</td>'
-             '<td></td></tr>')
+    prow += (f'<td class="n">{(p.get("cells") or pg.get("cells") or 0):,}'
+             '</td></tr>')
     table = "<table>" + head + "".join(rows) + prow + "</table>"
 
     # name the convention here too (imported, never retyped)
@@ -572,10 +690,19 @@ def _season_table(payload: dict) -> str:
         note += (" The mechanistic column is the particle filter alone: "
                  "these replays predate the Oracle step, which blends the "
                  "filter's forecast growth with past seasons' at the same "
-                 "calendar week. The Oracle SIHRS's own record is on the "
+                 "calendar week. The Oracle step's own record is on the "
                  "Methods tab.")
-    note += (" Methods carries the donor pool, the withdrawn field "
-             "placement, and the two-strain result.")
+    # the field column was always withdrawn: said once here, not per row.
+    # A restored standing (harvest_placement) is named per season instead.
+    placed = [s for s in seasons if (s.get("placement") or {}).get("text")]
+    if placed:
+        note += " Standing among the FluSight field: " + "; ".join(
+            f'{_e(s["season"])} {_e(s["placement"]["text"])}'
+            for s in placed) + "."
+    else:
+        note += (" Standing among the FluSight field: placement withdrawn, "
+                 "see Methods for the reason.")
+    note += " Methods also carries the donor pool and the two-strain result."
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
                     + note + "</p>")
 
@@ -612,30 +739,55 @@ def _percentile_bars(payload: dict) -> str:
             "identical cells.</p>")
 
 
-def _member_table(payload: dict) -> str:
-    seasons = payload["seasons"]
+#: the console's names (player.js map), so one page never names a model
+#: twice; the mechanistic member's comes from the payload's pf_label
+_MEMBER_NAMES = {"analogue": "Groundhog",
+                 "ensemble": "FluBNF Ensemble (retired)",
+                 "pf2s": "Two-strain SIHRS"}
+#: each member's line on the cumulative charts: the fan's colours
+_MEMBER_STYLE = {"pf": ("--accent", "solid"), "analogue": ("--gold", "dash"),
+                 "ensemble": ("--ink", "dot")}
+
+
+def _cum_charts(payload: dict) -> str:
+    """One small chart per season: each member's cumulative relWIS week by
+    week (seasons[].weekly[].cum), drawn by the page script when the tab
+    opens. The season table above holds the same end points as numbers."""
+    seasons = [s for s in payload["seasons"] if s.get("weekly")]
     # the two models in order; an older payload's stored blend last
     members = [m for m in payload["model_order"]
-               if m != "ensemble" and any(m in s["models"] for s in seasons)]
-    if any("ensemble" in s["models"] for s in seasons):
+               if m != "ensemble" and any(
+                   m in w.get("cum", {}) for s in seasons for w in s["weekly"])]
+    if any("ensemble" in w.get("cum", {})
+           for s in seasons for w in s["weekly"]):
         members.append("ensemble")
-    if not members:
+    if not seasons or not members:
         return ""
-    # the console's names (player.js map), so one page never names a model twice
-    labels = {"pf": payload.get("pf_label") or "Oracle SIHRS",
-              "analogue": "Groundhog",
-              "ensemble": "FluBNF Ensemble (retired)",
-              "pf2s": "Two-strain SIHRS"}
-    head = ('<tr><th>relWIS by member</th>'
-            + "".join(f'<th class="n">{_e(s["season"])}</th>'
-                      for s in seasons) + "</tr>")
-    rows = []
-    for m in members:
-        cls = ' class="total"' if m == "ensemble" else ""
-        cells = "".join(_score_td((s["models"].get(m) or {}).get("rel"))
-                        for s in seasons)
-        rows.append(f"<tr{cls}><td>{_e(labels.get(m, m))}</td>{cells}</tr>")
-    return "<table>" + head + "".join(rows) + "</table>"
+    names = dict(_MEMBER_NAMES, pf=payload.get("pf_label") or _ORACLE)
+    spec = [[m, names.get(m, m)] + list(_MEMBER_STYLE.get(m, ("--mut", "dot")))
+            for m in members]
+    legend = "".join(
+        f'<span><span class="ln" style="border-top-style:'
+        f'{"dashed" if st[3] == "dash" else "dotted" if st[3] == "dot" else "solid"};'
+        f'border-color:var({st[2]})"></span>{_e(st[1])}</span>'
+        for st in spec)
+    legend += ('<span><span class="ln" style="border-top:1px dotted '
+               'var(--mut)"></span>CDC baseline (1.000)</span>')
+    boxes = "".join(
+        f'<div><h3>{_e(s["season"])}</h3><div class="cumchart" '
+        f'data-cum="{_e(s["season"])}" role="img" aria-label="Cumulative '
+        f'relWIS through the {_e(s["season"])} season"></div></div>'
+        for s in seasons)
+    return (f'<div class="cumlegend">{legend}</div>'
+            f'<div class="cumgrid" id="cumgrid" data-members='
+            f'"{_e(json.dumps(spec))}">{boxes}</div>')
+
+
+def _drift_items(bad: list) -> str:
+    return "".join(
+        f"<li><b>{_e(c['what'])}</b>: this build computed "
+        f"{c['computed']:.3f}, the console states {c['app']:.3f}.</li>"
+        for c in bad)
 
 
 def _consistency_note(payload: dict) -> str:
@@ -648,15 +800,23 @@ def _consistency_note(payload: dict) -> str:
                 f"Every one of these {len(checks)} scores was recomputed for "
                 "this build from the stored forecasts and matches the figure "
                 "the console publishes for the same season.</p>")
-    items = "".join(
-        f"<li><b>{_e(c['what'])}</b>: this build computed "
-        f"{c['computed']:.3f}, the console states {c['app']:.3f}.</li>"
-        for c in bad)
     return ('<div class="placecard" style="border-color:var(--bad);'
             'color:var(--bad);text-align:left"><b>Scores disagree with the '
-            'console.</b><ul>' + items + "</ul>The numbers above are the ones "
-            "computed from the forecasts on disk. Reconcile before "
-            "publishing.</div>")
+            'console.</b><ul>' + _drift_items(bad) + "</ul>The numbers above "
+            "are the ones computed from the forecasts on disk. Reconcile "
+            "before publishing.</div>")
+
+
+def _drift_alarm(payload: dict) -> str:
+    """The same alarm on Home, above the record, when any check failed."""
+    bad = [c for c in payload.get("consistency") or [] if not c["ok"]]
+    if not bad:
+        return ""
+    return ('<div class="alarm" role="alert"><b>Scores disagree with the '
+            "console.</b> This build's figures differ from the ones the "
+            "console publishes:<ul>" + _drift_items(bad) + "</ul>The "
+            "Retrospectives tab prints the figures computed from the "
+            "forecasts on disk. Reconcile before publishing.</div>")
 
 
 def _bibliography(items) -> str:
@@ -668,6 +828,84 @@ def _bibliography(items) -> str:
 
 
 # ------------------------------------------------------------ 4. the page
+#: the mechanistic member's two names (site_build.PF_LABEL_ORACLE and
+#: PF_LABEL_FILTER); the payload's pf_label says which a build stored
+_ORACLE = "Oracle SIHRS"
+
+REPO_URL = "https://github.com/elyfmiller/flubnf"
+INSTALL_URL = REPO_URL + "#install-and-run"
+RELEASE_URL = REPO_URL + "/blob/main/docs/archive/RELEASE-1.0.md"
+
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
+
+
+def _when(iso: str) -> str:
+    """'2026-10-05T18:21:07+00:00' -> '5 October 2026, 18:21 UTC'; anything
+    unparseable is printed as given."""
+    from datetime import datetime, timezone
+    try:
+        t = datetime.fromisoformat(str(iso)).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return str(iso)
+    return f"{t.day} {_MONTHS[t.month - 1]} {t.year}, {t:%H:%M} UTC"
+
+
+def _mech(label) -> dict:
+    """How the page names the mechanistic member for a pf label: the
+    Oracle SIHRS only when the source stored it, else the filter alone,
+    so a filter-only build never names the Oracle SIHRS."""
+    if (label or _ORACLE) == _ORACLE:
+        return {"oracle": True, "name": _ORACLE, "the": "the Oracle SIHRS",
+                "plain": _ORACLE,
+                "what": ("a mechanistic transmission model fitted each week "
+                         "whose forecast growth is blended with past "
+                         "seasons' growth at the same calendar week")}
+    return {"oracle": False, "name": str(label), "the": "the particle filter",
+            "plain": str(label).lower(),
+            "what": ("the mechanistic transmission model fitted each week, "
+                     "shown here as the particle filter alone: these "
+                     "replays predate the Oracle step, which blends its "
+                     "forecast growth with past seasons'")}
+
+
+def _favicon() -> str:
+    """The inline mark as a data: URI (no file to ship, nothing remote)."""
+    from urllib.parse import quote
+    return "data:image/svg+xml," + quote(_MARK, safe=" =:/,.-")
+
+
+def _standing(payload: dict, mech: dict, span: str) -> str:
+    """Home's record card: the pooled figures first, the convention behind
+    a disclosure."""
+    seasons = payload["seasons"]
+    pooled = payload["pooled"]
+    figs = []
+    for m, name in (("pf", mech["name"]), ("analogue", "Groundhog")):
+        v = (pooled.get(m) or {}).get("rel")
+        if v is None:
+            continue
+        cls = "okc" if v < 1 else "badc"
+        figs.append(f'<div class="fig"><span class="fv {cls}">{v:.3f}</span>'
+                    f'<span class="fl">{_e(name)}, pooled relWIS</span></div>')
+    if figs and seasons:
+        n = len(seasons)
+        lead = (f'<div class="figs">{"".join(figs)}</div><p>Pooled over {n} '
+                f'replayed season{"s" if n != 1 else ""} ({span}); below 1 '
+                "beats the CDC baseline. Placement among all submitting "
+                "teams is not published: the earlier standings were "
+                "withdrawn because the scorer that produced them does not "
+                f'survive (<a href="{RELEASE_URL}">release record</a>).</p>'
+                "<details><summary>How the pooled figure is computed"
+                f"</summary><p>{_e(relwis.PUBLISHED_CONVENTION_NOTE)}</p>"
+                "</details>")
+    else:
+        lead = ("<p>No season has been scored yet. The record fills in as "
+                "retrospectives complete.</p>")
+    return ('<div class="banner standing"><span class="k">Retrospective '
+            f"record</span>{lead}</div>")
+
+
 def render_page(payload: dict, map_svg: str, methods_html: str,
                 bibliography, bngl: dict) -> str:
     """Assemble the single page. `payload` is embedded verbatim as the same
@@ -677,8 +915,10 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     src = ol["source"]
     n_loc = len(payload["fans"])
     seasons = payload["seasons"]
-    pooled_pf = (payload["pooled"].get("pf") or {}).get("rel")
-    pooled_gh = (payload["pooled"].get("analogue") or {}).get("rel")
+    # the seasons' name for the member (banner, record, replays) and the
+    # outlook source's (map and fan): each says what its source stored
+    mech = _mech(payload.get("pf_label"))
+    fan_mech = _mech(src.get("pf_label"))
 
     data_json = json.dumps(payload, indent=1, sort_keys=True,
                            ensure_ascii=False)
@@ -697,8 +937,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 
     # the fan's mechanistic median, named for what the source stored
     # (site_build: the member when the run or week carries the Oracle step)
-    fan_name = ("Oracle SIHRS" if src.get("pf_label", "Oracle SIHRS")
-                == "Oracle SIHRS" else "particle filter")
+    fan_name = "Oracle SIHRS" if fan_mech["oracle"] else "particle filter"
 
     tally = ol.get("modal_tally") or {}
     if tally:
@@ -753,57 +992,74 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
                 f'{_e(seasons[-1]["season"])}' if len(seasons) > 1
                 else _e(seasons[0]["season"]))
 
-    if (pooled_pf is not None or pooled_gh is not None) and seasons:
-        # the convention on the landing tab too (the season table is elsewhere)
-        parts = []
-        if pooled_pf is not None:
-            parts.append(
-                f"the Oracle SIHRS <b>{pooled_pf:.3f}</b>"
-                if (payload.get("pf_label") or "Oracle SIHRS")
-                == "Oracle SIHRS" else
-                f"the particle filter alone (before the Oracle step) "
-                f"<b>{pooled_pf:.3f}</b>")
-        if pooled_gh is not None:
-            parts.append(f"the Groundhog <b>{pooled_gh:.3f}</b>")
-        headline = (
-            f"Across {len(seasons)} replayed season"
-            f"{'s' if len(seasons) != 1 else ''} ({span}) the two models "
-            "score a pooled relWIS of " + " and ".join(parts)
-            + " against the CDC FluSight baseline. Below 1 beats it. "
-            + relwis.PUBLISHED_CONVENTION_NOTE)
-    else:
-        headline = ("No season has been scored yet. The table fills in as "
-                    "retrospectives complete.")
+    standing = _standing(payload, mech, span)
 
-    standing = (
-        '<div class="banner standing"><span class="k">Live standing</span>'
-        "&nbsp; " + headline + " Placement among all submitting teams is "
-        "not currently published: the earlier standings were withdrawn "
-        "because the scorer that produced them does not survive. See the "
-        "release record.</div>")
+    if mech["oracle"]:
+        models_line = (f"{mech['the']}, {mech['what']}, and the Groundhog, "
+                       "a calendar analogue.")
+    else:
+        models_line = ("a mechanistic transmission model fitted each week "
+                       "and the Groundhog, a calendar analogue. These "
+                       "replays show the mechanistic model as the particle "
+                       "filter alone, before the Oracle step that blends its "
+                       "forecast growth with past seasons'.")
+    banner = ("<b>FluBNF</b> forecasts weekly US influenza hospital "
+              "admissions for every reporting jurisdiction with two models, "
+              "submitted separately: " + models_line + " Both are fitted "
+              "only on the data that existed on each forecast date and "
+              "scored against settled truth. Tap or click any state for its "
+              "full probabilistic forecast.")
+    if mech["oracle"]:
+        description = (
+            "Weekly US influenza hospital-admission forecasts from the "
+            "Posner Lab at Northern Arizona University: the Oracle SIHRS, a "
+            "mechanistic model whose forecast growth is blended with past "
+            "seasons', and the Groundhog, a calendar analogue; submitted "
+            "separately and scored on vintage data.")
+    else:
+        description = (
+            "Weekly US influenza hospital-admission forecasts from the "
+            "Posner Lab at Northern Arizona University: a mechanistic model "
+            "fitted by a particle filter and the Groundhog, a calendar "
+            "analogue; submitted separately and scored on vintage data.")
 
     replay_note = (
-        '<div class="placecard">Each settled season is replayable in the '
-        "console's season player: the weekly categorical forecast map and the "
-        "probabilistic forecast, week by week with the settled truth "
-        "overlaid, and the live table of weekly and cumulative relWIS. This "
-        "page publishes the finished scores; the player publishes the "
-        "path.</div>")
+        '<div class="placecard">Each settled season replays in the '
+        "console's season player: the weekly categorical forecast map and "
+        "the probabilistic forecast, week by week with the settled truth "
+        "overlaid, and the live table of weekly and cumulative relWIS. The "
+        "Groundhog replays on any machine that runs the console; "
+        f"{mech['the']} needs the lab's engine (PyBNF, BNGsim and "
+        f'BioNetGen). <a href="{INSTALL_URL}">Install and run</a>.</div>')
 
     build = payload["build"]
-    versions = ", ".join(f"{k} {v}" for k, v in build["versions"].items()
-                         if k in ("pybnf", "bngsim", "bionetgen"))
+    from app.core.site_build import ENGINE_KEYS, engine_version
+    engines = [f"{k} {engine_version(build['versions'], k)}"
+               for k in ENGINE_KEYS
+               if engine_version(build["versions"], k)]
+    if engines:
+        engine_line = (
+            f"Engines: {_e(', '.join(engines))}. Engine versions are "
+            "self-reported by the builder's install; the sealed record's "
+            "engine pin is bngsim 0.15.1, pinned by every engine installer, "
+            "and a locally built engine can self-report an older version "
+            "string.")
+    else:
+        engine_line = ("The sealed record's engine pin is bngsim 0.15.1, "
+                       "pinned by every engine installer.")
+    built_at = _when(payload["generated_utc"])
+    title = "FluBNF: weekly US influenza hospital-admission forecasts"
 
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF</title>
-<meta name="description" content="Weekly US influenza hospital-admission
- forecasts from the Posner Lab at Northern Arizona University: the
- Oracle SIHRS, a mechanistic model whose forecast growth is blended with past
- seasons', and the Groundhog, a calendar analogue; submitted separately and
- scored on vintage data.">
+<title>{_e(title)}</title>
+<meta name="description" content="{_e(description)}">
+<meta property="og:title" content="{_e(title)}">
+<meta property="og:description" content="{_e(description)}">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="{_e(_favicon())}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@400;500&display=swap">
@@ -828,13 +1084,9 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 <main>
 
 <div class="page on" id="p-home">
-  <div class="banner"><b>FluBNF</b> forecasts weekly US influenza hospital
-  admissions for every reporting jurisdiction with two models, submitted
-  separately: the Oracle SIHRS, a mechanistic transmission model fitted each
-  week whose forecast growth is blended with past seasons' growth at the
-  same calendar week, and the Groundhog, a calendar analogue. Both are
-  scored only on the data that existed on each forecast date. Click any
-  state for its full probabilistic forecast.</div>
+  <div class="banner">{banner}</div>
+
+  {_drift_alarm(payload)}
 
   <div class="maphero">
     <div class="maptop">
@@ -843,15 +1095,16 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         {mbuttons}
       </div>
     </div>
-    {map_svg}
-    <div class="legend">{legend}
-      <span class="asof" id="maplabel">{_e(ol["labels"][ol["default_model"]])}
-       &middot; {ol["coverage"]} jurisdictions forecast, {ol.get("mapped", ol["coverage"])} drawn
-       &middot; {_e(src["label"])}</span>
+    <div class="mapgrid">
+      <div class="mapbox">{map_svg}</div>
+      <div class="legend">{legend}</div>
     </div>
-    <p class="sub" style="margin:.7rem 0 0;font-size:.88rem">{_e(tally_line)}
+    <p class="asof" id="maplabel" style="margin:.6rem 0 0">{_e(ol["labels"][ol["default_model"]])}
+     &middot; {ol["coverage"]} jurisdictions forecast, {ol.get("mapped", ol["coverage"])} drawn
+     &middot; {_e(src["label"])}</p>
+    <p class="sub" style="margin:.5rem 0 0;font-size:.88rem">{_e(tally_line)}
     Each state is coloured by its most likely change category and shaded by
-    how likely that category is; hover for the full distribution.</p>
+    how likely that category is; tap or hover for the full distribution.</p>
   </div>
 
   {standing}
@@ -860,7 +1113,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     <div class="kick">Probabilistic forecast</div>
     <p class="sub">The observed weeks behind the forecast date, then the
     {fan_name}'s next four as a median with 50% and 80% intervals,
-    from the same forecast week, with the Groundhog's median on the legend.
+    from the same forecast week, with the Groundhog's median as a dashed
+    line (the legend toggles any line).
     Each CDC submission carries its model at 23 quantile levels for every
     jurisdiction, every week. {settled_line}</p>
     <div class="card">
@@ -873,7 +1127,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
           <input type="checkbox" id="flock"> lock axes</label>
       </div>
       <p class="prov">{prov} &middot; {n_loc} locations</p>
-      <div id="fan" style="width:100%;height:420px"></div>
+      <div id="fan"></div>
     </div>
   </section>
 
@@ -888,7 +1142,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         sequential Monte Carlo and MCMC methods, rule-based simulation, and
         high-performance computing. Builds and operates FluBNF end to end:
         the SIHRS compartment model and its priors, the particle-filter
-        fitting, the Oracle SIHRS's donor-growth step, the
+        fitting, the donor-growth (Oracle) step, the
         validation record, and the weekly CDC submissions.</p>
         <div class="linkrow"><a href="https://github.com/elyfmiller">GitHub</a>
         <a href="https://orcid.org/0000-0003-3480-8377">ORCID</a></div></div>
@@ -934,10 +1188,12 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
   <section>
     <div class="kick">Season replays</div>
     <p class="sub">Two models, each submitted on its own: the mechanistic
-    Oracle SIHRS and the empirical Groundhog. They fail differently season
-    to season, which is why both are filed.</p>
-    <div class="card scroll">
-      {_member_table(payload)}
+    {_e(mech["plain"])} and the empirical Groundhog. They fail differently
+    season to season, which is why both are filed. Each line is the
+    model's relWIS pooled from the season's first forecast week to the week
+    shown; below the dotted line at 1 beats the CDC baseline.</p>
+    <div class="card">
+      {_cum_charts(payload)}
     </div>
     {replay_note}
   </section>
@@ -954,29 +1210,27 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         enter both sides of every ratio the same way. The console's vintage
         browser shows exactly what any past week knew.</p>
         <div class="linkrow">
+          <a href="site.json" download>This page's data (site.json)</a>
           <a href="https://github.com/cdcepi/FluSight-forecast-hub/tree/main/target-data">NHSN target data</a>
           <a href="https://github.com/cdcepi/FluSight-forecast-hub">FluSight hub</a>
         </div></div>
       <div class="card"><span class="k">Run it</span>
         <h3>On your own laptop</h3>
-        <p>Clone the repository, run the setup script, and the console
-        replays any season on macOS, Linux, or Windows, with pause, resume,
-        and a playback player for the results.</p>
+        <p>Clone the repository and run the setup script: the console
+        replays the Groundhog on macOS, Linux, or Windows, with pause,
+        resume, and a playback player for the results. {_e(mech["the"][0].upper() + mech["the"][1:])}
+        also needs the lab's engine, which the engine installer sets up.</p>
         <div class="linkrow">
-          <a href="https://github.com/elyfmiller/flubnf">Repository</a>
-          <a href="https://github.com/elyfmiller/flubnf/blob/main/docs/WINDOWS.md">Windows guide</a>
+          <a href="{INSTALL_URL}">Install and run</a>
+          <a href="{REPO_URL}">Repository</a>
+          <a href="{REPO_URL}/blob/main/docs/WINDOWS.md">Windows guide</a>
         </div></div>
       <div class="card"><span class="k">Provenance</span>
         <h3>What produced this page</h3>
         <p>Built from commit <span class="mono">{_e(build["sha"])}</span> on
-        {_e(payload["generated_utc"])}, from
+        {_e(built_at)}, from
         {" and ".join(dict.fromkeys(_e(s["origin"]) for s in seasons)) or "no season"}
-        data under the console's own state. Engines: {_e(versions)}.
-        Engine versions are self-reported by the builder's install; the
-        sealed record's engine pin is bngsim 0.15.1, pinned by every engine
-        installer,
-        and a locally built engine can self-report an older version
-        string.</p>
+        data under the console's own state. {engine_line}</p>
         </div>
     </div>
   </section>
@@ -1015,14 +1269,14 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 </div>
 
 <footer>
-  Built {_e(payload["generated_utc"])} from the lab's own retrospectives at
+  Built {_e(built_at)} from the lab's own retrospectives at
   commit <span class="mono">{_e(build["sha"])}</span>. The console, the
   validation record and this generator live at
-  <a href="https://github.com/elyfmiller/flubnf">github.com/elyfmiller/flubnf</a>
+  <a href="{REPO_URL}">github.com/elyfmiller/flubnf</a>
   &middot; forecasts target the
   <a href="https://github.com/cdcepi/FluSight-forecast-hub">CDC FluSight hub</a>.
-  The data behind this page is the file <span class="mono">site.json</span>
-  beside it.
+  The data behind this page is the file
+  <a class="mono dl" href="site.json" download>site.json</a> beside it.
 </footer>
 </main>
 

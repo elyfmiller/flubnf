@@ -31,6 +31,10 @@ defaults that are fine as they are.
 curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | bash
 ```
 
+It puts FluBNF in `~/GitHub/flubnf`: the `GitHub` folder in your home
+folder, then `flubnf`. To find it in Finder, choose **Go > Go to Folder**
+and paste `~/GitHub/flubnf`.
+
 **Windows**, open Command Prompt and run:
 
 ```
@@ -59,8 +63,9 @@ folder, if that is where it ended up.)
 
 ## Step 3: open FluBNF
 
-* **macOS**: double-click `FluBNF.command`. The first time only, right-click it
-  and choose **Open**, because the app is not signed by Apple.
+* **macOS**: double-click `FluBNF.command` in `~/GitHub/flubnf`. The first
+  time only, right-click it and choose **Open**, because the app is not
+  signed by Apple.
 * **Windows**: double-click `FluBNF.bat` (in File Explorer, paste
   `%LOCALAPPDATA%\FluBNF\flubnf` into the address bar to get there). You
   only do this once: the first open adds **FluBNF to the Start menu**, so from
@@ -113,6 +118,28 @@ PF engine ready, bngsim 0.15.1 -- engine ready
 ```
 
 If you see **`engine ready`**, you are done.
+
+---
+
+## First forecast
+
+With the console open:
+
+1. **Data** tab: "check for new data", then "Update data", so the FluSight
+   data is this week's.
+2. **Forecast** tab: leave the date at the newest Saturday in the data,
+   read the Data issues box, and run both models.
+3. **Output** tab: open the weekly report and look through "All locations"
+   before anything else.
+
+That is the start of the weekly routine. The whole of it, from Sunday to
+the Wednesday deadline, including how the files reach the hub, is
+[Weekly routine](FLUSIGHT-2026-27.md#weekly-routine-sunday-to-wednesday)
+in the season guide. FluBNF only writes the files; nothing is submitted
+until someone uploads them.
+
+To fit a model of your own instead, the Sandbox tab starts from an example
+or a template: [SANDBOX.md](SANDBOX.md) walks through it.
 
 ---
 
@@ -235,16 +262,11 @@ is on a branch other than `main`: run `git checkout -f main` before the
 reset line.
 
 This is the fix when FluBNF says it cannot fast-forward and you never
-committed anything yourself. Main's history was rewritten once, in September
-2026: the commits made from early September up to the rewrite were given new
-ids. A FluBNF folder that updated itself in between cannot fast-forward past
-that, and on every open it says `this clone has N commit(s) origin does not`
-("throw this clone's work away"), or just
-`offline or local changes - running as-is`, and keeps running the old
-console. Nothing of yours is lost: those commits are the lab's own under
-their old ids. Do not delete the folder and clone again instead: that loses
-`app\state`, and leaves the old engine, which lives outside the folder,
-exactly where it was.
+committed anything yourself (the usual cause is in
+[the appendix](#appendix-the-september-2026-history-rewrite)). Do not
+delete the folder and clone again instead: that loses `app\state`, and
+leaves the old engine, which lives outside the folder, exactly where it
+was.
 
 **Reinstalling from scratch.** For when the reset is not enough, or Ely asks
 everyone to reinstall. Nothing is deleted until you choose to delete it.
@@ -311,11 +333,8 @@ its own next time. Local edits to tracked files are set aside into
 folder shows them and `git stash pop` puts them back. Local commits are left
 alone, and the launcher prints the command that would discard them rather
 than running it. Commits the launcher counts as this folder's own may not
-be: main's history was rewritten once, in September 2026, and in a folder
-that updated between early September and the rewrite, the commits it counts
-are the lab's own under their old ids ("Resetting or reinstalling
-(Windows)" above has the details, which hold on macOS too). To make a
-machine match the lab
+be ([the appendix](#appendix-the-september-2026-history-rewrite) says
+when). To make a machine match the lab
 whatever is on it, from Terminal in the FluBNF folder:
 
     git fetch origin && git reset --hard origin/main
@@ -329,3 +348,18 @@ are.
 Each snapshot carries a `VERSION` file naming the exact commit it came from,
 and FluBNF prints that on every setup. If two people's forecasts ever disagree,
 that line is the first thing to compare.
+
+---
+
+## Appendix: the September 2026 history rewrite
+
+Main's history was rewritten once, in September 2026: the commits made from
+early September up to the rewrite were given new ids. A FluBNF folder that
+updated itself in between cannot fast-forward past that, and on every open
+it says `this clone has N commit(s) origin does not` ("throw this clone's
+work away"), or just `offline or local changes - running as-is`, and keeps
+running the old console. Nothing of yours is lost: those commits are the
+lab's own under their old ids. The fix is the reset: on Windows, "Reset in
+place" under "Resetting or reinstalling (Windows)" above; on macOS, the
+`git fetch origin && git reset --hard origin/main` line under Notes. If you
+did commit something of your own in the folder, ask Ely before resetting.

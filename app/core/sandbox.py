@@ -265,6 +265,9 @@ def copy_model(src: str, dst: str) -> Path:
     for f in REQUIRED + (SOURCE_FILE,):
         if (s / f).is_file():
             shutil.copy2(s / f, d / f)
+            # the copy changed now: the gallery's "changed" is its creation
+            # time, not the original's last edit (copy2 keeps that mtime)
+            (d / f).touch()
     info = {k: v for k, v in read_info(src).items()
             if k in ("season_start",)}
     _write_info(dst, {**info, "origin": f"copy:{src}", "created_utc": _stamp()})

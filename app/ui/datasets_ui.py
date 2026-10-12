@@ -336,7 +336,9 @@ async def upload(request: Request):
     warn = list(ds.meta.get("warnings") or [])
     if as_snaps and len(fs) == 1 and not ds.vintage_true:
         warn.insert(0, _LONE)
-    counts = f"{len(ds.groups)} group(s), {len(ds.weeks())} week(s)."
+    ng, nw = len(ds.groups), len(ds.weeks())
+    counts = (f"{ng} group{'s' if ng != 1 else ''}, "
+              f"{nw} week{'s' if nw != 1 else ''}.")
     done = f"Stored the dataset {ds.name}: {counts}"
     snaps = ""
     if ds.meta.get("snapshot_files"):
@@ -824,7 +826,7 @@ def run_worker(spec) -> None:
     ref = (spec.extra or {}).get("dataset") or {}
     ui_state._status["run_label"] = (
         f"{spec.forecast_date} · {ref.get('name', '')}"
-        f" · {len(spec.locations)} group(s)")
+        f" · {len(spec.locations)} group{'s' if len(spec.locations) != 1 else ''}")
     ui_state._status["settings"] = spec_settings(spec)
     ui_state._status["dataset_id"] = ref.get("id")
     try:
