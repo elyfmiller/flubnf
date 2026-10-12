@@ -111,7 +111,10 @@ def test_forecast_panel_renders_every_forecast_knob_with_a_tip():
         assert old in names
     # coming-later knobs are shown, disabled, and never posted
     assert {"knob." + k for k in K.LATER} == f.disabled
-    assert html.count("coming later") >= len(K.LATER)
+    # ... in one fold that counts them, each named by its group
+    assert f">{len(K.LATER)} coming later<" in html
+    fold = html.split('id="ms-later-fold"')[1].split("</details>")[0]
+    assert fold.count('class="ms-row ms-later"') == len(K.LATER)
     # the override and its reason, and the reset control
     assert 'name="submit_modified"' in html and 'name="modified_reason"' in html
     assert 'id="ms-reset"' in html and "Reset to defaults" in html

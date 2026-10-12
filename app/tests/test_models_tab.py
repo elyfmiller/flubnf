@@ -95,7 +95,13 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
                      r'0\.722</span>', gh)
     pf2s = client.get("/model/pf2s").text
-    assert '<span class="uk-badge-t">scored worse</span>' in pf2s
+    # both bars beat the baseline (two checks): the badge says how far the
+    # two-strain fell behind the blend, from the two values, and its tip
+    # names the comparison
+    assert '<span class="uk-badge-t">0.015 behind the blend</span>' in pf2s
+    assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
+    tip = pf2s.split('id="tip-md-behind"', 1)[1].split('</span>', 1)[0]
+    assert "relWIS 0.719 against 0.704 for the two-member blend" in tip
 
 
 # ------------------------------------------------- equations: kit and plain

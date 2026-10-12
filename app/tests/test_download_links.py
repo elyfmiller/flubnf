@@ -79,7 +79,10 @@ def test_every_download_link_carries_the_download_attribute():
     assert {"output.html", "run.html", "_dataset_run.html",
             "retro_season.html", "sandbox.html"} <= names
     hrefs = {h for _, h in found}
-    assert "/output/report/download?date={{ archive_dates[0] }}" in hrefs
+    assert "/output/report/download?date={{ archive_dates[0][0] }}" in hrefs
+    # a file row (Output and the run page share _filerow.html)
+    assert ("_filerow.html", "/output/download?path={{ path | urlencode }}") \
+        in found
 
 
 def test_no_script_navigates_to_a_download():

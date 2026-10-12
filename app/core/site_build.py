@@ -534,6 +534,11 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
 
     models = [m for m in MODEL_ORDER if m in cards_by_model]
     models += [m for m in sorted(cards_by_model) if m not in models]
+    # the mechanistic map is named for what the source stored, as its fan is
+    labels = {m: MODEL_LABEL.get(m, m) for m in models}
+    if "pf" in labels:
+        from app.core.report_v2 import CAT_FORECAST
+        labels["pf"] = f"{source['pf_label']} {CAT_FORECAST}"
     if not models:
         raise BuildError("the forecast source carries no model with "
                          "categorical forecast cards")
@@ -559,7 +564,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
     return {
         "source": source,
         "models": models,
-        "labels": {m: MODEL_LABEL.get(m, m) for m in models},
+        "labels": labels,
         "default_model": default,
         "fills": fills,
         "hover": hover,
@@ -739,11 +744,97 @@ _PERF_CARD = re.compile(
     re.S)
 
 
+#: the engine components the Provenance card names and --check requires
+ENGINE_KEYS = ("pybnf", "bngsim", "bionetgen")
+
+
+def engine_version(versions: dict, key: str) -> str | None:
+    """A component's self-reported version, or None when it is absent or
+    still resolving (neither belongs on a public page)."""
+    v = str((versions or {}).get(key) or "").strip()
+    if not v or v == "not installed" or "resolving" in v:
+        return None
+    return v
+
+
+def public_versions(versions: dict) -> dict:
+    """The versions the payload publishes: reported version strings only,
+    never an absent component, a pending probe, or a local path (perl
+    reports where it lives, not a version)."""
+    out = {}
+    for k, v in sorted((versions or {}).items()):
+        v = engine_version(versions, k)
+        if v and "/" not in v and "\\" not in v:
+            out[k] = v
+    return out
+
+
+def engines_missing(versions: dict) -> list:
+    """The engine components the builder's install does not report."""
+    return [k for k in ENGINE_KEYS if engine_version(versions, k) is None]
+
+
+#: the Under-the-hood stack table and its engine toggletip: the builder's
+#: own install, which the public page has no business describing
+_STACK_TABLE = re.compile(r'(<table class="mt-stack">)(.*?)(</table>)', re.S)
+_STACK_CELL = re.compile(r"<t([dh])\b[^>]*>.*?</t\1>", re.S)
+_TIP_SPAN = re.compile(r'<span class="tip">.*?</span></span>', re.S)
+_ENGINE_TT = re.compile(
+    r'<span class="uk-tt"><button[^>]*aria-controls="tt-mt-engine".*?'
+    r"</span></span></span>", re.S)
+#: console-only install advice inside a harvested tip
+_INSTALL_ADVICE = re.compile(
+    r";\s*Windows needs Strawberry Perl \(the installer offers it\)")
+#: the Purpose tile's location count: the forecast covers the national
+#: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
+_LOCS_TILE = re.compile(
+    r'(id="mt-locs">)all 52(</span>\s*<span class="uk-stat-u">)'
+    r"US jurisdictions(</span>)")
+
+
+def _drop_version_column(html: str) -> str:
+    """Drop the stack table's last (Version) column. A tip in a dropped
+    cell (the sealed record's bngsim pin) moves to the row's Role cell."""
+    def row(m):
+        tr = m.group(0)
+        cells = list(_STACK_CELL.finditer(tr))
+        if len(cells) < 2:
+            return tr
+        last, prev = cells[-1], cells[-2]
+        tips = "".join(_TIP_SPAN.findall(last.group(0)))
+        prev_html = prev.group(0)
+        if tips:
+            close = prev_html.rfind("</t")
+            prev_html = prev_html[:close] + tips + prev_html[close:]
+        return (tr[:prev.start()] + prev_html + tr[prev.end():last.start()]
+                + tr[last.end():])
+
+    def table(m):
+        body = re.sub(r"<tr\b.*?</tr>", row, m.group(2), flags=re.S)
+        return m.group(1) + body + m.group(3)
+    return _STACK_TABLE.sub(table, html)
+
+
+def site_methods(html: str) -> str:
+    """The rendered Methods made fit for a public page: no Version column
+    (the builder's install: "(not installed)", local paths such as
+    /usr/bin/perl), no console-only install advice, and the location count
+    the forecast really covers."""
+    html = _drop_version_column(html)
+    html = _ENGINE_TT.sub("", html)
+    html = _INSTALL_ADVICE.sub("", html)
+    html = _LOCS_TILE.sub(
+        r"\g<1>53\g<2>locations: 52 jurisdictions plus the national total"
+        r"\g<3>", html)
+    return html
+
+
 def harvest_methods(versions: dict) -> str:
     """The console's Methods page as standalone markup.
 
     Rendered through the console's own Jinja env (app.ui.server.templates),
-    so the site's SVGs are the app's; only base.html's chrome is left behind.
+    so the site's SVGs are the app's; only base.html's chrome is left behind,
+    and site_methods drops what describes the builder's machine.
     """
     from app.ui.server import templates
 
@@ -756,6 +847,7 @@ def harvest_methods(versions: dict) -> str:
                                     + body)
     html = tpl.render(versions=versions)
     html = _PERF_CARD.sub("", html, count=1)
+    html = site_methods(html)
     # the console's in-app links have no meaning on a static site; only
     # same-page anchors survive
     html = re.sub(r'href="/(?!/)[^"#]*(#[^"]*)"', r'href="\1"', html)
@@ -816,8 +908,8 @@ def harvest_bibliography() -> list:
     items += [
         {"what": "Fitting framework",
          "text": ("Mitra et al. 2019, PyBioNetFit and the Biological "
-                  "Property Specification Language, iScience 19:1012-1036 "
-                  "-- the framework this lab co-developed and the particle "
+                  "Property Specification Language, iScience 19:1012-1036; "
+                  "the framework this lab co-developed and the particle "
                   "filter extends."),
          "href": "https://doi.org/10.1016/j.isci.2019.08.045",
          "label": "doi:10.1016/j.isci.2019.08.045"},
@@ -927,8 +1019,8 @@ def build_payload(seasons: dict | None = None,
         "payload_version": PAYLOAD_VERSION,
         "generated_utc": datetime.now(timezone.utc)
         .replace(microsecond=0).isoformat(),
-        "build": {"sha": RUNNING_SHA, "versions": dict(sorted(
-            VERSIONS.items()))},
+        "build": {"sha": RUNNING_SHA,
+                  "versions": public_versions(VERSIONS)},
         "outlook": outlook,
         "fans": fans,
         "fips_to_name": dict(sorted(f2n.items())),
@@ -985,6 +1077,8 @@ def build(out_dir: Path | None = None, seasons: dict | None = None,
 
     bad = [c for c in payload["consistency"] if not c["ok"]]
     return {
+        # engines the builder does not report: --check fails on these too
+        "engines_missing": engines_missing(VERSIONS),
         "out": out,
         "page_bytes": (out / PAGE_NAME).stat().st_size,
         "payload_bytes": (out / PAYLOAD_NAME).stat().st_size,

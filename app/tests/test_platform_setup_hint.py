@@ -93,6 +93,12 @@ def test_home_offers_the_engine_install_only_when_the_engine_is_missing(
     # whose PATH predates the Strawberry Perl it just installed): the run
     # preflight's own Perl message, never "add the engine"
     monkeypatch.setattr(fs, "check", lambda verbose=True: _missing("perl"))
+    # every probed version present: the badge counts Perl alone (the probe's
+    # "not installed" values count too; test_setup_badge.py)
+    from app.ui import versions as _v
+    for k in ("pybnf", "bngsim", "bionetgen", "fastapi", "plotly"):
+        monkeypatch.setitem(_v.VERSIONS, k, "1.0")
+    monkeypatch.setitem(_v.VERSIONS, "perl", "not installed")
     html = client.get("/").text
     assert "To add the particle-filter engine" not in html
     assert "Perl was not found on PATH" in html

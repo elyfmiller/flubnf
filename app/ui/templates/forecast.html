@@ -52,7 +52,7 @@
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.", for_="fc-date-in") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.", for_="fc-date-in") }}{% endif %}
-   <input type="date" name="forecast_date" value="{{ form.forecast_date }}" id="fc-date-in" data-default="{{ default_date }}">
+   <input type="date" name="forecast_date" value="{{ form.forecast_date or default_date }}" id="fc-date-in" data-default="{{ default_date }}">
    {# any day is accepted; this line names the archived week it resolves to
       (server-side resolve_anchor, the run's own function; the script below
       repaints it as the date changes): the week as a labelled value, a
@@ -62,11 +62,25 @@
    {% set an = anchor_note or "" %}
    {% set aw = anchor_week if anchor_week is defined and anchor_week else (an[13:] | trim(".") if an.startswith("Anchor week: ") else "") %}
    <div class="fc-anchor" id="anchor-line" aria-live="polite">
-    <span class="fc-anchor-ok"{% if not aw %} hidden{% endif %}>{{ tips.icon("calendar", cls="uk-c-muted") }}<span class="fc-anchor-k">Anchor week</span>
-     <b id="fc-anchor-wk">{{ aw }}</b>
+    {# the week as a value only when it is not the typed day (a typed
+       Saturday is its own anchor); the badge stays either way #}
+    <span class="fc-anchor-ok"{% if not aw %} hidden{% endif %}><span class="fc-anchor-kv" id="fc-anchor-kv"{% if aw and aw == (form.forecast_date or default_date) %} hidden{% endif %}>{{ tips.icon("calendar", cls="uk-c-muted") }}<span class="fc-anchor-k">Anchor week</span>
+     <b id="fc-anchor-wk">{{ aw }}</b></span>
      <span id="fc-anchor-live"{% if dataset or not aw or aw != live_only %} hidden{% endif %}>{% call tips.badge("warn", "not archived", id="fc-live") %}{{ live_only_tip }}{% endcall %}</span></span>
     <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
    </div>
+   {# the round the date answers: its reference date (the anchor week + 7)
+      and the hub's window for it (output._date_status), repainted from
+      GET /api/forecast/week-info as the date changes. Display only #}
+   {% if not dataset %}{% set wi = week_info if week_info is defined and week_info else {} %}
+   <div id="fc-datestats"{% if not wi %} hidden{% endif %}>
+   {% call tips.stats("uk-stats--row fc-datestats", label="The round") %}
+    {{- tips.stat("Reference date", wi.reference or "", id="fc-ref", tiptext="The Saturday the hub's round is named by: the anchor week plus 7 days. Horizons count from it.") -}}
+    {%- set win %}<span id="fc-win-slot">{{ tips.badge((wi.badge or ["neutral", ""])[0], (wi.badge or ["neutral", ""])[1], id="fc-win") }}</span>{% endset -%}
+    {{- tips.stat("FluSight window", win, id="fc-win-stat") -}}
+   {% endcall %}
+   </div>
+   {% endif %}
    {# the newest week's reporting, shown while the anchor is that week #}
    {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
    {# the per-state choices for that week's zeros, collapses and gaps
@@ -100,6 +114,28 @@
         return VS.reduce(function (a, v) {
           return v <= sat && (!a || v > a) ? v : a; }, null);
       }
+      // the round row: the anchor's reference date and FluSight window
+      // (read-only GET; the newest answer wins)
+      var roundSeq = 0,
+          roundWeek = {{ ((week_info or {}).week if week_info is defined else none) | default(none, true) | tojson }};
+      function paintRound(a) {
+        var row = document.getElementById('fc-datestats');
+        if (!row || a === roundWeek) return;
+        roundWeek = a;
+        if (!a || !window.fetch) { row.hidden = true; return; }
+        var seq = ++roundSeq;
+        fetch('/api/forecast/week-info?week=' + encodeURIComponent(a))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (seq !== roundSeq) return;
+            if (!d || !d.reference) { row.hidden = true; return; }
+            document.getElementById('fc-ref').textContent = d.reference;
+            var b = document.getElementById('fc-win');
+            if (b && window.FluBNFUI) FluBNFUI.setBadge(b, d.badge[0], d.badge[1]);
+            row.hidden = false;
+          })
+          .catch(function () { if (seq === roundSeq) row.hidden = true; });
+      }
       function paint() {
         if (!line || !box) return;
         var a = anchorFor(box.value);
@@ -115,6 +151,10 @@
         else document.getElementById('fc-anchor-none').textContent =
           {{ ("No week of this dataset on or before " if dataset else "No archived week on or before ") | tojson }} + box.value + '.';
         if (live) live.hidden = !a || a !== LIVE;
+        // the week said only when it is not the typed day
+        var kv = document.getElementById('fc-anchor-kv');
+        if (kv) kv.hidden = !a || a === box.value;
+        paintRound(a);
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
         // the Data issues box belongs to that week too; disabled, it
@@ -168,7 +208,20 @@
    <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="fc-count"></span></label>{{ tips.tip("fc-locs", "locations", "All 53 is what the hub takes: the 52 jurisdictions (the 50 states, DC and Puerto Rico) and US (national). Ticking one state starts a custom pick with US (national) still ticked; untick it to leave US out. US is fitted as a series of its own and scored apart from the 52.") }}</div>
    {% endif %}
    {% if locations_error %}{{ tips.alert("warn", locations_error, id="fc-locs-error") }}{% endif %}
-   <div class="checklist" role="group" aria-labelledby="fc-locs-lbl">
+   {# presets and a filter over the list: buttons and a search box with no
+      name, so the form still posts only the checkboxes' own values #}
+   {% if not dataset %}{% set pre = (aids.presets if aids is defined and aids else {}) %}
+   <div class="fc-presets" role="group" aria-label="Location presets">
+    <button type="button" class="quiet fc-chip" data-preset="all">All 53</button>
+    <button type="button" class="quiet fc-chip" data-preset="states">States only (52)</button>
+    <button type="button" class="quiet fc-chip" data-preset="us">US only</button>
+    {% if pre.last %}<button type="button" class="quiet fc-chip" data-preset="last" data-locs="{{ pre.last | tojson | forceescape }}">Last pick</button>{% endif %}
+    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run <span class="fc-chip-n">{{ pre.failed | length }}</span></button>{% endif %}
+   </div>
+   {% endif %}
+   <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
+     aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
+   <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 jurisdictions" }}</b></label>
      {% for l in all_locs %}
@@ -181,6 +234,7 @@
      <label class="ck ck-national"><input type="checkbox" id="ck-us" name="locations" value="{{ us_choice }}"
        {% if us_checked %}checked{% endif %}> <b>US (national)</b></label>
      {% endif %}
+     <p class="fc-nomatch" id="fc-nomatch" hidden>No match</p>
    </div>
    {% if dataset %}
    {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.", for_="model-pick") }}
@@ -227,47 +281,208 @@
       start, weeks to drop and replicates keep their field names) #}
    <input type="hidden" name="weeks_to_nowcast" value="0">
    {% include "_model_settings.html" %}
-   <button class="gold" data-guard="console-run">Run models</button>
+   {# the Run row: held at the foot of the column while the open Model
+      settings panel scrolls (forecast.css); beside it, how the form stands
+      against the last run (the script below; display only) #}
+   {% set lr = (aids.last_run if (aids is defined and aids and not dataset) else none) %}
+   <div class="fc-runrow">
+    <button class="gold" data-guard="console-run">Run models</button>
+    {% if lr %}<span id="fc-vslast" class="fc-vslast" aria-live="polite">{{ tips.badge("ok", "Same as last run", tiptext="Model, locations and every model setting match the latest run's (the forecast date aside).", id="fc-vs-last") }}</span>{% endif %}
+   </div>
   </form>
+  {% if lr %}
   <script>
-   const CKUS=document.getElementById('ck-us');   // absent on a dataset
-   function updCount(){
-     const all=document.getElementById('ck-all').checked;
-     const us=!!(CKUS&&CKUS.checked);
-     const n=document.querySelectorAll('.ck-one:checked').length;
-     // the label's chip: empty (and hidden) when nothing is ticked
-     document.getElementById('lcount').textContent =
-       all? 'all '+{{ (all_locs | length if dataset else 53) | tojson }}
-       : n? n+(us?' + US':'')+' selected' : us? 'US only' : '';
-   }
-   // 'all' and specific states are mutually exclusive; nothing is disabled.
-   // 'all' is the 53: ticking it ticks US (national) too; a state pick
-   // leaves US as it is (ticked, unless the user unticks it)
-   document.getElementById('ck-all').addEventListener('change', function(){
-     if(this.checked){
-       document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
-       if(CKUS) CKUS.checked=true;
+   // the form against the latest run: the model, the location pick and
+   // each model setting the run was given; the differing ones by name in
+   // the badge's tip. Reads the controls only; posts nothing.
+   (function () {
+     var LAST = {{ lr | tojson }};
+     var form = document.getElementById('fcform');
+     var badge = document.getElementById('fc-vs-last');
+     var tipbox = document.getElementById('tip-fc-vs-last');
+     if (!form || !badge) return;
+     function nums(v) {
+       return String(v).split(',').map(function (x) { return parseFloat(x); });
      }
-     updCount();
-   });
-   // the checklist decides what RUNS; the data panel has its own dropdown
-   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
-     const all=document.getElementById('ck-all');
-     if(c.checked && all.checked) all.checked=false;
-     updCount();}));
-   // unticking US while 'all' is on: the 52 without US, as a custom pick
-   if(CKUS) CKUS.addEventListener('change', function(){
-     const all=document.getElementById('ck-all');
-     if(!CKUS.checked && all.checked){
-       all.checked=false;
-       document.querySelectorAll('.ck-one').forEach(c => c.checked=true);
+     function same(a, b) {
+       a = String(a == null ? '' : a).replace(/^\s+|\s+$/g, '');
+       b = String(b == null ? '' : b).replace(/^\s+|\s+$/g, '');
+       if (a === b) return true;
+       var x = nums(a), y = nums(b);
+       return x.length === y.length && x.every(function (v, i) {
+         return !isNaN(v) && v === y[i]; });
      }
-     updCount();
-   });
-   updCount();
+     function labelOf(el) {
+       var l = el.id && form.querySelector('label[for="' + el.id + '"]');
+       return l ? l.textContent.replace(/^\s+|\s+$/g, '') : el.name;
+     }
+     function locKey() {
+       var all = document.getElementById('ck-all');
+       if (all && all.checked) return 'all';
+       var v = [];
+       form.querySelectorAll('.ck-one:checked').forEach(function (c) { v.push(c.value); });
+       v.sort();
+       var us = document.getElementById('ck-us');
+       if (us && us.checked) v.push('US');
+       return v.join('|');
+     }
+     function check() {
+       var diff = [];
+       var m = document.getElementById('model-pick');
+       if (m && m.value !== LAST.engine) diff.push('Model');
+       if (locKey() !== LAST.locations.join('|')) diff.push('Locations');
+       form.querySelectorAll('[data-knob]').forEach(function (el) {
+         var k = el.getAttribute('data-knob');
+         if (el.disabled || el.closest('[hidden]') || !(k in LAST.knobs)) return;
+         var v = el.value === '' ? (el.getAttribute('data-default') || '') : el.value;
+         if (!same(v, LAST.knobs[k])) diff.push(labelOf(el));
+       });
+       if (!window.FluBNFUI) return;
+       if (diff.length) {
+         FluBNFUI.setBadge(badge, 'warn', 'Differs from last run');
+         if (tipbox) tipbox.textContent = diff.join(', ') + '.';
+       } else {
+         FluBNFUI.setBadge(badge, 'ok', 'Same as last run');
+         if (tipbox) tipbox.textContent = "Model, locations and every model setting match the latest run's (the forecast date aside).";
+       }
+     }
+     form.addEventListener('change', check);
+     form.addEventListener('input', check);
+     form.addEventListener('fc-form-change', check);
+     // Reset to defaults sets values without a change event
+     form.addEventListener('click', function () { setTimeout(check, 0); });
+     // tips.js (FluBNFUI) loads deferred: the first check waits for it
+     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check);
+     else check();
+   })();
+  </script>
+  {% endif %}
+  <script>
+   // the location checklist. "all" is the 53: while it is ticked every
+   // state box shows ticked and is off (a disabled box posts nothing, so
+   // the form posts "all" and US as before), never "all" beside 52 empty
+   // boxes. Unticking "all" clears the states for a custom pick; unticking
+   // US while "all" is on keeps the 52 as a custom pick. The presets and
+   // the filter set or show boxes only; they post nothing themselves.
+   (function () {
+     var CKALL = document.getElementById('ck-all');
+     var CKUS = document.getElementById('ck-us');   // absent on a dataset
+     var LIST = document.getElementById('fc-checklist');
+     var FORM = document.getElementById('fcform');
+     if (!CKALL || !LIST) return;
+     var ONES = Array.prototype.slice.call(document.querySelectorAll('.ck-one'));
+     var TOTAL = {{ (all_locs | length if dataset else 53) | tojson }};
+     var US = CKUS ? CKUS.value : null;
+     function told() {
+       // programmatic changes fire no change event: tell the form's readers
+       if (FORM && window.CustomEvent) FORM.dispatchEvent(new CustomEvent('fc-form-change'));
+     }
+     function sync() {
+       var all = CKALL.checked;
+       ONES.forEach(function (c) {
+         if (all) c.checked = true;
+         c.disabled = all;
+       });
+       updCount(); paintChips(); paintFade();
+     }
+     function updCount() {
+       var all = CKALL.checked;
+       var us = !!(CKUS && CKUS.checked);
+       var n = ONES.filter(function (c) { return c.checked; }).length;
+       // the label's chip: empty (and hidden) when nothing is ticked
+       document.getElementById('lcount').textContent =
+         all ? 'all ' + TOTAL
+         : n ? n + (us ? ' + US' : '') + ' selected' : us ? 'US only' : '';
+     }
+     // the current pick as a key: "all", or the ticked values in order
+     function pickKey() {
+       if (CKALL.checked) return 'all';
+       var v = ONES.filter(function (c) { return c.checked; })
+                   .map(function (c) { return c.value; }).sort();
+       if (CKUS && CKUS.checked) v.push(US);
+       return v.join('|');
+     }
+     var STATES = ONES.map(function (c) { return c.value; }).sort().join('|');
+     function presetKey(b) {
+       var p = b.getAttribute('data-preset');
+       if (p === 'all') return 'all';
+       if (p === 'states') return STATES;
+       if (p === 'us') return US || '';
+       var locs = [];
+       try { locs = JSON.parse(b.getAttribute('data-locs') || '[]'); } catch (e) {}
+       var st = locs.filter(function (l) { return l !== US; }).sort();
+       if (st.length === ONES.length && locs.indexOf(US) >= 0) return 'all';
+       if (locs.indexOf(US) >= 0) st.push(US);
+       return st.join('|');
+     }
+     var CHIPS = Array.prototype.slice.call(document.querySelectorAll('.fc-chip'));
+     function paintChips() {
+       var k = pickKey();
+       CHIPS.forEach(function (b) {
+         b.setAttribute('aria-pressed', String(presetKey(b) === k));
+       });
+     }
+     function apply(b) {
+       var key = presetKey(b);
+       if (key === 'all') {
+         CKALL.checked = true;
+         if (CKUS) CKUS.checked = true;
+       } else {
+         var want = key ? key.split('|') : [];
+         CKALL.checked = false;
+         ONES.forEach(function (c) { c.checked = want.indexOf(c.value) >= 0; });
+         if (CKUS) CKUS.checked = want.indexOf(US) >= 0;
+       }
+       sync(); told();
+     }
+     CHIPS.forEach(function (b) { b.addEventListener('click', function () { apply(b); }); });
+     CKALL.addEventListener('change', function () {
+       if (this.checked) { if (CKUS) CKUS.checked = true; }
+       else ONES.forEach(function (c) { c.checked = false; });
+       sync();
+     });
+     // the checklist decides what RUNS; the data panel has its own dropdown
+     ONES.forEach(function (c) { c.addEventListener('change', function () { updCount(); paintChips(); }); });
+     // unticking US while 'all' is on: the 52 without US, as a custom pick
+     if (CKUS) CKUS.addEventListener('change', function () {
+       if (!CKUS.checked && CKALL.checked) {
+         CKALL.checked = false;
+         ONES.forEach(function (c) { c.checked = true; });
+       }
+       sync();
+     });
+     // the filter: shows the boxes whose name holds the text
+     var FILTER = document.getElementById('fc-locfilter'),
+         NOMATCH = document.getElementById('fc-nomatch');
+     if (FILTER) FILTER.addEventListener('input', function () {
+       var q = FILTER.value.replace(/^\s+|\s+$/g, '').toLowerCase(), shown = 0;
+       Array.prototype.forEach.call(LIST.querySelectorAll('label.ck'), function (l) {
+         var hit = !q || l.textContent.toLowerCase().indexOf(q) >= 0;
+         l.hidden = !hit;
+         if (hit) shown++;
+       });
+       if (NOMATCH) NOMATCH.hidden = shown > 0;
+       LIST.scrollTop = 0;
+       paintFade();
+     });
+     // a fade at the list's foot while more boxes lie below
+     function paintFade() {
+       LIST.classList.toggle('fc-more',
+         LIST.scrollHeight - LIST.scrollTop - LIST.clientHeight > 4);
+     }
+     LIST.addEventListener('scroll', paintFade);
+     addEventListener('resize', paintFade);
+     sync();
+   })();
   </script>
  </div></div>
  <div id="results">
+  {# the default as-of answers no open round: the next round, and the
+     week of data it waits for (forecast_aids.next_round) #}
+  {% set nr = aids.next_round if (aids is defined and aids and not dataset) else none %}
+  {% if nr and not status.running %}
+  {{ tips.alert("info", "Next round " ~ nr.round ~ " needs data through " ~ nr.needs ~ ", " ~ ("was expected " if nr.expected_past else "expected ") ~ nr.expected ~ ".", id="fc-next-round", live="", action='<a href="/data">Data</a>' | safe, tiptext="The newest week's reference date (the week plus 7 days) is not a FluSight round open for submission. A round's file forecasts from the Saturday a week before its date; the hub adds that week's data on the Wednesday after it.") }}
+  {% endif %}
   {% if status.running %}
   {# the live run: its label, a labelled bar (busy until the fit count is
      known), the counts as values, the spec's settings, Stop at the top #}
@@ -491,6 +706,11 @@
       alone); the run page keeps the full record #}
    <p class="fc-runline"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
     {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status, tiptext=r.error or "", id="fc-latest-status") }}</p>
+   {# a run that failed says why where it is read: the first clause, the
+      full reason in its tip #}
+   {% if r.error and RUN_STATE.get(r.status, "error") == "error" %}
+   {{ tips.alert("error", error_head(r.error) if error_head is defined else r.error, tiptext=r.error, id="fc-latest-error", live="", tip_label="the full error") }}
+   {% endif %}
    {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
@@ -508,7 +728,8 @@
     {# fresh re-run from the recorded spec (console fits hold no checkpoint,
        so never a resume); same guard and server-side checks as /run #}
     <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run row">
-     <button class="gold" data-guard="console-run">Run again with these settings</button>
+     {# quiet: the form's Run models is this page's primary #}
+     <button class="quiet" data-guard="console-run">Run again with these settings</button>
      {{ tips.tip("fc-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
     </form>
     {% endif %}
@@ -567,7 +788,11 @@
    exist: the model buttons (script), the FluSight switch's slot, the
    location pager and the expand button #}
 <template id="fc-fan-tpl"><div class="card" id="fancard">
- {{ tips.heading("Forecasts", "fc-fans", "The latest stored run's forecasts: the band is the 10-90% interval around the median; the dotted line after the forecast date is the data as it settled since.", after=tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")])) }}
+ {# the run drawn, by name and link; "earlier run" when a newer one (that
+    failed, or is the dataset's) is what the Latest run card shows #}
+ {% set fr = aids.fan_run if (aids is defined and aids) else none %}
+ {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span><a href="/runs/{{ fr.run_id }}" id="fc-fan-run">{{ fr.label }}</a></li></ul>{% if fr.earlier %}{{ tips.badge("warn", "earlier run", tiptext="The newest run left no forecasts to draw, so this card draws the latest run that did.", id="fc-fan-earlier") }}{% endif %}{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
+ {{ tips.heading("Forecasts", "fc-fans", "The latest stored run's forecasts: the band is the 10-90% interval around the median; the dotted line after the forecast date is the data as it settled since.", after=fan_meta) }}
  <div class="fanbar"><div class="seg" role="group" aria-label="model"></div>
   <span class="fanoff" id="fan-offslot"></span></div>
  <div class="carousel"><button type="button" class="quiet cnav" id="fan-prev" aria-label="previous location">◀</button>
@@ -575,7 +800,7 @@
   <button type="button" class="quiet cnav" id="fan-next" aria-label="next location">▶</button>
   <span class="fc-pos" id="fan-pos"></span>
   <button type="button" class="quiet" id="fan-expand" aria-haspopup="dialog">⤢ expand</button></div>
- <div id="fanplot" style="min-height:400px"></div></div></template>
+ <div id="fanplot" style="min-height:400px" tabindex="0" role="group" aria-label="Forecast chart: Left and Right arrows change the location"></div></div></template>
 {# expanded forecast view: base.html's modal shell sized by .modal.fanx; its
    pager shares the card's selection, so closing restores location, scroll
    and focus #}
@@ -587,10 +812,10 @@
    <button type="button" class="quiet" id="fanx-close">Close</button>
   </div>
   <div class="carousel">
-   <button type="button" class="quiet cnav" id="fanx-prev">◀</button>
+   <button type="button" class="quiet cnav" id="fanx-prev" aria-label="previous location">◀</button>
    <select id="fanx-loc" aria-label="forecast location, expanded view"
      style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
-   <button type="button" class="quiet cnav" id="fanx-next">▶</button>
+   <button type="button" class="quiet cnav" id="fanx-next" aria-label="next location">▶</button>
    <span class="hint" id="fanx-pos"></span>
   </div>
   <div id="fanxplot"></div>
@@ -607,6 +832,8 @@
  // date, keyed like FANQ ({} when none were recorded: no toggle)
  const OFFQ = {{ official_json | default('{}', true) | safe }};
  const FCDATE = {{ fc_date | tojson }};
+ // the run the fans draw, by its label (forecast_aids.fan_run)
+ const FANRUN = {{ ((aids.fan_run or {}).label if (aids is defined and aids) else "") | default("", true) | tojson }};
  // the data source for /api/series: '' = the FluSight hub
  const SRCQ = {{ ("&source=" ~ dataset.id if dataset else "") | tojson }};
  // shared maps from player.js's marked JSON, injected by the server
@@ -904,7 +1131,7 @@
    function fanxOpen(){
      xRet=document.activeElement;
      document.getElementById('fanx-title').textContent=
-       'Forecasts: latest stored run, '+FCDATE;
+       'Forecasts: '+(FANRUN||('latest stored run, '+FCDATE));
      xb.hidden=false;
      drawFan();
      document.getElementById('fanx-close').focus();
@@ -920,6 +1147,17 @@
    document.getElementById('fanx-prev').onclick=()=>{FIDX--;drawFan();};
    document.getElementById('fanx-next').onclick=()=>{FIDX++;drawFan();};
    document.getElementById('fanx-loc').onchange=function(){FIDX=this.selectedIndex;drawFan();};
+   // Left and Right page the carousel while the card (or the expanded
+   // view) has focus; a select or a text field keeps its own arrows
+   function pageKeys(e){
+     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight') return;
+     if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
+     const t=e.target, tag=(t&&t.tagName)||'';
+     if(tag==='SELECT'||tag==='INPUT'||tag==='TEXTAREA') return;
+     FIDX+=e.key==='ArrowLeft'?-1:1; drawFan(); e.preventDefault();
+   }
+   document.getElementById('fancard').addEventListener('keydown',pageKeys);
+   document.querySelector('#fanx-modal .fanx').addEventListener('keydown',pageKeys);
    addEventListener('keydown',e=>{
      if(e.key==='Escape'&&!xb.hidden)fanxClose();});
    xb.addEventListener('keydown',e=>{

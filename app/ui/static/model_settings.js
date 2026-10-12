@@ -95,6 +95,11 @@
         g.hidden = !applies(g, ms)
           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
       });
+      // the "coming later" fold hides with its last applying row
+      box.querySelectorAll('.ms-later-fold').forEach(function (f) {
+        var rows = Array.prototype.slice.call(f.querySelectorAll('.ms-row'));
+        f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
+      });
     }
     // the badge takes its state's word, class and icon. The icon comes
     // from FluBNFUI (tips.js, loaded after this script): until then the
@@ -112,6 +117,11 @@
       }
     }
     function update() {
+      // each field off its default is marked on its row (ms-changed)
+      inputs.forEach(function (el) {
+        var row = el.closest('.ms-row');
+        if (row) row.classList.toggle('ms-changed', isModified(el));
+      });
       var any = inputs.some(function (el) {
         return !el.closest('[hidden]') && isModified(el);
       });
@@ -141,6 +151,13 @@
         try { sessionStorage.setItem(memo, box.open ? '1' : '0'); } catch (e) {}
       }, 0);
     });
+    // on the Forecast page an open panel takes the page's width: its
+    // column spans the grid (forecast.css .fc-col-wide), the groups in
+    // columns, the Run row held at the foot
+    var col = box.dataset.scope === 'forecast' && box.closest('.cols > div');
+    function wide() { if (col) col.classList.toggle('fc-col-wide', !!box.open); }
+    box.addEventListener('toggle', wide);
+    wide();
     box.addEventListener('input', update);
     box.addEventListener('change', update);
     if (form) form.addEventListener('change', function (e) {

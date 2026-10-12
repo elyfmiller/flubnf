@@ -116,10 +116,16 @@ def _record(name: str) -> dict:
                  f"{fmt(seasons[2][1])}, pooled {fmt(pooled)} ({fmt(bare)} "
                  f"without the FluSurv-NET donors).")]})
     two, blend = 0.719, 0.704
+    # both scores beat the baseline (two checks), so the badge says how far
+    # this one fell behind the blend it was tested in, from the two values
     return _bars({
         "bars": [("Two-strain SIHRS", two, True),
                  ("Two-member blend", blend, False)],
-        "facts": [], "worse": True,
+        "facts": [],
+        "behind": {"text": f"{fmt(two - blend)} behind the blend",
+                   "tip": (f"relWIS {fmt(two)} against {fmt(blend)} for the "
+                           "two-member blend it was tested in, on the full "
+                           "grid; lower is better.")},
         "lines": [
             (f"It scored worse on the full grid (relWIS {fmt(two)} against "
              f"{fmt(blend)} for the two-member blend it was tested in), so "

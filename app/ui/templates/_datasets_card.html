@@ -15,7 +15,7 @@
                  after=tips.badge("neutral", datasets | length ~ (" dataset" if datasets | length == 1 else " datasets"))) }}
  <div class="tablewrap"><table class="compact dstable">
   <thead><tr><th>Name</th><th class="num">Groups</th><th class="num">Weeks</th>
-   <th>Values</th><th>Snapshots</th><th><span class="uk-sr">Use</span></th></tr></thead>
+   <th>Values</th><th>Snapshots</th><th><span class="uk-sr">Actions</span></th></tr></thead>
   <tbody>{% for d in datasets %}
   <tr>
    <td class="dsname"><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}

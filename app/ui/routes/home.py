@@ -312,6 +312,36 @@ def _has_report(rid: str | None) -> bool:
     return (APP_STATE / "workroots" / rid / "report.html").is_file()
 
 
+#: the Setup card's component names, by flubnf.settings.check() key and by
+#: version key (the two name one component once, never twice)
+_CHECK_NAMES = {"FLUBNF_HUB": "FluSight hub", "FLUBNF_BNG": "BioNetGen",
+                "perl": "Perl", "FLUBNF_PY_ENGINE": "Engine venv",
+                "FLUBNF_PYBNF": "PyBNF"}
+_VERSION_NAMES = (("pybnf", "PyBNF"), ("bngsim", "bngsim"),
+                  ("bionetgen", "BioNetGen"), ("perl", "Perl"),
+                  ("fastapi", "FastAPI"), ("plotly", "Plotly"))
+
+
+def _setup_gaps(missing: list, versions: dict,
+                engine_known: bool = False) -> list:
+    """The Setup card's badge, as names: every component check() reports
+    missing and every version the probe reads as "not installed" (PyBNF
+    only while the engine build is unknown, as its value shows), each
+    component once. A version still resolving is not counted (the page
+    recounts when the probe lands)."""
+    names = []
+    for m in missing or []:
+        n = _CHECK_NAMES.get(m[0], m[0])
+        if n not in names:
+            names.append(n)
+    for key, n in _VERSION_NAMES:
+        if key == "pybnf" and engine_known:
+            continue
+        if (versions or {}).get(key) == "not installed" and n not in names:
+            names.append(n)
+    return names
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     _t0 = time.perf_counter()
@@ -336,6 +366,8 @@ def home(request: Request):
               "label": "", "approx": False, "toggle": ""}
     else:
         ob = _outlook_block(rid)
+    from flubnf.settings import check as _check
+    missing = _check(verbose=False)
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
@@ -348,7 +380,19 @@ def home(request: Request):
         "outlook_pending": pending,
         "outlook_report": bool(ob["outlook_date"]) and _has_report(rid),
         "versions": VERSIONS, "diagram": _diagram_data(res),
-        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
+        "missing": missing,
+        "setup_gaps": _setup_gaps(missing, VERSIONS, _engine_known()),
+        "setup_checked": _setup_gaps(missing, {})})
+
+
+def _engine_known() -> bool:
+    """Whether the engine build is known (PyBNF then shows its build, not
+    its probed version); False when it cannot be read."""
+    try:
+        from app.ui.versions import engine_build_view
+        return bool(engine_build_view().get("known"))
+    except Exception:
+        return False
 
 
 @router.get("/api/outlook-ready")

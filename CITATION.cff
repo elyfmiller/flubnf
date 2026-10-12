@@ -25,9 +25,9 @@ abstract: >-
   jurisdictions of the CDC FluSight challenge. It submits two standalone
   models, each under its own hub identity, and blends nothing. Oracle SIHRS
   is mechanistic: an SIHRS compartmental model written in BNGL, fitted every
-  week by a sequential particle filter in a fork of PyBNF on the bngsim
-  engine, whose forecast growth is then combined (geometric mean, half and
-  half) with donor growth from earlier seasons at the same calendar week.
+  week by a Liu-West filter (a sequential particle filter) in a fork of
+  PyBNF on the bngsim engine, whose forecast growth is then combined
+  (geometric mean, half and half) with donor growth from earlier seasons at the same calendar week.
   Groundhog is empirical: the last observed count scaled by the empirical
   quantiles of growth ratios seen at the same epiweek in strictly earlier
   seasons, pooled across jurisdictions, with a committed FluSurv-NET donor

@@ -347,7 +347,12 @@
 </div>
 
 <div class="card hm-setup">
- {% if missing %}{% set setup_state = tips.badge("warn", missing | length ~ " not installed", id="hm-missing") %}
+ {# the badge counts what check() reports missing AND what the version
+    probe reads as "not installed" (routes/home.py _setup_gaps), so it never
+    says "All components installed" beside a "not installed" value; the
+    script below recounts when a resolving version lands #}
+ {% set gaps = setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list) %}
+ {% if gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
  {{ tips.heading("Setup", "hm-setup", "What this machine has installed for forecasting, and the versions the console runs with.",
                  after=setup_state) }}
@@ -394,5 +399,31 @@
   {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
   {% endfor %}
  {% endcall %}
+ {# a version that was still resolving at paint lands through base.html's
+    poll: the badge recounts (the components check() reported, plus each
+    value now reading "not installed", each once) #}
+ <script>
+ (function () {
+   var box = document.querySelector('.hm-versions');
+   if (!box || !window.MutationObserver) return;
+   var CHECKED = {{ (setup_checked if setup_checked is defined else []) | tojson }};
+   var NAMES = {pybnf: 'PyBNF', bngsim: 'bngsim', bionetgen: 'BioNetGen',
+                perl: 'Perl', fastapi: 'FastAPI', plotly: 'Plotly'};
+   function recount() {
+     var names = CHECKED.slice();
+     var spans = box.querySelectorAll('[data-vkey]');
+     for (var i = 0; i < spans.length; i++) {
+       var n = NAMES[spans[i].getAttribute('data-vkey')];
+       if (n && spans[i].textContent.replace(/^\s+|\s+$/g, '') === 'not installed'
+           && names.indexOf(n) < 0) names.push(n);
+     }
+     var b = document.getElementById('hm-missing') || document.getElementById('hm-installed');
+     if (!b || !window.FluBNFUI) return;
+     if (names.length) FluBNFUI.setBadge(b, 'warn', names.length + ' not installed');
+     else FluBNFUI.setBadge(b, 'ok', 'All components installed');
+   }
+   new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});
+ })();
+ </script>
 </div>
 {% endblock %}

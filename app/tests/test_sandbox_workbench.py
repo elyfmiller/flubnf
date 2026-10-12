@@ -86,7 +86,8 @@ def test_the_gallery_shows_each_models_note_origin_and_last_run(box):
     # the note in the name's "i", the last run a status badge linking to it
     assert "A model that is not an epidemic: first-order conversion A -&gt; B." in html
     assert 'aria-label="About kinetics_example"' in html
-    assert "example kinetics_example" in html
+    # the origin by the example's display name, as Start from lists it
+    assert "<td>Kinetics example</td>" in html
     link = html[html.index(f'href="/sandbox?run={w.name}&amp;model=kinetics_example">'):]
     link = link[:link.index("</a>")]
     assert 'class="uk-badge uk-badge--warn"' in link

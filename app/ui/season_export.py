@@ -59,6 +59,22 @@ def _settle_scores(root: Path, season: str) -> str:
     return ""
 
 
+def truth_fact() -> str:
+    """The truth the report's scores read, as one fact for its header:
+    "scored against hub target data through 2026-04-25" (the settled
+    file), or the archived vintage that stood in for it; "" when no truth
+    loads."""
+    from app.core import scoring
+    try:
+        truth, _n2f = scoring.load_truth()
+        newest = max(d for (_f, d) in truth).date().isoformat()
+    except Exception:
+        return ""
+    src = str(getattr(scoring, "TRUTH_SOURCE", "") or "settled")
+    what = "hub target data" if src == "settled" else src
+    return f"scored against {what} through {newest}"
+
+
 def render_season_report(root: Path, season: str, archive: str = "",
                          progress=None) -> str:
     """The season page in export mode, as one self-contained HTML string.
@@ -84,6 +100,9 @@ def render_season_report(root: Path, season: str, archive: str = "",
         # the models alone: the API's extra `states` repeats the first
         embed["maps"][w] = {"models": season_map_swap(root, w)["models"]}
     progress("Writing the file")
+    # the header's evidence in place of the replay's wall time: the weeks
+    # (the template's), the truth, the build and the project
+    ctx["export_facts"] = {"truth": truth_fact()}
     # "</" would end the embedding <script> early; "<\/" is the same JSON
     ctx.update(export=True,
                embed_json=json.dumps(embed, separators=(",", ":"))

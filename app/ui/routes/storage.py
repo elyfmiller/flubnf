@@ -21,7 +21,7 @@ from app.ui.retro_prep import _results_jobs
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
                                   _season_status, _valid_season)
 from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
-                           _run_label, _scan_archive_dates)
+                           _scan_archive_dates)
 from app.ui.state import _status
 from app.ui.templating import templates
 
@@ -93,6 +93,41 @@ _CATEGORIES = (("workroots", "Run workroots"),
                ("datasets", "Dataset uploads and replays"))
 
 
+def _spec_of(spec) -> dict:
+    """A ledger spec (JSON text or dict) as a dict; {} when unreadable."""
+    import json as _json
+    try:
+        d = _json.loads(spec) if isinstance(spec, str) else spec
+    except (ValueError, TypeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _round_label(spec, fallback: str) -> str:
+    """A hub forecast run's row label by its round, as Output heads its
+    cards: "Round 2026-10-10 (as of 2026-10-03)"; `fallback` (run_display's
+    words) for a retrospective fit, a run on your own data or an
+    unrecorded run."""
+    from app.ui.routes.output import _reference_date
+    d = _spec_of(spec)
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    asof = str(d.get("forecast_date") or "").strip()
+    if not asof or str(d.get("engine")) == "retro" or extra.get("dataset"):
+        return fallback
+    ref = _reference_date(asof)
+    return f"Round {ref} (as of {asof})" if ref else fallback
+
+
+def _ledger_parts(run_id: str, spec) -> list:
+    """A ledger row's label in its parts, each kept whole on a narrow
+    screen: ["as of 2026-10-03", "run 10-05 14:31"] (the run's local start,
+    from its id); just the run's time when the spec names no date."""
+    asof = str(_spec_of(spec).get("forecast_date") or "").strip()
+    when = (f"run {run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+            if _runs.is_run_id(run_id) else run_id)
+    return ([f"as of {asof}"] if asof else []) + [when]
+
+
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
     archives, report archives, your datasets (each with a busy flag and,
@@ -125,9 +160,15 @@ def _storage_inventory() -> dict:
             row = led_rows.get(p.name) or {}
             disp = run_display(p.name, row.get("spec"),
                                row.get("created_utc"))
+            # the ledger's status, as the ledger table reads it: a
+            # 'running' row with no live worker was closed mid-run
+            st = str(row.get("status") or "")
+            if st == "running" and p.name not in live_ids:
+                st = "interrupted"
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
-                "label": disp["what"], "when": disp["when"],
+                "label": _round_label(row.get("spec"), disp["what"]),
+                "status": st, "when": disp["when"],
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
@@ -229,6 +270,10 @@ def _clearable_run_ids(ledger) -> list:
     return out
 
 
+#: the run ledger's table shows this many rows, newest first
+LEDGER_ROWS = 50
+
+
 @router.get("/storage", response_class=HTMLResponse)
 @router.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request):
@@ -237,10 +282,14 @@ def runs_page(request: Request):
     from app.core.runs import APP_STATE, is_research
     from app.core import retro
     ledger = Ledger()
-    rows = ledger.rows(50)
+    rows = ledger.rows(LEDGER_ROWS)
     for r in rows:
-        # the research badge carries the tag, so the label stays untagged
-        r["label"] = _run_label(r["run_id"], r.get("spec", ""), tag=False)
+        # the research badge carries the tag, so the label stays untagged;
+        # its parts each hold together on a narrow screen
+        r["parts"] = _ledger_parts(r["run_id"], r.get("spec", ""))
+        r["label"] = " · ".join(r["parts"])
+        r["asof"] = str(_spec_of(r.get("spec", "")).get("forecast_date")
+                        or "")
         r["research"] = is_research(r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         # the outcome as facts the page draws as chips and badges
@@ -255,6 +304,9 @@ def runs_page(request: Request):
     cw = _clearable_workroots()
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Storage", "ledger": rows,
+        # how many runs the ledger holds: the table shows the newest
+        # LEDGER_ROWS and says when it leaves older ones out
+        "ledger_total": max(len(ledger.rows(1_000_000)), len(rows)),
         "clear_count": len(_clearable_run_ids(ledger)),
         "storage": _storage_inventory(),
         # clear-all: count and weight, named by the confirmation

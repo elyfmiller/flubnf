@@ -115,6 +115,15 @@
         msg = 'Pick a week the group holds: ' + lo + ' to ' + hi + '.';
       asof.setCustomValidity(msg);
     }
+    // ?start=<value> (the Models tab's Open in Sandbox) preselects that
+    // start when the list offers it and it is not off
+    var want = /[?&]start=([^&#]*)/.exec(location.search);
+    if (want) {
+      want = decodeURIComponent(want[1].replace(/\+/g, ' '));
+      Array.prototype.forEach.call(start.options, function (o) {
+        if (o.value === want && !o.disabled) start.value = want;
+      });
+    }
     start.addEventListener('change', show);
     if (asof) asof.addEventListener('input', asofCheck);
     [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
@@ -342,6 +351,15 @@
         if (!dirty) return;
         e.preventDefault();
         e.returnValue = '';
+      });
+      // Ctrl+S (Cmd+S on a Mac) inside the form saves, as the Save button
+      // does, instead of the browser's Save page
+      var saveBtn = form.querySelector('button[formaction$="/save"]');
+      form.addEventListener('keydown', function (e) {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        if ((e.key || '').toLowerCase() !== 's') return;
+        e.preventDefault();
+        if (saveBtn) saveBtn.click();
       });
     }
 

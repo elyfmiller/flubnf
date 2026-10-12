@@ -30,6 +30,8 @@
 .rt-rel{white-space:nowrap}
 
 /* ---- 2. the index ---- */
+/* the seasons (the results) before the forms once the two columns stack */
+@media (max-width:900px){.rt-cols > .rt-seasons{order:-1}}
 /* the band: the Results button keeps the right edge */
 .rt-go{margin-left:auto}
 /* an archived run's Results link: the row's small button size */
@@ -103,6 +105,88 @@
 .rt-filter input[type="search"]{width:auto;min-width:min(14rem,45vw);
   max-width:100%}
 .rt-count{color:var(--mut);font-size:var(--fs-label)}
+
+/* the verdict: two groups of tiles, the pooled jurisdictions and the US
+   national row, each named once over its tiles (--n: its tile count);
+   side by side when the window allows, two compact tiles a row on a
+   phone */
+.rt-vgroups{display:flex;flex-wrap:wrap;gap:.6rem var(--gap)}
+.rt-vgroup{flex:var(--n,1) 1 calc(var(--n,1) * 10rem);min-width:min(100%,18rem)}
+.rt-vgroup-h{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .5rem;
+  margin:0 0 .4rem}
+.rt-vgroup-h > h3{margin:0;font-size:var(--fs-label);font-weight:650;
+  color:var(--ink);letter-spacing:.02em}
+.verdict .rt-vgroup .tiles4{grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))}
+@media (max-width:40rem){
+  .verdict .rt-vgroup .tiles4{grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.5rem}
+  .rt-vgroup .rt-tile{padding:.6rem .65rem}
+  .rt-vgroup .rt-tile-h > h2{font-size:var(--fs-hint)}
+  .rt-vgroup .rt-big{font-size:1.45rem}
+}
+/* the player's control row: the scrubber with its month ticks, the week
+   label with the Copy link button, the view switch at the right edge */
+.rt-scrub{position:relative;flex:1 1 160px;min-width:150px;display:flex;
+  flex-direction:column}
+.rt-scrub > input[type="range"]{flex:none;min-width:0;width:100%}
+.rt-ticks{position:relative;height:1.15em;color:var(--mut);
+  font-size:var(--fs-hint);pointer-events:none}
+.rt-ticks > span{position:absolute;top:0;line-height:1.15;white-space:nowrap;
+  left:calc(.5rem + (100% - 1rem) * var(--f,0));transform:translateX(-50%)}
+.rt-weekl{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.1rem .3rem}
+.rt-copy{padding:.2rem .45rem;line-height:1}
+.rt-copied{color:var(--mut);font-size:var(--fs-label)}
+.rt-views{margin-left:auto}
+/* on a phone the control row stays at the top of the window while the
+   player scrolls under it */
+@media (max-width:40rem){
+  .rt-pbar{position:sticky;top:0;z-index:5;background:var(--card);
+    padding:.35rem 0;border-bottom:1px solid var(--line)}
+  /* a card scrolls its own overflow, which would hold the bar inside it:
+     clipped instead, the window is the bar's scroller */
+  .card.rt-playcard{overflow-x:clip}
+}
+/* a switch's label (the model checkboxes, the map's model switch) */
+.rt-seg-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+.rt-models{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .8rem;
+  margin:0 0 .55rem}
+.rt-models > .fdmodels{margin:0}
+.rt-mapbar{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .6rem;
+  margin:0 0 .5rem}
+/* under the map: the categories' colors and the horizon's tag */
+.rt-mapfoot{display:flex;flex-wrap:wrap;align-items:center;gap:.1rem 1rem}
+/* the cumulative chart's labels in viewBox units, sized by the chart's
+   own width so they read at about the label size wherever it sits (the
+   side column, the full card, a phone) */
+.rt-cumwrap{container-type:inline-size}
+.rt-cumwrap svg.cumchart .svgt-sm{font-size:13px}
+.rt-cumwrap svg.cumchart .svgt-md{font-size:14px}
+@container (max-width:640px){
+  .rt-cumwrap svg.cumchart .svgt-sm{font-size:18px}
+  .rt-cumwrap svg.cumchart .svgt-md{font-size:20px}
+}
+@container (max-width:420px){
+  .rt-cumwrap svg.cumchart .svgt-sm{font-size:24px}
+  .rt-cumwrap svg.cumchart .svgt-md{font-size:26px}
+  .rt-cumwrap svg.cumchart .corner{display:none}
+}
+/* a gridline's label stays legible where a line crosses it */
+.rt-cumwrap svg.cumchart .rt-gridl{paint-order:stroke;stroke:var(--card);
+  stroke-width:4px;stroke-linejoin:round}
+/* the per-state table: a name on one line (its full text in the title),
+   a button that opens its forecast detail; the US row's "?" beside it */
+.rt-namec{white-space:nowrap}
+.rt-locbtn{display:inline-block;max-width:11rem;margin:0;padding:0;border:0;
+  border-radius:0;background:none;box-shadow:none;min-height:0;
+  color:var(--ink);font:inherit;text-align:left;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  vertical-align:bottom;text-decoration:underline;
+  text-decoration-color:var(--line);text-underline-offset:.2em}
+.rt-locbtn:hover{background:none;color:var(--ink);
+  text-decoration-color:var(--accent-ink)}
+.rt-nameus{display:inline-flex;align-items:center;gap:.15rem;
+  white-space:nowrap}
+.rt-sortreset{margin:0;padding:.2rem .6rem;font-size:var(--fs-label)}
 
 /* ---- 4. your data ---- */
 /* the "Replay this" confirmation across the tab, its notices under it */

@@ -3,8 +3,9 @@
    kit.css; a partial that renders on another tab's page links it itself
    (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the nau.css
    tokens; new classes start "out-"; kit classes (uk-*) are used as they
-   are, never restyled here. _coverage.html also renders on the run page
-   (run.html), and links this sheet from its fold. */
+   are, never restyled here. _coverage.html and _filerow.html also render
+   on the run page (run.html), which links this sheet; its own layout is
+   the "out-rp" rules at the end. */
 
 /* the page title and its toggletip: the room the old subtitle took */
 .out-title{margin-bottom:var(--sp-3)}
@@ -19,7 +20,12 @@
 .out-arch label{display:inline;margin:0;font-weight:600}
 .out-arch select{width:auto;min-width:9rem;margin:0}
 .out-arch button{margin-top:0}
+.out-arch-acts{display:inline-flex;flex-wrap:wrap;gap:.45rem .6rem}
 .out-report .out-arch:first-child{margin-top:0}
+/* a phone: the picker on a row of its own, the two buttons side by side */
+@media (max-width:40rem){
+  .out-arch select{flex:1 1 100%;min-width:0}
+}
 
 /* a date card: the title with its window badge, a row of facts, then one
    flat row per file, parted by hairlines */
@@ -32,16 +38,26 @@
   overflow-wrap:anywhere}
 .out-file-sub{display:flex;flex-wrap:wrap;align-items:center;
   gap:.25rem .9rem;margin-top:.25rem}
-.out-fname{overflow-wrap:anywhere}
+/* the name breaks only where _filerow.html put a <wbr> (after "_" and
+   "-"); a single part wider than the row still wraps */
+.out-fname{overflow-wrap:break-word;min-width:0;max-width:100%}
 .out-run{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.2rem .45rem;
   font-size:var(--fs-label)}
 .out-run > a{color:var(--mut);font-weight:600}
 .out-run > a:hover{color:var(--ink)}
 /* Download and Show in folder: one pair, the same height */
-.out-acts{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;flex:none}
+.out-acts{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;flex:none;
+  max-width:100%}
 .out-acts form{margin:0}
 .out-acts button{margin-top:0}
 .out-acts a.btn,.out-acts button{padding:.36rem .85rem}
+/* the copy buttons: an icon each, square, the pair's height; the mark
+   turns to the state colour for a moment after a copy */
+.out-copies{display:inline-flex;gap:.5rem}
+.out-acts button.out-copy{padding:.36rem .5rem;line-height:1}
+.out-copy .out-ci{font-size:1.05em}
+.out-copy[data-state="ok"]{color:var(--ok);border-color:var(--ok)}
+.out-copy[data-state="error"]{color:var(--bad);border-color:var(--bad)}
 /* the file's checks: badges on one row, the closed coverage fold beside
    them on the same center line; an open fold takes a row of its own */
 .out-status{display:flex;flex-wrap:wrap;align-items:center;
@@ -60,6 +76,29 @@ p.out-cov-h{display:flex;align-items:center;gap:.35em;margin:.15rem 0 .1rem;
   font-size:var(--fs-label);font-weight:700}
 ul.out-cov-list{margin:0 0 .45rem;padding-left:1.25rem}
 ul.out-cov-list li{margin:.12rem 0;overflow-wrap:anywhere}
+
+/* the round open now: the card outlined in the accent, so it is the one
+   the eye finds */
+.out-day--due{border-color:var(--gold-bright);
+  box-shadow:0 0 0 1px var(--gold-bright)}
+/* a run writing this date: the badge and the way to its progress */
+.out-live{gap:.4rem;font-size:var(--fs-label);font-weight:600}
+
+/* a past or record date on one line: the reference date and its badge,
+   the as-of, then a download per model; wraps as a whole on a phone */
+.out-line{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem 1rem;
+  padding:.5rem 0}
+.out-line + .out-line{border-top:1px solid var(--line)}
+.out-line-id{display:inline-flex;flex-wrap:wrap;align-items:center;
+  gap:.25rem .5rem;min-width:0}
+.out-line-ref{font-weight:650}
+.out-line-asof{display:inline-flex;align-items:center;gap:.3em;
+  color:var(--mut);font-size:var(--fs-label)}
+.out-line-dl{display:inline-flex;flex-wrap:wrap;align-items:center;
+  gap:.35rem .45rem;margin-left:auto}
+a.btn.out-dl{margin:0;padding:.2rem .6rem;font-size:var(--fs-label)}
+.out-past .out-line:first-of-type{padding-top:.2rem}
+details.out-older > .out-past{margin-bottom:0}
 
 /* a season's older dates: one bar that opens onto their cards; the
    chevron drawn with borders, as the kit's fold draws its own */
@@ -94,3 +133,40 @@ details.out-older > summary:hover{border-style:solid}
 
 /* a refused download or a missing report: the one card on the page */
 .out-notice{max-width:44rem}
+
+/* ---- the run page (run.html): results and settings in one key and value
+   style, the medians table, the progress card ---- */
+/* Results (runs.results_html's table) and Run settings (settings_html's
+   dl.kv) read as the kit's uk-stats--kv: muted labels in one column of the
+   same width, values in the weight of a stat */
+.out-rp-kv{--out-rp-k:11rem}
+.out-rp-kv table.results{width:auto;max-width:100%;font-size:inherit;
+  border-collapse:separate;border-spacing:0}
+.out-rp-kv table.results th{width:var(--out-rp-k);min-width:var(--out-rp-k);
+  padding:.18rem .9rem .18rem 0;font-size:var(--fs-label);font-weight:600;
+  white-space:normal;vertical-align:baseline;text-transform:none;
+  letter-spacing:normal;color:var(--mut);border:0;background:none}
+.out-rp-kv table.results td{padding:.18rem 0;font-weight:650;
+  vertical-align:baseline;border:0}
+.out-rp-kv table.results tr{border:0;background:none}
+.out-rp-kv .runsettings{margin:.2rem 0 .6rem}
+.out-rp-kv .runsettings > strong{display:block;margin:.5rem 0 .2rem;
+  color:var(--ink);font-size:var(--fs-label)}
+.out-rp-kv .runsettings .kv{grid-template-columns:var(--out-rp-k) minmax(0,1fr);
+  column-gap:.9rem;row-gap:.35rem}
+.out-rp-kv .runsettings .kv dt{font-size:var(--fs-label);font-weight:600}
+@media (max-width:40rem){
+  .out-rp-kv{--out-rp-k:8.5rem}
+}
+/* the supersession line under the title */
+.out-rp-sup{margin:0 0 var(--gap)}
+/* the medians: one table at a time behind the model switch, no wider
+   than its numbers need */
+.out-rp-med table{width:auto;min-width:min(100%,26rem);max-width:100%}
+.out-rp-med td.num,.out-rp-med th.num{font-variant-numeric:tabular-nums;
+  text-align:right;padding-left:1.2rem}
+.out-rp-sw{margin:.2rem 0 .6rem}
+.out-rp-med [hidden]{display:none}
+.out-rp-wrap{max-width:100%;overflow-x:auto}
+/* the running run: its phase and the way to its progress */
+.out-rp-prog p{margin:.2rem 0 .6rem}

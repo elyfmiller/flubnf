@@ -9,11 +9,12 @@
 <link rel="stylesheet" href="/static/model-views.css"><script defer src="/static/model-views.js"></script>
 <div class="card" id="cmap" data-model="{{ editing.name }}">{{ tips.heading("Diagram", "sb-diagram", "The model's rules as arrows between its molecule types: a solid arrow moves them, a dashed arrow counts a flow into a tally, a dotted arc marks who drives a rate. Drag a node, hover or click for its rule, scroll to zoom. Save to redraw after an edit.", tip_label="the diagram") }}
  <div class="mviews" role="tablist" aria-label="model view" hidden>
-  <button type="button" class="pill mode" data-view="flow" role="tab" aria-selected="true">Model</button>
-  <button type="button" class="pill mode" data-view="contactmap" role="tab" aria-selected="false" hidden>Binding sites</button>
-  <button type="button" class="pill mode" data-view="network" role="tab" aria-selected="false" hidden>Reaction network</button>
+  <button type="button" class="pill mode" id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" aria-controls="cmap-svg">Model</button>
+  <button type="button" class="pill mode" id="mv-tab-contactmap" data-view="contactmap" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Binding sites</button>
+  <button type="button" class="pill mode" id="mv-tab-network" data-view="network" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Reaction network</button>
  </div>
- <div id="cmap-svg" class="mview-draw">{{ tips.empty("Drawing the model", "clock", compact=True) }}</div>
+ {# one panel for the three views: the tab that shows names it #}
+ <div id="cmap-svg" class="mview-draw" role="tabpanel" aria-labelledby="mv-tab-flow">{{ tips.empty("Drawing the model", "clock", compact=True) }}</div>
 </div>
 <script>
 (function () {
@@ -130,12 +131,29 @@
     if (!cache[view]) { box.appendChild(note('Drawing the model', false, 'clock')); return; }
     box.appendChild(cache[view]);
   }
+  // the selected tab: aria-selected, the one tab stop (roving tabindex),
+  // and the panel's name
+  function mark() {
+    card.querySelectorAll('.pill.mode').forEach(function (o) {
+      var on = o.dataset.view === view;
+      o.setAttribute('aria-selected', on ? 'true' : 'false');
+      o.tabIndex = on ? 0 : -1;
+      if (on) box.setAttribute('aria-labelledby', o.id);
+    });
+  }
   function tabs(list) {
     card.querySelectorAll('.pill.mode').forEach(function (b) {
       b.hidden = list.indexOf(b.dataset.view) < 0;
-      b.setAttribute('aria-selected', b.dataset.view === view ? 'true' : 'false');
     });
+    mark();
     card.querySelector('.mviews').hidden = list.length < 2;
+  }
+  function pick(v, focus) {
+    view = v;
+    mark();
+    if (view === 'network') loadNetwork();
+    show();
+    if (focus) { var b = document.getElementById('mv-tab-' + v); if (b) b.focus(); }
   }
   function loadNetwork() {
     if (netAsked) return;
@@ -161,13 +179,20 @@
       });
   }
   card.querySelectorAll('.pill.mode').forEach(function (b) {
-    b.addEventListener('click', function () {
-      view = b.dataset.view;
-      card.querySelectorAll('.pill.mode').forEach(function (o) {
-        o.setAttribute('aria-selected', o.dataset.view === view ? 'true' : 'false');
-      });
-      if (view === 'network') loadNetwork();
-      show();
+    b.addEventListener('click', function () { pick(b.dataset.view); });
+    // the tab pattern's keys: arrows move among the shown tabs (and show
+    // the one reached), Home and End jump to the ends
+    b.addEventListener('keydown', function (e) {
+      var shown = Array.prototype.filter.call(card.querySelectorAll('.pill.mode'),
+                                              function (o) { return !o.hidden; });
+      var i = shown.indexOf(b), n = shown.length, j = -1;
+      if (e.key === 'ArrowRight') j = (i + 1) % n;
+      else if (e.key === 'ArrowLeft') j = (i + n - 1) % n;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = n - 1;
+      if (j < 0 || i < 0) return;
+      e.preventDefault();
+      pick(shown[j].dataset.view, true);
     });
   });
   // model-views.js is deferred: draw once it has run

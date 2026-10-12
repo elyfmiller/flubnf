@@ -28,8 +28,8 @@
    </div>
    <div class="md-field">
     {{ tips.label("Particles", "rr-particles-tip", "Candidate epidemics per jurisdiction; run time grows linearly. 1,000 to 100,000.", for_="rr-particles") }}
-    <input id="rr-particles" name="particles" type="number" value="10000"
-      min="1000" max="100000" step="1000">
+    <span class="uk-affix"><input id="rr-particles" name="particles" type="number" value="10000"
+      min="1000" max="100000" step="1000" aria-describedby="rr-particles-n"><span id="rr-particles-n">particles</span></span>
    </div>
    <div class="md-field">
     {{ tips.label("Replicates", "rr-reps-tip", "Seeded filter runs per jurisdiction, pooled; shipped per-state numbers use 3 or more.", for_="rr-reps") }}
@@ -42,6 +42,19 @@
   <input type="hidden" name="weeks_to_drop" value="0">
   <input type="hidden" name="weeks_to_nowcast" value="0">
   {# same guard as every /run control (the server re-checks if bypassed) #}
-  <button class="gold" data-guard="console-run">Start research run</button>
+  {# off, with its reason, while a run holds the engine (the alert above
+     says so; the server refuses a start then too) #}
+  {% if status.running %}{{ tips.reason_button("Start research run", "rr-start-why", "A run is in progress; one run holds the engine at a time. Start this when it finishes.", cls="gold", data={"guard": "console-run"}) }}
+  {% else %}<button class="gold" data-guard="console-run">Start research run</button>{% endif %}
  </form>
+ <script>
+  // the particle count read with its thousands separator beside the field
+  (function(){
+   var i=document.getElementById('rr-particles'),u=document.getElementById('rr-particles-n');
+   if(!i||!u)return;
+   function fmt(){var n=parseInt(i.value,10);
+    u.textContent=isNaN(n)?'particles':String(n).replace(/\B(?=(\d{3})+(?!\d))/g,',')+' particles';}
+   i.addEventListener('input',fmt);fmt();
+  })();
+ </script>
 </div>

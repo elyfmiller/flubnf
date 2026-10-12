@@ -325,7 +325,8 @@
     }
     st.cur.style.top = (st.padTop + (lc.line - 1) * st.lh) + 'px';
     st.status.textContent = 'line ' + lc.line + ', col ' + lc.col + '  |  ' + n +
-      (n === 1 ? ' line' : ' lines') + (st.tabOut ? '  |  Tab now moves focus' : '');
+      (n === 1 ? ' line' : ' lines') + (st.tabOut ? '  |  Tab now moves focus'
+        : (document.activeElement === ta ? '  |  Esc then Tab to leave' : ''));
   }
 
   // replace [s, e) with txt through the browser's own edit command when

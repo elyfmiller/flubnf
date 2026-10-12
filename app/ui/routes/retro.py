@@ -112,7 +112,9 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
             **_dsu.retro_context(dataset), "active": "Retrospective",
             "own_tab": True, "seasons": []})
     seasons = []
-    for s in available_seasons():
+    # newest first: the season list and the Settings form's select (whose
+    # first option is the one selected)
+    for s in sorted(available_seasons(), reverse=True):
         total = len(season_vintages(s))
         root, is_seal = retro_seasons._season_root(s)
         done = retro_seasons._weeks_done(root)
@@ -990,9 +992,20 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
             {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
              for m in map_models},
             group_id="retro-model", btn_class="quiet",
-            active_class="gold", wrap_class="row viewtabs",
+            active_class="gold", wrap_class="uk-seg",
             short_labels=map_short)
+        # the kit's segmented switch, as Home's, labelled so it never
+        # reads as the view switch above it
+        if map_toggle:
+            map_toggle = ('<div class="rt-mapbar"><span class="rt-seg-l" '
+                          'aria-hidden="true">Model</span>' + map_toggle
+                          + '</div>')
     map_html = map_toggle + svg_map(cards)
+    # the categories' colors under the map (Home's usmap.map_legend, as
+    # the kit's legend chips) and the horizon every week's map shows
+    from app.core import usmap as _um
+    map_legend = [(_um.cat_fill(c), c.replace("_", " "))
+                  for c in _um.CATS] + [(_um.NO_DATA, "no data")]
     if not scoreable and not score_error:
         # scored zero cells with no exception: diagnose WHICH input is empty
         try:
@@ -1074,6 +1087,8 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "map_legend": map_legend, "map_horizon": MAP_HORIZON,
+        "map_horizon_tip": MAP_HORIZON_TIP,
         "score_error": score_error if not scoreable else "",
         "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
@@ -1087,6 +1102,15 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         # the map's click opens a state's forecast detail (abbr -> name)
         "state_names": by_abbr,
         "n_weeks": len(weeks) if scoreable else 0}
+
+
+#: the horizon the season page's categorical map shows (retro_prep
+#: _week_map_cards_by_model reads each member's horizon 0 quantiles), as
+#: its tag and the tag's tip
+MAP_HORIZON = "horizon 0"
+MAP_HORIZON_TIP = ("Each week's map is the categorical forecast for horizon 0: "
+                   "the week ending on the reference date, one week after "
+                   "the newest data that week.")
 
 
 #: the player's message when a week cannot be scored for lack of any

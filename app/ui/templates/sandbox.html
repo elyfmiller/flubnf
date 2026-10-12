@@ -11,6 +11,17 @@
 {% macro run_badge(status, id="") -%}
 {{ tips.badge(RUN_STATE.get(status, "neutral"), status, RUN_WHY.get(status, "") if id else "", id=id) }}
 {%- endmacro %}
+{# a shipped example's folder name as people read it: seihr_template ->
+   "SEIHR template", sir_example -> "SIR example", kinetics_example ->
+   "Kinetics example" (a compartment string in capitals, a word
+   capitalized; the SIHRS one keeps its full name, "SIHRS compartment
+   example", as the pages name it everywhere) #}
+{% macro exname(e) -%}
+{%- set parts = e.rsplit("_", 1) if "_" in e else [e, ""] -%}
+{%- set base = parts[0] -%}
+{%- if base == "sihrs" %}SIHRS compartment
+{%- elif base | list | reject("in", "seihrdv") | list | length == 0 %}{{ base | upper }}{% else %}{{ base | replace("_", " ") | capitalize }}{% endif %}{% if parts[1] %} {{ parts[1] }}{% endif %}
+{%- endmacro %}
 {% if not editing %}
 {# ---------------------------------------------------------- the gallery #}
 {{ tips.heading("Sandbox", "sb-title", "Fit a model of your own with the particle filter; nothing here is ever submitted.",
@@ -30,8 +41,8 @@
        sandbox.js rewrites it (and hides the "i") as the choice changes #}
     <div class="sb-startrow">
      <select id="sbnew-start" name="start">
-      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}"{% if loop.first %} selected{% endif %}>{{ e }}</option>{% endfor %}</optgroup>{% endif %}
-      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}">{{ e }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}"{% if loop.first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}">{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
       <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts.">Blank skeleton</option>
       {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
@@ -80,7 +91,9 @@
     <td><span class="sb-name"><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>
      {%- if m.note %}{{ tips.icon_tip("sb-note-" ~ loop.index, m.name, "info", m.note, state="muted") }}{% endif %}
      {%- if not m.complete %} {{ tips.badge("warn", "incomplete", "missing " ~ (m.missing | join(", ")), id="sb-miss-" ~ loop.index) }}{% endif %}</span></td>
-    <td>{{ m.origin }}</td>
+    {# an example's origin by its display name, as the Start from list names it #}
+    {% set ns = namespace(o=m.origin) %}{% for e in (templates or []) + (examples or []) %}{% if ns.o == "example " ~ e %}{% set ns.o = exname(e) %}{% endif %}{% endfor %}
+    <td>{{ ns.o }}</td>
     <td>{% set r = last.get(m.name) %}{% if r %}<a class="sb-runlink" href="/sandbox?run={{ r.run_id }}&amp;model={{ m.name }}">{{ run_badge(r.status) }}</a>{% endif %}</td>
     <td>{{ m.modified_h }}</td>
    </tr>{% endfor %}</tbody></table>
@@ -102,7 +115,8 @@
    {%- if note %}{{ tips.tip("sb-note", name, note) }}{% endif %}
    {%- if shipped and shipped.shipped and not shipped.intact %}{{ tips.badge("warn", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter, and cannot take the Oracle step.", id="sb-modified") }}{% endif %}
   </div>
-  {% if origin %}<div class="sb-headmeta">{{ tips.meta([("folder", "from " ~ origin, "Origin")], label="Model") }}</div>{% endif %}
+  {% set ons = namespace(o=origin) %}{% for e in (templates or []) + (examples or []) %}{% if ons.o == "example " ~ e %}{% set ons.o = exname(e) %}{% endif %}{% endfor %}
+  {% if origin %}<div class="sb-headmeta">{{ tips.meta([("folder", "from " ~ ons.o, "Origin")], label="Model") }}</div>{% endif %}
  </div>
  <div class="sbhead-menus">
  <details class="sbmanage sbhelp">
@@ -167,16 +181,16 @@
     </div>
     <section class="sbfile" id="sbf-bngl" data-file="bngl">
      {{ tips.label("Model (model.bngl)", "sb-bngl", "The model, in BNGL. A parameter whose name ends in __FREE is fitted: the filter draws it from its line in priors.conf, so the value written here is only what Check and Simulate data use; every other value stays fixed. Time is in weeks, and the simulate action must name a suffix.", for_="sb-bngl-in") }}
-     <textarea name="model_bngl" id="sb-bngl-in" rows="18" spellcheck="false" aria-label="model.bngl" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
+     <textarea name="model_bngl" id="sb-bngl-in" rows="18" spellcheck="false" aria-label="Model (model.bngl)" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
     </section>
     <section class="sbfile" id="sbf-exp" data-file="exp">
      {{ tips.label("Observed data (data.exp)", "sb-exp", "The observed counts: a header line, then one row per week, the time in weeks and the count for the week ending then. The model starts one week before the first row. A missing week is a gap in time, never a renumbered row.", for_="sb-exp-in") }}
-     <textarea name="data_exp" id="sb-exp-in" rows="8" spellcheck="false" aria-label="data.exp" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
+     <textarea name="data_exp" id="sb-exp-in" rows="8" spellcheck="false" aria-label="Observed data (data.exp)" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
      {% include "sandbox_data.html" %}
     </section>
     <section class="sbfile" id="sbf-conf" data-file="conf">
      {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One line per fitted parameter: uniform_var name low high draws it evenly between the two numbers, loguniform_var evenly on a log scale. pf_ lines set engine keys, such as pf_cumulative_observable, the model output whose weekly increment is the count.", for_="sb-conf-in") }}
-     <textarea name="priors_conf" id="sb-conf-in" rows="8" spellcheck="false" aria-label="priors.conf" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
+     <textarea name="priors_conf" id="sb-conf-in" rows="8" spellcheck="false" aria-label="Priors and engine settings (priors.conf)" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
      {% set keys = settings | rejectattr(2, "equalto", "run settings") | list %}
      {% call tips.fold("Engine keys the sandbox writes for you", id="sb-keys", cls="sb-keys",
                        after=tips.tip("sb-keys-t", "the engine keys", "A priors.conf line overrides a default; the run settings below set the rest.")) %}
@@ -221,7 +235,7 @@
   {% set live_run = res.run_id == running_id %}
   {# the open run in four groups: its summary (the outcome, the run's
      facts and settings), the result (the plot and the fitted values), its
-     diagnostics (the posterior sample, the engine's words), then compare
+     diagnostics (the forecasting sample, the engine's words), then compare
      and the run's files. The heading's badge is the run's status only
      while it says something the outcome line does not (running, failed,
      stopped): a finished run's outcome is the line under the heading. #}
@@ -290,7 +304,7 @@
    <section class="sb-rsec" aria-labelledby="h-sb-diag">
     {{ tips.heading("Diagnostics", "sb-diag", level=3) }}
     {% if res.params %}
-    {% call tips.stats("uk-stats--row sb-sample", label="Posterior sample") %}
+    {% call tips.stats("uk-stats--row sb-sample", label="Forecasting sample") %}
      {{ tips.stat("Distinct vectors", "{:,}".format(res.distinct), "of " ~ "{:,}".format(res.sample), tiptext="Distinct parameter vectors in the fit's sample of " ~ "{:,}".format(res.sample) ~ ".", id="sb-distinct") }}
      {% if res.ess %}{{ tips.stat("ESS at the last week", "{:,.0f}".format(res.ess[-1].ess), tiptext="The effective sample size: how many particles carry the weight, at the last data week.", id="sb-ess-last") }}
      {{ tips.stat("Minimum ESS", "{:,.0f}".format(res.ess | map(attribute="ess") | min), tiptext="The lowest effective sample size over all the weeks.", id="sb-ess-min") }}{% endif %}

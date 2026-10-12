@@ -336,7 +336,9 @@ def test_the_gallery_guides_a_first_visit(box):
     start = start[:start.index("</select>")]
     assert start.index('label="Templates"') < start.index('label="Examples"')
     assert '<option value="example:seihr_template" data-note="A template' in start
-    assert 'selected>seihr_template</option>' in start
+    # the list names each start as people read it, not by its folder
+    assert 'selected>SEIHR template</option>' in start
+    assert '>SIR example</option>' in start and '>Kinetics example</option>' in start
     assert 'value="skeleton"' in start
     about = html[html.index('id="sbnew-about"'):]
     assert about.split(">", 1)[1].startswith("A template for a new respiratory")

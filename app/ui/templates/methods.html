@@ -4,7 +4,107 @@
 {# the equation panels wear the kit on the console (dg.eq_*(kit=true)):
    their parameter chips are the Models tab's (diagrams.html's partial
    links its sheet) #}
-<link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
+<link rel="stylesheet" href="/static/tabs/models.css">
+{# the console's reading aids, added by script so the public site (which
+   harvests the content block alone) never carries them: the contents row
+   follows the reading (aria-current), each section's title gets a
+   copy-link button, the row a Print / Save as PDF button, and printing
+   opens every fold in the light theme (tabs/methods.css, print) #}
+<script>
+ document.addEventListener('DOMContentLoaded', function () {
+  var bar = document.querySelector('.mt-tocbar'), toc = document.querySelector('.mt-toc');
+  if (!bar || !toc) return;
+  var de = document.documentElement;
+  // the bar's height, for the anchor jumps' scroll margin
+  function barH() { de.style.setProperty('--mt-toc-h', bar.offsetHeight + 'px'); }
+  barH();
+  addEventListener('resize', barH);
+  addEventListener('fontsizechange', barH);
+  // ---- scrollspy: the section in view marks its chip aria-current
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var secs = [], seen = {};
+  links.forEach(function (a) {
+    var t = document.getElementById(a.getAttribute('href').slice(1));
+    if (!t) return;
+    var card = t.classList.contains('card') ? t : (t.closest('.card') || t);
+    secs.push({a: a, el: card});
+  });
+  function mark(a) {
+    links.forEach(function (l) {
+      if (l === a) l.setAttribute('aria-current', 'location');
+      else l.removeAttribute('aria-current');
+    });
+    // a chip scrolled out of a one-row (phone) contents row comes into view
+    if (a && toc.scrollWidth > toc.clientWidth) {
+      var r = a.getBoundingClientRect(), q = toc.getBoundingClientRect();
+      if (r.left < q.left || r.right > q.right)
+        toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
+    }
+  }
+  if ('IntersectionObserver' in window && secs.length) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { seen[secs.map(function (s) { return s.el; }).indexOf(e.target)] = e.isIntersecting; });
+      for (var i = 0; i < secs.length; i++) if (seen[i]) { mark(secs[i].a); return; }
+    }, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
+    secs.forEach(function (s) { io.observe(s.el); });
+  }
+  // ---- copy a link to each section, beside its title
+  function said(btn, text) {
+    var s = btn.parentNode.querySelector('.mt-said');
+    if (!s) { s = document.createElement('span'); s.className = 'mt-said'; s.setAttribute('aria-live', 'polite'); btn.parentNode.insertBefore(s, btn.nextSibling); }
+    s.textContent = text;
+    setTimeout(function () { s.textContent = ''; }, 2000);
+  }
+  secs.forEach(function (s) {
+    var h = s.el.querySelector('h2'), id = s.a.getAttribute('href').slice(1);
+    if (!h) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'mt-anchor';
+    b.setAttribute('aria-label', 'Copy a link to ' + s.a.textContent.trim());
+    b.innerHTML = '<span aria-hidden="true">#</span>';
+    b.addEventListener('click', function () {
+      var url = location.href.split('#')[0] + '#' + id;
+      try { history.replaceState(null, '', '#' + id); } catch (e) { /* file page */ }
+      function fallback() {
+        var ta = document.createElement('textarea'), ok = false;
+        ta.value = url; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        said(b, ok ? 'Link copied' : 'Link in the address bar');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(url).then(function () { said(b, 'Link copied'); }, fallback);
+      else fallback();
+    });
+    h.parentNode.insertBefore(b, h.nextSibling);
+  });
+  // ---- print: a button in the contents row; every fold open and the
+  // light theme while printing, as they were after
+  var pb = document.createElement('button');
+  pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
+  pb.addEventListener('click', function () { window.print(); });
+  bar.appendChild(pb);
+  // (once per print: a second beforeprint before afterprint keeps the
+  // first one's record of what to restore)
+  var closed = [], theme = null, printing = false;
+  addEventListener('beforeprint', function () {
+    if (printing) return;
+    printing = true;
+    closed = Array.prototype.filter.call(document.querySelectorAll('.mt-doc details:not([open])'),
+                                         function (d) { d.open = true; return true; });
+    theme = de.getAttribute('data-theme');
+    de.setAttribute('data-theme', 'light');
+  });
+  addEventListener('afterprint', function () {
+    if (!printing) return;
+    printing = false;
+    closed.forEach(function (d) { d.open = false; });
+    closed = [];
+    if (theme) de.setAttribute('data-theme', theme);
+  });
+ });
+</script>{% endblock %}
 {# the same shell as every page: no main_class override #}
 {% block content %}
 {# The page reads as headings, figures, labelled facts and folds; every
@@ -109,7 +209,7 @@
   <div><dt>&#946;(t)</dt><dd>transmission, a smooth annual harmonic</dd></div>
   <div><dt>&#947;</dt><dd>infections resolve (from the measured generation time)</dd></div>
   <div><dt>&#961;</dt><dd>the fixed fraction hospitalized</dd></div>
-  <div><dt>&#947;&#8341;</dt><dd>discharge</dd></div>
+  <div><dt>&#947;<sub>H</sub></dt><dd>discharge</dd></div>
   <div><dt>&#969;</dt><dd>immunity wanes</dd></div>
  </dl>
  {{ dg.eq_pf(kit=(active is defined)) }}
@@ -154,7 +254,7 @@
 <div class="card" id="oracle">
  <div class="uk-heading"><h2>The Oracle step: past seasons' growth, blended in</h2>
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
- {{ dg.oracle_pipeline(uid='mp') }}
+ {{ dg.oracle_pipeline(uid='mp', vertical=(active is defined)) }}
  {% call tips.stats("mt-facts", label="The step") %}
   {{ tips.stat("Sample paths", "30,000", "per state", "At three replicates; each gets its own donor.", id="mt-paths") }}
   {{ tips.stat("Donors", "1", "per sample path", "One donor per sample, not per forecast, keeps both the filter's uncertainty and the donors' spread.", id="mt-donor") }}
@@ -229,7 +329,7 @@
 <div class="card" id="two-strain">
  <div class="uk-heading"><h2>Research: the two-strain variant</h2>
  {{- status("neutral", "not a shipped model") }}
- {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf2s">Model page<span class="uk-sr">: two-strain SIHRS</span></a></span>{% endif %}</div>
+ {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf2s">Model tab<span class="uk-sr">: two-strain SIHRS</span></a></span>{% endif %}</div>
 
  {{ dg.sihrs2(uid='m2') }}
 

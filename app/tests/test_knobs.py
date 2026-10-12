@@ -24,6 +24,7 @@ from flubnf import analogue as AN
 from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
+from flubnf import sihrs_priors as SP
 
 REPO = Path(__file__).resolve().parents[2]
 FD = "2026-10-03"                       # a Saturday in the 2026-27 season
@@ -41,6 +42,7 @@ SOURCES = {
     "pf.prior.mult": (0.002, 1.0),
     "pf.prior.r": (0.1, 40.0),
     "pf.initialization": PF.initialization_for(RunSpec("pf", FD)),
+    "pf.seed_denominator": SP.SEED_DENOMINATOR,
     "run.weeks_to_drop": RunSpec.weeks_to_drop,
     "run.drop_same_day": RunSpec.drop_same_day,
     "data.trailing_zero": MS.TRAILING_ZERO,

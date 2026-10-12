@@ -44,7 +44,7 @@ def test_outcome_chips_apply_the_rule():
         {"pf_cells": 2, "pf_failures": {"a": "boom"},
          "submissions": {"PF-SIHRS": "p", "Ensemble": "q"},
          "report": "r.html", "pf_relwis": 4.067}))
-    assert "PF 2 fits" in chips
+    assert "2 Oracle SIHRS fits" in chips
     assert '<span class="bad">1 failure</span>' in chips
     assert "2 submissions" in chips
     assert ('PF relWIS <span class="relwis bad">4.067</span>'

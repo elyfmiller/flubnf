@@ -150,16 +150,16 @@ def test_the_oracle_card_says_what_the_member_is():
     long = meta["methods_long"]
     # the one marked place for the donor bank's streams, verbatim
     assert ot.BANK_TEXT["card"] in long
-    assert ot.PREREG_SHA256 in long
     for needle in ("SIHRS compartment model", "Liu-West filter",
                    "particle filter",
                    "geometric mean", "same calendar week",
                    "own state", "Uncertainty:", "Spatial correlation:",
-                   "frozen-specification replication",
-                   "2026-27 season is its prospective test",
-                   ot.fmt(ot.RECORD["both"]["filter"]) + " to "
-                   + ot.fmt(ot.RECORD["both"]["oracle"]),
-                   ot.cells(ot.RECORD["both"]["cells"]) + " cells"):
+                   "the first is submitted"):
         assert needle in long, needle
+    # the hub card describes the mechanism only (Ely, 2026-10-07): no
+    # pre-registration hash, no self-scored record, no replication claim
+    for absent in ("sha256", "pre-registration", "relative WIS",
+                   "replication", "prospective test"):
+        assert absent not in long, absent
     # plain ASCII, no dashes the repository does not use
     assert all(ord(ch) < 128 for ch in long + meta["methods"])
