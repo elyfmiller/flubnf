@@ -6,6 +6,21 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-12 (21:20 UTC): PULL REQUEST #33 (dev TO main) MERGED AT 21:14 UTC
+  BY ELY'S ACCOUNT, BEFORE THE TESTS FINISHED; main IS AT c212e69. The
+  lane did not merge it (the merge came one and a half minutes after it
+  opened, while all ten tests jobs were still running); the merge commit
+  is authored as Ely like #29 to #32. main now carries the seed rule and
+  its knob, cards 1.3 and 1.4, the design pass and the notes; Ely's laptop
+  picks them up on its next open. CI on the merge commit was still running
+  at this entry; the lane checks it at 21:41 UTC and notes the result here
+  (main red would need a fix on dev before Wednesday). Finding for the
+  rule above: the GitHub integration this lane opens pull requests through
+  appends an attribution footer with a session link to the pull request
+  body on creation (it was not in the text the lane sent); the lane edited
+  it out at 21:16 UTC and the body is clean. So when Ely wants this lane to
+  open a FluBNF pull request, the lane edits the body right after opening
+  it; Ely's own click from the compare link never has the problem.
 - 2026-10-12 (21:15 UTC): FLUBNF PULL REQUEST dev TO main OPENED AT ELY'S
   REQUEST; IT MERGES WHEN THE TESTS PASS. Ely asked this lane to open the
   pull request and have it merge once CI is green. GitHub's own auto-merge
