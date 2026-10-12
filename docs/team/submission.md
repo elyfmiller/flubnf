@@ -6,6 +6,39 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-12 (14:40 UTC): WHY THE OLD PIN HIT THE SMALL AND FLAT STATES,
+  STATE BY STATE; THE fit_i0 TEST RUNNING. For Ely's Wednesday explanation
+  (replays/drain_table.txt, from the stored 2026-10-03 runs of the 19
+  direction-check jurisdictions): the attack rate was 0.18 in every state,
+  so the implied infected fraction was 18% everywhere, not higher in small
+  states. What differed: infections per admission (1 / rhomult, with rhomult
+  = season-to-date per capita / 0.18) ran 1,000-9,700 (small per-capita
+  counts give the largest: DC 9,700, Minnesota 9,700, North Carolina 8,200,
+  Maine 7,900; Florida 1,900), and the weekly S loss the old pin implied,
+  0.18 x (last week / season-to-date), was 3-8% of N in every state (median
+  4%). Whether a state declined depended on its data growth: the filter's
+  first-week growth under the old rule tracks the data's growth (correlation
+  0.76 across the 19): Montana (data 0.94x a week) 0.59x, Wisconsin (1.06x)
+  0.71x, Alaska (1.00x) 0.73x, Michigan (1.18x) 0.74x, Illinois (1.23x)
+  0.75x, Oregon (1.36x) 0.85x; Florida (1.41x) 1.16x, North Carolina (1.73x)
+  1.23x, Hawaii (1.86x) 1.28x. The Oracle step anchors on that first week,
+  so the flat states were carried down and the surging states up. Under the
+  new pin: 130-320 infections per admission, 0.1-1.4% of N lost per week,
+  first-week growth 0.7-1.0x in the flat states (their own data) and
+  1.2-2.0x in the surging ones. Added to the explainer doc as a
+  state-by-state section with the table and a one-breath statement of the
+  approach now.
+  - Ely's fit_i0 test (2026-10-12): this week's two vintages, all 52 x 3
+    seeds, i0 FITTED (loguniform 1e-7..1e-3; the engine extra fit_i0, not a
+    console knob, injected by replays/fit_i0_week.py around the retro CLI)
+    on top of season_total_early; root replays/2026-27-fiti0, log
+    replays/fiti0_run.log, started 14:30 UTC, about 50 minutes. Note for the
+    reading: with i0 fitted the seed rule no longer touches the dynamics
+    (its i0 is only the default value); admissions pin only i0 x mult, so
+    the cloud spreads along that ridge and the forecast mixes braked and
+    unbraked particles until depletion bites; the prior's extent sets the
+    mix. Reported when stored: the all-52 picture, decliners, the >3x tail,
+    the field rank, Florida and the 11, next to the stage rule and w = 0.25.
 - 2026-10-11 (15:10 UTC): ELY'S OWN SENSE CHECK, A STANDALONE SCRIPT.
   Instead of a standing check by this lane, Ely asked for a script to run on
   the laptop: sense_check.py (pandas only, no FluBNF import; sent to Ely in
@@ -705,6 +738,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-12 (Ely): run the fit_i0 test (1e-7..1e-3) on the stage rule for
+  this week; prepare the Wednesday explanation of how the old pin produced
+  the S drain and what the approach is now; the sense check is Ely's own
+  script, not a standing lane step.
 - 2026-10-10 (Ely): score the Oracle weight 0.25 from the stored runs (done,
   see Now). Whether it ships for 2026-10-14 is open; state-specific attack
   rates are not pursued (an assumption swap, no forecast effect under the
