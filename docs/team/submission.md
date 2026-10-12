@@ -7,9 +7,9 @@ and CDC's rules. The season's facts are in
 ## Now
 
 - 2026-10-12 (21:20 UTC): PULL REQUEST #33 (dev TO main) MERGED AT 21:14 UTC
-  BY ELY'S ACCOUNT, BEFORE THE TESTS FINISHED; main IS AT c212e69. The
-  lane did not merge it (the merge came one and a half minutes after it
-  opened, while all ten tests jobs were still running); the merge commit
+  BY ELY, BEFORE THE TESTS FINISHED; main IS AT c212e69. Ely confirmed the
+  merge was theirs (the merge came one and a half minutes after the pull
+  request opened, while all ten tests jobs were still running); the merge commit
   is authored as Ely like #29 to #32. main now carries the seed rule and
   its knob, cards 1.3 and 1.4, the design pass and the notes; Ely's laptop
   picks them up on its next open. CI on the merge commit was still running
