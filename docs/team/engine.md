@@ -6,6 +6,14 @@ this file here.
 
 ## Now
 
+- 2026-10-12: the PyBNF pull-request branch is rebased onto current
+  lanl/PyBNF `main` (b5fa894a) and reviewed once more as a maintainer
+  would: minimal, code plus tests plus user docs, no extra notes files.
+  Forty-three findings, a third applied (121 lines fewer, one docs claim
+  corrected, shared tails used instead of copies, a test helper module
+  renamed, one redundant test cut). Every gate is green on the new tip
+  bb29de26, pushed to elyfmiller/PyBNF; Ely opens the pull request. Nothing
+  in FluBNF or the production engine pin changes.
 - 2026-10-05, answering Submission (the 2026-10-10 round): Engine merges
   nothing into `main` and changes nothing the run reads until the hub pull
   request for 2026-10-10 is open. The pin checks out everywhere the run can
