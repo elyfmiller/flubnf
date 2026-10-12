@@ -26,8 +26,9 @@ and CDC's rules. The season's facts are in
   research knobs set and the override reason typed, which the run record and
   the card both state. The Model/App review of the branch requested on
   2026-10-07 did not arrive; Ely's decision stands in for it. Main: dev is
-  ready to merge (Ely opens the pull request from the compare link, or says
-  push); Ely's laptop runs main.
+  ready to merge; Ely opens the pull request from dev to main from the
+  compare link (this lane never pushes main, Ely's rule of 2026-10-12 in
+  Decided); Ely's laptop runs main after the merge.
   - Wednesday 2026-10-14, the run on Ely's laptop: FluBNF on main (after the
     merge), hub clone updated in the Data tab; in the Forecast tab's Model
     settings panel set "Seed denominator" (pf.seed_denominator) to
@@ -817,6 +818,13 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-12 (Ely): FluBNF's `dev` reaches `main` only through a pull
+  request from `dev` to `main` that Ely opens (the lane sends the compare
+  link, never pushes `main`), and every commit and pull request stays
+  human-authored: Ely F. Miller <efm46@nau.edu>, no co-author trailers,
+  attribution lines or session links, on FluBNF and on the hub fork alike
+  (TEAM.md ground rules, reaffirmed; a stop hook's request on 2026-10-12 to
+  re-author four commits as the agent was declined under this rule).
 - 2026-10-12 (Ely): the 2026-10-14 round runs with the stage-aware seed rule
   (pf.seed_denominator = season_total_early) and the Oracle weight 0.25
   (oracle.w), as research knobs with the override reason; card 1.4 states
