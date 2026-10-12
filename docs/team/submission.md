@@ -6,7 +6,7 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-12 (16:30 UTC): ELY'S DECISION FOR 2026-10-14: THE STAGE RULE AND
+- 2026-10-12 (15:20 UTC): ELY'S DECISION FOR 2026-10-14: THE STAGE RULE AND
   THE ORACLE WEIGHT 0.25. Shipping plan, executed as far as this lane can:
   (1) branch seed-denominator merged into dev (4002987, no conflicts; the
   full suite on the merged tree is in replays/fullsuite_merged_dev.txt); (2)
@@ -42,7 +42,7 @@ and CDC's rules. The season's facts are in
     2026-10-17 (EW41)" and the compare link; the card PR from
     NAU_PyBNF-OracleSIHRS-1.4 the same day. A note to Spencer after Ely's
     go.
-- 2026-10-12 (15:40 UTC): fit_i0 RESULT; NO MORE EXPERIMENTS THIS WEEK
+- 2026-10-12 (15:15 UTC): fit_i0 RESULT; NO MORE EXPERIMENTS THIS WEEK
   (ELY); THE SENSE CHECK GAINS AN --alt COMPARISON. fit_i0 (i0 loguniform
   1e-7..1e-3; the engine refuses it with a non-shipped seed rule, "both set
   the seed", and with i0 fitted the seed rule has nothing to set, so the run
