@@ -10,7 +10,7 @@ and CDC's rules. The season's facts are in
   THE ORACLE WEIGHT 0.25. Shipping plan, executed as far as this lane can:
   (1) branch seed-denominator merged into dev (its two commits now 20336c6 and 9d69bef after a rebase, no conflicts; the
   full suite on the merged tree is in replays/fullsuite_merged_dev.txt); (2)
-  card 1.4 on dev (3120697): the seed sentence (an assumed 18% attack rate
+  card 1.4 on dev (1d14d36): the seed sentence (an assumed 18% attack rate
   against the expected season total while the season-to-date count is below
   a quarter of it, the season-to-date count after; from the 2026-10-17
   round) and the weight ("at weight one half" stays, the knob binding test
