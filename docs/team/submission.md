@@ -6,6 +6,42 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-12 (16:30 UTC): ELY'S DECISION FOR 2026-10-14: THE STAGE RULE AND
+  THE ORACLE WEIGHT 0.25. Shipping plan, executed as far as this lane can:
+  (1) branch seed-denominator merged into dev (4002987, no conflicts; the
+  full suite on the merged tree is in replays/fullsuite_merged_dev.txt); (2)
+  card 1.4 on dev (3120697): the seed sentence (an assumed 18% attack rate
+  against the expected season total while the season-to-date count is below
+  a quarter of it, the season-to-date count after; from the 2026-10-17
+  round) and the weight ("at weight one half" stays, the knob binding test
+  requires the shipped default's phrase; "From the 2026-10-17 round the
+  submitted weight is one quarter on the filter's growth (one half before);
+  each run records the weight it used"); the short methods field at 194 of
+  200 characters; the card tests pass; staged byte-identical on the fork
+  branch NAU_PyBNF-OracleSIHRS-1.4 (replaces 1.3, which was never opened);
+  (3) code defaults unchanged: to_date and w = 0.5 stay the shipped values
+  (tests/test_oracle.py pins W_PRODUCTION = 0.5 and the card binding ties
+  "at weight one half" to it; flipping them is the Model lane's
+  registered-member change, not this lane's), so Wednesday runs with the two
+  research knobs set and the override reason typed, which the run record and
+  the card both state. The Model/App review of the branch requested on
+  2026-10-07 did not arrive; Ely's decision stands in for it. Main: dev is
+  ready to merge (Ely opens the pull request from the compare link, or says
+  push); Ely's laptop runs main.
+  - Wednesday 2026-10-14, the run on Ely's laptop: FluBNF on main (after the
+    merge), hub clone updated in the Data tab; in the Forecast tab's Model
+    settings panel set "Seed denominator" (pf.seed_denominator) to
+    season_total_early under Oracle SIHRS: particle filter, and "Oracle
+    blend weight" (oracle.w) to 0.25 under Oracle SIHRS: Oracle step; type
+    the override reason (suggested: "2026-10-12 decision: expected-total pin
+    early in the season and Oracle weight 0.25, both replay-scored;
+    docs/team/submission.md"); run both models; export; run sense_check.py
+    on the two files (optionally --alt with a w = 0.5 export); untick by
+    judgment; hand the two CSVs to this lane for the validator, the
+    fast-forward of FluBNF_submission, the commit "NAU_PyBNF forecast
+    2026-10-17 (EW41)" and the compare link; the card PR from
+    NAU_PyBNF-OracleSIHRS-1.4 the same day. A note to Spencer after Ely's
+    go.
 - 2026-10-12 (15:40 UTC): fit_i0 RESULT; NO MORE EXPERIMENTS THIS WEEK
   (ELY); THE SENSE CHECK GAINS AN --alt COMPARISON. fit_i0 (i0 loguniform
   1e-7..1e-3; the engine refuses it with a non-shipped seed rule, "both set
@@ -781,6 +817,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-12 (Ely): the 2026-10-14 round runs with the stage-aware seed rule
+  (pf.seed_denominator = season_total_early) and the Oracle weight 0.25
+  (oracle.w), as research knobs with the override reason; card 1.4 states
+  both from the 2026-10-17 round.
 - 2026-10-12 (Ely): no further experiment for the 2026-10-14 round. This
   season the team drops a state from a week's submission by judgment (the
   sense-check script, Ely's own run), with the Oracle weight 0.25 as the
