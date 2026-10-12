@@ -6,6 +6,24 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-12 (21:15 UTC): FLUBNF PULL REQUEST dev TO main OPENED AT ELY'S
+  REQUEST; IT MERGES WHEN THE TESTS PASS. Ely asked this lane to open the
+  pull request and have it merge once CI is green. GitHub's own auto-merge
+  is off for the repository (allow_auto_merge false) and main has no
+  ruleset requiring the tests jobs (branch protection is not readable from
+  this session), so GitHub could not be made to wait on CI itself; the
+  lane watches the pull request and merges it (a merge commit, as #29 to
+  #32) once every tests job on its head is green. The session's GitHub
+  token is Ely's own account, so the pull request and the merge commit are
+  authored as Ely, like #32; merging the pull request on Ely's instruction
+  is the pull-request method, not a push of main. The pull request carries
+  everything on dev since main's #32: the seed rule and its knob, cards 1.3
+  and 1.4, the rest of the App lane's 2026-10-05 design pass (display and
+  wording, per app.md), the student install guide, CITATION, and the four
+  lanes' notes. For GitHub to do this itself next time: Settings, General,
+  Pull Requests, Allow auto-merge, and a ruleset on main that requires the
+  tests jobs; then the lane enables auto-merge on the pull request instead
+  of merging it.
 - 2026-10-12 (15:20 UTC): ELY'S DECISION FOR 2026-10-14: THE STAGE RULE AND
   THE ORACLE WEIGHT 0.25. Shipping plan, executed as far as this lane can:
   (1) branch seed-denominator merged into dev (its two commits now 20336c6 and 9d69bef after a rebase, no conflicts; the
