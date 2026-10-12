@@ -6,6 +6,49 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-12 (15:40 UTC): fit_i0 RESULT; NO MORE EXPERIMENTS THIS WEEK
+  (ELY); THE SENSE CHECK GAINS AN --alt COMPARISON. fit_i0 (i0 loguniform
+  1e-7..1e-3; the engine refuses it with a non-shipped seed rule, "both set
+  the seed", and with i0 fitted the seed rule has nothing to set, so the run
+  used the shipped rule; root replays/2026-27-fiti0,
+  compare_fiti0_result.txt, fiti0_field.txt): decliners 6 of 52 (stage rule
+  5), above the field's 90th percentile 11 (stage 13), above the field
+  maximum 2 (New Hampshire 91, Hawaii 413), above 3x 14 (stage 17), median
+  1.12x the ensemble (stage 1.16x); Florida 778, 1,024, 1,343, 1,743 (stage
+  1,875); the filter alone damps by 17% at horizon 4 (median over the 52),
+  the ridge mixture at work. At w = 0.25 on top: decliners 3, above the 90th
+  percentile 5, above the maximum none, above 3x 3, Florida 1,452. So
+  fitting i0 sits between the stage rule and the stage rule with w = 0.25;
+  the weight matters more than the seed. The fitted i0 and mult spreads were
+  not inspected (the cells' parameter outputs are deleted when a week
+  completes). Ely: no further experiment this week; in this first season the
+  team relies on judgment about dropping a state from a week's submission
+  (an early-season problem), with the script as the tool. Revisions, for the
+  record (replays/revisions_by_month.txt, 92 vintages): first reports in
+  September-October are not revised more than mid-season ones in the median
+  (1.00x; 8-15% of cells move over 20%); January-February first reports are
+  revised up 5-6% in the median (70-75% of cells up); counts under 10 have
+  the widest relative tails (30% move over 20%); one-week-old data are
+  nearly settled. Only the 2023 and 2025 early seasons are in the archive.
+  - sense_check.py (sent to Ely again; copy in the scratchpad): now falls
+    back to ~/Downloads when the hub clone holds no export, takes --alt
+    <file> (a second export of the same reference date, e.g. the run at
+    oracle.w = 0.25) and prints its horizon-3 median and its own flag beside
+    the main file's, and recommends "untick, or w=0.25 first" for DECLINE or
+    DROP on counts under 100. On the 2026-10-10 submission it flags Montana,
+    Wisconsin, Illinois, Michigan, Alaska, Maine and Oregon (7 of the 11
+    decliners; Puerto Rico's 0.90x drop is below the DROP line and DC, South
+    Dakota and Wyoming are SMALL). With the stage rule at w = 0.25 as --alt
+    (built from the stored run's secondary quantiles), all 7 come back
+    clean. With w = 0.25 alone on the old pin (the shipped root's
+    secondary), the weight fixes about half of the 11; the seed rule is what
+    fixes the rest (table in chat).
+  - The attack-rate source, for Ely's reading list: ATTACK_RATE_SOURCE in
+    flubnf/sihrs_priors.py is doi 10.1038/s41467-021-26948-8 (Vinh et al.
+    2021, Nature Communications; serology from Vietnam, H3 25.6%, H1 16.0%;
+    the code's note: cumulative infections per season, a proxy, the widest
+    uncertainty in the chain). The paper could not be opened from the cloud
+    container (nature.com and doi.org are outside the network policy).
 - 2026-10-12 (14:40 UTC): WHY THE OLD PIN HIT THE SMALL AND FLAT STATES,
   STATE BY STATE; THE fit_i0 TEST RUNNING. For Ely's Wednesday explanation
   (replays/drain_table.txt, from the stored 2026-10-03 runs of the 19
@@ -738,6 +781,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-12 (Ely): no further experiment for the 2026-10-14 round. This
+  season the team drops a state from a week's submission by judgment (the
+  sense-check script, Ely's own run), with the Oracle weight 0.25 as the
+  first thing to try on a flagged small-count state.
 - 2026-10-12 (Ely): run the fit_i0 test (1e-7..1e-3) on the stage rule for
   this week; prepare the Wednesday explanation of how the old pin produced
   the S drain and what the approach is now; the sense check is Ely's own
