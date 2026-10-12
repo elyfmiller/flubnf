@@ -13,8 +13,8 @@ and CDC's rules. The season's facts are in
   is authored as Ely like #29 to #32. main now carries the seed rule and
   its knob, cards 1.3 and 1.4, the design pass and the notes; Ely's laptop
   picks them up on its next open. CI on the merge commit was still running
-  at this entry; the lane checks it at 21:41 UTC and notes the result here
-  (main red would need a fix on dev before Wednesday). Finding for the
+  at this entry; checked at 21:41 UTC: main is green, all five tests jobs
+  on the merge commit c212e69 and all ten on b657070 passed. Finding for the
   rule above: the GitHub integration this lane opens pull requests through
   appends an attribution footer with a session link to the pull request
   body on creation (it was not in the text the lane sent); the lane edited
