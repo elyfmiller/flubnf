@@ -6,18 +6,19 @@ this file here.
 
 ## Now
 
-- 2026-10-13 (later): the per-parameter kernel-jitter test Ely asked for on
-  2026-09-30 is running on the lab Mac (started 17:00 UTC, about 7 hours;
-  it holds itself from 12:00 to 21:30 Arizona on Wednesdays). Pre-registered
-  at FluBNF-local/research/pf-parameter-jitter: five six-state panel arms
-  (production's single 0.15 as control; all 0.05; Reff at 0.3 or 0.15 with
-  the rest at 0.05; mult and r at 0.05) on the no-auto private branch
-  faccccb3, which reproduces the forecast-fixes filter byte for byte at a
-  single scale; selection on 2023-24 and 2024-25, 2025-26 held out, a full
-  grid only if an arm wins both. Confirmed in code: production moves all
-  five parameters at one scale, and the production engine 2fdadee0 has no
-  per-parameter key, so even a positive result cannot ship without a pin
-  move. Nothing in FluBNF or the pin changes; the verdict is posted here.
+- 2026-10-13 (verdict): the per-parameter kernel-jitter test is a
+  pre-registered null. No arm beat production's single `pf_jitter = 0.15`
+  on the Oracle SIHRS member, so the full-grid stage did not run and
+  nothing changes (in-house, retrospective; five arms, three seasons, six
+  states, 1,395 weeks, no failed cell). Pooled over 2023-24 and 2024-25,
+  arm minus control, Oracle member / filter alone: all 0.05 -0.0002 /
+  +0.064; Reff 0.3, rest 0.05 -0.004 / -0.041; Reff 0.15, rest 0.05 -0.013
+  / -0.001 but central-50 coverage fell 0.033, past the 0.03 limit; mult
+  and r 0.05 -0.004 / -0.014. The Oracle step absorbs most of the kernel's
+  effect. Less jitter everywhere is not the lever (the filter alone loses
+  0.064 and its coverage). Reff at 0.3 is the best filter alone in every
+  season but splits by season on the Oracle member. Record:
+  FluBNF-local/research/pf-parameter-jitter (VERDICT.md, RESULTS.md).
 - 2026-10-13: the pull request is open: lanl/PyBNF#985, "feat: job_type =
   lwf, the Liu–West filter", from elyfmiller/PyBNF `pr/liu-west-filter`
   a9b1a3ae onto `main` b5fa894a, eight commits. lanl's CI is the branch's
