@@ -422,12 +422,11 @@
               html += alertHtml('ok', 'No problems found:', 'the model can run.',
                                 ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
             }
-            // apart from the model: what this computer lacks for a run, its
-            // first sentence on the line and the rest (the remedy) in the "?"
+            // apart from the model: what this computer lacks for a run, as
+            // the page's notice says it, the remedy in the "?"
             if (f.machine) {
-              var mm = /^([\s\S]*?[.!?])\s+(?=[A-Z(])([\s\S]*)$/.exec(f.machine);
-              html += alertHtml('warn', 'This computer cannot fit yet:', mm ? mm[1] : f.machine,
-                                mm ? ['sb-ck-machine', mm[2]] : null);
+              html += alertHtml('warn', 'This computer cannot fit yet:', f.machine,
+                                f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length) html += alertHtml('warn', 'Worth a look:', warns.length === 1 ? '1 note.'
                                                 : warns.length + ' notes.') + listHtml(warns);
