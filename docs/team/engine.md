@@ -6,6 +6,14 @@ this file here.
 
 ## Now
 
+- 2026-10-13: the pull request is open: lanl/PyBNF#985, "feat: job_type =
+  lwf, the Liu–West filter", from elyfmiller/PyBNF `pr/liu-west-filter`
+  a9b1a3ae onto `main` b5fa894a, eight commits. lanl's CI is the branch's
+  first Linux run: the build and changelog-fragment checks passed, the
+  pytest and ruff legs were still running when this was written. Engine
+  follows the review and CI; a failing leg is fixed as a fixup to the
+  commit that owns it and re-gated. Nothing in FluBNF or the production
+  engine pin changes; the migration starts only after merge and release.
 - 2026-10-12 (later): the pull request's nine open questions are decided
   from PyBNF precedent instead of being asked. Three changed code: a run the
   wall-time budget stops now writes its forecast from the last assimilated
