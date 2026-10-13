@@ -425,6 +425,33 @@ def with_population(bngl: str, pop: int) -> str | None:
     return "".join(out) if done else None
 
 
+def _sentence_end(text: str) -> int | None:
+    """The index of the first sentence's closing mark: a '.', '!' or '?'
+    followed by a space and a capital, never inside parentheses or a
+    quoted path, and never an initial ('C:\\Users\\J. Smith'), so a path
+    in the message is not cut."""
+    depth, quoted = 0, False
+    for i, ch in enumerate(text):
+        if ch == "(" and not quoted:
+            depth += 1
+        elif ch == ")" and not quoted:
+            depth = max(0, depth - 1)
+        elif ch == "'":
+            # a quote mark, not an apostrophe inside a word (engine's)
+            inner = (0 < i < len(text) - 1 and text[i - 1].isalnum()
+                     and text[i + 1].isalnum())
+            if not inner:
+                quoted = not quoted
+        elif ch in ".!?" and not depth and not quoted:
+            if not re.match(r"\s+[A-Z(]", text[i + 1:]):
+                continue
+            if i >= 1 and text[i - 1].isupper() and (
+                    i == 1 or text[i - 2] in " \\/"):
+                continue                           # an initial
+            return i
+    return None
+
+
 def split_reason(text: str, cap: int = 200) -> tuple:
     """(notice, tip) for a refusal shown as a one-line notice with its
     "?": the first line, the rest the tip. A first line that is one long
@@ -434,9 +461,9 @@ def split_reason(text: str, cap: int = 200) -> tuple:
     first, _, rest = str(text).strip().partition("\n")
     first, rest = first.strip(), rest.strip()
     if len(first) > cap:
-        m = re.search(r"[.!?]\s+(?=[A-Z(])", first)
-        if m and m.start() < 2 * cap:
-            head, more = first[:m.start() + 1], first[m.end():]
+        end = _sentence_end(first)
+        if end is not None and end < 2 * cap:
+            head, more = first[:end + 1], first[end + 1:]
         else:
             cut = first.rfind(" ", 0, cap)
             cut = cut if cut > 0 else cap

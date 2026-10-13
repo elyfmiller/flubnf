@@ -42,8 +42,11 @@ def check(files: dict, *, work: Path | None = None) -> dict:
              "columns": [], "cumulative": "", "species": None,
              "reactions": None, "network": "not checked", "at_start": "",
              # why this computer cannot fit yet (the run's preflight), or
-             # '': apart from the model's own problems
-             "machine": _sb.machine_problem()}
+             # '': apart from the model's own problems; as the page's
+             # notice says it, the remedy in machine_tip
+             "machine": "", "machine_tip": ""}
+    facts["machine"], facts["machine_tip"] = _sb.split_reason(
+        _sb.machine_problem())
     bngl = str(files.get("model.bngl", ""))
     try:
         facts["suffix"] = simulate_suffix(bngl)
@@ -79,7 +82,11 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     for line in priors:
         k = line.split("=", 1)[0].strip()
         if k.endswith("_var"):
-            named.add(_check_prior(line, set(params), problems))
+            name = _check_prior(line, set(params), problems)
+            # a line too short to read still names its parameter: one
+            # problem for it, not a second "has no prior line"
+            toks = line.partition("=")[2].split()
+            named.add(name or (toks[0] if toks else ""))
     facts["priors"] = sorted(n for n in named if n)
     # the engine pairs them both ways and refuses a run that does not
     # (an unreadable priors.conf is its own problem, not one per parameter)

@@ -149,6 +149,15 @@ def test_a_free_parameter_without_a_prior_is_a_problem(box):
                for p in r["problems"]), r["problems"]
 
 
+def test_a_half_written_prior_is_one_problem(box):
+    files = _files()
+    files["priors.conf"] = files["priors.conf"].replace(
+        "uniform_var = k__FREE 0.05 2.0", "uniform_var = k__FREE 0.05")
+    probs = sb.check(files)["problems"]
+    assert any("needs a parameter name and two numbers" in p for p in probs), probs
+    assert not any("k__FREE ends in __FREE but has no prior" in p for p in probs), probs
+
+
 def test_a_prior_on_a_fixed_parameter_is_named(box):
     # N is defined, yet only a __FREE parameter is fitted: a problem
     files = _files()
@@ -300,7 +309,8 @@ def test_check_names_what_this_computer_lacks_apart_from_the_model(box, monkeypa
     monkeypatch.setattr(pf_engine, "perl_available", lambda: False)
     r = sb.check(_files())
     assert r["ok"]                                   # not a model problem
-    assert r["facts"]["machine"].startswith("Perl was not found on PATH")
+    assert r["facts"]["machine"] == "Perl was not found on PATH."
+    assert "BNG2.pl" in r["facts"]["machine_tip"]
     assert r["facts"]["network"] == "not checked (no Perl here)"
     monkeypatch.setattr(pf_engine, "perl_available", lambda: True)
     monkeypatch.setattr(pf_engine, "PY310", Path("/nonexistent/bin/python"))
