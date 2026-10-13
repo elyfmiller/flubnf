@@ -114,15 +114,12 @@ def test_a_spread_prior_is_not_a_range(box):
 
 def test_warnings(box, tmp_path, monkeypatch):
     files = _files()
-    files["model.bngl"] = files["model.bngl"].replace(
-        "N            100000", "N            100000\nextra__FREE 1.0")
     files["priors.conf"] = files["priors.conf"].replace(
         "pf_cumulative_observable = Tobs\n", "pf_shrink = 1\n")
     files["data.exp"] = "# time T_weekly\n0 5\n"
     r = sb.check(files)
-    assert r["ok"]                                       # warnings never block
+    assert r["ok"], r["problems"]                        # warnings never block
     text = " ".join(r["warnings"])
-    assert "extra__FREE ends in __FREE but has no prior" in text
     assert "no pf_cumulative_observable" in text
     assert "pf_shrink is not a setting the installed engine knows" in text   # the fake engine lists it not
     assert "one data row" in text
@@ -140,13 +137,26 @@ def test_a_row_at_or_before_the_start_time_is_named(box):
                in w for w in sb.check(files)["warnings"])
 
 
+def test_a_free_parameter_without_a_prior_is_a_problem(box):
+    # the engine pairs __FREE names with prior lines both ways and refuses
+    # a run that does not, so Check must not say "the model can run"
+    files = _files()
+    files["model.bngl"] = files["model.bngl"].replace(
+        "N            100000", "N            100000\nextra__FREE 1.0")
+    r = sb.check(files)
+    assert not r["ok"]
+    assert any(p.startswith("extra__FREE ends in __FREE but has no prior line")
+               for p in r["problems"]), r["problems"]
+
+
 def test_a_prior_on_a_fixed_parameter_is_named(box):
-    # N is defined, so no problem was raised, yet only __FREE is fitted
+    # N is defined, yet only a __FREE parameter is fitted: a problem
     files = _files()
     files["priors.conf"] += "uniform_var = N 1000 200000\n"
     r = sb.check(files)
+    assert not r["ok"]
     assert any(w.startswith("N has a prior line but its name does not end "
-                            "in __FREE") for w in r["warnings"]), r["warnings"]
+                            "in __FREE") for w in r["problems"]), r["problems"]
 
 
 def test_parameters_read_continuations_and_whole_expressions():
@@ -212,3 +222,87 @@ def test_a_model_without_begin_model_generates_its_network(box):
     r = sb.check(files)
     assert r["facts"]["network"] == "generates", r
     assert r["ok"] and r["problems"] == []
+
+
+# ---------------------------------------------- the 2026-10-13 Sandbox audit
+
+def test_a_commented_out_simulate_action_does_not_name_the_suffix(box):
+    # BNG2.pl writes the live action's suffix; the run names the data file
+    # after the one Check reports, so a comment above must not win
+    files = _files()
+    live = sb.simulate_suffix(files["model.bngl"])
+    files["model.bngl"] = files["model.bngl"].replace(
+        "simulate(", '# simulate({suffix=>"old"})\nsimulate(', 1)
+    assert sb.simulate_suffix(files["model.bngl"]) == live != "old"
+    assert sb.check(files)["facts"]["suffix"] == live
+    only_comment = files["model.bngl"].replace(f'suffix=>"{live}"', "")
+    with pytest.raises(sb.SandboxError, match="must name a suffix"):
+        sb.simulate_suffix(only_comment)
+
+
+@pytest.mark.parametrize("line, fix", [
+    ("uniform_var k__FREE 0.05 2.0", "write it as 'uniform_var = k__FREE 0.05 2.0'"),
+    ("k__FREE 0.05 2.0", "a prior reads 'uniform_var = name low high'"),
+])
+def test_a_prior_line_without_equals_is_refused_in_words(box, line, fix):
+    # the engine reads 'key = value' only: refused by Check and by the run
+    files = _files()
+    files["priors.conf"] = files["priors.conf"].replace(
+        "uniform_var = k__FREE 0.05 2.0", line)
+    r = sb.check(files)
+    assert not r["ok"]
+    assert any("has no '='" in p and fix in p for p in r["problems"]), r["problems"]
+    # the one problem, not one more per fitted parameter
+    assert not any("has no prior line" in p for p in r["problems"]), r["problems"]
+    with pytest.raises(sb.SandboxError, match="has no '='"):
+        sb.split_priors(files["priors.conf"])
+
+
+def test_generate_network_with_a_space_before_the_parenthesis_is_accepted(box):
+    # BNG2.pl 2.9 runs 'generate_network ({overwrite=>1})' as written
+    files = _files()
+    files["model.bngl"] = files["model.bngl"].replace(
+        "generate_network(", "generate_network (")
+    assert "generate_network (" in files["model.bngl"]
+    assert not any("generate_network" in p for p in sb.check(files)["problems"])
+    files["model.bngl"] = files["model.bngl"].replace(
+        "generate_network (", "# generate_network (")
+    assert any("generate_network" in p for p in sb.check(files)["problems"])
+
+
+def test_a_header_mismatch_names_the_header(box):
+    with pytest.raises(sb.SandboxError) as e:
+        sb.read_exp("# simulated from the skeleton\n# time T_weekly\n0 3\n1 5\n")
+    msg = str(e.value)
+    assert "header line '# simulated from the skeleton'" in msg
+    assert "'# time H_weekly'" in msg
+
+
+def test_check_says_why_the_written_values_were_not_compared(box, monkeypatch):
+    monkeypatch.setattr(pf_engine, "perl_available", lambda: True)
+    from app.core import sandbox_check as sc
+
+    def no_sim(*a, **k):
+        raise sb.SandboxError("simulating needs whole-number times (weeks) "
+                              "in data.exp and pf_start_time")
+    monkeypatch.setattr(sc, "expected_counts", no_sim)
+    facts = sb.check(_files())["facts"]
+    assert facts["network"] == "generates"
+    assert facts["at_start"].startswith("not compared: simulating needs "
+                                        "whole-number times")
+
+
+def test_check_names_what_this_computer_lacks_apart_from_the_model(box, monkeypatch):
+    # the model is fine; the run would be refused here: Check says both
+    monkeypatch.setattr(pf_engine, "PY310", Path(sys.executable))
+    r = sb.check(_files())
+    assert r["ok"] and r["facts"]["machine"] == ""
+    monkeypatch.setattr(pf_engine, "perl_available", lambda: False)
+    r = sb.check(_files())
+    assert r["ok"]                                   # not a model problem
+    assert r["facts"]["machine"].startswith("Perl was not found on PATH")
+    assert r["facts"]["network"] == "not checked (no Perl here)"
+    monkeypatch.setattr(pf_engine, "perl_available", lambda: True)
+    monkeypatch.setattr(pf_engine, "PY310", Path("/nonexistent/bin/python"))
+    assert sb.check(_files())["facts"]["machine"].startswith(
+        "The engine's Python is missing")

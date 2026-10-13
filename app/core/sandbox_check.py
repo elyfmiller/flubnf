@@ -4,6 +4,7 @@ app/core/sandbox.py is the facade; every name here imports from it too.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -33,19 +34,24 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     facts. Network generation runs through BNG2.pl in `work` (a scratch
     folder, never the diagram's) with the model's actions replaced by
     generate_network; without Perl or BNG2.pl it reads 'not checked'.
-    Never a precondition of a run: the run makes its own checks."""
+    Never a precondition of a run: the run makes its own checks, and
+    facts["machine"] says beforehand which of them this computer fails."""
     from app.core import contactmap
     problems, warnings = [], []
     facts = {"suffix": "", "free": [], "priors": [], "rows": 0,
              "columns": [], "cumulative": "", "species": None,
-             "reactions": None, "network": "not checked", "at_start": ""}
+             "reactions": None, "network": "not checked", "at_start": "",
+             # why this computer cannot fit yet (the run's preflight), or
+             # '': apart from the model's own problems
+             "machine": _sb.machine_problem()}
     bngl = str(files.get("model.bngl", ""))
     try:
         facts["suffix"] = simulate_suffix(bngl)
     except SandboxError as e:
         problems.append(str(e))
     code = "\n".join(_strip_comments(bngl))
-    if "generate_network(" not in code:
+    # BNG2.pl takes a space before the parenthesis too
+    if not re.search(r"\bgenerate_network\s*\(", code):
         problems.append("the actions never call generate_network(...): the "
                         "run generates the network with the model's own "
                         "actions")
@@ -63,9 +69,10 @@ def check(files: dict, *, work: Path | None = None) -> dict:
         problems.append(str(e))
     except ValueError as e:
         problems.append(f"data.exp holds a value that is not a number ({e})")
-    priors, keys = [], {}
+    priors, keys, read = [], {}, False
     try:
         priors, keys = split_priors(str(files.get("priors.conf", "")))
+        read = True
     except SandboxError as e:
         problems.append(str(e))
     named = set()
@@ -74,12 +81,16 @@ def check(files: dict, *, work: Path | None = None) -> dict:
         if k.endswith("_var"):
             named.add(_check_prior(line, set(params), problems))
     facts["priors"] = sorted(n for n in named if n)
-    for p in facts["free"]:
+    # the engine pairs them both ways and refuses a run that does not
+    # (an unreadable priors.conf is its own problem, not one per parameter)
+    for p in facts["free"] if read else []:
         if p not in named:
-            warnings.append(f"{p} ends in __FREE but has no prior line")
+            problems.append(f"{p} ends in __FREE but has no prior line: give "
+                            "it one in priors.conf, or drop __FREE to keep "
+                            "its written value fixed")
     for p in sorted(n for n in named if n in params
                     and not n.endswith("__FREE")):
-        warnings.append(f"{p} has a prior line but its name does not end in "
+        problems.append(f"{p} has a prior line but its name does not end in "
                         "__FREE: only a __FREE parameter is fitted, so "
                         f"rename it {p}__FREE in both files")
     warnings += _prior_start_warnings(bngl, priors)
@@ -117,8 +128,10 @@ def check(files: dict, *, work: Path | None = None) -> dict:
             and not pf_engine.sampling_interval_line()):
         warnings.append("one data row: this engine needs two or more "
                         "(it does not accept pf_sampling_interval)")
-    if not pf_engine.perl_available() or not Path(_sb.BNG).is_file():
-        facts["network"] = "not checked (no Perl or BNG2.pl here)"
+    if not pf_engine.perl_available():
+        facts["network"] = "not checked (no Perl here)"
+    elif not Path(_sb.BNG).is_file():
+        facts["network"] = "not checked (BNG2.pl not found)"
     else:
         if work:
             Path(work).mkdir(parents=True, exist_ok=True)
@@ -143,8 +156,9 @@ def check(files: dict, *, work: Path | None = None) -> dict:
                 facts["at_start"] = fact
                 if warn:
                     warnings.append(warn)
-            except (SandboxError, ValueError, KeyError):
-                pass                       # nothing to compare: no warning
+            except (SandboxError, ValueError, KeyError) as e:
+                # nothing to compare: say why, so the row is not just gone
+                facts["at_start"] = f"not compared: {str(e).strip()[:300]}"
     return {"ok": not problems, "problems": problems, "warnings": warnings,
             "facts": facts}
 

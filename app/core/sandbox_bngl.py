@@ -114,7 +114,11 @@ def skeleton(name: str) -> dict:
 
 
 def simulate_suffix(bngl_text: str) -> str:
-    m = re.search(r'suffix\s*=>\s*"([^"]+)"', bngl_text)
+    """The suffix the model's simulate action names, read from the live
+    lines only: a commented-out action's suffix is not the one BNG2.pl
+    writes, and the run would name the data file after it."""
+    code = "\n".join(_strip_comments(bngl_text))
+    m = re.search(r'suffix\s*=>\s*"([^"]+)"', code)
     if not m:
         raise SandboxError("the model's simulate action must name a suffix "
                            '(suffix=>"..."): the engine matches the data '
@@ -137,7 +141,11 @@ def read_exp(exp_text: str) -> dict:
         parts = l.split()
         if len(parts) != len(cols):
             raise SandboxError(f"data.exp row {l!r} has {len(parts)} values "
-                               f"for {len(cols)} columns")
+                               f"for {len(cols)} columns: the header line "
+                               f"{lines[0].strip()!r} names "
+                               f"{', '.join(cols) or 'none'}. The first line "
+                               "is the header, '#' then one name per column, "
+                               "such as '# time H_weekly'")
         rows.append([float(x) for x in parts])
     if len(cols) < 2 or not rows:
         raise SandboxError("data.exp needs a time column, one observation "
@@ -153,15 +161,23 @@ def split_priors(priors_text: str) -> tuple:
         s = line.split("#", 1)[0].strip()
         if not s:
             continue
-        if "=" in s:
-            k, v = (x.strip() for x in s.split("=", 1))
-            if k in ENGINE_KEYS or k in RETIRED_KEYS:
-                keys[k] = v
-                continue
-            if k in RESERVED_KEYS:
-                raise SandboxError(
-                    f"priors.conf sets {k}, which the sandbox writes from "
-                    "the run settings; remove that line")
+        if "=" not in s:
+            # the engine reads 'key = value' lines only: refused here, in
+            # words, instead of by the engine after the network is made
+            word, _, rest = s.partition(" ")
+            fix = (f": write it as '{word} = {rest.strip()}'"
+                   if word.endswith("_var") and rest.strip() else
+                   ": a prior reads 'uniform_var = name low high'")
+            raise SandboxError(f"priors.conf line '{s}' has no '=' (every "
+                               f"line is 'key = value'){fix}")
+        k, v = (x.strip() for x in s.split("=", 1))
+        if k in ENGINE_KEYS or k in RETIRED_KEYS:
+            keys[k] = v
+            continue
+        if k in RESERVED_KEYS:
+            raise SandboxError(
+                f"priors.conf sets {k}, which the sandbox writes from "
+                "the run settings; remove that line")
         priors.append(s)
     if not any(p.split("=", 1)[0].strip().endswith("_var") for p in priors):
         raise SandboxError("priors.conf declares no free parameter "

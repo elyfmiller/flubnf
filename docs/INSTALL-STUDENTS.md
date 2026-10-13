@@ -139,7 +139,10 @@ in the season guide. FluBNF only writes the files; nothing is submitted
 until someone uploads them.
 
 To fit a model of your own instead, the Sandbox tab starts from an example
-or a template: [SANDBOX.md](SANDBOX.md) walks through it.
+or a template: [SANDBOX.md](SANDBOX.md) walks through it. The Sandbox fits
+with the engine, so it needs the engine file installed, and on Windows
+Strawberry Perl too; when one is missing, a model's page says "This computer
+cannot fit yet" and its "?" says what to do.
 
 ---
 
@@ -147,8 +150,9 @@ or a template: [SANDBOX.md](SANDBOX.md) walks through it.
 
 **"It opened but says the engine is not installed."**
 FluBNF still works, it just runs one of its two models instead of both, so you
-are not stuck. Check the engine file is in your Downloads folder with its
-original name, then open FluBNF again.
+are not stuck. The Sandbox cannot fit until the engine is installed. Check the
+engine file is in your Downloads folder with its original name, then open
+FluBNF again.
 
 If it still says that: on macOS, double-click **`SetupEngine.command`** in the
 FluBNF folder. It does only the engine step, prints a section called **"what

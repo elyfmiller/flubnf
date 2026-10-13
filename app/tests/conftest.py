@@ -155,6 +155,8 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(sb, "MODELS", root / "models")
     monkeypatch.setattr(sb, "RUNS", root / "runs")
     monkeypatch.setattr(pf, "perl_available", lambda: True)
+    # the engine's own Python, which the preflight requires to exist
+    monkeypatch.setattr(pf, "PY310", Path(sys.executable))
 
     def fake_netgen(cmd, **kw):
         cwd = Path(kw.get("cwd", "."))
