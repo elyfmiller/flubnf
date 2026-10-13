@@ -86,6 +86,16 @@ def test_split_reason_keeps_the_remedy_in_the_tip():
     notice, tip = sb.split_reason(msg)
     assert notice == "Perl was not found on PATH."
     assert "install Strawberry Perl" in tip and len(notice) <= 200
+    # a path is never cut at an initial, a parenthesis or a quoted span
+    for path in ("C:\\Users\\J. Smith\\flubnf", "/Users/J. Q. Public/flubnf"):
+        for said in (f"The PyBNF fork at {path} does not provide fit_type = pf: "
+                     "there is no such directory. ",
+                     f"The engine's Python is missing ({path}. Bin) so no fit "
+                     "can start. ",
+                     f"PF configuration cannot express a path: '{path}. X'. "):
+            notice, tip = sb.split_reason(said + "To install it, " + "x " * 120)
+            assert notice == said.strip(), notice
+            assert tip.startswith("To install it, ")
     words = "word " * 80                           # no sentence end to split at
     notice, tip = sb.split_reason(words.strip())
     assert notice.endswith(" ...") and len(notice) <= 205
@@ -109,7 +119,9 @@ def test_a_preflight_refusal_flashes_its_reason_and_its_remedy(box, monkeypatch,
     _post("/sandbox/run", {"model": "kinetics_example"})
     msg, detail = _flash()
     assert msg.startswith("Not started: ") and notice in msg
-    assert remedy in detail, detail
+    # the remedy is shown: in the tip, or on the line when the whole
+    # reason is short (FluBNF.bat's remedy on Windows is)
+    assert remedy in msg + detail, (msg, detail)
     assert _no_runs()                                       # nothing made
 
 
@@ -138,6 +150,8 @@ def test_a_half_installed_engine_is_refused_before_a_folder_is_made(box, monkeyp
 
 def test_a_folder_with_a_space_is_refused_in_words_with_nothing_made(
         sandbox_root, tmp_path, monkeypatch):
+    # no space-free short form (Windows usually has one, and uses it)
+    monkeypatch.setattr(pf_engine, "_short_path_win", lambda s: None)
     spaced = tmp_path / "box with space" / "sandbox"
     monkeypatch.setattr(sb, "SANDBOX", spaced)
     monkeypatch.setattr(sb, "MODELS", spaced / "models")
@@ -230,7 +244,7 @@ def test_another_models_run_falls_back_to_this_models_newest(box):
 def test_name_fields_say_what_they_take(box):
     sb.add_example("kinetics_example")
     for url in ("/sandbox", "/sandbox?model=kinetics_example"):
-        assert 'title="Letters, digits, _ and - only (no spaces), up to 64 characters"' in (
+        assert 'title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters"' in (
             client.get(url).text)
 
 

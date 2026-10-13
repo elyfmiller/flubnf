@@ -32,7 +32,7 @@
   <div class="card">{{ tips.heading("New model", "sb-new") }}
    <form method="post" action="/sandbox/new" class="sbnew">
     {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
-    <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and - only (no spaces), up to 64 characters" required>
+    <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
     {{ tips.label("Start from", "sb-start", "A template is a model to adapt: its lines marked EDIT are the values to set for your pathogen. An example is a worked model, and a copy duplicates one of yours; each brings its data and priors along and fits as it is. The skeleton is the smallest runnable model. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
     {% set pf_sets = datasets | selectattr("pf") | list %}
     {% set _first = (templates or examples or [""])[0] %}
@@ -130,7 +130,7 @@
     <input type="hidden" name="start" value="copy:{{ name }}">
     <label for="sb-dup-name">Duplicate as</label>
     <div class="row">
-     <input id="sb-dup-name" name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and - only (no spaces), up to 64 characters" required>
+     <input id="sb-dup-name" name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
      <button>Duplicate</button>
     </div>
    </form>
