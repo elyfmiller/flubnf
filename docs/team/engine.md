@@ -6,6 +6,16 @@ this file here.
 
 ## Now
 
+- 2026-10-12 (later): the pull request's nine open questions are decided
+  from PyBNF precedent instead of being asked. Three changed code: a run the
+  wall-time budget stops now writes its forecast from the last assimilated
+  row (ADR-0093), a fixed dispersion (`fix_at`) is accepted beside a fitted
+  one, and a global key the filter does not read is warned about and
+  ignored (ADR-0014) rather than refused; only `refine`, `bootstrap` and the
+  cluster keys stay refused. The segment integrator also quiets bngsim's
+  per-run log lines while it integrates. New tip a9b1a3ae on elyfmiller/
+  PyBNF, every gate green; Ely opens the pull request. Nothing in FluBNF or
+  the production engine pin changes.
 - 2026-10-12: the PyBNF pull-request branch is rebased onto current
   lanl/PyBNF `main` (b5fa894a) and reviewed once more as a maintainer
   would: minimal, code plus tests plus user docs, no extra notes files.
