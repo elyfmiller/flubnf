@@ -6,6 +6,26 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-13: Sandbox audit (Ely's request: students report hits and
+  misses). Seven readers, each finding then checked by two verifiers: 22
+  confirmed, 1 refuted, 23 not checked (the run stopped at a usage limit).
+  Fixed on `dev`: a run the engine refuses shows the engine's reason (it
+  showed only "failed") and no longer offers the full fit; a refusal's
+  remedy reaches the notice's "?" (it was cut at 200 characters); a model's
+  page says "This computer cannot fit yet" when the engine, its Python or
+  Perl is missing, and Check says so apart from the model; a half-installed
+  engine, a folder path with a space, a network over 300 s or a model that
+  does not generate is refused in words and leaves no run folder. Check: a
+  `__FREE` parameter without a prior and a prior on a fixed parameter are
+  problems (the engine refuses both), a prior line without `=` is refused,
+  a commented-out simulate action no longer names the suffix,
+  `generate_network (` passes, a header mismatch names the header. Run
+  settings read as typed (`1e4`); Save, Load, Upload and Simulate no longer
+  stall on a run setting out of range; Ctrl/Cmd+S works anywhere on the
+  page; a new dataset shows its own weeks, so Load is on; Set N on a model
+  without N loads nothing. FluBNF.bat gives its window Strawberry Perl's
+  folders after installing it. SANDBOX.md and INSTALL-STUDENTS.md say what
+  the Sandbox needs.
 - 2026-10-07: weekly report trimmed at Ely's request (PR #31, on `main`): both
   95% bands plain fills in each model's colour, no off-scale arrows, and
   about 90% of the explanatory text removed. A stored run rebuilds
@@ -244,6 +264,16 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
+- For Ely (2026-10-13 Sandbox audit), confirmed but not changed: unsaved
+  edits in the macOS window (the leave-page prompt may never show there;
+  one try on a Mac settles it); a Check note when the first data row is
+  after t = 0 (Oracle SIHRS starts do that by design); a grouped CSV with
+  one unreported week cannot load (the Data tab's rule too); FluBNF.bat
+  offers Perl on one open only; the trajectory layout with a gap week and
+  "collapsed" from one low ESS week (a real run folder from a student
+  settles both); elapsed time beside the progress bar; network generation
+  runs the whole actions block. CI never runs the real Perl and BNG2.pl
+  path, and the page scripts are tested on macOS only.
 - For Ely (2026-10-05 design pass), not built yet: a live "This week"
   card on Home; a submission checklist and "Mark as submitted" on the
   due round; this week against last week before submitting; score CSV,
