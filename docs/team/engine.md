@@ -152,6 +152,12 @@ this file here.
 
 ## For other lanes
 
+- App, Submission, Model (2026-10-13): the plan below, "FluBNF on public
+  PyBNF", is a draft for when lanl/PyBNF#985 merges; it names what each
+  lane changes and when. Stage 0 asks nothing but reading; no branch
+  before Ely posts the merge commit. It also answers App's request of
+  2026-09-30 as far as it can before the merge (Python 3.12 or newer,
+  pip-installed engine, edition-2 confs, Results/LWF output names).
 - App (answering your request of 2026-09-30): noted. The pin's branch and
   commit, the Python version and the output file names will be posted here
   once the upstream `lwf` pull request is merged, not before. What is known
@@ -199,4 +205,144 @@ this file here.
   about 81 minutes per arm). Say here if a replay needs the machine at a
   given time and the engine runs will wait.
 
+## Plan: FluBNF on public PyBNF (draft 2026-10-13, for Ely and the other lanes)
+
+Why now: lanl/PyBNF#985 (`job_type = lwf`, the Liu-West filter) is open.
+When it merges and Bill cuts a release, FluBNF can drop the private fork:
+the engine becomes `pip install pybnf`, and the console's conf writer,
+runner, readers, preflight and installers change with it. Nothing here
+starts before Ely says so; the 2026-27 rounds run on the private engine
+(2fdadee0) until the gate in stage 2 passes. Measured basis (lab tree,
+research/lwf-production-equivalence, 2026-10-03): fed the same random
+inputs, `lwf` reproduces the production engine's forecasts exactly on
+144/144 SIHRS cells; with its own streams, total WIS ratio 1.0013 (95%
+0.986 to 1.016); about 2.1x slower per cell; the plumbing differs
+everywhere.
+
+### What changes
+
+| | today (private fork) | after (public PyBNF) |
+|---|---|---|
+| engine | PyBNF-Private `feature/particle-filter`, pinned by commit (2fdadee0) in app/core/engine_build.py | `pybnf` from PyPI, pinned by version; until the first release, a lanl commit through pip's git URL (lanl/PyBNF is public, no login) |
+| how lab users get it | a 130 KB archive or a 140 MB bundle in Downloads, or a collaborator invitation; setup_engine.sh / setup.ps1 find it, unpack it and `pip install -e` | `pip install "pybnf==<v>" "bngsim[antimony]==0.15.1"` into a Python 3.12 venv; no login, no file to hand out, no archive hunt, no stale-engine failure mode |
+| engine venv | Python 3.11 or 3.12, numpy<2, dask 2022.12.1, bngsim 0.15.1 | Python >= 3.12, numpy >= 1.24 (2.x fine), dask and distributed >= 2024.1, pydantic 2, bngsim 0.15.x |
+| conf | edition 1: `fit_type = pf`, `objfunc = neg_bin_dynamic`, `pf_*` keys, `pf_seed`, `pf_start_time = -1`, `pf_cumulative_observable = Hobs` | edition 2: `model:`, `experiment:`, two `noise_model` lines (neg_bin, dispersion = fit r, location = mean, cumulative, on Hobs), `job_type = lwf`, `lwf_*` keys, `random_seed` |
+| model template | SIHRS_pop_min.bngl with its `simulate` action | the same model with no action but `generate_network` |
+| data file | counts from t = -1 (the initial state one week before the first row) | times one week later (t = 0 is the start; the counter species keeps the seasonal phase), column `Hobs`, a `nan` row per missing week |
+| runner | `from pybnf.pf import ParticleFilter; ParticleFilter(load_config(conf)).run(None)`, the fork first on sys.path | `from pybnf.algorithms.filters.liu_west import LiuWestFilter; LiuWestFilter(load_config(conf)).run(None)`, nothing on sys.path (an old private checkout left there shadows the package) |
+| outputs the console reads | out/Results/PF/Runs/*traj_noise*, ess_0.txt, params_0.txt, pf_state.npz | Results/LWF/forecasts.txt, predicted_counts.txt, parameters.txt (also parameters_by_row.txt, weight_ess.txt, summary.txt); the state file `lwf_state_file` names |
+| preflight | pybnf/pf.py exists; parse.py grepped for keys; the "is not an observable" stale-engine error | an import probe of LiuWestFilter plus `pybnf.__version__` against the pin; one error wording |
+| provenance | fork branch, commit and VERSION stamp; builds that were not reconstructible (docs/MODEL-PROVENANCE.md) | the pybnf and bngsim version strings; a release is a reproducible build |
+| random streams | `pf_seed`, per-week streams | `random_seed`, keyed streams; stored records cannot be regenerated bit for bit across the switch; any record on `lwf` is a new measurement |
+| degenerate update | keeps the prior weights and still forecasts | stops with an error naming the row, outputs through the last assimilated row, no forecast (decision 2) |
+| revised earlier rows on a continuation | silently ignored | refused; production refits every week, so nothing depends on it |
+| cost | about 5 to 14 min per 159-cell weekly grid on the lab Mac | roughly twice that, inside the console's one-hour floor; the per-cell cost model needs refitting |
+| research paths with no `lwf` equivalent | two-strain binomial channel, reporting-model likelihood modes, pf_shrink, pf_forecast_jitter, continuing private clouds | not available; all are off in production (decision 3) |
+| per-parameter jitter | not in 2fdadee0 | `lwf_parameter_jitter`, in #985; whether to use it waits on the engine lane's test |
+
+### Stage 0, now (nothing in production changes)
+
+- Engine: keep #985 green and answer Bill's review; finish the
+  per-parameter jitter test; keep the equivalence harness runnable as the
+  acceptance test for the merge commit.
+- App: read-only: this table and the equivalence summary; no branch yet.
+  Settle the shape of the engine switch with Ely (decision 4) so the
+  stage 1 branch starts right.
+- Submission: one line in FLUSIGHT-2026-27.md: the engine switch is
+  planned, not scheduled, and never lands in the days before a due date.
+- Model: list the research replays that would still need the private
+  engine after the switch (decision 3).
+
+### Stage 1, the pull request is merged into lanl main (trigger: Ely posts the merge commit)
+
+Engine, lab Mac:
+1. Install the merge commit into a fresh venv (`~/.venvs/flubnf-lwf`,
+   Python 3.12: `pip install "pybnf @ git+https://github.com/lanl/PyBNF@<sha>"
+   "bngsim[antimony]==0.15.1"`); rerun the equivalence replay (144 cells)
+   on it; post here the pin (commit or version), the Python floor, the
+   dependency set, the bngsim version, the exact conf and data
+   translation, the output names.
+2. Post one production cell translated by hand (Alaska 2025-01-11: conf,
+   .exp, template, outputs) so the App lane builds against real files.
+
+App, branch `engine-public` on `dev`, opt-in until stage 3:
+3. flubnf/settings.py: `FLUBNF_ENGINE = private | public` (default
+   private); `PY_ENGINE` for the public venv; `FLUBNF_PYBNF` private only.
+4. app/core/engines/pf.py: a second writer, runner and reader behind the
+   switch: the edition-2 conf, the template without actions, write_exp
+   with the one-week shift, `Hobs` and `nan` rows, the LiuWestFilter
+   runner, collect() from Results/LWF, the preflight as an import probe
+   with a version check; engine_build.py's production pin becomes a pybnf
+   version; doctor and reclaim follow.
+5. knobs.py and the ledger keep the console's own names (`pf.jitter`,
+   `pf.particles` ...) and map them in the writer; renaming the console's
+   schema is decision 4.
+6. Sandbox: sandbox_bngl.py writes the public conf under the switch; the
+   "needs no engine" check is unchanged.
+7. Tests: fixtures from the engine lane's translated cell; CI has no
+   engine, so the writer and readers are tested on fixtures, as today.
+8. setup_engine.sh, setup.ps1, install.sh: a public route (venv plus pip)
+   beside the private one; docs ENGINE.md, INSTALL-STUDENTS.md,
+   WINDOWS.md, LAUNCHERS.md, README. Nothing reaches a student until
+   `main`.
+
+Model and Submission: nothing runs on the public engine yet.
+
+### Stage 2, acceptance (trigger: the `engine-public` branch runs one week end to end on the lab Mac)
+
+- Engine and Model, lab Mac: the full grid through the console's public
+  path, three seasons, both members (Oracle SIHRS with the step, the
+  filter alone), against the private engine's own rerun on identical
+  cells (not the stored reseal, whose streams differ). The gate is
+  pre-registered before the run; starting values: total WIS ratio public
+  over private within 0.98 to 1.02 per season and pooled, 50% and 95%
+  coverage within 0.02, no failed cell the private run did not have, no
+  degenerate update; plus the byte-level replay on 36 cells. Expected
+  from the 2026-10-03 study: ratio about 1.00.
+- App: the same on Windows (one state, one week) and the installer from
+  scratch on a clean user account, then Ely's laptop.
+- Submission: one shadow Wednesday: both engines run, the private file is
+  submitted, the public file is diffed and kept.
+- Engine: the per-cell cost model refitted; the time budget checked on
+  the slowest lab machine.
+
+### Stage 3, cutover (trigger: Ely's decision after stage 2, ideally on a PyPI release; a Thursday, never the days before a due date)
+
+- App: `FLUBNF_ENGINE` defaults to public; engine_build.py pins the pybnf
+  version; the setup scripts default to the public route; the private
+  route stays one release as "legacy", then goes; docs/MODEL-PROVENANCE.md
+  records the switch and the first public-engine round.
+- Submission: the next round runs public with the private engine still
+  installed as the fallback; the method card needs no change unless it
+  names the build.
+- Engine: the private branches are archived read-only; the last
+  private-engine round is recorded; the stale-engine error wordings go.
+- Model: research replays move or stay private per decision 3.
+
+### Decisions for Ely
+
+1. Timing: build and validate during the season; switch only after stage
+   2 passes, at a quiet point. A mid-season switch is defensible when the
+   full grid agrees within the gate, because every submission is a
+   self-computed replay and the card does not name the build; waiting for
+   the end of May is the conservative choice.
+2. Degenerate row: accept the failed cell (the week is stored from the
+   other replicates) or rewrite the row as `nan` and rerun. Not seen once
+   in 2,100 runs.
+3. Research paths: keep the private engine as a research-only engine
+   (two engines installed on the lab Mac), or port two-strain and the
+   reporting model to `lwf` later. Production needs neither.
+4. Names: the console keeps its `pf.*` knob and ledger names and maps
+   them (least churn, stored records stay readable), or renames to
+   `lwf.*` at the cutover. The rule "rename nothing to `lwf_*` yet"
+   stands until stage 1.
+5. bngsim: 0.15.1 (bit-identical to every production integration) or
+   0.16.0 (what #985's CI runs). 0.15.1 until measured.
+6. Whether the public route may pin a lanl commit before a PyPI release
+   (pip's git URL works, no login), or waits for the release.
+
 ## Open
+
+- 2026-10-13: the six decisions at the end of the public-PyBNF plan
+  (timing, degenerate rows, research paths, console names, bngsim pin,
+  pinning a commit before a release).
