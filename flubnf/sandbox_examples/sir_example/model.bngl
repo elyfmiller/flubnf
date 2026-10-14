@@ -3,7 +3,8 @@
 # weekly increment, scaled by the ascertainment, is the observed count.
 # Time is in weeks. The counts in data.exp were simulated from this model
 # at the values written below, with negative-binomial noise (r = 10), so
-# a fit should find Reff near 1.6 and scale near 0.3.
+# a full fit should find Reff near 1.6 and scale between about 0.2
+# and 0.3.
 begin model
 begin parameters
 Reff__FREE  1.6      # reproduction number; fitted
@@ -12,7 +13,7 @@ r__FREE     10.0     # negative-binomial dispersion of the counts; fitted
 
 N      200000        # population, known
 gamma  1.0           # recovery per week (one-week infectious period), fixed
-beta   Reff__FREE*gamma
+beta   Reff__FREE*gamma   # infection rate per week: Reff times the recovery rate
 I0     50
 end parameters
 

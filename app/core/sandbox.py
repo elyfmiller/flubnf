@@ -1300,7 +1300,7 @@ _MOVED = {
         "check", "SIMULATE_WEEKS", "DISPERSION_PARAM", "expected_counts",
         "synthetic_exp", "_scale_note"),
     "sandbox_results": (
-        "results", "HEALTH_COLLAPSED", "HEALTH_THIN", "HEALTH_COVER",
+        "results", "HEALTH_COLLAPSED", "HEALTH_THIN", "TRIES_SHOWN",
         "fit_health", "summary_rows"),
     "sandbox_data": (
         "DEFAULT_WEEKS", "default_range", "_check_range", "_window",
