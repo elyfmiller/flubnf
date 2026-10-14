@@ -33,7 +33,10 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     (a run would fail), warnings (it may run but likely not as meant) and
     facts. Network generation runs through BNG2.pl in `work` (a scratch
     folder, never the diagram's) with the model's actions replaced by
-    generate_network; without Perl or BNG2.pl it reads 'not checked'.
+    generate_network; without Perl or BNG2.pl, in a folder Windows Perl
+    cannot read, or when BNG2.pl does not start here (its self-test, or a
+    run that stops before BioNetGen's banner) it reads 'not checked', and
+    the reason is this computer's (facts["machine"]), never the model's.
     Never a precondition of a run: the run makes its own checks, and
     facts["machine"] says beforehand which of them this computer fails."""
     from app.core import contactmap
@@ -135,10 +138,16 @@ def check(files: dict, *, work: Path | None = None) -> dict:
             and not pf_engine.sampling_interval_line()):
         warnings.append("one data row: this engine needs two or more "
                         "(it does not accept pf_sampling_interval)")
+    # each "not checked" is a machine problem the notice names, never the
+    # model's: BNG2.pl cannot read any model here yet
     if not pf_engine.perl_available():
         facts["network"] = "not checked (no Perl here)"
     elif not Path(_sb.BNG).is_file():
         facts["network"] = "not checked (BNG2.pl not found)"
+    elif pf_engine.perl_path(_sb.BNG) is None:
+        facts["network"] = "not checked (Perl cannot read this folder's name)"
+    elif _sb.bng_problem():
+        facts["network"] = "not checked (BNG2.pl does not start here)"
     else:
         if work:
             Path(work).mkdir(parents=True, exist_ok=True)
@@ -149,10 +158,25 @@ def check(files: dict, *, work: Path | None = None) -> dict:
                 facts["species"] = len(net["species"])
                 facts["reactions"] = len(net["reactions"])
                 facts["network"] = "generates"
+            except subprocess.TimeoutExpired as e:
+                facts["network"] = "fails"     # a network too large to make
+                problems.append(str(e).strip())
             except (contactmap.ContactMapError, OSError,
                     subprocess.SubprocessError) as e:
-                facts["network"] = "fails"
-                problems.append(str(e).strip())
+                said = str(e).strip()
+                if isinstance(e, contactmap.ContactMapError) and (
+                        pf_engine.bng_started(said)
+                        or not said.startswith("BNG2.pl could not")):
+                    facts["network"] = "fails"
+                    problems.append(said)
+                else:
+                    # BNG2.pl stopped before its banner, or perl did not
+                    # start: this computer, which no edit of the model fixes
+                    facts["network"] = "not checked (BNG2.pl did not start)"
+                    if not facts["machine"]:
+                        facts["machine"], facts["machine_tip"] = \
+                            _sb.split_reason(pf_engine.bng_broken_message(
+                                said.partition("\n")[2] or said))
         # the model at its written values beside the data: a scale that
         # is off tenfold is the commonest reason a first fit collapses
         if facts["network"] == "generates" and cum in outputs and times:
