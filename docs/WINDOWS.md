@@ -528,7 +528,7 @@ variable and prints the one `setx` line that clears it.
    | `git.exe` | `C:\Program Files\Git\cmd\git.exe` | the FluSight hub clone and every later pull |
    | `python.exe` (console venv) | `<repo>\.venv\Scripts\python.exe` | the app itself, and `__pycache__` |
    | `python.exe` (engine venv) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
-   | `perl.exe` | `C:\Strawberry\perl\bin\perl.exe` | `m.net`, from `BNG2.pl`, during a fit |
+   | `perl.exe` | `%LOCALAPPDATA%\FluBNF\perl\Library\bin\perl.exe` (FluBNF's own), or `C:\Strawberry\perl\bin\perl.exe` for a Strawberry Perl | `m.net`, from `BNG2.pl`, during a fit |
    | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\bin\run_network.exe` (older wheels omit the `bin\`; setup.ps1 prints the path that actually exists on your machine) | simulation output, during a fit |
 
    `git.exe` and `python.exe` are the two Defender actually logged as

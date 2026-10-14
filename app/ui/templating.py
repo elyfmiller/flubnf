@@ -70,8 +70,8 @@ def _engine_setup_hint():
 def _perl_missing_hint() -> str:
     """The run preflight's Perl message (engines/pf.perl_missing_message) for
     this machine: Home's Setup card shows it when Perl is all that is
-    missing, as on a first Windows open whose own PATH predates the
-    Strawberry Perl it just installed."""
+    missing, as on a Windows PC where FluBNF.bat could not install its own
+    Perl (no network on that open)."""
     from app.core.engines import pf
     return pf.perl_missing_message(_platform())
 
