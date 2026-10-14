@@ -82,13 +82,15 @@
  <div class="sb-pane" data-pane="upload" id="sbfill-up">
   <h3 class="sb-pane-h">Upload a CSV</h3>
   <div class="sb-fgrid sb-fgrid--up">
-   <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
+   <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", "A date column and a count column (any name), read as one series named after the file; a grouped CSV (date, target_group, value, optional population); or a hubverse time series (target_end_date, location, observation). Weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
     <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
    <span class="sb-f"><label for="sbfill-kind">Values</label>
     <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
   </div>
+  <p class="sb-fmt">A CSV with a date column and a count column; a group column if it holds several series. <a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a></p>
   {% if upload_report %}
   <div class="sbreport sb-report">
+   {% if upload_report.done %}{{ tips.alert("ok", upload_report.done, id="sb-upload-done") }}{% endif %}
    {% if upload_report.problems %}{% set _n = upload_report.problems | length %}
    {{ tips.alert("error", _n ~ " problem" ~ ("" if _n == 1 else "s") ~ " in the file.", title="Not loaded:", id="sb-upload-bad") }}
    <ul class="sb-list">{% for p in upload_report.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}

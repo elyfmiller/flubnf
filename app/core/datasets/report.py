@@ -115,6 +115,9 @@ class Report:
     ambiguous: dict = field(default_factory=dict)
     # role -> header: the column an ambiguous role's problem suggests
     suggest: dict = field(default_factory=dict)
+    # the group a file with no group column is read as (its one series),
+    # '' when the file names its groups; a mapping then needs no group
+    series: str = ""
     targets: list = field(default_factory=list)
     encoding: str = ""
     delimiter: str = ""
@@ -222,7 +225,8 @@ def problem_lines(rep: Report) -> list:
     if rep.needs_mapping:
         out.append("Columns in the file: " + ", ".join(
             f"#{i + 1} {h}" for i, h in enumerate(rep.headers) if h))
-        unset = [r for r in REQUIRED if r not in rep.guess] or ["date"]
+        unset = [r for r in REQUIRED if r not in rep.guess
+                 and not (r == "group" and rep.series)] or ["date"]
         used = set(rep.guess.values())
         free = [h for i, h in enumerate(rep.headers)
                 if h and f"#{i + 1}" not in used]

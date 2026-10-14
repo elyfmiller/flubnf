@@ -193,12 +193,19 @@ def _preview(rep, kind: str) -> dict:
 MAPPING_PROBLEMS = ("ambiguous_columns", "column_unknown")
 
 
+def _required(rep) -> tuple:
+    """The roles a mapping must fill: a file read as one series (no group
+    column) needs no group."""
+    return tuple(r for r in _datasets().REQUIRED
+                 if not (r == "group" and getattr(rep, "series", "")))
+
+
 def _mapping_why(rep) -> list:
     """The mapping's own hint: one line naming the roles no header matched
     (the reasons to choose are problems, MAPPING_PROBLEMS)."""
     if not rep.needs_mapping:
         return []
-    unset = [r for r in _datasets().REQUIRED
+    unset = [r for r in _required(rep)
              if r not in rep.guess and r not in rep.ambiguous]
     out = []
     if unset:
@@ -239,7 +246,7 @@ def check_view(rep, *, kind: str = "", columns=None, files: int = 1) -> dict:
                         if h],
             "why": _mapping_why(rep),
             "roles": [{"role": r, "label": labels[r],
-                       "required": r in _datasets().REQUIRED,
+                       "required": r in _required(rep),
                        "value": columns.get(r) or rep.guess.get(r, "")}
                       for r in _datasets().ROLES]}
     shown = [p for p in rep.problems

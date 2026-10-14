@@ -458,8 +458,9 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     return _sandbox_redirect(name)
 
 
-#: an upload's refusal, shown inline in the Load data box on the next view
-#: of that model (popped once shown)
+#: an upload's refusal, notes, or how it was read (one series), shown
+#: inline in the Load data box on the next view of that model (popped
+#: once shown)
 _sandbox_upload_report: dict = {}
 
 #: the request body cap: the CSV's own cap plus room for the editor text
@@ -496,10 +497,11 @@ async def _sandbox_capped_form(request: Request, cap: int):
 
 @router.post("/sandbox/models/{name}/upload-data")
 async def sandbox_upload_data(request: Request, name: str):
-    """A CSV of your own (grouped date,target_group,value[,population] or
-    hubverse), validated and stored through the dataset store, then loaded
-    into data.exp when it holds one group (else the Load data box offers
-    it to pick a group). The size cap holds before and while reading; the
+    """A CSV of your own (grouped date,target_group,value[,population],
+    hubverse, or date,count read as one series named after the file),
+    validated and stored through the dataset store, then loaded into
+    data.exp when it holds one group (else the Load data box offers it to
+    pick a group). The size cap holds before and while reading; the
     client's file name is never used as a path."""
     from starlette.concurrency import run_in_threadpool
     from starlette.datastructures import UploadFile
@@ -538,19 +540,28 @@ async def sandbox_upload_data(request: Request, name: str):
     finally:
         await up.close()
     warn = list(ds.meta.get("warnings") or [])
+    done = ""
     if len(ds.groups) == 1:
         try:
             info = await run_in_threadpool(sandbox_mod.fill_data, name,
                                            ds.groups[0], "", "",
                                            dataset=ds.id)
             _sandbox_fill_flash(info)
+            # a file with no group column: say how it was read, in the
+            # upload pane, so a date,count file is not a surprise
+            one = (ds.meta.get("columns") or {}).get("series")
+            if one:
+                n = info["rows"]
+                done = (f"Loaded as one series: {one}, {n} "
+                        f"week{'' if n == 1 else 's'}.")
         except Exception as e:
             _not_done(f"Stored {ds.name}; data.exp not filled", e)
     else:
         _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick one "
                "under Load data.", "ok")
-    if warn:
-        _sandbox_upload_report[name] = {"problems": [], "warnings": warn}
+    if warn or done:
+        _sandbox_upload_report[name] = {"problems": [], "warnings": warn,
+                                        "done": done}
     return RedirectResponse(_sandbox_url(name) + f"&dataset={ds.id}",
                             status_code=303)
 

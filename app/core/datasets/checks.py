@@ -748,6 +748,22 @@ def _suggest(name: str) -> str:
     return s[:40] or "group1"
 
 
+def series_name(name) -> str:
+    """The group a file with no group column is read as: the name it is
+    given (the file's) made a group name, 'series' when it holds no letter
+    or digit. A name that reads as the national row or a reserved one
+    ('US', 'all') gets ' series' after it, since a lone series is neither:
+    the national row is scored beside the other groups, and there are
+    none."""
+    text = _text(str(name or ""))
+    if not any(c.isalnum() for c in text):
+        return "series"
+    s = _suggest(text).rstrip()
+    if is_national_name(s) or s.upper() in RESERVED_NAMES:
+        s += " series"
+    return s
+
+
 def _weekly(rows: list, twin=None) -> bool:
     """Whether ``rows`` (as _check_structure takes them, not yet moved)
     read as weekly series, each date replaced by its ``twin`` (by row
