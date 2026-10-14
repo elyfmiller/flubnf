@@ -28,6 +28,11 @@ from app.core.sandbox_bngl import (
 )
 
 
+def _free_name(p: str) -> str:
+    """p with the fitted suffix: __free in any case becomes __FREE."""
+    return (p[:-6] if p.lower().endswith("__free") else p) + "__FREE"
+
+
 def check(files: dict, *, work: Path | None = None) -> dict:
     """What can be known about a model without the engine: fatal problems
     (a run would fail), warnings (it may run but likely not as meant) and
@@ -93,16 +98,33 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     facts["priors"] = sorted(n for n in named if n)
     # the engine pairs them both ways and refuses a run that does not
     # (an unreadable priors.conf is its own problem, not one per parameter)
-    for p in facts["free"] if read else []:
-        if p not in named:
-            problems.append(f"{p} ends in __FREE but has no prior line: give "
-                            "it one in priors.conf, or drop __FREE to keep "
-                            "its written value fixed")
+    unpaired = [p for p in facts["free"] if p not in named] if read else []
+    gone = sorted(n for n in named if n and n not in params)
+    if len(unpaired) == 1 and len(gone) == 1:
+        # a rename made in one file only, or a typo: one problem naming
+        # both ends, not two that each read as unrelated
+        stale = f"names {gone[0]}, which the parameters block does not define"
+        problems[:] = [p for p in problems if not p.endswith(stale)]
+        problems.append(f"priors.conf names {gone[0]}, which model.bngl "
+                        f"does not define, and {unpaired[0]} has no prior "
+                        "line: use one name in both files")
+        unpaired = []
+    for p in unpaired:
+        problems.append(f"{p} ends in __FREE but has no prior line: give "
+                        "it one in priors.conf, or drop __FREE to keep "
+                        "its written value fixed")
     for p in sorted(n for n in named if n in params
                     and not n.endswith("__FREE")):
         problems.append(f"{p} has a prior line but its name does not end in "
                         "__FREE: only a __FREE parameter is fitted, so "
-                        f"rename it {p}__FREE in both files")
+                        f"rename it {_free_name(p)} in both files")
+    # __free in small letters reads as fitted but is not: the suffix is
+    # matched exactly
+    for p in sorted(n for n in params if n not in named
+                    and n.lower().endswith("__free")
+                    and not n.endswith("__FREE")):
+        warnings.append(f"{p} is not fitted: only __FREE in capitals is, so "
+                        f"rename it {_free_name(p)}")
     warnings += _prior_start_warnings(bngl, priors)
     cum = keys.get("pf_cumulative_observable", "")
     facts["cumulative"] = cum

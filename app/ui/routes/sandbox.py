@@ -14,6 +14,7 @@ and the run poll; downloads; the Oracle step; the Storage line.
 from __future__ import annotations
 
 import math
+import re
 import threading
 
 from fastapi import APIRouter, Form, Request
@@ -100,6 +101,19 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 # ------------------------------------------------------ the page (GET)
 
+#: the start the New model form offers first
+FIRST_START = "sir_example"
+
+
+def _free_name(stem: str, taken: set) -> str:
+    """The first of stem_1, stem_2, ... that no model has: the name the
+    New model form fills in, so a first visit need not invent one."""
+    n = 1
+    while f"{stem}_{n}" in taken:
+        n += 1
+    return f"{stem}_{n}"
+
+
 @router.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = "",
                  dataset: str = "", compare: str = ""):
@@ -117,6 +131,8 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             _not_done("Not opened", e)
             model = ""
     all_runs = sandbox_mod.list_runs(live=live)
+    # this computer's speed, from its last finished fit of any model
+    ratio = sandbox_mod.eta_ratio(all_runs)
     last = {}
     for r in all_runs:
         last.setdefault(r.get("model"), r)
@@ -152,10 +168,16 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             _not_done("Not compared", e)
             cmp, diff = None, None
     examples = sandbox_mod.list_examples()
+    taken = {m["name"] for m in models}
     ctx = {"active": "Sandbox", "models": models, "last": last,
-           "examples": [e for e in examples if not e.endswith("_template")],
+           # the simplest example first: a first visit starts from it
+           "examples": sorted((e for e in examples
+                               if not e.endswith("_template")),
+                              key=lambda e: (e != FIRST_START, e)),
            "templates": [e for e in examples if e.endswith("_template")],
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
+           "example_names": {e: _free_name(e, taken)
+                             for e in examples + ["skeleton"]},
            "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
@@ -199,6 +221,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                 "forecast_weeks": prev.get("forecast_weeks", 4),
                 "seed": prev.get("seed", shipped["info"].get("seed", 0)
                                  if shipped["shipped"] else 0)}
+        n_obs = len(times or [])
         ctx.update({
             "shipped": shipped,
             "info": sandbox_mod.read_info(name),
@@ -207,9 +230,14 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "settings": settings, "form": form,
             "presets": {"quick": sandbox_mod.DRY_RUN_PARTICLES,
                         "full": sandbox_mod.FULL_FIT_PARTICLES},
-            # seconds at the reference 10,000 particles; the page scales it
-            "eta_full": round(sandbox_mod.eta_seconds(
-                len(times or []), sandbox_mod.FULL_FIT_PARTICLES), 1),
+            # (low, high) seconds at the reference 10,000 particles, which
+            # the page scales; the words for the form's own count
+            "eta_full": sandbox_mod.eta_span(
+                n_obs, sandbox_mod.FULL_FIT_PARTICLES, ratio),
+            "eta_text": sandbox_mod.eta_words(*sandbox_mod.eta_span(
+                n_obs, form["particles"], ratio)),
+            "eta_calibrated": ratio is not None,
+            "fitting": _sandbox_fitting(live, name, ratio),
             # the archive as a data source (empty lists with no hub)
             "locations": sandbox_mod.locations(),
             "vintages": sandbox_mod.vintages(),
@@ -221,6 +249,25 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "upload_report": _sandbox_upload_report.pop(name, None),
             "upload_mb": sandbox_mod.UPLOAD_MAX_BYTES // (1024 * 1024)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
+
+
+def _sandbox_fitting(live, name: str, ratio) -> dict | None:
+    """The live fit when it is a run of this model, else None: its start,
+    its estimate for its own rows and particles, and the words the page
+    shows now (sandbox.js counts them up from the start)."""
+    meta = sandbox_mod.run_meta(live)
+    if meta.get("model") != name:
+        return None
+    try:
+        n_obs = int(meta.get("n_obs") or len(meta.get("observed") or []))
+        low, high = sandbox_mod.eta_span(n_obs, int(meta["particles"]), ratio)
+    except (KeyError, TypeError, ValueError):
+        low = high = 0.0                        # no estimate: the time only
+    elapsed = sandbox_mod.run_elapsed(meta)
+    return {"run_id": str(live), "started": str(meta.get("started_utc", "")),
+            "low": low, "high": high, "slow_after": sandbox_mod.slow_after(high),
+            "line": sandbox_mod.fitting_line(elapsed, low, high),
+            "button": f"Fitting… {sandbox_mod.clock(elapsed)}"}
 
 
 def _not_done(lead: str, e: Exception) -> None:
@@ -258,7 +305,8 @@ def sandbox_new(request: Request, name: str = Form(...),
     Oracle SIHRS filter as production builds it for one hub location and
     forecast date (shipped:sihrs) or one group of a stored dataset with a
     population (shipped:dataset:<id>, as of as_of)."""
-    name = (name or "").strip()
+    # a space reads as part of a name; the folder takes _ for it
+    name = re.sub(r"\s+", "_", (name or "").strip())
     kind, _, what = (start or "skeleton").partition(":")
     try:
         if kind == "shipped" and what == "sihrs":
@@ -361,8 +409,11 @@ def _sandbox_fill_flash(info: dict) -> None:
         what = "settled truth"
     else:
         what = f"vintage of {info['asof']}"
-    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}, "
-           f"{info['start']} to {info['end']}.")
+    # a file with no group column says so, so a date,count file read as
+    # one series is not a surprise
+    one = " (one series)" if info.get("one_series") else ""
+    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
+           f"{one}, {info['start']} to {info['end']}.")
     detail = f"Source: {what}."
     if info["dropped"]:
         detail += f" {info['dropped']} missing weeks dropped."
@@ -437,8 +488,8 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     return _sandbox_redirect(name)
 
 
-#: an upload's refusal, shown inline in the Load data box on the next view
-#: of that model (popped once shown)
+#: an upload's refusal or notes, shown inline in the Load data box on the
+#: next view of that model (popped once shown)
 _sandbox_upload_report: dict = {}
 
 #: the request body cap: the CSV's own cap plus room for the editor text
@@ -475,10 +526,11 @@ async def _sandbox_capped_form(request: Request, cap: int):
 
 @router.post("/sandbox/models/{name}/upload-data")
 async def sandbox_upload_data(request: Request, name: str):
-    """A CSV of your own (grouped date,target_group,value[,population] or
-    hubverse), validated and stored through the dataset store, then loaded
-    into data.exp when it holds one group (else the Load data box offers
-    it to pick a group). The size cap holds before and while reading; the
+    """A CSV of your own (grouped date,target_group,value[,population],
+    hubverse, or date,count read as one series named after the file),
+    validated and stored through the dataset store, then loaded into
+    data.exp when it holds one group (else the Load data box offers it to
+    pick a group). The size cap holds before and while reading; the
     client's file name is never used as a path."""
     from starlette.concurrency import run_in_threadpool
     from starlette.datastructures import UploadFile
@@ -522,6 +574,8 @@ async def sandbox_upload_data(request: Request, name: str):
             info = await run_in_threadpool(sandbox_mod.fill_data, name,
                                            ds.groups[0], "", "",
                                            dataset=ds.id)
+            info["one_series"] = bool((ds.meta.get("columns") or {})
+                                      .get("series"))
             _sandbox_fill_flash(info)
         except Exception as e:
             _not_done(f"Stored {ds.name}; data.exp not filled", e)

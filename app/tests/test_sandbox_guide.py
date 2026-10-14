@@ -46,8 +46,14 @@ def box(sandbox_root, monkeypatch, tmp_path):
     bng.write_text("# stub\n")
     monkeypatch.setattr(sb, "BNG", str(bng))
 
+    real_run = cm.subprocess.run
+
     def fake_bng(cmd, **kw):
-        cwd = Path(kw.get("cwd", "."))
+        # BNG2.pl only: git (the page's version stamp) runs as it is, and
+        # never leaves an m.net in the checkout
+        if cmd and Path(str(cmd[0])).name.startswith("git"):
+            return real_run(cmd, **kw)
+        cwd = Path(kw.get("cwd") or tmp_path)
         if not (cwd / "cm.bngl").is_file():          # a run's own netgen
             (cwd / "m.net").write_text("# net\n")
             return types.SimpleNamespace(stdout="", stderr="", returncode=0)
@@ -167,34 +173,50 @@ def test_a_collapsed_fit_says_so_and_what_to_try():
     h = sb.fit_health(_res(ess=[(0, 11.3, 8, 0), (1, 2.1, 1, 1)], params=p,
                            distinct=1))
     assert h["level"] == "collapsed" and h["at"] == 0.0
-    assert h["title"] == "The fit collapsed"
+    assert h["title"] == "Sampling collapsed"
     assert "from t = 0 on" in h["says"] and "not a real estimate" in h["says"]
-    assert h["tries"][0].startswith("Run the full fit with 10,000 particles")
-    assert "first data row" in h["tries"][1]
-    assert any("Jitter" in t for t in h["tries"])
+    # the full fit sits beside the title, so the tries start with the cause
+    assert "first data row" in h["tries"][0]
+    assert "Jitter" in h["tries"][1]
+    assert len(h["tries"]) == sb.TRIES_SHOWN
 
 
 def test_a_thin_fit_is_rough_and_a_varied_one_healthy():
     h = sb.fit_health(_res(particles=10_000, sample=1000, distinct=900,
                            ess=[(0, 5000, 9000, 0), (1, 700, 800, 0)]))
     assert h["level"] == "rough" and h["at"] == 1.0
+    assert h["title"] == "Sampling thinned out"
     assert "lowest ESS 700 of 10,000" in h["says"]
-    assert not any("full fit" in t for t in h["tries"])   # it was one
+    assert not any("full fit" in t for t in h["tries"])
     h = sb.fit_health(_res(particles=10_000, sample=1000, distinct=900,
                            ess=[(0, 5000, 9000, 0), (1, 4000, 8000, 0)]))
     assert h["level"] == "good" and h["tries"] == []
+    assert h["title"] == "Sampling looks healthy"
     assert h["says"] == ("The particles stayed varied at every week "
                          "(lowest ESS 4,000 of 10,000).")
     assert sb.fit_health(_res()) is None                  # nothing to read
 
 
-def test_a_band_that_misses_the_data_is_named():
+def test_a_quick_check_that_sampled_well_is_never_green():
+    h = sb.fit_health(_res(particles=200, sample=200, distinct=180,
+                           ess=[(0, 150, 180, 0), (1, 120, 170, 0)]))
+    assert h["level"] == "quick" and h["tries"] == []
+    assert h["title"] == "Quick check: the model runs"
+    assert "full fit gives the estimates" in h["says"]
+
+
+def test_the_verdict_grades_the_sampling_never_the_fit_to_the_data():
+    """No rule of thumb for "the model follows the data" holds across
+    models and diseases (the correct SIR example's band holds 9 of its 16
+    points), so a band far from every point changes nothing."""
     traj = {"q10": [1, 1, 1, 1], "q50": [2, 2, 2, 2], "q90": [3, 3, 3, 3]}
-    h = sb.fit_health(_res(particles=10_000, sample=1000, distinct=900,
-                           ess=[(0, 5000, 9000, 0)], observed=[2, 9, 9, 9],
-                           traj=traj))
-    assert h["misses"] and "Only 1 of the 4 data points" in h["says"]
-    assert any("the model, not the filter" in t for t in h["tries"])
+    far = sb.fit_health(_res(particles=10_000, sample=1000, distinct=900,
+                             ess=[(0, 5000, 9000, 0)], observed=[90] * 4,
+                             traj=traj))
+    near = sb.fit_health(_res(particles=10_000, sample=1000, distinct=900,
+                              ess=[(0, 5000, 9000, 0)], observed=[2] * 4,
+                              traj=traj))
+    assert far == near and far["level"] == "good"
 
 
 def test_results_carry_the_health(box):
@@ -284,7 +306,7 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
     # the outcome in an error alert, its sentence in the alert's "?"
     health = html[html.index('class="sb-health sb-health--collapsed"'):]
     assert '<div class="uk-alert uk-alert--error" id="sb-health">' in health
-    assert "The fit collapsed" in health[:health.index('id="tip-sb-health"')]
+    assert "Sampling collapsed" in health[:health.index('id="tip-sb-health"')]
     tip = health[health.index('id="tip-sb-health"'):]
     assert "not a real estimate" in tip[:tip.index("</span>")]
     assert "What to try" in html
@@ -309,7 +331,7 @@ def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
     health = html[html.index('class="sb-health sb-health--good"'):]
     assert '<div class="uk-alert uk-alert--ok" id="sb-health">' in health
-    assert "The fit looks healthy" in health[:health.index('id="tip-sb-health"')]
+    assert "Sampling looks healthy" in health[:health.index('id="tip-sb-health"')]
     assert "sbfull" not in html and "What to try" not in html
 
 
@@ -329,22 +351,35 @@ def test_the_gallery_guides_a_first_visit(box):
     how = how[:how.index("</details>")]
     assert '<ol class="uk-stepper uk-stepper--vertical" aria-label="How the Sandbox works">' in how
     assert '<span class="uk-step-label">Start a model</span>' in how
-    assert "Copy the template for a new pathogen, or the example closest to yours" in how
+    assert "The SIR example is the place to learn" in how
     assert "Your own counts go in through the data.exp tab" in how
-    # the template comes first and is the default start, with its note
+    # the SIR example comes first and is the default start, with its note
+    # and a name filled in, so a first fit needs no choices
     start = html[html.index('id="sbnew-start"'):]
     start = start[:start.index("</select>")]
-    assert start.index('label="Templates"') < start.index('label="Examples"')
-    assert '<option value="example:seihr_template" data-note="A template' in start
+    assert start.index('label="Examples"') < start.index('label="Templates"')
+    assert start.index(">SIR example<") < start.index(">Kinetics example<")
     # the list names each start as people read it, not by its folder
-    assert 'selected>SEIHR template</option>' in start
-    assert '>SIR example</option>' in start and '>Kinetics example</option>' in start
+    assert 'data-name="sir_example_1" selected>SIR example</option>' in start
+    assert '>SEIHR template</option>' in start
     assert 'value="skeleton"' in start
+    assert 'id="sbnew-name" name="name" placeholder="model name" value="sir_example_1"' in html
     about = html[html.index('id="sbnew-about"'):]
-    assert about.split(">", 1)[1].startswith("A template for a new respiratory")
-    # with a model the card starts folded
-    sb.add_example("sir_example")
-    assert '<details class="card sbhow">' in _client().get("/sandbox").text
+    assert about.split(">", 1)[1].startswith(sb.example_note("sir_example")[:30])
+    # with a model the card starts folded, and the name filled in is one
+    # no model has
+    sb.add_example("sir_example", as_name="sir_example_1")
+    html = _client().get("/sandbox").text
+    assert '<details class="card sbhow">' in html
+    assert 'value="sir_example_2"' in html
+
+
+def test_a_name_with_spaces_becomes_a_folder_name(box):
+    r = _client().post("/sandbox/new", data={"name": " my sir  model ",
+                                              "start": "example:sir_example"},
+                       follow_redirects=False)
+    assert r.status_code == 303
+    assert "my_sir_model" in [m["name"] for m in sb.list_models()]
 
 
 def test_the_workbench_carries_the_help_menu_and_simulate(box):
@@ -353,3 +388,10 @@ def test_the_workbench_carries_the_help_menu_and_simulate(box):
     assert "<summary>How it works</summary>" in html
     assert html.index("<summary>How it works</summary>") < html.index("<summary>Manage</summary>")
     assert 'formaction="/sandbox/models/sir_example/simulate-data"' in html
+
+
+def test_home_points_to_the_sandbox(box):
+    html = _client().get("/").text
+    more = html[html.index('class="hm-start-more"'):]
+    more = more[:more.index("</div>")]
+    assert 'href="/sandbox"' in more and "fit your own model" in more

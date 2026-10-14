@@ -12,7 +12,8 @@ import typer
 dataset_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Check, import, list and delete custom target data (a grouped "
-         "CSV or a hubverse time series; comma, semicolon or tab separated; "
+         "CSV, a hubverse time series, or a date and a count with no group "
+         "column, read as one series; comma, semicolon or tab separated; "
          "UTF-8, UTF-16 or Windows-1252; or a folder of snapshot files, one "
          "per as_of).")
 

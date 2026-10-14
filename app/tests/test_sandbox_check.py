@@ -78,7 +78,8 @@ def test_the_skeleton_and_every_shipped_example_pass(box):
     (lambda f: f.update({"model.bngl": f["model.bngl"].replace(
         "generate_network({overwrite=>1})", "")}), "never call generate_network"),
     (lambda f: f.update({"priors.conf": f["priors.conf"].replace("k__FREE", "kk__FREE")}),
-     "names kk__FREE, which the parameters block does not define"),
+     "names kk__FREE, which model.bngl does not define, and k__FREE has no "
+     "prior line"),
     (lambda f: f.update({"priors.conf": f["priors.conf"].replace("0.05 2.0", "2.0 0.05")}),
      "is not below the high end"),
     (lambda f: f.update({"priors.conf": f["priors.conf"].replace(
@@ -102,6 +103,24 @@ def test_each_problem_is_named(box, edit, words):
     r = sb.check(files)
     assert not r["ok"]
     assert any(words in p for p in r["problems"]), r["problems"]
+
+
+def test_dated_rows_point_to_the_upload(box):
+    """Rows pasted from a dated file once read 'could not convert string
+    to float': time in data.exp is weeks, and the upload reads dates."""
+    files = _files()
+    files["data.exp"] = "# time T_weekly\n2024-10-05 120\n2024-10-12 98\n"
+    r = sb.check(files)
+    assert ("data.exp holds dates (row '2024-10-05 120'): for dated rows "
+            "use Load data, Upload a CSV") in r["problems"]
+    assert not any("convert" in p for p in r["problems"])
+    # a CSV pasted with its header, and a date written M/D/YYYY, too
+    for text in ("week_ending,cases\n2024-10-05,120\n",
+                 "# time T_weekly\n10/5/2024 120\n"):
+        with pytest.raises(sb.SandboxError, match="^data.exp holds dates"):
+            sb.read_exp(text)
+    # numbers, negative or with exponents, are not dates
+    assert sb.read_exp("# t y\n0 -1\n1 1e-05\n2 3.5\n")["rows"][1] == [1, 1e-05]
 
 
 def test_a_spread_prior_is_not_a_range(box):
@@ -317,3 +336,32 @@ def test_check_names_what_this_computer_lacks_apart_from_the_model(box, monkeypa
     monkeypatch.setattr(pf_engine, "PY310", Path("/nonexistent/bin/python"))
     assert sb.check(_files())["facts"]["machine"].startswith(
         "The engine's Python is missing")
+
+
+def test_any_name_ending_in_free_is_fitted_once_both_files_use_it(box):
+    files = {f: v.replace("k__FREE", "my_rate__FREE")
+             for f, v in _files().items()}
+    r = sb.check(files)
+    assert r["ok"], r["problems"]
+    assert "my_rate__FREE" in r["facts"]["free"]
+
+
+def test_a_rename_in_the_model_only_is_one_problem(box):
+    files = _files()
+    files["model.bngl"] = files["model.bngl"].replace("k__FREE", "my_rate__FREE")
+    assert sb.check(files)["problems"] == [
+        "priors.conf names k__FREE, which model.bngl does not define, and "
+        "my_rate__FREE has no prior line: use one name in both files"]
+
+
+def test_free_in_small_letters_is_named(box):
+    files = {f: v.replace("k__FREE", "k__free") for f, v in _files().items()}
+    probs = sb.check(files)["problems"]
+    assert any("rename it k__FREE in both files" in p for p in probs), probs
+    files = _files()
+    files["model.bngl"] = files["model.bngl"].replace(
+        "N            100000", "N            100000\nbeta__free 1.0")
+    r = sb.check(files)
+    assert r["ok"], r["problems"]
+    assert ("beta__free is not fitted: only __FREE in capitals is, so "
+            "rename it beta__FREE") in r["warnings"]
