@@ -117,6 +117,8 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             _not_done("Not opened", e)
             model = ""
     all_runs = sandbox_mod.list_runs(live=live)
+    # this computer's speed, from its last finished fit of any model
+    ratio = sandbox_mod.eta_ratio(all_runs)
     last = {}
     for r in all_runs:
         last.setdefault(r.get("model"), r)
@@ -199,6 +201,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                 "forecast_weeks": prev.get("forecast_weeks", 4),
                 "seed": prev.get("seed", shipped["info"].get("seed", 0)
                                  if shipped["shipped"] else 0)}
+        n_obs = len(times or [])
         ctx.update({
             "shipped": shipped,
             "info": sandbox_mod.read_info(name),
@@ -207,9 +210,14 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "settings": settings, "form": form,
             "presets": {"quick": sandbox_mod.DRY_RUN_PARTICLES,
                         "full": sandbox_mod.FULL_FIT_PARTICLES},
-            # seconds at the reference 10,000 particles; the page scales it
-            "eta_full": round(sandbox_mod.eta_seconds(
-                len(times or []), sandbox_mod.FULL_FIT_PARTICLES), 1),
+            # (low, high) seconds at the reference 10,000 particles, which
+            # the page scales; the words for the form's own count
+            "eta_full": sandbox_mod.eta_span(
+                n_obs, sandbox_mod.FULL_FIT_PARTICLES, ratio),
+            "eta_text": sandbox_mod.eta_words(*sandbox_mod.eta_span(
+                n_obs, form["particles"], ratio)),
+            "eta_calibrated": ratio is not None,
+            "fitting": _sandbox_fitting(live, name, ratio),
             # the archive as a data source (empty lists with no hub)
             "locations": sandbox_mod.locations(),
             "vintages": sandbox_mod.vintages(),
@@ -221,6 +229,25 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "upload_report": _sandbox_upload_report.pop(name, None),
             "upload_mb": sandbox_mod.UPLOAD_MAX_BYTES // (1024 * 1024)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
+
+
+def _sandbox_fitting(live, name: str, ratio) -> dict | None:
+    """The live fit when it is a run of this model, else None: its start,
+    its estimate for its own rows and particles, and the words the page
+    shows now (sandbox.js counts them up from the start)."""
+    meta = sandbox_mod.run_meta(live)
+    if meta.get("model") != name:
+        return None
+    try:
+        n_obs = int(meta.get("n_obs") or len(meta.get("observed") or []))
+        low, high = sandbox_mod.eta_span(n_obs, int(meta["particles"]), ratio)
+    except (KeyError, TypeError, ValueError):
+        low = high = 0.0                        # no estimate: the time only
+    elapsed = sandbox_mod.run_elapsed(meta)
+    return {"run_id": str(live), "started": str(meta.get("started_utc", "")),
+            "low": low, "high": high, "slow_after": sandbox_mod.slow_after(high),
+            "line": sandbox_mod.fitting_line(elapsed, low, high),
+            "button": f"Fitting… {sandbox_mod.clock(elapsed)}"}
 
 
 def _not_done(lead: str, e: Exception) -> None:
