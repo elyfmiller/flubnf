@@ -358,9 +358,14 @@ $GitExe = if ($GitCmd) { $GitCmd.Source }
 # perl.exe and run_network.exe are resolved here so remedy 2 can name them:
 # a fit writes inside the repo (BNG2.pl in app\state\workroots), so a repo in
 # Documents breaks mid-fit even with the hub and checkout elsewhere.
+# FluBNF's own Perl first, as the console looks for it (flubnf/settings.py):
+# FluBNF.bat installs it there when the PC has no Windows Perl, and the
+# Perl a fit runs is that one, not whatever is on this window's PATH.
+$OwnPerlExe = Join-Path $FluBnfRoot "perl\Library\bin\perl.exe"
 $PerlCmd = Get-Command perl -ErrorAction SilentlyContinue
-$PerlExe = if ($PerlCmd) { $PerlCmd.Source }
-           else { "C:\Strawberry\perl\bin\perl.exe   (usual location; perl is not on PATH here)" }
+$PerlExe = if (Test-Path -LiteralPath $OwnPerlExe) { $OwnPerlExe }
+           elseif ($PerlCmd) { $PerlCmd.Source }
+           else { "$OwnPerlExe   (where FluBNF.bat installs Perl; C:\Strawberry\perl\bin\perl.exe for a Strawberry Perl)" }
 # bionetgen lives in the CONSOLE venv (settings.py::_bng_candidates). Newer
 # wheels moved run_network.exe from bng-win\ to bng-win\bin\: probe both so
 # the allow-list names the real binary.
@@ -973,8 +978,9 @@ if ($perlAsk.Code -ne 0) {
     }
     Warn "BioNetGen's BNG2.pl is a Perl program, and fits and the Sandbox's"
     Warn "Check run it; analogue forecasts and reports do not need it."
-    Warn "Strawberry Perl (https://strawberryperl.com) is the standard choice"
-    Warn "on Windows."
+    Info "FluBNF.bat installs Perl for FluBNF when it opens: a 31 MB download,"
+    Info "no administrator needed. Strawberry Perl (https://strawberryperl.com)"
+    Info "works too, and needs an administrator."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     # StrawberryPerl.StrawberryPerl is in winget-pkgs (5.30 to 5.42, a
     # machine-wide MSI). --source winget in every command here, as in

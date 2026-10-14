@@ -343,7 +343,12 @@ def test_only_a_windows_perl_counts():
     block = _code(_perlblock_lines())
     probe = ('perl.exe -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1 '
              '&& goto :eof')
-    assert block[1] == probe, block[:3]
+    # first FluBNF's own Perl, when an earlier open unpacked it, then this
+    assert block[1:6] == [
+        'set "PERLPKG=perl-5.32.1.1-2_h57928b3_strawberry.tar.bz2"',
+        'set "OWNPERL=%LOCALAPPDATA%\\FluBNF\\perl"',
+        "call :perlownok", "if not errorlevel 1 goto :perlownpath",
+        probe], block[:7]
     assert "where perl >nul" not in BAT
     onpath = block.index('if exist "%SystemDrive%\\Strawberry\\perl\\bin\\perl.exe" '
                          'goto :perloffpath')
@@ -368,7 +373,8 @@ def test_winget_is_judged_by_the_disk_not_by_errorlevel():
     assert block[run + 1] == 'set "WG=%ERRORLEVEL%"'
     assert block[run + 2] == ('if exist "%SystemDrive%\\Strawberry\\perl\\bin'
                               '\\perl.exe" goto :perlinstalled')
-    for ln in block[run:]:
+    # to the end of the offer: FluBNF's own Perl follows, with its own codes
+    for ln in block[run:block.index(":perlownok")]:
         assert "errorlevel" not in ln.lower() or ln == 'set "WG=%ERRORLEVEL%"', ln
     assert "Perl installed. This window cannot see it yet" not in BAT
     # the codes a student is most likely to meet, each with its own words
@@ -406,6 +412,57 @@ def test_every_winget_command_names_the_winget_source():
     assert "--accept-source-agreements --accept-package-agreements" in bat_run
     assert "--disable-interactivity" not in BAT, (
         "older App Installer builds refuse that flag with a negative code")
+
+
+def test_flubnfs_own_perl_comes_before_any_offer():
+    """A complete FluBNF Perl is used first, as the console looks for it
+    first. With no Windows Perl at all, FluBNF's own is installed (no
+    administrator) before winget's Strawberry Perl, which needs one, is
+    offered."""
+    block = _code(_perlblock_lines())
+    ok = block.index("call :perlownok")
+    probe = next(i for i, ln in enumerate(block) if ln.startswith("perl.exe -e"))
+    strawberry = block.index('if exist "%SystemDrive%\\Strawberry\\perl\\bin'
+                             '\\perl.exe" goto :perloffpath')
+    install = block.index("call :perlown")
+    offer = block.index('if exist "%PERLOFFER%" goto :perlreminder')
+    assert ok < probe < strawberry < install < offer
+    for call in (ok, install):
+        assert block[call + 1] == "if not errorlevel 1 goto :perlownpath"
+    use = _code(_after_label(BAT, "perlownpath", "goto :eof").strip().split("\r\n"))
+    assert use == ['set "PATH=%OWNPERL%\\Library\\bin;%PATH%"',
+                   'set "PERL5LIB="', 'set "PERLLIB="', 'set "PERL5OPT="']
+
+
+def test_flubnfs_own_perl_is_marked_whole_only_after_every_check():
+    """The download is checked before tar sees a byte, every file after
+    the unpack, then perl must start; the marker comes last, so a marker
+    always means a whole Perl, and anything short of one is removed."""
+    own = _code(_after_label(BAT, "perlown", "\r\n:perlownundo\r\n").strip()
+                .split("\r\n"))
+    fetch = next(i for i, ln in enumerate(own) if " fetch " in ln)
+    verify = next(i for i, ln in enumerate(own) if " verify " in ln)
+    starts = next(i for i, ln in enumerate(own) if "-Mstrict -MPOSIX" in ln)
+    marker = next(i for i, ln in enumerate(own)
+                  if ln.startswith('>"%OWNPERL%\\flubnf-perl.ok" echo'))
+    assert fetch < verify < starts < marker
+    # compared with 0: a program that crashes or cannot start exits
+    # negative, which `if errorlevel 1` never sees
+    assert own[verify + 1] == own[starts + 1] == \
+        'if not "%ERRORLEVEL%"=="0" goto :perlownundo'
+    assert not [ln for ln in own if ln.startswith("if errorlevel")], own
+    assert own[fetch].endswith(
+        '| "%SystemRoot%\\System32\\tar.exe" -xf - -C "%OWNPERL%"'), own[fetch]
+    for ln in (own[fetch], own[verify]):
+        assert ln.startswith('".venv\\Scripts\\python.exe" -I '), ln
+    assert own[marker] == '>"%OWNPERL%\\flubnf-perl.ok" echo %PERLPKG%'
+    # a folder it cannot clear is said, never unpacked over
+    clear = own.index('if exist "%OWNPERL%" rmdir /s /q "%OWNPERL%" >nul 2>&1')
+    assert own[clear + 2] == 'if exist "%OWNPERL%" exit /b 1'
+    ok = _code(_after_label(BAT, "perlownok", "\r\n:perlown\r\n").strip().split("\r\n"))
+    assert 'if not "%OWNHAVE%"=="%PERLPKG%" exit /b 1' in ok
+    probe = next(i for i, ln in enumerate(ok) if "-Mstrict" in ln)
+    assert ok[probe + 1] == 'if not "%ERRORLEVEL%"=="0" exit /b 1', ok
 
 
 # ------------------------------------------------------------ the engine block
@@ -1424,10 +1481,12 @@ def _perl_pc(tmp_path: Path) -> SimpleNamespace:
     folders go ahead of that one."""
     pc = SimpleNamespace(folder=tmp_path / "flubnf", drive=tmp_path / "drive",
                          bin=tmp_path / "bin", calls=tmp_path / "calls.txt",
-                         extra=[])
+                         local=tmp_path / "local", extra=[])
     (pc.folder / ".venv").mkdir(parents=True)
     pc.drive.mkdir()
     pc.bin.mkdir()
+    pc.local.mkdir()
+    pc.own = pc.local / "FluBNF" / "perl"
     pc.record = pc.folder / ".venv" / "perl-offer.txt"
     pc.strawberry = pc.drive / "Strawberry" / "perl" / "bin" / "perl.exe"
     return pc
@@ -1440,16 +1499,18 @@ def _perl_slice() -> str:
     return ("@echo off\nsetlocal\ncall :perlblock\n"
             'perl.exe -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1 '
             "&& echo WINDOWS-PERL-ON-PATH\n"
-            "echo PATH=[%PATH%]\necho REACHED\nexit /b 0\n\n" + BAT[sub:])
+            "echo PATH=[%PATH%]\necho PERL5LIB=[%PERL5LIB%]\necho REACHED\n"
+            "exit /b 0\n\n" + BAT[sub:])
 
 
-def _run_perl(pc: SimpleNamespace) -> subprocess.CompletedProcess:
+def _run_perl(pc: SimpleNamespace, **env) -> subprocess.CompletedProcess:
     root = os.environ.get("SystemRoot", r"C:\Windows")
     path = ";".join([*map(str, pc.extra), str(pc.bin), rf"{root}\System32"])
-    # SYSTEMDRIVE as os.environ spells it on Windows, so it replaces the
-    # real one instead of sitting beside it
+    # SYSTEMDRIVE and LOCALAPPDATA as os.environ spells them on Windows, so
+    # they replace the real ones instead of sitting beside them
     r = _cmd(pc.folder.parent / "perl-block.bat", _perl_slice(), pc.folder,
-             PATH=path, SYSTEMDRIVE=str(pc.drive))
+             PATH=path, SYSTEMDRIVE=str(pc.drive), LOCALAPPDATA=str(pc.local),
+             **env)
     assert "REACHED" in r.stdout, _said(r)
     for crash in ("syntax of the command", "was unexpected"):
         assert crash not in r.stdout + r.stderr, _said(r)
@@ -1640,6 +1701,131 @@ def test_windows_an_offer_already_made_is_only_a_reminder(tmp_path):
     assert "https://strawberryperl.com" in said[1], _said(r)
     assert "not an administrator" in said[1], _said(r)
     assert pc.record.read_bytes() == b'"declined"\r\n'
+
+
+def _own_perl_package(pc: SimpleNamespace, tmp_path: Path) -> Path:
+    """What FluBNF's own Perl needs to install on this PC, small: a
+    .tar.bz2 shaped like conda-forge's (Library\\bin\\perl.exe, a module,
+    info\\paths.json), get_perl.py beside the launcher pinned to it, and
+    .venv\\Scripts\\python.exe running this interpreter. Windows' own
+    tar.exe unpacks it."""
+    import bz2
+    import io
+    native = _perl(tmp_path / "pkgsrc", "MSWin32").read_bytes()
+    files = {"Library/bin/perl.exe": native,
+             "Library/lib/strict.pm": b"package strict;\n1;\n"}
+    manifest = {"paths": [{"_path": k, "size_in_bytes": len(v),
+                           "sha256": hashlib.sha256(v).hexdigest()}
+                          for k, v in files.items()]}
+    files["info/paths.json"] = json.dumps(manifest).encode()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as t:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            t.addfile(info, io.BytesIO(data))
+    pkg = tmp_path / "perl-test.tar.bz2"
+    pkg.write_bytes(bz2.compress(buf.getvalue()))
+    data = pkg.read_bytes()
+    src = (REPO / "scripts" / "windows" / "get_perl.py").read_text(encoding="ascii")
+    src = re.sub(r'^SHA256 = ".*"$', f'SHA256 = "{hashlib.sha256(data).hexdigest()}"',
+                 src, count=1, flags=re.MULTILINE)
+    src = re.sub(r"^SIZE = \d+$", f"SIZE = {len(data)}", src, count=1, flags=re.MULTILINE)
+    (pc.folder / "scripts" / "windows").mkdir(parents=True)
+    (pc.folder / "scripts" / "windows" / "get_perl.py").write_text(src, encoding="ascii")
+    _exe(pc.folder / ".venv" / "Scripts", "python",
+         "import subprocess, sys\nsys.exit(subprocess.call([sys.executable] + sys.argv[1:]))\n")
+    return pkg
+
+
+def _own_first(pc: SimpleNamespace, r: subprocess.CompletedProcess) -> bool:
+    path = r.stdout.split("PATH=[", 1)[1].split("]", 1)[0]
+    return path.startswith(f"{pc.own}\\Library\\bin;")
+
+
+@windows_only
+def test_windows_flubnf_installs_its_own_perl_with_no_administrator(tmp_path):
+    """No Windows Perl anywhere: FluBNF's own is unpacked under
+    %LOCALAPPDATA% by Windows' tar, checked, marked, and put first on PATH,
+    with nothing asked and winget never run. The next open only checks it."""
+    pc = _perl_pc(tmp_path)
+    pkg = _own_perl_package(pc, tmp_path)
+    _winget(pc.bin, pc.calls, 0)
+    _choice(pc.bin, pc.calls, 1)
+
+    r = _run_perl(pc, FLUBNF_PERL_FROM=str(pkg), PERL5LIB=r"C:\old\lib")
+
+    assert "no administrator needed" in r.stdout, _said(r)
+    assert "Perl for FluBNF is ready." in r.stdout, _said(r)
+    assert _calls(pc) == [], _calls(pc)
+    assert not pc.record.exists()
+    assert (pc.own / "Library" / "lib" / "strict.pm").is_file()
+    assert (pc.own / "flubnf-perl.ok").read_text().strip() == \
+        "perl-5.32.1.1-2_h57928b3_strawberry.tar.bz2"
+    assert "WINDOWS-PERL-ON-PATH" in r.stdout and _own_first(pc, r), _said(r)
+    assert "PERL5LIB=[]" in r.stdout, _said(r)
+
+    # the next open: used as it is, nothing downloaded or asked
+    pkg.unlink()
+    r = _run_perl(pc)
+    assert "installing Perl" not in r.stdout, _said(r)
+    assert _own_first(pc, r) and _calls(pc) == [], _said(r)
+
+
+@windows_only
+@pytest.mark.parametrize("left", ["no-marker", "another-package", "not-windows",
+                                  "crashes"])
+def test_windows_a_partial_or_older_flubnf_perl_is_installed_again(tmp_path,
+                                                                   left):
+    """An unpack that stopped before its marker (a closed window, a full
+    disk), a marker from another pin, or a Perl that no longer starts is
+    cleared and unpacked again, never used. A perl.exe whose DLL is gone
+    exits negative (0xC0000135), which `if errorlevel 1` never saw."""
+    pc = _perl_pc(tmp_path)
+    pkg = _own_perl_package(pc, tmp_path)
+    (pc.own / "Library" / "bin").mkdir(parents=True)
+    if left == "crashes":
+        _exe(pc.own / "Library" / "bin", "perl",
+             "import sys\nsys.exit(-1073741515)\n")
+    else:
+        _perl(pc.own / "Library" / "bin",
+              "msys" if left == "not-windows" else "MSWin32")
+    if left != "no-marker":
+        (pc.own / "flubnf-perl.ok").write_text(
+            "perl-5.26.2.1-h0c8e037_1.tar.bz2\n" if left == "another-package"
+            else "perl-5.32.1.1-2_h57928b3_strawberry.tar.bz2\n")
+    _winget(pc.bin, pc.calls, 0)
+    _choice(pc.bin, pc.calls, 1)
+
+    r = _run_perl(pc, FLUBNF_PERL_FROM=str(pkg))
+
+    assert "Perl for FluBNF is ready." in r.stdout, _said(r)
+    assert (pc.own / "Library" / "lib" / "strict.pm").is_file(), _said(r)
+    assert _own_first(pc, r) and _calls(pc) == [], _said(r)
+
+
+@windows_only
+def test_windows_a_download_that_is_not_the_package_is_never_unpacked(tmp_path):
+    """Anything but the pinned package: nothing unpacked, nothing marked,
+    the folder removed, and winget's Strawberry Perl offered as before. The
+    next open tries FluBNF's own again."""
+    pc = _perl_pc(tmp_path)
+    pkg = _own_perl_package(pc, tmp_path)
+    pkg.write_bytes(pkg.read_bytes()[:-20])
+    _winget(pc.bin, pc.calls, 0)
+    _choice(pc.bin, pc.calls, 2)
+
+    r = _run_perl(pc, FLUBNF_PERL_FROM=str(pkg))
+
+    assert "not the one FluBNF pins" in r.stdout + r.stderr, _said(r)
+    assert "FluBNF could not install its own Perl" in r.stdout, _said(r)
+    assert not pc.own.exists(), _said(r)
+    assert [c.split()[0] for c in _calls(pc)] == ["choice"], _calls(pc)
+    assert pc.record.read_text().strip() == '"declined"'
+
+    r = _run_perl(pc, FLUBNF_PERL_FROM=str(pkg))
+    assert "installing Perl for FluBNF" in r.stdout, _said(r)
+    assert "Perl is still missing" in r.stdout, _said(r)
 
 
 @windows_only

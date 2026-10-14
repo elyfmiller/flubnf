@@ -211,6 +211,58 @@ jobs:
           }
           exit 0
 
+  # FluBNF's own Perl as a student with no Perl and no administrator gets
+  # it. Strawberry is hidden first. FluBNF.bat's Perl block then runs
+  # through cmd with the real download, Windows' own tar.exe and a profile
+  # folder named with a space, an apostrophe and parentheses
+  # (tests/test_windows_own_perl.py). With LOCALAPPDATA pointing there, the
+  # console must resolve that perl, the real BNG2.pl must run under it
+  # (app/tests/test_real_bng.py), and bngsim must run a fit's calls with
+  # code generation off and no C compiler on PATH, as every Windows runner
+  # does (app/tests/test_bngsim_no_codegen.py).
+  windows-own-perl:
+    name: "windows-own-perl"
+    runs-on: windows-latest
+    env: {PYTHONUTF8: "1"}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - run: pip install -e ".[app,dev]" bionetgen "numpy<2" "bngsim==0.15.1"
+      - name: hide every Windows Perl on the image
+        shell: pwsh
+        run: |
+          if (Test-Path C:\Strawberry) { Rename-Item C:\Strawberry C:\Strawberry.hidden }
+          $p = python -c "from flubnf.settings import resolve_perl; print(resolve_perl())"
+          Write-Host "perl FluBNF resolves with Strawberry hidden: $p"
+          if ($p -ne "None") {
+            Write-Host "::error::a Windows perl is still found ($p), so this job would not test FluBNF's own"
+            exit 1
+          }
+          # a record: the Server image's tar may have bzip2 built in; Windows 10's does not
+          & "$env:SystemRoot\System32\tar.exe" --version
+      - name: FluBNF.bat installs its own Perl (tests/test_windows_own_perl.py)
+        shell: pwsh
+        run: |
+          $local = Join-Path $env:RUNNER_TEMP "Jane O'Brien (Lab)\AppData\Local"
+          "FLUBNF_PERL_LOCAL=$local" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          $env:FLUBNF_PERL_LOCAL = $local
+          $env:FLUBNF_PERL_REAL = "1"
+          pytest tests/test_windows_own_perl.py -ra -s -o addopts=""
+      - name: the real BioNetGen and bngsim under FluBNF's own Perl
+        shell: pwsh
+        env: {FLUBNF_BNG_REAL: "1", FLUBNF_BNGSIM_REAL: "1", FLUBNF_HUB: /nonexistent}
+        run: |
+          $env:LOCALAPPDATA = $env:FLUBNF_PERL_LOCAL
+          $perl = python -c "from flubnf.settings import resolve_perl; print(resolve_perl())"
+          Write-Host "perl FluBNF resolves: $perl"
+          if ($perl -notlike "*\FluBNF\perl\Library\bin\perl.exe") {
+            Write-Host "::error::FluBNF resolves $perl, not its own Perl"
+            exit 1
+          }
+          pytest app/tests/test_real_bng.py app/tests/test_bngsim_no_codegen.py -ra -o addopts=""
+
   # The only automated run of setup.ps1, under Windows
   # PowerShell 5.1 launched from cmd as FluBNF.bat does. One run per machine
   # state: 1 no fetch/probe; 2 real sparse clone + real fork probe (no
