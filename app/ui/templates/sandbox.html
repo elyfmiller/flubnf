@@ -32,18 +32,18 @@
   <div class="card">{{ tips.heading("New model", "sb-new") }}
    <form method="post" action="/sandbox/new" class="sbnew">
     {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
-    <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
+    {% set _first = (examples or templates or [""])[0] %}
+    <input id="sbnew-name" name="name" placeholder="model name" value="{{ example_names.get(_first, '') }}" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
     {{ tips.label("Start from", "sb-start", "A template is a model to adapt: its lines marked EDIT are the values to set for your pathogen. An example is a worked model, and a copy duplicates one of yours; each brings its data and priors along and fits as it is. The skeleton is the smallest runnable model. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
     {% set pf_sets = datasets | selectattr("pf") | list %}
-    {% set _first = (templates or examples or [""])[0] %}
     {% set _about = example_notes.get(_first, "") %}
     {# the chosen start's note sits in the "i" beside the list;
        sandbox.js rewrites it (and hides the "i") as the choice changes #}
     <div class="sb-startrow">
      <select id="sbnew-start" name="start">
-      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}"{% if loop.first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
-      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}">{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
-      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts.">Blank skeleton</option>
+      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
       {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
        <option value="shipped:sihrs"{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
@@ -261,9 +261,8 @@
    {# the outcome in a word and an icon, the sentence in its "?", what to
       try behind a fold, the full fit beside it: the first line under the
       heading (the How it works tip says so) #}
-   {% set says %}{{ h.says }}{% if quick and h.level == "good" %} A quick check: the full fit gives the estimates.{% endif %}{% endset %}
    <div class="sb-health sb-health--{{ h.level }}">
-    {{ tips.alert({"good": "ok", "rough": "warn", "collapsed": "error"}.get(h.level, "info"), h.title, tiptext=says,
+    {{ tips.alert({"good": "ok", "rough": "warn", "collapsed": "error"}.get(h.level, "info"), h.title, tiptext=h.says,
                   id="sb-health", live="", action=(full_form if offer_full else "")) }}
    </div>
    {% if h.tries %}{% call tips.fold("What to try", id="sb-tries", cls="sbtries") %}

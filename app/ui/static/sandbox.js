@@ -54,18 +54,29 @@
   // ---- the gallery's New model form: the Oracle SIHRS start asks for a
   // hub location and vintage, or a dataset group and week
   function setupNew() {
+    // a space reads as part of a name; the folder takes _ for it
+    ['sbnew-name', 'sb-dup-name'].forEach(function (id) {
+      var e = $(id);
+      if (e) e.addEventListener('input', function () {
+        if (/\s/.test(e.value)) e.value = e.value.replace(/\s+/g, '_');
+      });
+    });
     var start = $('sbnew-start'), box = $('sbnew-shipped'), nm = $('sbnew-name');
     if (!start || !box) return;
     var loc = $('sbnew-loc'), date = $('sbnew-date'), grp = $('sbnew-group'), asof = $('sbnew-asof');
-    var suggested = '';
+    // the page fills in the first start's name; it is replaced as the
+    // start changes until the user types one of their own
+    var suggested = nm ? nm.value : '';
     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
     function name() {
       if (!nm || (nm.value && nm.value !== suggested)) return;
-      var v = start.value, s = '';
+      var v = start.value, s = '', o = start.options[start.selectedIndex];
       if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
       else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
+      else if (o && o.getAttribute('data-name')) s = o.getAttribute('data-name');
       nm.value = suggested = s;
     }
+
     function show() {
       var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
@@ -412,9 +423,14 @@
           .then(function (d) {
             var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
             var probs = d.problems || [], warns = d.warnings || [];
+            var notes = warns.length === 1 ? '1 note' : warns.length + ' notes';
             if (probs.length) {
               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
                                 'a run would fail.') + listHtml(probs);
+            } else if (warns.length) {
+              // never green above a note: the notes are the headline
+              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'),
+                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']) + listHtml(warns);
             } else if (f.machine) {
               html += alertHtml('ok', 'No problems found in the model.', '',
                                 ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
@@ -428,8 +444,7 @@
               html += alertHtml('warn', 'This computer cannot fit yet:', f.machine,
                                 f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
-            if (warns.length) html += alertHtml('warn', 'Worth a look:', warns.length === 1 ? '1 note.'
-                                                : warns.length + ' notes.') + listHtml(warns);
+            if (warns.length && probs.length) html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
             if (f.suffix) rows.push(['Simulate suffix', f.suffix, '', null]);
             if (f.rows) rows.push(['Data rows', f.rows, '', null]);
             if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '', null]);

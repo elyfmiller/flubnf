@@ -14,6 +14,7 @@ and the run poll; downloads; the Oracle step; the Storage line.
 from __future__ import annotations
 
 import math
+import re
 import threading
 
 from fastapi import APIRouter, Form, Request
@@ -100,6 +101,19 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 # ------------------------------------------------------ the page (GET)
 
+#: the start the New model form offers first
+FIRST_START = "sir_example"
+
+
+def _free_name(stem: str, taken: set) -> str:
+    """The first of stem_1, stem_2, ... that no model has: the name the
+    New model form fills in, so a first visit need not invent one."""
+    n = 1
+    while f"{stem}_{n}" in taken:
+        n += 1
+    return f"{stem}_{n}"
+
+
 @router.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = "",
                  dataset: str = "", compare: str = ""):
@@ -152,10 +166,16 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             _not_done("Not compared", e)
             cmp, diff = None, None
     examples = sandbox_mod.list_examples()
+    taken = {m["name"] for m in models}
     ctx = {"active": "Sandbox", "models": models, "last": last,
-           "examples": [e for e in examples if not e.endswith("_template")],
+           # the simplest example first: a first visit starts from it
+           "examples": sorted((e for e in examples
+                               if not e.endswith("_template")),
+                              key=lambda e: (e != FIRST_START, e)),
            "templates": [e for e in examples if e.endswith("_template")],
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
+           "example_names": {e: _free_name(e, taken)
+                             for e in examples + ["skeleton"]},
            "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
@@ -258,7 +278,8 @@ def sandbox_new(request: Request, name: str = Form(...),
     Oracle SIHRS filter as production builds it for one hub location and
     forecast date (shipped:sihrs) or one group of a stored dataset with a
     population (shipped:dataset:<id>, as of as_of)."""
-    name = (name or "").strip()
+    # a space reads as part of a name; the folder takes _ for it
+    name = re.sub(r"\s+", "_", (name or "").strip())
     kind, _, what = (start or "skeleton").partition(":")
     try:
         if kind == "shipped" and what == "sihrs":

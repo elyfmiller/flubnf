@@ -52,7 +52,7 @@ a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
 
 /* ---- 4. start here ---- */
 .hm-start-more{margin-top:1.1rem;padding-top:.85rem;
-  border-top:1px solid var(--line)}
+  border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:.5rem}
 .hm-start-more a.btn{display:inline-flex;align-items:center;gap:.45em}
 
 /* ---- 5. component cards: glyph, name, role, links at the foot ---- */

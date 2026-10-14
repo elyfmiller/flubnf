@@ -78,16 +78,19 @@ def results(workroot: Path, live=_RAW) -> dict:
 
 HEALTH_COLLAPSED = 0.02
 HEALTH_THIN = 0.10
-#: fewer of the observed rows inside the 10 to 90% band: the band misses
-HEALTH_COVER = 0.5
+#: at most this many things to try: the first is the most useful
+TRIES_SHOWN = 2
 
 
 def fit_health(res: dict) -> dict | None:
-    """The run's outcome in plain words for the Results card, read from
-    what the engine wrote: "level" (good, rough, collapsed), a "title", a
-    "says" sentence, the week "at" it went wrong, whether the band "misses"
-    most of the data, and "tries": what to do next, most useful first.
-    None for a run that left no parameter sample and no ESS record."""
+    """The run's sampling in plain words for the Results card, read from
+    what the engine wrote: "level" (good, quick, rough, collapsed), a
+    "title", a "says" sentence, the week "at" it went wrong, and "tries":
+    what to do next, most useful first. It grades the particles only, never
+    how well the model follows the data: no rule of thumb for that holds
+    across models and diseases. A quick check that sampled well is "quick",
+    never "good": its ranges are not an estimate. None for a run that left
+    no parameter sample and no ESS record."""
     meta = res.get("meta") or {}
     ess, params = res.get("ess") or [], res.get("params") or []
     if not ess and not params:
@@ -106,64 +109,43 @@ def fit_health(res: dict) -> dict | None:
     flat = bool(params) and all(p["p5"] == p["p95"] for p in params)
     few = bool(sample) and distinct <= max(2, HEALTH_COLLAPSED * sample)
     first_t = ess[0]["t"] if ess else None
-    # the band against the data: observed rows inside the 10 to 90% band
-    misses, inside, counted = False, 0, 0
-    tr = res.get("traj") or {}
-    obs = meta.get("observed") or []
-    if tr.get("q10") and obs:
-        for i, y in enumerate(obs[:len(tr["q10"])]):
-            if y is None or float(y) < 0:
-                continue
-            counted += 1
-            inside += tr["q10"][i] <= float(y) <= tr["q90"][i]
-        misses = counted >= 3 and inside < HEALTH_COVER * counted
     fmt_t = lambda t: f"{t:g}"
-    h = {"level": "good", "at": None, "misses": misses, "tries": [],
-         "ess_min": ess_min, "particles": n, "inside": inside,
-         "counted": counted}
+    h = {"level": "good", "at": None, "tries": [], "ess_min": ess_min,
+         "particles": n}
     if flat or few or gone_at is not None:
         # the first sign: thinning comes before (or with) the collapse
         at = min((t for t in (thin_at, gone_at) if t is not None), default=None)
-        h.update(level="collapsed", at=at, title="The fit collapsed",
+        h.update(level="collapsed", at=at, title="Sampling collapsed",
                  says=("Nearly every particle ended as a copy of the same "
                        "one or few parameter sets"
                        + (f", from t = {fmt_t(at)} on" if at is not None else "")
-                       + ", so the table shows one value where a range "
-                       "should be and the band is not a real estimate."))
+                       + ", so the ranges are not a real estimate."))
     elif thin_at is not None:
-        h.update(level="rough", at=thin_at, title="The fit is rough",
+        h.update(level="rough", at=thin_at, title="Sampling thinned out",
                  says=(f"The particles thinned out at t = {fmt_t(thin_at)} "
                        f"(lowest ESS {ess_min:,.0f} of {n:,}), so the ranges "
                        "are likely too narrow."))
+    elif n < FULL_FIT_PARTICLES:
+        h.update(level="quick", title="Quick check: the model runs",
+                 says=(f"{n:,} particles show that the model runs; the full "
+                       "fit gives the estimates."))
     else:
-        h.update(title="The fit looks healthy",
+        h.update(title="Sampling looks healthy",
                  says=("The particles stayed varied at every week"
                        + (f" (lowest ESS {ess_min:,.0f} of {n:,})"
                           if ess_min is not None else "") + "."))
-    if misses:
-        h["says"] += (f" Only {inside} of the {counted} data points sit "
-                      "inside the 10 to 90% band.")
+    if h["level"] in ("good", "quick"):
+        return h
+    # the full fit is offered beside the title, so it is not a try here
     tries = h["tries"]
-    if n < FULL_FIT_PARTICLES and h["level"] != "good":
-        tries.append(f"Run the full fit with {FULL_FIT_PARTICLES:,} "
-                     f"particles: {n:,} cover a prior too thinly.")
     if h["level"] == "collapsed" and h["at"] is not None and h["at"] == first_t:
         tries.append("It went wrong at the first data row: Check compares "
-                     "the model at its written values with the data. N, "
-                     "the starting state and the reporting scale set the "
-                     "first weeks' counts; the model starts one week "
-                     "before the first row.")
-    if h["level"] != "good" or misses:
-        tries.append("Narrow a prior that is much wider than the values "
-                     "you find plausible: particles drawn where the data "
-                     "rule them out are wasted.")
-    if misses:
-        tries.append("A band that misses the data is the model, not the "
-                     "filter: check the rates, the fixed values and which "
-                     "output pf_cumulative_observable names.")
-    if h["level"] != "good":
-        tries.append("Raise Jitter to 0.2 or 0.3 so a thinning cloud "
-                     "spreads out again.")
+                     "the model at its written values with the data.")
+    tries.append("Raise Jitter to 0.2 or 0.3 so the particles spread out "
+                 "again.")
+    tries.append("Narrow a prior that is much wider than the values you "
+                 "find plausible.")
+    del tries[TRIES_SHOWN:]
     return h
 
 
