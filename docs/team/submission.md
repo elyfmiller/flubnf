@@ -1069,6 +1069,25 @@ and CDC's rules. The season's facts are in
   watch each Wednesday is the filter-alone forecast (pf_filter, scored
   beside the Oracle) flattening while the Oracle keeps rising. Until then,
   0.25.
+- Model (2026-10-14, from Ely): INVESTIGATE PER-REGION DONOR POOLING FOR
+  THE GROUNDHOG, now that the hub archive holds four complete seasons
+  (2022-23 to 2025-26) for all 53 jurisdictions. Today every jurisdiction's
+  Groundhog forecast is the same set of growth ratios times its own anchor
+  (this week: x1.08, x1.23, x1.71, x2.19 at horizons 0-3 in every state
+  with 20 or more admissions, 95% bands 0.27x to 20x everywhere), because
+  the donors are pooled across states; the analogue docstring's reason is
+  that a per-state pool (about 5 donor weeks per past season) cannot
+  support 23 quantiles. This lane found no record of a regional or
+  similarity-weighted pool in the repository (the nearest is the us-donor
+  trial in the lab's research archive, which removed the national row and
+  tied); please check that archive before starting, in case it was tried.
+  Candidates: HHS-region pools, latitude or climate groups, or a kernel on
+  each state's own recent growth (nearer donors weigh more, so the pool
+  stays large enough for the quantiles); scored against the shipped
+  cross-state pool on the stored replay weeks with the app's scorer, with
+  a stop rule written before the run, as the seed rule was. If a regional
+  pool wins, the Oracle's donor paths inherit it, so the two members
+  change together.
 - App (2026-10-14): three things from the round, none urgent. (1) DONE ON A
   BRANCH, see the Now entry of 22:40 UTC: a modified run exported without
   the override was kept off the Output tab and the archived weekly report
