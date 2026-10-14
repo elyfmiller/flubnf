@@ -32,9 +32,8 @@ macOS and Linux, and on Windows both `FluBNF.bat` and `setup.ps1`.
 `FLUBNF_PYBNF_BUNDLE` points at one kept somewhere else. Because it is one
 file on a shared drive or a USB stick, this route needs no GitHub account
 and no administrator. It still needs the network once, for the engine's
-Python packages (on Windows about 100 MB from pypi.org), and fits need
-Perl, which on Windows is Strawberry Perl, a machine-wide install that asks
-for an administrator.
+Python packages (on Windows about 100 MB from pypi.org, and 31 MB for the
+Perl that `FluBNF.bat` installs for FluBNF, again with no administrator).
 
 On Windows the archive is unpacked into
 `%LOCALAPPDATA%\FluBNF\PyBNF-Private`, and the engine's Python environment

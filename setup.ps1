@@ -973,8 +973,9 @@ if ($perlAsk.Code -ne 0) {
     }
     Warn "BioNetGen's BNG2.pl is a Perl program, and fits and the Sandbox's"
     Warn "Check run it; analogue forecasts and reports do not need it."
-    Warn "Strawberry Perl (https://strawberryperl.com) is the standard choice"
-    Warn "on Windows."
+    Info "FluBNF.bat installs Perl for FluBNF when it opens: a 31 MB download,"
+    Info "no administrator needed. Strawberry Perl (https://strawberryperl.com)"
+    Info "works too, and needs an administrator."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     # StrawberryPerl.StrawberryPerl is in winget-pkgs (5.30 to 5.42, a
     # machine-wide MSI). --source winget in every command here, as in
