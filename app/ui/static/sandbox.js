@@ -1,8 +1,9 @@
 /* The sandbox workbench (app/ui/templates/sandbox.html): the three
    files as tabs, the run
    settings presets and their time estimate, Check, the unsaved-changes
-   chip, delete confirmations, the poll while a fit runs, and the results
-   plot. Plain ES5, no build step; colours come from the page's tokens.
+   chip, delete confirmations, the time a live fit has taken and the poll
+   until it ends, and the results plot. Plain ES5, no build step; colours
+   come from the page's tokens.
    The pure helpers are exported as SandboxPage for the tests. */
 (function (root) {
   'use strict';
@@ -31,15 +32,34 @@
     return xs;
   }
 
-  // "about 40 s", "about 3 min", "about 1.5 h"
-  function fmtEta(s) {
-    if (!(s > 0)) return '';
-    if (s < 90) return 'about ' + Math.max(1, Math.round(s)) + ' s';
-    if (s < 5400) return 'about ' + Math.round(s / 60) + ' min';
-    return 'about ' + (Math.round(s / 360) / 10) + ' h';
+  // a time as the sandbox writes it (sandbox.py's clock): m:ss, h:mm:ss
+  // from an hour
+  function clock(s) {
+    s = Math.max(0, Math.floor(s) || 0);
+    var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = s % 60;
+    return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (r < 10 ? '0' : '') + r;
   }
 
-  root.SandboxPage = {xsFor: xsFor, fmtEta: fmtEta, suggestName: suggestName};
+  // "about 0:51", or "about 0:40 to 2:00" while the ends differ (before a
+  // fit has finished here): sandbox.py's eta_words, rounded half up as it is
+  function fmtEta(lo, hi) {
+    if (!(lo > 0)) return '';
+    var a = clock(Math.max(1, Math.floor(lo + 0.5))),
+        b = clock(Math.max(1, Math.floor((hi > 0 ? hi : lo) + 0.5)));
+    return a === b ? 'about ' + a : 'about ' + a + ' to ' + b;
+  }
+
+  // the live fit's one line (sandbox.py's fitting_line): the time so far
+  // against the estimate, and past slowAfter seconds (sandbox.py's
+  // slow_after), that stopping is safe
+  function fitLine(elapsed, lo, hi, slowAfter) {
+    if (lo > 0 && elapsed > slowAfter) return 'Taking longer than usual. Stopping is safe.';
+    var eta = fmtEta(lo, hi);
+    return clock(elapsed) + ' so far' + (eta ? ' \u00b7 ' + eta + ' in all' : '');
+  }
+
+  root.SandboxPage = {xsFor: xsFor, clock: clock, fmtEta: fmtEta, fitLine: fitLine,
+                      suggestName: suggestName};
   if (typeof document === 'undefined') return;
 
   function $(id) { return document.getElementById(id); }
@@ -242,14 +262,18 @@
     setupTabs(form);
     // ---- run settings: the preset sets the particles; typing a count
     // other than a preset's reads as custom; the estimate follows
-    // (the estimate: a clock and "about 40 s" beside the actions, "on
-    // this machine (estimated)" in its "?"; hidden when there is none)
+    // (the estimate: a clock and "about 0:51" beside the particles, a
+    // span until a fit has finished here; hidden when there is none)
     var preset = $('sb-preset'), parts = $('sb-particles'), eta = $('sb-eta');
     function showEta() {
       if (!eta || !parts) return;
-      var full = parseFloat(eta.getAttribute('data-full')) || 0;
-      var n = parseInt(parts.value, 10) || 0;
-      var t = fmtEta(full * n / 10000), v = eta.querySelector('.sb-eta-v');
+      // the seconds at 10,000 particles, scaled to the count: the cost
+      // model is linear in particles, and this computer's ratio multiplies
+      // it whole
+      var k = (parseInt(parts.value, 10) || 0) / 10000;
+      var t = fmtEta(k * parseFloat(eta.getAttribute('data-low')),
+                     k * parseFloat(eta.getAttribute('data-high')));
+      var v = eta.querySelector('.sb-eta-v');
       if (v) v.textContent = t;
       eta.hidden = !t;
     }
@@ -471,21 +495,41 @@
       });
     });
 
-    // ---- the open run: poll while it may still be fitting, then reload
-    var box = $('results');
+    // ---- a run of this model fitting (open or not): Save and run reads
+    // "Fitting 0:27" and the open run's line "0:27 so far, about 0:51 in
+    // all" (fitLine's words), both counted every second from the run's
+    // start (the server wrote them once). The poll reloads the page when
+    // the fit ends; with edits not saved, it turns Save and run back on.
+    var fit = form && form.getAttribute('data-fitting');
     var live = function (s) { return s === 'running' || s === 'prepared'; };
-    if (box && live(box.getAttribute('data-status'))) {
-      var id = box.getAttribute('data-run');
+    if (fit) {
+      var t0 = Date.parse(form.getAttribute('data-started') || ''),
+          lo = parseFloat(form.getAttribute('data-low')), hi = parseFloat(form.getAttribute('data-high')),
+          slowAfter = parseFloat(form.getAttribute('data-slow-after')),
+          runBtns = Array.prototype.slice.call(form.querySelectorAll('[data-sb-fitting]')),
+          line = $('sb-live');
+      var tick = function () {
+        if (isNaN(t0)) return;                 // no start to count from: the server's words stay
+        var s = (Date.now() - t0) / 1000;
+        runBtns.forEach(function (b) { b.textContent = 'Fitting\u2026 ' + clock(s); });
+        if (line) line.textContent = fitLine(s, lo, hi, slowAfter);
+      };
+      var ticker = setInterval(tick, 1000);
+      tick();
       var timer = setInterval(function () {
-        fetch('/api/sandbox/runs/' + encodeURIComponent(id)).then(function (r) { return r.json(); })
+        fetch('/api/sandbox/runs/' + encodeURIComponent(fit)).then(function (r) { return r.json(); })
           .then(function (d) {
-            if (d && d.meta && !live(d.meta.status)) {
-              clearInterval(timer);
-              if (!dirty) location.reload();
-              else if (chip && root.FluBNFUI) {
-                root.FluBNFUI.setBadge(chip.querySelector('.uk-badge'), 'warn',
-                                       'unsaved changes (the run ended: save, then reload)');
-              }
+            if (!d || !d.meta || live(d.meta.status)) return;
+            clearInterval(timer);
+            clearInterval(ticker);
+            if (!dirty) { location.reload(); return; }
+            runBtns.forEach(function (b) {
+              b.disabled = false;
+              b.textContent = b.getAttribute('data-idle');
+            });
+            if (chip && root.FluBNFUI) {
+              root.FluBNFUI.setBadge(chip.querySelector('.uk-badge'), 'warn',
+                                     'unsaved changes (the run ended: save, then reload)');
             }
           }).catch(function () {});
       }, 5000);

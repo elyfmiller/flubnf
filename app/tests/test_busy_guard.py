@@ -138,6 +138,40 @@ def test_guard_modal_present_on_every_page():
     assert "/api/busy" in html               # the guard actually checks
 
 
+def test_the_guard_hint_says_what_stopping_the_run_in_the_way_costs(tmp_path):
+    """The modal's hint follows the run it would stop: a sandbox fit is
+    named as one, never as retrospective weeks or a console run."""
+    import json
+    import shutil
+    html = client.get("/data").text
+    # no fixed hint in the markup: the script sets it as the modal opens
+    assert '<p class="hint" id="guard-hint"></p>' in html
+    assert "hint.textContent=c.hint;" in html
+    funcs = html[html.index("function retroConflict(b)"):
+                 html.index("function conflictFor(kind,b)")]
+    sandbox = funcs[funcs.index("function sandboxConflict(b)"):]
+    assert "hint:'A sandbox fit stopped now" in sandbox
+    assert "retrospective" not in sandbox and "console" not in sandbox
+    node = shutil.which("node") or "/opt/node22/bin/node"
+    if not Path(node).exists():
+        pytest.skip("node not available")
+    drv = tmp_path / "guard.js"
+    drv.write_text(funcs + "\nconsole.log(JSON.stringify(["
+                   "retroConflict({retro: {'2098-99': 'running'}}).hint,"
+                   "consoleConflict({console_run: '2099-01-02'}).hint,"
+                   "sandboxConflict({sandbox: '20991231-000000_mine'}).hint,"
+                   "sandboxConflict({sandbox: '20991231-000000_mine'}).label]));\n")
+    out = subprocess.run([node, str(drv)], capture_output=True, text=True,
+                         timeout=60)
+    assert out.returncode == 0, out.stderr
+    retro, console, sandbox, label = json.loads(out.stdout)
+    assert retro == "Completed retrospective weeks are kept and resume later."
+    assert console == "A console run stopped now restarts from scratch."
+    assert sandbox.startswith("A sandbox fit stopped now gives no results")
+    assert "retrospective" not in sandbox
+    assert label == "sandbox fit (20991231-000000_mine)"
+
+
 def test_guarded_attributes_on_exactly_the_classified_controls():
     import re
 

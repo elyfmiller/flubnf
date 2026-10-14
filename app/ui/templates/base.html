@@ -247,8 +247,8 @@
       aria-labelledby="guard-title">
   <h2 id="guard-title">A run is in progress</h2>
   <p id="guard-msg"></p>
-  <p class="hint">Completed retrospective weeks are kept and resume later;
-   a console run stopped now restarts from scratch.</p>
+  {# what stopping costs, for the run in the way (the script below) #}
+  <p class="hint" id="guard-hint"></p>
   <div class="row">
    <button type="button" class="quiet" id="guard-cancel">Cancel</button>
    <button type="button" class="danger" id="guard-stop">Stop run and proceed</button>
@@ -500,9 +500,12 @@
  //   data-pull:   Update data while a fit is in its preparation phase
  //                (phase contains "materializing" or "preparing"; a pull
  //                during pure fitting is safe and passes through)
+ // Each conflict's hint says what stopping that run costs: a replay keeps
+ // its weeks, a console run starts over, a sandbox fit gives no results.
  (function(){
   var back=document.getElementById('guard-modal'),
       msg=document.getElementById('guard-msg'),
+      hint=document.getElementById('guard-hint'),
       stopBtn=document.getElementById('guard-stop'),
       cancel=document.getElementById('guard-cancel'),
       pending=null;
@@ -531,16 +534,19 @@
     var seasons=Object.keys(b.retro||{});
     return seasons.length?{label:'retrospective '+seasons.join(', '),
       stop:'/retro/stop',
+      hint:'Completed retrospective weeks are kept and resume later.',
       done:function(x){return Object.keys(x.retro||{}).length===0;}}:null;
   }
   function consoleConflict(b){
     return b.console_run?{label:'console run ('+b.console_run+')',
       stop:'/run/stop',
+      hint:'A console run stopped now restarts from scratch.',
       done:function(x){return !x.console_run;}}:null;
   }
   function sandboxConflict(b){
     return b.sandbox?{label:'sandbox fit ('+b.sandbox+')',
       stop:'/sandbox/stop',
+      hint:'A sandbox fit stopped now gives no results; its model is kept to run again.',
       done:function(x){return !x.sandbox;}}:null;
   }
   function conflictFor(kind,b){
@@ -725,6 +731,7 @@
       if(!c){startOverGate(el,function(){proceed(el);});return;}
       pending={el:el,conflict:c};
       msg.textContent='This will stop the running '+c.label+'.';
+      hint.textContent=c.hint;
       guardRet=el;
       window.GUARD_BUSY=true;back.hidden=false;
       cancel.focus();
