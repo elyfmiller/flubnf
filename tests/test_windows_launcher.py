@@ -446,7 +446,9 @@ def test_flubnfs_own_perl_is_marked_whole_only_after_every_check():
     marker = next(i for i, ln in enumerate(own)
                   if ln.startswith('>"%OWNPERL%\\flubnf-perl.ok" echo'))
     assert fetch < verify < starts < marker
-    assert own[verify + 1] == own[starts + 1] == "if errorlevel 1 goto :perlownundo"
+    assert own[verify + 1] == "if errorlevel 1 goto :perlownundo"
+    # a perl.exe that cannot start exits negative, which errorlevel 1 misses
+    assert own[starts + 1] == 'if not "%ERRORLEVEL%"=="0" goto :perlownundo'
     assert own[fetch].endswith(
         '| "%SystemRoot%\\System32\\tar.exe" -xf - -C "%OWNPERL%"'), own[fetch]
     for ln in (own[fetch], own[verify]):
@@ -457,7 +459,8 @@ def test_flubnfs_own_perl_is_marked_whole_only_after_every_check():
     assert own[clear + 2] == 'if exist "%OWNPERL%" exit /b 1'
     ok = _code(_after_label(BAT, "perlownok", "\r\n:perlown\r\n").strip().split("\r\n"))
     assert 'if not "%OWNHAVE%"=="%PERLPKG%" exit /b 1' in ok
-    assert any("-Mstrict" in ln for ln in ok)
+    probe = next(i for i, ln in enumerate(ok) if "-Mstrict" in ln)
+    assert ok[probe + 1] == 'if not "%ERRORLEVEL%"=="0" exit /b 1', ok
 
 
 # ------------------------------------------------------------ the engine block
@@ -1768,16 +1771,23 @@ def test_windows_flubnf_installs_its_own_perl_with_no_administrator(tmp_path):
 
 
 @windows_only
-@pytest.mark.parametrize("left", ["no-marker", "another-package", "dll-gone"])
+@pytest.mark.parametrize("left", ["no-marker", "another-package", "not-windows",
+                                  "crashes"])
 def test_windows_a_partial_or_older_flubnf_perl_is_installed_again(tmp_path,
                                                                    left):
     """An unpack that stopped before its marker (a closed window, a full
     disk), a marker from another pin, or a Perl that no longer starts is
-    cleared and unpacked again, never used."""
+    cleared and unpacked again, never used. A perl.exe whose DLL is gone
+    exits negative (0xC0000135), which `if errorlevel 1` never saw."""
     pc = _perl_pc(tmp_path)
     pkg = _own_perl_package(pc, tmp_path)
     (pc.own / "Library" / "bin").mkdir(parents=True)
-    _perl(pc.own / "Library" / "bin", "MSWin32" if left != "dll-gone" else "msys")
+    if left == "crashes":
+        _exe(pc.own / "Library" / "bin", "perl",
+             "import sys\nsys.exit(-1073741515)\n")
+    else:
+        _perl(pc.own / "Library" / "bin",
+              "msys" if left == "not-windows" else "MSWin32")
     if left != "no-marker":
         (pc.own / "flubnf-perl.ok").write_text(
             "perl-5.26.2.1-h0c8e037_1.tar.bz2\n" if left == "another-package"
