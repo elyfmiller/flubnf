@@ -7,18 +7,26 @@ submission. This page takes a new student from nothing to a fitted model
 of their own; the page itself carries the short version under **How the
 Sandbox works**.
 
+**What it needs.** A fit uses the particle filter engine, so the engine
+file must be installed (FluBNF says "engine ready" when it opens), and
+Perl must be on the computer: macOS and Linux have it, and on Windows
+FluBNF.bat offers Strawberry Perl. When either is missing, the model's
+page says **This computer cannot fit yet** above the editor, and its "?"
+says what to do. You can still write, Check and simulate a model without
+them.
+
 ## 1. Start from something that fits
 
 New model, Start from:
 
 | Start | What it is | Use it when |
 |---|---|---|
-| `seihr_template` | SEIR plus hospital admissions; every pathogen and population value marked `# EDIT` | a new respiratory pathogen (COVID-19, RSV, ...) |
-| `sir_example`, `seir_example` | the smallest epidemics, counted as reported cases | learning the file format |
-| `sihrs_example` | the production influenza model for one synthetic state, with seasonal forcing | seasonal influenza |
-| `kinetics_example` | A to B, not an epidemic | any count that is the increment of something |
+| SEIHR template | SEIR plus hospital admissions; every pathogen and population value marked `# EDIT` | a new respiratory pathogen (COVID-19, RSV, ...) |
+| SIR example, SEIR example | the smallest epidemics, counted as reported cases | learning the file format |
+| SIHRS compartment example | the production influenza model for one synthetic state, with seasonal forcing | seasonal influenza |
+| Kinetics example | A to B, not an epidemic | any count that is the increment of something |
 | Blank skeleton | one conversion, three fitted values | writing from scratch |
-| Oracle SIHRS filter | the production model, priors and data for one jurisdiction and week | comparing with production |
+| Oracle SIHRS filter | the production model, priors and data for one jurisdiction and week | comparing with production (the hub location start needs the hub: Update data on the Data tab first) |
 
 Every example's `data.exp` was simulated from the model itself at the
 values written in its `model.bngl`, with negative-binomial noise, and its
@@ -38,14 +46,17 @@ per week (a period of d days is the rate 7/d).
   `I() -> I() + Hadm()  rho*gamma` (it counts each admission without
   moving anyone). A function scales it to what is reported,
   `Hobs() = mult__FREE*H_Cum`. A reporting scale never enters a rule.
-- The seed species are the population **one week before the first row of
-  data.exp** (the engine starts at `pf_start_time = -1`). N and the
+- The engine starts the model at **t = -1** (`pf_start_time`), and the
+  seed species are the population then. Number the first row of data.exp
+  0, so the seeds are the population one week before it; a first row at
+  t = 9 means the model runs ten weeks before the first count. N and the
   starting infected set the size of the first weeks' counts.
 - The simulate action must name a suffix (`suffix=>"seir"`); the engine
   matches the data file by it.
 
-**data.exp** is a header line, then one row per week: the time in weeks
-and the count for the week ending then. A missing week is a gap in the
+**data.exp** is a header line starting with `#` (such as
+`# time H_weekly`, one name per column), then one row per week: the time
+in weeks and the count for the week ending then. A missing week is a gap in the
 time column, never a renumbered row.
 
 **priors.conf** has one line per fitted parameter:
@@ -58,7 +69,10 @@ find plausible: particles drawn where the data rule them out are wasted.
 ## 3. Check, then run
 
 **Check** reads the editor text without fitting. Problems are what would
-stop a run; "Worth a look" lists what may run but not as meant. It also
+stop a run (a `__FREE` parameter without a prior line counts, as does a
+prior line without `=`); "Worth a look" lists what may run but not as
+meant. When this computer cannot fit yet, Check says so on its own line,
+apart from the model. It also
 runs the model once at its written values and sets its weekly counts
 beside the data: if the two differ tenfold, N, the starting state or the
 reporting scale is off, and the fit will start far from the data. No
@@ -67,7 +81,9 @@ problems means the model can run, not that it fits.
 **Save and run** fits the saved files. The full fit (10,000 particles,
 the production setting) gives the estimates, in seconds to minutes; a
 quick check (200 particles) only shows that the model runs, and its
-numbers are rough.
+numbers are rough. A run that cannot start says **Not started** and why,
+with what to do in its "?"; a run the engine refuses shows as failed,
+with the engine's reason under Results.
 
 ## 4. Read the result
 
@@ -92,8 +108,9 @@ the observed output. The table gives each fitted value's median and 5 to
 ## 5. Your own data
 
 In the data.exp tab, **Load data** fills it from the FluSight hub (one
-jurisdiction, settled or as a past date saw it), from a stored dataset, or
-from a CSV you upload (`date,target_group,value[,population]`). Then set
+jurisdiction, settled or as a past date saw it; Update data on the Data
+tab brings the hub first), from a stored dataset, or from a CSV you
+upload (`date,target_group,value[,population]`). Then set
 N and the starting state to match the population and the first weeks.
 
 **Simulate data from the model** replaces data.exp with counts drawn from

@@ -127,12 +127,18 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             res = sandbox_mod.results(sandbox_mod.run_dir(run), live=live)
             if model and res["meta"].get("model") != model:
                 res = None
-        elif runs:
-            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
-                                      live=live)
     except Exception as e:
         _flash(f"Could not read that sandbox run: {e}", "error")
         res = None
+    # no run named, or one this model cannot show (another model's, or
+    # gone): its newest run, never "No runs yet" beside a list of runs
+    if res is None and runs:
+        try:
+            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
+                                      live=live)
+        except Exception as e:
+            _flash(f"Could not read that sandbox run: {e}", "error")
+            res = None
     # a second run of the same model, overlaid and diffed against the open one
     cmp, diff = None, None
     if res and compare and compare != res["run_id"]:
@@ -154,6 +160,9 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
            "editing": editing, "busy": _sandbox_busy_reason(),
+           # why this computer cannot fit yet, said before a run is tried
+           "machine": (sandbox_mod.split_reason(sandbox_mod.machine_problem())
+                       if editing else ("", "")),
            "running_id": live,
            # the Oracle SIHRS start (the gallery's New model form)
            "vintages": sandbox_mod.vintages(),
@@ -217,11 +226,12 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
 def _not_done(lead: str, e: Exception) -> None:
     """Flash a sandbox action that did not happen, `lead` first ("Not
     saved"): a SandboxError is a refusal (warn), anything else a failure
-    (error). A long reason's first line is the notice, the rest its tip."""
-    first, _, rest = str(e).strip().partition("\n")
-    _flash(f"{lead}: {first[:200]}",
+    (error). A long reason's first line (or first sentence) is the notice,
+    the rest its tip, so a remedy at the end is never cut off."""
+    notice, tip = sandbox_mod.split_reason(str(e))
+    _flash(f"{lead}: {notice}",
            "warn" if isinstance(e, sandbox_mod.SandboxError) else "error",
-           detail=rest.strip()[:1500])
+           detail=tip)
 
 
 # -------------------------------------------------------------- models
@@ -579,24 +589,56 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
     return _sandbox_redirect(name, run_id)
 
 
+def _run_settings(particles: str, jitter: str, forecast_weeks: str,
+                  seed: str) -> dict:
+    """The run form's four settings as typed: '1e4' is 10,000 particles.
+    A value that is not a number, or not whole where a count is meant, is
+    refused in words (a page, never the raw validation JSON that would
+    leave the window with no way back)."""
+    def num(label: str, v: str, whole: bool):
+        text = str(v).strip()
+        try:
+            x = float(text)
+        except ValueError:
+            raise sandbox_mod.SandboxError(
+                f"{label} {text!r} is not a number") from None
+        if x != x or x in (float("inf"), float("-inf")):
+            raise sandbox_mod.SandboxError(f"{label} {text!r} is not a number")
+        if whole:
+            if not x.is_integer():
+                raise sandbox_mod.SandboxError(
+                    f"{label} {text!r} is not a whole number")
+            return int(x)
+        return x
+    return {"particles": num("particles", particles, True),
+            "jitter": num("jitter", jitter, False),
+            "forecast_weeks": num("forecast weeks", forecast_weeks, True),
+            "seed": num("seed", seed, True)}
+
+
 @router.post("/sandbox/run")
 def sandbox_run(request: Request, model: str = Form(...),
-                particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
-                jitter: float = Form(0.15), forecast_weeks: int = Form(4),
-                seed: int = Form(0)):
+                particles: str = Form(str(sandbox_mod.DRY_RUN_PARTICLES)),
+                jitter: str = Form("0.15"), forecast_weeks: str = Form("4"),
+                seed: str = Form("0")):
     """Kept for scripts and old pages: run a model's saved files."""
-    return _sandbox_start(model, particles=particles, jitter=jitter,
-                          forecast_weeks=forecast_weeks, seed=seed)
+    try:
+        kw = _run_settings(particles, jitter, forecast_weeks, seed)
+    except sandbox_mod.SandboxError as e:
+        _not_done("Not started", e)
+        return _sandbox_redirect(model)
+    return _sandbox_start(model, **kw)
 
 
 @router.post("/sandbox/models/{name}/run")
 def sandbox_model_run(name: str, model_bngl: str = Form(""),
                       data_exp: str = Form(""), priors_conf: str = Form(""),
-                      particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
-                      jitter: float = Form(0.15), forecast_weeks: int = Form(4),
-                      seed: int = Form(0)):
+                      particles: str = Form(str(sandbox_mod.DRY_RUN_PARTICLES)),
+                      jitter: str = Form("0.15"), forecast_weeks: str = Form("4"),
+                      seed: str = Form("0")):
     """Save and run: the posted editor fields are saved first (the run's
-    workroot keeps its own copy), then the run starts as /sandbox/run's."""
+    workroot keeps its own copy), then the run starts as /sandbox/run's.
+    A run setting refused in words still leaves the edits saved."""
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
         if saved:
@@ -604,8 +646,12 @@ def sandbox_model_run(name: str, model_bngl: str = Form(""),
     except Exception as e:
         _not_done("Not saved, not started", e)
         return _sandbox_redirect(name)
-    return _sandbox_start(name, particles=particles, jitter=jitter,
-                          forecast_weeks=forecast_weeks, seed=seed)
+    try:
+        kw = _run_settings(particles, jitter, forecast_weeks, seed)
+    except sandbox_mod.SandboxError as e:
+        _not_done("Not started", e)
+        return _sandbox_redirect(name)
+    return _sandbox_start(name, **kw)
 
 
 @router.post("/sandbox/runs/{run_id}/stop")

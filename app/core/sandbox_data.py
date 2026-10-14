@@ -219,9 +219,13 @@ def fill_data(name: str, location_name: str, start: str, end: str,
     location's (or group's) population (set_population's refusals hold,
     checked before anything is written)."""
     d = model_dir(name)
-    if set_pop and sihrs_shaped((d / "model.bngl").read_text(
-            encoding="utf-8", errors="replace")):
-        set_population(name, 1)                  # raises its refusal
+    if set_pop:
+        bngl = (d / "model.bngl").read_text(encoding="utf-8", errors="replace")
+        if sihrs_shaped(bngl):
+            set_population(name, 1)              # raises its refusal
+        if _sb.with_population(bngl, 1) is None:
+            raise SandboxError(f"{_sb.NO_N_LINE}, so nothing was loaded: "
+                               "untick Set N to load the data alone")
     extra = {}
     if dataset:
         s = dataset_series(dataset, str(location_name), start, end)
