@@ -47,6 +47,10 @@ per week (a period of d days is the rate 7/d).
 - A parameter whose name ends in `__FREE` is **fitted**. The filter draws
   it from its line in `priors.conf`; the value written in `model.bngl` is
   used only by Check and Simulate data. Every other parameter is fixed.
+  The name before `__FREE` is yours (`beta__FREE`, `Rzero__FREE`); the
+  suffix is in capitals, and a new or renamed one needs its own line in
+  `priors.conf` (Check names a missing one). `r__FREE` is the one reserved
+  name: the dispersion of the counts, which every model fits.
 - The observed count must be the weekly **increment** of an accumulator:
   a species no rule consumes, added to by a rule such as
   `I() -> I() + Hadm()  rho*gamma` (it counts each admission without
@@ -77,7 +81,8 @@ find plausible: particles drawn where the data rule them out are wasted.
 **Check** reads the editor text without fitting. Problems are what would
 stop a run (a `__FREE` parameter without a prior line counts, as does a
 prior line without `=`); "Worth a look" lists what may run but not as
-meant. When this computer cannot fit yet, Check says so on its own line,
+meant, and with no problems it is the headline, never under a green
+one. When this computer cannot fit yet, Check says so on its own line,
 apart from the model; so does a BNG2.pl that stops before it reads the
 model, which no edit of the model fixes. It also
 runs the model once at its written values and sets its weekly counts
@@ -94,23 +99,26 @@ with the engine's reason under Results.
 
 ## 4. Read the result
 
-The first line of Results, right under its heading, is an alert that
-names the state of the fit (its "?" gives the sentence, and What to try
-sits in a fold below it):
+The first line of Results, right under its heading, grades the
+sampling: whether the particles stayed varied (its "?" gives the
+sentence, with the lowest ESS; What to try sits in a fold below it). It
+says nothing about how well the model follows the data, which is yours
+to judge from the plot.
 
-- **The fit looks healthy**: the particles stayed varied at every week.
-- **The fit is rough**: they thinned out at some week; ranges may be too
-  narrow.
-- **The fit collapsed**: nearly every particle became a copy of one or a
-  few parameter sets, so the table shows one value where a range should
-  be (5%, median and 95% equal) and the band is not an estimate. Run the
-  full fit; if it collapsed at the first data row, Check the scale; narrow
-  a prior much wider than plausible; raise Jitter to 0.2 or 0.3.
+- **Sampling looks healthy**: the particles stayed varied at every week.
+- **Quick check: the model runs**: a run under 10,000 particles that
+  sampled well; its ranges are not an estimate, and the full fit is one
+  click away.
+- **Sampling thinned out**: they thinned out at some week; ranges may be
+  too narrow.
+- **Sampling collapsed**: nearly every particle became a copy of one or
+  a few parameter sets, so the table shows one value where a range
+  should be (5%, median and 95% equal). Run the full fit; if it
+  collapsed at the first data row, Check the scale; raise Jitter to 0.2
+  or 0.3; narrow a prior much wider than plausible.
 
-The plot's band should cover most data points. A band that misses the
-data is the model, not the filter: check the rates, the fixed values and
-the observed output. The table gives each fitted value's median and 5 to
-95% range. Engine messages keep the engine's own words.
+The table gives each fitted value's median and 5 to 95% range. Engine
+messages keep the engine's own words.
 
 ## 5. Your own data
 
