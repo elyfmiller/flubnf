@@ -382,8 +382,11 @@ def _sandbox_fill_flash(info: dict) -> None:
         what = "settled truth"
     else:
         what = f"vintage of {info['asof']}"
-    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}, "
-           f"{info['start']} to {info['end']}.")
+    # a file with no group column says so, so a date,count file read as
+    # one series is not a surprise
+    one = " (one series)" if info.get("one_series") else ""
+    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
+           f"{one}, {info['start']} to {info['end']}.")
     detail = f"Source: {what}."
     if info["dropped"]:
         detail += f" {info['dropped']} missing weeks dropped."
@@ -458,9 +461,8 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     return _sandbox_redirect(name)
 
 
-#: an upload's refusal, notes, or how it was read (one series), shown
-#: inline in the Load data box on the next view of that model (popped
-#: once shown)
+#: an upload's refusal or notes, shown inline in the Load data box on the
+#: next view of that model (popped once shown)
 _sandbox_upload_report: dict = {}
 
 #: the request body cap: the CSV's own cap plus room for the editor text
@@ -540,28 +542,21 @@ async def sandbox_upload_data(request: Request, name: str):
     finally:
         await up.close()
     warn = list(ds.meta.get("warnings") or [])
-    done = ""
     if len(ds.groups) == 1:
         try:
             info = await run_in_threadpool(sandbox_mod.fill_data, name,
                                            ds.groups[0], "", "",
                                            dataset=ds.id)
+            info["one_series"] = bool((ds.meta.get("columns") or {})
+                                      .get("series"))
             _sandbox_fill_flash(info)
-            # a file with no group column: say how it was read, in the
-            # upload pane, so a date,count file is not a surprise
-            one = (ds.meta.get("columns") or {}).get("series")
-            if one:
-                n = info["rows"]
-                done = (f"Loaded as one series: {one}, {n} "
-                        f"week{'' if n == 1 else 's'}.")
         except Exception as e:
             _not_done(f"Stored {ds.name}; data.exp not filled", e)
     else:
         _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick one "
                "under Load data.", "ok")
-    if warn or done:
-        _sandbox_upload_report[name] = {"problems": [], "warnings": warn,
-                                        "done": done}
+    if warn:
+        _sandbox_upload_report[name] = {"problems": [], "warnings": warn}
     return RedirectResponse(_sandbox_url(name) + f"&dataset={ds.id}",
                             status_code=303)
 
