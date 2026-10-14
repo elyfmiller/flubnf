@@ -353,9 +353,10 @@ def _latest_results(include_modified: bool = False):
     fresh (only the scan is cached). Research runs are skipped because
     every caller is a shipped-product surface (audit rr-1). A modified
     run exported under the non-hub name is skipped too, so Home, the
-    Forecast fans and Models never show it as the registered model; the
-    Output page passes include_modified=True and shows it badged (its
-    report is the newest run's, its files sit under their date)."""
+    Forecast fans, Models and /output/report never show it as the
+    registered model; the Output page's report card alone passes
+    include_modified=True and shows it badged, linking that run's own
+    report (its files sit under their date, tagged)."""
     import json as _json
     from app.core.runs import is_contained, is_research
     for f in _workroot_results():

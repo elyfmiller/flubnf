@@ -592,11 +592,12 @@ def output_page(request: Request):
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
     # a modified run exported under the non-hub name: the card says so,
-    # with the settings label in the badge's tip
+    # with the settings label (its first clause; the tip says how the
+    # files are named) in the badge's tip, once the run has a report
     report_modified = ""
-    if res and is_contained(res.get("spec", "")):
+    if has_report and res and is_contained(res.get("spec", "")):
         report_modified = (model_settings_label(res.get("spec", ""))
-                           or "modified model settings")
+                           .split(";", 1)[0] or "modified model settings")
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
     # each file gets the hub validator's command (--window for a round
@@ -610,11 +611,13 @@ def output_page(request: Request):
         "dates": dates, "own": own,
         # the earlier weeks the picker offers: those whose archive holds a
         # report (a run whose report failed is archived without one), less
-        # the week the card already offers above it; each (as-of,
-        # reference date)
+        # the week the card already offers above it, unless the card shows
+        # a modified run: that is never archived, so the archive's report
+        # for its week is the shipped run's and stays in the picker; each
+        # (as-of, reference date)
         "archive_dates": [(d, _reference_date(d) or d)
                           for d in reversed(_archive_dates())
-                          if d != report_asof
+                          if (d != report_asof or report_modified)
                           and (APP_STATE / "archive" / d
                                / "report.html").is_file()],
         "has_report": has_report,
@@ -812,7 +815,9 @@ def output_report(request: Request, date: str = ""):
             return _notice(request, 200, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
-    rid, _ = shared._latest_results(include_modified=True)   # as the page
+    # the shipped rule: Home's report button and its map link come here,
+    # and Home shows that run (the Output card links its own run's report)
+    rid, _ = shared._latest_results()
     d = APP_STATE / "workroots" / (rid or "")
     if not (d / "report.html").is_file():
         return _notice(request, 200, "empty", "No report yet", icon="clock",
@@ -866,7 +871,7 @@ def output_report_download(request: Request, date: str = ""):
         return _weekly_report_file(APP_STATE / "archive" / date, date,
                                    request,
                                    route=f"/output/report/download?date={date}")
-    rid, res = shared._latest_results(include_modified=True)   # as the page
+    rid, res = shared._latest_results()        # the shipped rule, as above
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""), request,
                                route="/output/report/download")
