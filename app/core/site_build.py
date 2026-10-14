@@ -784,7 +784,7 @@ _ENGINE_TT = re.compile(
     r"</span></span></span>", re.S)
 #: console-only install advice inside a harvested tip
 _INSTALL_ADVICE = re.compile(
-    r";\s*Windows needs Strawberry Perl \(the installer offers it\)")
+    r";\s*on Windows, FluBNF\.bat installs its own Perl, with no administrator")
 #: the Purpose tile's location count: the forecast covers the national
 #: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
 _LOCS_TILE = re.compile(

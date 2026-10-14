@@ -201,6 +201,8 @@ def test_nothing_about_the_builders_machine(site):
     assert 'class="mt-stack"' in html
     assert "<th>Version</th>" not in html
     assert "Strawberry Perl" not in html
+    # the Perl tip's console-only install advice is stripped
+    assert "FluBNF.bat installs its own Perl" not in html
 
 
 def test_a_filter_tree_never_names_the_oracle_sihrs(site):
