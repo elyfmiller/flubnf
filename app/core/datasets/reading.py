@@ -7,9 +7,10 @@ import io
 import itertools
 import re
 from collections import Counter
+from pathlib import Path
 from typing import Optional
 
-from .checks import _check_rows
+from .checks import _check_rows, series_name
 from .parsing import (
     _CUT_HEAD,
     _CUT_TAIL,
@@ -19,6 +20,7 @@ from .parsing import (
     DELIMITERS,
     ENCODING_NAMES,
     EXTRA_ALIASES,
+    NA_TOKENS,
     PRECEDENCE,
     REQUIRED,
     ROLE_ALIASES,
@@ -57,7 +59,7 @@ def _blank_row(row) -> bool:
 def validate(source, *, kind: Optional[str] = None,
              week_start_sunday: bool = False, target: Optional[str] = None,
              limits: Limits = DEFAULT_LIMITS, columns: Optional[dict] = None,
-             _tee=None) -> Report:
+             series: Optional[str] = None, _tee=None) -> Report:
     """Parse and validate one upload; every problem is reported at once.
 
     ``source`` is bytes, a path, or a binary file object. ``kind`` is the
@@ -65,9 +67,11 @@ def validate(source, *, kind: Optional[str] = None,
     values, and the summary reports the inferred kind). ``target`` picks
     one target when the file carries several. ``columns`` maps roles
     (``ROLES``) to header names (or '#N', the Nth column) where the headers
-    alone do not say. ``week_start_sunday`` is accepted and ignored: a
-    file's dates are moved to their week-ending Saturday whatever weekday
-    they share.
+    alone do not say. ``series`` names the one series of a file with no
+    group column (see _map_columns): the file's name, made a group name;
+    None takes the file's stem when ``source`` is a path, else 'series'.
+    ``week_start_sunday`` is accepted and ignored: a file's dates are
+    moved to their week-ending Saturday whatever weekday they share.
 
     The base checks: required columns; dates parseable; value numeric,
     >= 0, never NA in a grouped CSV; no duplicate (date, group); no gap
@@ -77,6 +81,9 @@ def validate(source, *, kind: Optional[str] = None,
     and the size limits, enforced while streaming.
     """
     kind = kind or None
+    if series is None and isinstance(source, (str, Path)):
+        series = Path(source).stem
+    series = series_name(series)
     stream, close = _open_source(source)
     capped = _CappedReader(stream, limits.max_bytes, tee=_tee)
     src = _Replayable(capped)
@@ -87,11 +94,13 @@ def validate(source, *, kind: Optional[str] = None,
             if enc != "utf-8":
                 src.forget()
             scan = _Scan()
-            rep, cols, raw_rows = _read(src, enc, limits, columns, scan)
+            rep, cols, raw_rows = _read(src, enc, limits, columns, scan,
+                                        series=series)
             if scan.bad and enc == "utf-8" and scan.utf8 is None:
                 # not one UTF-8 character: a Windows-1252 file, read again
                 src.forget()
-                rep, cols, raw_rows = _read(src, "cp1252", limits, columns)
+                rep, cols, raw_rows = _read(src, "cp1252", limits, columns,
+                                            series=series)
                 rep.warnings.insert(0, "Not UTF-8 text: read as Windows-1252 "
                                     "(a spreadsheet's usual CSV).")
             elif scan.bad:
@@ -192,11 +201,12 @@ def _mixed_message(enc: str, scan: _Scan) -> str:
 
 
 def _read(src: _Replayable, enc: str, limits: Limits, columns,
-          scan: Optional[_Scan] = None):
+          scan: Optional[_Scan] = None, series: str = ""):
     """One reading pass: (report, columns or None, [(row number, {role:
     cell})]). UTF-8 keeps a byte it cannot decode (surrogateescape) and
-    notes it in ``scan``; the caller decides. Raises UnicodeDecodeError
-    (UTF-16/32), csv.Error or _LimitExceeded."""
+    notes it in ``scan``; the caller decides. ``series`` names the group
+    of a file read as one series (_map_columns). Raises
+    UnicodeDecodeError (UTF-16/32), csv.Error or _LimitExceeded."""
     rep = Report(encoding=enc)
     src.rewind()
     utf8 = enc in ("utf-8", "utf-8-sig")
@@ -234,7 +244,8 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 "UTF-8.")
         return rep, None, []
     rep.headers = list(header)
-    cols = _map_columns(header, rep, columns)
+    cols = _map_columns(header, rep, columns, series=series,
+                        sample=(sample, delim))
     if cols is None:
         return rep, None, []
     cols["_delim"] = delim
@@ -264,7 +275,11 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
             num_cut[role] = [i, _Tally(), 0]
         elif role in ("group", "location_name") and delim in ",;":
             txt_cut[role] = [i, _Tally()]
-    gcol = idx["group"]
+    # a file of one series has no group column: every row is that series
+    gcol, one = idx.get("group"), cols.get("series")
+    # its columns blank in the rows that told the value: the first row
+    # further down where each holds a number (then it could be the value)
+    quiet = dict.fromkeys(cols.get("_quiet", ()))
     # rows whose quote, opened and not closed, took in the rows below
     quoted = []
     # rows written with another separator, by that separator
@@ -321,17 +336,25 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
             if n > width and not cut and any(
                     row[k].strip() for k in range(width) if k not in used):
                 longer.setdefault(n, _Tally()).add(line, row)
+        for i in quiet:
+            if (quiet[i] is None and not cut and i < n
+                    and _NUMBERISH.fullmatch(row[i].strip())):
+                quiet[i] = line
         if n < need:
             if not ragged:
                 ragged_eg = delim.join(row)
             ragged.append(line)
             row = row + [""] * (need - n)
-        g = row[gcol].strip()
-        if g not in groups_seen:
-            groups_seen.add(g)
-            if len(groups_seen) > limits.max_groups:
-                raise _LimitExceeded("groups")
-        raw_rows.append((line, {k: row[i] for k, i in idx.items()}))
+        cells = {k: row[i] for k, i in idx.items()}
+        if one:
+            cells["group"] = one
+        else:
+            g = row[gcol].strip()
+            if g not in groups_seen:
+                groups_seen.add(g)
+                if len(groups_seen) > limits.max_groups:
+                    raise _LimitExceeded("groups")
+        raw_rows.append((line, cells))
     if quoted:
         starts = [q[0] for q in quoted]
         ln, end, i, text = quoted[0]
@@ -408,6 +431,17 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 f'"{a}{delim}{b}"). Quote a name that holds a {sep} '
                 f'("Bern{delim} Stadt"), or remove the space that starts '
                 f"those '{header[i + 1]}' cells.", t.lines)
+    woke = [i for i, ln in quiet.items() if ln is not None]
+    if woke:
+        # numbers further down in a column blank at the top: it could be
+        # the series' value as well, so the value is a choice, as when
+        # both columns hold numbers from the first row; nothing is
+        # ignored yet, so the notice that said so goes
+        rep.guess.pop("value", None)
+        rep.warnings = [w for w in rep.warnings
+                        if not w.startswith("Ignored column(s): ")]
+        _ambiguous(rep, "value", sorted([idx["value"], *woke]), header)
+        return rep, None, []
     return rep, cols, raw_rows
 
 
@@ -443,10 +477,101 @@ def _column_ref(header, want: str):
     return hits[0] if len(hits) == 1 else None
 
 
-def _map_columns(header, rep: Report, columns=None):
+#: a cell written as a number in a style the reader takes or explains
+#: (1234, 1,234, 1.5, 1,5, 1e3): how a file of one series tells its value
+#: column from its other columns
+_NUMBERISH = re.compile(r"[+-]?(?:\d[\d.,]*|[.,]\d+)(?:[eE][+-]?\d+)?",
+                        re.ASCII)
+
+
+def _sample_rows(lines, delim: str) -> list:
+    """The data rows among the lines read to sniff the separator (the
+    first row that is not blank is the header); [] when they do not
+    parse."""
+    try:
+        rows = [r for r in csv.reader(lines, delimiter=delim)
+                if not _blank_row(r)]
+    except csv.Error:
+        return []
+    return rows[1:]
+
+
+def _column_kind(rows, i: int) -> str:
+    """'number' when every cell of column i that is not NA is a number
+    (and one is), 'blank' when none is left, else 'text'."""
+    cells = [r[i].strip() for r in rows if i < len(r)]
+    cells = [c for c in cells if c.lower() not in NA_TOKENS]
+    if not cells:
+        return "blank"
+    return ("number" if all(_NUMBERISH.fullmatch(c) for c in cells)
+            else "text")
+
+
+def _one_series(header, norm, chosen, mapped, rows):
+    """(value columns, quiet columns) for a file with no group column that
+    reads as one series, else None. It does when every named column but
+    the date, the population and the hubverse extras holds numbers or
+    nothing in ``rows`` (the first rows): a column of text could be a
+    group under a name no alias knows, and such a file is refused as
+    before. The value is the column a mapping named, else each column of
+    numbers, whatever its header (two or more are a choice to make); a
+    column blank in these rows is quiet, and _read watches it further
+    down."""
+    extras = {n for names in EXTRA_ALIASES.values() for n in names}
+    keep = {chosen[r] for r in ("date", "population") if r in chosen}
+    if "value" in mapped:
+        keep.add(chosen["value"])
+    others = [i for i, h in enumerate(header)
+              if h and i not in keep and norm[i] not in extras
+              and norm[i] not in ROLE_ALIASES["population"]]
+    kinds = {i: _column_kind(rows, i) for i in others}
+    if "text" in kinds.values():
+        return None
+    if "value" in mapped:
+        return [chosen["value"]], []
+    numbers = [i for i in others if kinds[i] == "number"]
+    if not numbers:
+        return None
+    return numbers, [i for i in others if kinds[i] == "blank"]
+
+
+def _ambiguous(rep: Report, role: str, cands: list, header) -> None:
+    """The problem of a role that several columns could each be, and the
+    column it suggests: for the date, the column of week ends (FluSight
+    keys a week by its end), never a report date that happens to come
+    first; for the value, the one column a value header names."""
+    times = Counter(header)
+    label = [h if times[h] == 1 else f"{h} (#{i + 1})"
+             for i, h in enumerate(header)]
+    said = [repr(label[i]) for i in cands]
+    names = ", ".join(said[:-1]) + " and " + said[-1]
+    ends = [i for i in cands if _week_side(header[i]) == "end"]
+    named = [i for i in cands
+             if _norm_header(header[i]) in ROLE_ALIASES["value"]]
+    pick = (ends[0] if role == "date" and len(ends) == 1 else
+            named[0] if role == "value" and len(named) == 1 else cands[0])
+    rep.ambiguous[role] = [f"#{i + 1}" for i in cands]
+    rep.suggest[role] = (header[pick] if times[header[pick]] == 1
+                         else f"#{pick + 1}")
+    eg = label[pick] + (", the end of each week" if pick in ends
+                        and role == "date" else "")
+    many = "Two" if len(cands) == 2 else str(len(cands))
+    rep.add("ambiguous_columns", f"{many} columns could be the {role}: "
+            f"{names}. Choose one (e.g., {eg}), or keep only one in the "
+            "file.")
+
+
+def _map_columns(header, rep: Report, columns=None, series: str = "",
+                 sample=None):
     """{role: header text, '_idx': {role: index}, 'format': ...} or None
     (with the problem recorded) when a required column is missing or two
-    columns could both be it. ``columns`` (role -> header) overrides."""
+    columns could both be it. ``columns`` (role -> header) overrides.
+
+    A file with no group column, one date column and one column of
+    numbers is read as one series named ``series`` ('series' in the
+    result, and the report's ``series``); ``sample`` is (the first lines,
+    the separator), whose rows tell the value column by its numbers
+    (_one_series)."""
     norm = [_norm_header(h) for h in header]
     times = Counter(header)
     label = [h if times[h] == 1 else f"{h} (#{i + 1})"
@@ -460,6 +585,7 @@ def _map_columns(header, rep: Report, columns=None):
             unknown.append((role, str(want)))
         else:
             chosen[role] = i
+    mapped = set(chosen)
     for role in ROLES:
         if role in chosen or any(r == role for r, _ in unknown):
             continue
@@ -480,8 +606,23 @@ def _map_columns(header, rep: Report, columns=None):
             ambiguous[role] = cands
         elif role in REQUIRED:
             missing.append(role)
+    one = None
+    if series and "group" in missing and "date" in chosen and not unknown:
+        one = _one_series(header, norm, chosen, mapped,
+                          _sample_rows(*sample) if sample else [])
+    if one:
+        # no group to ask for; the value is the one column of numbers, or
+        # a choice among them (never the first, silently)
+        values = one[0]
+        missing = [r for r in missing if r not in ("group", "value")]
+        ambiguous.pop("value", None)
+        chosen.pop("value", None)
+        if len(values) == 1:
+            chosen["value"] = values[0]
+        else:
+            ambiguous["value"] = values
+        rep.series = series
     rep.guess = {r: f"#{i + 1}" for r, i in chosen.items()}
-    rep.ambiguous = {r: [f"#{i + 1}" for i in c] for r, c in ambiguous.items()}
     found = ", ".join(h for h in header if h) or "(none)"
     if unknown:
         rep.add("column_unknown", "No single unused column named "
@@ -495,26 +636,17 @@ def _map_columns(header, rep: Report, columns=None):
             f"{r} (e.g., {eg[r]})" for r in missing)
             + f". Found: {found}. Choose which column holds each.")
     for role, cands in ambiguous.items():
-        names = " and ".join(repr(label[i]) for i in cands)
-        # for the date, the column of week ends (FluSight keys a week by
-        # its end), never a report date that happens to come first
-        ends = [i for i in cands if _week_side(header[i]) == "end"]
-        pick = ends[0] if role == "date" and len(ends) == 1 else cands[0]
-        rep.suggest[role] = (header[pick] if times[header[pick]] == 1
-                             else f"#{pick + 1}")
-        eg = label[pick] + (", the end of each week" if pick in ends
-                            and role == "date" else "")
-        rep.add("ambiguous_columns", f"Two columns could be the {role}: "
-                f"{names}. Choose one (e.g., {eg}), or keep only one in the "
-                "file.")
+        _ambiguous(rep, role, cands, header)
     if rep.problems:
         return None
-    g = norm[chosen["group"]]
+    g = norm[chosen["group"]] if "group" in chosen else ""
     cols = {"format": "hubverse" if g == "location" else "grouped",
             "_date_side": _week_side(header[chosen["date"]])}
     idx = dict(chosen)
     for role, i in chosen.items():
         cols[role] = label[i]
+    if one:
+        cols["series"], cols["_quiet"] = series, one[1]
     for extra, names in EXTRA_ALIASES.items():
         if extra == "location_name" and g != "location":
             continue

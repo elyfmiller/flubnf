@@ -89,7 +89,8 @@ your own. Examples and a template for a new pathogen ship with it; a
 student guide is in [docs/SANDBOX.md](docs/SANDBOX.md).
 
 The Data, Forecast and Retrospective tabs also take weekly data of your
-own (a CSV of date, group and value, population optional), kept apart
+own (a CSV of date, group and value, population optional; a file of one
+series needs no group column), kept apart
 from the FluSight hub and never submitted. For a true retrospective,
 give the data as each week saw it: one CSV with an as_of column, or a
 folder of snapshot files, one per as_of, each named by its date

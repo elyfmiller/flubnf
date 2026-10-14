@@ -1,5 +1,6 @@
 """Your own data in the sandbox: a CSV uploaded through the dataset store
-(app/core/datasets.py, a grouped CSV or a hubverse time series), or a
+(app/core/datasets.py, a grouped CSV, a hubverse time series, or a date
+and a count read as one series), or a
 stored dataset, loaded into a model's data.exp (sandbox.ingest_upload,
 dataset_series, fill_data(dataset=); the upload-data and fill-data
 routes). Hub-free:
@@ -41,6 +42,11 @@ HUBVERSE = ("target_end_date,location,observation\n"
             "2024-10-05,Springfield,8\n2024-10-12,Springfield,10\n"
             "2024-10-19,Springfield,12\n"
             "2024-10-26,Springfield,14\n2024-11-02,Springfield,19\n")
+
+#: a date and a count, no group column: thirty weeks from 2024-10-05
+COUNTS = "week_ending,SARI_admissions\n" + "".join(
+    f"{date(2024, 10, 5) + timedelta(days=7 * k)},{12 + k}\n"
+    for k in range(30))
 
 
 @pytest.fixture
@@ -219,3 +225,46 @@ def test_the_upload_reads_leniently_and_infers_the_kind(box):
     html = client.get(r.headers["location"]).text
     assert "Dates moved to week-ending Saturdays: +6 days" in html
     assert '<option value="">detect</option>' in html
+
+
+def test_a_date_and_count_file_loads_as_one_series(box):
+    """A walkthrough lost minutes adding a constant group column in a
+    spreadsheet: a date and a count now load, said in one line."""
+    r = _upload(COUNTS, name="county_cases.csv", kind="")
+    (ds,) = D.list_datasets()
+    assert ds.groups == ["county_cases"] and ds.kind == "count"
+    rows = _rows()
+    assert len(rows) == 30 and rows[:2] == [[0, 12], [1, 13]]
+    html = client.get(r.headers["location"]).text
+    pane = html.split('id="sbfill-up"')[1].split('id="sbfill-sim"')[0]
+    assert ('<div class="uk-alert uk-alert--ok" id="sb-upload-done" '
+            'role="status">') in pane
+    assert "Loaded as one series: county_cases, 30 weeks." in pane
+    assert "data.exp filled: 30 weeks of county_cases" in html
+    # said once, and never for a file that names its groups
+    assert "Loaded as one series" not in client.get(
+        "/sandbox?model=mine").text
+    r = _upload(HUBVERSE)
+    assert "Loaded as one series" not in client.get(
+        r.headers["location"]).text
+
+
+def test_two_columns_of_numbers_are_refused_inline_naming_both(box):
+    before = sb.read_model("mine")["data.exp"]
+    _upload("week_ending,cases,deaths\n2024-10-05,12,1\n2024-10-12,19,2\n")
+    html = client.get("/sandbox?model=mine").text
+    assert "Not loaded:" in html
+    assert ("Two columns could be the value: &#39;cases&#39; and "
+            "&#39;deaths&#39;.") in html
+    assert D.list_datasets() == [] and sb.read_model("mine")["data.exp"] == before
+
+
+def test_the_file_picker_says_which_files_it_takes(box):
+    html = client.get("/sandbox?model=mine").text
+    pane = html.split('id="sbfill-up"')[1].split('id="sbfill-sim"')[0]
+    assert ('<p class="sb-fmt">A CSV with a date column and a count column; '
+            "a group column if it holds several series. "
+            '<a href="/static/dataset-template.csv" '
+            'download="dataset-template.csv">Template CSV</a></p>') in pane
+    assert pane.index('id="sbfill-csv"') < pane.index('class="sb-fmt"')
+    assert client.get("/static/dataset-template.csv").status_code == 200

@@ -478,6 +478,44 @@ def test_two_candidate_date_columns_say_why_they_ask():
     assert j["ok"] and "Ignored column(s): date." in j["html"]
 
 
+#: weekly counts with no group column, the count named anything
+COUNTS = (b"week_ending,SARI_admissions\n2024-10-05,12\n2024-10-12,19\n"
+          b"2024-10-19,25\n")
+
+
+def test_a_date_and_count_file_is_ready_as_one_series():
+    """Once refused for want of a group column, with nothing to choose."""
+    j = check(COUNTS, name="county_cases.csv").json()
+    assert j["ok"] and READY in j["html"] and not j["needs_mapping"]
+    assert j["status"] == "Ready to use: 1 group, 3 weeks."
+    assert fact(j["html"], "Groups") == "1 county_cases"
+    # stored under the name typed, the series keeps the file's name
+    r = client.post("/data/datasets",
+                    files={"file": ("county_cases.csv", COUNTS, "text/csv")},
+                    data={"name": "SARI"}, follow_redirects=False)
+    assert r.status_code == 303
+    (ds,) = D.list_datasets()
+    assert ds.name == "SARI" and ds.groups == ["county_cases"]
+
+
+def test_two_columns_of_numbers_ask_for_the_value_not_a_group():
+    raw = b"week_ending,cases,deaths\n2024-10-05,12,1\n2024-10-12,19,2\n"
+    j = check(raw).json()
+    assert j["needs_mapping"] and not j["ok"]
+    html = j["html"]
+    assert ("Two columns could be the value: &#39;cases&#39; and "
+            "&#39;deaths&#39;. Choose one (e.g., cases)") in html
+    # a file of one series needs no group: optional, and not asked for
+    grp = html.split('id="dsup-data-col-group"')[1].split("</select>")[0]
+    assert '<option value="">none</option>' in grp
+    assert "Choose the column that holds" not in html
+    val = html.split('id="dsup-data-col-value"')[1].split("</select>")[0]
+    assert '<option value="">choose…</option>' in val and " selected" not in val
+    j = check(raw, col_date="#1", col_value="#2").json()
+    assert j["ok"] and READY in j["html"]
+    assert "Ignored column(s): deaths." in j["html"]
+
+
 def test_a_status_line_is_read_out_not_the_whole_result():
     """The result box was a live region, so every check (each column
     picked) read out the facts, the sparklines and the first rows again;
