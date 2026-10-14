@@ -1105,7 +1105,9 @@ set /p OWNHAVE=<"%OWNPERL%\flubnf-perl.ok"
 if not "%OWNHAVE%"=="%PERLPKG%" exit /b 1
 if not exist "%OWNPERL%\Library\bin\perl.exe" exit /b 1
 "%OWNPERL%\Library\bin\perl.exe" -Mstrict -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1
-if errorlevel 1 exit /b 1
+rem Not `if errorlevel 1`: a perl.exe that cannot start (a DLL gone) exits
+rem with a negative code (0xC0000135), which that test never sees.
+if not "%ERRORLEVEL%"=="0" exit /b 1
 exit /b 0
 :perlown
 rem Unpacks FluBNF's own Perl; 0 once it is complete and starts. The
@@ -1132,7 +1134,7 @@ rem tar's exit code is not trusted either way: verify is the only gate.
 ".venv\Scripts\python.exe" -I "%CD%\scripts\windows\get_perl.py" verify "%OWNPERL%" <nul
 if errorlevel 1 goto :perlownundo
 "%OWNPERL%\Library\bin\perl.exe" -Mstrict -MPOSIX -MIPC::Open3 -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1
-if errorlevel 1 goto :perlownundo
+if not "%ERRORLEVEL%"=="0" goto :perlownundo
 >"%OWNPERL%\flubnf-perl.ok" echo %PERLPKG%
 echo   Perl for FluBNF is ready.
 exit /b 0
