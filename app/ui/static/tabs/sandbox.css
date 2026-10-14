@@ -107,6 +107,8 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
 .sb-pane-foot--start > button{margin:0}
 .sbsetpop{display:inline-flex;align-items:center;gap:.2rem}
 .sbsetpop .ck{margin:0}
+/* the files the upload takes, in one line under the file field */
+.sb-fmt{margin:.4rem 0 0;color:var(--mut);font-size:var(--fs-hint)}
 /* an upload's report under the file field */
 .sb-report{margin-top:.65rem}
 /* why Load is off: one alert line under the dates */
