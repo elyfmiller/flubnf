@@ -5,6 +5,11 @@ A dataset is one uploaded CSV of weekly target data in either shape:
   * grouped CSV: ``date, target_group, value[, population]``.
   * hubverse time series: ``target_end_date | date, location,
     observation | value[, target][, as_of][, location_name][, population]``.
+  * one series: ``date, <count>[, population]`` with no group column, its
+    count column named anything; read as a grouped CSV of one group named
+    after the file (series_name; a snapshot upload's files share one).
+    A column of text beside them could be a group no alias names, so the
+    group is asked for as before; two columns of numbers are a choice.
 
 or a folder of such files, one snapshot per as_of (``validate_snapshots``,
 ``ingest_snapshots``): each file is read as one upload is, and takes its
@@ -66,7 +71,8 @@ dataset`` all read through it):
 Every problem is reported at once, each with its row numbers (the
 spreadsheet's rows: the header is row 1) and an example; ``problem_groups``
 sorts them by kind. meta.json records the shape as ``format``: 'grouped' or
-'hubverse'. This module stores a valid upload under
+'hubverse' (one series is 'grouped', its ``columns`` naming the
+``series``). This module stores a valid upload under
 ``app/state/datasets/<id>/`` and materializes the SAME file shapes the hub
 path reads, so the engines consume a dataset unchanged:
 
@@ -113,6 +119,7 @@ from .checks import (
                      WEEKDAYS,
                      group_name_ok,
                      is_national_name,
+                     series_name,
 )
 from .dataset import (
                      Dataset,
@@ -246,6 +253,7 @@ __all__ = [
                      "problem_lines",
                      "resolve",
                      "saturday_on_or_before",
+                     "series_name",
                      "slug",
                      "sniff_delimiter",
                      "summary_lines",

@@ -1117,6 +1117,125 @@ def test_a_note_over_two_lines_is_a_note_numbered_by_its_first():
     assert p.rows == (2,)
 
 
+# -------------------------------------------------------------- one series
+
+def test_a_date_and_count_file_is_one_series_named_after_the_file(tmp_path):
+    """No group column, one date column and one column of numbers: one
+    series, named after the file, whatever the count column is called
+    (a walkthrough lost minutes adding a constant column by hand)."""
+    rows = [f"{d.isoformat()},{12 + i}" for i, d in enumerate(sats())]
+    raw = csv_text("week_ending,SARI_admissions", rows).encode()
+    rep = ok(D.validate(raw, series="county_cases"))
+    assert rep.series == "county_cases" and rep.warnings == []
+    assert rep.columns == {"format": "grouped", "date": "week_ending",
+                           "value": "SARI_admissions",
+                           "series": "county_cases"}
+    assert rep.summary["groups"] == ["county_cases"]
+    assert rep.summary["national_group"] is None
+    # a path names it by its stem, made a group name; bytes alone 'series'
+    p = tmp_path / "SARI 2024-25.csv"
+    p.write_bytes(raw)
+    assert D.validate(p).summary["groups"] == ["SARI 2024_25"]
+    assert D.validate(raw).summary["groups"] == ["series"]
+    # stored under any name, the series is the file's, so a check and the
+    # store agree; the same bytes again are the same dataset
+    ds = D.ingest(raw, "My counts", filename="county_cases.csv")
+    assert ds.groups == ["county_cases"] and ds.meta["format"] == "grouped"
+    assert ds.meta["columns"]["series"] == "county_cases"
+    assert final_values(ds) == [str(12 + i) for i in range(6)]
+    assert D.ingest(raw, "My counts", filename="county_cases.csv").id == ds.id
+    # a population column is still read as one
+    pop = [r + ",54000" for r in rows]
+    rep = ok(D.validate(csv_text("date,count,population", pop).encode()))
+    assert rep.summary["has_population"] and rep.columns["value"] == "count"
+
+
+def test_a_lone_series_is_never_the_national_or_a_reserved_name():
+    assert D.series_name("U.S.") == "US series"
+    assert D.series_name("all") == "all series"
+    assert D.series_name("") == D.series_name("(.)") == "series"
+    assert D.group_name_ok(D.series_name("x" * 60 + ".v2"))
+    rows = [f"{d.isoformat()},{i}" for i, d in enumerate(sats())]
+    rep = ok(D.validate(csv_text("week,cases", rows).encode(), series="US"))
+    assert rep.summary["groups"] == ["US series"]
+    assert rep.summary["national_group"] is None
+
+
+def test_two_columns_of_numbers_are_a_choice_naming_both():
+    rows = [f"{d.isoformat()},{i},{2 * i}" for i, d in enumerate(sats())]
+    raw = csv_text("week_ending,cases,deaths", rows).encode()
+    rep = D.validate(raw)
+    assert rep.codes == ["ambiguous_columns"] and rep.needs_mapping
+    assert rep.problems[0].message == (
+        "Two columns could be the value: 'cases' and 'deaths'. Choose one "
+        "(e.g., cases), or keep only one in the file.")
+    assert rep.series == "series" and rep.ambiguous == {"value": ["#2", "#3"]}
+    assert rep.guess == {"date": "#1"}
+    # the CLI asks for the value, never a group the file does not need
+    assert D.problem_lines(rep)[-1].endswith("e.g. --column value=cases.")
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "two")
+    assert D.list_datasets() == []
+    # a mapping that names the value settles it; the other is ignored
+    rep = ok(D.validate(raw, columns={"value": "deaths"}))
+    assert rep.columns["value"] == "deaths"
+    assert rep.summary["groups"] == ["series"]
+    assert rep.warnings == ["Ignored column(s): cases."]
+    # three are counted, not called two
+    more = csv_text("week_ending,cases,deaths,icu", [r + ",1" for r in rows])
+    assert only(D.validate(more.encode()), "ambiguous_columns").message \
+        .startswith("3 columns could be the value: 'cases', 'deaths' and "
+                    "'icu'.")
+
+
+def test_numbers_further_down_a_column_blank_at_the_top_are_a_choice_too():
+    """The value is told from the first rows; a column blank there is
+    watched to the end of the file."""
+    weeks = sats(n=60)
+    rows = [f"{d.isoformat()},{i}," + ("3" if i >= 55 else "")
+            for i, d in enumerate(weeks)]
+    rep = D.validate(csv_text("week_ending,cases,deaths", rows).encode())
+    assert rep.codes == ["ambiguous_columns"] and rep.warnings == []
+    assert "'cases' and 'deaths'" in rep.problems[0].message
+    assert rep.ambiguous == {"value": ["#2", "#3"]} and "value" not in rep.guess
+    # blank to the end, it is only ignored
+    rows = [f"{d.isoformat()},{i}," for i, d in enumerate(weeks)]
+    rep = ok(D.validate(csv_text("week_ending,cases,deaths", rows).encode()))
+    assert rep.warnings == ["Ignored column(s): deaths."]
+
+
+def test_a_group_column_or_a_column_of_text_reads_as_before():
+    rows = [f"{d.isoformat()},AZ,{i}" for i, d in enumerate(sats())]
+    rep = ok(D.validate(csv_text("week_ending,region,cases", rows).encode(),
+                        series="flagstaff"))
+    assert rep.series == "" and "series" not in rep.columns
+    assert rep.summary["groups"] == ["AZ"]
+    rep = ok(D.validate(b"target_end_date,location,observation\n"
+                        b"2024-10-05,01,5\n2024-10-12,01,6\n"))
+    assert rep.series == "" and rep.summary["format"] == "hubverse"
+    # text under a name no alias knows could be the group: asked for
+    rep = D.validate(csv_text("week_ending,state,cases", rows).encode())
+    assert rep.codes == ["missing_columns"] and rep.series == ""
+    assert rep.problems[0].message.startswith("No column for the group")
+    # and a second column of dates: one date column only
+    dated = [f"{d.isoformat()},{d.isoformat()},{i}"
+             for i, d in enumerate(sats())]
+    rep = D.validate(csv_text("week_ending,report_date,cases", dated).encode())
+    assert rep.codes == ["missing_columns"] and rep.series == ""
+
+
+def test_snapshot_files_of_one_series_share_its_name():
+    def snap(n):
+        return csv_text("week_ending,cases", [f"{d.isoformat()},{i}" for i, d
+                                              in enumerate(sats(n=n))]).encode()
+    files = [("sari/2024-09-07.csv", snap(6)), ("sari/2024-09-14.csv", snap(7))]
+    rep = ok(D.validate_snapshots(files))
+    assert rep.series == "sari" and rep.summary["groups"] == ["sari"]
+    assert rep.summary["as_of"] == ["2024-09-07", "2024-09-14"]
+    ds = D.ingest_snapshots(files, None)
+    assert ds.groups == ["sari"] and ds.vintage_true
+
+
 # ----------------------------------------------------- mixed encodings
 
 def test_utf8_text_with_a_stray_windows_1252_row_is_refused():
