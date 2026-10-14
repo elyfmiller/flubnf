@@ -267,7 +267,8 @@ def test_the_plot_places_points_by_real_spacing_under_node(tmp_path):
         "console.log(JSON.stringify([S.xsFor([0,1,3],[],6),\n"
         "  S.xsFor([0,0.5,1],[],5),\n"
         "  S.xsFor([0,1,3],['2024-10-05','2024-10-12','2024-10-26'],5),\n"
-        "  S.fmtEta(40), S.fmtEta(600), S.fmtEta(9000), S.fmtEta(0)]));\n"
+        "  S.fmtEta(40), S.fmtEta(600), S.fmtEta(9000), S.fmtEta(0),\n"
+        "  S.fmtEta(40, 120)]));\n"
         % (STATIC / "sandbox.js").read_text())
     out = subprocess.run([NODE, str(drv)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
@@ -275,4 +276,36 @@ def test_the_plot_places_points_by_real_spacing_under_node(tmp_path):
     assert got[0] == [0, 1, 3, 4, 5, 6]                  # weekly past a gap
     assert got[1] == [0, 0.5, 1, 1.5, 2]                  # the data's own unit
     assert got[2] == ["2024-10-05", "2024-10-12", "2024-10-26", "2024-11-02", "2024-11-09"]
-    assert got[3:] == ["about 40 s", "about 10 min", "about 2.5 h", ""]
+    assert got[3:] == ["about 0:40", "about 10:00", "about 2:30:00", "",
+                       "about 0:40 to 2:00"]
+
+
+@pytest.mark.skipif(not Path(NODE).exists(), reason="node not available")
+def test_the_live_fits_words_are_sandbox_pys_under_node(tmp_path):
+    """sandbox.js rewrites the estimate and the live line every second in
+    the words the server first wrote (sandbox.py): the same for every
+    case, from 0:00 past an hour, the span, and the slow line."""
+    secs = [0, 0.4, 0.5, 9.99, 27, 59.5, 60, 599.6, 3599.4, 3600, 3725.2, -3]
+    spans = [(0, 0), (0.2, 0.7), (0.3, 1.2), (40, 120), (51.2, 51.4), (59.5, 59.5),
+             (3599.6, 3599.6)]
+    lines = [(e, lo, hi) for e in (8, 27, 31, 76.5, 76.6, 179, 181, 5000)
+             for lo, hi in ((51, 51), (40, 120), (0.3, 1.2), (0, 0))]
+    drv = tmp_path / "d.js"
+    drv.write_text(
+        "var g = {}; (function(){ %s }).call(g);\n"
+        "var S = g.SandboxPage;\n"
+        "console.log(JSON.stringify([%s.map(S.clock),\n"
+        "  %s.map(function (p) { return S.fmtEta(p[0], p[1]); }),\n"
+        "  %s.map(function (l) { return S.fitLine(l[0], l[1], l[2], l[3]); })]));\n"
+        % ((STATIC / "sandbox.js").read_text(), json.dumps(secs), json.dumps(spans),
+           json.dumps([[e, lo, hi, sb.slow_after(hi)] for e, lo, hi in lines])))
+    out = subprocess.run([NODE, str(drv)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    clocks, etas, fits = json.loads(out.stdout)
+    assert clocks == [sb.clock(s) for s in secs]
+    assert etas == [sb.eta_words(lo, hi) for lo, hi in spans]
+    assert fits == [sb.fitting_line(*x) for x in lines]
+    assert "Taking longer than usual. Stopping is safe." in fits
+    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
+    # the button's count: the same clock, after the word the server writes
+    assert "'Fitting\\u2026 ' + clock(s)" in js

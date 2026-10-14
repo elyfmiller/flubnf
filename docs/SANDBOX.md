@@ -97,6 +97,13 @@ numbers are rough. A run that cannot start says **Not started** and why,
 with what to do in its "?"; a run the engine refuses shows as failed,
 with the engine's reason under Results.
 
+The clock beside Particles says how long the fit should take. Until a
+fit has finished on this computer it gives a span (about 0:40 to 2:00);
+after that, one time scaled by how long this computer's last fit took.
+While a fit runs, Results counts its time against that estimate, Save
+and run reads **Fitting** with the same count and stays off until the
+fit ends, and Stop is always safe.
+
 ## 4. Read the result
 
 The first line of Results, right under its heading, grades the

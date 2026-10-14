@@ -151,12 +151,14 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
    only in the confirmation that follows (Delete, Stop) */
 button.sb-danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
 button.sb-danger:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,var(--card))}
-/* a live fit: the sliding bar, its "?" and Stop on one line, the "?"
-   and Stop level with the bar under its label */
-.sb-live{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.4rem .7rem;margin:.4rem 0 .6rem}
-.sb-live > .tip{margin-bottom:.45rem}
-.sb-live-bar{flex:1 1 12rem;min-width:0}
-.sb-live form{margin:0}
+/* a live fit: its time so far against the estimate, the line's "?", and
+   Stop at the right; the digits keep their width as they count, here and
+   on the Save and run that reads "Fitting" */
+.sb-live{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .7rem;margin:.4rem 0 .6rem}
+.sb-live-v{display:inline-flex;align-items:center;gap:.35rem;margin:0;
+  font-weight:600;font-variant-numeric:tabular-nums}
+.sb-live form{margin:0 0 0 auto}
+button[data-sb-fitting]{font-variant-numeric:tabular-nums}
 /* the fit in a word: the alert, the full fit at its right */
 .sb-health{margin:0 0 .1rem}
 .sb-health form{margin:0}
