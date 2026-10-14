@@ -126,10 +126,24 @@ def simulate_suffix(bngl_text: str) -> str:
     return m.group(1)
 
 
+#: a date in a data.exp row (2024-10-05, 10/5/2024): never part of a
+#: number, so a row holding one could not be read anyway
+_DATED = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}"
+                    r"|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}")
+
+
 def read_exp(exp_text: str) -> dict:
     """The data file's columns and rows; a negative value is a missing
     week, as the production data writer records it."""
     lines = [l for l in exp_text.splitlines() if l.strip()]
+    # rows pasted from a dated file ('2024-10-05 120', or a CSV with its
+    # header): time here is in weeks, and turning dates into weeks is
+    # what the upload does, so say that before the header or a number
+    dated = next((l for l in lines if not l.lstrip().startswith("#")
+                  and _DATED.search(l)), None)
+    if dated is not None:
+        raise SandboxError(f"data.exp holds dates (row {dated.strip()!r}): "
+                           "for dated rows use Load data, Upload a CSV")
     if not lines or not lines[0].lstrip().startswith("#"):
         raise SandboxError("data.exp must start with a header line such as "
                            "'# time H_weekly'")

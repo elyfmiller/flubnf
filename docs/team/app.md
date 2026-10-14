@@ -6,6 +6,32 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-14: Ely's answers to the Sandbox usability review. Less text on
+  the page, not more; no flag that claims what the model does with the
+  data, since one rule of thumb is wrong for another disease or model; Home
+  may carry a Sandbox line; the Oracle SIHRS start stays as an example with
+  its own mechanisms; 40 to 100 s full fits are fine on student laptops;
+  students start from the SIR example (no assignments; they build on it or
+  start their own); keep run ids, zip file names and ESS as they are (ESS
+  is the reassurance that sampling went well). Any parameter name works
+  when it ends in `__FREE` (capitals) and has its prior line; `r__FREE` is
+  the one reserved name (the likelihood's dispersion). SARI counts are a
+  possible outside data set. On `dev`: the verdict grades the sampling only
+  ("Sampling looks healthy", "Quick check: the model runs" never green,
+  "Sampling thinned out", "Sampling collapsed"), the band-coverage flag is
+  gone, What to try holds two lines at most; Check's headline is amber
+  whenever it has notes; the SIR example is the default start with a name
+  filled in, and a space in a name becomes _; Check names a rename made in
+  one file and a `__free` in small letters; the SIR example says scale
+  between about 0.2 and 0.3 (full fits give 0.21 to 0.29). A date,count
+  CSV (any count header) loads as one series named after the file, in the
+  Sandbox, the Data tab and `flubnf dataset`; two numeric columns are still
+  refused, naming both. The fit estimate is scaled by this computer's last
+  finished fit (a 1 to 4 times span before one); a live fit shows "0:27 so
+  far · about 0:51 in all", and Save and run is off while it runs. Not
+  done: a quick check is still estimated at a second or so, since the cost
+  model has no start-up term to scale. Set aside: B1's fit-to-data line and
+  score sentence, the first-fit card (B3), and the on-page help of Q2.
 - 2026-10-14: the Windows student install (Ely's request; Perl suspected). A
   review of FluBNF.bat, setup.ps1 and the console's BNG2.pl runs: 45
   findings, each checked by a skeptic; none was run on a Windows PC. One

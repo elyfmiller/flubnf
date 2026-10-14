@@ -40,7 +40,9 @@ imports are unchanged):
 
 Sections: paths and settings; refusals and small helpers; model folders;
 the shipped start; runs (prepare, run, stop, run_dir, list_runs); the hub
-lookups; the diagram cache; the moved names.
+lookups; the diagram cache; the time a fit takes (the estimate, scaled
+by this computer's last finished fit, and a live fit's words); the moved
+names.
 """
 from __future__ import annotations
 
@@ -279,13 +281,7 @@ def copy_model(src: str, dst: str) -> Path:
 
 def _live_model(live) -> str:
     """The model of the live run id, or ''."""
-    if not live:
-        return ""
-    try:
-        return json.loads((RUNS / str(live) / "meta.json")
-                          .read_text(encoding="utf-8"))["model"]
-    except Exception:
-        return ""
+    return str(run_meta(live).get("model") or "")
 
 
 def delete_model(name: str, live=None) -> int:
@@ -1282,6 +1278,125 @@ def eta_seconds(n_obs: int, particles: int) -> float:
                                    "particles": int(particles)})
 
 
+# --------------------------------------------------- the time a fit takes
+# The cost model was fitted on the production machine; student laptops ran
+# about 3 times its prediction (2.9 to 3.3 in the walkthroughs), and the
+# ratio held for the next fit on the same laptop. So an estimate is the
+# cost model times this computer's own ratio, taken from its last finished
+# fit; before one has finished, a span of it that covers the machines timed.
+
+#: the estimate's span before a fit has finished here, as multiples of
+#: the cost model: the production machine at 1, the slowest computers
+#: timed so far under 4
+ETA_FIRST_SPAN = (1.0, 4.0)
+#: a live fit past this multiple of its estimate (the span's top, before a
+#: fit has finished here) reads as slow
+ETA_SLOW = 1.5
+#: and never before this many seconds: a fit's first seconds are the engine
+#: starting, which the cost model leaves out, so a quick check (a second by
+#: the model) is not called slow for them. It changes nothing for a fit
+#: estimated at 20 s or more.
+ETA_SLOW_FLOOR_S = 30.0
+
+
+def _run_ratio(meta: dict) -> float | None:
+    """A finished run's seconds over what the cost model predicts for its
+    own rows and particles, or None for a run that cannot say."""
+    if meta.get("status") != "ok":
+        return None
+    try:
+        seconds = float(meta["seconds"])
+        n_obs = int(meta.get("n_obs") or len(meta.get("observed") or []))
+        predicted = eta_seconds(n_obs, int(meta["particles"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (0 < seconds < float("inf")) or predicted <= 0:
+        return None
+    return seconds / predicted
+
+
+def eta_ratio(runs: list | None = None) -> float | None:
+    """This computer's speed against the cost model: the ratio of its
+    newest finished full fit, else of its newest finished run of any size
+    (a quick check's seconds are mostly the engine starting, so it scales
+    a full fit high); None before any run has finished here. `runs` is
+    list_runs()'s list, newest first, for a caller that has it already."""
+    newest = None
+    for r in (list_runs() if runs is None else runs):
+        x = _run_ratio(r)
+        if x is None:
+            continue
+        if int(r["particles"]) >= FULL_FIT_PARTICLES:
+            return x
+        if newest is None:
+            newest = x
+    return newest
+
+
+def eta_span(n_obs: int, particles: int, ratio: float | None) -> tuple:
+    """(low, high) seconds a fit of this size takes here: the cost model
+    times this computer's ratio, the two equal; with no ratio yet,
+    ETA_FIRST_SPAN of it."""
+    base = eta_seconds(n_obs, particles)
+    lo, hi = (ratio, ratio) if ratio else ETA_FIRST_SPAN
+    return round(base * lo, 1), round(base * hi, 1)
+
+
+def clock(seconds: float) -> str:
+    """A time as the sandbox writes it: m:ss, h:mm:ss from an hour."""
+    s = max(0, int(seconds))
+    h, m = divmod(s // 60, 60)
+    return f"{h}:{m:02d}:{s % 60:02d}" if h else f"{m}:{s % 60:02d}"
+
+
+def eta_words(low: float, high: float) -> str:
+    """'about 0:51', or 'about 0:40 to 2:00' while the two ends differ;
+    '' for no estimate. Rounded as sandbox.js rounds (half up)."""
+    if not low > 0:
+        return ""
+    lo, hi = (clock(max(1, int(x + 0.5))) for x in (low, high))
+    return f"about {lo}" if lo == hi else f"about {lo} to {hi}"
+
+
+def slow_after(high: float) -> float:
+    """Seconds after which a live fit reads as slow: ETA_SLOW times its
+    estimate's top, never before ETA_SLOW_FLOOR_S."""
+    return round(max(ETA_SLOW * high, ETA_SLOW_FLOOR_S), 1)
+
+
+def fitting_line(elapsed: float, low: float, high: float) -> str:
+    """The live fit's one line, as sandbox.js rewrites it every second:
+    '0:27 so far · about 0:51 in all', and once slow (slow_after), the
+    line that says stopping is safe."""
+    if low > 0 and elapsed > slow_after(high):
+        return "Taking longer than usual. Stopping is safe."
+    eta = eta_words(low, high)
+    return f"{clock(elapsed)} so far" + (f" · {eta} in all" if eta else "")
+
+
+def run_meta(run_id) -> dict:
+    """A run's meta.json, or {} (no id, no such run, unreadable)."""
+    if not run_id:
+        return {}
+    try:
+        meta = json.loads((run_dir(str(run_id)) / "meta.json")
+                          .read_text(encoding="utf-8"))
+        return meta if isinstance(meta, dict) else {}
+    except Exception:
+        return {}
+
+
+def run_elapsed(meta: dict, now: float | None = None) -> float:
+    """Seconds since the run started (its started_utc), 0 when unknown."""
+    try:
+        t0 = dt.datetime.strptime(str(meta["started_utc"]),
+                                  "%Y-%m-%dT%H:%M:%SZ")
+    except (KeyError, ValueError):
+        return 0.0
+    t0 = t0.replace(tzinfo=dt.timezone.utc).timestamp()
+    return max(0.0, (time.time() if now is None else now) - t0)
+
+
 # ---------------------------------------------------------- the moved names
 # Each name still imports from here; its topic module loads on first use
 # (never at import, so the console's startup imports are unchanged) and
@@ -1300,7 +1415,7 @@ _MOVED = {
         "check", "SIMULATE_WEEKS", "DISPERSION_PARAM", "expected_counts",
         "synthetic_exp", "_scale_note"),
     "sandbox_results": (
-        "results", "HEALTH_COLLAPSED", "HEALTH_THIN", "HEALTH_COVER",
+        "results", "HEALTH_COLLAPSED", "HEALTH_THIN", "TRIES_SHOWN",
         "fit_health", "summary_rows"),
     "sandbox_data": (
         "DEFAULT_WEEKS", "default_range", "_check_range", "_window",
