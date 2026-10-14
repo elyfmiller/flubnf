@@ -512,11 +512,14 @@ FIT_POLL_S = 1.0
 
 #: the week runner (an entry-point FILE in the engine venv, never stdin): runs
 #: its shard sequentially, marks each cell atomically, exits between cells on HALT
+#: (a failed cell, the engine's exit(1) included, is marked the way the forecast
+#: runner records it: pf_engine.RUNNER_COMMON, pasted in as {common})
 _RETRO_RUNNER = '''"""Auto-generated retro PF runner: runs its shard's cells
 sequentially, marks each finished cell, halts between cells on HALT."""
 import json, os, shutil, sys
 sys.path.insert(0, {pybnf_path!r})
 from pathlib import Path
+{common}
 cells = json.load(open({cells_json!r}))
 halt = Path({halt_path!r})
 done = Path({done_dir!r})
@@ -532,13 +535,17 @@ for c in cells:
         from pybnf.pf import ParticleFilter
         ParticleFilter(load_config(str(d / "pf.conf"))).run(None)
         status = "ok"
-    except Exception as e:
-        status = ("FAIL: " + str(e))[:200]
+    except (Exception, SystemExit) as e:
+        status = _failed(c["key"], e, Path(cwd) / d)
     finally:
         os.chdir(cwd)
     tmp = done / (c["key"] + ".tmp")
-    tmp.write_text(json.dumps({{"key": c["key"], "status": status}}))
-    os.replace(tmp, done / (c["key"] + ".json"))
+    try:
+        tmp.write_text(json.dumps({{"key": c["key"], "status": status}}))
+        _replace(tmp, done / (c["key"] + ".json"))
+    except OSError as e:
+        # unmarked, the cell is dispatched again in the next round
+        sys.stderr.write(f"{{c['key']}} not marked: {{e}}\\n")
 '''
 
 
@@ -613,13 +620,14 @@ def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
         sj.write_text(json.dumps(shard), encoding="utf-8")
         runner = wd / f"runner_{i}.py"
         runner.write_text(_RETRO_RUNNER.format(
-            pybnf_path=str(pf_engine.PYBNF_PF), cells_json=str(sj),
+            pybnf_path=str(pf_engine.PYBNF_PF),
+            common=pf_engine.RUNNER_COMMON, cells_json=str(sj),
             halt_path=str(halt), done_dir=str(done)), encoding="utf-8")
         # own session/process group, as the forecast path does: this daemon
         # thread can die without a finally, and the recorded group is what the
         # relaunch sweeps (flubnf/cli.py)
         procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
-                     [str(pf_engine.PY310), str(runner)]),
+                     pf_engine.runner_cmd(runner)),
                      stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL,
                      **pf_engine.runner_popen_kwargs(

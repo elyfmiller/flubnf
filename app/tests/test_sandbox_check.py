@@ -37,7 +37,7 @@ end reactions
 @pytest.fixture
 def box(sandbox_root, monkeypatch, tmp_path):
     """BNG2.pl present (a stub file) and faked: it writes the network
-    unless the model says 'broken'."""
+    unless the model says 'broken', after BioNetGen's banner either way."""
     bng = tmp_path / "BNG2.pl"
     bng.write_text("# stub\n")
     monkeypatch.setattr(sb, "BNG", str(bng))
@@ -47,8 +47,9 @@ def box(sandbox_root, monkeypatch, tmp_path):
         src = (cwd / "cm.bngl").read_text()
         if "broken" not in src:
             (cwd / "cm.net").write_text(NET)
-        return types.SimpleNamespace(stdout="ABORT: Molecule Q not defined\n",
-                                     stderr="", returncode=0)
+        return types.SimpleNamespace(
+            stdout="BioNetGen version 2.9.3\nABORT: Molecule Q not defined\n",
+            stderr="", returncode=0)
     monkeypatch.setattr(cm.subprocess, "run", fake_bng)
     return sandbox_root
 
