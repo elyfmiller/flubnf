@@ -6,6 +6,47 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
+  app/output-modified-runs FOR ELY'S MERGE INTO dev (aa8bae4, de5d75c; from
+  dev b2b379c; authored as Ely; Ely asked this lane to fix it after the
+  round). What changes: shared._latest_results gains include_modified
+  (default off); the Output page's weekly report card passes it, so the
+  newest run shows there even when its settings were modified and the
+  override box was unticked, with a "modified settings" badge whose tip
+  names the settings and says its files carry the -modified name under
+  their date below; the card's buttons link that run's own report
+  (/runs/<id>/report). Unchanged on purpose: Home, the Forecast fans,
+  Models and /output/report (Home's report button and map link) keep the
+  shipped rule, so a modified run never passes for the registered model
+  there; research runs stay hidden everywhere. Tests: one new in
+  app/tests/test_output_by_date.py (card, badge, buttons, the picker, the
+  override), assertions in test_knobs_wiring.py and test_audit_fixes.py.
+  An adversarial review of the first commit (three lenses, seven findings
+  verified) found and the second commit fixed: the earlier-weeks picker
+  dropped the archived shipped report for the modified run's week (a
+  modified run is never archived); /output/report had followed the card,
+  which would have sent Home's button and map link to a run Home does not
+  show; the badge appeared before the run had a report; the tip named the
+  file naming twice. Full suite on the branch: 3,271 passed, 162 skipped,
+  three runs; two of them ended with one session-level error from
+  app/tests/conftest.py's app/state guard (below), none from a test.
+  Merge: Ely merges the branch into dev (this lane's dev commits are
+  docs-only), then dev to main by pull request as usual; FluBNF picks it
+  up on the next open.
+  - For the App lane, two test-isolation leaks seen in the cloud, both
+    outside this diff: (a) app/state/component_versions.json in the
+    working tree was written (21:41 UTC) and rewritten (21:54) during full
+    runs, which trips the session guard at the last test's teardown;
+    conftest redirects versions._VERSIONS_SNAPSHOT to the test state, and
+    a per-test watcher saw no test touch the file, so the write comes from
+    the startup warm thread (app/ui/server._start_background_warm,
+    versions._warm_versions) of an interpreter without the redirect, most
+    likely a subprocess, landing after the last test; intermittent (one
+    run in three was clean; CI on main is green). (b) uv.lock (220 KB)
+    appeared at the repository root at 21:50 UTC during a run and was
+    removed by hand, not committed; nothing in the tests names uv, so the
+    writer is a launcher or install step run under test. Neither is in
+    this branch.
 - 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED:
   cdcepi/FluSight-forecast-hub#3805, OPENED BY ELY FROM `FluBNF_submission`
   (63bb9da2 "NAU_PyBNF forecast 2026-10-17 (EW41)", on cdcepi main
@@ -1028,11 +1069,12 @@ and CDC's rules. The season's facts are in
   watch each Wednesday is the filter-alone forecast (pf_filter, scored
   beside the Oracle) flattening while the Oracle keeps rising. Until then,
   0.25.
-- App (2026-10-14): three things from the round, none urgent. (1) A modified
-  run exported without the override is kept off the Output tab and the
-  archived weekly report is not replaced, so Ely found the run only in the
-  run ledger and read last week's report by mistake; the Output tab should
-  say where such a run went, or show it badged. (2) The weekly report's
+- App (2026-10-14): three things from the round, none urgent. (1) DONE ON A
+  BRANCH, see the Now entry of 22:40 UTC: a modified run exported without
+  the override was kept off the Output tab and the archived weekly report
+  not replaced, so Ely found the run only in the run ledger and read last
+  week's report by mistake; branch app/output-modified-runs shows it on
+  the Output tab's report card, badged. (2) The weekly report's
   categorical map colors a state by its single most likely category, which
   read "decrease" for Illinois at 50% up (in two categories) and 34% down;
   consider the up/down balance or the median's direction, with the split in
