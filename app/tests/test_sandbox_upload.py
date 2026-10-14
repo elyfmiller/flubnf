@@ -236,17 +236,13 @@ def test_a_date_and_count_file_loads_as_one_series(box):
     rows = _rows()
     assert len(rows) == 30 and rows[:2] == [[0, 12], [1, 13]]
     html = client.get(r.headers["location"]).text
-    pane = html.split('id="sbfill-up"')[1].split('id="sbfill-sim"')[0]
-    assert ('<div class="uk-alert uk-alert--ok" id="sb-upload-done" '
-            'role="status">') in pane
-    assert "Loaded as one series: county_cases, 30 weeks." in pane
-    assert "data.exp filled: 30 weeks of county_cases" in html
-    # said once, and never for a file that names its groups
-    assert "Loaded as one series" not in client.get(
-        "/sandbox?model=mine").text
+    assert "data.exp filled: 30 weeks of county_cases (one series), " in html
+    # said once, in the line that says data.exp was filled, and never for
+    # a file that names its groups
+    assert html.count("(one series)") == 1
+    assert "(one series)" not in client.get("/sandbox?model=mine").text
     r = _upload(HUBVERSE)
-    assert "Loaded as one series" not in client.get(
-        r.headers["location"]).text
+    assert "(one series)" not in client.get(r.headers["location"]).text
 
 
 def test_two_columns_of_numbers_are_refused_inline_naming_both(box):

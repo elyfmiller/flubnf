@@ -90,7 +90,6 @@
   <p class="sb-fmt">A CSV with a date column and a count column; a group column if it holds several series. <a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a></p>
   {% if upload_report %}
   <div class="sbreport sb-report">
-   {% if upload_report.done %}{{ tips.alert("ok", upload_report.done, id="sb-upload-done") }}{% endif %}
    {% if upload_report.problems %}{% set _n = upload_report.problems | length %}
    {{ tips.alert("error", _n ~ " problem" ~ ("" if _n == 1 else "s") ~ " in the file.", title="Not loaded:", id="sb-upload-bad") }}
    <ul class="sb-list">{% for p in upload_report.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
