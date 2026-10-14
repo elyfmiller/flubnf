@@ -18,7 +18,11 @@ and Perl already ship with the system.
 defaults that are fine as they are.
 
 * Anaconda, from <https://www.anaconda.com/download> (the lab's standard
-  Python). No settings to change: FluBNF finds it where it installs.
+  Python). No settings to change: FluBNF finds it where it installs. If
+  your Windows user name has a space and the installer will not use the
+  folder it suggests, install it in `C:\anaconda3`, which FluBNF also
+  finds. On a laptop with an ARM processor (Snapdragon), Anaconda is the
+  one to use: FluBNF asks it for the 64-bit (x64) Python the engine needs.
 * Git, from <https://git-scm.com/download/win>.
 
 ---
@@ -76,11 +80,19 @@ folder, if that is where it ended up.)
 
 That is the whole install. The first launch sets everything up, which takes a
 few minutes, then the console opens in a window of its own (or a browser tab,
-where that cannot be shown). On Windows it may ask a
-question or two along the way (fetching the FluSight data, installing
-Strawberry Perl); left alone, each answers itself with yes after twenty
-seconds. **You do not need to run
+where that cannot be shown). **You do not need to run
 `SetupEngine` separately**; opening the app does it.
+
+**Windows: stay at the window for the first launch.** It asks a question
+or two along the way (fetching the FluSight data, installing Strawberry
+Perl, which fits need); left alone, each answers itself with yes after
+twenty seconds. The Perl install then needs a click from you: once the
+window says "Windows will ask permission to install Strawberry Perl",
+Windows does, and you click **Yes**. If nothing appears, click the
+flashing shield on the taskbar. On an account that is not an
+administrator, Windows asks for an administrator's password: ask whoever
+looks after the PC. FluBNF asks about Perl only once; while Perl is
+missing, every open says so in two lines, with the link.
 
 **macOS, keep it in the Dock**: while the console window is open,
 right-click FluBNF in the Dock and choose **Options > Keep in Dock**. That
@@ -114,10 +126,17 @@ Windows:
 unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
 version stamp: feature/particle-filter XXXX
 Installing the particle filter engine. One time, a few minutes.
+looking for a Python for the engine, 64-bit (x64) 3.12 or 3.11:
+downloading about 100 MB of packages and installing them, usually 2 to
+5 minutes; leave this window open
 PF engine ready, bngsim 0.15.1 -- engine ready
 ```
 
-If you see **`engine ready`**, you are done.
+Under "looking for a Python" comes a line for each Python it tried, and
+under "downloading", pip's own lines.
+
+If you see **`engine ready`**, you are done. On Windows, also check that
+no line says Perl is still missing: the Sandbox needs Perl too.
 
 ---
 
@@ -141,8 +160,9 @@ until someone uploads them.
 To fit a model of your own instead, the Sandbox tab starts from an example
 or a template: [SANDBOX.md](SANDBOX.md) walks through it. The Sandbox fits
 with the engine, so it needs the engine file installed, and on Windows
-Strawberry Perl too; when one is missing, a model's page says "This computer
-cannot fit yet" and its "?" says what to do.
+Strawberry Perl too; when something is missing, a model's page says "This
+computer cannot fit yet" and its "?" says what to do, and lists anything
+else missing.
 
 ---
 
@@ -152,7 +172,7 @@ cannot fit yet" and its "?" says what to do.
 FluBNF still works, it just runs one of its two models instead of both, so you
 are not stuck. The Sandbox cannot fit until the engine is installed. Check the
 engine file is in your Downloads folder with its original name, then open
-FluBNF again.
+FluBNF again. On Windows, the window lists every folder it looked in.
 
 If it still says that: on macOS, double-click **`SetupEngine.command`** in the
 FluBNF folder. It does only the engine step, prints a section called **"what
@@ -160,10 +180,10 @@ this machine can see"** naming the actual cause, and installs the engine when
 it can find the file.
 
 On Windows, read the `FluBNF.bat` window: the lines above
-`Engine setup did not finish` name the cause (a dropped network, a Python
-that is too new, a download that did not finish). Every open tries again
-by itself while the engine file is in Downloads, so deal with the cause and
-open FluBNF again; there is nothing to reset.
+`Engine setup did not finish` name the cause and what to do (a network
+that does not reach pypi.org, no Python the engine can use, a download
+that did not finish). Every open tries again by itself while the engine
+file is in Downloads, so do what it says and open FluBNF again.
 [docs/WINDOWS.md](WINDOWS.md#if-the-install-fails) lists the usual causes.
 To see what the machine itself can see, run these two lines in Command
 Prompt (the first is your FluBNF folder):
@@ -184,6 +204,18 @@ the engine, which does need an account. Check the file is in Downloads with
 its original name. Nothing you type at that prompt will work: GitHub stopped
 accepting account passwords in 2021.
 
+**Windows: the window says Perl is still missing.**
+FluBNF asked once whether to install Strawberry Perl, and it did not get
+installed. The window said why at the time: the answer was no, Windows'
+permission prompt was declined or not answered in time, the account is
+not an administrator, or a school or work policy blocks it. Install it
+from <https://strawberryperl.com>, which needs an administrator too, or
+delete `.venv\perl-offer.txt` in the FluBNF folder and open FluBNF again
+to be asked again. The next fit finds it, with no restart. If the window
+names a perl that "is not a Windows Perl" (the one that comes with Git's
+Unix tools), install Strawberry Perl all the same: FluBNF uses it ahead
+of that one.
+
 **Windows: a Defender pop-up mentioning FluBNF.**
 Nothing is wrong and nothing is infected. That is Controlled Folder Access
 noticing a program writing inside a protected folder. Send Ely a note; the
@@ -192,6 +224,33 @@ full explanation is in [docs/WINDOWS.md](WINDOWS.md).
 **Windows: `git` is not recognised.**
 Git is not installed yet, or the Command Prompt was open before you installed
 it. Install it from the link at the top, then close and reopen the window.
+
+---
+
+## If it still does not work (Windows)
+
+When FluBNF closes by itself, or still cannot fit after you did what it
+said, these lines collect what Ely needs, in about five minutes. Close
+FluBNF, open Command Prompt (Start, type `cmd`) and paste them; if
+Windows asks whether to paste several lines, paste anyway. The first is
+your FluBNF folder; change it if yours is somewhere else.
+
+```
+cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
+echo %USERPROFILE% & echo BNGPATH=%BNGPATH%
+whoami /groups | findstr /c:"S-1-5-32-544" >nul && echo admin || echo standard
+where perl & perl -e "print $^O"
+dir /b "%SystemDrive%\Strawberry\perl\bin\perl.exe" "%USERPROFILE%\Downloads\pybnf*.tar.gz"
+type .venv\engine-attempt.txt .venv\perl-offer.txt
+"%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe" -c "import sys, sysconfig; print(sysconfig.get_platform()); sys.path.insert(0, sys.argv[1]); import bngsim, pybnf.pf; print('engine imports')" "%LOCALAPPDATA%\FluBNF\PyBNF-Private"
+FluBNF.bat
+```
+
+The last line opens FluBNF in this window, so if it crashes, the reason
+stays on screen ("The syntax of the command is incorrect.") instead of
+the window closing. Copy everything the window shows, or take screenshots
+of it, and send that to Ely. Lines that say a file or program cannot be
+found are answers too: leave them in.
 
 ---
 

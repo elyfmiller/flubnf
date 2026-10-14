@@ -6,6 +6,52 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-14: the Windows student install (Ely's request; Perl suspected). A
+  review of FluBNF.bat, setup.ps1 and the console's BNG2.pl runs: 45
+  findings, each checked by a skeptic; none was run on a Windows PC. One
+  stopped every open after the first since 2026-09-24 while the engine file
+  was still in Downloads: FluBNF.bat closed before the console (VERSION's LF
+  line ends through `set /p`). test-windows showed it at 6a369bc and passed
+  at d5d51a3, which is on `main` as PR #34; `dev` has the same fix. On `dev`
+  besides: FluBNF.bat checks for a Windows Perl on every open, counts no Git
+  or Cygwin perl, puts an installed Strawberry Perl on PATH, offers winget
+  once (`.venv\perl-offer.txt`) after saying Windows will ask permission,
+  and judges it by `perl.exe` on disk (a declined prompt read "Perl
+  installed"). Only `pybnf-pf-*.tar.gz` counts as the engine file, and a
+  miss lists the folders searched; a replaced engine is probed again, and
+  installed when it does not import; `:sync` installs BioNetGen when BNG2.pl
+  is missing; the engine venv takes x64 Python 3.11 or 3.12 only, finds
+  Anaconda in more places, asks conda for x64, tries pypi.org for 5 s first,
+  and names a cause and a step before every failure. The console finds one
+  Windows Perl (PATH, then the registry's Path, then Strawberry's folders;
+  no restart) and pins BNGPATH to BNG2.pl's own folder, so a stale BNGPATH
+  no longer kills BNG2.pl, in its 8.3 form when Perl cannot read the long
+  one (Łukasz 李); a BNG2.pl failure keeps Perl's first line; doctor checks
+  Perl. Sandbox: pf.conf names no folder, so José, m.contreras and Jane Doe
+  fit (on Linux: both engines' parsers, five real fits), and a folder with a
+  space is no longer refused; the notice lists every missing piece in the
+  order a student fixes them, with an engine import probe and a `BNG2.pl -v`
+  self-test; a BNG2.pl that never starts is the computer's problem, not the
+  model's. Runners record an engine exit or PybnfError with its reason and
+  go on to the next cell. CI: the real BNG2.pl on ubuntu and, under
+  Strawberry Perl, on windows-latest; the engine pins must have win_amd64
+  wheels; a record of bngsim under a non-ASCII folder. Submission, Model:
+  production's pf.conf and engine pin are unchanged, and a run that succeeds
+  on the lab Mac writes what it wrote before; a failed prepare or cell now
+  records its reason, and runners start with SyntaxWarnings off. On Windows
+  only, production's BNG2.pl runs and runners get BNGPATH pinned. Engine:
+  five notes for your public-PyBNF plan under For other lanes, none a
+  decision. This answers two Open items of 2026-10-13 (Perl offered on one
+  open only; CI never runs the real BNG2.pl). Ely decided: a Perl that
+  needs no administrator (conda-forge's Strawberry repack, unpacked under
+  %LOCALAPPDATA%) and bngsim's code generation off for Windows fits come
+  next, as their own pull request; the relative pf.conf for production
+  waits for stage 1; no conda-first engine venv and no deploy key for CI.
+  Still wanted: one hand test on a Standard account, which would be the
+  first Sandbox-tab fit recorded on Windows.
+  Docs: WINDOWS.md, INSTALL-STUDENTS.md (stay at the window for the
+  permission prompt; lines to paste when it still does not work),
+  SANDBOX.md, ENGINE.md, LAUNCHERS.md.
 - 2026-10-13: Sandbox audit (Ely's request: students report hits and
   misses). Seven readers, each finding then checked by two verifiers: 22
   confirmed, 1 refuted, 23 not checked (the run stopped at a usage limit).
@@ -110,6 +156,38 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- Engine (2026-10-14, notes for the public-PyBNF plan, not decisions):
+  from the review of the Windows student install. Suggested wording; the
+  plan's table and steps stay yours to change.
+  - Step 8: add FluBNF.bat. It installs the engine on Windows by itself
+    (its own venv, pip line and import probe) and never calls setup.ps1
+    for that. FluBNF.command needs nothing: it goes through
+    setup_engine.sh.
+  - The engine venv row: "x64 Python 3.12 or 3.13, `--only-binary
+    bngsim`". bngsim 0.15.1 and 0.16.0 have Windows wheels for cp310 to
+    cp313 only, Anaconda 2026.07's own Python is 3.14, and on 3.14 pip
+    falls back to a C++17, CMake and Ninja source build (#985's own CI
+    notes it), so the flag makes a wrong Python fail at once. The row "how
+    lab users get it" says a Python 3.12 venv, this one ">= 3.12".
+    FluBNF.bat's Python gate (today x64 3.11 or 3.12) and its `conda
+    create python=3.12` fallback can carry over with the versions changed.
+  - The preflight row: FluBNF's Perl and BNG2.pl checks stay ahead of the
+    import probe (pf.prepare, and the Sandbox's preflight, which now also
+    runs `perl BNG2.pl -v` once). Public `lwf` still runs `perl BNG2.pl
+    -v` when it loads a conf and generates each network with `perl
+    BNG2.pl`, and without Perl on Windows a student gets PyBNF's "BNG2.pl
+    was not found at the specified location".
+  - If decision 6 pins a commit: `pybnf.__version__` is 1.8.1 on lanl
+    `main` and on #985 alike, so it cannot tell one commit from another
+    (the LiuWestFilter import already tells PyPI's 1.8.1, which has no
+    `lwf`, apart). The commit can be checked in the installed
+    distribution's direct_url.json (`vcs_info.commit_id`, PEP 610).
+  - #985 has no Windows CI: its tests run on Linux only, and Windows is
+    not among its classifiers. FluBNF's windows-latest steps (the real
+    BNG2.pl under Strawberry Perl, the record of bngsim under a non-ASCII
+    folder) and stage 2's install from scratch on a clean Windows account
+    are the public engine's only Windows coverage.
 
 - Submission (2026-10-07, at Ely's request): the weekly report changes
   alone go into `main` before tonight's run (pull request #30, branch
