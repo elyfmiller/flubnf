@@ -54,7 +54,9 @@ def test_missing_perl_is_named_once_before_any_location(monkeypatch, tmp_path):
         (Path(kw["cwd"]) / "m.net").write_text("# net\n")
         return types.SimpleNamespace(stdout="", returncode=0)
     _env(monkeypatch, tmp_path, netgen)
-    monkeypatch.setattr(pf.shutil, "which", lambda name: None)
+    # the preflight asks the resolver (settings.resolve_perl), which on
+    # Windows looks beyond PATH: no perl at all
+    monkeypatch.setattr(pf, "resolve_perl", lambda: None)
     with pytest.raises(RuntimeError) as err:
         pf.prepare(_spec(), tmp_path / "wr")
     msg = str(err.value)
@@ -90,6 +92,6 @@ def test_components_and_the_setup_check_report_perl(monkeypatch):
     v = ui_versions._component_versions()
     assert "perl" in v
     # the setup table names a missing interpreter beside the other paths
-    monkeypatch.setattr(settings.shutil, "which", lambda name: None)
+    monkeypatch.setattr(settings, "resolve_perl", lambda: None)
     missing = settings.check(verbose=False)
     assert any(name == "perl" for name, _, _ in missing)

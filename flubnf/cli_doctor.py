@@ -30,7 +30,8 @@ def doctor(
     """Diagnose the environment and dependencies.
 
     Catches the common showstoppers (broken venv, missing engine or hub
-    clone, missing BNG2.pl, NumPy 2.0 / pybnf incompat patch missing)
+    clone, missing BNG2.pl or the Perl that runs it, NumPy 2.0 / pybnf
+    incompat patch missing)
     before they bite mid-run. Exits 1 when any check fails.
     """
     from . import doctor as docmod

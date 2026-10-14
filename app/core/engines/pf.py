@@ -9,9 +9,11 @@ are sharded across several runners, as the retrospective path does.
 Sections, in file order:
   constants       REPO, TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG, DEFAULTS_BLOCK,
                   VARS_1S, VARS_2S
-  runner          _RUNNER (the shard script), _publish
-  preflight       _short_path_win, conf_safe_path, perl_available,
-                  engine_fix, engine_available, engine_accepts,
+  runner          replace_file, RUNNER_COMMON (what both runners share),
+                  _RUNNER (the shard script), _publish, runner_cmd
+  preflight       conf_safe_path, perl_missing_message, perl_available,
+                  bng_run_kwargs, bng_failure_text, engine_fix,
+                  engine_available, engine_accepts,
                   engine_current, engine_update_hint, engine_stale_message,
                   read_anchor_notes, read_prepare_failures
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
@@ -41,6 +43,10 @@ sys.path.insert(0, str(REPO))
 
 from app.core import horizons as hz
 from flubnf.settings import PY_ENGINE as PY310, PYBNF as PYBNF_PF
+# the one Perl resolver (pf.resolve_perl), kept beside the paths it finds;
+# _short_path_win and perl_path (preflight) live there too: bng_env needs them
+from flubnf.settings import (_short_path_win, bng_env, perl_path,
+                             perl_unusable, resolve_perl)
 TEMPLATE = REPO / "flubnf/templates/SIHRS_pop_min.bngl"   # H stays: verdict 2026-08-17
 DEFAULTS_BLOCK = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
                   "phi1__FREE 22.0\nmult__FREE 0.05\nr__FREE 8.0\n")
@@ -71,14 +77,95 @@ loguniform_var = r__FREE 0.1 40.0
 
 # --- runner -----------------------------------------------------------------
 
+#: How a replace that Windows refuses is tried again: replace_file here,
+#: and the runners' own copy in RUNNER_COMMON.
+REPLACE_TRIES, REPLACE_WAIT_S = 10, 0.05
+
+
+def replace_file(tmp, path, tries: int = REPLACE_TRIES) -> None:
+    """os.replace(tmp, path), tried again on PermissionError. On Windows
+    MoveFileEx will not replace a file another process has open (a page's
+    poll reading it, a virus scanner looking at the new file), and the
+    holder lets go within milliseconds. The last refusal is raised, any
+    other error at once; elsewhere the first try succeeds."""
+    for left in range(tries - 1, -1, -1):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if not left:
+                raise
+            time.sleep(REPLACE_WAIT_S)
+
+
+#: What both runners (_RUNNER below and retro.py's _RETRO_RUNNER) share,
+#: pasted into each as {common}: replace_file's retry, and the status a
+#: failed cell records. Plain text, not a format template: its braces are
+#: single, and it is raw so the runner gets its backslashes as written.
+RUNNER_COMMON = r'''
+import os, sys, time
+
+
+def _replace(tmp, path, tries=10):
+    """os.replace, tried again while Windows refuses it (10 tries 50 ms
+    apart, as the console's pf.replace_file): MoveFileEx will not replace
+    a file another process has open, such as the Forecast page's progress
+    poll reading it or a virus scanner looking at the new one."""
+    for left in range(tries - 1, -1, -1):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if not left:
+                raise
+            time.sleep(0.05)
+
+
+def _netgen_tail(d, chars=450):
+    """(name, its last lines) of the engine's network-generation log in
+    cell folder d, at most `chars` of it, or None when it wrote none."""
+    for log in sorted((d / "out" / "Initialize").glob("*_gen_net.log")):
+        try:
+            lines = log.read_text(errors="replace").strip().splitlines()[-15:]
+        except OSError:
+            continue
+        while len(lines) > 1 and len("\n".join(lines)) > chars:
+            del lines[0]
+        return str(log.relative_to(d)), "\n".join(lines)[-chars:]
+    return None
+
+
+def _failed(key, e, d):
+    """The status a failed cell records, "FAIL: <reason>" cut at 600
+    characters; the whole reason goes to stderr, the Sandbox's Engine
+    messages fold. PybnfError keeps its sentence for people in .message
+    (str() of it is a tuple of both messages). The engine's exit(1) after
+    a failed network generation says only "1", and the path of the log
+    that holds the reason went to stdout, which nobody reads, so the end
+    of that log goes with it."""
+    if isinstance(e, SystemExit):
+        msg = (f"the engine stopped: {e.code}" if isinstance(e.code, str)
+               else f"the engine stopped (exit code {e.code})")
+        tail = _netgen_tail(d)
+        if tail:
+            msg += "; the end of {}:\n{}".format(*tail)
+    else:
+        msg = str(getattr(e, "message", None) or e) or type(e).__name__
+    sys.stderr.write(f"{key} failed: {msg}\n")
+    sys.stderr.flush()
+    return ("FAIL: " + msg)[:600]
+'''
+
 #: One shard's runner (cf. retro.py::_RETRO_RUNNER), a FILE not stdin (rule 4).
 #: It checks the halt flag BETWEEN cells and rewrites its status after EVERY
-#: cell, so a shard that dies still reports what it finished.
+#: cell, so a shard that dies still reports what it finished. A cell that
+#: fails, the engine's exit(1) included, is recorded and the next one runs.
 _RUNNER = '''"""Auto-generated PF runner. Executes one shard's cells sequentially."""
 import json, os, shutil, sys
 import time as _t
 sys.path.insert(0, {pybnf_path!r})
 from pathlib import Path
+{common}
 cells = json.load(open({cells_json!r}))
 out = {out_json!r}
 halt = Path({halt_path!r})
@@ -86,19 +173,33 @@ results = {{}}
 _t0 = _t.time()
 
 
+def _write(path, payload, tries=10):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(payload, fh)
+    _replace(tmp, path, tries)
+
+
 def _publish(done):
     """Status and progress, written beside-then-replaced so a reader never
-    sees half a file."""
-    for path, payload in ((out, results),
-                          (out + ".prog", {{"done": done, "total": len(cells),
-                                            "t0": _t0, "now": _t.time()}})):
-        tmp = path + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(payload, fh)
-        os.replace(tmp, path)
+    sees half a file; True when the status was written. Neither write ends
+    the runner: progress is best effort, and a status missed now is carried
+    by the next one, since results only grows."""
+    try:
+        _write(out, results)
+    except OSError as e:
+        sys.stderr.write(f"status not written after {{done}} cell(s): "
+                         f"{{e}}\\n")
+        return False
+    try:
+        _write(out + ".prog", {{"done": done, "total": len(cells),
+                               "t0": _t0, "now": _t.time()}})
+    except OSError:
+        pass
+    return True
 
 
-_publish(0)
+published = _publish(0)
 for _i, c in enumerate(cells, 1):
     if halt.exists():
         break                     # stopped: this shard dispatches nothing more
@@ -111,39 +212,40 @@ for _i, c in enumerate(cells, 1):
         from pybnf.pf import ParticleFilter
         ParticleFilter(load_config(str(d / "pf.conf"))).run(None)
         results[c["key"]] = "ok"
-    except Exception as e:
-        results[c["key"]] = f"FAIL: {{e}}"[:200]
+    except (Exception, SystemExit) as e:
+        results[c["key"]] = _failed(c["key"], e, Path(cwd) / d)
     finally:
         os.chdir(cwd)
-    _publish(_i)
+    published = _publish(_i)
+if not published:
+    # the status execute() merges must exist: tried for longer (2 s), then
+    # written in place, which a reader's open handle does not block (a
+    # reader that catches it half written skips it, as it skips a missing one)
+    try:
+        _write(out, results, tries=40)
+    except OSError:
+        with open(out, "w") as fh:
+            json.dump(results, fh)
 '''
+
+
+def runner_cmd(runner) -> list:
+    """The command that starts a runner script (retro's too) in the
+    engine's Python. -W ignore::SyntaxWarning: the engine's source holds
+    invalid escape sequences in its regular expressions, which Python 3.12
+    and later report one by one as it compiles them. The first fit after
+    an install compiles config.py and parse.py inside the runner, whose
+    stderr is the Sandbox's Engine messages fold (every fit does where
+    __pycache__ cannot be written). A runner compiles no student input as
+    Python, so the warnings tell nobody anything."""
+    return [str(PY310), "-W", "ignore::SyntaxWarning", str(runner)]
 
 
 # --- preflight: conf-safe paths, Perl, engine checks -------------------------
 # PyBNF's conf grammar stops bng_command/output_dir at whitespace, so a path
 # with a space (e.g. a Windows username) cannot be written at all: use the
-# Windows 8.3 short form, or refuse legibly at prepare().
-
-def _short_path_win(path: str, _api=None):
-    """The 8.3 short form of an EXISTING path via GetShortPathNameW (first
-    call sizes the buffer), or None on any failure. `_api` is injectable so
-    this is testable off Windows."""
-    try:
-        import ctypes
-        if _api is None:
-            _api = ctypes.windll.kernel32.GetShortPathNameW   # type: ignore[attr-defined]
-        n = _api(path, None, 0)
-        if not n:
-            return None
-        buf = ctypes.create_unicode_buffer(int(n))
-        # ret >= n means the path changed between calls: buffer undefined
-        ret = _api(path, buf, int(n))
-        if not (0 < ret < int(n)):
-            return None
-        return buf.value or None
-    except Exception:
-        return None
-
+# Windows 8.3 short form (_short_path_win, from settings), or refuse legibly
+# at prepare().
 
 def conf_safe_path(p, _platform: str | None = None) -> str:
     """`p` as pf.conf may carry it: unchanged when space-free, else the
@@ -164,23 +266,164 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
 
 
 def perl_missing_message(_platform: str | None = None) -> str:
-    """Operator message for a machine with no Perl on PATH: BNG2.pl runs once
-    per cell at prepare, and without Perl Windows only says '[WinError 2]'.
-    `_platform` is injectable for tests and for Home's Setup card."""
-    if (_platform or sys.platform) == 'win32':
-        how = ("install Strawberry Perl (https://strawberryperl.com, or let "
-               "FluBNF.bat offer it during engine install) and start the "
-               "console again so the new PATH is seen")
-    else:
+    """Operator message for a machine with no Perl that can run BNG2.pl:
+    BNG2.pl runs once per cell at prepare, and without Perl Windows only
+    says '[WinError 2]'. On Windows it names a perl that was found and
+    passed over (settings.perl_unusable), and promises no restart, since
+    resolve_perl looks again at every fit. `_platform` is injectable for
+    tests and for Home's Setup card."""
+    if (_platform or sys.platform) != 'win32':
         how = ("perl ships with macOS and every Linux distribution; add its "
                "directory to PATH or reinstall it")
+        return ("Perl was not found on PATH. BioNetGen's BNG2.pl is a Perl "
+                "program that generates each cell's reaction network at run "
+                f"preparation, so no fit can start without it: {how}.")
+    unusable = perl_unusable()
+    if unusable:
+        path, said = unusable
+        what = (f"a Unix-style perl ($^O is {said}, as for the perl in "
+                "Git's Unix tools, MSYS2 and Cygwin)" if said
+                else "a perl that did not start when asked which system it "
+                "runs on")
+        return (f"The perl found here cannot run BNG2.pl. It is {path}, "
+                f"{what}, and BioNetGen's BNG2.pl needs a Windows perl to "
+                "load its own modules, so no fit can start: install "
+                "Strawberry Perl (https://strawberryperl.com); the next fit "
+                "uses it ahead of that one, with no restart.")
     return ("Perl was not found on PATH. BioNetGen's BNG2.pl is a Perl "
             "program that generates each cell's reaction network at run "
-            f"preparation, so no fit can start without it: {how}.")
+            "preparation, so no fit can start without it: install "
+            "Strawberry Perl (https://strawberryperl.com); the next fit "
+            "finds it, with no restart.")
 
 
 def perl_available() -> bool:
-    return shutil.which("perl") is not None
+    """Whether a perl that can run BNG2.pl is here (resolve_perl: on
+    Windows a native one, found off this process's PATH too)."""
+    return resolve_perl() is not None
+
+
+def bng_run_kwargs(env: dict | None = None,
+                   _os_name: str | None = None) -> dict:
+    """subprocess.run keywords for one of FluBNF's own BNG2.pl runs: its
+    output as text, plus `env` when one is given.
+
+    On Windows the text is read in the ANSI code page with any undecodable
+    byte replaced: Perl prints the paths it holds (BNG2.pl's 'full command:
+    <BNG root>\\bin\\run_network.exe' line) in that code page, and under
+    FluBNF.bat's PYTHONUTF8=1 a strict UTF-8 read of a letter such as é
+    fails inside subprocess's reader thread, leaving stdout None. macOS and
+    Linux: text=True, as always. `_os_name` is injectable for tests."""
+    if (_os_name or os.name) == "nt":
+        import locale
+        # the ANSI code page even under UTF-8 mode (Python 3.11+)
+        enc = getattr(locale, "getencoding", lambda: "mbcs")()
+        kw = {"encoding": enc, "errors": "replace"}
+    else:
+        kw = {"text": True}
+    if env is not None:
+        kw["env"] = env
+    return kw
+
+
+#: how much of a failed BNG2.pl run's output a message keeps
+BNG_ERR_HEAD, BNG_ERR_TAIL, BNG_OUT_TAIL = 300, 800, 400
+
+#: BNG2.pl's first line of output, printed once Perl has compiled it and
+#: before it reads a model: a failed run without it never reached the
+#: model, so the computer failed, not the model (bng_started)
+BNG_BANNER = "BioNetGen version"
+
+
+def bng_failure_text(r, sep: str = "\n") -> str:
+    """What a failed BNG2.pl run said, for a person: stderr's first line,
+    then the end of stderr, then the end of stdout, joined by `sep`.
+
+    Perl names the cause on stderr's first line ("Can't locate BNGUtils.pm
+    in @INC (... <a stale BNGPATH>/Perl2 ...)", "Can't open perl script"),
+    BNG2.pl's ABORT and Perl's "BEGIN failed" end it, and stdout says how
+    far BNG2.pl read the model. The head comes first because every later
+    cut keeps the start: a prepare failure keeps 200 characters. When the
+    end of stdout leaves out its banner line, the banner is kept before it:
+    it says which BioNetGen ran, and that it reached the model."""
+    err = str(getattr(r, "stderr", None) or "").strip()
+    out = str(getattr(r, "stdout", None) or "").strip()
+    parts = []
+    if err:
+        first, _, rest = err.partition("\n")
+        parts.append(first.strip()[:BNG_ERR_HEAD])
+        rest = rest.strip()
+        if rest:
+            parts.append(("... " if len(rest) > BNG_ERR_TAIL else "")
+                         + rest[-BNG_ERR_TAIL:])
+    if out:
+        if len(out) > BNG_OUT_TAIL:
+            banner = out.partition("\n")[0].strip()
+            if banner.startswith(BNG_BANNER):
+                parts.append(banner)
+        parts.append(("... " if len(out) > BNG_OUT_TAIL else "")
+                     + out[-BNG_OUT_TAIL:])
+    return sep.join(parts) or "BNG2.pl printed nothing"
+
+
+def bng_started(said) -> bool:
+    """Whether a BNG2.pl run got as far as the model: its banner is in
+    `said` (its stdout, or bng_failure_text of the run). Without it Perl
+    stopped first (a module it cannot find, a script it cannot open, a
+    perl that cannot run), which no edit of the model fixes."""
+    return BNG_BANNER in str(said or "")
+
+
+def bng_missing_message(bng, _platform: str | None = None) -> str:
+    """Operator message for a BNG2.pl that is not where FluBNF looks: every
+    run generates its network with it, so no fit can start. FLUBNF_BNG,
+    when set, decides the path, so it is named instead of the install. The
+    console's own Python installs BioNetGen (sys.executable: its .venv on
+    a student's machine). `_platform` is injectable for tests."""
+    if os.environ.get("FLUBNF_BNG"):
+        how = ("FLUBNF_BNG names that path: point it at BioNetGen's "
+               "BNG2.pl, or remove the variable to use the BioNetGen in "
+               "FluBNF's .venv")
+    elif (_platform or sys.platform) == "win32":
+        how = ("open FluBNF.bat again, which installs BioNetGen when BNG2.pl "
+               "is missing, or run "
+               f'"{sys.executable}" -m pip install bionetgen in Command Prompt')
+    else:
+        how = (f"install it with {sys.executable} -m pip install bionetgen "
+               "(the console's own Python), or point FLUBNF_BNG at a BNG2.pl")
+    return (f"BioNetGen's BNG2.pl is not at {bng}, so no fit can start: "
+            f"every run generates its network with it. To fix it, {how}.")
+
+
+def bng_broken_message(said: str, _platform: str | None = None) -> str:
+    """Operator message for a BNG2.pl that is there but does not start
+    (`perl BNG2.pl -v`, or a run that never printed its banner): `said` is
+    what Perl said, its first line first. Not the model: no edit of it
+    helps. FluBNF already runs it with a Windows perl and BNGPATH pinned to
+    its own folder (settings.resolve_perl, bng_env), so what is left is a
+    damaged BioNetGen, reinstalled by the console's own Python, or the
+    FLUBNF_BNG that names it. The reinstall is --no-deps: BNG2.pl's start
+    needs only bionetgen's own files and Perl, and without it pip
+    reinstalls numpy, pandas and the rest, which on Windows stops at
+    "Access is denied" on a .pyd the running console has loaded.
+    `_platform` is injectable for tests."""
+    first = (str(said or "").strip().partition("\n")[0].strip()
+             [:BNG_ERR_HEAD].rstrip("."))
+    if os.environ.get("FLUBNF_BNG"):
+        how = ("FLUBNF_BNG names this BNG2.pl: point it at a working "
+               "BioNetGen, or remove the variable to use the one in "
+               "FluBNF's .venv")
+    elif (_platform or sys.platform) == "win32":
+        how = ("reinstall BioNetGen: in Command Prompt run "
+               f'"{sys.executable}" -m pip install --force-reinstall '
+               "--no-deps bionetgen, then try again")
+    else:
+        how = (f"reinstall BioNetGen with {sys.executable} -m pip install "
+               "--force-reinstall --no-deps bionetgen, then try again")
+    return ("BioNetGen's BNG2.pl does not start on this computer, so no "
+            "network can be generated and no fit can start. This is the "
+            f"computer, not the model. Perl said: {first or 'nothing'}. "
+            f"To fix it, {how}.")
 
 
 #: The file that provides fit_type = pf (stock PyBNF from PyPI lacks it).
@@ -807,14 +1050,24 @@ def prepare(spec, workroot: Path) -> list:
                                               newline="\n", encoding="utf-8")
             else:
                 write_exp(s, d / f"{sfx}.exp")
+            # Windows only until the conf decision for production: bng_env
+            # (BNGPATH pinned) and the ANSI read. The bare perl is the
+            # native one there: the preflight's resolve_perl put its folder
+            # first on this process's PATH. macOS and Linux run BNG2.pl
+            # exactly as before.
+            nt = os.name == "nt"
             try:
-                r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
-                                   text=True, cwd=str(d), timeout=300)
+                r = subprocess.run(
+                    ["perl", BNG, "m.bngl"], capture_output=True,
+                    cwd=str(d), timeout=300,
+                    **bng_run_kwargs(bng_env(BNG) if nt else None))
             except FileNotFoundError:
                 # perl vanished since preflight, or which() disagreed
                 raise RuntimeError(perl_missing_message())
             if not (d / "m.net").is_file():
-                raise RuntimeError(f"netgen failed for {loc}: {r.stdout[-300:]}")
+                # stderr's head first: the record keeps 200 characters
+                raise RuntimeError(f"netgen failed for {loc}: "
+                                   f"{bng_failure_text(r, sep=' | ')}")
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
             # conf: newline="\n" (line-based reader); every path via
@@ -1007,24 +1260,35 @@ RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
 
 
 def runner_popen_kwargs(base: dict | None = None,
-                        _os_name: str | None = None) -> dict:
+                        _os_name: str | None = None,
+                        env: dict | None = None) -> dict:
     """`base` plus the keywords that put a runner in its own process group
     (session on POSIX): the address a takeover sweep can still signal once
     the supervisor died. The live cancel path uses _signal_tree instead.
-    `_os_name` is injectable for tests."""
+
+    And the runner's environment: `env` when given (the Sandbox passes
+    settings.bng_env()); else, on Windows only, bng_env(), since the engine
+    runs a bare `perl` and BNG2.pl itself (retro's runners come through
+    here too). macOS and Linux runners inherit this process's environment,
+    as before. `_os_name` is injectable for tests."""
     kw = dict(base or {})
     if (_os_name or os.name) == "posix":
         kw["start_new_session"] = True
     else:
         kw["creationflags"] = (int(kw.get("creationflags", 0))
                                | _CREATE_NEW_PROCESS_GROUP)
+        if env is None:
+            from flubnf.settings import BNG
+            env = bng_env(BNG)
+    if env is not None:
+        kw["env"] = env
     return kw
 
 
 def _write_registry(path: Path, reg: dict) -> None:
     tmp = path.parent / (path.name + ".tmp")
     tmp.write_text(json.dumps(reg), encoding="utf-8")
-    os.replace(tmp, path)
+    replace_file(tmp, path)
 
 
 def record_runner_pids(procs, path: Path | None = None) -> None:
@@ -1236,7 +1500,7 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
 
 
 def execute(workroot: Path, timeout: float | None = None,
-            width: int | None = None) -> dict:
+            width: int | None = None, env: dict | None = None) -> dict:
     """Run the prepared cells sharded across low-priority runner
     subprocesses; return (and write to pf_status.json) the merged
     {cell key: "ok" | "FAIL: ..."}.
@@ -1245,7 +1509,8 @@ def execute(workroot: Path, timeout: float | None = None,
     before RunStopped is raised. A cell no shard reported becomes a FAIL
     quoting that shard's stderr; no status at all raises with the stderr.
     `timeout` defaults to budget_seconds(); `width` to shard_width() (env
-    override, else DEFAULT_SHARD_WIDTH).
+    override, else DEFAULT_SHARD_WIDTH); `env` is the runners'
+    environment (runner_popen_kwargs says what None means).
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
@@ -1275,6 +1540,7 @@ def execute(workroot: Path, timeout: float | None = None,
             # utf-8, which Python reads a script in whatever the locale:
             # the paths in it may hold letters outside ASCII
             runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
+                                             common=RUNNER_COMMON,
                                              cells_json=str(sj),
                                              out_json=str(sf),
                                              halt_path=str(stop)),
@@ -1284,9 +1550,9 @@ def execute(workroot: Path, timeout: float | None = None,
             handles.append(fh)
             # own session/process group: see runner_popen_kwargs
             procs.append(subprocess.Popen(
-                low_priority_cmd([str(PY310), str(runner)]),
+                low_priority_cmd(runner_cmd(runner)),
                 stdout=subprocess.DEVNULL, stderr=fh,
-                **runner_popen_kwargs(low_priority_popen_kwargs())))
+                **runner_popen_kwargs(low_priority_popen_kwargs(), env=env)))
             status_files.append(sf)
             err_files.append(ef)
         record_runner_pids(procs)

@@ -171,7 +171,9 @@ def test_engine_settings_are_the_conf_prepare_writes(box):
     conf = (sb.prepare("kinetics_example", particles=300, jitter=0.2,
                        forecast_weeks=3, seed=11)
             / "kinetics_example_r0" / "pf.conf").read_text().splitlines()
-    assert [f"{k} = {v}" for k, v, _ in rows] == conf[3:3 + len(rows)]
+    # the two path lines name no folder (the runner works in the cell)
+    assert conf[:2] == ["model = m.bngl : kin.exp", "output_dir = out"]
+    assert [f"{k} = {v}" for k, v, _ in rows] == conf[2:2 + len(rows)]
     src = {k: s for k, _, s in rows}
     assert src["pf_particles"] == "run settings" and src["pf_bounds"] == "default"
     assert src["pf_cumulative_observable"] == "priors.conf"
@@ -187,7 +189,7 @@ def test_stop_writes_the_flag_and_run_records_stopped(box, monkeypatch):
     assert r.status_code == 303 and (w / "STOP").is_file()
     assert r.headers["location"] == f"/sandbox?run={w.name}&model=kinetics_example"
 
-    def stopped(workroot, width=None, timeout=None):
+    def stopped(workroot, width=None, timeout=None, env=None):
         raise pf_engine.RunStopped()
     monkeypatch.setattr(sb.pf_engine, "execute", stopped)
     assert sb.run(w)["status"] == "stopped"

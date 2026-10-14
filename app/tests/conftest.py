@@ -146,7 +146,11 @@ def _sandbox_released():
 def sandbox_root(tmp_path, monkeypatch):
     """A sandbox rooted in tmp_path with the preflight's Perl present and
     BNG2.pl faked to write m.net (a model containing 'broken' fails with
-    'ABORT: bad rule'). The per-file `box` fixtures layer on this."""
+    'ABORT: bad rule', after BioNetGen's banner as the real one prints
+    it). The preflight's two probes that start a process, the engine
+    import and BNG2.pl's self-test, answer "ready" (app/tests/
+    test_sandbox_machine.py runs them). The per-file `box` fixtures layer
+    on this."""
     import types
     from app.core import sandbox as sb
     from app.ui import state as ui_state
@@ -157,13 +161,16 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "perl_available", lambda: True)
     # the engine's own Python, which the preflight requires to exist
     monkeypatch.setattr(pf, "PY310", Path(sys.executable))
+    monkeypatch.setattr(sb, "engine_import_problem", lambda wait=0: "")
+    monkeypatch.setattr(sb, "bng_problem", lambda: "")
 
     def fake_netgen(cmd, **kw):
         cwd = Path(kw.get("cwd", "."))
         if "broken" not in (cwd / "m.bngl").read_text():
             (cwd / "m.net").write_text("# net\n")
-        return types.SimpleNamespace(stdout="ABORT: bad rule\n", stderr="",
-                                     returncode=0)
+        return types.SimpleNamespace(
+            stdout="BioNetGen version 2.9.3\nABORT: bad rule\n", stderr="",
+            returncode=0)
     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
     ui_state._status["running"] = None
     ui_state._status.pop("flash", None)
