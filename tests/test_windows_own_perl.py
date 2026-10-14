@@ -87,7 +87,7 @@ def test_flubnf_bat_installs_its_own_perl_and_uses_it(pc):
     perl = root / "Library" / "bin" / "perl.exe"
     inc = subprocess.run([str(perl), "-e", 'print qq{$_\\n} for @INC'],
                          capture_output=True, text=True, check=True,
-                         env={**os.environ, "PERL5LIB": ""}).stdout.split()
+                         env={**os.environ, "PERL5LIB": ""}).stdout.splitlines()
     want = str(root).replace("\\", "/").lower()
     assert inc and all(d.replace("\\", "/").lower().startswith(want)
                        for d in inc), inc
