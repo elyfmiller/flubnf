@@ -553,6 +553,100 @@ def test_windows_a_named_engine_file_reaches_the_end_of_the_search(tmp_path, nam
         assert f"ARCHIVE=[] BUNDLE=[{named}]" in r.stdout, _said(r)
 
 
+def test_no_version_stamp_is_read_with_set_p():
+    """VERSION is cut on a Mac with LF line ends. set /p reads up to a CR LF,
+    so it took all three lines, and the line breaks it carried into the IF
+    that compares the stamps ended the launcher on every open with the
+    engine file still in Downloads. for /f splits on LF; `if not defined`
+    keeps the first line, so each variable is cleared before its read."""
+    offenders = [ln for ln in LINES if not ln.startswith("rem ")
+                 and "set /p" in ln.lower() and "version" in ln.lower()]
+    assert not offenders, offenders
+    for name in ("OLDVER", "FLUVER"):
+        read = (f'if exist "%PYBNFDIR%\\VERSION" for /f "usebackq delims=" '
+                f'%%V in ("%PYBNFDIR%\\VERSION") do if not defined {name} '
+                f'set "{name}=%%V"')
+        assert read in LINES, f"{name} is no longer read with for /f"
+        cleared = max(i for i, ln in enumerate(LINES[:LINES.index(read)])
+                      if ln == f'set "{name}="')
+        assert LINES.index(read) - cleared < 15, (
+            f"{name} is not cleared just before it is read")
+    # the archive's stamp: by its member name, which the unpack requires
+    stale = _after_label(BAT, "archivestale", "\r\n:archivereplace\r\n")
+    assert ('(`tar -xzOf "%ARCHIVE%" PyBNF-Private/VERSION 2^>nul`) '
+            'do if not defined NEWVER set "NEWVER=%%V"') in stale
+    assert "findstr" not in stale and "VMEMBER" not in BAT
+
+
+def _lab_archive(path: Path, sha: str) -> None:
+    """An engine file shaped as scripts/cut_engine_archive.sh cuts it: the
+    fork's tree, then VERSION last, three lines with LF ends (printf on a
+    Mac), the subject with a ';' in it."""
+    src = path.parent / f"src-{sha}" / "PyBNF-Private"
+    (src / "pybnf").mkdir(parents=True)
+    (src / "pybnf" / "pf.py").write_text("class ParticleFilter: pass\n")
+    (src / "VERSION").write_bytes(
+        f"feature/particle-filter {sha}\n"
+        "cut 2026-09-24 from https://github.com/elyfmiller/PyBNF-Private.git\n"
+        "subject: pf: a normal prior stays normal; pybnf -r refused\n"
+        .encode("ascii"))
+    with tarfile.open(path, "w:gz") as tar:
+        tar.add(src / "pybnf", arcname="PyBNF-Private/pybnf")
+        tar.add(src / "VERSION", arcname="PyBNF-Private/VERSION")
+
+
+@windows_only
+def test_windows_an_unpacked_engine_survives_the_next_open(tmp_path):
+    """The documented install leaves the engine file in Downloads, so every
+    open after the first finds an archive beside the copy it unpacked and
+    compares their stamps. The installed VERSION has LF line ends: read with
+    set /p it carried all three lines into the IF that compares them, which
+    ended the launcher with a syntax error before the console started, on
+    every open. The same stamp must leave the copy alone; a different, newer
+    one replaces it once."""
+    home, local = tmp_path / "home", tmp_path / "local"
+    downloads = home / "Downloads"
+    downloads.mkdir(parents=True)
+    local.mkdir()
+    slice_dir = tmp_path / "slice"
+    slice_dir.mkdir()
+    unpacked = local / "FluBNF" / "PyBNF-Private"
+    first = downloads / "pybnf-pf-2fdadee0.tar.gz"
+    _lab_archive(first, "2fdadee0")
+
+    def open_once(pybnfdir: Path) -> subprocess.CompletedProcess:
+        return _cmd(slice_dir / "engine-file.bat", _engine_file_block(),
+                    slice_dir, USERPROFILE=str(home), LOCALAPPDATA=str(local),
+                    OneDrive=str(tmp_path / "no-onedrive"),
+                    PYBNFDIR=str(pybnfdir))
+
+    # first open: nothing on disk yet, so the archive is unpacked
+    r = open_once(local / "FluBNF" / "PyBNF-pf")
+    assert "REACHED" in r.stdout, _said(r)
+    assert (unpacked / "pybnf" / "pf.py").is_file(), _said(r)
+
+    # second open: the copy it made, the same file still in Downloads
+    r = open_once(unpacked)
+    assert r.returncode == 0 and "REACHED" in r.stdout, _said(r)
+    for broken in ("syntax of the command", "was unexpected"):
+        assert broken not in r.stdout + r.stderr, _said(r)
+    assert "a different engine archive" not in r.stdout, _said(r)
+    assert not list(unpacked.parent.glob("PyBNF-Private.replaced-*")), _said(r)
+
+    # a newer engine file arrives: replaced once, the old copy kept aside
+    first.unlink()
+    _lab_archive(downloads / "pybnf-pf-3a4b5c6d.tar.gz", "3a4b5c6d")
+    r = open_once(unpacked)
+    assert "REACHED" in r.stdout, _said(r)
+    assert "a different engine archive has arrived" in r.stdout, _said(r)
+    assert len(list(unpacked.parent.glob("PyBNF-Private.replaced-*"))) == 1
+    assert (unpacked / "VERSION").read_bytes().startswith(
+        b"feature/particle-filter 3a4b5c6d\n")
+    r = open_once(unpacked)
+    assert "REACHED" in r.stdout and "a different" not in r.stdout, _said(r)
+    assert len(list(unpacked.parent.glob("PyBNF-Private.replaced-*"))) == 1
+
+
 def _moved_block() -> str:
     start = BAT.index("\r\n:deps\r\n") + 2
     end = BAT.index("\r\n:firstrun\r\n") + 2
