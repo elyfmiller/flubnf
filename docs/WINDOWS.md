@@ -14,7 +14,9 @@ Install once:
    standard and needs no settings changed: `FluBNF.bat` and `setup.ps1`
    probe the folders it installs into, so nothing is added to PATH.
    Python 3.11 or newer from https://www.python.org/downloads/ works too
-   (tick "Add python.exe to PATH" in the installer).
+   (tick "Add python.exe to PATH" in the installer). The particle-filter
+   engine needs 64-bit (x64) Python 3.12 or 3.11; with Anaconda, FluBNF
+   makes one itself.
 2. Git from https://git-scm.com/download/win (defaults are fine).
 
 Then get the code and launch:
@@ -73,8 +75,9 @@ Nothing on the double-click path waits on input without a deadline.
 The console, the Groundhog and the reports need nothing more. Fits by the
 particle filter need the engine: a copy of the lab's private PyBNF fork and
 a Python environment of its own. `FluBNF.bat` installs both, and needs no
-GitHub account and no administrator to do it. Without the engine the
-console runs analogue forecasts only.
+GitHub account and no administrator to do it. Fits also need Perl, and
+Strawberry Perl's installer does ask for an administrator (below).
+Without the engine the console runs analogue forecasts only.
 
 ### Installing it from the lab's file
 
@@ -86,20 +89,58 @@ double-click `FluBNF.bat`. The window shows
 unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
 version stamp: feature/particle-filter XXXX
 Installing the particle filter engine. One time, a few minutes.
+looking for a Python for the engine, 64-bit (x64) 3.12 or 3.11:
+downloading about 100 MB of packages and installing them, usually 2 to
+5 minutes; leave this window open
 PF engine ready, bngsim 0.15.1 -- engine ready
 ```
 
-and the console then starts with both models. On the way it offers to
-install Strawberry Perl through winget, which fits need; left alone, the
-question answers itself with yes after twenty seconds.
+with a line under "looking for a Python" for each Python it tried, and
+pip's own lines under "downloading"; the console then starts with both
+models.
 
 The file is found in the FluBNF folder, the folder above it, and your
 Downloads, Desktop and Documents folders, OneDrive's copies of those three
-included. When there is more than one `pybnf*.tar.gz`, the newest wins and
-the window says so, so delete the old ones when a new one arrives.
+included: each folder itself, not the folders inside it. When none is
+found, the window lists every folder it looked in. Only the lab's name
+counts, `pybnf-pf-*.tar.gz`: PyPI's `pybnf-<version>.tar.gz` and GitHub's
+`PyBNF-<version>.tar.gz` are not the engine and are passed over. When there
+is more than one `pybnf-pf-*.tar.gz`, the newest wins and the window says
+so, so delete the old ones when a new one arrives.
 `FLUBNF_PYBNF_BUNDLE` names a file kept anywhere else. The lab's other
 format, `pybnf.bundle` (a git bundle of the fork, about 140 MB), is
 installed the same way but becomes a git clone, so it needs Git on PATH.
+
+### Perl
+
+Every fit, and the Sandbox's Check, runs BioNetGen's `BNG2.pl`, a Perl
+program, so `FluBNF.bat` checks for Perl on every open, engine or not.
+Only a Windows Perl counts: the perl in Git's Unix tools, MSYS2 or Cygwin
+cannot load BNG2.pl's own modules, and the window names it when that is
+the one on PATH. A Strawberry Perl in `%SystemDrive%\Strawberry` that is
+not on this window's PATH (a Command Prompt opened before the install) is
+put first on it for the console.
+
+Without one, `FluBNF.bat` offers once to install Strawberry Perl with
+winget; left alone, the question answers itself with yes after twenty
+seconds. It is a machine-wide install (about 210 MB), so the window
+first says Windows will ask permission, and Windows does: click Yes, or
+the flashing shield on the taskbar if nothing appears. An account that
+is not an administrator needs an administrator's password; there is no
+route to Perl without one yet. The install is judged by Strawberry's
+`perl.exe` on disk, not by winget's exit code, and a failure says why: the
+prompt declined or not answered in time (or no administrator), a policy
+blocking it, another install running. The outcome goes in
+`.venv\perl-offer.txt`; from then on every open prints a two-line
+reminder with the link until Perl is there, and deleting the file brings
+the offer back. Another install running records nothing, so the next
+open asks again. Without winget, the window names
+https://strawberryperl.com instead.
+
+The console looks for a Windows Perl the same way at every fit: on its
+PATH, then on the Path Windows holds now, then in Strawberry Perl's
+folders. A Perl installed while the console is open is used by the next
+fit, with no restart, and `flubnf doctor` names the one it finds.
 
 ### Where it goes
 
@@ -110,16 +151,25 @@ installed the same way but becomes a git clone, so it needs Git on PATH.
 | its Python environment | `%USERPROFILE%\.venvs\flubnf-engine` (`FLUBNF_ENGINE_VENV` puts it elsewhere) |
 | an unpacked engine a newer file replaced | `%LOCALAPPDATA%\FluBNF\PyBNF-Private.replaced-<date and time>` |
 | the record of a failed install | `.venv\engine-attempt.txt` in the FluBNF folder |
+| the record of the Perl offer | `.venv\perl-offer.txt` in the FluBNF folder |
 
 None of these is in a folder Controlled Folder Access protects.
 
-The environment is built with Python 3.12 or 3.11 and no other: the engine
-pins `numpy<2`, which has no Windows wheels past Python 3.12, and an
-environment made with another Python is rebuilt.
-`FluBNF.bat` tries `py -3.12`, `py -3.11`, then a `python` on PATH that is
-one of those, then Anaconda's. When Anaconda's Python is newer, it asks
-conda for a Python 3.12 in `%USERPROFILE%\.venvs\flubnf-engine-py312` and
-builds the environment from that.
+The environment is built with 64-bit (x64) Python 3.12 or 3.11 and no
+other: the engine pins `numpy<2`, which has no Windows wheels past Python
+3.12, and `numpy<2`, bngsim and libroadrunner have Windows wheels for x64
+only. An environment whose Python is another version or build, no longer
+starts, or has no pip is rebuilt. `FluBNF.bat` tries `py -3.12`,
+`py -3.11`, a `python` on PATH, then Anaconda's own Python, with one line
+each saying what it found. When none fits and Anaconda is there, it asks
+conda for an x64 Python 3.12 in `%USERPROFILE%\.venvs\flubnf-engine-py312` and builds the
+environment from that. Anaconda (or Miniconda, Miniforge) is found
+through `CONDA_EXE`, which Anaconda Prompt sets, then the folder its
+installer records in `%USERPROFILE%\.conda\environments.txt`, then the
+installers' usual folders, `C:\anaconda3` and `C:\anaconda` among them
+(the installer will not use a profile folder whose name has a space).
+Before it installs the packages, `FluBNF.bat` checks for five seconds
+that this network reaches pypi.org, where they come from.
 
 When more than one engine folder exists, the first of these that holds an
 engine (a `.git` folder or `pybnf\pf.py`) is used:
@@ -200,24 +250,47 @@ analogue forecasts only. With the engine file still in your Downloads
 folder, or the engine folder still in place, the next open tries again.
 ```
 
-The lines above it name the cause. The usual ones:
+The lines above it name the cause and one step that works on this PC.
+The usual ones, by what the window says:
 
-- pip could not download the engine's packages (a dropped or filtered
-  network): open `FluBNF.bat` again on a working connection;
-- no Python 3.12 or 3.11 and no Anaconda: install Python 3.12 from
-  https://www.python.org/downloads/ (`FluBNF.bat` finds it through the
-  `py` launcher that comes with it), then open `FluBNF.bat` again;
+- `This network does not reach the Python package index (pypi.org)`: the
+  engine's packages come from there, once. Open `FluBNF.bat` on another
+  network, such as home Wi-Fi or a phone's hotspot.
+- `pip could not install the engine's packages`: pip's error is above it.
+  If the connection dropped, open `FluBNF.bat` again; pip reuses what it
+  already downloaded.
+- `No Python on this PC can run the engine`: none is 64-bit (x64) 3.12
+  or 3.11, and there is no Anaconda to make one. Where the Python install
+  manager is installed, the window says to run `py install 3.12`;
+  otherwise, and on a PC with an ARM processor, it says to install
+  Anaconda. An Anaconda installed in a folder FluBNF does not know is
+  found when `FluBNF.bat` runs from Anaconda Prompt.
+- `conda did not make a Python the engine can use`: conda's own messages
+  are above it. When they name a command to run (`conda tos accept ...`),
+  run it in Anaconda Prompt.
+- `The engine's packages are installed, but the engine does not load`:
+  when `msvcp140.dll` is missing from `Windows\System32`, the window says
+  to install the Visual C++ Redistributable for x64 from
+  https://aka.ms/vc14/vc_redist.x64.exe, which asks for an administrator.
+  Otherwise it prints a `ren` line that sets the engine's Python
+  environment aside, so the next open builds a fresh one.
+- the engine venv `could not be deleted` for a rebuild: a program still
+  has a file in it open. Close every other FluBNF window, or restart
+  Windows.
+- Python could not make the engine venv, or pip would not go into it: a
+  full disk (free about 1 GB) or antivirus holding pip's files.
 - the archive did not unpack: the download did not finish, so fetch the
   file again. Windows 10 before version 1803 has no `tar.exe` at all;
-  update Windows, or ask for `pybnf.bundle`;
+  update Windows, or ask for `pybnf.bundle`.
 - `git is not on PATH`, for a bundle: install Git for Windows, or use the
   `.tar.gz`, which needs no git.
 
-Nothing needs resetting between tries: every open tries again for as long
-as the engine file or folder is there. `.venv\engine-attempt.txt` records
-the failed attempt and stops the retries only when there is nothing left
-to install from (no engine file, no engine folder); the window then says
-`PF engine still not installed` and asks for the file.
+Apart from that `ren` line, nothing needs resetting between tries: every
+open tries again for as long as the engine file or folder is there.
+`.venv\engine-attempt.txt` records the failed attempt and stops the
+retries only when there is nothing left to install from (no engine file,
+no engine folder); the window then says `PF engine still not installed`,
+asks for the file and lists the folders it looked in.
 
 For a fuller account of what this machine can see, run `setup.ps1` in
 Command Prompt:
@@ -694,7 +767,7 @@ Useful switches and variables:
 
 | what | effect |
 |---|---|
-| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without the offer: `FluBNF.bat` asks its own time-bounded Perl question during engine install. Run `setup.ps1` by hand to be asked here too. |
+| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without the offer: `FluBNF.bat` checks for a Windows Perl on every open and asks its own time-bounded question once (see [Perl](#perl)). Run `setup.ps1` by hand to be asked here too. |
 | `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
 | `FLUBNF_PYBNF` | the PyBNF engine folder, used only when an engine is in it (a `.git` folder or `pybnf\pf.py`); otherwise the first engine in the list under [Where it goes](#where-it-goes). A clone made by hand defaults to `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
@@ -726,31 +799,65 @@ standard `setup.sh` instructions inside the Linux environment.
 
 ## Limitations (current)
 
-- **Fit scheduling priority.** On macOS and Linux, fitting subprocesses
-  start under `nice` so the console stays responsive during long runs. The
-  Windows equivalent (`BELOW_NORMAL_PRIORITY_CLASS`, provided by
-  `app/core/proc.py:low_priority_popen_kwargs`) is not yet wired into the
-  engine call sites, so fits run at normal priority and the console may
-  feel sluggish during a run.
+- **Fit scheduling priority.** Fit runners start below normal priority
+  on Windows (`BELOW_NORMAL_PRIORITY_CLASS`, from
+  `app/core/proc.py:low_priority_popen_kwargs`), as they start under `nice`
+  on macOS and Linux, so the console stays responsive during long runs.
+  That holds for forecasts, retrospective weeks and Sandbox fits alike,
+  and what a runner starts, Perl included, inherits it. FluBNF's own
+  BNG2.pl runs (network generation at preparation, the Sandbox's Check)
+  run at normal priority, as they do on macOS and Linux.
 - **PF engine.** The particle-filter engine needs three externals on
   Windows (`FluBNF.bat` installs the first two from the lab's engine file;
   see [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)):
   - the private PyBNF fork (pure Python; clones and installs normally),
   - `bngsim` (official Windows wheels exist on PyPI for Python 3.10-3.13,
     so `pip install bngsim` works without a compiler),
-  - Perl, for the one-time BNG2.pl network-generation step at fit prep.
-    The `bionetgen` pip package ships the Windows BNG binaries
-    (`bng-win`, including `run_network.exe`), but not a Perl interpreter;
-    `FluBNF.bat` offers to install Strawberry Perl via winget when it
-    installs the engine (time-bounded like the data offer, default yes),
-    or install it yourself from https://strawberryperl.com.
-  The PF engine has not yet been validated end to end on native Windows;
-  until it is, machines without the engine automatically run the analogue
-  engine only, exactly as on a Tier-A Mac.
+  - a Windows Perl, for BNG2.pl's network generation at fit prep. The
+    `bionetgen` pip package ships the Windows BNG binaries (`bng-win`,
+    including `run_network.exe`), but not a Perl interpreter. `FluBNF.bat`
+    offers Strawberry Perl through winget once (see [Perl](#perl)); its
+    installer needs an administrator, and there is no route without one
+    yet. Or install it yourself from https://strawberryperl.com.
+
+  The Sandbox's `pf.conf` names no folder, so the engine reads it whatever
+  the profile folder is called. The Forecast tab's still writes full
+  paths, which the engine cannot read under a profile folder with a letter
+  outside ASCII (José) or with `.con`, `.exp` or `.xml` in its name
+  (m.contreras), so Forecast-tab fits fail for such an account. Perl reads
+  its command line in the ANSI code page, so a FluBNF folder whose path
+  holds letters outside it (Łukasz, 李明 on an English Windows) can stop
+  BNG2.pl: move the folder to `C:\Users\Public\FluBNF\flubnf`, which needs
+  no administrator. When such a path has no short (8.3) name, the Sandbox
+  refuses before a run and says the same.
+
+  What has run on native Windows, as recorded (add each new record here,
+  with its date, machine and engine build):
+  - 2026-09-01, in the Windows Sandbox VM: one console full grid of 159
+    PF fits, 4 of which failed and were never diagnosed; 2 submissions
+    were written and the report built (commit d461782). Perl was
+    installed by hand, since that VM has no winget.
+  - Nothing has been recorded since: no fit on the production engine
+    `2fdadee0` (pinned 2026-09-25) or on the current launcher and runner
+    code, no Sandbox-tab fit (the tab came on 2026-09-04), and no run of
+    `FluBNF.bat`'s winget Perl install.
+
+  Machines without the engine run the analogue engine only, exactly as on
+  a Tier-A Mac.
 - **Windows CI is required.** Two jobs in
   `.github/workflows/tests.yml` run on `windows-latest`, and a red Windows
   run fails the checks as a red Ubuntu one does. `test-windows` runs the
-  test suite.
+  test suite, which runs `FluBNF.bat`'s blocks in cmd.exe with stand-in
+  programs (the update, a moved `.venv`, the engine file, `:sync`, the
+  Perl offer with a stand-in winget, the engine venv;
+  `tests/test_windows_launcher.py`). Then, in PowerShell, it runs the real
+  BNG2.pl with the Strawberry Perl FluBNF resolves, on every shipped
+  example and under folders named like awkward profile folders
+  (`Jane Doe`, `O'Brien`, `José`; `app/tests/test_real_bng.py`), and stops
+  first if that Perl is not Strawberry's. On the 3.12 leg a last step records
+  whether bngsim opens a network file in a folder whose name is outside
+  ASCII: a record in the run's summary, never a failure. No job runs a
+  real winget, a real engine venv build or a real fit.
   `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
