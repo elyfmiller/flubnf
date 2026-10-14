@@ -56,14 +56,14 @@ def test_an_engine_refusal_is_the_runs_error_and_offers_no_full_fit(box, monkeyp
     w = sb.prepare("kinetics_example")
     said = "FAIL: \"'Cobs' is not an observable of the model\""
     monkeypatch.setattr(pf_engine, "execute",
-                        lambda root, width=1: {"kinetics_example_r0": said})
+                        lambda root, width=1, env=None: {"kinetics_example_r0": said})
     meta = sb.run(w)
     assert meta["status"] == "failed" and meta["error"] == said
     html = client.get(f"/sandbox?model=kinetics_example&run={w.name}").text
     assert "is not an observable of the model" in _results(html)
     assert "Run the full fit" not in html
     # no outcome at all is said too
-    monkeypatch.setattr(pf_engine, "execute", lambda root, width=1: {})
+    monkeypatch.setattr(pf_engine, "execute", lambda root, width=1, env=None: {})
     assert sb.run(sb.prepare("kinetics_example"))["error"] == (
         "the engine reported no outcome for the run")
 
@@ -148,18 +148,21 @@ def test_a_half_installed_engine_is_refused_before_a_folder_is_made(box, monkeyp
 
 # ---------------------------------------- no half-made run folders
 
-def test_a_folder_with_a_space_is_refused_in_words_with_nothing_made(
+def test_a_folder_with_a_space_runs_since_pf_conf_names_no_folder(
         sandbox_root, tmp_path, monkeypatch):
-    # no space-free short form (Windows usually has one, and uses it)
+    # refused until the conf named the cell (no space-free short form, as
+    # off Windows); now the conf holds bare names and nothing is refused
     monkeypatch.setattr(pf_engine, "_short_path_win", lambda s: None)
     spaced = tmp_path / "box with space" / "sandbox"
     monkeypatch.setattr(sb, "SANDBOX", spaced)
     monkeypatch.setattr(sb, "MODELS", spaced / "models")
     monkeypatch.setattr(sb, "RUNS", spaced / "runs")
     sb.add_example("kinetics_example")
-    with pytest.raises(sb.SandboxError, match="path containing a space"):
-        sb.prepare("kinetics_example")
-    assert not any((spaced / "runs").iterdir())
+    assert sb.machine_problem() == ""
+    w = sb.prepare("kinetics_example")
+    conf = (w / "kinetics_example_r0" / "pf.conf").read_text()
+    assert str(spaced) not in conf and "box with space" not in conf
+    assert conf.startswith("model = m.bngl : ")
 
 
 def test_a_model_that_does_not_generate_leaves_no_run_folder(box):

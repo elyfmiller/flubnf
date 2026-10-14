@@ -28,7 +28,8 @@ from pathlib import Path
 # input is BNG2.pl's own output: the stdlib parser (no external entities) suffices
 from xml.etree import ElementTree as ET
 
-from flubnf.settings import BNG
+from app.core.engines import pf as _pf
+from flubnf.settings import BNG, bng_env
 
 NS = {"g": "http://graphml.graphdrawing.org/xmlns",
       "y": "http://www.yworks.com/xml/graphml"}
@@ -109,7 +110,11 @@ def network_bngl(bngl_text: str) -> str:
 def _run_bng(source: str, workdir: Path, out_name: str, timeout: int,
              what: str) -> str:
     """Write the copy as cm.bngl in workdir, run BNG2.pl on it, and return
-    the text of the file it must have written; its words when it did not."""
+    the text of the file it must have written; its words when it did not.
+    The run is the Sandbox's own (sandbox._netgen): the resolved perl,
+    BNG2.pl's path as Perl can read it, BioNetGen's environment
+    (settings.bng_env; relative to workdir for a folder with an
+    apostrophe, which run_network.exe would misread)."""
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     out = workdir / out_name
@@ -117,11 +122,13 @@ def _run_bng(source: str, workdir: Path, out_name: str, timeout: int,
         (workdir / "cm.bngl").write_text(source, encoding="utf-8", newline="\n")
         if out.exists():
             out.unlink()                   # never a stale file for a new model
-        r = subprocess.run(["perl", BNG, "cm.bngl"], capture_output=True,
-                           text=True, cwd=str(workdir), timeout=timeout)
+        r = subprocess.run(
+            [_pf.resolve_perl() or "perl", _pf.perl_path(BNG) or str(BNG),
+             "cm.bngl"], capture_output=True, cwd=str(workdir),
+            timeout=timeout, **_pf.bng_run_kwargs(bng_env(BNG, cwd=workdir)))
         if not out.is_file():
             raise ContactMapError(f"BNG2.pl could not {what}:\n"
-                                  + (r.stdout or "")[-600:] + (r.stderr or "")[-300:])
+                                  + _pf.bng_failure_text(r))
         return out.read_text(encoding="utf-8", errors="replace")
 
 

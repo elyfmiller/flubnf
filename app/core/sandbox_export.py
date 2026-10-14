@@ -122,17 +122,30 @@ def model_zip(name: str) -> bytes:
 
 
 def _relative_conf(text: str, cell: Path) -> str:
-    """pf.conf with the cell's and BNG2.pl's absolute paths removed."""
+    """pf.conf with the cell's and BNG2.pl's absolute paths removed, and a
+    bng_command line naming BNG2.pl when the run's conf has none (a run
+    finds it under BNGPATH; the copy is meant to run beside one)."""
     out = []
     for line in text.splitlines():
         if line.split("=", 1)[0].strip() == "bng_command":
             line = "bng_command = BNG2.pl"
         else:
-            for p in sorted({pf_engine.conf_safe_path(cell), str(cell)},
+            for p in sorted({_conf_form(cell), str(cell)},
                             key=len, reverse=True):
                 line = line.replace(p + "/", "").replace(p, ".")
         out.append(line)
+    if not any(ln.split("=", 1)[0].strip() == "bng_command" for ln in out):
+        out.insert(0, "bng_command = BNG2.pl")
     return "\n".join(out) + "\n"
+
+
+def _conf_form(cell: Path) -> str:
+    """The cell's path as an older run's pf.conf wrote it (its space-free
+    short form on Windows); the path itself when there is none."""
+    try:
+        return pf_engine.conf_safe_path(cell)
+    except RuntimeError:
+        return str(cell)
 
 
 def run_zip(run_id: str) -> bytes:
