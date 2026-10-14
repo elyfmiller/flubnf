@@ -35,11 +35,13 @@ git -C "$FORK" archive --format=tar --prefix=PyBNF-Private/ \
 tar rf "$TMP/a.tar" -C "$TMP" PyBNF-Private/VERSION
 gzip -9 -c "$TMP/a.tar" > "$STAMP"
 
-# Verify pf.py is inside before handing the file over.
-tar tzf "$STAMP" | grep -q 'PyBNF-Private/pybnf/pf.py' \
+# Verify pf.py is inside before handing the file over. The listing goes to a
+# file first: piped, grep -q stops at the match, tar dies of SIGPIPE writing
+# the rest, and pipefail turned that into a refusal of a good archive.
+{ tar tzf "$STAMP" > "$TMP/list" && grep -q 'PyBNF-Private/pybnf/pf.py' "$TMP/list"; } \
   || { echo "REFUSING: $STAMP has no pybnf/pf.py. Wrong ref?" >&2; rm -f "$STAMP"; exit 1; }
 
-echo "wrote $STAMP  ($(du -h "$STAMP" | cut -f1), $(tar tzf "$STAMP" | wc -l | tr -d ' ') files)"
+echo "wrote $STAMP  ($(du -h "$STAMP" | cut -f1), $(wc -l < "$TMP/list" | tr -d ' ') files)"
 echo "stamp: $(git -C "$FORK" log -1 --format='%h %s' "$REF")"
 echo
 # No placement instructions: setup on both platforms finds the file in
