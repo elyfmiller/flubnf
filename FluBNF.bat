@@ -1132,7 +1132,7 @@ if not exist "%OWNPERL%\" exit /b 1
 rem tar's exit code is not trusted either way: verify is the only gate.
 ".venv\Scripts\python.exe" -I "%CD%\scripts\windows\get_perl.py" fetch <nul | "%SystemRoot%\System32\tar.exe" -xf - -C "%OWNPERL%"
 ".venv\Scripts\python.exe" -I "%CD%\scripts\windows\get_perl.py" verify "%OWNPERL%" <nul
-if errorlevel 1 goto :perlownundo
+if not "%ERRORLEVEL%"=="0" goto :perlownundo
 "%OWNPERL%\Library\bin\perl.exe" -Mstrict -MPOSIX -MIPC::Open3 -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1
 if not "%ERRORLEVEL%"=="0" goto :perlownundo
 >"%OWNPERL%\flubnf-perl.ok" echo %PERLPKG%
