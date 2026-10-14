@@ -39,8 +39,9 @@ def say(msg):
 
 def _download():
     """The package's bytes, read at most SIZE + 1 (a larger file is not
-    the pinned one), with a line on stderr every 8 MB so a slow network
-    does not look like a hang."""
+    the pinned one), with a line on stderr about every 8 MB so a slow
+    network does not look like a hang (decimal MB, as the launcher says
+    "a 31 MB download")."""
     data = bytearray()
     shown = 0
     # proxy from the environment or Windows' Internet settings, and
@@ -53,7 +54,7 @@ def _download():
             data += block
             if len(data) - shown >= 8 * CHUNK:
                 shown = len(data)
-                say(f"downloaded {shown >> 20} of {SIZE >> 20} MB")
+                say(f"downloaded {shown // 10**6} of {SIZE // 10**6} MB")
     return bytes(data)
 
 

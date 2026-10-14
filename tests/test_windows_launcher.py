@@ -446,9 +446,11 @@ def test_flubnfs_own_perl_is_marked_whole_only_after_every_check():
     marker = next(i for i, ln in enumerate(own)
                   if ln.startswith('>"%OWNPERL%\\flubnf-perl.ok" echo'))
     assert fetch < verify < starts < marker
-    assert own[verify + 1] == "if errorlevel 1 goto :perlownundo"
-    # a perl.exe that cannot start exits negative, which errorlevel 1 misses
-    assert own[starts + 1] == 'if not "%ERRORLEVEL%"=="0" goto :perlownundo'
+    # compared with 0: a program that crashes or cannot start exits
+    # negative, which `if errorlevel 1` never sees
+    assert own[verify + 1] == own[starts + 1] == \
+        'if not "%ERRORLEVEL%"=="0" goto :perlownundo'
+    assert not [ln for ln in own if ln.startswith("if errorlevel")], own
     assert own[fetch].endswith(
         '| "%SystemRoot%\\System32\\tar.exe" -xf - -C "%OWNPERL%"'), own[fetch]
     for ln in (own[fetch], own[verify]):
