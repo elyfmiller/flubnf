@@ -436,14 +436,16 @@ rem A newer archive replaces an unpacked copy this launcher made, only if the
 rem stamps differ and it is newer than the installed VERSION (no downgrades).
 rem The old copy is renamed, never deleted, and put back if the unpack fails.
 if /i not "%PYBNFDIR%"=="%LOCALAPPDATA%\FluBNF\PyBNF-Private" goto :archivedone
-set "VMEMBER="
+rem Both stamps are read with for /f, which splits on LF: VERSION is cut on
+rem a Mac with LF ends, set /p read up to a CR LF and so took all three
+rem lines, and their line breaks in the IF below ended the launcher on every
+rem open with the engine file still in Downloads. The archive's stamp by its
+rem member name: the unpack above accepts only PyBNF-Private.
 set "NEWVER="
 set "OLDVER="
-for /f "delims=" %%M in ('tar -tzf "%ARCHIVE%" 2^>nul ^| findstr /e /c:"/VERSION"') do if not defined VMEMBER set "VMEMBER=%%M"
-if not defined VMEMBER goto :archivedone
-for /f "usebackq delims=" %%V in (`tar -xzOf "%ARCHIVE%" "%VMEMBER%" 2^>nul`) do if not defined NEWVER set "NEWVER=%%V"
+for /f "usebackq delims=" %%V in (`tar -xzOf "%ARCHIVE%" PyBNF-Private/VERSION 2^>nul`) do if not defined NEWVER set "NEWVER=%%V"
 if not defined NEWVER goto :archivedone
-if exist "%PYBNFDIR%\VERSION" set /p OLDVER=<"%PYBNFDIR%\VERSION"
+if exist "%PYBNFDIR%\VERSION" for /f "usebackq delims=" %%V in ("%PYBNFDIR%\VERSION") do if not defined OLDVER set "OLDVER=%%V"
 if "%NEWVER%"=="%OLDVER%" goto :archivedone
 if not exist "%PYBNFDIR%\VERSION" goto :archivereplace
 set "VERFILE=%PYBNFDIR%\VERSION"
@@ -463,8 +465,9 @@ goto :archivedone
 :archivereplaced
 echo   the previous copy is at "%LOCALAPPDATA%\FluBNF\%KEPT%"; delete it once you are happy
 :archiveunpacked
-rem Print the stamp ("which build"), as macOS does.
-if exist "%PYBNFDIR%\VERSION" set /p FLUVER=<"%PYBNFDIR%\VERSION"
+rem Print the stamp ("which build"), as macOS does: its first line.
+set "FLUVER="
+if exist "%PYBNFDIR%\VERSION" for /f "usebackq delims=" %%V in ("%PYBNFDIR%\VERSION") do if not defined FLUVER set "FLUVER=%%V"
 if defined FLUVER echo   version stamp: %FLUVER%
 :archivedone
 if defined ENGINEOK goto :startconsole
