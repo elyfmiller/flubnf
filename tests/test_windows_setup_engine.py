@@ -104,7 +104,7 @@ def test_every_printed_engine_command_survives_a_profile_path_with_a_space():
     """Unquoted, C:\\Users\\Jane Doe split in two: git clone stopped at
     "Too many arguments" and venv quietly made two folders."""
     commands = _commands()
-    kinds = {"git clone": 0, "-m venv": 0, "pip.exe": 0, "conda create": 0}
+    kinds = {"git clone": 0, "-m venv": 0, "-m pip": 0, "conda create": 0}
     for line in commands:
         for kind in kinds:
             kinds[kind] += kind in line
@@ -126,8 +126,8 @@ def test_the_printed_commands_are_for_command_prompt_and_say_so():
         assert not line.strip().startswith("&"), line
     assert "In PowerShell, put & and a space in front of a line" in ENGINE
     assert "in Command Prompt" in ENGINE
-    # the fallback interpreter is a full path (Anaconda's can hold a space)
-    assert '{ "`"$PyExe`"" }' in ENGINE
+    # conda's python.exe is a full path (Anaconda's can hold a space)
+    assert '{ "`"$($c.exe)`"" }' in ENGINE
 
 
 def test_the_engine_probe_takes_the_checkout_as_an_argument(tmp_path):
@@ -158,7 +158,7 @@ def test_an_engine_file_is_looked_for_where_the_launcher_looks():
     """The file a student saved is found in the folders FluBNF.bat searches,
     so setup.ps1 never calls it missing while the launcher installs it."""
     body = _body("Find-EngineFile")
-    for shape in ("pybnf*.tar.gz", "pybnf*.bundle"):
+    for shape in ("pybnf-pf-*.tar.gz", "pybnf*.bundle"):
         assert f'"{shape}"' in body, f"setup.ps1 never looks for {shape}"
         assert shape in BAT
     for folder in ("Downloads", "Desktop", "Documents"):
@@ -257,3 +257,110 @@ def test_a_bundle_on_a_machine_without_git_is_not_promised():
     assert "pybnf-pf-XXXX.tar.gz, which needs no git" in body
     assert "on its next open" not in body, (
         "when FluBNF.bat runs setup.ps1 it installs in the same window")
+
+
+def _bat_conda_folders() -> list[str]:
+    """The folders FluBNF.bat's conda search names, in PowerShell's terms."""
+    line = next(ln for ln in BAT.splitlines()
+                if ln.startswith('for %%R in ("%USERPROFILE%\\anaconda3"'))
+    return [re.sub(r"%(\w+)%", r"$env:\1", d)
+            for d in re.findall(r'"([^"]+)"', line.split(" do ")[0])]
+
+
+def test_conda_is_found_where_the_launcher_finds_it():
+    """One root, in FluBNF.bat's order: CONDA_EXE, environments.txt, then the
+    same folders, and a folder counts only with both python.exe and
+    condabin\\conda.bat. setup.ps1 knew the same four folders as the
+    launcher did, and missed the same installs."""
+    body = _body("Find-CondaRoot")
+    body = body[body.index("#>"):]          # the code, not its comment
+    order = [body.index(s) for s in ("$env:CONDA_EXE", ".conda\\environments.txt",
+                                     '"$env:USERPROFILE\\anaconda3"')]
+    assert order == sorted(order), order
+    listed = body[body.index('$roots += @("'):]
+    listed = listed[:listed.index(")")]
+    assert re.findall(r'"([^"]+)"', listed) == _bat_conda_folders()
+    assert '"$root\\python.exe"' in body and '"$root\\condabin\\conda.bat"' in body
+    assert "C:\\ProgramData\\anaconda3\\python.exe" not in PS1
+    python = PS1[PS1.index('Say "python"'):PS1.index("foreach ($c in $Cands)")]
+    assert "$CondaRoot = Find-CondaRoot" in python
+
+
+def test_the_engine_python_is_gated_as_the_launcher_gates_it():
+    """x64 3.11 or 3.12 only, the launcher's candidates in its order. The
+    gate runs here under this Python with the version and platform
+    swapped in."""
+    gate = re.search(r'\$EngineGate = "([^"]+)"', ENGINE).group(1)
+    assert "sysconfig.get_platform() == 'win-amd64'" in gate
+    for version, platform, fits in [((3, 12, 10), "win-amd64", "1"),
+                                    ((3, 11, 9), "win-amd64", "1"),
+                                    ((3, 14, 0), "win-amd64", "0"),
+                                    ((3, 12, 10), "win-arm64", "0"),
+                                    ((3, 12, 10), "win32", "0")]:
+        swap = (f"import sys, sysconfig; sys.version_info = {version!r}; "
+                f"sysconfig.get_platform = lambda: {platform!r}; "
+                "exec(sys.argv.pop(1))")
+        out = subprocess.run([sys.executable, "-c", swap, gate],
+                             capture_output=True, text=True, timeout=60,
+                             check=False)
+        assert out.stdout.strip() == fits, (version, platform, out)
+    cands = ENGINE[ENGINE.index("$bootCands = @("):ENGINE.index("foreach ($c in $bootCands)")]
+    order = [cands.index(s) for s in ('@("-3.12")', '@("-3.11")', 'exe = "python"',
+                                      'Join-Path $CondaRoot "python.exe"')]
+    assert order == sorted(order), order
+    assert "[version]" not in ENGINE, "a version-only check is left"
+
+
+def test_with_no_engine_python_the_remedy_fits_this_pc():
+    """With no x64 3.11/3.12 and no conda, FluBNF.bat stops, so setup.ps1
+    says so in every branch, the engine file's included, and does not
+    promise that FluBNF.bat finishes the install. `py install 3.12` only
+    where the install manager is (the older py.exe runs "install" as a
+    script), never on an ARM PC; Anaconda, or Anaconda Prompt, otherwise."""
+    said = ENGINE.index("if ($EngineNoPython) {")
+    assert said < ENGINE.index('if ($access -eq "local") {')
+    remedy = _block(ENGINE, said)
+    manager = _block(remedy, remedy.index(
+        "if ((-not $arm) -and (Get-Command pymanager"))
+    assert "py install 3.12" in manager
+    assert remedy.count("py install") == 1 and ENGINE.count("py install") == 1
+    assert "anaconda.com/download" in remedy and "Anaconda Prompt" in remedy
+    assert '$env:PROCESSOR_ARCHITECTURE -eq "ARM64"' in remedy
+    assert ENGINE.count("FluBNF.bat installs it once a Python above is in place") == 2
+    by_hand = ENGINE[ENGINE.index('if ($access -ne "file" -and $EngineNoPython) {'):]
+    assert "(first a Python, as above; FluBNF.bat then does the rest)" in by_hand
+
+
+def test_the_printed_commands_build_what_the_launcher_builds():
+    """conda asked for x64 with CONDA_SUBDIR=win-64, as the launcher asks:
+    conda before 23.10 stops at --subdir on create ("unrecognized
+    arguments"), and every release reads the variable. pip through python
+    -m: Scripts\\pip.exe is a launcher antivirus can take, and FluBNF.bat no
+    longer runs it."""
+    commands = _commands()
+    conda = [ln for ln in commands if ln.strip().startswith("conda create")]
+    assert len(conda) == 1 and conda[0].rstrip().endswith("python=3.12"), conda
+    printed = [ln.strip() for ln in _printed(ENGINE)]
+    assert not [ln for ln in printed if "--subdir" in ln], printed
+    subdir = 'set "CONDA_SUBDIR=win-64"'
+    assert subdir in BAT and subdir in printed, printed
+    assert printed.index(subdir) < printed.index(conda[0].strip()), printed
+    # set is Set-Variable in PowerShell: that prompt is given its own form
+    assert any('$env:CONDA_SUBDIR = "win-64"' in ln for ln in printed), printed
+    pips = [ln for ln in commands if " pip " in f" {ln} "]
+    assert len(pips) == 2, pips
+    for ln in pips:
+        assert '\\Scripts\\python.exe" -m pip install ' in ln, ln
+    assert "pip.exe`\" install" not in ENGINE
+
+
+def test_a_venv_that_cannot_import_names_a_missing_visual_cpp_runtime():
+    """Keyed on msvcp140.dll in System32, as FluBNF.bat is, with the same
+    link: libroadrunner imports it, and a python.org Python does not bring
+    it."""
+    branch = ENGINE[ENGINE.index("its imports fail. Python said:"):
+                    ENGINE.index("if ($EngineReady) {")]
+    assert 'Join-Path $env:SystemRoot "System32\\msvcp140.dll"' in branch
+    assert "Test-Path -LiteralPath $vcrt" in branch
+    link = "https://aka.ms/vc14/vc_redist.x64.exe"
+    assert link in branch and link in BAT
