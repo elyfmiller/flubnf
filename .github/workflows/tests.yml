@@ -71,8 +71,10 @@ jobs:
           python - FluBNF.bat > "$RUNNER_TEMP/engine-pins.txt" <<'EOF'
           import shlex, sys
           deps = open(sys.argv[1], encoding="utf-8").read().split("\n:enginedeps", 1)[1]
+          # either form of the pip call ("...\pip" install or -m pip install)
           line = next(ln for ln in deps.splitlines()
-                      if "-m pip install" in ln and "bngsim==" in ln)
+                      if " install " in ln and "bngsim==" in ln
+                      and not ln.lstrip().lower().startswith(("rem ", "echo")))
           print("\n".join(a for a in shlex.split(line.split(" install ", 1)[1])
                           if not a.startswith("-")))
           EOF
