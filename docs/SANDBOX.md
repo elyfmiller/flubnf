@@ -117,7 +117,9 @@ the observed output. The table gives each fitted value's median and 5 to
 In the data.exp tab, **Load data** fills it from the FluSight hub (one
 jurisdiction, settled or as a past date saw it; Update data on the Data
 tab brings the hub first), from a stored dataset, or from a CSV you
-upload (`date,target_group,value[,population]`). Then set
+upload (`date,target_group,value[,population]`). A CSV of a date and one
+count column (`week_ending,cases`, any name for the count) needs no group
+column: it loads as one series named after the file. Then set
 N and the starting state to match the population and the first weeks.
 
 **Simulate data from the model** replaces data.exp with counts drawn from

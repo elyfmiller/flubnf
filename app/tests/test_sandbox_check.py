@@ -104,6 +104,24 @@ def test_each_problem_is_named(box, edit, words):
     assert any(words in p for p in r["problems"]), r["problems"]
 
 
+def test_dated_rows_point_to_the_upload(box):
+    """Rows pasted from a dated file once read 'could not convert string
+    to float': time in data.exp is weeks, and the upload reads dates."""
+    files = _files()
+    files["data.exp"] = "# time T_weekly\n2024-10-05 120\n2024-10-12 98\n"
+    r = sb.check(files)
+    assert ("data.exp holds dates (row '2024-10-05 120'): for dated rows "
+            "use Load data, Upload a CSV") in r["problems"]
+    assert not any("convert" in p for p in r["problems"])
+    # a CSV pasted with its header, and a date written M/D/YYYY, too
+    for text in ("week_ending,cases\n2024-10-05,120\n",
+                 "# time T_weekly\n10/5/2024 120\n"):
+        with pytest.raises(sb.SandboxError, match="^data.exp holds dates"):
+            sb.read_exp(text)
+    # numbers, negative or with exponents, are not dates
+    assert sb.read_exp("# t y\n0 -1\n1 1e-05\n2 3.5\n")["rows"][1] == [1, 1e-05]
+
+
 def test_a_spread_prior_is_not_a_range(box):
     files = _files()
     files["priors.conf"] = files["priors.conf"].replace(
