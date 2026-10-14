@@ -553,6 +553,31 @@ def test_windows_a_named_engine_file_reaches_the_end_of_the_search(tmp_path, nam
         assert f"ARCHIVE=[] BUNDLE=[{named}]" in r.stdout, _said(r)
 
 
+def test_no_version_stamp_is_read_with_set_p():
+    """VERSION is cut on a Mac with LF line ends. set /p reads up to a CR LF,
+    so it took all three lines, and the line breaks it carried into the IF
+    that compares the stamps ended the launcher on every open with the
+    engine file still in Downloads. for /f splits on LF; `if not defined`
+    keeps the first line, so each variable is cleared before its read."""
+    offenders = [ln for ln in LINES if not ln.startswith("rem ")
+                 and "set /p" in ln.lower() and "version" in ln.lower()]
+    assert not offenders, offenders
+    for name in ("OLDVER", "FLUVER"):
+        read = (f'if exist "%PYBNFDIR%\\VERSION" for /f "usebackq delims=" '
+                f'%%V in ("%PYBNFDIR%\\VERSION") do if not defined {name} '
+                f'set "{name}=%%V"')
+        assert read in LINES, f"{name} is no longer read with for /f"
+        cleared = max(i for i, ln in enumerate(LINES[:LINES.index(read)])
+                      if ln == f'set "{name}="')
+        assert LINES.index(read) - cleared < 15, (
+            f"{name} is not cleared just before it is read")
+    # the archive's stamp: by its member name, which the unpack requires
+    stale = _after_label(BAT, "archivestale", "\r\n:archivereplace\r\n")
+    assert ('(`tar -xzOf "%ARCHIVE%" PyBNF-Private/VERSION 2^>nul`) '
+            'do if not defined NEWVER set "NEWVER=%%V"') in stale
+    assert "findstr" not in stale and "VMEMBER" not in BAT
+
+
 def _lab_archive(path: Path, sha: str) -> None:
     """An engine file shaped as scripts/cut_engine_archive.sh cuts it: the
     fork's tree, then VERSION last, three lines with LF ends (printf on a
