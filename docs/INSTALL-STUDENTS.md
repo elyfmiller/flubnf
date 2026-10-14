@@ -83,16 +83,14 @@ few minutes, then the console opens in a window of its own (or a browser tab,
 where that cannot be shown). **You do not need to run
 `SetupEngine` separately**; opening the app does it.
 
-**Windows: stay at the window for the first launch.** It asks a question
-or two along the way (fetching the FluSight data, installing Strawberry
-Perl, which fits need); left alone, each answers itself with yes after
-twenty seconds. The Perl install then needs a click from you: once the
-window says "Windows will ask permission to install Strawberry Perl",
-Windows does, and you click **Yes**. If nothing appears, click the
-flashing shield on the taskbar. On an account that is not an
-administrator, Windows asks for an administrator's password: ask whoever
-looks after the PC. FluBNF asks about Perl only once; while Perl is
-missing, every open says so in two lines, with the link.
+**Windows: the first launch installs Perl too.** Fits need Perl, and
+FluBNF installs its own when the PC has none: the window says "installing
+Perl for FluBNF: a 31 MB download, no administrator needed", then "Perl
+for FluBNF is ready". Nothing to click, and no administrator. Only when
+that fails (no network, say) does FluBNF offer Strawberry Perl instead,
+once: Windows then asks permission and you click **Yes**, or, on an
+account that is not an administrator, an administrator types their
+password. The next open tries FluBNF's own Perl again.
 
 **macOS, keep it in the Dock**: while the console window is open,
 right-click FluBNF in the Dock and choose **Options > Keep in Dock**. That
@@ -160,7 +158,7 @@ until someone uploads them.
 To fit a model of your own instead, the Sandbox tab starts from an example
 or a template: [SANDBOX.md](SANDBOX.md) walks through it. The Sandbox fits
 with the engine, so it needs the engine file installed, and on Windows
-Strawberry Perl too; when something is missing, a model's page says "This
+Perl too, which FluBNF installs; when something is missing, a model's page says "This
 computer cannot fit yet" and its "?" says what to do, and lists anything
 else missing.
 
@@ -205,16 +203,15 @@ its original name. Nothing you type at that prompt will work: GitHub stopped
 accepting account passwords in 2021.
 
 **Windows: the window says Perl is still missing.**
-FluBNF asked once whether to install Strawberry Perl, and it did not get
-installed. The window said why at the time: the answer was no, Windows'
-permission prompt was declined or not answered in time, the account is
-not an administrator, or a school or work policy blocks it. Install it
-from <https://strawberryperl.com>, which needs an administrator too, or
-delete `.venv\perl-offer.txt` in the FluBNF folder and open FluBNF again
-to be asked again. The next fit finds it, with no restart. If the window
-names a perl that "is not a Windows Perl" (the one that comes with Git's
-Unix tools), install Strawberry Perl all the same: FluBNF uses it ahead
-of that one.
+FluBNF could not install its own Perl: the window said why just above
+(no network, or the package did not arrive whole), and every open tries
+again, so opening FluBNF once the network is back is usually enough. A
+school or work PC that blocks programs under AppData stops it too. Then
+install Strawberry Perl from <https://strawberryperl.com>, which needs an
+administrator, or delete `.venv\perl-offer.txt` in the FluBNF folder and
+open FluBNF again to be offered it again. The next fit finds it, with no
+restart. A perl that "is not a Windows Perl" (the one that comes with
+Git's Unix tools) does not count: FluBNF installs its own all the same.
 
 **Windows: a Defender pop-up mentioning FluBNF.**
 Nothing is wrong and nothing is infected. That is Controlled Folder Access
@@ -241,7 +238,7 @@ echo %USERPROFILE% & echo BNGPATH=%BNGPATH%
 whoami /groups | findstr /c:"S-1-5-32-544" >nul && echo admin || echo standard
 where perl & perl -e "print $^O"
 dir /b "%SystemDrive%\Strawberry\perl\bin\perl.exe" "%USERPROFILE%\Downloads\pybnf*.tar.gz"
-type .venv\engine-attempt.txt .venv\perl-offer.txt
+type .venv\engine-attempt.txt .venv\perl-offer.txt "%LOCALAPPDATA%\FluBNF\perl\flubnf-perl.ok"
 "%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe" -c "import sys, sysconfig; print(sysconfig.get_platform()); sys.path.insert(0, sys.argv[1]); import bngsim, pybnf.pf; print('engine imports')" "%LOCALAPPDATA%\FluBNF\PyBNF-Private"
 FluBNF.bat
 ```

@@ -49,6 +49,8 @@ def search(monkeypatch, tmp_path):
     monkeypatch.delenv("SystemDrive", raising=False)
     monkeypatch.delenv("ProgramFiles", raising=False)
     monkeypatch.delenv("BNGPATH", raising=False)
+    # no FluBNF Perl unless a test unpacks one
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     empty = tmp_path / "empty"
     empty.mkdir()
     monkeypatch.setenv("PATH", str(empty))
@@ -132,8 +134,9 @@ def test_only_a_unix_style_perl_is_named_in_the_refusal(search, monkeypatch):
     assert notice == "The perl found here cannot run BNG2.pl."
     assert str(git) in tip and "cygwin" in tip
     assert "install Strawberry Perl" in tip and "no restart" in tip
+    assert "open FluBNF.bat again" in tip and "no administrator" in tip
     # the routes FluBNF no longer offers once the engine is in
-    assert "FluBNF.bat" not in msg and "start the console again" not in msg
+    assert "let FluBNF.bat offer" not in msg and "start the console again" not in msg
     # the setup table says the same, never "ready"
     monkeypatch.setattr(settings, "_windows", lambda: True)
     row = [m for m in settings.check(verbose=False) if m[0] == "perl"]
@@ -204,14 +207,15 @@ def test_perl_available_asks_the_resolver(monkeypatch):
     assert pf.perl_available()
 
 
-def test_the_windows_message_promises_no_restart_and_no_launcher_offer(
+def test_the_windows_message_names_the_no_administrator_route_and_no_restart(
         monkeypatch):
     monkeypatch.setattr(settings, "_PERL", {"os": {}, "unusable": None})
     msg = pf.perl_missing_message("win32")
     notice, tip = sb.split_reason(msg)
     assert notice == "Perl was not found on PATH."
     assert "install Strawberry Perl" in tip and "no restart" in tip
-    assert "FluBNF.bat" not in msg and "start the console again" not in msg
+    assert "open FluBNF.bat again" in tip and "no administrator" in tip
+    assert "let FluBNF.bat offer" not in msg and "start the console again" not in msg
     assert "ships with macOS" in pf.perl_missing_message("darwin")
 
 
@@ -681,3 +685,100 @@ def test_doctor_reports_perl_as_the_preflight_finds_it(monkeypatch):
         doctor._check_perl().detail
     names = [c.name for c in doctor.run_doctor().checks]
     assert names.index("Perl") == names.index("BNG2.pl") + 1
+
+
+# ------------------------------------------------------ FluBNF's own Perl
+
+def _own_perl(local: Path, log: Path, marker: str | None = None) -> Path:
+    """FluBNF's own Perl as FluBNF.bat leaves it under `local`
+    (%LOCALAPPDATA%): perl.exe in Library\\bin and the marker, written
+    last, naming the package."""
+    root = local / "FluBNF" / "perl"
+    exe = _fake_perl(root / "Library" / "bin", "MSWin32", log)
+    (root / "flubnf-perl.ok").write_bytes(
+        ((marker or settings.OWN_PERL_PACKAGE) + "\r\n").encode("ascii"))
+    return exe
+
+
+def test_own_perl_counts_only_when_its_marker_names_the_pinned_package(
+        search, monkeypatch):
+    local = search / "local"
+    assert settings.own_perl_dir() is None              # nothing unpacked
+    exe = _own_perl(local, search / "log")
+    assert settings.own_perl_dir() == str(exe.parent)
+    # a marker from another package (an older pin) is not this Perl
+    (exe.parents[2] / "flubnf-perl.ok").write_text("perl-5.20.3.1-2.tar.bz2\n")
+    assert settings.own_perl_dir() is None
+    # an unpack that stopped before the marker
+    (exe.parents[2] / "flubnf-perl.ok").unlink()
+    assert settings.own_perl_dir() is None
+    # a marker with no perl.exe beside it
+    _own_perl(local, search / "log")
+    exe.unlink()
+    assert settings.own_perl_dir() is None
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert settings.own_perl_dir() is None
+
+
+@posix_only
+def test_the_console_runs_flubnfs_own_perl_first(search, monkeypatch):
+    """FluBNF.bat puts its own Perl first on the window's PATH, and the
+    console looks there first too, so a Strawberry Perl elsewhere on PATH
+    does not make the two run different perls."""
+    log = search / "log"
+    other = _fake_perl(search / "Strawberry" / "perl" / "bin", "MSWin32", log)
+    monkeypatch.setenv("PATH", str(other.parent))
+    own = _own_perl(search / "local", log)
+
+    assert settings.resolve_perl(_platform="win32") == str(own)
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(own.parent)
+
+
+@posix_only
+def test_bng_env_drops_other_perls_settings_for_flubnfs_own(search, tmp_path,
+                                                            monkeypatch):
+    """PERL5LIB, PERLLIB and PERL5OPT would put another Perl's modules or
+    options in front of FluBNF's own; a Strawberry user's are left alone."""
+    own = _own_perl(search / "local", search / "log")
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    for var in ("PERL5LIB", "PERLLIB", "PERL5OPT"):
+        monkeypatch.setenv(var, r"C:\old\lib")
+    env = settings.bng_env(tmp_path / "no-bng" / "BNG2.pl")
+    assert env["PATH"].split(os.pathsep)[0] == str(own.parent)
+    for var in ("PERL5LIB", "PERLLIB", "PERL5OPT"):
+        assert var not in env, var
+        assert os.environ[var] == r"C:\old\lib"       # this process's kept
+
+    (own.parents[2] / "flubnf-perl.ok").unlink()
+    _fake_perl(search / "sp", "MSWin32", search / "log")
+    monkeypatch.setenv("PATH", str(search / "sp"))
+    monkeypatch.setattr(settings, "_PERL", {"os": {}, "unusable": None})
+    env = settings.bng_env(tmp_path / "no-bng" / "BNG2.pl")
+    assert env["PERL5LIB"] == r"C:\old\lib"
+
+
+# ------------------------------------------- bngsim's code generation, Windows
+
+def test_windows_runners_fit_without_bngsims_code_generation(monkeypatch):
+    """On Windows every engine runner (Sandbox, Forecast, Retrospective)
+    gets BNGSIM_NO_CODEGEN=1: no C compiler to install, and no gcc from
+    another program compiling a library that then fails to load. macOS and
+    Linux keep code generation."""
+    given = {"PATH": "x", "BNGPATH": "y"}
+    nt = pf.runner_popen_kwargs({}, _os_name="nt", env=given)
+    assert nt["env"]["BNGSIM_NO_CODEGEN"] == "1"
+    assert nt["env"]["BNGPATH"] == "y"
+    assert "BNGSIM_NO_CODEGEN" not in given             # the caller's untouched
+    # nothing to pin: still set, on this process's environment
+    monkeypatch.setattr(pf, "bng_env", lambda *a, **k: None)
+    monkeypatch.delenv("BNGSIM_NO_CODEGEN", raising=False)
+    nt = pf.runner_popen_kwargs({}, _os_name="nt")
+    assert nt["env"]["BNGSIM_NO_CODEGEN"] == "1"
+    assert nt["env"]["PATH"] == os.environ.get("PATH")
+    # a value someone set on purpose stays
+    nt = pf.runner_popen_kwargs({}, _os_name="nt", env={"BNGSIM_NO_CODEGEN": "yes"})
+    assert nt["env"]["BNGSIM_NO_CODEGEN"] == "yes"
+    # macOS and Linux: as before
+    assert "env" not in pf.runner_popen_kwargs({}, _os_name="posix")
+    kw = pf.runner_popen_kwargs({}, _os_name="posix", env=given)
+    assert kw["env"] is given and "BNGSIM_NO_CODEGEN" not in given

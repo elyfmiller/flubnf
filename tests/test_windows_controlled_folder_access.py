@@ -652,7 +652,7 @@ def test_the_windows_doc_describes_ci_as_the_workflow_runs_it():
     bullet = " ".join(bullet[:bullet.index("\n- **", 1)].split())
     assert "promoted to required" not in bullet
     fuses = re.findall(r"^    timeout-minutes: (\d+)", WORKFLOW, re.MULTILINE)
-    assert len(fuses) == 3, fuses
+    assert len(fuses) == 4, fuses
     for minutes in fuses:
         assert re.search(rf"\b{minutes}\b", bullet), (
             f"the workflow gives a job {minutes} minutes and the doc does "

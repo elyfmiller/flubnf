@@ -287,14 +287,20 @@ def perl_missing_message(_platform: str | None = None) -> str:
                 "runs on")
         return (f"The perl found here cannot run BNG2.pl. It is {path}, "
                 f"{what}, and BioNetGen's BNG2.pl needs a Windows perl to "
-                "load its own modules, so no fit can start: install "
-                "Strawberry Perl (https://strawberryperl.com); the next fit "
-                "uses it ahead of that one, with no restart.")
+                f"load its own modules, so no fit can start: {_WIN_PERL}; "
+                "the next fit uses it ahead of that one, with no restart.")
     return ("Perl was not found on PATH. BioNetGen's BNG2.pl is a Perl "
             "program that generates each cell's reaction network at run "
-            "preparation, so no fit can start without it: install "
-            "Strawberry Perl (https://strawberryperl.com); the next fit "
-            "finds it, with no restart.")
+            "preparation, so no fit can start without it: "
+            f"{_WIN_PERL}; the next fit finds it, with no restart.")
+
+
+#: how a Windows PC gets a Perl that runs BNG2.pl, first the way with no
+#: administrator (FluBNF.bat's own Perl, under %LOCALAPPDATA%)
+_WIN_PERL = ("close FluBNF and open FluBNF.bat again, which installs Perl "
+             "for FluBNF (a 31 MB download, no administrator needed), or "
+             "install Strawberry Perl (https://strawberryperl.com), which "
+             "needs an administrator")
 
 
 def perl_available() -> bool:
@@ -1269,8 +1275,10 @@ def runner_popen_kwargs(base: dict | None = None,
     And the runner's environment: `env` when given (the Sandbox passes
     settings.bng_env()); else, on Windows only, bng_env(), since the engine
     runs a bare `perl` and BNG2.pl itself (retro's runners come through
-    here too). macOS and Linux runners inherit this process's environment,
-    as before. `_os_name` is injectable for tests."""
+    here too). On Windows it also turns bngsim's code generation off
+    (BNGSIM_NO_CODEGEN=1, unless already set). macOS and Linux runners
+    inherit this process's environment, as before. `_os_name` is
+    injectable for tests."""
     kw = dict(base or {})
     if (_os_name or os.name) == "posix":
         kw["start_new_session"] = True
@@ -1280,6 +1288,17 @@ def runner_popen_kwargs(base: dict | None = None,
         if env is None:
             from flubnf.settings import BNG
             env = bng_env(BNG)
+        # bngsim compiles each model's right-hand side with a C compiler it
+        # finds on PATH. A student's PC has none, and bngsim's fallback then
+        # warns "No C compiler found. Install Visual Studio Build Tools",
+        # sending people to install it for nothing; or a gcc nobody tested
+        # (Strawberry's own, MSYS2, Rtools), whose library can compile and
+        # then not load, which fails every fit of that model from bngsim's
+        # cache. The interpreted right-hand side gives the same fit to about
+        # 1e-12, about 15% slower on a full fit. Any non-empty value turns
+        # code generation off, "0" included.
+        env = dict(os.environ if env is None else env)
+        env.setdefault("BNGSIM_NO_CODEGEN", "1")
     if env is not None:
         kw["env"] = env
     return kw
