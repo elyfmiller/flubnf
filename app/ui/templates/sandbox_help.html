@@ -6,7 +6,7 @@
 {% import "_tips.html" as tips %}
 {{ tips.stepper([
     {"label": "Start a model",
-     "tip": "Copy the template for a new pathogen, or the example closest to yours; each one fits as shipped."},
+     "tip": "The SIR example is the place to learn; the template adapts to a new pathogen. Each start fits as shipped."},
     {"label": "Edit its three files",
      "tip": "model.bngl is the model (a parameter whose name ends in __FREE is fitted), data.exp the weekly counts, priors.conf the range each fitted value is drawn from. Your own counts go in through the data.exp tab: Load data takes the FluSight hub, a dataset or a CSV, and Simulate data draws counts from the model itself to test the fit on values you know."},
     {"label": "Check",
@@ -14,7 +14,7 @@
     {"label": "Save and run",
      "tip": "The full fit (10,000 particles) gives the estimates; a quick check (200) only shows that the model runs."},
     {"label": "Read the result",
-     "tip": "The first line says whether the fit is sound, the band should cover the data points, and the table gives each fitted value with its 5 to 95% range."},
+     "tip": "The first line grades the sampling (ESS), the plot sets the model's band against the data, and the table gives each fitted value with its 5 to 95% range."},
     {"label": "Try a change",
      "tip": "Edit and run again, or Duplicate the model under Manage; Compare with sets two runs side by side and lists what changed. Download run holds the numbers as CSV."}],
    label="How the Sandbox works", id=how_id or "sb-how", vertical=how_vertical) }}

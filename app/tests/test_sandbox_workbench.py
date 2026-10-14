@@ -61,7 +61,7 @@ def test_new_model_start_options(box):
         "blank": "skeleton", "mine": "example sir_example", "mine2": "copy of mine"}
     # refusals leave nothing behind
     for data in ({"name": "mine", "start": "skeleton"},
-                 {"name": "bad name", "start": "example:sir_example"},
+                 {"name": "bad/name", "start": "example:sir_example"},
                  {"name": "x1", "start": "example:nope"},
                  {"name": "x2", "start": "copy:nobody"},
                  {"name": "x3", "start": "shipped:everything"}):
