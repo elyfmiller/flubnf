@@ -352,10 +352,11 @@
         e.preventDefault();
         e.returnValue = '';
       });
-      // Ctrl+S (Cmd+S on a Mac) inside the form saves, as the Save button
-      // does, instead of the browser's Save page
+      // Ctrl+S (Cmd+S on a Mac) anywhere on the workbench saves, as the
+      // Save button does, instead of the browser's Save page (the focus
+      // may be on a run link or a menu, not in the editor)
       var saveBtn = form.querySelector('button[formaction$="/save"]');
-      form.addEventListener('keydown', function (e) {
+      document.addEventListener('keydown', function (e) {
         if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
         if ((e.key || '').toLowerCase() !== 's') return;
         e.preventDefault();
@@ -414,9 +415,18 @@
             if (probs.length) {
               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
                                 'a run would fail.') + listHtml(probs);
+            } else if (f.machine) {
+              html += alertHtml('ok', 'No problems found in the model.', '',
+                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
             } else {
               html += alertHtml('ok', 'No problems found:', 'the model can run.',
                                 ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
+            }
+            // apart from the model: what this computer lacks for a run, as
+            // the page's notice says it, the remedy in the "?"
+            if (f.machine) {
+              html += alertHtml('warn', 'This computer cannot fit yet:', f.machine,
+                                f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length) html += alertHtml('warn', 'Worth a look:', warns.length === 1 ? '1 note.'
                                                 : warns.length + ' notes.') + listHtml(warns);

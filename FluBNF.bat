@@ -546,10 +546,18 @@ echo   installing Strawberry Perl via winget (one time, a few minutes)...
 winget install -e --id StrawberryPerl.StrawberryPerl --accept-source-agreements --accept-package-agreements
 if errorlevel 1 (
   echo   winget could not install it; get it from https://strawberryperl.com.
+  goto :perldone
+)
+rem The installer's PATH change reaches windows opened after it, not this
+rem one, and the console starts from this one: give it Strawberry's folders
+rem now, so the Sandbox can fit on this open instead of the next.
+if exist "%SystemDrive%\Strawberry\perl\bin\perl.exe" set "PATH=%SystemDrive%\Strawberry\c\bin;%SystemDrive%\Strawberry\perl\site\bin;%SystemDrive%\Strawberry\perl\bin;%PATH%"
+where perl >nul 2>&1
+if errorlevel 1 (
+  echo   Perl installed. This window cannot see it yet: close FluBNF and open
+  echo   it again before the first fit.
 ) else (
-  echo   Perl installed. NOTE: already-open windows cannot see the new PATH;
-  echo   this launcher keeps going, and the first fit picks it up on the next
-  echo   open if this one cannot find it.
+  echo   Perl installed and ready.
 )
 :perldone
 if exist "%PYBNFDIR%\.git" goto :enginevenv

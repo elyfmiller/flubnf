@@ -394,6 +394,19 @@ def set_population(name: str, population: int) -> None:
     pop = int(population)
     if pop <= 0:
         raise SandboxError(f"population {population!r} is not positive")
+    text = with_population(bngl, pop)
+    if text is None:
+        raise SandboxError(NO_N_LINE)
+    (d / "model.bngl").write_text(text, encoding="utf-8", newline="\n")
+
+
+#: set_population's refusal for a model without an N line
+NO_N_LINE = "the parameters block has no line named N to set"
+
+
+def with_population(bngl: str, pop: int) -> str | None:
+    """The model text with its parameters-block line named N set to pop,
+    or None when it has no such line (fill_data asks before writing)."""
     out, inside, done = [], False, 0
     for line in bngl.splitlines(keepends=True):
         low = " ".join(line.split("#", 1)[0].lower().split())
@@ -409,9 +422,54 @@ def set_population(name: str, population: int) -> None:
                 line = f"{m.group(1)}{m.group(2)}{pop}{m.group(4)}"
                 done = 1
         out.append(line)
-    if not done:
-        raise SandboxError("the parameters block has no line named N to set")
-    (d / "model.bngl").write_text("".join(out), encoding="utf-8", newline="\n")
+    return "".join(out) if done else None
+
+
+def _sentence_end(text: str) -> int | None:
+    """The index of the first sentence's closing mark: a '.', '!' or '?'
+    followed by a space and a capital, never inside parentheses or a
+    quoted path, and never an initial ('C:\\Users\\J. Smith'), so a path
+    in the message is not cut."""
+    depth, quoted = 0, False
+    for i, ch in enumerate(text):
+        if ch == "(" and not quoted:
+            depth += 1
+        elif ch == ")" and not quoted:
+            depth = max(0, depth - 1)
+        elif ch == "'":
+            # a quote mark, not an apostrophe inside a word (engine's)
+            inner = (0 < i < len(text) - 1 and text[i - 1].isalnum()
+                     and text[i + 1].isalnum())
+            if not inner:
+                quoted = not quoted
+        elif ch in ".!?" and not depth and not quoted:
+            if not re.match(r"\s+[A-Z(]", text[i + 1:]):
+                continue
+            if i >= 1 and text[i - 1].isupper() and (
+                    i == 1 or text[i - 2] in " \\/"):
+                continue                           # an initial
+            return i
+    return None
+
+
+def split_reason(text: str, cap: int = 200) -> tuple:
+    """(notice, tip) for a refusal shown as a one-line notice with its
+    "?": the first line, the rest the tip. A first line that is one long
+    paragraph (the engine and Perl refusals, whose remedy comes last)
+    gives its first sentence as the notice and the rest to the tip, so
+    the remedy is never cut off."""
+    first, _, rest = str(text).strip().partition("\n")
+    first, rest = first.strip(), rest.strip()
+    if len(first) > cap:
+        end = _sentence_end(first)
+        if end is not None and end < 2 * cap:
+            head, more = first[:end + 1], first[end + 1:]
+        else:
+            cut = first.rfind(" ", 0, cap)
+            cut = cut if cut > 0 else cap
+            head, more = first[:cut] + " ...", first[cut:]
+        first, rest = head, (more.strip() + ("\n" + rest if rest else ""))
+    return first, rest.strip()[:1500]
 
 
 def simulate_data(name: str, *, seed: int = 1) -> dict:
@@ -573,24 +631,68 @@ def shipped_state(name: str, files: dict | None = None) -> dict:
 # (the console's runner and venv); the routes call both.
 
 
+def engine_python_missing_message(_platform: str | None = None) -> str:
+    """A fork in place whose engine Python is not (a half-finished
+    install): every fit would fail late on the missing interpreter."""
+    from app.core import engine_build as _eb
+    return (f"The engine's Python is missing ({pf_engine.PY310} does not "
+            "exist), so no fit can start. To set it up, "
+            f"{_eb.setup_step(_platform)}, or point FLUBNF_PY_ENGINE at the "
+            "engine's Python.")
+
+
 def preflight() -> None:
     """The production preflight (app/core/engines/pf.py prepare), in the
-    same words: Perl for BNG2.pl, the fork's filter, a current parser."""
+    same words: Perl for BNG2.pl, the fork's filter, a current parser.
+    Then what a sandbox run needs besides, refused before a run folder is
+    made: the engine's own Python, and folders pf.conf can name (no
+    space, or a space-free short form)."""
     if not pf_engine.perl_available():
         raise SandboxError(pf_engine.perl_missing_message())
     if not pf_engine.engine_available():
         raise SandboxError(pf_engine.engine_missing_message())
     if not pf_engine.engine_current():
         raise SandboxError(pf_engine.engine_stale_message())
+    if not Path(pf_engine.PY310).exists():
+        raise SandboxError(engine_python_missing_message())
+    RUNS.mkdir(parents=True, exist_ok=True)    # a short form needs it to exist
+    for p in (RUNS, BNG):
+        try:
+            pf_engine.conf_safe_path(p)
+        except RuntimeError as e:
+            raise SandboxError(str(e)) from None
+
+
+def machine_problem() -> str:
+    """Why this computer cannot fit yet (the preflight's refusal), or ''.
+    The page says it before a run is tried; Check says it beside the
+    model's own problems."""
+    try:
+        preflight()
+    except SandboxError as e:
+        return str(e)
+    except OSError as e:                       # RUNS could not be made
+        return f"The sandbox folder cannot be written: {e}"
+    return ""
+
+
+#: seconds BNG2.pl may take on the model's actions at run preparation
+NETGEN_TIMEOUT_S = 300
 
 
 def _netgen(cell: Path) -> None:
     try:
         r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
-                           text=True, cwd=str(cell), timeout=300)
+                           text=True, cwd=str(cell), timeout=NETGEN_TIMEOUT_S)
     except FileNotFoundError:
         # perl vanished since the preflight, or which() disagreed
         raise SandboxError(pf_engine.perl_missing_message()) from None
+    except subprocess.TimeoutExpired:
+        raise SandboxError(
+            f"BNG2.pl did not finish the model's actions in "
+            f"{NETGEN_TIMEOUT_S} s. A run carries out the whole actions "
+            "block once to generate the network: shorten a long simulate "
+            "action (t_end, n_steps) or remove extra actions.") from None
     if not (cell / "m.net").is_file():
         raise SandboxError("BNG2.pl could not generate the network:\n"
                            + (r.stdout or "")[-600:] + (r.stderr or "")[-300:])
@@ -654,14 +756,21 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
         workroot = (runs_root or RUNS) / f"{stamp}_{name}_{n}"
     cell = workroot / f"{name}_r0"
     cell.mkdir(parents=True)
-    pf_engine.conf_safe_path(workroot)
-    (cell / "m.bngl").write_text(files["model.bngl"].replace("\r\n", "\n"),
-                                 encoding="utf-8", newline="\n")
-    (cell / f"{sfx}.exp").write_text(files["data.exp"].replace("\r\n", "\n"),
+    try:
+        (cell / "m.bngl").write_text(files["model.bngl"].replace("\r\n", "\n"),
                                      encoding="utf-8", newline="\n")
-    _netgen(cell)
-    c = pf_engine.conf_safe_path(cell)
-    conf = [f"bng_command = {pf_engine.conf_safe_path(BNG)}",
+        (cell / f"{sfx}.exp").write_text(files["data.exp"].replace("\r\n", "\n"),
+                                         encoding="utf-8", newline="\n")
+        _netgen(cell)
+        c = pf_engine.conf_safe_path(cell)
+        bng = pf_engine.conf_safe_path(BNG)
+    except Exception as e:
+        # a run that never reached the engine leaves no folder behind
+        shutil.rmtree(workroot, ignore_errors=True)
+        if isinstance(e, RuntimeError) and not isinstance(e, SandboxError):
+            raise SandboxError(str(e)) from None
+        raise
+    conf = [f"bng_command = {bng}",
             f"model = {c}/m.bngl : {c}/{sfx}.exp",
             f"output_dir = {c}/out"]
     conf += [f"{k} = {v}" for k, v, _ in settings]
@@ -730,6 +839,12 @@ def run(workroot: Path, width: int = 1) -> dict:
         key = next(iter(status)) if status else None
         meta["status"] = "ok" if key and status[key] == "ok" else "failed"
         meta["engine_status"] = status
+        if meta["status"] == "failed":
+            # the engine's own words (its runner records "FAIL: <reason>"),
+            # where the page shows a failed run's reason
+            said = [str(v) for v in (status or {}).values() if v != "ok"]
+            meta["error"] = ("\n".join(said)[:2000] if said else
+                             "the engine reported no outcome for the run")
     except pf_engine.RunStopped:
         meta["status"] = "stopped"
     except Exception as e:                       # the reason reaches the page
