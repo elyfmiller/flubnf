@@ -10,11 +10,10 @@ Sandbox works**.
 **What it needs.** A fit uses the particle filter engine, so the engine
 file must be installed (FluBNF says "engine ready" when it opens), and
 Perl must be on the computer, for BioNetGen's BNG2.pl: macOS and Linux
-have it. On Windows it must be a Windows Perl such as Strawberry Perl
-(the perl in Git's Unix tools does not count). FluBNF.bat offers to
-install it once, and Windows then asks for an administrator's
-permission; a Perl installed while the console is open is used by the
-next fit, with no restart. When something is missing, the model's page
+have it. On Windows it must be a Windows Perl (the perl in Git's Unix
+tools does not count), and FluBNF.bat installs its own when there is
+none, with no administrator; a Perl installed while the console is open
+is used by the next fit, with no restart. When something is missing, the model's page
 says **This computer cannot fit yet** above the editor: the notice names
 the first thing to fix (the engine, then its Python, then Perl, then
 BNG2.pl), and its "?" says what to do and lists anything else missing. Without the engine you can still write, Check and simulate
