@@ -23,7 +23,15 @@ from .report import (
     Report,
     _examples,
 )
-from .store import _checked_kind, _csv_text, _refuse, _store, _tmp_dir, ingest
+from .store import (
+    _checked_kind,
+    _csv_text,
+    _refuse,
+    _series_of,
+    _store,
+    _tmp_dir,
+    ingest,
+)
 
 if TYPE_CHECKING:
     from .dataset import Dataset
@@ -125,12 +133,15 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
     agree), one file per as_of Saturday, no week after its file's as_of,
     the same groups and the same population column in every file, and the
     limits over all of them. The report's summary is the whole dataset's,
-    with ``snapshot_files`` listing each file and its as_of."""
+    with ``snapshot_files`` listing each file and its as_of. Files with no
+    group column are one series, named after the upload (the one file, or
+    default_snapshot_name), the same in every file."""
     files = list(files)
     if len(files) == 1:
         name, src = files[0]
         return _validate_kept(name, src, _tee_dir, kind=kind, target=target,
-                              limits=limits, columns=columns)
+                              limits=limits, columns=columns,
+                              series=_series_of(_base(name)))
     rep = Report()
     if not files:
         rep.add("empty", "No files were given.")
@@ -140,9 +151,10 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
                 f"holds at most {_pkg.MAX_SNAPSHOT_FILES} snapshot files.")
         return rep
     parts = []
+    series = default_snapshot_name([f for f, _ in files])
     for fname, src in files:
         r = _validate_kept(fname, src, _tee_dir, kind=kind, target=target,
-                           limits=limits, columns=columns)
+                           limits=limits, columns=columns, series=series)
         parts.append((_base(fname), r))
     first = parts[0][1]
     rep.sha256 = hashlib.sha256("\n".join(sorted(
@@ -168,6 +180,7 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
         src_h = asks or first
         rep.headers, rep.guess = src_h.headers, src_h.guess
         rep.ambiguous, rep.suggest = src_h.ambiguous, src_h.suggest
+        rep.series = src_h.series
         if all(set(r.codes) <= set(_SHARED_CHOICE) for _, r in bad):
             bad = bad[:1]                 # one choice serves every file
         for f, r in bad[:MAX_EXAMPLES]:
@@ -181,6 +194,7 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
                     "once the ones above are fixed.")
         return rep
     rep.headers, rep.guess = first.headers, first.guess
+    rep.series = first.series
 
     # each file's as_of: its as_of column, else the date in its name
     undated, two, clash, dated = [], [], [], []

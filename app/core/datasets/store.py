@@ -112,6 +112,13 @@ def default_name(filename: str, targets=(), target: Optional[str] = None
     return stem[:80]
 
 
+def _series_of(filename, name=None) -> str:
+    """What a file with no group column names its one series after: the
+    file's name without its extension (never the target default_name may
+    add), else the dataset's name; validate makes it a group name."""
+    return Path(str(filename or "")).stem or str(name or "")
+
+
 def _checked_kind(kind):
     """``kind`` as declared, None when it was not; DatasetError (with a
     kind_invalid problem) for a kind that is not one of KINDS."""
@@ -183,7 +190,10 @@ def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
     of a file that holds several). ``kind`` None or '' takes the kind the
     values show (whole numbers are counts); ``columns`` is validate's
     column mapping; ``week_start_sunday`` is accepted and ignored (see
-    validate). Raises DatasetError (with ``.problems``) and writes nothing
+    validate). A file with no group column is one series, named after the
+    file (its stem; ``name`` when there is no filename), whatever the
+    dataset is called, so a check and the store name it alike. Raises
+    DatasetError (with ``.problems``) and writes nothing
     when any problem is found. Re-ingesting identical bytes with identical
     options under the same name returns the existing dataset (idempotent).
     The folder is built beside the store and renamed into place, so a
@@ -193,7 +203,8 @@ def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
     try:
         with open(tmp / SOURCE_FILE, "wb") as tee:
             rep = validate(source, kind=kind, target=target, limits=limits,
-                           columns=columns, _tee=tee)
+                           columns=columns, series=_series_of(filename, name),
+                           _tee=tee)
         _refuse(rep)
         name = name or default_name(filename, rep.targets,
                                     rep.summary.get("target"))
