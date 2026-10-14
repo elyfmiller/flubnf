@@ -46,8 +46,14 @@ def box(sandbox_root, monkeypatch, tmp_path):
     bng.write_text("# stub\n")
     monkeypatch.setattr(sb, "BNG", str(bng))
 
+    real_run = cm.subprocess.run
+
     def fake_bng(cmd, **kw):
-        cwd = Path(kw.get("cwd", "."))
+        # BNG2.pl only: git (the page's version stamp) runs as it is, and
+        # never leaves an m.net in the checkout
+        if cmd and Path(str(cmd[0])).name.startswith("git"):
+            return real_run(cmd, **kw)
+        cwd = Path(kw.get("cwd") or tmp_path)
         if not (cwd / "cm.bngl").is_file():          # a run's own netgen
             (cwd / "m.net").write_text("# net\n")
             return types.SimpleNamespace(stdout="", stderr="", returncode=0)
