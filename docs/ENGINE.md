@@ -20,17 +20,26 @@ clone. Both are found in any of these places, on both platforms:
 * `~/Downloads`, `~/Desktop` or `~/Documents` (on Windows, the same three
   folders under your user profile, and their OneDrive copies).
 
+Each folder itself is searched, not the folders inside it. On Windows only
+the lab's name counts, `pybnf-pf-*.tar.gz`: PyPI's `pybnf-<version>.tar.gz`
+and GitHub's `PyBNF-<version>.tar.gz` are not the engine and are passed
+over.
+
 Then double click `FluBNF.command` (macOS) or `FluBNF.bat` (Windows), or run
 `./setup_engine.sh` (macOS and Linux). The launcher says which file it used.
-When it finds none, `setup_engine.sh` names exactly which folders it looked
-in, and on Windows so does `setup.ps1`. `FLUBNF_PYBNF_BUNDLE` points at one
-kept somewhere else. Because it is one file on a shared drive or a USB
-stick, this is also the only route that works with no administrator rights
-or no network at all.
+When it finds none, it lists the folders it looked in: `setup_engine.sh` on
+macOS and Linux, and on Windows both `FluBNF.bat` and `setup.ps1`.
+`FLUBNF_PYBNF_BUNDLE` points at one kept somewhere else. Because it is one
+file on a shared drive or a USB stick, this route needs no GitHub account
+and no administrator. It still needs the network once, for the engine's
+Python packages (on Windows about 100 MB from pypi.org), and fits need
+Perl, which on Windows is Strawberry Perl, a machine-wide install that asks
+for an administrator.
 
 On Windows the archive is unpacked into
 `%LOCALAPPDATA%\FluBNF\PyBNF-Private`, and the engine's Python environment
-is built at `%USERPROFILE%\.venvs\flubnf-engine` with Python 3.12 or 3.11.
+is built at `%USERPROFILE%\.venvs\flubnf-engine` with 64-bit (x64) Python
+3.12 or 3.11.
 [WINDOWS.md](WINDOWS.md#the-particle-filter-engine-on-windows) has the
 whole Windows story: where things go, updates, and what to do when the
 install fails.
@@ -72,11 +81,12 @@ having no access. The invitee accepts from their email or from
    `_macOS_universal.pkg`) and double click it, then run `gh auth login`.
    Then re-run `./setup_engine.sh`.
 
-   On Windows, `winget install --id GitHub.cli`, then `gh auth login` in a
-   new Command Prompt window. `FluBNF.bat` never clones from GitHub, so
-   clone the fork yourself: `setup.ps1` prints the `git clone` line for
-   this machine (into `%LOCALAPPDATA%\FluBNF\PyBNF-pf`). Then open
-   `FluBNF.bat` again, which installs the engine from that clone.
+   On Windows, `winget install --id GitHub.cli -e --source winget`, then
+   `gh auth login` in a new Command Prompt window. `FluBNF.bat` never
+   clones from GitHub, so clone the fork yourself: `setup.ps1` prints the
+   `git clone` line for this machine (into
+   `%LOCALAPPDATA%\FluBNF\PyBNF-pf`). Then open `FluBNF.bat` again, which
+   installs the engine from that clone.
 3. An SSH key already registered with GitHub:
 
        FLUBNF_PYBNF_REMOTE=git@github.com:<owner>/<fork>.git ./setup_engine.sh

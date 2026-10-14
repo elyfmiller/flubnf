@@ -9,11 +9,18 @@ Sandbox works**.
 
 **What it needs.** A fit uses the particle filter engine, so the engine
 file must be installed (FluBNF says "engine ready" when it opens), and
-Perl must be on the computer: macOS and Linux have it, and on Windows
-FluBNF.bat offers Strawberry Perl. When either is missing, the model's
-page says **This computer cannot fit yet** above the editor, and its "?"
-says what to do. You can still write, Check and simulate a model without
-them.
+Perl must be on the computer, for BioNetGen's BNG2.pl: macOS and Linux
+have it. On Windows it must be a Windows Perl such as Strawberry Perl
+(the perl in Git's Unix tools does not count). FluBNF.bat offers to
+install it once, and Windows then asks for an administrator's
+permission; a Perl installed while the console is open is used by the
+next fit, with no restart. When something is missing, the model's page
+says **This computer cannot fit yet** above the editor: the notice names
+the first thing to fix (the engine, then its Python, then Perl, then
+BNG2.pl), and its "?" says what to do and lists anything else missing. Without the engine you can still write, Check and simulate
+a model. Without Perl, Check still reads the three files, but cannot
+build the network or set the model's counts beside the data, and
+Simulate data cannot run.
 
 ## 1. Start from something that fits
 
@@ -72,7 +79,8 @@ find plausible: particles drawn where the data rule them out are wasted.
 stop a run (a `__FREE` parameter without a prior line counts, as does a
 prior line without `=`); "Worth a look" lists what may run but not as
 meant. When this computer cannot fit yet, Check says so on its own line,
-apart from the model. It also
+apart from the model; so does a BNG2.pl that stops before it reads the
+model, which no edit of the model fixes. It also
 runs the model once at its written values and sets its weekly counts
 beside the data: if the two differ tenfold, N, the starting state or the
 reporting scale is off, and the fit will start far from the data. No
