@@ -171,7 +171,7 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
     w = sb.prepare("kinetics_example", particles=100)
     cell = w / "kinetics_example_r0"
 
-    def fake_execute(workroot, width=None, timeout=None):
+    def fake_execute(workroot, width=None, timeout=None, env=None):
         runs = cell / "out" / "Results" / "PF" / "Runs"
         runs.mkdir(parents=True)
         (runs / "params_0.txt").write_text(
@@ -195,7 +195,7 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
     assert r["traj"]["q50"][:3] == [1.0, 2.0, 3.0]
     assert sb.list_runs()[0]["run_id"] == w.name
 
-    def failing_execute(workroot, width=None, timeout=None):
+    def failing_execute(workroot, width=None, timeout=None, env=None):
         raise RuntimeError("engine venv missing")
     monkeypatch.setattr(sb.pf_engine, "execute", failing_execute)
     w2 = sb.prepare("kinetics_example")
@@ -214,7 +214,7 @@ def test_the_run_api_answers_for_a_data_row_written_nan(box, monkeypatch):
     w = sb.prepare("kinetics_example", particles=100)
     cell = w / "kinetics_example_r0"
 
-    def fake_execute(workroot, width=None, timeout=None):
+    def fake_execute(workroot, width=None, timeout=None, env=None):
         runs = cell / "out" / "Results" / "PF" / "Runs"
         runs.mkdir(parents=True)
         tr = np.tile(np.arange(1.0, 17.0), (100, 1))

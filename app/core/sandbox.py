@@ -47,9 +47,12 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 
@@ -57,7 +60,7 @@ from pathlib import Path
 # modules use it; app/tests/golden/ui_routes.json snapshots the imports)
 import numpy as np  # noqa: F401
 
-from flubnf.settings import BNG
+from flubnf.settings import BNG, bng_env
 from app.core.engines.pf import REPO
 from app.core.engines import pf as pf_engine
 
@@ -631,49 +634,294 @@ def shipped_state(name: str, files: dict | None = None) -> dict:
 # (the console's runner and venv); the routes call both.
 
 
-def engine_python_missing_message(_platform: str | None = None) -> str:
-    """A fork in place whose engine Python is not (a half-finished
-    install): every fit would fail late on the missing interpreter."""
+def _engine_retry(_platform: str | None = None) -> str:
+    """How to finish an engine install that stopped part way, as a
+    sentence: the launcher retries on every open, and on Windows the
+    FluBNF.bat window says why it stopped."""
     from app.core import engine_build as _eb
+    plat = _platform or sys.platform
+    if plat == "win32":
+        return ("To finish it, open FluBNF.bat again: it tries again, and "
+                "if it stops again, the lines above 'Engine setup did not "
+                "finish' in that window give the cause.")
+    return (f"To finish it, {_eb.setup_step(plat)}: it tries again, and "
+            "says what failed if it stops again.")
+
+
+def engine_python_missing_message(_platform: str | None = None) -> str:
+    """The engine is unpacked and its Python is not where FluBNF looks:
+    every fit would fail late on the missing interpreter. The install
+    stopped before the Python environment was made, so the remedy is the
+    retry, not the engine file again. Asked only with the engine unpacked
+    (machine_problems): without it, installing the engine file is what
+    makes this Python, and the engine's own message says how."""
     return (f"The engine's Python is missing ({pf_engine.PY310} does not "
-            "exist), so no fit can start. To set it up, "
-            f"{_eb.setup_step(_platform)}, or point FLUBNF_PY_ENGINE at the "
-            "engine's Python.")
+            "exist), so no fit can start. The engine is unpacked at "
+            f"{pf_engine.PYBNF_PF}, but its Python environment was never "
+            f"made. {_engine_retry(_platform)} Or point FLUBNF_PY_ENGINE at "
+            "the engine's Python.")
+
+
+def engine_import_message(said: str, _platform: str | None = None,
+                          _vc_missing: bool | None = None) -> str:
+    """The engine's Python is there and cannot load the engine (doctor's
+    ENGINE_PROBE exited nonzero): a pip install that stopped part way, or
+    on Windows a missing Visual C++ runtime, which bngsim and
+    libroadrunner load (msvcp140.dll). `said` is the probe's last stderr
+    line. `_platform` and `_vc_missing` are injectable for tests."""
+    plat = _platform or sys.platform
+    head = (f"The engine's Python cannot load the engine ({said}), so no fit "
+            "can start")
+    if plat == "win32" and (_vc_missing if _vc_missing is not None
+                            else _vc_runtime_missing()):
+        return (f"{head}: this computer lacks the Microsoft Visual C++ "
+                "runtime (msvcp140.dll is not in Windows\\System32), which "
+                "the engine's simulator needs. Install the Visual C++ "
+                "Redistributable for x64 from "
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe, then open "
+                "FluBNF.bat again.")
+    return (f"{head}. The engine is on disk and its Python is "
+            f"{pf_engine.PY310}, but that Python's install did not finish. "
+            f"{_engine_retry(plat)}")
+
+
+def _vc_runtime_missing() -> bool:
+    """Windows without the Visual C++ runtime's msvcp140.dll in System32
+    (a new or freshly reset PC); False elsewhere and on any doubt."""
+    if not sys.platform.startswith("win"):
+        return False
+    root = os.environ.get("SystemRoot") or os.environ.get("windir")
+    if not root:
+        return False
+    return not (Path(root) / "System32" / "msvcp140.dll").is_file()
+
+
+def perl_folder_message(p) -> str:
+    """A folder name Windows Perl cannot read (pf.perl_path): letters
+    outside the ANSI code page and no 8.3 short name, so BNG2.pl is never
+    opened. C:\\Users\\Public is open to every account without an
+    administrator, and its name is plain."""
+    return ("Perl cannot read the name of the folder FluBNF is in. The path "
+            f"{p} holds letters outside the character set Windows hands to "
+            "Perl, and has no short (8.3) name to use instead, so BNG2.pl "
+            f"cannot start. Close FluBNF, move {REPO} to "
+            "C:\\Users\\Public\\FluBNF\\flubnf and open FluBNF.bat there.")
+
+
+# --- what this computer lacks: the checks a run makes before anything
+# The pieces a fit needs, checked in the order a student puts them right:
+# the engine folder, then with it there the engine's Python and that Python
+# loading the engine, a Perl that runs BNG2.pl, BNG2.pl itself, and BNG2.pl
+# starting under that Perl. Every one that fails is collected: the page's notice names
+# the first, and its "?" lists the rest, so a student with neither the
+# engine nor Perl learns both at once. pf.conf names no folder (prepare),
+# so the folder FluBNF is in matters only to Perl.
+
+#: the two answers below that start a process, cached for the life of the
+#: console: subprocess.run bound at import, so a test faking BNG2.pl's
+#: runs (sandbox_root) never answers for them too
+_probe_run = subprocess.run
+#: the engine-import probe: key -> {"done": Event, "said": str}
+_ENGINE_PROBES: dict = {}
+#: BNG2.pl's self-test: key -> what it said ('' when it started)
+_BNG_SELFTESTS: dict = {}
+_PROBE_LOCK = threading.Lock()
+#: seconds the engine-import probe may take before it counts as unknown (a
+#: first start under a virus scan can be slow); a page waits for it
+#: ENGINE_PROBE_PAGE_WAIT_S and says nothing until it is done, a run up to
+#: ENGINE_PROBE_RUN_WAIT_S
+ENGINE_PROBE_TIMEOUT_S = 120
+ENGINE_PROBE_PAGE_WAIT_S = 3.0
+ENGINE_PROBE_RUN_WAIT_S = 60.0
+#: seconds `perl BNG2.pl -v` may take (about 0.3 s when it works)
+BNG_SELFTEST_TIMEOUT_S = 60
+
+
+def _stamp_of(*paths) -> tuple:
+    """The modification times of `paths` (None for one that is not
+    there): a cache key that changes when an install touches them."""
+    out = []
+    for p in paths:
+        try:
+            out.append(Path(p).stat().st_mtime_ns)
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def _engine_probe_key() -> tuple:
+    """The engine's Python and folder as they are now: the interpreter,
+    the venv's pyvenv.cfg and site-packages (a pip install adds folders
+    there), and the fork's pf.py (a replaced archive). The environment's
+    root is the interpreter's grandparent in a venv (bin/, Scripts\\) and
+    its parent in a Windows conda environment (python.exe at the top)."""
+    py = Path(pf_engine.PY310)
+    sites = []
+    for root in (py.parent.parent, py.parent):
+        sites += [root / "Lib" / "site-packages"] + sorted(
+            root.glob("lib/python3*/site-packages"))
+    return (str(py), str(pf_engine.PYBNF_PF),
+            _stamp_of(py, py.parent.parent / "pyvenv.cfg", *sites,
+                      Path(pf_engine.PYBNF_PF) / pf_engine.PF_MODULE))
+
+
+def _last_line(text: str) -> str:
+    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+    return lines[-1][:300] if lines else ""
+
+
+def _engine_probe(key: tuple, slot: dict) -> None:
+    """Run doctor's ENGINE_PROBE (the launchers' own gate: import bngsim,
+    then the fork's ParticleFilter) in the engine's Python. A finished
+    nonzero exit records its last stderr line; a timeout records nothing
+    and leaves the cache, so the next look asks again."""
+    from flubnf.doctor import ENGINE_PROBE
+    said = ""
+    try:
+        r = _probe_run([key[0], "-c", ENGINE_PROBE.format(pybnf=key[1])],
+                       capture_output=True, text=True, errors="replace",
+                       timeout=ENGINE_PROBE_TIMEOUT_S)
+        if r.returncode != 0:
+            said = (_last_line(r.stderr) or _last_line(r.stdout)
+                    or f"it exited with status {r.returncode}")
+    except subprocess.TimeoutExpired:
+        with _PROBE_LOCK:
+            _ENGINE_PROBES.pop(key, None)
+    except (OSError, ValueError) as e:      # it could not be started at all
+        said = str(e)[:300]
+    finally:
+        slot["said"] = said
+        slot["done"].set()
+
+
+def engine_import_problem(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> str:
+    """Why the engine's Python cannot load the engine, or ''.
+
+    The probe runs once per state of the engine venv (_engine_probe_key)
+    for the life of the console, on its own thread; this waits up to
+    `wait` seconds for it. Only a finished probe that failed refuses: one
+    still running, or one that timed out, says nothing, and the run's own
+    import then decides."""
+    key = _engine_probe_key()
+    with _PROBE_LOCK:
+        slot = _ENGINE_PROBES.get(key)
+        if slot is None:
+            slot = {"done": threading.Event(), "said": ""}
+            _ENGINE_PROBES[key] = slot
+            threading.Thread(target=_engine_probe, args=(key, slot),
+                             daemon=True, name="flubnf-engine-probe").start()
+    if not slot["done"].wait(max(0.0, float(wait))):
+        return ""
+    return engine_import_message(slot["said"]) if slot["said"] else ""
+
+
+def bng_selftest() -> str:
+    """What `perl BNG2.pl -v` said when it did not print BioNetGen's banner,
+    or '' when it did: the whole of BNG2.pl's start (Perl, its modules
+    under BNGPATH, a path Perl can open) in about 0.3 s, with the perl,
+    path and environment every BNG2.pl run here uses. Cached per perl,
+    BNG2.pl (and its modification time) and the environment variables
+    BNG2.pl reads; a timeout is not remembered and says nothing."""
+    perl = pf_engine.resolve_perl() or "perl"
+    env = bng_env(BNG)
+    seen = env if env is not None else os.environ
+    key = (perl, str(BNG), _stamp_of(BNG)) + tuple(
+        seen.get(k, "") for k in ("BNGPATH", "BioNetGenRoot", "PERL5LIB",
+                                  "PERL5OPT"))
+    with _PROBE_LOCK:
+        if key in _BNG_SELFTESTS:
+            return _BNG_SELFTESTS[key]
+    try:
+        r = _probe_run([perl, pf_engine.perl_path(BNG) or str(BNG), "-v"],
+                       capture_output=True, timeout=BNG_SELFTEST_TIMEOUT_S,
+                       **pf_engine.bng_run_kwargs(env))
+        said = ("" if r.returncode == 0 and pf_engine.bng_started(r.stdout)
+                else pf_engine.bng_failure_text(r))
+    except subprocess.TimeoutExpired:
+        return ""
+    except (OSError, ValueError) as e:
+        said = str(e)
+    with _PROBE_LOCK:
+        _BNG_SELFTESTS[key] = said
+    return said
+
+
+def bng_problem() -> str:
+    """Why BNG2.pl cannot run here, or '': it is not there, or it does not
+    start (bng_selftest). The self-test needs a perl and a path Perl can
+    read; the preflight names those first."""
+    if not Path(BNG).is_file():
+        return pf_engine.bng_missing_message(BNG)
+    if not pf_engine.perl_available() or pf_engine.perl_path(BNG) is None:
+        return ""
+    said = bng_selftest()
+    return pf_engine.bng_broken_message(said) if said else ""
+
+
+def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
+    """Every reason this computer cannot fit yet, in the order a student
+    fixes them (see the section's head); [] when it can. `wait` is how
+    long to wait for the engine-import probe."""
+    out = []
+    engine = pf_engine.engine_available()
+    if not engine:
+        out.append(pf_engine.engine_missing_message())
+    elif not pf_engine.engine_current():
+        out.append(pf_engine.engine_stale_message())
+    # the engine's Python only once the engine is unpacked: installing the
+    # engine file is what makes it, so without one it is not another thing
+    # to fix
+    if engine:
+        if not Path(pf_engine.PY310).exists():
+            out.append(engine_python_missing_message())
+        else:
+            said = engine_import_problem(wait)
+            if said:
+                out.append(said)
+    if not pf_engine.perl_available():
+        out.append(pf_engine.perl_missing_message())
+    try:
+        RUNS.mkdir(parents=True, exist_ok=True)  # a short form needs it to exist
+    except OSError as e:
+        out.append(f"The sandbox folder cannot be written: {e}")
+    for p in (RUNS, BNG):
+        if pf_engine.perl_path(p) is None:
+            out.append(perl_folder_message(p))
+            break
+    said = bng_problem()
+    if said:
+        out.append(said)
+    return out
+
+
+def _joined(problems: list) -> str:
+    """The problems as one refusal: the first as it is (split_reason makes
+    its first sentence the notice), the rest after it, numbered, so the
+    tip lists them."""
+    if not problems:
+        return ""
+    if len(problems) == 1:
+        return problems[0]
+    rest = " ".join(f"({i}) {p}" for i, p in enumerate(problems[1:], 2))
+    n = len(problems) - 1
+    return (problems[0] + "\n" + f"{n} more thing{'s' if n > 1 else ''} "
+            f"to fix after that: {rest}")
 
 
 def preflight() -> None:
-    """The production preflight (app/core/engines/pf.py prepare), in the
-    same words: Perl for BNG2.pl, the fork's filter, a current parser.
-    Then what a sandbox run needs besides, refused before a run folder is
-    made: the engine's own Python, and folders pf.conf can name (no
-    space, or a space-free short form)."""
-    if not pf_engine.perl_available():
-        raise SandboxError(pf_engine.perl_missing_message())
-    if not pf_engine.engine_available():
-        raise SandboxError(pf_engine.engine_missing_message())
-    if not pf_engine.engine_current():
-        raise SandboxError(pf_engine.engine_stale_message())
-    if not Path(pf_engine.PY310).exists():
-        raise SandboxError(engine_python_missing_message())
-    RUNS.mkdir(parents=True, exist_ok=True)    # a short form needs it to exist
-    for p in (RUNS, BNG):
-        try:
-            pf_engine.conf_safe_path(p)
-        except RuntimeError as e:
-            raise SandboxError(str(e)) from None
+    """Every check machine_problems makes, refused before a run folder is
+    made, the reasons in the page's words. A run waits longer than a page
+    for the engine-import probe."""
+    problems = machine_problems(wait=ENGINE_PROBE_RUN_WAIT_S)
+    if problems:
+        raise SandboxError(_joined(problems))
 
 
 def machine_problem() -> str:
-    """Why this computer cannot fit yet (the preflight's refusal), or ''.
-    The page says it before a run is tried; Check says it beside the
-    model's own problems."""
-    try:
-        preflight()
-    except SandboxError as e:
-        return str(e)
-    except OSError as e:                       # RUNS could not be made
-        return f"The sandbox folder cannot be written: {e}"
-    return ""
+    """Why this computer cannot fit yet, or '': the page says it before a
+    run is tried, and Check beside the model's own problems. The first
+    reason is the notice (split_reason); the rest are its tip."""
+    return _joined(machine_problems())
 
 
 #: seconds BNG2.pl may take on the model's actions at run preparation
@@ -681,9 +929,17 @@ NETGEN_TIMEOUT_S = 300
 
 
 def _netgen(cell: Path) -> None:
+    """BNG2.pl on the cell's model, with the resolved perl, BNG2.pl's path
+    as Perl can read it, and BioNetGen's environment (settings.bng_env:
+    a stale BNGPATH from an earlier install never decides). A failure
+    before BioNetGen's banner is the computer's (pf.bng_started), said as
+    the preflight says it; after it, the model's, in BNG2.pl's words."""
     try:
-        r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
-                           text=True, cwd=str(cell), timeout=NETGEN_TIMEOUT_S)
+        r = subprocess.run(
+            [pf_engine.resolve_perl() or "perl",
+             pf_engine.perl_path(BNG) or str(BNG), "m.bngl"],
+            capture_output=True, cwd=str(cell), timeout=NETGEN_TIMEOUT_S,
+            **pf_engine.bng_run_kwargs(bng_env(BNG)))
     except FileNotFoundError:
         # perl vanished since the preflight, or which() disagreed
         raise SandboxError(pf_engine.perl_missing_message()) from None
@@ -694,8 +950,11 @@ def _netgen(cell: Path) -> None:
             "block once to generate the network: shorten a long simulate "
             "action (t_end, n_steps) or remove extra actions.") from None
     if not (cell / "m.net").is_file():
+        said = pf_engine.bng_failure_text(r)
+        if not pf_engine.bng_started(r.stdout):
+            raise SandboxError(pf_engine.bng_broken_message(said))
         raise SandboxError("BNG2.pl could not generate the network:\n"
-                           + (r.stdout or "")[-600:] + (r.stderr or "")[-300:])
+                           + said)
 
 
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
@@ -703,9 +962,10 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             runs_root: Path | None = None) -> Path:
     """A workroot with one prepared cell, ready for pf_engine.execute.
 
-    The production preflight runs first. The network is generated here,
-    by BNG2.pl, so a model that does not generate is refused before the
-    engine is asked for anything, with BNG2.pl's own words. Run settings
+    The preflight runs first (machine_problems: every check, in the
+    page's words). The network is generated here, by BNG2.pl, so a model
+    that does not generate is refused before the engine is asked for
+    anything, with BNG2.pl's own words. Run settings
     the engine would refuse late (a jitter outside 0 to 1, a negative
     seed) are refused here, before anything is written.
     """
@@ -762,17 +1022,21 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
         (cell / f"{sfx}.exp").write_text(files["data.exp"].replace("\r\n", "\n"),
                                          encoding="utf-8", newline="\n")
         _netgen(cell)
-        c = pf_engine.conf_safe_path(cell)
-        bng = pf_engine.conf_safe_path(BNG)
     except Exception as e:
         # a run that never reached the engine leaves no folder behind
         shutil.rmtree(workroot, ignore_errors=True)
         if isinstance(e, RuntimeError) and not isinstance(e, SandboxError):
             raise SandboxError(str(e)) from None
         raise
-    conf = [f"bng_command = {bng}",
-            f"model = {c}/m.bngl : {c}/{sfx}.exp",
-            f"output_dir = {c}/out"]
+    # No folder in pf.conf: the runner works inside the cell (os.chdir),
+    # and the engine finds BNG2.pl under the BNGPATH run() gives it
+    # (bng_env). The engine's conf grammar reads ASCII only and splits the
+    # model line at the first '.con', '.exp' or '.xml', so a profile
+    # folder named José or m.contreras failed every fit when its path was
+    # written here. The bare names carry no './': the engine splits a
+    # file's prefix on '/' only.
+    conf = [f"model = m.bngl : {sfx}.exp",
+            "output_dir = out"]
     conf += [f"{k} = {v}" for k, v, _ in settings]
     (cell / "pf.conf").write_text("\n".join(conf) + "\n" + "\n".join(priors)
                                   + "\n", encoding="utf-8", newline="\n")
@@ -822,7 +1086,9 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
 def _write_meta(workroot: Path, meta: dict) -> None:
     tmp = Path(workroot) / "meta.json.tmp"
     tmp.write_text(json.dumps(meta), encoding="utf-8")
-    tmp.replace(Path(workroot) / "meta.json")
+    # retried: on Windows the page's poll reading meta.json, or a virus
+    # scanner, refuses the replace for a moment
+    pf_engine.replace_file(tmp, Path(workroot) / "meta.json")
 
 
 def run(workroot: Path, width: int = 1) -> dict:
@@ -835,7 +1101,9 @@ def run(workroot: Path, width: int = 1) -> dict:
     _write_meta(workroot, meta)
     t0 = time.monotonic()
     try:
-        status = pf_engine.execute(workroot, width=width)
+        # BioNetGen's environment on every platform: the engine runs
+        # BNG2.pl itself, and a stale BNGPATH would decide it
+        status = pf_engine.execute(workroot, width=width, env=bng_env(BNG))
         key = next(iter(status)) if status else None
         meta["status"] = "ok" if key and status[key] == "ok" else "failed"
         meta["engine_status"] = status
@@ -843,17 +1111,36 @@ def run(workroot: Path, width: int = 1) -> dict:
             # the engine's own words (its runner records "FAIL: <reason>"),
             # where the page shows a failed run's reason
             said = [str(v) for v in (status or {}).values() if v != "ok"]
-            meta["error"] = ("\n".join(said)[:2000] if said else
-                             "the engine reported no outcome for the run")
+            meta["error"] = _with_load_remedy(
+                "\n".join(said)[:2000] if said else
+                "the engine reported no outcome for the run")
     except pf_engine.RunStopped:
         meta["status"] = "stopped"
     except Exception as e:                       # the reason reaches the page
         meta["status"] = "failed"
-        meta["error"] = str(e)[:2000]
+        meta["error"] = _with_load_remedy(str(e)[:2000])
     meta["seconds"] = round(time.monotonic() - t0, 1)
     meta["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     _write_meta(workroot, meta)
     return meta
+
+
+#: what a runner says when the engine's Python cannot load the engine
+#: (the venv launcher's "No Python at" when its base Python was removed)
+_LOAD_FAILURES = ("No module named", "DLL load failed", "ImportError",
+                  "No Python at")
+
+
+def _with_load_remedy(error: str) -> str:
+    """A failed run's error, with the engine-install remedy after it when
+    the runner died loading the engine: the import probe had not finished
+    when the run started, or the venv changed since."""
+    if not any(s in error for s in _LOAD_FAILURES):
+        return error
+    hit = next(ln for ln in error.splitlines()
+               if any(s in ln for s in _LOAD_FAILURES))
+    said = hit.strip().removeprefix("FAIL: ")[:300]
+    return error + "\n\n" + engine_import_message(said)
 
 
 def stop(workroot: Path) -> None:

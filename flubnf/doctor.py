@@ -2,7 +2,8 @@
 
 `flubnf doctor` runs cheap, never-destructive checks (Python, the console's
 packages, the engine venv and PyBNF fork, the NumPy 2.0 / pybnf patch, the
-FluSight hub clone, BNG2.pl, disk space) and prints a pass/warn/fail report,
+FluSight hub clone, BNG2.pl and the Perl that runs it, disk space) and
+prints a pass/warn/fail report,
 so a broken install shows before a long run can blow up midway. It reads no
 config: every path comes from flubnf.settings (the FLUBNF_* variables).
 """
@@ -67,7 +68,7 @@ def _check_python() -> CheckResult:
                            "Install Python 3.10 or newer and recreate the venv.")
     if (major, minor) >= (3, 13):
         return CheckResult("python", Status.WARN, f"{ver} — untested above 3.12",
-                           "CI matrix covers 3.10/3.11/3.12; newer is unverified.")
+                           "CI runs 3.11 and 3.12; newer is unverified.")
     return CheckResult("python", Status.OK, ver)
 
 
@@ -317,6 +318,29 @@ def _check_bng() -> CheckResult:
     )
 
 
+def _check_perl() -> CheckResult:
+    """Perl for BNG2.pl, found as the fit preflight finds it
+    (pf.perl_available; on Windows a native perl, also off this window's
+    PATH). Every fit runs BNG2.pl at preparation, so a missing Perl is a
+    FAIL when an engine is installed. With none it is a WARN: the console
+    still runs and forecasts with Groundhog, but the Sandbox's Check runs
+    BNG2.pl too, engine or not, to build the network and set the counts."""
+    from app.core.engines import pf as _pf
+    perl = _pf.resolve_perl()
+    if perl:
+        return CheckResult("Perl", Status.OK, perl)
+    unusable = _pf.perl_unusable()
+    detail = (f"{unusable[0]} is not a Windows perl" if unusable
+              else "not found on PATH")
+    if not _pf.engine_available():
+        return CheckResult("Perl", Status.WARN,
+                           f"{detail} (fits and the Sandbox's Check need "
+                           "it; no engine here)",
+                           _pf.perl_missing_message())
+    return CheckResult("Perl", Status.FAIL, f"{detail}: every fit is refused",
+                       _pf.perl_missing_message())
+
+
 def _check_disk_space(path: Path) -> CheckResult:
     try:
         usage = shutil.disk_usage(path)
@@ -396,6 +420,7 @@ def run_doctor(*, online: bool = False) -> DoctorReport:
     rep.add(_check_engine_build())       # which build, and is it production
     rep.add(_check_hub())                # truth + vintages for scoring
     rep.add(_check_bng())
+    rep.add(_check_perl())               # what runs BNG2.pl
     rep.add(_check_disk_space(_disk_path()))
     if online:
         for name, url in ONLINE_ENDPOINTS:
