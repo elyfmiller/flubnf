@@ -6,7 +6,9 @@ newest first (app/ui/routes/output.forecast_dates, output.html).
     the newest run that wrote one (archive_record.choose), with Download
     and Show in folder;
   * a modified-settings run's <model>-modified file sits under its date
-    with a "modified settings" tag, never as the hub-named file;
+    with a "modified settings" tag, never as the hub-named file; when it
+    is the newest run, the weekly report card shows it, badged (Home,
+    Forecast and Models keep the shipped rule and skip it);
   * own-data runs are listed apart ("Your data") with their exports;
   * nothing on the page reads as a submission workflow (no marks).
 """
@@ -308,3 +310,34 @@ def test_refusals_and_missing_reports_are_console_pages(root):
     r = client.get("/output/download", params={"path": "/etc/hosts"})
     assert r.status_code == 404 and "File not found in app state" in r.text
     assert 'href="/output"' in r.text                    # the way back
+
+
+def test_the_report_card_shows_the_newest_run_even_when_modified(root):
+    """A modified run exported under the non-hub name is the run the
+    person just made: the Output page's report card names it and badges
+    it, and /output/report serves its report; the shipped surfaces
+    (shared._latest_results with its default) still skip it."""
+    from app.core import knobs as K
+    hub = _run(root, "2098-01-03", [GH])
+    (hub / "report.html").write_text("<p>the hub run's report</p>")
+    mod = _run(root, "2098-01-03", [GH + "-modified"],
+               spec=json.dumps({"extra": K.write_extra({"oracle.w": 0.25}, {})}))
+    (mod / "report.html").write_text("<p>the modified run's report</p>")
+    assert ui_shared._latest_results()[0] == hub.name
+    assert ui_shared._latest_results(include_modified=True)[0] == mod.name
+    html = client.get("/output").text
+    card = html.split('id="weekly-report"', 1)[1].split('id="fc-', 1)[0]
+    assert f'href="/runs/{mod.name}"' in card and hub.name not in card
+    assert '<span class="uk-badge-t">modified settings</span>' in card
+    assert "oracle.w=0.25" in card
+    assert "the modified run's report" in client.get("/output/report").text
+    # with the override the run is back on every surface, and unbadged here
+    over = _run(root, "2098-01-03", [GH], spec=json.dumps(
+        {"extra": K.write_extra({"oracle.w": 0.25}, {}, override="asked")}))
+    (over / "report.html").write_text("<p>the override run's report</p>")
+    assert ui_shared._latest_results()[0] == over.name
+    card = client.get("/output").text.split('id="weekly-report"', 1)[1] \
+        .split('id="fc-', 1)[0]
+    assert f'href="/runs/{over.name}"' in card
+    assert "modified settings</span>" not in card
+

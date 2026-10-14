@@ -79,7 +79,7 @@
 <span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
 <span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
 <span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest run that finished complete, else from the newest run that wrote one; the other runs' files stay in their run folders.</span>
-<span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub.</span>
+<span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub. Its weekly report still shows above when it is the newest run, badged.</span>
 <span class="uk-tt-line">Files an earlier version wrote under retired hub names are not listed; they stay on disk and in <a href="/storage">Storage</a>.</span>
 <span class="uk-tt-line">The copy buttons beside a file copy its path, or the command that runs it through the hub's own validator (scripts/validate_submission.R; it needs R and the hubValidations package).</span>
 <span class="uk-tt-line">The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes the files; you upload them to the hub yourself.</span>
@@ -92,7 +92,11 @@
    a later run's report under an earlier one's label. While a round is
    open its CSV downloads are the page's primary, so this one is quiet. #}
 {% set rep_run %}<a href="/runs/{{ rid }}">run {{ report_when }}</a>{% endset %}
-{% set rep_when %}{% if has_report and report_asof %}{{ tips.meta([("calendar", "as of " ~ report_asof), ("clock", rep_run, "Run")]) }}{% endif %}{% endset %}
+{% set rep_when %}{% if has_report and report_asof %}{{ tips.meta([("calendar", "as of " ~ report_asof), ("clock", rep_run, "Run")]) }}{% endif %}
+{#- the newest run with modified settings and no override: shown here,
+    badged (routes/output.output_page report_modified); the same badge
+    tags its -modified files under their date below #}
+{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "The newest run's model settings differ from the defaults, so its files carry the non-hub name (<model>-modified) and sit under their date below, tagged: a record, not for the hub. This report is that run's. Settings: " ~ report_modified, id="out-rep-mod") }}</span>{% endif %}{% endset %}
 {% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/runs/{{ rid }}/report" target="_blank">{{ tips.icon("external") }} Open report</a>
 <a class="btn {{ 'quiet' if has_due else 'gold' }}" href="/runs/{{ rid }}/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
 <div class="card out-report" id="weekly-report">
