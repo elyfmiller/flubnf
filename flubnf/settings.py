@@ -250,13 +250,42 @@ def _registry_path_dirs() -> list:
     return out
 
 
+#: FluBNF's own Perl on Windows: conda-forge's repack of Strawberry Perl,
+#: which FluBNF.bat unpacks under %LOCALAPPDATA%\FluBNF\perl with no
+#: administrator (scripts/windows/get_perl.py pins the same file)
+OWN_PERL_PACKAGE = "perl-5.32.1.1-2_h57928b3_strawberry.tar.bz2"
+
+
+def own_perl_dir() -> str | None:
+    """The folder of FluBNF's own perl.exe, or None: complete only when
+    FluBNF.bat's marker, written after every file was checked, names the
+    pinned package."""
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        return None
+    root = os.path.join(base, "FluBNF", "perl")
+    try:
+        with open(os.path.join(root, "flubnf-perl.ok"), encoding="ascii",
+                  errors="replace") as f:
+            ok = f.readline().strip() == OWN_PERL_PACKAGE
+    except OSError:
+        return None
+    folder = os.path.join(root, "Library", "bin")
+    return folder if ok and os.path.isfile(os.path.join(folder, "perl.exe")) \
+        else None
+
+
 def _perl_candidates():
-    """Every perl.exe a Windows search may try, in order, each once: one
-    per folder of this process's PATH, then of the registry's machine and
+    """Every perl.exe a Windows search may try, in order, each once:
+    FluBNF's own (own_perl_dir), as FluBNF.bat checks it first; one per
+    folder of this process's PATH, then of the registry's machine and
     user Path, then Strawberry Perl's default folders (the ones setup.ps1
     probes). A generator: the search stops at the first Windows perl, and
     the registry is read only when PATH has none."""
     def folders():
+        own = own_perl_dir()
+        if own:
+            yield own
         for d in os.environ.get("PATH", "").split(os.pathsep):
             yield d
         yield from _registry_path_dirs()
@@ -309,9 +338,10 @@ def resolve_perl(_platform: str | None = None) -> str | None:
     """The perl that runs BNG2.pl, or None.
 
     macOS and Linux: the first perl on PATH (shutil.which), as always.
-    Windows: the first perl.exe whose $^O is MSWin32, looked for on this
-    process's PATH, then on the machine and user Path the registry holds
-    now, then in Strawberry Perl's default folders. Its folder is put first
+    Windows: the first perl.exe whose $^O is MSWin32, looked for in
+    FluBNF's own Perl (own_perl_dir), on this process's PATH, then on the
+    machine and user Path the registry holds now, then in Strawberry
+    Perl's default folders. Its folder is put first
     on this process's PATH, so a bare `perl` (the engine runs one, and
     every child inherits the PATH) is the same perl. The search runs at
     every call and costs one subprocess per perl ever seen, so a Perl
@@ -451,6 +481,12 @@ def bng_env(bng=None, cwd=None, _platform: str | None = None, _api=None,
     if perl:
         env = dict(os.environ) if env is None else env
         env["PATH"] = _first_on(env.get("PATH", ""), os.path.dirname(perl))
+        own = own_perl_dir()
+        if own and (os.path.normcase(os.path.dirname(perl))
+                    == os.path.normcase(own)):
+            # another Perl's module folders or options would go in front
+            for var in ("PERL5LIB", "PERLLIB", "PERL5OPT"):
+                env.pop(var, None)
     return env
 
 
@@ -481,8 +517,8 @@ def check(verbose: bool = True) -> list:
     perl_why = "Perl interpreter on PATH (runs BNG2.pl at run preparation)"
     passed = perl_unusable() if perl is None else None
     if passed:
-        perl_why = (f"a Windows Perl such as Strawberry Perl (runs BNG2.pl at "
-                    f"run preparation): {passed[0]} is not one")
+        perl_why = (f"a Windows Perl, FluBNF's own or Strawberry Perl (runs "
+                    f"BNG2.pl at run preparation): {passed[0]} is not one")
     missing = []
     for name, p, why in (
         ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),

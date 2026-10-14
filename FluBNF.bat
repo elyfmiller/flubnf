@@ -989,6 +989,12 @@ rem Only a Windows perl counts: Git's Unix tools, MSYS2 and Cygwin bring a
 rem perl whose $^O is msys or cygwin, and BNG2.pl cannot load its own modules
 rem under it. perl.exe, not perl: the console and the engine start perl.exe,
 rem and a perl.bat run without call would never hand this file back.
+rem FluBNF's own Perl first, once an earlier open unpacked it: the console
+rem looks there first too (flubnf/settings.py), so both run the same perl.
+set "PERLPKG=perl-5.32.1.1-2_h57928b3_strawberry.tar.bz2"
+set "OWNPERL=%LOCALAPPDATA%\FluBNF\perl"
+call :perlownok
+if not errorlevel 1 goto :perlownpath
 perl.exe -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1 && goto :eof
 rem Installed but not on this window's PATH (a Command Prompt opened before
 rem the install, a machine PATH cut short), or behind a Unix-style perl:
@@ -998,6 +1004,13 @@ set "PERLAT="
 for /f "delims=" %%P in ('where perl.exe 2^>nul') do if not defined PERLAT set "PERLAT=%%P"
 if defined PERLAT echo   The perl on PATH is not a Windows Perl, and BNG2.pl needs one:
 if defined PERLAT echo     "%PERLAT%"
+rem No Windows Perl here, so FluBNF installs its own: conda-forge's repack of
+rem Strawberry Perl, unpacked under %LOCALAPPDATA%. No administrator, no
+rem installer and no question, so it is tried on every open until it works
+rem (a network that was down, a full disk). winget's Strawberry Perl, a
+rem machine-wide install that needs an administrator, is the fallback.
+call :perlown
+if not errorlevel 1 goto :perlownpath
 rem Offered once, in a record of its own. engine-attempt.txt also stamps an
 rem engine file that did not unpack, and a retry then skipped an offer that
 rem was never made. Once is enough: an unattended Y on every open would
@@ -1080,4 +1093,60 @@ rem change reaches windows opened after it, not this one, and the console
 rem starts from this one. First, not last: a Unix-style perl earlier on PATH
 rem would win otherwise.
 set "PATH=%SystemDrive%\Strawberry\c\bin;%SystemDrive%\Strawberry\perl\site\bin;%SystemDrive%\Strawberry\perl\bin;%PATH%"
+goto :eof
+:perlownok
+rem 0 when FluBNF's own Perl is complete and starts: the marker, written
+rem last, names the pinned package, and perl.exe loads strict, which a
+rem missing DLL or an @INC it cannot read stops.
+if not defined LOCALAPPDATA exit /b 1
+if not exist "%OWNPERL%\flubnf-perl.ok" exit /b 1
+set "OWNHAVE="
+set /p OWNHAVE=<"%OWNPERL%\flubnf-perl.ok"
+if not "%OWNHAVE%"=="%PERLPKG%" exit /b 1
+if not exist "%OWNPERL%\Library\bin\perl.exe" exit /b 1
+"%OWNPERL%\Library\bin\perl.exe" -Mstrict -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1
+rem Not `if errorlevel 1`: a perl.exe that cannot start (a DLL gone) exits
+rem with a negative code (0xC0000135), which that test never sees.
+if not "%ERRORLEVEL%"=="0" exit /b 1
+exit /b 0
+:perlown
+rem Unpacks FluBNF's own Perl; 0 once it is complete and starts. The
+rem console's Python downloads the package into memory (the proxy and
+rem certificates pip used) and checks its size and SHA-256 before a byte goes
+rem on, then hands Windows' tar.exe a plain tar: Windows 10's tar has no
+rem bzip2. tar writes the files, not Python: a Microsoft Store Python's writes
+rem under AppData land in a private copy. Every file is then checked against
+rem the package's own list, and the marker is written last, so a marker
+rem always means a whole Perl. No parenthesised blocks: a profile folder's
+rem name can hold a ")".
+if not defined LOCALAPPDATA exit /b 1
+if not exist ".venv\Scripts\python.exe" exit /b 1
+if not exist "scripts\windows\get_perl.py" exit /b 1
+if not exist "%SystemRoot%\System32\tar.exe" exit /b 1
+echo   installing Perl for FluBNF: a 31 MB download, no administrator needed...
+if exist "%OWNPERL%" rmdir /s /q "%OWNPERL%" >nul 2>&1
+if exist "%OWNPERL%" echo   "%OWNPERL%" could not be cleared: close other FluBNF windows and open FluBNF again.
+if exist "%OWNPERL%" exit /b 1
+mkdir "%OWNPERL%" >nul 2>&1
+if not exist "%OWNPERL%\" exit /b 1
+rem tar's exit code is not trusted either way: verify is the only gate.
+".venv\Scripts\python.exe" -I "%CD%\scripts\windows\get_perl.py" fetch <nul | "%SystemRoot%\System32\tar.exe" -xf - -C "%OWNPERL%"
+".venv\Scripts\python.exe" -I "%CD%\scripts\windows\get_perl.py" verify "%OWNPERL%" <nul
+if not "%ERRORLEVEL%"=="0" goto :perlownundo
+"%OWNPERL%\Library\bin\perl.exe" -Mstrict -MPOSIX -MIPC::Open3 -e "exit($^O eq q(MSWin32) ? 0 : 1)" <nul >nul 2>&1
+if not "%ERRORLEVEL%"=="0" goto :perlownundo
+>"%OWNPERL%\flubnf-perl.ok" echo %PERLPKG%
+echo   Perl for FluBNF is ready.
+exit /b 0
+:perlownundo
+rmdir /s /q "%OWNPERL%" >nul 2>&1
+echo   FluBNF could not install its own Perl; the next open tries again.
+exit /b 1
+:perlownpath
+rem Its bin folder first, as Strawberry's above. PERL5LIB, PERLLIB and
+rem PERL5OPT would put another Perl's modules or options in front.
+set "PATH=%OWNPERL%\Library\bin;%PATH%"
+set "PERL5LIB="
+set "PERLLIB="
+set "PERL5OPT="
 goto :eof

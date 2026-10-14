@@ -75,8 +75,8 @@ Nothing on the double-click path waits on input without a deadline.
 The console, the Groundhog and the reports need nothing more. Fits by the
 particle filter need the engine: a copy of the lab's private PyBNF fork and
 a Python environment of its own. `FluBNF.bat` installs both, and needs no
-GitHub account and no administrator to do it. Fits also need Perl, and
-Strawberry Perl's installer does ask for an administrator (below).
+GitHub account and no administrator to do it. Fits also need Perl, which
+`FluBNF.bat` installs for FluBNF with no administrator either (below).
 Without the engine the console runs analogue forecasts only.
 
 ### Installing it from the lab's file
@@ -121,13 +121,29 @@ the one on PATH. A Strawberry Perl in `%SystemDrive%\Strawberry` that is
 not on this window's PATH (a Command Prompt opened before the install) is
 put first on it for the console.
 
-Without one, `FluBNF.bat` offers once to install Strawberry Perl with
-winget; left alone, the question answers itself with yes after twenty
-seconds. It is a machine-wide install (about 210 MB), so the window
-first says Windows will ask permission, and Windows does: click Yes, or
-the flashing shield on the taskbar if nothing appears. An account that
-is not an administrator needs an administrator's password; there is no
-route to Perl without one yet. The install is judged by Strawberry's
+Without one, `FluBNF.bat` installs FluBNF's own Perl: conda-forge's
+repack of Strawberry Perl 5.32.1.1 (`perl-5.32.1.1-2_h57928b3_strawberry`,
+a 31 MB download, 145 MB unpacked), in `%LOCALAPPDATA%\FluBNF\perl`. No
+administrator, no installer, no question. The console's Python downloads
+it (the proxy and certificates pip used) and refuses anything but the
+pinned size and SHA-256; Windows' own `tar.exe` unpacks it; every one of
+its 7,728 files is checked against the package's own list, and `perl.exe`
+must start, before `flubnf-perl.ok` is written. An unpack without that
+marker, or with another package's, is removed and done again. Perl works
+out where its modules are from where it sits, so nothing is relocated.
+From then on every open finds it first and puts `Library\bin` first on
+PATH; the console looks there first too. Delete the folder to have it
+installed again. It has no C compiler (Strawberry's own `c\bin` is not in
+the package), which fits on Windows do not use (see bngsim below).
+
+Only when that fails (no network, a PC that blocks programs under
+AppData) does `FluBNF.bat` offer Strawberry Perl with winget, once; the
+next open tries FluBNF's own again first. Left alone, the question
+answers itself with yes after twenty seconds. It is a machine-wide
+install (about 210 MB), so the window first says Windows will ask
+permission, and Windows does: click Yes, or the flashing shield on the
+taskbar if nothing appears. An account that is not an administrator
+needs an administrator's password. The install is judged by Strawberry's
 `perl.exe` on disk, not by winget's exit code, and a failure says why: the
 prompt declined or not answered in time (or no administrator), a policy
 blocking it, another install running. The outcome goes in
@@ -137,9 +153,9 @@ the offer back. Another install running records nothing, so the next
 open asks again. Without winget, the window names
 https://strawberryperl.com instead.
 
-The console looks for a Windows Perl the same way at every fit: on its
-PATH, then on the Path Windows holds now, then in Strawberry Perl's
-folders. A Perl installed while the console is open is used by the next
+The console looks for a Windows Perl the same way at every fit: FluBNF's
+own first, then on its PATH, then on the Path Windows holds now, then in
+Strawberry Perl's folders. A Perl installed while the console is open is used by the next
 fit, with no restart, and `flubnf doctor` names the one it finds.
 
 ### Where it goes
@@ -151,6 +167,7 @@ fit, with no restart, and `flubnf doctor` names the one it finds.
 | its Python environment | `%USERPROFILE%\.venvs\flubnf-engine` (`FLUBNF_ENGINE_VENV` puts it elsewhere) |
 | an unpacked engine a newer file replaced | `%LOCALAPPDATA%\FluBNF\PyBNF-Private.replaced-<date and time>` |
 | the record of a failed install | `.venv\engine-attempt.txt` in the FluBNF folder |
+| FluBNF's own Perl | `%LOCALAPPDATA%\FluBNF\perl` (`flubnf-perl.ok` marks it whole) |
 | the record of the Perl offer | `.venv\perl-offer.txt` in the FluBNF folder |
 
 None of these is in a folder Controlled Folder Access protects.
@@ -511,7 +528,7 @@ variable and prints the one `setx` line that clears it.
    | `git.exe` | `C:\Program Files\Git\cmd\git.exe` | the FluSight hub clone and every later pull |
    | `python.exe` (console venv) | `<repo>\.venv\Scripts\python.exe` | the app itself, and `__pycache__` |
    | `python.exe` (engine venv) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
-   | `perl.exe` | `C:\Strawberry\perl\bin\perl.exe` | `m.net`, from `BNG2.pl`, during a fit |
+   | `perl.exe` | `%LOCALAPPDATA%\FluBNF\perl\Library\bin\perl.exe` (FluBNF's own), or `C:\Strawberry\perl\bin\perl.exe` for a Strawberry Perl | `m.net`, from `BNG2.pl`, during a fit |
    | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\bin\run_network.exe` (older wheels omit the `bin\`; setup.ps1 prints the path that actually exists on your machine) | simulation output, during a fit |
 
    `git.exe` and `python.exe` are the two Defender actually logged as
@@ -767,7 +784,7 @@ Useful switches and variables:
 
 | what | effect |
 |---|---|
-| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without the offer: `FluBNF.bat` checks for a Windows Perl on every open and asks its own time-bounded question once (see [Perl](#perl)). Run `setup.ps1` by hand to be asked here too. |
+| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without Perl: `FluBNF.bat` checks for a Windows Perl on every open, installs FluBNF's own when there is none (no administrator), and asks its own time-bounded winget question once only when that fails (see [Perl](#perl)). Run `setup.ps1` by hand to be asked here too. |
 | `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
 | `FLUBNF_PYBNF` | the PyBNF engine folder, used only when an engine is in it (a `.git` folder or `pybnf\pf.py`); otherwise the first engine in the list under [Where it goes](#where-it-goes). A clone made by hand defaults to `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
@@ -812,13 +829,22 @@ standard `setup.sh` instructions inside the Linux environment.
   see [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)):
   - the private PyBNF fork (pure Python; clones and installs normally),
   - `bngsim` (official Windows wheels exist on PyPI for Python 3.10-3.13,
-    so `pip install bngsim` works without a compiler),
+    so `pip install bngsim` works without a compiler). Windows fits run
+    with its code generation off (`BNGSIM_NO_CODEGEN=1`, set for every
+    engine runner): bngsim would otherwise compile each model with a C
+    compiler found on PATH, and a student's PC has none (bngsim's fallback
+    then tells them to install Visual Studio Build Tools) or a gcc from
+    another program whose library can compile and then not load, which
+    fails every fit of that model from bngsim's cache. The interpreted
+    right-hand side gives the same fit to about 1e-12 (same ESS, evidence
+    and forecast quantiles on all five shipped examples, measured on
+    Linux); quick checks take the same time and full fits about 15%
+    longer. macOS and Linux keep code generation.
   - a Windows Perl, for BNG2.pl's network generation at fit prep. The
     `bionetgen` pip package ships the Windows BNG binaries (`bng-win`,
-    including `run_network.exe`), but not a Perl interpreter. `FluBNF.bat`
-    offers Strawberry Perl through winget once (see [Perl](#perl)); its
-    installer needs an administrator, and there is no route without one
-    yet. Or install it yourself from https://strawberryperl.com.
+    including `run_network.exe`), but not a Perl interpreter.
+    `FluBNF.bat` installs FluBNF's own, with no administrator (see
+    [Perl](#perl)), or uses a Strawberry Perl already there.
 
   The Sandbox's `pf.conf` names no folder, so the engine reads it whatever
   the profile folder is called. The Forecast tab's still writes full
@@ -844,7 +870,7 @@ standard `setup.sh` instructions inside the Linux environment.
 
   Machines without the engine run the analogue engine only, exactly as on
   a Tier-A Mac.
-- **Windows CI is required.** Two jobs in
+- **Windows CI is required.** Three jobs in
   `.github/workflows/tests.yml` run on `windows-latest`, and a red Windows
   run fails the checks as a red Ubuntu one does. `test-windows` runs the
   test suite, which runs `FluBNF.bat`'s blocks in cmd.exe with stand-in
@@ -856,8 +882,14 @@ standard `setup.sh` instructions inside the Linux environment.
   (`Jane Doe`, `O'Brien`, `José`; `app/tests/test_real_bng.py`), and stops
   first if that Perl is not Strawberry's. On the 3.12 leg a last step records
   whether bngsim opens a network file in a folder whose name is outside
-  ASCII: a record in the run's summary, never a failure. No job runs a
-  real winget, a real engine venv build or a real fit.
+  ASCII: a record in the run's summary, never a failure.
+  `windows-own-perl` hides Strawberry, runs `FluBNF.bat`'s Perl block for
+  real (the download, Windows' `tar.exe`, a profile folder named
+  `Jane O'Brien (Lab)`; `tests/test_windows_own_perl.py`), then runs the
+  real BNG2.pl under that Perl, and bngsim through a fit's calls with code
+  generation off and no compiler on PATH
+  (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget, a
+  real engine venv build or a real fit.
   `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
@@ -876,7 +908,8 @@ standard `setup.sh` instructions inside the Linux environment.
   Every job in that workflow carries a `timeout-minutes`, so a hang fails
   its job rather than running to GitHub's 6 hour default. The budgets are
   fuses, not targets: 20 minutes on ubuntu, which finishes in about 5, 90
-  on windows, which took 71 at its worst, and 60 for
+  on windows, which took 71 at its worst, 30 for `windows-own-perl` (a
+  31 MB download and a few BNG2.pl runs), and 60 for
   `windows-setup-script`. The windows number should come down a long way
   once the hour is accounted for, because a fuse sized far above the load
   never blows.
