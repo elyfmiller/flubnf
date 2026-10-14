@@ -52,6 +52,35 @@ jobs:
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # BNG2.pl for real (bng-linux, the runner's perl) on every shipped
+      # example and under the folder names that broke it; every other test
+      # fakes it. One leg: BNG2.pl is Perl, the Python version changes nothing.
+      - name: the real BioNetGen (app/tests/test_real_bng.py)
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        env: {FLUBNF_BNG_REAL: "1", FLUBNF_HUB: /nonexistent}
+        run: pytest app/tests/test_real_bng.py -ra -o addopts=""
+
+      # The engine's packages as FluBNF.bat installs them (its :enginedeps
+      # line, read here so the two cannot drift), fetched as Windows wheels
+      # for the engine venv's Python: a pin that loses its win_amd64 wheel
+      # fails here, not on a student's PC. pip reads environment markers on
+      # this runner, so a Windows-only dependency is not fetched.
+      - name: the engine's pins have Windows wheels
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          python - FluBNF.bat > "$RUNNER_TEMP/engine-pins.txt" <<'EOF'
+          import shlex, sys
+          deps = open(sys.argv[1], encoding="utf-8").read().split("\n:enginedeps", 1)[1]
+          line = next(ln for ln in deps.splitlines()
+                      if "-m pip install" in ln and "bngsim==" in ln)
+          print("\n".join(a for a in shlex.split(line.split(" install ", 1)[1])
+                          if not a.startswith("-")))
+          EOF
+          cat "$RUNNER_TEMP/engine-pins.txt"
+          pip download --disable-pip-version-check --dest "$RUNNER_TEMP/win-wheels" \
+            --platform win_amd64 --only-binary=:all: --python-version 3.12 \
+            -r "$RUNNER_TEMP/engine-pins.txt"
+
   # Required, like the ubuntu job: a red Windows leg fails the run.
   test-windows:
     name: "test-windows"
@@ -107,6 +136,79 @@ jobs:
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # BNG2.pl for real (bng-win, Cygwin's run_network.exe) under the perl
+      # the console resolves. pwsh, not Git Bash: Git Bash puts Git's MSYS
+      # perl first on PATH, which the module sets up as a case of its own.
+      # The runner must resolve Strawberry Perl, the perl students are given.
+      - name: the real BioNetGen with Strawberry Perl (app/tests/test_real_bng.py)
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env: {FLUBNF_BNG_REAL: "1", FLUBNF_HUB: /nonexistent}
+        run: |
+          $first = (Get-Command perl -ErrorAction SilentlyContinue).Source
+          $perl = python -c "from flubnf.settings import resolve_perl; print(resolve_perl())"
+          Write-Host "perl first on PATH: $first"
+          Write-Host "perl FluBNF resolves: $perl"
+          if ($perl -notlike '*\Strawberry\*') {
+            Write-Host "::error::FluBNF resolves $perl, not Strawberry Perl, so the BNG2.pl runs below would not use the perl students are given"
+            exit 1
+          }
+          pytest app/tests/test_real_bng.py -ra -o addopts=""
+
+      # A record, not a gate (N1): does bngsim open a .net file in a folder
+      # whose name is outside ASCII? Read from its source, it opens the path
+      # as narrow (ANSI) bytes, which a relative pf.conf cannot help with.
+      # Each load is printed and kept in the run's summary, a failed one as a
+      # warning too. The step ends green whatever bngsim did: Windows CI is
+      # required (docs/WINDOWS.md), so a red record would fail the run.
+      - name: "record: bngsim loads a .net under a non-ASCII folder (N1)"
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "bngsim==0.15.1"
+          $probe = @'
+          import locale, os, shutil, tempfile
+          from pathlib import Path
+          import bionetgen, bngsim
+          from app.core import sandbox as sb
+          from flubnf import settings
+          root = Path(tempfile.gettempdir()) / "flubnf-n1"
+          shutil.rmtree(root, ignore_errors=True)
+          plain = root / "plain"
+          plain.mkdir(parents=True)
+          shutil.copy(sb.EXAMPLES / "sir_example" / "model.bngl", plain / "m.bngl")
+          # the network as a Sandbox run makes it, with FluBNF's own BNG2.pl run
+          sb.BNG = str(Path(bionetgen.__file__).parent
+                       / settings.bng_platform_dirs()[0] / "BNG2.pl")
+          sb._netgen(plain)
+          head = f"bngsim {bngsim.__version__}, ANSI code page {locale.getencoding()}"
+          print(head)
+          rows = []
+          for name in ("plain", "Jos\u00e9", "\u0141ukasz \u674e"):
+              d = root / name
+              d.mkdir(exist_ok=True)
+              if name != "plain":
+                  shutil.copy(plain / "m.net", d / "m.net")
+              for form, arg in (("absolute", str(d / "m.net")), ("relative", "m.net")):
+                  os.chdir(d if form == "relative" else root)
+                  try:
+                      m = bngsim.Model.from_net(arg)
+                      said = f"loaded, {m.n_species} species, {m.n_reactions} reactions"
+                  except Exception as e:
+                      said = f"{type(e).__name__}: {e}"[:300]
+                      print(f"::warning title=N1 bngsim::{name}, {form} path: {said}")
+                  rows.append((name, form, said))
+                  print(f"{name} ({form} path): {said}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write(f"## N1: {head}\n\n| folder | path | Model.from_net |\n|---|---|---|\n")
+              f.writelines(f"| {n} | {p} | {s.replace('|', '/')} |\n" for n, p, s in rows)
+          '@
+          $probe | python -
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning title=N1 bngsim::the record did not finish (exit $LASTEXITCODE); the output above says why"
+          }
+          exit 0
+
   # The only automated run of setup.ps1, under Windows
   # PowerShell 5.1 launched from cmd as FluBNF.bat does. One run per machine
   # state: 1 no fetch/probe; 2 real sparse clone + real fork probe (no
@@ -114,8 +216,12 @@ jobs:
   # still exit 0); 3 idempotent re-run; 4 a by-hand --sparse clone must be
   # widened; 5 a legacy Documents checkout is reused in place.
   # Not covered here: winget/Perl, the probe timeout, non-ASCII paths, the
-  # no-git branch. FluBNF.bat's update, engine-file and moved-.venv blocks run
-  # in test-windows (tests/test_windows_launcher.py).
+  # no-git branch. test-windows runs FluBNF.bat's blocks as cmd slices with
+  # stand-in programs (tests/test_windows_launcher.py: update, engine file,
+  # :sync, moved .venv, the Perl offer, the engine venv), and the real
+  # BNG2.pl under Strawberry Perl and awkward folder names
+  # (app/tests/test_real_bng.py). A real winget, a real engine venv build and
+  # a real fit run in no job.
   windows-setup-script:
     name: "windows-setup-script"
     runs-on: windows-latest
