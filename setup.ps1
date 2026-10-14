@@ -679,23 +679,57 @@ function Show-CfaHint {
     }
 }
 
+function Find-CondaRoot {
+    <# The Anaconda (or Miniconda, Miniforge) FluBNF.bat uses, found the way
+       it finds it. A folder counts only with both python.exe and
+       condabin\conda.bat in it: an environment made by conda create has the
+       first and never the second. CONDA_EXE first (Anaconda Prompt sets
+       it), then the first such folder in %USERPROFILE%\.conda\environments.txt
+       (conda's installer records its folder there), then the installers'
+       usual folders, %SystemDrive%\anaconda3 and \anaconda among them: with
+       a space in the profile folder's name the installer refuses its
+       default, and Anaconda's FAQ suggests those two. #>
+    $roots = @()
+    if ($env:CONDA_EXE) {
+        try { $roots += [IO.Path]::GetFullPath((Join-Path $env:CONDA_EXE "..\..")) }
+        catch { }
+    }
+    $listed = Join-Path $env:USERPROFILE ".conda\environments.txt"
+    if (Test-Path -LiteralPath $listed) {
+        $roots += @(Get-Content -LiteralPath $listed -ErrorAction SilentlyContinue |
+                    ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    }
+    $roots += @("$env:USERPROFILE\anaconda3", "$env:USERPROFILE\miniconda3",
+                "$env:LOCALAPPDATA\anaconda3", "$env:ProgramData\anaconda3",
+                "$env:LOCALAPPDATA\miniconda3", "$env:ProgramData\miniconda3",
+                "$env:USERPROFILE\miniforge3", "$env:SystemDrive\anaconda3",
+                "$env:SystemDrive\anaconda")
+    foreach ($root in $roots) {
+        try {
+            # strings, not Join-Path: a listed folder on a drive that is not
+            # there is an error to Join-Path, and only $false to Test-Path
+            if ((Test-Path -LiteralPath "$root\python.exe") -and
+                (Test-Path -LiteralPath "$root\condabin\conda.bat")) {
+                return $root
+            }
+        } catch { }
+    }
+    return $null
+}
+
 Say "python"
 $PyExe = $null
 $PyArgs = @()
-# PATH launchers first, then Anaconda/Miniconda's default folders (their
-# installer leaves PATH alone). Mirrors FluBNF.bat's CONDAPY probe.
+# PATH launchers first, then conda's base (its installer leaves PATH alone),
+# found as FluBNF.bat finds it.
 $Cands = @(
     @{ exe = "py"; args = @("-3.12") },
     @{ exe = "py"; args = @("-3.11") },
     @{ exe = "py"; args = @("-3") },
     @{ exe = "python"; args = @() }
 )
-foreach ($condaPy in @("$env:USERPROFILE\anaconda3\python.exe",
-                       "$env:USERPROFILE\miniconda3\python.exe",
-                       "$env:LOCALAPPDATA\anaconda3\python.exe",
-                       "C:\ProgramData\anaconda3\python.exe")) {
-    if (Test-Path $condaPy) { $Cands += @{ exe = $condaPy; args = @() } }
-}
+$CondaRoot = Find-CondaRoot
+if ($CondaRoot) { $Cands += @{ exe = (Join-Path $CondaRoot "python.exe"); args = @() } }
 foreach ($c in $Cands) {
     # 2>$null is fine: absence is what is tested. Splat through a variable
     # (@probe): an inline empty array reaches a native command as a stray "".
@@ -907,44 +941,56 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
 }
 
 Say "perl (engine network generation)"
-$Perl = Get-Command perl -ErrorAction SilentlyContinue
-$PerlOffPath = $false
-if (-not $Perl) {
-    # A fresh winget install is not on this process's PATH: look in
-    # Strawberry's folders before offering to install it again.
-    foreach ($cand in @("$env:SystemDrive\Strawberry\perl\bin\perl.exe",
-                        "$env:ProgramFiles\Strawberry\perl\bin\perl.exe",
-                        "C:\Strawberry\perl\bin\perl.exe")) {
-        if (Test-Path $cand) {
-            $Perl = [pscustomobject]@{ Source = $cand }
-            $PerlOffPath = $true
-            break
-        }
+# Asked of the console's own resolver (flubnf.settings.resolve_perl), which
+# the closing check below and the console follow: only a perl whose $^O is
+# MSWin32 counts, found on PATH, on the Path the registry holds now, or in
+# Strawberry's folders, so one off this window's PATH is found too.
+# Get-Command perl took the perl.exe of Git's Unix tools at face value:
+# this said "perl found", and the closing check then said it was not one.
+# The venv has flubnf by now; the script stops above when it does not.
+$perlAsk = Invoke-Captured $VenvPy @("-c", "import sys; sys.stdout.reconfigure(errors='replace'); from flubnf.settings import resolve_perl, perl_unusable; p = resolve_perl(); u = perl_unusable(); print('PERL=' + (p or '')); print('NOTWIN=' + (u[0] if u else ''))")
+$PerlAt = ""
+$PerlNotWin = ""
+foreach ($l in @($perlAsk.Output)) {
+    if ($l -like "PERL=*") {
+        $PerlAt = $l.Substring(5).Trim()
+    } elseif ($l -like "NOTWIN=*") {
+        $PerlNotWin = $l.Substring(7).Trim()
     }
 }
-if ($Perl) {
-    Ok "perl found: $($Perl.Source)"
-    if ($PerlOffPath) {
-        Warn "It is installed but not on THIS window's PATH. Open a new window"
-        Warn "before running the engine, or BNG2.pl will not find it."
-    }
+if ($perlAsk.Code -ne 0) {
+    Warn "could not ask FluBNF which perl it uses ($(CodeStr $perlAsk)). Python said:"
+    Show-Output $perlAsk 10
+    Info "FluBNF.bat checks for Perl again on every open."
+} elseif ($PerlAt) {
+    Ok "perl found: $PerlAt"
 } else {
-    Warn "perl not found. BioNetGen's BNG2.pl needs Perl for the one-time"
-    Warn "network-generation step of the PF engine; Strawberry Perl"
-    Warn "(https://strawberryperl.com) is the standard choice on Windows."
-    Warn "The console, analogue engine, and reports do not need it."
+    if ($PerlNotWin) {
+        Warn "The perl on PATH is not a Windows Perl, and BNG2.pl needs one:"
+        Warn "  $PerlNotWin"
+    } else {
+        Warn "perl not found."
+    }
+    Warn "BioNetGen's BNG2.pl is a Perl program, and fits and the Sandbox's"
+    Warn "Check run it; analogue forecasts and reports do not need it."
+    Warn "Strawberry Perl (https://strawberryperl.com) is the standard choice"
+    Warn "on Windows."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
-    # Package id unverified on Windows (a wrong one just exits non-zero; the
-    # link stands). winget is absent on some Enterprise/LTSC images.
+    # StrawberryPerl.StrawberryPerl is in winget-pkgs (5.30 to 5.42, a
+    # machine-wide MSI). --source winget in every command here, as in
+    # FluBNF.bat: without it winget searches the msstore source too, and when
+    # that cannot be reached (a network that inspects TLS) the install stops
+    # although the package was found. winget is absent on some Enterprise/LTSC
+    # images.
     if (-not $winget) {
         Info "winget is not available here, so install it from the link above."
     } elseif (-not $Interactive) {
         Info "winget is available. In an interactive window this script offers:"
-        Info "  winget install --id StrawberryPerl.StrawberryPerl -e"
+        Info "  winget install --id StrawberryPerl.StrawberryPerl -e --source winget"
     } else {
         Info ""
         Info "winget can install it for you:"
-        Info "  winget install --id StrawberryPerl.StrawberryPerl -e"
+        Info "  winget install --id StrawberryPerl.StrawberryPerl -e --source winget"
         Info "Strawberry Perl is a machine-wide install, so Windows will raise a"
         Info "UAC consent dialog that you have to accept yourself. This script"
         Info "never elevates anything on its own, and declining changes nothing."
@@ -1025,11 +1071,14 @@ function Test-RemoteAccess {
 
 function Find-EngineFile {
     <# The engine file FluBNF.bat would install from, found where it looks:
-       FLUBNF_PYBNF_BUNDLE (which ends its search), then pybnf*.tar.gz, the
-       newest wins, then pybnf*.bundle, in this folder, the one above it,
+       FLUBNF_PYBNF_BUNDLE (which ends its search), then pybnf-pf-*.tar.gz,
+       the newest wins, then pybnf*.bundle, in this folder, the one above it,
        Downloads, Desktop and Documents, each also under %OneDrive% (Known
        Folder Move). The archive comes before a bundle because the launcher
-       unpacks it first and then has no use for the bundle. #>
+       unpacks it first and then has no use for the bundle. Only the lab's
+       archive name: PyPI's pybnf-<version>.tar.gz and GitHub's
+       PyBNF-<version>.tar.gz are not the engine. The folders searched are
+       kept in $script:EngineFileDirs for the message when none is found. #>
     $b = $env:FLUBNF_PYBNF_BUNDLE
     if ($b -and (Test-Path -LiteralPath $b -PathType Leaf)) { return $b }
     $dirs = @($Here, (Split-Path -Parent $Here))
@@ -1039,8 +1088,9 @@ function Find-EngineFile {
         if ($env:OneDrive) { $dirs += (Join-Path $env:OneDrive $n) }
     }
     $dirs = @($dirs | Where-Object { $_ } | Select-Object -Unique)
+    $script:EngineFileDirs = $dirs
     $archives = @(foreach ($d in $dirs) {
-        Get-ChildItem -LiteralPath $d -Filter "pybnf*.tar.gz" -File -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath $d -Filter "pybnf-pf-*.tar.gz" -File -ErrorAction SilentlyContinue
     })
     if ($archives.Count -gt 0) {
         return ($archives | Sort-Object LastWriteTimeUtc -Descending |
@@ -1090,12 +1140,67 @@ if (Test-Path $EnginePy) {
         # A venv that imports badly (e.g. NumPy 2) is not "no access".
         Warn "engine venv exists at $EngineVenv but its imports fail. Python said:"
         Show-Output $imp 10
+        # libroadrunner imports MSVCP140.dll and ships none; a python.org
+        # Python does not bring it. Keyed on the file, as FluBNF.bat does.
+        $vcrt = if ($env:SystemRoot) { Join-Path $env:SystemRoot "System32\msvcp140.dll" }
+        if ($vcrt -and -not (Test-Path -LiteralPath $vcrt)) {
+            Warn "This PC lacks the Microsoft Visual C++ runtime (msvcp140.dll is"
+            Warn "not in Windows\System32), which the engine's simulator needs."
+            Info "Install the Visual C++ Redistributable for x64 from"
+            Info "https://aka.ms/vc14/vc_redist.x64.exe (it asks an administrator),"
+            Info "then open FluBNF.bat again."
+        }
     }
 }
 if ($EngineReady) {
     Ok "engine venv ready: $EngineVenv"
 } else {
     Warn "engine venv not ready."
+    # What FluBNF.bat builds the engine venv from, in its order: py 3.12, py
+    # 3.11, python, conda's base, each only if it is 64-bit (x64) 3.11 or
+    # 3.12 (numpy<2, bngsim and libroadrunner have Windows wheels for x64
+    # only); else conda makes a 3.12. With neither, FluBNF.bat stops at the
+    # same remedy as this, whatever else is in place, so it is said here in
+    # every case.
+    $EngineGate = "import sys, sysconfig; print(int(sys.version_info[:2] in ((3,11),(3,12)) and sysconfig.get_platform() == 'win-amd64'))"
+    $EngineBootCmd = $null
+    $bootCands = @(@{ exe = "py"; args = @("-3.12") }, @{ exe = "py"; args = @("-3.11") },
+                   @{ exe = "python"; args = @() })
+    if ($CondaRoot) { $bootCands += @{ exe = (Join-Path $CondaRoot "python.exe"); args = @() } }
+    foreach ($c in $bootCands) {
+        if (-not (Get-Command $c.exe -ErrorAction SilentlyContinue)) { continue }
+        $gateArgs = @($c.args) + @("-c", $EngineGate)
+        try { $fits = & $c.exe @gateArgs 2>$null }
+        catch { $fits = $null }
+        if ("$fits".Trim() -eq "1") {
+            # a conda python.exe is a full path, which may hold a space
+            $exe = if ($c.exe -match '\\') { "`"$($c.exe)`"" } else { $c.exe }
+            $EngineBootCmd = "$exe $($c.args -join ' ')".Trim()
+            break
+        }
+    }
+    $EngineNoPython = (-not $EngineBootCmd) -and (-not $CondaRoot)
+    if ($EngineNoPython) {
+        Warn "No Python on this PC can run the engine: it needs 64-bit (x64)"
+        Warn "Python 3.12 or 3.11."
+        $arm = (($env:PROCESSOR_ARCHITECTURE -eq "ARM64") -or
+                ($env:PROCESSOR_ARCHITEW6432 -eq "ARM64"))
+        if ((-not $arm) -and (Get-Command pymanager -ErrorAction SilentlyContinue)) {
+            # the Python install manager's py; the older py.exe takes
+            # "install" for a script to run
+            Info "To add one, run this in Command Prompt, then open FluBNF.bat again:"
+            Info "    py install 3.12"
+        } else {
+            if ($arm) {
+                Info "This PC has an ARM processor: the engine runs on the x64 build,"
+                Info "which Windows runs under emulation."
+            }
+            Info "To add one, install Anaconda (anaconda.com/download; the defaults"
+            Info "are fine) and open FluBNF.bat again. If Anaconda is installed"
+            Info "already, open Anaconda Prompt from the Start menu and run"
+            Info "FluBNF.bat from there."
+        }
+    }
     # FluBNF.bat installs from an engine on disk (a clone, or an unpacked
     # archive) or from an engine file, with no GitHub account; either way the
     # GitHub probe below would only mislead, so it is skipped.
@@ -1112,8 +1217,11 @@ if ($EngineReady) {
         Warn "which is a PRIVATE repository."
         Info "The route with no GitHub account: ask the lab for the engine file"
         Info "(pybnf-pf-XXXX.tar.gz or pybnf.bundle), save it in your Downloads"
-        Info "folder, and open FluBNF.bat again. None was found in this folder,"
-        Info "the one above it, Downloads, Desktop or Documents."
+        Info "folder, and open FluBNF.bat again. None was found in these folders"
+        Info "(each folder itself, not the folders inside it):"
+        foreach ($folder in $script:EngineFileDirs) {
+            Info "    $folder"
+        }
         Info "The route through GitHub needs access to the fork."
         if ($env:FLUBNF_NO_PROBE -eq "1") {
             Info "access probe skipped (FLUBNF_NO_PROBE=1)"
@@ -1124,8 +1232,12 @@ if ($EngineReady) {
         }
     }
     if ($access -eq "local") {
-        Ok "engine on disk: $PyBnf; FluBNF.bat finishes the install, no GitHub account needed"
-        Info "(right after this, when FluBNF.bat started this setup; otherwise open FluBNF.bat)"
+        if ($EngineNoPython) {
+            Warn "engine on disk: $PyBnf; FluBNF.bat installs it once a Python above is in place"
+        } else {
+            Ok "engine on disk: $PyBnf; FluBNF.bat finishes the install, no GitHub account needed"
+            Info "(right after this, when FluBNF.bat started this setup; otherwise open FluBNF.bat)"
+        }
         Clear-EngineAttempt
         Info "Or finish by hand, in Command Prompt:"
     } elseif ($access -eq "file") {
@@ -1136,6 +1248,8 @@ if ($EngineReady) {
             Warn "git is not on PATH, so FluBNF.bat cannot clone this bundle. Install"
             Warn "Git for Windows (https://git-scm.com/download/win) and open a new"
             Warn "window, or ask the lab for pybnf-pf-XXXX.tar.gz, which needs no git."
+        } elseif ($EngineNoPython) {
+            Warn "FluBNF.bat installs it once a Python above is in place."
         } else {
             Info "FluBNF.bat installs it, no GitHub account needed: right after this,"
             Info "when FluBNF.bat started this setup; otherwise open FluBNF.bat."
@@ -1186,32 +1300,31 @@ if ($EngineReady) {
     # Printed for Command Prompt, where the docs start this script, with
     # every path quoted: a profile path can hold a space, and unquoted, git
     # stops at "Too many arguments" and venv quietly makes two folders.
-    if ($access -ne "file") {
-        # Engine venv needs Python 3.11/3.12 (numpy<2 wheels stop at cp312; a
-        # source build dies on MAX_PATH): print a suitable interpreter, else conda.
-        $EngineBootCmd = $null
-        foreach ($c in @(@{exe="py"; args=@("-3.12")}, @{exe="py"; args=@("-3.11")})) {
-            try { $vv = & $c.exe @($c.args + @("-c", "import sys; print(sys.version_info[1])")) 2>$null }
-            catch { $vv = $null }
-            if ($vv) { $EngineBootCmd = "$($c.exe) $($c.args -join ' ')"; break }
-        }
-        if (-not $EngineBootCmd -and $v) {
-            # a found python.exe is a full path (Anaconda's may hold a space)
-            $exe = if ($PyExe -match '\\') { "`"$PyExe`"" } else { $PyExe }
-            try { if ([version]"$v" -lt [version]"3.13") { $EngineBootCmd = "$exe $($PyArgs -join ' ')".Trim() } } catch { }
-        }
+    if ($access -ne "file" -and $EngineNoPython) {
+        Info "  (first a Python, as above; FluBNF.bat then does the rest)"
+    } elseif ($access -ne "file") {
         if ($EngineBootCmd) {
             Info "  $EngineBootCmd -m venv `"$EngineVenv`""
         } else {
-            Info "  (your Python is newer than the engine's numpy pin supports; make a 3.12 first)"
+            # CONDA_SUBDIR=win-64, as FluBNF.bat sets it: the x64 build
+            # whatever conda takes this PC to be (on an ARM laptop some conda
+            # releases said win-arm64). The variable, not --subdir: conda
+            # before 23.10 has no --subdir on create, and every release reads
+            # the variable. The quotes keep a trailing space out of its value.
+            # In Anaconda PowerShell Prompt, set is Set-Variable and leaves the
+            # environment alone, so that prompt gets its own line.
+            Info "  (no 64-bit x64 Python 3.12 or 3.11 here: conda makes one first, in Anaconda Prompt)"
+            Info "  set `"CONDA_SUBDIR=win-64`""
+            Info "  (in Anaconda PowerShell Prompt that line is: `$env:CONDA_SUBDIR = `"win-64`")"
             Info "  conda create -y -p `"$env:USERPROFILE\.venvs\flubnf-engine-py312`" python=3.12"
             Info "  `"$env:USERPROFILE\.venvs\flubnf-engine-py312\python.exe`" -m venv `"$EngineVenv`""
         }
         # Same pins as setup_engine.sh: the runtime set explicitly (all have
         # win_amd64 wheels), then the fork --no-deps (its msgpack==0.6.2 pin has
-        # no Windows wheel and needs MSVC).
-        Info "  `"$EngineVenv\Scripts\pip.exe`" install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
-        Info "  `"$EngineVenv\Scripts\pip.exe`" install -e `"$PyBnf`" --no-deps"
+        # no Windows wheel and needs MSVC). pip through python -m, as
+        # FluBNF.bat runs it: Scripts\pip.exe is a launcher antivirus can take.
+        Info "  `"$EngineVenv\Scripts\python.exe`" -m pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
+        Info "  `"$EngineVenv\Scripts\python.exe`" -m pip install -e `"$PyBnf`" --no-deps"
         Info "  then re-run this script"
         Info "(In PowerShell, put & and a space in front of a line that starts with a quote.)"
     }

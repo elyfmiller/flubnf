@@ -375,11 +375,11 @@ def test_the_windows_launcher_probes_onedrive_known_folder_move():
     defined` (an undefined %OneDrive% would match a drive-root \\Downloads).
     setup_engine.sh needs no twin: KFM is Windows-only."""
     for folder in ("Downloads", "Desktop", "Documents"):
-        for shape in ("bundle", "tar.gz"):
+        for shape in ("pybnf*.bundle", "pybnf-pf-*.tar.gz"):
             needle = ('if defined OneDrive for %%F in '
-                      f'("%OneDrive%\\{folder}\\pybnf*.{shape}")')
+                      f'("%OneDrive%\\{folder}\\{shape}")')
             assert needle in BAT, (
-                f"FluBNF.bat does not probe OneDrive {folder} for *.{shape}")
+                f"FluBNF.bat does not probe OneDrive {folder} for {shape}")
     assert 'for %%F in ("%OneDrive%' not in BAT.replace(
         'if defined OneDrive for %%F in ("%OneDrive%', ""), (
         "an %OneDrive% probe in FluBNF.bat is missing its `if defined` "
@@ -593,6 +593,53 @@ def test_the_newest_archive_wins_when_an_old_one_is_still_in_downloads(tmp_path)
     assert "3320d1f0" not in out.stdout
 
 
+@posix_only
+def test_the_cut_script_hands_over_a_good_archive_and_the_stamp_launchers_read(
+        tmp_path):
+    """scripts/cut_engine_archive.sh checks that pf.py is in what it cut.
+    Piped into grep -q, the listing died of SIGPIPE once grep stopped at the
+    match, and pipefail made that a refusal of a good archive (GNU tar 1.35,
+    the real fork). Its VERSION is the shape FluBNF.bat has to read, and the
+    one tests/test_windows_launcher.py builds: three LF-only lines, the
+    commit subject as written, here with a ';' in it."""
+    import tarfile
+    fork = tmp_path / "fork"
+    (fork / "pybnf").mkdir(parents=True)
+    (fork / "pybnf" / "pf.py").write_text("class ParticleFilter: pass\n")
+    # enough listing after pf.py that tar is still writing when grep stops
+    for i in range(4000):
+        (fork / "pybnf" / f"zz_{i:04d}_{'x' * 48}.py").write_text("")
+    (fork / "setup.py").write_text("from setuptools import setup; setup()\n")
+    (fork / "README.md").write_text("stand-in for the fork\n")
+    run = lambda *a: subprocess.run(  # noqa: E731
+        ["git", *a], cwd=fork, check=True, capture_output=True, text=True)
+    run("init", "-q", "-b", "feature/particle-filter", ".")
+    run("remote", "add", "origin",
+        "https://github.com/elyfmiller/PyBNF-Private.git")
+    run("add", ".")
+    run("-c", "user.email=t@example.invalid", "-c", "user.name=t",
+        "commit", "-qm", "pf: keep the seed; resample after the update")
+    sha = run("rev-parse", "--short", "HEAD").stdout.strip()
+
+    cut = REPO / "scripts" / "cut_engine_archive.sh"
+    out = subprocess.run(["bash", str(cut), str(tmp_path / "out")],
+                         capture_output=True, text=True, timeout=120,
+                         check=False, cwd=tmp_path,
+                         env={**os.environ, "FLUBNF_PYBNF_FORK": str(fork)})
+
+    assert out.returncode == 0, out.stdout + out.stderr
+    arc = tmp_path / "out" / f"pybnf-pf-{sha}.tar.gz"
+    assert arc.is_file(), out.stdout + out.stderr
+    with tarfile.open(arc) as t:
+        names = t.getnames()
+        version = t.extractfile("PyBNF-Private/VERSION").read()
+    assert f"{len(names)} files)" in out.stdout, out.stdout
+    assert b"\r" not in version and version.count(b"\n") == 3, version
+    first, _, subject, _ = version.split(b"\n")
+    assert first == f"feature/particle-filter {sha}".encode()
+    assert subject == b"subject: pf: keep the seed; resample after the update"
+
+
 def _fake_archive(tmp_path: Path, stamp: str, name: str) -> Path:
     """An engine archive of the shape cut_engine_archive.sh produces: one top
     level folder holding pybnf/pf.py, setup.py and a VERSION stamp."""
@@ -717,12 +764,13 @@ def test_a_stale_copy_is_replaced_under_gnu_tar_too(tmp_path):
 
 
 def test_the_windows_launcher_picks_the_newest_archive_and_replaces_a_stale_copy():
-    """FluBNF.bat mirrors setup_engine.sh: every pybnf*.tar.gz search goes
-    through :newerarchive (newest wins, not glob order), and an unpacked copy
-    that already exists is sent to the stale check instead of being kept."""
+    """FluBNF.bat mirrors setup_engine.sh: every pybnf-pf-*.tar.gz search
+    goes through :newerarchive (newest wins, not glob order), and an unpacked
+    copy that already exists is sent to the stale check instead of being
+    kept."""
     bat = BAT.replace("\r\n", "\n")
     archive_loops = [ln for ln in bat.split("\n")
-                     if "pybnf*.tar.gz" in ln and ln.lstrip().startswith(("for ", "if defined OneDrive for "))]
+                     if "pybnf-pf-*.tar.gz" in ln and ln.lstrip().startswith(("for ", "if defined OneDrive for "))]
     assert len(archive_loops) == 8
     assert all('do call :newerarchive "%%~fF"' in ln for ln in archive_loops)
     assert "if not defined ARCHIVE set" not in bat
@@ -731,5 +779,9 @@ def test_the_windows_launcher_picks_the_newest_archive_and_replaces_a_stale_copy
     # the old copy is renamed aside, never deleted
     stale = bat.split("\n:archivestale\n", 1)[1].split("\n:archivedone\n", 1)[0]
     assert 'ren "%PYBNFDIR%" "%KEPT%"' in stale
-    # a working engine still reaches the console after the archive check
-    assert "\n:archivedone\nif defined ENGINEOK goto :startconsole\n" in bat
+    # a working engine still reaches the console after the archive check,
+    # by way of the Perl check every open makes
+    done = [ln for ln in bat.split("\n:archivedone\n", 1)[1].split("\n")[:6]
+            if not ln.startswith("rem ")]
+    assert done[:2] == ["if defined ENGINEOK call :perlblock",
+                        "if defined ENGINEOK goto :startconsole"], done
