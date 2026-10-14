@@ -582,12 +582,21 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
-    from app.core.runs import APP_STATE
+    from app.core.runs import APP_STATE, is_contained, model_settings_label
     stamp = output_stamp()
-    rid, res = shared._latest_results()
+    # the newest run, a modified one included: the report card is where
+    # the person who made it looks for it (its files sit under their
+    # date, tagged); Home, Forecast and Models keep the shipped rule
+    rid, res = shared._latest_results(include_modified=True)
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
+    # a modified run exported under the non-hub name: the card says so,
+    # with the settings label in the badge's tip
+    report_modified = ""
+    if res and is_contained(res.get("spec", "")):
+        report_modified = (model_settings_label(res.get("spec", ""))
+                           or "modified model settings")
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
     # each file gets the hub validator's command (--window for a round
@@ -618,6 +627,7 @@ def output_page(request: Request):
         # beside its buttons (which name that run)
         "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
+        "report_modified": report_modified,
         "stamp": stamp})
 
 
@@ -802,7 +812,7 @@ def output_report(request: Request, date: str = ""):
             return _notice(request, 200, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
-    rid, _ = shared._latest_results()
+    rid, _ = shared._latest_results(include_modified=True)   # as the page
     d = APP_STATE / "workroots" / (rid or "")
     if not (d / "report.html").is_file():
         return _notice(request, 200, "empty", "No report yet", icon="clock",
@@ -856,7 +866,7 @@ def output_report_download(request: Request, date: str = ""):
         return _weekly_report_file(APP_STATE / "archive" / date, date,
                                    request,
                                    route=f"/output/report/download?date={date}")
-    rid, res = shared._latest_results()
+    rid, res = shared._latest_results(include_modified=True)   # as the page
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""), request,
                                route="/output/report/download")

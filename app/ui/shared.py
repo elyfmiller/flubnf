@@ -347,21 +347,28 @@ def _outcome_chips(outcome_json: str) -> str:
     return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
 
 
-def _latest_results():
+def _latest_results(include_modified: bool = False):
     """(run_id, results) of the newest non-research run, or (None, None).
     A corrupt results.json falls through to the next run; the file is read
     fresh (only the scan is cached). Research runs are skipped because
-    every caller is a shipped-product surface (audit rr-1)."""
+    every caller is a shipped-product surface (audit rr-1). A modified
+    run exported under the non-hub name is skipped too, so Home, the
+    Forecast fans and Models never show it as the registered model; the
+    Output page passes include_modified=True and shows it badged (its
+    report is the newest run's, its files sit under their date)."""
     import json as _json
-    from app.core.runs import is_contained
+    from app.core.runs import is_contained, is_research
     for f in _workroot_results():
         try:
             res = _json.loads(f.read_text(encoding="utf-8"))
         except (_json.JSONDecodeError, OSError):
             continue
-        # research, or modified model settings exported under the non-hub
-        # name (an override puts a modified run back, badged)
-        if res.get("research") or is_contained(res.get("spec", "")):
+        spec = res.get("spec", "")
+        if res.get("research") or is_research(spec):
+            continue
+        # modified model settings exported under the non-hub name (an
+        # override puts a modified run back on every surface, badged)
+        if not include_modified and is_contained(spec):
             continue
         return f.parent.name, res
     return None, None
