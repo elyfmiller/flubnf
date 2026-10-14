@@ -107,6 +107,13 @@
    Save and run, then its diagram) and its runs (the open run's results,
    what changed, the Oracle step, the run list). Manage sits by the title. #}
 {% set name = editing.name %}
+{# Save and run, in the toolbar and at the foot of Run settings: off while
+   a run of this model fits, its label the fit's time so far (sandbox.js
+   counts it up; Check and Simulate data stay on) #}
+{% macro run_button(name, fitting) -%}
+<button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run"
+{%- if fitting %} data-sb-fitting data-idle="Save and run" disabled>{{ fitting.button }}{% else %}>Save and run{% endif %}</button>
+{%- endmacro %}
 <nav class="sb-crumb" aria-label="Breadcrumb"><a href="/sandbox">Sandbox</a> /</nav>
 <div class="sbhead">
  <div class="sbhead-main">
@@ -148,8 +155,12 @@
 <div class="sbwork{% if not res %} sbwork-new{% endif %}">
  <div class="sbedit">
   {# one form, two cards: the model's files under a toolbar (Check, Save,
-     and Save and run, the primary), then the next run's settings #}
-  <form method="post" action="/sandbox/models/{{ name }}/save" id="sbform" data-model="{{ name }}">
+     and Save and run, the primary), then the next run's settings. While a
+     run of this model fits, the form carries its id (the poll), its start,
+     its estimate (low, high seconds) and when it reads as slow, which
+     sandbox.js counts the time against #}
+  <form method="post" action="/sandbox/models/{{ name }}/save" id="sbform" data-model="{{ name }}"
+   {%- if fitting %} data-fitting="{{ fitting.run_id }}" data-started="{{ fitting.started }}" data-low="{{ fitting.low }}" data-high="{{ fitting.high }}" data-slow-after="{{ fitting.slow_after }}"{% endif %}>
    {# the first submit button is the form's default: Enter in a field saves, never loads data.
       Save skips the run settings' range checks (formnovalidate): they hold
       for a run, never for saving the files #}
@@ -166,7 +177,7 @@
      <div class="sbactions sb-tools" role="group" aria-labelledby="h-sb-model">
       <button type="button" id="sb-check">Check</button>
       <button formaction="/sandbox/models/{{ name }}/save" formnovalidate>Save</button>
-      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
+      {{ run_button(name, fitting) }}
       {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without fitting: what would stop a run, and the model at its written values beside the data. Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
      </div>
     </div>
@@ -215,9 +226,11 @@
         <option value="custom" {% if form.particles not in (presets.quick, presets.full) %}selected{% endif %}>Custom</option>
        </select>
        <input name="particles" id="sb-particles" type="number" value="{{ form.particles }}" min="50" max="100000" aria-label="particles"></span>
-       {# the time the fit takes: sandbox.js writes it as the count changes #}
-       <span class="sb-eta" id="sb-eta" data-full="{{ eta_full }}" hidden>{{ tips.icon("clock") }}<span class="uk-sr">Fitting takes </span><span class="sb-eta-v"></span>
-        {{- tips.tip("sb-eta-t", "the time estimate", "A rough estimate for these particles and the rows in data.exp, scaled from the production model's fit times: a larger model or a slower computer takes longer.") }}</span></span></span>
+       {# the time the fit takes here, for the count shown: sandbox.js
+          rewrites it as the count changes, from the seconds at 10,000
+          particles (a span until a fit has finished on this computer) #}
+       <span class="sb-eta" id="sb-eta" data-low="{{ eta_full[0] }}" data-high="{{ eta_full[1] }}"{% if not eta_text %} hidden{% endif %}>{{ tips.icon("clock") }}<span class="uk-sr">Fitting takes </span><span class="sb-eta-v">{{ eta_text }}</span>
+        {{- tips.tip("sb-eta-t", "the time estimate", "For these particles and the rows in data.exp, scaled by how long this computer's last fit took." if eta_calibrated else "A span until a fit finishes on this computer; after that, the estimate follows this computer's own speed.") }}</span></span></span>
       <span>{{ tips.label("Jitter", "sb-jitter", "How far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 is the production setting, and 0.2 to 0.3 helps a fit that collapses.", for_="sb-jitter-in") }}
        <input id="sb-jitter-in" name="jitter" type="number" step="0.01" value="{{ form.jitter }}" min="0.01" max="0.99"></span>
       <span>{{ tips.label("Forecast weeks", "sb-weeks", "Weeks projected past the last observation.", for_="sb-weeks-in") }}
@@ -227,7 +240,7 @@
      </div>
      {# the toolbar's primary again, beside the settings it runs with #}
      <div class="sb-runfoot">
-      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
+      {{ run_button(name, fitting) }}
      </div>
     </fieldset>
    </div>
@@ -248,8 +261,9 @@
    {% set show_health = h and not live_run %}
    {{ tips.heading("Results", "sb-results", after=(run_badge(st, "sb-status") if (st != "ok" or not show_health) else "")) }}
    {% set quick = (res.meta.particles | int) < presets.full %}
-   {# only after a quick check that worked: a failed or stopped run shows its reason, not a bigger run #}
-   {% set offer_full = quick and not live_run and st == "ok" %}
+   {# only after a quick check that worked: a failed or stopped run shows its reason, not a bigger run;
+      and never while a run of this model fits, as Save and run is off then #}
+   {% set offer_full = quick and not fitting and st == "ok" %}
    {% set full_form %}<form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
     <input type="hidden" name="particles" value="{{ presets.full }}"><input type="hidden" name="jitter" value="{{ res.meta.jitter }}">
     <input type="hidden" name="forecast_weeks" value="{{ res.meta.forecast_weeks }}"><input type="hidden" name="seed" value="{{ res.meta.seed }}">
@@ -272,8 +286,11 @@
    {% elif offer_full %}{{ full_form }}
    {% endif %}
    {% if live_run %}
+   {# the fit's time so far against its estimate, one line sandbox.js
+      counts up every second; well past the estimate it says stopping is
+      safe, beside Stop #}
    <div class="sb-live">
-    <div class="sb-live-bar">{{ tips.progress("Fitting now", id="sb-live") }}</div>
+    <p class="sb-live-v" role="timer">{{ tips.icon("clock") }}<span id="sb-live">{{ fitting.line if fitting else "Fitting now" }}</span></p>
     {{ tips.tip("sb-live-t", "fitting now", "This page updates when the run ends.") }}
     <form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button class="quiet sb-danger">Stop</button></form>
    </div>
