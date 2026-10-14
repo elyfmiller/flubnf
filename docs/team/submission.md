@@ -1007,6 +1007,27 @@ and CDC's rules. The season's facts are in
   stored early and peak replays and the scorers in the Submission scratchpad
   can score a candidate from the same runs, as the 0.25 rule was. The lane
   can run resolve_state on each Wednesday's data and report who is next.
+- Model (2026-10-14): THE WEIGHT STAYS AT 0.25 THROUGH THE PEAK; 0.5 IS NOT
+  A BRAKE. Ely asked whether the blend should return to one half later in
+  the season to slow the Oracle's steepness. The stored replay says the
+  opposite (replays/score_w025_result.txt, stage rule, 5-seed mean, relWIS
+  / log relWIS, w = 0.5 against 0.25): early weeks pooled 0.679/0.681
+  against 0.668/0.668; PEAK weeks pooled 0.836/0.980 against 0.779/0.861;
+  all 44 weeks 0.753/0.787 against 0.720/0.736. The 0.25 weight wins by
+  more at the peaks than early; the only blocks where 0.5 is ahead are
+  2023-24 early and the 2024-25 peak, natural scale only, by under 0.03.
+  Why: w weights the filter's growth and the filter is the steep member
+  (this week at 0.5 the stage rule put 17 states above 3x by horizon 3,
+  at 0.25 three); the donors are past seasons' growth at the same calendar
+  week and turn down at the calendar peak, so the 75% donor share is the
+  brake there, on top of the stage rule's own (the to-date pin after the
+  quarter). The one case the replay does not cover: a season that peaks
+  well before the calendar donors do (this one runs at three times last
+  year's level in mid-October). If the data turn while the donors still
+  say grow, the filter is the better brake and 0.5 would help; the sign to
+  watch each Wednesday is the filter-alone forecast (pf_filter, scored
+  beside the Oracle) flattening while the Oracle keeps rising. Until then,
+  0.25.
 - App (2026-10-14): three things from the round, none urgent. (1) A modified
   run exported without the override is kept off the Output tab and the
   archived weekly report is not replaced, so Ely found the run only in the
