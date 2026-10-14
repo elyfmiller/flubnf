@@ -6,6 +6,16 @@ this file here.
 
 ## Now
 
+- 2026-10-14: the first review of lanl/PyBNF#985 arrived (Bill's reviewing
+  agent, ten inline findings and one outside the diff, every one real:
+  two silently accepted keys, a resampling edge, a hung cluster at
+  `parallel_count = 0`, log quieting that missed child loggers, header
+  collisions, and the adaptive sampler's noise trajectory sharing commit
+  2's bug plus a NumPy 2 crash). All fixed in the commits that own them,
+  with tests; two efficiency notes answered with measurements. The series
+  was rebuilt on the same base and force-pushed as f17cfc07 (eight commits,
+  authored as Ely, every gate green). Ely posts the replies. Nothing in
+  FluBNF or the production engine pin changes.
 - 2026-10-13 (verdict): the per-parameter kernel-jitter test is a
   pre-registered null. No arm beat production's single `pf_jitter = 0.15`
   on the Oracle SIHRS member, so the full-grid stage did not run and
