@@ -59,7 +59,8 @@
 .rt-bandfacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem}
 /* the settings as a row of facts, wrapping in their own box */
 .rt-settings > ul{min-width:0}
-/* the replay bundle's size and name, beside Export replay */
+/* the replay bundle's size and name, beside its button (the report
+   inlines this sheet, so its words name no console control) */
 .rt-exp-out{font-size:var(--fs-label)}
 /* the progress of a file being prepared (report, bundle): a line of its
    own under the buttons */
