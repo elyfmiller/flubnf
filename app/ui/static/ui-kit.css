@@ -159,6 +159,11 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-alert--info{--uk-c:var(--accent-ink)}
 .uk-alert--ok{--uk-c:var(--ok)}
 .uk-alert[hidden]{display:none}
+/* a title over a second line (tips.alert cls="uk-alert--two-line"): the
+   icon stays centered on the title's line, the action on the two lines */
+.uk-alert--two-line{align-items:flex-start}
+.uk-alert--two-line > .uk-icon{margin-top:.13em}
+.uk-alert--two-line > .uk-alert-action{align-self:center}
 
 /* ---- 6. empty state: icon, short title, one action ---- */
 .uk-empty{display:flex;flex-direction:column;align-items:center;
@@ -252,7 +257,10 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-step--current .uk-step-label{font-weight:750}
 .uk-step--todo .uk-step-label{color:var(--mut)}
 .uk-step--todo .uk-step-label a{color:var(--gold)}
-.uk-step-meta{grid-column:1 / -1;color:var(--mut);font-size:var(--fs-label)}
+.uk-step-meta{display:block;grid-column:1 / -1;color:var(--mut);
+  font-size:var(--fs-label)}
+/* a step with no "?" needs no grid: its label takes the line's width */
+.uk-step-body:not(:has(> .tip)){display:block}
 /* vertical: stacked, the line runs down from each mark */
 .uk-stepper--vertical{flex-direction:column;flex-wrap:nowrap;gap:0}
 .uk-stepper--vertical .uk-step{flex:none;align-items:flex-start;
@@ -343,6 +351,8 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   padding:.05rem .15rem .05rem .65rem;border:1px solid var(--line);
   border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-label);
   font-weight:600;white-space:nowrap}
+/* a chip with no "?" keeps the pill even on both sides */
+.uk-name:not(:has(> .tip)){padding-right:.65rem}
 /* a centered line under a figure: a formula beside its name chip, or a
    badge about the figure */
 .uk-figline{display:flex;flex-wrap:wrap;align-items:center;

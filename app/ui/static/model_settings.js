@@ -1,9 +1,13 @@
 /* The Model settings panel (templates/_model_settings.html): the live
-   "default / modified" badge (a kit badge), the rows that do not apply to
-   the chosen engine hidden (the server ignores them too, and never
-   records them), "Reset to defaults", and the override's reason made
-   required when its box is ticked. The server is the authority; this
-   only keeps the page honest while the form is filled in.
+   "default / modified" badge (a kit badge; with the override, how a
+   modified run's files will be named), each group's "N changed", the rows
+   that do not apply to the chosen engine hidden (the server ignores them
+   too, and never records them; their fields are still posted, so the form
+   keeps them for the next run, but never checked), "Reset to defaults",
+   the override's reason shown and required when its box is ticked, and a
+   value the browser refuses shown even inside a closed fold. The server
+   is the authority; this only keeps the page honest while the form is
+   filled in.
 
    Every panel on the page is its own (the Retrospective tab holds the
    FluSight replay's and the own-data replay's); a panel's parts are found
@@ -11,9 +15,11 @@
    a panel follows (default: #model-pick or #retro-engine in its form);
    data-kind (set by the page) hides the rows marked data-only for another
    kind of data, and a group whose rows are all hidden hides too. The
-   panel reopens when the user left it open this session (sessionStorage,
-   per page and panel). Loading
-   the script twice sets nothing up twice. */
+   panel opens or closes as the user left it this session (sessionStorage,
+   per page and panel); a run forgets it, so the page after a run shows
+   the panel closed unless the server refused its settings. Opened near
+   the window's foot (by a click, or by a refusal), the page brings it
+   into view. Loading the script twice sets nothing up twice. */
 (function () {
   function init(box) {
     if (box.dataset.msReady) return;
@@ -24,6 +30,7 @@
     var ovr = box.querySelector('.ms-override');
     var tick = box.querySelector('input[name=submit_modified]');
     var reason = box.querySelector('input[name=modified_reason]');
+    var why = box.querySelector('.ms-why');
     var reset = box.querySelector('.ms-head > button');
     var inputs = Array.prototype.slice.call(box.querySelectorAll('[data-knob]'));
 
@@ -84,19 +91,41 @@
         return ms.indexOf(m) >= 0;
       });
     }
+    // a hidden row's field is still posted (the next run's form keeps its
+    // value) but never checked: its limits wait in data-ms-min, -max and
+    // -step while the row is hidden, so a value out of range there never
+    // blocks Run models unseen
+    var LIMITS = {min: 'msMin', max: 'msMax', step: 'msStep'};
+    function setLimits(row, on) {
+      row.querySelectorAll('[data-knob]').forEach(function (el) {
+        Object.keys(LIMITS).forEach(function (a) {
+          var kept = LIMITS[a];
+          if (!on && !(kept in el.dataset) && el.hasAttribute(a)) {
+            el.dataset[kept] = el.getAttribute(a);
+            if (a === 'step') el.setAttribute('step', 'any');
+            else el.removeAttribute(a);
+          } else if (on && kept in el.dataset) {
+            el.setAttribute(a, el.dataset[kept]);
+            delete el.dataset[kept];
+          }
+        });
+      });
+    }
     function filter() {
       var ms = members(), kind = box.dataset.kind || '';
       box.querySelectorAll('.ms-row').forEach(function (n) {
         n.hidden = !applies(n, ms)
           || !!(kind && n.dataset.only && n.dataset.only !== kind);
+        setLimits(n, !n.hidden);
       });
       box.querySelectorAll('.ms-group').forEach(function (g) {
         var rows = Array.prototype.slice.call(g.querySelectorAll('.ms-row'));
         g.hidden = !applies(g, ms)
           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
       });
-      // the "coming later" fold hides with its last applying row
-      box.querySelectorAll('.ms-later-fold').forEach(function (f) {
+      // the "coming later" and a group's "N more" folds hide with their
+      // last applying row
+      box.querySelectorAll('.ms-later-fold, .ms-more').forEach(function (f) {
         var rows = Array.prototype.slice.call(f.querySelectorAll('.ms-row'));
         f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
       });
@@ -125,8 +154,19 @@
       var any = inputs.some(function (el) {
         return !el.closest('[hidden]') && isModified(el);
       });
-      if (badge) setBadge(any ? 'warn' : 'ok', any ? 'modified' : 'default');
+      // with the override, the summary says how the files will be named
+      // (the box starts unticked each run)
+      var word = !any ? 'default' : !tick ? 'modified'
+        : 'modified · ' + (tick.checked ? 'hub names' : 'non-hub names');
+      if (badge) setBadge(any ? 'warn' : 'ok', word);
+      // each group's summary counts its changed rows
+      box.querySelectorAll('.ms-group').forEach(function (g) {
+        var n = g.querySelectorAll('.ms-row.ms-changed:not([hidden])').length;
+        var c = g.querySelector('.ms-n');
+        if (c) { c.hidden = !n; c.textContent = n + ' changed'; }
+      });
       if (ovr) ovr.hidden = !any;
+      if (why) why.hidden = !(tick && tick.checked);
       if (reason) reason.required = !!(any && tick && tick.checked);
     }
     if (reset) reset.addEventListener('click', function () {
@@ -138,26 +178,79 @@
       if (reason) reason.value = '';
       update();
     });
-    // reopened when the user left it open this session (the server opens
-    // it after a refusal, or for changed settings when no run is going); a
-    // click on the summary is the user's choice, never a page render
+    // open or closed as the user left it this session; the server opens
+    // it only on the page after a refusal over its settings
+    // (data-refused), which a close stored earlier never undoes. A click
+    // on the summary is the user's choice, never a page render
     var memo = 'ms-open:' + location.pathname + ':' + (box.id || '');
     try {
-      if (sessionStorage.getItem(memo) === '1') box.open = true;
+      var left = sessionStorage.getItem(memo);
+      if (left === '1') box.open = true;
+      else if (left === '0' && !box.hasAttribute('data-refused')) box.open = false;
     } catch (e) {}
     var sum = box.querySelector('summary');
+    // opened with its summary near the window's foot, where the Run row
+    // is then held (forecast.css), the panel would open out of sight: the
+    // page brings the summary to the top
+    var runrow = form && form.querySelector('.fc-runrow');
+    function reveal(smooth) {
+      if (!sum || !box.open) return;
+      var foot = innerHeight - (runrow ? runrow.getBoundingClientRect().height : 0);
+      if (sum.getBoundingClientRect().bottom + 96 <= foot) return;
+      var calm = window.matchMedia
+        && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      sum.scrollIntoView({block: 'start',
+                          behavior: smooth && !calm ? 'smooth' : 'auto'});
+    }
     if (sum) sum.addEventListener('click', function () {
       setTimeout(function () {
         try { sessionStorage.setItem(memo, box.open ? '1' : '0'); } catch (e) {}
+        // after base.html's click guard, which holds the scroll for two
+        // frames after any click
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { reveal(true); });
+        });
       }, 0);
     });
-    // on the Forecast page an open panel takes the page's width: its
-    // column spans the grid (forecast.css .fc-col-wide), the groups in
-    // columns, the Run row held at the foot
-    var col = box.dataset.scope === 'forecast' && box.closest('.cols > div');
-    function wide() { if (col) col.classList.toggle('fc-col-wide', !!box.open); }
-    box.addEventListener('toggle', wide);
-    wide();
+    // the page after a refusal: the open panel and its message in view
+    if (box.hasAttribute('data-refused')) {
+      if (document.readyState === 'complete') reveal(false);
+      else addEventListener('load', function () { reveal(false); });
+    }
+    if (form) {
+      // a run forgets the choice: the page after it (and its automatic
+      // reload when the run ends) shows the panel as the server renders it
+      form.addEventListener('submit', function () {
+        try { sessionStorage.removeItem(memo); } catch (e) {}
+      });
+      // a value the browser refuses inside a closed fold (the panel, a
+      // group, its "N more"): open each and show the browser's message
+      // there (a field in a closed fold shows none, so Run models seemed
+      // to do nothing)
+      var reporting = false;
+      var shutAround = function (el) {
+        var out = [], d = el.parentElement.closest('details');
+        while (d && box.contains(d)) {
+          if (!d.open) out.push(d);
+          d = d.parentElement && d.parentElement.closest('details');
+        }
+        return out;
+      };
+      form.addEventListener('invalid', function (e) {
+        var el = e.target;
+        if (!box.contains(el)) return;
+        var shut = shutAround(el);
+        if (!shut.length && !reporting) return;
+        e.preventDefault();
+        if (reporting) return;
+        reporting = true;
+        shut.forEach(function (d) { d.open = true; });
+        setTimeout(function () {
+          reporting = false;
+          try { el.reportValidity(); } catch (x) {}
+        }, 0);
+      }, true);
+    }
     box.addEventListener('input', update);
     box.addEventListener('change', update);
     if (form) form.addEventListener('change', function (e) {

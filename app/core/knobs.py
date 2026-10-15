@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -61,7 +62,7 @@ from app.core.runs import RunSpec, default_season_start
 #   Stage 2 (models)     LATER, NOT_IN_RETRO, LEGACY_FIELDS, resolve,
 #                        from_record, write_extra, spec_fields, record_of,
 #                        modified, summary, write_record, legacy_settings_knobs
-#   Stage 3 (panel)      RETRO_ARG_KEYS, PANEL_GROUPS, _tip, panel,
+#   Stage 3 (panel)      RETRO_ARG_KEYS, PANEL_GROUPS, _hint, _mark, panel,
 #                        retro_week_extra
 
 MEMBERS = ("pf", "analogue")
@@ -203,22 +204,21 @@ REGISTRY: tuple = (
     *(_prior_knob(n) for n in PRIOR_DEFAULTS),
     Knob("pf.initialization", "Particle initialization", PF_ONLY, "fit",
          "method", "choice", "rand", "app.core.engines.pf:initialization_for",
-         "rand draws the first cloud from the priors; lh is Latin hypercube.",
+         "How the first cloud of particles is drawn from the priors.",
          choices=("rand", "lh"), check=_check_initialization),
     Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
          "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
-         "What pins rho*mult and i0: admissions to date, the expected season "
-         "total, or that early only.",
+         "Pins rho*mult and i0: admissions to date, the expected season "
+         f"total, or that total until {SP.EARLY_FRACTION:.0%} is in.",
          choices=SP.SEED_DENOMINATORS,
          note=("season_total: the expected total is the median per-capita "
                "total of the completed past seasons in the vintage, floored "
                "at the to-date count; i0 shrinks by expected/to-date and the "
                "model's implied depletion grows with the season instead of "
                "sitting at the attack rate from the first week. "
-               "season_total_early: the same while the to-date count is "
-               f"below EARLY_FRACTION ({SP.EARLY_FRACTION:g}) of the expected "
-               "total, the shipped rule after (the brake near the peak). "
-               "Research; no card phrase.")),
+               "season_total_early: the same until "
+               f"{SP.EARLY_FRACTION:.0%} of the expected total is in, the "
+               "shipped rule after (the brake near the peak).")),
     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
          default_season_start, "app.core.runs:default_season_start",
          "First week the filter fits; August 1 of the forecast's season.",
@@ -232,16 +232,16 @@ REGISTRY: tuple = (
          "Treat the vintage's partly reported same-day week as unreported."),
     Knob("data.trailing_zero", "Newest weeks reading 0", BOTH, "fit", "run",
          "choice", MS.TRAILING_ZERO, "app.core.missing:TRAILING_ZERO",
-         "missing: 1 or 2 newest weeks of 0, after a positive week, count as unreported.",
+         "1 or 2 newest weeks of 0 after a positive week: kept, or counted as unreported.",
          choices=MS.CHOICES),
     Knob("data.partial_week", "Collapsed newest week", BOTH, "fit", "run",
          "choice", MS.PARTIAL_WEEK, "app.core.missing:PARTIAL_WEEK",
-         "missing: a newest week under a fifth of a prior week of 20 or more counts as unreported.",
+         "A newest week under a fifth of a prior week of 20 or more: kept, or counted as unreported.",
          choices=MS.CHOICES),
     # -- Oracle SIHRS: the Oracle step (post-fit) --
     Knob("oracle.w", "Oracle blend weight", PF_ONLY, "step", "method", "float",
          OR.W_PRODUCTION, "flubnf.oracle:W_PRODUCTION",
-         "Weight of the donor's growth in the geometric blend; 1 is not the plain filter.",
+         "Weight on the filter's own growth; lower leans on the donors. 1 is not the plain filter.",
          lo=0.0, hi=1.0,
          card=(ORACLE_CARD, {0.5: "at weight one half"})),
     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
@@ -299,6 +299,17 @@ REGISTRY: tuple = (
                "blend: level and extend averaged. A live run asks per state "
                "in the Forecast tab's Data issues box; a replay asks on its "
                "form. Recorded with the run; never marks it modified.")),
+    Knob("groundhog.own_share", "Own-state donor weight", GH_ONLY, "groundhog",
+         "method", "float", AN.SHIPPED_OWN_SHARE,
+         "flubnf.analogue:SHIPPED_OWN_SHARE",
+         "Weight share of the jurisdiction's own past weeks in the admissions "
+         "pool; 0 is the pooled form.",
+         lo=0.0, hi=1.0,
+         note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
+               "against 0.670 pooled on three replayed seasons, "
+               "leave-one-season-out; 0.75 scored 0.658 with lower "
+               "coverage. The FluSurv-NET pool stays pooled."),
+         card=(GROUNDHOG_CARD, {0.5: "own past weeks carry half"})),
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
@@ -388,8 +399,11 @@ LOCKED: tuple = (
            "Objective, bounds and start time pinned to the records' conventions."),
     Locked("pf.starting_values", "DEFAULTS_BLOCK", "app.core.engines.pf:DEFAULTS_BLOCK",
            "Inert under initialization=rand."),
-    Locked("pooling", "all jurisdictions", "app.core.engines.analogue:run",
-           "Donor pools pool every location; jurisdictions fit independently."),
+    Locked("pooling", "all jurisdictions, own weeks at half weight",
+           "app.core.engines.analogue:run",
+           "Every jurisdiction's donor cells are in the Groundhog's pool; the "
+           "share on its own weeks is groundhog.own_share. Jurisdictions fit "
+           "independently."),
 )
 LOCKED_KEYS = frozenset(l.key for l in LOCKED)
 
@@ -573,6 +587,52 @@ def label(values: Mapping) -> str:
     return f"modified: {body} ({digest(values)})"
 
 
+#: a choice knob's values in words, as the panel's options and a run's
+#: settings name them (a value not listed reads as it is)
+CHOICE_WORDS = {
+    "pf.initialization": {"rand": "random draws", "lh": "Latin hypercube"},
+    "pf.seed_denominator": {"to_date": "admissions to date",
+                            "season_total": "expected season total",
+                            "season_total_early": "expected total (early season)"},
+    "data.trailing_zero": {"keep": "kept", "missing": "counted as unreported"},
+    "data.partial_week": {"keep": "kept", "missing": "counted as unreported"},
+    "groundhog.aux": {"flusurv": "FluSurv-NET", "iliplus": "ILI+",
+                      "both": "FluSurv-NET and ILI+",
+                      "none": "none (bare analogue)"},
+}
+
+
+def choice_word(key: str, v) -> str:
+    """A choice knob's value in words (CHOICE_WORDS, else as it is)."""
+    return CHOICE_WORDS.get(key, {}).get(str(v), str(v))
+
+
+def words(values: Mapping, skip=()) -> str:
+    """A non_default(...) set in words, for a run's settings: 'Oracle blend
+    weight 0.25 (default 0.5), Seed denominator expected total (early
+    season)'; a number names its default. Keys in `skip` (those with a
+    settings row of their own) are left out; when nothing else is left,
+    the changed settings by name ('Particles, Replicates changed'). ''
+    for an empty set."""
+    shown, named = [], []
+    for k in REGISTRY:
+        if k.key not in values:
+            continue
+        if k.key in skip:
+            named.append(k.label)
+            continue
+        v = values[k.key]
+        if k.kind == "choice":
+            shown.append(f"{k.label} {choice_word(k.key, v)}")
+        elif k.kind in ("bool", "date") or callable(k.default):
+            shown.append(f"{k.label} {_fmt(v)}")
+        else:
+            shown.append(f"{k.label} {_fmt(v)} (default {_fmt(k.default)})")
+    if shown:
+        return ", ".join(shown)
+    return f"{', '.join(named)} changed" if named else ""
+
+
 # --- reading a spec ----------------------------------------------------------------
 
 def _get(spec, name, default=None):
@@ -623,6 +683,11 @@ def _read(knob: Knob, spec, extra: Mapping):
     if key == "groundhog.aux_weight":
         pools = extra.get("aux_pools") or ()
         return float(sum(float(p.get("weight", 0)) for p in pools))
+    if key == "groundhog.own_share":
+        # what the engine ran: the record's local_pools (absent: the
+        # pooled form, 0) with the knob on top
+        cfg = EA.effective_local_pools(extra)
+        return float((cfg or {}).get("own_share", 0.0))
     # knobs with no engine key yet live in extra["knobs"] (Stage 2)
     return (extra.get("knobs") or {}).get(key, knob.default)
 
@@ -995,7 +1060,8 @@ RETRO_ARG_KEYS = frozenset({"pf.particles", "pf.replicates",
 
 # --- Stage 3: the Model settings panel (templates/_model_settings.html) --------------
 
-#: (group id, heading, one-line tip) in panel order
+#: (group id, heading, what a change costs) in panel order; the cost is
+#: the Methods tab's (its settings table), not the panel's
 PANEL_GROUPS = (
     ("data", "Fit window",
      "Which reported weeks the models see. A change refits the Oracle SIHRS."),
@@ -1012,7 +1078,6 @@ PANEL_GROUPS = (
 #: the fit group's order: run-class first (what a person changes most)
 _FIT_ORDER = ("pf.replicates", "pf.particles", "pf.jitter",
               "pf.initialization", "pf.seed_denominator")
-MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
 def _group_of(knob: Knob) -> str:
@@ -1033,35 +1098,36 @@ def _raw(knob: Knob, v) -> str:
     return str(v)
 
 
-def _tip(knob: Knob, scope: str, names: Optional[Mapping] = None) -> str:
-    names = names or MEMBER_NAMES
-    who = " and ".join(names[m] for m in MEMBERS if m in knob.affects)
-    dflt = ("August 1 of the forecast's season" if callable(knob.default)
+def _hint(knob: Knob) -> str:
+    """The panel's one-line help under a field (shown while the row has
+    focus): the help, and a number's range with its unit."""
+    if knob.kind in ("int", "float"):
+        unit = f" {knob.unit}" if knob.unit else ""
+        return f"{knob.help} {knob.range_text()}{unit}."
+    return knob.help
+
+
+def _mark(knob: Knob) -> str:
+    """The word a changed row wears beside its label, with the default:
+    'changed · default 10,000' (quotes left out: it is a CSS string)."""
+    dflt = ("Aug 1" if callable(knob.default)
+            else choice_word(knob.key, knob.default) if knob.kind == "choice"
             else _fmt(knob.default))
-    unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
-    bits = [knob.help, f"Range: {knob.range_text()}{unit}.",
-            f"Default: {dflt}.", f"Affects: {who}."]
-    if knob.note:
-        bits.append(knob.note)
-    if knob.card:
-        bits.append("The model card states the default.")
-    if knob.key in LATER:
-        bits.append("Coming later: not wired to its engine yet, so every "
-                    "run uses the default.")
-    return " ".join(bits)
+    return re.sub(r"['\"\\]", "", f"changed · default {dflt}")
 
 
-def panel(scope: str, values: Optional[Mapping] = None,
-          names: Optional[Mapping] = None) -> dict:
+def panel(scope: str, values: Optional[Mapping] = None) -> dict:
     """The Model settings panel, rendered by templates/_model_settings.html.
 
     `scope` "forecast" or "retro"; `values` {key: raw} the form held (a
     refused submission keeps what was typed). Knobs with an older field
     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
     particles), so every earlier poster still works; the rest post as
-    knob.<key>. Coming-later knobs render disabled. `names`: the members
-    as the tips' "Affects" line names them (MEMBER_NAMES by default; a
-    dataset's panel names its own)."""
+    knob.<key>. Coming-later knobs render disabled. A row is "changed"
+    when its value is off the default (never a coming-later or optional
+    one); its group opens on it. Each group's "tip" says what a change
+    costs (the Methods tab's settings table reads it; the panel shows
+    each knob's help as its hint, the rest is on Methods)."""
     values = dict(values or {})
     groups = []
     for gid, title, tip in PANEL_GROUPS:
@@ -1076,7 +1142,8 @@ def panel(scope: str, values: Optional[Mapping] = None,
             dflt = "" if callable(k.default) else _raw(k, k.default)
             got = values.get(k.key)
             val = dflt if got is None else str(got)
-            if k.key in LATER:
+            later, optional = k.key in LATER, k.key in OPTIONAL_KEYS
+            if later:
                 val = dflt
             rows.append({
                 "key": k.key, "label": k.label, "kind": k.kind,
@@ -1087,20 +1154,20 @@ def panel(scope: str, values: Optional[Mapping] = None,
                                 else f"default: {_fmt(k.default)}"),
                 "min": k.lo, "max": k.hi,
                 "step": "any" if k.kind == "float" else "1",
-                "choices": [(str(c), f"{c}" + (" (default)" if c == k.default
-                                               else "")) for c in k.choices],
-                "later": k.key in LATER,
-                "optional": k.key in OPTIONAL_KEYS,
+                "choices": [(str(c), choice_word(k.key, c)
+                             + (" (default)" if c == k.default else ""))
+                            for c in k.choices],
+                "later": later, "optional": optional,
+                "changed": not (later or optional)
+                           and val.strip() not in ("", dflt),
                 "affects": " ".join(sorted(k.affects)),
-                "unit": k.unit, "tip": _tip(k, scope, names)})
+                "unit": k.unit, "hint": _hint(k), "mark": _mark(k)})
         if rows:
             groups.append({"id": gid, "title": title, "tip": tip,
                            "affects": " ".join(sorted(
                                {m for r in rows for m in r["affects"].split()})),
                            "rows": rows})
-    modified = any(r["value"].strip() not in ("", r["default"])
-                   for g in groups for r in g["rows"]
-                   if not r["later"] and not r["optional"])
+    modified = any(r["changed"] for g in groups for r in g["rows"])
     return {"scope": scope, "groups": groups, "modified": modified,
             "locked": [{"key": l.key, "value": _fmt(l.value)
                         if not isinstance(l.value, tuple)
@@ -1125,4 +1192,7 @@ def retro_week_extra(base, nd: Mapping):
 
     _extra.__name__ = (f"{getattr(base, '__name__', 'custom')}"
                        f"+knobs@{digest(jsonable(snap))}")
+    # what the base carries for the Groundhog's own-state weighting, kept
+    # on the wrapper so a season record reads it without a call
+    _extra.local_pools = getattr(base, "local_pools", None)
     return _extra

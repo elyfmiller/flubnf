@@ -447,8 +447,9 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     assert "+ b + '% interval\">' + pc + '%</td>'" in PLAYER
     assert "(too narrow)" in PLAYER and "(too wide)" in PLAYER
     # the season page prints every score it colors and names the scale
+    # (the convention as a tag over the tiles and the per-state table)
     assert '{{ "%.3f"|format(v) }}' in SEASON_T
-    assert "relWIS vs the FluSight baseline" in SEASON_T
+    assert "tips.tag(conv_label)" in SEASON_T
     from app.core import report_season
     assert 'live_scores("note")' in SEASON_T
     assert ("relWIS below 1 beats the CDC FluSight baseline"

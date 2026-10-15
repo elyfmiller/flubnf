@@ -835,6 +835,11 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     return out
 
 
+class GroundhogFormMismatch(KnobsMismatch):
+    """A resume would mix the Groundhog's pooled form and its own-state
+    weighting (or two shares) in one season."""
+
+
 def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
                progress=None, settings: dict | None = None,
@@ -879,6 +884,16 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     # discard) to change them. Recorded only when off the shipped set.
     from app.core import knobs as _knobs
     want = _knobs.legacy_settings_knobs(rec)
+    # the Groundhog's own-state weighting the weeks will run (None: the
+    # pooled form), read from what the week dictionary DECLARES it carries
+    # (`local_pools` on the callable: the presets and the knob wrapper
+    # declare it; a custom callable that does not runs pooled) with the
+    # knobs on top; never by calling it, which a carry callable would
+    # count as a week. A tree replayed under another form is refused
+    # below, like another knob set.
+    rec["groundhog_local_pools"] = an_engine.effective_local_pools(
+        {"local_pools": getattr(week_extra, "local_pools", None),
+         "knobs": dict(want or {})})
     if want:
         rec["knobs"] = want
         rec["knobs_digest"] = _knobs.digest(want)
@@ -921,6 +936,21 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 "Resuming would mix two engine builds in one season. "
                 "Switch the engine back, or archive or discard the existing "
                 "results to replay it on this one.")
+        # nor across the Groundhog's forms: weeks replayed pooled (every
+        # tree from before 2026-10-15 has no key) and weeks replayed
+        # own-weighted would be scored as one season
+        if engine != "pf":
+            had_form = prior.get("groundhog_local_pools")
+            if had_form != rec["groundhog_local_pools"]:
+                def _say(f):
+                    return ("the pooled Groundhog" if not f else
+                            "the Groundhog with " + ", ".join(
+                                f"{k} {v}" for k, v in sorted(f.items())))
+                raise GroundhogFormMismatch(
+                    f"{season} at {root} has completed weeks replayed with "
+                    f"{_say(had_form)}; this run asks for "
+                    f"{_say(rec['groundhog_local_pools'])}. Archive or "
+                    "discard the existing results to change it.")
         if prior and "engine_build" not in prior:
             rec.pop("engine_build", None)
         if prior and "knobs" not in prior:

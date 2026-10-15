@@ -303,12 +303,15 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
     w = sb.prepare("kinetics_example", particles=200, jitter=0.2, seed=3)
     _finish(w, collapsed=True)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
-    # the outcome in an error alert, its sentence in the alert's "?"
+    # the outcome in an error alert: its title, then its reason in plain
+    # sight under it, with no "?"
     health = html[html.index('class="sb-health sb-health--collapsed"'):]
-    assert '<div class="uk-alert uk-alert--error" id="sb-health">' in health
-    assert "Sampling collapsed" in health[:health.index('id="tip-sb-health"')]
-    tip = health[health.index('id="tip-sb-health"'):]
-    assert "not a real estimate" in tip[:tip.index("</span>")]
+    # the icon stays by the title, over the reason's second line
+    assert '<div class="uk-alert uk-alert--error uk-alert--two-line" id="sb-health">' in health
+    says = health[health.index('<span class="sb-says">'):]
+    assert "<strong>Sampling collapsed</strong>" in health[:health.index('<span class="sb-says">')]
+    assert "not a real estimate" in says[:says.index("</span>")]
+    assert "tip-sb-health" not in html
     assert "What to try" in html
     # the engine's words stay, folded under their own summary
     assert '<span class="uk-fold-sum">Engine messages</span>' in html
@@ -322,6 +325,17 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
                          ("forecast_weeks", "4"), ("seed", "3")):
         assert f'name="{field}" value="{value}"' in form, field
     assert ">Run the full fit (10,000 particles)<" in form
+    # it runs the saved files: on, with its reason ready (hidden) for
+    # sandbox.js to turn it off once the editor holds unsaved edits
+    btn = form[form.index("<button"):]
+    btn = btn[:btn.index(">")]
+    assert 'data-guard="sandbox-run"' in btn and 'data-uk-reason="sb-full-why"' in btn
+    assert "disabled" not in btn
+    assert ('<span class="uk-reason-tip" hidden>' in form
+            and 'id="tip-sb-full-why">Save first: the full fit runs the saved files.</span>' in form)
+    js = (Path(__file__).resolve().parents[1] / "ui" / "static" / "sandbox.js").read_text()
+    assert "querySelector('[data-uk-reason=\"sb-full-why\"]')" in js
+    assert "root.FluBNFUI.setReason(full, fullWhy ? fullWhy.textContent" in js
 
 
 def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
@@ -330,8 +344,9 @@ def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
     _finish(w)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
     health = html[html.index('class="sb-health sb-health--good"'):]
-    assert '<div class="uk-alert uk-alert--ok" id="sb-health">' in health
-    assert "Sampling looks healthy" in health[:health.index('id="tip-sb-health"')]
+    assert '<div class="uk-alert uk-alert--ok uk-alert--two-line" id="sb-health">' in health
+    assert "<strong>Sampling looks healthy</strong>" in health[:health.index('<span class="sb-says">')]
+    assert '<span class="sb-says">The particles stayed varied at every week' in health
     assert "sbfull" not in html and "What to try" not in html
 
 
@@ -346,13 +361,15 @@ def test_the_gallery_guides_a_first_visit(box):
     html = _client().get("/sandbox").text
     # no models yet: How the Sandbox works is open
     assert '<details class="card sbhow" open>' in html
-    # the steps as a stepper, each step's sentence in its "?"
+    # the steps as a stepper, each step's line under its label
     how = html[html.index('<details class="card sbhow" open>'):]
     how = how[:how.index("</details>")]
     assert '<ol class="uk-stepper uk-stepper--vertical" aria-label="How the Sandbox works">' in how
     assert '<span class="uk-step-label">Start a model</span>' in how
     assert "The SIR example is the place to learn" in how
-    assert "Your own counts go in through the data.exp tab" in how
+    # each file says what it holds, and where your own counts go in
+    assert "data.exp: the weekly counts; priors.conf: each fitted value" in how
+    assert "Load data or Simulate data on the data.exp tab" in how
     # the SIR example comes first and is the default start, with its note
     # and a name filled in, so a first fit needs no choices
     start = html[html.index('id="sbnew-start"'):]

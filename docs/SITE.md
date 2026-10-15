@@ -109,7 +109,13 @@ season carries the member (its run record says the Oracle step was applied,
 or its weeks carry `oracle.json`), otherwise "Particle filter alone"
 with a note that those replays predate the step. Every sealed record
 predates it, so a site built from them prints the particle filter alone,
-and the live fan is named the same way from the run's recorded step.
+and the live fan is named the same way from the run's recorded step. The
+Groundhog column is named for the form its trees replayed
+(`site_build.gh_label`, from each run record's `groundhog_local_pools`):
+"Groundhog" only when every published season ran the shipped own-state
+weighting (since 2026-10-15), otherwise "Groundhog (pooled form)", or
+"Groundhog (two forms)" when the seasons differ, with a note under the
+season table.
 
 **Placements are not published.** Ranking against the whole FluSight field
 means scoring every submitting team on identical cells, around 1.6 GB of hub

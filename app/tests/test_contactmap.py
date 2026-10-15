@@ -297,7 +297,8 @@ def test_editor_page_carries_the_view_pills(box):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
     assert 'id="cmap"' in html and 'id="cmap-svg"' in html
-    assert '<h2 id="h-sb-diagram">Diagram</h2>' in html            # its "?" beside it
+    assert '<h2 id="h-sb-diagram">Diagram</h2>' in html
+    assert "tip-sb-diagram" not in html                          # the key says it
     # the rules' flow first; the other two only for a model with sites
     # each tab names the one panel it controls; the shown one is the tab stop
     assert ('id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" '

@@ -6,6 +6,7 @@ computed from on-disk forecasts and rendered into the HTML; no retired
 blend is printed; nothing loads remotely except Google Fonts; no
 unresolved placeholder outside the BNGL listing's {{TOKENS}}.
 """
+import functools
 import json
 import re
 import sys
@@ -37,6 +38,26 @@ pytestmark = pytest.mark.skipif(
     not _have_state(),
     reason="no retrospective seasons or no settled truth on this machine "
            "(CI runs with FLUBNF_HUB=/nonexistent and no app/state)")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _roots_shadowed(tmp_path_factory):
+    """Every season root the build reads (app/state/retro, retro_seal),
+    shadowed in a temp folder: scoring a week writes its playback cache and
+    quantile sidecar beside it, and those land in the shadow, never in the
+    checkout's app/state. discover_seasons binds ROOT_ORDER as a default,
+    so it is rebound too."""
+    from test_playback import shadow_tree
+    base = tmp_path_factory.mktemp("roots")
+    order = tuple(
+        (origin, shadow_tree(root, base / root.name) if Path(root).is_dir()
+         else base / root.name)
+        for origin, root in sb.ROOT_ORDER)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sb, "ROOT_ORDER", order)
+        mp.setattr(sb, "discover_seasons",
+                   functools.partial(sb.discover_seasons, roots=order))
+        yield
 
 
 @pytest.fixture(scope="module")

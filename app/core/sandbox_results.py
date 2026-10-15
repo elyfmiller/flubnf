@@ -89,7 +89,7 @@ def fit_health(res: dict) -> dict | None:
     what to do next, most useful first. It grades the particles only, never
     how well the model follows the data: no rule of thumb for that holds
     across models and diseases. A quick check that sampled well is "quick",
-    never "good": its ranges are not an estimate. None for a run that left
+    never "good": its ranges are rough. None for a run that left
     no parameter sample and no ESS record."""
     meta = res.get("meta") or {}
     ess, params = res.get("ess") or [], res.get("params") or []
@@ -127,7 +127,7 @@ def fit_health(res: dict) -> dict | None:
                        "are likely too narrow."))
     elif n < FULL_FIT_PARTICLES:
         h.update(level="quick", title="Quick check: the model runs",
-                 says=(f"{n:,} particles show that the model runs; the full "
+                 says=(f"{n:,} particles: the ranges are rough; the full "
                        "fit gives the estimates."))
     else:
         h.update(title="Sampling looks healthy",

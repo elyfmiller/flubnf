@@ -3,18 +3,17 @@
 {% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}{% import "_filerow.html" as fr with context %}
 {# the file rows, their checks and the run that wrote each come from
    _filerow.html (fr), which the run page shares #}
-{# A forecast date's window badge (the sentence and the rule in its tip; a
-   round open or coming names its close in the reader's own clock, filled
-   by the page script from data-out-local) and, while a console run is
-   writing this date, a badge that links to Forecast. `di` makes the tip
-   ids unique. #}
+{# A forecast date's window badge, saying it all in its words: the close
+   date for a past round, "record only" for a date that is not a round
+   (the window rule is the page's "i"; an open or coming round's close in
+   the reader's own clock is a fact under the heading) and, while a
+   console run is writing this date, a badge that links to Forecast. `di`
+   makes the ids unique. #}
 {% macro winbadge(d, di) -%}
-{% if d.status %}<span class="out-bt">{% call tips.badge(d.status.badge[0], d.status.badge[1], id="out-win-" ~ di) %}
-{%- if d.status.state == "record" %}{{ d.status.text }}
-{%- else %}{% if d.status.state == "closed" %}{{ d.status.text }} {% endif %}The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern.
-{%- if d.status.state != "closed" %} FluBNF only writes the files; you upload them to the hub yourself.{% endif %}
-{%- if d.status.deadline %}<span class="out-local" data-out-local="{{ d.status.deadline }}"></span>{% endif %}{% endif %}
-{%- endcall %}</span>{% endif %}
+{% if d.status %}{% set st = d.status.state %}
+{%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
+     else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
+<span class="out-bt">{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
 {%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress; when it finishes complete, this card shows its files.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
 {%- endmacro %}
 {# One forecast date as a card (routes/output.forecast_dates): its
@@ -24,6 +23,11 @@
 {% macro daycard(d, di) -%}
 {% set open = d.status and d.status.state in ("due", "soon") %}
 {% set facts = namespace(items=[("calendar", "as of " ~ d.asof)]) %}
+{# an open or coming round: its close on the reader's clock (the badge
+   says Eastern), which the page script writes over the Eastern words;
+   "closes" is in the text, so the fact needs no spoken label #}
+{% if d.status and d.status.deadline %}{% set local %}<span class="out-local" data-out-local="{{ d.status.deadline }}">{% if d.status.deadline_et %}closes {{ d.status.deadline_et }}{% endif %}</span>{% endset %}
+{% set facts.items = facts.items + [("clock", local)] %}{% endif %}
 {% for s in d.data_src %}{% set facts.items = facts.items + [("folder", s, "Data")] %}{% endfor %}
 <div class="card out-day{{ ' out-day--due' if open }}" id="fc-{{ d.asof }}">
  {{ tips.heading("Forecast " ~ d.ref, "out-d" ~ di, after=winbadge(d, di)) }}
@@ -35,8 +39,9 @@
  {{ fr.filerow(f.model, f.name, f.path, run=run, status=status, primary=(d.status.state == "due"), validate=f.validate) }}
  {% endfor %}
  {% for f in d.modified %}{% set fi = di ~ "-m" ~ loop.index %}
- {# one badge for both facts: modified settings, so a non-hub name #}
- {% set tag %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "This run's model settings differ from the defaults, so its file carries a non-hub name (<model>-modified): a record, not for the hub.", id="out-mod-" ~ fi) }}</span>{% endset %}
+ {# one badge for both facts: modified settings, so a non-hub name (the
+    page's "i" says what such a file is for) #}
+ {% set tag %}<span class="out-bt">{{ tips.badge("warn", "modified settings", id="out-mod-" ~ fi) }}</span>{% endset %}
  {% set run %}{% if f.run_id %}{{ fr.runref(f.run_id, f.run_when, not f.complete, id="out-inc-" ~ fi) }}{% endif %}{% endset %}
  {% set status %}{% if f.cov %}<div class="out-cov">{{ covm.line(f.cov) }}</div>{% endif %}{% endset %}
  {{ fr.filerow(f.model, f.name, f.path, tag=tag, run=run, status=status) }}
@@ -75,7 +80,7 @@
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
 <span class="uk-tt-line">Your forecasts by date, newest first, as hub-format CSV files.</span>
-<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The round open now is outlined; past dates and dates that are not FluSight rounds take one line each.</span>
+<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The round open now is outlined; past dates and dates that are not FluSight rounds take one line each, with their checks, coverage and folder on each run's page.</span>
 <span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
 <span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
 <span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest run that finished complete, else from the newest run that wrote one; the other runs' files stay in their run folders.</span>
@@ -96,11 +101,11 @@
 {#- the newest run with modified settings and no override: shown here,
     badged (routes/output.output_page report_modified); the same badge
     tags its -modified files under their date below #}
-{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "The newest run's model settings differ from the defaults, so its files carry the non-hub name (<model>-modified) and sit under their date below, tagged: a record, not for the hub. This report is that run's, " ~ report_modified ~ ".", id="out-rep-mod") }}</span>{% endif %}{% endset %}
+{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified · non-hub names", id="out-rep-mod") }}</span>{% endif %}{% endset %}
 {% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/runs/{{ rid }}/report" target="_blank">{{ tips.icon("external") }} Open report</a>
 <a class="btn {{ 'quiet' if has_due else 'gold' }}" href="/runs/{{ rid }}/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
 <div class="card out-report" id="weekly-report">
- {{ tips.heading("Weekly report", "out-report", "Generated automatically with each full run.", after=rep_when, aside=rep_acts) }}
+ {{ tips.heading("Weekly report", "out-report", after=rep_when, aside=rep_acts) }}
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
  {% if archive_dates %}
  {# each earlier week by its reference date, as the cards are headed; the
@@ -145,7 +150,7 @@
 {% for d, i in ns.full %}{{ daycard(d, i) }}{% endfor %}
 {% if ns.lines[:nlines] %}
 <div class="card out-past" id="out-past">
- {{ tips.heading("Earlier forecast dates", "out-past", "Past rounds and dates that are not FluSight rounds, one line each: a download per model. Each run's page holds the rest: its checks, its coverage and its folder.") }}
+ {{ tips.heading("Earlier forecast dates", "out-past") }}
  {% for d, i in ns.lines[:nlines] %}{{ dayline(d, i) }}{% endfor %}
 </div>
 {% endif %}
@@ -172,7 +177,8 @@
 {% endif %}
 {{ fr.copy_script() }}
 <script>
- // a round's close in the reader's own clock (the badge says Eastern)
+ // a round's close in the reader's own clock (the badge says Eastern);
+ // a time the browser cannot read keeps the Eastern words
  (function(){
   var els=document.querySelectorAll('[data-out-local]');
   for(var i=0;i<els.length;i++){
@@ -180,7 +186,7 @@
    if(isNaN(t.getTime()))continue;
    var s='';
    try{s=t.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){s=t.toString();}
-   els[i].textContent=' On this computer\'s clock it closes '+s+'.';
+   els[i].textContent='closes '+s+' your time';
   }
  })();
 </script>

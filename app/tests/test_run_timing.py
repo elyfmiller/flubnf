@@ -584,11 +584,28 @@ def test_runs_page_shows_elapsed_per_completed_run():
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed<" in html
     assert "1:02:05" in html
-    # a pre-timing row is dashed out, never a fabricated duration or n/a
-    assert '<td class="elapsed">--</td>' in html
+    # a pre-timing row is dashed out, never a fabricated duration or n/a;
+    # the dash says why in its title (no "?" on the header)
+    assert ('<td class="elapsed"><span title="recorded before timing existed">'
+            '--</span></td>') in html
     assert "n/a" not in html
-    assert ("a dash: recorded before timing existed"
-            in " ".join(html.split()))
+    assert 'id="tip-st-elapsed"' not in html
+
+
+def test_a_run_with_no_elapsed_yet_says_so_in_its_dash():
+    """elapsed is written when a run closes: a running or interrupted row
+    has none, and its dash says why, not "before timing existed"."""
+    html = srv.templates.env.get_template("runs.html").render(
+        active="Runs", ledger=[
+            {"run_id": "r2", "label": "2098-01-10 · Jan 10 09:31",
+             "status": "running", "elapsed_s": None},
+            {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31",
+             "status": "interrupted", "elapsed_s": None}])
+    assert ('<td class="elapsed"><span title="still running">--</span></td>'
+            in html)
+    assert ('<td class="elapsed"><span title="the app closed mid-run">--'
+            '</span></td>') in html
+    assert "recorded before timing existed" not in html
 
 
 def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):
@@ -774,13 +791,31 @@ def test_season_page_carries_controls_and_timing():
     over = render({"status": "done", "active": False, "done": 30, "total": 30,
                    "elapsed_s": 3725.0, "mean_s": 124.0, "weeks_measured": 30,
                    "eta_s": None, "slowest_week": W1, "slowest_s": 300.0})
-    assert "Replay wall time 1:02:05" in over
-    # the slowest week rides the timing tip
-    assert f"the slowest, {W1}, took 300 s" in over
+    # the timing as labelled values, the slowest week among them, no "?"
+    facts = over.split('aria-label="Replay timing"', 1)[1].split("</dl>", 1)[0]
+    assert '<span class="uk-stat-v" id="rs-timing">1:02:05</span>' in facts
+    assert ('<dt>Pace</dt><dd><span class="uk-stat-v">2</span> '
+            '<span class="uk-stat-u">min per week</span>') in facts
+    assert ('<dt>Slowest</dt><dd><span class="uk-stat-v">5</span> '
+            f'<span class="uk-stat-u">min, {W1}</span>') in facts
+    assert "tipbtn" not in facts
     assert f'action="/retro/{SEASON}/stop"' not in over
+    # a quick replay's pace reads in seconds
+    quick = render({"status": "done", "active": False, "done": 30,
+                    "total": 30, "elapsed_s": 60.0, "mean_s": 2.0,
+                    "weeks_measured": 30, "eta_s": None,
+                    "slowest_week": W1, "slowest_s": 3.0})
+    assert ('<dt>Pace</dt><dd><span class="uk-stat-v">2</span> '
+            '<span class="uk-stat-u">s per week</span>') in quick
+    # a slowest week that did not stand out from the mean is not news
+    even = render({"status": "done", "active": False, "done": 30,
+                   "total": 30, "elapsed_s": 60.0, "mean_s": 2.0,
+                   "weeks_measured": 30, "eta_s": None,
+                   "slowest_week": W1, "slowest_s": 2.4})
+    assert "<dt>Slowest</dt>" not in even
 
     # the template must still render for a season with no record at all
-    assert "Replay wall time" not in render(None)
+    assert 'aria-label="Replay timing"' not in render(None)
 
 
 # ------------------------------------------------------------------- quips

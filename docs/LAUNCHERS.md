@@ -94,6 +94,7 @@ Paths default to `~/GitHub/<name>` (an older setup's `~/Documents/GitHub/<name>`
 | `FLUBNF_BOOT_STATUS` | `flubnf-launch`, the host, `host_boot.py`, `flubnf/cli.py`; set by `FluBNF.command` (also as `--ready <file>`) | the status file of a Terminal waiting on the app: it says the app quit early until the console's window is shown (or its page served), which empties it; a failure at startup writes its reason there, and a SIGTERM before then (a stop on request) empties it |
 | `FLUBNF_HOST_FALLBACK` | the host, `host_boot.py`; set by `flubnf-launch` | unset; `1` = a startup failure goes back to Terminal (through `flubnf-launch --handover`). Removed before the console starts |
 | `FLUBNF_HOST_ANY_OS` | `build_app_host.sh` (test hook) | unset; `1` builds the host off macOS |
+| `FLUBNF_STATE_DIR` | `app/core/runs.py`, `app/ui/versions.py`; set by `app/tests/conftest.py` (test hook) | `app/state` in the checkout; the test suite points it at a temp folder so every Python a test starts with the suite's environment keeps its ledger and version snapshot there |
 | `FLUBNF_NO_DATA` | `setup.sh`, `setup.ps1` | unset; `1` skips the hub clone |
 | `FLUBNF_NO_PROBE` | `setup.ps1` | unset; `1` skips the fork access probe |
 | `FLUBNF_PYBNF_BUNDLE` | `setup_engine.sh`, `FluBNF.bat`, `setup.ps1`; set by `reinstall.sh` | unset = search Downloads and nearby folders. Either shape: a `.tar.gz` is installed as an archive, anything else as a bundle |

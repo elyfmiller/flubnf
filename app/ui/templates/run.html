@@ -13,8 +13,7 @@
    console-run guard plus /run's server-side checks #}
 {% set rerun %}
  <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run row">
-  <button class="gold" data-guard="console-run">Run again with these settings</button>
-  {{ tips.tip("run-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
+  <button class="gold" data-guard="console-run">Run again from the start</button>
  </form>
 {% endset %}
 
@@ -29,49 +28,55 @@
 <div class="fc-runhead">{{ tips.heading("Run: " ~ (label or "details"), level=1, after=badges | trim, aside=(rerun if can_rerun and not error else "")) }}</div>
 
 {# which run's files Output shows for this date (archive_record.choose):
-   a run Output passes over names the one it shows; a run it shows says so #}
+   a run Output passes over names the one it shows; a run it shows says
+   so. The rule it picks by is in Output's "i" #}
 {% set sup = run_supersession(run_id) if (status != "running" and not dataset) else {} %}
 {% if sup %}
 <div class="out-rp-sup" id="run-supersession">
 {% if sup.by and not sup.shown %}
  {% set to_run %}<a class="btn quiet" href="/runs/{{ sup.by }}">Open run {{ sup.by_when }}</a>{% endset %}
- {% call tips.alert("info", "Output shows run " ~ sup.by_when ~ " for " ~ sup.ref ~ ".", title="Superseded.", id="run-sup", live="", action=to_run) %}When a date was run more than once, Output shows each model's file from the newest run that finished complete, else from the newest run that wrote one. This run's files stay in its folder.{% endcall %}
+ {{ tips.alert("info", "Output shows run " ~ sup.by_when ~ " for " ~ sup.ref ~ ".", title="Superseded.", id="run-sup", live="", action=to_run) }}
 {% elif sup.shown %}
  {% set to_out %}<a class="btn quiet" href="/output#fc-{{ sup.asof }}">Open Output</a>{% endset %}
  {% set said = ("Output shows this run's files for " ~ sup.ref ~ ".") if not sup.by else ("Output shows " ~ (sup.shown | length) ~ " of this run's files for " ~ sup.ref ~ "; its hub-named files there are from run " ~ sup.by_when ~ ".") %}
- {% call tips.alert("ok", said, id="run-sup", live="", action=to_out) %}Output picks, per model, the newest run of a date that finished complete, else the newest run that wrote a file.{% endcall %}
+ {{ tips.alert("ok", said, id="run-sup", live="", action=to_out) }}
 {% endif %}
 </div>
 {% endif %}
 
 {% if modified %}
-{# the knobs record from the ledger spec; the settings card's "model
-   settings" row names every value #}
+{# the knobs record from the ledger spec: how its files were named, the
+   override's reason as typed, and the settings' digest (the Run settings
+   card names each changed value; only this card holds the reason and
+   the digest) #}
 <div class="card" id="modified-note">
- {{ tips.heading("Modified model settings", "run-mod", "The Run settings card names every changed value (model settings).") }}
+ {{ tips.heading("Modified model settings", "run-mod") }}
  {% call tips.stats("uk-stats--kv fc-kv") %}
  {% if override %}
-  {% call tips.stat("Files named", "hub names, by override", id="run-mod-name") %}Exported under the hub names by override.{% endcall %}
-  {% call tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") %}Recorded with the run.{% endcall %}
+  {{ tips.stat("Files named", "hub names, by override", id="run-mod-name") }}
+  {{ tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") }}
  {% else %}
-  {% call tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) %}This run's files carry the non-hub name (&lt;hub id&gt;-modified), so they can never pass for the registered models.{% endcall %}
+  {{ tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) }}
  {% endif %}
+ {% if modified_digest %}{{ tips.stat("Digest", ("<code>" | safe) ~ modified_digest ~ ("</code>" | safe), id="run-mod-digest") }}{% endif %}
  {% endcall %}
 </div>
 {% endif %}
 
 {% if error %}
+{# Run again starts from a fresh workspace; nothing of this one is reused #}
 <div class="card fc-error">
  {{ tips.heading("What happened", "run-error", aside=(rerun if can_rerun else "")) }}
- {% call tips.alert("error", error, title="Run failed.", id="run-error-msg", live="") %}Nothing from this run was submitted; every run receives a fresh workspace.{% endcall %}
+ {{ tips.alert("error", error, title="Run failed.", id="run-error-msg", live="") }}
 </div>
 {% endif %}
 
 {% if pf_failures or step_errors %}
 {# partial-run record from the ledger outcome: names each failed cell and
-   reason as copyable text (the ledger chips only count them) #}
+   reason as copyable text to report a partial run with (the ledger chips
+   only count them) #}
 <div class="card fc-partial">
- {{ tips.heading("Partial-run detail", "run-partial", "Recorded on this run's ledger row; copy this block when reporting a partial run.") }}
+ {{ tips.heading("Partial-run detail", "run-partial") }}
  {% if pf_failures %}
  {% set n = pf_failures | length %}
  {{ tips.heading("Oracle SIHRS fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
@@ -101,7 +106,7 @@
    progress, in place of results and files it has not written yet #}
 <div class="card out-rp-prog" id="run-progress">
  {% set fc_link %}<a class="btn gold" href="/forecast">{{ tips.icon("clock") }} Follow it on Forecast</a>{% endset %}
- {{ tips.heading("In progress", "run-prog", "Results, the submission files and the report appear here when the run finishes; the Forecast tab follows it location by location.", aside=fc_link) }}
+ {{ tips.heading("In progress", "run-prog", aside=fc_link) }}
  {% set phase = console_phase() %}
  {{ tips.progress("Phase", none, text=phase or "starting", id="run-phase") }}
 </div>
@@ -121,11 +126,11 @@
 </div>
 {% endif %}
 
-{# the weekly report: open or save it, its note in the tip #}
+{# the weekly report: open or save it #}
 {% if report %}<div class="card fc-report">
  {% set report_actions %}<a class="btn quiet" href="/runs/{{ run_id }}/report" target="_blank" rel="noopener">{{ tips.icon("external") }} Open</a>
  <a class="btn quiet" href="/runs/{{ run_id }}/report/download" download>{{ tips.icon("download") }} Download</a>{% endset %}
- {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions, cls="fc-flush") }}
+ {{ tips.heading("Weekly report", "run-report", aside=report_actions, cls="fc-flush") }}
 </div>{% endif %}
 
 {% if not dataset and not live %}
@@ -137,19 +142,22 @@
 {% set current = subs | rejectattr("archived") | list %}
 {% for s in current %}
  {% if s.submittable or s.modified %}{% set fi = loop.index %}
- {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "This run's model settings differ from the defaults, so its file carries a non-hub name (<model>-modified): a record, not for the hub.", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
+ {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
  {% set status %}{% if s.check_head %}{{ fr.checks(s.check_ok, s.check_head, s.problems, "run-chk-" ~ fi) }}{% endif %}
  {% if s.cov %}<div class="out-cov">{{ covm.line(s.cov) }}</div>{% endif %}{% endset %}
  {{ fr.filerow(s.model, s.name, s.path, tag=tag, status=status, validate=(validator_command(s.path) if s.submittable else "")) }}
  {% endif %}
 {% endfor %}
-{% if not current and not archived %}{{ tips.empty("No submission files", "folder", tiptext="Submissions appear when a run completes.", id="run-nosubs", compact=True) }}{% endif %}
+{% if not current and not archived %}{{ tips.empty("No submission files", "folder", id="run-nosubs", compact=True) }}{% endif %}
+{# a file refused before anything reached disk: the badge, and why #}
 {% for model, why in (sub_errors or {}).items() %}
  <div class="fc-file"><span class="fc-file-model">{{ model }}</span>
-  {% call tips.badge("error", "no file written", id="run-suberr-" ~ loop.index) %}Refused before anything reached disk: {{ why }}{% endcall %}</div>
+  {{ tips.badge("error", "no file written", id="run-suberr-" ~ loop.index) }} <span class="hint">{{ why }}</span></div>
 {% endfor %}
+{# files an earlier version wrote under a retired hub name: kept as a
+   record, not for submission #}
 {% if archived %}
-{% call tips.fold("Archived files (" ~ archived | length ~ ")", id="run-archived", cls="fc-archived", after=tips.tip("run-archived-tip", "archived files", "Written by an earlier version under a retired hub name; kept as a record, not for submission.")) %}
+{% call tips.fold("Archived files (" ~ archived | length ~ ")", id="run-archived", cls="fc-archived", after=tips.tag("retired hub names")) %}
  <ul class="fc-filelist">
  {% for s in archived %}<li>{{ s.model }} {{ tips.badge("neutral", "archived") }}<br><code>{{ s.name }}</code></li>{% endfor %}
  </ul>
@@ -162,12 +170,14 @@
 {% if dataset %}{% include "_dataset_run.html" %}{% endif %}
 
 {# the medians: one table, a switch for the model; the hub's horizons
-   (h0 the week ending on the reference date), as Output's files are #}
+   (h0 the week ending on the reference date, one week after the newest
+   data week), as Output's files are, the weeks they end on under the
+   heading; US first, then the locations as the run stored them #}
 {% set med = median_table(models) %}
 {% if med.models %}
 <div class="card out-rp-med" id="run-medians">
- {% set hz_tip = "The hub's horizons: h0 is the week ending on the reference date (one week after the newest data week), h1 to h3 the three weeks after it. US first, then the locations as the run stored them." if not dataset else "Horizons 0 to 3: h0 is the week after your data's newest week, h1 to h3 the three after it." %}
- {{ tips.heading(("Median values" if dataset else "Median admissions") ~ ", h0 to h3", "run-med", hz_tip) }}
+ {{ tips.heading(("Median values" if dataset else "Median admissions") ~ ", h0 to h3", "run-med") }}
+ {% if med_weeks %}{{ tips.meta([("calendar", "weeks ending " ~ med_weeks[0] ~ " to " ~ med_weeks[1])], label="Weeks") }}{% endif %}
  {% set names = namespace(list=[]) %}
  {% for model in med.models %}{% set names.list = names.list + [(dataset_members or {}).get(model) or model_name(model)] %}{% endfor %}
  {% if med.models | length > 1 %}

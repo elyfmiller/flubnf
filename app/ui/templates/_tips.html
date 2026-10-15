@@ -15,9 +15,10 @@
 ><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
 {%- endmacro %}
 
-{# a form label with its tip on the same line #}
-{% macro label(text, id, tiptext, for_="") -%}
-<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{{ tip(id, text | lower, tiptext) }}</div>
+{# a form label with its tip on the same line; no tip when tiptext is
+   empty (the row keeps its label spacing) #}
+{% macro label(text, id, tiptext="", for_="") -%}
+<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{% if tiptext | trim %}{{ tip(id, text | lower, tiptext) }}{% endif %}</div>
 {%- endmacro %}
 
 {# ---------------------------------------------------------------- the kit
@@ -43,8 +44,8 @@
      fold                   progressive disclosure for detail lists
      meta                   a row of facts (icon and value) instead of a sentence
      tag                    a kind or a unit in a word, with no state
-     namechip               the name of the formula or figure beside it, its
-                            reading in a "?" #}
+     namechip               the name of the formula or figure beside it; its
+                            note goes on the line under it #}
 
 {# the icon set: 16-unit strokes in currentColor, sized in em (1em square),
    drawn by the attributes alone so an icon reads without ui-kit.css (the
@@ -130,12 +131,14 @@
    live="" silences it (a line present from first paint that is not news).
    `title` is a bold lead; `action` is markup at the right (a link or a
    button). hidden=True renders it hidden, for a page script to show.
-   `tip_label` names the "?" where the line itself would read wrong. #}
-{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="") -%}
+   `tip_label` names the "?" where the line itself would read wrong.
+   cls="uk-alert--two-line" keeps the icon by the title when a second
+   line follows it. #}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
-<div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
+<div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
 {%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
@@ -241,9 +244,12 @@
 <span class="uk-tag{% if cls %} {{ cls }}{% endif %}">{{ text }}</span>
 {%- endmacro %}
 
-{# a name chip: the short name of the formula or figure beside it, the
-   reading in the "?" it holds. Put the formula and its chip in a
-   <p class="uk-figline">, a centered line under a figure. #}
+{# a name chip: the short name of the formula or figure beside it. Put
+   the formula and its chip in a <p class="uk-figline">, a centered line
+   under a figure, and its note in plain sight on the line under that
+   (<p class="eqnote md-eqnote">); a figure's values go in its caption
+   badge. tiptext (or a call block) still gives the chip a "?", for a
+   reading that has no line of its own. #}
 {% macro namechip(text, id, tiptext="", tip_label="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>

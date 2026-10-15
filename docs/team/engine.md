@@ -6,6 +6,16 @@ this file here.
 
 ## Now
 
+- 2026-10-15 (overnight, Ely lent the lab Mac): stage 1's engine part is
+  done. `~/.venvs/flubnf-lwf` holds public PyBNF at the merge commit
+  8410f794 with bngsim 0.15.1; fed the production engine's random inputs it
+  reproduces production's forecast draws exactly on 144 of 144 cells, and
+  its own-stream forecasts equal the October checkout's on 432 of 432, so
+  the October equivalence (WIS ratio 1.0013) stands for the merged package.
+  A cell costs 1.6 to 2.1 times production's. The merged tree passes every
+  test here on Apple silicon (3.12, 3.13, 3.14, ruff, changelog, docs,
+  bngsim 0.15.1). The App lane's handoff is under "For other lanes". Nothing
+  in FluBNF or the production engine pin changes.
 - 2026-10-15 (02:25 UTC): MERGED. lanl/PyBNF#985 is on public PyBNF
   `main` as merge commit 8410f794, all 26 commits kept: Ely's eight and 18
   Bill pushed onto the branch himself over three review rounds (one
@@ -191,6 +201,74 @@ this file here.
 
 ## For other lanes
 
+- App (2026-10-15, stage 1 handoff, the engine lane's part is done):
+  everything the `engine-public` branch needs, measured on the lab Mac.
+  - **Pin.** `pip install "pybnf @ git+https://github.com/lanl/PyBNF@8410f794"
+    "bngsim[antimony]==0.15.1"` into a Python 3.12 venv (the lab Mac's is
+    `~/.venvs/flubnf-lwf`, Python 3.12.7). What pip installed beside it:
+    numpy 2.5.4, scipy 1.18.1, dask and distributed 2026.8.0, pydantic
+    2.14.1. The console's check is two lines, since `pybnf.__version__`
+    reads "1.8.1" on both the merge commit and the August release:
+    `importlib.metadata.distribution("pybnf").read_text("direct_url.json")`
+    carries `vcs_info.commit_id` = 8410f794e3fa4817572fd07fceb043ddec39d77b,
+    and `from pybnf.algorithms.filters.liu_west import LiuWestFilter` must
+    succeed. After Bill tags a release, pin the version instead.
+  - **Conf** (edition 2; the fixture's, paths shortened):
+    `edition = 2`, `bng_command = <BNG2.pl>`, `model: m.bngl`,
+    `bngl_backend = bngsim`, `output_dir = out`, `job_type = lwf`,
+    `noise_model = neg_bin, dispersion = fit r__FREE, location = mean`,
+    `noise_model Hobs = neg_bin, dispersion = fit r__FREE, location = mean,
+    cumulative`, `experiment: <name>, data: <name>.exp`, the five prior lines
+    as production writes them, `initialization = rand`, `lwf_particles`,
+    `lwf_jitter`, `lwf_bounds = reflect`, `lwf_forecast_intervals`,
+    `lwf_resample_threshold = 0.5`, `random_seed = pf_seed mod 2^32`.
+  - **Template.** The production SIHRS model with its `begin actions` block
+    removed; the fixture ran so. A `generate_network` action alone is also
+    accepted (edition-2 rule) if `prepare()` keeps one for its own check.
+  - **Data file.** Header `# time<TAB>Hobs`; production row at time t
+    becomes lwf time t + 1 (production starts the state at t = -1, lwf at
+    0; the counter species keeps the seasonal phase); one row per week from
+    1 to the last, a week the console dropped written as `nan`.
+  - **Outputs** under `<output_dir>/Results/LWF/`: `forecasts.txt`
+    (particles by forecast intervals, header = the forecast times),
+    `predicted_counts.txt` (particles by assimilated rows, header = the row
+    times; the expected count, 0 where the output fell), `parameters.txt`
+    (particles by free parameters, header = names), `parameters_by_row.txt`,
+    `weight_ess.txt`, `summary.txt`. Every table opens with `#` note lines,
+    then the header row, then whitespace-separated numbers. collect()'s
+    anchoring maps directly: origin = the last column of
+    `predicted_counts.txt`, horizons = the columns of `forecasts.txt`. A
+    10,000-particle cell writes about 5.7 MB (4.6 MB of it predicted
+    counts); reclaim should keep what it keeps today.
+  - **Fixture.** FluBNF-local, research/public-port/fixture-alaska-2025-01-11:
+    `private/` (the production cell's pf.conf, model, .exp, params_0.txt)
+    and `public/` (the translated model, .exp, both confs, translate.json,
+    and the six Results/LWF files the merge commit wrote). Not in this
+    repository; Ely copies it where the App lane can read it.
+  - **Equivalence, restated for the merged package** (in-house,
+    retrospective): fed the production engine's random inputs, the merge
+    commit reproduces production's forecast draws exactly on 144 of 144
+    SIHRS cells, as the October checkout did; expected counts agree to
+    1.7e-10 relative, parameters to 3.3e-8 (the October checkout gave
+    1.3e-9: the kernel's numpy reductions round differently, invisible to
+    any draw). With its own random streams, pooled over the six-state
+    panel, total WIS lwf over production: 1.0013 (95% interval 0.986 to 1.016, permutation p 0.93), the October number: the
+    merged package's own-stream forecast draws are identical to the October
+    checkout's on 432 of 432 cells (its parameters differ by at most 3e-8
+    relative), so the 2,100-run comparison of 2026-10-03 stands for the merged
+    package as it was. No failed cell, no
+    degenerate update, 144 + 432 runs.
+  - **Cost.** Median 47.9 s per 10,000-particle cell at ten in parallel;
+    one cell at a time on the idle machine: 38 to 47 s against production's 18 to 29 s on the same four cells, a ratio of
+    1.6 to 2.1; a rerun of each cell reproduced its own-stream run byte for byte. Production's weekly
+    grid of 159 cells is 5 to 14 minutes on the lab Mac, so expect roughly
+    twice that, inside the one-hour floor.
+  - **Tests on Apple silicon** of the merged tree: Python 3.12: 6,755 passed, 12 skipped, 6 xfailed; 3.13: 6,698 passed, 69
+    skipped, 6 xfailed; 3.14 without bngsim: 5,930 passed, 841 skipped, 2 xfailed;
+    no failure; ruff, the changelog check and `sphinx-build -W` green; bngsim
+    0.15.1 on the 14 test files the PR touched: 681 passed. The byte-identical
+    repeat, continuation and cluster tests, which failed for Bill on Intel before
+    his fix, pass here on Apple silicon..
 - App, Submission, Model (2026-10-15): the plan below, "FluBNF on public
   PyBNF" v2, is now live: #985 is merged (8410f794). Stage 1's engine part
   runs on Ely's go and posts the pin and a translated cell here; App's
@@ -329,6 +407,9 @@ Engine, lab Mac, on Ely's go (about a day):
    set, the exact conf and data translation, the output names, and one
    production cell translated by hand (Alaska 2025-01-11: conf, .exp,
    template, outputs) as the fixture.
+
+Done 2026-10-15 (engine, steps 1 to 3): the venv on the pin, the replay and
+own-streams reruns on the merged package, the fixture cell, the handoff above.
 
 App, branch `engine-public` on `dev`, opt-in until stage 3 (about a week):
 4. flubnf/settings.py: `FLUBNF_ENGINE = private | public` (default private);

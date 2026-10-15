@@ -344,12 +344,13 @@ def test_the_display_menu_is_a_settings_popover():
     menu = _menu(html)
     assert '<summary aria-label="Display settings">' in menu
     assert 'class="displaypop" role="group" aria-label="Display settings"' in menu
-    # four sections, each a heading with its "?" (the kit's heading), no
-    # hover-only titles and no loose explanatory sentence
+    # four sections, each a heading (the kit's heading); only Zoom keeps a
+    # "?" (its shortcuts), no hover-only titles and no loose explanatory
+    # sentence
     for sec, name in (("dm-size", "Text size"), ("dm-theme", "Theme"),
                       ("dm-a11y", "Accessibility"), ("dm-zoom", "Zoom")):
         assert f'<h3 id="h-{sec}">{name}</h3>' in menu, sec
-        assert f'aria-describedby="tip-{sec}"' in menu, sec
+        assert (f'aria-describedby="tip-{sec}"' in menu) == (sec == "dm-zoom"), sec
     assert " title=" not in menu
     assert not re.search(r"<p[ >]", menu) and 'class="hint"' not in menu
     # zoom stays hidden until the native window's bridge is up
@@ -414,7 +415,9 @@ def test_the_two_modes_are_named_switches_with_their_tips():
         body = btn[1].split("</button>", 1)[0]
         assert f'aria-describedby="tip-{tip}"' in body, ax
         assert f'<span class="dm-sw-label">{name}</span>' in body, ax
-        assert f'role="tooltip" id="tip-{tip}"' in menu, ax
+        # the description a screen reader hears, with no visible "?"
+        assert f'<span class="uk-sr" id="tip-{tip}">' in menu, ax
+        assert f'role="tooltip" id="tip-{tip}"' not in menu, ax
     # the state is drawn three ways: the knob slides, it carries a check,
     # and the word On or Off
     for rule in ('button.dm-switch[aria-checked="true"] .dm-sw-knob{transform',

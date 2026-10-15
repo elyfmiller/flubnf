@@ -92,6 +92,7 @@
  ],
  "middleware": ["slow_request_log", "_no_store", "_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
+  "bngsim_pin": "value str",
   "cell_rule_note": "callable _cell_rule_note",
   "console_phase": "callable console_phase",
   "cov_state": "callable _cov_state",
@@ -121,7 +122,8 @@
   "season_week_name": "callable _season_week_name",
   "settings_html": "callable settings_html",
   "static_data_uri": "callable _data_uri",
-  "validator_command": "callable validator_command"
+  "validator_command": "callable validator_command",
+  "version_pending": "value str"
  },
  "jinja_filters": {
   "hms": "callable fmt_hms"

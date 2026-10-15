@@ -86,9 +86,9 @@ A status in an icon and a word, never in color alone. `state` is `ok`, `warn`, `
 {{ tips.badge("warn", r.unreported | length ~ " not reported", id="nw-badge") }}
 ```
 
-### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="")`
+### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="")`
 
-A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden. The "?" is named from the title (or the line) in lower case; `tip_label` names it where that would read wrong (a long warning). The flash takes its kind from the server (`shared._flash(msg, kind, detail="")`): a refusal warns, a failure is an error, a completed action is ok. Its line is one short sentence with the essential fact first ("Not deleted: a run is using this dataset."); the reason's fine print or the next step goes in `detail`, shown as its tip.
+A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden. The "?" is named from the title (or the line) in lower case; `tip_label` names it where that would read wrong (a long warning). `cls="uk-alert--two-line"` keeps the icon by the title when a second line follows it (a muted reason under the title). The flash takes its kind from the server (`shared._flash(msg, kind, detail="")`): a refusal warns, a failure is an error, a completed action is ok. Its line is one short sentence with the essential fact first ("Not deleted: a run is using this dataset."); the reason's fine print or the next step goes in `detail`, shown as its tip.
 
 ```jinja
 {% call tips.alert("warn", "Quit the app fully and reopen.", title="Update pulled.", id="restart") %}
@@ -180,11 +180,12 @@ A kind or a unit in a word ("Mechanistic", "relWIS", "population"): an outlined,
 
 ### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`
 
-The short name of the formula or figure beside it, with its reading in the "?" the chip holds: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as "illustrative values").
+The short name of the formula or figure beside it: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as the caption badge that carries a figure's illustrative values). The equation's note sits in plain sight on the line under it, a `<p class="eqnote md-eqnote">`, not behind a "?" (`diagrams.html`'s `_eq`). A chip with no `tiptext` has no "?"; give it one only for a reading that has no line of its own.
 
 ```jinja
 <p class="uk-figline"><span class="math">...</span>
- {{ tips.namechip("Seasonal forcing", "hm-eq-forcing", "The curve the filter bends each week.") }}</p>
+ {{ tips.namechip("Seasonal forcing", "dg-eq-forcing") }}</p>
+<p class="eqnote md-eqnote">The curve the filter bends each week.</p>
 ```
 
 ### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`

@@ -5,9 +5,11 @@
    the Model view, so their tabs stay hidden. model-views.js draws each
    graph (pan, zoom, drag, hover, click; view only), built once and kept.
    What a view shows instead of a drawing (loading, nothing to draw, a
-   fetch that failed) is a one-line empty state; the key is legend chips. #}
+   fetch that failed) is a one-line empty state; the key is legend chips,
+   which say what each line is, and the line under the drawing names what
+   it counts and that it is the saved model (Save redraws it). #}
 <link rel="stylesheet" href="/static/model-views.css"><script defer src="/static/model-views.js"></script>
-<div class="card" id="cmap" data-model="{{ editing.name }}">{{ tips.heading("Diagram", "sb-diagram", "The model's rules as arrows between its molecule types: a solid arrow moves them, a dashed arrow counts a flow into a tally, a dotted arc marks who drives a rate. Drag a node, hover or click for its rule, scroll to zoom. Save to redraw after an edit.", tip_label="the diagram") }}
+<div class="card" id="cmap" data-model="{{ editing.name }}">{{ tips.heading("Diagram", "sb-diagram") }}
  <div class="mviews" role="tablist" aria-label="model view" hidden>
   <button type="button" class="pill mode" id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" aria-controls="cmap-svg">Model</button>
   <button type="button" class="pill mode" id="mv-tab-contactmap" data-view="contactmap" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Binding sites</button>
@@ -69,7 +71,7 @@
   }
   // the key: one legend chip per kind of mark the drawing uses (the kit's
   // legend markup: a swatch in the mark's line style and its words), and
-  // a chip naming the clocks left out, its "?" saying why
+  // a chip naming the clocks left out
   function key(g, clocks) {
     var ul = document.createElement('ul'), kinds = {}, ui = window.FluBNFUI,
         esc = ui ? ui.esc : function (s) { return String(s); };
@@ -77,11 +79,11 @@
     ul.setAttribute('aria-label', 'Key');
     g.edges.forEach(function (e) { kinds[e.kind] = 1; });
     if ((g.influences || []).length) kinds.drive = 1;
-    function chip(shape, color, text, tip) {
+    function chip(shape, color, text) {
       var li = document.createElement('li');
       li.className = 'uk-chip';
       li.innerHTML = '<span class="uk-sw uk-sw--' + shape + '" style="--sw:var(' + color + ')" aria-hidden="true"></span>'
-        + esc(text) + (tip && ui ? ui.tip('sb-key-' + tip[0], text, tip[1]) : '');
+        + esc(text);
       ul.appendChild(li);
     }
     [['transfer', 'line', '--accent-ink', 'moves from one to the other'],
@@ -90,8 +92,7 @@
       if (kinds[k[0]]) chip(k[1], k[2], k[3]);
     });
     if (clocks.length) {
-      chip('ring', '--mut', clocks.join(', ') + (clocks.length === 1 ? ' is a clock' : ' are clocks') + ', not drawn',
-           ['clock', 'A clock is fed from nothing and feeds nothing: it keeps time, it is not a relationship between compartments, so the Model view leaves it and its source dot out.']);
+      chip('ring', '--mut', clocks.join(', ') + (clocks.length === 1 ? ' is a clock' : ' are clocks') + ', not drawn');
     }
     return ul;
   }
@@ -107,7 +108,8 @@
         g.nodes.forEach(function (nd) { if (nd.kind === 'species') n++; });
         g.edges.forEach(function (e) { rules[e.rule] = 1; });
         var m = Object.keys(rules).length;
-        v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules');
+        v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules')
+          + ' in the saved model';
         v.say();
         var wrap = document.createElement('div');
         wrap.appendChild(v.el);

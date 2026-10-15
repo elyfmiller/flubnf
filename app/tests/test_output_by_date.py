@@ -233,7 +233,9 @@ def test_research_runs_and_retired_names_are_not_listed(root):
 
 def test_each_date_card_names_its_hub_window_in_a_badge(root):
     """The window is a badge after the card's title (a state in a word and
-    an icon); its sentence and the hub's rule are the badge's tip."""
+    an icon) that says it all: the close date for a past round, "record
+    only" for a date that is not a round (the hub's rule is the page's
+    "i"), so it carries no "?"."""
     import datetime as dt
     due = O._date_status("2026-10-10", today=dt.date(2026, 10, 6))
     assert due["state"] == "due"
@@ -245,6 +247,7 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
     # the close in UTC for the page to name in the reader's clock
     # (11 PM EDT on Wed 2026-10-07 is 03:00 UTC on the Thursday)
     assert due["deadline"] == soon["deadline"] == "2026-10-08T03:00:00Z"
+    assert due["deadline_et"] == soon["deadline_et"] == "Wed 2026-10-07, 11 PM ET"
     shut = O._date_status("2026-10-10", today=dt.date(2026, 10, 8))
     assert shut["badge"] == ("neutral", "Window closed")
     assert shut["text"] == "The window closed Wed 2026-10-07."
@@ -252,10 +255,38 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
                                                      "Not a FluSight round")
     _run(root, "2098-01-03", [GH])
     card = client.get("/output").text.split('id="fc-2098-01-03"', 1)[1]
-    assert '<span class="uk-badge-t">Not a FluSight round</span>' in card
-    tip = card.split('id="tip-out-win-1"', 1)[1].split("</span>", 1)[0]
-    assert ("2098-01-10 is not a FluSight round, so its files are a "
-            "record.") in tip
+    assert ('<span class="uk-badge-t">Not a FluSight round · record only'
+            '</span>') in card
+    assert 'id="tip-out-win-1"' not in card
+
+
+def test_a_closed_round_names_its_close_and_an_open_one_the_readers_clock(
+        root, monkeypatch):
+    """A past round's badge reads "Closed <date>"; an open or coming one's
+    badge says Eastern and a fact under the heading carries the close for
+    the page script to write in the reader's own time (the owner reads it
+    in Arizona). No badge carries a "?"."""
+    import datetime as dt
+    _run(root, "2098-01-03", [GH])
+    real = O._date_status
+    monkeypatch.setattr(O, "_date_status", lambda ref, **k: real(
+        "2026-10-10", today=dt.date(2026, 10, 8)))
+    card = client.get("/output").text.split('id="fc-2098-01-03"', 1)[1]
+    assert '<span class="uk-badge-t">Closed Wed 2026-10-07</span>' in card
+    assert "data-out-local" not in card.split("</ul>", 1)[0]
+    monkeypatch.setattr(O, "_date_status", lambda ref, **k: real(
+        "2026-10-10", today=dt.date(2026, 10, 6)))
+    page = client.get("/output").text
+    card = page.split('id="fc-2098-01-03"', 1)[1]
+    assert '<span class="uk-badge-t">Due Wed 2026-10-07, 11 PM ET</span>' in card
+    meta = card.split('<ul class="uk-meta">', 1)[1].split("</ul>", 1)[0]
+    # Eastern words until the script writes the reader's clock over them;
+    # "closes" is said once, in the text, with no spoken label before it
+    assert ('<span><span class="out-local" data-out-local="2026-10-08T03:00:00Z">'
+            'closes Wed 2026-10-07, 11 PM ET</span></span>') in meta
+    assert "Closes: " not in meta
+    assert 'id="tip-out-win-1"' not in card
+    assert "'closes '+s+' your time'" in page
 
 
 def test_a_seasons_older_dates_sit_behind_one_fold(root):
@@ -340,12 +371,14 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     # no report yet: the card names the run, no badge and no buttons
     html, c = card()
     assert "No report for the latest run" in c
-    assert "modified settings</span>" not in c and "Open report" not in c
+    assert "non-hub names</span>" not in c and "Open report" not in c
     (mod / "report.html").write_text("<p>the modified run's report</p>")
     html, c = card()
     assert f'href="/runs/{mod.name}"' in c and hub.name not in c
-    assert '<span class="uk-badge-t">modified settings</span>' in c
-    assert "oracle.w=0.25" in c and f'href="/runs/{mod.name}/report"' in c
+    # the badge says it by itself; the settings are on the run page
+    assert '<span class="uk-badge-t">modified · non-hub names</span>' in c
+    assert 'id="tip-out-rep-mod"' not in c
+    assert f'href="/runs/{mod.name}/report"' in c
     assert "the modified run's report" in client.get(f"/runs/{mod.name}/report").text
     assert "the hub run's report" in client.get("/output/report").text
     assert '<option value="2098-01-03"' in html        # the picker keeps the week
@@ -357,5 +390,5 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     assert ui_shared._latest_results()[0] == over.name
     html, c = card()
     assert f'href="/runs/{over.name}"' in c
-    assert "modified settings</span>" not in c
+    assert "non-hub names</span>" not in c
     assert '<option value="2098-01-03"' not in html

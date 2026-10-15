@@ -36,10 +36,10 @@ def test_home_renders_workflow_performance_and_component_cards():
     # table must not carry them and must say so.
     assert 'class="perf"' in r.text
     for cell in ("0.767", "0.697", "0.781", "0.738",
-                 "0.722", "0.653", "0.651", "0.666",
+                 "0.702", "0.651", "0.653", "0.660",
                  "0.741", "0.663", "0.684", "0.685",
-                 "15,460", "15,340", "15,300", "Oracle SIHRS", "Groundhog",
-                 # the plain filter on the same cells, in the column's tip
+                 "15,460", "17,116", "15,300", "Oracle SIHRS", "Groundhog",
+                 # the plain filter on the same cells, in the card's "i"
                  # (its ablation), and the two-season figure
                  "0.840", "0.794", "0.843", "0.819", "0.731", "0.813",
                  "9,279", "6,021", "4,859", "4,420",
@@ -67,15 +67,14 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow (the kit's stepper, each step's purpose in
-    # its "?"); the workflow says nothing is combined
+    # start-here numbered flow (the kit's stepper, each step named by its
+    # tab's link, no "?"); the workflow says nothing is combined
     assert 'class="uk-stepper uk-stepper--vertical" aria-label="Start here"' \
         in r.text
-    for href, tip in (("/data", "Confirm the feed is current."),
-                      ("/forecast", "Pick a date, run the models."),
-                      ("/output", "Submission files and the report.")):
-        assert f'<a href="{href}">' in r.text, href
-        assert tip in r.text, tip
+    steps = r.text.split('aria-label="Start here"', 1)[1].split("</ol>", 1)[0]
+    for href in ("/data", "/forecast", "/output"):
+        assert f'<a href="{href}">' in steps, href
+    assert "tipbtn" not in steps
     assert "nothing blended" in r.text
     # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",
@@ -101,6 +100,74 @@ def test_home_table_headlines_the_recorded_oracle_sihrs():
            ).read_text(encoding="utf-8")
     assert ('<td>Pooled</td><td class="num rel">'
             + ot.fmt(ot.RECORD["three"]["oracle"]) + "</td>") in src
+
+
+def _readme_groundhog_rows():
+    """README's Measured record, the Groundhog's two rows: the shipped
+    own-state weighting and the pooled form, each (2023-24, 2024-25,
+    2025-26, pooled, cells)."""
+    readme = (Path(__file__).resolve().parents[2] / "README.md").read_text(
+        encoding="utf-8")
+    rows = {}
+    for line in readme.splitlines():
+        for key, lead in (("shipped", "| Groundhog, own-state weighting"),
+                          ("pooled", "| Groundhog, pooled form")):
+            if line.startswith(lead):
+                cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                rows[key] = (*(float(v) for v in cells[2:6]), cells[6])
+    assert set(rows) == {"shipped", "pooled"}, "README's record moved"
+    return rows
+
+
+def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
+    """README's Measured record is the source of truth: Home's Groundhog
+    column, Methods' Groundhog row and the model page carry its shipped
+    row (own-state weighting, FluSight's cell rule) and name the cells and
+    the rule; the pooled form's 0.666 under the earlier rule is printed
+    only where it is labelled so (Methods' Cells fold)."""
+    rows = _readme_groundhog_rows()
+    y23, y24, y25, three, cells = rows["shipped"]
+    pooled_form = rows["pooled"][3]
+
+    def fmt(v):
+        return f"{v:.3f}"
+    # Home: each row's second "num rel" cell is the Groundhog's
+    src = (Path(__file__).resolve().parents[1] / "ui/templates/home.html"
+           ).read_text(encoding="utf-8")
+    body = src.split('<table class="perf">', 1)[1].split("</table>", 1)[0]
+    got = re.findall(r'<td>([^<]+)</td><td class="num rel">[^<]+</td>\s*'
+                     r'<td class="num rel">([^<]+)</td>', body)
+    assert dict(got) == {"2023-24": fmt(y23), "2024-25": fmt(y24),
+                         "2025-26": fmt(y25), "Pooled": fmt(three)}
+    home = client.get("/").text
+    tip = " ".join(home.split('id="tt-hm-perf"', 1)[1]
+                   .split("</span></span>", 1)[0].split()).replace("&#39;", "'")
+    # each column's cells and cell rule: the Groundhog's alone is FluSight's
+    assert ("15,460 (placement among teams withdrawn) under the earlier cell "
+            f"rule, the shipped Groundhog on {cells} under FluSight's (the "
+            f"pooled form it replaced: {fmt(pooled_form)}).") in tip
+    assert "0.666" not in home and "15,340" not in home
+    # Methods: the Groundhog row and its three-season tile
+    methods = client.get("/methods").text
+    row = methods.split("<tr><td>Groundhog</td>", 1)[1].split("</tr>", 1)[0]
+    assert re.findall(r'class="num ok">([0-9.]+)<', row) == [
+        fmt(y23), fmt(y24), fmt(y25)]
+    assert f'id="mt-pool-gh">{fmt(three)}</span>' in methods
+    # each pooled tile names its own cells, as they differ by column
+    for tile, n in (("oracle", "15,300"), ("gh", cells), ("bare", "15,340")):
+        assert re.search(rf'id="mt-pool-{tile}">[0-9.]+</span> '
+                         rf'<span class="uk-stat-u">{n} cells</span>',
+                         methods), tile
+    # the model page: its bars, facts and Record "i"
+    from app.ui.routes.models import _record
+    rec = _record("analogue")
+    assert [b["text"] for b in rec["bars"]] == [fmt(three), fmt(pooled_form)]
+    # "pooled" names the form, not the three-season figure
+    assert [b["label"] for b in rec["bars"]] == [
+        "Groundhog", "Without own-state weighting"]
+    assert [f[1] for f in rec["facts"]] == [fmt(y23), fmt(y24), fmt(y25),
+                                            cells]
+    assert "FluSight's cell rule" in rec["lines"][0]
 
 
 def test_two_strain_is_off_the_navbar_but_still_routed():
@@ -275,14 +342,17 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
     assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
-    assert "cover 1 of 52" in html                # one green state is not a
-    assert "the rest show as no data" in html     # national outlook
+    # one green state is not a national outlook: the coverage stat says
+    # how many (the map's own legend names the rest "no data")
+    assert ('<span class="uk-stat-v" id="hm-cover">1 of 52</span> '
+            '<span class="uk-stat-u">jurisdictions</span>') in html
+    assert 'id="tip-hm-cover"' not in html
     # without a run, the card stays honest about being empty
     empty = templates.env.get_template("home.html").render(
         active="Home", map_svg="", outlook_date="", outlook_n=0, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "Fills in when you run a forecast." in empty
+    assert "No forecast yet" in empty and 'href="/forecast">Run a forecast' in empty
     assert "of 52" not in empty
 
 
@@ -342,7 +412,9 @@ def test_every_equation_group_defines_its_symbols():
         for fid in ids:
             assert f'<details class="uk-fold eqvars" id="{fid}">' in t, (page, fid)
         # every row's symbol wears the equations' math styling
-        rows = re.findall(r'<th scope="row">(.*?)</th>', t, re.DOTALL)
+        tables = re.findall(r'<table class="eqvars-t">(.*?)</table>', t, re.DOTALL)
+        rows = re.findall(r'<th scope="row">(.*?)</th>', "".join(tables),
+                          re.DOTALL)
         assert rows, page
         for th in rows:
             assert th.startswith('<span class="math">'), (page, th)
@@ -364,7 +436,9 @@ def test_every_equation_group_defines_its_symbols():
 def test_home_workflow_carries_the_forcing_and_groundhog_equations():
     t = client.get("/").text
     assert 'class="eqpanel"' in t
-    assert "the curve the filter bends each week" in t
+    # the readings are How it works' "i" (Home has no Variables fold)
+    how = t.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
+    assert "the curve the filter bends each week" in how
     # the Groundhog's growth-ratio quantile replaced the blend's mean
     assert "growth\n   ratios at matched calendar weeks" in t
     assert "mean<sub>m</sub>" not in t

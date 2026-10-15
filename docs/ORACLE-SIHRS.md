@@ -278,11 +278,12 @@ The last two columns are the grid's own second member, stored under
 `analogue` and copied verbatim by the backfill: the bare calendar analogue
 WITHOUT the FluSurv-NET donors (the grid ran no auxiliary preset; its
 figures are the retired bare analogue's 0.756 and 0.618 on the console's
-Methods page), not the shipped Groundhog, whose own record (0.653 and
-0.651) is its separate replay. The filter's scored cells are a subset of
-the analogue's, so the record definition and the common set coincide for
-the mechanistic member (the
-screen's 9,279 common cells on active2; its 15,300 native cells include
+Methods page), not the Groundhog, whose own record is its separate
+replay (the pooled form's 0.653 and 0.651 under the earlier cell rule;
+the shipped own-state form's in README, Measured record). The filter's
+scored cells are a subset of the analogue's, so the record definition
+and the common set coincide for the mechanistic member (the screen's
+9,279 common cells on active2; its 15,300 native cells include
 the 2023-24 identity season, not backfilled here). The Oracle SIHRS
 equals the screen's seed-1 value to machine precision on every scope and
 the plain filter equals the screen's NULL likewise; the screen's pooled

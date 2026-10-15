@@ -1167,13 +1167,15 @@ details.adv[open]>summary::before{content:"\25BE"}
    (white on raw cyan was 2.1:1) */
 .adv[open] > summary.advbtn{background:var(--accent-ink);
  border-color:var(--accent-ink);color:var(--card)}
-/* the Model settings panel (templates/_model_settings.html): one fieldset
-   per stage (its badges and fixed list: static/tabs/forecast.css) */
+/* the Model settings panel (templates/_model_settings.html): one fold
+   per stage, its fields in a bare fieldset (its badges and fixed list:
+   static/tabs/forecast.css) */
 .ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
 .ms-head button{margin-top:0}
 .ms-group{border:1px solid var(--line);border-radius:10px;
-  padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
-.ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+  padding:.45rem .8rem;min-width:0}
+.ms-group > summary{font-size:.92rem}
+.ms-fields{border:0;margin:0;padding:0 0 .3rem;min-width:0}
 .ms-row input,.ms-row select{max-width:100%}
 .ms-later{opacity:.62}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
@@ -1320,7 +1322,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
   margin-bottom:.35rem}
 .rs-h h2{margin-bottom:0}
 .rs-h .pbscale{margin:0}
-.rs-h .tip{margin-left:-.4rem}
 @media (max-width:640px){
   /* the card-wide cumulative chart shrinks to a phone: its viewBox-px
      labels grow so they stay legible */
@@ -1447,8 +1448,6 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88rem}
 .sbtablist button:hover{color:var(--ink);background:transparent}
 .sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
-.sbtabtips{display:flex;align-items:center;padding:0 .3rem}
-.sbtabtips > [hidden]{display:none}
 .sbfile[hidden]{display:none}
 .sbfile + .sbfile{margin-top:.6rem}
 .sb-tabbed .sbfile + .sbfile{margin-top:0}
@@ -1571,7 +1570,7 @@ p.newest-check[hidden]{display:none}
    buttons */
 .rs-band{display:flex;flex-wrap:wrap;align-items:center;
   justify-content:space-between;gap:.45rem 1rem;margin:.3rem 0 .7rem}
-.rs-band .rs-acts{margin:0;gap:.55rem}
+.rs-band .rs-acts{margin:0;gap:.55rem;min-width:0}
 .rs-chips{min-width:0}
 .rs-chips .runsettings{margin:0;display:flex;flex-wrap:wrap;
   align-items:center;gap:.3rem .5rem}
@@ -1590,7 +1589,6 @@ p.newest-check[hidden]{display:none}
 .verdict .tiles4{grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))}
 .rs-band .rs-facts{margin:0;flex:1 1 20rem;min-width:0}
 .rs-settings{margin:.15rem 0 .7rem}
-.rs-settings .tip{margin-left:.1rem}
 .rs-settings .runsettings > strong{display:none}
 .rs-chips .runsettings > strong{display:none}
 .cumwrap{margin-top:.9rem}

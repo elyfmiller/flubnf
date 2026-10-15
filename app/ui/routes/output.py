@@ -279,7 +279,9 @@ def _date_status(ref: str, today=None, now=None) -> dict:
     hub-config/tasks.json, vendored), "text": the one-line sentence,
     "badge": (kit state, words)}; {} when the rules cannot be read. A due or
     coming round also carries "deadline" (the close as ISO UTC, for the
-    page to name in the reader's own time); a due one "left" (time left,
+    page to name in the reader's own time) and "deadline_et" (the same
+    close in Eastern words, shown until the page script runs); a due one
+    "left" (time left,
     _time_left; "" when `today` stands in for the clock) and "urgent"
     (under URGENT_HOURS left: the badge turns error)."""
     import datetime as _dt
@@ -297,10 +299,11 @@ def _date_status(ref: str, today=None, now=None) -> dict:
         return {}
     kind, words = _WINDOW_BADGE[state]
     out = {"state": state, "text": text, "left": "", "urgent": False,
-           "deadline": ""}
+           "deadline": "", "deadline_et": ""}
     if window and state in ("due", "soon"):
         close = _deadline_utc(window[1])
         out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
+        out["deadline_et"] = f"{window[1]:%a %Y-%m-%d}, 11 PM ET"
         if state == "due" and today is None:
             clock = now or _dt.datetime.now(_dt.timezone.utc)
             out["left"] = _time_left(close, clock)
@@ -582,22 +585,19 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
-    from app.core.runs import APP_STATE, is_contained, model_settings_label
+    from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
     # the newest run, a modified one included: the report card is where
     # the person who made it looks for it (its files sit under their
-    # date, tagged); Home, Forecast and Models keep the shipped rule
+    # date, tagged); Home and Models keep the shipped rule
     rid, res = shared._latest_results(include_modified=True)
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
-    # a modified run exported under the non-hub name: the card says so,
-    # with the settings label (its first clause; the tip says how the
-    # files are named) in the badge's tip, once the run has a report
-    report_modified = ""
-    if has_report and res and is_contained(res.get("spec", "")):
-        report_modified = (model_settings_label(res.get("spec", ""))
-                           .split(";", 1)[0] or "modified model settings")
+    # a modified run exported under the non-hub name: the card's badge
+    # says so, once the run has a report (its settings are on its run page)
+    report_modified = bool(has_report and res
+                           and is_contained(res.get("spec", "")))
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
     # each file gets the hub validator's command (--window for a round
