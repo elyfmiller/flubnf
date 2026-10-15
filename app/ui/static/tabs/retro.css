@@ -37,11 +37,11 @@
 .rt-go{margin-left:auto}
 /* an archived run's Results link: the row's small button size */
 .archrow a.btn{padding:.22rem .6rem;font-size:var(--fs-label)}
-/* the live readout, what the estimate rests on (a "?" on the index, a
-   muted line on the season page) and the connection badge on one line */
+/* the live readout, what the estimate rests on (a "?" on the index,
+   visually hidden on the season page) and the connection badge on one
+   line */
 .rt-readout{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .6rem}
 .rt-readout .runstat{margin:.25rem 0}
-.rt-basis{color:var(--mut);font-size:var(--fs-label)}
 /* the season's facts under its band */
 .rt-facts{margin:.55rem 0 .25rem}
 /* the resume, pause and stop controls */
@@ -55,13 +55,22 @@
 .rt-importcard .lblrow .ck{margin:0}
 
 /* ---- 3. the season page ---- */
-/* the band's facts: the timing values and the state badges */
+/* the band's facts: the timing values, the state badges and the link on
+   to the index (the small button size of an archived run's row). A state
+   badge has no tip to hold what an ellipsis would cut, so on a phone it
+   wraps */
 .rt-bandfacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem}
+.rt-bandfacts .uk-badge{white-space:normal}
+.rt-bandfacts a.btn{padding:.22rem .6rem;font-size:var(--fs-label)}
 /* the settings as a row of facts, wrapping in their own box */
 .rt-settings > ul{min-width:0}
-/* the replay bundle's size and name, beside its button (the report
-   inlines this sheet, so its words name no console control) */
-.rt-exp-out{font-size:var(--fs-label)}
+/* the replay bundle's size and name: beside its button, or on a line of
+   its own when the row is short, and never wider than the row, since the
+   file name is one long word (its badge ends in an ellipsis, plain text
+   breaks). The report inlines this sheet, so its words name no console
+   control */
+.rt-exp-out{font-size:var(--fs-label);min-width:0;max-width:100%;
+  overflow-wrap:anywhere}
 /* the progress of a file being prepared (report, bundle): a line of its
    own under the buttons */
 .rs-acts .rs-prog{flex-basis:100%;min-width:min(22rem,100%)}

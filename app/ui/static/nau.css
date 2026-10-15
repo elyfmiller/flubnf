@@ -1573,7 +1573,7 @@ p.newest-check[hidden]{display:none}
    buttons */
 .rs-band{display:flex;flex-wrap:wrap;align-items:center;
   justify-content:space-between;gap:.45rem 1rem;margin:.3rem 0 .7rem}
-.rs-band .rs-acts{margin:0;gap:.55rem}
+.rs-band .rs-acts{margin:0;gap:.55rem;min-width:0}
 .rs-chips{min-width:0}
 .rs-chips .runsettings{margin:0;display:flex;flex-wrap:wrap;
   align-items:center;gap:.3rem .5rem}

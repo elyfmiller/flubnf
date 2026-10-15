@@ -156,10 +156,29 @@ def test_the_badges_and_lines_say_what_their_tips_did():
                             added_n=3))
     assert ('<span class="uk-badge-t">3 weeks added: 2098-12-05 to '
             '2098-12-19</span>') in many
-    # a live replay's estimate basis is a line beside its readout
+    # a sealed record cannot take them: the badge says so
+    sealed = _page(prog=_prog(added=["2098-12-05"], added_n=1, sealed=True))
+    assert ('<span class="uk-badge-t">1 week added: 2098-12-05 (sealed, '
+            'needs a fresh replay)</span>') in sealed
+    # each says the way on, a link to the Retrospective tab whose card
+    # resumes the replay or, for a sealed record, starts a fresh one
+    for html in (stopped, gone, two, many):
+        assert ('<a class="btn quiet" id="rs-onward" href="/retro">Resume on '
+                'Retrospective</a>') in html
+    assert ('<a class="btn quiet" id="rs-onward" href="/retro">Replay on '
+            'Retrospective</a>') in sealed
+    # a finished replay, an archived run and the report have nowhere to go
+    assert 'id="rs-onward"' not in _page()
+    assert 'id="rs-onward"' not in _page(
+        archive="20981201T090000", archive_when="2098-12-01 09:00",
+        prog=dict(_prog(), status="archived"))
+    assert 'id="rs-onward"' not in _page(
+        export=True, prog=_prog(status="stopped", done=12))
+    # a live replay's readout says the time left or "paused" in plain
+    # sight; what the estimate rests on is for a screen reader only
     live = _page(prog=_prog(status="running", active=True, done=3,
                             weeks_measured=3))
-    assert ('<span class="rbasis rt-basis">estimate from 3 completed weeks'
+    assert ('<span class="rbasis uk-sr">estimate from 3 completed weeks'
             '</span>') in live
     # the banners say it in their line
     arch = _page(archive="20981201T090000", archive_when="2098-12-01 09:00")
