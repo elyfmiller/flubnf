@@ -8,9 +8,11 @@
     before any test module imports the server: its startup thread writes
     component_versions.json and routes open ledger.sqlite, which landed in
     the working tree's app/state. FLUBNF_STATE_DIR carries it to every
-    Python a test starts (a `python -c "import app.ui.server"` probe has a
-    startup thread too). Tests that set their own APP_STATE still do; the
-    session ends by checking app/state was left untouched.
+    Python a test starts with the suite's environment (a `python -c
+    "import app.ui.server"` probe has a startup thread too). Tests that set
+    their own APP_STATE still do; the session ends by checking app/state
+    was left untouched, which also catches a console started from this
+    checkout while the suite runs.
   * the checkout's top folder: the session ends by checking no test left a
     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
 """
@@ -75,18 +77,25 @@ def _top_files() -> set:
             if not n.startswith(".") and n != "__pycache__"}
 
 
+#: taken here, at import (pytest loads this conftest before it collects or
+#: runs any test), not in the fixture's setup: CI, the pre-push hook and
+#: testpaths run tests/ first, before the first app/tests test
+_STATE_BEFORE, _TOP_BEFORE = _state_listing(), _top_files()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
     """The whole suite leaves the working tree's app/state as it found it,
     and adds nothing to the checkout's top folder."""
-    before, top = _state_listing(), _top_files()
+    before, top = _STATE_BEFORE, _TOP_BEFORE
     yield
     after = _state_listing()
     changed = sorted(k for k in set(before) | set(after)
                      if before.get(k) != after.get(k))
     assert not changed, f"tests wrote into {REAL_STATE}: {changed[:10]}"
     added = sorted(_top_files() - top)
-    assert not added, f"tests left files in {REPO}: {added[:10]}"
+    assert not added, (f"{REPO} gained {added[:10]} during the run: a test, "
+                       "or a command run in the checkout meanwhile (uv run)")
 
 
 @pytest.fixture(autouse=True)
