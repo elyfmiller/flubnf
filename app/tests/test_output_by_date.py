@@ -371,12 +371,14 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     # no report yet: the card names the run, no badge and no buttons
     html, c = card()
     assert "No report for the latest run" in c
-    assert "modified settings</span>" not in c and "Open report" not in c
+    assert "non-hub names</span>" not in c and "Open report" not in c
     (mod / "report.html").write_text("<p>the modified run's report</p>")
     html, c = card()
     assert f'href="/runs/{mod.name}"' in c and hub.name not in c
-    assert '<span class="uk-badge-t">modified settings</span>' in c
-    assert "oracle.w=0.25" in c and f'href="/runs/{mod.name}/report"' in c
+    # the badge says it by itself; the settings are on the run page
+    assert '<span class="uk-badge-t">modified · non-hub names</span>' in c
+    assert 'id="tip-out-rep-mod"' not in c
+    assert f'href="/runs/{mod.name}/report"' in c
     assert "the modified run's report" in client.get(f"/runs/{mod.name}/report").text
     assert "the hub run's report" in client.get("/output/report").text
     assert '<option value="2098-01-03"' in html        # the picker keeps the week
@@ -388,5 +390,5 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     assert ui_shared._latest_results()[0] == over.name
     html, c = card()
     assert f'href="/runs/{over.name}"' in c
-    assert "modified settings</span>" not in c
+    assert "non-hub names</span>" not in c
     assert '<option value="2098-01-03"' not in html

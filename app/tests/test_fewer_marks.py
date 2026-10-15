@@ -331,6 +331,9 @@ def test_methods_lists_every_model_setting_the_panel_offers():
     # a choice's default reads as its option does, and the console's
     # contents row links the card; the public site has no Forecast tab
     assert "<td>2026091801</td>" in text
+    # the other choices read in the panel's words, the stored value beside
+    assert "expected total (early season) (season_total_early)" in text
+    assert "<td>random draws (rand)</td>" in text
     assert '<a href="#settings">Model settings</a>' in t
     from app.core import site_build
     assert 'id="settings"' not in site_build.harvest_methods({})
