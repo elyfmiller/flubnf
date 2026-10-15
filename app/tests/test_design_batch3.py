@@ -314,7 +314,7 @@ def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
            "models": {"pf": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
                                                   "0.9": 3.0}}}},
            "observed": {}}
-    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", res))
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda **kw: ("r1", res))
     monkeypatch.setitem(ui_state._status, "running", None)
     ui_state._status.pop("session_ran", None)            # a fresh process has none
     r = client.get("/forecast")

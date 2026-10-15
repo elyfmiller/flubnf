@@ -37,7 +37,7 @@ def _res(*models):
 
 
 def _fanq(monkeypatch, *models):
-    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", _res(*models)))
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda **kw: ("r1", _res(*models)))
     r = client.get("/forecast")
     assert r.status_code == 200
     m = re.search(r"const FANQ = (\{.*?\});", r.text)
