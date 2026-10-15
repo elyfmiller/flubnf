@@ -6,6 +6,159 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
+  AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
+  Output tab fix (seven app files) and the Submission and Engine notes
+  since #40; 9 files, +524/-17; head e48bf98 on main 710f718. The tests
+  jobs were running on the head at opening (CI runs on the push to dev);
+  Ely merges when they are green, or says the word and this lane does,
+  as for #33. The integration's footer appeared on the body again and
+  was edited out at once (the 2026-10-12 lesson); the body is Ely's.
+- 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
+  app/output-modified-runs FOR ELY'S MERGE INTO dev (aa8bae4, de5d75c; from
+  dev b2b379c; authored as Ely; Ely asked this lane to fix it after the
+  round). What changes: shared._latest_results gains include_modified
+  (default off); the Output page's weekly report card passes it, so the
+  newest run shows there even when its settings were modified and the
+  override box was unticked, with a "modified settings" badge whose tip
+  names the settings and says its files carry the -modified name under
+  their date below; the card's buttons link that run's own report
+  (/runs/<id>/report). Unchanged on purpose: Home, the Forecast fans,
+  Models and /output/report (Home's report button and map link) keep the
+  shipped rule, so a modified run never passes for the registered model
+  there; research runs stay hidden everywhere. Tests: one new in
+  app/tests/test_output_by_date.py (card, badge, buttons, the picker, the
+  override), assertions in test_knobs_wiring.py and test_audit_fixes.py.
+  An adversarial review of the first commit (three lenses, seven findings
+  verified) found and the second commit fixed: the earlier-weeks picker
+  dropped the archived shipped report for the modified run's week (a
+  modified run is never archived); /output/report had followed the card,
+  which would have sent Home's button and map link to a run Home does not
+  show; the badge appeared before the run had a report; the tip named the
+  file naming twice. Full suite on the branch: 3,271 passed, 162 skipped,
+  three runs; two of them ended with one session-level error from
+  app/tests/conftest.py's app/state guard (below), none from a test.
+  MERGED INTO dev AT ELY'S REQUEST on 2026-10-15 02:20 UTC (merge commit
+  a1f65f1, authored as Ely; the lane's one code merge, on Ely's word, as
+  the seed branch was); dev to main by pull request as usual; FluBNF picks
+  it up on the next open after that.
+  - For the App lane, two test-isolation leaks seen in the cloud, both
+    outside this diff: (a) app/state/component_versions.json in the
+    working tree was written (21:41 UTC) and rewritten (21:54) during full
+    runs, which trips the session guard at the last test's teardown;
+    conftest redirects versions._VERSIONS_SNAPSHOT to the test state, and
+    a per-test watcher saw no test touch the file, so the write comes from
+    the startup warm thread (app/ui/server._start_background_warm,
+    versions._warm_versions) of an interpreter without the redirect, most
+    likely a subprocess, landing after the last test; intermittent (one
+    run in three was clean; CI on main is green). (b) uv.lock (220 KB)
+    appeared at the repository root at 21:50 UTC during a run and was
+    removed by hand, not committed; nothing in the tests names uv, so the
+    writer is a launcher or install step run under test. Neither is in
+    this branch.
+- 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED:
+  cdcepi/FluSight-forecast-hub#3805, OPENED BY ELY FROM `FluBNF_submission`
+  (63bb9da2 "NAU_PyBNF forecast 2026-10-17 (EW41)", on cdcepi main
+  397226db, authored and committed as Ely, no trailers). Oracle SIHRS 52 of
+  53 locations (Alaska dropped, the finding below), Groundhog all 53; both
+  files as committed pass validate_submission.R, 31 checks with `--window`.
+  The run: Ely's laptop on main 710f718 (the morning's #36 to #40 on top of
+  #33), data through 2026-10-10, 10,000 particles x 3 replicates, 5 min
+  15 s; model settings `oracle.w=0.25, pf.seed_denominator=
+  season_total_early` (knobs digest 3d7ef6b7), exported under the hub names
+  by override with the reason "2026-10-12 decision: expected-total seed
+  early in the season and Oracle weight 0.25, both replay-scored;
+  docs/team/submission.md" (the run record and the weekly report say so).
+  Files, scripts and the review table: the Submission scratchpad,
+  round-2026-10-17/.
+  - The data (CDC's hub commit e4e60ab1 at 10:52 ET; the ED-visits and
+    hubverse files followed at 15:18-15:21 ET, neither read by FluBNF; the
+    watch script polled the hub every 10 minutes until 20:24 UTC and saw no
+    further admissions commit): all 53 reported 2026-10-10, no NaN or zero
+    newest week; US 3,420 -> 3,835 (1.12x; last week's 3,246 revised to
+    3,420); 22 of 52 states down week over week, most on small counts;
+    Illinois 67 -> 193 (2.9x; its record holds a September one-week spike
+    13 -> 109 -> 39), Puerto Rico 81 -> 181, Idaho 15 -> 6; the 10-03 week
+    revised up 20% or more in Mississippi (20 -> 29), Kentucky (45 -> 59)
+    and Iowa (15 -> 21).
+  - Three runs. The first ran with the knobs unset (the Model settings panel
+    starts at the shipped defaults every week; the update to main turns
+    nothing on): 14 of 52 states' horizon-3 medians below the last week, the
+    sense check flagging Alaska, Montana, Maine, Oregon and Nebraska
+    ("untick, or w = 0.25 first") and Washington ("consider unticking"),
+    median h3/last 1.29. The second, with both knobs but the override box
+    unticked, exported `<hub id>-modified` files and stayed off the Output
+    tab (by design; Ely found it in the run ledger): 1 state below the last
+    week (Alaska, 0.85), 2 above 3x (Delaware 27, New Hampshire 20, both
+    under 10 admissions), median h3/last 2.20 (Groundhog 2.19); all six
+    flags clear; every Groundhog horizon-3 median inside the Oracle's 95%
+    band and the reverse; the Oracle/Groundhog horizon-3 ratio 1.0 in the
+    median, Alaska (0.39) the only one outside the Oracle's 50% band. The
+    third, with the box ticked and the reason typed, produced byte-identical
+    files under the hub names; those are the committed ones. US Oracle
+    4,772 / 5,834 / 7,180 / 8,908 (1.23x a week, the data's own last three
+    weeks), Groundhog 4,139 / 4,707 / 6,548 / 8,390; this season runs at
+    three times last year's level at the same date.
+  - FINDING, FOR THE MODEL LANE: ALASKA AND HAWAII CROSSED THE QUARTER THIS
+    WEEK. From resolve_state on the 10-10 data with season_total_early:
+    Alaska's season-to-date count (142) is 25.8% of its expected total and
+    Hawaii's (221) 26.5%, so both are in the to_date stage, factor 1, the
+    implied infected-so-far 18% (the old pin); the other 50 are in the
+    expected stage at 0.2-3.0% infected (median 0.7%). Alaska (data 21 23
+    24 19 23 13): Oracle 11 / 11 / 12 / 11 against Groundhog 14 / 16 / 22 /
+    28, flat on the drained seed after a real drop in the data; DROPPED from
+    the Oracle file on Ely's judgment, with that mechanism as the reason.
+    Hawaii (3 10 17 29 67 72): Oracle 76 / 87 / 98 / 112 (1.12x a week)
+    against Groundhog 78 / 88 / 123 / 158, KEPT: it rises and the two agree
+    at horizons 0-1. The switch is abrupt (the caveat of 2026-10-09): at the
+    threshold the assumed infected fraction jumps from 4.5% (0.18 x 0.25) to
+    18% in one week. Next to cross at the current 1.2x a week: Puerto Rico
+    (16.9%), Washington (13.6%), Utah (12.4%), California (11.6%), Florida
+    (10.5%), in two to four weeks; the US total sits near 5%. A smooth
+    switch, or a different threshold with the peak brake re-scored, is
+    needed before November or the old decliners return state by state.
+  - The states Ely asked about, all kept. District of Columbia (3 2 2 3 3 3;
+    Oracle 3 / 4 / 3 / 3, Groundhog 3 / 4 / 5 / 7): 0.5% infected, no
+    drain; the wobble is integer rounding of a median near 3.5 (the
+    45th-55th percentiles 3-3, 4-5, 3-4, 2-4); the filter's own growth on
+    six flat weeks is about zero and the 75% donor share lifts it to flat,
+    not to the Groundhog's climb. South Dakota (Oracle 5 / 6 / 7 / 8): the
+    straight line is the Oracle step's one blended growth rate per path,
+    1.19x a week from 5. Utah, Virginia, West Virginia and Washington: the
+    two models agree. Vermont (0 1 1 3 1 6; Oracle 8 / 10 / 13 / 16): the
+    Oracle's horizon 0 anchors on the fitted state, not the last report.
+    Illinois (Oracle 233 / 283 / 343 / 409, 95% band 6-20,266 at horizon 3;
+    Groundhog 208 / 237 / 330 / 422): the weekly report's categorical map
+    colored it "decrease" because that is the single largest category (34%)
+    while up is 50% split over two categories; the submission carries
+    quantiles only.
+  - The validator in the cloud, for next week: hubValidations needs TZDIR
+    pointed at the conda R's zoneinfo (CCTZ does not know US/Eastern
+    otherwise and the submission_time check errors) and the fork's sparse
+    checkout needed auxiliary-data/raw-population-archive (which brings
+    locations.csv for counts_lt_popn) and src/validations added; both done
+    in this session's clone. sense_check.py ran against a hub directory
+    assembled from the fetched target-data and locations.csv.
+  - Next: Ely opens the card 1.4 pull request from NAU_PyBNF-OracleSIHRS-1.4
+    (staged, byte-identical to main); a note to Spencer (the NAU ensemble)
+    after Ely's go; this lane confirms #3805's merge on the next cdcepi main
+    fetch and records it; the Output tab, the categorical map and the
+    weekly knob entry are App items under For other lanes.
+- 2026-10-12 (21:20 UTC): PULL REQUEST #33 (dev TO main) MERGED AT 21:14 UTC
+  BY ELY, BEFORE THE TESTS FINISHED; main IS AT c212e69. Ely confirmed the
+  merge was theirs (the merge came one and a half minutes after the pull
+  request opened, while all ten tests jobs were still running); the merge commit
+  is authored as Ely like #29 to #32. main now carries the seed rule and
+  its knob, cards 1.3 and 1.4, the design pass and the notes; Ely's laptop
+  picks them up on its next open. CI on the merge commit was still running
+  at this entry; checked at 21:41 UTC: main is green, all five tests jobs
+  on the merge commit c212e69 and all ten on b657070 passed. Finding for the
+  rule above: the GitHub integration this lane opens pull requests through
+  appends an attribution footer with a session link to the pull request
+  body on creation (it was not in the text the lane sent); the lane edited
+  it out at 21:16 UTC and the body is clean. So when Ely wants this lane to
+  open a FluBNF pull request, the lane edits the body right after opening
+  it; Ely's own click from the compare link never has the problem.
 - 2026-10-12 (21:15 UTC): FLUBNF PULL REQUEST dev TO main OPENED AT ELY'S
   REQUEST; IT MERGES WHEN THE TESTS PASS. Ely asked this lane to open the
   pull request and have it merge once CI is green. GitHub's own auto-merge
@@ -894,6 +1047,86 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model (2026-10-14, top priority): the stage rule's switch is live. Alaska
+  and Hawaii passed a quarter of their expected totals this week and fell
+  back to the to_date pin (18% assumed infected, from 4.5% the week before);
+  Alaska was dropped from the Oracle file for it. Puerto Rico, Washington,
+  Utah, California and Florida follow within two to four weeks at the
+  current growth (the Now entry of 2026-10-14 has the numbers). Please
+  design the smooth version (or re-score a threshold) before November; the
+  stored early and peak replays and the scorers in the Submission scratchpad
+  can score a candidate from the same runs, as the 0.25 rule was. The lane
+  can run resolve_state on each Wednesday's data and report who is next.
+- Model (2026-10-14): THE WEIGHT STAYS AT 0.25 THROUGH THE PEAK; 0.5 IS NOT
+  A BRAKE. Ely asked whether the blend should return to one half later in
+  the season to slow the Oracle's steepness. The stored replay says the
+  opposite (replays/score_w025_result.txt, stage rule, 5-seed mean, relWIS
+  / log relWIS, w = 0.5 against 0.25): early weeks pooled 0.679/0.681
+  against 0.668/0.668; PEAK weeks pooled 0.836/0.980 against 0.779/0.861;
+  all 44 weeks 0.753/0.787 against 0.720/0.736. The 0.25 weight wins by
+  more at the peaks than early; the only blocks where 0.5 is ahead are
+  2023-24 early and the 2024-25 peak, natural scale only, by under 0.03.
+  Why: w weights the filter's growth and the filter is the steep member
+  (this week at 0.5 the stage rule put 17 states above 3x by horizon 3,
+  at 0.25 three); the donors are past seasons' growth at the same calendar
+  week and turn down at the calendar peak, so the 75% donor share is the
+  brake there, on top of the stage rule's own (the to-date pin after the
+  quarter). The one case the replay does not cover: a season that peaks
+  well before the calendar donors do (this one runs at three times last
+  year's level in mid-October). If the data turn while the donors still
+  say grow, the filter is the better brake and 0.5 would help; the sign to
+  watch each Wednesday is the filter-alone forecast (pf_filter, scored
+  beside the Oracle) flattening while the Oracle keeps rising. Until then,
+  0.25.
+- Model (2026-10-14, from Ely): INVESTIGATE PER-REGION DONOR POOLING FOR
+  THE GROUNDHOG, now that the hub archive holds four complete seasons
+  (2022-23 to 2025-26) for all 53 jurisdictions. Today every jurisdiction's
+  Groundhog forecast is the same set of growth ratios times its own anchor
+  (this week: x1.08, x1.23, x1.71, x2.19 at horizons 0-3 in every state
+  with 20 or more admissions, 95% bands 0.27x to 20x everywhere), because
+  the donors are pooled across states; the analogue docstring's reason is
+  that a per-state pool (about 5 donor weeks per past season) cannot
+  support 23 quantiles. This lane found no record of a regional or
+  similarity-weighted pool in the repository (the nearest is the us-donor
+  trial in the lab's research archive, which removed the national row and
+  tied); please check that archive before starting, in case it was tried.
+  Ely's framing (2026-10-15, for the GroundHog agent): no longer pool the
+  growth ratios across all states; give each state its own donor set
+  from its own NHSN admissions history plus the FluSurv-NET site series,
+  so each state gets its own forecast shape instead of the one shared
+  shape. Where it lives: flubnf/analogue.py (forecast(), the bank keyed
+  (location, date), DEFAULT_BANDWIDTH epiweeks each side; the pool is
+  cross-location by design, docstring at the top), flubnf/flusurv.py
+  (the FluSurv-NET catchment, about 20 sites, rates per 100,000) and
+  flubnf/oracle_mix.py (W_AUX, the FluSurv-NET share). The support
+  problem to solve first: a state's own history gives about 5 donor weeks
+  per past season per horizon (the bandwidth window), so four seasons
+  give about 20 ratios for 23 quantile levels, and FluSurv-NET adds sites
+  only for the states it covers; a state-only pool is also undefined in
+  a state's first season. So the likely shape is a hierarchy: the state's
+  own donors first, the national pool filling in (shrinkage toward the
+  pooled ratios, or kernel weights by distance from the state's own recent
+  growth), with the mix a knob so it can be scored. Score against the
+  shipped cross-state pool on the stored replay weeks with the app's
+  scorer (flubnf retro on the lab Mac), per state and pooled, relWIS and
+  coverage, with a stop rule written before the run, as the seed rule
+  was. If a per-state pool wins, the Oracle's donor paths inherit it, so
+  the two members change together, and the Groundhog's card sentence
+  about pooled donors changes with it.
+- App (2026-10-14): three things from the round, none urgent. (1) DONE ON A
+  BRANCH, see the Now entry of 22:40 UTC: a modified run exported without
+  the override was kept off the Output tab and the archived weekly report
+  not replaced, so Ely found the run only in the run ledger and read last
+  week's report by mistake; branch app/output-modified-runs shows it on
+  the Output tab's report card, badged. (2) The weekly report's
+  categorical map colors a state by its single most likely category, which
+  read "decrease" for Illinois at 50% up (in two categories) and 34% down;
+  consider the up/down balance or the median's direction, with the split in
+  the hover. (3) The Model settings panel starts at the shipped defaults
+  every week, so the two values and the reason were retyped and the first
+  run of the night went out without them; a "last run's settings" preset
+  would remove that step (making them the defaults is the Model lane's
+  registered-member change, with the card binding).
 - App (2026-10-10): the help text of the research knob oracle.w
   (app/core/knobs.py, "Weight of the donor's growth in the geometric blend")
   says the opposite of what the code does: w weights the filter's own

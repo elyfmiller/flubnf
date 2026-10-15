@@ -56,6 +56,8 @@ def test_latest_results_skips_research_runs(tmp_path, monkeypatch):
     assert rid == "20260825T120000", (
         "a research run's results leaked onto a shipped-product surface")
     assert res["forecast_date"] == "y"
+    # the Output page asks for modified runs too; research stays hidden there
+    assert ui_shared._latest_results(include_modified=True)[0] == "20260825T120000"
 
 
 def test_latest_results_recognises_pre_flag_research_specs(tmp_path,
@@ -71,6 +73,7 @@ def test_latest_results_recognises_pre_flag_research_specs(tmp_path,
     monkeypatch.setattr(ui_shared, "_workroot_results", lambda: [f])
     rid, res = ui_shared._latest_results()
     assert rid is None and res is None
+    assert ui_shared._latest_results(include_modified=True) == (None, None)
 
 
 def test_wis_card_keeps_the_rule_off_the_report():
