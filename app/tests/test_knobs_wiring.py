@@ -531,9 +531,12 @@ def test_run_season_records_the_knobs_and_refuses_a_different_resume(
     s = retro.read_meta(root)["settings"]
     assert s["knobs"] == nd and s["knobs_digest"] == K.digest(nd)
     assert seen and all(x["knobs"] == nd for x in seen)
-    # in words, as a forecast run's settings are
-    assert ("model settings", K.words(nd)) in retro.settings_summary(
-        retro.read_meta(root))
+    # in words, as a forecast run's settings are, then their digest (the
+    # season page's badge says only that they changed)
+    pairs = retro.settings_summary(retro.read_meta(root))
+    assert ("model settings", K.words(nd)) in pairs
+    assert pairs[pairs.index(("model settings", K.words(nd))) + 1] == (
+        "settings digest", K.digest(nd))
     assert json.loads(retro.resume_form_fields(
         {"settings": {**s, "scope": "panel6"}})["knobs"]) == nd
     # the tree never wears the shipped names, and never publishes
@@ -727,11 +730,14 @@ def test_the_season_page_wears_the_modified_badge():
     ctx = {"active": "Retrospective", "season": SEASON,
            "model_name": lambda m: m, "archive": "",
            "preparing": {"phase": "scoring", "elapsed_s": 1.0}}
-    html = t.render(**ctx, knobs_label=K.label({"oracle.w": 0.25}))
-    # a badge (icon and word), what was modified in its "?"
+    html = t.render(**ctx, knobs_modified=True)
+    # a badge (icon and word) that says it alone: the settings row names
+    # each change and the digest
     assert '<span class="uk-badge uk-badge--warn" id="rs-knobs"' in html
-    assert 'id="tip-rs-knobs">modified: oracle.w=0.25' in html
-    assert "modified settings</span>" not in t.render(**ctx, knobs_label="")
+    assert "modified settings</span>" in html
+    assert 'id="tip-rs-knobs"' not in html
+    assert "modified settings</span>" not in t.render(**ctx,
+                                                       knobs_modified=False)
 
 
 def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):

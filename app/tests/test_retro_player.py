@@ -180,24 +180,35 @@ def test_template_passes_season_official_catalog():
 
 # ------------------------------- live scores and the verdicts' new figures
 
-def test_stats_card_hosts_the_players_table_switch_and_legend():
-    """The player writes the table head, the scale switch and the coverage
-    legend into the host's slots; the card's heading and explanation are
-    the export's own (report_season.LIVE_HEADING, LIVE_SCORES_NOTE)."""
+def _page_i(html):
+    """The page's one "i" beside the title: its panel's lines."""
+    return html.split('id="tt-rs-page">', 1)[1].split("</div>", 1)[0]
+
+
+def test_stats_card_hosts_the_players_table_and_switch():
+    """The player writes the table head and the scale switch into the
+    host's slots; the card's heading is the export's own
+    (report_season.LIVE_HEADING). Its explanation and the coverage colors'
+    key (LIVE_SCORES_NOTE, and COV_LEGEND, the line the player's covLegend
+    writes) are the page's one "i", so the card carries no mark."""
     from app.core import report_season
     html = _render()
     card = html.split('<div class="playstats">', 1)[1].split("</div>\n </div>",
                                                              1)[0]
     assert f"<h2>{report_season.LIVE_HEADING}</h2>" in card
-    assert report_season.LIVE_SCORES_NOTE in card
     assert '<div class="pbscale" id="pb-scale"></div>' in card
     # the table scrolls inside its own box, never widening the page
     assert ('<div class="statscroll"><table id="pb-stats" class="pbstats">'
             '<thead></thead>') in card
-    # the coverage key rides the "?" tip beside the heading
-    assert '<span class="pblegend" id="pb-legend"></span>' in card
-    # the player fills them from its default ids
+    assert "uk-tt-btn" not in card and "tipbtn" not in card
+    page_i = _page_i(html)
+    assert report_season.LIVE_SCORES_NOTE in page_i
+    assert f'<span class="pblegend">{report_season.COV_LEGEND}</span>' in page_i
+    # the player fills the slots it finds from its default ids; the legend
+    # slot is optional, and this page has none
     assert "scale: 'pb-scale', legend: 'pb-legend'" in PLAYER_JS
+    assert "if(el.legend) el.legend.innerHTML = covLegend();" in PLAYER_JS
+    assert 'id="pb-legend"' not in html
     assert "paintStatsFrame();" in PLAYER_JS
 
 
@@ -242,19 +253,23 @@ def test_verdict_tiles_carry_log_scale_and_coverage():
     assert '<span class="cov-low">43%</span>' in pf
     assert '<span class="cov-low">71%</span>' in pf
     assert '<span class="cov-low">88%</span>' in pf
-    assert "(4,576 cells)" in pf
-    # a member whose scores predate the figures shows none of them
-    an = tiles.split("<h2>Groundhog</h2>", 1)[1]
-    assert "tilekv" not in an
-    # what the second line holds and the coverage colors' key, once, in
-    # the "i" beside the verdict's heading (the player's legend line), not
-    # as a line of its own
+    # the cells scored, in plain sight under the figures
+    assert "<dt>cells</dt><dd>4,576</dd>" in pf
+    # a member whose scores predate the figures shows none of them, only
+    # its cells
+    an = tiles.split("<h2>Groundhog</h2>", 1)[1].split("</dl></div></div>", 1)[0]
+    assert "log scale" not in an and "coverage" not in an
+    assert "<dt>cells</dt><dd>4,524</dd>" in an
+    # the verdict names its convention once, in a tag, and carries no mark
+    assert '<span class="uk-tag">ratio of sums</span>' in tiles
+    assert "tipbtn" not in tiles and "uk-tt-btn" not in tiles
+    # what the second lines hold and the coverage colors' key (the
+    # player's legend line), once, in the page's "i"
     from app.core import report_season
-    assert f'<span class="pblegend">{report_season.COV_LEGEND}</span>' in tiles
-    assert report_season.METRICS_NOTE in tiles
-    # none of it without a figure to explain
-    bare = _season(figs=_figs(detail_cov=False))
-    assert report_season.COV_LEGEND not in bare
+    page_i = _page_i(html)
+    assert f'<span class="pblegend">{report_season.COV_LEGEND}</span>' in page_i
+    assert "The log scale scores log(x+1) counts" in page_i
+    assert html.count(report_season.COV_LEGEND) == 1
 
 
 def test_per_state_table_adds_95_coverage_when_the_scores_carry_it():
@@ -273,11 +288,14 @@ def test_per_state_table_adds_95_coverage_when_the_scores_carry_it():
     assert 'data-analogue-cov=""' in body
     assert '<td class="num cov-low">62%</td>' in body
     assert '<td class="num hint">n/a</td>' in body
-    # the column's reading at 95%, said once above the table
-    from markupsafe import escape
+    # the column reads by the coverage colors' key in the page's "i"; the
+    # summary names the convention in a tag and carries no mark
     from app.core import report_season
-    assert "95%: the share of the state" in report_season.PSTATES_COV_NOTE
-    assert str(escape(report_season.PSTATES_COV_NOTE)) in html
+    assert report_season.COV_LEGEND in _page_i(html)
+    summary = html.split('<details class="ledgerfold" id="statefold" open>',
+                         1)[1].split("</summary>", 1)[0]
+    assert '<span class="uk-tag">ratio of sums</span>' in summary
+    assert "tipbtn" not in summary
 
 
 def test_per_state_table_keeps_one_column_per_member_without_coverage():
@@ -330,24 +348,26 @@ def _us_page(fit, **kw):
 def test_a_filter_era_us_pf_says_it_is_the_filter_alone():
     """Weeks stored before addendum A3 kept US outside the step: under the
     Oracle SIHRS name the fitted US figure is the Liu-West filter without
-    it, on the tile and under the table, and the filter's own US figure
-    does not exist (n/a, with why)."""
+    it, under the tile's title and in the page's "i", and the filter's own
+    US figure does not exist (n/a, the "i" says why)."""
     page, tile, row = _us_page(_us_fit(us_national.FILTER))
     pf = tile("Oracle SIHRS")
-    assert us_national.PF_US_SHORT + ", fitted nationally" in pf
+    assert f'<p class="rt-tilenote">{us_national.PF_US_SHORT}</p>' in pf
     assert '<dd class="ok">0.750<svg class="uk-icon rt-verdict"' in pf
     assert '<span class="cov-low">20%</span>' in pf
     assert us_national.PF_US_SHORT not in tile("Groundhog")
     assert tile("Liu-West filter") is None
-    # the era's note rides the US row's "?" in the per-state table
+    # the era's note is a line of the page's "i"; the US row has no mark
     note = us_national.PF_US_NOTES[us_national.FILTER]
-    assert f'<span class="ncline">{note}</span>' in page
+    page_i = _page_i(page)
+    assert f'<span class="uk-tt-line">{note}</span>' in page_i
+    assert "tipbtn" not in row
     # the US row's coverage joins the table beside its relWIS
     assert 'data-pf-cov="0.700000"' in row
     assert '<td class="num cov-low">70%</td>' in row
-    # the filter's own column: n/a, and its tip says why
+    # the filter's own column: n/a, and the "i" says why
     assert 'data-pf_filter=""' in row and 'data-pf_filter-cov=""' in row
-    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in row
+    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in page_i
     # a tree without the step names pf for the filter: nothing to add
     plain, _t, _r = _us_page(
         _us_fit(us_national.FILTER),
@@ -363,7 +383,9 @@ def test_a_stepped_us_pf_adds_nothing_and_the_filter_has_its_own_figure():
     figure is shown beside it, tile and column."""
     page, tile, row = _us_page(_us_fit(us_national.STEPPED, pf_filter=0.85))
     pf = tile("Oracle SIHRS")
-    assert ">relWIS vs the FluSight baseline; fitted nationally, apart" in pf
+    # the group's tag says it is fitted; the tile adds nothing under its title
+    assert '<h3 id="rs-g-us">US national</h3><span class="uk-tag">fitted</span>' in page
+    assert "rt-tilenote" not in pf
     assert us_national.PF_US_SHORT not in page
     assert us_national.PF_US_SHORT_MIXED not in page
     lw = tile("Liu-West filter")
@@ -371,8 +393,9 @@ def test_a_stepped_us_pf_adds_nothing_and_the_filter_has_its_own_figure():
     assert '<dd class="ok">0.800<svg' in lw
     assert 'data-pf_filter="0.850000"' in row and 'data-pf_filter-cov="0.700000"' in row
     assert str(escape(us_national.PF_FILTER_US_WITHHELD)) not in page
-    note = us_national.PF_US_NOTES[us_national.STEPPED]
-    assert f'<span class="ncline">{note}</span>' in page
+    # nor does the page's "i": the US figures' label and tag say it all
+    assert us_national.PF_US_NOTES[us_national.STEPPED] not in page
+    assert us_national.NOTES[us_national.FITTED] not in page
 
 
 def test_a_mixed_season_says_which_weeks_and_withholds_the_filters_figure():
@@ -383,10 +406,10 @@ def test_a_mixed_season_says_which_weeks_and_withholds_the_filters_figure():
              us_national.STEPPED: ["2098-11-14"]}
     page, tile, row = _us_page(_us_fit(us_national.MIXED, weeks,
                                        pf_filter=0.85))
-    assert us_national.PF_US_SHORT_MIXED + ", fitted nationally" in \
-        tile("Oracle SIHRS")
+    assert (f'<p class="rt-tilenote">{us_national.PF_US_SHORT_MIXED}</p>'
+            in tile("Oracle SIHRS"))
     assert tile("Liu-West filter") is None
     assert 'data-pf_filter=""' in row and "0.850" not in row
-    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in row
+    assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in _page_i(page)
     assert ("The filter alone: 1 week, 2098-11-07; the Oracle step: 1 "
             "week, 2098-11-14.") in page
