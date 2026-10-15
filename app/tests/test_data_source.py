@@ -420,13 +420,15 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     assert not live.startswith('id="fc-anchor-live" hidden')
     assert '<span class="uk-badge-t">not archived</span>' in live
     assert "New data, not archived yet: read from target-data." in live
+    # the Data tab's badge says it by itself: not archived, read from
+    # target-data (no "?" to open)
     dpage = client.get("/data").text
     assert (f'<span class="uk-stat-v" id="live-week"><span class="dt-nw">{W3}'
-            '</span></span> <span class="uk-badge-pair"><span class="uk-badge '
+            '</span></span> <span class="uk-badge '
             'uk-badge--warn" id="live-newer" data-state="warn">') in dpage
     assert dpage.split('id="live-newer"')[1].split("</span></span>")[0] \
-        .endswith('<span class="uk-badge-t">not archived')
-    assert f"real-time runs for <span class=\"wk\">{W3}</span> read target-data" in dpage
+        .endswith('<span class="uk-badge-t">not archived · target-data')
+    assert 'id="tip-live-newer"' not in dpage
 
 
 def test_the_data_tab_says_nothing_extra_when_the_archive_is_current(tmp_path, monkeypatch):
