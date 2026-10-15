@@ -13,8 +13,7 @@
    console-run guard plus /run's server-side checks #}
 {% set rerun %}
  <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run row">
-  <button class="gold" data-guard="console-run">Run again with these settings</button>
-  {{ tips.tip("run-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
+  <button class="gold" data-guard="console-run">Run again from the start</button>
  </form>
 {% endset %}
 
@@ -45,17 +44,20 @@
 {% endif %}
 
 {% if modified %}
-{# the knobs record from the ledger spec; the settings card's "model
-   settings" row names every value #}
+{# the knobs record from the ledger spec: how its files were named, the
+   override's reason as typed, and the settings' digest (the Run settings
+   card names each changed value; only this card holds the reason and
+   the digest) #}
 <div class="card" id="modified-note">
- {{ tips.heading("Modified model settings", "run-mod", "The Run settings card names every changed value (model settings).") }}
+ {{ tips.heading("Modified model settings", "run-mod") }}
  {% call tips.stats("uk-stats--kv fc-kv") %}
  {% if override %}
-  {% call tips.stat("Files named", "hub names, by override", id="run-mod-name") %}Exported under the hub names by override.{% endcall %}
-  {% call tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") %}Recorded with the run.{% endcall %}
+  {{ tips.stat("Files named", "hub names, by override", id="run-mod-name") }}
+  {{ tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") }}
  {% else %}
-  {% call tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) %}This run's files carry the non-hub name (&lt;hub id&gt;-modified), so they can never pass for the registered models.{% endcall %}
+  {{ tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) }}
  {% endif %}
+ {% if modified_digest %}{{ tips.stat("Digest", ("<code>" | safe) ~ modified_digest ~ ("</code>" | safe), id="run-mod-digest") }}{% endif %}
  {% endcall %}
 </div>
 {% endif %}
@@ -101,7 +103,7 @@
    progress, in place of results and files it has not written yet #}
 <div class="card out-rp-prog" id="run-progress">
  {% set fc_link %}<a class="btn gold" href="/forecast">{{ tips.icon("clock") }} Follow it on Forecast</a>{% endset %}
- {{ tips.heading("In progress", "run-prog", "Results, the submission files and the report appear here when the run finishes; the Forecast tab follows it location by location.", aside=fc_link) }}
+ {{ tips.heading("In progress", "run-prog", aside=fc_link) }}
  {% set phase = console_phase() %}
  {{ tips.progress("Phase", none, text=phase or "starting", id="run-phase") }}
 </div>
@@ -121,11 +123,11 @@
 </div>
 {% endif %}
 
-{# the weekly report: open or save it, its note in the tip #}
+{# the weekly report: open or save it #}
 {% if report %}<div class="card fc-report">
  {% set report_actions %}<a class="btn quiet" href="/runs/{{ run_id }}/report" target="_blank" rel="noopener">{{ tips.icon("external") }} Open</a>
  <a class="btn quiet" href="/runs/{{ run_id }}/report/download" download>{{ tips.icon("download") }} Download</a>{% endset %}
- {{ tips.heading("Weekly report", "run-report", "One self-contained HTML file; it opens without the app.", aside=report_actions, cls="fc-flush") }}
+ {{ tips.heading("Weekly report", "run-report", aside=report_actions, cls="fc-flush") }}
 </div>{% endif %}
 
 {% if not dataset and not live %}
@@ -137,13 +139,13 @@
 {% set current = subs | rejectattr("archived") | list %}
 {% for s in current %}
  {% if s.submittable or s.modified %}{% set fi = loop.index %}
- {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "This run's model settings differ from the defaults, so its file carries a non-hub name (<model>-modified): a record, not for the hub.", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
+ {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
  {% set status %}{% if s.check_head %}{{ fr.checks(s.check_ok, s.check_head, s.problems, "run-chk-" ~ fi) }}{% endif %}
  {% if s.cov %}<div class="out-cov">{{ covm.line(s.cov) }}</div>{% endif %}{% endset %}
  {{ fr.filerow(s.model, s.name, s.path, tag=tag, status=status, validate=(validator_command(s.path) if s.submittable else "")) }}
  {% endif %}
 {% endfor %}
-{% if not current and not archived %}{{ tips.empty("No submission files", "folder", tiptext="Submissions appear when a run completes.", id="run-nosubs", compact=True) }}{% endif %}
+{% if not current and not archived %}{{ tips.empty("No submission files", "folder", id="run-nosubs", compact=True) }}{% endif %}
 {% for model, why in (sub_errors or {}).items() %}
  <div class="fc-file"><span class="fc-file-model">{{ model }}</span>
   {% call tips.badge("error", "no file written", id="run-suberr-" ~ loop.index) %}Refused before anything reached disk: {{ why }}{% endcall %}</div>

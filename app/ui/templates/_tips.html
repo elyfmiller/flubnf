@@ -15,9 +15,10 @@
 ><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
 {%- endmacro %}
 
-{# a form label with its tip on the same line #}
-{% macro label(text, id, tiptext, for_="") -%}
-<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{{ tip(id, text | lower, tiptext) }}</div>
+{# a form label with its tip on the same line; no tip when tiptext is
+   empty (the row keeps its label spacing) #}
+{% macro label(text, id, tiptext="", for_="") -%}
+<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{% if tiptext | trim %}{{ tip(id, text | lower, tiptext) }}{% endif %}</div>
 {%- endmacro %}
 
 {# ---------------------------------------------------------------- the kit

@@ -1,5 +1,11 @@
 {# The Model settings panel: every knob of the two shipped models, rendered
-   from the registry (app/core/knobs.py panel()), each with a "?" tip.
+   from the registry (app/core/knobs.py panel()). Each group is a fold,
+   open when a row in it is changed, its summary counting them; an open
+   group shows its changed rows and folds the rest ("N more"). A row is
+   its label and its control; the knob's one-line help shows under it
+   while the row has focus, and a changed row's label names the
+   default. One "i" (the head's) says what a change does and links
+   the Methods tab's table of every setting.
 
    {% include "_model_settings.html" %} inside a form, with `knob_panel` in
    the context (forms._knob_panel). Knobs with an older field name keep it
@@ -7,22 +13,24 @@
    rest post as knob.<key>. A row marked data-optional (an optional hub
    output, knobs.OPTIONAL_KEYS) adds rows only and never makes the panel
    "modified". The value shown first is the shipped one; a
-   blank field also means shipped. Live badge, engine filter, reset and the
-   override's required reason: static/model_settings.js.
+   blank field also means shipped. Live badge, engine filter, reset, the
+   override's required reason and the open/closed memory:
+   static/model_settings.js.
 
    A second panel on one page (the Retrospective tab's own-data replay,
    datasets_ui.dataset_panel) sets knob_panel.prefix, which prefixes every
    id, and knob_panel.engine, the id of its form's model select; a row
    with `only` shows for that kind of data alone. The FluSight panels set
    none of these and render exactly as before. #}
-{# one knob's row: its label and "?", its control (a later knob's
+{# one knob's row: its label, its control and its hint (a later knob's
    off, its group named as a tag) #}
 {% macro ms_row(r, px, tips, group="") -%}{% set rid = px ~ r.id %}
-  <div class="ms-row{% if r.later %} ms-later{% endif %}" data-affects="{{ r.affects }}"{% if r.only %} data-only="{{ r.only }}"{% endif %}>
-   {{ tips.label(r.label, rid ~ "-tip", r.tip, for_=rid) }}
+  <div class="ms-row{% if r.later %} ms-later{% endif %}" data-affects="{{ r.affects }}"{% if r.only %} data-only="{{ r.only }}"{% endif %}{% if r.mark %} style="--ms-mark:'{{ r.mark }}'"{% endif %}>
+   {{ tips.label(r.label, rid ~ "-tip", "", for_=rid) }}
+   {% set hint = (' aria-describedby="' ~ rid ~ '-hint"') | safe if r.hint else "" %}
    {% if r.kind in ("choice", "bool") %}
    <select name="{{ r.name }}" id="{{ rid }}" data-default="{{ r.default }}"
-     data-knob="{{ r.key }}"{% if r.optional %} data-optional="1"{% endif %}{% if r.later %} disabled{% endif %}>
+     data-knob="{{ r.key }}"{{ hint }}{% if r.optional %} data-optional="1"{% endif %}{% if r.later %} disabled{% endif %}>
     {% if r.kind == "bool" %}
     <option value="0"{% if r.value != "1" %} selected{% endif %}>off{{ " (default)" if r.default == "0" }}</option>
     <option value="1"{% if r.value == "1" %} selected{% endif %}>on{{ " (default)" if r.default == "1" }}</option>
@@ -34,67 +42,85 @@
    </select>
    {% elif r.kind == "date" %}
    <input type="date" name="{{ r.name }}" id="{{ rid }}" value="{{ r.value }}"
-     data-default="" data-knob="{{ r.key }}">
+     data-default="" data-knob="{{ r.key }}"{{ hint }}>
    {% elif r.kind == "range" %}
    <input type="text" name="{{ r.name }}" id="{{ rid }}" value="{{ r.value }}"
      placeholder="{{ r.placeholder }}" data-default="{{ r.default }}"
-     data-knob="{{ r.key }}" inputmode="decimal" autocomplete="off">
+     data-knob="{{ r.key }}" inputmode="decimal" autocomplete="off"{{ hint }}>
    {% else %}
    <input type="number" name="{{ r.name }}" id="{{ rid }}" value="{{ r.value }}"
      placeholder="{{ r.placeholder }}" data-default="{{ r.default }}"
-     data-knob="{{ r.key }}"
+     data-knob="{{ r.key }}"{{ hint }}
      {% if r.min is not none %}min="{{ r.min }}"{% endif %}
      {% if r.max is not none %}max="{{ r.max }}"{% endif %}
      step="{{ r.step }}"{% if r.later %} disabled{% endif %}>
    {% endif %}
+   {% if r.hint %}<p class="ms-hint" id="{{ rid }}-hint">{{ r.hint }}</p>{% endif %}
    {% if group %}<span class="fc-ms-soon">{{ tips.tag(group) }}</span>{% endif %}
   </div>
 {%- endmacro %}
 {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
+{# with the override, the badge says how a modified run's files will be
+   named (model_settings.js keeps it live) #}
+{% set word = ("modified" ~ ((" · hub names" if form and form.submit_modified else " · non-hub names") if kp.override else "")) if kp.modified else "default" %}
 {# the panel renders on the Retrospective tab too: it links its sheet #}
 <link rel="stylesheet" href="/static/tabs/forecast.css">
-{# kp.open: after a refusal over these settings, or when the values
-   differ from the defaults and no run is in progress; closed during a
-   run. model_settings.js restores the user's own open/closed choice #}
-<details class="adv"{% if kp.open %} open{% endif %} id="{{ px }}model-settings"
+{# kp.open: only after a refusal over these settings (data-refused keeps
+   it open over the user's own earlier close, and brings it into view, its
+   reason under the head); model_settings.js restores the user's own
+   open/closed choice otherwise #}
+<details class="adv"{% if kp.open %} open data-refused{% endif %} id="{{ px }}model-settings"
   data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
  <summary class="advbtn">Model settings
-  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", "modified" if kp.modified else "default", id=px ~ "ms-badge") }}</span></summary>
+  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", word, id=px ~ "ms-badge") }}</span></summary>
  <div class="ms-head">
   <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
-  {{ tips.tip(px ~ "ms-about", "model settings", kp.about or ("Every value starts at its default. Changing any of them marks the run modified on every page it appears on" ~ (", and its files are exported under a non-hub name unless you tick the box below." if kp.override else ", and the season's results are not published."))) }}
+  {% call tips.toggletip(px ~ "ms-about", "model settings") %}{{ kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published.")) }} <a href="/methods#settings">Every setting on Methods</a>{% endcall %}
  </div>
- {# the groups side by side when the panel spans the page (forecast.css) #}
- <div class="ms-grid">
- {% for g in kp.groups %}{% if g.rows | rejectattr("later") | list %}
- <fieldset class="ms-group" data-affects="{{ g.affects }}" id="{{ px }}ms-{{ g.id }}">
-  <legend>{{ g.title }} {{ tips.tip(px ~ "ms-g-" ~ g.id, g.title | lower, g.tip) }}</legend>
-  {% for r in g.rows if not r.later %}{{ ms_row(r, px, tips) }}{% endfor %}
- </fieldset>
+ {% if kp.refused %}<div class="fc-ms-refused">{{ tips.alert("warn", kp.refused, id=px ~ "ms-refused", live="") }}</div>{% endif %}
+ {% for g in kp.groups %}{% set rows = g.rows | rejectattr("later") | list %}{% if rows %}
+ {% set changed = rows | selectattr("changed") | list %}{% set gid = px ~ "ms-" ~ g.id %}
+ <details class="uk-fold ms-group" data-affects="{{ g.affects }}" id="{{ gid }}"{% if changed %} open{% endif %}>
+  <summary><span class="uk-fold-sum" id="{{ gid }}-t">{{ g.title }}</span><span class="ms-n"{% if not changed %} hidden{% endif %}>{{ changed | length }} changed</span></summary>
+  <fieldset class="ms-fields" aria-labelledby="{{ gid }}-t">
+  {% if changed %}
+   {% for r in changed %}{{ ms_row(r, px, tips) }}{% endfor %}
+   {% set rest = rows | rejectattr("changed") | list %}
+   {% if rest %}{% call tips.fold(rest | length ~ " more", id=gid ~ "-more", cls="ms-more") %}
+    {% for r in rest %}{{ ms_row(r, px, tips) }}{% endfor %}
+   {% endcall %}{% endif %}
+  {% else %}
+   {% for r in rows %}{{ ms_row(r, px, tips) }}{% endfor %}
+  {% endif %}
+  </fieldset>
+ </details>
  {% endif %}{% endfor %}
- </div>
  {# the knobs not settable yet, in one fold: each row off, its group named #}
  {% set ns = namespace(n=0) %}{% for g in kp.groups %}{% for r in g.rows if r.later %}{% set ns.n = ns.n + 1 %}{% endfor %}{% endfor %}
  {% if ns.n %}
- {% call tips.fold(ns.n ~ " coming later", id=px ~ "ms-later-fold", cls="ms-later-fold", after=tips.tip(px ~ "ms-later", "the settings coming later", "Shown at their fixed values and off; a later release makes them settable.")) %}
+ {% call tips.fold(ns.n ~ " coming later", id=px ~ "ms-later-fold", cls="ms-later-fold") %}
   {% for g in kp.groups %}{% for r in g.rows if r.later %}{{ ms_row(r, px, tips, g.title) }}{% endfor %}{% endfor %}
  {% endcall %}
  {% endif %}
  {% if kp.override %}
+ {# the override: shown once a value is changed; its reason once ticked
+    (the reason is then required) #}
  <div class="ms-override" id="{{ px }}ms-override"{% if not kp.modified %} hidden{% endif %}>
   <div class="lblrow"><label class="ck" for="{{ px }}ms-ovr"><input type="checkbox" name="submit_modified"
     value="1" id="{{ px }}ms-ovr"{% if form and form.submit_modified %} checked{% endif %}>
-   Export under the hub names anyway</label>{{ tips.tip(px ~ "ms-ovr", "exporting a modified run under the hub names", "Unticked, a modified run's files are named <hub id>" ~ kp.suffix ~ " so they can never pass for the registered models. Ticked, the hub-named files are written and your reason, with every changed value, is recorded with the run (spec, results.json and knobs.json).") }}</div>
-  {{ tips.label("Reason", px ~ "ms-why", "Required when the box is ticked. Recorded with the run exactly as typed.", for_=px ~ "ms-reason") }}
-  <input type="text" name="modified_reason" id="{{ px }}ms-reason" maxlength="300"
-    value="{{ form.modified_reason if form and form.modified_reason else '' }}">
+   Export under the hub names anyway</label></div>
+  <div class="ms-why" id="{{ px }}ms-why"{% if not (form and form.submit_modified) %} hidden{% endif %}>
+   {{ tips.label("Reason", px ~ "ms-why", "", for_=px ~ "ms-reason") }}
+   <input type="text" name="modified_reason" id="{{ px }}ms-reason" maxlength="300"
+     placeholder="Why export under the hub names?"
+     value="{{ form.modified_reason if form and form.modified_reason else '' }}">
+  </div>
  </div>
  {% endif %}
- {# the settings the model definition fixes: each value, its reason in
-    its tip #}
- {% call tips.fold("Fixed by the model definition", id=px ~ "ms-locked-fold", cls="fc-ms-locked", after=tips.tip(px ~ "ms-locked", "the fixed settings", "Part of what the models are (the hub's target, the pre-registration, the SIHRS compartment model), so they are listed here and not settable.")) %}
+ {# the settings the model definition fixes: each value and its reason #}
+ {% call tips.fold("Fixed by the model definition", id=px ~ "ms-locked-fold", cls="fc-ms-locked") %}
   {% call tips.stats("uk-stats--kv fc-kv") %}
-   {% for l in kp.locked %}{{ tips.stat(l.key, l.value, tiptext=l.why, id=px ~ "ms-lk-" ~ loop.index) }}{% endfor %}
+   {% for l in kp.locked %}{% set why %}<span class="fc-lk-why">{{ l.why }}</span>{% endset %}{{ tips.stat(l.key, l.value, id=px ~ "ms-lk-" ~ loop.index, after=why) }}{% endfor %}
   {% endcall %}
  {% endcall %}
 </details>

@@ -126,9 +126,10 @@ def test_the_default_form_ticks_all_53_with_us(monkeypatch):
     assert re.search(r'id="ck-us" name="locations" value="US \(national\)"'
                      r'\s+checked\s*>', html)
     assert "<b>US (national)</b>" in html
-    # the tip names the 52 and says what a custom pick does with US
-    assert "the 50 states, DC and Puerto Rico" in html
-    assert "US (national) still ticked" in html
+    # the Settings "i" names the 52 and US; a custom pick's count says
+    # whether US is in it ("1 + US selected")
+    assert "the 50 states, DC and Puerto Rico, and US" in html
+    assert "n + (us ? ' + US' : '') + ' selected'" in TEMPLATE
     # the national box comes after the jurisdictions (the template's order)
     assert TEMPLATE.index('id="ck-us"') > TEMPLATE.index('class="ck-one"')
 

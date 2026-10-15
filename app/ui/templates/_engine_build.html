@@ -5,8 +5,8 @@
    line, the fix in its tip. A checkout git could not read (a warning with
    no build: git missing, a folder another account owns) says so the same
    way, as "engine build unknown". Production: an ok badge naming the commit
-   when `eb_ok` is set, the full build (branch too) in its tip (Home names
-   it in its versions line instead). Unknown (no
+   when `eb_ok` is set, the badge alone (Home names the full build in its
+   versions line instead). Unknown (no
    engine, or not resolved yet): nothing. The data-engine-build hook marks
    which one rendered.
    {% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %} #}
@@ -18,5 +18,5 @@
 {% elif eb.warning %}
 <div class="engine-build-warn" data-engine-build="{{ eb_kind }}">{% call tips.alert("warn", eb.warning, id="eb-" ~ (eb_id or "x"), live="", tip_label=("switching to the production engine" if eb.known else "letting git read the engine folder")) %}{{ eb.fix }}{% endcall %}</div>
 {% elif eb.production and eb_ok %}
-<span data-engine-build="production">{{ tips.badge("ok", "PyBNF " ~ (eb.label.split(" ")[0]), "Production build: " ~ eb.label ~ ".", id="eb-" ~ (eb_id or "x")) }}</span>
+<span data-engine-build="production">{{ tips.badge("ok", "PyBNF " ~ (eb.label.split(" ")[0]), id="eb-" ~ (eb_id or "x")) }}</span>
 {% endif %}

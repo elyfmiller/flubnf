@@ -488,7 +488,7 @@ def test_a_replay_from_before_the_rule_reads_as_abstain():
                          "knobs": {"oracle.w": 0.25}}}
     pairs = dict(retro.settings_summary(meta))
     assert pairs["zero-anchor rule"] == "abstain (replayed before the rule existed)"
-    assert pairs["model settings"].startswith("modified: oracle.w=0.25")
+    assert pairs["model settings"] == "Oracle blend weight 0.25 (default 0.5)"
     meta["settings"]["knobs"] = {MS.ZERO_ANCHOR_KEY: "blend"}
     pairs = dict(retro.settings_summary(meta))
     assert pairs["zero-anchor rule"] == "blend" and "model settings" not in pairs

@@ -20,8 +20,9 @@ import shutil
 import sys
 from pathlib import Path
 
-from app.core.runs import (Ledger, RunSpec, lease_workroot, settings_html,
-                           spec_settings, version_pairs)
+from app.core.runs import (Ledger, RunSpec, lease_workroot,
+                           report_settings, settings_html, spec_settings,
+                           version_pairs)
 from app.ui import state, versions
 from app.ui.forms import _knobs
 from app.ui.shared import _invalidate_scans, _name_workroot, _phase
@@ -413,9 +414,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "grid": grid,
               "elapsed_s": elapsed_s,
               # run settings, app build and engine versions: the run's
-              # recorded ones (the run page's), never a later server's
+              # recorded ones (the run page's, and an override's reason),
+              # never a later server's
               "settings_html": settings_html(
-                  spec_settings(spec, outcome) + _build_pairs(run_row))}
+                  report_settings(spec, outcome) + _build_pairs(run_row))}
     try:
         bp = report_v2.save_bundle(bundle, workroot)
         outcome["report_inputs_bytes"] = bp.stat().st_size

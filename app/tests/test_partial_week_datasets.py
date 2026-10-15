@@ -37,10 +37,9 @@ def test_the_rule_is_named_hub_only():
 
 @pytest.mark.parametrize("where", ["forecast", "replay"])
 def test_own_data_panels_hide_it_and_keep_trailing_zero(where):
-    hub = forms._knob_panel("forecast", {}, names=DU.PANEL_MEMBERS)
+    hub = forms._knob_panel("forecast", {})
     assert {PARTIAL, ZERO} <= _keys(hub)
-    own = DU.dataset_panel(forms._knob_panel("forecast", {},
-                                             names=DU.PANEL_MEMBERS),
+    own = DU.dataset_panel(forms._knob_panel("forecast", {}),
                            kind="count", where=where)
     assert PARTIAL not in _keys(own) and ZERO in _keys(own)
 
@@ -75,6 +74,26 @@ def test_a_dataset_run_refuses_it(monkeypatch):
         follow_redirects=False)
     (spec,) = got
     assert spec.extra["knobs"] == {ZERO: "missing"}
+
+
+def test_a_refusal_opens_the_dataset_panel_on_the_next_page_only(monkeypatch):
+    """The review of M1: on a dataset's Forecast page a refusal over the
+    model settings left the panel open on every visit until the next run.
+    It opens on the page after the refusal only, saying why under its
+    head, the setting named as the panel names it."""
+    ds = stored()
+    _capture(monkeypatch)
+    client.post("/run/dataset", data={
+        "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
+        "engine": "analogue", f"knob.{PARTIAL}": "missing"},
+        follow_redirects=False)
+    page = client.get(f"/forecast?source={ds.id}").text
+    assert '<details class="adv" open data-refused id="model-settings"' in page
+    why = page.split('id="ms-refused">')[1].split("</div>")[0]
+    assert "Collapsed newest week: this rule&#39;s floor" in why
+    page = client.get(f"/forecast?source={ds.id}").text
+    assert '<details class="adv" id="model-settings"' in page
+    assert 'id="ms-refused"' not in page
 
 
 def test_a_dataset_replay_refuses_it():
