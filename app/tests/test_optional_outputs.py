@@ -37,8 +37,11 @@ from test_oracle_step import ASOF, hubfiles                  # noqa: E402,F401
 BASE_SHA = {
     "NAU_PyBNF-OracleSIHRS":
         "d4325a424fe437919884a07b82ac120eb02ea003d8cf2834e200895dfed25f0d",
+    # 2026-10-15: the Groundhog's own-state weighting shipped (own_share
+    # 0.5, flubnf.analogue.SHIPPED_OWN_SHARE), so its bytes moved once; the
+    # pooled form's hash was 601a20c24af9e9dd7c3cc5af542625a8850dfd5bf541d7c352b69df40644bae5
     "NAU_PyBNF-GroundHogCGR":
-        "601a20c24af9e9dd7c3cc5af542625a8850dfd5bf541d7c352b69df40644bae5",
+        "7314d245b51fae911b8c0a5ba122c80d837924af84010fa6d45e269f11646596",
 }
 
 

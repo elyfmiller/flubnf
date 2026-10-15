@@ -299,6 +299,17 @@ REGISTRY: tuple = (
                "blend: level and extend averaged. A live run asks per state "
                "in the Forecast tab's Data issues box; a replay asks on its "
                "form. Recorded with the run; never marks it modified.")),
+    Knob("groundhog.own_share", "Own-state donor weight", GH_ONLY, "groundhog",
+         "method", "float", AN.SHIPPED_OWN_SHARE,
+         "flubnf.analogue:SHIPPED_OWN_SHARE",
+         "Weight share of the jurisdiction's own past weeks in the admissions "
+         "pool; 0 is the pooled form.",
+         lo=0.0, hi=1.0,
+         note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
+               "against 0.670 pooled on three replayed seasons, "
+               "leave-one-season-out; 0.75 scored 0.658 with lower "
+               "coverage. The FluSurv-NET pool stays pooled."),
+         card=(GROUNDHOG_CARD, {0.5: "own past weeks carry half"})),
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
@@ -388,8 +399,11 @@ LOCKED: tuple = (
            "Objective, bounds and start time pinned to the records' conventions."),
     Locked("pf.starting_values", "DEFAULTS_BLOCK", "app.core.engines.pf:DEFAULTS_BLOCK",
            "Inert under initialization=rand."),
-    Locked("pooling", "all jurisdictions", "app.core.engines.analogue:run",
-           "Donor pools pool every location; jurisdictions fit independently."),
+    Locked("pooling", "all jurisdictions, own weeks at half weight",
+           "app.core.engines.analogue:run",
+           "Every jurisdiction's donor cells are in the Groundhog's pool; the "
+           "share on its own weeks is groundhog.own_share. Jurisdictions fit "
+           "independently."),
 )
 LOCKED_KEYS = frozenset(l.key for l in LOCKED)
 
@@ -669,6 +683,11 @@ def _read(knob: Knob, spec, extra: Mapping):
     if key == "groundhog.aux_weight":
         pools = extra.get("aux_pools") or ()
         return float(sum(float(p.get("weight", 0)) for p in pools))
+    if key == "groundhog.own_share":
+        # what the engine ran: the record's local_pools (absent: the
+        # pooled form, 0) with the knob on top
+        cfg = EA.effective_local_pools(extra)
+        return float((cfg or {}).get("own_share", 0.0))
     # knobs with no engine key yet live in extra["knobs"] (Stage 2)
     return (extra.get("knobs") or {}).get(key, knob.default)
 
@@ -1173,4 +1192,7 @@ def retro_week_extra(base, nd: Mapping):
 
     _extra.__name__ = (f"{getattr(base, '__name__', 'custom')}"
                        f"+knobs@{digest(jsonable(snap))}")
+    # what the base carries for the Groundhog's own-state weighting, kept
+    # on the wrapper so a season record reads it without a call
+    _extra.local_pools = getattr(base, "local_pools", None)
     return _extra

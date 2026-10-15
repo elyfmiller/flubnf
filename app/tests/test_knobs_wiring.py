@@ -83,7 +83,9 @@ def _post(data):
 #: what the default Forecast form ran before the knobs, as JSON (golden)
 GOLDEN_EXTRA = {"mode": "realtime",
                 "aux_pools": [{"stream": "flusurv", "weight": 0.5,
-                               "committed": True}]}
+                               "committed": True}],
+                # the Groundhog's own-state weighting, recorded since 2026-10-15
+                "local_pools": {"own_share": 0.5}}
 
 
 def test_the_untouched_form_runs_the_golden_shipped_spec(tmp_path, monkeypatch):

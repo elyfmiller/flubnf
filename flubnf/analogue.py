@@ -47,6 +47,12 @@ import numpy as np
 # is the lead's decision.
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
+#: the shipped Groundhog's own-state donor weight (LocalPooling.own_share):
+#: the jurisdiction's own past weeks carry half of the admissions pool
+#: (prereg c66c50adc20bdf84, screen of 2026-10-15: leave-one-season-out
+#: relWIS 0.6604 against 0.6701 pooled on 17,116 cells; the lead's decision
+#: 2026-10-15). 0 is the pooled form every jurisdiction shared before.
+SHIPPED_OWN_SHARE = 0.5
 
 #: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
@@ -572,19 +578,232 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
     return _scale_ratio_quantiles(anchor, rq, widen_log_sd)
 
 
+# ---------------------------------------------------------------------------
+# Locally weighted donor pools (the shipped form since 2026-10-15, prereg
+# c66c50adc20bdf84; SHIPPED_OWN_SHARE above)
+# ---------------------------------------------------------------------------
+# forecast() with local=None is the POOLED form: every location scales one
+# pooled ratio distribution by its own anchor, so every forecast has the
+# same shape, the path every submission before 2026-10-15 took, untouched.
+# A LocalPooling weights a location's own past weeks (and, research only,
+# its region's) up in the admissions pool, and can let a location with its
+# own FluSurv-NET site read that site (research only; worse on the screen).
+
+
+@dataclass(frozen=True, eq=False)
+class LocalPooling:
+    """How much of the donor weight a location's own history carries.
+
+    Admissions pool: the target location's own donor cells carry total
+    share `own_share` of the weight, other locations of the same region
+    (`region_of`, location -> region id) share `region_share`, every other
+    cell shares the rest; a class with no donors passes its share to the
+    rest. `own_site`: an auxiliary pool restricted to the location's own
+    site codes (`aux_sites`, location -> tuple of bank site codes) replaces
+    the pooled auxiliary ratios when it clears MIN_DONORS. Shares are
+    validated on construction.
+    """
+    own_share: float = 0.0
+    region_share: float = 0.0
+    own_site: bool = False
+    region_of: Mapping = field(default_factory=dict)
+    aux_sites: Mapping = field(default_factory=dict)
+    #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
+    #: epiweek, season, horizon and bandwidth
+    _memo: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self):
+        for name in ("own_share", "region_share"):
+            v = float(getattr(self, name))
+            if not math.isfinite(v) or v < 0 or v > 1:
+                raise ValueError(f"{name} must be in [0, 1], got {v!r}")
+        if self.own_share + self.region_share > 1 + 1e-12:
+            raise ValueError(
+                f"own_share + region_share = "
+                f"{self.own_share + self.region_share!r} exceeds 1")
+
+
+def weighted_quantile(values, weights, levels: Iterable[float]) -> dict:
+    """{level: weighted empirical quantile}. Values sorted (stable), each
+    placed at (cumulative weight - weight / 2) / total, linear interpolation
+    between them, clamped to the extremes. Uniform weights are close to,
+    not identical with, np.quantile's default; the shipped path never calls
+    this."""
+    v = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float)
+    if v.size == 0 or v.shape != w.shape:
+        raise ValueError("weighted_quantile needs matching non-empty arrays")
+    if not np.all(np.isfinite(w)) or np.any(w < 0) or not w.sum() > 0:
+        raise ValueError("weights must be finite, >= 0 and not all zero")
+    order = np.argsort(v, kind="mergesort")
+    v, w = v[order], w[order]
+    cw = np.cumsum(w)
+    pos = (cw - 0.5 * w) / cw[-1]
+    return {float(L): float(np.interp(float(L), pos, v)) for L in levels}
+
+
+def keyed_ratios(bank: Mapping[tuple, float], target_epiweek: int,
+                 target_season: int, horizon: int,
+                 bandwidth: int = DEFAULT_BANDWIDTH, *,
+                 exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
+                 sites=None) -> tuple:
+    """donor_ratios with each ratio's donor location beside it: (ratios,
+    locations), the same donors in the same order as donor_ratios. `sites`
+    (a set of bank location codes) keeps only those donors."""
+    drop = resolve_donor_exclusions(exclude_seasons)
+    vals, locs = [], []
+    for (loc, d), v0 in _donor_cells(bank, target_epiweek, target_season,
+                                     bandwidth, False, drop):
+        if sites is not None and loc not in sites:
+            continue
+        v1 = bank.get((loc, d + timedelta(days=7 * horizon)))
+        if v1 is None or not np.isfinite(v1) or v1 <= 0:
+            continue
+        vals.append(v1 / v0)
+        locs.append(loc)
+    arr = np.asarray(vals, dtype=float)
+    ok = np.isfinite(arr)
+    return arr[ok], np.asarray(locs, dtype=object)[ok]
+
+
+def local_weights(locs, location, local: "LocalPooling") -> np.ndarray:
+    """One weight per donor so that the location's own cells sum to
+    own_share, its region's other cells to region_share and the rest to the
+    remainder; a class with no cells passes its share to the rest."""
+    locs = np.asarray(locs, dtype=object)
+    # a class whose share is 0 is not a class: its cells stay in the rest
+    # (found in review 2026-10-15: same-region cells were being dropped)
+    is_own = locs == location
+    own = is_own if local.own_share > 0 else np.zeros(locs.size, dtype=bool)
+    region = (local.region_of.get(location) if local.region_share > 0
+              else None)
+    # region cells are OTHER jurisdictions of the region: never the target's
+    same = (np.array([local.region_of.get(l) == region for l in locs],
+                     dtype=bool) & ~is_own) if region is not None else np.zeros(
+        locs.size, dtype=bool)
+    rest = ~own & ~same
+    s_own = float(local.own_share) if own.any() else 0.0
+    s_reg = float(local.region_share) if same.any() else 0.0
+    s_rest = 1.0 - s_own - s_reg
+    if not rest.any():
+        # only own and region cells: renormalise what is there
+        tot = s_own + s_reg
+        s_own, s_reg, s_rest = (s_own / tot, s_reg / tot, 0.0) if tot > 0 else (
+            1.0 if own.any() else 0.0, 0.0 if own.any() else 1.0, 0.0)
+    w = np.zeros(locs.size, dtype=float)
+    for mask, share in ((own, s_own), (same, s_reg), (rest, s_rest)):
+        if mask.any():
+            w[mask] = share / mask.sum()
+    return w
+
+
+def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
+                    completeness, widen_log_sd, exclude_seasons, splice,
+                    local, location):
+    """forecast() under a LocalPooling: weighted admissions quantiles, the
+    own-site auxiliary pool where it is deep enough, the same
+    vincentization and the same tail as spliced_quantiles."""
+    if location is None:
+        # the 2026-10-14 defect made an error: a location the weights cannot
+        # find silently gives uniform weights
+        raise ValueError("local pooling needs `location`, the bank's key "
+                         "for the target jurisdiction")
+    if anchor is None or not np.isfinite(anchor) or anchor <= 0:
+        return None
+    ew, se = epiweek(as_of), season_of(as_of)
+    r, locs = keyed_ratios(bank, ew, se, horizon, bandwidth,
+                           exclude_seasons=exclude_seasons)
+    anchor, r2 = _anchor_and_pool(anchor, r, completeness)
+    if r2 is None:
+        return None
+    if local.own_share == 0 and local.region_share == 0:
+        # no local weight asked: the shipped quantile rule, exactly, so an
+        # own_site-only pooling changes the auxiliary pool and nothing else
+        rq_primary = {float(L): float(np.quantile(r2, L)) for L in levels}
+    else:
+        rq_primary = weighted_quantile(r2, local_weights(locs, location, local),
+                                       levels)
+    if splice is None:
+        return _scale_ratio_quantiles(anchor, rq_primary, widen_log_sd)
+    ws = [float(p.weight) for p in splice.pools]
+    if any(not math.isfinite(w) or w < 0 for w in ws):
+        raise ValueError(f"splice weights must be finite and >= 0, got {ws!r}")
+    if sum(ws) > 1.0 + 1e-12:
+        raise ValueError(
+            f"auxiliary splice weights sum to {sum(ws)!r}, leaving the "
+            f"admissions pool a negative weight; they must sum to at most 1")
+    w0 = max(1.0 - sum(ws), 0.0)
+    prepared = []
+    for i, pool in enumerate(splice.pools):
+        bw = bandwidth if pool.bandwidth is None else pool.bandwidth
+        a = None
+        sites = local.aux_sites.get(location) if local.own_site else None
+        if sites:
+            # keyed by the pool object, not its index: a LocalPooling reused
+            # with another splice must not return the other pool's ratios
+            key = (pool, location, ew, se, horizon, bw)
+            a = local._memo.get(key)
+            if a is None:
+                a, _ = keyed_ratios(pool.bank, ew, se, horizon, bw,
+                                    exclude_seasons=pool.exclude_seasons,
+                                    sites=frozenset(sites))
+                local._memo[key] = a
+            if a.size < MIN_DONORS:
+                a = None                       # thin own site: pooled ratios
+        if a is None:
+            memo_key = (i, ew, se, horizon, bw)
+            a = splice._ratio_memo.get(memo_key)
+            if a is None:
+                a = donor_ratios(pool.bank, ew, se, horizon, bandwidth=bw,
+                                 exclude_seasons=pool.exclude_seasons)
+                splice._ratio_memo[memo_key] = a
+        a = np.asarray(a, dtype=float)
+        a = a[np.isfinite(a)]
+        if a.size < MIN_DONORS:
+            return None
+        if pool.shrink is not None:
+            sh = float(pool.shrink)
+            if not math.isfinite(sh) or sh <= 0:
+                raise ValueError(f"shrink for pool {pool.label!r} must be "
+                                 f"finite and > 0, got {pool.shrink!r}")
+            a = a[a > 0]
+            if a.size < MIN_DONORS:
+                return None
+            a = np.exp(sh * np.log(a))
+        prepared.append((a, float(pool.weight)))
+    rq = {}
+    for L in levels:
+        v = w0 * rq_primary[float(L)]
+        for a, w in prepared:
+            v += w * np.quantile(a, L)
+        rq[float(L)] = float(v)
+    return _scale_ratio_quantiles(anchor, rq, widen_log_sd)
+
+
 def forecast(anchor: float, as_of: date, horizon: int,
              bank: Mapping[tuple, float], levels: Iterable[float],
              bandwidth: int = DEFAULT_BANDWIDTH, *,
              completeness: Optional[float] = None,
              widen_log_sd: Optional[float] = None,
              exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
-             splice: Optional["DonorSplice"] = None) -> Optional[dict]:
+             splice: Optional["DonorSplice"] = None,
+             local: Optional["LocalPooling"] = None,
+             location=None) -> Optional[dict]:
     """One analogue predictive distribution. `bank` maps (location, date)->value.
 
     `completeness` / `widen_log_sd` pass to analogue_quantiles;
     `exclude_seasons` to donor_ratios (default: the shipped pool). `splice`
     adds auxiliary pools (DonorSplice); None is the single-pool path.
+    `local` (LocalPooling) weights `location`'s own donors up, the shipped
+    form (the engine passes SHIPPED_OWN_SHARE); None is the pooled form,
+    the path before 2026-10-15 byte for byte.
     """
+    if local is not None:
+        return _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth,
+                               completeness=completeness,
+                               widen_log_sd=widen_log_sd,
+                               exclude_seasons=exclude_seasons, splice=splice,
+                               local=local, location=location)
     r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
                      bandwidth=bandwidth, exclude_seasons=exclude_seasons)
     if splice is None:
