@@ -7,9 +7,10 @@
    badged. Styles: static/tabs/models.css (model.html links it). #}
 {% import "_tips.html" as tips %}
 <div class="card md-research" id="research-run">
- {% set badge %}{{ tips.badge("info", "research · not the submitted forecast") }}{% endset %}
+ {# the badge says what the heading's "?" did: scored, never submitted #}
+ {% set badge %}{{ tips.badge("info", "research · scored, never submitted") }}{% endset %}
  {% set ledger %}<a href="/storage#ledgerfold">Past runs in Storage</a>{% endset %}
- {{ tips.heading("Research run", "rr", "The weekly pipeline with the two-strain member fitted beside the submitted models: scored, never submitted.", after=badge, aside=ledger) }}
+ {{ tips.heading("Research run", "rr", after=badge, aside=ledger) }}
  {% if status.running %}
  {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
  {{ tips.alert("warn", "A run is in progress.", id="rr-busy", action=fc_link) }}
@@ -17,22 +18,22 @@
  <form method="post" action="/run" class="md-form">
   <div class="md-fields">
    <div class="md-field">
-    {{ tips.label("Forecast date", "rr-date-tip", "Any day; the run anchors on the latest archived week on or before it.", for_="rr-date") }}
+    <label for="rr-date">Forecast date</label>
     <input id="rr-date" name="forecast_date" type="date" value="{{ form.forecast_date }}" required>
    </div>
    <div class="md-field">
-    {{ tips.label("Locations", "rr-locs-tip", 'State names, comma-separated, or "all": the 52 jurisdictions and US (national).', for_="rr-locs") }}
+    <label for="rr-locs">Locations</label>
     <input id="rr-locs" name="locations"
       value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
       placeholder='state names, comma-separated, or "all"'>
    </div>
    <div class="md-field">
-    {{ tips.label("Particles", "rr-particles-tip", "Candidate epidemics per jurisdiction; run time grows linearly. 1,000 to 100,000.", for_="rr-particles") }}
+    <label for="rr-particles">Particles</label>
     <span class="uk-affix"><input id="rr-particles" name="particles" type="number" value="10000"
       min="1000" max="100000" step="1000" aria-describedby="rr-particles-n"><span id="rr-particles-n">particles</span></span>
    </div>
    <div class="md-field">
-    {{ tips.label("Replicates", "rr-reps-tip", "Seeded filter runs per jurisdiction, pooled; shipped per-state numbers use 3 or more.", for_="rr-reps") }}
+    <label for="rr-reps">Replicates</label>
     <input id="rr-reps" name="replicates" type="number"
       value="{{ form.replicates }}" min="1" max="9">
    </div>

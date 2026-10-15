@@ -39,7 +39,7 @@ def test_home_renders_workflow_performance_and_component_cards():
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
                  "15,460", "15,340", "15,300", "Oracle SIHRS", "Groundhog",
-                 # the plain filter on the same cells, in the column's tip
+                 # the plain filter on the same cells, in the card's "i"
                  # (its ablation), and the two-season figure
                  "0.840", "0.794", "0.843", "0.819", "0.731", "0.813",
                  "9,279", "6,021", "4,859", "4,420",
@@ -67,15 +67,14 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow (the kit's stepper, each step's purpose in
-    # its "?"); the workflow says nothing is combined
+    # start-here numbered flow (the kit's stepper, each step named by its
+    # tab's link, no "?"); the workflow says nothing is combined
     assert 'class="uk-stepper uk-stepper--vertical" aria-label="Start here"' \
         in r.text
-    for href, tip in (("/data", "Confirm the feed is current."),
-                      ("/forecast", "Pick a date, run the models."),
-                      ("/output", "Submission files and the report.")):
-        assert f'<a href="{href}">' in r.text, href
-        assert tip in r.text, tip
+    steps = r.text.split('aria-label="Start here"', 1)[1].split("</ol>", 1)[0]
+    for href in ("/data", "/forecast", "/output"):
+        assert f'<a href="{href}">' in steps, href
+    assert "tipbtn" not in steps
     assert "nothing blended" in r.text
     # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",
@@ -275,14 +274,17 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
     assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
-    assert "cover 1 of 52" in html                # one green state is not a
-    assert "the rest show as no data" in html     # national outlook
+    # one green state is not a national outlook: the coverage stat says
+    # how many (the map's own legend names the rest "no data")
+    assert ('<span class="uk-stat-v" id="hm-cover">1 of 52</span> '
+            '<span class="uk-stat-u">jurisdictions</span>') in html
+    assert 'id="tip-hm-cover"' not in html
     # without a run, the card stays honest about being empty
     empty = templates.env.get_template("home.html").render(
         active="Home", map_svg="", outlook_date="", outlook_n=0, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "Fills in when you run a forecast." in empty
+    assert "No forecast yet" in empty and 'href="/forecast">Run a forecast' in empty
     assert "of 52" not in empty
 
 
@@ -342,7 +344,9 @@ def test_every_equation_group_defines_its_symbols():
         for fid in ids:
             assert f'<details class="uk-fold eqvars" id="{fid}">' in t, (page, fid)
         # every row's symbol wears the equations' math styling
-        rows = re.findall(r'<th scope="row">(.*?)</th>', t, re.DOTALL)
+        tables = re.findall(r'<table class="eqvars-t">(.*?)</table>', t, re.DOTALL)
+        rows = re.findall(r'<th scope="row">(.*?)</th>', "".join(tables),
+                          re.DOTALL)
         assert rows, page
         for th in rows:
             assert th.startswith('<span class="math">'), (page, th)
@@ -364,7 +368,9 @@ def test_every_equation_group_defines_its_symbols():
 def test_home_workflow_carries_the_forcing_and_groundhog_equations():
     t = client.get("/").text
     assert 'class="eqpanel"' in t
-    assert "the curve the filter bends each week" in t
+    # the readings are How it works' "i" (Home has no Variables fold)
+    how = t.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
+    assert "the curve the filter bends each week" in how
     # the Groundhog's growth-ratio quantile replaced the blend's mean
     assert "growth\n   ratios at matched calendar weeks" in t
     assert "mean<sub>m</sub>" not in t
