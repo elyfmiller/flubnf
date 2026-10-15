@@ -125,6 +125,22 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 .mt-seals code{font-size:.85em}
 /* the component list: names and versions stay on one line */
 .mt-stack td:first-child,.mt-stack td:last-child{white-space:nowrap}
+/* the Model settings reference: one table per panel group, scrolling
+   inside itself when narrow; a setting's longer note under its line */
+.mt-setscroll{overflow-x:auto;margin:.1rem 0 .6rem}
+/* one set of column widths for every group's table, so they line up */
+.mt-settings{width:100%;min-width:38rem;table-layout:fixed}
+.mt-settings thead th:nth-child(1){width:22%}
+.mt-settings thead th:nth-child(2){width:46%}
+.mt-settings thead th:nth-child(3){width:18%}
+.mt-settings thead th:nth-child(4){width:14%}
+.mt-settings th,.mt-settings td{padding:.3rem .8rem .3rem 0;vertical-align:top;
+  text-align:left}
+.mt-settings tbody th{color:var(--ink);font-weight:600;text-transform:none;
+  letter-spacing:normal;min-width:9rem}
+.mt-settings td{font-size:var(--fs-hint)}
+.mt-settings td:nth-child(3),.mt-settings td:nth-child(4){color:var(--mut)}
+.mt-setnote{display:block;margin-top:.2rem;color:var(--mut)}
 
 /* ---- 5. policies ---- */
 /* the rules every run keeps, each with a check mark drawn in borders */
