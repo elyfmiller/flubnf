@@ -117,6 +117,9 @@ def _component_versions() -> dict:
 #: unresolved-version marker; pages poll /api/versions while any remains
 VERSION_PENDING = "resolving…"
 
+#: the bngsim every engine installer pins, which reproduces the sealed record
+BNGSIM_PIN = "0.15.1"
+
 #: last launch's resolved probe, so a restart skips the pending markers
 _VERSIONS_SNAPSHOT = (Path(__file__).resolve().parents[1]
                       / "state" / "component_versions.json")
