@@ -6,6 +6,14 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
+  AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
+  Output tab fix (seven app files) and the Submission and Engine notes
+  since #40; 9 files, +524/-17; head e48bf98 on main 710f718. The tests
+  jobs were running on the head at opening (CI runs on the push to dev);
+  Ely merges when they are green, or says the word and this lane does,
+  as for #33. The integration's footer appeared on the body again and
+  was edited out at once (the 2026-10-12 lesson); the body is Ely's.
 - 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
   app/output-modified-runs FOR ELY'S MERGE INTO dev (aa8bae4, de5d75c; from
   dev b2b379c; authored as Ely; Ely asked this lane to fix it after the
