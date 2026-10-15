@@ -108,15 +108,12 @@
  <div class="card hm-perf">
   {% call tips.heading("Measured performance", "hm-perf", rich=True, after=tips.tag("relWIS"),
                        tip_label="the measured performance") %}
-   <span class="uk-tt-line">relWIS vs the FluSight baseline; below 1.000 beats it.</span>
+   <span class="uk-tt-line">relWIS vs the FluSight baseline, ratio of sums;
+   below 1.000 beats it.</span>
    <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
    {{ oracle_text.cells(oracle_text.RECORD.three.cells) }}, the Groundhog on
    15,340, the FluSight Ensemble on 15,460 (placement among teams
    withdrawn).</span>
-   <span class="uk-tt-line">Measured under the earlier cell rule (truth and
-   median above 0), which differs from today's at about the third
-   decimal.</span>
-   <span class="uk-tt-line">{{ relwis_convention_note }}</span>
    <span class="uk-tt-line">Oracle SIHRS: the stored forecasts with the
    Oracle step and its donor bank applied, a
    frozen-specification replication (<a href="/methods#oracle">Methods</a>), on
@@ -132,6 +129,8 @@
    {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
    filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on
    {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells.</span>
+   <span class="uk-tt-line">Measured under the earlier cell rule; the scoring
+   details are in <a href="/methods#policies">Methods</a>.</span>
   {% endcall %}
   {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
      means; its "three" row is the pooled cell) beside the Groundhog and the

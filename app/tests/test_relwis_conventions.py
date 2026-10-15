@@ -586,9 +586,12 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
     core = Path(relwis.__file__).resolve().parent
     assert (srv.templates.env.globals["relwis_convention_note"]
             == relwis.PUBLISHED_CONVENTION_NOTE)
-    for t in ("home.html", "methods.html"):
-        src = (ui / "templates" / t).read_text()
-        assert "{{ relwis_convention_note }}" in src, t
+    src = (ui / "templates" / "methods.html").read_text()
+    assert "{{ relwis_convention_note }}" in src
+    # Home's record names it in its "i", which links Methods for the note
+    home = (ui / "templates" / "home.html").read_text()
+    perf = home.split('"hm-perf"', 1)[1].split("{% endcall %}", 1)[0]
+    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
     # builders outside the template environment use the same constant (the
     # season report renders the season page, inside it)
     for mod in ("site_page.py",):
