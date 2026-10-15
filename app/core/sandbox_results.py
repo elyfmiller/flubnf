@@ -127,8 +127,8 @@ def fit_health(res: dict) -> dict | None:
                        "are likely too narrow."))
     elif n < FULL_FIT_PARTICLES:
         h.update(level="quick", title="Quick check: the model runs",
-                 says=(f"{n:,} particles show that the model runs; the full "
-                       "fit gives the estimates."))
+                 says=(f"{n:,} particles give rough ranges; the full fit "
+                       "gives the estimates."))
     else:
         h.update(title="Sampling looks healthy",
                  says=("The particles stayed varied at every week"
