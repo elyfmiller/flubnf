@@ -161,9 +161,13 @@ def aux_preset(name: str):
     tag = ("+" + ",".join(stamp)) if stamp else ""
 
     def _extra(asof, i, vintages):
-        return {"aux_pools": [dict(p) for p in pools]}
+        # the Groundhog's shipped form rides with its auxiliary pools, so a
+        # replay's record says what ran (an absent key is the pooled form)
+        return {"aux_pools": [dict(p) for p in pools],
+                "local_pools": shipped_local_pools()}
 
     _extra.__name__ = f"aux_preset:{name}{tag}"
+    _extra.local_pools = shipped_local_pools()     # what it carries, declared
     _extra.__doc__ = f"spec.extra for the {name!r} auxiliary configuration."
     return _extra
 
@@ -315,6 +319,110 @@ def splice_args(spec, bank):
     return AN.DonorSplice(pools=pools)
 
 
+#: HHS regions by state abbreviation (the Groundhog's "region" for
+#: LocalPooling.region_share); PR with region 2, DC with region 3
+HHS_REGION = {
+    1: ("CT", "ME", "MA", "NH", "RI", "VT"),
+    2: ("NJ", "NY", "PR"),
+    3: ("DE", "DC", "MD", "PA", "VA", "WV"),
+    4: ("AL", "FL", "GA", "KY", "MS", "NC", "SC", "TN"),
+    5: ("IL", "IN", "MI", "MN", "OH", "WI"),
+    6: ("AR", "LA", "NM", "OK", "TX"),
+    7: ("IA", "KS", "MO", "NE"),
+    8: ("CO", "MT", "ND", "SD", "UT", "WY"),
+    9: ("AZ", "CA", "HI", "NV"),
+    10: ("AK", "ID", "OR", "WA"),
+}
+_ABBR_REGION = {a: r for r, abbrs in HHS_REGION.items() for a in abbrs}
+
+#: FluSurv-NET site codes (data/banks/flusurv.json) that are a state's own;
+#: every other state's code is its lowercase abbreviation, present or not
+_FLUSURV_SITES = {"NY": ("ny_albany", "ny_rochester")}
+
+
+#: the shipped Groundhog's local pooling (prereg c66c50adc20bdf84): the
+#: jurisdiction's own past weeks at half the admissions-pool weight
+SHIPPED_LOCAL_POOLS = {"own_share": AN.SHIPPED_OWN_SHARE}
+
+
+def shipped_local_pools() -> dict:
+    """`spec.extra["local_pools"]` for the shipped Groundhog, the value the
+    console's run record and the replay presets carry (as aux_pools is
+    carried): the record says what ran, and an absent key is the pooled
+    form every record before 2026-10-15 ran."""
+    return dict(SHIPPED_LOCAL_POOLS)
+
+
+def effective_local_pools(extra, *, dataset: bool = False):
+    """The local-pool configuration a run uses, as a dict with its zero or
+    off entries dropped, or None for the pooled form. `extra['local_pools']`
+    says it (None or False: the pooled form; absent: the pooled form too,
+    every record before 2026-10-15); the `groundhog.own_share` knob, when
+    recorded, sets the own share. `dataset` is accepted for the callers
+    that know it and changes nothing: a dataset run carries the key only
+    when it asked for the weighting."""
+    extra = extra if isinstance(extra, dict) else {}
+    cfg = extra.get("local_pools")
+    if cfg is None or cfg is False:
+        cfg = None
+    elif not isinstance(cfg, dict):
+        raise ValueError(
+            f"spec.extra['local_pools'] must be a dict, got "
+            f"{type(cfg).__name__}")
+    else:
+        unknown = set(cfg) - {"own_share", "region_share", "own_site"}
+        if unknown:
+            raise ValueError(f"local_pools: unknown keys {sorted(unknown)}")
+    knob = (extra.get("knobs") or {}).get("groundhog.own_share")
+    if knob is not None:
+        cfg = {**(cfg or {}), "own_share": float(knob)}
+    if cfg is None:
+        return None
+    out = {}
+    if float(cfg.get("own_share", 0) or 0) > 0:
+        out["own_share"] = float(cfg["own_share"])
+    if float(cfg.get("region_share", 0) or 0) > 0:
+        out["region_share"] = float(cfg["region_share"])
+    if cfg.get("own_site"):
+        out["own_site"] = True
+    return out or None                  # nothing weighted: the pooled form
+
+
+def local_args(spec, *, dataset: bool = False, locations_csv=None):
+    """`flubnf.analogue.LocalPooling` for a run (effective_local_pools), or
+    None for the pooled form. Keys own_share, region_share (defaults 0) and
+    own_site (default False); regions are HHS regions and own sites the
+    state's FluSurv-NET codes, both keyed by FIPS like the admissions bank.
+    `locations_csv` is the table the run walks (default: the hub's)."""
+    extra = getattr(spec, "extra", None) or {}
+    cfg = effective_local_pools(extra, dataset=dataset)
+    if cfg is None:
+        return None
+    # keyed by FIPS code, the admissions bank's own location key (_walk
+    # builds the bank from the vintage's zero-filled `location` column).
+    # Own-state weighting needs only the FIPS codes; the HHS region and the
+    # FluSurv-NET site codes need the table's `abbreviation` column, which
+    # a reduced table (a test fixture, a dataset) may not carry: such a
+    # location simply has no region and no own site
+    locs = pd.read_csv(LOCATIONS if locations_csv is None else locations_csv,
+                       dtype=str)
+    abbrs = (locs.abbreviation if "abbreviation" in locs.columns
+             else pd.Series([None] * len(locs), index=locs.index))
+    region_of, aux_sites = {}, {}
+    for fips, abbr in zip(locs.location.str.zfill(2), abbrs):
+        if fips == "US" or abbr == "US":
+            continue
+        if abbr in _ABBR_REGION:
+            region_of[fips] = _ABBR_REGION[abbr]
+        aux_sites[fips] = (_FLUSURV_SITES.get(abbr, (abbr.lower(),))
+                           if isinstance(abbr, str) and abbr else ())
+    return AN.LocalPooling(
+        own_share=float(cfg.get("own_share", 0.0)),
+        region_share=float(cfg.get("region_share", 0.0)),
+        own_site=bool(cfg.get("own_site", False)),
+        region_of=region_of, aux_sites=aux_sites)
+
+
 #: research keys that read the hub's own completeness factors: refused on a
 #: custom dataset (they describe FluSight's reporting, not the upload's)
 HUB_ONLY_KEYS = ("reporting", "analogue_completeness", "analogue_widen_log_sd")
@@ -387,6 +495,15 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
     drop_same = bool(getattr(spec, "drop_same_day", False))
     # built once per run (independent of location); None = single pool
     splice = splice_args(spec, bank)
+    # the Groundhog's own-state weighting, as the run's record asks for it
+    # (the console and the presets record the shipped form); None is the
+    # pooled form, every record before 2026-10-15
+    local = local_args(spec, dataset=bool(src_kw), locations_csv=loc_csv)
+    if local is not None and not ({k[0] for k in bank} & set(local.aux_sites)):
+        raise ValueError(
+            "local_pools: the donor bank's location keys share nothing with "
+            "the region map (FIPS codes expected); own-location weights "
+            "would silently never apply")
     # the donor-window knob (app/core/knobs.py), passed only when a run
     # records one: the shipped call is unchanged
     bw = ((getattr(spec, "extra", None) or {}).get("knobs") or {}).get(
@@ -454,12 +571,15 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
         window_ref = anchor_date.date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
 
+        # the bank is keyed by FIPS, so the location is passed as FIPS
+        local_kw = {} if local is None else {"local": local, "location": fips}
+
         def forecast(h, anchor=anchor, window_ref=window_ref, lag=lag, c=c,
-                     sig=sig):
+                     sig=sig, local_kw=local_kw):
             # default donor pool = the registered exclusions; never restated
             return AN.forecast(anchor, window_ref, h + lag, bank, QL,
                                completeness=c, widen_log_sd=sig,
-                               splice=splice, **bw_kw)
+                               splice=splice, **bw_kw, **local_kw)
         yield loc, anchor, anchor_date, lag, forecast
 
 

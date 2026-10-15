@@ -58,6 +58,7 @@ SOURCES = {
     "groundhog.aux_weight": sum(p["weight"]
                                 for p in EA.AUX_PRESETS[EA.SHIPPED_AUX]),
     "groundhog.bandwidth": AN.DEFAULT_BANDWIDTH,
+    "groundhog.own_share": AN.SHIPPED_OWN_SHARE,
     "groundhog.min_donors": AN.MIN_DONORS,
     "groundhog.zero_anchor": MS.ZERO_ANCHOR_DEFAULT,
     "output.floor_lam": FL.LAM,
@@ -305,7 +306,8 @@ def test_non_default_refuses_unknown_keys():
 
 def _shipped(engine="all", **kw):
     extra = {"mode": "realtime", "aux_pools": EA.shipped_aux_pools(),
-             "analogue_aux": EA.shipped_aux_label(), **kw.pop("extra", {})}
+             "analogue_aux": EA.shipped_aux_label(),
+             "local_pools": EA.shipped_local_pools(), **kw.pop("extra", {})}
     return RunSpec(engine, FD, ["Ohio"], extra=extra, **kw)
 
 
@@ -344,7 +346,9 @@ def test_effective_skips_what_did_not_run():
 
 def test_effective_bare_analogue_is_modified_and_drops_the_weight():
     spec = RunSpec("all", FD, ["Ohio"], extra={"mode": "realtime"})
-    assert _modified(spec) == {"groundhog.aux": "none"}
+    # no auxiliary pool and no local_pools record: the bare, pooled analogue
+    assert _modified(spec) == {"groundhog.aux": "none",
+                               "groundhog.own_share": 0.0}
     rows = {r["key"]: r for r in K.effective(spec)}
     assert not rows["groundhog.aux_weight"]["applies"]
 

@@ -103,7 +103,7 @@ def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
     # 20,000 particles is off the shipped value: the run records it as a
     # model knob (app/core/knobs.py) and is marked modified
     assert set(spec.extra) == {"mode", "members", "aux_pools", "analogue_aux",
-                               "knobs"}
+                               "knobs", "local_pools"}
     assert spec.extra["knobs"] == {"pf.particles": 20_000}
     assert spec.particles == 20_000
     assert is_research(spec)

@@ -297,6 +297,11 @@ def groundhog_retro_cmd(
         False, "--with-us",
         help="Also forecast the national row. Reported separately, never "
              "pooled into the state figures."),
+    own_share: float = typer.Option(
+        None, "--own-share", min=0.0, max=1.0,
+        help="Weight of the jurisdiction's own past weeks in the admissions "
+             "pool; default the shipped 0.5, 0 the pooled form every "
+             "jurisdiction shared before 2026-10-15."),
 ):
     """Replay the calendar member alone over a season and score it.
 
@@ -316,6 +321,7 @@ def groundhog_retro_cmd(
             try:
                 r = gh.run_season(
                     s, "" if a == gh.SHIPPED else a, with_us=with_us,
+                    own_share=own_share,
                     progress=lambda asof, i, n: (
                         console.print(f"    {i:>3}/{n}  {asof}")
                         if (i % 8 == 0 or i == n) else None))
