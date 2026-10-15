@@ -343,6 +343,8 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   padding:.05rem .15rem .05rem .65rem;border:1px solid var(--line);
   border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-label);
   font-weight:600;white-space:nowrap}
+/* a chip with no "?" keeps the pill even on both sides */
+.uk-name:not(:has(> .tip)){padding-right:.65rem}
 /* a centered line under a figure: a formula beside its name chip, or a
    badge about the figure */
 .uk-figline{display:flex;flex-wrap:wrap;align-items:center;
