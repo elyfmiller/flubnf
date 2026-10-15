@@ -398,7 +398,7 @@ def test_the_season_page_says_why_no_weeks_score_yet(tmp_path, _routed,
                                                      monkeypatch):
     """The page itself, scored for real: the hub's baseline folder holds no
     round for these weeks (as early in a season), so the calm empty state
-    shows, its tip naming both inputs."""
+    shows, its title naming both inputs (no "?")."""
     import flubnf.settings as fs
     _groundhog_only(_mk_tree(_routed))
     _unscored(monkeypatch, tmp_path, _truth())
@@ -409,7 +409,9 @@ def test_the_season_page_says_why_no_weeks_score_yet(tmp_path, _routed,
     html = client.get(f"/retro/{SEASON}").text
     assert "No scoreable weeks yet" in html
     assert "Scoring failed" not in html
-    assert "Truth or the FluSight baseline for these forecast dates" in html
+    assert ("No scoreable weeks yet: truth or the FluSight baseline is not "
+            "in") in html
+    assert 'id="tip-rs-unsettled"' not in html
 
 
 def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
