@@ -245,6 +245,7 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
     # the close in UTC for the page to name in the reader's clock
     # (11 PM EDT on Wed 2026-10-07 is 03:00 UTC on the Thursday)
     assert due["deadline"] == soon["deadline"] == "2026-10-08T03:00:00Z"
+    assert due["deadline_et"] == soon["deadline_et"] == "Wed 2026-10-07, 11 PM ET"
     shut = O._date_status("2026-10-10", today=dt.date(2026, 10, 8))
     assert shut["badge"] == ("neutral", "Window closed")
     assert shut["text"] == "The window closed Wed 2026-10-07."
@@ -277,8 +278,11 @@ def test_a_closed_round_names_its_close_and_an_open_one_the_readers_clock(
     card = page.split('id="fc-2098-01-03"', 1)[1]
     assert '<span class="uk-badge-t">Due Wed 2026-10-07, 11 PM ET</span>' in card
     meta = card.split('<ul class="uk-meta">', 1)[1].split("</ul>", 1)[0]
-    assert ('<span class="uk-sr">Closes: </span><span><span class="out-local" '
-            'data-out-local="2026-10-08T03:00:00Z"></span></span>') in meta
+    # Eastern words until the script writes the reader's clock over them;
+    # "closes" is said once, in the text, with no spoken label before it
+    assert ('<span><span class="out-local" data-out-local="2026-10-08T03:00:00Z">'
+            'closes Wed 2026-10-07, 11 PM ET</span></span>') in meta
+    assert "Closes: " not in meta
     assert 'id="tip-out-win-1"' not in card
     assert "'closes '+s+' your time'" in page
 
