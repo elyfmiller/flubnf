@@ -226,7 +226,7 @@ def test_delete_workroot_leaves_an_honest_dangling_ledger_row(state):
     html = client.get("/runs").text
     assert rid in html
     row = html.split(f'href="/runs/{rid}"', 1)[1].split("</tr>", 1)[0]
-    assert ">--</td>" in row
+    assert '<span title="workroot deleted">--</span></td>' in row
     assert client.get(f"/runs/{rid}").status_code == 200
 
 
@@ -317,7 +317,9 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
     html = client.get("/runs").text
     joined = " ".join(html.split())
     assert f'<span class="big">{inv["total_h"]}</span>' in html
-    assert "listed but not counted" in joined               # the copy says so
+    # the copy says so, on the protected trees themselves
+    prot = joined.split('id="st-protected"', 1)[1].split("</h3>", 1)[1][:1500]
+    assert '<span class="uk-tag">not in the total</span>' in prot
 
 
 def test_clear_all_control_names_count_and_total_size(state):
@@ -364,7 +366,7 @@ def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
         assert rid in html
     row = html.split(f'href="/runs/{state["rids"]["ok"]}"', 1)[1] \
               .split("</tr>", 1)[0]
-    assert ">--</td>" in row
+    assert '<span title="workroot deleted">--</span></td>' in row
     # the other storage categories were not touched
     assert (state["retro_root"] / SEASON).is_dir()
     assert (state["root"] / "archive" / "2098-01-03").is_dir()
