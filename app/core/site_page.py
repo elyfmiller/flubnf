@@ -636,8 +636,9 @@ def _season_table(payload: dict) -> str:
     # comparator: the FluSight ensemble (the baseline is already every
     # score's denominator); each column named for whose forecast it scores
     pf_name = payload.get("pf_label") or "Oracle SIHRS"
+    gh_name = payload.get("gh_label") or "Groundhog"
     head = ('<tr><th>Season</th><th class="n">' + _e(pf_name) + '</th>'
-            '<th class="n">Groundhog</th>'
+            '<th class="n">' + _e(gh_name) + '</th>'
             '<th class="n">FluSight Ensemble</th>'
             '<th class="n">Cells</th></tr>')
 
@@ -692,6 +693,14 @@ def _season_table(payload: dict) -> str:
                  "filter's forecast growth with past seasons' at the same "
                  "calendar week. The Oracle step's own record is on the "
                  "Methods tab.")
+    from app.core import site_build as sb
+    if gh_name != sb.GH_LABEL_SHIPPED:
+        # trees replayed before the own-state weighting: say which form
+        note += (" The Groundhog column is the pooled form "
+                 + ("these replays ran" if gh_name == sb.GH_LABEL_POOLED
+                    else "in some of these replays")
+                 + "; since 2026-10-15 the shipped Groundhog gives each "
+                 "jurisdiction's own past weeks half of the donor weight.")
     # the field column was always withdrawn: said once here, not per row.
     # A restored standing (harvest_placement) is named per season instead.
     placed = [s for s in seasons if (s.get("placement") or {}).get("text")]
@@ -763,7 +772,8 @@ def _cum_charts(payload: dict) -> str:
         members.append("ensemble")
     if not seasons or not members:
         return ""
-    names = dict(_MEMBER_NAMES, pf=payload.get("pf_label") or _ORACLE)
+    names = dict(_MEMBER_NAMES, pf=payload.get("pf_label") or _ORACLE,
+                 analogue=payload.get("gh_label") or "Groundhog")
     spec = [[m, names.get(m, m)] + list(_MEMBER_STYLE.get(m, ("--mut", "dot")))
             for m in members]
     legend = "".join(
@@ -881,7 +891,8 @@ def _standing(payload: dict, mech: dict, span: str) -> str:
     seasons = payload["seasons"]
     pooled = payload["pooled"]
     figs = []
-    for m, name in (("pf", mech["name"]), ("analogue", "Groundhog")):
+    for m, name in (("pf", mech["name"]),
+                    ("analogue", payload.get("gh_label") or "Groundhog")):
         v = (pooled.get(m) or {}).get("rel")
         if v is None:
             continue

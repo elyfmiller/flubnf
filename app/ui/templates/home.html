@@ -111,9 +111,10 @@
    <span class="uk-tt-line">relWIS vs the FluSight baseline, ratio of sums;
    below 1.000 beats it.</span>
    <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
-   {{ oracle_text.cells(oracle_text.RECORD.three.cells) }}, the Groundhog on
-   15,340, the FluSight Ensemble on 15,460 (placement among teams
-   withdrawn).</span>
+   {{ oracle_text.cells(oracle_text.RECORD.three.cells) }} and the FluSight
+   Ensemble on 15,460 (placement among teams withdrawn) under the earlier
+   cell rule, the shipped Groundhog on 17,116 under FluSight's (the pooled
+   form it replaced: 0.670).</span>
    <span class="uk-tt-line">Oracle SIHRS: the stored forecasts with the
    Oracle step and its donor bank applied, a
    frozen-specification replication (<a href="/methods#oracle">Methods</a>), on
@@ -129,8 +130,8 @@
    {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
    filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on
    {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells.</span>
-   <span class="uk-tt-line">Measured under the earlier cell rule; the scoring
-   details are in <a href="/methods#policies">Methods</a>.</span>
+   <span class="uk-tt-line">The scoring details are in
+   <a href="/methods#policies">Methods</a>.</span>
   {% endcall %}
   {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
      means; its "three" row is the pooled cell) beside the Groundhog and the
@@ -148,20 +149,21 @@
     </tr></thead>
    <tbody>
     <tr><td>2023-24</td><td class="num rel">0.767</td>
-     <td class="num rel">0.722</td><td class="num">0.741</td></tr>
+     <td class="num rel">0.702</td><td class="num">0.741</td></tr>
     <tr><td>2024-25</td><td class="num rel">0.697</td>
-     <td class="num rel">0.653</td><td class="num">0.663</td></tr>
+     <td class="num rel">0.651</td><td class="num">0.663</td></tr>
     <tr><td>2025-26</td><td class="num rel">0.781</td>
-     <td class="num rel">0.651</td><td class="num">0.684</td></tr>
+     <td class="num rel">0.653</td><td class="num">0.684</td></tr>
     <tr class="total"><td>Pooled</td><td class="num rel">0.738</td>
-     <td class="num rel">0.666</td><td class="num">0.685</td></tr>
+     <td class="num rel">0.660</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
   {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
      the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
      cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
-     15,460 cells); Groundhog = its own replay (flubnf groundhog retro,
-     15,340 cells, 2026-09-21). The particle filter alone on the reseal
+     15,460 cells); Groundhog = its shipped own-state weighting (flubnf
+     groundhog retro all --aux flusurv, 17,116 cells, FluSight's cell rule,
+     README's Measured record). The particle filter alone on the reseal
      (0.840 / 0.797 / 0.846, 0.821 pooled) is site_build.FILTER_RESEAL_REL,
      the site's reference for trees that predate the step. #}
  </div>

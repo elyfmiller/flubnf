@@ -336,9 +336,17 @@ def test_methods_keeps_the_facts_its_marks_held_in_folds():
     for fact in ("strictly earlier seasons, any state",
                  "fewer than 30 donors means no forecast",
                  "one state gives about five donors per season",
+                 # the shipped own-state weighting (since 2026-10-15)
+                 "pooled across jurisdictions with the jurisdiction's own "
+                 "past weeks carrying half of the weight",
                  "2021-22 is excluded from the donors",
                  "no coverage guarantee is claimed"):
-        assert fact in how, fact
+        assert fact in how.replace("&#39;", "'"), fact
+    # the weighting is the admissions pool's: the FluSurv-NET pool stays
+    # pooled (0e60501), and both now separate it from the bare analogue
+    bank = _fold(t, "mt-gh-bank")
+    assert "pooled across sites with no own-state weight" in bank
+    assert "since 2026-10-15 the own-state weighting" in bank
     assert "fresh run from August 1" in _fold(t, "mt-fresh")
     caveats = _fold(t, "mt-caveats")
     assert "frozen by a pre-registration before it was scored" in caveats
@@ -346,7 +354,13 @@ def test_methods_keeps_the_facts_its_marks_held_in_folds():
     for fact in ("log scale", "bounds included", "before 2026-09-25",
                  "withdrawn on 2026-08-24"):
         assert fact in scoring, fact
-    assert "4,000 bootstrap replicates" in _fold(t, "mt-perf-cells")
+    cells = _fold(t, "mt-perf-cells").replace("&#39;", "'")
+    assert "4,000 bootstrap replicates" in cells
+    # the paired comparison with the bare analogue is the pooled form's,
+    # under the earlier rule, and says so; the shipped row names its own
+    assert ("Under it the pooled form (0.666) and the bare analogue share "
+            "15,340 cells") in cells
+    assert "on 17,116 cells under FluSight's cell rule" in cells
 
 
 def test_methods_engine_fold_joins_the_fit_and_the_install():
