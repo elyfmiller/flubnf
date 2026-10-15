@@ -54,15 +54,16 @@
 <div class="big rt-big {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict") }}</div>
 {%- endmacro %}
 {# the run settings as a row of facts, every value in plain sight: the
-   model settings, the build and the zero-anchor count in full, the other
-   values without the parenthetical that only explains them #}
+   model settings, the build and the zero-anchor rule (a season replayed
+   before it says so) and count in full, the other values without the
+   parenthetical that only explains them #}
 {% macro settings_line(pairs) -%}
 {%- set ns = namespace(items=[]) -%}
 {%- for k, v in pairs -%}
  {#- the preset is named for this tree's pf (a sealed record's is the
      Liu-West filter alone, never the Oracle SIHRS) #}
  {%- set v0 = (v ~ '').replace('Oracle SIHRS', model_name('pf')) -%}
- {%- if k not in ('model settings', 'PyBNF build', 'zero-anchor weeks') %}{% set v0 = v0.split(' (')[0] %}{% endif -%}
+ {%- if k not in ('model settings', 'PyBNF build', 'zero-anchor rule', 'zero-anchor weeks') %}{% set v0 = v0.split(' (')[0] %}{% endif -%}
  {%- if k == 'season' %}{% set t = v0 %}
  {%- elif k == 'locations' %}{% set t = v0.replace('all ', '').replace(' jurisdictions plus US national', ' jurisdictions + US').replace(' plus US national', ' + US') %}
  {%- elif k == 'particles' %}{% set t = v0 ~ ' particles' %}
@@ -189,7 +190,7 @@
  {%- endif %}
  <span class="uk-tt-line"><b>Keys</b> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> week, <kbd>Home</kbd> <kbd>End</kbd> first or last, <kbd>Space</kbd> or <kbd>K</kbd> play, <kbd>[</kbd> <kbd>]</kbd> location, <kbd>M</kbd> categorical forecast, <kbd>F</kbd> forecast detail, <kbd>L</kbd> lock axes.</span>
 {%- endcall %}{{ knobs_badge() }}
-{%- if figs and figs.convention == 'pairwise' and figs.available %}{{ tips.badge("info", "pairwise relWIS") }}{% endif %}</div>
+{%- if figs and figs.convention == 'pairwise' and figs.available %}{{ tips.badge("neutral", "pairwise relWIS") }}{% endif %}</div>
 {% set imported = imported if imported is defined else {} %}
 {% set live_link %}{% if not export %}<a href="/retro/{{ season }}">Open the live {{ season }} season</a>{% endif %}{% endset %}
 {% if archive and imported %}
@@ -434,9 +435,10 @@
 {% set unsettled = unsettled if unsettled is defined else false %}
 {% if not unavailable and (heads or tm.us or score_error or unsettled) %}
 <div class="verdict">
- {# a sealed record scored under the earlier cell rule wears a badge; the
-    page's "i" says which figures read it (scoring.earlier_rule_note) #}
- {% set rule_badge = tips.badge("info", "earlier cell rule", id="rs-rule") if rule_note else "" %}
+ {# a sealed record scored under the earlier cell rule wears a badge (a
+    neutral dot: an info badge's circled "i" would read as a second "i");
+    the page's "i" says which figures read it (scoring.earlier_rule_note) #}
+ {% set rule_badge = tips.badge("neutral", "earlier cell rule", id="rs-rule") if rule_note else "" %}
  {{ tips.heading("Season scores", "rs-scores", cls="rt-sec-h", after=(tips.tag(conv_label) ~ rule_badge) if (heads or tm.us) else rule_badge) }}
  {% if score_error %}
  {# show the failure, never pass it off as "truth not settled"; the

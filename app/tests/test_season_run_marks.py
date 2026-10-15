@@ -100,8 +100,17 @@ def test_the_season_page_has_one_mark_its_i():
     assert ('<span class="uk-badge uk-badge--warn" id="rs-knobs" '
             'data-state="warn">') in html
     assert 'id="tip-rs-knobs"' not in html
-    # the earlier cell rule's badge, likewise; its note is in the "i"
-    assert 'id="rs-rule"' in html and 'id="tip-rs-rule"' not in html
+    # the earlier cell rule's badge, likewise; its note is in the "i". A
+    # neutral dot, never the info badge's circled "i" that would read as a
+    # second "i" beside the page's
+    assert ('<span class="uk-badge uk-badge--neutral" id="rs-rule" '
+            'data-state="neutral">') in html
+    assert 'id="tip-rs-rule"' not in html
+    pw = _page(conv=relwis.PAIRWISE, heads={"pf": 0.7}, figs=_pairwise(),
+               us=None, us_row=None)
+    badge = pw.split('<span class="uk-badge-t">pairwise relWIS</span>', 1)[0] \
+        .rsplit('<span class="uk-badge', 1)[1]
+    assert badge.startswith(' uk-badge--neutral"')
 
 
 def _pairwise(available=True):
@@ -207,10 +216,13 @@ def test_the_settings_row_shows_every_setting_in_plain_sight():
                  "PyBNF build 2fdadee0 (main), not the production build",
                  "zero-anchor weeks 3 location-weeks (2 level, 1 abstain)"):
         assert fact in row, fact
+    # a season replayed before the zero-anchor rule says so, never as if
+    # abstain had been chosen
+    assert ("<li>zero-anchor abstain (replayed before the rule existed)"
+            "</li>") in row
     # the parentheticals that only explain a value stay out
-    assert "<li>zero-anchor abstain</li>" in row
     assert "<li>floor not applied</li>" in row
-    assert "replayed before the rule existed" not in row
+    assert "stored before replays applied it" not in row
     assert "tipbtn" not in row
 
 

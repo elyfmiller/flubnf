@@ -213,17 +213,15 @@ def _cov_text(frac) -> str:
 
 
 def _live_scores(what: str) -> str:
-    """The stats card's and the verdicts' shared text: "heading", "note",
-    "metrics" (what a tile's second line holds), "legend" (the coverage
-    colors' key, markup) or "states" (the per-state 95% column)."""
+    """The season page's shared text: "heading" (the stats card's), "note"
+    (how to read the scores) or "legend" (the coverage colors' key,
+    markup)."""
     from app.core import report_season
     if what == "legend":
         from markupsafe import Markup
         return Markup(report_season.COV_LEGEND)
-    return {"heading": report_season.LIVE_HEADING,
-            "metrics": report_season.METRICS_NOTE,
-            "states": report_season.PSTATES_COV_NOTE}.get(
-                what, report_season.LIVE_SCORES_NOTE)
+    return (report_season.LIVE_HEADING if what == "heading"
+            else report_season.LIVE_SCORES_NOTE)
 
 
 templates.env.globals["cov_state"] = _cov_state
