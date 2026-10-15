@@ -444,9 +444,13 @@ def test_the_page_carries_no_convention_switch():
 
 
 def test_every_head_tile_names_the_convention_that_produced_it():
+    """The tiles' heading names the convention in a tag; the page's "i"
+    spells the pairwise one out."""
     ratio = _season_page(figs=relwis.season_figures(_seal_frame(),
                                                     relwis.RATIO_OF_SUMS))
-    assert "relWIS vs the FluSight baseline, ratio of sums" in _flat(ratio)
+    verdict = _flat(ratio).split('<div class="verdict">', 1)[1]
+    assert ('id="h-rs-scores">Season scores</h2><span class="uk-tag">ratio '
+            'of sums</span>') in verdict
     tiles = _flat(ratio).split("Cumulative")[0]
     assert "pairwise scaled" not in tiles
 
@@ -455,10 +459,12 @@ def test_every_head_tile_names_the_convention_that_produced_it():
         convention=relwis.PAIRWISE, values={"ensemble": 0.629},
         detail={"ensemble": {"n_cells": 4922, "rank": 6, "n_models": 48}},
         states=tuple(figs.states), n_field=47, source="/tmp/cells"))
-    assert ("relWIS vs the FluSight baseline, pairwise scaled, the CDC "
-            "dashboard convention") in _flat(pair)
-    # the coverage rides beside the value; the placement does not
-    assert "(4,922 cells)" in _flat(pair)
+    assert ('Season scores</h2><span class="uk-tag">pairwise scaled</span>'
+            in _flat(pair))
+    assert ("Pairwise scaled, the CDC dashboard convention: relWIS against "
+            "the teams") in _flat(pair)
+    # the cells ride beside the value; the placement does not
+    assert "<dt>cells</dt><dd>4,922</dd>" in _flat(pair)
 
 
 def test_the_page_shows_the_pairwise_value_and_never_the_placement():
@@ -553,10 +559,10 @@ def test_the_unavailable_banner_does_not_send_a_reader_where_they_already_are():
     flat = _flat(html)
     assert "No scores under this convention" in flat
     assert "no cells shared with the FluSight baseline" in flat
-    assert "This is the ratio of sums view" in flat
-    # the banner does not link the view the reader is on
+    # the banner does not link the view the reader is on, nor offer it
     assert "ratio of sums view</a>" not in flat
     assert "always available" not in flat
+    assert "has the scores" not in flat
 
 
 def test_the_unavailability_message_says_what_would_populate_the_cache(

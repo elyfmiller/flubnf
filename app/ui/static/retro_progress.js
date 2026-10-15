@@ -1,9 +1,10 @@
 // Live retrospective ticker (retro index + season page). Drives every
 // progress element on .season-card[data-active="1"]: the .rfill bar, the
 // .rstat readout, every .rcount counter (one source, so no line disagrees),
-// the .rbasis text (the body of the readout's "?" tip: what the estimate
-// rests on), the .rt-stall badge (shown while the connection is lost) and
-// the .rquip line. A script poll, never a meta refresh; no reload while the
+// the .rbasis text (what the estimate rests on: the readout's "?" on the
+// Retrospective tab, a visually hidden line on the season page), the
+// .rt-stall badge (shown while the connection is lost) and the .rquip
+// line. A script poll, never a meta refresh; no reload while the
 // caller's busy() is true (the guard modal).
 // Rules: the percentage never regresses; the ETA is the server's RANGE,
 // shown as sent and decayed by the wall clock (no client smoothing: it once
@@ -140,7 +141,7 @@
         // every secondary week counter follows the headline
         Array.prototype.forEach.call(c.querySelectorAll(".rcount"),
           function (el) { el.textContent = count; });
-        // a lost connection shows as a badge; its sentence is the tip's
+        // a lost connection shows as a badge (the basis below says it too)
         var stall = c.querySelector(".rt-stall");
         if (stall) stall.hidden = !stalled;
         var basis = c.querySelector(".rbasis");

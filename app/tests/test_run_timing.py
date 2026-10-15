@@ -791,13 +791,31 @@ def test_season_page_carries_controls_and_timing():
     over = render({"status": "done", "active": False, "done": 30, "total": 30,
                    "elapsed_s": 3725.0, "mean_s": 124.0, "weeks_measured": 30,
                    "eta_s": None, "slowest_week": W1, "slowest_s": 300.0})
-    assert "Replay wall time 1:02:05" in over
-    # the slowest week rides the timing tip
-    assert f"the slowest, {W1}, took 300 s" in over
+    # the timing as labelled values, the slowest week among them, no "?"
+    facts = over.split('aria-label="Replay timing"', 1)[1].split("</dl>", 1)[0]
+    assert '<span class="uk-stat-v" id="rs-timing">1:02:05</span>' in facts
+    assert ('<dt>Pace</dt><dd><span class="uk-stat-v">2</span> '
+            '<span class="uk-stat-u">min per week</span>') in facts
+    assert ('<dt>Slowest</dt><dd><span class="uk-stat-v">5</span> '
+            f'<span class="uk-stat-u">min, {W1}</span>') in facts
+    assert "tipbtn" not in facts
     assert f'action="/retro/{SEASON}/stop"' not in over
+    # a quick replay's pace reads in seconds
+    quick = render({"status": "done", "active": False, "done": 30,
+                    "total": 30, "elapsed_s": 60.0, "mean_s": 2.0,
+                    "weeks_measured": 30, "eta_s": None,
+                    "slowest_week": W1, "slowest_s": 3.0})
+    assert ('<dt>Pace</dt><dd><span class="uk-stat-v">2</span> '
+            '<span class="uk-stat-u">s per week</span>') in quick
+    # a slowest week that did not stand out from the mean is not news
+    even = render({"status": "done", "active": False, "done": 30,
+                   "total": 30, "elapsed_s": 60.0, "mean_s": 2.0,
+                   "weeks_measured": 30, "eta_s": None,
+                   "slowest_week": W1, "slowest_s": 2.4})
+    assert "<dt>Slowest</dt>" not in even
 
     # the template must still render for a season with no record at all
-    assert "Replay wall time" not in render(None)
+    assert 'aria-label="Replay timing"' not in render(None)
 
 
 # ------------------------------------------------------------------- quips
