@@ -832,10 +832,10 @@ def retro_results(request: Request, season: str, week: str = "",
     imported = replay_bundle.imported_info(root) if archive else {}
     # this tree's names, passed as model_name (shadows the global)
     names = _names_for_root(root)
-    # a replay with modified model settings wears its label on the page
+    # a replay with modified model settings wears a badge on the page (its
+    # settings row names each change)
     from app.core import site_build as _sb
-    _kn = _sb.tree_knobs(root)
-    knobs_label = (_knobs.label(_knobs.from_record(_kn)) if _kn else "")
+    knobs_modified = bool(_sb.tree_knobs(root))
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
     if not weeks:
         # back to the season list, which shows a 0-weeks season
@@ -857,7 +857,8 @@ def retro_results(request: Request, season: str, week: str = "",
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
                 "active": "Retrospective", "season": season,
-                "model_name": _name_fn(names), "knobs_label": knobs_label,
+                "model_name": _name_fn(names),
+                "knobs_modified": knobs_modified,
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
@@ -883,7 +884,8 @@ def retro_results(request: Request, season: str, week: str = "",
         request, "retro_season.html",
         dict(season_page_context(root, season, archive, week=week, conv=conv,
                                  score_error=score_error, names=names,
-                                 knobs_label=knobs_label, imported=imported,
+                                 knobs_modified=knobs_modified,
+                                 imported=imported,
                                  weeks=weeks),
              active="Retrospective"))
 
@@ -891,7 +893,7 @@ def retro_results(request: Request, season: str, week: str = "",
 def season_page_context(root: Path, season: str, archive: str = "", *,
                         week: str = "", conv: str = "",
                         score_error: str = "", names: dict | None = None,
-                        knobs_label: str | None = None,
+                        knobs_modified: bool | None = None,
                         imported: dict | None = None,
                         weeks: list | None = None) -> dict:
     """The scored season page's context (retro_season.html), for the page
@@ -907,9 +909,8 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     root = Path(root)
     if names is None:
         names = _names_for_root(root)
-    if knobs_label is None:
-        _kn = _sb.tree_knobs(root)
-        knobs_label = (_knobs.label(_knobs.from_record(_kn)) if _kn else "")
+    if knobs_modified is None:
+        knobs_modified = bool(_sb.tree_knobs(root))
     if imported is None:
         imported = replay_bundle.imported_info(root) if archive else {}
     if weeks is None:
@@ -1101,7 +1102,7 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     by_abbr = {a: n for n, a in n2a.items()}
     return {
         "season": season, "heads": heads,
-        "model_name": _name_fn(names), "knobs_label": knobs_label,
+        "model_name": _name_fn(names), "knobs_modified": knobs_modified,
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
         # the shipped models this season scored, in table order
@@ -1120,7 +1121,6 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "map_legend": map_legend, "map_horizon": MAP_HORIZON,
-        "map_horizon_tip": MAP_HORIZON_TIP,
         "score_error": score_error if not scoreable else "",
         "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
@@ -1138,11 +1138,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
 
 #: the horizon the season page's categorical map shows (retro_prep
 #: _week_map_cards_by_model reads each member's horizon 0 quantiles), as
-#: its tag and the tag's tip
-MAP_HORIZON = "horizon 0"
-MAP_HORIZON_TIP = ("Each week's map is the categorical forecast for horizon 0: "
-                   "the week ending on the reference date, one week after "
-                   "the newest data that week.")
+#: its tag: the week ending on the reference date, one week after the
+#: newest data that week
+MAP_HORIZON = "horizon 0, the week after the newest data"
 
 
 #: the player's message when a week cannot be scored for lack of any

@@ -1,7 +1,10 @@
 {# A run on a custom dataset (run.html, app/ui/datasets_ui.run_page_extra):
    the fans per group and model, and the export files. Tips imported by
-   run.html. #}
-<div class="card" id="ds-fans">{{ tips.heading("Forecasts on " ~ dataset.name, "run-ds-fans", ("Vintage-true: each group was forecast from the as_of snapshot of its week." if dataset.vintage_true else "Final data, not vintage-true: the week was cut from the final series, so later revisions leak in.") ~ " The band is the 10-90% interval; the dotted line is what the dataset holds after the forecast date.", tip_label="these forecasts", after=tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data")) }}
+   run.html. The badge says what the forecasts read: each week's as_of
+   snapshot (vintage-true), or the final series cut at the week (not
+   vintage-true: later revisions leak in); the chart's legend names the
+   band and the later data #}
+<div class="card" id="ds-fans">{{ tips.heading("Forecasts on " ~ dataset.name, "run-ds-fans", after=tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data, not vintage-true")) }}
  <div class="carousel" id="dsf-models"></div>
  <div class="carousel">
   <button type="button" class="quiet cnav" id="dsf-prev" aria-label="previous group">◀</button>
@@ -12,7 +15,11 @@
  <div id="dsf-plot" style="min-height:380px"></div>
 </div>
 
-<div class="card" id="ds-exports">{{ tips.heading("Export files", "run-ds-exports", "Hubverse model-output CSVs (23 quantiles, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own " ~ (dataset.key_col or "location") ~ " column and target '" ~ (dataset.target or "custom") ~ "'. Named FluBNF-Groundhog and FluBNF-SIHRS-PF, never a registered hub identity; nothing is submitted.") }}
+{# hubverse model-output CSVs (23 quantiles, horizons 0 to 3, the
+   reference date the forecast date plus 7 days), keyed by the dataset's
+   own column and target, under the names FluBNF-Groundhog and
+   FluBNF-SIHRS-PF: never a registered hub identity, never submitted #}
+<div class="card" id="ds-exports">{{ tips.heading("Export files", "run-ds-exports", after=tips.tag("hubverse CSV, not submitted")) }}
  {% for e in exports %}
  <div class="fc-file"><span class="fc-file-model">{{ e.model }}</span>
   <a href="/output/download?path={{ e.path | urlencode }}" download>{{ tips.icon("download") }} {{ e.name }}</a></div>
