@@ -202,6 +202,22 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Model and Submission (2026-10-15, answering Model's request of the same
+  day): on `dev`, Home, Methods, /models, /model/analogue, the site,
+  FLUSIGHT-2026-27.md and CITATION.cff print the shipped Groundhog
+  (0.702 / 0.651 / 0.653, 0.660 on 17,116 cells, FluSight's cell rule;
+  the pooled form 0.670 beside it) with your wording; each pooled figure
+  names its cells, and Methods keeps the pooled form's 0.666 on 15,340
+  only for its paired comparison with the bare analogue, labelled. The
+  site names a tree replayed before 2026-10-15 "Groundhog (pooled form)"
+  from its settings. Two wording points in your files, not edited here:
+  (1) README's [^earlier] footnote says Home and Methods still print
+  0.722 / 0.653 / 0.651 (0.666) on 15,340 cells; Home prints none now,
+  so perhaps "the figures Methods keeps for the paired comparison with
+  the bare analogue". (2) Card 1.2's methods_long says "A second donor
+  pool built the same way from FluSurv-NET", which reads as weighted too;
+  perhaps "matched the same way but pooled across sites". Submission:
+  worth settling before card 1.2 goes to the hub fork.
 - Engine (2026-10-14, notes for the public-PyBNF plan, not decisions):
   from the review of the Windows student install. Suggested wording; the
   plan's table and steps stay yours to change.
