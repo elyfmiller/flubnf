@@ -1,11 +1,13 @@
 /* The Model settings panel (templates/_model_settings.html): the live
-   "default / modified" badge (a kit badge), the rows that do not apply to
-   the chosen engine hidden and their fields off (the server ignores them
-   too, and never records them; an off field is never checked or posted),
-   "Reset to defaults", the override's reason shown and required when its
-   box is ticked, and a value the browser refuses shown even while the
-   panel is closed. The server is the authority; this only keeps the page
-   honest while the form is filled in.
+   "default / modified" badge (a kit badge; with the override, how a
+   modified run's files will be named), each group's "N changed", the rows
+   that do not apply to the chosen engine hidden (the server ignores them
+   too, and never records them; their fields are still posted, so the form
+   keeps them for the next run, but never checked), "Reset to defaults",
+   the override's reason shown and required when its box is ticked, and a
+   value the browser refuses shown even inside a closed fold. The server
+   is the authority; this only keeps the page honest while the form is
+   filled in.
 
    Every panel on the page is its own (the Retrospective tab holds the
    FluSight replay's and the own-data replay's); a panel's parts are found
@@ -15,8 +17,9 @@
    kind of data, and a group whose rows are all hidden hides too. The
    panel opens or closes as the user left it this session (sessionStorage,
    per page and panel); a run forgets it, so the page after a run shows
-   the panel closed unless the server refused its settings. Loading the
-   script twice sets nothing up twice. */
+   the panel closed unless the server refused its settings. Opened near
+   the window's foot (by a click, or by a refusal), the page brings it
+   into view. Loading the script twice sets nothing up twice. */
 (function () {
   function init(box) {
     if (box.dataset.msReady) return;
@@ -88,12 +91,24 @@
         return ms.indexOf(m) >= 0;
       });
     }
-    // a row hidden here has its field off (data-ms-off marks the ones
-    // this script turned off; a coming-later field stays off for good)
-    function setOff(row, off) {
+    // a hidden row's field is still posted (the next run's form keeps its
+    // value) but never checked: its limits wait in data-ms-min, -max and
+    // -step while the row is hidden, so a value out of range there never
+    // blocks Run models unseen
+    var LIMITS = {min: 'msMin', max: 'msMax', step: 'msStep'};
+    function setLimits(row, on) {
       row.querySelectorAll('[data-knob]').forEach(function (el) {
-        if (off && !el.disabled) { el.disabled = true; el.dataset.msOff = '1'; }
-        else if (!off && el.dataset.msOff) { el.disabled = false; delete el.dataset.msOff; }
+        Object.keys(LIMITS).forEach(function (a) {
+          var kept = LIMITS[a];
+          if (!on && !(kept in el.dataset) && el.hasAttribute(a)) {
+            el.dataset[kept] = el.getAttribute(a);
+            if (a === 'step') el.setAttribute('step', 'any');
+            else el.removeAttribute(a);
+          } else if (on && kept in el.dataset) {
+            el.setAttribute(a, el.dataset[kept]);
+            delete el.dataset[kept];
+          }
+        });
       });
     }
     function filter() {
@@ -101,15 +116,16 @@
       box.querySelectorAll('.ms-row').forEach(function (n) {
         n.hidden = !applies(n, ms)
           || !!(kind && n.dataset.only && n.dataset.only !== kind);
-        setOff(n, n.hidden);
+        setLimits(n, !n.hidden);
       });
       box.querySelectorAll('.ms-group').forEach(function (g) {
         var rows = Array.prototype.slice.call(g.querySelectorAll('.ms-row'));
         g.hidden = !applies(g, ms)
           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
       });
-      // the "coming later" fold hides with its last applying row
-      box.querySelectorAll('.ms-later-fold').forEach(function (f) {
+      // the "coming later" and a group's "N more" folds hide with their
+      // last applying row
+      box.querySelectorAll('.ms-later-fold, .ms-more').forEach(function (f) {
         var rows = Array.prototype.slice.call(f.querySelectorAll('.ms-row'));
         f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
       });
@@ -138,14 +154,24 @@
       var any = inputs.some(function (el) {
         return !el.closest('[hidden]') && isModified(el);
       });
-      if (badge) setBadge(any ? 'warn' : 'ok', any ? 'modified' : 'default');
+      // with the override, the summary says how the files will be named
+      // (the box starts unticked each run)
+      var word = !any ? 'default' : !tick ? 'modified'
+        : 'modified · ' + (tick.checked ? 'hub names' : 'non-hub names');
+      if (badge) setBadge(any ? 'warn' : 'ok', word);
+      // each group's summary counts its changed rows
+      box.querySelectorAll('.ms-group').forEach(function (g) {
+        var n = g.querySelectorAll('.ms-row.ms-changed:not([hidden])').length;
+        var c = g.querySelector('.ms-n');
+        if (c) { c.hidden = !n; c.textContent = n + ' changed'; }
+      });
       if (ovr) ovr.hidden = !any;
       if (why) why.hidden = !(tick && tick.checked);
       if (reason) reason.required = !!(any && tick && tick.checked);
     }
     if (reset) reset.addEventListener('click', function () {
       inputs.forEach(function (el) {
-        if (!el.disabled || el.dataset.msOff) el.value = el.dataset.default || '';
+        if (!el.disabled) el.value = el.dataset.default || '';
       });
       syncSeason();
       if (tick) tick.checked = false;
@@ -163,28 +189,62 @@
       else if (left === '0' && !box.hasAttribute('data-refused')) box.open = false;
     } catch (e) {}
     var sum = box.querySelector('summary');
+    // opened with its summary near the window's foot, where the Run row
+    // is then held (forecast.css), the panel would open out of sight: the
+    // page brings the summary to the top
+    var runrow = form && form.querySelector('.fc-runrow');
+    function reveal(smooth) {
+      if (!sum || !box.open) return;
+      var foot = innerHeight - (runrow ? runrow.getBoundingClientRect().height : 0);
+      if (sum.getBoundingClientRect().bottom + 96 <= foot) return;
+      var calm = window.matchMedia
+        && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      sum.scrollIntoView({block: 'start',
+                          behavior: smooth && !calm ? 'smooth' : 'auto'});
+    }
     if (sum) sum.addEventListener('click', function () {
       setTimeout(function () {
         try { sessionStorage.setItem(memo, box.open ? '1' : '0'); } catch (e) {}
+        // after base.html's click guard, which holds the scroll for two
+        // frames after any click
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { reveal(true); });
+        });
       }, 0);
     });
+    // the page after a refusal: the open panel and its message in view
+    if (box.hasAttribute('data-refused')) {
+      if (document.readyState === 'complete') reveal(false);
+      else addEventListener('load', function () { reveal(false); });
+    }
     if (form) {
       // a run forgets the choice: the page after it (and its automatic
       // reload when the run ends) shows the panel as the server renders it
       form.addEventListener('submit', function () {
         try { sessionStorage.removeItem(memo); } catch (e) {}
       });
-      // a value the browser refuses inside the closed panel: open it and
-      // show the browser's message there (a field in a closed panel shows
-      // none, so Run models seemed to do nothing)
+      // a value the browser refuses inside a closed fold (the panel, a
+      // group, its "N more"): open each and show the browser's message
+      // there (a field in a closed fold shows none, so Run models seemed
+      // to do nothing)
       var reporting = false;
+      var shutAround = function (el) {
+        var out = [], d = el.parentElement.closest('details');
+        while (d && box.contains(d)) {
+          if (!d.open) out.push(d);
+          d = d.parentElement && d.parentElement.closest('details');
+        }
+        return out;
+      };
       form.addEventListener('invalid', function (e) {
         var el = e.target;
-        if (!box.contains(el) || (box.open && !reporting)) return;
+        if (!box.contains(el)) return;
+        var shut = shutAround(el);
+        if (!shut.length && !reporting) return;
         e.preventDefault();
         if (reporting) return;
         reporting = true;
-        box.open = true;
+        shut.forEach(function (d) { d.open = true; });
         setTimeout(function () {
           reporting = false;
           try { el.reportValidity(); } catch (x) {}

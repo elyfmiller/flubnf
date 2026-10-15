@@ -265,6 +265,26 @@ def test_the_run_page_holds_the_reason_and_the_digest(state):
     assert "tip-res-note" not in html
 
 
+def test_the_weekly_report_keeps_the_override_reason():
+    """The weekly report opens without the app, so it keeps why the files
+    took the hub names, after its "files" row; the console's cards keep
+    the reason to the run page."""
+    def spec(override):
+        extra = ui_forecast._run_extra(2, "realtime")
+        K.write_extra({"oracle.w": 0.25}, extra, override=override)
+        return RunSpec(engine="all", forecast_date="2098-01-03",
+                       locations=["Ohio"], extra=extra)
+    pairs = runs_mod.report_settings(spec("lead's call, week 42"))
+    keys = [k for k, _ in pairs]
+    assert keys[keys.index("files") + 1] == "override reason"
+    assert dict(pairs)["override reason"] == "lead's call, week 42"
+    assert "override reason" not in dict(runs_mod.spec_settings(
+        spec("lead's call, week 42")))
+    assert runs_mod.report_settings(spec("")) == runs_mod.spec_settings(spec(""))
+    src = (Path(__file__).resolve().parents[1] / "ui" / "pipeline.py").read_text()
+    assert "report_settings(spec, outcome) + _build_pairs(run_row)" in src
+
+
 def test_the_settings_card_has_one_explainer(state):
     _run(knobs={"oracle.w": 0.25, "pf.seed_denominator": "season_total_early"},
          override="r")
@@ -276,8 +296,10 @@ def test_the_settings_card_has_one_explainer(state):
     assert 'aria-controls="tt-fc-settings"' in outside
     assert outside.count('class="uk-tt-btn"') == 1
     assert outside.count('class="tipbtn"') == 0
-    # the panel's own: one
-    assert panel.count('class="tipbtn"') == 1
+    # the panel's own: one "i", linking every setting on Methods
+    assert panel.count('class="tipbtn"') == 0
+    assert panel.count('class="uk-tt-btn"') == 1
+    assert 'href="/methods#settings"' in panel
 
 
 def test_a_label_without_a_tip_has_no_question_mark():

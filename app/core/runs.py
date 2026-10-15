@@ -284,6 +284,21 @@ def files_label(spec) -> str:
             else f"non-hub names ({K.MODIFIED_SUFFIX})")
 
 
+def report_settings(spec, outcome=None) -> list:
+    """A run's settings as its weekly report lists them: spec_settings,
+    with an override's reason after the "files" row. The report opens
+    without the app, so it keeps why the files took the hub names (the
+    console's cards keep the reason to the run page)."""
+    from app.core import knobs as K
+    pairs = spec_settings(spec, outcome)
+    why = K.override_reason(spec) if K.modified(spec) else ""
+    if not why:
+        return pairs
+    at = next((i + 1 for i, (k, _) in enumerate(pairs) if k == "files"),
+              len(pairs))
+    return pairs[:at] + [("override reason", why)] + pairs[at:]
+
+
 def is_modified(spec) -> bool:
     """A run built with model settings off the shipped ones (a knobs
     record in its spec); never true for an older row."""

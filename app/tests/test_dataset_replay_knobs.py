@@ -132,7 +132,9 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
     assert meta["knobs_digest"] == K.digest(want)
     assert meta["weeks_to_drop"] == 1
     page = " ".join(client.get(r.headers["location"]).text.split())
-    assert "<dt>model settings</dt><dd>modified: groundhog.bandwidth=3" in page
+    # in words; the weeks dropped have their own row
+    assert ("<dt>model settings</dt><dd>Groundhog donor window 3 (default 2), "
+            "Output floor rate 0.5 (default 0.35)</dd>") in page
     assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
             in page and '<span class="uk-badge-t">modified settings</span>'
             in page)
