@@ -417,7 +417,7 @@
  {% set errc %}<code>{{ score_error }}</code>{% endset %}
  {% call tips.alert("error", errc, title="Scoring failed.", id="rs-scorefail") %}The fitted forecasts below are intact; fix the scoring input (usually the FluSight hub clone, via the Data tab) and reload this page.{% endcall %}
  {% elif unsettled and not heads %}
- {{ tips.empty("No scoreable weeks yet", "clock", tiptext="Truth for these forecast dates has not settled, so relWIS arrives later; the weekly maps below are available now.", id="rs-unsettled") }}
+ {{ tips.empty("No scoreable weeks yet", "clock", tiptext="Truth or the FluSight baseline for these forecast dates is not in yet, so relWIS arrives later; the weekly maps below are available now.", id="rs-unsettled") }}
  {% endif %}
  {% if heads or tm.us %}
  {# two groups of tiles, each named once: the pooled jurisdictions and
