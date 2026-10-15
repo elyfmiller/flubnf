@@ -16,8 +16,8 @@ player share, and builds, caches and invalidates the file:
   1. names and inputs: model_names, names_for_root, report_path,
      _newest_input
   2. the coverage reading shared with the season page: cov_state, cov_text,
-     COV_LEGEND, PSTATES_COV_NOTE, METRICS_NOTE, LIVE_HEADING,
-     LIVE_SCORES_NOTE; and its cumulative lines, cumulative_curves
+     COV_LEGEND, LIVE_HEADING, LIVE_SCORES_NOTE; and its cumulative lines,
+     cumulative_curves
   3. build_season_report: cached at <season_root>/<season>-FluBNF-season-
      report.html while newer than every input and carrying the current
      marker (_report_marker)
@@ -120,8 +120,8 @@ def _newest_input(root: Path) -> float:
 
 
 # ------------------------------------------------- 2. the coverage reading
-#: the player's stats card: heading and explanation, one copy for the season
-#: page (Jinja globals) and this export
+#: the player's stats card's heading, and how to read the season page's
+#: scores (its "i"): one copy for the page (Jinja globals) and this export
 LIVE_HEADING = "Live scores"
 LIVE_SCORES_NOTE = (
     "relWIS below 1 beats the CDC FluSight baseline, ratio of sums over "
@@ -173,32 +173,20 @@ def cov_state(frac, level) -> str:
     return "ok"
 
 
-#: the coverage colors' key: the line player.js covLegend writes under the
-#: live table (a test holds the two equal), also under the verdict tiles
+#: the coverage colors' key: the line player.js covLegend writes (a test
+#: holds the two equal), in the season page's "i" for the tiles, the live
+#: table and the per-state 95% column alike
 COV_LEGEND = (
     f'Coverage color: <span class="cov-ok">within {COV_TOLERANCE} points of '
     f"nominal ({cov_tolerance(95):g} at 95%)</span> · "
     '<span class="cov-low">further under (too narrow)</span> · '
     '<span class="cov-wide">further over (too wide)</span>.')
 
-#: the per-state tables' 95% column, said once above the table (the page
-#: and this export): the whole percentages the key's rule gives at 95%
-PSTATES_COV_NOTE = (
-    "95%: the share of the state's scored cells inside the central 95% "
-    f"interval; {math.ceil(95 - cov_tolerance(95)) - 1}% or less is too "
-    f"narrow, {math.floor(95 + cov_tolerance(95)) + 1}% or more too wide.")
-
 
 def cov_text(frac) -> str:
     """"48%", or "n/a" without a figure. Also a Jinja global."""
     p = cov_pct(frac)
     return "n/a" if p is None else f"{p}%"
-
-
-#: what the tiles' second line holds, said once under them
-METRICS_NOTE = ("Log scale: the same ratio on the WIS of log(x+1) counts. "
-                "Coverage: the share of the same cells whose truth fell "
-                "inside the central 50, 80 and 95% intervals.")
 
 
 def cumulative_curves(df) -> dict:
