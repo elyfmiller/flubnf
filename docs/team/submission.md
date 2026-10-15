@@ -30,9 +30,10 @@ and CDC's rules. The season's facts are in
   file naming twice. Full suite on the branch: 3,271 passed, 162 skipped,
   three runs; two of them ended with one session-level error from
   app/tests/conftest.py's app/state guard (below), none from a test.
-  Merge: Ely merges the branch into dev (this lane's dev commits are
-  docs-only), then dev to main by pull request as usual; FluBNF picks it
-  up on the next open.
+  MERGED INTO dev AT ELY'S REQUEST on 2026-10-15 02:20 UTC (merge commit
+  a1f65f1, authored as Ely; the lane's one code merge, on Ely's word, as
+  the seed branch was); dev to main by pull request as usual; FluBNF picks
+  it up on the next open after that.
   - For the App lane, two test-isolation leaks seen in the cloud, both
     outside this diff: (a) app/state/component_versions.json in the
     working tree was written (21:41 UTC) and rewritten (21:54) during full
@@ -1081,13 +1082,29 @@ and CDC's rules. The season's facts are in
   similarity-weighted pool in the repository (the nearest is the us-donor
   trial in the lab's research archive, which removed the national row and
   tied); please check that archive before starting, in case it was tried.
-  Candidates: HHS-region pools, latitude or climate groups, or a kernel on
-  each state's own recent growth (nearer donors weigh more, so the pool
-  stays large enough for the quantiles); scored against the shipped
-  cross-state pool on the stored replay weeks with the app's scorer, with
-  a stop rule written before the run, as the seed rule was. If a regional
-  pool wins, the Oracle's donor paths inherit it, so the two members
-  change together.
+  Ely's framing (2026-10-15, for the GroundHog agent): no longer pool the
+  growth ratios across all states; give each state its own donor set
+  from its own NHSN admissions history plus the FluSurv-NET site series,
+  so each state gets its own forecast shape instead of the one shared
+  shape. Where it lives: flubnf/analogue.py (forecast(), the bank keyed
+  (location, date), DEFAULT_BANDWIDTH epiweeks each side; the pool is
+  cross-location by design, docstring at the top), flubnf/flusurv.py
+  (the FluSurv-NET catchment, about 20 sites, rates per 100,000) and
+  flubnf/oracle_mix.py (W_AUX, the FluSurv-NET share). The support
+  problem to solve first: a state's own history gives about 5 donor weeks
+  per past season per horizon (the bandwidth window), so four seasons
+  give about 20 ratios for 23 quantile levels, and FluSurv-NET adds sites
+  only for the states it covers; a state-only pool is also undefined in
+  a state's first season. So the likely shape is a hierarchy: the state's
+  own donors first, the national pool filling in (shrinkage toward the
+  pooled ratios, or kernel weights by distance from the state's own recent
+  growth), with the mix a knob so it can be scored. Score against the
+  shipped cross-state pool on the stored replay weeks with the app's
+  scorer (flubnf retro on the lab Mac), per state and pooled, relWIS and
+  coverage, with a stop rule written before the run, as the seed rule
+  was. If a per-state pool wins, the Oracle's donor paths inherit it, so
+  the two members change together, and the Groundhog's card sentence
+  about pooled donors changes with it.
 - App (2026-10-14): three things from the round, none urgent. (1) DONE ON A
   BRANCH, see the Now entry of 22:40 UTC: a modified run exported without
   the override was kept off the Output tab and the archived weekly report
