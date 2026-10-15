@@ -24,9 +24,10 @@
 {% set open = d.status and d.status.state in ("due", "soon") %}
 {% set facts = namespace(items=[("calendar", "as of " ~ d.asof)]) %}
 {# an open or coming round: its close on the reader's clock (the badge
-   says Eastern), filled by the page script #}
-{% if d.status and d.status.deadline %}{% set local %}<span class="out-local" data-out-local="{{ d.status.deadline }}"></span>{% endset %}
-{% set facts.items = facts.items + [("clock", local, "Closes")] %}{% endif %}
+   says Eastern), which the page script writes over the Eastern words;
+   "closes" is in the text, so the fact needs no spoken label #}
+{% if d.status and d.status.deadline %}{% set local %}<span class="out-local" data-out-local="{{ d.status.deadline }}">{% if d.status.deadline_et %}closes {{ d.status.deadline_et }}{% endif %}</span>{% endset %}
+{% set facts.items = facts.items + [("clock", local)] %}{% endif %}
 {% for s in d.data_src %}{% set facts.items = facts.items + [("folder", s, "Data")] %}{% endfor %}
 <div class="card out-day{{ ' out-day--due' if open }}" id="fc-{{ d.asof }}">
  {{ tips.heading("Forecast " ~ d.ref, "out-d" ~ di, after=winbadge(d, di)) }}
@@ -173,12 +174,12 @@
 {{ fr.copy_script() }}
 <script>
  // a round's close in the reader's own clock (the badge says Eastern);
- // a time the browser cannot read leaves no empty fact behind
+ // a time the browser cannot read keeps the Eastern words
  (function(){
   var els=document.querySelectorAll('[data-out-local]');
   for(var i=0;i<els.length;i++){
-   var t=new Date(els[i].getAttribute('data-out-local')),li=els[i].closest('li');
-   if(isNaN(t.getTime())){if(li)li.remove();continue;}
+   var t=new Date(els[i].getAttribute('data-out-local'));
+   if(isNaN(t.getTime()))continue;
    var s='';
    try{s=t.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){s=t.toString();}
    els[i].textContent='closes '+s+' your time';
