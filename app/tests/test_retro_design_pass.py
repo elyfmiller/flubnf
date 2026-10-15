@@ -78,10 +78,13 @@ def test_a_season_card_carries_the_liu_west_filter_headline(tmp_path):
 def test_the_season_page_wears_the_design_pass(world):
     _tree(world["live"] / SEASON)
     html = _page(SEASON)
-    # 2: the map's colors as legend chips, and the horizon it shows
+    # 2: the map's colors as legend chips, and the horizon it shows, its
+    # tag saying which week that is
     assert 'aria-label="Categorical forecast colors"' in html
     assert ">large increase</li>" in html and ">no data</li>" in html
-    assert '<span class="uk-tag">horizon 0</span>' in html
+    assert ('<span class="uk-tag">horizon 0, the week after the newest '
+            'data</span>') in html
+    assert 'id="tip-rs-map-h"' not in html
     # 7: both switches are the kit's, the map's labelled Model
     assert '<div class="uk-seg rt-views" role="group" aria-label="Playback view">' in html
     assert ('<div class="rt-mapbar"><span class="rt-seg-l" aria-hidden="true">'
@@ -97,12 +100,14 @@ def test_the_season_page_wears_the_design_pass(world):
     # 12: jurisdictions, never "states", in the count and the filter
     assert "2 jurisdictions scored" in html and "states scored" not in html
     assert 'placeholder="Filter jurisdictions"' in html
-    # 15, 16, 17, 18: deep links, keys, memory, month ticks
+    # 15, 16, 17, 18: deep links, keys (in the page's "i"), memory, month
+    # ticks
     assert 'id="pb-copy"' in html and "history.replaceState" in html
     assert "location.hash" in html
+    keys = html.split('id="tt-rs-page">', 1)[1].split("</div>", 1)[0]
     for key in ("<kbd>Space</kbd>", "<kbd>K</kbd>", "<kbd>Home</kbd>",
                 "<kbd>M</kbd>", "<kbd>[</kbd>", "<kbd>L</kbd>"):
-        assert key in html, key
+        assert key in keys, key
     assert "window.FluBNFRetroStore" in html
     assert "store: STORE" in html and "initialLoc: LINK.loc" in html
     assert 'class="rt-ticks"' in html

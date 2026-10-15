@@ -227,6 +227,11 @@ def _season_page(season):
     return page, tiles, row
 
 
+def _page_i(page):
+    """The page's one "i" beside the title: its panel's lines."""
+    return page.split('id="tt-rs-page">', 1)[1].split("</div>", 1)[0]
+
+
 def _us_rel(df, model) -> float:
     us = df[(df.model == model) & df.location.map(usn.is_us)]
     return float(us.wis.sum() / us.base_wis.sum())
@@ -253,11 +258,13 @@ def test_a_stepped_season_shows_the_filters_us_figure(tmp_path, monkeypatch):
     assert "US (fitted): Liu-West filter" in tiles
     assert f"{want:.3f}" in tiles["US (fitted): Liu-West filter"]
     assert f'data-pf_filter="{want:.6f}"' in row
-    # the Oracle SIHRS US tile adds nothing: the step covers US
-    assert "fitted nationally" in tiles["US (fitted): Oracle SIHRS"]
+    # the Oracle SIHRS US tile adds nothing under its title: the step
+    # covers US (the group's "fitted" tag says the rest)
+    assert "rt-tilenote" not in tiles["US (fitted): Oracle SIHRS"]
     assert usn.PF_US_SHORT not in page and usn.PF_US_SHORT_MIXED not in page
     assert str(escape(usn.PF_FILTER_US_WITHHELD)) not in page
-    assert usn.PF_US_NOTES[usn.STEPPED] in page
+    # nor does the page's "i": the step throughout needs no note
+    assert usn.PF_US_NOTES[usn.STEPPED] not in page
     # the pooled Liu-West tile is the two states' figure, US left out
     states = usn.pooled_frame(df[df.model == RS.FILTER_MEMBER])
     pooled = float(states.wis.sum() / states.base_wis.sum())
@@ -277,10 +284,12 @@ def test_a_filter_era_season_has_no_filter_us_figure(tmp_path, monkeypatch):
     page, tiles, row = _season_page(season)
     assert "US (fitted): Liu-West filter" not in tiles
     assert 'data-pf_filter=""' in row
-    assert str(escape(usn.PF_FILTER_US_WITHHELD)) in row
-    assert (usn.PF_US_SHORT + ", fitted nationally"
+    # why it is n/a, and what the US figure under the Oracle SIHRS name is:
+    # the page's "i", and a line under the tile's title
+    assert str(escape(usn.PF_FILTER_US_WITHHELD)) in _page_i(page)
+    assert (f'<p class="rt-tilenote">{usn.PF_US_SHORT}</p>'
             in tiles["US (fitted): Oracle SIHRS"])
-    assert usn.PF_US_NOTES[usn.FILTER] in page
+    assert usn.PF_US_NOTES[usn.FILTER] in _page_i(page)
 
 
 def test_a_mixed_season_withholds_the_filters_us_figure(tmp_path,
@@ -292,11 +301,11 @@ def test_a_mixed_season_withholds_the_filters_us_figure(tmp_path,
     page, tiles, row = _season_page(season)
     assert "US (fitted): Liu-West filter" not in tiles
     assert 'data-pf_filter=""' in row and f"{there:.3f}" not in row
-    assert str(escape(usn.PF_FILTER_US_WITHHELD)) in row
-    assert (usn.PF_US_SHORT_MIXED + ", fitted nationally"
+    assert str(escape(usn.PF_FILTER_US_WITHHELD)) in _page_i(page)
+    assert (f'<p class="rt-tilenote">{usn.PF_US_SHORT_MIXED}</p>'
             in tiles["US (fitted): Oracle SIHRS"])
     assert (f"The filter alone: 1 week, {W_PRE}; the Oracle step: 1 week, "
-            f"{W_A3}.") in page
+            f"{W_A3}.") in _page_i(page)
     # the player hears it per week, from the same oracle.json
     from fastapi.testclient import TestClient
 
@@ -319,7 +328,8 @@ def test_the_season_report_says_what_the_page_says(tmp_path, monkeypatch):
     rep = report_season.build_season_report(root, season).read_text(
         encoding="utf-8")
     flat = " ".join(rep.split())
-    assert usn.PF_US_SHORT_MIXED + ", fitted nationally" in flat
+    assert f'<p class="rt-tilenote">{usn.PF_US_SHORT_MIXED}</p>' in flat
+    assert _page_i(page) in flat
     assert row in flat
     for t in tiles.values():
         assert t in flat
