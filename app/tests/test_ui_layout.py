@@ -62,6 +62,16 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+if __name__ == "__main__":
+    # the golden regeneration runs without conftest: as it does, keep the
+    # server's startup thread (it writes the version snapshot) out of the
+    # checkout's app/state
+    import atexit
+    import tempfile
+    _state = tempfile.mkdtemp(prefix="flubnf-golden-state-")
+    atexit.register(shutil.rmtree, _state, True)
+    os.environ.setdefault("FLUBNF_STATE_DIR", _state)
+
 import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
@@ -828,7 +838,6 @@ def test_the_retro_state_list_falls_back_to_the_packaged_table(
 if __name__ == "__main__":
     if sys.argv[1:] != ["--write-golden"]:
         sys.exit(__doc__)
-    import tempfile
     with tempfile.TemporaryDirectory() as d:
         GOLDEN_PATH.write_text(_fmt(snapshot(Path(d))) + "\n",
                                encoding="utf-8")

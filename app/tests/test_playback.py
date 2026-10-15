@@ -4,6 +4,7 @@ sourcing (scores.json vs on-the-fly), caching, and a real-file spot check
 guarded by hub presence."""
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -319,16 +320,35 @@ def test_mapswap_route_refuses_unknown_and_unsafe_weeks():
 from flubnf.settings import HUB as _HUB                  # noqa: E402
 
 _SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal" / "2024-25"
+
+
+def shadow_tree(src: Path, dst: Path) -> Path:
+    """src's tree at dst: real folders, every file a link to the original
+    (a copy where links are refused). Reading through it reads the record;
+    every cache the readers write (playback_cache/, a week's quantiles.json,
+    map_cards/) is written beside, then os.replace'd, so it replaces the link
+    in dst and never touches the checkout's app/state."""
+    # a leftover .tmp is never data, and a writer would write through its link
+    skip = shutil.ignore_patterns("*.tmp")
+    try:
+        return Path(shutil.copytree(src, dst, copy_function=os.symlink,
+                                    ignore=skip))
+    except OSError:
+        shutil.rmtree(dst, ignore_errors=True)
+        return Path(shutil.copytree(src, dst, ignore=skip))
+
+
 _real_ok = ((_SEAL / "weeks").is_dir()
             and (_HUB / "model-output" / "FluSight-baseline").is_dir()
             and (_HUB / "auxiliary-data" / "locations.csv").is_file())
 
 
 @pytest.mark.skipif(not _real_ok, reason="seal root or hub files absent")
-def test_real_first_seal_week_spot():
-    weeks = playback.season_weeks(_SEAL)
+def test_real_first_seal_week_spot(tmp_path):
+    seal = shadow_tree(_SEAL, tmp_path / "retro_seal" / "2024-25")
+    weeks = playback.season_weeks(seal)
     asof = weeks[0]
-    p = playback.build_week(_SEAL, "2024-25", asof)
+    p = playback.build_week(seal, "2024-25", asof)
     assert p["asof"] == asof
     assert {"pf", "analogue", "ensemble"} <= set(p["models"])
     assert "FluSight-baseline" in p["official"]
@@ -336,17 +356,21 @@ def test_real_first_seal_week_spot():
     assert us and "1" in us and "0.5" in us["1"]
     assert p["stats"]["ensemble"]["cum_rel"] is not None
     # second call comes from the cache and agrees
-    assert playback.build_week(_SEAL, "2024-25", asof)["asof"] == asof
+    assert playback.build_week(seal, "2024-25", asof)["asof"] == asof
 
 
 @pytest.mark.skipif(not _real_ok, reason="seal root or hub files absent")
-def test_real_mapswap_covers_every_state_shape():
+def test_real_mapswap_covers_every_state_shape(tmp_path, monkeypatch):
     """The swap payload states fill, opacity and hover for EVERY map state, so
     no stale fill survives a frame."""
     from fastapi.testclient import TestClient
     from app.core.usmap import state_paths
+    from app.ui import retro_seasons as ui_retro_seasons
     from app.ui.server import app as srv
-    asof = playback.season_weeks(_SEAL)[0]
+    seal = shadow_tree(_SEAL, tmp_path / "retro_seal" / "2024-25")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal.parent)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    asof = playback.season_weeks(seal)[0]
     r = TestClient(srv).get(f"/api/retro/2024-25/mapswap/{asof}")
     assert r.status_code == 200
     states = r.json()["states"]
