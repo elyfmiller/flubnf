@@ -6,6 +6,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-15: Ely's cleanup request (Model settings shoved the forecasts
+  down; "?" marks everywhere). On `dev`: the Model settings panel opens
+  only after a refusal, stays in the settings column, shows each group's
+  changed rows with their defaults and folds the rest; the Forecast tab
+  shows the forecasts first. Every page holds at most one "i" (Forecast's
+  Settings card and panel two); badges and labels say the rest, and the
+  reference text moved to Methods folds and its new Model settings table.
+  Fixed, each reproduced first: "Export under the hub names anyway" and
+  its reason carried over to the next run (now cleared once a run is
+  queued; a refusal keeps them, and the Run row says "Differs: File
+  names" until the box is ticked again); an invalid value in the closed
+  panel silently blocked Run; a Groundhog-only run lost the filter's
+  settings; a vintage run replaced Home's and Output's current week;
+  a Groundhog-only replay showed "Scoring failed ... IndexError"; Stop
+  could leave a stale "running" card; a skipped Saturday's anchor line; a
+  Weekly report button 404 after its workroot was deleted. The Forecast
+  tab now draws a modified run (badged); Home and Models keep the shipped
+  rule. For Submission (2026-10-10): oracle.w's help now says it weighs
+  the filter's own growth, lower leaning on the donors.
 - 2026-10-14: Ely's answers to the Sandbox usability review. Less text on
   the page, not more; no flag that claims what the model does with the
   data, since one rule of thumb is wrong for another disease or model; Home
