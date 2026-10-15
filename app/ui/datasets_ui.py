@@ -501,8 +501,10 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
             if r["key"] in COUNT_ONLY:
                 if kind and kind != "count":
                     continue
-                r = {**r, "only": "count", "tip": r["tip"].replace(
-                    by_key[r["key"]].help, COUNT_ONLY[r["key"]])}
+                r = {**r, "only": "count", **{
+                    part: r[part].replace(by_key[r["key"]].help,
+                                          COUNT_ONLY[r["key"]])
+                    for part in ("tip", "hint") if part in r}}
             rows.append(r)
         if not rows:
             continue

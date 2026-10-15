@@ -17,7 +17,7 @@
      4. the Model settings panel (_model_settings.html)
      5. the run page (run.html, _dataset_run.html)
      6. the form's aids: the round row, location presets and filter, the
-        Run row against the last run, the panel across the page */
+        Run row against the last run, a changed field's marks */
 
 /* ---- 1. settings card ---- */
 /* the dataset's truth badge under its picker */
@@ -25,6 +25,8 @@
 /* the anchor week under the date: an icon, the label, the week, the
    "not archived" badge; or one warn line when no week is on or before */
 .fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}
+/* nothing to say (a typed Saturday that is its own archived week) */
+.fc-anchor[hidden]{display:none}
 .fc-anchor-ok,.fc-anchor-none{display:inline-flex;align-items:center;
   flex-wrap:wrap;gap:.2rem .4rem}
 .fc-anchor-ok[hidden],.fc-anchor-none[hidden]{display:none}
@@ -47,6 +49,9 @@
 .fc-under .uk-badge-pair,.fc-under .uk-badge{white-space:normal}
 /* labelled values in the form's column: a compact key/value pair */
 .fc-kv{margin:.55rem 0 .3rem}
+/* the card's labels in one weight: the stat names (Reference date,
+   FluSight window, Engine) as the form's own labels */
+.fc-settings .uk-stat dt{font-weight:400}
 
 /* ---- 2. results column ---- */
 /* running: the label under the heading, the counts as tiles */
@@ -181,6 +186,14 @@
   font-size:var(--fs-label)}
 .fc-ms-locked .fc-kv dd{margin-bottom:.45rem;overflow-wrap:anywhere}
 .fc-ms-locked .fc-kv dt{min-width:0;overflow-wrap:anywhere}
+/* ... and why it is fixed, muted under the value */
+.fc-lk-why{display:block;color:var(--mut);font-size:var(--fs-hint);
+  font-weight:400}
+/* a field's one-line help, under it while its row has focus or is
+   changed (the field names it as its description either way) */
+.ms-hint{display:none;margin:.2rem 0 0;color:var(--mut);
+  font-size:var(--fs-hint);line-height:1.35}
+.ms-row:focus-within > .ms-hint,.ms-row.ms-changed > .ms-hint{display:block}
 
 /* ---- 5. the run page ---- */
 /* the title and its badges, the re-run at the right */
@@ -212,8 +225,14 @@
 .fc-medians td:first-child{white-space:nowrap}
 
 /* ---- 6. the form's aids ---- */
-/* the round row under the date: the reference date, the window badge */
+/* the round row under the date: the reference date, the window badge.
+   The badge wraps inside the card rather than running past it, and the
+   labels stay on one line */
 .fc-datestats{margin:.15rem 0 .35rem;font-size:var(--fs-label)}
+.fc-datestats .uk-stat{flex-wrap:wrap;min-width:0;max-width:100%}
+.fc-datestats .uk-stat dt{white-space:nowrap}
+.fc-datestats .uk-stat dd,.fc-datestats .uk-stat-v{min-width:0;max-width:100%}
+.fc-datestats .uk-badge{white-space:normal}
 #fc-datestats[hidden],.fc-anchor-kv[hidden]{display:none}
 .fc-anchor-kv{display:inline-flex;align-items:center;gap:.2rem .4rem}
 /* the location presets: small toggle chips over the list */
@@ -234,27 +253,24 @@
 /* "all 53" ticked: the state boxes show ticked and off */
 .checklist .ck-one:disabled{opacity:.75}
 /* the Run row: held at the foot of the window while the open settings
-   panel scrolls past (the card must not clip it) */
+   panel scrolls past in the side column (the card must not clip it) */
 .fc-settings{overflow:visible}
 .fc-runrow{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .7rem;
   margin-top:.7rem}
 .fc-runrow > button{margin:0}
-.fc-col-wide .fc-runrow{position:sticky;bottom:0;z-index:2;
+#model-settings[open] ~ .fc-runrow{position:sticky;bottom:0;z-index:2;
   margin:.6rem calc(-1 * var(--card-px)) 0;padding:.55rem var(--card-px);
   background:var(--card);border-top:1px solid var(--line);
   border-radius:0 0 10px 10px}
-/* the open panel across the page: its column spans the grid, the form's
-   other fields keep the side column's width, the groups in columns */
-.cols > .fc-col-wide,.cols > .fc-col-wide ~ #results{grid-column:1 / -1}
-.fc-col-wide #fcform > :not(#model-settings):not(.fc-runrow):not(script){max-width:var(--side-col)}
-.fc-col-wide .ms-grid{display:grid;gap:0 var(--gap);align-items:start;
-  grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr))}
-.fc-col-wide .ms-grid > .ms-group{margin-top:.6rem;min-width:0}
-/* a field off its default: a bar at its row's edge and a word by its label */
-.ms-row.ms-changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:.5rem}
-.ms-row.ms-changed > .lblrow > label::after{content:"changed";margin-left:.4rem;
-  padding:0 .4em;border:1px solid var(--warn);border-radius:var(--r-pill);
-  color:var(--warn);font-size:var(--fs-micro);font-weight:650}
+/* a field off its default: a bar at its row's edge (in the group's
+   padding, so the field keeps its place and width) and a word by its
+   label naming the default (--ms-mark, set on the row) */
+.ms-row.ms-changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:.5rem;
+  margin-left:-.5rem}
+.ms-row.ms-changed > .lblrow > label::after{content:var(--ms-mark,"changed");
+  display:inline-block;margin-left:.4rem;padding:0 .4em;border:1px solid var(--warn);
+  border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
+  font-weight:650;white-space:nowrap}
 /* the knobs coming later, folded under the groups */
 .ms-later-fold{margin-top:.7rem}
 .ms-later-fold > summary{font-size:var(--fs-label)}

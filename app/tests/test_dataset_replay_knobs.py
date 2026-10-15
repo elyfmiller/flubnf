@@ -253,9 +253,11 @@ def test_the_forecast_panel_names_the_members_as_they_run_on_the_data():
     panel = html.split('id="model-settings"')[1].split("Fixed by the model")[0]
     assert "Particle filter (plain SIHRS)" in panel
     assert "Groundhog (own data)" in panel
-    assert "Affects: plain SIHRS particle filter." in panel
     assert "Oracle" not in panel
-    assert "applied to counts only" in panel and 'data-only="count"' in panel
+    # the floor's one-line help says it applies to counts only
+    assert ('<p class="ms-hint" id="ks-output-floor_lam-hint">Poisson noise '
+            'floor so no cell is a point mass; applied to counts only.') in panel
+    assert 'data-only="count"' in panel
     # a rate dataset has no floor to set
     rate = stored(grouped_bytes(rate=True), "Rates", kind="rate")
     html = client.get(f"/forecast?source={rate.id}").text
