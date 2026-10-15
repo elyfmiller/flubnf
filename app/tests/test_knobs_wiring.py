@@ -264,6 +264,8 @@ def test_a_modified_run_exports_under_the_non_hub_names(console):
     assert "modified settings" in ui_shared._outcome_chips(row["outcome"])
     assert ui_shared._pf_member_label(out) == "Oracle SIHRS (modified)"
     assert ui_shared._latest_results() == (None, None)
+    # Output's report card asks for it by name and shows it badged
+    assert ui_shared._latest_results(include_modified=True)[0] == row["run_id"]
     files = ui_output._submission_files(w)
     assert all(f["modified"] and not f["submittable"] for f in files)
     assert ui_shared._run_label(row["run_id"], row["spec"]).endswith(
