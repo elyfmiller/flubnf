@@ -6,14 +6,30 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-15 (02:52 UTC): PULL REQUEST #42 (dev TO main) OPENED BY THIS LANE
+  AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
+  only, docs/TEAM.md (the merge-command rule) and these notes (#41
+  recorded, the rule under Decided). Head 400f580 on main 22cfe3b. The
+  integration's footer was edited out of the body at once. When the tests
+  are green, Ely merges with:
+
+      gh pr merge 42 --merge --repo elyfmiller/flubnf
+
 - 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
   Output tab fix (seven app files) and the Submission and Engine notes
   since #40; 9 files, +524/-17; head e48bf98 on main 710f718. The tests
   jobs were running on the head at opening (CI runs on the push to dev);
-  Ely merges when they are green, or says the word and this lane does,
-  as for #33. The integration's footer appeared on the body again and
-  was edited out at once (the 2026-10-12 lesson); the body is Ely's.
+  MERGED BY ELY AT 02:46 UTC from the website (merge commit 22cfe3b,
+  authored as Ely, committer GitHub, as #29 to #33); main carries the
+  Output fix, the Submission notes and the Engine lane's notes through
+  ad09f40 (their migration plan and Ely's seven decisions on the
+  public-PyBNF plan, pushed while the pull request was open). Every head
+  the tests ran on while it was open was green (all six jobs on a1f65f1,
+  e48bf98, 81b920d and 8d2b627); the run on the merge commit was in
+  progress at this entry. The integration's footer appeared on the body
+  again and was edited out at once (the 2026-10-12 lesson); the body is
+  Ely's. FluBNF on Ely's laptop picks main up on its next open.
 - 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
   app/output-modified-runs FOR ELY'S MERGE INTO dev (aa8bae4, de5d75c; from
   dev b2b379c; authored as Ely; Ely asked this lane to fix it after the
@@ -989,6 +1005,12 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-15 (Ely): whenever a dev to main pull request is ready to merge
+  (open, tests green), the lane gives Ely the terminal merge command with
+  the number filled in, in chat and in the notes, and the command itself
+  is in docs/TEAM.md's ground rules so every lane does the same (gh pr
+  merge <number> --merge --repo elyfmiller/flubnf, or the git sequence
+  there; merge commits, never squash or rebase).
 - 2026-10-12 (Ely): FluBNF's `dev` reaches `main` only through a pull
   request from `dev` to `main` that Ely opens (the lane sends the compare
   link, never pushes `main`), and every commit and pull request stays
