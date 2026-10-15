@@ -10,10 +10,10 @@ and CDC's rules. The season's facts are in
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
   only, docs/TEAM.md (the merge-command rule) and these notes (#41
   recorded, the rule under Decided). Head 400f580 on main 22cfe3b. The
-  integration's footer was edited out of the body at once. When the tests
-  are green, Ely merges with:
-
-      gh pr merge 42 --merge --repo elyfmiller/flubnf
+  integration's footer was edited out of the body at once. MERGED BY ELY
+  AT 02:52 UTC (merge commit 37a8250, authored as Ely, committer GitHub)
+  with the tests still queued on the head; docs only, so nothing a run
+  reads changed. The merge-command rule is on main from here on.
 
 - 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
