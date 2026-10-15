@@ -153,10 +153,18 @@ def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
     assert re.findall(r'class="num ok">([0-9.]+)<', row) == [
         fmt(y23), fmt(y24), fmt(y25)]
     assert f'id="mt-pool-gh">{fmt(three)}</span>' in methods
+    # each pooled tile names its own cells, as they differ by column
+    for tile, n in (("oracle", "15,300"), ("gh", cells), ("bare", "15,340")):
+        assert re.search(rf'id="mt-pool-{tile}">[0-9.]+</span> '
+                         rf'<span class="uk-stat-u">{n} cells</span>',
+                         methods), tile
     # the model page: its bars, facts and Record "i"
     from app.ui.routes.models import _record
     rec = _record("analogue")
     assert [b["text"] for b in rec["bars"]] == [fmt(three), fmt(pooled_form)]
+    # "pooled" names the form, not the three-season figure
+    assert [b["label"] for b in rec["bars"]] == [
+        "Groundhog", "Without own-state weighting"]
     assert [f[1] for f in rec["facts"]] == [fmt(y23), fmt(y24), fmt(y25),
                                             cells]
     assert "FluSight's cell rule" in rec["lines"][0]

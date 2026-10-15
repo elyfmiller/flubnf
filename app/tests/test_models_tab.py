@@ -74,9 +74,8 @@ def test_the_record_sentences_ride_the_record_toggletip():
         "/model/analogue": (
             ("Three-season relWIS vs the FluSight baseline on "
              "17,116 cells, FluSight's cell rule: 0.702, 0.651 and "
-             "0.653, pooled 0.660 (0.670 without the own-state "
-             "weighting, the pooled form submitted 2026-10-10 and "
-             "2026-10-17)."),),
+             "0.653; 0.660 over the three seasons (0.670 for the pooled "
+             "form submitted 2026-10-10 and 2026-10-17)."),),
         "/model/pf2s": (
             ("It scored worse on the full grid (relWIS 0.719 "
              "against 0.704 for the two-member blend it was "

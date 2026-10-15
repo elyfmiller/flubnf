@@ -58,8 +58,8 @@ HEADERS = {
                   "by the quantiles of their growth to each horizon, with no "
                   "epidemic mechanism. Donors are NHSN admissions (2021-22 "
                   "excluded: the archive holds only its growth phase) and a "
-                  "committed FluSurv-NET bank shrunk to the admissions "
-                  "scale, at equal weight."),
+                  "committed FluSurv-NET bank, pooled across sites, shrunk "
+                  "to the admissions scale, at equal weight."),
     },
     "pf2s": {
         "kind": "Mechanistic", "research": True,
@@ -110,18 +110,18 @@ def _record(name: str) -> dict:
         # the earlier rule: Methods keeps it, labelled so
         seasons = [("2023-24", 0.702), ("2024-25", 0.651),
                    ("2025-26", 0.653)]
-        pooled, unweighted, cells = 0.660, 0.670, "17,116"
+        three, pooled_form, cells = 0.660, 0.670, "17,116"
         return _bars({
-            "bars": [("Groundhog, pooled", pooled, True),
-                     ("Without own-state weighting", unweighted, False)],
+            "bars": [("Groundhog", three, True),
+                     ("Without own-state weighting", pooled_form, False)],
             "facts": [(s, fmt(v), _rule(v)) for s, v in seasons]
                      + [("Cells", cells)],
             "lines": [
                 (f"Three-season relWIS vs the FluSight baseline on {cells} "
                  f"cells, FluSight's cell rule: {fmt(seasons[0][1])}, "
-                 f"{fmt(seasons[1][1])} and {fmt(seasons[2][1])}, pooled "
-                 f"{fmt(pooled)} ({fmt(unweighted)} without the own-state "
-                 f"weighting, the pooled form submitted 2026-10-10 and "
+                 f"{fmt(seasons[1][1])} and {fmt(seasons[2][1])}; "
+                 f"{fmt(three)} over the three seasons ({fmt(pooled_form)} "
+                 f"for the pooled form submitted 2026-10-10 and "
                  f"2026-10-17).")]})
     two, blend = 0.719, 0.704
     # both scores beat the baseline (two checks), so the badge says how far
