@@ -12,9 +12,11 @@ SCORES. Each shipped model's own relWIS (the PF and the Groundhog; an older
 payload's stored "ensemble" is printed as stored). No stored scores.json is
 read (a test pins this): every season is rescored from each week's playback
 payload under THE cell rule (app.core.scoring.cell_scored, FluSight's) and
-the validated baseline. A tree
-replayed by the bare analogue (the seal) prints under the Groundhog's name
-with nothing here to say so: publish from a Groundhog replay.
+the validated baseline. The Groundhog column is named for the form its
+trees replayed (gh_label: the pooled form for every tree from before
+2026-10-15). A tree replayed by the bare analogue (the seal) prints under
+the Groundhog's pooled-form name with nothing here to say it is bare:
+publish from a Groundhog replay.
 
 HARVESTED, NOT RESTATED: Methods (methods.html through the console's own
 Jinja env, diagrams included); the home.html perf table's relWIS (the drift
@@ -87,6 +89,14 @@ class BuildError(RuntimeError):
 PF_LABEL_ORACLE = "Oracle SIHRS"
 PF_LABEL_FILTER = "Particle filter alone"
 
+#: the Groundhog column's names: the shipped form (each jurisdiction's own
+#: past weeks carry half of the donor weight, since 2026-10-15) only when
+#: every published tree replayed it; the pooled form every tree replayed
+#: before then; or both, across seasons
+GH_LABEL_SHIPPED = "Groundhog"
+GH_LABEL_POOLED = "Groundhog (pooled form)"
+GH_LABEL_MIXED = "Groundhog (two forms)"
+
 #: the particle filter alone on the production engine's replay (reseal of
 #: 2026-09-07, app/state/retro_reseal, 15,460 cells), per season: what
 #: cross_check holds a site built from trees that predate the Oracle step
@@ -139,6 +149,29 @@ def pf_label(seasons: dict) -> str:
                        for i in seasons.values()):
         return PF_LABEL_ORACLE
     return PF_LABEL_FILTER
+
+
+def tree_gh_form(root):
+    """The Groundhog form a season tree replayed, as its run record names it
+    (settings.groundhog_local_pools, retro.py): None for the pooled form,
+    which every record from before 2026-10-15 ran and carries no key for."""
+    from app.core import retro
+    s = retro.read_meta(Path(root)).get("settings") or {}
+    return s.get("groundhog_local_pools") or None
+
+
+def gh_label(seasons: dict) -> str:
+    """The season tables' name for the Groundhog: its plain name only when
+    every published season replayed the shipped form. A tree's form is the
+    shipped one or the pooled one: any other share is a knob, and a
+    modified-settings replay never publishes (discover_seasons)."""
+    from app.core.engines.analogue import shipped_local_pools
+    forms = [tree_gh_form(i["root"]) for i in seasons.values()]
+    if forms and all(f == shipped_local_pools() for f in forms):
+        return GH_LABEL_SHIPPED
+    if all(f is None for f in forms):
+        return GH_LABEL_POOLED
+    return GH_LABEL_MIXED
 
 
 def tree_knobs(root) -> dict:
@@ -1020,6 +1053,8 @@ def build_payload(seasons: dict | None = None,
             pf_label(seasons)),
         # the season tables' name for the mechanistic column (pf_label)
         "pf_label": pf_label(seasons),
+        # and for the Groundhog's, the form its trees replayed (gh_label)
+        "gh_label": gh_label(seasons),
         "elapsed_s": round(time.time() - t0, 2),
     }
 

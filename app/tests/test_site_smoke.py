@@ -180,6 +180,63 @@ def test_the_tree_decides_the_mechanistic_name(site):
     assert payload["outlook"]["labels"]["pf"].startswith(want)
 
 
+def test_the_tree_decides_the_groundhog_name(site):
+    """These trees' run records name no Groundhog form, as every record
+    from before 2026-10-15: the site prints their Groundhog as the pooled
+    form (the season table, the record card, the cumulative charts) and
+    says what the shipped one weights."""
+    _o, _res, html, payload = site
+    assert payload["gh_label"] == sb.GH_LABEL_POOLED
+    text = " ".join(_pages(html).values())
+    assert f'<th class="n">{sb.GH_LABEL_POOLED}</th>' in html
+    assert f"{sb.GH_LABEL_POOLED}, pooled relWIS" in text
+    assert ("The Groundhog column is the pooled form these replays ran; "
+            "since 2026-10-15 the shipped Groundhog gives each "
+            "jurisdiction's own past weeks half of the donor weight.") \
+        in text.replace("&#x27;", "'").replace("&#39;", "'")
+    members = json.loads(html.split('data-members="', 1)[1].split('"', 1)[0]
+                         .replace("&quot;", '"'))
+    assert ["analogue", sb.GH_LABEL_POOLED] == members[1][:2]
+
+
+def test_gh_label_names_the_form_every_published_tree_ran(tmp_path):
+    """Each run record names its form (settings.groundhog_local_pools; no
+    key is the pooled form); the plain name only when every season ran the
+    shipped one, and the season table's note follows the name."""
+    from app.core.engines.analogue import shipped_local_pools
+
+    def tree(name, form=None, key=True):
+        settings = {"season": name, "engine": "both"}
+        if key:
+            settings["groundhog_local_pools"] = form
+        retro.write_meta(tmp_path / name, {"season": name,
+                                           "settings": settings})
+        return {"root": tmp_path / name}
+
+    shipped = shipped_local_pools()
+    assert sb.gh_label({"a": tree("a", shipped),
+                        "b": tree("b", shipped)}) == sb.GH_LABEL_SHIPPED
+    assert sb.gh_label({"c": tree("c", key=False),
+                        "d": tree("d", None)}) == sb.GH_LABEL_POOLED
+    assert sb.gh_label({"e": tree("e", shipped),
+                        "f": tree("f", key=False)}) == sb.GH_LABEL_MIXED
+    for label, says in (
+            (sb.GH_LABEL_SHIPPED, None),
+            (sb.GH_LABEL_POOLED, "is the pooled form these replays ran"),
+            (sb.GH_LABEL_MIXED, "is the pooled form in some of these replays")):
+        out = site_page._season_table({"seasons": [], "pooled": {},
+                                       "pf_label": sb.PF_LABEL_ORACLE,
+                                       "gh_label": label})
+        assert f'<th class="n">{label}</th>' in out
+        if says:
+            assert says in out
+        else:
+            assert "pooled form" not in out
+    # a payload from before the key reads as the plain name, as it did
+    assert '<th class="n">Groundhog</th>' in site_page._season_table(
+        {"seasons": [], "pooled": {}, "pf_label": sb.PF_LABEL_ORACLE})
+
+
 def test_no_dashes_in_any_visible_text(site):
     _o, _res, html, _payload = site
     for page, text in _pages(html).items():
