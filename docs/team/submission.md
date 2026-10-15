@@ -996,6 +996,12 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-15 (Ely): whenever a dev to main pull request is ready to merge
+  (open, tests green), the lane gives Ely the terminal merge command with
+  the number filled in, in chat and in the notes, and the command itself
+  is in docs/TEAM.md's ground rules so every lane does the same (gh pr
+  merge <number> --merge --repo elyfmiller/flubnf, or the git sequence
+  there; merge commits, never squash or rebase).
 - 2026-10-12 (Ely): FluBNF's `dev` reaches `main` only through a pull
   request from `dev` to `main` that Ely opens (the lane sends the compare
   link, never pushes `main`), and every commit and pull request stays

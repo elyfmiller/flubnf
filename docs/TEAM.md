@@ -78,6 +78,20 @@ paste, or has a lane that can push commit it.
 - Work lands through `dev`; pull requests go from `dev` to `main` and are
   opened only when Ely asks. Never rewrite history on a branch another lane
   owns.
+- When a `dev` to `main` pull request is open and its tests are green, the
+  lane reporting it gives Ely the terminal command to merge it, number
+  filled in, in chat and in its notes (Ely, 2026-10-15; quicker than the
+  website). A merge commit, never a squash or a rebase:
+
+      gh pr merge <number> --merge --repo elyfmiller/flubnf
+
+  or, without the GitHub CLI, from a clone with push access:
+
+      git fetch origin && git checkout main && git pull --ff-only origin main \
+        && git merge --no-ff origin/dev -m "Merge pull request #<number> from elyfmiller/dev" \
+        && git push origin main
+
+  GitHub marks the pull request merged once `main` holds `dev`'s head.
 - Never open a pull request to cdcepi/FluSight-forecast-hub or email CDC
   unless Ely asks.
 - Say "Liu-West filter" for the filter and "forecasting sample" for its
