@@ -98,6 +98,9 @@ a.btn.md-more{padding:.3rem .8rem;font-size:var(--fs-label)}
 /* the harmonic's "illustrative values" caption: close under its figure,
    apart from the equation that follows */
 .eqpanel .md-figcap{margin:-.1rem 0 .8rem}
+/* its values badge wraps in a phone-width window rather than clip */
+.md-figcap > span{min-width:0;max-width:100%}
+.md-figcap .uk-badge{white-space:normal}
 /* an equation's note (diagrams.html _eq, kit): close under its line,
    apart from the next equation */
 .eqpanel .md-eqnote{max-width:44rem;margin:-.2rem auto .7rem}

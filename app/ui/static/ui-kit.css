@@ -252,7 +252,10 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-step--current .uk-step-label{font-weight:750}
 .uk-step--todo .uk-step-label{color:var(--mut)}
 .uk-step--todo .uk-step-label a{color:var(--gold)}
-.uk-step-meta{grid-column:1 / -1;color:var(--mut);font-size:var(--fs-label)}
+.uk-step-meta{display:block;grid-column:1 / -1;color:var(--mut);
+  font-size:var(--fs-label)}
+/* a step with no "?" needs no grid: its label takes the line's width */
+.uk-step-body:not(:has(> .tip)){display:block}
 /* vertical: stacked, the line runs down from each mark */
 .uk-stepper--vertical{flex-direction:column;flex-wrap:nowrap;gap:0}
 .uk-stepper--vertical .uk-step{flex:none;align-items:flex-start;
