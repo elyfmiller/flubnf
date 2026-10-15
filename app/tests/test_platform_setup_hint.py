@@ -145,9 +145,12 @@ def test_the_engine_venv_and_its_pin_are_credited_to_the_real_installers():
     site = " ".join(site_build.harvest_methods({}).split())
     assert "bngsim 0.15.1 (pinned by every engine installer)" in site
     assert "setup_engine.sh" not in site and "no administrator" not in site
+    # Home's note names the pin from versions.BNGSIM_PIN
+    from app.ui import versions
+    assert versions.BNGSIM_PIN == "0.15.1"
     home = (TEMPLATES / "home.html").read_text(encoding="utf-8")
-    assert "bngsim 0.15.1 (pinned by every engine installer)" in home
-    assert "0.15.1 (setup_engine.sh)" not in home
+    assert "bngsim {{ bngsim_pin }} (pinned by every engine installer)" in home
+    assert "(setup_engine.sh)" not in home
     # each installer really pins it
     repo = Path(__file__).resolve().parents[2]
     for name in ("setup_engine.sh", "FluBNF.bat"):
