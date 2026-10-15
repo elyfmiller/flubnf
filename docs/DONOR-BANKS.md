@@ -362,6 +362,52 @@ Where that name is recorded, and what each entry point runs by default:
   submission withheld), and a re-run re-runs whatever the ledger row
   recorded.
 
+### Own-state weighting: the shipped form since 2026-10-15
+
+Until 2026-10-15 every jurisdiction's Groundhog had the same shape: one
+pooled ratio distribution, scaled by each jurisdiction's own anchor. The
+shipped form now weights the admissions pool (`flubnf.analogue.LocalPooling`,
+`SHIPPED_OWN_SHARE = 0.5`): the target jurisdiction's own donor cells carry
+half of the weight and every other jurisdiction's cells share the other
+half, as a weighted empirical quantile function (donors sorted by ratio,
+each at (cumulative weight - weight / 2) / total, linear interpolation,
+clamped to the extremes). The donors are the same cells `_donor_cells`
+selects; only their weights change. The FluSurv-NET pool is unchanged and
+stays pooled: a jurisdiction's own FluSurv-NET site was worse in every
+arm that used it. The vincentization and the shrink are as in section 6.
+
+The engine reads `spec.extra["local_pools"]` (`own_share`, optional
+`region_share` and `own_site`, both research-only). The console's run
+record and the replay presets (`aux_preset`) carry the shipped form,
+`{"own_share": 0.5}`, the way they carry `aux_pools`, so a record says
+what ran and a re-run reproduces it; an absent key is the pooled form,
+which every record before 2026-10-15 ran, and `None` asks for it. The
+`groundhog.own_share` knob sets the share (0 is pooled; a knob off its
+default marks the run modified). The region and site maps are keyed by
+FIPS, like the admissions bank, work from a reduced locations table, and
+the engine refuses a bank whose keys share nothing with them. The ledger
+names the form ("own-state donors 0.50", or "pooled (no own-state
+weight)"); a record that asks for anything but the shipped configuration
+is a research run. A retrospective records the form it runs
+(`settings.groundhog_local_pools`) and refuses to resume a tree replayed
+under another one; `app/state/groundhog/<arm>/<season>/run_meta.json`
+records `own_share`, and a meta without the key is a pooled-era record.
+
+The evidence is the pre-registered screen of 2026-10-15 (lab archive,
+`research/groundhog-local-pools/`, prereg sha256 c66c50adc20bdf84, with
+amendment 1 and a run log that records an invalid first run and a defect
+the review found and fixed): on 17,116 cells of 2023-24 to 2025-26, own
+share 0 / 0.25 / 0.5 / 0.75 / 1.0 scores relWIS 0.6701 / 0.6646 / 0.6604 /
+0.6584 / 0.6604 with 95% coverage 0.940 / 0.941 / 0.936 / 0.925 / 0.903;
+leave-one-season-out over the registered arms picks 0.5 in every fold
+(gain 0.0097; a week-resampling bootstrap gives [0.006, 0.015], a
+jurisdiction-resampling one [0.003, 0.018]). The gain sits in the large
+jurisdictions (200 admissions and more: 0.666 to 0.654); 25 of 52 move
+slightly the other way, and on the log scale the gain is 0.003. Shares
+above 0.5 buy relWIS with coverage and with the small jurisdictions, which
+is why 0.5 ships. Replays: `flubnf groundhog retro all --aux flusurv`
+(shipped) and `--own-share 0` (pooled).
+
 ## 7. Reusing the banks for the Oracle SIHRS
 
 What transfers directly:
@@ -435,6 +481,9 @@ paths, the shared selection rule, and the byte-identity of `donor_ratios`
 on the committed banks), `app/tests/test_analogue_splice.py`
 (vincentization, shrink fit, abstention, the pool contract, presets),
 `app/tests/test_horizon_convention.py` (the 0 to 3 boundary),
+`tests/test_local_pools.py` (the own-state weighting: the weights, the
+FIPS keying and its guard, the own-site fallback, the shipped default and
+the pooled form, the ledger labels),
 `app/tests/test_bank.py`
 (committed banks, digests, offline construction), `app/tests/test_groundhog.py`
 and `app/tests/test_retro_groundhog_only.py` (the standalone replays),

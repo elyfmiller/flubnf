@@ -496,7 +496,8 @@ def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
     got.clear()
     root2 = tmp_path / "plain"
     retro.run_season(root2, SEASON, ["Ohio"], width=1)
-    shipped = {"aux_pools": an.shipped_aux_pools()}
+    shipped = {"aux_pools": an.shipped_aux_pools(),
+               "local_pools": an.shipped_local_pools()}
     assert got == [(W1, shipped), (W2, shipped)]
     rec = retro.read_meta(root2)["settings"]["week_extra"]
     assert rec == "aux_preset:" + an.shipped_aux_label()
