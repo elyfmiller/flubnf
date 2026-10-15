@@ -584,11 +584,12 @@ def test_runs_page_shows_elapsed_per_completed_run():
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed<" in html
     assert "1:02:05" in html
-    # a pre-timing row is dashed out, never a fabricated duration or n/a
-    assert '<td class="elapsed">--</td>' in html
+    # a pre-timing row is dashed out, never a fabricated duration or n/a;
+    # the dash says why in its title (no "?" on the header)
+    assert ('<td class="elapsed"><span title="recorded before timing existed">'
+            '--</span></td>') in html
     assert "n/a" not in html
-    assert ("a dash: recorded before timing existed"
-            in " ".join(html.split()))
+    assert 'id="tip-st-elapsed"' not in html
 
 
 def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):

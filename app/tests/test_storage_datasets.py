@@ -104,8 +104,9 @@ def test_the_total_counts_every_byte_once(state):
     html = client.get("/storage").text
     assert f'<span class="big">{inv["total_h"]}</span>' in html
     joined = " ".join(html.split())
-    assert "your datasets, each counted once" in joined
-    assert "listed but not counted" in joined
+    # a dataset's runs count once: the Your datasets section says so (the
+    # protected trees' "not in the total" tag: test_storage)
+    assert "listed under Run workroots and counted once in the total" in joined
 
 
 def test_the_page_lists_it_with_a_name_confirmed_delete(state):
