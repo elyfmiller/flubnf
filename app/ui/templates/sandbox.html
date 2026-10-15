@@ -24,30 +24,34 @@
 {%- endmacro %}
 {% if not editing %}
 {# ---------------------------------------------------------- the gallery #}
-{{ tips.heading("Sandbox", "sb-title", "Fit a model of your own with the particle filter; nothing here is ever submitted.",
-                level=1, tip_label="the sandbox", cls="sb-pagehead",
+{{ tips.heading("Sandbox", "sb-title", level=1, cls="sb-pagehead",
                 after=tips.badge("neutral", "never submitted", icon_name="lock")) }}
 <div class="cols">
  <div>
   <div class="card">{{ tips.heading("New model", "sb-new") }}
    <form method="post" action="/sandbox/new" class="sbnew">
-    {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
+    {# the input's pattern and title say what a name may hold #}
+    <div class="lblrow"><label for="sbnew-name">Name</label></div>
     {% set _first = (examples or templates or [""])[0] %}
     <input id="sbnew-name" name="name" placeholder="model name" value="{{ example_names.get(_first, '') }}" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
-    {{ tips.label("Start from", "sb-start", "A template is a model to adapt: its lines marked EDIT are the values to set for your pathogen. An example is a worked model, and a copy duplicates one of yours; each brings its data and priors along and fits as it is. The skeleton is the smallest runnable model. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
+    <div class="lblrow"><label for="sbnew-start">Start from</label></div>
     {% set pf_sets = datasets | selectattr("pf") | list %}
-    {% set _about = example_notes.get(_first, "") %}
-    {# the chosen start's note sits in the "i" beside the list;
-       sandbox.js rewrites it (and hides the "i") as the choice changes #}
+    {# every start says what it is in its own note, shown in the "i" beside
+       the list (sandbox.js rewrites it as the choice changes): an example
+       its model, a template also its EDIT lines, a copy and the Oracle
+       SIHRS filter what they bring #}
+    {% set edit_note = " Its lines marked EDIT are the values to set for your pathogen." %}
+    {% set shipped_note = "The production model, priors and data, built as the console builds it" %}
+    {% set _about = example_notes.get(_first, "") ~ (edit_note if _first in (templates or []) else "") %}
     <div class="sb-startrow">
      <select id="sbnew-start" name="start">
       {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
-      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
       <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
-      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
-       <option value="shipped:sihrs"{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
-       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+       <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
+       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week.">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
       </optgroup>
      </select>
      <span class="sb-about"{% if not _about %} hidden{% endif %}>{% call tips.icon_tip("sbnew-about-t", "the chosen start", "info") %}<span id="sbnew-about">{{ _about }}</span>{% endcall %}</span>
@@ -97,7 +101,7 @@
     <td>{% set r = last.get(m.name) %}{% if r %}<a class="sb-runlink" href="/sandbox?run={{ r.run_id }}&amp;model={{ m.name }}">{{ run_badge(r.status) }}</a>{% endif %}</td>
     <td>{{ m.modified_h }}</td>
    </tr>{% endfor %}</tbody></table>
-   {% else %}{{ tips.empty("No models yet", "folder", tiptext="Start one under New model, from the template or an example.", id="sb-nomodels") }}{% endif %}
+   {% else %}{{ tips.empty("No models yet", "folder", id="sb-nomodels") }}{% endif %}
   </div>
  </div>
 </div>
@@ -178,7 +182,7 @@
       <button type="button" id="sb-check">Check</button>
       <button formaction="/sandbox/models/{{ name }}/save" formnovalidate>Save</button>
       {{ run_button(name, fitting) }}
-      {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without fitting: what would stop a run, and the model at its written values beside the data. Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
+      {# what each button does is the How it works menu's #}
      </div>
     </div>
     {# sandbox.js turns the three files into tabs; without it they stack #}
@@ -233,7 +237,7 @@
         {{- tips.tip("sb-eta-t", "the time estimate", "For these particles and the rows in data.exp, scaled by how long this computer's last fit took." if eta_calibrated else "A span until a fit finishes on this computer; after that, the estimate follows this computer's own speed.") }}</span></span></span>
       <span>{{ tips.label("Jitter", "sb-jitter", "How far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 is the production setting, and 0.2 to 0.3 helps a fit that collapses.", for_="sb-jitter-in") }}
        <input id="sb-jitter-in" name="jitter" type="number" step="0.01" value="{{ form.jitter }}" min="0.01" max="0.99"></span>
-      <span>{{ tips.label("Forecast weeks", "sb-weeks", "Weeks projected past the last observation.", for_="sb-weeks-in") }}
+      <span><div class="lblrow"><label for="sb-weeks-in">Forecast weeks</label></div>
        <input id="sb-weeks-in" name="forecast_weeks" type="number" value="{{ form.forecast_weeks }}" min="0" max="12"></span>
       <span>{{ tips.label("Seed", "sb-seed", "The same seed and inputs reproduce the fit exactly; another seed shows how much a fit varies by chance.", for_="sb-seed-in") }}
        <input id="sb-seed-in" name="seed" type="number" value="{{ form.seed }}" min="0"></span>
@@ -390,7 +394,7 @@
   {% endif %}
   {% else %}
   <div class="card sbempty">{{ tips.heading("Results", "sb-results") }}
-   {{ tips.empty("No runs yet", "clock", tiptext="Check the model, then Save and run: the fit and its parameters show here.", id="sb-noruns") }}
+   {{ tips.empty("No runs yet", "clock", id="sb-noruns") }}
   </div>
   {% endif %}
   {% if runs | length > 1 %}

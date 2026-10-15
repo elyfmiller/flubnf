@@ -216,10 +216,9 @@ REGISTRY: tuple = (
                "at the to-date count; i0 shrinks by expected/to-date and the "
                "model's implied depletion grows with the season instead of "
                "sitting at the attack rate from the first week. "
-               "season_total_early: the same while the to-date count is "
-               f"below EARLY_FRACTION ({SP.EARLY_FRACTION:g}) of the expected "
-               "total, the shipped rule after (the brake near the peak). "
-               "Research; no card phrase.")),
+               "season_total_early: the same until "
+               f"{SP.EARLY_FRACTION:.0%} of the expected total is in, the "
+               "shipped rule after (the brake near the peak).")),
     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
          default_season_start, "app.core.runs:default_season_start",
          "First week the filter fits; August 1 of the forecast's season.",

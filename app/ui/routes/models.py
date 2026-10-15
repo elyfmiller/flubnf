@@ -122,10 +122,7 @@ def _record(name: str) -> dict:
         "bars": [("Two-strain SIHRS", two, True),
                  ("Two-member blend", blend, False)],
         "facts": [],
-        "behind": {"text": f"{fmt(two - blend)} behind the blend",
-                   "tip": (f"relWIS {fmt(two)} against {fmt(blend)} for the "
-                           "two-member blend it was tested in, on the full "
-                           "grid; lower is better.")},
+        "behind": {"text": f"{fmt(two - blend)} behind the blend"},
         "lines": [
             (f"It scored worse on the full grid (relWIS {fmt(two)} against "
              f"{fmt(blend)} for the two-member blend it was tested in), so "

@@ -107,9 +107,10 @@
 </script>{% endblock %}
 {# the same shell as every page: no main_class override #}
 {% block content %}
-{# The page reads as headings, figures, labelled facts and folds; every
-   explanation sits in the "?", the "i" or the fold beside what it explains
-   (docs/UI-KIT.md). The public site renders this block alone
+{# The page reads as headings, figures, labelled facts and folds; the
+   explanations other pages leave out land here, in the folds beside what
+   they explain, not behind a "?" (docs/UI-KIT.md). The public site renders
+   this block alone
    (site_build.harvest_methods: diagrams.html is its only import, and the
    site loads neither ui-kit.css nor tips.js), so the kit is imported here,
    the long explanations are <details> folds, which open without script,
@@ -150,7 +151,8 @@
  <a href="#oracle">Oracle step</a>
  <a href="#two-strain">Two-strain</a>
  <a href="#analogue">Groundhog</a>
- {% if active is defined %}<a href="#performance">Performance</a>{% endif %}
+ {% if active is defined %}<a href="#settings">Model settings</a>
+ <a href="#performance">Performance</a>{% endif %}
  <a href="#stack">Under the hood</a>
  <a href="#policies">Policies</a>
 </nav></div>
@@ -165,7 +167,7 @@
   {{ tips.stat("Forecasts", "weekly influenza hospital admissions", id="mt-target") }}
   {{ tips.stat("Locations", "all 52", "US jurisdictions", id="mt-locs") }}
   {{ tips.stat("Format", hub, id="mt-format") }}
-  {{ tips.stat("Models", "2", "submitted separately", "Nothing is blended between the two.", id="mt-nmodels") }}
+  {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
  {% endcall %}
  <div class="mt-models">
   <section class="mt-model" aria-labelledby="mt-m-pf">
@@ -192,13 +194,6 @@
 
 <div class="card" id="sihrs">
  <div class="uk-heading"><h2>The SIHRS compartment model</h2>
- {%- call tips.toggletip("mt-sihrs", "the SIHRS compartment model") %}
-  <span class="uk-tt-line">The <b>SIHRS compartment model</b>, written in
-  <a href="https://bionetgen.org" target="_blank" rel="noopener">BNGL</a>:
-  people move from <b>Susceptible</b> to <b>Infected</b>; most recover
-  directly, a small severe fraction is <b>Hospitalized</b> first, and
-  <b>Recovered</b> immunity wanes back to susceptible.</span>
- {%- endcall %}
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
 
  {{ dg.sihrs(uid='mm') }}
@@ -215,6 +210,11 @@
  {{ dg.eq_pf(kit=(active is defined)) }}
  <div class="mt-folds">
  {% call tips.fold("Why this structure", id="mt-why-sihrs", cls="mt-fold") %}
+ <p>Written in
+ <a href="https://bionetgen.org" target="_blank" rel="noopener">BNGL</a>:
+ people move from Susceptible to Infected; most recover directly, a small
+ severe fraction is Hospitalized first, and Recovered immunity wanes back
+ to susceptible.</p>
  <p>H is explicit because admissions are the target (the model fits the I
  to H flux with a fitted ascertainment), waning immunity allows repeat
  seasonal waves, and seasonal transmission lets each state's data place its
@@ -226,29 +226,29 @@
 </div>
 
 <div class="card" id="fitting">
- <div class="uk-heading"><h2>Fitting: a sequential particle filter</h2>
- {%- call tips.toggletip("mt-fit", "the filter's engine", title="The engine") %}
-  <span class="uk-tt-line">A particle filter (<code>fit_type=pf</code> in a fork of
-  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>).</span>
-  <span class="uk-tt-line">BNG2.pl expands the BNGL model into a reaction network
-  once per state when a run is prepared; the filter then integrates it in
-  process with
-  <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
-  so a state-season fit takes seconds.</span>
- {%- endcall %}</div>
+ <div class="uk-heading"><h2>Fitting: a sequential particle filter</h2></div>
+ {# the engine behind the filter is Under the hood's fold #}
  {% call tips.stats("mt-facts", label="The filter") %}
-  {{ tips.stat("Particles", "10,000", "per state", "Candidate epidemics per state, each a full trajectory with its own parameters.", id="mt-particles") }}
-  {{ tips.stat("Liu-West kernel", "0.15", "scale", "Jitters the survivors' parameters each week.", id="mt-kernel", tip_label="the Liu-West kernel") }}
-  {{ tips.stat("Each run starts", "August 1", "", "Every forecast is a fresh run from August 1 through that week's vintage, so it sees every revision to earlier weeks.", id="mt-start") }}
-  {{ tips.stat("State-season fit", "seconds", "", "The filter integrates the reaction network in process with bngsim.", id="mt-speed") }}
+  {{ tips.stat("Particles", "10,000", "per state", id="mt-particles") }}
+  {{ tips.stat("Liu-West kernel", "0.15", "scale", id="mt-kernel") }}
+  {{ tips.stat("Each run starts", "August 1", "", id="mt-start") }}
+  {{ tips.stat("State-season fit", "seconds", "", id="mt-speed") }}
  {% endcall %}
  {{ tips.heading("Each week", "mt-cycle", level=3, cls="mt-h3") }}
  {{ tips.stepper([
-      {"label": "Reweight", "tip": "The newest admissions reweight the candidates."},
-      {"label": "Jitter", "tip": "A Liu-West kernel jitters the survivors' parameters (scale 0.15)."},
-      {"label": "Resample", "tip": "Systematic resampling keeps them diverse."},
-      {"label": "Forecast", "tip": "Their spread is the forecast uncertainty."}],
+      {"label": "Reweight", "meta": "The newest admissions reweight the candidates."},
+      {"label": "Jitter", "meta": "A Liu-West kernel jitters the survivors' parameters (scale 0.15)."},
+      {"label": "Resample", "meta": "Systematic resampling keeps them diverse."},
+      {"label": "Forecast", "meta": "Their spread is the forecast uncertainty."}],
     label="Each week", id="mt-steps") }}
+ <div class="mt-folds">
+ {% call tips.fold("A fresh fit every week", id="mt-fresh", cls="mt-fold") %}
+ <p>Every forecast is a fresh run from August 1 through that week's
+ vintage, so it sees every revision to earlier weeks. Each of the 10,000
+ particles is a candidate epidemic, a full trajectory with its own
+ parameters.</p>
+ {% endcall %}
+ </div>
 </div>
 
 <div class="card" id="oracle">
@@ -256,10 +256,11 @@
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf">Model tab<span class="uk-sr">: Oracle SIHRS</span></a></span>{% endif %}</div>
  {{ dg.oracle_pipeline(uid='mp', vertical=(active is defined)) }}
  {% call tips.stats("mt-facts", label="The step") %}
-  {{ tips.stat("Sample paths", "30,000", "per state", "At three replicates; each gets its own donor.", id="mt-paths") }}
-  {{ tips.stat("Donors", "1", "per sample path", "One donor per sample, not per forecast, keeps both the filter's uncertainty and the donors' spread.", id="mt-donor") }}
-  {{ tips.stat("Donor window", "2", "epiweeks", "An earlier season's growth path within two epiweeks of the forecast week, any jurisdiction.", id="mt-window", tip_label="the Oracle step's donor window") }}
-  {{ tips.stat("Growth blend", "half and half", "", "The geometric mean of the filter's growth and the donor's.", id="mt-blend") }}
+  {# each fact's reading is the What it does fold's #}
+  {{ tips.stat("Sample paths", "30,000", "per state", id="mt-paths") }}
+  {{ tips.stat("Donors", "1", "per sample path", id="mt-donor") }}
+  {{ tips.stat("Donor window", "2", "epiweeks", id="mt-window") }}
+  {{ tips.stat("Growth blend", "half and half", "", id="mt-blend") }}
  {% endcall %}
  {{ dg.eq_oracle(kit=(active is defined)) }}
  <div class="mt-folds">
@@ -289,9 +290,7 @@
  {% endcall %}
  </div>
 
- {% call tips.heading("The record", "mt-record", level=3, cls="mt-h3") %}The step's
- rules were frozen by a pre-registration before it was scored, and the donor
- bank by a second (docs/ORACLE-SIHRS.md).{% endcall %}
+ {{ tips.heading("The record", "mt-record", level=3, cls="mt-h3") }}
  {% call tips.stats("uk-stats--row mt-seals", label="Frozen documents, sha256") %}
   {% set prereg %}<code>{{ oracle_text.PREREG_SHA256[:16] }}</code>{% endset %}
   {% set bank %}<code>{{ oracle_text.B2_SHA256[:16] }}</code>{% endset %}
@@ -299,8 +298,8 @@
   {{ tips.stat("Donor bank", bank, "sha256 prefix", id="mt-b2") }}
  {% endcall %}
  <div class="mt-bar">
-  <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums
-  {{- tips.tip("mt-rec-cells", "the record's cells", "On the stored forecasts' shared cells (below 1 beats it).") }}</span>
+  <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums, on
+  the stored forecasts' shared cells</span>
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
  <div style="overflow-x:auto"><table>
@@ -316,6 +315,8 @@
  </table></div>
  <div class="mt-folds">
  {% call tips.fold("Not an independent confirmation", id="mt-caveats", cls="mt-fold") %}
+ <p>The step's rules were frozen by a pre-registration before it was
+ scored, and the donor bank by a second (docs/ORACLE-SIHRS.md).</p>
  <p>This family of blends was examined on the same forecasts first.</p>
  <p>{{ oracle_text.BANK_TEXT.coverage }}</p>
  <p>{{ oracle_text.caveat() }}</p>
@@ -360,16 +361,15 @@
  <div class="uk-heading"><h2>The Groundhog</h2>
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/analogue">Model tab<span class="uk-sr">: Groundhog</span></a></span>{% endif %}</div>
  {{ dg.analogue_ratios(uid='ma') }}
+ {# each fact's reading is the How it forecasts fold's #}
  {% call tips.stats("mt-facts", label="The donors") %}
-  {{ tips.stat("Donor window", "2", "MMWR epiweeks", "Donor weeks from strictly earlier seasons, any state, within two MMWR epiweeks of the forecast date.", id="mt-gh-window", tip_label="the Groundhog's donor window") }}
-  {{ tips.stat("Minimum", "30", "donors", "Fewer than 30 donors means no forecast.", id="mt-gh-min") }}
-  {{ tips.stat("Donors per state", "about 5", "a season", "States are pooled because one state gives about five donors per season.", id="mt-gh-pool") }}
+  {{ tips.stat("Donor window", "2", "MMWR epiweeks", id="mt-gh-window") }}
+  {{ tips.stat("Minimum", "30", "donors", id="mt-gh-min") }}
+  {{ tips.stat("Donors per state", "about 5", "a season", id="mt-gh-pool") }}
   {{ tips.stat("US row", "about 2%", "of donors", id="mt-gh-us") }}
-  {{ tips.stat("Excluded season", "2021-22", "", "2021-22 is excluded from the donors: it peaked in April 2022 and the archive starts 2022-02-05, so it survives only as its growth phase and a calendar-matched pool would read March as still growing. The pre-registered exclusion improved all three replayed seasons and 50 of 52 jurisdictions.", id="mt-gh-2122") }}
+  {{ tips.stat("Excluded season", "2021-22", "", id="mt-gh-2122") }}
  {% endcall %}
- {{ tips.heading("Coverage, three replayed seasons", "mt-gh-cov",
-                 "Donors are neither exchangeable nor independent, so no coverage guarantee is claimed; over three replayed seasons the central 50, 80 and 90 percent bands covered 0.51, 0.80 and 0.95.",
-                 level=3, cls="mt-h3", tip_label="the Groundhog's coverage") }}
+ {{ tips.heading("Coverage, three replayed seasons", "mt-gh-cov", level=3, cls="mt-h3") }}
  {% call tips.stats("uk-stats--row mt-cov", label="Share of truths inside each central band") %}
   {{ tips.stat("50% band", "0.51", id="mt-cov50") }}
   {{ tips.stat("80% band", "0.80", id="mt-cov80") }}
@@ -384,6 +384,14 @@
  forecast. States are pooled because one state gives about five donors per
  season; the US row is about 2 percent of donors, epiweek 53 sits between
  52 and 1, and future values are read by date, never by week label.</p>
+ <p>2021-22 is excluded from the donors: it peaked in April 2022 and the
+ archive starts 2022-02-05, so it survives only as its growth phase and a
+ calendar-matched pool would read March as still growing. The
+ pre-registered exclusion improved all three replayed seasons and 50 of 52
+ jurisdictions.</p>
+ <p>Donors are neither exchangeable nor independent, so no coverage
+ guarantee is claimed; over three replayed seasons the central 50, 80 and
+ 90 percent bands covered 0.51, 0.80 and 0.95.</p>
  {% endcall %}
  {% call tips.fold("The auxiliary donor bank", id="mt-gh-bank", cls="mt-fold") %}
  <p>A second pool built the same way on
@@ -395,6 +403,32 @@
  {% endcall %}
  </div>
 </div>
+
+{# the Forecast tab's Model settings, one fold per panel group: what each
+   setting does, its range and default (routes/methods.settings_reference,
+   from knobs.REGISTRY). The console's only: the site has no Forecast tab #}
+{% if active is defined and settings_ref %}
+<div class="card" id="settings">
+ <div class="uk-heading"><h2>Model settings</h2></div>
+ <div class="mt-folds">
+ {% for g in settings_ref %}
+ {% call tips.fold(g.title, id="mt-set-" ~ g.id, cls="mt-fold", after=tips.tag(g.rows | length ~ (" setting" if g.rows | length == 1 else " settings"))) %}
+ <p class="hint">{{ g.cost }}</p>
+ <div class="mt-setscroll"><table class="mt-settings">
+  <thead><tr><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Range</th><th scope="col">Default</th></tr></thead>
+  <tbody>
+  {%- for r in g.rows %}
+   <tr id="set-{{ r.key | replace('.', '-') }}"><th scope="row">{{ r.label }}{% if r.later %} {{ tips.tag("coming later") }}{% elif r.optional %} {{ tips.tag("optional") }}{% endif %}</th>
+    <td>{{ r.help }}{% if r.note %}<span class="mt-setnote">{{ r.note }}</span>{% endif %}</td>
+    <td>{{ r.range }}</td><td>{{ r.default }}</td></tr>
+  {%- endfor %}
+  </tbody>
+ </table></div>
+ {% endcall %}
+ {% endfor %}
+ </div>
+</div>
+{% endif %}
 
 {# The site harvest drops this card (site_build._PERF_CARD): it must open
    exactly as below, with no class or id of its own, and be followed
@@ -420,75 +454,91 @@
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
     baseline), members included. The Oracle SIHRS row is oracle_text.RECORD
     (the shipped member); the particle filter alone, its component before
-    the step, stays in the row's "?" as an ablation #}
+    the step, is an ablation in the Cells fold under the table #}
  {% set rec = oracle_text.RECORD %}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
-  <tr><td>Oracle SIHRS{% call tips.tip("mt-perf-oracle", "the Oracle SIHRS row") %}The
-  stored forecasts with the Oracle step applied, on the record's cells
-  ({{ oracle_text.cells(rec["2023-24"].cells) }},
-  {{ oracle_text.cells(rec["2024-25"].cells) }} and
-  {{ oracle_text.cells(rec["2025-26"].cells) }}), not the Groundhog's. The
-  particle filter alone, the production engine's replay (reseal of
-  2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.{% endcall %}</td>
+  <tr><td>Oracle SIHRS</td>
    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
   <tr><td>Groundhog</td><td class="num ok">0.722{{ rel_verdict(0.722) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Pooled over three seasons") %}
-  {% call tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), id="mt-pool-oracle", tip_label="the pooled Oracle SIHRS score") %}The
-  record's {{ oracle_text.cells(rec.three.cells) }} cells ({{ oracle_text.fmt(rec.three.filter) }}
-  for the plain filter on them).{% endcall %}
-  {% call tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh", tip_label="the pooled Groundhog score") %}Groundhog and
-  bare analogue: the same 15,340 cells (pooled 0.666 against 0.771).{% endcall %}
+  {{ tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), id="mt-pool-oracle") }}
+  {{ tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh") }}
   {{ tips.stat("Bare analogue, pooled", "0.771", id="mt-pool-bare") }}
-  {% call tips.stat("Paired difference below zero", "4,000 of 4,000", "bootstrap replicates", id="mt-boot") %}The
-  paired difference is below zero in all 4,000 bootstrap replicates.{% endcall %}
+  {{ tips.stat("Paired difference below zero", "4,000 of 4,000", "bootstrap replicates", id="mt-boot") }}
  {% endcall %}
+ <div class="mt-folds">
+ {% call tips.fold("Cells behind these figures", id="mt-perf-cells", cls="mt-fold") %}
+ <p>The Oracle SIHRS row is the stored forecasts with the Oracle step
+ applied, on the record's cells
+ ({{ oracle_text.cells(rec["2023-24"].cells) }},
+ {{ oracle_text.cells(rec["2024-25"].cells) }} and
+ {{ oracle_text.cells(rec["2025-26"].cells) }};
+ {{ oracle_text.cells(rec.three.cells) }} pooled, where the plain filter
+ scores {{ oracle_text.fmt(rec.three.filter) }}), not the Groundhog's. The
+ particle filter alone, the production engine's replay (reseal of
+ 2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.</p>
+ <p>The Groundhog and the bare analogue share 15,340 cells; their paired
+ difference is below zero in all 4,000 bootstrap replicates.</p>
+ {% endcall %}
+ </div>
 </div>
 
 <div class="card" id="stack">
- <div class="uk-heading"><h2>Under the hood</h2>
- {%- call tips.toggletip("mt-engine", "the engine", title="The particle-filter engine") %}
-  {# platform-NEUTRAL: site_build publishes this page, so name all three.
-     On Windows FluBNF.bat builds the engine venv (setup.ps1 only reports) #}
-  <span class="uk-tt-line">The particle filter runs in a separate engine venv
-  (<code>SetupEngine.command</code> on macOS, <code>setup_engine.sh</code> on
-  Linux, <code>FluBNF.bat</code> on Windows); "not installed" below means it
-  is absent.</span>
- {%- endcall %}</div>
+ <div class="uk-heading"><h2>Under the hood</h2></div>
  <div style="overflow-x:auto"><table class="mt-stack">
   <tr><th>Component</th><th>Role</th><th>Version</th></tr>
   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
-      <td>Fitting suite{% call tips.tip("mt-r-pybnf", "PyBNF") %}Fitting suite for BioNetGen
-      models; FluBNF runs a fork with the particle filter
-      (<code>fit_type=pf</code>).{% endcall %}</td>
+      <td>Fitting suite</td>
       <td>{{ version("pybnf", versions.pybnf) }}</td></tr>
   <tr><td><a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a></td>
-      <td>Simulator{{ tips.tip("mt-r-bngsim", "bngsim", "In-process BioNetGen simulator the filter integrates on.") }}</td>
+      <td>Simulator</td>
       {# the self-reported bngsim string can mislead (the seal-era build said
          0.13.0 while 50 commits past it; setup_engine.sh), so the pin is
-         stated. setup_engine.sh and FluBNF.bat both install it #}
-      <td>{{ version("bngsim", versions.bngsim) }}{% call tips.tip("mt-r-pin", "the sealed record's bngsim") %}Reproducing
-      the sealed record needs bngsim 0.15.1 (pinned by every engine
-      installer), whatever version a build reports.{% endcall %}</td></tr>
+         stated in the engine fold below. setup_engine.sh and FluBNF.bat
+         both install it #}
+      <td>{{ version("bngsim", versions.bngsim) }}</td></tr>
   <tr><td><a href="https://bionetgen.org" target="_blank" rel="noopener">BioNetGen</a></td>
-      <td>Network generator{{ tips.tip("mt-r-bng", "BioNetGen", "BNGL and BNG2.pl, which generates each state's reaction network.") }}</td>
+      <td>Network generator</td>
       <td>{{ version("bionetgen", versions.bionetgen) }}</td></tr>
   <tr><td>Perl</td>
-      <td>Runs BNG2.pl{{ tips.tip("mt-r-perl", "Perl", "Runs BNG2.pl; on Windows, FluBNF.bat installs its own Perl, with no administrator.") }}</td>
+      <td>Runs BNG2.pl</td>
       <td>{{ version("perl", versions.perl) }}</td></tr>
   <tr><td><a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener">FastAPI</a> +
       Jinja2</td>
-      <td>This console{{ tips.tip("mt-r-web", "FastAPI and Jinja2", "This console: server-rendered pages, no build chain.") }}</td>
+      <td>This console</td>
       <td>{{ version("fastapi", versions.fastapi) }} / {{ version("jinja2", versions.jinja2) }}</td></tr>
   <tr><td><a href="https://plotly.com/javascript/" target="_blank" rel="noopener">Plotly</a></td>
-      <td>Interactive charts{{ tips.tip("mt-r-plotly", "Plotly", "Interactive charts, self-hosted (the console loads nothing external).") }}</td>
+      <td>Interactive charts</td>
       <td>{{ version("plotly", versions.plotly) }}</td></tr>
   <tr><td>pandas / numpy</td>
       <td>Data handling and scoring</td>
       <td>{{ version("pandas", versions.pandas) }} / {{ version("numpy", versions.numpy) }}</td></tr>
  </table></div>
+ <div class="mt-folds">
+ {% call tips.fold("The particle-filter engine", id="mt-engine", cls="mt-fold") %}
+ <p>A particle filter (<code>fit_type=pf</code> in a fork of
+ <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>).
+ BNG2.pl expands the BNGL model into a reaction network once per state when
+ a run is prepared; the filter then integrates it in process with
+ <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
+ so a state-season fit takes seconds.</p>
+ <p>Reproducing the sealed record needs bngsim 0.15.1 (pinned by every
+ engine installer), whatever version a build reports.</p>
+ {# platform-NEUTRAL: site_build publishes this page, so name all three.
+    On Windows FluBNF.bat builds the engine venv (setup.ps1 only reports).
+    The install lines are the console's: the site shows no Version column
+    and gives no install advice #}
+ {% if active is defined %}
+ <p>It runs in a separate engine venv (<code>SetupEngine.command</code> on
+ macOS, <code>setup_engine.sh</code> on Linux, <code>FluBNF.bat</code> on
+ Windows); "not installed" in the table means it is absent. On Windows,
+ FluBNF.bat installs its own Perl for BNG2.pl, with no administrator.</p>
+ {% endif %}
+ {% endcall %}
+ </div>
 </div>
 
 <div class="card" id="policies">
@@ -503,29 +553,33 @@
  {# the scored-cell rule lives here: this card survives the site harvest.
     One sentence, scoring.CELL_RULE_NOTE, shared with the scores cards;
     the relWIS note names WHICH ratio: both conventions put the baseline
-    at 1.0, so "a ratio against the baseline" identifies nothing #}
+    at 1.0, so "a ratio against the baseline" identifies nothing. The
+    labelled values first, every sentence in the Scoring details fold #}
  {{ tips.heading("Scoring", "mt-scoring", level=3, cls="mt-h3") }}
  {% call tips.stats("uk-stats--kv mt-defs", label="Scoring") %}
-  {% call tips.stat("Scored cell", "one location, week and horizon", id="mt-cell") %}{{ cell_rule_note() }}{% endcall %}
-  {% call tips.stat("relWIS", "ratio of sums", id="mt-relwis", tip_label="relWIS") %}{{ relwis_convention_note }}{% endcall %}
-  {% call tips.stat("relWIS, log scale", "the same ratio on the WIS of log(x+1) counts", id="mt-logwis", tip_label="relWIS on the log scale") %}Retrospectives
-  also report relWIS on the log scale. The CDC FluSight dashboard reports the
-  log scale too.{% endcall %}
-  {% call tips.stat("Coverage", "central 50%, 80% and 95% intervals", id="mt-coverage") %}Retrospectives
-  also report coverage: the share of scored cells whose truth fell inside the
-  central 50%, 80% and 95% intervals, bounds included. The CDC FluSight
-  dashboard reports 50% and 95% coverage too.{% endcall %}
-  {% call tips.stat("Earlier rule", "before 2026-09-25", id="mt-earlier") %}Records
-  measured before 2026-09-25 used an earlier rule (truth and median above 0)
-  and differ from today's at about the third decimal.{% endcall %}
+  {{ tips.stat("Scored cell", "one location, week and horizon", id="mt-cell") }}
+  {{ tips.stat("relWIS", "ratio of sums", id="mt-relwis") }}
+  {{ tips.stat("relWIS, log scale", "the same ratio on the WIS of log(x+1) counts", id="mt-logwis") }}
+  {{ tips.stat("Coverage", "central 50%, 80% and 95% intervals", id="mt-coverage") }}
+  {{ tips.stat("Earlier rule", "before 2026-09-25", id="mt-earlier") }}
   {# here, not in Measured performance: the site harvest drops that card, and
      a withdrawn claim must stay withdrawn in both places #}
-  {% call tips.stat("Placement among teams", status("neutral", "withdrawn"), id="mt-placement") %}Placement
-  among FluSight teams was withdrawn on 2026-08-24 and is not restated: the
-  field's scores come from a builder outside this repository that cannot be
-  rerun from it (docs/archive/RELEASE-1.0.md).{% endcall %}
+  {{ tips.stat("Placement among teams", status("neutral", "withdrawn"), id="mt-placement") }}
  {% endcall %}
  <div class="mt-folds">
+ {% call tips.fold("Scoring details", id="mt-scoring-more", cls="mt-fold") %}
+ <p>{{ cell_rule_note() }}</p>
+ <p>{{ relwis_convention_note }}</p>
+ <p>Retrospectives also report relWIS on the log scale, and coverage: the
+ share of scored cells whose truth fell inside the central 50%, 80% and 95%
+ intervals, bounds included. The CDC FluSight dashboard reports the log
+ scale, and 50% and 95% coverage, too.</p>
+ <p>Records measured before 2026-09-25 used an earlier rule (truth and
+ median above 0) and differ from today's at about the third decimal.</p>
+ <p>Placement among FluSight teams was withdrawn on 2026-08-24 and is not
+ restated: the field's scores come from a builder outside this repository
+ that cannot be rerun from it (docs/archive/RELEASE-1.0.md).</p>
+ {% endcall %}
  {% call tips.fold("A newest week that reads 0, collapses, or was not reported", id="mt-newest", cls="mt-fold") %}
  <p>A newest week that reads 0, collapses, or was not reported
  is the forecaster's decision, per state, made in Data issues on the

@@ -93,16 +93,17 @@
      header stays one row at every desktop width. A plain <details>: it
      opens and closes without JS; the script below adds Escape,
      click-outside and focus-leaving closing. Each section is a heading
-     with its "?" (h3: the menu's own sections, kept out of the page's
-     h1/h2 outline); every control is a native one (styles: nau.css, "the
-     Display menu") #}
+     (h3: the menu's own sections, kept out of the page's h1/h2 outline);
+     the two switches carry their descriptions as visually hidden text,
+     Zoom its shortcuts in a "?"; every control is a native one (styles:
+     nau.css, "the Display menu") #}
   <details class="display" id="displaymenu">
    <summary aria-label="Display settings"><svg class="uk-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M2 4.5h6.2M12.8 4.5H14M2 11.5h1.2M7.8 11.5H14"/><circle cx="10.5" cy="4.5" r="2"/><circle cx="5.5" cy="11.5" r="2"/></svg><span class="dm-word">Display</span></summary>
    <div class="displaypop" role="group" aria-label="Display settings">
     {# text size: 80% to 160% of the standard size in 5% steps; the step
        buttons are the scale's ends (a small and a large A) #}
     <section class="dm-sec">
-     {{ kit.heading("Text size", "dm-size", level=3, tiptext="All text in the console, from 80% to 160% of the standard size in steps of 5%. Charts, maps and diagrams follow. Kept on this computer.",
+     {{ kit.heading("Text size", "dm-size", level=3,
          aside='<button type="button" class="dm-reset" id="dm-fs-reset" aria-label="Reset text size to 100%">Reset</button>' | safe) }}
      <div class="fontsize">
       <button type="button" class="dm-step dm-step-sm" data-fs-step="-1" aria-label="Smaller text">A</button>
@@ -117,26 +118,26 @@
        Above the themes: two rows that stay in view in a short window at a
        large text size, where the theme grid scrolls #}
     <section class="dm-sec">
-     {{ kit.heading("Accessibility", "dm-a11y", level=3, tiptext="Two modes that work with every theme and with each other.") }}
+     {{ kit.heading("Accessibility", "dm-a11y", level=3) }}
      <div class="a11ypick" role="group" aria-label="Accessibility modes">
       <div class="dm-switch-row">
        <button type="button" class="dm-switch" role="switch" aria-checked="false"
         data-ax="contrast" aria-describedby="tip-dm-contrast"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
         ><span class="dm-sw-label">High contrast</span><span class="dm-sw-state" aria-hidden="true"></span></button>
-       {{ kit.tip("dm-contrast", "high contrast", "Stronger text, boundaries, and fills on the current theme, and thicker focus rings. It turns on by itself when the system asks for more contrast, until you choose here.") }}
+       <span class="uk-sr" id="tip-dm-contrast">Stronger text, boundaries, and fills on the current theme, and thicker focus rings. It turns on by itself when the system asks for more contrast, until you choose here.</span>
       </div>
       <div class="dm-switch-row">
        <button type="button" class="dm-switch" role="switch" aria-checked="false"
         data-ax="vision" aria-describedby="tip-dm-vision"><span class="dm-sw-track" aria-hidden="true"><span class="dm-sw-knob">{{ kit.icon("check") }}</span></span
         ><span class="dm-sw-label">Color-blind safe colors</span><span class="dm-sw-state" aria-hidden="true"></span></button>
-       {{ kit.tip("dm-vision", "color-blind safe colors", "For red-green color blindness: status colors, chart lines and the outlook map move to a palette based on Okabe and Ito's, whose colors stay apart without red and green. Good turns blue, warnings gold or yellow, problems a deep red that stays apart from both; the map runs from blue to red through orange. Icons and words still name every status.") }}
+       <span class="uk-sr" id="tip-dm-vision">For red-green color blindness: status colors, chart lines and the outlook map move to a palette based on Okabe and Ito's, whose colors stay apart without red and green. Good turns blue, warnings gold or yellow, problems a deep red that stays apart from both; the map runs from blue to red through orange. Icons and words still name every status.</span>
       </div>
      </div>
     </section>
     {# theme: one radio per theme, drawn as a preview that wears the theme
        (data-theme on the preview: its own tokens and mark) #}
     <section class="dm-sec">
-     {{ kit.heading("Theme", "dm-theme", level=3, tiptext="Colors for every page, chart and map. Match system follows the computer's light or dark setting. Paper is a warm off-white, Dim a softened dark. GitHub Light, Solarized Light, Nord and Dracula take their colors from the code-editor themes of those names. Every theme holds the same contrast bars.") }}
+     {{ kit.heading("Theme", "dm-theme", level=3) }}
      <div class="themepick" role="radiogroup" aria-labelledby="h-dm-theme">
       {# no stored theme: the page follows the system's light or dark
          setting, and changes with it (the script below) #}

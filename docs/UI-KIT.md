@@ -180,11 +180,12 @@ A kind or a unit in a word ("Mechanistic", "relWIS", "population"): an outlined,
 
 ### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`
 
-The short name of the formula or figure beside it, with its reading in the "?" the chip holds: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as "illustrative values").
+The short name of the formula or figure beside it: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as the caption badge that carries a figure's illustrative values). The equation's note sits in plain sight on the line under it, a `<p class="eqnote md-eqnote">`, not behind a "?" (`diagrams.html`'s `_eq`). A chip with no `tiptext` has no "?"; give it one only for a reading that has no line of its own.
 
 ```jinja
 <p class="uk-figline"><span class="math">...</span>
- {{ tips.namechip("Seasonal forcing", "hm-eq-forcing", "The curve the filter bends each week.") }}</p>
+ {{ tips.namechip("Seasonal forcing", "dg-eq-forcing") }}</p>
+<p class="eqnote md-eqnote">The curve the filter bends each week.</p>
 ```
 
 ### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`

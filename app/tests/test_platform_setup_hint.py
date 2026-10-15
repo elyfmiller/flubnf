@@ -133,14 +133,24 @@ def test_methods_page_stays_platform_neutral_for_the_public_site():
 def test_the_engine_venv_and_its_pin_are_credited_to_the_real_installers():
     """FluBNF.bat builds the engine venv on Windows (setup.ps1 only prints
     what is missing), and the bngsim pin is in every engine installer."""
-    methods = client.get("/methods").text
-    assert ("<code>setup_engine.sh</code> on\n  Linux, <code>FluBNF.bat</code> "
+    # Methods' engine fold names them; the public site keeps the pin but
+    # not the console's install lines
+    methods = " ".join(client.get("/methods").text.split())
+    assert ("<code>setup_engine.sh</code> on Linux, <code>FluBNF.bat</code> "
             "on Windows") in methods
     assert "<code>setup.ps1</code> on Windows" not in methods
-    assert "bngsim 0.15.1 (pinned by every engine\n      installer)" in methods
+    assert "bngsim 0.15.1 (pinned by every engine installer)" in methods
+    assert "FluBNF.bat installs its own Perl for BNG2.pl, with no administrator" in methods
+    from app.core import site_build
+    site = " ".join(site_build.harvest_methods({}).split())
+    assert "bngsim 0.15.1 (pinned by every engine installer)" in site
+    assert "setup_engine.sh" not in site and "no administrator" not in site
+    # Home's note names the pin from versions.BNGSIM_PIN
+    from app.ui import versions
+    assert versions.BNGSIM_PIN == "0.15.1"
     home = (TEMPLATES / "home.html").read_text(encoding="utf-8")
-    assert "bngsim 0.15.1 (pinned by every engine installer)" in home
-    assert "0.15.1 (setup_engine.sh)" not in home
+    assert "bngsim {{ bngsim_pin }} (pinned by every engine installer)" in home
+    assert "(setup_engine.sh)" not in home
     # each installer really pins it
     repo = Path(__file__).resolve().parents[2]
     for name in ("setup_engine.sh", "FluBNF.bat"):

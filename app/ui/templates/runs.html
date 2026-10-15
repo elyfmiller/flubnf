@@ -33,13 +33,11 @@
              "stopped": "warn", "partial": "warn"} %}
 
 <div class="card st-card">
-{% set ledger_tip = "One row per console run, newest first; each links to its run page. Clearing rows never deletes data on disk." %}
 {% if ledger %}
 {# ledger fold: the heading, count and newest entry in the summary; it
    leads the page and ships open, a reader's closed state persists #}
 <details class="ledgerfold" id="ledgerfold" open>
  <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
-  {{- tips.tip("st-ledger", "the run ledger", ledger_tip) }}
   <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
   recorded</strong>
   <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
@@ -56,23 +54,37 @@
 {% if (ledger_total | default(0)) > (ledger | length) %}
 {{ tips.alert("info", "Showing the newest " ~ (ledger | length) ~ " of " ~ ledger_total ~ " runs.", id="st-cap", live="", tiptext="The table holds the newest runs only; older rows stay in the ledger, and each run's page opens from its workroot under On disk.") }}
 {% endif %}
-{# rows from before elapsed was recorded show a dash (hms renders None);
-   under 40rem each row is a card (storage.css), its cells labelled #}
-<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed{{ tips.tip("st-elapsed", "elapsed", "Elapsed is wall time (a dash: recorded before timing existed).") }}</th><th class="num">on disk{{ tips.tip("st-ondisk", "on disk", "A dash under on disk: the workroot was deleted and the ledger row remains.") }}</th><th>summary</th></tr>
+{# a row with no elapsed shows a dash (hms renders None): a run still
+   going or cut short has none yet, and rows from before elapsed was
+   recorded never will. The dash says which in its title, so no header
+   carries a "?". Under 40rem each row is a card (storage.css), its cells
+   labelled #}
+{% set NO_ELAPSED = {"running": "still running",
+                     "interrupted": "the app closed mid-run"} %}
+<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr>
 {% for r in ledger %}{% set ri = loop.index %}
+{# the modified-settings fact, read from the outcome: whether the files
+   took the hub names by override, said once in the run label's badge #}
+{% set kf = (r.facts or []) | selectattr("text", "equalto", "modified settings") | first %}
+{% set hub_names = kf and "hub names by override" in kf.chip %}
  <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
  {# research badge (the spec asked for the third member) #}
  {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
  {# model settings off the default ones (a knobs record in the spec) #}
- {%- if r.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}</td>
+ {%- if r.modified or kf %} {{ tips.badge("warn", "modified · hub names" if hub_names else "modified settings") }}{% endif %}</td>
  <td class="st-stat">{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
- <td class="elapsed">{{ r.elapsed_s | hms }}</td>
+ {% set elapsed = r.elapsed_s | hms %}
+ <td class="elapsed">{% if elapsed == "--" %}<span title="{{ NO_ELAPSED.get(r.status, "recorded before timing existed") }}">--</span>{% else %}{{ elapsed }}{% endif %}</td>
  {# a dash = the workroot was deleted; the ledger row stands #}
- <td class="num" data-l="on disk">{{ r.disk_h or "--" }}</td>
- {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items) #}
- <td class="st-sumcell"><span class="st-facts">{% for f in (r.facts or []) %}
-  <span class="st-fi">{% if f.state %}{{ tips.badge(f.state, f.text, f.tip, id="st-f-" ~ ri ~ "-" ~ loop.index) }}
-  {%- else %}<span class="st-fact">{{ f.text }}</span>{% if f.tip %}{{ tips.tip("st-f-" ~ ri ~ "-" ~ loop.index, f.text, f.tip) }}{% endif %}{% endif %}</span>
+ <td class="num" data-l="on disk">{% if r.disk_h %}{{ r.disk_h }}{% else %}<span title="workroot deleted">--</span>{% endif %}</td>
+ {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items);
+    no "?" (the run page holds the detail): a plain fact with a reason
+    shows its chip, which says it ("PF skipped (no engine)"), and the
+    modified-settings fact is the run label's badge #}
+ <td class="st-sumcell"><span class="st-facts">{% for f in (r.facts or []) if f is not sameas kf %}
+  <span class="st-fi">{% if f.state %}{{ tips.badge(f.state, f.text) }}
+  {%- elif f.tip %}<span class="st-fact">{{ f.chip | safe }}</span>
+  {%- else %}<span class="st-fact">{{ f.text }}</span>{% endif %}</span>
  {%- endfor %}</span></td></tr>
 {% endfor %}
 </table></div>
@@ -115,7 +127,7 @@
  <input type="hidden" name="confirm" value="">
  <button type="button" class="quiet st-btn" id="clear-ledger-btn"
    data-count="{{ clear_count }}">Clear {{ clear_count }} completed
-   row{{ "" if clear_count == 1 else "s" }}</button>
+   row{{ "" if clear_count == 1 else "s" }} (files kept)</button>
 </form>
 <script>
  (function(){
@@ -153,7 +165,7 @@
  })();
 </script>
 {% else %}
-{{ tips.heading("Run ledger", "st-ledger", ledger_tip) }}
+{{ tips.heading("Run ledger", "st-ledger") }}
 {{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
 {% endif %}
 </div>
@@ -169,7 +181,6 @@
  <summary class="st-sum"><h2 class="stfold-h" id="h-st-disk">On disk</h2>
   <span class="stotal st-total">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
   <span class="st-unit">in use</span>{% else %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
-  {{- tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}
   {%- if storage.cats %}
   {# the total by category; the legend in the body names each one #}
   <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
@@ -355,7 +366,8 @@
 
  {% if storage.protected %}
  <section class="st-sec" id="st-protected" aria-labelledby="h-st-protected">
- {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length), cls="st-h", tip_label="protected trees") }}
+ {# listed, never counted in the total: the tag says so where it applies #}
+ {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
  {% for p in storage.protected %}
  {# never deletable here; the server refuses crafted requests too #}
  <div class="st-row">

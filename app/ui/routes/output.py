@@ -279,7 +279,9 @@ def _date_status(ref: str, today=None, now=None) -> dict:
     hub-config/tasks.json, vendored), "text": the one-line sentence,
     "badge": (kit state, words)}; {} when the rules cannot be read. A due or
     coming round also carries "deadline" (the close as ISO UTC, for the
-    page to name in the reader's own time); a due one "left" (time left,
+    page to name in the reader's own time) and "deadline_et" (the same
+    close in Eastern words, shown until the page script runs); a due one
+    "left" (time left,
     _time_left; "" when `today` stands in for the clock) and "urgent"
     (under URGENT_HOURS left: the badge turns error)."""
     import datetime as _dt
@@ -297,10 +299,11 @@ def _date_status(ref: str, today=None, now=None) -> dict:
         return {}
     kind, words = _WINDOW_BADGE[state]
     out = {"state": state, "text": text, "left": "", "urgent": False,
-           "deadline": ""}
+           "deadline": "", "deadline_et": ""}
     if window and state in ("due", "soon"):
         close = _deadline_utc(window[1])
         out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
+        out["deadline_et"] = f"{window[1]:%a %Y-%m-%d}, 11 PM ET"
         if state == "due" and today is None:
             clock = now or _dt.datetime.now(_dt.timezone.utc)
             out["left"] = _time_left(close, clock)
