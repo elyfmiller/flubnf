@@ -162,6 +162,16 @@ def test_home_says_the_bngsim_pin_only_when_the_build_differs():
     assert "bngsim 0.15.1 (pinned by every engine installer)" in other
 
 
+def test_home_says_nothing_of_the_pin_while_the_version_resolves():
+    """A first launch paints the pending marker before the version poll
+    fills in the pin; no "?" shows for a version not yet known."""
+    from app.ui.versions import VERSION_PENDING
+    html = _home(versions={"pybnf": "x", "bngsim": VERSION_PENDING,
+                           "bionetgen": "x", "perl": "x", "fastapi": "x",
+                           "plotly": "x"})
+    assert 'id="tip-home-pin"' not in html
+
+
 def test_home_coverage_has_no_mark():
     """The stat and the map's "no data" chip say what the tip did."""
     html = _home()

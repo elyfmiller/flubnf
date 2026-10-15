@@ -96,6 +96,9 @@ templates.env.globals["restart_needed"] = versions._restart_needed
 # the engine checkout's branch and commit, and the non-production warning
 # (templates/_engine_build.html)
 templates.env.globals["engine_build_view"] = versions.engine_build_view
+# Home's bngsim note: the pin, and the marker of a version not yet known
+templates.env.globals["bngsim_pin"] = versions.BNGSIM_PIN
+templates.env.globals["version_pending"] = versions.VERSION_PENDING
 # one settings/results renderer for progress cards, run page and both report
 # exports (app/core/runs.py), so their wording cannot diverge
 templates.env.globals["settings_html"] = settings_html

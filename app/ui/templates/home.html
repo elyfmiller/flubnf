@@ -376,8 +376,9 @@
  {% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}
  {# one labelled value per component. Self-reported bngsim strings can
     mislead; the pin of record is stated (same note on Methods) in a tip
-    shown only when the reported version is not the pin. PyBNF is named
-    by its build (branch and commit) once known; its
+    shown only when the reported version is known and is not the pin (a
+    first launch paints "resolving…" until the poll fills it in). PyBNF
+    is named by its build (branch and commit) once known; its
     self-reported version until then. data-vkey spans are base.html's
     version poll targets #}
  {% set ebv = engine_build_view() %}
@@ -385,8 +386,8 @@
   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
-  {% set pin_note %}{% if versions.bngsim != "0.15.1" %}Reproducing
-  the sealed numbers needs bngsim 0.15.1 (pinned by every engine installer),
+  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending) %}Reproducing
+  the sealed numbers needs bngsim {{ bngsim_pin }} (pinned by every engine installer),
   whatever version a build reports.{% endif %}{% endset %}
   {{ tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version", tiptext=pin_note) }}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
