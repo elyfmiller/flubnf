@@ -241,7 +241,7 @@ REGISTRY: tuple = (
     # -- Oracle SIHRS: the Oracle step (post-fit) --
     Knob("oracle.w", "Oracle blend weight", PF_ONLY, "step", "method", "float",
          OR.W_PRODUCTION, "flubnf.oracle:W_PRODUCTION",
-         "Weight of the donor's growth in the geometric blend; 1 is not the plain filter.",
+         "Weight on the filter's own growth; lower leans on the donors. 1 is not the plain filter.",
          lo=0.0, hi=1.0,
          card=(ORACLE_CARD, {0.5: "at weight one half"})),
     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
