@@ -167,14 +167,17 @@ def settings_summary(meta: dict) -> list:
              ("engine", engine_label(s["engine"]) if s.get("engine") else ""),
              ("PyBNF build", season_build_label(meta) if pf else "")]
     # only a record made through the knob channel says "model settings"
-    # (the zero-anchor rule is a data decision, listed on its own line)
+    # (the zero-anchor rule is a data decision, listed on its own line),
+    # in words as a forecast run's are, less the particles and replicates
+    # listed above (the digest: the season's "modified settings" badge)
     from app.core import knobs as _knobs
     mk = _knobs.model_values(s.get("knobs") or {}) \
         if isinstance(s.get("knobs"), dict) else {}
     if mk:
         try:
-            pairs.append(("model settings",
-                          _knobs.label(_knobs.from_record(mk))))
+            pairs.append(("model settings", _knobs.words(
+                _knobs.from_record(mk),
+                skip={"pf.particles", "pf.replicates"} if pf else ())))
         except Exception:
             pairs.append(("model settings", "modified (unreadable record)"))
     # the Groundhog's zero-anchor rule: recorded with the replay; a season

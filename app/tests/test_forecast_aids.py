@@ -71,12 +71,33 @@ def test_presets_read_the_latest_runs_pick_and_failures():
     assert FA.presets([], STATES, "US (national)") == {"last": [], "failed": []}
 
 
-def test_fan_run_badges_an_earlier_run():
-    rows = [_row("20261005T182531-ecda8f", "error"),
-            _row("20261005T182151-a7caef")]
-    fr = FA.fan_run(rows, "20261005T182151-a7caef")
-    assert fr["earlier"] is True and fr["label"].startswith("2026-09-26 · 10-05 18:21")
-    assert FA.fan_run(rows[1:], "20261005T182151-a7caef")["earlier"] is False
+def test_fan_run_badges_an_earlier_run_and_says_why():
+    """M4: the badge said "The newest run left no forecasts to draw" even
+    when the newest run had written them (its settings were modified).
+    The badge now says why in its own words, and a modified run drawn is
+    badged as such."""
+    drawn = "20261005T182151-a7caef"
+    rows = [_row("20261005T182531-ecda8f", "error"), _row(drawn)]
+    fr = FA.fan_run(rows, drawn)
+    assert fr["earlier"] == "earlier run · newest failed"
+    assert fr["label"].startswith("2026-09-26 · 10-05 18:21")
+    assert fr["modified"] is False
+    assert FA.fan_run(rows[1:], drawn)["earlier"] == ""
+    for status, why in (("stopped", "stopped"), ("running", "still running"),
+                        ("interrupted", "interrupted"),
+                        ("ok", "has no forecasts")):
+        rows[0]["status"] = status
+        assert FA.fan_run(rows, drawn)["earlier"] == f"earlier run · newest {why}"
+    # the newest is a research run (never drawn on the Forecast tab)
+    rows[0]["spec"] = json.dumps({"extra": {"members": 3}})
+    assert FA.fan_run(rows, drawn)["earlier"] == "earlier run · newest is research"
+    # a run with modified settings drawn: badged
+    mod = dict(_row(drawn), spec=json.dumps(
+        {"engine": "all", "forecast_date": "2026-09-26",
+         "extra": {"knobs": {"oracle.w": 0.25}}}))
+    assert FA.fan_run([mod], drawn) == {
+        "run_id": drawn, "label": FA.fan_run([mod], drawn)["label"],
+        "modified": True, "earlier": ""}
     assert FA.fan_run(rows, None) is None
 
 

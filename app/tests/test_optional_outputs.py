@@ -236,16 +236,16 @@ def test_the_knobs_are_off_by_default_and_never_mark_a_run_modified():
                   forecast_date=ASOF)
 
 
-def test_the_panel_offers_them_with_a_plain_tip():
+def test_the_panel_offers_them_with_a_plain_hint():
     from app.core import knobs as K
     p = K.panel("forecast", {"output.horizon_minus1": "1"})
     rows = {r["key"]: r for g in p["groups"] for r in g["rows"]}
     for key in K.OPTIONAL_KEYS:
         r = rows[key]
         assert r["optional"] and r["kind"] == "bool" and r["default"] == "0"
-        assert r["tip"].startswith("Optional;")
+        assert r["hint"].startswith("Optional;")
         assert r["name"] == "knob." + key
-    assert "the hub never scores it" in rows["output.horizon_minus1"]["tip"]
+    assert "the hub never scores it" in rows["output.horizon_minus1"]["hint"]
     assert rows["output.horizon_minus1"]["value"] == "1"
     assert p["modified"] is False                  # rows only, not the model
     retro = K.panel("retro")

@@ -1167,13 +1167,15 @@ details.adv[open]>summary::before{content:"\25BE"}
    (white on raw cyan was 2.1:1) */
 .adv[open] > summary.advbtn{background:var(--accent-ink);
  border-color:var(--accent-ink);color:var(--card)}
-/* the Model settings panel (templates/_model_settings.html): one fieldset
-   per stage (its badges and fixed list: static/tabs/forecast.css) */
+/* the Model settings panel (templates/_model_settings.html): one fold
+   per stage, its fields in a bare fieldset (its badges and fixed list:
+   static/tabs/forecast.css) */
 .ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
 .ms-head button{margin-top:0}
 .ms-group{border:1px solid var(--line);border-radius:10px;
-  padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
-.ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+  padding:.45rem .8rem;min-width:0}
+.ms-group > summary{font-size:.92rem}
+.ms-fields{border:0;margin:0;padding:0 0 .3rem;min-width:0}
 .ms-row input,.ms-row select{max-width:100%}
 .ms-later{opacity:.62}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}

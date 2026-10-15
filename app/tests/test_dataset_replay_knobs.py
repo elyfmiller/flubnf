@@ -132,7 +132,9 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
     assert meta["knobs_digest"] == K.digest(want)
     assert meta["weeks_to_drop"] == 1
     page = " ".join(client.get(r.headers["location"]).text.split())
-    assert "<dt>model settings</dt><dd>modified: groundhog.bandwidth=3" in page
+    # in words; the weeks dropped have their own row
+    assert ("<dt>model settings</dt><dd>Groundhog donor window 3 (default 2), "
+            "Output floor rate 0.5 (default 0.35)</dd>") in page
     assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
             in page and '<span class="uk-badge-t">modified settings</span>'
             in page)
@@ -253,9 +255,11 @@ def test_the_forecast_panel_names_the_members_as_they_run_on_the_data():
     panel = html.split('id="model-settings"')[1].split("Fixed by the model")[0]
     assert "Particle filter (plain SIHRS)" in panel
     assert "Groundhog (own data)" in panel
-    assert "Affects: plain SIHRS particle filter." in panel
     assert "Oracle" not in panel
-    assert "applied to counts only" in panel and 'data-only="count"' in panel
+    # the floor's one-line help says it applies to counts only
+    assert ('<p class="ms-hint" id="ks-output-floor_lam-hint">Poisson noise '
+            'floor so no cell is a point mass; applied to counts only.') in panel
+    assert 'data-only="count"' in panel
     # a rate dataset has no floor to set
     rate = stored(grouped_bytes(rate=True), "Rates", kind="rate")
     html = client.get(f"/forecast?source={rate.id}").text
