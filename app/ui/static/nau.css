@@ -1449,8 +1449,6 @@ details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--in
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88rem}
 .sbtablist button:hover{color:var(--ink);background:transparent}
 .sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
-.sbtabtips{display:flex;align-items:center;padding:0 .3rem}
-.sbtabtips > [hidden]{display:none}
 .sbfile[hidden]{display:none}
 .sbfile + .sbfile{margin-top:.6rem}
 .sb-tabbed .sbfile + .sbfile{margin-top:0}

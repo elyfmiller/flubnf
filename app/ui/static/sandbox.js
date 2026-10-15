@@ -367,13 +367,18 @@
     if (root.FluBNFUI) rangeCheck();
     else document.addEventListener('DOMContentLoaded', rangeCheck);
 
-    // ---- unsaved changes: a badge beside Save, and a warning on leaving
-    var dirty = false, chip = $('sb-dirty');
+    // ---- unsaved changes: a badge beside Save, and a warning on leaving.
+    // The full fit runs the saved files, so it goes off with its reason
+    // (the template's words, in its tip) until a Save
+    var dirty = false, chip = $('sb-dirty'),
+        full = document.querySelector('[data-uk-reason="sb-full-why"]'),
+        fullWhy = $('tip-sb-full-why');
     if (form) {
       form.addEventListener('input', function (e) {
         if (!e.target || e.target.tagName !== 'TEXTAREA') return;
         dirty = true;
         if (chip) chip.hidden = false;
+        if (full && root.FluBNFUI) root.FluBNFUI.setReason(full, fullWhy ? fullWhy.textContent : 'Save first.');
         // a check report is of the text as it was: mark it as older
         var rep = $('sb-checked');
         if (rep && rep.firstChild) rep.classList.add('sb-stale');

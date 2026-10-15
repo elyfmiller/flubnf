@@ -306,7 +306,8 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
     # the outcome in an error alert: its title, then its reason in plain
     # sight under it, with no "?"
     health = html[html.index('class="sb-health sb-health--collapsed"'):]
-    assert '<div class="uk-alert uk-alert--error" id="sb-health">' in health
+    # the icon stays by the title, over the reason's second line
+    assert '<div class="uk-alert uk-alert--error uk-alert--two-line" id="sb-health">' in health
     says = health[health.index('<span class="sb-says">'):]
     assert "<strong>Sampling collapsed</strong>" in health[:health.index('<span class="sb-says">')]
     assert "not a real estimate" in says[:says.index("</span>")]
@@ -324,6 +325,17 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
                          ("forecast_weeks", "4"), ("seed", "3")):
         assert f'name="{field}" value="{value}"' in form, field
     assert ">Run the full fit (10,000 particles)<" in form
+    # it runs the saved files: on, with its reason ready (hidden) for
+    # sandbox.js to turn it off once the editor holds unsaved edits
+    btn = form[form.index("<button"):]
+    btn = btn[:btn.index(">")]
+    assert 'data-guard="sandbox-run"' in btn and 'data-uk-reason="sb-full-why"' in btn
+    assert "disabled" not in btn
+    assert ('<span class="uk-reason-tip" hidden>' in form
+            and 'id="tip-sb-full-why">Save first: the full fit runs the saved files.</span>' in form)
+    js = (Path(__file__).resolve().parents[1] / "ui" / "static" / "sandbox.js").read_text()
+    assert "querySelector('[data-uk-reason=\"sb-full-why\"]')" in js
+    assert "root.FluBNFUI.setReason(full, fullWhy ? fullWhy.textContent" in js
 
 
 def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
@@ -332,7 +344,7 @@ def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
     _finish(w)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
     health = html[html.index('class="sb-health sb-health--good"'):]
-    assert '<div class="uk-alert uk-alert--ok" id="sb-health">' in health
+    assert '<div class="uk-alert uk-alert--ok uk-alert--two-line" id="sb-health">' in health
     assert "<strong>Sampling looks healthy</strong>" in health[:health.index('<span class="sb-says">')]
     assert '<span class="sb-says">The particles stayed varied at every week' in health
     assert "sbfull" not in html and "What to try" not in html

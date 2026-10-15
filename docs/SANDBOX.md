@@ -91,9 +91,13 @@ reporting scale is off, and the fit will start far from the data. No
 problems means the model can run, not that it fits.
 
 **Save and run** fits the saved files. The full fit (10,000 particles,
-the production setting) gives the estimates, in seconds to minutes; a
-quick check (200 particles) only shows that the model runs, and its
-numbers are rough. A run that cannot start says **Not started** and why,
+the production setting) gives the estimates, in seconds to minutes; with
+a quick check (200 particles) the ranges are rough: it shows that the
+model runs. **Jitter** is how far each fitted value is nudged between
+weeks (the Liu-West kernel scale), so the particles stay varied: 0.15 in
+production, 0.2 to 0.3 for a fit that collapses. The same **Seed** and
+files repeat a fit exactly; another seed shows how much it varies by
+chance. A run that cannot start says **Not started** and why,
 with what to do in its "?"; a run the engine refuses shows as failed,
 with the engine's reason under Results.
 
@@ -108,14 +112,15 @@ fit ends, and Stop is always safe.
 
 The first line of Results, right under its heading, grades the
 sampling: whether the particles stayed varied (its one-line reason
-under it gives the lowest ESS; What to try sits in a fold below it). It
+under it gives the lowest effective sample size, ESS: how many particles
+carry the weight; What to try sits in a fold below it). It
 says nothing about how well the model follows the data, which is yours
 to judge from the plot.
 
 - **Sampling looks healthy**: the particles stayed varied at every week.
 - **Quick check: the model runs**: a run under 10,000 particles that
-  sampled well; its ranges are not an estimate, and the full fit is one
-  click away.
+  sampled well; the ranges are rough, and the full fit, one click away,
+  gives the estimates.
 - **Sampling thinned out**: they thinned out at some week; ranges may be
   too narrow.
 - **Sampling collapsed**: nearly every particle became a copy of one or

@@ -93,8 +93,9 @@ def test_diff_runs_names_the_changed_prior_line_and_settings(two_runs):
 def test_compare_page_renders_both_runs_and_the_diff(two_runs):
     a, b = two_runs["a"], two_runs["b"]
     html = client.get(f"/sandbox?model=kinetics_example&run={b}&compare={a}").text
-    # the heading names the compared run, in plain sight
-    assert '<h2 id="h-sb-diff">What changed</h2><span class="sb-since">since ' + a + '</span>' in html
+    # the heading names the compared run, in plain sight, in a word that
+    # holds whichever run is older ("from", never "since")
+    assert '<h2 id="h-sb-diff">What changed</h2><span class="sb-since">from ' + a + '</span>' in html
     assert "tip-sb-diff" not in html
     assert f'<option value="{a}" selected>' in html
     assert "this run: median (5 to 95%)" in html and "<th>compared run</th>" in html

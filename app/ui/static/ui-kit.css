@@ -159,6 +159,11 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-alert--info{--uk-c:var(--accent-ink)}
 .uk-alert--ok{--uk-c:var(--ok)}
 .uk-alert[hidden]{display:none}
+/* a title over a second line (tips.alert cls="uk-alert--two-line"): the
+   icon stays centered on the title's line, the action on the two lines */
+.uk-alert--two-line{align-items:flex-start}
+.uk-alert--two-line > .uk-icon{margin-top:.13em}
+.uk-alert--two-line > .uk-alert-action{align-self:center}
 
 /* ---- 6. empty state: icon, short title, one action ---- */
 .uk-empty{display:flex;flex-direction:column;align-items:center;

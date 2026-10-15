@@ -152,6 +152,9 @@ def test_the_route_and_the_card(finished):
     assert '<span class="uk-badge-t">not a submission</span>' in html
     assert f'<label for="sb-w-in">Blend weight w (production {OR.W_PRODUCTION})</label>' in html
     assert "tip-sb-oracle\"" not in html and "tip-sb-w" not in html
+    # what the step blends is Methods' Oracle card, linked in plain sight
+    head = html.split('<h2 id="h-sb-oracle">Oracle step</h2>', 1)[1].split("</div>", 1)[0]
+    assert '<span class="uk-heading-aside"><a href="/methods#oracle">Methods</a></span>' in head
     assert f'action="/sandbox/runs/{run}/oracle"' in html
     assert f'value="{OR.W_PRODUCTION}"' in html
     assert "Apply the Oracle step</button>" in html and "tip-sb-oracle-why" not in html
@@ -179,6 +182,11 @@ def test_step_refused_for_an_edited_model_with_the_reason_in_a_tip(finished):
     html = client.get(f"/sandbox?model=ohio&run={run}").text
     assert 'disabled aria-describedby="tip-sb-oracle-why"' in html
     assert "edited after it was created (priors.conf)" in html
+    # the badge names the edited file; the origin under it leaves the
+    # word "modified" to the badge
+    assert '<span class="uk-badge-t">modified · priors.conf</span>' in html
+    meta = html.split('<div class="sb-headmeta">', 1)[1].split("</div>", 1)[0]
+    assert "the Oracle SIHRS start (Ohio, " in meta and "modified" not in meta
     assert not (finished["dir"] / sb.ORACLE_FILE).exists()
     # a run of the edited model differs from the creation digests itself
     w2 = sb.prepare("ohio", particles=100, forecast_weeks=4)
@@ -188,6 +196,13 @@ def test_step_refused_for_an_edited_model_with_the_reason_in_a_tip(finished):
     assert sb.oracle_gate(w2.name)["reason"] == (
         "This run's priors.conf differs from the Oracle SIHRS start as created.")
     assert sb.oracle_gate(run)["ok"]                    # restored: allowed again
+    # every file edited: the badge says so in three words, short enough
+    # for a phone
+    m = sb.read_model("ohio")
+    sb.save_model("ohio", {f: m[f] + "\n# edited\n" for f in sb.REQUIRED})
+    assert sb.shipped_state("ohio")["changed"] == list(sb.REQUIRED)
+    html = client.get(f"/sandbox?model=ohio&run={run}").text
+    assert '<span class="uk-badge-t">modified · all three files</span>' in html
 
 
 def test_step_refused_for_other_weeks_statuses_and_models(finished, hub):

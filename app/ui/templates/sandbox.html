@@ -123,12 +123,16 @@
  <div class="sbhead-main">
   {# the model's note is model.bngl's opening comment, in the editor
      below; a shipped start's badge names the files changed since it was
-     created (the Oracle step's button says why it is then off) #}
+     created, "all three files" when every one did (the Oracle step's
+     button says why it is then off), and the origin under it leaves the
+     word "modified" to the badge #}
+  {% set modified = shipped and shipped.shipped and not shipped.intact %}
   <div class="sb-title">
    <h1>{{ name }}</h1>
-   {%- if shipped and shipped.shipped and not shipped.intact %}{{ tips.badge("warn", "modified · " ~ (shipped.changed | join(", ")), id="sb-modified") }}{% endif %}
+   {%- if modified %}{{ tips.badge("warn", "modified · " ~ ("all three files" if shipped.changed | length == 3 else shipped.changed | join(", ")), id="sb-modified") }}{% endif %}
   </div>
   {% set ons = namespace(o=origin) %}{% for e in (templates or []) + (examples or []) %}{% if ons.o == "example " ~ e %}{% set ons.o = exname(e) %}{% endif %}{% endfor %}
+  {% if modified and ons.o.endswith(", modified") %}{% set ons.o = ons.o[:-10] %}{% endif %}
   {% if origin %}<div class="sb-headmeta">{{ tips.meta([("folder", "from " ~ ons.o, "Origin")], label="Model") }}</div>{% endif %}
  </div>
  <div class="sbhead-menus">
@@ -175,14 +179,14 @@
    {% if machine and machine[0] %}{{ tips.alert("warn", machine[0], title="This computer cannot fit yet:", tiptext=machine[1], id="sb-machine", tip_label="what to do") }}{% endif %}
    <div class="card sb-editor">
     <div class="sb-toolbar">
-     {# the page's one explainer: what each of the three files holds. A
+     {# the card's one explainer: what each of the three files holds. A
         fit of this model says itself (Save and run reads "Fitting"), so
         engine busy names only another one #}
      <div class="sb-toolbar-h"><h2 id="h-sb-model">Model</h2>
       {%- call tips.toggletip("sb-files", "the three files") %}
-      <span class="uk-tt-line"><b>model.bngl:</b> the model, time in weeks. A name ending __FREE is fitted, drawn from its line in priors.conf; the value written here is only for Check and Simulate data.</span>
-      <span class="uk-tt-line"><b>data.exp:</b> a header, then one row per week: the time and the count. The model starts at t&nbsp;=&nbsp;-1, a week before a first row at t&nbsp;=&nbsp;0; a missing week is a gap in time.</span>
-      <span class="uk-tt-line"><b>priors.conf:</b> one line per fitted value, uniform_var name low high (loguniform_var on a log scale); pf_ lines set engine keys, such as pf_cumulative_observable, the output whose weekly increment is the count.</span>
+      <span class="uk-tt-line"><b>model.bngl:</b> the model, time in weeks. A name ending <code>__FREE</code> is fitted, drawn from its line in priors.conf; the value written here is only for Check and Simulate data.</span>
+      <span class="uk-tt-line"><b>data.exp:</b> a header, then one row per week: the time and the count. The model starts at <code>t&nbsp;=&nbsp;-1</code>, a week before a first row at <code>t&nbsp;=&nbsp;0</code>; a missing week is a gap in time.</span>
+      <span class="uk-tt-line"><b>priors.conf:</b> one line per fitted value, <code>uniform_var = name low high</code> (<code>loguniform_var</code> on a log scale); <code>pf_</code> lines set engine keys, such as <code>pf_cumulative_observable</code>, the output whose weekly increment is the count.</span>
       {%- endcall %}
       <span class="sb-status">
        <span class="sb-dirty" id="sb-dirty" hidden>{{ tips.badge("warn", "unsaved changes") }}</span>
@@ -227,10 +231,14 @@
     <div id="sb-checked" aria-live="polite"></div>
    </div>
    <div class="card sb-runcard">
-    <fieldset class="sbrun"><legend class="sb-legend">Run settings</legend>
-     {# the labels stand alone: the presets name what each count is for
-        (How it works says it too), and What to try names Jitter when a
-        fit needs it #}
+    {# the card's one explainer, in its legend: what Jitter and Seed do.
+       The presets name what each count is for (How it works says it
+       too). The group's name is the legend's words alone #}
+    <fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend"><span id="sb-run-name">Run settings</span>
+     {%- call tips.toggletip("sb-run", "the run settings") %}
+     <span class="uk-tt-line"><b>Jitter:</b> how far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 in production, 0.2 to 0.3 for a fit that collapses.</span>
+     <span class="uk-tt-line"><b>Seed:</b> the same seed and files repeat a fit exactly; another seed shows how much it varies by chance.</span>
+     {%- endcall %}</legend>
      <div class="sbrun-grid">
       <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", for_="sb-preset") }}
        <span class="sb-partsrow"><span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">
@@ -280,17 +288,20 @@
    {% set full_form %}<form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
     <input type="hidden" name="particles" value="{{ presets.full }}"><input type="hidden" name="jitter" value="{{ res.meta.jitter }}">
     <input type="hidden" name="forecast_weeks" value="{{ res.meta.forecast_weeks }}"><input type="hidden" name="seed" value="{{ res.meta.seed }}">
-    <button class="gold" data-guard="sandbox-run">Run the full fit ({{ "{:,}".format(presets.full) }} particles)</button>
+    {# off while the editor holds unsaved edits (sandbox.js): it runs the saved files #}
+    {{ tips.reason_button("Run the full fit (" ~ "{:,}".format(presets.full) ~ " particles)", "sb-full-why",
+                          "Save first: the full fit runs the saved files.", off=False, cls="gold",
+                          data={"guard": "sandbox-run"}, label="why the full fit is off") }}
    </form>{% endset %}
    <div class="sb-rsum">
    {% if show_health %}
    {# the outcome in its title and an icon, its one-line reason muted
-      under it, what to try behind a fold, the full fit beside it: the
-      first line under the heading #}
+      under it (the icon by the title), what to try behind a fold, the
+      full fit beside it: the first line under the heading #}
    {% set says %}<span class="sb-says">{{ h.says }}</span>{% endset %}
    <div class="sb-health sb-health--{{ h.level }}">
     {{ tips.alert({"good": "ok", "rough": "warn", "collapsed": "error"}.get(h.level, "info"), says, title=h.title,
-                  id="sb-health", live="", action=(full_form if offer_full else "")) }}
+                  id="sb-health", live="", action=(full_form if offer_full else ""), cls="uk-alert--two-line") }}
    </div>
    {% if h.tries %}{% call tips.fold("What to try", id="sb-tries", cls="sbtries") %}
     <ul>{% for t in h.tries %}<li>{{ t }}</li>{% endfor %}</ul>
@@ -366,8 +377,9 @@
    {% endif %}
   </div>
   {% if diff %}
-  {# the heading names the compared run: the diff reads from it to this one #}
-  {% set since %}<span class="sb-since">since {{ diff.a }}</span>{% endset %}
+  {# the heading names the compared run: the diff reads from it to this
+     one, whichever is older #}
+  {% set since %}<span class="sb-since">from {{ diff.a }}</span>{% endset %}
   <div class="card sbdiff">{{ tips.heading("What changed", "sb-diff", after=since) }}
    {% if diff.settings or diff.data_source %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
     {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}
@@ -380,9 +392,11 @@
   {% endif %}
   {% if oracle or (shipped and shipped.shipped) %}
   {# the badge says the result stays in the run's folder; the label names
-     the production weight #}
+     the production weight; what the step blends is Methods' Oracle card #}
+  {% set oracle_more %}<a href="/methods#oracle">Methods</a>{% endset %}
   <div class="card sboracle">{{ tips.heading("Oracle step", "sb-oracle",
-                                             after=tips.badge("neutral", "not a submission", icon_name="lock")) }}
+                                             after=tips.badge("neutral", "not a submission", icon_name="lock"),
+                                             aside=oracle_more) }}
    <form method="post" action="/sandbox/runs/{{ res.run_id }}/oracle" class="row">
     <span>{{ tips.label("Blend weight w (production " ~ oracle_w_production ~ ")", "sb-w", for_="sb-w-in") }}
      <input id="sb-w-in" name="w" type="number" step="0.05" min="0" max="1" value="{{ oracle_w }}"{% if not oracle_gate.ok %} disabled{% endif %}></span>
