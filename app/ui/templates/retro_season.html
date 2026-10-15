@@ -213,8 +213,8 @@
 {% endif %}
 {% if prog and prog.active and not export %}
 {# live replay, driven by the shared ticker (retro_progress.js): the run
-   bar and its readout, what the estimate rests on beside it (.rbasis,
-   which also says a lost connection in words), a lost connection as a
+   bar and its readout (the time left, or "paused"), what the estimate
+   rests on for a screen reader only (.rbasis), a lost connection as a
    badge #}
 <div class="card season-card" data-season="{{ season }}"
      data-status="{{ prog.status }}" data-active="1"
@@ -224,7 +224,7 @@
                  after=(tips.badge("warn", "paused") if prog.status == 'paused' else tips.badge("pending", "running"))) }}
  <div class="runbar"><div class="rfill" style="width:2%"></div></div>
  <div class="rt-readout"><p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
-  <span class="rbasis rt-basis">{{ ("estimate from " ~ prog.weeks_measured ~ " completed week" ~ ("" if prog.weeks_measured == 1 else "s")) if prog.weeks_measured else "estimate arrives once the first week completes" }}</span>
+  <span class="rbasis uk-sr">{{ ("estimate from " ~ prog.weeks_measured ~ " completed week" ~ ("" if prog.weeks_measured == 1 else "s")) if prog.weeks_measured else "estimate arrives once the first week completes" }}</span>
   <span class="rt-stall" hidden>{{ tips.badge("warn", "connection lost", id="rs-stall") }}</span></div>
  {# stop/pause need no confirmation: in-flight fits finish, each is
     checkpointed #}
@@ -281,16 +281,19 @@
    {% if prog.mean_s and prog.slowest_week and prog.slowest_s and prog.slowest_s >= 1.5 * prog.mean_s %}{{ tips.stat("Slowest", "%.0f"|format(prog.slowest_s if prog.slowest_s < 90 else prog.slowest_s / 60), ("s" if prog.slowest_s < 90 else "min") ~ ", " ~ prog.slowest_week) }}{% endif %}
   {% endcall %}
   {% endif %}
-  {# Run on the Retrospective tab resumes it, as its season card says #}
   {% if prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped before the last week", id="rs-state") }}
   {% elif prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted: the app closed", id="rs-state") }}{% endif %}
   {% if prog.added_n and not prog.active and not export %}
   {# the season's week list grew after this replay finished (the hub archive
-     or the shipped snapshots, data/vintages/): a badge naming the weeks;
-     the Retrospective tab's card runs them #}
+     or the shipped snapshots, data/vintages/): a badge naming the weeks,
+     and that a sealed record cannot take them #}
   {% set ad = prog.added %}
-  {{ tips.badge("warn", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added: " ~ ((ad | join(", ")) if prog.added_n < 3 else (ad[0] ~ " to " ~ ad[-1])), id="weeks-added") }}
+  {{ tips.badge("warn", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added: " ~ ((ad | join(", ")) if prog.added_n < 3 else (ad[0] ~ " to " ~ ad[-1])) ~ (" (sealed, needs a fresh replay)" if prog.sealed else ""), id="weeks-added") }}
   {% endif %}
+  {# the way on: the Retrospective tab's card resumes a stopped or
+     interrupted replay from its last completed week and runs only the
+     added weeks; a sealed record takes a fresh replay there #}
+  {% if prog.status in ('stopped', 'interrupted') or (prog.added_n and not prog.active) %}<a class="btn quiet" id="rs-onward" href="/retro">{{ "Replay on Retrospective" if prog.sealed else "Resume on Retrospective" }}</a>{% endif %}
  </div>
  {% endif %}
  {% if not export %}
