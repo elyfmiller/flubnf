@@ -77,6 +77,7 @@ async def _knob_form(request: Request) -> dict:
     except Exception:
         return {}
     out = _KnobFields()
+    out.sent = {k for k, _ in form.multi_items()}
     for k, v in form.multi_items():
         if not k.startswith(_knobs.FORM_PREFIX):
             continue
@@ -114,11 +115,13 @@ async def _gap_form(request: Request) -> dict:
 
 class _KnobFields(dict):
     """_knob_form's result: {key: raw}, plus the field names the form sent
-    more than once (refused by _knob_raw)."""
+    more than once (refused by _knob_raw) and every field name it sent
+    (`sent`; None when not read from a request)."""
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self.repeated: list = []
+        self.sent: set | None = None
 
 
 def _str_field(v) -> str:
@@ -147,18 +150,18 @@ def _season_auto(*days) -> set:
 
 
 def _knob_panel(scope: str, form: dict | None = None,
-                season_auto=(), **panel_kw) -> dict | None:
+                season_auto=()) -> dict | None:
     """The Model settings panel's context (knobs.panel) with the values a
     form last held: the knob fields, then the older field names. None
     (no panel) if the registry cannot be read, so a page still renders.
-    `panel_kw` passes through to knobs.panel (a dataset's member names).
 
     `season_auto`: the Season start values the panel's script fills in by
     itself (the browser posts that filled value with every run); one of
     them is the default, not a change, so it neither marks the panel
     modified nor survives as a typed value. The panel renders open only
-    after a refusal over its settings (form["ms_refused"]); changed values
-    alone never open it (the summary's badge reads "modified"). The page's
+    after a refusal over its settings (form["ms_refused"]: the refusal's
+    reason, shown under the panel's head, or True); changed values alone
+    never open it (the summary's badge reads "modified"). The page's
     script restores the user's own open/closed choice for the session."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
@@ -172,11 +175,24 @@ def _knob_panel(scope: str, form: dict | None = None,
     if vals.get("run.season_start") in set(season_auto or ()):
         del vals["run.season_start"]
     try:
-        p = _knobs.panel(scope, vals, **panel_kw)
+        p = _knobs.panel(scope, vals)
     except Exception:
         return None
-    p["open"] = bool(form.get("ms_refused"))
+    why = form.get("ms_refused")
+    p["open"] = bool(why)
+    p["refused"] = _refusal_words(why) if isinstance(why, str) else ""
     return p
+
+
+def _refusal_words(text: str) -> str:
+    """A refusal over the model settings as the panel says it: its knob
+    named by the panel's label ("Oracle blend weight: 2 is outside 0 to
+    1."), never by its key."""
+    key, sep, rest = text.strip().partition(": ")
+    knob = _knobs.BY_KEY.get(key) if sep else None
+    text = f"{knob.label}: {rest}" if knob else text.strip()
+    text = text[:1].upper() + text[1:]
+    return text if text.endswith(".") else text + "."
 
 
 def _knob_raw(fields, knobs_json) -> dict:

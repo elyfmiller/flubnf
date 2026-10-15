@@ -912,6 +912,30 @@ def _knob_run_parts(kraw: dict, engine: str, forecast_date: str,
     return nd, extra
 
 
+def _kept_settings(prev: dict, kraw: dict, sent, engine: str,
+                   oracle) -> tuple:
+    """What the last form held that this run neither posted nor can use,
+    kept on the form for the next run: ({key: raw} knobs, {field: value}
+    older fields). A Groundhog-only run from a model page posts none of
+    the particle filter's settings; the Forecast tab's weekly ones stay.
+    `sent`: the field names the form posted (None: a direct call, which
+    passes every older field)."""
+    prev = prev or {}
+    members = _knobs.members_for(
+        engine if engine in _knobs.ENGINE_MEMBERS else "all")
+    step = str(oracle or "") != "none"
+
+    def unused(key):
+        knob = _knobs.BY_KEY.get(key)
+        return knob is not None and not _knobs.applies(knob, members, step)
+    knobs = {k: v for k, v in (prev.get("knobs") or {}).items()
+             if k not in kraw and isinstance(v, str) and unused(k)}
+    fields = {f: prev[f] for f, key in _knobs.LEGACY_FIELDS.items()
+              if sent is not None and f not in sent and f in prev
+              and unused(key)}
+    return knobs, fields
+
+
 def _spec_mode(d: dict) -> str:
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     m = str(extra.get("mode") or "realtime")
@@ -1038,11 +1062,14 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = True      # the panel opens on its error
+        # the panel opens on its error, the reason under its head
+        _last_form["ms_refused"] = str(e) or True
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
+    kept, kept_fields = _kept_settings(
+        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
@@ -1050,10 +1077,11 @@ def run_models(request: Request,
                        "season_start": season_start,
                        "particles": particles,
                        "drop_same_day": _int_field(drop_same_day),
-                       "knobs": {k: v for k, v in kraw.items()
-                                 if isinstance(v, str)},
+                       "knobs": {**kept, **{k: v for k, v in kraw.items()
+                                            if isinstance(v, str)}},
                        "submit_modified": override,
-                       "modified_reason": reason, "ms_refused": False})
+                       "modified_reason": reason, "ms_refused": False,
+                       **kept_fields})
     # kept across a restart (its non-date fields; display memory only)
     from app.ui import forecast_aids as _fa
     _fa.save_last_form(_last_form)
@@ -1075,7 +1103,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = True      # the panel opens on its error
+        _last_form["ms_refused"] = str(e) or True
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     kspec = _knobs.spec_fields(nd)

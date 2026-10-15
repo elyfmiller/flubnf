@@ -447,21 +447,13 @@ def latest_results_for(ds_id: str):
 #: decides the Groundhog's auxiliary bank
 AUX_KEYS = ("groundhog.aux", "groundhog.aux_weight")
 #: knobs that apply to counts alone (a rate dataset is never floored), with
-#: the help their tip carries on a dataset
+#: the help their hint carries on a dataset
 COUNT_ONLY = {"output.floor_lam": "Poisson noise floor so no cell is a "
                                   "point mass; applied to counts only."}
-#: the members as a dataset panel's tips name them
-PANEL_MEMBERS = {"pf": "plain SIHRS particle filter", "analogue": GROUNDHOG}
-#: (title, tip) of a dataset panel's groups
-PANEL_GROUPS = {
-    "data": ("Fit window", "Which of the dataset's weeks the models see."),
-    "fit": ("Particle filter (plain SIHRS)",
-            "Settings of the fit itself; a change refits every group."),
-    "groundhog": (GROUNDHOG, "The calendar analogue on your data's earlier "
-                             "seasons; instant."),
-    "output": ("Output", "Applied to the finished forecasts of counts."),
-}
-#: what the panel's "?" says a change does, on a run and on a replay
+#: a dataset panel's group titles
+PANEL_GROUPS = {"data": "Fit window", "fit": "Particle filter (plain SIHRS)",
+                "groundhog": GROUNDHOG, "output": "Output"}
+#: what the panel's "i" says a change does, on a run and on a replay
 PANEL_ABOUT = {
     "forecast": ("Every value starts at its default. Changing any of "
                  "them marks the run modified wherever it appears, and its "
@@ -474,8 +466,8 @@ PANEL_ABOUT = {
 
 def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
                   prefix: str = "", engine: str = ""):
-    """The Model settings panel (forms._knob_panel with PANEL_MEMBERS) as
-    a dataset run or replay reads it: no Oracle step (it does not run on
+    """The Model settings panel (forms._knob_panel) as a dataset run or
+    replay reads it: no Oracle step (it does not run on
     custom data), no auxiliary-bank rows, no optional hub rows (no hub
     file is written), no partial-week rule (missing.HUB_ONLY_KEYS: its
     floor assumes admission counts), no hub-name override (there is none), the groups named as the members run on the data.
@@ -501,19 +493,16 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
             if r["key"] in COUNT_ONLY:
                 if kind and kind != "count":
                     continue
-                r = {**r, "only": "count", **{
-                    part: r[part].replace(by_key[r["key"]].help,
-                                          COUNT_ONLY[r["key"]])
-                    for part in ("tip", "hint") if part in r}}
+                r = {**r, "only": "count", "hint": r["hint"].replace(
+                    by_key[r["key"]].help, COUNT_ONLY[r["key"]])}
             rows.append(r)
         if not rows:
             continue
-        title, tip = PANEL_GROUPS.get(g["id"], (g["title"], g["tip"]))
-        groups.append({**g, "title": title, "tip": tip, "rows": rows,
+        groups.append({**g, "title": PANEL_GROUPS.get(g["id"], g["title"]),
+                       "rows": rows,
                        "affects": " ".join(sorted(
                            {m for r in rows for m in r["affects"].split()}))})
-    modified = any(r["value"].strip() not in ("", r["default"])
-                   for g in groups for r in g["rows"] if not r["later"])
+    modified = any(r["changed"] for g in groups for r in g["rows"])
     return {**panel, "groups": groups, "modified": modified,
             "override": False, "about": PANEL_ABOUT[where],
             "scope": panel["scope"] if where == "forecast"
@@ -543,6 +532,9 @@ def forecast_page(request: Request, ds):
         "engine": "all" if view["pf_ok"] else "analogue",
         "weeks_to_drop": 0, "replicates": 3, "season_start": "",
         "flusurv": False})
+    # a refusal over the model settings opens the panel on this page
+    # only; a later visit shows it as the user left it
+    (_LAST.get(ds.id) or {}).pop("ms_refused", None)
     rid, res = latest_results_for(ds.id)
     fanq = {}
     if res:
@@ -577,7 +569,7 @@ def forecast_page(request: Request, ds):
         "anchor_week": anchor if ok else "",
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
-            forms._knob_panel("forecast", form, names=PANEL_MEMBERS,
+            forms._knob_panel("forecast", form,
                               season_auto=forms._season_auto(
                                   form.get("forecast_date", ""), anchor)),
             kind=ds.kind),
@@ -749,7 +741,8 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
-        _LAST[ds.id]["ms_refused"] = True    # the panel opens on its error
+        # the panel opens on its error, the reason under its head
+        _LAST[ds.id]["ms_refused"] = str(e) or True
         shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)
@@ -1103,8 +1096,7 @@ def retro_context(selected: str = "") -> dict:
     if stored:
         stored = {"text": _whole_dates(stored["text"]),
                   "warnings": [_whole_dates(w) for w in stored["warnings"]]}
-    panel = (dataset_panel(forms._knob_panel("forecast",
-                                             names=PANEL_MEMBERS),
+    panel = (dataset_panel(forms._knob_panel("forecast"),
                            where="replay", prefix="dsr-",
                            engine="dsr-engine") if view else None)
     return {"dataset_replay": {"datasets": [(d.id, d.name) for d in items],
@@ -1317,11 +1309,12 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
         # recorded only with a missing-data rule on ("" otherwise)
         ("flagged weeks", _missing.replay_count(meta.get("data_flags")))]
     if meta.get("knobs"):
-        # recorded only off the shipped values, as a hub replay's is
+        # recorded only off the shipped values, as a hub replay's is; in
+        # words, less the weeks dropped listed above
         try:
             K = forms._knobs
-            settings.append(("model settings",
-                             K.label(K.from_record(meta["knobs"]))))
+            settings.append(("model settings", K.words(
+                K.from_record(meta["knobs"]), skip={"run.weeks_to_drop"})))
         except Exception:
             settings.append(("model settings",
                              "modified (unreadable record)"))

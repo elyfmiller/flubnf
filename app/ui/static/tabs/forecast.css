@@ -174,8 +174,21 @@
 .fc-di[hidden]{display:none}
 
 /* ---- 4. the Model settings panel ---- */
-/* the summary's badge (default / modified) beside its title */
+/* the summary's badge (default / modified) beside its title; brought to
+   the window's top when opened near its foot (model_settings.js) */
 .fc-ms-state{margin-left:.45rem}
+details[data-scope] > summary{scroll-margin-top:.75rem}
+/* a refusal's reason under the head */
+.fc-ms-refused{margin:.4rem 0 .2rem}
+/* a group's count of changed rows, worded as a changed row's mark */
+.ms-n{margin-left:auto;padding:0 .4em;border:1px solid var(--warn);
+  border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
+  font-weight:650;white-space:nowrap}
+.ms-n[hidden]{display:none}
+/* a changed group's other rows, folded under its changed ones */
+.ms-more{margin-top:.55rem}
+.ms-more > summary{font-size:var(--fs-label)}
+.ms-more[hidden]{display:none}
 /* a knob not wired yet: its group as a tag under the disabled field */
 .fc-ms-soon{display:block;margin:.3rem 0 .1rem}
 /* the fixed settings: a fold with one labelled value each */
@@ -189,11 +202,12 @@
 /* ... and why it is fixed, muted under the value */
 .fc-lk-why{display:block;color:var(--mut);font-size:var(--fs-hint);
   font-weight:400}
-/* a field's one-line help, under it while its row has focus or is
-   changed (the field names it as its description either way) */
+/* a field's one-line help, under it while its row has focus (the field
+   names it as its description either way; a changed row's mark names
+   the default) */
 .ms-hint{display:none;margin:.2rem 0 0;color:var(--mut);
   font-size:var(--fs-hint);line-height:1.35}
-.ms-row:focus-within > .ms-hint,.ms-row.ms-changed > .ms-hint{display:block}
+.ms-row:focus-within > .ms-hint{display:block}
 
 /* ---- 5. the run page ---- */
 /* the title and its badges, the re-run at the right */

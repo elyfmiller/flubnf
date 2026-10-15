@@ -529,7 +529,8 @@ def test_run_season_records_the_knobs_and_refuses_a_different_resume(
     s = retro.read_meta(root)["settings"]
     assert s["knobs"] == nd and s["knobs_digest"] == K.digest(nd)
     assert seen and all(x["knobs"] == nd for x in seen)
-    assert ("model settings", K.label(nd)) in retro.settings_summary(
+    # in words, as a forecast run's settings are
+    assert ("model settings", K.words(nd)) in retro.settings_summary(
         retro.read_meta(root))
     assert json.loads(retro.resume_form_fields(
         {"settings": {**s, "scope": "panel6"}})["knobs"]) == nd

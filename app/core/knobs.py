@@ -62,7 +62,7 @@ from app.core.runs import RunSpec, default_season_start
 #   Stage 2 (models)     LATER, NOT_IN_RETRO, LEGACY_FIELDS, resolve,
 #                        from_record, write_extra, spec_fields, record_of,
 #                        modified, summary, write_record, legacy_settings_knobs
-#   Stage 3 (panel)      RETRO_ARG_KEYS, PANEL_GROUPS, _tip, panel,
+#   Stage 3 (panel)      RETRO_ARG_KEYS, PANEL_GROUPS, _hint, _mark, panel,
 #                        retro_week_extra
 
 MEMBERS = ("pf", "analogue")
@@ -1042,7 +1042,8 @@ RETRO_ARG_KEYS = frozenset({"pf.particles", "pf.replicates",
 
 # --- Stage 3: the Model settings panel (templates/_model_settings.html) --------------
 
-#: (group id, heading, one-line tip) in panel order
+#: (group id, heading, what a change costs) in panel order; the cost is
+#: the Methods tab's (its settings table), not the panel's
 PANEL_GROUPS = (
     ("data", "Fit window",
      "Which reported weeks the models see. A change refits the Oracle SIHRS."),
@@ -1059,7 +1060,6 @@ PANEL_GROUPS = (
 #: the fit group's order: run-class first (what a person changes most)
 _FIT_ORDER = ("pf.replicates", "pf.particles", "pf.jitter",
               "pf.initialization", "pf.seed_denominator")
-MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
 def _group_of(knob: Knob) -> str:
@@ -1081,8 +1081,8 @@ def _raw(knob: Knob, v) -> str:
 
 
 def _hint(knob: Knob) -> str:
-    """The panel's one-line help under a field (shown while the row is in
-    focus or changed): the help, and a number's range with its unit."""
+    """The panel's one-line help under a field (shown while the row has
+    focus): the help, and a number's range with its unit."""
     if knob.kind in ("int", "float"):
         unit = f" {knob.unit}" if knob.unit else ""
         return f"{knob.help} {knob.range_text()}{unit}."
@@ -1098,35 +1098,18 @@ def _mark(knob: Knob) -> str:
     return re.sub(r"['\"\\]", "", f"changed · default {dflt}")
 
 
-def _tip(knob: Knob, scope: str, names: Optional[Mapping] = None) -> str:
-    names = names or MEMBER_NAMES
-    who = " and ".join(names[m] for m in MEMBERS if m in knob.affects)
-    dflt = ("August 1 of the forecast's season" if callable(knob.default)
-            else _fmt(knob.default))
-    unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
-    bits = [knob.help, f"Range: {knob.range_text()}{unit}.",
-            f"Default: {dflt}.", f"Affects: {who}."]
-    if knob.note:
-        bits.append(knob.note)
-    if knob.card:
-        bits.append("The model card states the default.")
-    if knob.key in LATER:
-        bits.append("Coming later: not wired to its engine yet, so every "
-                    "run uses the default.")
-    return " ".join(bits)
-
-
-def panel(scope: str, values: Optional[Mapping] = None,
-          names: Optional[Mapping] = None) -> dict:
+def panel(scope: str, values: Optional[Mapping] = None) -> dict:
     """The Model settings panel, rendered by templates/_model_settings.html.
 
     `scope` "forecast" or "retro"; `values` {key: raw} the form held (a
     refused submission keeps what was typed). Knobs with an older field
     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
     particles), so every earlier poster still works; the rest post as
-    knob.<key>. Coming-later knobs render disabled. `names`: the members
-    as the tips' "Affects" line names them (MEMBER_NAMES by default; a
-    dataset's panel names its own)."""
+    knob.<key>. Coming-later knobs render disabled. A row is "changed"
+    when its value is off the default (never a coming-later or optional
+    one); its group opens on it. Each group's "tip" says what a change
+    costs (the Methods tab's settings table reads it; the panel shows
+    each knob's help as its hint, the rest is on Methods)."""
     values = dict(values or {})
     groups = []
     for gid, title, tip in PANEL_GROUPS:
@@ -1141,7 +1124,8 @@ def panel(scope: str, values: Optional[Mapping] = None,
             dflt = "" if callable(k.default) else _raw(k, k.default)
             got = values.get(k.key)
             val = dflt if got is None else str(got)
-            if k.key in LATER:
+            later, optional = k.key in LATER, k.key in OPTIONAL_KEYS
+            if later:
                 val = dflt
             rows.append({
                 "key": k.key, "label": k.label, "kind": k.kind,
@@ -1155,19 +1139,17 @@ def panel(scope: str, values: Optional[Mapping] = None,
                 "choices": [(str(c), choice_word(k.key, c)
                              + (" (default)" if c == k.default else ""))
                             for c in k.choices],
-                "later": k.key in LATER,
-                "optional": k.key in OPTIONAL_KEYS,
+                "later": later, "optional": optional,
+                "changed": not (later or optional)
+                           and val.strip() not in ("", dflt),
                 "affects": " ".join(sorted(k.affects)),
-                "unit": k.unit, "tip": _tip(k, scope, names),
-                "hint": _hint(k), "mark": _mark(k)})
+                "unit": k.unit, "hint": _hint(k), "mark": _mark(k)})
         if rows:
             groups.append({"id": gid, "title": title, "tip": tip,
                            "affects": " ".join(sorted(
                                {m for r in rows for m in r["affects"].split()})),
                            "rows": rows})
-    modified = any(r["value"].strip() not in ("", r["default"])
-                   for g in groups for r in g["rows"]
-                   if not r["later"] and not r["optional"])
+    modified = any(r["changed"] for g in groups for r in g["rows"])
     return {"scope": scope, "groups": groups, "modified": modified,
             "locked": [{"key": l.key, "value": _fmt(l.value)
                         if not isinstance(l.value, tuple)

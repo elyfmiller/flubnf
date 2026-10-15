@@ -1,8 +1,11 @@
 {# The Model settings panel: every knob of the two shipped models, rendered
-   from the registry (app/core/knobs.py panel()). A row is its label and
-   its control; the knob's one-line help shows under it while the row has
-   focus or is changed, and a changed row's label names the default. One
-   "?" (the head's) says what a change does.
+   from the registry (app/core/knobs.py panel()). Each group is a fold,
+   open when a row in it is changed, its summary counting them; an open
+   group shows its changed rows and folds the rest ("N more"). A row is
+   its label and its control; the knob's one-line help shows under it
+   while the row has focus, and a changed row's label names the
+   default. One "i" (the head's) says what a change does and links
+   the Methods tab's table of every setting.
 
    {% include "_model_settings.html" %} inside a form, with `knob_panel` in
    the context (forms._knob_panel). Knobs with an older field name keep it
@@ -57,24 +60,40 @@
   </div>
 {%- endmacro %}
 {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
+{# with the override, the badge says how a modified run's files will be
+   named (model_settings.js keeps it live) #}
+{% set word = ("modified" ~ ((" · hub names" if form and form.submit_modified else " · non-hub names") if kp.override else "")) if kp.modified else "default" %}
 {# the panel renders on the Retrospective tab too: it links its sheet #}
 <link rel="stylesheet" href="/static/tabs/forecast.css">
 {# kp.open: only after a refusal over these settings (data-refused keeps
-   it open over the user's own earlier close); model_settings.js restores
-   the user's own open/closed choice otherwise #}
+   it open over the user's own earlier close, and brings it into view, its
+   reason under the head); model_settings.js restores the user's own
+   open/closed choice otherwise #}
 <details class="adv"{% if kp.open %} open data-refused{% endif %} id="{{ px }}model-settings"
   data-scope="{{ kp.scope }}"{% if kp.engine %} data-engine="{{ kp.engine }}"{% endif %}>
  <summary class="advbtn">Model settings
-  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", "modified" if kp.modified else "default", id=px ~ "ms-badge") }}</span></summary>
+  <span class="fc-ms-state" aria-live="polite">{{ tips.badge("warn" if kp.modified else "ok", word, id=px ~ "ms-badge") }}</span></summary>
  <div class="ms-head">
   <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
-  {{ tips.tip(px ~ "ms-about", "model settings", kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published."))) }}
+  {% call tips.toggletip(px ~ "ms-about", "model settings") %}{{ kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published.")) }} <a href="/methods#settings">Every setting on Methods</a>{% endcall %}
  </div>
- {% for g in kp.groups %}{% if g.rows | rejectattr("later") | list %}
- <fieldset class="ms-group" data-affects="{{ g.affects }}" id="{{ px }}ms-{{ g.id }}">
-  <legend>{{ g.title }}</legend>
-  {% for r in g.rows if not r.later %}{{ ms_row(r, px, tips) }}{% endfor %}
- </fieldset>
+ {% if kp.refused %}<div class="fc-ms-refused">{{ tips.alert("warn", kp.refused, id=px ~ "ms-refused", live="") }}</div>{% endif %}
+ {% for g in kp.groups %}{% set rows = g.rows | rejectattr("later") | list %}{% if rows %}
+ {% set changed = rows | selectattr("changed") | list %}{% set gid = px ~ "ms-" ~ g.id %}
+ <details class="uk-fold ms-group" data-affects="{{ g.affects }}" id="{{ gid }}"{% if changed %} open{% endif %}>
+  <summary><span class="uk-fold-sum" id="{{ gid }}-t">{{ g.title }}</span><span class="ms-n"{% if not changed %} hidden{% endif %}>{{ changed | length }} changed</span></summary>
+  <fieldset class="ms-fields" aria-labelledby="{{ gid }}-t">
+  {% if changed %}
+   {% for r in changed %}{{ ms_row(r, px, tips) }}{% endfor %}
+   {% set rest = rows | rejectattr("changed") | list %}
+   {% if rest %}{% call tips.fold(rest | length ~ " more", id=gid ~ "-more", cls="ms-more") %}
+    {% for r in rest %}{{ ms_row(r, px, tips) }}{% endfor %}
+   {% endcall %}{% endif %}
+  {% else %}
+   {% for r in rows %}{{ ms_row(r, px, tips) }}{% endfor %}
+  {% endif %}
+  </fieldset>
+ </details>
  {% endif %}{% endfor %}
  {# the knobs not settable yet, in one fold: each row off, its group named #}
  {% set ns = namespace(n=0) %}{% for g in kp.groups %}{% for r in g.rows if r.later %}{% set ns.n = ns.n + 1 %}{% endfor %}{% endfor %}
