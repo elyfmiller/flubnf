@@ -357,10 +357,12 @@ def test_a_filter_era_us_pf_says_it_is_the_filter_alone():
     assert '<span class="cov-low">20%</span>' in pf
     assert us_national.PF_US_SHORT not in tile("Groundhog")
     assert tile("Liu-West filter") is None
-    # the era's note is a line of the page's "i"; the US row has no mark
+    # the era's note is a line of the page's "i", after what the fitted
+    # row is; the US row has no mark
     note = us_national.PF_US_NOTES[us_national.FILTER]
     page_i = _page_i(page)
-    assert f'<span class="uk-tt-line">{note}</span>' in page_i
+    assert (f'<span class="uk-tt-line">{us_national.NOTES[us_national.FITTED]}'
+            f' {note}</span>') in page_i
     assert "tipbtn" not in row
     # the US row's coverage joins the table beside its relWIS
     assert 'data-pf-cov="0.700000"' in row
@@ -393,9 +395,11 @@ def test_a_stepped_us_pf_adds_nothing_and_the_filter_has_its_own_figure():
     assert '<dd class="ok">0.800<svg' in lw
     assert 'data-pf_filter="0.850000"' in row and 'data-pf_filter-cov="0.700000"' in row
     assert str(escape(us_national.PF_FILTER_US_WITHHELD)) not in page
-    # nor does the page's "i": the US figures' label and tag say it all
-    assert us_national.PF_US_NOTES[us_national.STEPPED] not in page
-    assert us_national.NOTES[us_national.FITTED] not in page
+    # the page's "i" says what the fitted row is and that its Oracle SIHRS
+    # figure carries the step, in one line
+    note = (f"{us_national.NOTES[us_national.FITTED]} "
+            f"{us_national.PF_US_NOTES[us_national.STEPPED]}")
+    assert f'<span class="uk-tt-line">{note}</span>' in _page_i(page)
 
 
 def test_a_mixed_season_says_which_weeks_and_withholds_the_filters_figure():

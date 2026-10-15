@@ -263,8 +263,9 @@ def test_a_stepped_season_shows_the_filters_us_figure(tmp_path, monkeypatch):
     assert "rt-tilenote" not in tiles["US (fitted): Oracle SIHRS"]
     assert usn.PF_US_SHORT not in page and usn.PF_US_SHORT_MIXED not in page
     assert str(escape(usn.PF_FILTER_US_WITHHELD)) not in page
-    # nor does the page's "i": the step throughout needs no note
-    assert usn.PF_US_NOTES[usn.STEPPED] not in page
+    # the page's "i" says the US figure under that name carries the step
+    assert usn.PF_US_NOTES[usn.STEPPED] in _page_i(page)
+    assert usn.NOTES[usn.FITTED] in _page_i(page)
     # the pooled Liu-West tile is the two states' figure, US left out
     states = usn.pooled_frame(df[df.model == RS.FILTER_MEMBER])
     pooled = float(states.wis.sum() / states.base_wis.sum())

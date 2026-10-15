@@ -171,15 +171,14 @@
 {%- call tips.toggletip("rs-page", "reading this season") %}<span class="uk-tt-line">{{ live_scores("note") }}</span>
  <span class="uk-tt-line"><span class="pblegend">{{ live_scores("legend") }}</span></span>
  {%- if heads or tm.us %}<span class="uk-tt-line">{{ pooled_note }}</span>{% endif %}
- {#- what the US figures are, where their label and tag ("US (fitted)",
-     "fitted") do not say it all: a fallback's construction; the fitted
-     Oracle SIHRS row's era when it is not the Oracle step throughout
-     (us_national.PF_US_NOTES: the Liu-West filter alone before addendum
-     A3, the weeks of each era for a mix); and why the Liu-West filter's
-     own US figure is n/a #}
+ {#- what the US figures are, in one line (us_national.NOTES): a
+     fallback's construction, or a fitted row's and the era of its Oracle
+     SIHRS figure (us_national.PF_US_NOTES: the Oracle step since addendum
+     A3, the Liu-West filter alone before it, the weeks of each era for a
+     mix); then why the Liu-West filter's own US figure is n/a #}
  {%- if us_row %}
-  {%- if us_row.fallback_note %}<span class="uk-tt-line">{{ us_row.note }} {{ us_row.fallback_note[:1] | upper }}{{ us_row.fallback_note[1:] }}.</span>{% endif %}
-  {%- if us_row.pf_note and us_row.pf_step != 'stepped' and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %}<span class="uk-tt-line">{{ us_row.pf_note }}</span>{% endif %}
+  {%- if us_row.fallback_note %}<span class="uk-tt-line">{{ us_row.note }} {{ us_row.fallback_note[:1] | upper }}{{ us_row.fallback_note[1:] }}.</span>
+  {%- else %}<span class="uk-tt-line">{{ us_row.note }}{% if us_row.pf_note and us_row.pf and 'pf' in season_models and 'Oracle' in model_name('pf') %} {{ us_row.pf_note }}{% endif %}</span>{% endif %}
   {%- if 'pf_filter' in season_models and us_row.pf_filter_withheld %}<span class="uk-tt-line">{{ us_row.pf_filter_withheld }}</span>{% endif %}
  {%- endif %}
  {%- if rule_note %}<span class="uk-tt-line">{{ rule_note }}</span>{% endif %}
