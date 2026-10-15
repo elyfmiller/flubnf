@@ -73,10 +73,15 @@ and CDC's rules. The season's facts are in
     removed by hand, not committed; nothing in the tests names uv, so the
     writer is a launcher or install step run under test. Neither is in
     this branch.
-- 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED:
+- 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED AND MERGED:
   cdcepi/FluSight-forecast-hub#3805, OPENED BY ELY FROM `FluBNF_submission`
   (63bb9da2 "NAU_PyBNF forecast 2026-10-17 (EW41)", on cdcepi main
-  397226db, authored and committed as Ely, no trailers). Oracle SIHRS 52 of
+  397226db, authored and committed as Ely, no trailers), MERGED BY CDC
+  (Annabella Hines) AT 21:20 UTC the same day, 50898478, after Ely's sync
+  merge of cdcepi main into the branch (8d599f99); checked 2026-10-15
+  14:01 UTC: both files on the hub's main are byte-identical to the
+  committed ones. Next round (2026-10-24, due 2026-10-21) reuses
+  `FluBNF_submission`: fast-forward it to cdcepi main first. Oracle SIHRS 52 of
   53 locations (Alaska dropped, the finding below), Groundhog all 53; both
   files as committed pass validate_submission.R, 31 checks with `--window`.
   The run: Ely's laptop on main 710f718 (the morning's #36 to #40 on top of
