@@ -151,6 +151,17 @@ this file here.
 
 ## Decided
 
+- 2026-10-15 (Ely, on the public-PyBNF plan v2): all seven as recommended.
+  (1) Switch to public PyBNF as soon as stage 2 passes, on a Thursday, the
+  private engine kept as fallback for two rounds; (2) a degenerate `lwf`
+  cell is a failed cell, as today; (3) the private engine stays a
+  research-only engine on the lab Mac, nothing ported unless a result wins
+  a gate; (4) the console keeps its `pf.*` knob and ledger names, mapped in
+  the conf writer; (5) bngsim stays 0.15.1; (6) the pin is the merge commit
+  8410f794 for stages 1 and 2, the release version at cutover if Bill has
+  tagged one, else the commit; (7) stage 2's shadow Wednesday: public run
+  on the lab Mac as a Thursday replay of the same vintage, private run on
+  Ely's laptop as every round. Stage 1's engine part starts 2026-10-15.
 - 2026-09-30 (answering Submission's note of 2026-09-30): from the first
   round (2026-10-07), engine test runs stay off the lab Mac on submission
   Wednesdays, from the target-data update until the hub pull request is
@@ -398,7 +409,3 @@ Model and Submission: nothing runs on the public engine yet.
 
 ## Open
 
-- 2026-10-15: the seven decisions at the end of the public-PyBNF plan v2,
-  each with the engine lane's recommendation (timing, degenerate rows,
-  research paths, console names, bngsim pin, commit vs release pin, the
-  machines for the shadow Wednesday).
