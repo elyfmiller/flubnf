@@ -1007,52 +1007,84 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     map_legend = [(_um.cat_fill(c), c.replace("_", " "))
                   for c in _um.CATS] + [(_um.NO_DATA, "no data")]
     if not scoreable and not score_error:
-        # scored zero cells with no exception: diagnose WHICH input is empty
+        # scored zero cells with no exception. That is benign while nothing
+        # can be scored yet: a cell needs settled truth AND a
+        # FluSight-baseline round for its date (scoring keeps only the cells
+        # the baseline forecast too). Count such cells over every stored
+        # week; only none at all gives the calm "No scoreable weeks yet".
+        probe, ready = "", None
         try:
             from app.core.scoring import load_truth as _lt
             truth_d, n2f_d = _lt()
-            d0 = retro.read_week_samples(root, weeks[len(weeks)//2])
-            import numpy as _dn
-            pos_med = sum(1 for loc, sm in d0.get("pf", {}).items()
-                          for h in ("1",)
-                          if _dn.median(_dn.asarray(sm[h], float)) > 0)
-            # walk ONE cell through every scoring step and name its killer
-            import pandas as _dp
-            from app.core import ensemble as _de
-            from app.core.scoring import _baseline_cells as _dbc
-            from flubnf.wis import wis as _dwis
-            loc0 = sorted(d0.get("pf", {}))[0]
-            fips0 = n2f_d.get(loc0)
-            T0 = _dp.Timestamp(d0["asof"])
-            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("0", {})
-            act = truth_d.get((fips0, T0 + _dp.Timedelta(days=7)))
-            med = q0.get(0.5, "KEY-MISSING")
-            try:
-                wv = float(_dwis(q0, act).wis) if act else "skipped"
-            except Exception as we:
-                wv = f"WIS-THREW {type(we).__name__}: {str(we)[:90]}"
-            try:
-                bb = _dbc(d0["asof"], {fips0}, truth_d)
-                bv = bb.get((fips0, d0["asof"], 0), "BASELINE-MISSING")
-            except Exception as be:
-                bv = f"BASELINE-THREW {type(be).__name__}: {str(be)[:90]}"
-            probe = (f"probe cell {loc0} asof {d0['asof']} h1: actual={act}, "
-                     f"median={med}, wis={wv}, baseline={bv}; truth rows "
-                     f"{len(truth_d)}, positive-median locs {pos_med}, "
-                     f"weeks {len(weeks)}")
-            # zero cells is benign only when truth has not settled: only then
-            # the calm "No scoreable weeks yet" text. Probe the earliest week
-            # too (its truth may have settled while the middle week's has not).
-            d_first = retro.read_week_samples(root, weeks[0])
-            Tf = _dp.Timestamp(d_first["asof"])
-            have_truth = sum(
-                1 for dd, TT in ((d0, T0), (d_first, Tf))
-                for loc in dd.get("pf", {})
-                if truth_d.get((n2f_d.get(loc),
-                                TT + _dp.Timedelta(days=7))) is not None)
+            have_truth = 0
+            for w in weeks:
+                # the round's file first: early in a season no week has one,
+                # and no week's samples need reading
+                if "FluSight-baseline" not in _playback._official_files_present(w):
+                    continue
+                dd = retro.read_week_samples(root, w)
+                end = pd.Timestamp(dd["asof"]) + pd.Timedelta(days=7)
+                locs = set(dd.get("pf") or {}) | set(dd.get("analogue") or {})
+                n = sum(1 for loc in locs
+                        if truth_d.get((n2f_d.get(loc), end)) is not None)
+                if n and ready is None:
+                    ready = dd
+                have_truth += n
         except Exception as pe:
             probe = f"diagnostic probe failed: {type(pe).__name__}: {str(pe)[:120]}"
-            have_truth = -1      # unknown: surface the probe, never the calm text
+            have_truth = -1      # unknown: surface the failure, never the calm text
+        if have_truth > 0:
+            # a cell could score and none did: walk one through every
+            # scoring step and name its killer. Its own try, so a probe that
+            # trips on an odd cell still reports, as a failure.
+            try:
+                import numpy as _dn
+                from app.core import ensemble as _de
+                from app.core.scoring import _baseline_cells as _dbc
+                from flubnf.wis import wis as _dwis
+                d0 = ready
+                # the member to probe: the filter's samples, else the
+                # Groundhog's stored quantiles (a Groundhog-only replay
+                # stores no pf block)
+                member = next((m for m in ("pf", "analogue") if d0.get(m)), "")
+
+                def _quantiles(loc, h):
+                    cell = d0[member][loc]
+                    if member == "analogue":
+                        return {float(k): float(v)
+                                for k, v in (cell.get(h) or {}).items()}
+                    return _de.member_quantiles_from_samples(cell).get(h, {})
+
+                def _median(loc, h):
+                    cell = d0[member][loc]
+                    if member == "analogue":
+                        return _quantiles(loc, h).get(0.5, 0.0)
+                    return float(_dn.median(_dn.asarray(cell[h], float)))
+
+                pos_med = sum(1 for loc in d0[member] if _median(loc, "1") > 0)
+                loc0 = sorted(d0[member])[0]
+                fips0 = n2f_d.get(loc0)
+                T0 = pd.Timestamp(d0["asof"])
+                q0 = _quantiles(loc0, "0")
+                act = truth_d.get((fips0, T0 + pd.Timedelta(days=7)))
+                med = q0.get(0.5, "KEY-MISSING")
+                try:
+                    wv = float(_dwis(q0, act).wis) if act else "skipped"
+                except Exception as we:
+                    wv = f"WIS-THREW {type(we).__name__}: {str(we)[:90]}"
+                try:
+                    bb = _dbc(d0["asof"], {fips0}, truth_d)
+                    bv = bb.get((fips0, d0["asof"], 0), "BASELINE-MISSING")
+                except Exception as be:
+                    bv = f"BASELINE-THREW {type(be).__name__}: {str(be)[:90]}"
+                probe = (f"probe cell {loc0} ({member}) asof {d0['asof']} h1: "
+                         f"actual={act}, median={med}, wis={wv}, "
+                         f"baseline={bv}; scoreable cells {have_truth}, "
+                         f"truth rows {len(truth_d)}, positive-median locs "
+                         f"{pos_med}, weeks {len(weeks)}")
+            except Exception as pe:
+                probe = (f"{have_truth} cells could score; diagnostic probe "
+                         f"failed: {type(pe).__name__}: {str(pe)[:120]}")
         if have_truth != 0:
             score_error = "scored zero cells with no exception. " + probe
     # no scores: the page says why above the player (a scoring failure as

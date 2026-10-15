@@ -118,6 +118,9 @@ def _component_versions() -> dict:
 #: unresolved-version marker; pages poll /api/versions while any remains
 VERSION_PENDING = "resolving…"
 
+#: the bngsim every engine installer pins, which reproduces the sealed record
+BNGSIM_PIN = "0.15.1"
+
 #: last launch's resolved probe, so a restart skips the pending markers;
 #: in the state folder, which FLUBNF_STATE_DIR moves (as app/core/runs.py)
 _VERSIONS_SNAPSHOT = (Path(_os.environ.get("FLUBNF_STATE_DIR")

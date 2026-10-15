@@ -774,17 +774,12 @@ def engines_missing(versions: dict) -> list:
     return [k for k in ENGINE_KEYS if engine_version(versions, k) is None]
 
 
-#: the Under-the-hood stack table and its engine toggletip: the builder's
-#: own install, which the public page has no business describing
+#: the Under-the-hood stack table: its Version column is the builder's own
+#: install, which the public page has no business describing (the engine
+#: fold's install lines are the console's alone: methods.html renders them
+#: only with `active`)
 _STACK_TABLE = re.compile(r'(<table class="mt-stack">)(.*?)(</table>)', re.S)
 _STACK_CELL = re.compile(r"<t([dh])\b[^>]*>.*?</t\1>", re.S)
-_TIP_SPAN = re.compile(r'<span class="tip">.*?</span></span>', re.S)
-_ENGINE_TT = re.compile(
-    r'<span class="uk-tt"><button[^>]*aria-controls="tt-mt-engine".*?'
-    r"</span></span></span>", re.S)
-#: console-only install advice inside a harvested tip
-_INSTALL_ADVICE = re.compile(
-    r";\s*on Windows, FluBNF\.bat installs its own Perl, with no administrator")
 #: the Purpose tile's location count: the forecast covers the national
 #: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
 _LOCS_TILE = re.compile(
@@ -793,21 +788,15 @@ _LOCS_TILE = re.compile(
 
 
 def _drop_version_column(html: str) -> str:
-    """Drop the stack table's last (Version) column. A tip in a dropped
-    cell (the sealed record's bngsim pin) moves to the row's Role cell."""
+    """Drop the stack table's last (Version) column (the sealed record's
+    bngsim pin is the engine fold's, not a Version cell's)."""
     def row(m):
         tr = m.group(0)
         cells = list(_STACK_CELL.finditer(tr))
         if len(cells) < 2:
             return tr
-        last, prev = cells[-1], cells[-2]
-        tips = "".join(_TIP_SPAN.findall(last.group(0)))
-        prev_html = prev.group(0)
-        if tips:
-            close = prev_html.rfind("</t")
-            prev_html = prev_html[:close] + tips + prev_html[close:]
-        return (tr[:prev.start()] + prev_html + tr[prev.end():last.start()]
-                + tr[last.end():])
+        last = cells[-1]
+        return tr[:last.start()] + tr[last.end():]
 
     def table(m):
         body = re.sub(r"<tr\b.*?</tr>", row, m.group(2), flags=re.S)
@@ -818,11 +807,8 @@ def _drop_version_column(html: str) -> str:
 def site_methods(html: str) -> str:
     """The rendered Methods made fit for a public page: no Version column
     (the builder's install: "(not installed)", local paths such as
-    /usr/bin/perl), no console-only install advice, and the location count
-    the forecast really covers."""
+    /usr/bin/perl) and the location count the forecast really covers."""
     html = _drop_version_column(html)
-    html = _ENGINE_TT.sub("", html)
-    html = _INSTALL_ADVICE.sub("", html)
     html = _LOCS_TILE.sub(
         r"\g<1>53\g<2>locations: 52 jurisdictions plus the national total"
         r"\g<3>", html)

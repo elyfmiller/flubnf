@@ -1,12 +1,12 @@
 {# "Your datasets" on the Data tab (app/ui/datasets_ui.py): the upload box
    (_dataset_upload.html, shared with the Forecast and Retrospective tabs)
-   and the stored datasets. No prose: the heading's "?" says what a
-   dataset is for, a dataset's warnings sit behind a warning mark, a
-   Delete that is off says why in its own "?". Included by data.html
-   (tips imported there). #}
+   and the stored datasets. No prose: the upload box's "?" says what a
+   file holds, a dataset's warnings sit behind a warning mark, a Delete
+   that is off says why in its own "?". Included by data.html (tips
+   imported there). #}
 {% import "_dataset_upload.html" as dsup %}
 <div class="card" id="datasets">
- {{ tips.heading("Your datasets", "ds-about", "Upload weekly data as a CSV to browse it here, forecast it on the Forecast tab and replay it on the Retrospective tab. The FluSight hub stays the default everywhere; a dataset is used only where you pick it. Forecasts on it are exported as CSV files and never submitted.") }}
+ {{ tips.heading("Your datasets", "ds-about") }}
  {{ dsup.box("data", upload) }}
  {% if datasets %}
  {# one line per dataset; under 600px each row stacks (nau.css .dstable),

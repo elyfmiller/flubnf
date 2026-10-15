@@ -43,7 +43,7 @@
   </div>
   <div class="md-record" role="group" aria-labelledby="h-md-rec">
    {% set rec_after %}{{ tips.tag("relWIS") }}
-   {%- if record.behind %}{{ tips.badge("warn", record.behind.text, record.behind.tip, id="md-behind") }}{% endif %}{% endset %}
+   {%- if record.behind %}{{ tips.badge("warn", record.behind.text, id="md-behind") }}{% endif %}{% endset %}
    {% call tips.heading("Record", "md-rec", level=3, rich=True, after=rec_after, tip_label="the record") %}
     {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
    {% endcall %}
@@ -68,7 +68,7 @@
 </section>
 
 {# each mechanism drawing carries its defining equations beneath it, each
-   named, its reading in the "?" (dg.eq_*(kit=true)); the Oracle SIHRS gets
+   named, its reading under it (dg.eq_*(kit=true)); the Oracle SIHRS gets
    two cards (the forecast pipeline, then the compartment model the filter
    fits) #}
 {% if name == "pf" %}
@@ -94,14 +94,12 @@
 
 {% if bngl_src %}
 {# the BNGL template file as stored, read at render time (read-only); the
-   summary names the file, its "?" what the tokens are #}
+   summary names the file, its length and what its tokens are #}
 <details class="card bngl">
  <summary><span class="md-src-t">View model source (BNGL)</span>
   <span class="md-src-f">{{ tips.icon("folder") }}<span class="uk-sr">File: </span>flubnf/templates/{{ bngl_file }}</span>
-  {# the "?" rides inside the last fact, so it never wraps alone #}
-  <span class="md-src-f">{{ bngl_lines }} lines
-  {%- call tips.tip("md-bngl", "the model source") %}flubnf/templates/{{ bngl_file }} as stored; tokens such as
-  <code class="md-code">{{ '{{POP}}' }}</code> are filled in per state and week.{% endcall %}</span></summary>
+  <span class="md-src-f">{{ bngl_lines }} lines</span>
+  <span class="md-src-f">tokens such as <code class="md-code">{{ '{{POP}}' }}</code> filled in per state and week</span></summary>
  {# the file out: copy (the page script below), download (a data link with
     the file's own name, built by the script from the text shown, no
     server round trip), and for the Oracle SIHRS a
@@ -148,7 +146,7 @@
 <div class="cols">
  <div><div class="card md-quick">
   {% set all_link %}<a href="/forecast">All settings</a>{% endset %}
-  {{ tips.heading("Quick run", "md-quick", "Runs the " ~ title ~ " alone with its shipped settings; every setting is on the Forecast tab.", aside=all_link) }}
+  {{ tips.heading("Quick run", "md-quick", aside=all_link) }}
   {% if status.running %}
   {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
   {{ tips.alert("warn", "A run is in progress.", id="md-busy", action=fc_link) }}
@@ -156,17 +154,17 @@
   <form method="post" action="/run" class="md-form">
    <div class="md-fields">
     <div class="md-field">
-     {{ tips.label("Forecast date", "md-date", "Any day; the run anchors on the latest archived week on or before it.", for_="mf-date") }}
+     <label for="mf-date">Forecast date</label>
      <input id="mf-date" name="forecast_date" type="date" value="{{ form.forecast_date }}" required>
     </div>
     <div class="md-field">
-     {{ tips.label("Locations", "md-locs", 'State names, comma-separated, or "all": the 52 jurisdictions and US (national).', for_="mf-locs") }}
+     <label for="mf-locs">Locations</label>
      <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
             placeholder='state names, comma-separated, or "all"'>
     </div>
     {% if name == "pf" %}
     <div class="md-field">
-     {{ tips.label("Replicates", "md-reps", "Seeded filter runs per jurisdiction, pooled; shipped per-state numbers use 3 or more.", for_="mf-reps") }}
+     <label for="mf-reps">Replicates</label>
      <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
     </div>
     {% endif %}
@@ -183,7 +181,7 @@
  </div></div>
  <div>
   <div class="card md-fc">
-   {{ tips.heading("Forecasts", "md-fc", "The newest stored run's forecasts, one location at a time. Research runs are left out, and so are runs with modified model settings unless an override exported them under the hub names (then badged).") }}
+   {{ tips.heading("Forecasts", "md-fc") }}
    {% if has_fans %}
    {# one fact, the run: its forecast date and clock time, its page, and
       the modified-settings badge an override's run carries #}

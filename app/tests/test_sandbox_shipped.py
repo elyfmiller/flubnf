@@ -292,7 +292,9 @@ def test_fill_with_set_population_uses_the_hub_population(hub, monkeypatch):
 
 def test_the_gallery_offers_the_start_and_the_route_creates_it(hub):
     html = client.get("/sandbox").text
-    assert '<option value="shipped:sihrs">' in html
+    # offered, with its own note for the "i" beside the list
+    assert re.search(r'<option value="shipped:sihrs" data-note="The production '
+                     r'model, priors and data[^"]*">', html)
     assert f'<option value="{FD}">{FD}</option>' in html
     assert 'name="season_start"' in html
     r = client.post("/sandbox/new", data={
@@ -322,8 +324,8 @@ def test_the_gallery_offers_the_start_and_the_route_creates_it(hub):
 def test_without_a_hub_the_start_is_disabled(sandbox_root, monkeypatch):
     monkeypatch.setattr(sb, "vintages", lambda: [])
     html = client.get("/sandbox").text
-    assert re.search(r'<option value="shipped:sihrs" disabled>[^<]*'
-                     r'\(update data on the Data tab first\)', html)
+    assert re.search(r'<option value="shipped:sihrs" data-note="[^"]*" disabled>'
+                     r'[^<]*\(update data on the Data tab first\)', html)
 
 
 def test_no_bare_model_name_in_the_sandbox_pages(hub):

@@ -96,45 +96,56 @@ def test_the_record_sentences_ride_the_record_toggletip():
                      r'0\.722</span>', gh)
     pf2s = client.get("/model/pf2s").text
     # both bars beat the baseline (two checks): the badge says how far the
-    # two-strain fell behind the blend, from the two values, and its tip
-    # names the comparison
+    # two-strain fell behind the blend, from the two values; the Record
+    # "i" beside it names the comparison, so the badge has no "?"
     assert '<span class="uk-badge-t">0.015 behind the blend</span>' in pf2s
     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
-    tip = pf2s.split('id="tip-md-behind"', 1)[1].split('</span>', 1)[0]
-    assert "relWIS 0.719 against 0.704 for the two-member blend" in tip
+    assert 'id="tip-md-behind"' not in pf2s
+    rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])
+    assert "relWIS 0.719 against 0.704 for the two-member blend" in rec
 
 
 # ------------------------------------------------- equations: kit and plain
 
-def test_model_pages_name_each_equation_and_tip_its_note():
+def _notes(html):
+    """The kit's visible equation notes, as text."""
+    return [_text(n) for n in
+            re.findall(r'<p class="eqnote md-eqnote">(.*?)</p>', html, re.S)]
+
+
+def test_model_pages_name_each_equation_and_show_its_note():
+    """Each equation wears its name chip with no "?"; its note, word for
+    word, is muted text under it (the notes the Variables folds do not
+    hold: the fallback, the fixed removal rate, the rescale's spread)."""
     t = client.get("/models").text
     for name in ("Growth blend", "Growth rate", "Sample rescale",
                  "Seasonal forcing", "Observation model"):
-        assert f'<span class="uk-name">{name}' in t, name
-    # the fallback caveat rides the growth blend's tip
-    blend = t.split('id="tip-dg-eq-blend"', 1)[1].split("</span></span>", 1)[0]
-    assert "A week with too few donors (30 paths per stream)" in _text(blend)
-    # the parameter sentence is the fixed row's tip; the chips show both rows
-    assert "Fitted per state</dt>" in t
-    fixed = t.split('id="tip-dg-eq-fixed"', 1)[1].split("</span></span>", 1)[0]
-    assert "(recorded working assumptions)" in fixed
-    assert "enters through the accumulator that fills" in fixed
-    # the harmonic's caption is a badge with the caption in its tip
-    assert '<span class="uk-badge-t">illustrative values</span>' in t
-    assert "both are fitted per state and week." in t
-    assert 'class="eqnote"' not in t
+        assert f'<span class="uk-name">{name}</span>' in t, name
+    assert 'id="tip-dg-' not in t
+    notes = " ".join(_notes(t))
+    assert "A week with too few donors (30 paths per stream)" in notes
+    assert "the fixed removal rate 7/3.2" in notes
+    assert "keeping the filter's spread and adding the donors'" in notes
+    # the chips show both parameter rows; the Variables fold's source
+    # column says which fixed ones are sourced and which are assumptions
+    assert "Fitted per state</dt>" in t and "Fixed, not fitted</dt>" in t
+    assert "0.02, a working assumption" in t
+    # the harmonic's caption is a badge that carries its values
+    assert ('<span class="uk-badge-t">illustrative: <i>&#949;</i><sub>1</sub> '
+            '= 0.35, <i>&#966;</i><sub>1</sub> = week 22</span>') in t
     p2 = client.get("/model/pf2s").text
     for name in ("Admissions channel", "Strain share channel"):
-        assert f'<span class="uk-name">{name}' in p2, name
-    assert "all are fitted per state and week." in p2
+        assert f'<span class="uk-name">{name}</span>' in p2, name
+    assert "typed specimens fit the A/B" in " ".join(_notes(p2))
+    assert "= week 20, <i>&#966;</i><sub>B</sub> = week 30</span>" in p2
 
 
 def test_methods_and_the_site_keep_the_plain_notes():
     """The public site renders Methods without the UI kit: its equation
     notes stay visible text, never a tip. The console's Methods tab names
-    each equation with its note in the "?", as the model pages do. Home
-    (console only) takes the harmonic's kit mode: its caption is the
-    badge's tip."""
+    each equation with a chip and its note under it, as the model pages
+    do. Home (console only) takes the harmonic's kit mode: its caption is
+    a badge carrying the values."""
     from app.core import site_build
     versions = {k: "x" for k in ("pybnf", "bngsim", "bionetgen", "fastapi",
                                  "plotly")}
@@ -145,16 +156,17 @@ def test_methods_and_the_site_keep_the_plain_notes():
     assert "uk-name" not in site and 'id="tip-dg-' not in site
     assert "Values shown are illustrative" in site
     tab = client.get("/methods").text
-    assert 'class="eqnote"' not in tab
+    assert 'class="eqnote"' not in tab        # the kit's notes instead
     for name in ("Growth blend", "Seasonal forcing", "Observation model",
                  "Admissions channel"):
-        assert f'<span class="uk-name">{name}' in tab, name
-    assert "Values shown are illustrative" in tab   # the caption's tip
+        assert f'<span class="uk-name">{name}</span>' in tab, name
+    assert "the curve the filter bends each week" in " ".join(_notes(tab))
+    assert '<span class="uk-badge-t">illustrative: ' in tab
     assert '<link rel="stylesheet" href="/static/tabs/models.css">' in tab
     home = client.get("/").text
     assert 'class="eqnote"' not in home
-    assert '<span class="uk-badge-t">illustrative values</span>' in home
-    assert "both are fitted per state and week." in home
+    assert ('<span class="uk-badge-t">illustrative: <i>&#949;</i><sub>1</sub> '
+            '= 0.35, <i>&#966;</i><sub>1</sub> = week 22</span>') in home
 
 
 # --------------------------------------------------- forecasts card states
@@ -227,12 +239,15 @@ def test_quick_run_posts_the_same_fields_as_before():
     gh = client.get("/model/analogue").text
     assert '<input type="hidden" id="mf-reps" name="replicates"' in gh
     assert 'for="mf-reps"' not in gh
-    # the format hint is the placeholder; the explanations are label tips
+    # the format hint is the placeholder; the labels stand alone (the
+    # Forecast tab and Methods hold the rest)
     pf = client.get("/models").text
     assert 'placeholder=\'state names, comma-separated, or "all"\'' in pf
-    assert 'title=' not in pf.split('class="card md-quick"', 1)[1].split("</form>", 1)[0]
-    for tip in ("tip-md-date", "tip-md-locs", "tip-md-reps"):
-        assert f'id="{tip}"' in pf, tip
+    quick = pf.split('class="card md-quick"', 1)[1].split("</form>", 1)[0]
+    assert 'title=' not in quick and "tipbtn" not in quick
+    for fid, label in (("mf-date", "Forecast date"), ("mf-locs", "Locations"),
+                       ("mf-reps", "Replicates")):
+        assert f'<label for="{fid}">{label}</label>' in quick, fid
 
 
 def test_research_form_fields_are_unchanged():
