@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-15 (02:52 UTC): PULL REQUEST #42 (dev TO main) OPENED BY THIS LANE
+  AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
+  only, docs/TEAM.md (the merge-command rule) and these notes (#41
+  recorded, the rule under Decided). Head 400f580 on main 22cfe3b. The
+  integration's footer was edited out of the body at once. When the tests
+  are green, Ely merges with:
+
+      gh pr merge 42 --merge --repo elyfmiller/flubnf
+
 - 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
   Output tab fix (seven app files) and the Submission and Engine notes
