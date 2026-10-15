@@ -183,7 +183,9 @@ def test_the_replay_form_names_the_oracle_sihrs(world):
     t = _text(client.get("/retro").text)
     assert '<option value="pf">Oracle SIHRS + Groundhog (hours)</option>' in t
     assert "Particle filter with the Groundhog" not in t
-    assert "Each week fits the Oracle SIHRS from the season start" in t
+    # the options name the cost and the members, so the label needs no "?"
+    assert '<option value="analogue">Groundhog only (minutes)</option>' in t
+    assert 'id="tip-rt-engine"' not in t
     assert ui_retro.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
 
 
