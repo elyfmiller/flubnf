@@ -215,7 +215,8 @@
  <desc>Faint historical season curves, the current season observed so far, and
  a forecast fan formed by scaling the last observed value by quantiles of the
  growth ratios recorded at the same calendar weeks in prior seasons, pooled
- across states.</desc>
+ across states with the state's own past weeks carrying half of the
+ weight.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -781,8 +782,8 @@
    ("<i>h</i>", "the horizon", "weeks after the forecast date", "index"),
    ("<i>&#964;</i>", "a quantile level, one of FluSight's 23", "0.01 to 0.99", "fixed"),
    ("<i>y</i><sub>last</sub>", "the last observed admissions value, as archived on the forecast date", "admissions per week", "data"),
-   ("<i>Q</i><sub><i>&#964;</i></sub>", "the empirical <i>&#964;</i> quantile of the pooled ratios", "ratio", "derived"),
-   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction, strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
+   ("<i>Q</i><sub><i>&#964;</i></sub>", "the weighted empirical <i>&#964;</i> quantile of the pooled ratios", "ratio", "derived"),
+   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction (the forecast jurisdiction's own carrying half of the weight), strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, pooled across sites, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
 </div>
 {%- endmacro %}
 
