@@ -85,13 +85,16 @@ two-per-target limit for the admissions target.
 | Model id | Key | Method |
 |---|---|---|
 | `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in a private PyBNF fork, whose output is a forecasting sample (not an exact posterior), then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
-| `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions, with a FluSurv-NET donor bank; no fitting, no engine needed |
+| `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions with the jurisdiction's own past weeks carrying half of the weight (since 2026-10-15; [DONOR-BANKS.md](DONOR-BANKS.md)), with a FluSurv-NET donor bank; no fitting, no engine needed |
 
 Recorded pooled relative WIS (ratio of sums vs FluSight-baseline, replays of
-2023-24 to 2025-26, not real-time): Oracle SIHRS 0.738, Groundhog 0.666.
-These are the pre-registration screens' figures; in-app replays on build
-2132f15 gave the Oracle SIHRS 0.767 / 0.702 / 0.782 by season (see
-[team/model.md](team/model.md)).
+2023-24 to 2025-26, not real-time): Oracle SIHRS 0.738 (15,300 cells, the
+earlier cell rule), Groundhog 0.660 (17,116 cells, FluSight's cell rule; the
+pooled form submitted 2026-10-10 and 2026-10-17 scores 0.670 on the same
+cells). The two are on different cells and are not read across (README,
+Measured record). These are the pre-registration screens' figures; in-app
+replays on build 2132f15 gave the Oracle SIHRS 0.767 / 0.702 / 0.782 by
+season (see [team/model.md](team/model.md)).
 The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### What FluBNF produces
