@@ -589,7 +589,7 @@ def output_page(request: Request):
     stamp = output_stamp()
     # the newest run, a modified one included: the report card is where
     # the person who made it looks for it (its files sit under their
-    # date, tagged); Home, Forecast and Models keep the shipped rule
+    # date, tagged); Home and Models keep the shipped rule
     rid, res = shared._latest_results(include_modified=True)
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid

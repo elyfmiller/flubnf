@@ -269,8 +269,10 @@ def presets(ledger_rows: list, all_locs: list, us_choice: str) -> dict:
 def last_run_values(ledger_rows: list) -> dict | None:
     """What the latest hub run was given, as the form's controls hold it:
     {"engine", "locations" (the names, "all" for the 53), "knobs": {key:
-    the panel's raw value}} for the knobs that applied to it; None without
-    a run or a readable spec. The season start is left out (it follows the
+    the panel's raw value}} for the knobs that applied to it, and for a run
+    with modified settings "hub_names", whether its files took the hub
+    names by override (the box starts unticked each run); None without a
+    run or a readable spec. The season start is left out (it follows the
     date)."""
     row = (ledger_rows or [None])[0] if ledger_rows else None
     spec = _spec(row)
@@ -303,10 +305,13 @@ def last_run_values(ledger_rows: list) -> dict | None:
             kn[r["key"]] = K._raw(k, r["value"])
         except Exception:
             continue
-    return {"engine": str(spec.get("engine") or "all"),
-            "locations": (["all"] if (len(states) >= 52 and us)
-                          else sorted(states) + (["US"] if us else [])),
-            "knobs": kn}
+    out = {"engine": str(spec.get("engine") or "all"),
+           "locations": (["all"] if (len(states) >= 52 and us)
+                         else sorted(states) + (["US"] if us else [])),
+           "knobs": kn}
+    if K.modified(spec):
+        out["hub_names"] = K.hub_names(spec)
+    return out
 
 
 def page_aids(ledger_rows: list, rid, all_locs: list, us_choice: str,

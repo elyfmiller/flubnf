@@ -107,7 +107,26 @@ def test_last_run_values_as_the_form_holds_them():
     assert lr["locations"] == ["Alabama", "New York", "Ohio", "US"]
     assert lr["knobs"]["pf.particles"] == "10000"
     assert "run.season_start" not in lr["knobs"]
+    assert "hub_names" not in lr                # a shipped run: no question
     assert FA.last_run_values([]) is None
+
+
+def test_last_run_values_say_how_a_modified_runs_files_were_named():
+    """After a modified run the override box starts unticked, so the Run
+    row's 'Same as last run' must weigh the file names too: the last
+    run's hub_names against the box (forecast.html)."""
+    from app.core import knobs as K
+
+    def row(override=""):
+        r = _row("20261005T182151-a7caef")
+        spec = json.loads(r["spec"])
+        spec["extra"] = K.write_extra({"oracle.w": 0.25}, {}, override=override)
+        r["spec"] = json.dumps(spec)
+        return r
+    assert FA.last_run_values([row("weekly decision")])["hub_names"] is True
+    assert FA.last_run_values([row()])["hub_names"] is False
+    src = (Path(FA.__file__).parent / "templates" / "forecast.html").read_text()
+    assert "tick.checked !== LAST.hub_names) diff.push('File names')" in src
 
 
 def test_the_last_form_survives_a_restart_without_its_date(monkeypatch, tmp_path):
