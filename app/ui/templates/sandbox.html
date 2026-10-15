@@ -48,7 +48,7 @@
       {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
       {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
       <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
-      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, its data and priors along.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
        <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
        {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week.">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
