@@ -101,7 +101,7 @@
 {#- the newest run with modified settings and no override: shown here,
     badged (routes/output.output_page report_modified); the same badge
     tags its -modified files under their date below #}
-{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified settings", "The newest run's model settings differ from the defaults, so its files carry the non-hub name (<model>-modified) and sit under their date below, tagged: a record, not for the hub. This report is that run's, " ~ report_modified ~ ".", id="out-rep-mod") }}</span>{% endif %}{% endset %}
+{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified · non-hub names", id="out-rep-mod") }}</span>{% endif %}{% endset %}
 {% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/runs/{{ rid }}/report" target="_blank">{{ tips.icon("external") }} Open report</a>
 <a class="btn {{ 'quiet' if has_due else 'gold' }}" href="/runs/{{ rid }}/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
 <div class="card out-report" id="weekly-report">

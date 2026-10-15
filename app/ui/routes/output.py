@@ -585,7 +585,7 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
-    from app.core.runs import APP_STATE, is_contained, model_settings_label
+    from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
     # the newest run, a modified one included: the report card is where
     # the person who made it looks for it (its files sit under their
@@ -594,13 +594,10 @@ def output_page(request: Request):
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
-    # a modified run exported under the non-hub name: the card says so,
-    # with the settings label (its first clause; the tip says how the
-    # files are named) in the badge's tip, once the run has a report
-    report_modified = ""
-    if has_report and res and is_contained(res.get("spec", "")):
-        report_modified = (model_settings_label(res.get("spec", ""))
-                           .split(";", 1)[0] or "modified model settings")
+    # a modified run exported under the non-hub name: the card's badge
+    # says so, once the run has a report (its settings are on its run page)
+    report_modified = bool(has_report and res
+                           and is_contained(res.get("spec", "")))
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
     # each file gets the hub validator's command (--window for a round
