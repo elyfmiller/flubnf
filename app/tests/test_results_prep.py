@@ -274,6 +274,88 @@ def test_unsettled_truth_never_loops(tmp_path, _routed, monkeypatch):
     assert "No scoreable weeks yet" in html2 or "Scoring failed" in html2
 
 
+# ------------------- zero cells: calm until truth AND a baseline round exist
+
+def _groundhog_only(root: Path) -> Path:
+    """The tree as a Groundhog-only replay stores it: no pf block."""
+    for sp in (root / "weeks").glob("*/samples.json"):
+        d = json.loads(sp.read_text())
+        d.pop("pf")
+        sp.write_text(json.dumps(d))
+    return root
+
+
+def _baseline_round(hub: Path, asof: str):
+    """The hub's FluSight-baseline file for the round of `asof` (its
+    existence is what the page checks)."""
+    ref = (pd.Timestamp(asof) + pd.Timedelta(days=7)).date().isoformat()
+    fp = hub / "model-output" / "FluSight-baseline" / f"{ref}-FluSight-baseline.csv"
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fp.write_text("reference_date\n")
+
+
+def _unscored(monkeypatch, tmp_path, truth):
+    monkeypatch.setattr(scoring, "load_truth", lambda: (truth, dict(N2F)))
+    monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
+
+
+def test_a_groundhog_only_replay_with_no_baseline_round_is_calm(
+        tmp_path, monkeypatch):
+    """A Groundhog-only replay of weeks with no FluSight-baseline round yet
+    scores nothing: the page shows "No scoreable weeks yet", never a
+    probe IndexError (the probe used to assume a pf block)."""
+    root = _groundhog_only(_mk_tree(tmp_path))
+    _unscored(monkeypatch, tmp_path, _truth())
+    ctx = ui_retro.season_page_context(root, SEASON)
+    assert ctx["score_error"] == ""
+    assert ctx["unsettled"] is True
+
+
+def test_a_filter_replay_with_truth_but_no_baseline_round_is_calm(
+        tmp_path, monkeypatch):
+    """Settled truth alone is not enough: a week whose round has no
+    FluSight-baseline file cannot be scored either, so zero cells there is
+    the calm state, not "Scoring failed"."""
+    root = _mk_tree(tmp_path)
+    _unscored(monkeypatch, tmp_path, _truth())
+    ctx = ui_retro.season_page_context(root, SEASON)
+    assert ctx["score_error"] == "" and ctx["unsettled"] is True
+
+
+def test_a_groundhog_only_replay_with_truth_and_a_round_names_its_probe(
+        tmp_path, monkeypatch):
+    """Truth and a baseline round both there and still zero cells is a
+    real failure: the alert carries the probe of the Groundhog's own cell."""
+    root = _groundhog_only(_mk_tree(tmp_path))
+    _unscored(monkeypatch, tmp_path, _truth())
+    for asof in (W1, W2):
+        _baseline_round(tmp_path / "hub", asof)
+    ctx = ui_retro.season_page_context(root, SEASON)
+    err = ctx["score_error"]
+    assert err.startswith("scored zero cells with no exception.")
+    assert "probe cell Ohio (analogue)" in err
+    assert "probe failed" not in err and "IndexError" not in err
+    assert ctx["unsettled"] is False
+
+
+def test_the_season_page_says_why_no_weeks_score_yet(tmp_path, _routed,
+                                                     monkeypatch):
+    """The page itself, scored for real: the hub's baseline folder holds no
+    round for these weeks (as early in a season), so the calm empty state
+    shows, its tip naming both inputs."""
+    import flubnf.settings as fs
+    _groundhog_only(_mk_tree(_routed))
+    _unscored(monkeypatch, tmp_path, _truth())
+    monkeypatch.setattr(playback, "load_truth", lambda: (_truth(), dict(N2F)))
+    hub = tmp_path / "hub"
+    (hub / "model-output" / "FluSight-baseline").mkdir(parents=True)
+    monkeypatch.setattr(fs, "HUB", hub)
+    html = client.get(f"/retro/{SEASON}").text
+    assert "No scoreable weeks yet" in html
+    assert "Scoring failed" not in html
+    assert "Truth or the FluSight baseline for these forecast dates" in html
+
+
 def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
                                                         _routed, monkeypatch):
     _mk_tree(_routed)
