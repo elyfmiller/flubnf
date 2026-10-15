@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -25,7 +26,10 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-APP_STATE = Path(__file__).resolve().parents[1] / "state"
+#: the console's state folder; FLUBNF_STATE_DIR moves it (the test suite
+#: points it at a temp folder, so every process a test starts inherits it)
+APP_STATE = Path(os.environ.get("FLUBNF_STATE_DIR")
+                 or Path(__file__).resolve().parents[1] / "state")
 
 # Sections, in file order:
 #   phrasing and settings rows   fmt_hms, locations_phrase, spec_settings,

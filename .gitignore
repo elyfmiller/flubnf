@@ -37,3 +37,5 @@ sandbox/
 # FluBNF.command's fast-forward)
 FluBNF.app/Contents/MacOS/FluBNF
 FluBNF.app/Contents/MacOS/FluBNF.new
+# FluBNF installs with pip; a uv run in the checkout writes this
+uv.lock
