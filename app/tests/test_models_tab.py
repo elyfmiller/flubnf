@@ -73,8 +73,10 @@ def test_the_record_sentences_ride_the_record_toggletip():
              "Methods</a>).")),
         "/model/analogue": (
             ("Three-season relWIS vs the FluSight baseline on "
-             "15,340 cells: 0.722, 0.653 and 0.651, pooled "
-             "0.666 (0.771 without the FluSurv-NET donors)."),),
+             "17,116 cells, FluSight's cell rule: 0.702, 0.651 and "
+             "0.653, pooled 0.660 (0.670 without the own-state "
+             "weighting, the pooled form submitted 2026-10-10 and "
+             "2026-10-17)."),),
         "/model/pf2s": (
             ("It scored worse on the full grid (relWIS 0.719 "
              "against 0.704 for the two-member blend it was "
@@ -93,7 +95,7 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert 'aria-label="beats the baseline"' in client.get("/models").text
     gh = client.get("/model/analogue").text
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
-                     r'0\.722</span>', gh)
+                     r'0\.702</span>', gh)
     pf2s = client.get("/model/pf2s").text
     # both bars beat the baseline (two checks): the badge says how far the
     # two-strain fell behind the blend, from the two values; the Record
