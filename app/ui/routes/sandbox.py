@@ -225,7 +225,6 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
         ctx.update({
             "shipped": shipped,
             "info": sandbox_mod.read_info(name),
-            "note": next((m["note"] for m in models if m["name"] == name), ""),
             "origin": next((m["origin"] for m in models if m["name"] == name), ""),
             "settings": settings, "form": form,
             "presets": {"quick": sandbox_mod.DRY_RUN_PARTICLES,
@@ -236,7 +235,6 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                 n_obs, sandbox_mod.FULL_FIT_PARTICLES, ratio),
             "eta_text": sandbox_mod.eta_words(*sandbox_mod.eta_span(
                 n_obs, form["particles"], ratio)),
-            "eta_calibrated": ratio is not None,
             "fitting": _sandbox_fitting(live, name, ratio),
             # the archive as a data source (empty lists with no hub)
             "locations": sandbox_mod.locations(),
@@ -246,8 +244,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             # your own data: stored datasets, and an upload's refusal
             "datasets": sandbox_mod.dataset_choices(),
             "pick_dataset": dataset,
-            "upload_report": _sandbox_upload_report.pop(name, None),
-            "upload_mb": sandbox_mod.UPLOAD_MAX_BYTES // (1024 * 1024)})
+            "upload_report": _sandbox_upload_report.pop(name, None)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
 
 

@@ -174,7 +174,7 @@ def test_before_a_first_fit_the_estimate_is_a_span(box):
     words = sb.eta_words(lo, hi)
     assert re.fullmatch(r"about \d+:\d\d to \d+:\d\d", words)
     assert f'<span class="sb-eta-v">{words}</span>' in eta
-    assert "A span until a fit finishes on this computer" in eta
+    assert "tipbtn" not in eta                            # the span says it
 
 
 def test_after_a_finished_fit_the_estimate_is_one_time_from_its_ratio(box):
@@ -188,7 +188,7 @@ def test_after_a_finished_fit_the_estimate_is_one_time_from_its_ratio(box):
     assert f'data-low="{t}" data-high="{t}"' in eta
     assert f'<span class="sb-eta-v">{sb.eta_words(t, t)}</span>' in eta
     assert " to " not in sb.eta_words(t, t)
-    assert "scaled by how long this computer&#39;s last fit took" in eta
+    assert "tipbtn" not in eta                            # one time says it
 
 
 # ------------------------------------------------------ while a fit runs
@@ -222,6 +222,10 @@ def test_save_and_run_is_off_and_counting_while_a_run_of_this_model_fits(box, mo
         assert 'data-guard="sandbox-run" data-sb-fitting data-idle="Save and run" disabled>' in b
         assert re.search(r">Fitting… 0:2\d</button>$", b), b
     assert ">Save and run<" not in form
+    # the fit says itself: no engine busy badge for this model's own run,
+    # and the live line carries no "?"
+    assert 'id="sb-busy"' not in html
+    assert "tip-sb-live" not in html
     # Check and Simulate data stay on
     assert re.search(r'<button type="button" id="sb-check">Check</button>', form)
     sim = re.search(r"<button formaction=\"/sandbox/models/kinetics_example/simulate-data\"[^>]*>", form).group(0)
@@ -268,9 +272,13 @@ def test_a_live_run_slow_past_its_estimate_says_stopping_is_safe(box, monkeypatc
 def test_another_models_live_fit_leaves_save_and_run_to_the_guard(box, monkeypatch):
     sb.add_example("kinetics_example")
     sb.add_example("sir_example")
-    _fitting(monkeypatch, model="sir_example")
-    form = _form(client.get("/sandbox?model=kinetics_example").text)
+    w = _fitting(monkeypatch, model="sir_example")
+    html = client.get("/sandbox?model=kinetics_example").text
+    form = _form(html)
     assert form.count(">Save and run<") == 2 and "data-sb-fitting" not in form
+    # engine busy names the other model's run
+    assert 'id="sb-busy"' in form
+    assert f'id="tip-sb-busy">Engine busy: sandbox run {w.name} is still fitting.</span>' in form
     assert "data-fitting=" not in form[:form.index(">")]
     assert 'data-guard="sandbox-run"' in form
 

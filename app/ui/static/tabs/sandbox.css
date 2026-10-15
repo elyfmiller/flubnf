@@ -8,10 +8,10 @@
    stay in nau.css. */
 
 /* ---- page heads ---- */
-/* the gallery's title with its "?" and the never-submitted badge */
+/* the gallery's title and the never-submitted badge */
 .sb-pagehead{margin:.1rem 0 1rem}
-/* the workbench: a breadcrumb, the model's name with its "?" and badges,
-   then one row of facts */
+/* the workbench: a breadcrumb, the model's name and its badge, then one
+   row of facts */
 .sb-crumb{margin:0;font-size:var(--fs-label);color:var(--mut)}
 .sb-title{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .55rem;min-width:0}
 .sb-title > h1{margin:.1rem 0;min-width:0;overflow-wrap:anywhere}
@@ -46,9 +46,10 @@ a.sb-runlink{display:inline-block;border-radius:99px;text-decoration:none}
 a.sb-runlink:hover{text-decoration:none;opacity:.8}
 
 /* ---- the editor card ---- */
-/* the toolbar: the card's title with unsaved and busy beside it, then
-   Check, Save and Save and run (the one primary) at the right edge; the
-   buttons wrap under the title as one group when the card is narrow */
+/* the toolbar: the card's title with the page's "i" (the three files),
+   unsaved and busy beside it, then Check, Save and Save and run (the one
+   primary) at the right edge; the buttons wrap under the title as one
+   group when the card is narrow */
 .sb-toolbar{display:flex;align-items:center;justify-content:space-between;
   flex-wrap:wrap;gap:.5rem 1rem;margin:0 0 .45rem}
 .sb-toolbar-h{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem .7rem;min-width:0}
@@ -105,6 +106,8 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
 .sb-pane-foot > button,.sb-pane-foot > .uk-reason{margin:0 0 0 auto}
 .sb-pane-foot--start{justify-content:flex-start;gap:.4rem;margin-top:.55rem}
 .sb-pane-foot--start > button{margin:0}
+/* a pane's one line beside its button (Simulate: what it replaces) */
+.sb-hint{flex:1 1 14rem;min-width:0;color:var(--mut);font-size:var(--fs-hint)}
 .sbsetpop{display:inline-flex;align-items:center;gap:.2rem}
 .sbsetpop .ck{margin:0}
 /* the files the upload takes, in one line under the file field */
@@ -151,21 +154,24 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
    only in the confirmation that follows (Delete, Stop) */
 button.sb-danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
 button.sb-danger:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,var(--card))}
-/* a live fit: its time so far against the estimate, the line's "?", and
-   Stop at the right; the digits keep their width as they count, here and
-   on the Save and run that reads "Fitting" */
+/* a live fit: its time so far against the estimate, and Stop at the
+   right; the digits keep their width as they count, here and on the Save
+   and run that reads "Fitting" */
 .sb-live{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .7rem;margin:.4rem 0 .6rem}
 .sb-live-v{display:inline-flex;align-items:center;gap:.35rem;margin:0;
   font-weight:600;font-variant-numeric:tabular-nums}
 .sb-live form{margin:0 0 0 auto}
 button[data-sb-fitting]{font-variant-numeric:tabular-nums}
-/* the fit in a word: the alert, the full fit at its right */
+/* the fit in a word: the alert, its title over its one-line reason
+   (muted), the full fit at its right */
 .sb-health{margin:0 0 .1rem}
 .sb-health form{margin:0}
+.sb-says{display:block;margin-top:.1rem;color:var(--mut);font-size:var(--fs-hint)}
 /* a failed run's own words: the error edge on the engine's text */
 pre.sb-err{border-left:3px solid var(--bad);color:var(--ink)}
 
-/* ---- what changed ---- */
+/* ---- what changed: the heading names the compared run ---- */
+.sb-since{color:var(--mut);font-size:var(--fs-label);overflow-wrap:anywhere}
 .sb-files{list-style:none;display:flex;flex-wrap:wrap;gap:.35rem 1.4rem;
   margin:.7rem 0 .4rem;padding:0}
 .sb-files li{display:inline-flex;align-items:center;gap:.45rem}
@@ -190,13 +196,12 @@ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
 .sb-runfoot > button{margin-top:0}
 
 /* ---- the workbench on a phone (under 640px): the menus (How it works,
-   Manage) under the title instead of squeezing it; the file tabs' "?" on
-   its own line under the tabs ---- */
+   Manage) under the title instead of squeezing it; the file tabs scroll
+   sideways rather than wrap ---- */
 @media (max-width:640px){
   .sbhead{flex-direction:column;align-items:stretch;gap:.35rem}
   .sbhead-menus{flex-wrap:wrap;margin:0 0 .5rem}
   .sb-title > h1{overflow-wrap:anywhere}
   .sbtabs{flex-wrap:wrap;border-bottom:0}
   .sbtablist{flex:1 1 100%;overflow-x:auto;border-bottom:1px solid var(--line)}
-  .sbtabtips{flex:1 0 100%;padding:.25rem .3rem .4rem;order:2}
 }

@@ -221,6 +221,12 @@ def test_alert_roles_follow_its_kind():
     act = render('{{ t.alert("info", "x", action=a) }}',
                  a=Markup('<a href="/retro">Open</a>'))
     assert '<span class="uk-alert-action"><a href="/retro">Open</a>' in act
+    # a title over a second line keeps its icon by the title, the action
+    # centered on both lines
+    two = render('{{ t.alert("ok", "x", title="Done", cls="uk-alert--two-line") }}')
+    assert first(two, "div", "uk-alert")["class"] == "uk-alert uk-alert--ok uk-alert--two-line"
+    assert ".uk-alert--two-line{align-items:flex-start}" in KIT_CSS
+    assert ".uk-alert--two-line > .uk-alert-action{align-self:center}" in KIT_CSS
 
 
 def test_empty_state_is_an_icon_a_title_and_one_action():
