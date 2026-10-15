@@ -54,9 +54,13 @@
 {% if (ledger_total | default(0)) > (ledger | length) %}
 {{ tips.alert("info", "Showing the newest " ~ (ledger | length) ~ " of " ~ ledger_total ~ " runs.", id="st-cap", live="", tiptext="The table holds the newest runs only; older rows stay in the ledger, and each run's page opens from its workroot under On disk.") }}
 {% endif %}
-{# rows from before elapsed was recorded show a dash (hms renders None);
-   a dash says why in its title, so no header carries a "?". Under 40rem
-   each row is a card (storage.css), its cells labelled #}
+{# a row with no elapsed shows a dash (hms renders None): a run still
+   going or cut short has none yet, and rows from before elapsed was
+   recorded never will. The dash says which in its title, so no header
+   carries a "?". Under 40rem each row is a card (storage.css), its cells
+   labelled #}
+{% set NO_ELAPSED = {"running": "still running",
+                     "interrupted": "the app closed mid-run"} %}
 <div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr>
 {% for r in ledger %}{% set ri = loop.index %}
 {# the modified-settings fact, read from the outcome: whether the files
@@ -70,7 +74,7 @@
  {%- if r.modified or kf %} {{ tips.badge("warn", "modified · hub names" if hub_names else "modified settings") }}{% endif %}</td>
  <td class="st-stat">{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
  {% set elapsed = r.elapsed_s | hms %}
- <td class="elapsed">{% if elapsed == "--" %}<span title="recorded before timing existed">--</span>{% else %}{{ elapsed }}{% endif %}</td>
+ <td class="elapsed">{% if elapsed == "--" %}<span title="{{ NO_ELAPSED.get(r.status, "recorded before timing existed") }}">--</span>{% else %}{{ elapsed }}{% endif %}</td>
  {# a dash = the workroot was deleted; the ledger row stands #}
  <td class="num" data-l="on disk">{% if r.disk_h %}{{ r.disk_h }}{% else %}<span title="workroot deleted">--</span>{% endif %}</td>
  {# facts: fixed phrases and numbers, never raw errors (shared._outcome_items);
