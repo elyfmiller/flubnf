@@ -7,26 +7,36 @@
   * app/state -> a temp folder for the whole session, set HERE at import,
     before any test module imports the server: its startup thread writes
     component_versions.json and routes open ledger.sqlite, which landed in
-    the working tree's app/state. Tests that set their own APP_STATE still
-    do; the session ends by checking app/state was left untouched.
+    the working tree's app/state. FLUBNF_STATE_DIR carries it to every
+    Python a test starts (a `python -c "import app.ui.server"` probe has a
+    startup thread too). Tests that set their own APP_STATE still do; the
+    session ends by checking app/state was left untouched.
+  * the checkout's top folder: the session ends by checking no test left a
+    file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
 """
 import atexit
+import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
 
 import pytest                                            # noqa: E402
 
-from app.core import runs as _runs                       # noqa: E402
-
-REAL_STATE = Path(_runs.APP_STATE)
+#: the real state folder, read before the override below
+REAL_STATE = REPO / "app" / "state"
 #: the suite's own state folder (runs.APP_STATE and everything derived
-#: from it at call time: the ledger, workroots, archive)
+#: from it at call time: the ledger, workroots, archive), in this process
+#: and, through FLUBNF_STATE_DIR, in every process a test starts
 TEST_STATE = Path(tempfile.mkdtemp(prefix="flubnf-test-state-"))
 atexit.register(shutil.rmtree, TEST_STATE, True)
+os.environ["FLUBNF_STATE_DIR"] = str(TEST_STATE)
+
+from app.core import runs as _runs                       # noqa: E402
+
 _runs.APP_STATE = TEST_STATE
 
 from app.ui import versions as _versions                 # noqa: E402
@@ -58,15 +68,25 @@ def _state_listing() -> dict:
     return out
 
 
+def _top_files() -> set:
+    """The checkout's top folder, but for the tools' own dot folders
+    (.pytest_cache, .coverage) and __pycache__."""
+    return {n for n in os.listdir(REPO)
+            if not n.startswith(".") and n != "__pycache__"}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
-    """The whole suite leaves the working tree's app/state as it found it."""
-    before = _state_listing()
+    """The whole suite leaves the working tree's app/state as it found it,
+    and adds nothing to the checkout's top folder."""
+    before, top = _state_listing(), _top_files()
     yield
     after = _state_listing()
     changed = sorted(k for k in set(before) | set(after)
                      if before.get(k) != after.get(k))
     assert not changed, f"tests wrote into {REAL_STATE}: {changed[:10]}"
+    added = sorted(_top_files() - top)
+    assert not added, f"tests left files in {REPO}: {added[:10]}"
 
 
 @pytest.fixture(autouse=True)
