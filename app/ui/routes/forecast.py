@@ -530,7 +530,31 @@ def run_page(request: Request, run_id: str):
         "subs": subs,
         "sub_errors": {output_routes.model_display(m, w): why
                        for m, why in sub_errors.items()},
+        # the weeks the medians' h0 and h3 end on
+        "med_weeks": _median_weeks(
+            res.get("forecast_date") if dsx else _sd.get("forecast_date"),
+            dataset=bool(dsx)),
         "report": report})
+
+
+def _median_weeks(asof, dataset: bool = False) -> tuple:
+    """The weeks a run's median table's h0 and h3 end on: the hub's
+    reference date (one week after the newest data week) and three weeks
+    after it; for a dataset run, one and four weeks after its forecast
+    date. () when the date is unreadable."""
+    import datetime as _dt
+    try:
+        d = _dt.date.fromisoformat(str(asof or "")[:10])
+    except ValueError:
+        return ()
+    if dataset:
+        h0 = d + _dt.timedelta(days=7)
+    else:
+        ref = output_routes._reference_date(d.isoformat())
+        if not ref:
+            return ()
+        h0 = _dt.date.fromisoformat(ref)
+    return (h0.isoformat(), (h0 + _dt.timedelta(days=21)).isoformat())
 
 
 def _no_run_report(request: Request, run_id: str):
