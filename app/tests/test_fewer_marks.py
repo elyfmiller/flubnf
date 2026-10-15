@@ -152,6 +152,11 @@ def test_home_record_is_the_cards_one_i():
                     .split("</span></span>", 1)[0].split())
     assert "frozen-specification replication" in perf
     assert "2024-25 and 2025-26 together:" in perf
+    # the figures and their cells only; the cell rule and the convention's
+    # comparison with the dashboard are Methods' Scoring details
+    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
+    assert "third decimal" not in perf and "CDC FluSight dashboard" not in perf
+    assert len(re.sub(r"<[^>]+>", " ", perf).split()) < 115
 
 
 def test_home_says_the_bngsim_pin_only_when_the_build_differs():
