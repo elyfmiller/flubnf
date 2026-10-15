@@ -592,6 +592,22 @@ def test_runs_page_shows_elapsed_per_completed_run():
     assert 'id="tip-st-elapsed"' not in html
 
 
+def test_a_run_with_no_elapsed_yet_says_so_in_its_dash():
+    """elapsed is written when a run closes: a running or interrupted row
+    has none, and its dash says why, not "before timing existed"."""
+    html = srv.templates.env.get_template("runs.html").render(
+        active="Runs", ledger=[
+            {"run_id": "r2", "label": "2098-01-10 · Jan 10 09:31",
+             "status": "running", "elapsed_s": None},
+            {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31",
+             "status": "interrupted", "elapsed_s": None}])
+    assert ('<td class="elapsed"><span title="still running">--</span></td>'
+            in html)
+    assert ('<td class="elapsed"><span title="the app closed mid-run">--'
+            '</span></td>') in html
+    assert "recorded before timing existed" not in html
+
+
 def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):
     """A completing run closes its ledger row (status, finished_utc,
     elapsed_s) and replaces the 'pending' workroot with the leased one."""
