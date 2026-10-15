@@ -353,7 +353,7 @@ def test_the_gallery_guides_a_first_visit(box):
     assert '<span class="uk-step-label">Start a model</span>' in how
     assert "The SIR example is the place to learn" in how
     # each file says what it holds, and where your own counts go in
-    assert "data.exp the weekly counts, priors.conf each fitted value" in how
+    assert "data.exp: the weekly counts; priors.conf: each fitted value" in how
     assert "Load data or Simulate data on the data.exp tab" in how
     # the SIR example comes first and is the default start, with its note
     # and a name filled in, so a first fit needs no choices
