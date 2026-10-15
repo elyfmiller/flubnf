@@ -11,6 +11,43 @@ agent's.
 
 ## Now
 
+- 2026-10-15 (laptop): the Groundhog's own-state weighting ships, Ely's
+  decision of 2026-10-15 after the pre-registered screen below. Branch
+  `groundhog-local-pools` (one code commit over `dev`): the jurisdiction's
+  own past weeks carry half of the admissions-pool weight
+  (`flubnf.analogue.SHIPPED_OWN_SHARE`, `LocalPooling`), the FluSurv-NET
+  pool unchanged. The console's run record and the replay presets carry
+  the form (`spec.extra["local_pools"]`, as they carry `aux_pools`), so a
+  record says what ran, a re-run reproduces it, and a record from before
+  2026-10-15 (no key) reads as the pooled form it ran; `None` asks for the
+  pooled form (research); knob `groundhog.own_share`; `flubnf groundhog
+  retro --own-share`; the ledger names the form; a retrospective records
+  it and refuses to resume a tree replayed under another; the card is
+  version 1.2; the README record has both forms. An adversarial review of
+  the default switch (fifteen agents) found the record gap and it is
+  closed. Pull request `dev` to `main` to follow so the 2026-10-21 round
+  runs it. [DONOR-BANKS.md](../DONOR-BANKS.md) has the rule and the
+  evidence.
+- 2026-10-15 (laptop, the screen; prereg c66c50adc20bdf84 and amendment 1,
+  lab archive `research/groundhog-local-pools/`): nine arms on 17,116
+  common cells of 2023-24 to 2025-26. Own share 0 / .25 / .5 / .75 / 1
+  scores 0.6701 / 0.6646 / 0.6604 / 0.6584 / 0.6604, 95% coverage .940 /
+  .941 / .936 / .925 / .903; leave-one-season-out over the registered arms
+  picks 0.5 in every fold (gain 0.0097; bootstraps [0.006, 0.015] by week,
+  [0.003, 0.018] by jurisdiction). HHS-region weighting adds nothing; a
+  jurisdiction's own FluSurv-NET site is worse in every arm. The gain is in
+  the large jurisdictions; 25 of 52 move slightly the other way; on the
+  log scale the gain is 0.003. The national row, which the screen did not
+  score, was checked afterwards with `--with-us` on both forms: US relWIS
+  0.627 / 0.594 / 0.581 own-weighted against 0.686 / 0.610 / 0.593 pooled,
+  so US is weighted like the states. An adversarial review (fifteen agents) found
+  a defect in the first scored arms (same-region donors dropped), fixed and
+  re-run; the run log records all three runs. Against the two submitted
+  rounds (as-of 2026-10-03 and 2026-10-10, the archived specs reproduced
+  value for value): medians move by a median of 0% across jurisdictions,
+  within -21% to +28% at horizon 3; the 95% band narrows (upper over median
+  at h3: 10.5 to 9.8, then 9.1 to 8.5); US medians within 3%; shapes now
+  range 1.5 to 2.6 (h3 over h0) where every jurisdiction shared one.
 - 2026-10-09 (laptop, a finding; no change proposed): after the first
   round the Groundhog's intervals looked wide beside other teams' on the
   FluSight dashboard, and Ely asked, out of curiosity, whether narrower
@@ -173,6 +210,13 @@ agent's.
 
 ## Decided
 
+- 2026-10-15 (laptop, Ely): the shipped Groundhog weights the jurisdiction's
+  own past weeks to half of the admissions pool (`SHIPPED_OWN_SHARE`
+  0.5); the FluSurv-NET pool stays pooled and no jurisdiction uses its own
+  FluSurv-NET site. The pooled form is reachable as research
+  (`local_pools: None`, `--own-share 0`). Changing the share is a
+  pre-registration and Ely's decision; the Oracle SIHRS is untouched (its
+  pools never pass `local`).
 - 2026-10-01 (Ely): addendum A3 is frozen and applies from the first
   round, 2026-10-07: the Oracle step covers the US national cell as it
   covers the 52 jurisdictions, RNG key 0, nothing else changed; the hash
@@ -305,6 +349,29 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-15 (laptop), App: the console and the shared pages still
+  describe the pooled Groundhog and print its old record. Please update:
+  `app/ui/templates/methods.html` (the Groundhog's method text; "States
+  are pooled because one state gives about five donors" near lines 366 and
+  384, and "Groundhog, pooled 0.666" near 442), `home.html` (0.666 and
+  15,340 near 116 to 169), `app/ui/routes/models.py:107` (0.666 / 0.771 /
+  15,340) and `app/core/site_page.py` where the record is printed, and
+  FLUSIGHT-2026-27.md's model row and its "Groundhog 0.666". The new
+  figures: own-state weighting 0.702 / 0.651 / 0.653, pooled 0.660 on
+  17,116 cells (FluSight's cell rule); the pooled form 0.721 / 0.659 /
+  0.660, 0.670 on the same cells. Wording: "pooled across jurisdictions
+  with the jurisdiction's own past weeks carrying half of the weight".
+- 2026-10-15 (laptop), Submission: the GroundHogCGR card is version 1.2 on
+  the branch (methods, methods_long, the record); copy it to the hub fork
+  when the branch is on `dev`, for Ely's next cards pull request. Not
+  needed before the 2026-10-21 round: CDC's checks read the file, not the
+  card, and the card's designation is unchanged.
+- 2026-10-15 (laptop), Oracle SIHRS agent: nothing changes for you. The
+  weighting lives behind `local=` in `flubnf.analogue.forecast`, which
+  `oracle_mix.py` and `oracle_bank.py` never pass; `donor_paths`,
+  `_donor_cells` and `donor_ratios` are unchanged. The shadow arms the
+  screen suggests (own share 0.25 and 0.75, logged weekly, never submitted)
+  are not built yet; say here if you want them beside your own secondaries.
 - 2026-10-05, Submission (answering your message of 2026-10-05):
   acknowledged on all three points. Nothing of this lane needs to go into
   `main` first; the Oracle SIHRS is frozen and its US row comes out of
