@@ -51,10 +51,11 @@ HEADERS = {
                     "calendar week"),
         "facts": [("Donors", "NHSN admissions and FluSurv-NET, equal weight"),
                   ("Matched on", "calendar week, within two epiweeks")],
-        "blurb": ("The empirical model: it pools, across all states, the "
-                  "weeks of earlier seasons within two epiweeks of the "
-                  "forecast date and scales the latest value by the "
-                  "quantiles of their growth to each horizon, with no "
+        "blurb": ("The empirical model: it pools the weeks of earlier "
+                  "seasons within two epiweeks of the forecast date across "
+                  "jurisdictions, with the jurisdiction's own past weeks "
+                  "carrying half of the weight, and scales the latest value "
+                  "by the quantiles of their growth to each horizon, with no "
                   "epidemic mechanism. Donors are NHSN admissions (2021-22 "
                   "excluded: the archive holds only its growth phase) and a "
                   "committed FluSurv-NET bank shrunk to the admissions "
@@ -102,19 +103,26 @@ def _record(name: str) -> dict:
                 fmt(three["oracle"]), fmt(three["filter"]))]
         return _bars({"bars": bars, "facts": facts, "lines": lines})
     if name == "analogue":
-        seasons = [("2023-24", 0.722), ("2024-25", 0.653),
-                   ("2025-26", 0.651)]
-        pooled, bare, cells = 0.666, 0.771, "15,340"
+        # the shipped own-state weighting against the pooled form it
+        # replaced on 2026-10-15, on the same cells under FluSight's cell
+        # rule (README, Measured record). The bare-analogue comparison
+        # (0.666 against 0.771 on 15,340 cells) is the pooled form's under
+        # the earlier rule: Methods keeps it, labelled so
+        seasons = [("2023-24", 0.702), ("2024-25", 0.651),
+                   ("2025-26", 0.653)]
+        pooled, unweighted, cells = 0.660, 0.670, "17,116"
         return _bars({
             "bars": [("Groundhog, pooled", pooled, True),
-                     ("Without FluSurv-NET donors", bare, False)],
+                     ("Without own-state weighting", unweighted, False)],
             "facts": [(s, fmt(v), _rule(v)) for s, v in seasons]
                      + [("Cells", cells)],
             "lines": [
                 (f"Three-season relWIS vs the FluSight baseline on {cells} "
-                 f"cells: {fmt(seasons[0][1])}, {fmt(seasons[1][1])} and "
-                 f"{fmt(seasons[2][1])}, pooled {fmt(pooled)} ({fmt(bare)} "
-                 f"without the FluSurv-NET donors).")]})
+                 f"cells, FluSight's cell rule: {fmt(seasons[0][1])}, "
+                 f"{fmt(seasons[1][1])} and {fmt(seasons[2][1])}, pooled "
+                 f"{fmt(pooled)} ({fmt(unweighted)} without the own-state "
+                 f"weighting, the pooled form submitted 2026-10-10 and "
+                 f"2026-10-17).")]})
     two, blend = 0.719, 0.704
     # both scores beat the baseline (two checks), so the badge says how far
     # this one fell behind the blend it was tested in, from the two values

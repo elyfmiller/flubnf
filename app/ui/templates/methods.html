@@ -365,15 +365,14 @@
  {% call tips.stats("mt-facts", label="The donors") %}
   {{ tips.stat("Donor window", "2", "MMWR epiweeks", id="mt-gh-window") }}
   {{ tips.stat("Minimum", "30", "donors", id="mt-gh-min") }}
-  {{ tips.stat("Donors per state", "about 5", "a season", id="mt-gh-pool") }}
+  {{ tips.stat("Own state's weeks", "half", "of the weight", id="mt-gh-own") }}
   {{ tips.stat("US row", "about 2%", "of donors", id="mt-gh-us") }}
   {{ tips.stat("Excluded season", "2021-22", "", id="mt-gh-2122") }}
  {% endcall %}
  {{ tips.heading("Coverage, three replayed seasons", "mt-gh-cov", level=3, cls="mt-h3") }}
  {% call tips.stats("uk-stats--row mt-cov", label="Share of truths inside each central band") %}
-  {{ tips.stat("50% band", "0.51", id="mt-cov50") }}
-  {{ tips.stat("80% band", "0.80", id="mt-cov80") }}
-  {{ tips.stat("90% band", "0.95", id="mt-cov90") }}
+  {{ tips.stat("50% band", "0.50", id="mt-cov50") }}
+  {{ tips.stat("95% band", "0.94", id="mt-cov95") }}
  {% endcall %}
  <div class="mt-folds">
  {% call tips.fold("How it forecasts", id="mt-gh-how", cls="mt-fold") %}
@@ -381,17 +380,19 @@
  strictly earlier seasons, any state, within two MMWR epiweeks of the
  forecast date, and scales the last observed value by the empirical
  quantiles of their h-week growth ratios; fewer than 30 donors means no
- forecast. States are pooled because one state gives about five donors per
- season; the US row is about 2 percent of donors, epiweek 53 sits between
- 52 and 1, and future values are read by date, never by week label.</p>
+ forecast. Donors are pooled across jurisdictions with the jurisdiction's
+ own past weeks carrying half of the weight (since 2026-10-15), because
+ one state gives about five donors per season; the US row is about 2
+ percent of donors, epiweek 53 sits between 52 and 1, and future values
+ are read by date, never by week label.</p>
  <p>2021-22 is excluded from the donors: it peaked in April 2022 and the
  archive starts 2022-02-05, so it survives only as its growth phase and a
  calendar-matched pool would read March as still growing. The
  pre-registered exclusion improved all three replayed seasons and 50 of 52
  jurisdictions.</p>
  <p>Donors are neither exchangeable nor independent, so no coverage
- guarantee is claimed; over three replayed seasons the central 50, 80 and
- 90 percent bands covered 0.51, 0.80 and 0.95.</p>
+ guarantee is claimed; over three replayed seasons the central 50 and 95
+ percent bands covered 0.50 and 0.94.</p>
  {% endcall %}
  {% call tips.fold("The auxiliary donor bank", id="mt-gh-bank", cls="mt-fold") %}
  <p>A second pool built the same way on
@@ -460,14 +461,13 @@
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
   <tr><td>Oracle SIHRS</td>
    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
-  <tr><td>Groundhog</td><td class="num ok">0.722{{ rel_verdict(0.722) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td></tr>
+  <tr><td>Groundhog</td><td class="num ok">0.702{{ rel_verdict(0.702) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Pooled over three seasons") %}
   {{ tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), id="mt-pool-oracle") }}
-  {{ tips.stat("Groundhog, pooled", "0.666", id="mt-pool-gh") }}
+  {{ tips.stat("Groundhog, pooled", "0.660", id="mt-pool-gh") }}
   {{ tips.stat("Bare analogue, pooled", "0.771", id="mt-pool-bare") }}
-  {{ tips.stat("Paired difference below zero", "4,000 of 4,000", "bootstrap replicates", id="mt-boot") }}
  {% endcall %}
  <div class="mt-folds">
  {% call tips.fold("Cells behind these figures", id="mt-perf-cells", cls="mt-fold") %}
@@ -480,8 +480,11 @@
  scores {{ oracle_text.fmt(rec.three.filter) }}), not the Groundhog's. The
  particle filter alone, the production engine's replay (reseal of
  2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.</p>
- <p>The Groundhog and the bare analogue share 15,340 cells; their paired
- difference is below zero in all 4,000 bootstrap replicates.</p>
+ <p>The Groundhog row is its shipped form, on 17,116 cells under
+ FluSight's cell rule; the pooled form it replaced scores 0.670 on the same
+ cells. The other rows use the earlier rule. Under it the pooled form
+ (0.666) and the bare analogue share 15,340 cells; their paired difference
+ is below zero in all 4,000 bootstrap replicates.</p>
  {% endcall %}
  </div>
 </div>
