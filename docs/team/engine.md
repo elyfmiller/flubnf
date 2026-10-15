@@ -6,6 +6,23 @@ this file here.
 
 ## Now
 
+- 2026-10-15 (02:25 UTC): MERGED. lanl/PyBNF#985 is on public PyBNF
+  `main` as merge commit 8410f794, all 26 commits kept: Ely's eight and 18
+  Bill pushed onto the branch himself over three review rounds (one
+  cross-platform defect, two gaps our fixes left, nine refusal and
+  bookkeeping fixes, an oracle test file against scipy). The docs site
+  already shows the filter (lanl.github.io/PyBNF, algorithm page and key
+  reference). No release yet: PyPI is still 1.8.1 (August), so until Bill
+  tags one the public install is `pip install "pybnf @
+  git+https://github.com/lanl/PyBNF@8410f794"`. Stage 1 of the plan below
+  is now triggerable; it starts when Ely says so. Three of Bill's changes
+  matter for the plan: the kernel's sums are numpy reductions now, so a
+  replay against the private engine matches to rounding, not byte for
+  byte; the same BLAS non-determinism lives in the private engine's
+  `pf.py` (a repeated run on an Intel Mac can differ in the last digit, so
+  the Windows and student docs should not promise otherwise); and `lwf`
+  refuses a dispersion outside 1e-6 to 1e6 (the SIHRS prior, 0.1 to 40, is
+  well inside). Nothing in FluBNF or the production engine pin changes.
 - 2026-10-14: the first review of lanl/PyBNF#985 arrived (Bill's reviewing
   agent, ten inline findings and one outside the diff, every one real:
   two silently accepted keys, a resampling edge, a hung cluster at
