@@ -69,10 +69,11 @@ FluBNF submits two models to FluSight, each under its own hub identity
   ([docs/ORACLE-SIHRS.md](docs/ORACLE-SIHRS.md)).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
   count scaled by the empirical quantiles of growth ratios seen at the same
-  MMWR epiweek in strictly earlier seasons, pooled across jurisdictions,
-  with a committed FluSurv-NET donor bank spliced in
-  ([`data/banks/`](data/banks/)). Epiweek 53 is seated between weeks 52
-  and 1. Nothing is fitted.
+  MMWR epiweek in strictly earlier seasons, pooled across jurisdictions
+  with the jurisdiction's own past weeks carrying half of the weight (since
+  2026-10-15; [docs/DONOR-BANKS.md](docs/DONOR-BANKS.md)), with a committed
+  FluSurv-NET donor bank spliced in ([`data/banks/`](data/banks/)). Epiweek
+  53 is seated between weeks 52 and 1. Nothing is fitted.
 
 Both read past seasons at the same calendar week, in different ways: the
 Groundhog applies donor growth ratios to the last observed count, the
@@ -158,7 +159,8 @@ differ and are not read across.
 
 | model | cell rule | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|---|
-| Groundhog (`flubnf groundhog retro all --aux flusurv`, hub at 99cc45a) | FluSight's, since 2026-09-25 | 0.722 | 0.659 | 0.660 | 0.6705 | 17,116 |
+| Groundhog, own-state weighting, the shipped form since 2026-10-15 (`flubnf groundhog retro all --aux flusurv`, hub at 397226db) | FluSight's, since 2026-09-25 | 0.702 | 0.651 | 0.653 | 0.6604 | 17,116 |
+| Groundhog, pooled form, submitted 2026-10-10 and 2026-10-17 (`--own-share 0`, same cells) | FluSight's, since 2026-09-25 | 0.721 | 0.659 | 0.660 | 0.6701 | 17,116 |
 | Oracle SIHRS, the stored forecasts with the step and its donor bank applied ([docs/ORACLE-SIHRS.md](docs/ORACLE-SIHRS.md)) | earlier[^earlier] | 0.767 | 0.697 | 0.781 | 0.738 | 15,300 |
 | calendar analogue without the donor bank, on the Groundhog's 2026-09-21 cells | earlier[^earlier] | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
@@ -167,8 +169,9 @@ differ and are not read across.
     2026-09-25, also scores zero truths and zero medians. Under the earlier
     rule the Groundhog's replay of 2026-09-21 scored 0.722, 0.653 and 0.651
     (0.666 pooled) on 15,340 cells, the figures the console's Home and
-    Methods still print. On those cells its WIS equals today's replay bit
-    for bit; the 1,776 cells added are the ones the old rule skipped.
+    Methods still print. On those cells its WIS equals the pooled form's
+    replay bit for bit; the 1,776 cells added are the ones the old rule
+    skipped.
 
 Without the step, the plain particle filter on the Oracle SIHRS's cells
 scores 0.840, 0.794 and 0.843 (0.819 pooled); on the 9,279 cells of
@@ -181,13 +184,15 @@ decision on a screen that did not resolve it; the Oracle SIHRS's record is
 a frozen-specification replication, and the 2026-27 season is the
 prospective test.
 
-The Groundhog's row reproduces on any machine with a hub clone and no
+The Groundhog's rows reproduce on any machine with a hub clone and no
 engine:
 
     flubnf groundhog retro all --aux flusurv
+    flubnf groundhog retro all --aux flusurv --own-share 0
 
-or from the console, Retrospective tab, engine preset "Groundhog only"
-(minutes per season; the two paths agree cell for cell).
+(the shipped own-state weighting, then the pooled form), or from the
+console, Retrospective tab, engine preset "Groundhog only" (minutes per
+season; the two paths agree cell for cell).
 
 A season's Oracle SIHRS is made the same way a live week is: a console replay,
 Retrospective tab, preset "Oracle SIHRS and the Groundhog" (or

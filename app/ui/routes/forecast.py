@@ -901,6 +901,10 @@ def _run_extra(members: int, mode: str, aux: str | None = None,
         fn = _an.aux_preset(name)                # unknown name raises here
         extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
         extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
+        # the Groundhog's own-state weighting, recorded so a re-run
+        # reproduces it and a row from before 2026-10-15 (no key) reads as
+        # the pooled form it ran; the bare analogue stays the pooled form
+        extra["local_pools"] = _an.shipped_local_pools()
     if oracle is not None and str(oracle) != "":
         if str(oracle) != "none":
             raise ValueError(f"oracle must be 'none' (the plain filter, a "

@@ -348,8 +348,36 @@ def analogue_donors_label(extra: dict | None) -> str:
     analogue when the spec carries no auxiliary pools."""
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("aux_pools"):
-        return str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
-    return "none (bare analogue)"
+        label = str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
+    else:
+        label = "none (bare analogue)"
+    return label + local_pools_label(extra)
+
+
+def local_pools_label(extra: dict | None) -> str:
+    """', own-state donors 0.50[, region 0.25][, own FluSurv-NET site]' for
+    a research run with locally weighted Groundhog pools
+    (spec.extra['local_pools'], flubnf.analogue.LocalPooling); '' without."""
+    from app.core.engines.analogue import effective_local_pools
+    extra = extra if isinstance(extra, dict) else {}
+    if extra.get("dataset"):
+        return ""
+    try:
+        cfg = effective_local_pools(extra)
+    except ValueError:
+        return ", local pools (unreadable)"
+    if cfg is None:
+        # the pooled form, however it was asked for: the knob at 0, an
+        # explicit None, or a record from before 2026-10-15 (no key)
+        return ", pooled (no own-state weight)"
+    parts = []
+    if float(cfg.get("own_share", 0) or 0) > 0:
+        parts.append(f"own-state donors {float(cfg['own_share']):.2f}")
+    if float(cfg.get("region_share", 0) or 0) > 0:
+        parts.append(f"region {float(cfg['region_share']):.2f}")
+    if cfg.get("own_site"):
+        parts.append("own FluSurv-NET site")
+    return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 
 def is_research(spec) -> bool:
@@ -362,6 +390,20 @@ def is_research(spec) -> bool:
         return False
     # the plain filter: file withheld, never the date's forecast; a custom
     # dataset: never the date's forecast either
+    # the Groundhog's local pooling: a run whose record asks for anything
+    # but the shipped configuration (the pooled form included) is research;
+    # a record without the key is from before 2026-10-15 and is what it was;
+    # a knob off its default is a modified run instead (app/core/knobs.py)
+    from app.core.engines.analogue import (SHIPPED_LOCAL_POOLS,
+                                           effective_local_pools)
+    if "local_pools" in extra:
+        try:
+            form = effective_local_pools(
+                {k: v for k, v in extra.items() if k != "knobs"})
+        except ValueError:
+            form = "unreadable"
+        if form != SHIPPED_LOCAL_POOLS:
+            return True
     return (extra.get("members") == 3 or extra.get("variant") == "2strain"
             or str(extra.get("oracle") or "") == "none"
             or bool(extra.get("dataset")))

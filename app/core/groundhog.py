@@ -116,7 +116,8 @@ def score_week(q_by_loc: dict, asof: str, n2f: dict, truth: dict) -> tuple:
 
 
 def run_season(season: str, aux: str = "", *, with_us: bool = False,
-               root: Path | None = None, progress=None) -> dict:
+               root: Path | None = None, progress=None,
+               own_share: float | None = None) -> dict:
     """Replay one season of the calendar member alone and store the record.
 
     `aux` names an auxiliary preset (`an_engine.AUX_PRESETS`); empty runs
@@ -125,6 +126,19 @@ def run_season(season: str, aux: str = "", *, with_us: bool = False,
     summary."""
     arm = aux or SHIPPED
     week_extra = an_engine.aux_preset(aux) if aux else None
+    # the shipped own-state weighting applies unless a share is given
+    # (0 is the pooled form); the arm directory names a share off the default
+    local = (None if own_share is None
+             else ({"own_share": float(own_share)} if float(own_share) > 0 else None))
+    if own_share is not None and float(own_share) != AN.SHIPPED_OWN_SHARE:
+        arm = f"{arm}-own{float(own_share):.2f}"
+    if own_share is not None:
+        _wx = week_extra
+        def week_extra(asof, i, vintages, _wx=_wx):          # noqa: E306
+            return {**(_wx(asof, i, vintages) if _wx else {}), "local_pools": local}
+        week_extra.__name__ = (getattr(_wx, "__name__", "bare") +
+                               f"+own{float(own_share):.2f}")
+        week_extra.local_pools = local                 # declared, for the record
     locations = console_locations() + (["US"] if with_us else [])
     n2f = _name2fips()
     truth, _ = scoring.load_truth()
@@ -176,6 +190,10 @@ def run_season(season: str, aux: str = "", *, with_us: bool = False,
         "vintages": len(vintages), "first": vintages[0], "last": vintages[-1],
         "location_weeks_abstained": int(abstained),
         "bandwidth": AN.DEFAULT_BANDWIDTH, "min_donors": AN.MIN_DONORS,
+        # what the weeks ran (0.0 for the pooled form, the bare arm included)
+        "own_share": float(((an_engine.effective_local_pools(
+            {"local_pools": getattr(week_extra, "local_pools", None)})
+            or {}).get("own_share", 0.0))),
         "excluded_donor_seasons": sorted(AN.EXCLUDED_DONOR_SEASONS),
         "truth_source": scoring.TRUTH_SOURCE, "commit": _git_commit(),
     }
