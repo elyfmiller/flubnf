@@ -381,10 +381,10 @@
  forecast date, and scales the last observed value by the empirical
  quantiles of their h-week growth ratios; fewer than 30 donors means no
  forecast. Donors are pooled across jurisdictions with the jurisdiction's
- own past weeks carrying half of the weight (since 2026-10-15), because
- one state gives about five donors per season; the US row is about 2
- percent of donors, epiweek 53 sits between 52 and 1, and future values
- are read by date, never by week label.</p>
+ own past weeks carrying half of the weight (since 2026-10-15). They are
+ pooled because one state gives about five donors per season; the US row
+ is about 2 percent of donors, epiweek 53 sits between 52 and 1, and
+ future values are read by date, never by week label.</p>
  <p>2021-22 is excluded from the donors: it peaked in April 2022 and the
  archive starts 2022-02-05, so it survives only as its growth phase and a
  calendar-matched pool would read March as still growing. The
@@ -395,11 +395,12 @@
  percent bands covered 0.50 and 0.94.</p>
  {% endcall %}
  {% call tips.fold("The auxiliary donor bank", id="mt-gh-bank", cls="mt-fold") %}
- <p>A second pool built the same way on
- FluSurv-NET hospitalization rates, a committed, digest-checked file; its
- ratios are shrunk to the admissions scale (fitted on earlier seasons only)
- and averaged in at a fixed equal weight. This bank is what separates the
- Groundhog from the bare calendar analogue; it was pre-registered and chosen
+ <p>A second pool, matched the same way but pooled across sites with no
+ own-state weight, on FluSurv-NET hospitalization rates, a committed,
+ digest-checked file; its ratios are shrunk to the admissions scale (fitted
+ on earlier seasons only) and averaged in at a fixed equal weight. This
+ bank, and since 2026-10-15 the own-state weighting, separate the Groundhog
+ from the bare calendar analogue; the bank was pre-registered and chosen
  over an ILI+ bank.</p>
  {% endcall %}
  </div>
@@ -465,9 +466,11 @@
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Pooled over three seasons") %}
-  {{ tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), id="mt-pool-oracle") }}
-  {{ tips.stat("Groundhog, pooled", "0.660", id="mt-pool-gh") }}
-  {{ tips.stat("Bare analogue, pooled", "0.771", id="mt-pool-bare") }}
+  {# each tile names its own cells: they and their cell rules differ
+     (the Cells fold below) #}
+  {{ tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), oracle_text.cells(rec.three.cells) ~ " cells", id="mt-pool-oracle") }}
+  {{ tips.stat("Groundhog, pooled", "0.660", "17,116 cells", id="mt-pool-gh") }}
+  {{ tips.stat("Bare analogue, pooled", "0.771", "15,340 cells", id="mt-pool-bare") }}
  {% endcall %}
  <div class="mt-folds">
  {% call tips.fold("Cells behind these figures", id="mt-perf-cells", cls="mt-fold") %}

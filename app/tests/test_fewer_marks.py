@@ -342,6 +342,11 @@ def test_methods_keeps_the_facts_its_marks_held_in_folds():
                  "2021-22 is excluded from the donors",
                  "no coverage guarantee is claimed"):
         assert fact in how.replace("&#39;", "'"), fact
+    # the weighting is the admissions pool's: the FluSurv-NET pool stays
+    # pooled (0e60501), and both now separate it from the bare analogue
+    bank = _fold(t, "mt-gh-bank")
+    assert "pooled across sites with no own-state weight" in bank
+    assert "since 2026-10-15 the own-state weighting" in bank
     assert "fresh run from August 1" in _fold(t, "mt-fresh")
     caveats = _fold(t, "mt-caveats")
     assert "frozen by a pre-registration before it was scored" in caveats
