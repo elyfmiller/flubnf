@@ -131,12 +131,14 @@
    live="" silences it (a line present from first paint that is not news).
    `title` is a bold lead; `action` is markup at the right (a link or a
    button). hidden=True renders it hidden, for a page script to show.
-   `tip_label` names the "?" where the line itself would read wrong. #}
-{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="") -%}
+   `tip_label` names the "?" where the line itself would read wrong.
+   cls="uk-alert--two-line" keeps the icon by the title when a second
+   line follows it. #}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
-<div class="uk-alert uk-alert--{{ kind }}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
+<div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
 {%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}

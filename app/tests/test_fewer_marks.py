@@ -270,33 +270,49 @@ def test_every_start_carries_its_own_note():
     assert how.count('class="uk-step-meta"') == 6 and "tipbtn" not in how
 
 
-# ------------------ the Sandbox workbench: one "i", the rest in words
+# ------------- the Sandbox workbench: one "i" a card, the rest in words
 
-def test_the_workbench_keeps_one_mark_from_a_first_visit_to_a_fit(sandbox_root):
-    """A student's path (the SIR example, Check, a quick fit) shows one
-    "i", the Model heading's: what the three files hold. The file tabs,
-    the run settings, the fit's result and the diagram carry no "?"; their
-    labels, badges and one-line reasons say it."""
+def test_the_workbench_keeps_one_mark_a_card_from_a_first_visit_to_a_fit(sandbox_root):
+    """A student's path (the SIR example, Check, a quick fit) shows two
+    "i"s, one a card: the Model heading's (what the three files hold) and
+    Run settings' (what Jitter and Seed do). The file tabs, the labels,
+    the fit's result and the diagram carry no "?"; their labels, badges
+    and one-line reasons say it."""
     from app.core import sandbox as sb
     from test_sandbox_guide import _finish
     sb.add_example("sir_example")
     html = client.get("/sandbox?model=sir_example").text
-    assert marks(html) == ["tt-sb-files"]
+    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
     files = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
-    for fact in ("<b>model.bngl:</b>", "A name ending __FREE is fitted",
+    for fact in ("<b>model.bngl:</b>", "A name ending <code>__FREE</code> is fitted",
                  "<b>data.exp:</b>", "a missing week is a gap in time",
-                 "<b>priors.conf:</b>", "loguniform_var on a log scale"):
+                 "<b>priors.conf:</b>", "<code>uniform_var = name low high</code>",
+                 "(<code>loguniform_var</code> on a log scale)"):
         assert fact in files, fact
+    # what Jitter and Seed do, in the Run settings legend; the group's
+    # name is the legend's words alone
+    run = html.split('id="tt-sb-run"', 1)[1].split("</span></span>", 1)[0]
+    for fact in ("<b>Jitter:</b> how far each fitted value is nudged between weeks",
+                 "the Liu-West kernel scale", "0.15 in production, 0.2 to 0.3 for a fit that collapses",
+                 "<b>Seed:</b> the same seed and files repeat a fit exactly",
+                 "another seed shows how much it varies by chance"):
+        assert fact in run, fact
+    assert ('<fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend">'
+            '<span id="sb-run-name">Run settings</span>') in html
     # what Simulate data replaces, beside its button
     assert '<span class="sb-hint">Replaces data.exp with counts' in html
     # after a quick check: its title, its reason in sight, the full fit
     w = sb.prepare("sir_example", particles=200)
     _finish(w)
     html = client.get(f"/sandbox?model=sir_example&run={w.name}").text
-    assert marks(html) == ["tt-sb-files"]
+    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
     assert "<strong>Quick check: the model runs</strong>" in html
-    assert '<span class="sb-says">200 particles give rough ranges' in html
+    assert ('<span class="sb-says">200 particles: the ranges are rough; '
+            'the full fit gives the estimates.</span>') in html
     assert ">Run the full fit (10,000 particles)<" in html
+    # How it works says it in the same words, and spells out ESS
+    assert "with a quick check (200) the ranges are rough" in html
+    assert "The effective sample size (ESS) grades the sampling" in html
     # Check's report says it in its words; only what this computer lacks
     # keeps a "?" (its remedy)
     js = (Path(srv.__file__).parent / "static" / "sandbox.js").read_text()
