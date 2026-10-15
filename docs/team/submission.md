@@ -11,9 +11,16 @@ and CDC's rules. The season's facts are in
   Output tab fix (seven app files) and the Submission and Engine notes
   since #40; 9 files, +524/-17; head e48bf98 on main 710f718. The tests
   jobs were running on the head at opening (CI runs on the push to dev);
-  Ely merges when they are green, or says the word and this lane does,
-  as for #33. The integration's footer appeared on the body again and
-  was edited out at once (the 2026-10-12 lesson); the body is Ely's.
+  MERGED BY ELY AT 02:46 UTC from the website (merge commit 22cfe3b,
+  authored as Ely, committer GitHub, as #29 to #33); main carries the
+  Output fix, the Submission notes and the Engine lane's notes through
+  ad09f40 (their migration plan and Ely's seven decisions on the
+  public-PyBNF plan, pushed while the pull request was open). Every head
+  the tests ran on while it was open was green (all six jobs on a1f65f1,
+  e48bf98, 81b920d and 8d2b627); the run on the merge commit was in
+  progress at this entry. The integration's footer appeared on the body
+  again and was edited out at once (the 2026-10-12 lesson); the body is
+  Ely's. FluBNF on Ely's laptop picks main up on its next open.
 - 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
   app/output-modified-runs FOR ELY'S MERGE INTO dev (aa8bae4, de5d75c; from
   dev b2b379c; authored as Ely; Ely asked this lane to fix it after the
