@@ -1,10 +1,10 @@
 {# A run on a custom dataset (run.html, app/ui/datasets_ui.run_page_extra):
    the fans per group and model, and the export files. Tips imported by
    run.html. The badge says what the forecasts read: each week's as_of
-   snapshot (vintage-true), or the final series cut at the week, which
-   lets later revisions in; the chart's legend names the band and the
-   later data #}
-<div class="card" id="ds-fans">{{ tips.heading("Forecasts on " ~ dataset.name, "run-ds-fans", after=tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data, later revisions in")) }}
+   snapshot (vintage-true), or the final series cut at the week (not
+   vintage-true: later revisions leak in); the chart's legend names the
+   band and the later data #}
+<div class="card" id="ds-fans">{{ tips.heading("Forecasts on " ~ dataset.name, "run-ds-fans", after=tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data, not vintage-true")) }}
  <div class="carousel" id="dsf-models"></div>
  <div class="carousel">
   <button type="button" class="quiet cnav" id="dsf-prev" aria-label="previous group">◀</button>
