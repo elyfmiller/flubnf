@@ -234,7 +234,11 @@ def test_the_i_holds_what_the_marks_held_and_reads_short():
     assert _words(early) < 115
     stepped = _us(step=usn.STEPPED)
     scored = _page_i(_page(us=stepped, us_row=stepped, rule_note=""))
-    assert _words(scored) < 140
+    assert _words(scored) < 170
+    # the US row's provenance in one line: fitted as its own location, its
+    # Oracle SIHRS figure with the step since addendum A3
+    assert (f'<span class="uk-tt-line">{usn.NOTES[usn.FITTED]} '
+            f'{usn.PF_US_NOTES[usn.STEPPED]}</span>') in scored
 
 
 def test_the_tiles_carry_their_cells_and_the_us_era_in_plain_sight():
