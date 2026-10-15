@@ -1,9 +1,11 @@
 /* The Model settings panel (templates/_model_settings.html): the live
    "default / modified" badge (a kit badge), the rows that do not apply to
-   the chosen engine hidden (the server ignores them too, and never
-   records them), "Reset to defaults", and the override's reason made
-   required when its box is ticked. The server is the authority; this
-   only keeps the page honest while the form is filled in.
+   the chosen engine hidden and their fields off (the server ignores them
+   too, and never records them; an off field is never checked or posted),
+   "Reset to defaults", the override's reason shown and required when its
+   box is ticked, and a value the browser refuses shown even while the
+   panel is closed. The server is the authority; this only keeps the page
+   honest while the form is filled in.
 
    Every panel on the page is its own (the Retrospective tab holds the
    FluSight replay's and the own-data replay's); a panel's parts are found
@@ -11,9 +13,10 @@
    a panel follows (default: #model-pick or #retro-engine in its form);
    data-kind (set by the page) hides the rows marked data-only for another
    kind of data, and a group whose rows are all hidden hides too. The
-   panel reopens when the user left it open this session (sessionStorage,
-   per page and panel). Loading
-   the script twice sets nothing up twice. */
+   panel opens or closes as the user left it this session (sessionStorage,
+   per page and panel); a run forgets it, so the page after a run shows
+   the panel closed unless the server refused its settings. Loading the
+   script twice sets nothing up twice. */
 (function () {
   function init(box) {
     if (box.dataset.msReady) return;
@@ -24,6 +27,7 @@
     var ovr = box.querySelector('.ms-override');
     var tick = box.querySelector('input[name=submit_modified]');
     var reason = box.querySelector('input[name=modified_reason]');
+    var why = box.querySelector('.ms-why');
     var reset = box.querySelector('.ms-head > button');
     var inputs = Array.prototype.slice.call(box.querySelectorAll('[data-knob]'));
 
@@ -84,11 +88,20 @@
         return ms.indexOf(m) >= 0;
       });
     }
+    // a row hidden here has its field off (data-ms-off marks the ones
+    // this script turned off; a coming-later field stays off for good)
+    function setOff(row, off) {
+      row.querySelectorAll('[data-knob]').forEach(function (el) {
+        if (off && !el.disabled) { el.disabled = true; el.dataset.msOff = '1'; }
+        else if (!off && el.dataset.msOff) { el.disabled = false; delete el.dataset.msOff; }
+      });
+    }
     function filter() {
       var ms = members(), kind = box.dataset.kind || '';
       box.querySelectorAll('.ms-row').forEach(function (n) {
         n.hidden = !applies(n, ms)
           || !!(kind && n.dataset.only && n.dataset.only !== kind);
+        setOff(n, n.hidden);
       });
       box.querySelectorAll('.ms-group').forEach(function (g) {
         var rows = Array.prototype.slice.call(g.querySelectorAll('.ms-row'));
@@ -127,23 +140,27 @@
       });
       if (badge) setBadge(any ? 'warn' : 'ok', any ? 'modified' : 'default');
       if (ovr) ovr.hidden = !any;
+      if (why) why.hidden = !(tick && tick.checked);
       if (reason) reason.required = !!(any && tick && tick.checked);
     }
     if (reset) reset.addEventListener('click', function () {
       inputs.forEach(function (el) {
-        if (!el.disabled) el.value = el.dataset.default || '';
+        if (!el.disabled || el.dataset.msOff) el.value = el.dataset.default || '';
       });
       syncSeason();
       if (tick) tick.checked = false;
       if (reason) reason.value = '';
       update();
     });
-    // reopened when the user left it open this session (the server opens
-    // it after a refusal, or for changed settings when no run is going); a
-    // click on the summary is the user's choice, never a page render
+    // open or closed as the user left it this session; the server opens
+    // it only on the page after a refusal over its settings
+    // (data-refused), which a close stored earlier never undoes. A click
+    // on the summary is the user's choice, never a page render
     var memo = 'ms-open:' + location.pathname + ':' + (box.id || '');
     try {
-      if (sessionStorage.getItem(memo) === '1') box.open = true;
+      var left = sessionStorage.getItem(memo);
+      if (left === '1') box.open = true;
+      else if (left === '0' && !box.hasAttribute('data-refused')) box.open = false;
     } catch (e) {}
     var sum = box.querySelector('summary');
     if (sum) sum.addEventListener('click', function () {
@@ -151,13 +168,29 @@
         try { sessionStorage.setItem(memo, box.open ? '1' : '0'); } catch (e) {}
       }, 0);
     });
-    // on the Forecast page an open panel takes the page's width: its
-    // column spans the grid (forecast.css .fc-col-wide), the groups in
-    // columns, the Run row held at the foot
-    var col = box.dataset.scope === 'forecast' && box.closest('.cols > div');
-    function wide() { if (col) col.classList.toggle('fc-col-wide', !!box.open); }
-    box.addEventListener('toggle', wide);
-    wide();
+    if (form) {
+      // a run forgets the choice: the page after it (and its automatic
+      // reload when the run ends) shows the panel as the server renders it
+      form.addEventListener('submit', function () {
+        try { sessionStorage.removeItem(memo); } catch (e) {}
+      });
+      // a value the browser refuses inside the closed panel: open it and
+      // show the browser's message there (a field in a closed panel shows
+      // none, so Run models seemed to do nothing)
+      var reporting = false;
+      form.addEventListener('invalid', function (e) {
+        var el = e.target;
+        if (!box.contains(el) || (box.open && !reporting)) return;
+        e.preventDefault();
+        if (reporting) return;
+        reporting = true;
+        box.open = true;
+        setTimeout(function () {
+          reporting = false;
+          try { el.reportValidity(); } catch (x) {}
+        }, 0);
+      }, true);
+    }
     box.addEventListener('input', update);
     box.addEventListener('change', update);
     if (form) form.addEventListener('change', function (e) {
