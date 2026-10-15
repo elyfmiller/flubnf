@@ -295,7 +295,11 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
     page = client.get("/data").text
     assert 'id="newest-check"' in page
     assert 'class="ncmark ok" role="img" aria-label="Complete"' in page
-    assert f"All {len(LOCS)} jurisdictions reported for week {NEW}" in page
+    # clean, the mark and the head say it all, beside the Data through
+    # week (no "?" repeating the line)
+    assert (f'<span class="dt-newest-head">All {len(LOCS)} reported</span>'
+            in page)
+    assert 'id="tip-newest-gaps"' not in page
     _hub(tmp_path / "hub2", monkeypatch, newest={"Nebraska": None})
     page = client.get("/data").text
     assert 'aria-label="Incomplete"' in page

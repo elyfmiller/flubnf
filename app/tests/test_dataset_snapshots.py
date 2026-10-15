@@ -246,8 +246,11 @@ def test_the_box_takes_several_files_and_a_folder():
     assert ('<input type="file" name="snapshots" id="dsup-replay-folder" '
             'data-folder webkitdirectory multiple>') in page
     assert "data-folder-wrap" not in page
-    assert "Optional: dated snapshots, one file per as_of." in page
-    assert "one snapshot per as_of" in page                 # the ? tip
+    # what goes in the snapshot box is the weekly CSV's "?", which explains
+    # both boxes; the snapshot box itself says only that it is optional
+    about = page.split('id="tip-dsup-replay-about">', 1)[1].split("</span></span>", 1)[0]
+    assert "Snapshots (optional): the data as each week saw it, one file per as_of" in about
+    assert 'id="tip-dsup-replay-snaps"' not in page
 
 
 def _snap_post(url, files, field="snapshots", **data):

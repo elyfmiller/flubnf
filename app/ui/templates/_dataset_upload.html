@@ -7,8 +7,9 @@
    the first takes one weekly CSV (name="file"); the second, optional,
    several dated snapshot files or a folder of them (name="snapshots",
    one file per as_of), stored as one vintage-true dataset. Each zone has
-   a title whose "?" says what goes in it, and under it the one link it
-   offers (the template CSV; the folder pick). Each zone is a label
+   a title (the first's "?" says what goes in both, the second's badge
+   that it is optional), and under it the one link it offers (the
+   template CSV; the folder pick). Each zone is a label
    around its native file input (visually hidden but focusable: the zone
    shows its focus and, with script, what was chosen); the folder link
    under the second is an input of its own. Name and Values appear once
@@ -35,7 +36,7 @@
  <div class="dsboxes">
   <div class="dsbox dt-zone">
    <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
-    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. A file with no group column is one series, named after the file: a date column and one column of counts, whatever its name. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations. For a true retrospective, give the data as each week saw it: an as_of column, or snapshot files in the box beside this one.</span>{% endcall %}</div>
+    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. A file with no group column is one series, named after the file: a date column and one column of counts, whatever its name. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations.</span><span class="ncline">Snapshots (optional): the data as each week saw it, one file per as_of, named by its date (2024-10-05.csv) or holding an as_of column, with the same columns and groups; a folder gives its CSV, TSV and TXT files. Each replayed week then sees the snapshot that held it.</span><span class="ncline">Forecasts on a dataset export under non-hub names and are never submitted.</span>{% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
     <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
     {{ tips.icon("upload", cls="dt-dropicon") }}
@@ -47,8 +48,7 @@
   </div>
   <div class="dsbox dt-zone">
    <div class="dt-zonehead"><span class="dt-zonetitle">Snapshots</span>
-    {{ tips.badge("neutral", "optional") }}
-    {% call tips.tip(fid ~ "-snaps", "snapshot files") %}<span class="ncline">Optional: dated snapshots, one file per as_of.</span><span class="ncline">Several files at once (or a folder), one snapshot per as_of, each a table like the weekly CSV named by its as_of date (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column. The files must share their columns and groups; they are stored as one vintage-true dataset, and each replayed week then sees the snapshot that held it.</span><span class="ncline">A folder gives its CSV, TSV and TXT files; several files dropped on the first box come here.</span>{% endcall %}</div>
+    {{ tips.badge("neutral", "optional") }}</div>
    <label class="dsdrop" for="{{ fid }}-snap" data-drop="snap">
     <input type="file" name="snapshots" id="{{ fid }}-snap" data-snap multiple accept="{{ accept }}">
     {{ tips.icon("upload", cls="dt-dropicon") }}
@@ -61,7 +61,7 @@
   </div>
  </div>
  <div class="dsup-fields">
-  <div>{{ tips.label("Name", fid ~ "-name", "Shown wherever the dataset is used.", for_=fid ~ "-name") }}
+  <div><div class="lblrow"><label for="{{ fid }}-name">Name</label></div>
    <input type="text" name="name" id="{{ fid }}-name" maxlength="80" data-name
      value="{{ upload.name if upload else '' }}" placeholder="the file's name"></div>
   <div>{{ tips.label("Values", fid ~ "-kind", "Detected from the numbers: whole numbers are counts, anything else rates; numbers like 1.234, whose dot could separate thousands, are left to you. Counts with a population can also run the particle filter and are exported as whole numbers; rates run the Groundhog (own data) only.", for_=fid ~ "-kind") }}

@@ -74,7 +74,8 @@ def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
             'data-state="neutral">') in html
     assert html.split('id="hub-pill"')[1].split("</span></span>")[0] \
         .endswith('<span class="uk-badge-t">not checked')
-    assert "<dt>Comparators<" in html
+    # the comparators row says what it is for
+    assert "<dt>Scored against<" in html
 
 
 def test_default_preview_is_the_latest_vintage(archive):

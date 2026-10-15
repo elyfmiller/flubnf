@@ -12,8 +12,8 @@
 
    row(r): the Data tab's "Newest week" value: the mark and the head, one
    badge per count ("5 read 0"), and a toggletip naming each location,
-   whose pointer to Data issues is a link to the Forecast tab. Clean, its
-   "?" says the whole line ("All 53 jurisdictions reported for week W"). #}
+   whose pointer to Data issues is a link to the Forecast tab. Clean, the
+   mark and the head say it all ("All 53 reported"). #}
 {% import "_tips.html" as tips %}
 
 {# the mark: an icon whose name says complete, complete with issues, or
@@ -53,10 +53,8 @@
 {%- endmacro %}
 
 {% macro row(r) -%}
-{#- clean: the "?" inside the head's own box, so it never wraps apart #}
 <span class="newest-check dt-newest" id="newest-check" data-week="{{ r.week }}"
- data-complete="{{ 'yes' if r.complete else 'no' }}">{{ mark(r) }} <span class="dt-newest-head">{{ r.short().split(' · ')[0] }}</span>
-{%- if r.clean %}{{ tips.tip("newest-gaps", "the newest week's reporting", r.line()) }}{% endif %}</span>
+ data-complete="{{ 'yes' if r.complete else 'no' }}">{{ mark(r) }} <span class="dt-newest-head">{{ r.short().split(' · ')[0] }}</span></span>
 {%- if not r.clean %}
 {%- for c in r.short().split(' · ')[1:] %} {{ tips.badge("warn", c) }}{% endfor %}
 {% call tips.toggletip("newest-gaps", "the jurisdictions to look at for " ~ r.week, title="Newest week " ~ r.week) -%}
