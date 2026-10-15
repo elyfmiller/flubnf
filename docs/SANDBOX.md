@@ -107,8 +107,8 @@ fit ends, and Stop is always safe.
 ## 4. Read the result
 
 The first line of Results, right under its heading, grades the
-sampling: whether the particles stayed varied (its "?" gives the
-sentence, with the lowest ESS; What to try sits in a fold below it). It
+sampling: whether the particles stayed varied (its one-line reason
+under it gives the lowest ESS; What to try sits in a fold below it). It
 says nothing about how well the model follows the data, which is yours
 to judge from the plot.
 

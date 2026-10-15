@@ -303,12 +303,14 @@ def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
     w = sb.prepare("kinetics_example", particles=200, jitter=0.2, seed=3)
     _finish(w, collapsed=True)
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
-    # the outcome in an error alert, its sentence in the alert's "?"
+    # the outcome in an error alert: its title, then its reason in plain
+    # sight under it, with no "?"
     health = html[html.index('class="sb-health sb-health--collapsed"'):]
     assert '<div class="uk-alert uk-alert--error" id="sb-health">' in health
-    assert "Sampling collapsed" in health[:health.index('id="tip-sb-health"')]
-    tip = health[health.index('id="tip-sb-health"'):]
-    assert "not a real estimate" in tip[:tip.index("</span>")]
+    says = health[health.index('<span class="sb-says">'):]
+    assert "<strong>Sampling collapsed</strong>" in health[:health.index('<span class="sb-says">')]
+    assert "not a real estimate" in says[:says.index("</span>")]
+    assert "tip-sb-health" not in html
     assert "What to try" in html
     # the engine's words stay, folded under their own summary
     assert '<span class="uk-fold-sum">Engine messages</span>' in html
@@ -331,7 +333,8 @@ def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
     html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
     health = html[html.index('class="sb-health sb-health--good"'):]
     assert '<div class="uk-alert uk-alert--ok" id="sb-health">' in health
-    assert "Sampling looks healthy" in health[:health.index('id="tip-sb-health"')]
+    assert "<strong>Sampling looks healthy</strong>" in health[:health.index('<span class="sb-says">')]
+    assert '<span class="sb-says">The particles stayed varied at every week' in health
     assert "sbfull" not in html and "What to try" not in html
 
 

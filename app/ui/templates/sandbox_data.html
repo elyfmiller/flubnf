@@ -44,7 +44,7 @@
   <h3 class="sb-pane-h">Hub or dataset</h3>
   {% if _hub %}
   <div class="sb-fgrid">
-   <span class="sb-f">{{ tips.label("Source", "sb-source", "The hub's latest settled counts, the counts as the hub held them on a past date (what a forecaster saw then), or a dataset you uploaded.", for_="sbfill-source") }}
+   <span class="sb-f">{{ tips.label("Source", "sb-source", for_="sbfill-source") }}
     <select id="sbfill-source" name="source"{% if vintages %} data-newest="{{ vintages[0] }}"{% endif %}>
      {% if locations %}<optgroup label="FluSight hub">
       <option value="settled" {% if _src.asof == "settled" and not _ds %}selected{% endif %}>latest (settled)</option>
@@ -62,15 +62,15 @@
     <select id="sbfill-group" name="group">
      {% for d in datasets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}" {% if _dsel == d.id and _src.location == g.name %}selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}
     </select></span>{% endif %}
-   <span class="sb-f">{{ tips.label("Start", "sb-fstart", "Any day: the weeks the source holds from it on are loaded.", for_="sbfill-start") }}
+   <span class="sb-f">{{ tips.label("Start", "sb-fstart", for_="sbfill-start") }}
     <input id="sbfill-start" name="start" type="date" value="{{ _gr.first or _src.start or data_range.start }}"></span>
-   <span class="sb-f">{{ tips.label("End", "sb-fend", "Any day: the weeks the source holds up to it are loaded.", for_="sbfill-end") }}
+   <span class="sb-f">{{ tips.label("End", "sb-fend", for_="sbfill-end") }}
     <input id="sbfill-end" name="end" type="date" value="{{ _gr.last or _src.end or data_range.end }}"></span>
   </div>
   {# why Load is off (the range and the source disagree): sandbox.js #}
   <div class="sb-fwhy" id="sbfill-why" aria-live="polite"></div>
   <div class="sb-pane-foot">
-   <span class="sbsetpop"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused, with nothing loaded, for a model without a line named N, and for one that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span>
+   <span class="sbsetpop"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N to the population</label></span>
    {% set _load %}formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post" formnovalidate id="sbfill-load"{% endset %}
    {{- tips.reason_button("Load into data.exp", "sbfill-load-why", "", off=False, attrs=_load, label="why Load is off") }}
   </div>
@@ -82,7 +82,7 @@
  <div class="sb-pane" data-pane="upload" id="sbfill-up">
   <h3 class="sb-pane-h">Upload a CSV</h3>
   <div class="sb-fgrid sb-fgrid--up">
-   <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", "A date column and a count column (any name), read as one series named after the file; a grouped CSV (date, target_group, value, optional population); or a hubverse time series (target_end_date, location, observation). Weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
+   <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", for_="sbfill-csv") }}
     <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
    <span class="sb-f"><label for="sbfill-kind">Values</label>
     <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
@@ -102,12 +102,13 @@
    <button formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data" formnovalidate>Upload and load</button>
   </div>
  </div>
- {# ---- counts drawn from the model itself #}
+ {# ---- counts drawn from the model itself: what it replaces and what a
+    fit on them shows, in one line beside the button #}
  <div class="sb-pane" data-pane="sim" id="sbfill-sim">
   <h3 class="sb-pane-h">Simulate</h3>
   <div class="sb-pane-foot sb-pane-foot--start sbsim">
    <button formaction="/sandbox/models/{{ editing.name }}/simulate-data" formmethod="post" formnovalidate>Simulate data from the model</button>
-   {{ tips.tip("sb-simulate", "simulate data", "Replaces data.exp with counts drawn from the model at the values written in model.bngl, over the same weeks, with negative-binomial noise at its r__FREE. A fit on them should find those values again: the test that a new model and its priors work, before real data.") }}
+   <span class="sb-hint">Replaces data.exp with counts drawn at the values in model.bngl; a fit should find them again.</span>
   </div>
  </div>
 {% endcall %}

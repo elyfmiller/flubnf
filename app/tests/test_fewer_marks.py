@@ -270,6 +270,40 @@ def test_every_start_carries_its_own_note():
     assert how.count('class="uk-step-meta"') == 6 and "tipbtn" not in how
 
 
+# ------------------ the Sandbox workbench: one "i", the rest in words
+
+def test_the_workbench_keeps_one_mark_from_a_first_visit_to_a_fit(sandbox_root):
+    """A student's path (the SIR example, Check, a quick fit) shows one
+    "i", the Model heading's: what the three files hold. The file tabs,
+    the run settings, the fit's result and the diagram carry no "?"; their
+    labels, badges and one-line reasons say it."""
+    from app.core import sandbox as sb
+    from test_sandbox_guide import _finish
+    sb.add_example("sir_example")
+    html = client.get("/sandbox?model=sir_example").text
+    assert marks(html) == ["tt-sb-files"]
+    files = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
+    for fact in ("<b>model.bngl:</b>", "A name ending __FREE is fitted",
+                 "<b>data.exp:</b>", "a missing week is a gap in time",
+                 "<b>priors.conf:</b>", "loguniform_var on a log scale"):
+        assert fact in files, fact
+    # what Simulate data replaces, beside its button
+    assert '<span class="sb-hint">Replaces data.exp with counts' in html
+    # after a quick check: its title, its reason in sight, the full fit
+    w = sb.prepare("sir_example", particles=200)
+    _finish(w)
+    html = client.get(f"/sandbox?model=sir_example&run={w.name}").text
+    assert marks(html) == ["tt-sb-files"]
+    assert "<strong>Quick check: the model runs</strong>" in html
+    assert '<span class="sb-says">200 particles give rough ranges' in html
+    assert ">Run the full fit (10,000 particles)<" in html
+    # Check's report says it in its words; only what this computer lacks
+    # keeps a "?" (its remedy)
+    js = (Path(srv.__file__).parent / "static" / "sandbox.js").read_text()
+    assert "sb-ck-ok" not in js and "sb-ck-model" not in js
+    assert "['sb-ck-machine', f.machine_tip]" in js
+
+
 # ----------------------------------- Methods: the folds hold the facts
 
 def _fold(html, fid):
