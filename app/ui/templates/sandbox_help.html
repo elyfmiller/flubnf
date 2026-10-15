@@ -1,20 +1,20 @@
 {# "How the Sandbox works": the path from nothing to a fitted model as a
-   stepper, each step's explanation in its "?". Shared by the gallery (a
-   card, open while there are no models: across) and the workbench (the
-   How it works menu beside Manage: down); the includer sets how_id (unique
-   per page) and how_vertical. #}
+   stepper, each step's one line under its label, so the steps read as a
+   list. Shared by the gallery (a card, open while there are no models)
+   and the workbench (the How it works menu beside Manage); the includer
+   sets how_id (unique per page) and how_vertical. #}
 {% import "_tips.html" as tips %}
 {{ tips.stepper([
     {"label": "Start a model",
-     "tip": "The SIR example is the place to learn; the template adapts to a new pathogen. Each start fits as shipped."},
+     "meta": "The SIR example is the place to learn; a template adapts to a new pathogen."},
     {"label": "Edit its three files",
-     "tip": "model.bngl is the model (a parameter whose name ends in __FREE is fitted), data.exp the weekly counts, priors.conf the range each fitted value is drawn from. Your own counts go in through the data.exp tab: Load data takes the FluSight hub, a dataset or a CSV, and Simulate data draws counts from the model itself to test the fit on values you know."},
+     "meta": "model.bngl: the model (names ending __FREE are fitted); data.exp: the weekly counts; priors.conf: each fitted value's range. Load data or Simulate data on the data.exp tab."},
     {"label": "Check",
-     "tip": "Reads the files without fitting: what would stop a run, and the model's counts at its written values beside the data."},
+     "meta": "What would stop a run, and the model beside the data, without fitting."},
     {"label": "Save and run",
-     "tip": "The full fit (10,000 particles) gives the estimates; a quick check (200) only shows that the model runs."},
+     "meta": "The full fit (10,000 particles) gives the estimates; with a quick check (200) the ranges are rough."},
     {"label": "Read the result",
-     "tip": "The first line grades the sampling (ESS), the plot sets the model's band against the data, and the table gives each fitted value with its 5 to 95% range."},
+     "meta": "The effective sample size (ESS) grades the sampling; the band meets the data; each fitted value with its 5 to 95% range."},
     {"label": "Try a change",
-     "tip": "Edit and run again, or Duplicate the model under Manage; Compare with sets two runs side by side and lists what changed. Download run holds the numbers as CSV."}],
+     "meta": "Edit and run again, or Duplicate it; Compare with lists what changed."}],
    label="How the Sandbox works", id=how_id or "sb-how", vertical=how_vertical) }}

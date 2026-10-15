@@ -90,13 +90,22 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # restart the last form's non-date fields come back from
     # app/state/last_form.json (forecast_aids), dated the newest week
     from app.ui import forecast_aids as _fa
+    # the live run, read once before the ledger: the Running card and the
+    # Latest run card's status then agree, even when the run ends while
+    # this page is built (its card's poll reloads the page)
+    running = _status.get("running") or ""
     _fa.restore_last_form(_last_form, _default_forecast_date)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"],
                                 "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3, "members": 2, "season_start": ""}
-    rid, res = shared._latest_results()
+    # a refusal over the model settings opens the panel on this page only;
+    # a later visit shows it as the user left it
+    _last_form.pop("ms_refused", None)
+    # the fans draw the newest run that wrote forecasts, its settings
+    # modified or not (badged); Home and Output keep to the shipped ones
+    rid, res = shared._latest_results(include_modified=True, newest=True)
     # data panel: latest-vintage series for the selected locations (visible
     # before any run); seeded with US national, the panel's default
     import json as _json
@@ -137,20 +146,29 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # the hub view's latest-run card never shows a run on a custom dataset
     # (filtered in the query: many dataset runs never hide the hub's)
     ledger_rows = Ledger().rows(5, hub_only=True)
+    from app.core.runs import APP_STATE
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
-        # the latest-run card links the weekly report when one exists, and
-        # a run that died says why in its status badge's tip
+        # the latest-run card links the weekly report while its file is on
+        # disk (Storage may have deleted the workroot), and a run that died
+        # says why in its alert
         try:
             _o = _json.loads(r.get("outcome") or "{}")
-            r["has_report"] = bool(_o.get("report"))
+            r["has_report"] = bool(_o.get("report")) and _runs.is_run_id(
+                r["run_id"]) and (APP_STATE / "workroots" / r["run_id"]
+                                  / "report.html").is_file()
             r["error"] = str(_o.get("error") or "")
         except Exception:
             r["has_report"], r["error"] = False, ""
-        if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
-            r["status"] = "interrupted"
+        if r["status"] == "running" and not running.endswith(r["run_id"]):
+            # a run that started after the read above is still running
+            now = _status.get("running") or ""
+            if now.endswith(r["run_id"]):
+                running = now
+            else:
+                r["status"] = "interrupted"
     # archived Saturdays, newest first, for the form's picker (the native
     # date popup fails in some webviews); str() because the list is
     # serialised into the page and date objects would break the render
@@ -185,14 +203,13 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "newest_report": newest_report, "anchor_week": _anchor or "",
         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
-        "live_only": live_only, "live_only_tip": LIVE_ONLY_TIP,
+        "live_only": live_only, "live_running": running,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "us_choice": US_CHOICE, "us_checked": us_checked,
         "official_json": _script_json(official),
         "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
-            form.get("forecast_date", ""), _anchor),
-            busy=bool(_status.get("running"))),
+            form.get("forecast_date", ""), _anchor)),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(templating._model_names()),
@@ -349,10 +366,6 @@ def _location_list(locations: list) -> list:
         locs_list.append("US" if spelled == US_CHOICE else spelled)
     return locs_list
 
-#: the anchor line's "not archived" badge tip, for a week only the live
-#: target file holds
-LIVE_ONLY_TIP = "New data, not archived yet: read from target-data."
-
 
 def _official_overlay(fc_date: str, locs: list) -> dict:
     """{model: {loc: {h: {level: value}}}}: FluSight-ensemble's and
@@ -493,12 +506,16 @@ def run_page(request: Request, run_id: str):
         "active": "Forecast" if hub_live else "Storage",
         "run_id": run_id, "status": status, "error": err,
         "results": results_html(o, spec_json, heading=False),
-        "results_tip": results_tip(spec_json),
+        # the relWIS convention only beside a relWIS
+        "results_tip": results_tip(spec_json, o),
         # the page shows a research badge, so the label stays untagged
         "label": _run_label(run_id, spec_json, tag=False),
         "research": is_research(spec_json),
         "modified": _runs.is_modified(spec_json),
         "override": _knobs.override_reason(spec_json),
+        # the settings' digest, as knobs.json and results.json record it
+        "modified_digest": (_knobs.digest(_knobs.record_of(spec_json))
+                            if _runs.is_modified(spec_json) else ""),
         # a legacy run's retired blend is not shown
         # a model that fitted no location (the PF in a Groundhog-only run)
         # gets no empty table
@@ -513,7 +530,31 @@ def run_page(request: Request, run_id: str):
         "subs": subs,
         "sub_errors": {output_routes.model_display(m, w): why
                        for m, why in sub_errors.items()},
+        # the weeks the medians' h0 and h3 end on
+        "med_weeks": _median_weeks(
+            res.get("forecast_date") if dsx else _sd.get("forecast_date"),
+            dataset=bool(dsx)),
         "report": report})
+
+
+def _median_weeks(asof, dataset: bool = False) -> tuple:
+    """The weeks a run's median table's h0 and h3 end on: the hub's
+    reference date (one week after the newest data week) and three weeks
+    after it; for a dataset run, one and four weeks after its forecast
+    date. () when the date is unreadable."""
+    import datetime as _dt
+    try:
+        d = _dt.date.fromisoformat(str(asof or "")[:10])
+    except ValueError:
+        return ()
+    if dataset:
+        h0 = d + _dt.timedelta(days=7)
+    else:
+        ref = output_routes._reference_date(d.isoformat())
+        if not ref:
+            return ()
+        h0 = _dt.date.fromisoformat(ref)
+    return (h0.isoformat(), (h0 + _dt.timedelta(days=21)).isoformat())
 
 
 def _no_run_report(request: Request, run_id: str):
@@ -860,6 +901,10 @@ def _run_extra(members: int, mode: str, aux: str | None = None,
         fn = _an.aux_preset(name)                # unknown name raises here
         extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
         extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
+        # the Groundhog's own-state weighting, recorded so a re-run
+        # reproduces it and a row from before 2026-10-15 (no key) reads as
+        # the pooled form it ran; the bare analogue stays the pooled form
+        extra["local_pools"] = _an.shipped_local_pools()
     if oracle is not None and str(oracle) != "":
         if str(oracle) != "none":
             raise ValueError(f"oracle must be 'none' (the plain filter, a "
@@ -893,6 +938,30 @@ def _knob_run_parts(kraw: dict, engine: str, forecast_date: str,
     extra = _run_extra(members, mode, _knobs.aux_choice(nd, aux), oracle)
     _knobs.write_extra(nd, extra, override=(reason if override else ""))
     return nd, extra
+
+
+def _kept_settings(prev: dict, kraw: dict, sent, engine: str,
+                   oracle) -> tuple:
+    """What the last form held that this run neither posted nor can use,
+    kept on the form for the next run: ({key: raw} knobs, {field: value}
+    older fields). A Groundhog-only run from a model page posts none of
+    the particle filter's settings; the Forecast tab's weekly ones stay.
+    `sent`: the field names the form posted (None: a direct call, which
+    passes every older field)."""
+    prev = prev or {}
+    members = _knobs.members_for(
+        engine if engine in _knobs.ENGINE_MEMBERS else "all")
+    step = str(oracle or "") != "none"
+
+    def unused(key):
+        knob = _knobs.BY_KEY.get(key)
+        return knob is not None and not _knobs.applies(knob, members, step)
+    knobs = {k: v for k, v in (prev.get("knobs") or {}).items()
+             if k not in kraw and isinstance(v, str) and unused(k)}
+    fields = {f: prev[f] for f, key in _knobs.LEGACY_FIELDS.items()
+              if sent is not None and f not in sent and f in prev
+              and unused(key)}
+    return knobs, fields
 
 
 def _spec_mode(d: dict) -> str:
@@ -1021,11 +1090,14 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = True      # the panel opens on its error
+        # the panel opens on its error, the reason under its head
+        _last_form["ms_refused"] = str(e) or True
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
+    kept, kept_fields = _kept_settings(
+        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
@@ -1033,10 +1105,11 @@ def run_models(request: Request,
                        "season_start": season_start,
                        "particles": particles,
                        "drop_same_day": _int_field(drop_same_day),
-                       "knobs": {k: v for k, v in kraw.items()
-                                 if isinstance(v, str)},
+                       "knobs": {**kept, **{k: v for k, v in kraw.items()
+                                            if isinstance(v, str)}},
                        "submit_modified": override,
-                       "modified_reason": reason, "ms_refused": False})
+                       "modified_reason": reason, "ms_refused": False,
+                       **kept_fields})
     # kept across a restart (its non-date fields; display memory only)
     from app.ui import forecast_aids as _fa
     _fa.save_last_form(_last_form)
@@ -1058,7 +1131,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = True      # the panel opens on its error
+        _last_form["ms_refused"] = str(e) or True
         _flash(f"Not run: model settings: {e}.", "warn")
         return _back(request, "/forecast")
     kspec = _knobs.spec_fields(nd)
@@ -1167,6 +1240,11 @@ def run_models(request: Request,
             # 'analogue' = the same pipeline with the PF block skipped
             background.add_task(pipeline._run_all, spec)
             queued = True
+            # the override and its reason are this run's alone (a fresh
+            # decision each time, as a re-run's): the form after it starts
+            # unticked and blank. A refusal above keeps them for the retry
+            _last_form["submit_modified"] = False
+            _last_form["modified_reason"] = ""
         else:
             _flash(f"Not run: '{engine}' is not an available engine.",
                    "warn")

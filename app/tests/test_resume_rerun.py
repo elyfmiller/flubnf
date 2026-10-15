@@ -4,7 +4,7 @@ Retrospective: a stopped or interrupted season offers a one-click Resume
 that POSTs /retro/run with mode=resume and its run record's settings
 (retro.resume_form_fields); unrecorded seasons get no button.
 
-Console: a stopped or failed run offers "Run again with these settings",
+Console: a stopped or failed run offers "Run again from the start",
 re-submitting the ledger's stored spec through /run (a fresh run: console
 fits hold no checkpoint). Both shortcuts carry their form's data-guard and
 are refused server-side while another run holds the engine.
@@ -379,10 +379,9 @@ def test_latest_run_card_offers_rerun_for_stopped_and_failed_only():
            "spec": "{}", "elapsed_s": None}
     html = _render_forecast(row)
     assert f'action="/runs/{row["run_id"]}/rerun"' in html
-    assert 'data-guard="console-run">Run again with these settings' in html
-    # the honest wording: a re-run, never a resume
-    assert "hold no checkpoint" in html
-    assert "does not resume" in html
+    # the honest wording, in the button itself: a fresh run, never a resume
+    assert 'data-guard="console-run">Run again from the start</button>' in html
+    assert "resume" not in html.split('/rerun"')[1].split("</form>")[0].lower()
     for ok_status in ("ok", "running"):
         html = _render_forecast(dict(row, status=ok_status))
         assert "/rerun" not in html
@@ -403,8 +402,7 @@ def test_run_page_offers_rerun_and_corrects_interrupted(tmp_path,
     # the ledger says running, no worker is alive: the page says interrupted
     assert "interrupted" in html
     assert f'action="/runs/{rid}/rerun"' in html
-    assert 'data-guard="console-run">Run again with these settings' in html
-    assert "hold no checkpoint" in html
+    assert 'data-guard="console-run">Run again from the start</button>' in html
     # a completed run offers nothing
     led.close_run(rid, "ok", {})
     html = client.get(f"/runs/{rid}").text

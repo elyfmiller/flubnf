@@ -83,7 +83,9 @@ def _post(data):
 #: what the default Forecast form ran before the knobs, as JSON (golden)
 GOLDEN_EXTRA = {"mode": "realtime",
                 "aux_pools": [{"stream": "flusurv", "weight": 0.5,
-                               "committed": True}]}
+                               "committed": True}],
+                # the Groundhog's own-state weighting, recorded since 2026-10-15
+                "local_pools": {"own_share": 0.5}}
 
 
 def test_the_untouched_form_runs_the_golden_shipped_spec(tmp_path, monkeypatch):
@@ -155,7 +157,12 @@ def test_knob_fields_reach_the_spec_and_the_record(tmp_path, monkeypatch):
         "oracle.w": 0.25, "output.floor_lam": 0.5, "pf.initialization": "lh",
         "pf.jitter": 0.3, "pf.particles": 2000, "pf.prior.r": [0.1, 80.0]}
     assert runs_mod.is_modified(s) and runs_mod.is_contained(s)
-    assert dict(spec_settings(s))["model settings"].startswith("modified: ")
+    # each changed value by its label (particles has a row of its own)
+    ms = dict(spec_settings(s))["model settings"]
+    assert ms.startswith("Kernel jitter 0.3 (default 0.15), ")
+    assert "Particle initialization Latin hypercube" in ms
+    assert "Particles" not in ms
+    assert dict(spec_settings(s))["files"] == "non-hub names (-modified)"
     # the record reads back as the effective table
     rows = {r["key"]: r for r in K.effective(json.loads(s.to_json()))}
     assert rows["pf.prior.r"]["value"] == (0.1, 80.0)
@@ -223,10 +230,96 @@ def test_the_override_is_recorded_with_its_reason(tmp_path, monkeypatch):
     s = started[0]
     assert s.extra["knobs_override"] == "lead's call, week 42"
     assert K.hub_names(s) and not runs_mod.is_contained(s)
-    assert "by override: lead's call" in dict(spec_settings(s))["model settings"]
+    # the settings say how the files were named; the reason is the run
+    # page's (its Modified model settings card), never a settings row
+    pairs = dict(spec_settings(s))
+    assert pairs["files"] == "hub names, by override"
+    assert "lead's call" not in " ".join(pairs.values())
     # ticked with nothing modified: nothing to override, nothing recorded
     _post({"submit_modified": "1", "modified_reason": "x"})
     assert "knobs_override" not in started[1].extra
+
+
+def test_the_override_never_carries_over_to_the_next_run(tmp_path, monkeypatch):
+    """M2: after a run exported under the hub names by override, the box
+    stayed ticked and the reason filled, so the next run's new settings
+    went out under the hub names with the old reason. The override is
+    one run's decision: a queued run clears it from the form and it is
+    never kept across a restart; a refusal keeps the typed reason for the
+    retry."""
+    from app.core import runs as _runs
+    from app.ui import forecast_aids as FA
+    monkeypatch.setattr(_runs, "APP_STATE", tmp_path)
+    started = _capture_run(monkeypatch, tmp_path)
+    # refused (a value out of range): the box and the reason stay
+    _post({"knob.oracle.w": "2", "submit_modified": "1",
+           "modified_reason": "Reason A"})
+    assert started == []
+    assert ui_state._last_form["submit_modified"] is True
+    assert ui_state._last_form["modified_reason"] == "Reason A"
+    # run A: queued with the override; the form after it starts unticked
+    _post({"knob.oracle.w": "0.25", "submit_modified": "1",
+           "modified_reason": "Reason A"})
+    assert started[0].extra["knobs_override"] == "Reason A"
+    assert ui_state._last_form["submit_modified"] is False
+    assert ui_state._last_form["modified_reason"] == ""
+    html = client.get("/forecast").text
+    assert 'id="ms-ovr">' in html and 'id="ms-ovr" checked>' not in html
+    assert 'id="ms-why" hidden' in html
+    assert 'value="Reason A"' not in html
+    # run B with other settings, posted as the page now stands: non-hub
+    _post({"knob.groundhog.bandwidth": "4"})
+    assert "knobs_override" not in started[1].extra
+    assert not K.hub_names(started[1])
+    # never written to app/state/last_form.json, nor read back from it
+    FA.save_last_form({"locations": ["Ohio"], "submit_modified": True,
+                       "modified_reason": "Reason A"})
+    kept = json.loads((tmp_path / FA.LAST_FORM_NAME).read_text())
+    assert "submit_modified" not in kept and "modified_reason" not in kept
+    (tmp_path / FA.LAST_FORM_NAME).write_text(json.dumps(
+        {"locations": ["Ohio"], "submit_modified": True,
+         "modified_reason": "older file"}))
+    assert FA.load_last_form() == {"locations": ["Ohio"]}
+
+
+def test_the_settings_row_is_short_and_in_words(tmp_path, monkeypatch):
+    """The Latest run card's "model settings" row was a 7-line paragraph:
+    raw keys, the digest and the override's reason, repeating the
+    particles and replicates rows above it. Now: the changed values by
+    their labels, a number with its default, less the knobs with a row of
+    their own; a short "files" row; the Oracle step row no longer says
+    "console default" for a run that changed its weight."""
+    s = RunSpec(engine="all", forecast_date=FD, locations=["Ohio"],
+                particles=1000, replicates=1,
+                extra=K.write_extra(
+                    {"oracle.w": 0.25, "pf.seed_denominator": "season_total_early",
+                     "pf.particles": 1000, "pf.replicates": 1},
+                    ui_forecast._run_extra(2, "realtime"),
+                    override="2026-10-12 decision; docs/team/submission.md"))
+    pairs = dict(spec_settings(s))
+    assert pairs["model settings"] == (
+        "Seed denominator expected total (early season), "
+        "Oracle blend weight 0.25 (default 0.5)")
+    assert pairs["files"] == "hub names, by override"
+    assert pairs["particles"] == "1,000" and pairs["replicates"] == "1"
+    assert pairs["Oracle step"] == "on, weight 0.25"
+    text = " ".join(pairs.values())
+    assert "2026-10-12" not in text and "season_total_early" not in text
+    assert K.digest(K.record_of(s)) not in text
+    # only knobs with their own rows changed: named, not repeated
+    s2 = RunSpec(engine="all", forecast_date=FD, locations=["Ohio"],
+                 particles=1000, extra=K.write_extra(
+                     {"pf.particles": 1000},
+                     ui_forecast._run_extra(2, "realtime")))
+    pairs = dict(spec_settings(s2))
+    assert pairs["model settings"] == "Particles changed"
+    assert pairs["files"] == "non-hub names (-modified)"
+    assert pairs["Oracle step"] == "on (console default)"
+    # another Oracle-step setting: plainly "on"
+    s3 = RunSpec(engine="all", forecast_date=FD, locations=["Ohio"],
+                 extra=K.write_extra({"oracle.w_aux": 0.25},
+                                     ui_forecast._run_extra(2, "realtime")))
+    assert dict(spec_settings(s3))["Oracle step"] == "on"
 
 
 # --- the console run: files, records, containment ------------------------------------
@@ -440,8 +533,12 @@ def test_run_season_records_the_knobs_and_refuses_a_different_resume(
     s = retro.read_meta(root)["settings"]
     assert s["knobs"] == nd and s["knobs_digest"] == K.digest(nd)
     assert seen and all(x["knobs"] == nd for x in seen)
-    assert ("model settings", K.label(nd)) in retro.settings_summary(
-        retro.read_meta(root))
+    # in words, as a forecast run's settings are, then their digest (the
+    # season page's badge says only that they changed)
+    pairs = retro.settings_summary(retro.read_meta(root))
+    assert ("model settings", K.words(nd)) in pairs
+    assert pairs[pairs.index(("model settings", K.words(nd))) + 1] == (
+        "settings digest", K.digest(nd))
     assert json.loads(retro.resume_form_fields(
         {"settings": {**s, "scope": "panel6"}})["knobs"]) == nd
     # the tree never wears the shipped names, and never publishes
@@ -635,11 +732,14 @@ def test_the_season_page_wears_the_modified_badge():
     ctx = {"active": "Retrospective", "season": SEASON,
            "model_name": lambda m: m, "archive": "",
            "preparing": {"phase": "scoring", "elapsed_s": 1.0}}
-    html = t.render(**ctx, knobs_label=K.label({"oracle.w": 0.25}))
-    # a badge (icon and word), what was modified in its "?"
+    html = t.render(**ctx, knobs_modified=True)
+    # a badge (icon and word) that says it alone: the settings row names
+    # each change and the digest
     assert '<span class="uk-badge uk-badge--warn" id="rs-knobs"' in html
-    assert 'id="tip-rs-knobs">modified: oracle.w=0.25' in html
-    assert "modified settings</span>" not in t.render(**ctx, knobs_label="")
+    assert "modified settings</span>" in html
+    assert 'id="tip-rs-knobs"' not in html
+    assert "modified settings</span>" not in t.render(**ctx,
+                                                       knobs_modified=False)
 
 
 def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):

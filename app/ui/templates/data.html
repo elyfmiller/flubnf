@@ -8,7 +8,7 @@
 <div class="cols dt-cols">
  {# the FluSight hub: what a run reads, the clone against origin, the
     comparators and the newest week's reporting, one labelled row each;
-    each row's "?" holds what the row means #}
+    each row's label and badge say what it means #}
  <div><div class="card hubcard">
   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
   {{ tips.heading("FluSight hub", "hub") }}
@@ -21,13 +21,14 @@
       the hand-kept archive has not caught up (app.core.data.observed_source) #}
    {% if live_week %}
    {# the data's age beside it (routes/data.py _data_age): a badge, warn
-      once a round's data is overdue #}
-   {% set newer %}{% if live_age %}{{ tips.badge(live_age.state, live_age.text, tiptext="Days since the week the data runs through (a Saturday) ended; the hub adds a week each Wednesday.", id="live-age") }}{% endif %}{% if live_newer %}{% call tips.badge("warn", "not archived", id="live-newer") %}Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.{% endcall %}{% endif %}{% endset %}
-   {{ tips.stat("Data through", nw(live_week), id="live-week", after=newer, tiptext=data_through) }}
+      once a round's data is overdue; a week the archive has not caught
+      up with says where real-time runs read it #}
+   {% set newer %}{% if live_age %}{{ tips.badge(live_age.state, live_age.text if live_age.text == "today" else live_age.text ~ " old", id="live-age") }}{% endif %}{% if live_newer %}{{ tips.badge("warn", "not archived · target-data", id="live-newer") }}{% endif %}{% endset %}
+   {{ tips.stat("Data through", nw(live_week), id="live-week", after=newer) }}
    {% elif n_vintages %}
    {# no target-data file yet, but the archive holds weeks: the row says
-      so, and its "?" keeps the rule #}
-   {{ tips.stat("Data through", "none", id="live-week", tiptext=data_through) }}
+      so; the Archive's "?" keeps the rule #}
+   {{ tips.stat("Data through", "none", id="live-week") }}
    {% endif %}
    {# the clone against origin: a badge for the state, the check's own
       words in the "?" beside it (the script below fills both) #}
@@ -36,11 +37,12 @@
    {# the badge and its "?" held together (uk-badge-pair), so a wrapping
       line never splits them; #hub-detail stays the span the script shows #}
    {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span></span>{% endset %}
-   {% call tips.stat("Hub clone", clone, id="hub-clone") %}Hub clone: Check for new data compares the clone with origin and changes nothing; Update data pulls.{% endcall %}
-   {# the hub models runs are compared against (an older sparse clone may
-      lack them; Update data adds them) #}
+   {{ tips.stat("Hub clone", clone, id="hub-clone") }}
+   {# the hub's baseline and official ensemble, which runs are scored
+      against (an older sparse clone may lack them; Update data adds
+      them) #}
    {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
-   {% call tips.stat("Comparators", comp, id="comparators") %}Comparators: the hub's baseline and official ensemble, which runs are scored against.{% endcall %}
+   {{ tips.stat("Scored against", comp, id="comparators") }}
    {# did every jurisdiction report the newest week? (the file a real-time
       run reads; app/core/reported.py) #}
    {% if newest_report %}{% import "_newest.html" as newest %}
@@ -66,12 +68,14 @@
   <div id="hub-error"></div>
  </div></div>
  {# the archive: its own numbers as tiles, one dot per archived vintage on
-    its season's row (August 1 at left), a ring for a shipped snapshot #}
+    its season's row (August 1 at left), a ring for a shipped snapshot.
+    Its "?" holds the page's one rule (a past week's run reads that
+    week's vintage) and what "shipped" means #}
  <div><div class="card dt-archive">
-  {{ tips.heading("Archive", "archive", "Each dot is one week's snapshot as the runs fit it, on its flu season's row, August 1 at left.") }}
+  {% call tips.heading("Archive", "archive") %}A run on a past week reads that week's archived vintage, never later revisions.{% if n_shipped %} Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/); replays read them like archived vintages.{% endif %}{% endcall %}
   {% if n_vintages %}
   {% call tips.stats("dt-archstats", label="Archive") %}
-   {% set shp %}{% if n_shipped %}{% call tips.badge("info", n_shipped ~ " shipped", id="n-shipped") %}Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/). Replays read them like archived vintages.{% endcall %}{% endif %}{% endset %}
+   {% set shp %}{% if n_shipped %}{{ tips.badge("info", n_shipped ~ " shipped", id="n-shipped") }}{% endif %}{% endset %}
    {{ tips.stat("Vintages", n_vintages, id="n-vintages", after=shp) }}
    {{ tips.stat("Latest vintage", nw(latest_vintage), id="latest-vintage") }}
    {# the latest vintage's own numbers, read from the archived file #}
@@ -120,7 +124,7 @@
  {% set dsa %}<a class="btn quiet dt-act" href="/forecast?source={{ ds.id }}">Forecast it</a><a class="btn quiet dt-act" href="/retro?dataset={{ ds.id }}">Replay it</a><a class="dt-back" href="/data">Back to the FluSight hub</a>{% endset %}
  {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view") }}
  {% else %}
- {{ tips.heading("Vintage browser", "vb", "The archived truth vintages, exactly as runs fit them. Read-only. On the chart, the marker is this vintage's newest week.", after=tips.badge("neutral", "read-only", icon_name="lock")) }}
+ {{ tips.heading("Vintage browser", "vb", after=tips.badge("neutral", "read-only", icon_name="lock")) }}
  {% endif %}
  {% if view_note %}{{ tips.alert("warn", view_note, id="vb-note", live="") }}{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit
@@ -182,7 +186,7 @@
   </div>
   {% if series_table %}
   <div class="vintagetable">
-   {{ tips.heading("Newest " ~ (series_table | length) ~ " weeks", "vb-recent", ("As stored." if ds else "As archived; later revisions never appear."), level=3, cls="dt-subhead", tip_label="the newest weeks") }}
+   {{ tips.heading("Newest " ~ (series_table | length) ~ " weeks", "vb-recent", level=3, cls="dt-subhead") }}
    <table class="compact">
     <tr><th>week</th><th class="num">{{ ds.unit if ds else "admissions" }}</th><th class="num">change</th></tr>
     {# the change on the week before (the next row down, newest first);

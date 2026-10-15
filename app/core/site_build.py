@@ -12,9 +12,11 @@ SCORES. Each shipped model's own relWIS (the PF and the Groundhog; an older
 payload's stored "ensemble" is printed as stored). No stored scores.json is
 read (a test pins this): every season is rescored from each week's playback
 payload under THE cell rule (app.core.scoring.cell_scored, FluSight's) and
-the validated baseline. A tree
-replayed by the bare analogue (the seal) prints under the Groundhog's name
-with nothing here to say so: publish from a Groundhog replay.
+the validated baseline. The Groundhog column is named for the form its
+trees replayed (gh_label: the pooled form for every tree from before
+2026-10-15). A tree replayed by the bare analogue (the seal) prints under
+the Groundhog's pooled-form name with nothing here to say it is bare:
+publish from a Groundhog replay.
 
 HARVESTED, NOT RESTATED: Methods (methods.html through the console's own
 Jinja env, diagrams included); the home.html perf table's relWIS (the drift
@@ -87,6 +89,14 @@ class BuildError(RuntimeError):
 PF_LABEL_ORACLE = "Oracle SIHRS"
 PF_LABEL_FILTER = "Particle filter alone"
 
+#: the Groundhog column's names: the shipped form (each jurisdiction's own
+#: past weeks carry half of the donor weight, since 2026-10-15) only when
+#: every published tree replayed it; the pooled form every tree replayed
+#: before then; or both, across seasons
+GH_LABEL_SHIPPED = "Groundhog"
+GH_LABEL_POOLED = "Groundhog (pooled form)"
+GH_LABEL_MIXED = "Groundhog (two forms)"
+
 #: the particle filter alone on the production engine's replay (reseal of
 #: 2026-09-07, app/state/retro_reseal, 15,460 cells), per season: what
 #: cross_check holds a site built from trees that predate the Oracle step
@@ -139,6 +149,29 @@ def pf_label(seasons: dict) -> str:
                        for i in seasons.values()):
         return PF_LABEL_ORACLE
     return PF_LABEL_FILTER
+
+
+def tree_gh_form(root):
+    """The Groundhog form a season tree replayed, as its run record names it
+    (settings.groundhog_local_pools, retro.py): None for the pooled form,
+    which every record from before 2026-10-15 ran and carries no key for."""
+    from app.core import retro
+    s = retro.read_meta(Path(root)).get("settings") or {}
+    return s.get("groundhog_local_pools") or None
+
+
+def gh_label(seasons: dict) -> str:
+    """The season tables' name for the Groundhog: its plain name only when
+    every published season replayed the shipped form. A tree's form is the
+    shipped one or the pooled one: any other share is a knob, and a
+    modified-settings replay never publishes (discover_seasons)."""
+    from app.core.engines.analogue import shipped_local_pools
+    forms = [tree_gh_form(i["root"]) for i in seasons.values()]
+    if forms and all(f == shipped_local_pools() for f in forms):
+        return GH_LABEL_SHIPPED
+    if all(f is None for f in forms):
+        return GH_LABEL_POOLED
+    return GH_LABEL_MIXED
 
 
 def tree_knobs(root) -> dict:
@@ -774,17 +807,12 @@ def engines_missing(versions: dict) -> list:
     return [k for k in ENGINE_KEYS if engine_version(versions, k) is None]
 
 
-#: the Under-the-hood stack table and its engine toggletip: the builder's
-#: own install, which the public page has no business describing
+#: the Under-the-hood stack table: its Version column is the builder's own
+#: install, which the public page has no business describing (the engine
+#: fold's install lines are the console's alone: methods.html renders them
+#: only with `active`)
 _STACK_TABLE = re.compile(r'(<table class="mt-stack">)(.*?)(</table>)', re.S)
 _STACK_CELL = re.compile(r"<t([dh])\b[^>]*>.*?</t\1>", re.S)
-_TIP_SPAN = re.compile(r'<span class="tip">.*?</span></span>', re.S)
-_ENGINE_TT = re.compile(
-    r'<span class="uk-tt"><button[^>]*aria-controls="tt-mt-engine".*?'
-    r"</span></span></span>", re.S)
-#: console-only install advice inside a harvested tip
-_INSTALL_ADVICE = re.compile(
-    r";\s*on Windows, FluBNF\.bat installs its own Perl, with no administrator")
 #: the Purpose tile's location count: the forecast covers the national
 #: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
 _LOCS_TILE = re.compile(
@@ -793,21 +821,15 @@ _LOCS_TILE = re.compile(
 
 
 def _drop_version_column(html: str) -> str:
-    """Drop the stack table's last (Version) column. A tip in a dropped
-    cell (the sealed record's bngsim pin) moves to the row's Role cell."""
+    """Drop the stack table's last (Version) column (the sealed record's
+    bngsim pin is the engine fold's, not a Version cell's)."""
     def row(m):
         tr = m.group(0)
         cells = list(_STACK_CELL.finditer(tr))
         if len(cells) < 2:
             return tr
-        last, prev = cells[-1], cells[-2]
-        tips = "".join(_TIP_SPAN.findall(last.group(0)))
-        prev_html = prev.group(0)
-        if tips:
-            close = prev_html.rfind("</t")
-            prev_html = prev_html[:close] + tips + prev_html[close:]
-        return (tr[:prev.start()] + prev_html + tr[prev.end():last.start()]
-                + tr[last.end():])
+        last = cells[-1]
+        return tr[:last.start()] + tr[last.end():]
 
     def table(m):
         body = re.sub(r"<tr\b.*?</tr>", row, m.group(2), flags=re.S)
@@ -818,11 +840,8 @@ def _drop_version_column(html: str) -> str:
 def site_methods(html: str) -> str:
     """The rendered Methods made fit for a public page: no Version column
     (the builder's install: "(not installed)", local paths such as
-    /usr/bin/perl), no console-only install advice, and the location count
-    the forecast really covers."""
+    /usr/bin/perl) and the location count the forecast really covers."""
     html = _drop_version_column(html)
-    html = _ENGINE_TT.sub("", html)
-    html = _INSTALL_ADVICE.sub("", html)
     html = _LOCS_TILE.sub(
         r"\g<1>53\g<2>locations: 52 jurisdictions plus the national total"
         r"\g<3>", html)
@@ -1034,6 +1053,8 @@ def build_payload(seasons: dict | None = None,
             pf_label(seasons)),
         # the season tables' name for the mechanistic column (pf_label)
         "pf_label": pf_label(seasons),
+        # and for the Groundhog's, the form its trees replayed (gh_label)
+        "gh_label": gh_label(seasons),
         "elapsed_s": round(time.time() - t0, 2),
     }
 

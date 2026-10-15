@@ -37,8 +37,11 @@ from test_oracle_step import ASOF, hubfiles                  # noqa: E402,F401
 BASE_SHA = {
     "NAU_PyBNF-OracleSIHRS":
         "d4325a424fe437919884a07b82ac120eb02ea003d8cf2834e200895dfed25f0d",
+    # 2026-10-15: the Groundhog's own-state weighting shipped (own_share
+    # 0.5, flubnf.analogue.SHIPPED_OWN_SHARE), so its bytes moved once; the
+    # pooled form's hash was 601a20c24af9e9dd7c3cc5af542625a8850dfd5bf541d7c352b69df40644bae5
     "NAU_PyBNF-GroundHogCGR":
-        "601a20c24af9e9dd7c3cc5af542625a8850dfd5bf541d7c352b69df40644bae5",
+        "7314d245b51fae911b8c0a5ba122c80d837924af84010fa6d45e269f11646596",
 }
 
 
@@ -236,16 +239,16 @@ def test_the_knobs_are_off_by_default_and_never_mark_a_run_modified():
                   forecast_date=ASOF)
 
 
-def test_the_panel_offers_them_with_a_plain_tip():
+def test_the_panel_offers_them_with_a_plain_hint():
     from app.core import knobs as K
     p = K.panel("forecast", {"output.horizon_minus1": "1"})
     rows = {r["key"]: r for g in p["groups"] for r in g["rows"]}
     for key in K.OPTIONAL_KEYS:
         r = rows[key]
         assert r["optional"] and r["kind"] == "bool" and r["default"] == "0"
-        assert r["tip"].startswith("Optional;")
+        assert r["hint"].startswith("Optional;")
         assert r["name"] == "knob." + key
-    assert "the hub never scores it" in rows["output.horizon_minus1"]["tip"]
+    assert "the hub never scores it" in rows["output.horizon_minus1"]["hint"]
     assert rows["output.horizon_minus1"]["value"] == "1"
     assert p["modified"] is False                  # rows only, not the model
     retro = K.panel("retro")

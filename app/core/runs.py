@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -25,7 +26,10 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-APP_STATE = Path(__file__).resolve().parents[1] / "state"
+#: the console's state folder; FLUBNF_STATE_DIR moves it (the test suite
+#: points it at a temp folder, so every process a test starts inherits it)
+APP_STATE = Path(os.environ.get("FLUBNF_STATE_DIR")
+                 or Path(__file__).resolve().parents[1] / "state")
 
 # Sections, in file order:
 #   phrasing and settings rows   fmt_hms, locations_phrase, spec_settings,
@@ -153,11 +157,14 @@ def spec_settings(spec, outcome=None) -> list:
     if pf_absent or engine == "analogue":
         pairs.append(("Oracle step", "not run (no PF member ran)"))
     else:
-        pairs.append(("Oracle step", oracle_label(extra)))
-    # only a spec with a knobs record: shipped and older rows are unchanged
+        pairs.append(("Oracle step", oracle_label(extra, d)))
+    # only a spec with a knobs record: shipped and older rows are unchanged.
+    # The changed values in words, then how the files were named (the
+    # override's reason and the digest: the run page's own card)
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk))
+        pairs.append(("files", files_label(d)))
     # the per-state data choices and the zero-anchor rule (app/core/missing.py):
     # recorded data decisions, never "modified"; absent on a plain run
     pairs.append(("Data issues", data_issues_label(extra)))
@@ -242,29 +249,58 @@ def dataset_settings(d: dict) -> list:
         pairs.append((GROUNDHOG_OWN_DATA, analogue_donors(extra)))
     mk = model_settings_label(d)
     if mk:
-        pairs.append(("model settings", mk.split(";", 1)[0]))
+        pairs.append(("model settings", mk))
     pairs.append(("output", "export files under non-hub names; never "
                             "submitted"))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
+#: the knobs a run's settings list in rows of their own (spec_settings),
+#: so its "model settings" row leaves them out
+OWN_ROW_KNOBS = frozenset({"pf.particles", "pf.replicates", "run.season_start",
+                           "run.weeks_to_drop", "run.drop_same_day"})
+
+
 def model_settings_label(spec) -> str:
-    """'' for a shipped (or pre-registry) spec; else the knobs label, e.g.
-    'modified: oracle.w=0.25 (1a2b3c4d)', plus how its files were named.
+    """'' for a shipped (or pre-registry) spec; else the changed values in
+    words, e.g. 'Oracle blend weight 0.25 (default 0.5)', less those with
+    a settings row of their own (knobs.words). How the files were named is
+    files_label; the reason and the digest are the run page's.
     Lazy import: app.core.knobs imports this module."""
     from app.core import knobs as K
     # the optional-output knobs change no model (spec_settings names them)
     rec = K.model_record(spec)
     if not rec:
         return ""
-    why = K.override_reason(spec)
     try:
-        text = K.label(K.from_record(rec))
+        return K.words(K.from_record(rec), skip=OWN_ROW_KNOBS) or "modified"
     except Exception:
-        text = "modified (unreadable record)"
-    return (f"{text}; exported under the hub names by override: {why}" if why
-            else f"{text}; files carry the non-hub name "
-                 f"(<hub id>{K.MODIFIED_SUFFIX})")
+        return "modified (unreadable record)"
+
+
+def files_label(spec) -> str:
+    """How a modified run's files were named: 'hub names, by override' or
+    'non-hub names (-modified)'; '' for a shipped spec."""
+    from app.core import knobs as K
+    if not K.modified(spec):
+        return ""
+    return ("hub names, by override" if K.override_reason(spec)
+            else f"non-hub names ({K.MODIFIED_SUFFIX})")
+
+
+def report_settings(spec, outcome=None) -> list:
+    """A run's settings as its weekly report lists them: spec_settings,
+    with an override's reason after the "files" row. The report opens
+    without the app, so it keeps why the files took the hub names (the
+    console's cards keep the reason to the run page)."""
+    from app.core import knobs as K
+    pairs = spec_settings(spec, outcome)
+    why = K.override_reason(spec) if K.modified(spec) else ""
+    if not why:
+        return pairs
+    at = next((i + 1 for i, (k, _) in enumerate(pairs) if k == "files"),
+              len(pairs))
+    return pairs[:at] + [("override reason", why)] + pairs[at:]
 
 
 def is_modified(spec) -> bool:
@@ -275,25 +311,33 @@ def is_modified(spec) -> bool:
 
 
 def is_contained(spec) -> bool:
-    """Kept off the shipped-product surfaces (Home, Forecast fans, Models,
-    the forecast archive, the public site): a research run, or a modified
-    run whose files carry the non-hub name. An override puts it back. The
-    Output page is the exception for a modified run: its weekly report
-    card shows the newest run, badged, and its -modified files sit under
-    their date, so a run made on purpose is never hidden from the person
-    who made it (2026-10-14)."""
+    """Kept off the shipped-product surfaces (Home, Models, the forecast
+    archive, the public site): a research run, or a modified run whose
+    files carry the non-hub name. An override puts it back. Where a person
+    works with their own runs a modified one shows, badged, so a run made
+    on purpose is never hidden from the person who made it: Output's
+    weekly report card (2026-10-14), its -modified files under their date,
+    and the Forecast tab's fans (2026-10-15)."""
     from app.core import knobs as K
     return is_research(spec) or not K.hub_names(spec)
 
 
-def oracle_label(extra: dict | None) -> str:
+def oracle_label(extra: dict | None, spec=None) -> str:
     """One phrase for the Oracle step from a spec's extra: the plain filter
-    for `oracle = none`, else the console default (worded as a default: the
-    bank is known only at run time and is named in the OUTCOME, and older
-    specs carry no key)."""
+    for `oracle = none`; plain "on" (with its weight when that changed)
+    when `spec`'s knobs record changed an Oracle-step setting; else the
+    console default (worded as a default: the bank is known only at run
+    time and is named in the OUTCOME, and older specs carry no key)."""
     extra = extra if isinstance(extra, dict) else {}
     if str(extra.get("oracle") or "") == "none":
         return "none (the plain filter, a research run)"
+    if spec is not None:
+        from app.core import knobs as K
+        rec = K.model_record(spec)
+        if "oracle.w" in rec:
+            return f"on, weight {K._fmt(K.from_record(rec)['oracle.w'])}"
+        if any(k.startswith("oracle.") for k in rec):
+            return "on"
     return "on (console default)"
 
 
@@ -304,8 +348,36 @@ def analogue_donors_label(extra: dict | None) -> str:
     analogue when the spec carries no auxiliary pools."""
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("aux_pools"):
-        return str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
-    return "none (bare analogue)"
+        label = str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
+    else:
+        label = "none (bare analogue)"
+    return label + local_pools_label(extra)
+
+
+def local_pools_label(extra: dict | None) -> str:
+    """', own-state donors 0.50[, region 0.25][, own FluSurv-NET site]' for
+    a research run with locally weighted Groundhog pools
+    (spec.extra['local_pools'], flubnf.analogue.LocalPooling); '' without."""
+    from app.core.engines.analogue import effective_local_pools
+    extra = extra if isinstance(extra, dict) else {}
+    if extra.get("dataset"):
+        return ""
+    try:
+        cfg = effective_local_pools(extra)
+    except ValueError:
+        return ", local pools (unreadable)"
+    if cfg is None:
+        # the pooled form, however it was asked for: the knob at 0, an
+        # explicit None, or a record from before 2026-10-15 (no key)
+        return ", pooled (no own-state weight)"
+    parts = []
+    if float(cfg.get("own_share", 0) or 0) > 0:
+        parts.append(f"own-state donors {float(cfg['own_share']):.2f}")
+    if float(cfg.get("region_share", 0) or 0) > 0:
+        parts.append(f"region {float(cfg['region_share']):.2f}")
+    if cfg.get("own_site"):
+        parts.append("own FluSurv-NET site")
+    return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 
 def is_research(spec) -> bool:
@@ -318,6 +390,20 @@ def is_research(spec) -> bool:
         return False
     # the plain filter: file withheld, never the date's forecast; a custom
     # dataset: never the date's forecast either
+    # the Groundhog's local pooling: a run whose record asks for anything
+    # but the shipped configuration (the pooled form included) is research;
+    # a record without the key is from before 2026-10-15 and is what it was;
+    # a knob off its default is a modified run instead (app/core/knobs.py)
+    from app.core.engines.analogue import (SHIPPED_LOCAL_POOLS,
+                                           effective_local_pools)
+    if "local_pools" in extra:
+        try:
+            form = effective_local_pools(
+                {k: v for k, v in extra.items() if k != "knobs"})
+        except ValueError:
+            form = "unreadable"
+        if form != SHIPPED_LOCAL_POOLS:
+            return True
     return (extra.get("members") == 3 or extra.get("variant") == "2strain"
             or str(extra.get("oracle") or "") == "none"
             or bool(extra.get("dataset")))
@@ -536,10 +622,29 @@ def _spec_dict(spec) -> dict:
     return spec if isinstance(spec, dict) else {}
 
 
-def results_tip(spec) -> str:
+def results_tip(spec, outcome=None) -> str:
     """The "?" tip holding the relWIS convention, for a page that heads the
-    results table itself (the run page's Results card)."""
+    results table itself (the run page's Results card); '' when `outcome`
+    is given and holds no relWIS (nothing scored yet: no convention to
+    explain)."""
+    if outcome is not None and not has_relwis(outcome):
+        return ""
     return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
+
+
+def has_relwis(outcome) -> bool:
+    """Whether a run's outcome (dict or JSON) holds a relWIS the results
+    table shows: a hub member's, or a dataset member's custom score."""
+    o = _outcome_dict(outcome)
+    for _name, key, _cells in _RESULT_ROWS:
+        try:
+            float(o.get(key))
+            return True
+        except (TypeError, ValueError):
+            pass
+    scores = o.get("custom_scores") if isinstance(o.get("custom_scores"), dict) else {}
+    return any(isinstance(s, dict) and s.get("relwis") is not None
+               for s in scores.values())
 
 
 # the UI kit's check and warning icons (templates/_tips.html ICONS): the
@@ -576,9 +681,12 @@ def _pf_fits(o: dict) -> str:
     return fits
 
 
-def _results_table(body: str, d: dict, heading: bool) -> str:
+def _results_table(body: str, d: dict, heading: bool,
+                   scored: bool = True) -> str:
+    """The results table; its heading's "?" names the relWIS convention
+    only when a relWIS is shown (`scored`)."""
     cap = (f'<caption class="reshead"><strong>Results</strong>'
-           f'{results_tip(d)}</caption>' if heading else "")
+           f'{results_tip(d) if scored else ""}</caption>' if heading else "")
     return f'<table class="results">{cap}{body}</table>'
 
 
@@ -658,7 +766,7 @@ def results_html(outcome, spec, heading: bool = True) -> str:
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
     rows.append(("Weekly report", "written" if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
-    return _results_table(body, d, heading)
+    return _results_table(body, d, heading, has_relwis(o))
 
 
 def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
@@ -714,7 +822,7 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
                      f'{len(o["export_errors"])}</span>'))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>"
                    for k, v in rows)
-    return _results_table(body, d, heading)
+    return _results_table(body, d, heading, has_relwis(o))
 
 
 def settings_html(pairs, title: str = "Run settings",

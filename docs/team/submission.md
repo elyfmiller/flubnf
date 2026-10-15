@@ -10,10 +10,10 @@ and CDC's rules. The season's facts are in
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
   only, docs/TEAM.md (the merge-command rule) and these notes (#41
   recorded, the rule under Decided). Head 400f580 on main 22cfe3b. The
-  integration's footer was edited out of the body at once. When the tests
-  are green, Ely merges with:
-
-      gh pr merge 42 --merge --repo elyfmiller/flubnf
+  integration's footer was edited out of the body at once. MERGED BY ELY
+  AT 02:52 UTC (merge commit 37a8250, authored as Ely, committer GitHub)
+  with the tests still queued on the head; docs only, so nothing a run
+  reads changed. The merge-command rule is on main from here on.
 
 - 2026-10-15 (02:25 UTC): PULL REQUEST #41 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/41): the
@@ -26,8 +26,9 @@ and CDC's rules. The season's facts are in
   ad09f40 (their migration plan and Ely's seven decisions on the
   public-PyBNF plan, pushed while the pull request was open). Every head
   the tests ran on while it was open was green (all six jobs on a1f65f1,
-  e48bf98, 81b920d and 8d2b627); the run on the merge commit was in
-  progress at this entry. The integration's footer appeared on the body
+  e48bf98, 81b920d and 8d2b627); checked at 03:08 UTC: all six jobs
+  green on the merge commit 22cfe3b and on #42's 37a8250, so main is
+  green with both. The integration's footer appeared on the body
   again and was edited out at once (the 2026-10-12 lesson); the body is
   Ely's. FluBNF on Ely's laptop picks main up on its next open.
 - 2026-10-14 (22:40 UTC): THE OUTPUT TAB SHOWS A MODIFIED RUN, ON BRANCH
@@ -72,10 +73,15 @@ and CDC's rules. The season's facts are in
     removed by hand, not committed; nothing in the tests names uv, so the
     writer is a launcher or install step run under test. Neither is in
     this branch.
-- 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED:
+- 2026-10-14 (21:20 UTC): ROUND 2026-10-17 (EW41) SUBMITTED AND MERGED:
   cdcepi/FluSight-forecast-hub#3805, OPENED BY ELY FROM `FluBNF_submission`
   (63bb9da2 "NAU_PyBNF forecast 2026-10-17 (EW41)", on cdcepi main
-  397226db, authored and committed as Ely, no trailers). Oracle SIHRS 52 of
+  397226db, authored and committed as Ely, no trailers), MERGED BY CDC
+  (Annabella Hines) AT 21:20 UTC the same day, 50898478, after Ely's sync
+  merge of cdcepi main into the branch (8d599f99); checked 2026-10-15
+  14:01 UTC: both files on the hub's main are byte-identical to the
+  committed ones. Next round (2026-10-24, due 2026-10-21) reuses
+  `FluBNF_submission`: fast-forward it to cdcepi main first. Oracle SIHRS 52 of
   53 locations (Alaska dropped, the finding below), Groundhog all 53; both
   files as committed pass validate_submission.R, 31 checks with `--window`.
   The run: Ely's laptop on main 710f718 (the morning's #36 to #40 on top of

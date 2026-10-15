@@ -91,6 +91,7 @@ def _due(ref, today=None, now=None):
     return {"state": "due", "text": "Due Wed 2098-01-07, 11 PM ET.",
             "left": "2 days 8 h left", "urgent": False,
             "deadline": "2098-01-08T04:00:00Z",
+            "deadline_et": "Wed 2098-01-07, 11 PM ET",
             "badge": ("warn", "Due Wed 2098-01-07, 11 PM ET · 2 days 8 h left")}
 
 

@@ -347,18 +347,24 @@ def _outcome_chips(outcome_json: str) -> str:
     return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
 
 
-def _latest_results(include_modified: bool = False):
-    """(run_id, results) of the newest non-research run, or (None, None).
-    A corrupt results.json falls through to the next run; the file is read
-    fresh (only the scan is cached). Research runs are skipped because
-    every caller is a shipped-product surface (audit rr-1). A modified
-    run exported under the non-hub name is skipped too, so Home, the
-    Forecast fans, Models and /output/report never show it as the
-    registered model; the Output page's report card alone passes
-    include_modified=True and shows it badged, linking that run's own
-    report (its files sit under their date, tagged)."""
+def _latest_results(include_modified: bool = False, newest: bool = False):
+    """(run_id, results) of the run a page shows, or (None, None). A
+    corrupt results.json falls through to the next run; the file is read
+    fresh (only the scan is cached). Research runs are always skipped
+    (audit rr-1).
+
+    By default (Home, Output, the model pages: shipped-product surfaces)
+    the newest real-time run, so a vintage backtest never replaces the
+    current forecast (the newest vintage run only when no real-time run
+    exists), and never a run with modified settings exported under the
+    non-hub name (an override puts one back, badged). The Output page's
+    report card passes include_modified: it shows such a run badged,
+    linking that run's own report. The Forecast tab passes include_modified
+    and newest: the newest run that wrote forecasts, whatever its settings
+    or week."""
     import json as _json
-    from app.core.runs import is_contained, is_research
+    from app.core.runs import _spec_dict, is_contained, is_research
+    first = None
     for f in _workroot_results():
         try:
             res = _json.loads(f.read_text(encoding="utf-8"))
@@ -367,12 +373,18 @@ def _latest_results(include_modified: bool = False):
         spec = res.get("spec", "")
         if res.get("research") or is_research(spec):
             continue
-        # modified model settings exported under the non-hub name (an
-        # override puts a modified run back on every surface, badged)
+        # modified model settings exported under the non-hub name
         if not include_modified and is_contained(spec):
             continue
-        return f.parent.name, res
-    return None, None
+        if newest:
+            return f.parent.name, res
+        # a run recorded before the mode existed reads as real-time
+        extra = _spec_dict(spec).get("extra")
+        mode = extra.get("mode") if isinstance(extra, dict) else None
+        if (mode or "realtime") == "realtime":
+            return f.parent.name, res
+        first = first or (f.parent.name, res)
+    return first or (None, None)
 
 
 # === The sandbox's engine claim, read by /api/busy, /run, /retro/run and

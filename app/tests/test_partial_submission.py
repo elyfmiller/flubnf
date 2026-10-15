@@ -171,7 +171,8 @@ def test_the_run_records_the_dropped_location(pipeline_env, monkeypatch):
 def test_the_pages_say_how_many_locations_and_why_one_is_missing(
         pipeline_env, monkeypatch):
     """The Output page and the run page: "3 of 4 locations", the missing
-    location named with its reason; the other file reads 4 of 4."""
+    location named with its reason; the other file's badge reads 4 of the
+    hub's 5 (the run asked for the four states, not the US)."""
     from fastapi.testclient import TestClient
     from app.core.runs import Ledger
     from app.ui import server as srv
@@ -195,7 +196,7 @@ def test_the_pages_say_how_many_locations_and_why_one_is_missing(
         assert (f"<b>{name}</b>: left out of the file, its rows failed a "
                 "check:") in html, url
         assert "zero-width" in html
-        assert "4 of 4 locations" in html, url
+        assert '<span class="uk-badge-t">4 of 5 locations</span>' in html, url
 
 
 def test_each_missing_reason_is_named():

@@ -178,9 +178,6 @@
         if (panel) panel.hidden = !on;
         if (on && focus) t.focus();
       });
-      Array.prototype.forEach.call(bar.querySelectorAll('.sbtabtips > [data-file]'), function (s) {
-        s.hidden = s.getAttribute('data-file') !== file;
-      });
       try { sessionStorage.setItem(key, file); } catch (e) { /* storage off: no memory */ }
       // the editor sizes its gutter from the textarea: measure the shown one
       try { root.dispatchEvent(new Event('resize')); } catch (e) { /* old browser */ }
@@ -370,13 +367,18 @@
     if (root.FluBNFUI) rangeCheck();
     else document.addEventListener('DOMContentLoaded', rangeCheck);
 
-    // ---- unsaved changes: a badge beside Save, and a warning on leaving
-    var dirty = false, chip = $('sb-dirty');
+    // ---- unsaved changes: a badge beside Save, and a warning on leaving.
+    // The full fit runs the saved files, so it goes off with its reason
+    // (the template's words, in its tip) until a Save
+    var dirty = false, chip = $('sb-dirty'),
+        full = document.querySelector('[data-uk-reason="sb-full-why"]'),
+        fullWhy = $('tip-sb-full-why');
     if (form) {
       form.addEventListener('input', function (e) {
         if (!e.target || e.target.tagName !== 'TEXTAREA') return;
         dirty = true;
         if (chip) chip.hidden = false;
+        if (full && root.FluBNFUI) root.FluBNFUI.setReason(full, fullWhy ? fullWhy.textContent : 'Save first.');
         // a check report is of the text as it was: mark it as older
         var rep = $('sb-checked');
         if (rep && rep.firstChild) rep.classList.add('sb-stale');
@@ -400,17 +402,15 @@
     }
 
     // ---- Check: the editor text, read without the engine. The report is
-    // the kit's pieces: a one-line alert (problems, or none) with the
-    // explanation in its "?", the items to act on as a list, and the facts
-    // as labelled values. UI is window.FluBNFUI (tips.js, deferred: here
-    // from a click, so loaded).
+    // the kit's pieces: a one-line alert (problems, or none) that says it
+    // in its words, the items to act on as a list, and the facts as
+    // labelled values. UI is window.FluBNFUI (tips.js, deferred: here from
+    // a click, so loaded).
     var check = $('sb-check'), out = $('sb-checked');
     function esc(s) { return root.FluBNFUI ? root.FluBNFUI.esc(s) : String(s); }
-    // a tip and an alert as the kit writes them (FluBNFUI.tip, .alert);
-    // the report box is a live region, so the alert carries no role
-    function tipHtml(id, label, text) {
-      return root.FluBNFUI ? root.FluBNFUI.tip(id, label, text) : '';
-    }
+    // an alert as the kit writes it (FluBNFUI.alert); the report box is a
+    // live region, so the alert carries no role. Only what this computer
+    // lacks has a tip: its remedy
     function alertHtml(kind, title, text, tip) {
       return root.FluBNFUI ? root.FluBNFUI.alert(kind, text, title, tip, '')
         : esc(title) + (text ? ' ' + esc(text) : '');
@@ -420,21 +420,22 @@
         return '<li>' + esc(t) + '</li>';
       }).join('') + '</ul>' : '';
     }
-    // one labelled value (tips.stat's markup): [label, value, unit, tip]
+    // one labelled value (tips.stat's markup): [label, value, unit]
     function statsHtml(rows) {
       return '<dl class="uk-stats uk-stats--row sb-facts" aria-label="Check facts">' + rows.map(function (s) {
-        return '<div class="uk-stat"><dt>' + esc(s[0]) + (s[3] ? tipHtml(s[3][0], s[0].toLowerCase(), s[3][1]) : '')
+        return '<div class="uk-stat"><dt>' + esc(s[0])
           + '</dt><dd><span class="uk-stat-v">' + esc(s[1]) + '</span>'
           + (s[2] ? ' <span class="uk-stat-u">' + esc(s[2]) + '</span>' : '') + '</dd></div>';
       }).join('') + '</dl>';
     }
     // "at its written values the model gives A a week; data.exp holds B"
-    // as two values; anything else as it is
+    // as two values, the first's unit saying which values; anything else
+    // as it is
     function scaleRows(text) {
       var m = /^at its written values the model gives (.+?) a week; data\.exp holds (.+)$/.exec(text || '');
-      if (!m) return text ? [['Model at its written values', text, '', null]] : [];
-      return [['Model gives', m[1], 'a week', ['sb-ck-model', 'What the model gives at its written values, beside the data.']],
-              ['data.exp holds', m[2], '', null]];
+      if (!m) return text ? [['Model at its written values', text, '']] : [];
+      return [['Model gives', m[1], 'a week at its written values'],
+              ['data.exp holds', m[2], '']];
     }
     if (check && out && form) {
       check.addEventListener('click', function () {
@@ -453,14 +454,12 @@
                                 'a run would fail.') + listHtml(probs);
             } else if (warns.length) {
               // never green above a note: the notes are the headline
-              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'),
-                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']) + listHtml(warns);
+              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'))
+                + listHtml(warns);
             } else if (f.machine) {
-              html += alertHtml('ok', 'No problems found in the model.', '',
-                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
+              html += alertHtml('ok', 'No problems found in the model.', '');
             } else {
-              html += alertHtml('ok', 'No problems found:', 'the model can run.',
-                                ['sb-ck-ok', 'Only a run shows whether it fits the data.']);
+              html += alertHtml('ok', 'No problems found:', 'the model can run.');
             }
             // apart from the model: what this computer lacks for a run, as
             // the page's notice says it, the remedy in the "?"
@@ -469,11 +468,11 @@
                                 f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length && probs.length) html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
-            if (f.suffix) rows.push(['Simulate suffix', f.suffix, '', null]);
-            if (f.rows) rows.push(['Data rows', f.rows, '', null]);
-            if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '', null]);
+            if (f.suffix) rows.push(['Simulate suffix', f.suffix, '']);
+            if (f.rows) rows.push(['Data rows', f.rows, '']);
+            if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '']);
             if (f.network) rows.push(['Network', f.network, f.species != null
-              ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '', null]);
+              ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '']);
             if (rows.length) html += statsHtml(rows);
             out.innerHTML = html;
           })

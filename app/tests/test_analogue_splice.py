@@ -586,8 +586,11 @@ def test_aux_preset_carries_its_name_for_the_run_record():
     # only durable record of what a replay actually spliced.
     import re
     assert re.fullmatch(r"aux_preset:flusurv\+flusurv@[0-9a-f]{8}", f.__name__)
+    # since 2026-10-15 the preset also carries the Groundhog's own-state
+    # weighting, and declares it on the callable for the run record
+    assert f.local_pools == {"own_share": 0.5}
     got = f("2025-12-20", 0, None)
-    assert got == {"aux_pools": [
+    assert got == {"local_pools": {"own_share": 0.5}, "aux_pools": [
         {"stream": "flusurv", "weight": 0.5, "committed": True}]}
 
 

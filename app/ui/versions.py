@@ -9,6 +9,7 @@ way. _engine_versions_for_ledger records the engine versions on a run.
 """
 from __future__ import annotations
 
+import os as _os
 from pathlib import Path
 
 from app.core import ttlcache
@@ -117,9 +118,14 @@ def _component_versions() -> dict:
 #: unresolved-version marker; pages poll /api/versions while any remains
 VERSION_PENDING = "resolving…"
 
-#: last launch's resolved probe, so a restart skips the pending markers
-_VERSIONS_SNAPSHOT = (Path(__file__).resolve().parents[1]
-                      / "state" / "component_versions.json")
+#: the bngsim every engine installer pins, which reproduces the sealed record
+BNGSIM_PIN = "0.15.1"
+
+#: last launch's resolved probe, so a restart skips the pending markers;
+#: in the state folder, which FLUBNF_STATE_DIR moves (as app/core/runs.py)
+_VERSIONS_SNAPSHOT = (Path(_os.environ.get("FLUBNF_STATE_DIR")
+                           or Path(__file__).resolve().parents[1] / "state")
+                      / "component_versions.json")
 
 _VERSION_KEYS = ("fastapi", "jinja2", "plotly", "pandas", "numpy",
                  "bionetgen", "perl", "pybnf", "bngsim")
@@ -221,7 +227,6 @@ def _warm_versions() -> None:
         tmp.write_text(_json.dumps(dict(VERSIONS,
                                         engine_build=dict(ENGINE_BUILD))),
                        encoding="utf-8")
-        import os as _os
         _os.replace(tmp, _VERSIONS_SNAPSHOT)
     except Exception:
         pass

@@ -62,11 +62,13 @@ SHORT_LABELS = {
     OFFICIALS_ONLY: "US (officials only)",
 }
 
-#: THE provenance note printed beside every US number
+#: THE provenance note of every US row: the season page prints it in its
+#: "i" wherever the row shows (with a fallback's clause, or a fitted Oracle
+#: SIHRS row's era from PF_US_NOTES)
 NOTES = {
     FITTED: (
-        "US (fitted) is a national forecast in its own right, fitted as its "
-        "own location with the same settings as every state."),
+        "US (fitted) is fitted as its own location, with the same settings "
+        "as every state."),
     AGGREGATED: (
         "US (aggregated) is not a fitted national forecast: each member's "
         "state forecasts are summed (PF sample draws aligned by draw index, "
@@ -87,7 +89,8 @@ MIXED = "mixed"
 #: the national cell too (app/core/oracle.py, docs/ORACLE-SIHRS.md 5c); a
 #: week stored before it carries the Liu-West filter alone there, and its
 #: oracle.json says so (cells.outside_member lists US). PF_US_NOTES words
-#: each era; PF_US_NOTE covers both, for a store whose weeks do not say.
+#: each era (the season page's "i", after NOTES[FITTED]); PF_US_NOTE covers
+#: both, for a store whose weeks do not say.
 PF_US_NOTE = (
     "The US row under Oracle SIHRS: from addendum A3 (2026-10-01) the "
     "Oracle step is applied to the national cell as to the states, DC and "
@@ -96,9 +99,8 @@ PF_US_NOTE = (
     "under outside_member.")
 PF_US_NOTES = {
     STEPPED: (
-        "The US row under Oracle SIHRS carries the Oracle step, as the "
-        "states, DC and Puerto Rico do: the step covers the national cell "
-        "since addendum A3 (2026-10-01)."),
+        "The US row under Oracle SIHRS carries the Oracle step since "
+        "addendum A3 (2026-10-01), as the states do."),
     FILTER: (
         "The US row under Oracle SIHRS is the Liu-West filter without the "
         "Oracle step: it was stored before addendum A3 (2026-10-01), when "

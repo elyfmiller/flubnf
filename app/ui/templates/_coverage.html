@@ -1,10 +1,11 @@
 {# One submission file's location coverage (app/core/coverage.py, set as
    entry.cov by routes/output._attach_coverage; c.id is the file's handle
-   for the tips). Whole: a badge, "N of M locations". A location missing,
-   or anchored on an earlier week: a fold whose summary is the count and a
-   badge per kind, and whose body names each location with the run
-   record's reason. The count's "?" says when the run asked for fewer
-   than the hub's locations. Kit components (docs/UI-KIT.md); an open
+   for the ids). Whole: a badge, "all 53 locations", or "1 of 53
+   locations" when the run asked for fewer than the hub's. A location
+   missing, or anchored on an earlier week: a fold whose summary is the
+   count and a badge per kind, and whose body names each location with
+   the run record's reason; a tag says how many of the hub's the run
+   asked for. Kit components (docs/UI-KIT.md); an open
    fold's two lists link the Output sheet themselves (static/tabs/
    output.css), as the run page does not. `lead` is markup that opens the
    same row (a badge).
@@ -16,14 +17,15 @@
 {%- set word = "location" if c.of == 1 else "locations" -%}
 {%- set count = c.n ~ " of " ~ c.of ~ " " ~ word -%}
 {%- set cid = c.id or "cov" -%}
-{%- set asked -%}{% if c.not_requested %}The run asked for {{ c.of }} of the hub's {{ c.of + c.not_requested }}.{% endif %}{%- endset -%}
+{%- set total = c.of + c.not_requested -%}
 {% if c.missing or c.moved %}
 {%- set kinds -%}
 {% if c.missing %}{{ tips.badge("warn", c.missing | length ~ " missing") }}{% endif %}
 {% if c.moved %}{{ tips.badge("info", c.moved | length ~ " anchored earlier") }}{% endif %}
+{% if c.not_requested %}{{ tips.tag(c.of ~ " of " ~ total ~ " asked") }}{% endif %}
 {%- endset -%}
 {%- if lead %}{{ lead }}{% endif %}
-{% call tips.fold(count, id=cid, after=kinds ~ (tips.tip(cid ~ "-n", "the location count", asked) if asked else "")) %}
+{% call tips.fold(count, id=cid, after=kinds) %}
  {#- the lists' spacing; the run page links no Output sheet of its own #}
  <link rel="stylesheet" href="/static/tabs/output.css">
  {% if c.missing %}
@@ -37,7 +39,9 @@
 {% endcall %}
 {% else %}
 {%- if lead %}{{ lead }}{% endif %}
-{{ tips.badge("info" if c.not_requested else "ok", count, asked, id=cid ~ "-n") }}
+{%- set whole = (c.n ~ " of " ~ total ~ " locations") if c.not_requested
+     else ("all " ~ c.n ~ " locations" if c.n > 1 else ("1 location" if c.n == 1 else count)) -%}
+{{ tips.badge("info" if c.not_requested else "ok", whole, id=cid ~ "-n") }}
 {% endif %}
 {% elif lead %}{{ lead }}
 {% endif %}

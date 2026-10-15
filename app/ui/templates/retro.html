@@ -34,7 +34,8 @@
   <form method="post" action="/retro/run">
    <label for="rt-season">Season</label>
    <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
-   {{ tips.label("Location scope", "rt-scope", "The 6-state panel replays in a fraction of the time of all 52 jurisdictions.", for_="retro-scope") }}
+   {# the options say what each choice costs and does: no "?" per label #}
+   <label for="retro-scope">Location scope</label>
    <select name="locations" id="retro-scope">
      <option value="panel6">6-state panel (fast)</option>
      <option value="all">all 52 jurisdictions</option>
@@ -49,13 +50,13 @@
       ticks it beside all 52.
       A select, not a checkbox: a cleared checkbox posts nothing, so the
       server could not tell "states only" from an old client #}
-   {{ tips.label("US national", "rt-us", "US national is fitted and scored apart from the pooled state figures.", for_="rt-national") }}
+   <label for="rt-national">US national</label>
    <select name="national" id="rt-national">
      <option value="1">fit US national too (default)</option>
      <option value="0">states only</option></select>
-   {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.", for_="rt-width-in") }}
+   <label for="rt-width-in">Shard width</label>
    <span class="uk-affix"><input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
-   {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.", for_="retro-engine") }}
+   <label for="retro-engine">Engine preset</label>
    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
       published numbers anywhere #}
@@ -65,7 +66,7 @@
    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
       decision with no default, asked here rather than in the panel; a
       season replayed before the rule existed resumes as abstain #}
-   {{ tips.label("Newest week reading 0", "rt-zero", "What the Groundhog forecasts from when a state's newest week reads 0, for every such week of the replay. abstain: no forecast (what every replay did before this choice existed). level: the mean of the last 4 weeks. extend: the last positive week carried over 1 or 2 zeros. blend: level and extend averaged. Recorded with the season; it does not mark it modified.", for_="rt-zero-anchor") }}
+   <label for="rt-zero-anchor">Groundhog when the newest week reads 0</label>
    <select name="knob.groundhog.zero_anchor" id="rt-zero-anchor" required>
      <option value="">Choose…</option>
      <option value="abstain">abstain: no Groundhog forecast for that state and week</option>
@@ -119,10 +120,10 @@
     lands as a read-only archived run of its season, never in the live
     tree. The file picker, or a path when the file is already here #}
  <div class="card rt-importcard">
-  {{ tips.heading("Import a replay", "rt-import-h", "Imported replays are read only: results, player and report as for an archived run, and Delete removes them.") }}
+  {{ tips.heading("Import a replay", "rt-import-h", "A .flubnf-replay.zip from Export replay on a season page. Imported replays are read only: results, player and report as for an archived run, and Delete removes them.") }}
   <form method="post" action="/retro/import" enctype="multipart/form-data"
     id="rt-import">
-   {{ tips.label("Replay bundle", "rt-import-f", "A .flubnf-replay.zip file, made by Export replay on another machine's season page.", for_="rt-import-file") }}
+   <label for="rt-import-file">Replay bundle</label>
    <input type="file" name="file" id="rt-import-file"
      accept=".zip,.flubnf-replay.zip,application/zip">
    <label for="rt-import-path">or its path on this machine</label>
@@ -130,8 +131,7 @@
       path pasted in quotes (Explorer's Copy as path) is taken as is #}
    <input type="text" name="path" id="rt-import-path"
      placeholder="{{ downloads_example('2025-26-FluBNF-replay-….flubnf-replay.zip') }}">
-   <div class="lblrow"><label class="ck" for="rt-import-rep"><input type="checkbox" name="replace" value="1" id="rt-import-rep"> Replace an earlier import</label>
-    {{ tips.tip("rt-import-rep", "replacing an import", "Replace a copy already imported from the same export.") }}</div>
+   <div class="lblrow"><label class="ck" for="rt-import-rep"><input type="checkbox" name="replace" value="1" id="rt-import-rep"> Replace an earlier import</label></div>
    <button class="quiet">Import replay</button>
   </form>
  </div></div>

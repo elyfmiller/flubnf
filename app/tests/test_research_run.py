@@ -43,7 +43,7 @@ def test_pf2s_view_carries_the_badged_research_form():
     assert 'id="research-run"' in html
     joined = " ".join(html.split())
     assert "Research run" in joined
-    assert "research · not the submitted forecast" in joined
+    assert "research · scored, never submitted" in joined
     # its own form: date, locations, particles, posting the accepted path
     assert 'action="/run"' in html
     assert 'name="forecast_date"' in html
@@ -54,9 +54,11 @@ def test_pf2s_view_carries_the_badged_research_form():
     form = html.split('id="research-run"', 1)[1]
     assert 'data-guard="console-run"' in form
     # honest copy on the card itself (not elsewhere on the page): scored
-    # beside the shipped models, never written as a submission
+    # beside the shipped models, never written as a submission, in the
+    # badge's words rather than behind a "?"
     intro = " ".join(form.split("<form", 1)[0].split())
-    assert "scored, never submitted" in intro
+    assert '<span class="uk-badge-t">research · scored, never submitted</span>' in intro
+    assert "tipbtn" not in intro
 
 
 def test_research_form_appears_only_on_the_pf2s_view():
@@ -101,7 +103,7 @@ def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
     # 20,000 particles is off the shipped value: the run records it as a
     # model knob (app/core/knobs.py) and is marked modified
     assert set(spec.extra) == {"mode", "members", "aux_pools", "analogue_aux",
-                               "knobs"}
+                               "knobs", "local_pools"}
     assert spec.extra["knobs"] == {"pf.particles": 20_000}
     assert spec.particles == 20_000
     assert is_research(spec)

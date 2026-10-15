@@ -96,6 +96,9 @@ templates.env.globals["restart_needed"] = versions._restart_needed
 # the engine checkout's branch and commit, and the non-production warning
 # (templates/_engine_build.html)
 templates.env.globals["engine_build_view"] = versions.engine_build_view
+# Home's bngsim note: the pin, and the marker of a version not yet known
+templates.env.globals["bngsim_pin"] = versions.BNGSIM_PIN
+templates.env.globals["version_pending"] = versions.VERSION_PENDING
 # one settings/results renderer for progress cards, run page and both report
 # exports (app/core/runs.py), so their wording cannot diverge
 templates.env.globals["settings_html"] = settings_html
@@ -210,17 +213,15 @@ def _cov_text(frac) -> str:
 
 
 def _live_scores(what: str) -> str:
-    """The stats card's and the verdicts' shared text: "heading", "note",
-    "metrics" (what a tile's second line holds), "legend" (the coverage
-    colors' key, markup) or "states" (the per-state 95% column)."""
+    """The season page's shared text: "heading" (the stats card's), "note"
+    (how to read the scores) or "legend" (the coverage colors' key,
+    markup)."""
     from app.core import report_season
     if what == "legend":
         from markupsafe import Markup
         return Markup(report_season.COV_LEGEND)
-    return {"heading": report_season.LIVE_HEADING,
-            "metrics": report_season.METRICS_NOTE,
-            "states": report_season.PSTATES_COV_NOTE}.get(
-                what, report_season.LIVE_SCORES_NOTE)
+    return (report_season.LIVE_HEADING if what == "heading"
+            else report_season.LIVE_SCORES_NOTE)
 
 
 templates.env.globals["cov_state"] = _cov_state

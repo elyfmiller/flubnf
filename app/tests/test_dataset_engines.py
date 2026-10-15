@@ -77,17 +77,24 @@ def _golden_specs():
     names = [n for _f, _a, n, _p in HUB_LOCS]
     out = []
     for fd in GOLDEN_DATES:
+        # the golden file is the POOLED form (one shape for every location),
+        # the hub path before the own-state weighting shipped on 2026-10-15;
+        # `local_pools: None` asks for it, so the file keeps pinning that
+        # path byte for byte while the shipped default moved
+        pooled = {"local_pools": None}
         out += [
             (f"{fd}/bare", RunSpec(engine="analogue", forecast_date=fd,
-                                   locations=names, extra={})),
+                                   locations=names, extra=dict(pooled))),
             (f"{fd}/groundhog", RunSpec(engine="analogue", forecast_date=fd,
-                                        locations=names, extra=dict(shipped))),
+                                        locations=names,
+                                        extra={**shipped, **pooled})),
             (f"{fd}/drop1", RunSpec(engine="analogue", forecast_date=fd,
                                     locations=names, weeks_to_drop=1,
-                                    extra={})),
+                                    extra=dict(pooled))),
             (f"{fd}/bw3", RunSpec(engine="analogue", forecast_date=fd,
                                   locations=names,
-                                  extra={"knobs": {"groundhog.bandwidth": 3}})),
+                                  extra={"knobs": {"groundhog.bandwidth": 3},
+                                         **pooled})),
         ]
     return out
 
@@ -117,6 +124,32 @@ def test_hub_path_quantiles_unchanged(tmp_path, monkeypatch):
         assert got[label] == want[label], label
     # the fixture is not vacuous: every configuration forecasts every row
     assert all(len(v) >= 3 for v in want.values())
+
+
+def test_hub_path_shipped_record_is_the_own_weighted_form(tmp_path, monkeypatch):
+    """Since 2026-10-15 the shipped Groundhog weights the location's own
+    donors (flubnf.analogue.SHIPPED_OWN_SHARE), asked for by the record
+    the console and the presets write; a record without the key is the
+    pooled golden."""
+    arch = _hub_archive(tmp_path / "hub")
+    monkeypatch.setattr(EA, "vintage_path", lambda d: arch["vintages"][str(d)])
+    monkeypatch.setattr(EA, "LOCATIONS", arch["locations"])
+    fd = GOLDEN_DATES[0]
+    names = list(json.loads(GOLDEN.read_text())[f"{fd}/bare"])
+    shipped = EA.run(RunSpec(engine="analogue", forecast_date=fd,
+                             locations=names,
+                             extra={"local_pools": EA.shipped_local_pools()}))
+    explicit = EA.run(RunSpec(engine="analogue", forecast_date=fd,
+                              locations=names,
+                              extra={"local_pools": {"own_share": 0.5}}))
+    pooled = EA.run(RunSpec(engine="analogue", forecast_date=fd,
+                            locations=names, extra={}))
+    assert shipped == explicit
+    assert shipped != pooled
+    want = json.loads(GOLDEN.read_text())[f"{fd}/bare"]
+    got = {loc: {h: [round(float(lv[float(L)]), 9) for L in QL]
+                 for h, lv in sorted(hq.items())} for loc, hq in sorted(pooled.items())}
+    assert got == want
 
 
 def test_hub_path_never_reads_the_dataset_store(tmp_path, monkeypatch):

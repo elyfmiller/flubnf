@@ -21,8 +21,10 @@ from pathlib import Path
 LAST_FORM_NAME = "last_form.json"
 
 #: fields never kept across a restart: the date (the form opens on the
-#: newest week) and what belongs to one week's data or one refusal
-_NOT_KEPT = ("forecast_date", "season_start", "data_choices", "ms_refused")
+#: newest week), what belongs to one week's data or one refusal, and the
+#: override with its reason (one run's decision, never the next one's)
+_NOT_KEPT = ("forecast_date", "season_start", "data_choices", "ms_refused",
+             "submit_modified", "modified_reason")
 
 #: the hub publishes a week's data on the Wednesday after it (Saturday + 4)
 _PUBLISH_LAG_DAYS = 4
@@ -168,12 +170,22 @@ def error_head(error: str) -> str:
     return head[:1].upper() + head[1:] if head else ""
 
 
+#: the newest run's status, as the "earlier run" badge says why it is not
+#: the one drawn
+_NOT_DRAWN = {"running": "still running", "error": "failed",
+              "failed": "failed", "stopped": "stopped",
+              "interrupted": "interrupted"}
+
+
 def fan_run(ledger_rows: list, rid) -> dict | None:
-    """The run the Forecasts card draws: {"run_id", "label", "earlier"}
-    (earlier: it is not the newest hub row of the ledger, which failed or
-    is still to finish)."""
+    """The run the Forecasts card draws: {"run_id", "label", "modified",
+    "earlier"}. modified: it ran with modified model settings (the card
+    badges it). earlier: "" when it is the newest hub row of the ledger,
+    else the badge's words, saying why the newest is not drawn (it failed,
+    stopped or is still running, is a research run, or left no forecasts)."""
     if not rid:
         return None
+    from app.core import runs as _runs
     from app.ui.shared import _run_label
     spec = ""
     for r in ledger_rows or []:
@@ -182,14 +194,19 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
             break
     else:
         try:
-            from app.core.runs import Ledger
-            row = Ledger().row(rid)
+            row = _runs.Ledger().row(rid)
             spec = (row or {}).get("spec") or ""
         except Exception:
             spec = ""
-    newest = (ledger_rows or [{}])[0].get("run_id") if ledger_rows else None
+    top = (ledger_rows or [None])[0] if ledger_rows else None
+    earlier = ""
+    if top and top.get("run_id") != rid:
+        why = (_NOT_DRAWN.get(top.get("status") or "")
+               or ("is research" if _runs.is_research(top.get("spec") or "")
+                   else "has no forecasts"))
+        earlier = f"earlier run · newest {why}"
     return {"run_id": rid, "label": _run_label(rid, spec, tag=False),
-            "earlier": bool(newest and newest != rid)}
+            "modified": _runs.is_modified(spec), "earlier": earlier}
 
 
 # === Location presets ===
@@ -252,8 +269,10 @@ def presets(ledger_rows: list, all_locs: list, us_choice: str) -> dict:
 def last_run_values(ledger_rows: list) -> dict | None:
     """What the latest hub run was given, as the form's controls hold it:
     {"engine", "locations" (the names, "all" for the 53), "knobs": {key:
-    the panel's raw value}} for the knobs that applied to it; None without
-    a run or a readable spec. The season start is left out (it follows the
+    the panel's raw value}} for the knobs that applied to it, and for a run
+    with modified settings "hub_names", whether its files took the hub
+    names by override (the box starts unticked each run); None without a
+    run or a readable spec. The season start is left out (it follows the
     date)."""
     row = (ledger_rows or [None])[0] if ledger_rows else None
     spec = _spec(row)
@@ -286,10 +305,13 @@ def last_run_values(ledger_rows: list) -> dict | None:
             kn[r["key"]] = K._raw(k, r["value"])
         except Exception:
             continue
-    return {"engine": str(spec.get("engine") or "all"),
-            "locations": (["all"] if (len(states) >= 52 and us)
-                          else sorted(states) + (["US"] if us else [])),
-            "knobs": kn}
+    out = {"engine": str(spec.get("engine") or "all"),
+           "locations": (["all"] if (len(states) >= 52 and us)
+                         else sorted(states) + (["US"] if us else [])),
+           "knobs": kn}
+    if K.modified(spec):
+        out["hub_names"] = K.hub_names(spec)
+    return out
 
 
 def page_aids(ledger_rows: list, rid, all_locs: list, us_choice: str,
