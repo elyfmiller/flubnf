@@ -338,6 +338,62 @@ def test_a_groundhog_only_replay_with_truth_and_a_round_names_its_probe(
     assert ctx["unsettled"] is False
 
 
+def test_every_stored_week_counts_toward_a_scoreable_season(
+        tmp_path, monkeypatch):
+    """The gate reads every stored week, not a sample: the first week has
+    no baseline round and the middle week no settled truth, but the last
+    could score. Zero cells there is a real failure, probed on that week."""
+    W3 = "2098-01-17"
+    root = _mk_tree(tmp_path, weeks=(W1, W2, W3))
+    truth = _truth()
+    for fips in N2F.values():        # the middle week's target is not in
+        truth.pop((fips, pd.Timestamp(W2) + pd.Timedelta(days=7)))
+    _unscored(monkeypatch, tmp_path, truth)
+    for asof in (W2, W3):
+        _baseline_round(tmp_path / "hub", asof)
+    ctx = ui_retro.season_page_context(root, SEASON)
+    err = ctx["score_error"]
+    assert err.startswith("scored zero cells with no exception.")
+    assert f"asof {W3}" in err and "scoreable cells 2" in err
+    assert ctx["unsettled"] is False
+
+
+def _odd_cells(root: Path) -> Path:
+    """Filter cells the probe cannot read: each missing its first forecast
+    week past the anchor (stored "2", canonical "1")."""
+    for sp in (root / "weeks").glob("*/samples.json"):
+        d = json.loads(sp.read_text())
+        for cell in d["pf"].values():
+            cell.pop("2")
+        sp.write_text(json.dumps(d))
+    return root
+
+
+def test_an_odd_cell_never_turns_the_early_season_into_a_failure(
+        tmp_path, monkeypatch):
+    """The probe runs only once a cell could score: early in a season (no
+    baseline round yet) a cell it would trip on (a horizon missing) leaves
+    the calm empty state alone."""
+    root = _odd_cells(_mk_tree(tmp_path))
+    _unscored(monkeypatch, tmp_path, _truth())
+    ctx = ui_retro.season_page_context(root, SEASON)
+    assert ctx["score_error"] == "" and ctx["unsettled"] is True
+
+
+def test_a_probe_that_trips_still_reports_the_failure(tmp_path, monkeypatch):
+    """Once a cell could score, a probe that trips on an odd cell still
+    says scoring failed, with how many cells could have scored."""
+    root = _odd_cells(_mk_tree(tmp_path))
+    _unscored(monkeypatch, tmp_path, _truth())
+    for asof in (W1, W2):
+        _baseline_round(tmp_path / "hub", asof)
+    ctx = ui_retro.season_page_context(root, SEASON)
+    err = ctx["score_error"]
+    assert err.startswith("scored zero cells with no exception. 4 cells "
+                          "could score; diagnostic probe failed: KeyError")
+    assert ctx["unsettled"] is False
+
+
 def test_the_season_page_says_why_no_weeks_score_yet(tmp_path, _routed,
                                                      monkeypatch):
     """The page itself, scored for real: the hub's baseline folder holds no
