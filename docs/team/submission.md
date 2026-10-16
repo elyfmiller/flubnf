@@ -6,6 +6,64 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-16 (late UTC): THE WIDTH, MEASURED FROM THE STORED RUNS; THE DONOR
+  EXPLANATION BELOW IS WITHDRAWN. Ely asked this lane to test the width fix
+  on the retrospectives (the Mac Studio is busy; the stored roots are in
+  this lane's cloud session, so the tests ran here). Two measurements, no
+  engine time (tools/width_source.py, tools/shrink_screen.py and
+  replays/shrink_screen_result.txt in the Submission scratchpad):
+  - WHERE THE WIDTH COMES FROM. Not the donors: the pooled donor growth
+    ratios are tight (the four-week ratio's 2.5th to 97.5th percentile
+    0.5-0.7x to 1.1-1.4x in every stored week sampled). It is the filter's
+    own forecasting sample, which the Oracle step then multiplies by about
+    1.5-2x. And the filter's width this season is the seed rule's doing:
+    on the 2026-10-03 vintage the filter alone spans 7.0x its median at
+    horizon 3 under the old pin and 15.2x under the stage rule (19.9x on
+    09-26); the Oracle member 10.8x against 27.2x. The stored replays say
+    the same: early weeks, filter alone 8-14x under the old pin against
+    21-46x under the expected-total pin (Oracle 13-25x against 36-134x);
+    at the peaks both arms sit at 4-5x (Oracle 6-9x), the field's range.
+    Mechanism: with the brake gone early in the season, the particles at
+    the top of the Reff and forcing priors run unbraked for four weeks and
+    the upper tail explodes; the old pin's false 18% depletion was also
+    holding that tail down. So the width is an early-season, new-seed
+    effect, and the structural fix is in the filter (a tighter Reff upper
+    bound, a growth cap, or the jitter), which needs engine time (about 10
+    hours per arm for the 44 weeks in the cloud).
+  - THE POST-HOC NARROWING SCREEN (the laptop agent's 2026-10-09 Groundhog
+    transform, q' = m (q/m)^k, applied to the Oracle's stored stage-rule
+    w = 0.25 quantiles on all 44 weeks, 9,152 cells; the scorer reproduces
+    the record at k = 1, mean cell difference 0.0001): pooled relWIS 0.720 /
+    0.736 (natural / log) at k = 1; 0.678 / 0.724 at k = 0.8; 0.671 / 0.727
+    at k = 0.7; 0.675 / 0.737 at k = 0.6. Coverage 50 / 80 / 95 at k = 1:
+    0.62 / 0.90 / 0.99; at k = 0.7: 0.47 / 0.76 / 0.93, nominal. Every
+    block improves on the natural scale at k = 0.7 (early 2023-24 1.120 ->
+    0.829, early 2024-25 0.727 -> 0.698, early 2025-26 0.552 -> 0.545, peak
+    2023-24 1.143 -> 1.031, peak 2024-25 0.550 -> 0.460, peak 2025-26 0.935
+    -> 0.907) and every horizon (h0 0.809 -> 0.768, h3 0.696 -> 0.632); on
+    the log scale the 2025-26 blocks lose a hundredth. Leave-one-season-out
+    picks k = 0.7, 0.7 and 0.6; held-out gains 1.138 -> 0.990, 0.648 ->
+    0.592, 0.712 -> 0.710 (2025-26: nil on the natural scale, a loss of
+    0.03 on the log scale at k = 0.6 with 95% coverage 0.82: the sharp 2025
+    peak punishes over-narrowing). Cluster bootstrap by week (2,000): the
+    k = 0.7 gain is 0.049, 95% CI 0.025 to 0.079, better in every
+    replicate. On this week's file k = 0.7 takes the horizon-3 95% band
+    from 25.5x to about 9.6x the median (the baseline's 9x; the field's
+    median 3.6x), the 50% band from 2.6x to 1.9x.
+  - Reading for Ely: two levers, one ready. (1) k = 0.7 on the Oracle's
+    quantiles is scored, leave-one-season-out, bootstrap-backed, about 7%
+    on the natural scale and a wash on the log scale, with coverage at
+    nominal; it is a registered-member change (a card sentence and a knob,
+    oracle.shrink or similar, with the override until the default flips),
+    and the laptop agent's Groundhog screen found a smaller gain (k = 0.8,
+    0.670 -> 0.659) that Ely left alone, so the Groundhog stays as is. (2)
+    The structural fix, the early-season filter tail under the new seed, is
+    engine work: one arm overnight in the cloud (a Reff upper bound of 2.0
+    against the prior's 2.5, or a per-week growth cap), scored on the same
+    44 weeks against this record; it would narrow the Oracle from the
+    inside and could change the medians too. The donor-width
+    pre-registration draft under For other lanes is superseded by this
+    entry; the donor pool is not the lever.
 - 2026-10-16 (evening UTC): FIRST INTERNAL SCORE OF THE SEASON, WEEK 1 AT
   HORIZON 0, AND WEEK 2 AGAINST THE FIELD. CDC's weekly mail (2026-10-15,
   "FluSight Forecasts for 10/17/2026") says WIS reports follow once enough
@@ -1198,7 +1256,11 @@ and CDC's rules. The season's facts are in
   horizon 3 is the widest of 56 models, 25x its median against a field
   median of 3.6x and the baseline's 9x, and its 50% band is wider than the
   baseline's, so the width is an outlier, not a style. WHERE THE WIDTH
-  COMES FROM (from the code and the stored replays, 2026-10-16): not the
+  COMES FROM: the paragraph that follows was this lane's first reading and
+  is WRONG on the cause; the measurement under Now (2026-10-16, late)
+  replaces it: the donor ratios are tight, the width is the filter's own
+  early-season tail under the expected-total seed, multiplied about 1.5-2x
+  by the step. The first reading, kept for the record: not the
   filter. The filter alone UNDER-covers in the early-week replays (95%
   coverage 0.67-0.78, 50% 0.20-0.31); the Oracle step is what widens it.
   Each sample path draws ONE donor from the pooled bank (every state and
@@ -1218,7 +1280,10 @@ and CDC's rules. The season's facts are in
   on the stored replays, the same lever as the per-state pooling item; a
   post-hoc shrink of the quantiles is the fallback, not the first choice.
 - Model (2026-10-16, Ely's ask): THE DONOR-WIDTH EXPERIMENT, A PRE-REGISTRATION
-  DRAFT TO RUN ON THE STORED RETROSPECTIVES. Both members' width comes from
+  DRAFT (SUPERSEDED the same evening: the measurement under Now, 2026-10-16
+  late, shows the donors are tight and the width is the filter's early
+  tail under the new seed; the post-hoc k screen there is the scored
+  result; kept for the record of what was planned). Both members' width comes from
   the pooled donors (the item above), so the lever is the donor pool, not
   the quantiles, and it is scoreable with NO engine time: the Oracle step is
   post-fit and recomputes from the stored filter samples (replays/
