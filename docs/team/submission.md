@@ -92,6 +92,22 @@ and CDC's rules. The season's facts are in
     level differ too: the replays' first scored weeks were October 7 (US
     1,105) and mid-November (US 2,500-2,600); this season's first week is
     October 10 at US 3,835 and 1.23x a week.
+  - Are we the only team with bands this wide? Nearly (tools/field_width.py
+    in the Submission scratchpad, on the 2026-10-17 files of the 57 models
+    with 50+ locations; width = (upper - lower) / median, median over
+    locations). 95% band at horizon 3: field median 3.6x the median,
+    FluSight-ensemble 3.6x, FluSight-baseline 9.0x, Groundhog 9.0x (53rd of
+    56), Oracle SIHRS 25.5x (56th of 56, the widest in the field, seven
+    times the median model). 50% band at horizon 3: field median 1.0x,
+    baseline 2.5x, Groundhog 1.5x, Oracle 2.6x (wider than the baseline's).
+    At horizon 0: 95% band field median 1.9x, Oracle 3.3x, Groundhog 4.3x
+    (baseline 5.2x); 50% band field 0.5x, Oracle 0.8x, Groundhog 0.8x. So
+    the width is not a shared trait of mechanistic or wide-by-design
+    teams: every other team, the ensemble members included, runs 2-6x at
+    horizon 3, and the Oracle's upper tail (Illinois 6 to 20,266 around a
+    median of 409) is what the WIDE flag in sense_check.py was built to
+    show. This moves the calibration item from "a little better score" to
+    "an outlier to fix, scored on the replays first".
   - Files: the scorer tools/field_score.py and its result
     hubfield/field_score_result.txt in the Submission scratchpad (the hub
     data copied under hubfield/); not committed (the lane's docs-only
@@ -1177,7 +1193,11 @@ and CDC's rules. The season's facts are in
   or a quantile-mapping fit on the replays' PIT), with a stop rule written
   first, as the seed rule was; the Groundhog's calendar donors set its
   width, so its knob is the donor count or a kernel. Second to the switch
-  point in order, since the switch is a bias and this is a width.
+  point in order, since the switch is a bias and this is a width; but note
+  the field comparison of 2026-10-16 (Now): the Oracle's 95% band at
+  horizon 3 is the widest of 56 models, 25x its median against a field
+  median of 3.6x and the baseline's 9x, and its 50% band is wider than the
+  baseline's, so the width is an outlier, not a style.
 - Model (2026-10-14, top priority): the stage rule's switch is live. Alaska
   and Hawaii passed a quarter of their expected totals this week and fell
   back to the to_date pin (18% assumed infected, from 4.5% the week before);
