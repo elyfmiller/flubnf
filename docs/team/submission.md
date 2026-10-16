@@ -6,6 +6,33 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-17 (early UTC): THE NARROWING IS A KNOB, ON BRANCH oracle-narrowing
+  FOR ELY'S MERGE INTO dev (two commits over dev, authored as Ely; Ely
+  asked for the lever on 2026-10-16). `oracle.narrow` (Model settings,
+  the Oracle step group, beside the blend weight; default 1.0 =
+  flubnf.oracle.K_PRODUCTION, range 0.1-1.0): after the Oracle step the
+  submitted seed's samples of each horizon are scaled about their finite
+  median, x' = m (x / m)^k (flubnf.oracle.narrow), so the median holds, a
+  value ten times it becomes 10^k times it, zeros and NaN stay, the map is
+  monotone, and the hub rows, the report and the categorical map all see
+  it (the pipeline takes its quantiles from the samples). The record
+  (oracle.json) carries narrowing {k, applied, rule} and, when applied,
+  quantiles.primary.narrowed and .unnarrowed (the quantiles before, for a
+  later screen). Not narrowed: the origin block, the logged secondary and
+  admissions-only members, the null; every cell is narrowed, the identity
+  cells included, as the screen scored. A run at k != 1 is a modified run
+  with the override and its reason, like the seed rule and the weight; no
+  card change while the default is 1.0. Tests: the library (identity at
+  1, median held, 10x -> 10^k, zeros, NaN, blocks without a positive
+  median, the bounds), the step (apply_week with the knob, the other
+  blocks untouched, identity cells, the hub rows end to end, the replay
+  path), the registry; docs/ORACLE-SIHRS.md 6b. An adversarial review
+  (three lenses, eight findings, all verified) was applied in the second
+  commit; full suite 3,380 passed, 162 skipped on the first commit, rerun
+  after the second. Merge: Ely merges the branch into dev, then dev to
+  main by pull request before the 2026-10-21 run, which then sets three
+  values: seed season_total_early, weight 0.25, narrowing 0.7, one
+  override reason for all three.
 - 2026-10-16 (late UTC): THE WIDTH, MEASURED FROM THE STORED RUNS; THE DONOR
   EXPLANATION BELOW IS WITHDRAWN. Ely asked this lane to test the width fix
   on the retrospectives (the Mac Studio is busy; the stored roots are in
