@@ -48,8 +48,9 @@ and CDC's rules. The season's facts are in
     peak punishes over-narrowing). Cluster bootstrap by week (2,000): the
     k = 0.7 gain is 0.049, 95% CI 0.025 to 0.079, better in every
     replicate. On this week's file k = 0.7 takes the horizon-3 95% band
-    from 25.5x to about 9.6x the median (the baseline's 9x; the field's
-    median 3.6x), the 50% band from 2.6x to 1.9x.
+    from 25.5x to 9.5x the median (the baseline's 9x; the field's median
+    3.6x; k = 0.6 would give 6.8x), the 50% band from 2.6x to 1.7x, and
+    the US band from 714-112,688 to 1,522-52,632 around 8,908.
   - Reading for Ely: two levers, one ready. (1) k = 0.7 on the Oracle's
     quantiles is scored, leave-one-season-out, bootstrap-backed, about 7%
     on the natural scale and a wash on the log scale, with coverage at
