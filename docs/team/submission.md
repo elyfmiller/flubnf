@@ -70,6 +70,28 @@ and CDC's rules. The season's facts are in
     scored tightening of the spread, at least at horizons 0-1, is the
     cheapest WIS gain available and can be scored from the stored replay
     runs without engine time (For other lanes).
+  - Is the first week this bad in the retrospectives? Yes, once the stored
+    replay (replays/score_w025_cells.csv) is read at horizon 0 by week
+    rather than pooled. The shipped Oracle at horizon 0 in the FIRST
+    scored week of each replayed season: 2023-10-07 relWIS 0.889 natural /
+    0.726 log, 50% coverage 0.77; 2024-11-16 0.782 / 0.891, 0.73;
+    2025-11-15 0.636 / 0.783, 0.40. This week's 0.902 / 0.924 with 0.79 is
+    at the bad end of that range, not outside it, and the first week is the
+    worst horizon-0 week of each replayed season (2023: 0.889, 0.752, 0.700
+    over weeks 1-3; 2025: 0.636, 0.637, 0.599). The over-dispersion is also
+    in the replays at the first weeks (50% coverage 0.73-0.79 in 2023 and
+    2024) and in the stage rule throughout (cov50 0.59 at every horizon,
+    cov95 0.98-0.99). The pooled early-week numbers in the record (0.74 /
+    0.84 shipped, 0.67 / 0.67 stage) averaged this away. Caution for week
+    2's expectation: at a season's first week the stage rule was not
+    reliably better than the shipped rule on the natural scale (2023-10-07
+    0.986 against 0.889; 2024-11-16 1.143 against 0.782, the expected-total
+    overshoot in a late season), only on the log scale from 2024 on; its
+    second weeks scored 0.791 / 0.740, 0.816 / 0.901 and 0.577 / 0.717 at
+    horizon 0, which is the fair range for this week's file. Calendar and
+    level differ too: the replays' first scored weeks were October 7 (US
+    1,105) and mid-November (US 2,500-2,600); this season's first week is
+    October 10 at US 3,835 and 1.23x a week.
   - Files: the scorer tools/field_score.py and its result
     hubfield/field_score_result.txt in the Submission scratchpad (the hub
     data copied under hubfield/); not committed (the lane's docs-only
