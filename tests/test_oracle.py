@@ -399,3 +399,45 @@ def test_the_shipped_member_is_bitwise_the_b2_screen():
         total["dates"] += 1
     assert total["dates"] >= 3 and total["diff"] == 0
     print(f"\noracle B2 bitwise (seed x location cells of 4 x 23): {total}")
+
+
+# --- post-hoc narrowing (K_PRODUCTION, narrow, narrow_quantiles) -------------
+
+def test_narrowing_scales_log_distance_from_the_median_and_k_one_is_the_input():
+    x = np.array([0.0, 1.0, 2.0, 4.0, 8.0, 16.0, np.nan, 100.0])
+    same = OR.narrow(x, 1.0)
+    assert same.dtype == float and np.array_equal(same, x, equal_nan=True)
+    assert OR.K_PRODUCTION == 1.0
+    y = OR.narrow(x, 0.7)
+    m = np.nanmedian(x)
+    assert np.isnan(y[6]) and y[0] == 0.0
+    fin = np.isfinite(x) & (x > 0)
+    assert np.allclose(y[fin], m * (x[fin] / m) ** 0.7)
+    assert np.allclose(np.nanmedian(y), m)
+    # monotone: order kept, the spread shrunk on both sides of the median
+    assert np.all(np.diff(y[np.isfinite(y)]) >= 0)
+    assert y[7] < x[7] and y[1] > x[1]
+    with pytest.raises(ValueError):
+        OR.narrow(x, 0.0)
+
+
+def test_narrowing_leaves_a_block_without_a_positive_median_alone():
+    x = np.array([0.0, 0.0, 0.0, 1.0, 3.0])
+    assert np.array_equal(OR.narrow(x, 0.5), x)
+    assert np.array_equal(OR.narrow(np.array([np.nan, np.nan]), 0.5),
+                          np.array([np.nan, np.nan]), equal_nan=True)
+
+
+def test_narrowed_quantiles_are_the_quantiles_of_the_narrowed_sample():
+    rng = np.random.default_rng(7)
+    x = np.exp(rng.normal(3.0, 0.8, size=20_000))
+    q = OR.finite_quantiles(x)
+    direct = OR.finite_quantiles(OR.narrow(x, 0.7))
+    viaq = OR.narrow_quantiles(q, 0.7)
+    assert np.allclose(direct, viaq, rtol=2e-3)
+    assert np.allclose(viaq[OR.QL.index(0.5)], q[OR.QL.index(0.5)])
+    block = np.stack([q, q * 0.0, np.full_like(q, np.nan), q * 2.0])
+    nb = OR.narrow_quantiles(block, 0.7)
+    assert np.allclose(nb[0], viaq) and np.array_equal(nb[1], block[1])
+    assert np.isnan(nb[2]).all() and np.allclose(nb[3], 2.0 * viaq)
+    assert OR.narrow_quantiles(q, 1.0) is not None and np.array_equal(OR.narrow_quantiles(q, 1.0), q)

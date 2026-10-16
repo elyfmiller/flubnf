@@ -48,6 +48,7 @@ SOURCES = {
     "data.trailing_zero": MS.TRAILING_ZERO,
     "data.partial_week": MS.PARTIAL_WEEK,
     "oracle.w": OR.W_PRODUCTION,
+    "oracle.narrow": OR.K_PRODUCTION,
     "oracle.w_aux": MX.W_AUX,
     "oracle.submitted_seed": OR.SUBMITTED_SEED,
     "oracle.bandwidth": AN.DEFAULT_BANDWIDTH,
