@@ -6,6 +6,45 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-17 (00:00 UTC): THE NARROWING, TESTED IN ELY'S APP. Ely merged
+  oracle-narrowing into dev (bf044bd, 2026-10-16) and re-ran the 2026-10-17
+  week on dev with the three values (seed season_total_early, weight 0.25,
+  narrowing 0.7; the Groundhog on its own-share form from #43). The
+  -modified files came to this lane and were checked against the submitted
+  run (tools/narrow_compare.py, narrow-test/result.txt and
+  narrow-test/field_width.txt in the Submission scratchpad):
+  - The medians hold: 204 of the 212 (location, horizon) medians are
+    identical to the submitted run's and the other 8 differ by 1
+    admission (rounding); 4,876 quantile rows, 53 locations (Alaska
+    included, as before the drop), every block monotone, integers.
+  - The mechanism ran as registered: the implied exponent per cell,
+    log(x'/m) / log(x/m) over the 3,649 cells more than 0.3 from their
+    median on the log scale, is 0.700 (10th to 90th percentile
+    0.681-0.729, the integer rounding).
+  - The bands (95% band / median, then 50% band / median, medians over
+    locations): h0 3.15x / 0.82x -> 1.96x / 0.55x; h1 6.60x / 1.28x ->
+    3.56x / 0.86x; h2 13.0x / 1.84x -> 5.90x / 1.24x; h3 25.5x / 2.62x ->
+    9.56x / 1.67x (the 9.5x predicted from the quantiles on 2026-10-16).
+    US h3: 714-112,688 about 8,908 -> 1,522-52,630. Against the field's
+    2026-10-17 files (57 models with 50+ locations): at h0 the 95% band
+    now sits at the field median (1.96x against 1.93x); at h3 it is still
+    the widest but one (9.56x; the baseline 8.99x, the Groundhog 8.95x,
+    docxology-panelqr 9.54x; field median 3.6x), down from 25.5x, which
+    was three times the next widest. The screen says not to chase the
+    field with a lower k: k = 0.5 scores 0.692 / 0.758 pooled against
+    0.671 / 0.727 at k = 0.7, worse in five of six blocks on the natural
+    scale and in every block on the log scale. The rest of the h3 width
+    is the filter's early-season tail, the Model lane's item (engine arm).
+  - The Groundhog file of this run differs from the submitted one in
+    3,723 of 4,876 cells (68 of 212 medians identical): the own-share
+    form (#43, on main since 2026-10-15), not the narrowing, which does
+    not touch the Groundhog; its h3 95% band 8.95x -> 8.37x.
+  - Not checked from the files: the run record's narrowing block
+    (oracle.json: k, applied, the unnarrowed quantiles beside the
+    narrowed); the implied exponent above is the stronger check of what
+    ran. The record can be read on the run page when the week ships.
+  Next: dev to main by pull request on Ely's word (this lane opens it and
+  gives the merge command), then the 2026-10-21 run on main.
 - 2026-10-17 (early UTC): THE NARROWING IS A KNOB, ON BRANCH oracle-narrowing
   FOR ELY'S MERGE INTO dev (two commits over dev, authored as Ely; Ely
   asked for the lever on 2026-10-16). `oracle.narrow` (Model settings,
@@ -29,10 +68,11 @@ and CDC's rules. The season's facts are in
   path), the registry; docs/ORACLE-SIHRS.md 6b. An adversarial review
   (three lenses, eight findings, all verified) was applied in the second
   commit; full suite 3,380 passed, 162 skipped on the first commit, rerun
-  after the second. Merge: Ely merges the branch into dev, then dev to
-  main by pull request before the 2026-10-21 run, which then sets three
-  values: seed season_total_early, weight 0.25, narrowing 0.7, one
-  override reason for all three.
+  after the second. Merge: Ely merged the branch into dev on 2026-10-16
+  (bf044bd; tested in the app, the entry above); dev to main by pull
+  request before the 2026-10-21 run, which then sets three values: seed
+  season_total_early, weight 0.25, narrowing 0.7, one override reason
+  for all three.
 - 2026-10-16 (late UTC): THE WIDTH, MEASURED FROM THE STORED RUNS; THE DONOR
   EXPLANATION BELOW IS WITHDRAWN. Ely asked this lane to test the width fix
   on the retrospectives (the Mac Studio is busy; the stored roots are in
@@ -200,6 +240,14 @@ and CDC's rules. The season's facts are in
     rule; say the word and the scorer goes under tools/ as a weekly
     check). Rerun each Thursday after CDC's mail: one more horizon of
     truth lands every week.
+- 2026-10-15 (15:31 UTC): PULL REQUEST #43 (dev TO main) MERGED BY ELY,
+  opened from dev by the Groundhog lane: the Groundhog's own-share form
+  (flubnf.analogue.LocalPooling, SHIPPED_OWN_SHARE 0.5, the knob
+  groundhog.own_share, card 1.2) and the App lane's settings-panel and
+  marks cleanup; merge commit e97b227. So main carries the own-share form
+  for the 2026-10-21 round, and a Groundhog run on main now differs from
+  the 2026-10-17 file by design. Recorded here on 2026-10-17, when this
+  lane found the merge on main.
 - 2026-10-15 (02:52 UTC): PULL REQUEST #42 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
   only, docs/TEAM.md (the merge-command rule) and these notes (#41
