@@ -370,7 +370,8 @@ def effective_local_pools(extra, *, dataset: bool = False):
             f"spec.extra['local_pools'] must be a dict, got "
             f"{type(cfg).__name__}")
     else:
-        unknown = set(cfg) - {"own_share", "region_share", "own_site"}
+        unknown = set(cfg) - {"own_share", "region_share", "own_site",
+                              "anchor_floor", "anchor_weight", "kernel_sd"}
         if unknown:
             raise ValueError(f"local_pools: unknown keys {sorted(unknown)}")
     knob = (extra.get("knobs") or {}).get("groundhog.own_share")
@@ -385,6 +386,13 @@ def effective_local_pools(extra, *, dataset: bool = False):
         out["region_share"] = float(cfg["region_share"])
     if cfg.get("own_site"):
         out["own_site"] = True
+    # RESEARCH (prereg 0815e4709ab06b2f): the admissions pool by donor count
+    if float(cfg.get("anchor_floor", 0) or 0) > 0:
+        out["anchor_floor"] = float(cfg["anchor_floor"])
+    if str(cfg.get("anchor_weight") or "none") != "none":
+        out["anchor_weight"] = str(cfg["anchor_weight"])
+        if out["anchor_weight"] == "kernel":
+            out["kernel_sd"] = float(cfg.get("kernel_sd", 1.0) or 1.0)
     return out or None                  # nothing weighted: the pooled form
 
 
@@ -420,6 +428,9 @@ def local_args(spec, *, dataset: bool = False, locations_csv=None):
         own_share=float(cfg.get("own_share", 0.0)),
         region_share=float(cfg.get("region_share", 0.0)),
         own_site=bool(cfg.get("own_site", False)),
+        anchor_floor=float(cfg.get("anchor_floor", 0.0) or 0.0),
+        anchor_weight=str(cfg.get("anchor_weight") or "none"),
+        kernel_sd=float(cfg.get("kernel_sd", 1.0) or 1.0),
         region_of=region_of, aux_sites=aux_sites)
 
 

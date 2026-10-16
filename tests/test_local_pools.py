@@ -385,3 +385,93 @@ def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
     with pytest.raises(_retro.GroundhogFormMismatch, match="own_share 0.5"):
         retro.run_season(root2, "2098-99", ["Ohio"], width=1, engine="analogue",
                          week_extra=lambda a, i, v: {})
+
+
+# --- the research anchor options (prereg 0815e4709ab06b2f) ------------------
+
+def _sized_bank():
+    """Six locations, ten seasons, growth 1.05 everywhere, but the
+    LEVELS differ: A and B start at 4, the rest at 400, so a count floor
+    or an anchor weighting tells them apart; the ratios are made to differ
+    by size (small series: noisier)."""
+    rng = random.Random(3)
+    bank = {}
+    for s in range(2016, 2026):
+        for loc, base, noise in (("A", 4.0, 0.6), ("B", 4.0, 0.6), ("C", 400.0, 0.05),
+                                 ("D", 400.0, 0.05), ("E", 400.0, 0.05), ("F", 400.0, 0.05)):
+            d = date(s, 8, 1); d += timedelta(days=(5 - d.weekday()) % 7)
+            v = base
+            for _ in range(52):
+                v = max(v * 1.05 * (1 + rng.uniform(-noise, noise)), 1.0)
+                bank[(loc, d)] = v
+                d += timedelta(days=7)
+    return bank
+
+
+def test_anchor_options_are_validated():
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_floor=-1)
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_weight="cube")
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_weight="kernel", kernel_sd=0)
+
+
+def test_a_floor_drops_small_donors_and_falls_back_under_min_donors():
+    bank = _sized_bank()
+    r, locs, v0 = AN.keyed_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), 2,
+                                  with_anchor=True)
+    assert v0.size == r.size and (v0 > 0).all()
+    small = (v0 < 10).sum(); assert small > 0
+    plain = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                        local=AN.LocalPooling(own_share=0.5), location="C")
+    floored = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                          local=AN.LocalPooling(own_share=0.5, anchor_floor=10),
+                          location="C")
+    # the same forecast from the floored pool computed by hand: own cells
+    # at half weight, the rest shared, over the donors at 10 or more
+    keep = v0 >= 10
+    lp = AN.LocalPooling(own_share=0.5)
+    wq = AN.weighted_quantile(r[keep], AN.local_weights(locs[keep], "C", lp), LEVELS)
+    manual = {L: 400.0 * wq[L] for L in LEVELS}
+    assert floored == pytest.approx(manual) and floored != plain
+    assert floored[0.975] - floored[0.025] < plain[0.975] - plain[0.025]
+    # a floor nobody clears falls back to the unfloored pool
+    back = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                       local=AN.LocalPooling(own_share=0.5, anchor_floor=1e9),
+                       location="C")
+    assert back == plain
+
+
+def test_anchor_weighting_keeps_the_class_shares():
+    locs = np.array(["A", "A", "B", "C"], dtype=object)
+    v0 = np.array([4.0, 16.0, 100.0, 400.0])
+    for wname in ("count", "sqrt", "kernel"):
+        lp = AN.LocalPooling(own_share=0.5, anchor_weight=wname, kernel_sd=1.0)
+        w = AN.local_weights(locs, "A", lp, anchors=v0, target_anchor=100.0)
+        assert w.sum() == pytest.approx(1.0)
+        assert w[locs == "A"].sum() == pytest.approx(0.5)
+    w = AN.local_weights(locs, "A", AN.LocalPooling(own_share=0.5, anchor_weight="count"),
+                         anchors=v0, target_anchor=None)
+    assert w[1] == pytest.approx(4 * w[0])                  # 16 against 4
+    k = AN.local_weights(locs, "A", AN.LocalPooling(own_share=0.5, anchor_weight="kernel"),
+                         anchors=v0, target_anchor=100.0)
+    assert k[2] > k[3]                                       # 100 nearer 100 than 400
+
+
+def test_the_engine_accepts_and_labels_the_anchor_options(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.core import runs
+    from app.core.engines import analogue as eng
+    csv = tmp_path / "locations.csv"; csv.write_text(LOCATIONS_CSV, encoding="utf-8")
+    monkeypatch.setattr(eng, "LOCATIONS", csv)
+    cfg = {"own_share": 0.5, "anchor_floor": 10, "anchor_weight": "kernel", "kernel_sd": 0.5}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    lp = eng.local_args(SimpleNamespace(extra={"local_pools": cfg}))
+    assert lp.anchor_floor == 10 and lp.anchor_weight == "kernel" and lp.kernel_sd == 0.5
+    extra = {"aux_pools": [{"stream": "flusurv", "weight": 0.5, "committed": True}],
+             "analogue_aux": "flusurv+flusurv@06eff6a7", "local_pools": cfg}
+    assert runs.analogue_donors_label(extra) == (
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50, donor floor 10, "
+        "donors weighted by kernel s=0.5")
+    assert runs.is_research({"extra": extra})
