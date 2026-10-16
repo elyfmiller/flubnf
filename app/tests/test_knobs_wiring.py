@@ -813,3 +813,54 @@ def test_a_missing_data_rule_records_every_flagged_week(console, monkeypatch):
     html = runs_mod.results_html(out, spec.to_json())
     assert (f"1 week to {ASOF} treated as unreported (trailing zero): "
             "Ohio 1") in html
+
+
+def test_the_narrowing_knob_scales_the_member_about_its_medians(hubfiles, tmp_path):
+    """oracle.narrow = k scales the submitted seed's samples about each
+    horizon's median after the step: the medians hold, every band shrinks
+    (a value ten times the median becomes 10^k times it), the recorded
+    primary quantiles follow, the unnarrowed ones stay in the record, and
+    k = 1 is the shipped member bitwise."""
+    raw = _samples()
+    m0, p0 = oracle_mod.apply_week(raw, ASOF, tmp_path / "a")
+    m1, p1 = oracle_mod.apply_week(raw, ASOF, tmp_path / "b",
+                                   extra={"knobs": {"oracle.narrow": 1.0}})
+    assert m1 == m0 and not p1["narrowing"]["applied"]
+    assert "unnarrowed" not in p1["quantiles"]["primary"]
+    mk, pk = oracle_mod.apply_week(raw, ASOF, tmp_path / "c",
+                                   extra={"knobs": {"oracle.narrow": 0.7}})
+    assert pk["narrowing"] == {**pk["narrowing"], "k": 0.7, "applied": True}
+    assert pk["specification"] == "modified" and pk["knobs"]["oracle.narrow"] == 0.7
+    seed = str(pk["submitted_seed"])
+    checked = 0
+    for loc in m0:
+        if loc not in pk["locations"] or pk["locations"][loc].get("state") == "outside":
+            continue
+        assert mk[loc]["origin"] == m0[loc]["origin"]          # the data block stays
+        for h in ("0", "1", "2", "3"):
+            x0 = np.asarray(m0[loc][h], float); xk = np.asarray(mk[loc][h], float)
+            f = np.isfinite(x0)
+            assert np.array_equal(np.isfinite(xk), f)
+            med = float(np.median(x0[f]))
+            if not med > 0:
+                assert np.array_equal(xk[f], x0[f])              # nothing to scale about
+                continue
+            assert np.allclose(np.median(xk[f]), med, rtol=1e-6)   # even counts interpolate
+            above = f & (x0 > med)
+            assert np.allclose(xk[above], med * (x0[above] / med) ** 0.7)
+            assert np.all(xk[above] <= x0[above])
+            # the recorded quantiles are the narrowed ones, the raw ones kept
+            qk = pk["quantiles"]["primary"]["per_seed"][seed][loc][h]["unrounded"]
+            q0 = p0["quantiles"]["primary"]["per_seed"][seed][loc][h]["unrounded"]
+            qr = pk["quantiles"]["primary"]["unnarrowed"]["per_seed"][seed][loc][h]["unrounded"]
+            if qk is None or q0 is None:
+                continue
+            assert qr == q0
+            assert qk[11] == pytest.approx(q0[11])
+            assert qk[22] == pytest.approx(q0[11] * (q0[22] / q0[11]) ** 0.7)
+            checked += 1
+    assert checked > 0
+    # the knob label names it and the registry bounds it
+    assert "oracle.narrow=0.7" in K.label({"oracle.narrow": 0.7})
+    with pytest.raises(ValueError):
+        oracle_mod.apply_week(raw, ASOF, tmp_path / "d", extra={"knobs": {"oracle.narrow": 0.0}})

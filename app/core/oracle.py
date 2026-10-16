@@ -142,13 +142,18 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                locations_csv=None, w: float = OR.W_PRODUCTION,
                seeds=OR.SEEDS, submitted_seed: int = OR.SUBMITTED_SEED,
                aux=None, shrink: float | None = None,
-               source_kind: str | None = None) -> tuple:
+               source_kind: str | None = None,
+               narrow_k: float = OR.K_PRODUCTION) -> tuple:
     """The member for one week. Returns (member, provenance).
 
     `pf_samples`: collect()'s canonical output, location -> {ORIGIN, "0".."3"}.
     `out_dir` receives oracle.json and oracle_bank/; its cells.json, when
     present, supplies k. `aux` ((bank, manifest)) and `shrink` override the
     committed bank and the fitted shrink (tests and research only).
+    `narrow_k` (knob oracle.narrow) scales the submitted seed's samples
+    about each horizon's median after the step (flubnf.oracle.narrow); 1
+    is the registered member, and the record keeps the unnarrowed
+    quantiles beside the narrowed ones when it is not.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -160,6 +165,12 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         w = float(kn["oracle.w"])
     if "oracle.submitted_seed" in kn:
         submitted_seed = int(kn["oracle.submitted_seed"])
+    if "oracle.narrow" in kn:
+        narrow_k = float(kn["oracle.narrow"])
+    narrow_k = float(narrow_k)
+    if not 0.0 < narrow_k <= 1.0:
+        raise ValueError(f"oracle.narrow must lie in (0, 1], got {narrow_k}")
+    narrowing = narrow_k != 1.0
     T = date.fromisoformat(asof)
     # the run's own observed file (the pipeline passes it with its kind);
     # called without one (replays, backfill, sandbox), the one resolver in
@@ -199,6 +210,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     locs_prov: dict = {}
     q_null: dict = {}
     q_primary: dict = {s: {} for s in seeds}
+    q_primary_raw: dict = {s: {} for s in seeds}     # before narrowing
+    mean_primary_raw: dict = {}
     q_secondary: dict = {s: {} for s in seeds}
     q_adm: dict = {s: {} for s in seeds}
     mean_primary: dict = {}
@@ -235,8 +248,13 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                                 seeds=seeds, submitted_seed=submitted_seed, aux_pool=auxp)
         r0 = OR.member_for_cell(origin, xh, pool, T, key, w=w, seeds=seeds,
                                 submitted_seed=submitted_seed)
+        # the narrowing acts on the submitted samples after the step (the
+        # origin block is the data and stays); k = 1 touches nothing
+        xs = [np.asarray(r.samples[hi], float) for hi in range(len(hz.HORIZONS))]
+        if narrowing:
+            xs = [OR.narrow(x, narrow_k) for x in xs]
         member[loc] = {hz.ORIGIN: list(origin),
-                       **{h: r.samples[hi].tolist() for hi, h in enumerate(hz.HORIZONS)}}
+                       **{h: xs[hi].tolist() for hi, h in enumerate(hz.HORIZONS)}}
         m0 = float(r.m0) if np.isfinite(r.m0) else None
         entry.update({
             "eligible": bool(r.eligible), "active": int(r.active), "k": k,
@@ -265,10 +283,16 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         guard += r.guard_hits
         q_null[loc] = _by_horizon(r.q_null)
         for s in seeds:
-            q_primary[s][loc] = _by_horizon(r.q_seed[s])
+            q_primary[s][loc] = _by_horizon(OR.narrow_quantiles(r.q_seed[s], narrow_k)
+                                            if narrowing else r.q_seed[s])
+            if narrowing:
+                q_primary_raw[s][loc] = _by_horizon(r.q_seed[s])
             q_secondary[s][loc] = _by_horizon(r2.q_seed[s])
             q_adm[s][loc] = _by_horizon(r0.q_seed[s])
-        mean_primary[loc] = _by_horizon(r.q_mean())
+        mean_primary[loc] = _by_horizon(OR.narrow_quantiles(r.q_mean(), narrow_k)
+                                        if narrowing else r.q_mean())
+        if narrowing:
+            mean_primary_raw[loc] = _by_horizon(r.q_mean())
         mean_secondary[loc] = _by_horizon(r2.q_mean())
         mean_adm[loc] = _by_horizon(r0.q_mean())
         locs_prov[loc] = entry
@@ -310,6 +334,14 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                     "newest_row_date": vb.newest_row_date().isoformat()},
         "rule": man["rule"], "rule_flusurv": MX.rule_block(mix["bank_digest"]),
         "w": float(w), "w_secondary": float(OR.W_SECONDARY),
+        "narrowing": {"k": float(narrow_k), "applied": bool(narrowing),
+                      "source": "flubnf.oracle:K_PRODUCTION",
+                      "rule": ("after the step, the submitted seed's samples of each "
+                               "horizon scaled about their finite median, x' = m (x / m)^k "
+                               "(flubnf.oracle.narrow); the recorded primary quantiles "
+                               "likewise, q' = m (q / m)^k; the origin block, the "
+                               "secondary and admissions-only members and the null are "
+                               "not narrowed")},
         "seeds": [int(s) for s in seeds], "submitted_seed": int(submitted_seed),
         "trimmed_weeks": {"source": k_source,
                           "k_by_location": {loc: e["k"] for loc, e in locs_prov.items()},
@@ -340,6 +372,12 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                                                    "admissions half alone (LB), logged beside "
                                                    "the primary (addendum A2 (2)); ships nothing")}},
     }
+    if narrowing:
+        prov["quantiles"]["primary"]["narrowed"] = float(narrow_k)
+        prov["quantiles"]["primary"]["unnarrowed"] = {
+            "seed_mean": mean_primary_raw,
+            "per_seed": {str(s): q_primary_raw[s] for s in seeds},
+            "note": "the member before narrowing, for a later screen of k"}
     if kn:
         # a modified step is never mistaken for the registered member
         prov["specification"] = "modified"
