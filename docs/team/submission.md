@@ -6,6 +6,76 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-16 (evening UTC): FIRST INTERNAL SCORE OF THE SEASON, WEEK 1 AT
+  HORIZON 0, AND WEEK 2 AGAINST THE FIELD. CDC's weekly mail (2026-10-15,
+  "FluSight Forecasts for 10/17/2026") says WIS reports follow once enough
+  truth is in and asks teams to review for plausibility and calibration;
+  Ely asked for an internal read. What can be scored today: the 2026-10-10
+  round's horizon 0 (the week ending 10-10, truth as on the hub 10-14,
+  still revisable), 53 locations, every team's file from the hub's
+  model-output (52 of 54 models; MOBS-EpyStrain_Flu and UMass-trends_ensemble
+  submit parquet, unreadable in the cloud), WIS and log(x+1) WIS relative
+  to FluSight-baseline on common cells, with flubnf/wis.py. Two
+  independent recomputations (an adversarial workflow, scripts in the
+  Submission scratchpad verify_wis1/ and verify_wis2/) match to four
+  decimals.
+  - Week 1, horizon 0 (the old settings, the 11 decliners): Oracle SIHRS
+    relWIS 0.902 natural / 0.924 log, rank 36 / 38 of 52; Groundhog 1.106 /
+    0.832, rank 44 / 29; FluSight-ensemble 0.665 / 0.735 (rank 12 / 8);
+    best DMAPRIME-HYB 0.597 / 0.674; NAU-vulPES 0.928 / 0.832, NAU-FourCAT
+    0.942 / 0.915, NAU-epymorph 1.528 / 1.150. Decomposition: our medians
+    are mid-field (Oracle MAE rank 21 of 47 full-coverage models; the
+    Groundhog's log-scale median error ranks 6th); the penalty is interval
+    width (mean central-interval width 1.6x the ensemble's for the Oracle,
+    2.4x for the Groundhog, dominated by the US row; per-location median
+    1.5x and 1.6x; 50% coverage 0.79 and 0.74 where 0.50 is ideal, field
+    median 0.66; 95% coverage 1.00 and 0.98) and under-prediction (Oracle
+    3.07 against 0.43 over-prediction; Groundhog 2.55 against 0.67):
+    Illinois 193 against our 56 (ensemble 83, nobody caught it), Puerto
+    Rico 181 against 75, Pennsylvania 231 against 162, plus the small-state
+    noise (Vermont, Idaho, New Hampshire, Montana). We beat the ensemble's
+    log WIS in 8 of 53 locations (Oracle) and 13 (Groundhog). The baseline
+    file has no Iowa row in either round (its ratios are over 52 cells).
+  - Against the replays: the early-week replay put the old settings at
+    about 0.71 / 0.81 (Oracle, horizon 0) and 0.64 / 0.59 (Groundhog,
+    pooled); week 1 came in worse on both, one week, one horizon, a week
+    with two unusual jumps. Horizons 1-3 of week 1 score over the next
+    three weeks and will be worse for the Oracle (the decliners' medians
+    fell while the data rose); week 1 is likely the season's worst week
+    and was run with the defect since fixed.
+  - Week 2 (the new settings) against the field of 69, medians, no truth
+    yet: Oracle at the field's 50th-62nd percentile by horizon, 1.00-1.06x
+    the ensemble; US 4,772 / 5,834 / 7,180 / 8,908 against the ensemble's
+    4,831 / 5,679 / 6,785 / 7,863 (46th of 57 national horizon-3 medians;
+    the ensemble 29th); below the field's 10th percentile only in the small
+    flat states (DC, Idaho, Wyoming; Maine at h0, North Dakota at h3).
+    Groundhog: 17th-19th percentile at horizons 0-1 (0.86 and 0.81 of the
+    ensemble: its calendar donors grow 1.08x in the first week where the
+    field says 1.26x; past Octobers started gentler than this one) and
+    back to the field by horizon 3 (1.00); the pooled calendar shape's
+    limit, the per-state pooling item.
+  - Predicted performance (this lane's estimate, not a score): week 1
+    final, lower-middle of the field, roughly 35th-45th of 52 on both
+    scales; from week 2, medians track the ensemble, so the replays' 0.67
+    early-week relWIS for the new settings is the fair expectation if this
+    season behaves like the three replayed ones: the Oracle around the
+    ensemble on the log scale and somewhat behind it on the natural scale,
+    upper-middle (top 15-25 of about 52); the Groundhog similar on the log
+    scale, worse on the natural one, where its wide intervals cost most in
+    the large states. Season-long top-quarter needs the intervals
+    tightened.
+  - The one calibration issue CDC's mail asks about, for the Model lane:
+    both members are over-dispersed; the replays showed the same (stage
+    rule at w = 0.25, 50% coverage 0.62 over four horizons, 95% 0.99). A
+    scored tightening of the spread, at least at horizons 0-1, is the
+    cheapest WIS gain available and can be scored from the stored replay
+    runs without engine time (For other lanes).
+  - Files: the scorer tools/field_score.py and its result
+    hubfield/field_score_result.txt in the Submission scratchpad (the hub
+    data copied under hubfield/); not committed (the lane's docs-only
+    rule; say the word and the scorer goes under tools/ as a weekly
+    check). Rerun each Thursday after CDC's mail: one more horizon of
+    truth lands every week.
 - 2026-10-15 (02:52 UTC): PULL REQUEST #42 (dev TO main) OPENED BY THIS LANE
   AT ELY'S REQUEST (https://github.com/elyfmiller/flubnf/pull/42): docs
   only, docs/TEAM.md (the merge-command rule) and these notes (#41
@@ -1075,6 +1145,17 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model (2026-10-16): CALIBRATION, THE CHEAPEST WIS GAIN. Week 1's horizon-0
+  score (Now, 2026-10-16) shows both members over-dispersed: 50% intervals
+  covering 79% (Oracle) and 74% (Groundhog) of outcomes, mean width 1.5-1.6x
+  the ensemble's per location, while the medians sit mid-field; the stored
+  replays showed the same over four horizons (50% coverage 0.62, 95% 0.99).
+  Please score a spread tightening from the stored replay runs (a single
+  shrink factor on each quantile's distance from the median, by horizon;
+  or a quantile-mapping fit on the replays' PIT), with a stop rule written
+  first, as the seed rule was; the Groundhog's calendar donors set its
+  width, so its knob is the donor count or a kernel. Second to the switch
+  point in order, since the switch is a bias and this is a width.
 - Model (2026-10-14, top priority): the stage rule's switch is live. Alaska
   and Hawaii passed a quarter of their expected totals this week and fell
   back to the to_date pin (18% assumed infected, from 4.5% the week before);
