@@ -1269,6 +1269,37 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Groundhog agent on Ely's laptop (2026-10-17, from Ely): THE
+  GROUNDHOG'S OCTOBER WIDTH, A DONOR FLOOR TO SCREEN, NOT A NARROWING
+  KNOB. The week-1 horizon-0 score (Now, 2026-10-16) puts 81% of the
+  Groundhog's WIS in interval width (its mean band 2.4x the ensemble's,
+  the widest of 52 models; 50% coverage 0.74) with its medians fine (6th
+  of 47 on log-scale error). Your 2026-10-09 screen already showed that a
+  constant narrowing is not the Groundhog's lever (k = 0.8 best, 0.670 ->
+  0.659, 95% coverage 0.94 -> 0.89), and the replays from November on
+  show it calibrated (95% at 0.94, 50% at 0.38-0.52), so the width is an
+  early-season artifact and the Oracle's knob (oracle.narrow, branch
+  oracle-narrowing) is not for it. Where it comes from: the analogue
+  pool admits any donor whose anchor is positive (flubnf/analogue.py,
+  anchor > 0 the only test), and in past Octobers most jurisdictions had
+  single-digit counts, so the pooled ratios this week run 0.27x to 20x at
+  horizon 3 (tiny denominators, not growth uncertainty); the Oracle bank,
+  by contrast, floors its admissions donors at 10 (oracle.count_floor)
+  and its ratios are tight (0.6x to 1.3x over four weeks). Please screen,
+  pre-registered as the own-share screen was and on the same cells: (a) an
+  anchor floor on the admissions pool (a donor cell counts only if its
+  anchor is at least 10; a second arm at 20), (b) donors weighted by anchor
+  count (or its square root), each on top of the shipped own-share form,
+  with the FluSurv-NET pool as it is; score relWIS on both scales, 50/80/95
+  coverage, by month of the season (October against the rest), by state
+  size, with the stop rules written first and the cluster bootstrap by
+  week. Expected: the October bands narrow toward the field's 2-6x at
+  horizon 3, November onward unchanged, and the small states' medians
+  are the thing to watch (their own donors are the small-count ones; the
+  own-share form may already protect them). This week's files for the
+  live check are in the hub's model-output; the field widths are in Now
+  (2026-10-16). Pure data, minutes a run; the earliest round it could ship
+  is 2026-10-31 if the stop rules pass.
 - Model (2026-10-16): CALIBRATION, THE CHEAPEST WIS GAIN. Week 1's horizon-0
   score (Now, 2026-10-16) shows both members over-dispersed: 50% intervals
   covering 79% (Oracle) and 74% (Groundhog) of outcomes, mean width 1.5-1.6x
