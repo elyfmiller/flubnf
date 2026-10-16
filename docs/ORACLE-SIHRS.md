@@ -516,6 +516,42 @@ pf keys it drops (`pf_shrink`, `pf_forecast_jitter`, `pf_binom_neff_cap`,
 research, two-strain and reporting-model runs). Lab machines stay on
 2fdadee0; bngsim 0.16 is not adopted until measured against 0.15.1.
 
+## 6b. Spread narrowing: the research knob `oracle.narrow`
+
+The member's bands were the widest in the FluSight field in the
+2026-10-17 round (its horizon-3 95% band 25x the median against a field
+median of 3.6x), and the cause is the filter's own early-season forecast
+cloud under the expected-total seed, which the step multiplies by about
+1.5-2x (docs/team/submission.md, 2026-10-16). The knob narrows the member
+after the step: the submitted seed's samples of each horizon are scaled
+about their finite median, `x' = m (x / m)^k` (`flubnf.oracle.narrow`),
+so the median is untouched, a value ten times the median becomes `10^k`
+times it, zeros stay zero and the map is monotone; the recorded primary
+quantiles follow the same rule (`narrow_quantiles`) and the record keeps
+the unnarrowed quantiles beside them (`quantiles.primary.unnarrowed`)
+together with `narrowing.k`. The origin block, the logged secondary and
+admissions-only members and the null are not narrowed. Every cell is
+narrowed, the identity cells included (not eligible, or no admissible
+pool: their submitted samples are the filter's own, and the screen below
+scored the stored record's every cell, identity ones among them), so on
+an identity cell the narrowed primary record differs from the null while
+`unnarrowed` still equals it. The recorded quantiles and the quantiles of
+the narrowed samples agree to interpolation precision. `K_PRODUCTION =
+1.0` is the registered form; a run at another value is a modified run
+(the override and its reason, as for every knob) until the default
+changes with the card.
+
+The screen that motivates it (the Submission lane, 2026-10-16, on the 44
+stored replay weeks of 2023-24 to 2025-26 under the stage rule at w =
+0.25, 9,152 cells, the scorer reproducing the record at k = 1): pooled
+relWIS 0.720 / 0.736 (natural / log) at k = 1, 0.678 / 0.724 at 0.8,
+0.671 / 0.727 at 0.7, 0.675 / 0.737 at 0.6; coverage 50 / 80 / 95 from
+0.62 / 0.90 / 0.99 to 0.47 / 0.76 / 0.93 at k = 0.7; every block and
+every horizon better on the natural scale at 0.7, the log scale a wash;
+leave-one-season-out picks 0.7, 0.7 and 0.6; cluster bootstrap by week
+puts the k = 0.7 gain at 0.049 (95% CI 0.025 to 0.079). The structural
+fix, the filter's early tail, is engine work and separate.
+
 ## 7. Open items
 
 * Bank change B2 ships on this branch (section 5b): the member's donor

@@ -88,6 +88,16 @@ H4 = 4
 W_PRODUCTION = 0.5
 #: The registered secondary (A1 (2)): logged beside the primary, ships nothing.
 W_SECONDARY = 0.25
+#: Post-hoc narrowing of the member's spread: every forecast value's
+#: log-distance from its horizon's median scaled by this exponent
+#: (narrow). 1.0 is the member's own spread, the registered form; the
+#: research knob oracle.narrow sets another and the run records it. The
+#: Submission lane's screen on the 44 stored replay weeks (2023-24 to
+#: 2025-26, stage rule at w = 0.25; docs/team/submission.md, 2026-10-16):
+#: k = 0.7 took pooled relWIS from 0.720 to 0.671 (log 0.736 to 0.727) with
+#: 50 / 80 / 95 coverage 0.47 / 0.76 / 0.93 against 0.62 / 0.90 / 0.99,
+#: leave-one-season-out picks 0.7, 0.7 and 0.6.
+K_PRODUCTION = 1.0
 
 #: S14 donor-index seeds; the first is submitted (C2). Seed noise sd <= 7e-5.
 SEEDS = (2026091801, 2026091802, 2026091803, 2026091804, 2026091805)
@@ -152,6 +162,55 @@ def blend(G_T: float, Gd, w: float):
 # ---------------------------------------------------------------------------
 # the cell, the draw, the quantiles
 # ---------------------------------------------------------------------------
+
+def narrow(x, k: float) -> np.ndarray:
+    """The values of one forecast block with their log-distance from the
+    block's finite median scaled by k: x' = m (x / m)^k. The median is
+    unchanged, a value ten times it becomes 10^k times it, zeros stay zero
+    and non-finite entries stay non-finite. k = 1 is the identity and
+    returns the input as a float array, bitwise. A block whose median is
+    not positive has nothing to scale about and is returned as it is. The
+    map is monotone, so numpy's quantiles of the result are the narrowed
+    quantiles (narrow_quantiles) to interpolation precision."""
+    x = np.asarray(x, dtype=float)
+    k = float(k)
+    if not k > 0.0:
+        raise ValueError(f"narrowing exponent must be positive, got {k}")
+    if k == 1.0:
+        return x
+    finite = np.isfinite(x)
+    if not finite.any():
+        return x
+    m = float(np.median(x[finite]))
+    if not m > 0.0:
+        return x
+    out = x.copy()
+    pos = finite & (x > 0.0)
+    out[pos] = m * np.power(x[pos] / m, k)
+    return out
+
+
+def narrow_quantiles(q, k: float) -> np.ndarray:
+    """narrow for a quantile vector at the 23 levels, or a (4, 23) block
+    of them: each row scaled about its own median entry, q' = m (q / m)^k;
+    a row whose median is not positive or finite is left as it is."""
+    q = np.asarray(q, dtype=float)
+    k = float(k)
+    if not k > 0.0:
+        raise ValueError(f"narrowing exponent must be positive, got {k}")
+    if k == 1.0:
+        return q
+    rows = q.reshape(-1, q.shape[-1])
+    mid = QL.index(0.5)
+    out = rows.copy()
+    for i, row in enumerate(rows):
+        m = row[mid]
+        if not (np.isfinite(m) and m > 0.0):
+            continue
+        pos = np.isfinite(row) & (row > 0.0)
+        out[i, pos] = m * np.power(row[pos] / m, k)
+    return out.reshape(q.shape)
+
 
 def finite_quantiles(x) -> np.ndarray:
     """numpy.quantile (linear) of the finite values at the 23 levels, the

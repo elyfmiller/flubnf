@@ -244,6 +244,19 @@ REGISTRY: tuple = (
          "Weight on the filter's own growth; lower leans on the donors. 1 is not the plain filter.",
          lo=0.0, hi=1.0,
          card=(ORACLE_CARD, {0.5: "at weight one half"})),
+    Knob("oracle.narrow", "Spread narrowing", PF_ONLY, "step", "method", "float",
+         OR.K_PRODUCTION, "flubnf.oracle:K_PRODUCTION",
+         "Exponent on each value's log-distance from the median: 1 is the member's own spread, 0.7 narrower.",
+         lo=0.1, hi=1.0,
+         note=("Applied after the Oracle step to the submitted seed's samples, "
+               "x' = m (x / m)^k about each horizon's median: the median is "
+               "untouched and a value ten times it becomes 10^k times it. "
+               "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
+               "(docs/team/submission.md, 2026-10-16): k = 0.7 took pooled "
+               "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
+               "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
+               "the run records k and the unnarrowed quantiles beside the "
+               "narrowed ones; no card phrase until the default changes.")),
     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
          "float", MX.W_AUX, "flubnf.oracle_mix:W_AUX",
          "Chance a path draws a FluSurv-NET donor when both streams qualify.",
