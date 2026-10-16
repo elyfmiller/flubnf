@@ -377,6 +377,12 @@ def local_pools_label(extra: dict | None) -> str:
         parts.append(f"region {float(cfg['region_share']):.2f}")
     if cfg.get("own_site"):
         parts.append("own FluSurv-NET site")
+    if cfg.get("anchor_floor"):
+        parts.append(f"donor floor {float(cfg['anchor_floor']):g}")
+    if cfg.get("anchor_weight"):
+        parts.append("donors weighted by " + (
+            f"kernel s={float(cfg.get('kernel_sd', 1.0)):g}"
+            if cfg["anchor_weight"] == "kernel" else cfg["anchor_weight"]))
     return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 

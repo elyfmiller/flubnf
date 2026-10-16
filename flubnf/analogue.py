@@ -608,6 +608,16 @@ class LocalPooling:
     own_site: bool = False
     region_of: Mapping = field(default_factory=dict)
     aux_sites: Mapping = field(default_factory=dict)
+    #: RESEARCH (prereg 0815e4709ab06b2f): the admissions pool by each
+    #: donor cell's own count v0. `anchor_floor`: a cell counts only if
+    #: v0 >= the floor (fewer than MIN_DONORS left: the unfloored pool).
+    #: `anchor_weight`: within each class every donor's weight is
+    #: multiplied by g(v0), "count" (v0), "sqrt" (v0 ** 0.5) or "kernel"
+    #: (exp(-(ln v0 - ln a)^2 / (2 kernel_sd^2)) in the target's own anchor
+    #: a), and the class is renormalised, so the class shares hold.
+    anchor_floor: float = 0.0
+    anchor_weight: str = "none"
+    kernel_sd: float = 1.0
     #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
     #: epiweek, season, horizon and bandwidth
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
@@ -621,6 +631,36 @@ class LocalPooling:
             raise ValueError(
                 f"own_share + region_share = "
                 f"{self.own_share + self.region_share!r} exceeds 1")
+        f = float(self.anchor_floor)
+        if not math.isfinite(f) or f < 0:
+            raise ValueError(f"anchor_floor must be finite and >= 0, got {f!r}")
+        if self.anchor_weight not in ANCHOR_WEIGHTS:
+            raise ValueError(f"anchor_weight must be one of {ANCHOR_WEIGHTS}, "
+                             f"got {self.anchor_weight!r}")
+        k = float(self.kernel_sd)
+        if not math.isfinite(k) or k <= 0:
+            raise ValueError(f"kernel_sd must be finite and > 0, got {k!r}")
+
+
+#: the anchor weightings LocalPooling accepts
+ANCHOR_WEIGHTS = ("none", "count", "sqrt", "kernel")
+
+
+def anchor_factor(anchors, local: "LocalPooling", target_anchor) -> np.ndarray:
+    """g(v0) per donor for the research anchor weightings; ones for "none"
+    (and for a kernel with no usable target anchor)."""
+    a = np.asarray(anchors, dtype=float)
+    w = local.anchor_weight
+    if w == "count":
+        return a
+    if w == "sqrt":
+        return np.sqrt(a)
+    if w == "kernel":
+        if target_anchor is None or not np.isfinite(target_anchor) or target_anchor <= 0:
+            return np.ones(a.size)
+        d = np.log(a) - math.log(float(target_anchor))
+        return np.exp(-0.5 * (d / float(local.kernel_sd)) ** 2)
+    return np.ones(a.size)
 
 
 def weighted_quantile(values, weights, levels: Iterable[float]) -> dict:
@@ -646,12 +686,14 @@ def keyed_ratios(bank: Mapping[tuple, float], target_epiweek: int,
                  target_season: int, horizon: int,
                  bandwidth: int = DEFAULT_BANDWIDTH, *,
                  exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
-                 sites=None) -> tuple:
+                 sites=None, with_anchor: bool = False) -> tuple:
     """donor_ratios with each ratio's donor location beside it: (ratios,
     locations), the same donors in the same order as donor_ratios. `sites`
-    (a set of bank location codes) keeps only those donors."""
+    (a set of bank location codes) keeps only those donors. `with_anchor`
+    adds a third array, each donor cell's own value v0 (its count at the
+    donor week, the research weightings' input)."""
     drop = resolve_donor_exclusions(exclude_seasons)
-    vals, locs = [], []
+    vals, locs, v0s = [], [], []
     for (loc, d), v0 in _donor_cells(bank, target_epiweek, target_season,
                                      bandwidth, False, drop):
         if sites is not None and loc not in sites:
@@ -661,15 +703,22 @@ def keyed_ratios(bank: Mapping[tuple, float], target_epiweek: int,
             continue
         vals.append(v1 / v0)
         locs.append(loc)
+        v0s.append(v0)
     arr = np.asarray(vals, dtype=float)
     ok = np.isfinite(arr)
-    return arr[ok], np.asarray(locs, dtype=object)[ok]
+    out = (arr[ok], np.asarray(locs, dtype=object)[ok])
+    if with_anchor:
+        out = out + (np.asarray(v0s, dtype=float)[ok],)
+    return out
 
 
-def local_weights(locs, location, local: "LocalPooling") -> np.ndarray:
+def local_weights(locs, location, local: "LocalPooling", anchors=None,
+                  target_anchor=None) -> np.ndarray:
     """One weight per donor so that the location's own cells sum to
     own_share, its region's other cells to region_share and the rest to the
-    remainder; a class with no cells passes its share to the rest."""
+    remainder; a class with no cells passes its share to the rest. With a
+    research anchor weighting, each donor inside its class is multiplied by
+    anchor_factor(v0) and the class renormalised, so the shares hold."""
     locs = np.asarray(locs, dtype=object)
     # a class whose share is 0 is not a class: its cells stay in the rest
     # (found in review 2026-10-15: same-region cells were being dropped)
@@ -691,9 +740,15 @@ def local_weights(locs, location, local: "LocalPooling") -> np.ndarray:
         s_own, s_reg, s_rest = (s_own / tot, s_reg / tot, 0.0) if tot > 0 else (
             1.0 if own.any() else 0.0, 0.0 if own.any() else 1.0, 0.0)
     w = np.zeros(locs.size, dtype=float)
+    g = (anchor_factor(anchors, local, target_anchor)
+         if (anchors is not None and local.anchor_weight != "none") else None)
     for mask, share in ((own, s_own), (same, s_reg), (rest, s_rest)):
-        if mask.any():
+        if not mask.any():
+            continue
+        if g is None or not np.isfinite(g[mask]).all() or g[mask].sum() <= 0:
             w[mask] = share / mask.sum()
+        else:
+            w[mask] = share * g[mask] / g[mask].sum()
     return w
 
 
@@ -711,18 +766,27 @@ def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
     ew, se = epiweek(as_of), season_of(as_of)
-    r, locs = keyed_ratios(bank, ew, se, horizon, bandwidth,
-                           exclude_seasons=exclude_seasons)
+    target_anchor = float(anchor)                 # the newest count itself
+    r, locs, v0 = keyed_ratios(bank, ew, se, horizon, bandwidth,
+                               exclude_seasons=exclude_seasons,
+                               with_anchor=True)
+    if local.anchor_floor > 0:
+        # RESEARCH: drop small-count donors; under MIN_DONORS keep them all
+        keep = v0 >= float(local.anchor_floor)
+        if keep.sum() >= MIN_DONORS:
+            r, locs, v0 = r[keep], locs[keep], v0[keep]
     anchor, r2 = _anchor_and_pool(anchor, r, completeness)
     if r2 is None:
         return None
-    if local.own_share == 0 and local.region_share == 0:
+    if (local.own_share == 0 and local.region_share == 0
+            and local.anchor_weight == "none"):
         # no local weight asked: the shipped quantile rule, exactly, so an
         # own_site-only pooling changes the auxiliary pool and nothing else
         rq_primary = {float(L): float(np.quantile(r2, L)) for L in levels}
     else:
-        rq_primary = weighted_quantile(r2, local_weights(locs, location, local),
-                                       levels)
+        rq_primary = weighted_quantile(
+            r2, local_weights(locs, location, local, anchors=v0,
+                              target_anchor=target_anchor), levels)
     if splice is None:
         return _scale_ratio_quantiles(anchor, rq_primary, widen_log_sd)
     ws = [float(p.weight) for p in splice.pools]
