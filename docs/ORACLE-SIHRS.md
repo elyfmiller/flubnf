@@ -530,7 +530,13 @@ times it, zeros stay zero and the map is monotone; the recorded primary
 quantiles follow the same rule (`narrow_quantiles`) and the record keeps
 the unnarrowed quantiles beside them (`quantiles.primary.unnarrowed`)
 together with `narrowing.k`. The origin block, the logged secondary and
-admissions-only members and the null are not narrowed. `K_PRODUCTION =
+admissions-only members and the null are not narrowed. Every cell is
+narrowed, the identity cells included (not eligible, or no admissible
+pool: their submitted samples are the filter's own, and the screen below
+scored the stored record's every cell, identity ones among them), so on
+an identity cell the narrowed primary record differs from the null while
+`unnarrowed` still equals it. The recorded quantiles and the quantiles of
+the narrowed samples agree to interpolation precision. `K_PRODUCTION =
 1.0` is the registered form; a run at another value is a modified run
 (the override and its reason, as for every knob) until the default
 changes with the card.

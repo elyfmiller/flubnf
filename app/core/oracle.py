@@ -341,7 +341,10 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                                "(flubnf.oracle.narrow); the recorded primary quantiles "
                                "likewise, q' = m (q / m)^k; the origin block, the "
                                "secondary and admissions-only members and the null are "
-                               "not narrowed")},
+                               "not narrowed; every cell is narrowed, the identity cells "
+                               "(not eligible, or no admissible pool, whose submitted "
+                               "samples are the filter's own) included, as the screen "
+                               "scored the stored record's every cell")},
         "seeds": [int(s) for s in seeds], "submitted_seed": int(submitted_seed),
         "trimmed_weeks": {"source": k_source,
                           "k_by_location": {loc: e["k"] for loc, e in locs_prov.items()},

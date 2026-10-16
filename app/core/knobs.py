@@ -254,7 +254,7 @@ REGISTRY: tuple = (
                "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
                "(docs/team/submission.md, 2026-10-16): k = 0.7 took pooled "
                "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
-               "0.47 / 0.76 / 0.93, chosen leave-one-season-out. Research; "
+               "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
                "the run records k and the unnarrowed quantiles beside the "
                "narrowed ones; no card phrase until the default changes.")),
     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",

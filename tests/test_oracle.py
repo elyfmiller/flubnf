@@ -441,3 +441,5 @@ def test_narrowed_quantiles_are_the_quantiles_of_the_narrowed_sample():
     assert np.allclose(nb[0], viaq) and np.array_equal(nb[1], block[1])
     assert np.isnan(nb[2]).all() and np.allclose(nb[3], 2.0 * viaq)
     assert OR.narrow_quantiles(q, 1.0) is not None and np.array_equal(OR.narrow_quantiles(q, 1.0), q)
+    with pytest.raises(ValueError):
+        OR.narrow_quantiles(q, 0.0)

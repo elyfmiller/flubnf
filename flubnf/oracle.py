@@ -96,7 +96,7 @@ W_SECONDARY = 0.25
 #: 2025-26, stage rule at w = 0.25; docs/team/submission.md, 2026-10-16):
 #: k = 0.7 took pooled relWIS from 0.720 to 0.671 (log 0.736 to 0.727) with
 #: 50 / 80 / 95 coverage 0.47 / 0.76 / 0.93 against 0.62 / 0.90 / 0.99,
-#: chosen leave-one-season-out in every fold.
+#: leave-one-season-out picks 0.7, 0.7 and 0.6.
 K_PRODUCTION = 1.0
 
 #: S14 donor-index seeds; the first is submitted (C2). Seed noise sd <= 7e-5.
