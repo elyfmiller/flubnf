@@ -1217,6 +1217,55 @@ and CDC's rules. The season's facts are in
   anchor count (ratios of 2 -> 9 should not shape Florida's band), scored
   on the stored replays, the same lever as the per-state pooling item; a
   post-hoc shrink of the quantiles is the fallback, not the first choice.
+- Model (2026-10-16, Ely's ask): THE DONOR-WIDTH EXPERIMENT, A PRE-REGISTRATION
+  DRAFT TO RUN ON THE STORED RETROSPECTIVES. Both members' width comes from
+  the pooled donors (the item above), so the lever is the donor pool, not
+  the quantiles, and it is scoreable with NO engine time: the Oracle step is
+  post-fit and recomputes from the stored filter samples (replays/
+  score_w025.py is the template; the bank already records each donor's
+  count_W and min_count_Wm1_Wp6, flubnf/oracle_bank.py), and the Groundhog
+  is data only. Arms, one lever in three strengths plus the fallback,
+  applied to BOTH members' donor draws (flubnf/oracle.py donor_index,
+  flubnf/analogue.py forecast):
+    A0  control: today's pools (anchor > 0 only), bitwise.
+    A1  donor floor: a donor path counts only if its anchor count_W (and
+        its min_count over the window) is at least 10; A1b at 20. Removes
+        the single-digit ratios that set the tails.
+    A2  anchor-weighted draw: each donor weighted by its anchor count
+        (A2b: by its square root); the Oracle draws with that CDF, the
+        Groundhog takes weighted quantiles. Large states' ratios set the
+        spread without silencing the small ones.
+    A3  size-matched kernel: weight by closeness of the donor's anchor to
+        the target's own anchor on the log scale (a Gaussian kernel, width
+        one log unit, A3b one half): Wyoming draws from small-count
+        donors, Florida from large ones. This is the per-state pooling idea
+        in its simplest form and the arm most likely to keep small-state
+        coverage; it also gives each state its own shape, which the
+        GroundHog agent's investigation wants.
+    A4  the fallback: a post-hoc shrink of each quantile's distance from
+        the median by horizon (one factor per horizon, fitted on 2023-24
+        and 2024-25, scored on 2025-26). Tells whether composition fixes
+        the width or post-processing is still needed.
+  Scored on the 44 stored weeks (early and peak, three seasons), both
+  members and the 50/50 blend if one is scored, relWIS on both scales,
+  coverage 50/80/95, by block, by state size, by horizon; the paired
+  cluster bootstrap on as-of dates (4,000 replicates) and the depth control
+  (random subsampling to the restricted pool's size) as the donor-season
+  records do, so the effect is shown to be composition, not count. Stop
+  rules, written before any arm runs: an arm is adopted only if (1) pooled
+  relWIS improves on both scales, (2) neither peak block worsens by more
+  than 0.02 on either scale, (3) 95% coverage stays at or above 0.93 and
+  50% coverage moves toward 0.50, (4) the bootstrap interval excludes zero,
+  and (5) no state's own pool falls under MIN_DONORS (30) in any scored
+  week. Then the live check: on this week's 2026-10-17 files, the adopted
+  arm's horizon-3 95% band should land inside the field's 2-6x, not at
+  25x. Expected: A1 and A2 narrow the bands and may cost small-state
+  coverage; A3 is the bet; A4 is the floor on the gain. The width is 75%
+  of our week-1 WIS, so the stake is larger than the donor-season
+  exclusions' 4-7%. Ownership: the Model lane; this lane can run the
+  scoring harness in the cloud from the stored roots on Ely's word, as it
+  ran the seed replays. Earliest round it could ship: 2026-10-31 if the
+  harness runs this week and the stop rules pass; nothing ships unscored.
 - Model (2026-10-14, top priority): the stage rule's switch is live. Alaska
   and Hawaii passed a quarter of their expected totals this week and fell
   back to the to_date pin (18% assumed infected, from 4.5% the week before);
