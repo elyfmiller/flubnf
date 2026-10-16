@@ -1197,7 +1197,26 @@ and CDC's rules. The season's facts are in
   the field comparison of 2026-10-16 (Now): the Oracle's 95% band at
   horizon 3 is the widest of 56 models, 25x its median against a field
   median of 3.6x and the baseline's 9x, and its 50% band is wider than the
-  baseline's, so the width is an outlier, not a style.
+  baseline's, so the width is an outlier, not a style. WHERE THE WIDTH
+  COMES FROM (from the code and the stored replays, 2026-10-16): not the
+  filter. The filter alone UNDER-covers in the early-week replays (95%
+  coverage 0.67-0.78, 50% 0.20-0.31); the Oracle step is what widens it.
+  Each sample path draws ONE donor from the pooled bank (every state and
+  past season at the same calendar week, admissions and FluSurv-NET
+  halves; flubnf/oracle.py) and takes 75% of its four-week growth at w =
+  0.25, so the forecasting sample's spread is the donor pool's spread of
+  growth paths, compounded over four weeks; the pool has no floor on the
+  donor's own count (only non-positive values are dropped), and in early
+  October most past-season donors are states with a handful of admissions,
+  whose ratios run from a fifth to twentyfold. More donor weight means
+  wider (w = 0.25 covers 0.62 at the 50% level against 0.56 at w = 0.5 over
+  the 44 weeks). The Groundhog has the same cause with no filter in front:
+  its quantiles are the pooled ratios themselves (flubnf/analogue.py,
+  anchor > 0 the only filter), 0.27x to 20x at horizon 3 this week. So the
+  fix is one design for both: a donor floor or a weight by the donor's
+  anchor count (ratios of 2 -> 9 should not shape Florida's band), scored
+  on the stored replays, the same lever as the per-state pooling item; a
+  post-hoc shrink of the quantiles is the fallback, not the first choice.
 - Model (2026-10-14, top priority): the stage rule's switch is live. Alaska
   and Hawaii passed a quarter of their expected totals this week and fell
   back to the to_date pin (18% assumed infected, from 4.5% the week before);
