@@ -383,6 +383,8 @@ def local_pools_label(extra: dict | None) -> str:
         parts.append("donors weighted by " + (
             f"kernel s={float(cfg.get('kernel_sd', 1.0)):g}"
             if cfg["anchor_weight"] == "kernel" else cfg["anchor_weight"]))
+    if cfg.get("ess_floor"):
+        parts.append(f"effective-donor floor {float(cfg['ess_floor']):g}")
     return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 
