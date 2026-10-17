@@ -501,6 +501,15 @@ def test_the_effective_donor_guard_falls_back_to_uniform():
     g = AN.LocalPooling(own_share=0.5, anchor_weight="kernel", kernel_sd=0.5, ess_floor=30)
     wg = AN.local_weights(locs, "A", g, anchors=v0, target_anchor=100.0)
     assert np.allclose(wg[rest], 0.5 / 40) and wg[locs == "A"].sum() == pytest.approx(0.5)
+    # a class smaller than the floor is exempt (amendment 3): the own
+    # class of a few cells keeps its kernel weights
+    locs2 = np.array(["A", "A", "A"] + ["R"] * 40, dtype=object)
+    v2 = np.array([100.0, 100.0, 1.0] + [100.0] + [1.0] * 39)
+    w2 = AN.local_weights(locs2, "A", g, anchors=v2, target_anchor=100.0)
+    own2 = locs2 == "A"
+    assert not np.allclose(w2[own2], w2[own2][0])        # still weighted
+    assert w2[own2].sum() == pytest.approx(0.5)
+    assert np.allclose(w2[locs2 == "R"], 0.5 / 40)        # the big class guarded
     from app.core.engines import analogue as eng
     from app.core import runs
     cfg = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30}
