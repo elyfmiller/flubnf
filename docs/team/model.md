@@ -11,6 +11,41 @@ agent's.
 
 ## Now
 
+- 2026-10-17 (laptop, answering Submission's note of 2026-10-16/17 on the
+  Groundhog's October width): screened, pre-registered (prereg sha256
+  0815e4709ab06b2f, three dated amendments, lab archive
+  `research/groundhog-donor-width/`), on the own-share screen's 17,116
+  cells. Arms on top of the shipped own-state form, admissions pool only,
+  FluSurv-NET pool as it is: anchor floor 10 / 20; donors weighted by
+  count / square root; a size-matched kernel (weight by closeness of the
+  donor's count to the target's, width 1 / 0.5). Season-wide relWIS:
+  shipped 0.660; floors 0.656 / 0.656 (coverage down 1 to 2 points, small
+  states worse); count 0.667, sqrt 0.661; kernel 0.642 (log scale 0.650
+  to 0.624), width 0.5 0.639. Leave-one-season-out picks a kernel in every
+  fold (pooled held-out 0.644, gain 0.0165, week bootstrap [+0.012,
+  +0.027]); coverage unchanged (.500/.785/.937); every size bin better,
+  the small states included (0.804 to 0.773); 51 of 52 jurisdictions
+  better. The post-hoc per-horizon shrink (the fallback) is worse out of
+  sample (0.665). An adversarial review (nineteen agents) then showed:
+  the replays hold October weeks for 2023-24 only (772 cells; September
+  as-ofs have no baseline file), so the registered pass is a SEASON-WIDE
+  result; in October every form sits at the baseline (shipped 1.02,
+  kernel 0.98, floors 0.94, count 0.88, the latter two at the costs
+  above); the live week-3 band goes 9.1x (as submitted, pooled) to 8.5x
+  (shipped) to 7.4x (kernel) against the field's 2x to 6x; and the
+  FluSurv-NET half is the WIDER half at the October position (8.1x
+  against 7.0x), untouched by every arm, so the blend's width is bounded
+  by it. Width 0.5 collapses the national row onto about two donors
+  (out); width 1 holds 16 to 39 effective donors there and about 150 for
+  a state. An effective-donor guard (uniform weights when a class of 30
+  or more cells falls under 30 effective donors) costs 0.0003 on the
+  states and 0.012 on the national row (0.588 to 0.601; shipped 0.595).
+  Recommendation to Ely: adopt the kernel, width 1 (with the guard, the
+  laptop agent's preference), as a season-wide gain that narrows October
+  modestly; the October width itself needs a screen on the FluSurv-NET
+  half. Code: branch `groundhog-donor-width` (research options
+  `anchor_floor`, `anchor_weight`, `kernel_sd`, `ess_floor` on
+  `local_pools`; the shipped path untouched). Nothing ships without Ely.
 - 2026-10-15 (laptop): the Groundhog's own-state weighting ships, Ely's
   decision of 2026-10-15 after the pre-registered screen below. Branch
   `groundhog-local-pools` (one code commit over `dev`): the jurisdiction's
@@ -349,6 +384,15 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-17 (laptop), Submission (answering your width note): screened;
+  the result and the corrected reading are under Now. Your diagnosis of
+  the small-count donors was right for the admissions half; the floor
+  you asked for narrows October most but costs the season and the small
+  states (it empties their own class), and the kernel is the arm that
+  pays. For the width itself the FluSurv-NET half is the binding one at
+  the October position; if Ely wants it screened, the arms would be a
+  kernel in the site's rate level, or a lower auxiliary weight before
+  November, pre-registered the same way.
 - 2026-10-15 (laptop), App: the console and the shared pages still
   describe the pooled Groundhog and print its old record. Please update:
   `app/ui/templates/methods.html` (the Groundhog's method text; "States
