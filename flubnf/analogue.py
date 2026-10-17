@@ -618,9 +618,11 @@ class LocalPooling:
     anchor_floor: float = 0.0
     anchor_weight: str = "none"
     kernel_sd: float = 1.0
-    #: RESEARCH (amendment 2): a class whose effective donor count
-    #: 1 / sum(w^2) falls below this under a weighting takes uniform
-    #: weights for that forecast; 0 is off
+    #: RESEARCH (amendments 2 and 3): a class holding at least this many
+    #: cells whose effective donor count 1 / sum(w^2) falls below it under
+    #: a weighting takes uniform weights for that forecast; a smaller class
+    #: is exempt (it is small by construction: a jurisdiction's own cells);
+    #: 0 is off
     ess_floor: float = 0.0
     #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
     #: epiweek, season, horizon and bandwidth
@@ -756,10 +758,12 @@ def local_weights(locs, location, local: "LocalPooling", anchors=None,
             w[mask] = share / mask.sum()
         else:
             w[mask] = share * g[mask] / g[mask].sum()
-            # the effective-donor guard: a class the weighting has
-            # concentrated onto too few donors takes uniform weights
+            # the effective-donor guard: a class large enough to hold the
+            # floor that the weighting has concentrated below it takes
+            # uniform weights; a smaller class is exempt
             ess = (w[mask].sum() ** 2) / (w[mask] ** 2).sum()
-            if local.ess_floor > 0 and ess < local.ess_floor:
+            if (local.ess_floor > 0 and mask.sum() >= local.ess_floor
+                    and ess < local.ess_floor):
                 w[mask] = share / mask.sum()
     return w
 
