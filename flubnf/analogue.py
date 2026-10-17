@@ -618,6 +618,10 @@ class LocalPooling:
     anchor_floor: float = 0.0
     anchor_weight: str = "none"
     kernel_sd: float = 1.0
+    #: RESEARCH (amendment 2): a class whose effective donor count
+    #: 1 / sum(w^2) falls below this under a weighting takes uniform
+    #: weights for that forecast; 0 is off
+    ess_floor: float = 0.0
     #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
     #: epiweek, season, horizon and bandwidth
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
@@ -640,6 +644,9 @@ class LocalPooling:
         k = float(self.kernel_sd)
         if not math.isfinite(k) or k <= 0:
             raise ValueError(f"kernel_sd must be finite and > 0, got {k!r}")
+        e = float(self.ess_floor)
+        if not math.isfinite(e) or e < 0:
+            raise ValueError(f"ess_floor must be finite and >= 0, got {e!r}")
 
 
 #: the anchor weightings LocalPooling accepts
@@ -749,6 +756,11 @@ def local_weights(locs, location, local: "LocalPooling", anchors=None,
             w[mask] = share / mask.sum()
         else:
             w[mask] = share * g[mask] / g[mask].sum()
+            # the effective-donor guard: a class the weighting has
+            # concentrated onto too few donors takes uniform weights
+            ess = (w[mask].sum() ** 2) / (w[mask] ** 2).sum()
+            if local.ess_floor > 0 and ess < local.ess_floor:
+                w[mask] = share / mask.sum()
     return w
 
 

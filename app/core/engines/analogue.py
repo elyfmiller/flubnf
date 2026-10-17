@@ -371,7 +371,8 @@ def effective_local_pools(extra, *, dataset: bool = False):
             f"{type(cfg).__name__}")
     else:
         unknown = set(cfg) - {"own_share", "region_share", "own_site",
-                              "anchor_floor", "anchor_weight", "kernel_sd"}
+                              "anchor_floor", "anchor_weight", "kernel_sd",
+                              "ess_floor"}
         if unknown:
             raise ValueError(f"local_pools: unknown keys {sorted(unknown)}")
     knob = (extra.get("knobs") or {}).get("groundhog.own_share")
@@ -400,6 +401,8 @@ def effective_local_pools(extra, *, dataset: bool = False):
             # quietly turned into the default
             out["kernel_sd"] = (float(cfg["kernel_sd"]) if "kernel_sd" in cfg
                                 and cfg["kernel_sd"] is not None else 1.0)
+        if float(cfg.get("ess_floor", 0) or 0) > 0:
+            out["ess_floor"] = float(cfg["ess_floor"])
     return out or None                  # nothing weighted: the pooled form
 
 
@@ -439,6 +442,7 @@ def local_args(spec, *, dataset: bool = False, locations_csv=None):
         anchor_weight=str(cfg.get("anchor_weight") or "none"),
         kernel_sd=(float(cfg["kernel_sd"]) if "kernel_sd" in cfg
                    and cfg["kernel_sd"] is not None else 1.0),
+        ess_floor=float(cfg.get("ess_floor", 0.0) or 0.0),
         region_of=region_of, aux_sites=aux_sites)
 
 
