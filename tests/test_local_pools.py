@@ -486,3 +486,23 @@ def test_the_engine_refuses_a_zero_kernel_width_and_an_unknown_weighting():
     assert cfg["kernel_sd"] == 0                     # read literally ...
     with pytest.raises(ValueError):                  # ... and refused downstream
         AN.LocalPooling(**cfg)
+
+
+def test_the_effective_donor_guard_falls_back_to_uniform():
+    """A kernel that concentrates a class onto one donor takes uniform
+    weights there when the guard is on (amendment 2)."""
+    locs = np.array(["A"] + ["R"] * 40, dtype=object)
+    v0 = np.array([100.0] + [100.0] + [1.0] * 39)   # one rest donor near the target
+    lp = AN.LocalPooling(own_share=0.5, anchor_weight="kernel", kernel_sd=0.5)
+    w = AN.local_weights(locs, "A", lp, anchors=v0, target_anchor=100.0)
+    rest = locs == "R"
+    ess = (w[rest].sum() ** 2) / (w[rest] ** 2).sum()
+    assert ess < 2                                     # one donor carries it
+    g = AN.LocalPooling(own_share=0.5, anchor_weight="kernel", kernel_sd=0.5, ess_floor=30)
+    wg = AN.local_weights(locs, "A", g, anchors=v0, target_anchor=100.0)
+    assert np.allclose(wg[rest], 0.5 / 40) and wg[locs == "A"].sum() == pytest.approx(0.5)
+    from app.core.engines import analogue as eng
+    from app.core import runs
+    cfg = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    assert runs.local_pools_label({"local_pools": cfg}).endswith("effective-donor floor 30")
