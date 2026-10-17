@@ -6,6 +6,96 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-17 (00:30 UTC): "IF WE HAD SUBMITTED THIS A COUPLE OF WEEKS AGO":
+  THE NARROWING SCORED ON THE 2026-10-10 WEEK, BEFORE AND AFTER. Ely's
+  question of 2026-10-16. What can be scored: the week ending 2026-10-10
+  (truth as on the hub 2026-10-14, still revisable) at horizon 0 of the
+  2026-10-10 round, and the stored stage-rule replays
+  (replays/2026-27-stage: as-of 09-26 at h0 and h1, as-of 10-03 at h0, 52
+  locations, no US). "After" is the quantiles narrowed about their median
+  with k = 0.7 (flubnf.oracle.narrow_quantiles); the live knob narrows the
+  samples before the output floor and the rounding, and a simulation of
+  both orders on the 53 cells agrees to 0.02% of the mean WIS (the largest
+  cell gap 0.5 WIS, Vermont at median 1). Script tools/narrow_score.py,
+  outputs narrow-test/score_result.txt and score_cells.csv in the
+  Submission scratchpad; two independent recomputations and a skeptic's
+  pass (narrow-test/verify/) match all 418 cell scores to 1e-13.
+  - First, what the 2026-10-10 round was: the shipped configuration (the
+    to_date pin, weight 0.5), not the stage rule. The 2026-27-shipped cloud
+    replay (same engine commit, same seeds) reproduces the submitted file's
+    medians to rounding (median ratio 0.994), while the stage replay of the
+    same data week (as-of 10-03, season_total_early, w 0.25) runs 14.5%
+    higher (10th-90th percentile 1.07-1.27, higher in 50 of 52 locations).
+    The weight is not the cause (w 0.25 against 0.5 in the same replay:
+    ratio 0.995); the seed rule is.
+  - The submitted round, horizon 0, 53 locations, before -> after (k =
+    0.7): mean WIS 17.23 -> 14.47; log WIS 0.211 -> 0.196; relWIS against
+    FluSight-baseline (52 common cells, no Iowa) 0.902 -> 0.759, rank 36
+    -> 24 of 52 models; log relWIS 0.924 -> 0.864, rank 38 -> 36; coverage
+    50/80/95 0.79/0.94/1.00 -> 0.68/0.89/0.96; hub decomposition
+    (dispersion + over + under) 12.91 + 0.65 + 3.67 -> 8.86 + 0.88 + 4.73;
+    MAE 18.8 unchanged (the medians hold). Rounding the narrowed quantiles
+    to integers as a submission would: 0.758 / 0.862, 50% coverage 0.72,
+    ranks unchanged. Better in 45 of 53 locations (US -83.7, Florida
+    -16.3, California -9.6, Texas -7.7, New York -4.8; worse in Illinois
+    +11.7, Puerto Rico +10.3, Pennsylvania +2.5, the median misses). US:
+    truth 3,835, median 3,648, WIS 295.8 -> 212.0 (baseline 429.6,
+    ensemble 184.0). The field for reference: median 0.803 / 0.811,
+    ensemble 0.665 (12) / 0.735 (8), Groundhog 1.106 (44) / 0.832 (29).
+  - The qualifications (the skeptic's, confirmed from the cell table): the
+    US row carries 57% of the gain; on the 51 state cells the move is
+    relWIS 1.061 -> 0.956 (rank 38 -> 32) and log 0.931 -> 0.872 (38 ->
+    36), from worse than the baseline to a little better. Among the 47
+    models with 50 or more common cells the ranks are 33 -> 21 natural and
+    33 -> 32 log (three of the 52 have one or two cells). On the log scale,
+    CDC's headline, the move is two places and the standing is set by the
+    median misses (Vermont, Illinois, Puerto Rico, Idaho, Montana, New
+    Hampshire), which the narrowing does not touch. Truth revisions cannot
+    flip the ordering: it takes a joint rise of about 25% in every 10-10
+    count or a US value above about 5,000 (the lag-0 revisions so far are
+    +5-6% for US, which widen the gain). k = 0.7 was chosen on 2023-24 to
+    2025-26 only (the 9,152-cell screen rebuilt from the stored records,
+    0.720 -> 0.671 reproduced), so this season's cells did not enter the
+    choice of k, though the lever itself was picked after the week-1 score
+    showed the width.
+  - The current configuration (the stage replays, w 0.25, 52 locations),
+    before -> after: as-of 09-26 h0 (week 10-03) WIS 11.04 -> 9.39, log
+    0.302 -> 0.295, 50% coverage 0.65 -> 0.48; as-of 09-26 h1 (week 10-10)
+    19.87 -> 15.04, log 0.321 -> 0.288, 0.83 -> 0.67; as-of 10-03 h0 (week
+    10-10) 14.59 -> 13.01, log 0.235 -> 0.221, 0.73 -> 0.52, 95% coverage
+    1.00 -> 0.96; against the baseline on the 51 state cells relWIS 1.304
+    -> 1.166, log 1.027 -> 0.971. Pooled over all 209 scored cells (two
+    truth weeks; the 10-10 week enters three times): WIS 15.69 (11.76 +
+    1.35 + 2.58) -> 12.99 (7.81 + 1.84 + 3.33), -17%, log 0.267 -> 0.250,
+    lower in 176 of 209 cells (log 163); the two ties are Delaware at
+    median 0.
+  - For the Model lane, a watch item and not a decision: on the 10-10 week
+    the stage rule's medians would have scored worse than the old pin's on
+    the same 51 state cells (1.304 against 1.061 natural, 1.027 against
+    0.931 log, both before narrowing). The state medians sum to 4,177
+    against a truth of 3,835 (1.089, above truth in 37 of 52) where the
+    old pin's sum to 3,565 (0.930, above in 30 of 52); the old pin's misses
+    are under-prediction (0.30 of its WIS, 0.06 over), the stage rule's are
+    split (0.16 under, 0.17 over). One week, one vintage, at the rule's
+    first week; the 2026-10-17 round's live medians sit at the field's
+    median (US 4,772 against the ensemble's 4,831; Now, 2026-10-16), and
+    its truth lands 2026-10-22.
+  - This season's one-week optimum is below 0.7 (natural WIS still falling
+    at k = 0.5: 13.27 on the submitted h0, 12.00 pooled; log optimum 0.6),
+    but 50% coverage at k = 0.5 is 0.35-0.55 where k = 0.7 holds the
+    replays at nominal (0.48-0.52 at h0), and the screen said the same (k
+    = 0.5 worse in every block on the log scale). 0.7 stands. The gain is
+    large this fortnight because truth landed near the medians (width is
+    0.75 of the submitted WIS against the screen's 0.56; across the
+    screen's 24 block-season-horizon groups the width share predicts the
+    k = 0.7 gain with r = 0.96, and the groups at 0.72-0.80 gained
+    15-25%), not because early-season weeks gain in general: the screen's
+    early-season h0-h1 cells gained 1.5% pooled and lost 5% in 2025-26.
+    Nothing can be said this season for h2-h3, where the screen's gain is
+    largest (h3 0.696 -> 0.632) and the narrowing does most (25.5x ->
+    9.6x).
+  Next: unchanged (dev to main by pull request on Ely's word; the
+  2026-10-21 run on main with the three values).
 - 2026-10-17 (00:00 UTC): THE NARROWING, TESTED IN ELY'S APP. Ely merged
   oracle-narrowing into dev (bf044bd, 2026-10-16) and re-ran the 2026-10-17
   week on dev with the three values (seed season_total_early, weight 0.25,
