@@ -389,10 +389,17 @@ def effective_local_pools(extra, *, dataset: bool = False):
     # RESEARCH (prereg 0815e4709ab06b2f): the admissions pool by donor count
     if float(cfg.get("anchor_floor", 0) or 0) > 0:
         out["anchor_floor"] = float(cfg["anchor_floor"])
-    if str(cfg.get("anchor_weight") or "none") != "none":
-        out["anchor_weight"] = str(cfg["anchor_weight"])
-        if out["anchor_weight"] == "kernel":
-            out["kernel_sd"] = float(cfg.get("kernel_sd", 1.0) or 1.0)
+    aw = str(cfg.get("anchor_weight") or "none")
+    if aw not in AN.ANCHOR_WEIGHTS:
+        raise ValueError(f"local_pools: anchor_weight must be one of "
+                         f"{AN.ANCHOR_WEIGHTS}, got {aw!r}")
+    if aw != "none":
+        out["anchor_weight"] = aw
+        if aw == "kernel":
+            # read literally: a width of 0 is refused by LocalPooling, never
+            # quietly turned into the default
+            out["kernel_sd"] = (float(cfg["kernel_sd"]) if "kernel_sd" in cfg
+                                and cfg["kernel_sd"] is not None else 1.0)
     return out or None                  # nothing weighted: the pooled form
 
 
@@ -430,7 +437,8 @@ def local_args(spec, *, dataset: bool = False, locations_csv=None):
         own_site=bool(cfg.get("own_site", False)),
         anchor_floor=float(cfg.get("anchor_floor", 0.0) or 0.0),
         anchor_weight=str(cfg.get("anchor_weight") or "none"),
-        kernel_sd=float(cfg.get("kernel_sd", 1.0) or 1.0),
+        kernel_sd=(float(cfg["kernel_sd"]) if "kernel_sd" in cfg
+                   and cfg["kernel_sd"] is not None else 1.0),
         region_of=region_of, aux_sites=aux_sites)
 
 

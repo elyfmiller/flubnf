@@ -475,3 +475,14 @@ def test_the_engine_accepts_and_labels_the_anchor_options(tmp_path, monkeypatch)
         "flusurv+flusurv@06eff6a7, own-state donors 0.50, donor floor 10, "
         "donors weighted by kernel s=0.5")
     assert runs.is_research({"extra": extra})
+
+
+def test_the_engine_refuses_a_zero_kernel_width_and_an_unknown_weighting():
+    from app.core.engines import analogue as eng
+    with pytest.raises(ValueError):
+        eng.effective_local_pools({"local_pools": {"anchor_weight": "cube"}})
+    cfg = eng.effective_local_pools({"local_pools": {"own_share": 0.5, "anchor_weight": "kernel",
+                                                      "kernel_sd": 0}})
+    assert cfg["kernel_sd"] == 0                     # read literally ...
+    with pytest.raises(ValueError):                  # ... and refused downstream
+        AN.LocalPooling(**cfg)
