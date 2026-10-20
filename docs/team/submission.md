@@ -6,6 +6,45 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (UTC): ELY'S MEETING BRIEF, TWO POINTS, SHORT AT ELY'S WORD (a
+  full verification workflow was started and stopped when Ely asked for a
+  sentence or two per point; these facts are from the files and two
+  searches).
+  - The Groundhog's shape. Until 2026-10-15 every jurisdiction's Groundhog
+    had one shape: one pooled ratio distribution scaled by the
+    jurisdiction's own anchor (DONOR-BANKS.md, section 6 and "Own-state
+    weighting"). Measured on the 2026-10-17 files: the submitted (pooled)
+    file's h3/h0 median ratio runs 2.00-2.33 over the 53 locations
+    (coefficient of variation 0.04); the own-share re-run's runs 1.59-2.67
+    (0.11). The shipped form from the 2026-10-21 round (#43): the
+    jurisdiction's own donor cells carry half of the admissions-pool
+    weight and the other 51 jurisdictions share the other half (each own
+    cell about fifty times an outside cell), as a weighted empirical
+    quantile; HHS-region weighting added nothing; the FluSurv-NET pool
+    stays pooled and enters at weight one half by quantile averaging, so
+    that half of the shape is still shared. The h3 95% band / median:
+    pooled 8.4-9.8x (median 9.0); own-share median 8.4x but Ohio 27.7x,
+    Texas 20.0x, Delaware 17.6x, Arizona 17.2x (their own October
+    histories), a sense-check item for Wednesday's run.
+  - Other teams, from the hub's 118 cards: three describe a post-hoc
+    calibration of the quantiles. DMAPRIME-HYB (first in the week-1 field
+    score, 0.597): "the spread around the median is scaled by per-target,
+    per-horizon calibration factors chosen to minimize WIS on past
+    out-of-sample forecasts", the same move as oracle.narrow;
+    CMU-TimeSeries_Cal: online quantile calibration, MultiQT (Ding, Gibbs
+    and Tibshirani, arXiv 2512.23671, additive offsets per level by online
+    gradient descent); UM-DeepOutbreak: adaptive conformal inference post
+    hoc. Literature for the justification (records seen): Rumack,
+    Tibshirani and Rosenfeld 2022, PLOS Comput Biol 18(12) e1010771,
+    "Recalibrating probabilistic forecasts of epidemics" (post-hoc
+    recalibration of 27 FluSight Network forecasters, better calibration
+    and log score); Gneiting, Raftery, Westveld and Goldman 2005, Monthly
+    Weather Review 133:1098-1118 (EMOS: the ensemble spread rescaled by
+    fitted coefficients, the standard post-processing in weather);
+    Bracher, Ray, Gneiting and Reich 2021, PLOS Comput Biol 17(2) e1008618
+    (the WIS and its dispersion / over / under decomposition, the hub's
+    score). Material for the narrowing's card sentence when the default
+    flips.
 - 2026-10-17 (00:30 UTC): "IF WE HAD SUBMITTED THIS A COUPLE OF WEEKS AGO":
   THE NARROWING SCORED ON THE 2026-10-10 WEEK, BEFORE AND AFTER. Ely's
   question of 2026-10-16. What can be scored: the week ending 2026-10-10
