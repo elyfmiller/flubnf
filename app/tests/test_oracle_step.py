@@ -376,6 +376,27 @@ def test_run_week_stores_the_member_under_pf_and_not_the_filter(hubfiles, tmp_pa
     assert not (wd / "cells.json").exists()               # pruned, as before
 
 
+def test_run_week_narrows_the_stored_member_when_the_knob_is_set(hubfiles, tmp_path, monkeypatch):
+    from app.core import knobs as K
+    raw = _samples(("Ohio", "Utah"))
+    _stub_retro(monkeypatch, raw)
+    r0, rk = tmp_path / "a" / "2097-98", tmp_path / "b" / "2097-98"
+    retro.run_week(r0, "2097-98", ASOF, ["Ohio", "Utah"], width=1)
+    wx = K.retro_week_extra(None, {"oracle.narrow": 0.7})
+    retro.run_week(rk, "2097-98", ASOF, ["Ohio", "Utah"], width=1, extra=wx(ASOF, 0, [ASOF]))
+    prov = oracle_mod.read_provenance(rk / "weeks" / ASOF)
+    assert prov["narrowing"]["applied"] and prov["narrowing"]["k"] == 0.7
+    assert prov["specification"] == "modified" and prov["knobs"] == {"oracle.narrow": 0.7}
+    assert "unnarrowed" in prov["quantiles"]["primary"]
+    s0, sk = retro.read_week_quantiles(r0 / "weeks" / ASOF), retro.read_week_quantiles(rk / "weeks" / ASOF)
+    for loc in ("Ohio", "Utah"):
+        for h in hz.HORIZONS:
+            assert sk["pf"][loc][h][0.5] == pytest.approx(s0["pf"][loc][h][0.5], rel=0.02)
+            assert sk["pf"][loc][h][0.975] < s0["pf"][loc][h][0.975]
+    assert sk["pf_filter"] == s0["pf_filter"]            # the null is not narrowed
+    assert not oracle_mod.read_provenance(r0 / "weeks" / ASOF)["narrowing"]["applied"]
+
+
 def test_run_week_with_oracle_none_stores_the_plain_filter(hubfiles, tmp_path, monkeypatch):
     raw = _samples(("Ohio",))
     _stub_retro(monkeypatch, raw)
