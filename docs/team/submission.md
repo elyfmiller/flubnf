@@ -6,6 +6,48 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (UTC): THE NARROWED FILES VALIDATE; THE WIDE BANDS AGAINST THE
+  NARROWED, SCORED AND BREAK-EVEN. Ely asked whether the narrowed forecast
+  is acceptable to submit and how badly the wide one scores against it.
+  - Validation: the two -modified files of the 2026-10-16 re-run (Oracle
+    narrowed k = 0.7, Groundhog own-share), renamed to the hub pattern,
+    pass all 30 hubValidations checks against the hub clone (the conda R
+    in the Submission scratchpad, TZDIR set), max_hosp_popn_frac included.
+    The hub's plausibility bound is 30% of the location's population
+    (model-output/README.md, "Plausibility bounds"), so the wide file was
+    never near it either: the US h3 upper quantile as submitted is 33 per
+    100k (112,688), narrowed 15.5 (52,632), the ensemble 6.4 (21,681).
+  - Scored where truth exists (the 2026-10-10 round at h0, the entry of
+    2026-10-17 00:30 UTC): WIS 17.23 -> 14.47 (-16%), relWIS 0.902 ->
+    0.759, rank 36 -> 24 of 52; US 295.8 -> 212.0.
+  - Break-even on the 2026-10-17 round (tools/us_bands.py and an inline
+    scorer; truth lands from 2026-10-22): for the US the narrowed band
+    scores better whenever the count lands between 0.72x and 1.3x the
+    median at h0 (3,450-6,160 around 4,772), 0.53x-1.5x at h1,
+    0.21x-1.9x at h2, and anywhere up to 2.4x at h3 (21,640 around
+    8,908); if the count lands at the ensemble's median the wide band
+    scores 1.45x the narrowed at h0 (405 against 280; the ensemble 239)
+    and 1.6x at h3 (3,084 against 1,897; the ensemble 835). The width
+    cost alone (WIS at the median, summed over h0-h3): 5,894 as submitted,
+    3,717 narrowed, 2,065 the ensemble. States (52 x 4 cells): the narrowed
+    band is better within 0.54x-1.5x of the median at h0 (median over
+    locations) and up to 3.5x at h3 (10th-90th percentile 2.5x-5.5x); in
+    115 of 204 cells it is better for any count within a factor of two
+    of the median either way.
+  - Ely's question of the same hour, the weights: the Groundhog's own
+    share (0.5 of the admissions-pool weight on the jurisdiction's own
+    donor cells) is NOT applied to the Oracle step, whose donor pool is
+    pooled across locations, the US row included (ORACLE-SIHRS.md,
+    section 1; model.md Decided 2026-10-15: "the Oracle SIHRS is
+    untouched (its pools never pass local)"). The Oracle's "weight one
+    half" is a different quantity: the blend weight oracle.w between the
+    filter's own growth and the donor path's (shipped 0.5, run at 0.25 by
+    override from the 2026-10-17 round). An own-location form of the
+    Oracle's bank has not been screened; its donor ratios are tight
+    (0.6x-1.3x over four weeks), so the donors are not its width, but
+    whether own-location donors would move its medians is an open
+    question for the Model lane (a pre-registered screen, as for the
+    Groundhog).
 - 2026-10-20 (UTC): ELY'S MEETING BRIEF, TWO POINTS, SHORT AT ELY'S WORD (a
   full verification workflow was started and stopped when Ely asked for a
   sentence or two per point; these facts are from the files and two
