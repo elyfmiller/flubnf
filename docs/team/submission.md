@@ -6,6 +6,23 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (22:40 UTC): PULL REQUEST #44 (dev TO main) MERGED BY ELY AT
+  22:40 UTC, merge commit c401bbd (two parents, e97b227 and 4e764a0; a
+  merge commit, as the rule says), three minutes after it opened, before
+  CI had finished on the head (the same commits had passed the suite on
+  dev). main now equals dev (4e764a0): the narrowing knob oracle.narrow,
+  its record and tests, ORACLE-SIHRS.md 6b, and the lane notes are on
+  main. Wednesday 2026-10-21, Ely's laptop on main: Seed denominator
+  season_total_early, Oracle blend weight 0.25, Oracle narrowing 0.7, one
+  override reason (suggested: "2026-10-12 and 2026-10-16 decisions:
+  expected-total pin early in the season, Oracle weight 0.25, spread
+  narrowing 0.7, all replay-scored; docs/team/submission.md"); the
+  Groundhog in its own-share form (no knob to set, it is the default);
+  export, sense_check.py (Ohio, Texas, Delaware at horizon 3 in the
+  Groundhog file), then the two CSVs to this lane for the validator, the
+  fast-forward of FluBNF_submission to cdcepi main, the commit "NAU_PyBNF
+  forecast 2026-10-24 (EW42)" and the compare link. This lane's PR
+  subscription closed with the merge and its check-in was cancelled.
 - 2026-10-20 (22:37 UTC): PULL REQUEST #44 (dev TO main) OPENED BY THIS LANE
   AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/44, "Oracle
   narrowing knob and the lanes' notes, for the 2026-10-21 round", 18
