@@ -6,6 +6,35 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (22:52 UTC): THE Reff PRIOR BOUND ARM IS RUNNING IN THE CLOUD AT
+  ELY'S GO. Ely's reading of the width (the swarm is still dispersed early
+  in the season) and the answer that the jitter does not set the cloud's
+  width (the Liu-West kernel preserves its covariance; pf_jitter 0.15,
+  pf_shrink 1, forecast jitter 0, variance floor 1e-12; the engine
+  resamples under ESS 0.5 N and records ESS after every update) led to
+  the cheapest structural arm: the Reff prior's upper bound 2.0 against
+  the shipped 2.5 (uniform 0.6-2.5, app/core/engines/pf.py VARS_1S),
+  which the console already exposes as the knob pf.prior.Reff ("Prior
+  range for Reff", Model settings, the filter group), so it needs no code
+  and can run on Ely's laptop on Wednesday if it wins. Ely: "worth
+  testing ... compare it for the last two forecasts ... if cheap, apply
+  tomorrow". Running (replays/reff.sh, reff.log, the worktree at main
+  c401bbd, engine 2fdadee0, the hub mirror's three 2026-27 vintages
+  09-26, 10-03 and 10-10, the 10-10 file taken from cdc/main 86b03824):
+  root replays/2026-27-reff20, knobs pf.seed_denominator=
+  season_total_early and pf.prior.Reff=0.6,2.0 (knobs digest d48a070d),
+  all 52 jurisdictions, 10,000 particles, 3 replicates, width 4, the
+  Oracle step applied (w 0.5 primary, 0.25 logged); then the stage
+  control for the 10-10 vintage (replays/2026-27-stage-1010), which the
+  stored stage replay lacks. About 20 minutes a week on this machine.
+  The comparison to follow: bands (95% band over the median, the upper
+  quantile over the median) and medians per location and horizon, arm
+  against stage, at w 0.25, with and without the narrowing 0.7; the
+  scorable cells (09-26 h0 and h1, 10-03 h0 against the 10-14 truth)
+  scored arm against stage; the 10-10 vintage against the submitted
+  2026-10-17 file and the field's bands. A Reff bound is a change to the
+  registered member (the frozen pre-registration), so it ships by
+  override and a card sentence, like the narrowing.
 - 2026-10-20 (22:40 UTC): PULL REQUEST #44 (dev TO main) MERGED BY ELY AT
   22:40 UTC, merge commit c401bbd (two parents, e97b227 and 4e764a0; a
   merge commit, as the rule says), three minutes after it opened, before
