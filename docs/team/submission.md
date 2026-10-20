@@ -6,6 +6,21 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (22:37 UTC): PULL REQUEST #44 (dev TO main) OPENED BY THIS LANE
+  AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/44, "Oracle
+  narrowing knob and the lanes' notes, for the 2026-10-21 round", 18
+  commits over main (e97b227), 10 files, +961/-4: flubnf/oracle.py (the
+  knob), app/core/oracle.py and app/core/knobs.py (oracle.narrow),
+  tests/test_oracle.py, docs/ORACLE-SIHRS.md 6b, the lane notes. Every
+  commit is authored and committed as Ely (bf044bd is Ely's own merge of
+  oracle-narrowing from the laptop), no trailers; the body carries no
+  attribution (the integration appended its footer again and it was
+  edited out at once). Ely's merge command, a merge commit, never squash:
+  `gh pr merge 44 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  && git checkout main && git pull --ff-only origin main && git merge
+  --no-ff origin/dev -m "Merge pull request #44 from elyfmiller/dev" &&
+  git push origin main`. After the merge Ely's laptop runs main on
+  Wednesday with the three values and one override reason.
 - 2026-10-20 (UTC): ELY'S HYPOTHESIS, AN OWN-LOCATION WEIGHT ON THE ORACLE
   STEP'S DONORS, AGAINST THE STORED BANK. Ely asked whether weighting the
   Oracle step's donor draw toward the forecast location's own paths (the
