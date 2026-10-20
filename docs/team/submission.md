@@ -6,6 +6,48 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-20 (UTC): ELY'S HYPOTHESIS, AN OWN-LOCATION WEIGHT ON THE ORACLE
+  STEP'S DONORS, AGAINST THE STORED BANK. Ely asked whether weighting the
+  Oracle step's donor draw toward the forecast location's own paths (the
+  Groundhog's own-share idea) would reduce the member's width further,
+  since after narrowing it is still the widest but one at horizon 3. What
+  the stored stage replays say (oracle_bank/paths_<asof>.csv, as-of
+  2026-09-26 and 2026-10-03):
+  - The pool is small, not thousands: 288 and 318 admissions donor paths
+    per week from 32 and 34 locations (the four seasons 2022-23 to
+    2025-26, two epiweeks either side, the 10-admissions floor on
+    W-1..W+2). Own-location paths: none for 21 and 19 of the 53
+    locations in those weeks (Alaska, Colorado, Connecticut, Delaware,
+    DC, Idaho, Iowa, Kansas, Maine among them), 1-4 for 8 and 10, 10 or
+    more for 13 and 15 (the maximum 20: US, Florida, California), median
+    2-3. An own share of 0.5 would put half the draws on a handful of
+    paths for most states and on nothing for a third of them (the class
+    would pass its share to the rest, as local_weights does).
+  - The donors are not the width, and own-location donors are no tighter:
+    the pool's four-week ratio rho_4 spans 0.86-1.27 (2.5th-97.5th
+    percentile, sd of the log 0.09-0.10); Florida's own 20 paths span
+    1.01-1.43 (sd 0.09), California's 0.96-1.22 (0.07), Texas's 0.92-1.16
+    (0.07), New York's 0.88-1.21 (0.10), US 0.96-1.22 (0.06). The member's
+    width is the filter's own forecasting sample (15.2x the median at h3
+    on the 10-03 vintage under the stage rule, 7.0x under the old pin),
+    which the step multiplies by 1.5-1.8x (the entry of 2026-10-16);
+    weighting the draw can touch only that factor, and with donor spreads
+    this small it would move it little. Medians: own-location median
+    growth sits within 0.02-0.05 of the pool's (FL 1.05 against 1.04, NY
+    1.09-1.11), so a small median shift at most.
+  - Reading for Ely: as a width lever this is unlikely to pay, by the
+    counts; the lever that reaches the field (h3 median 3.6x; ours 9.6x
+    narrowed, the baseline 9.0x) is the filter's own early tail under the
+    new seed (a Reff upper bound, a growth cap or the jitter: the engine
+    arm, about 10 hours per arm in the cloud on the 44 stored weeks, the
+    Model lane's item), which could change the medians too. If Ely wants
+    the number rather than the argument, an own-share draw (a weighted
+    index in flubnf.oracle.mixture_rows) can be screened on the stored
+    samples of the 44 weeks without engine time, pre-registered, arms
+    0.25 / 0.5 on the admissions half, with and without the narrowing;
+    the member is the registered one (frozen pre-registration 67c9fa49),
+    so any change ships by override and a card sentence, as the narrowing
+    does.
 - 2026-10-20 (UTC): THE NARROWED FILES VALIDATE; THE WIDE BANDS AGAINST THE
   NARROWED, SCORED AND BREAK-EVEN. Ely asked whether the narrowed forecast
   is acceptable to submit and how badly the wide one scores against it.
