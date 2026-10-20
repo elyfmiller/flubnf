@@ -14,6 +14,7 @@ What is held here:
 No hub and no engine: the console fixture of test_oracle_step fakes the
 filter and the Groundhog and runs the real Oracle step on a tiny vintage.
 """
+import csv
 import json
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                             # noqa: E402
 from app.core import knobs as K                              # noqa: E402
 from app.core import oracle as oracle_mod                    # noqa: E402
+from app.core import horizons as hz                       # noqa: E402
 from app.core import retro                                   # noqa: E402
 from app.core.engines import analogue as EA                  # noqa: E402
 from app.core.runs import Ledger, RunSpec, spec_settings     # noqa: E402
@@ -813,3 +815,123 @@ def test_a_missing_data_rule_records_every_flagged_week(console, monkeypatch):
     html = runs_mod.results_html(out, spec.to_json())
     assert (f"1 week to {ASOF} treated as unreported (trailing zero): "
             "Ohio 1") in html
+
+
+def test_the_narrowing_knob_scales_the_member_about_its_medians(hubfiles, tmp_path):
+    """oracle.narrow = k scales the submitted seed's samples about each
+    horizon's median after the step: the medians hold, every band shrinks
+    (a value ten times the median becomes 10^k times it), the recorded
+    primary quantiles follow, the unnarrowed ones stay in the record, and
+    k = 1 is the shipped member bitwise."""
+    raw = _samples()
+    m0, p0 = oracle_mod.apply_week(raw, ASOF, tmp_path / "a")
+    m1, p1 = oracle_mod.apply_week(raw, ASOF, tmp_path / "b",
+                                   extra={"knobs": {"oracle.narrow": 1.0}})
+    assert m1 == m0 and not p1["narrowing"]["applied"]
+    assert "unnarrowed" not in p1["quantiles"]["primary"]
+    mk, pk = oracle_mod.apply_week(raw, ASOF, tmp_path / "c",
+                                   extra={"knobs": {"oracle.narrow": 0.7}})
+    assert pk["narrowing"] == {**pk["narrowing"], "k": 0.7, "applied": True}
+    assert pk["specification"] == "modified" and pk["knobs"]["oracle.narrow"] == 0.7
+    seed = str(pk["submitted_seed"])
+    checked = 0
+    for loc in m0:
+        if loc not in pk["locations"] or pk["locations"][loc].get("state") == "outside":
+            continue
+        assert mk[loc]["origin"] == m0[loc]["origin"]          # the data block stays
+        for h in ("0", "1", "2", "3"):
+            x0 = np.asarray(m0[loc][h], float); xk = np.asarray(mk[loc][h], float)
+            f = np.isfinite(x0)
+            assert np.array_equal(np.isfinite(xk), f)
+            med = float(np.median(x0[f]))
+            if not med > 0:
+                # the fixture has no zeros or NaN; the next test reaches this path
+                assert np.array_equal(xk[f], x0[f])              # nothing to scale about
+                continue
+            assert np.allclose(np.median(xk[f]), med, rtol=1e-6)   # even counts interpolate
+            above = f & (x0 > med)
+            assert np.allclose(xk[above], med * (x0[above] / med) ** 0.7)
+            assert np.all(xk[above] <= x0[above])
+            # the recorded quantiles are the narrowed ones, the raw ones kept
+            qk = pk["quantiles"]["primary"]["per_seed"][seed][loc][h]["unrounded"]
+            q0 = p0["quantiles"]["primary"]["per_seed"][seed][loc][h]["unrounded"]
+            qr = pk["quantiles"]["primary"]["unnarrowed"]["per_seed"][seed][loc][h]["unrounded"]
+            if qk is None or q0 is None:
+                continue
+            # the record is the quantile map of the raw record; the member's own
+            # quantiles agree to interpolation precision (narrow's docstring)
+            assert np.allclose(oracle_mod.OR.finite_quantiles(xk), qk, rtol=1e-4)
+            assert qr == q0
+            assert qk[11] == pytest.approx(q0[11])
+            assert qk[22] == pytest.approx(q0[11] * (q0[22] / q0[11]) ** 0.7)
+            checked += 1
+    assert checked > 0
+    # the other blocks and the seed mean follow the recorded rule
+    for key in ("secondary", "admissions_only", "null"):
+        assert pk["quantiles"][key] == p0["quantiles"][key], key
+    assert pk["quantiles"]["primary"]["unnarrowed"]["seed_mean"] == p0["quantiles"]["primary"]["seed_mean"]
+    assert pk["quantiles"]["primary"]["seed_mean"] != p0["quantiles"]["primary"]["seed_mean"]
+    assert pk["quantiles"]["primary"]["narrowed"] == 0.7
+    # the knob label names it and the step bounds it, by the record and by the keyword
+    assert "oracle.narrow=0.7" in K.label({"oracle.narrow": 0.7})
+    for bad in (-0.5, 0.0, 1.5, float("nan")):
+        with pytest.raises(ValueError, match="oracle.narrow"):
+            oracle_mod.apply_week(raw, ASOF, tmp_path / "d", extra={"knobs": {"oracle.narrow": bad}})
+    with pytest.raises(ValueError):
+        oracle_mod.apply_week(raw, ASOF, tmp_path / "d2", narrow_k=1.5)
+
+
+def test_the_narrowing_knob_narrows_the_identity_cells_too(hubfiles, tmp_path):
+    """An identity cell ships the filter's own samples and the knob narrows
+    them like every other cell's (the 6b screen narrowed the stored
+    record's every cell); the null record stays, so the narrowed primary
+    record differs from it and the unnarrowed one still equals it."""
+    raw = _samples(); raw["Utah"][hz.ORIGIN] = [0.0] * 400      # m_0 = 0: not eligible
+    m0, p0 = oracle_mod.apply_week(raw, ASOF, tmp_path / "a")
+    mk, pk = oracle_mod.apply_week(raw, ASOF, tmp_path / "b",
+                                   extra={"knobs": {"oracle.narrow": 0.7}})
+    seed = str(pk["submitted_seed"])
+    e = pk["locations"]["Utah"]
+    assert e["state"] == "not eligible" and not e["active"]
+    assert mk["Utah"]["origin"] == m0["Utah"]["origin"] and mk["Utah"]["0"] != m0["Utah"]["0"]
+    assert pk["quantiles"]["null"]["Utah"] == p0["quantiles"]["null"]["Utah"]
+    assert pk["quantiles"]["primary"]["unnarrowed"]["per_seed"][seed]["Utah"] == p0["quantiles"]["null"]["Utah"]
+    assert pk["quantiles"]["primary"]["per_seed"][seed]["Utah"] != p0["quantiles"]["null"]["Utah"]
+
+
+def test_narrowing_keeps_non_finite_entries_and_a_zero_median_block_through_the_step(hubfiles, tmp_path):
+    raw = _samples()
+    raw["Ohio"]["2"][5] = float("nan")
+    raw["Utah"]["1"] = [0.0] * 300 + raw["Utah"]["1"][300:]      # median 0: the cell is not eligible
+    mk, pk = oracle_mod.apply_week(raw, ASOF, tmp_path / "k", extra={"knobs": {"oracle.narrow": 0.7}})
+    m0, p0 = oracle_mod.apply_week(raw, ASOF, tmp_path / "o")
+    x = np.asarray(mk["Ohio"]["2"], float)
+    assert np.isnan(x).sum() == 1 and np.isnan(x[5])
+    assert len(pk["quantiles"]["primary"]["per_seed"][str(pk["submitted_seed"])]["Ohio"]["2"]["unrounded"]) == 23
+    assert mk["Utah"]["1"] == m0["Utah"]["1"]                    # nothing to scale about
+    assert np.asarray(mk["Utah"]["3"]).max() < np.asarray(m0["Utah"]["3"]).max()   # identity cells are narrowed
+
+
+def test_the_narrowing_knob_narrows_the_hub_rows_end_to_end(console):
+    srv_, raw = console
+    _, _, out0, w0 = _knob_run(srv_, {})
+    _, rowk, outk, wk = _knob_run(srv_, {"oracle.narrow": 0.7})
+    assert set(outk["submissions"]) == {"NAU_PyBNF-OracleSIHRS-modified", "NAU_PyBNF-GroundHogCGR-modified"}
+    assert outk["knobs"]["label"].startswith("modified: oracle.narrow=0.7 (")
+    prov = oracle_mod.read_provenance(wk)
+    assert prov["narrowing"]["k"] == 0.7 and prov["narrowing"]["applied"]
+
+    def table(out, mid):
+        with open(out["submissions"][mid], newline="") as fh:
+            return {(r["location"], r["horizon"], r["output_type_id"]): float(r["value"])
+                    for r in csv.DictReader(fh)}
+    t0 = table(out0, "NAU_PyBNF-OracleSIHRS"); tk = table(outk, "NAU_PyBNF-OracleSIHRS-modified")
+    assert set(t0) == set(tk)
+    for loc in ("39", "49"):
+        for h in "0123":
+            assert tk[(loc, h, "0.5")] == pytest.approx(t0[(loc, h, "0.5")], abs=1)
+            assert tk[(loc, h, "0.975")] < t0[(loc, h, "0.975")]
+            assert tk[(loc, h, "0.025")] > t0[(loc, h, "0.025")]
+    # the Groundhog file is byte-identical: the knob touches one member
+    assert Path(out0["submissions"]["NAU_PyBNF-GroundHogCGR"]).read_bytes() == \
+        Path(outk["submissions"]["NAU_PyBNF-GroundHogCGR-modified"]).read_bytes()
