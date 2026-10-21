@@ -6,6 +6,67 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-21 (01:30 UTC): THE Reff PRIOR BOUND ARM, SCORED; RECOMMENDATION:
+  NOT FOR WEDNESDAY, RUN THE 44-WEEK SCREEN FIRST. The arm (the entry of
+  2026-10-20 22:52 UTC; relaunched 00:10 UTC after the container paused
+  the first attempt, done 00:56; the 10-10 stage control done 01:12;
+  14-16 minutes a week) against the stage replays, all at w = 0.25
+  (tools/reff_compare.py, replays/reff_result.txt; an independent
+  recompute reproduced every figure and a skeptic's pass added the
+  corrections below, replays/verify-reff/):
+  - Bands (95% band over the median, median over the 52 jurisdictions):
+    h3 43.2x -> 37.2x (09-26), 27.2x -> 22.8x (10-03), 25.5x -> 21.4x
+    (10-10); per-location band ratio 0.86-0.87 at h3 (10th-90th 0.72-1.07,
+    narrower in 40-46 of 52), 0.95 at h0; the filter alone 38.9 -> 34.5,
+    24.5 -> 20.0, 22.2 -> 19.2 at h3; narrowed at k = 0.7, h3 9.60x ->
+    8.46x on the 10-10 vintage. The change is real in aggregate (paired t
+    -6 to -8 over the jurisdictions; the five Oracle seeds spread the band
+    by only 2-5%) and not resolved in any single jurisdiction (one
+    replicate against another spans 0.75-1.36; Welch t resolves 7-11 of
+    52). Same at w = 0.5 (0.85-0.87).
+  - Medians: within 1% at h0; at h3 DOWN 2-3% (ratios 0.97-0.98; 12 of 51
+    jurisdictions more than 5% below the submitted 2026-10-17 file). Not
+    "unchanged".
+  - Scores on the 156 scorable cells (09-26 h0 and h1, 10-03 h0): WIS
+    15.17 -> 14.60 unnarrowed (ratio of sums 0.963; location-cluster
+    bootstrap 0.95-0.98), 12.48 -> 12.15 narrowed (0.973; 0.96-0.99); log
+    0.286 -> 0.283 and 0.268 -> 0.267, the narrowed log gain unresolved
+    (0.987-1.001). The whole gain is dispersion (11.37 -> 10.80; the
+    penalty 3.80 unchanged): the arm is narrower, not more accurate; five
+    large jurisdictions carry 57-70% of it, California loses. Coverage at
+    k = 0.7 identical in both arms (0.56 / 0.88 / 0.97 at 50 / 80 / 95 on
+    these h0-h1 cells); at k = 1 the 50% coverage slips 0.737 -> 0.718.
+  - The bound buys what the narrowing already buys: on the 10-10 vintage
+    the arm at k = 1 has the stage's band at k = 0.95, and the arm at k =
+    0.7 equals the stage at k = 0.66. The forward paths show no use of the
+    trimmed region at the origin (effective Reff 99th percentile 1.5-1.6;
+    under 0.3% of paths above 2.0), and the base Reff is modulated by the
+    harmonic (eps1 0-1), so the bound caps the parameter, not the
+    effective number. No fast-growing cell this October lost coverage
+    (the 20 cells with truth at 1.8x the anchor or more: 403 -> 399 WIS).
+  - Not screened: h2-h3 (where the bound acts three times as strongly as
+    at h0) and any past season; k = 0.7 was chosen with the unbounded
+    prior. Against the team's own standard for the narrowing (44 weeks,
+    three seasons, 9,152 cells, leave-one-season-out, bootstrap) this is
+    156 in-sample cells of one season at h0-h1.
+  - The cloud reproduces the laptop: the 10-10 stage control's medians
+    match the submitted 2026-10-17 file (ratio 0.997 at h0, 0.996 at h3,
+    38 of 51 h0 medians identical after rounding) and its h3 band 25.49x
+    against the file's 25.50x; the cloud is a faithful testbed for the
+    live configuration.
+  - Reading for Ely: do not add the bound on Wednesday. It is a fourth
+    override on the registered member, it is nearly interchangeable with
+    a narrowing exponent 0.05 lower, it lowers the horizon-3 medians, and
+    it is unvalidated beyond the weeks that motivated it. The proper test
+    is the 44-week screen (15-23 minutes a week in the cloud, 11-17 hours,
+    the step and the narrowing re-chosen jointly: k against the bound,
+    leave-one-season-out), feasible before the 2026-10-28 round on Ely's
+    word. If Ely ships it anyway, the override reason must name it
+    separately ("pf.prior.Reff 0.6-2.0, knobs digest d48a070d, screened on
+    three 2026-27 vintages at horizons 0-1, not replay-scored on past
+    seasons") and the "all replay-scored" phrase cannot cover it; the card
+    needs a sentence for it, as for the narrowing. Wednesday stays at the
+    three values.
 - 2026-10-20 (22:52 UTC): THE Reff PRIOR BOUND ARM IS RUNNING IN THE CLOUD AT
   ELY'S GO. Ely's reading of the width (the swarm is still dispersed early
   in the season) and the answer that the jitter does not set the cloud's
