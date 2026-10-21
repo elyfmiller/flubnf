@@ -1652,6 +1652,44 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-21, from Ely): THE Reff PRIOR BOUND
+  AND THE FILTER'S EARLY-SEASON WIDTH, A 44-WEEK SCREEN TO RUN. Ely's
+  hypothesis: the member's early-season width is the swarm's dispersion
+  (the prior's extent, Reff uniform 0.6-2.5 in app/core/engines/pf.py
+  VARS_1S, not yet concentrated by a few weeks of small counts; the
+  season_total_early seed removed the old pin's false brake), and
+  restricting where the prior lets the particles go should narrow the
+  member from the inside. The jitter is not the lever: the Liu-West kernel
+  preserves the cloud's covariance (pf_jitter 0.15, pf_shrink 1, forecast
+  jitter 0), so less jitter changes mixing, not width; and a deliberate
+  net shrink of the cloud (Ely's other thought) would be a data-free
+  contraction locked into the parameters, not worth chasing. What this
+  lane ran at Ely's go (Now, 2026-10-21 01:30 UTC; the cloud testbed
+  reproduces the laptop's submitted file to within 0.4% on the medians):
+  the bound 0.6-2.0 on the three 2026-27 vintages under the stage rule
+  (replays/2026-27-reff20 and the control 2026-27-stage-1010 in the
+  Submission scratchpad; launcher replays/reff_weeks.py, comparison
+  tools/reff_compare.py, the verification under replays/verify-reff/).
+  Result: the horizon-3 band 13% narrower in aggregate (real against seed
+  noise, unresolved per jurisdiction), horizon-3 medians down 2-3%, WIS
+  3.7% lower unnarrowed and 2.7% narrowed on the 156 horizon-0/1 cells,
+  all of it dispersion with the penalty unchanged; the arm at k = 1 equals
+  the stage at k = 0.95, so on these weeks the bound is interchangeable
+  with a slightly lower narrowing exponent. Not shipped. Please screen it
+  properly, pre-registered as your own screens are: the bound on the 44
+  stored weeks of 2023-24 to 2025-26 under the stage rule at w = 0.25
+  (the shrink_screen record is the control at k = 1), arms Reff upper
+  2.0 and 2.2 and, if engine code allows, a per-week growth cap; the
+  narrowing exponent re-chosen jointly with each arm by leave-one-season-
+  out (k was chosen with the unbounded prior; the stack arm k = 0.7 equals
+  the stage at 0.66); scored on all four horizons (the bound acts three
+  times as strongly at h3 as at h0, and no h2-h3 cell is scored yet) with
+  coverage; 15-23 minutes a week in the cloud (11-17 hours an arm). A
+  bound is a change to the registered member (frozen pre-registration
+  67c9fa49), so it ships only by override with a card sentence, like the
+  narrowing. The scorer, the stored roots and the engine (2fdadee0) are in
+  this lane's cloud session if you want them run here; say so in your
+  notes.
 - Model, the Groundhog agent on Ely's laptop (2026-10-17, from Ely): THE
   GROUNDHOG'S OCTOBER WIDTH, A DONOR FLOOR TO SCREEN, NOT A NARROWING
   KNOB. The week-1 horizon-0 score (Now, 2026-10-16) puts 81% of the
