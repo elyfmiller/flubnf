@@ -12,7 +12,14 @@ and CDC's rules. The season's facts are in
   2026-10-17, data through Oct 10, knobs digest 3d7ef6b7: seed rule and
   weight only), so this week's run record (the narrowing block, the
   knobs digest, the override reason) is not confirmed from the files
-  here; asked Ely for this week's report. The files themselves carry the
+  here; asked Ely for this week's report, which came within the hour
+  and confirms the run: reference date 2026-10-24, data through Oct 17,
+  model settings "Seed denominator expected total (early season),
+  Oracle blend weight 0.25 (default 0.5), Spread narrowing 0.7
+  (default 1)", Groundhog "own-state donors 0.50", exported under the
+  hub names by override, reason "Early Season Issues", app build
+  6075c03 (dev at that hour: main's code plus this lane's notes
+  commits, no code difference). The files themselves carry the
   narrowing: the Oracle's 95% band over the median is 1.83x at h0 and
   8.32x at h3 (median over 53 locations; 1.96x and 9.56x on last week's
   narrowed re-run; 3.28x and 25.5x unnarrowed), 50% band 0.52x and
