@@ -6,6 +6,46 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-21 (18:10 UTC): ROUND 2026-10-24 (EW42) STAGED FOR ELY'S PULL
+  REQUEST. Ely sent the two files from the laptop's run on main (c401bbd)
+  with a weekly report; the report is LAST week's (reference date
+  2026-10-17, data through Oct 10, knobs digest 3d7ef6b7: seed rule and
+  weight only), so this week's run record (the narrowing block, the
+  knobs digest, the override reason) is not confirmed from the files
+  here; asked Ely for this week's report. The files themselves carry the
+  narrowing: the Oracle's 95% band over the median is 1.83x at h0 and
+  8.32x at h3 (median over 53 locations; 1.96x and 9.56x on last week's
+  narrowed re-run; 3.28x and 25.5x unnarrowed), 50% band 0.52x and
+  1.58x; widest h3 Wyoming 28.3x. The Groundhog in its own-share form:
+  3.67x and 7.59x (last week's re-run 3.98x and 8.37x), widest h3 Ohio
+  30.6x. Both files: 4,877 lines, 53 locations (Alaska and US in),
+  horizons 0-3 for 2026-10-24 to 2026-11-14, 212 monotone blocks each,
+  integers; both pass all 30 hubValidations checks against cdcepi main
+  a0215ecc (TZDIR set, the conda R). Truth now through 2026-10-17 (hub
+  target data 84ced076): US 4,698 (1.16x the week before); the 10-10
+  week revised up 5.4% (US 3,835 -> 4,044; states median +5.5%, 10th-90th
+  1.00-1.23). Sense check against the last observed week: Oracle h0
+  medians 1.22x it (10th-90th 1.00-1.37; US 5,907 = 1.26x), the last
+  observed inside the h0 50% band in 0.79 and the 95% band in 1.00 of 53;
+  h0 median below the last observed in Alaska, Hawaii, Maine, Montana and
+  Wisconsin (0.89-0.94); h3 medians 2.26x (US 11,961 = 2.55x). Groundhog
+  h0 1.10x (1.00-1.15; US 5,168), the last observed inside its 50% band
+  in 0.98 of 53. Both plausible beside last week's growth (states median
+  1.14x, US 1.16x). The US at h3: Oracle 2,208-11,961-53,025, Groundhog
+  1,918-11,724-78,635. Submission: FluBNF_submission fast-forwarded to
+  cdcepi main a0215ecc (the cdc remote's fetch failed on the proxy's
+  stale name, the URL fetch worked: the fork's repository name is now
+  FluSight-forecast-hub, mixed case), the two files added under
+  model-output/NAU_PyBNF-OracleSIHRS/ and model-output/
+  NAU_PyBNF-GroundHogCGR/, byte-identical to the uploads, commit 7b80f676
+  "NAU_PyBNF forecast 2026-10-24 (EW42)" as Ely (a first push had the
+  files under a wrong folder and was amended and force-pushed within
+  minutes on this lane's own branch, before any pull request), pushed to
+  the fork. Compare link for Ely's hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  (the hub's PR validation runs the same 30 checks). Three other teams'
+  10-24 files were on cdcepi main at 16:33 UTC; the field comparison
+  follows when more are in.
 - 2026-10-21 (01:30 UTC): THE Reff PRIOR BOUND ARM, SCORED; RECOMMENDATION:
   NOT FOR WEDNESDAY, RUN THE 44-WEEK SCREEN FIRST. The arm (the entry of
   2026-10-20 22:52 UTC; relaunched 00:10 UTC after the container paused
