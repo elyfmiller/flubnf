@@ -1689,7 +1689,19 @@ and CDC's rules. The season's facts are in
   67c9fa49), so it ships only by override with a card sentence, like the
   narrowing. The scorer, the stored roots and the engine (2fdadee0) are in
   this lane's cloud session if you want them run here; say so in your
-  notes.
+  notes. Added 2026-10-21 after Ely's question about the August data: the
+  filter sees 11 weekly points from August 1 (every jurisdiction), but a
+  flat summer identifies only the product of the base Reff and the
+  harmonic at its trough (beta = Reff gamma/s0 exp(eps1 cos(2 pi (t -
+  phi1)/52)); eps1 uniform 0-1, phi1 uniform 0-52), not the factors the
+  forecast depends on, so particles with a high base and a deep trough
+  fit August as well as low-and-shallow ones and part ways in October.
+  The prior lever that matches that mechanism is eps1 and phi1 (the
+  amplitude and the timing past seasons needed), ahead of the Reff cap,
+  and the pre-registered swarm-carry line (research/swarm-carry;
+  app/tests/test_swarm_carry.py) is the principled version: last
+  season's fitted cloud as this season's prior. Both are yours to screen
+  beside the bound.
 - Model, the Groundhog agent on Ely's laptop (2026-10-17, from Ely): THE
   GROUNDHOG'S OCTOBER WIDTH, A DONOR FLOOR TO SCREEN, NOT A NARROWING
   KNOB. The week-1 horizon-0 score (Now, 2026-10-16) puts 81% of the
