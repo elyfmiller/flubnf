@@ -31,6 +31,21 @@ and CDC's rules. The season's facts are in
   8.32x against the baseline's 7.43x and the others' 2.0-4.8x, the
   Groundhog 7.59x; US h3 medians: ours 11,961 and 11,724, epymorph 9,301,
   CountCast 9,317, Cornell 22,724.
+  Added 19:40 UTC, the revised pair inferred on the same 156 cells (47
+  models with all three cell sets; ranks = where the revised row would
+  sit among them): the Oracle narrowed after the fact (week 1 from the
+  submitted old-pin file at k = 0.7, week 2 the live re-run) pooled
+  0.614, rank 22 (week cells 0.664 / 0.572 / 0.629), log 0.734, rank 33;
+  the Groundhog in the own-share form (flubnf groundhog retro 2026-27
+  --aux flusurv --with-us at own share 0.5 on bd6242f, the 10-10 vintage
+  reproducing Ely's re-run file median for median) pooled 0.871, rank 41
+  (0.877 / 0.838 / 0.913), log 0.715, rank 30. As submitted: Oracle 0.755
+  (36) / 0.801 (36), Groundhog 0.922 (42) / 0.713 (29); ensemble 0.498
+  (4) / 0.598 (4); INFLAenza 0.506 / 0.596; vulPES 0.693 / 0.681;
+  FourCAT 0.700 / 0.778; epymorph 1.030 / 0.888; field median 0.631 /
+  0.689. Week 1's Oracle cells are the old pin narrowed, not the stage
+  rule, so the inferred standing is an approximation of the shipping
+  configuration there.
 - 2026-10-21 (18:10 UTC): ROUND 2026-10-24 (EW42) STAGED FOR ELY'S PULL
   REQUEST. Ely sent the two files from the laptop's run on main (c401bbd)
   with a weekly report; the report is LAST week's (reference date
