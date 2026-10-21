@@ -88,7 +88,11 @@ and CDC's rules. The season's facts are in
   "NAU_PyBNF forecast 2026-10-24 (EW42)" as Ely (a first push had the
   files under a wrong folder and was amended and force-pushed within
   minutes on this lane's own branch, before any pull request), pushed to
-  the fork. Compare link for Ely's hub pull request:
+  the fork; at 19:50 UTC, with Ely's go to open the pull request, cdcepi
+  main had moved again (1bfa4b26, other teams' files), so the commit was
+  re-based onto it as 2526b906, the same two files, one commit over
+  main, force-pushed with lease on this lane's own branch before the
+  pull request. Compare link for Ely's hub pull request:
   https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
   (the hub's PR validation runs the same 30 checks). Three other teams'
   10-24 files were on cdcepi main at 16:33 UTC; the field comparison
