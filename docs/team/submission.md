@@ -6,6 +6,31 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-21 (19:00 UTC): WEEK 2 SCORED AT HORIZON 0 (the 2026-10-17 round
+  against the week ending 10-17, truth as on the hub 10-21, 84ced076; 57
+  models with 50+ cells; relative WIS against FluSight-baseline on common
+  cells; the same inline scorer as week 1). Oracle SIHRS as submitted
+  (unnarrowed, stage rule, w 0.25, Alaska dropped): relWIS 0.802, rank 46
+  of 57; log 0.789, rank 42; coverage 50/95 0.82/1.00; US WIS 405 (truth
+  4,698, our median 4,772). The narrowed re-run of the same week
+  (tested in the app 2026-10-16, the configuration that ships from this
+  round): 0.629, rank 27; log 0.712, rank 25; coverage 0.67/1.00; US
+  281. Groundhog (pooled form): 0.975, rank 51; log 0.754, rank 39.
+  FluSight-ensemble 0.557 (11) / 0.644 (3); DMAPRIME-HYB 0.518 (4) /
+  0.632 (1); field median 0.650 / 0.723; NAU-ABERT 0.594, NAU-vulPES
+  0.680, NAU-FourCAT 0.689, NAU-epymorph 1.030. Reading: the baseline is
+  beaten in both weeks (week 1 0.902, week 2 0.802 as submitted); with the
+  narrowing the week-2 gap to the ensemble at horizon 0 is 13% natural
+  and 11% log, mid-field; the remaining gap is the medians (the log rank
+  25 against the ensemble's 3) and the horizon-3 width, which no cell
+  scores yet. This week's submission (round 10-24) ships the narrowed
+  configuration, so its horizon-0 standing should resemble the re-run's.
+  Early field for 10-24 (seven files on the hub at 17:46 UTC): the
+  Oracle's h0 band 1.83x the median is mid-field (Cornell 1.03,
+  HallAI 1.75, epymorph 2.00, CountCast 2.55, baseline 4.40); at h3
+  8.32x against the baseline's 7.43x and the others' 2.0-4.8x, the
+  Groundhog 7.59x; US h3 medians: ours 11,961 and 11,724, epymorph 9,301,
+  CountCast 9,317, Cornell 22,724.
 - 2026-10-21 (18:10 UTC): ROUND 2026-10-24 (EW42) STAGED FOR ELY'S PULL
   REQUEST. Ely sent the two files from the laptop's run on main (c401bbd)
   with a weekly report; the report is LAST week's (reference date
