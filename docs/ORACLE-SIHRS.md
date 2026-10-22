@@ -552,6 +552,45 @@ leave-one-season-out picks 0.7, 0.7 and 0.6; cluster bootstrap by week
 puts the k = 0.7 gain at 0.049 (95% CI 0.025 to 0.079). The structural
 fix, the filter's early tail, is engine work and separate.
 
+## 6c. The upper-tail cap: the research knob `output.tail_cap` (both members)
+
+Spencer Fox's red-flag rule for the NAU ensemble (2026-10-21) reads each
+forecast's 97.5% quantile at horizon 3 against the jurisdiction's recent
+level and flags a value above about 30 times it. On the 2026-10-24 round
+both members failed it in a handful of small-count states (the Oracle
+SIHRS's filter tail, which the narrowing at 0.7 had not closed there; the
+Groundhog's erratic own-state donor histories), while their medians sat
+with the other members'. The cap is the output-stage answer, the same
+shape as the narrowing: a plausibility bound on the hub rows, not a change
+inside either member.
+
+`output.tail_cap = n` (Model settings, the output group; 0 = no cap, the
+registered form `flubnf.tailcap.CAP_PRODUCTION`) clips, in every
+(location, horizon) quantile block of both members' files, the levels
+above 0.5 at `n` times the recent level (the mean of the last three
+reported weeks at the forecast date, `flubnf.tailcap.RECENT_WEEKS`), and
+never below the block's own median. The median and every lower quantile
+are untouched; clipped levels tie at the limit, so the block stays
+monotone; a jurisdiction whose recent level is 0 or unknown is left alone.
+It runs in `app/ui/pipeline` on the rows after the Oracle step, the
+narrowing and the output floor, so the run record (`tail_cap`: n, the
+weeks, the cells touched per member) and the files agree; a run at n > 0
+is a modified run (the override and its reason), and the replays do not
+apply it (`NOT_IN_RETRO`; it is screened post hoc).
+
+The screen (docs/team/submission.md, 2026-10-22; `tools/tail_screen.py`
+and `tools/gh_cap_screen.py` in the Submission scratchpad): on the Oracle
+member's 44 stored stage-rule weeks at k = 0.7, a cap at 20x took pooled
+relWIS 0.671 / 0.727 to 0.669 / 0.726 (natural / log) with 95% coverage
+0.93 to 0.92 and the share of horizon-3 cells above 30x from 15% to 0;
+15x gave 0.670 / 0.727 and 0.91; leave-one-season-out picked 20x twice
+and 15x once; narrowing harder at the far horizons instead cost score and
+coverage. On the Groundhog's three retro seasons (own-share form) the cap
+was free season-wide (0.660 at none, 20x and 15x) and a gain in the
+September-October weeks (1.024 to 0.996 at 15x, 0.963 at 10x, coverage
+unchanged). The first live value is 15x (Ely, 2026-10-22), with the gate
+`tools/tail_gate.py` run on every file before the submission commit.
+
 ## 7. Open items
 
 * Bank change B2 ships on this branch (section 5b): the member's donor
