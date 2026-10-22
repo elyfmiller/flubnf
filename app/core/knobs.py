@@ -38,6 +38,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Optional
 
 from flubnf import analogue as AN
+from flubnf import tailcap as TC
 from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
@@ -340,6 +341,22 @@ REGISTRY: tuple = (
          "Poisson noise floor so no cell is a point mass. Replays use the "
          "default rate.",
          lo=0.0, hi=5.0),
+    Knob("output.tail_cap", "Upper-tail cap", BOTH, "output", "method", "float",
+         TC.CAP_PRODUCTION, "flubnf.tailcap:CAP_PRODUCTION",
+         "Quantiles above the median clipped at this many times the recent level; 0 is no cap.",
+         lo=0.0, hi=100.0,
+         note=("Applied to both members' hub rows at the output stage, after "
+               "the Oracle step, the narrowing and the floor: in each "
+               "(location, horizon) block the levels above 0.5 are clipped at "
+               "n times the mean of the last three reported weeks, never below "
+               "the block's median; the median and the lower quantiles are "
+               "untouched. Spencer Fox's red-flag rule (2026-10-21) reads the "
+               "97.5% quantile at horizon 3 against the recent level. Screened "
+               "post hoc on the stored replays (docs/team/submission.md, "
+               "2026-10-22): 15-20x left both members' pooled relWIS and "
+               "coverage within a thousandth and removed every horizon-3 cell "
+               "above 30x. Research; the run records n and the cells it "
+               "touched; no card phrase until the default changes.")),
     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
          "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
@@ -780,7 +797,7 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
 #: knob is the console's), and it writes no submission files (the optional
 #: hub rows)
 NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
-                          *OPTIONAL_KEYS})
+                          "output.tail_cap", *OPTIONAL_KEYS})
 
 #: form fields that predate the registry -> the knob they now set
 LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",
