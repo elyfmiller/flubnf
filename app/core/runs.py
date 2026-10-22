@@ -385,6 +385,13 @@ def local_pools_label(extra: dict | None) -> str:
             if cfg["anchor_weight"] == "kernel" else cfg["anchor_weight"]))
     if cfg.get("ess_floor"):
         parts.append(f"effective-donor floor {float(cfg['ess_floor']):g}")
+    if cfg.get("winsor_q"):
+        parts.append(f"ratios winsorised at {float(cfg['winsor_q']):g}")
+    if cfg.get("repair_spikes"):
+        parts.append("single-week spikes repaired")
+    if cfg.get("exclude_weeks"):
+        parts.append("weeks removed " + ", ".join(
+            f"{a} to {b}" for a, b in cfg["exclude_weeks"]))
     return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 

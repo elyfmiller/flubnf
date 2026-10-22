@@ -515,3 +515,124 @@ def test_the_effective_donor_guard_falls_back_to_uniform():
     cfg = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30}
     assert eng.effective_local_pools({"local_pools": cfg}) == cfg
     assert runs.local_pools_label({"local_pools": cfg}).endswith("effective-donor floor 30")
+
+
+# --- the tail-cell options (prereg 28f0f33d6ea7e232) -----------------------
+
+def _ohio_like_bank():
+    """One location with Ohio's 2024 pattern (1, 10, 229, 17, 24) inside a
+    smooth series, plus a smooth neighbour; Saturdays."""
+    d0 = date(2024, 9, 7)
+    a = [2, 1, 1, 1, 10, 229, 17, 24, 40, 60, 90]
+    b = [20, 22, 24, 26, 28, 30, 33, 36, 40, 44, 48]
+    bank = {}
+    for i, (x, y) in enumerate(zip(a, b)):
+        d = d0 + timedelta(days=7 * i)
+        bank[("OH", d)] = float(x)
+        bank[("XX", d)] = float(y)
+    return bank, d0
+
+
+def test_the_spike_repair_replaces_a_single_week_spike_only():
+    bank, d0 = _ohio_like_bank()
+    out = AN.repaired_bank(bank)
+    spike = d0 + timedelta(days=35)
+    assert bank[("OH", spike)] == 229.0
+    assert out[("OH", spike)] == pytest.approx(0.5 * (10 + 17))
+    # nothing else moves: the smooth series, the rise from 1 to 10 (under
+    # the 10-admission excess), every other week
+    changed = {k for k in bank if bank[k] != out[k]}
+    assert changed == {("OH", spike)}
+    assert AN.repaired_bank({}) == {}
+    # a week beside a missing (zero) week is never called a spike
+    hole = dict(bank); del hole[("OH", spike + timedelta(days=7))]
+    assert AN.repaired_bank(hole)[("OH", spike)] == 229.0
+    # the input is not modified
+    assert bank[("OH", spike)] == 229.0
+
+
+def test_the_spike_rule_needs_both_the_factor_and_the_excess():
+    d = date(2024, 10, 5); w = timedelta(days=7)
+    small = {("A", d - w): 1.0, ("A", d): 9.0, ("A", d + w): 1.0}      # 9x but +8
+    assert AN.repaired_bank(small)[("A", d)] == 9.0
+    mild = {("A", d - w): 40.0, ("A", d): 190.0, ("A", d + w): 40.0}   # 4.75x
+    assert AN.repaired_bank(mild)[("A", d)] == 190.0
+    big = {("A", d - w): 40.0, ("A", d): 200.0, ("A", d + w): 30.0}    # 5x, +160
+    assert AN.repaired_bank(big)[("A", d)] == 35.0
+
+
+def test_excluded_weeks_are_removed_inclusive_and_accept_timestamps():
+    import pandas as pd
+    bank, d0 = _ohio_like_bank()
+    lo, hi = d0 + timedelta(days=7), d0 + timedelta(days=21)
+    out = AN.bank_without_weeks(bank, [(lo.isoformat(), hi.isoformat())])
+    gone = {k for k in bank if k not in out}
+    assert gone == {(l, lo + timedelta(days=7 * i)) for l in ("OH", "XX") for i in range(3)}
+    ts = {(l, pd.Timestamp(d)): v for (l, d), v in bank.items()}
+    assert len(AN.bank_without_weeks(ts, [(lo, hi)])) == len(out)
+
+
+def test_the_tail_options_are_validated():
+    for q in (-0.1, 0.4, 1.0, float("nan")):
+        with pytest.raises(ValueError):
+            AN.LocalPooling(own_share=0.5, winsor_q=q)
+    with pytest.raises(ValueError):
+        AN.LocalPooling(exclude_weeks=(("2024-10-26", "2024-05-04"),))
+    with pytest.raises(ValueError):
+        AN.LocalPooling(exclude_weeks=(("2024-10-26",),))
+    AN.LocalPooling(own_share=0.5, winsor_q=0.99,
+                    exclude_weeks=(("2024-05-04", "2024-10-26"),))
+
+
+def test_the_winsor_caps_the_pool_at_its_own_quantile():
+    bank = _sized_bank()
+    ew, se = AN.epiweek(ASOF), AN.season_of(ASOF)
+    r, locs, v0 = AN.keyed_ratios(bank, ew, se, 2, with_anchor=True)
+    lp = AN.LocalPooling(own_share=0.5, winsor_q=0.9)
+    got = AN.forecast(400.0, ASOF, 2, bank, LEVELS, local=lp, location="C")
+    rc = np.minimum(r, np.quantile(r, 0.9))
+    wq = AN.weighted_quantile(rc, AN.local_weights(locs, "C", AN.LocalPooling(own_share=0.5)),
+                              LEVELS)
+    assert got == pytest.approx({L: 400.0 * wq[L] for L in LEVELS})
+    plain = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                        local=AN.LocalPooling(own_share=0.5), location="C")
+    assert got[0.975] <= plain[0.975] and got[0.025] == pytest.approx(plain[0.025])
+
+
+def test_the_research_bank_options_reach_the_ratios_and_are_memoised():
+    bank, d0 = _ohio_like_bank()
+    # pad with earlier seasons so the donor rule has cells: copy the two
+    # series a year back, three times
+    big = dict(bank)
+    for k in range(1, 4):
+        for (l, d), v in bank.items():
+            big[(l, d - timedelta(days=364 * k))] = v
+    lp = AN.LocalPooling(own_share=0.5, repair_spikes=True)
+    rb = AN._research_bank(big, lp)
+    assert rb is AN._research_bank(big, lp)              # memoised on the pooling
+    assert max(rb.values()) < 229.0
+    assert AN._research_bank(big, AN.LocalPooling(own_share=0.5)) is big
+    ex = AN.LocalPooling(own_share=0.5, repair_spikes=True,
+                         exclude_weeks=(("2024-10-19", "2024-10-26"),))
+    rb2 = AN._research_bank(big, ex)
+    # the spike week (2024-10-12) is repaired, the window's two weeks gone
+    assert rb2[("OH", date(2024, 10, 12))] == pytest.approx(13.5)
+    assert ("OH", date(2024, 10, 19)) not in rb2 and ("OH", date(2024, 10, 26)) not in rb2
+
+
+def test_the_engine_accepts_and_labels_the_tail_options(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.core import runs
+    from app.core.engines import analogue as eng
+    csv = tmp_path / "locations.csv"; csv.write_text(LOCATIONS_CSV, encoding="utf-8")
+    monkeypatch.setattr(eng, "LOCATIONS", csv)
+    cfg = {"own_share": 0.5, "winsor_q": 0.99, "repair_spikes": True,
+           "exclude_weeks": [["2024-05-04", "2024-10-26"]]}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    lp = eng.local_args(SimpleNamespace(extra={"local_pools": cfg}))
+    assert lp.winsor_q == 0.99 and lp.repair_spikes
+    assert lp.exclude_weeks == (("2024-05-04", "2024-10-26"),)
+    assert runs.local_pools_label({"local_pools": cfg}) == (
+        ", own-state donors 0.50, ratios winsorised at 0.99, single-week spikes "
+        "repaired, weeks removed 2024-05-04 to 2024-10-26")
+    assert runs.is_research({"extra": {"local_pools": cfg}})

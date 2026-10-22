@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import NormalDist
 from typing import Iterable, Mapping, Optional
 
@@ -624,6 +624,17 @@ class LocalPooling:
     #: is exempt (it is small by construction: a jurisdiction's own cells);
     #: 0 is off
     ess_floor: float = 0.0
+    #: RESEARCH (prereg 28f0f33d6ea7e232, the tail-cell screen of
+    #: 2026-10-22): `winsor_q` clips the admissions-pool ratios above at
+    #: their own unweighted quantile q before any weighting (0 is off);
+    #: `repair_spikes` replaces a single-week spike in the admissions bank
+    #: (SPIKE_FACTOR times both neighbours and SPIKE_MIN_EXCESS above the
+    #: larger) by the mean of its neighbours before ratios are formed;
+    #: `exclude_weeks` removes bank weeks whose date falls in any
+    #: (start, end) window, ISO dates, inclusive (applied after the repair)
+    winsor_q: float = 0.0
+    repair_spikes: bool = False
+    exclude_weeks: tuple = ()
     #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
     #: epiweek, season, horizon and bandwidth
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
@@ -649,10 +660,76 @@ class LocalPooling:
         e = float(self.ess_floor)
         if not math.isfinite(e) or e < 0:
             raise ValueError(f"ess_floor must be finite and >= 0, got {e!r}")
+        q = float(self.winsor_q)
+        if not math.isfinite(q) or not (q == 0 or 0.5 < q < 1):
+            raise ValueError(f"winsor_q must be 0 (off) or in (0.5, 1), got {q!r}")
+        for win in self.exclude_weeks:
+            if len(win) != 2:
+                raise ValueError(f"exclude_weeks entries are (start, end), got {win!r}")
+            a, b = (_as_date(x) for x in win)
+            if a > b:
+                raise ValueError(f"exclude_weeks window {win!r} ends before it starts")
 
 
 #: the anchor weightings LocalPooling accepts
 ANCHOR_WEIGHTS = ("none", "count", "sqrt", "kernel")
+#: the single-week spike rule (research, repair_spikes): a bank week is a
+#: spike when its count is at least SPIKE_FACTOR times both neighbouring
+#: weeks AND at least SPIKE_MIN_EXCESS admissions above the larger of them
+SPIKE_FACTOR = 5.0
+SPIKE_MIN_EXCESS = 10.0
+
+
+def _as_date(x) -> date:
+    """A date from a date, a datetime (a pandas Timestamp included) or an
+    ISO string."""
+    if isinstance(x, datetime):
+        return x.date()
+    if isinstance(x, date):
+        return x
+    return date.fromisoformat(str(x)[:10])
+
+
+def repaired_bank(bank: Mapping[tuple, float]) -> dict:
+    """A copy of `bank` with every single-week spike replaced by the mean of
+    its two neighbouring weeks. Detection reads the original values, and a
+    week needs both neighbours in the bank (a zero week is not in a bank,
+    so a week next to one is never called a spike)."""
+    out = dict(bank)
+    for (loc, d), v in bank.items():
+        p = bank.get((loc, d - timedelta(days=7)))
+        n = bank.get((loc, d + timedelta(days=7)))
+        if p is None or n is None:
+            continue
+        m = max(p, n)
+        if v >= SPIKE_FACTOR * m and v - m >= SPIKE_MIN_EXCESS:
+            out[(loc, d)] = 0.5 * (p + n)
+    return out
+
+
+def bank_without_weeks(bank: Mapping[tuple, float], windows) -> dict:
+    """A copy of `bank` without the weeks dated inside any (start, end)
+    window, inclusive."""
+    wins = [(_as_date(a), _as_date(b)) for a, b in windows]
+    return {k: v for k, v in bank.items()
+            if not any(a <= _as_date(k[1]) <= b for a, b in wins)}
+
+
+def _research_bank(bank: Mapping[tuple, float], local: "LocalPooling"):
+    """The admissions bank a LocalPooling's research options read: the
+    spike repair, then the excluded weeks; the bank itself when neither is
+    asked. Memoised on the LocalPooling, keyed by the bank object."""
+    if not local.repair_spikes and not local.exclude_weeks:
+        return bank
+    key = ("research_bank", id(bank))
+    hit = local._memo.get(key)
+    if hit is not None and hit[0] is bank:
+        return hit[1]
+    out = repaired_bank(bank) if local.repair_spikes else dict(bank)
+    if local.exclude_weeks:
+        out = bank_without_weeks(out, local.exclude_weeks)
+    local._memo[key] = (bank, out)
+    return out
 
 
 def anchor_factor(anchors, local: "LocalPooling", target_anchor) -> np.ndarray:
@@ -783,6 +860,7 @@ def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
         return None
     ew, se = epiweek(as_of), season_of(as_of)
     target_anchor = float(anchor)                 # the newest count itself
+    bank = _research_bank(bank, local)
     r, locs, v0 = keyed_ratios(bank, ew, se, horizon, bandwidth,
                                exclude_seasons=exclude_seasons,
                                with_anchor=True)
@@ -794,6 +872,9 @@ def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
     anchor, r2 = _anchor_and_pool(anchor, r, completeness)
     if r2 is None:
         return None
+    if local.winsor_q > 0:
+        # RESEARCH: the pool's own unweighted q-quantile caps every ratio
+        r2 = np.minimum(r2, np.quantile(r2, float(local.winsor_q)))
     if (local.own_share == 0 and local.region_share == 0
             and local.anchor_weight == "none"):
         # no local weight asked: the shipped quantile rule, exactly, so an
