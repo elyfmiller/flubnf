@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:59 UTC): PULL REQUEST #47 (dev TO main) MERGED BY ELY AT
+  04:59 UTC, merge commit 210f2fb (two parents, 744e654 and 3953b41; a
+  merge commit), a minute after it opened. main now carries
+  scripts/sense_check.py, the tail gate; the laptop runs it from main on
+  Wednesday as step three of the round procedure (entry of 05:05 UTC
+  above). The PR subscription closed with the merge and the check-in
+  was cancelled. What main carries for the 2026-10-28 round, in order
+  of landing: the narrowing knob (#44), the upper-tail cap in two forms
+  (#45), the whole-admission rounding of the cap (#46), the gate (#47).
 - 2026-10-22 (05:15 UTC): tail-gate MERGED INTO dev (a64b01d, a merge commit
   as Ely, at Ely's word; parents 04935f9 and 152910f) AND PULL REQUEST #47
   (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/47,
