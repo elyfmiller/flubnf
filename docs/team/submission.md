@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:40 UTC): ELY IS RUNNING 8x, 10x AND 15x RETROSPECTIVES ON
+  THE MAC FOR BOTH MEMBERS (the Oracle the longest). The cloud twin, run
+  now so the Mac's numbers have something to check against: the 8x arm
+  added to tools/shrinkloc_screen.py (post hoc on the stored cells, the
+  Oracle's 44 stage-rule weeks at k = 0.7, the Groundhog's three retro
+  seasons; replays/shrinkloc_result8.txt). relWIS natural, cov95, h3
+  band/median typical:
+    Oracle    k0.7 0.671 .930 4.6x | clip8 0.680 .884 3.4x | shrink8 0.699
+              .840 3.4x | clip10 0.674 .898 | shrink10 0.688 .869 | clip15
+              0.670 .917 | shrink15 0.674 .906
+    Groundhog none 0.660 .936 4.7x | clip8 0.667 .912 3.9x | shrink8 0.687
+              .881 3.9x | clip10 0.663 .921 | shrink10 0.676 .900 | clip15
+              0.660 .931 | shrink15 0.664 .924
+    Groundhog, September-October weeks only: none 1.024 | clip8 0.935 |
+              shrink8 0.791 | clip10 0.963 | shrink10 0.823 | clip15 0.996
+              | shrink15 0.913
+  Reading: 8x shrink costs the Oracle 4.3% season-wide with 95% coverage
+  down to 0.84, and the Groundhog 4% season-wide, while it is the best
+  September-October form for the Groundhog (whose October cells sit at
+  the baseline). The pattern is monotone: tighter helps the Groundhog's
+  October and hurts everything else. History (Now, 04:20 UTC) puts 8x
+  near the 80th percentile of realised October h3 growth, so an 8x cap
+  on a 97.5% quantile under-covers by construction in a 2022-like
+  October. The standing recommendation holds: shrink at 15x for both,
+  10x if the first capped week scores well. What the Mac should
+  reproduce: the cap is an output-stage rule on stored quantiles, so a
+  retrospective on the same weeks should land on these numbers within
+  rounding (the whole-admission rounding moves values by at most 0.5);
+  a difference beyond that is a difference in the cells (weeks, the
+  narrowing, the own-share form), not in the cap. The Model lane's
+  retrospective is the record; this screen is the check.
 - 2026-10-22 (04:35 UTC): THE FULL SUITE ON dev (519e20f, the rounding
   fix and the notes) PASSES IN THE CLOUD: exit 0, no failure, on the
   second run. The first run (stop at first failure) stopped at 88% on
