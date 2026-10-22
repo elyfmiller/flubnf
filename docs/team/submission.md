@@ -1895,6 +1895,63 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-22, from Ely, who has the Mac
+  free for retrospectives): THE FAR-HORIZON TAILS, WHAT IS DECIDED, WHAT
+  TO RUN. Context: Spencer Fox's NAU-ensemble report flagged 10 cells on
+  the 2026-10-24 round, all far-horizon upper tails (the 97.5% quantile
+  at horizon 3 over the recent level above about 30x; the Oracle's IA MI
+  NH WV, the Groundhog's AZ ID OH OR TX WV), with the medians in line
+  with the other members. Ely's goal: both models' width near the NAU
+  members' by the 2026-10-28 round (no state over 30x; the typical state's
+  h3 tail near 10-12x the recent level; the h3 95% band near 3-5x the
+  median). This lane's gate (tools/tail_gate.py) now runs on every file
+  before the submission commit.
+  - Decided and coded (branch tail-cap, 1138da9, for Ely's merge): an
+    output-stage knob output.tail_cap for both members, n times the
+    recent level (mean of the last three reported weeks), 0 = off. Two
+    forms, Ely to choose the mode and n for Wednesday: the clip (levels
+    above the median clipped at the limit) and Ely's location-wide
+    shrink (the exponent the worst horizon needs, k_loc = min over h of
+    ln(L/m_h)/ln(q_h/m_h), applied to every horizon of the location above
+    the median, so the band keeps its fan). Both screened post hoc
+    (Now, 2026-10-22): on the Oracle's 44 stage-rule weeks at k = 0.7 the
+    clip at 15x is free (0.671 -> 0.670 relWIS) and the location-wide
+    shrink costs 0.4% at 15x and 2.5% at 10x; on the Groundhog's three
+    retro seasons the shrink is the best October form (1.02 -> 0.91 at
+    15x, 0.82 at 10x in September-October weeks) at a season-wide cost of
+    0.6-2.4%. Scripts and cells: tools/tail_screen.py, gh_cap_screen.py,
+    shrinkloc_screen.py, replays/*_cells.csv in the Submission
+    scratchpad; the three rounds rebuilt under each form in review3/.
+  - What the cap does NOT do: it is a plausibility bound on the output.
+    The member's early-season width is the swarm's own (the prior's
+    extent, Reff uniform 0.6-2.5 with the harmonic's amplitude 0-1 and
+    phase 0-52 unidentified over a flat summer), and this October is
+    wider than any October in the replays (at k = 0.7 the typical h3
+    tail is 5x the recent level on the stored weeks and 20x this week).
+  - Retrospectives to run on the Mac, each pre-registered as your own
+    screens are, on the 44 stored weeks (2023-24 to 2025-26, the stage
+    rule at w 0.25), scored against the record with the narrowing and the
+    cap re-chosen jointly by leave-one-season-out, all four horizons,
+    coverage, and the gate as a column:
+    (1) the Reff prior upper bound 2.0 and 2.2 (knob pf.prior.Reff; this
+        lane's three-vintage arm in replays/2026-27-reff20 narrowed h3 by
+        13% in aggregate, all dispersion, medians down 2-3%, 15-23 min a
+        week in the cloud);
+    (2) the harmonic priors (pf.prior.eps1, pf.prior.phi1) drawn from
+        what past seasons needed, the lever that matches the summer
+        identifiability problem;
+    (3) the swarm carry (research/swarm-carry, app/tests/
+        test_swarm_carry.py): last season's fitted cloud as this season's
+        prior;
+    (4) a per-week growth cap on the forecast paths, if engine code
+        allows;
+    and for the Groundhog, the kernel weighting you recommended, with
+    the tail cap on top, on the own-share screen's cells.
+  - A bound or a prior change is a change to the registered member
+    (frozen pre-registration 67c9fa49): it ships by override with a card
+    sentence, as the narrowing does; the cap is an output rule and ships
+    the same way. The cloud testbed reproduces the laptop's submitted
+    files within 1%, so either machine's result transfers.
 - Model, the Oracle SIHRS agent (2026-10-21, from Ely): THE Reff PRIOR BOUND
   AND THE FILTER'S EARLY-SEASON WIDTH, A 44-WEEK SCREEN TO RUN. Ely's
   hypothesis: the member's early-season width is the swarm's dispersion
