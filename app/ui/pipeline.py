@@ -819,6 +819,23 @@ def _run_all(spec: RunSpec) -> None:
             an_rows = [r for loc, q in an_q.items()
                        for r in rows_from_quantiles(q, n2f[loc],
                                                     spec.forecast_date)]
+        # the upper-tail cap (knob output.tail_cap, flubnf/tailcap.py): both
+        # members' quantile rows, levels above the median clipped at n times
+        # the recent level; off (0) is the registered form. Recorded with the
+        # cells it touched; a location without observed weeks is left alone.
+        _cap_n = _knobs.value_of(spec.extra, "output.tail_cap")
+        if _cap_n:
+            from flubnf import tailcap as _tc
+            _lim = {n2f[loc]: _tc.limit_for(float(_cap_n),
+                                            [v for _, v in obs.get(loc, [])])
+                    for loc in set(pf_samples) | set(an_q) if loc in n2f}
+            _mode = (_knobs.value_of(spec.extra, "output.tail_mode")
+                     or _tc.MODE_PRODUCTION)
+            pf_rows, _cap_pf = _tc.cap_rows(pf_rows, _lim, mode=str(_mode))
+            an_rows, _cap_an = _tc.cap_rows(an_rows, _lim, mode=str(_mode))
+            outcome["tail_cap"] = {"n": float(_cap_n), "mode": str(_mode),
+                                   "recent_weeks": _tc.RECENT_WEEKS,
+                                   "cells": {"pf": _cap_pf, "analogue": _cap_an}}
         for model, rows in (("pf", pf_rows), ("analogue", an_rows)):
             if not rows:
                 continue
