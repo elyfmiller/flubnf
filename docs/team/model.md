@@ -11,7 +11,37 @@ agent's.
 
 ## Now
 
-- 2026-10-22 (04:40 UTC): THE UPPER-TAIL SHRINK CHECKED AGAINST ELY'S
+- 2026-10-22 (04:40 UTC): REPLAYS STARTING ON THE LAB MAC AT ELY'S GO: THE
+  ORACLE SIHRS WIDTH SCREEN ON FULL SEASONS. First the control, C0, the
+  live configuration of the 2026-10-24 round (pf.seed_denominator =
+  season_total_early, oracle.w = 0.25, oracle.narrow = 0.7): 2023-24 to
+  2025-26, the 84 as-of weeks with a FluSight-baseline file (the other 9
+  cannot be scored), 52 jurisdictions x 3 replicates, 10,000 particles;
+  flubnf `main` 744e654 (the rounding fix in), engine 2fdadee0 with
+  bngsim 0.15.1 and numpy 1.26.4 (~/.venvs/flubnf-engine, as on Ely's
+  laptop and the cloud testbed; not ~/.venvs/flubnf, bngsim 0.13.0);
+  about 8 hours. The upper-tail rule is never run in a replay
+  (NOT_IN_RETRO), so it is scored after: each week's hub rows rebuilt as
+  a live run builds them (the stored samples after the step, the
+  narrowing and the floor; `quantile_rows`, whole admissions), then
+  `flubnf.tailcap.cap_rows` at 8x, 10x and 15x (Ely), 20x and 30x, shrink
+  and clip, the limit from the as-of vintage as the pipeline reads it,
+  then the console's `score_quantiles` (FluSight's cell rule, the
+  validated baseline join). Checks, passed on a smoke week: the
+  unrounded scores equal the console's `retro.score_season` on every
+  cell (WIS, log WIS, both baseline columns, difference 0); an
+  independent WIS (the mean quantile score) equals `flubnf.wis` on every
+  cell; other narrowing exponents (re-exponentiated about the median, so
+  approximate) reproduce the step's own pre-floor quantiles within 0.05%
+  of WIS. Then the structural arms, about 8 hours each, each scored with
+  the narrowing and the cap re-chosen by leave-one-season-out: Reff
+  0.6-2.0, Reff 0.6-2.2, and the past-season eps1/phi1 priors (pooled,
+  and per state for the swarm carry), under a pre-registration posted
+  here before any arm is scored. Lab archive `research/oracle-width-screen/`.
+  The Mac stays free of other replays until the screen ends; anything
+  unfinished stops before the 2026-10-28 target-data update.
+
+- 2026-10-22 (04:14 UTC): THE UPPER-TAIL SHRINK CHECKED AGAINST ELY'S
   DESCRIPTION; ONE DEFECT FIXED. `flubnf/tailcap.py` as merged (main
   aacbefd) applied to the submitted 2026-10-24 files, the recent level
   from the 2026-10-17 vintage as the pipeline reads it. Shrink mode does
