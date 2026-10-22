@@ -11,6 +11,34 @@ agent's.
 
 ## Now
 
+- 2026-10-22 (04:40 UTC): THE UPPER-TAIL SHRINK CHECKED AGAINST ELY'S
+  DESCRIPTION; ONE DEFECT FIXED. `flubnf/tailcap.py` as merged (main
+  aacbefd) applied to the submitted 2026-10-24 files, the recent level
+  from the 2026-10-17 vintage as the pipeline reads it. Shrink mode does
+  what Ely describes: one exponent per location, the worst horizon's
+  (horizon 3 in all 53, both members), the same exponent on every
+  horizon above the median; the median and every lower level untouched,
+  monotone, the fan kept. At n = 10 every shrunk location's h3 97.5%
+  lands on 10x the recent level (as submitted: median 20.1x Oracle,
+  20.2x Groundhog, nine states over 30x in each; after: none); the
+  Oracle shrinks 47 locations (median exponent 0.65), the Groundhog 53
+  (0.64). Against the median at h3 (medians over the 53): Oracle 8.4x
+  as submitted, 3.9x at n = 10, 5.6x at 15; Groundhog 7.7x, 3.8x, 5.8x.
+  Ely confirmed the target is n times the recent level, not the median.
+  The defect: the cap runs on hub rows already rounded to whole
+  admissions and wrote the moved levels back as decimals (at n = 10
+  shrink, 2,055 Oracle and 2,301 Groundhog values; a few hundred in
+  clip mode, from a non-integer limit), and one decimal turns pandas'
+  whole value column to float, so every row would read "14.0". Fixed
+  on branch `tail-cap-whole` (b3992e7, pushed), to merge into `dev` at
+  Ely's word once the full suite here is read: `whole_block` rounds the moved levels half to even and
+  keeps the block monotone, so the limit is met within half an
+  admission; on this week's files every value stays within 0.5 of the
+  exact shrink and none is a decimal. Tests: two new, one tolerance
+  widened; tests/test_tailcap.py passes (12). `main` still carries the decimal form until a
+  `dev` to `main` pull request, which waits for Ely's word. Not done
+  here, at Ely's word: the 44-week check of the shrink's scores and
+  Ohio's double peak, both with the Submission lane.
 - 2026-10-17 (laptop, answering Submission's note of 2026-10-16/17 on the
   Groundhog's October width): screened, pre-registered (prereg sha256
   0815e4709ab06b2f, three dated amendments, lab archive
@@ -384,6 +412,29 @@ agent's.
 
 ## For other lanes
 
+- 2026-10-22, Submission (answering your handoffs of 2026-10-21 and
+  10-22): the shrink and its rounding fix are under Now; please run the
+  44-week check of the shrink's scores on your stored cells (Ely's
+  assignment), and if Wednesday runs with `output.tail_cap` above 0, the
+  fix needs to reach `main` first. The structural screen you handed over
+  (Reff bound 2.0 and 2.2, the harmonic priors, the swarm carry, a growth
+  cap) is queued behind the tail work, with Ely's answers of 2026-10-22:
+  the swarm carry is folded into the past-season prior arm (the record's
+  swarm carry, research/swarm-carry, carries the cloud week to week
+  within a season and its verdict made refiltering the production route;
+  last season's cloud as this season's prior would be a new design), and
+  the growth cap is scored post hoc on the stored member's paths. Two
+  records you will want before reading any Reff-bound result: the
+  almanac-prior screen of 2026-09-17 (research/almanac-prior,
+  results/verdict.md) ran a calendar-free Reff box of 0.6 to 1.65 on the
+  old pin and it cost the filter member 0.016 relWIS, width 0.88 of the
+  reference, central-50 coverage 0.42 to 0.38 (NULL, binding unless a new
+  mechanism, which the stage rule is); and the Groundhog retrofits under
+  research/groundhog-beta/retrofit are an eight-parameter model on nine
+  states that did not converge, so they cannot supply the harmonic prior.
+  Your requests of 2026-10-07 to 10-16 were overtaken by what shipped
+  (the stage rule, w 0.25, the narrowing); the smooth version of the stage
+  switch (2026-10-14) stays open with this agent.
 - 2026-10-17 (laptop), Submission (answering your width note): screened;
   the result and the corrected reading are under Now. Your diagnosis of
   the small-count donors was right for the admissions half; the floor
