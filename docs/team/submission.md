@@ -6,6 +6,14 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:21 UTC): PULL REQUEST #46 (dev TO main) MERGED BY ELY AT
+  04:21 UTC, merge commit 744e654 (two parents, aacbefd and 0a45b16; a
+  merge commit), a minute after it opened. main now carries the rounding
+  fix: the cap's moved levels are whole admissions in both forms. The
+  Wednesday 2026-10-28 round runs main at or after 744e654. The full
+  suite's cloud run on dev (275134e and after) was past 60% with no
+  failure when the merge landed; its result is recorded below when it
+  finishes. The PR subscription closed with the merge.
 - 2026-10-22 (04:20 UTC): PULL REQUEST #46 (dev TO main) OPENED BY THIS
   LANE AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/46,
   "Upper-tail cap: moved levels rounded back to whole admissions, kept
