@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (10:05 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
+  as Ely, at Ely's word) AND PULL REQUEST #45 (dev TO main) OPENED BY
+  THIS LANE: https://github.com/elyfmiller/flubnf/pull/45, "Upper-tail
+  cap for both members (clip or location-wide shrink), for the
+  2026-10-28 round", 20 commits over main (c401bbd), 7 files, +866/-1:
+  flubnf/tailcap.py, the two knobs, the pipeline wiring,
+  tests/test_tailcap.py, docs/ORACLE-SIHRS.md 6c, the notes. Every commit
+  authored and committed as Ely, no trailers; the body carries no
+  attribution (the integration's footer edited out at once). Ely's merge
+  command, a merge commit, never squash:
+  `gh pr merge 45 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  && git checkout main && git pull --ff-only origin main && git merge
+  --no-ff origin/dev -m "Merge pull request #45 from elyfmiller/dev" &&
+  git push origin main`. After the merge the laptop runs main on
+  Wednesday with the override values (seed, weight, narrowing, the cap
+  and its form) and the gate before the commit.
 - 2026-10-22 (05:40 UTC): THE CAP KNOB IS ON BRANCH tail-cap FOR ELY'S MERGE
   INTO dev; THE LAST THREE ROUNDS REVIEWED WITH THE FIXES. At Ely's go
   ("write the cap knob, start at 15x"): flubnf/tailcap.py (CAP_PRODUCTION
