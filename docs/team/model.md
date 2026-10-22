@@ -11,6 +11,21 @@ agent's.
 
 ## Now
 
+- 2026-10-22 (05:10 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
+  `research/oracle-width-screen/PREREG.md`, sha256 fd8f57d6, frozen before
+  any score) AND QUEUED ON THE MAC. Order: C0 (running), its scoring (the
+  upper-tail rule at 8x, 10x, 15x, 20x and 30x, shrink and clip, the
+  narrowing exponent 0.5 to 1.0, a post-hoc growth cap at 1.5x, 2x and 3x
+  a week, the filter alone), the season-end fits for the harmonic boxes
+  (2022-23 at 2023-06-10 from the 2023-09-23 vintage cut to that date,
+  2023-24 at 2024-04-27, 2024-25 at 2025-06-14), R20, R22, then HP and HS
+  once amendment 1 (the boxes' values) is written and hashed. Each arm is
+  read with its narrowing and rule re-chosen by leave-one-season-out and
+  a week-cluster bootstrap; the rule for "better than C0" and six
+  predictions are in the file. Expected: the 8x/10x/15x reading on full
+  seasons about 13:30 UTC today; R20 and R22 by Friday morning; HP and HS
+  by Friday night. No arm starts after 2026-10-28 18:00 UTC and a running
+  one is stopped at 19:00 UTC.
 - 2026-10-22 (04:40 UTC): REPLAYS STARTING ON THE LAB MAC AT ELY'S GO: THE
   ORACLE SIHRS WIDTH SCREEN ON FULL SEASONS. First the control, C0, the
   live configuration of the 2026-10-24 round (pf.seed_denominator =
