@@ -6,6 +6,47 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
+  15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
+  time; the cap = every quantile above the median clipped at N times the
+  recent level (the mean of the last three reported weeks at the as-of
+  date, settled truth), applied after the narrowing; the cells, arms and
+  summaries in replays/tail_screen_result.txt (Oracle; tools/
+  tail_screen.py and tail_screen_summary.py; 9,152 cells of the 44
+  stage-rule weeks at w 0.25; the k = 1 and k = 0.7 rows reproduce the
+  shrink screen) and replays/gh_cap_result.txt (Groundhog;
+  tools/gh_cap_screen.py on the own-share retro's 17,116 state cells,
+  flubnf groundhog retro all --aux flusurv, which reproduces the record
+  0.6604). Not yet independently verified (to do before Monday).
+  - Oracle, pooled relWIS natural / log, cov95, h3 share of cells over
+    30x: k 1.0 0.720 / 0.736, 0.99, 35%; k 0.7 0.671 / 0.727, 0.93, 15%;
+    k 0.7 + cap 20x 0.669 / 0.726, 0.92, 0%; + cap 15x 0.670 / 0.727,
+    0.91, 0%; + cap 10x 0.674 / 0.732, 0.90, 0%; k by horizon
+    0.7/0.7/0.6/0.5 0.679 / 0.740, 0.89, 4.5% (squeezes every state:
+    not the tool). Leave-one-season-out over all arms picks k 0.7 + cap
+    20x twice and + cap 15x once; by block the cap changes nothing
+    beyond the third decimal except early 2023-24 (0.829 -> 0.810).
+  - Groundhog (own-share form), season-wide: no cap 0.660 / 0.650, cov95
+    0.936; cap 20x 0.660 / 0.650; cap 15x 0.660 / 0.651, 0.931; cap 10x
+    0.663 / 0.653, 0.921. In the September-October as-of weeks (772
+    cells, where the form sits at the baseline, 1.024 / 0.747) the cap
+    helps: 20x 1.008, 15x 0.996, 10x 0.963 (log 0.737), cov95 unchanged
+    at 0.885; the h3 tail typical 20x -> 15x / 10x.
+  - This week's files under the cap (tools/tail_gate.py arithmetic):
+    Oracle at 15x: typical and maximum h3 tail 15x, band over median 5.4x
+    (8.4x now), 39 states touched, the US untouched (53,025 is 11x);
+    Groundhog at 15x: 15x / 15x, band 5.7x (7.6x now), 46 states touched,
+    the US 78,635 -> 61,180. At 10x both would read 10x typical and
+    3.7-3.8x bands, the members' range, at a replay cost of 0.005 (Oracle)
+    and 0.003 (Groundhog season-wide, a gain of 0.06 in October).
+  - Reading for Ely: ship k 0.7 plus a cap at 15x on both models for the
+    2026-10-28 round (10x if the goal is the members' typical tail at
+    once), by override with a card sentence, the gate run before the
+    commit. The cap needs code: an output-stage knob for both models
+    (output.tail_cap, N times the recent level, quantiles above the
+    median only, recorded in the run record), on a branch with Ely's go,
+    then dev to main before Wednesday. The structural Oracle work (prior
+    bounds, swarm carry) stays with the Model lane.
 - 2026-10-22 (02:30 UTC): SPENCER'S RED FLAGS ON ROUND 2026-10-24; THE TAIL
   GATE; ELY'S GOAL FOR 2026-10-28. Spencer Fox's mail to Ely and Rich
   (2026-10-21 18:47 MST, "Red flags from report", his NAU-ensemble round
