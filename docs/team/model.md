@@ -11,6 +11,65 @@ agent's.
 
 ## Now
 
+- 2026-10-22 (14:41 UTC): THE ORACLE SIHRS'S UPPER-TAIL RULE ON FULL
+  SEASONS (C0), AN INTERIM READING WITH A RECOMMENDATION FOR 2026-10-28;
+  THE SCREEN'S VERDICT FOLLOWS WITH THE ARMS. C0 is complete: 84 weeks,
+  17,466 scored cells per rule, no failed cell, 9.7 hours. Checks: A exact
+  (`retro.score_season` on every cell of all three seasons, difference
+  0), B exact, C 0.9990 at k 0.7 and 0.9995 at k 1. Lab archive
+  `research/oracle-width-screen/logs/report_C0.txt`.
+  - At k 0.7 (relWIS natural / log, 95% coverage, share of h3 cells over
+    30x the recent level): none 0.668 / 0.699, 0.92, 10.0%; shrink 8x
+    0.691 / 0.730, 0.85; 10x 0.681 / 0.720, 0.87; 15x 0.670 / 0.707,
+    0.90; 20x 0.668 / 0.702, 0.91 (shrink 0.1% over 30x at every n, the
+    cells whose h3 median is itself above the limit); clip 8x 0.676 /
+    0.707, 0.88; 10x 0.672 / 0.703, 0.90; 15x 0.668 / 0.700, 0.91 (clip
+    0%). Growth caps of 1.5x, 2x and 3x a week 0.719, 0.677, 0.672:
+    dominated. The filter alone 0.863 / 0.881.
+  - Minus none, week-cluster bootstrap, natural | log: shrink 8x +0.023
+    [+0.003, +0.043] | +0.032 [+0.017, +0.047]; shrink 10x +0.013
+    [-0.001, +0.027] | +0.021 [+0.010, +0.033]; shrink 15x +0.002
+    [-0.004, +0.008] | +0.008 [+0.003, +0.014]; clip 10x +0.003 [-0.002,
+    +0.009] | +0.005 [+0.001, +0.008]; clip 15x -0.000 [-0.002, +0.001] |
+    +0.001 [-0.000, +0.003].
+  - The early weeks, where the gate binds (the first eight scoreable
+    weeks of each season, 24 weeks; with no rule 33% of h3 cells are
+    over 30x and the typical h3 97.5% is 21.5x the recent level): shrink
+    10x +0.032 [+0.003, +0.057] | +0.052 [+0.029, +0.071], 95% coverage
+    0.93 to 0.79; shrink 15x +0.007 [-0.006, +0.017] | +0.020 [+0.007,
+    +0.031], 0.87; shrink 20x -0.000 | +0.008 [-0.000, +0.015], 0.90;
+    clip 10x +0.008 [-0.003, +0.020] | +0.012 [+0.004, +0.019], 0.86;
+    clip 15x 0.000 [-0.004, +0.003] | +0.003 [+0.000, +0.006], 0.90.
+  - Reading: for the Oracle the shrink costs more than the clip at every
+    n, and most in the early weeks, the opposite of the Groundhog, whose
+    October cells sit at the baseline. The location-wide exponent the
+    worst horizon needs also squeezes the upper side of h0 to h2, where
+    truth lands in a fast rise; the clip takes only the far tail.
+    Predictions: P1 held (shrink 10x +1.9%, coverage down 0.05); P2 held
+    on whole seasons and failed in the early weeks.
+  - The Submission lane's 44-week cloud screen, checked on the same 44
+    weeks: natural relWIS and 95% coverage agree within 0.001 to 0.005
+    for every rule (none 0.670 / 0.933 here, 0.671 / 0.930 there;
+    shrink 10x 0.691 / 0.861, 0.688 / 0.869; clip 15x 0.671 / 0.917,
+    0.670 / 0.917). Log relWIS runs 0.008 to 0.014 lower here (none
+    0.713 against 0.727): this scores the submitted seed after the
+    floor and the rounding, as the hub scores the file; the cloud
+    scored the five-seed mean before the floor.
+  - Recommendation for the Oracle's rule on 2026-10-28 (interim): the
+    clip, not the shrink. Clip 15x is free on full seasons and in the
+    early weeks and leaves no h3 cell over 30x; clip 10x reaches Ely's
+    typical 10x for a small cost (+0.003 natural, inside noise; +0.005
+    log; early-week 95% coverage 0.86). If the shrink's shape is wanted,
+    20x is the smallest free n (the pre-registered free line). Shrink at
+    10x or 8x is not for the Oracle. Leave-one-season-out over the whole
+    grid picks mild rules (clip 20x at k 0.8, shrink 30x, shrink 20x;
+    held-out 0.673 / 0.703, coverage 0.92): on score alone nothing asks
+    for a cap, so the cap is there for the gate. The Groundhog's reading
+    is the laptop agent's.
+  - Next: REG (running since 14:19 UTC, about 7 hours) and its step
+    table from the old registration; then the season-end fits, R20,
+    R22, HP and HS. The screen's recommendation goes here when they are
+    read, for the team review.
 - 2026-10-22 (04:55 UTC, laptop): THE GROUNDHOG'S TAIL-CELL SCREEN IS
   SCORED (the Submission handoff 4b0e03d, Ohio's double-peaked band; lab
   archive `research/groundhog-tail-cells/`, prereg 28f0f33d6ea7e232 and
