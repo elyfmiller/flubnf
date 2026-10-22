@@ -11,7 +11,7 @@ agent's.
 
 ## Now
 
-- 2026-10-22 (05:10 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
+- 2026-10-22 (04:47 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
   `research/oracle-width-screen/PREREG.md`, sha256 fd8f57d6, frozen before
   any score) AND QUEUED ON THE MAC. Order: C0 (running), its scoring (the
   upper-tail rule at 8x, 10x, 15x, 20x and 30x, shrink and clip, the
