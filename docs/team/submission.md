@@ -6,6 +6,89 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:20 UTC): PULL REQUEST #46 (dev TO main) OPENED BY THIS
+  LANE AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/46,
+  "Upper-tail cap: moved levels rounded back to whole admissions, kept
+  monotone", 7 commits over main (aacbefd), 5 files, +202/-5. The Oracle
+  SIHRS agent's fix (branch tail-cap-whole, b3992e7, merged into dev as
+  275134e at Ely's word): the cap ran on hub rows already in whole
+  admissions and wrote the moved levels back as decimals in both forms
+  (about 2,000 values a member at 10x shrink on the 2026-10-24 files; a
+  few hundred in clip mode from a non-integer limit), and one decimal
+  turns pandas' value column to float, so every row would have read
+  "14.0". whole_block rounds the moved levels half to even and keeps the
+  block monotone; the limit is met within half an admission; untouched
+  rows keep their integers. This lane's review: sound; a rounded shrunk
+  level cannot fall below the integer median and a rounded clipped level
+  cannot fall below an untouched level beneath the limit, so the
+  monotone step never writes a float. tests/test_tailcap.py (12) and
+  app/tests/test_knobs.py pass on dev, 153 tests; the full suite's cloud
+  result to follow on the PR. No effect on the screens or the
+  three-round review beyond rounding. The body carries no attribution
+  (the integration's footer edited out at once). Ely's merge command, a
+  merge commit, never squash:
+  `gh pr merge 46 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  main dev && git checkout main && git merge --no-ff origin/dev && git
+  push origin main`. Subscribed to the PR; the Wednesday round runs main
+  after this merge.
+- 2026-10-22 (04:20 UTC): WHAT HISTORY SAYS THE CAP SHOULD BE (Spencer's
+  method, run on our data). Spencer's reply to Ely: his team caps on
+  "historic changes observed in the data over 4 weeks" and wants it as a
+  topic for next Wednesday's forecasting call. Ely's question: every
+  method knows too wide and too narrow but not the width that scores
+  best. This lane's reading: WIS is proper, so the best width is the
+  calibrated one, and the retrospective (coverage and relWIS by
+  leave-one-season-out, which chose k = 0.7) is the estimate of it; the
+  limit is the sample, four Octobers, not the idea. Spencer's bound and
+  our n are estimates of the same quantity from the same data, so this
+  lane computed his: the realised value over the recent level (mean of
+  the last 3 weeks, as output.tail_cap defines it) for every jurisdiction
+  and every week within 2 epiweeks of EW42 in 2022-2025. Jurisdictions
+  with a recent level of 10 or more (474 cells per horizon): 97.5th
+  percentile 3.8x at h0, 7.2x at h1, 11.4x at h2, 19.3x at h3; 95th 15.4x
+  and 90th 11.8x at h3; the h3 maximum 37.8x. With all levels in, the
+  tiny-base cells push h3's 97.5th to 34x (the Ohio-style cells, now
+  tasked to the Model lane). Any week of the year at a level of 10 or
+  more: h3 97.5th 10.9x, 99th 16.4x. So 15x on the h3 97.5% quantile is
+  the October 95th percentile of realised growth, 20x is the 97.5th, and
+  10x is near the 85th, below what a 97.5% quantile should allow if an
+  October like 2022's recurs. The standing recommendation holds (the
+  location-wide shrink at 15x for both members); 10x is a bet on a mild
+  October, not a calibrated choice. Script: the inline computation in
+  this lane's session, data the hub truth through 2026-10-17. Ely's
+  draft reply to Spencer is unsent; this lane proposed one sentence
+  carrying the 19x number and offering the comparison for Wednesday.
+- 2026-10-22 (04:05 UTC): THE GROUNDHOG'S DOUBLE-PEAKED OHIO BAND IS A
+  DEFECT, TASKED TO THE MODEL LANE (For other lanes, the Groundhog
+  entry). Ely asked why Ohio's interval peaks at horizon 1, dips at
+  horizon 2 and rises at horizon 3 (the 10-24 file: 97.5% quantile 763,
+  3638, 936, 5864 at h0-h3 over medians 76-191). Cause, read from Ohio's
+  own history in the truth file: Ohio reported 1, 10, 229, 17, 24
+  admissions in the weeks of 2024-10-12 to 2024-11-09; the 229 of
+  2024-10-26 is a one-week reporting spike. The own-state donor cell
+  anchored on the 1 of 2024-10-12 carries growth ratios of 229x at
+  horizon 1, 17x at horizon 2 and 24x at horizon 3, and under the
+  own-share form (own cells at half the weight) that single cell sets the
+  horizon-1 tail. The location-wide shrink keeps the shape by design, so
+  the dip survives it; the clip flattens it. Ely: "this should be tasked
+  to be fixed by the groundhog model, this is a bad defect". The scope
+  across the EW42+-2 donor window, all states, four seasons (3,604 donor
+  cells): 48 ratios above 20x, 38 of them from base weeks of 5 or fewer
+  admissions; 11 above 50x, Ohio 229x, Idaho 141x, Texas 103x, Oregon
+  75x, Arizona 68x, Minnesota 54x, Delaware 53x among them. This lane
+  does not touch flubnf/analogue.py; the fix is the Model lane's. Until
+  it lands, the cap is what keeps these cells out of the hub file.
+- 2026-10-22 (03:43 UTC): PULL REQUEST #45 (dev TO main) MERGED BY ELY AT
+  03:43 UTC, merge commit aacbefd (two parents, c401bbd and 1c7f7f8; a
+  merge commit), three minutes after it opened. main now equals dev
+  (1c7f7f8): the upper-tail cap and its two forms, the notes, the
+  handoff. Wednesday 2026-10-28, Ely's laptop on main: the five override
+  values (seed season_total_early, weight 0.25, narrowing 0.7, upper-tail
+  cap n, upper-tail form), one reason; this lane's gate
+  (tools/tail_gate.py, 30x) on both files before the submission commit.
+  Ely's choice of mode and n is still open (this lane's reading: shrink
+  at 15x for both members). The PR subscription closed with the merge
+  and the check-in was cancelled.
 - 2026-10-22 (03:40 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
   as Ely, at Ely's word) AND PULL REQUEST #45 (dev TO main) OPENED BY
   THIS LANE: https://github.com/elyfmiller/flubnf/pull/45, "Upper-tail
@@ -1920,6 +2003,37 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Groundhog (2026-10-22, from Ely: "this should be tasked
+  to be fixed by the groundhog model, this is a bad defect"): A DONOR
+  CELL WITH A NEAR-ZERO BASE WEEK MUST NOT DEFINE A TAIL. The 10-24
+  Ohio band is double-peaked (97.5% quantile 763, 3638, 936, 5864 at
+  h0-h3 over medians 76, 94, 138, 191) because one own-state donor
+  cell, the week of 2024-10-12 with 1 admission followed by 10, 229, 17,
+  24 (the 229 a one-week reporting spike), carries ratios of 229x, 17x
+  and 24x at horizons 1-3, and the own-share form gives Ohio's own
+  October cells half the weight. The same mechanism sits under most of
+  the extreme October donors: in the EW42+-2 window over the four donor
+  seasons, 38 of the 48 ratios above 20x come from base weeks of 5 or
+  fewer admissions (Ohio 229x, Idaho 141x, Texas 103x, Oregon 75x,
+  Arizona 68x, Minnesota 54x, Delaware 53x). The per-horizon empirical
+  quantiles have no cross-horizon constraint, so one cell can lift one
+  horizon alone. What this lane asks for, pre-registered as your other
+  options are, screened on the three retro seasons with the own-share
+  form and the tail cap on top, scored against the record:
+  (1) a base-week floor on donor cells: a cell whose anchor week (and
+      the ratio's denominator) is below a floor, 5 admissions or a
+      per-capita equivalent, is dropped or has its ratio bounded;
+  (2) or a winsorised ratio (the per-horizon donor ratios clipped at a
+      high quantile of the pooled bank before the own-share weighting);
+  (3) and a single-outlier check: a donor week more than, say, 5x both
+      its neighbours (the 229 between 10 and 17) is treated as a
+      reporting artefact, not a growth signal;
+  with the cross-horizon shape reported (the h1 tail above the h2 tail
+  is the symptom to measure) and your kernel weighting in the same
+  screen. The verifying numbers are in Now (2026-10-22 04:05 UTC); the
+  truth file is the hub's target-hospital-admissions.csv through
+  2026-10-17. This lane keeps the cap on top either way; the fix lands
+  through dev as code with Ely's go.
 - Model, the Oracle SIHRS agent (2026-10-22, from Ely, who has the Mac
   free for retrospectives): THE FAR-HORIZON TAILS, WHAT IS DECIDED, WHAT
   TO RUN. Context: Spencer Fox's NAU-ensemble report flagged 10 cells on
