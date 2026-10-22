@@ -72,6 +72,15 @@ and CDC's rules. The season's facts are in
   a location whenever its far tail is wild, in season too; the clip is
   the better scorer on whole seasons, the shrink the better October
   forecast and the better-looking file. Ely's call; a mode on the knob.
+  Added 09:40 UTC: the mode is on the branch (tail-cap aaa0e82, authored
+  as Ely, the full suite green): knob output.tail_mode, choices clip
+  (the registered default, flubnf.tailcap.MODE_PRODUCTION) and shrink
+  (the location-wide form, exponent_needed and shrink_block in
+  flubnf/tailcap.py; cap_rows takes the mode; the run record carries it);
+  in effect only with output.tail_cap above 0; NOT_IN_RETRO like the cap.
+  Wednesday's settings panel can set either form and any n; Ely's choice
+  of mode and n is still open (this lane's reading: shrink at 15x for
+  both members, 10x if the first capped week scores well).
 - 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
   15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
   time; the cap = every quantile above the median clipped at N times the
