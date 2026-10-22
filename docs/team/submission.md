@@ -6,6 +6,381 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (03:40 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
+  as Ely, at Ely's word) AND PULL REQUEST #45 (dev TO main) OPENED BY
+  THIS LANE: https://github.com/elyfmiller/flubnf/pull/45, "Upper-tail
+  cap for both members (clip or location-wide shrink), for the
+  2026-10-28 round", 20 commits over main (c401bbd), 7 files, +866/-1:
+  flubnf/tailcap.py, the two knobs, the pipeline wiring,
+  tests/test_tailcap.py, docs/ORACLE-SIHRS.md 6c, the notes. Every commit
+  authored and committed as Ely, no trailers; the body carries no
+  attribution (the integration's footer edited out at once). Ely's merge
+  command, a merge commit, never squash:
+  `gh pr merge 45 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  && git checkout main && git pull --ff-only origin main && git merge
+  --no-ff origin/dev -m "Merge pull request #45 from elyfmiller/dev" &&
+  git push origin main`. After the merge the laptop runs main on
+  Wednesday with the override values (seed, weight, narrowing, the cap
+  and its form) and the gate before the commit.
+- 2026-10-22 (02:56 UTC): THE CAP KNOB IS ON BRANCH tail-cap FOR ELY'S MERGE
+  INTO dev; THE LAST THREE ROUNDS REVIEWED WITH THE FIXES. At Ely's go
+  ("write the cap knob, start at 15x"): flubnf/tailcap.py (CAP_PRODUCTION
+  0 = no cap, RECENT_WEEKS 3; recent_level, limit_for, cap_block,
+  cap_rows), the knob output.tail_cap (BOTH members, output stage,
+  method class, 0-100; a run at n > 0 is a modified run, NOT_IN_RETRO),
+  the wiring in app/ui/pipeline.py step 4 on both members' hub rows after
+  the Oracle step, the narrowing and the floor (the run record carries
+  n, the weeks and the cells touched per member), docs/ORACLE-SIHRS.md
+  6c, tests/test_tailcap.py (7) and the knob default in
+  app/tests/test_knobs.py; the full suite passed on the branch; commit
+  1138da9 as Ely, pushed. Wednesday's run then sets four values by
+  override: seed season_total_early, weight 0.25, narrowing 0.7, cap 15.
+  The review (tools/review3_build.py, review3_score.py, review3_plots.py;
+  review3/ in the Submission scratchpad; the figures sent to Ely): the
+  rounds 10-10, 10-17 and 10-24 rebuilt with the fixes (Oracle: k 0.7
+  post hoc where unnarrowed, cap 15x on the vintage's recent level;
+  Groundhog: the own-share regeneration where the file was pooled, cap
+  15x). Tails at h3 (typical state / max / states over 30x): Oracle
+  15.5x / 134x / 7 -> 7.9x / 15x / 0 (10-10), 59.2x / 244x / 45 -> 14.4x
+  / 19x / 0 (10-17), 20.4x / 55x / 9 -> 15.0x / 15x / 0 (10-24);
+  Groundhog 25.2x / 56x / 11 -> 14.5x / 15x / 0, 21.1x / 46x / 1 ->
+  14.5x / 19x / 0, 20.4x / 81x / 9 -> 15.0x / 15x / 0. Scores on the
+  three scorable cell sets (47 models): Oracle fixed 0.613, rank 22 (as
+  submitted 0.755, 36), log 0.731 (32); Groundhog fixed 0.856, rank 40
+  (0.922, 42), log 0.715 (30). Against the members on 10-24 the fixed
+  files sit inside the members' envelope with no flags but not at their
+  typical width (h3 tail 15x against ABERT 6x, INFLAenza 8x, FourCAT 9x,
+  epymorph and vulPES 12x; h3 band 5.4-5.7x against 2-5x); 10x would
+  reach it. Week 1's Oracle cells are the old pin narrowed and capped,
+  an approximation. Not yet independently verified.
+  Added 03:05 UTC, Ely's variant screened: a target-driven narrowing
+  instead of the clip (per block the smallest extra exponent about the
+  median that brings the 97.5% quantile to the limit, k = ln(L/m) /
+  ln(q/m), the shape kept, no ties; "up" = the levels above the median
+  only, "sym" = the whole block; a block whose median is already above
+  the limit is left alone). Oracle, 44 weeks, pooled relWIS natural /
+  log, cov95: cap 15x 0.670 / 0.727, 0.91; adapt 15x up 0.673 / 0.731,
+  0.91; adapt 15x sym 0.672 / 0.728, 0.91; adapt 20x up 0.671 / 0.728,
+  0.93; adapt 10x up 0.681 / 0.741, 0.87; the residual share of h3
+  cells over 30x 1.2-1.6% (medians already above the limit).
+  Leave-one-season-out still picks the clip (20x, 20x, 15x). Groundhog:
+  cap 15x 0.630 / 0.647; adapt 15x up 0.632 / 0.648; sym 0.631 / 0.648;
+  adapt 10x up 0.637 / 0.654. Reading: the clip scores 0.2-0.5% better
+  because it piles the excess mass at the limit, which WIS rewards
+  whenever truth lands below it; the target-driven form keeps a smooth
+  tail at that small cost. The hub's band plots draw the 50% and 95%
+  edges, so a clipped file shows no staircase there; the ties are
+  visible only in the quantile listing.
+  Added 03:20 UTC, Ely's form as meant: a LOCATION-WIDE shrink,
+  the exponent the worst horizon needs applied to every horizon of that
+  location above the median (k_loc = min over h of ln(L/m_h)/ln(q_h/m_h)),
+  so the band keeps its fan across the weeks and only the worst horizon
+  touches the limit (tools/shrinkloc_screen.py, replays/shrinkloc_result
+  .txt; review3/fig6, fig7). Oracle, 44 weeks, relWIS natural / log,
+  cov95: clip 15x 0.670 / 0.727, 0.92; shrink-loc 15x 0.674 / 0.735, 0.91;
+  clip 10x 0.674 / 0.732, 0.90; shrink-loc 10x 0.688 / 0.754, 0.87.
+  Groundhog season-wide: clip 15x 0.660, shrink-loc 15x 0.664 (0.92);
+  clip 10x 0.663, shrink-loc 10x 0.676 (0.90); September-October weeks:
+  none 1.024, clip 15x 0.996, shrink-loc 15x 0.913, clip 10x 0.963,
+  shrink-loc 10x 0.823. Reading: the location-wide form gives the right
+  shape (the Groundhog's 10x box is gone) and the largest October gain,
+  at a season-wide cost of 0.4-2.5% because it squeezes every horizon of
+  a location whenever its far tail is wild, in season too; the clip is
+  the better scorer on whole seasons, the shrink the better October
+  forecast and the better-looking file. Ely's call; a mode on the knob.
+  Added 03:38 UTC: the mode is on the branch (tail-cap aaa0e82, authored
+  as Ely, the full suite green): knob output.tail_mode, choices clip
+  (the registered default, flubnf.tailcap.MODE_PRODUCTION) and shrink
+  (the location-wide form, exponent_needed and shrink_block in
+  flubnf/tailcap.py; cap_rows takes the mode; the run record carries it);
+  in effect only with output.tail_cap above 0; NOT_IN_RETRO like the cap.
+  Wednesday's settings panel can set either form and any n; Ely's choice
+  of mode and n is still open (this lane's reading: shrink at 15x for
+  both members, 10x if the first capped week scores well).
+- 2026-10-22 (02:39 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
+  15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
+  time; the cap = every quantile above the median clipped at N times the
+  recent level (the mean of the last three reported weeks at the as-of
+  date, settled truth), applied after the narrowing; the cells, arms and
+  summaries in replays/tail_screen_result.txt (Oracle; tools/
+  tail_screen.py and tail_screen_summary.py; 9,152 cells of the 44
+  stage-rule weeks at w 0.25; the k = 1 and k = 0.7 rows reproduce the
+  shrink screen) and replays/gh_cap_result.txt (Groundhog;
+  tools/gh_cap_screen.py on the own-share retro's 17,116 state cells,
+  flubnf groundhog retro all --aux flusurv, which reproduces the record
+  0.6604). Not yet independently verified (to do before Monday).
+  - Oracle, pooled relWIS natural / log, cov95, h3 share of cells over
+    30x: k 1.0 0.720 / 0.736, 0.99, 35%; k 0.7 0.671 / 0.727, 0.93, 15%;
+    k 0.7 + cap 20x 0.669 / 0.726, 0.92, 0%; + cap 15x 0.670 / 0.727,
+    0.91, 0%; + cap 10x 0.674 / 0.732, 0.90, 0%; k by horizon
+    0.7/0.7/0.6/0.5 0.679 / 0.740, 0.89, 4.5% (squeezes every state:
+    not the tool). Leave-one-season-out over all arms picks k 0.7 + cap
+    20x twice and + cap 15x once; by block the cap changes nothing
+    beyond the third decimal except early 2023-24 (0.829 -> 0.810).
+  - Groundhog (own-share form), season-wide: no cap 0.660 / 0.650, cov95
+    0.936; cap 20x 0.660 / 0.650; cap 15x 0.660 / 0.651, 0.931; cap 10x
+    0.663 / 0.653, 0.921. In the September-October as-of weeks (772
+    cells, where the form sits at the baseline, 1.024 / 0.747) the cap
+    helps: 20x 1.008, 15x 0.996, 10x 0.963 (log 0.737), cov95 unchanged
+    at 0.885; the h3 tail typical 20x -> 15x / 10x.
+  - This week's files under the cap (tools/tail_gate.py arithmetic):
+    Oracle at 15x: typical and maximum h3 tail 15x, band over median 5.4x
+    (8.4x now), 39 states touched, the US untouched (53,025 is 11x);
+    Groundhog at 15x: 15x / 15x, band 5.7x (7.6x now), 46 states touched,
+    the US 78,635 -> 61,180. At 10x both would read 10x typical and
+    3.7-3.8x bands, the members' range, at a replay cost of 0.005 (Oracle)
+    and 0.003 (Groundhog season-wide, a gain of 0.06 in October).
+  - Reading for Ely: ship k 0.7 plus a cap at 15x on both models for the
+    2026-10-28 round (10x if the goal is the members' typical tail at
+    once), by override with a card sentence, the gate run before the
+    commit. The cap needs code: an output-stage knob for both models
+    (output.tail_cap, N times the recent level, quantiles above the
+    median only, recorded in the run record), on a branch with Ely's go,
+    then dev to main before Wednesday. The structural Oracle work (prior
+    bounds, swarm carry) stays with the Model lane.
+- 2026-10-22 (02:26 UTC): SPENCER'S RED FLAGS ON ROUND 2026-10-24; THE TAIL
+  GATE; ELY'S GOAL FOR 2026-10-28. Spencer Fox's mail to Ely and Rich
+  (2026-10-21 18:47 MST, "Red flags from report", his NAU-ensemble round
+  report attached): "the forecasts this and last week triggered some red
+  flags", 10 of them, all ours and all the far-horizon upper tail
+  (97.5% quantile at horizon 3 against the recent level): Groundhog AZ
+  40x, ID 66x, OH 84x, OR 43x, TX 47x, WV 36x; Oracle IA 32x, MI 40x, NH
+  38x, WV 39x. His member table has our last-horizon medians in line
+  with the other members (typical ratio to the others' median 1.05x
+  Groundhog, 1.04x Oracle; more than 1.5x apart in 4% and 13% of 53;
+  FourCAT 0.75x / 38%, Copycat 1.58x / 64%). He keeps both models in the
+  NAU ensemble and asks for a chat and a plan; Ely offered Monday after
+  2pm or Wednesday morning and replied (the text in chat; the cause by
+  model, the narrowing as the first attempt, why we submitted, the 30x
+  rule adopted, the screen starting, and that he may drop either model
+  if it keeps flagging).
+  - Why this lane did not catch it: the sense check measured width as
+    the 95% band over our own median, summarised by the median across
+    states (8.3x at h3 this week), and reported the extremes (Wyoming
+    28x, Ohio 31x) as the widest, not as failures; Spencer's rule
+    measures the 97.5% quantile against the recent observed level per
+    state with a threshold, and at h3 our medians are already 2-3x the
+    last count, so Michigan reads 21x by ours and 40x by his. No rule in
+    the check stopped the commit. Owned by this lane.
+  - The gate, from tonight (tools/tail_gate.py in the Submission
+    scratchpad; to go into scripts/sense_check.py on a branch for Ely's
+    merge): 97.5% at each horizon over the recent level (mean of the last
+    three reported weeks), FAIL when any horizon-3 ratio exceeds 30x. On
+    this week's files it fails both: Oracle 9 states (WV 55x, ND 44x, CT
+    43x, MI 43x, MD 42x, NH 40x, VT 39x, NM 35x, DE 32x; typical state
+    20x; the other teams' files 8-12x typical, 0-4 states over 30x),
+    Groundhog 9 (ID 81x, OH 80x, TX 58x, WV 52x, OR 51x, AZ 36x, TN 34x,
+    DE 33x, CT 31x). A file that fails the gate is not staged.
+  - Ely's goal (2026-10-22): by the 2026-10-28 round both models' width
+    near the NAU ensemble members'. Targets this lane will screen
+    against: no state over 30x at h3, the typical state's 97.5% over the
+    recent level near 10-12x (the members' range this week), the 95% band
+    over the median at h3 near 3-5x. The screen (tools/tail_screen.py,
+    no engine time, the 44 stored stage-rule weeks): narrowing exponent
+    by horizon, an upper-tail cap at N times the recent level after the
+    narrowing (N 10-30), combinations; leave-one-season-out; the gate as
+    a column; the Groundhog next (the cap on its retro cells, the Model
+    lane's kernel arm). Result and recommendation by Monday 2026-10-26.
+  - This week's submission stands as committed (2526b906); the files
+    passed the hub's checks and Spencer keeps them in his ensemble.
+- 2026-10-21 (19:00 UTC): WEEK 2 SCORED AT HORIZON 0 (the 2026-10-17 round
+  against the week ending 10-17, truth as on the hub 10-21, 84ced076; 57
+  models with 50+ cells; relative WIS against FluSight-baseline on common
+  cells; the same inline scorer as week 1). Oracle SIHRS as submitted
+  (unnarrowed, stage rule, w 0.25, Alaska dropped): relWIS 0.802, rank 46
+  of 57; log 0.789, rank 42; coverage 50/95 0.82/1.00; US WIS 405 (truth
+  4,698, our median 4,772). The narrowed re-run of the same week
+  (tested in the app 2026-10-16, the configuration that ships from this
+  round): 0.629, rank 27; log 0.712, rank 25; coverage 0.67/1.00; US
+  281. Groundhog (pooled form): 0.975, rank 51; log 0.754, rank 39.
+  FluSight-ensemble 0.557 (11) / 0.644 (3); DMAPRIME-HYB 0.518 (4) /
+  0.632 (1); field median 0.650 / 0.723; NAU-ABERT 0.594, NAU-vulPES
+  0.680, NAU-FourCAT 0.689, NAU-epymorph 1.030. Reading: the baseline is
+  beaten in both weeks (week 1 0.902, week 2 0.802 as submitted); with the
+  narrowing the week-2 gap to the ensemble at horizon 0 is 13% natural
+  and 11% log, mid-field; the remaining gap is the medians (the log rank
+  25 against the ensemble's 3) and the horizon-3 width, which no cell
+  scores yet. This week's submission (round 10-24) ships the narrowed
+  configuration, so its horizon-0 standing should resemble the re-run's.
+  Early field for 10-24 (seven files on the hub at 17:46 UTC): the
+  Oracle's h0 band 1.83x the median is mid-field (Cornell 1.03,
+  HallAI 1.75, epymorph 2.00, CountCast 2.55, baseline 4.40); at h3
+  8.32x against the baseline's 7.43x and the others' 2.0-4.8x, the
+  Groundhog 7.59x; US h3 medians: ours 11,961 and 11,724, epymorph 9,301,
+  CountCast 9,317, Cornell 22,724.
+  Added 19:40 UTC, the revised pair inferred on the same 156 cells (47
+  models with all three cell sets; ranks = where the revised row would
+  sit among them): the Oracle narrowed after the fact (week 1 from the
+  submitted old-pin file at k = 0.7, week 2 the live re-run) pooled
+  0.614, rank 22 (week cells 0.664 / 0.572 / 0.629), log 0.734, rank 33;
+  the Groundhog in the own-share form (flubnf groundhog retro 2026-27
+  --aux flusurv --with-us at own share 0.5 on bd6242f, the 10-10 vintage
+  reproducing Ely's re-run file median for median) pooled 0.871, rank 41
+  (0.877 / 0.838 / 0.913), log 0.715, rank 30. As submitted: Oracle 0.755
+  (36) / 0.801 (36), Groundhog 0.922 (42) / 0.713 (29); ensemble 0.498
+  (4) / 0.598 (4); INFLAenza 0.506 / 0.596; vulPES 0.693 / 0.681;
+  FourCAT 0.700 / 0.778; epymorph 1.030 / 0.888; field median 0.631 /
+  0.689. Week 1's Oracle cells are the old pin narrowed, not the stage
+  rule, so the inferred standing is an approximation of the shipping
+  configuration there.
+- 2026-10-21 (18:10 UTC): ROUND 2026-10-24 (EW42) STAGED FOR ELY'S PULL
+  REQUEST. Ely sent the two files from the laptop's run on main (c401bbd)
+  with a weekly report; the report is LAST week's (reference date
+  2026-10-17, data through Oct 10, knobs digest 3d7ef6b7: seed rule and
+  weight only), so this week's run record (the narrowing block, the
+  knobs digest, the override reason) is not confirmed from the files
+  here; asked Ely for this week's report, which came within the hour
+  and confirms the run: reference date 2026-10-24, data through Oct 17,
+  model settings "Seed denominator expected total (early season),
+  Oracle blend weight 0.25 (default 0.5), Spread narrowing 0.7
+  (default 1)", Groundhog "own-state donors 0.50", exported under the
+  hub names by override, reason "Early Season Issues", app build
+  6075c03 (dev at that hour: main's code plus this lane's notes
+  commits, no code difference). The files themselves carry the
+  narrowing: the Oracle's 95% band over the median is 1.83x at h0 and
+  8.32x at h3 (median over 53 locations; 1.96x and 9.56x on last week's
+  narrowed re-run; 3.28x and 25.5x unnarrowed), 50% band 0.52x and
+  1.58x; widest h3 Wyoming 28.3x. The Groundhog in its own-share form:
+  3.67x and 7.59x (last week's re-run 3.98x and 8.37x), widest h3 Ohio
+  30.6x. Both files: 4,877 lines, 53 locations (Alaska and US in),
+  horizons 0-3 for 2026-10-24 to 2026-11-14, 212 monotone blocks each,
+  integers; both pass all 30 hubValidations checks against cdcepi main
+  a0215ecc (TZDIR set, the conda R). Truth now through 2026-10-17 (hub
+  target data 84ced076): US 4,698 (1.16x the week before); the 10-10
+  week revised up 5.4% (US 3,835 -> 4,044; states median +5.5%, 10th-90th
+  1.00-1.23). Sense check against the last observed week: Oracle h0
+  medians 1.22x it (10th-90th 1.00-1.37; US 5,907 = 1.26x), the last
+  observed inside the h0 50% band in 0.79 and the 95% band in 1.00 of 53;
+  h0 median below the last observed in Alaska, Hawaii, Maine, Montana and
+  Wisconsin (0.89-0.94); h3 medians 2.26x (US 11,961 = 2.55x). Groundhog
+  h0 1.10x (1.00-1.15; US 5,168), the last observed inside its 50% band
+  in 0.98 of 53. Both plausible beside last week's growth (states median
+  1.14x, US 1.16x). The US at h3: Oracle 2,208-11,961-53,025, Groundhog
+  1,918-11,724-78,635. Submission: FluBNF_submission fast-forwarded to
+  cdcepi main a0215ecc (the cdc remote's fetch failed on the proxy's
+  stale name, the URL fetch worked: the fork's repository name is now
+  FluSight-forecast-hub, mixed case), the two files added under
+  model-output/NAU_PyBNF-OracleSIHRS/ and model-output/
+  NAU_PyBNF-GroundHogCGR/, byte-identical to the uploads, commit 7b80f676
+  "NAU_PyBNF forecast 2026-10-24 (EW42)" as Ely (a first push had the
+  files under a wrong folder and was amended and force-pushed within
+  minutes on this lane's own branch, before any pull request), pushed to
+  the fork; at 19:50 UTC, with Ely's go to open the pull request, cdcepi
+  main had moved again (1bfa4b26, other teams' files), so the commit was
+  re-based onto it as 2526b906, the same two files, one commit over
+  main, force-pushed with lease on this lane's own branch before the
+  pull request. Compare link for Ely's hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  (the hub's PR validation runs the same 30 checks). Three other teams'
+  10-24 files were on cdcepi main at 16:33 UTC; the field comparison
+  follows when more are in.
+- 2026-10-21 (01:30 UTC): THE Reff PRIOR BOUND ARM, SCORED; RECOMMENDATION:
+  NOT FOR WEDNESDAY, RUN THE 44-WEEK SCREEN FIRST. The arm (the entry of
+  2026-10-20 22:52 UTC; relaunched 00:10 UTC after the container paused
+  the first attempt, done 00:56; the 10-10 stage control done 01:12;
+  14-16 minutes a week) against the stage replays, all at w = 0.25
+  (tools/reff_compare.py, replays/reff_result.txt; an independent
+  recompute reproduced every figure and a skeptic's pass added the
+  corrections below, replays/verify-reff/):
+  - Bands (95% band over the median, median over the 52 jurisdictions):
+    h3 43.2x -> 37.2x (09-26), 27.2x -> 22.8x (10-03), 25.5x -> 21.4x
+    (10-10); per-location band ratio 0.86-0.87 at h3 (10th-90th 0.72-1.07,
+    narrower in 40-46 of 52), 0.95 at h0; the filter alone 38.9 -> 34.5,
+    24.5 -> 20.0, 22.2 -> 19.2 at h3; narrowed at k = 0.7, h3 9.60x ->
+    8.46x on the 10-10 vintage. The change is real in aggregate (paired t
+    -6 to -8 over the jurisdictions; the five Oracle seeds spread the band
+    by only 2-5%) and not resolved in any single jurisdiction (one
+    replicate against another spans 0.75-1.36; Welch t resolves 7-11 of
+    52). Same at w = 0.5 (0.85-0.87).
+  - Medians: within 1% at h0; at h3 DOWN 2-3% (ratios 0.97-0.98; 12 of 51
+    jurisdictions more than 5% below the submitted 2026-10-17 file). Not
+    "unchanged".
+  - Scores on the 156 scorable cells (09-26 h0 and h1, 10-03 h0): WIS
+    15.17 -> 14.60 unnarrowed (ratio of sums 0.963; location-cluster
+    bootstrap 0.95-0.98), 12.48 -> 12.15 narrowed (0.973; 0.96-0.99); log
+    0.286 -> 0.283 and 0.268 -> 0.267, the narrowed log gain unresolved
+    (0.987-1.001). The whole gain is dispersion (11.37 -> 10.80; the
+    penalty 3.80 unchanged): the arm is narrower, not more accurate; five
+    large jurisdictions carry 57-70% of it, California loses. Coverage at
+    k = 0.7 identical in both arms (0.56 / 0.88 / 0.97 at 50 / 80 / 95 on
+    these h0-h1 cells); at k = 1 the 50% coverage slips 0.737 -> 0.718.
+  - The bound buys what the narrowing already buys: on the 10-10 vintage
+    the arm at k = 1 has the stage's band at k = 0.95, and the arm at k =
+    0.7 equals the stage at k = 0.66. The forward paths show no use of the
+    trimmed region at the origin (effective Reff 99th percentile 1.5-1.6;
+    under 0.3% of paths above 2.0), and the base Reff is modulated by the
+    harmonic (eps1 0-1), so the bound caps the parameter, not the
+    effective number. No fast-growing cell this October lost coverage
+    (the 20 cells with truth at 1.8x the anchor or more: 403 -> 399 WIS).
+  - Not screened: h2-h3 (where the bound acts three times as strongly as
+    at h0) and any past season; k = 0.7 was chosen with the unbounded
+    prior. Against the team's own standard for the narrowing (44 weeks,
+    three seasons, 9,152 cells, leave-one-season-out, bootstrap) this is
+    156 in-sample cells of one season at h0-h1.
+  - The cloud reproduces the laptop: the 10-10 stage control's medians
+    match the submitted 2026-10-17 file (ratio 0.997 at h0, 0.996 at h3,
+    38 of 51 h0 medians identical after rounding) and its h3 band 25.49x
+    against the file's 25.50x; the cloud is a faithful testbed for the
+    live configuration.
+  - Reading for Ely: do not add the bound on Wednesday. It is a fourth
+    override on the registered member, it is nearly interchangeable with
+    a narrowing exponent 0.05 lower, it lowers the horizon-3 medians, and
+    it is unvalidated beyond the weeks that motivated it. The proper test
+    is the 44-week screen (15-23 minutes a week in the cloud, 11-17 hours,
+    the step and the narrowing re-chosen jointly: k against the bound,
+    leave-one-season-out), feasible before the 2026-10-28 round on Ely's
+    word. If Ely ships it anyway, the override reason must name it
+    separately ("pf.prior.Reff 0.6-2.0, knobs digest d48a070d, screened on
+    three 2026-27 vintages at horizons 0-1, not replay-scored on past
+    seasons") and the "all replay-scored" phrase cannot cover it; the card
+    needs a sentence for it, as for the narrowing. Wednesday stays at the
+    three values.
+- 2026-10-20 (22:52 UTC): THE Reff PRIOR BOUND ARM IS RUNNING IN THE CLOUD AT
+  ELY'S GO. Ely's reading of the width (the swarm is still dispersed early
+  in the season) and the answer that the jitter does not set the cloud's
+  width (the Liu-West kernel preserves its covariance; pf_jitter 0.15,
+  pf_shrink 1, forecast jitter 0, variance floor 1e-12; the engine
+  resamples under ESS 0.5 N and records ESS after every update) led to
+  the cheapest structural arm: the Reff prior's upper bound 2.0 against
+  the shipped 2.5 (uniform 0.6-2.5, app/core/engines/pf.py VARS_1S),
+  which the console already exposes as the knob pf.prior.Reff ("Prior
+  range for Reff", Model settings, the filter group), so it needs no code
+  and can run on Ely's laptop on Wednesday if it wins. Ely: "worth
+  testing ... compare it for the last two forecasts ... if cheap, apply
+  tomorrow". Running (replays/reff.sh, reff.log, the worktree at main
+  c401bbd, engine 2fdadee0, the hub mirror's three 2026-27 vintages
+  09-26, 10-03 and 10-10, the 10-10 file taken from cdc/main 86b03824):
+  root replays/2026-27-reff20, knobs pf.seed_denominator=
+  season_total_early and pf.prior.Reff=0.6,2.0 (knobs digest d48a070d),
+  all 52 jurisdictions, 10,000 particles, 3 replicates, width 4, the
+  Oracle step applied (w 0.5 primary, 0.25 logged); then the stage
+  control for the 10-10 vintage (replays/2026-27-stage-1010), which the
+  stored stage replay lacks. About 20 minutes a week on this machine.
+  The comparison to follow: bands (95% band over the median, the upper
+  quantile over the median) and medians per location and horizon, arm
+  against stage, at w 0.25, with and without the narrowing 0.7; the
+  scorable cells (09-26 h0 and h1, 10-03 h0 against the 10-14 truth)
+  scored arm against stage; the 10-10 vintage against the submitted
+  2026-10-17 file and the field's bands. A Reff bound is a change to the
+  registered member (the frozen pre-registration), so it ships by
+  override and a card sentence, like the narrowing.
+- 2026-10-20 (22:40 UTC): PULL REQUEST #44 (dev TO main) MERGED BY ELY AT
+  22:40 UTC, merge commit c401bbd (two parents, e97b227 and 4e764a0; a
+  merge commit, as the rule says), three minutes after it opened, before
+  CI had finished on the head (the same commits had passed the suite on
+  dev). main now equals dev (4e764a0): the narrowing knob oracle.narrow,
+  its record and tests, ORACLE-SIHRS.md 6b, and the lane notes are on
+  main. Wednesday 2026-10-21, Ely's laptop on main: Seed denominator
+  season_total_early, Oracle blend weight 0.25, Oracle narrowing 0.7, one
+  override reason (suggested: "2026-10-12 and 2026-10-16 decisions:
+  expected-total pin early in the season, Oracle weight 0.25, spread
+  narrowing 0.7, all replay-scored; docs/team/submission.md"); the
+  Groundhog in its own-share form (no knob to set, it is the default);
+  export, sense_check.py (Ohio, Texas, Delaware at horizon 3 in the
+  Groundhog file), then the two CSVs to this lane for the validator, the
+  fast-forward of FluBNF_submission to cdcepi main, the commit "NAU_PyBNF
+  forecast 2026-10-24 (EW42)" and the compare link. This lane's PR
+  subscription closed with the merge and its check-in was cancelled.
 - 2026-10-20 (22:37 UTC): PULL REQUEST #44 (dev TO main) OPENED BY THIS LANE
   AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/44, "Oracle
   narrowing knob and the lanes' notes, for the 2026-10-21 round", 18
@@ -1545,6 +1920,113 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-22, from Ely, who has the Mac
+  free for retrospectives): THE FAR-HORIZON TAILS, WHAT IS DECIDED, WHAT
+  TO RUN. Context: Spencer Fox's NAU-ensemble report flagged 10 cells on
+  the 2026-10-24 round, all far-horizon upper tails (the 97.5% quantile
+  at horizon 3 over the recent level above about 30x; the Oracle's IA MI
+  NH WV, the Groundhog's AZ ID OH OR TX WV), with the medians in line
+  with the other members. Ely's goal: both models' width near the NAU
+  members' by the 2026-10-28 round (no state over 30x; the typical state's
+  h3 tail near 10-12x the recent level; the h3 95% band near 3-5x the
+  median). This lane's gate (tools/tail_gate.py) now runs on every file
+  before the submission commit.
+  - Decided and coded (branch tail-cap, 1138da9, for Ely's merge): an
+    output-stage knob output.tail_cap for both members, n times the
+    recent level (mean of the last three reported weeks), 0 = off. Two
+    forms, Ely to choose the mode and n for Wednesday: the clip (levels
+    above the median clipped at the limit) and Ely's location-wide
+    shrink (the exponent the worst horizon needs, k_loc = min over h of
+    ln(L/m_h)/ln(q_h/m_h), applied to every horizon of the location above
+    the median, so the band keeps its fan). Both screened post hoc
+    (Now, 2026-10-22): on the Oracle's 44 stage-rule weeks at k = 0.7 the
+    clip at 15x is free (0.671 -> 0.670 relWIS) and the location-wide
+    shrink costs 0.4% at 15x and 2.5% at 10x; on the Groundhog's three
+    retro seasons the shrink is the best October form (1.02 -> 0.91 at
+    15x, 0.82 at 10x in September-October weeks) at a season-wide cost of
+    0.6-2.4%. Scripts and cells: tools/tail_screen.py, gh_cap_screen.py,
+    shrinkloc_screen.py, replays/*_cells.csv in the Submission
+    scratchpad; the three rounds rebuilt under each form in review3/.
+  - What the cap does NOT do: it is a plausibility bound on the output.
+    The member's early-season width is the swarm's own (the prior's
+    extent, Reff uniform 0.6-2.5 with the harmonic's amplitude 0-1 and
+    phase 0-52 unidentified over a flat summer), and this October is
+    wider than any October in the replays (at k = 0.7 the typical h3
+    tail is 5x the recent level on the stored weeks and 20x this week).
+  - Retrospectives to run on the Mac, each pre-registered as your own
+    screens are, on the 44 stored weeks (2023-24 to 2025-26, the stage
+    rule at w 0.25), scored against the record with the narrowing and the
+    cap re-chosen jointly by leave-one-season-out, all four horizons,
+    coverage, and the gate as a column:
+    (1) the Reff prior upper bound 2.0 and 2.2 (knob pf.prior.Reff; this
+        lane's three-vintage arm in replays/2026-27-reff20 narrowed h3 by
+        13% in aggregate, all dispersion, medians down 2-3%, 15-23 min a
+        week in the cloud);
+    (2) the harmonic priors (pf.prior.eps1, pf.prior.phi1) drawn from
+        what past seasons needed, the lever that matches the summer
+        identifiability problem;
+    (3) the swarm carry (research/swarm-carry, app/tests/
+        test_swarm_carry.py): last season's fitted cloud as this season's
+        prior;
+    (4) a per-week growth cap on the forecast paths, if engine code
+        allows;
+    and for the Groundhog, the kernel weighting you recommended, with
+    the tail cap on top, on the own-share screen's cells.
+  - A bound or a prior change is a change to the registered member
+    (frozen pre-registration 67c9fa49): it ships by override with a card
+    sentence, as the narrowing does; the cap is an output rule and ships
+    the same way. The cloud testbed reproduces the laptop's submitted
+    files within 1%, so either machine's result transfers.
+- Model, the Oracle SIHRS agent (2026-10-21, from Ely): THE Reff PRIOR BOUND
+  AND THE FILTER'S EARLY-SEASON WIDTH, A 44-WEEK SCREEN TO RUN. Ely's
+  hypothesis: the member's early-season width is the swarm's dispersion
+  (the prior's extent, Reff uniform 0.6-2.5 in app/core/engines/pf.py
+  VARS_1S, not yet concentrated by a few weeks of small counts; the
+  season_total_early seed removed the old pin's false brake), and
+  restricting where the prior lets the particles go should narrow the
+  member from the inside. The jitter is not the lever: the Liu-West kernel
+  preserves the cloud's covariance (pf_jitter 0.15, pf_shrink 1, forecast
+  jitter 0), so less jitter changes mixing, not width; and a deliberate
+  net shrink of the cloud (Ely's other thought) would be a data-free
+  contraction locked into the parameters, not worth chasing. What this
+  lane ran at Ely's go (Now, 2026-10-21 01:30 UTC; the cloud testbed
+  reproduces the laptop's submitted file to within 0.4% on the medians):
+  the bound 0.6-2.0 on the three 2026-27 vintages under the stage rule
+  (replays/2026-27-reff20 and the control 2026-27-stage-1010 in the
+  Submission scratchpad; launcher replays/reff_weeks.py, comparison
+  tools/reff_compare.py, the verification under replays/verify-reff/).
+  Result: the horizon-3 band 13% narrower in aggregate (real against seed
+  noise, unresolved per jurisdiction), horizon-3 medians down 2-3%, WIS
+  3.7% lower unnarrowed and 2.7% narrowed on the 156 horizon-0/1 cells,
+  all of it dispersion with the penalty unchanged; the arm at k = 1 equals
+  the stage at k = 0.95, so on these weeks the bound is interchangeable
+  with a slightly lower narrowing exponent. Not shipped. Please screen it
+  properly, pre-registered as your own screens are: the bound on the 44
+  stored weeks of 2023-24 to 2025-26 under the stage rule at w = 0.25
+  (the shrink_screen record is the control at k = 1), arms Reff upper
+  2.0 and 2.2 and, if engine code allows, a per-week growth cap; the
+  narrowing exponent re-chosen jointly with each arm by leave-one-season-
+  out (k was chosen with the unbounded prior; the stack arm k = 0.7 equals
+  the stage at 0.66); scored on all four horizons (the bound acts three
+  times as strongly at h3 as at h0, and no h2-h3 cell is scored yet) with
+  coverage; 15-23 minutes a week in the cloud (11-17 hours an arm). A
+  bound is a change to the registered member (frozen pre-registration
+  67c9fa49), so it ships only by override with a card sentence, like the
+  narrowing. The scorer, the stored roots and the engine (2fdadee0) are in
+  this lane's cloud session if you want them run here; say so in your
+  notes. Added 2026-10-21 after Ely's question about the August data: the
+  filter sees 11 weekly points from August 1 (every jurisdiction), but a
+  flat summer identifies only the product of the base Reff and the
+  harmonic at its trough (beta = Reff gamma/s0 exp(eps1 cos(2 pi (t -
+  phi1)/52)); eps1 uniform 0-1, phi1 uniform 0-52), not the factors the
+  forecast depends on, so particles with a high base and a deep trough
+  fit August as well as low-and-shallow ones and part ways in October.
+  The prior lever that matches that mechanism is eps1 and phi1 (the
+  amplitude and the timing past seasons needed), ahead of the Reff cap,
+  and the pre-registered swarm-carry line (research/swarm-carry;
+  app/tests/test_swarm_carry.py) is the principled version: last
+  season's fitted cloud as this season's prior. Both are yours to screen
+  beside the bound.
 - Model, the Groundhog agent on Ely's laptop (2026-10-17, from Ely): THE
   GROUNDHOG'S OCTOBER WIDTH, A DONOR FLOOR TO SCREEN, NOT A NARROWING
   KNOB. The week-1 horizon-0 score (Now, 2026-10-16) puts 81% of the

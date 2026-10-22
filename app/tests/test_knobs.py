@@ -25,6 +25,7 @@ from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
 from flubnf import sihrs_priors as SP
+from flubnf import tailcap as TC
 
 REPO = Path(__file__).resolve().parents[2]
 FD = "2026-10-03"                       # a Saturday in the 2026-27 season
@@ -49,6 +50,8 @@ SOURCES = {
     "data.partial_week": MS.PARTIAL_WEEK,
     "oracle.w": OR.W_PRODUCTION,
     "oracle.narrow": OR.K_PRODUCTION,
+    "output.tail_cap": TC.CAP_PRODUCTION,
+    "output.tail_mode": TC.MODE_PRODUCTION,
     "oracle.w_aux": MX.W_AUX,
     "oracle.submitted_seed": OR.SUBMITTED_SEED,
     "oracle.bandwidth": AN.DEFAULT_BANDWIDTH,
