@@ -372,7 +372,8 @@ def effective_local_pools(extra, *, dataset: bool = False):
     else:
         unknown = set(cfg) - {"own_share", "region_share", "own_site",
                               "anchor_floor", "anchor_weight", "kernel_sd",
-                              "ess_floor"}
+                              "ess_floor", "winsor_q", "repair_spikes",
+                              "exclude_weeks"}
         if unknown:
             raise ValueError(f"local_pools: unknown keys {sorted(unknown)}")
     knob = (extra.get("knobs") or {}).get("groundhog.own_share")
@@ -403,6 +404,14 @@ def effective_local_pools(extra, *, dataset: bool = False):
                                 and cfg["kernel_sd"] is not None else 1.0)
         if float(cfg.get("ess_floor", 0) or 0) > 0:
             out["ess_floor"] = float(cfg["ess_floor"])
+    # RESEARCH (prereg 28f0f33d6ea7e232): cells that must not define a tail
+    if float(cfg.get("winsor_q", 0) or 0) > 0:
+        out["winsor_q"] = float(cfg["winsor_q"])
+    if cfg.get("repair_spikes"):
+        out["repair_spikes"] = True
+    if cfg.get("exclude_weeks"):
+        out["exclude_weeks"] = [[str(a)[:10], str(b)[:10]]
+                                for a, b in cfg["exclude_weeks"]]
     return out or None                  # nothing weighted: the pooled form
 
 
@@ -443,6 +452,9 @@ def local_args(spec, *, dataset: bool = False, locations_csv=None):
         kernel_sd=(float(cfg["kernel_sd"]) if "kernel_sd" in cfg
                    and cfg["kernel_sd"] is not None else 1.0),
         ess_floor=float(cfg.get("ess_floor", 0.0) or 0.0),
+        winsor_q=float(cfg.get("winsor_q", 0.0) or 0.0),
+        repair_spikes=bool(cfg.get("repair_spikes", False)),
+        exclude_weeks=tuple(tuple(w) for w in cfg.get("exclude_weeks", ())),
         region_of=region_of, aux_sites=aux_sites)
 
 
