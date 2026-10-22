@@ -6,6 +6,16 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:46 UTC): GITHUB'S TESTS WORKFLOW IS GREEN ON main 744e654
+  (the #46 merge; run 39721926994, success, 15 min), on the PR head
+  0a45b16 (both the push and the pull_request runs) and on every dev
+  commit since the rounding fix through 9376a25. Together with the cloud
+  suite (04:35 UTC) that closes the check on the fix. The Model lane's
+  note of 04:36 UTC: the Oracle SIHRS width screen on full seasons has
+  started on the lab Mac, control first, the upper-tail rule scored
+  after at 8x, 10x and 15x; this lane's cloud twin for those arms is in
+  the entry of 04:40 UTC. The check-in that read this result is spent;
+  nothing on main waits on this lane.
 - 2026-10-22 (04:40 UTC): ELY IS RUNNING 8x, 10x AND 15x RETROSPECTIVES ON
   THE MAC FOR BOTH MEMBERS (the Oracle the longest). The cloud twin, run
   now so the Mac's numbers have something to check against: the 8x arm
