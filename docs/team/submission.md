@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (05:40 UTC): THE CAP KNOB IS ON BRANCH tail-cap FOR ELY'S MERGE
+  INTO dev; THE LAST THREE ROUNDS REVIEWED WITH THE FIXES. At Ely's go
+  ("write the cap knob, start at 15x"): flubnf/tailcap.py (CAP_PRODUCTION
+  0 = no cap, RECENT_WEEKS 3; recent_level, limit_for, cap_block,
+  cap_rows), the knob output.tail_cap (BOTH members, output stage,
+  method class, 0-100; a run at n > 0 is a modified run, NOT_IN_RETRO),
+  the wiring in app/ui/pipeline.py step 4 on both members' hub rows after
+  the Oracle step, the narrowing and the floor (the run record carries
+  n, the weeks and the cells touched per member), docs/ORACLE-SIHRS.md
+  6c, tests/test_tailcap.py (7) and the knob default in
+  app/tests/test_knobs.py; the full suite passed on the branch; commit
+  1138da9 as Ely, pushed. Wednesday's run then sets four values by
+  override: seed season_total_early, weight 0.25, narrowing 0.7, cap 15.
+  The review (tools/review3_build.py, review3_score.py, review3_plots.py;
+  review3/ in the Submission scratchpad; the figures sent to Ely): the
+  rounds 10-10, 10-17 and 10-24 rebuilt with the fixes (Oracle: k 0.7
+  post hoc where unnarrowed, cap 15x on the vintage's recent level;
+  Groundhog: the own-share regeneration where the file was pooled, cap
+  15x). Tails at h3 (typical state / max / states over 30x): Oracle
+  15.5x / 134x / 7 -> 7.9x / 15x / 0 (10-10), 59.2x / 244x / 45 -> 14.4x
+  / 19x / 0 (10-17), 20.4x / 55x / 9 -> 15.0x / 15x / 0 (10-24);
+  Groundhog 25.2x / 56x / 11 -> 14.5x / 15x / 0, 21.1x / 46x / 1 ->
+  14.5x / 19x / 0, 20.4x / 81x / 9 -> 15.0x / 15x / 0. Scores on the
+  three scorable cell sets (47 models): Oracle fixed 0.613, rank 22 (as
+  submitted 0.755, 36), log 0.731 (32); Groundhog fixed 0.856, rank 40
+  (0.922, 42), log 0.715 (30). Against the members on 10-24 the fixed
+  files sit inside the members' envelope with no flags but not at their
+  typical width (h3 tail 15x against ABERT 6x, INFLAenza 8x, FourCAT 9x,
+  epymorph and vulPES 12x; h3 band 5.4-5.7x against 2-5x); 10x would
+  reach it. Week 1's Oracle cells are the old pin narrowed and capped,
+  an approximation. Not yet independently verified.
 - 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
   15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
   time; the cap = every quantile above the median clipped at N times the
