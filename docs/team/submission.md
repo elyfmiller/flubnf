@@ -6,6 +6,33 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:20 UTC): WHAT HISTORY SAYS THE CAP SHOULD BE (Spencer's
+  method, run on our data). Spencer's reply to Ely: his team caps on
+  "historic changes observed in the data over 4 weeks" and wants it as a
+  topic for next Wednesday's forecasting call. Ely's question: every
+  method knows too wide and too narrow but not the width that scores
+  best. This lane's reading: WIS is proper, so the best width is the
+  calibrated one, and the retrospective (coverage and relWIS by
+  leave-one-season-out, which chose k = 0.7) is the estimate of it; the
+  limit is the sample, four Octobers, not the idea. Spencer's bound and
+  our n are estimates of the same quantity from the same data, so this
+  lane computed his: the realised value over the recent level (mean of
+  the last 3 weeks, as output.tail_cap defines it) for every jurisdiction
+  and every week within 2 epiweeks of EW42 in 2022-2025. Jurisdictions
+  with a recent level of 10 or more (474 cells per horizon): 97.5th
+  percentile 3.8x at h0, 7.2x at h1, 11.4x at h2, 19.3x at h3; 95th 15.4x
+  and 90th 11.8x at h3; the h3 maximum 37.8x. With all levels in, the
+  tiny-base cells push h3's 97.5th to 34x (the Ohio-style cells, now
+  tasked to the Model lane). Any week of the year at a level of 10 or
+  more: h3 97.5th 10.9x, 99th 16.4x. So 15x on the h3 97.5% quantile is
+  the October 95th percentile of realised growth, 20x is the 97.5th, and
+  10x is near the 85th, below what a 97.5% quantile should allow if an
+  October like 2022's recurs. The standing recommendation holds (the
+  location-wide shrink at 15x for both members); 10x is a bet on a mild
+  October, not a calibrated choice. Script: the inline computation in
+  this lane's session, data the hub truth through 2026-10-17. Ely's
+  draft reply to Spencer is unsent; this lane proposed one sentence
+  carrying the 19x number and offering the comparison for Wednesday.
 - 2026-10-22 (04:05 UTC): THE GROUNDHOG'S DOUBLE-PEAKED OHIO BAND IS A
   DEFECT, TASKED TO THE MODEL LANE (For other lanes, the Groundhog
   entry). Ely asked why Ohio's interval peaks at horizon 1, dips at
