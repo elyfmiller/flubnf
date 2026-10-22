@@ -55,6 +55,23 @@ and CDC's rules. The season's facts are in
   tail at that small cost. The hub's band plots draw the 50% and 95%
   edges, so a clipped file shows no staircase there; the ties are
   visible only in the quantile listing.
+  Added 2026-10-22 08:30 UTC, Ely's form as meant: a LOCATION-WIDE shrink,
+  the exponent the worst horizon needs applied to every horizon of that
+  location above the median (k_loc = min over h of ln(L/m_h)/ln(q_h/m_h)),
+  so the band keeps its fan across the weeks and only the worst horizon
+  touches the limit (tools/shrinkloc_screen.py, replays/shrinkloc_result
+  .txt; review3/fig6, fig7). Oracle, 44 weeks, relWIS natural / log,
+  cov95: clip 15x 0.670 / 0.727, 0.92; shrink-loc 15x 0.674 / 0.735, 0.91;
+  clip 10x 0.674 / 0.732, 0.90; shrink-loc 10x 0.688 / 0.754, 0.87.
+  Groundhog season-wide: clip 15x 0.660, shrink-loc 15x 0.664 (0.92);
+  clip 10x 0.663, shrink-loc 10x 0.676 (0.90); September-October weeks:
+  none 1.024, clip 15x 0.996, shrink-loc 15x 0.913, clip 10x 0.963,
+  shrink-loc 10x 0.823. Reading: the location-wide form gives the right
+  shape (the Groundhog's 10x box is gone) and the largest October gain,
+  at a season-wide cost of 0.4-2.5% because it squeezes every horizon of
+  a location whenever its far tail is wild, in season too; the clip is
+  the better scorer on whole seasons, the shrink the better October
+  forecast and the better-looking file. Ely's call; a mode on the knob.
 - 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
   15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
   time; the cap = every quantile above the median clipped at N times the
