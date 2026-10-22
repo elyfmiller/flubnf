@@ -6,6 +6,17 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (03:43 UTC): PULL REQUEST #45 (dev TO main) MERGED BY ELY AT
+  03:43 UTC, merge commit aacbefd (two parents, c401bbd and 1c7f7f8; a
+  merge commit), three minutes after it opened. main now equals dev
+  (1c7f7f8): the upper-tail cap and its two forms, the notes, the
+  handoff. Wednesday 2026-10-28, Ely's laptop on main: the five override
+  values (seed season_total_early, weight 0.25, narrowing 0.7, upper-tail
+  cap n, upper-tail form), one reason; this lane's gate
+  (tools/tail_gate.py, 30x) on both files before the submission commit.
+  Ely's choice of mode and n is still open (this lane's reading: shrink
+  at 15x for both members). The PR subscription closed with the merge
+  and the check-in was cancelled.
 - 2026-10-22 (03:40 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
   as Ely, at Ely's word) AND PULL REQUEST #45 (dev TO main) OPENED BY
   THIS LANE: https://github.com/elyfmiller/flubnf/pull/45, "Upper-tail
