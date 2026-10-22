@@ -6,6 +6,51 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (02:30 UTC): SPENCER'S RED FLAGS ON ROUND 2026-10-24; THE TAIL
+  GATE; ELY'S GOAL FOR 2026-10-28. Spencer Fox's mail to Ely and Rich
+  (2026-10-21 18:47 MST, "Red flags from report", his NAU-ensemble round
+  report attached): "the forecasts this and last week triggered some red
+  flags", 10 of them, all ours and all the far-horizon upper tail
+  (97.5% quantile at horizon 3 against the recent level): Groundhog AZ
+  40x, ID 66x, OH 84x, OR 43x, TX 47x, WV 36x; Oracle IA 32x, MI 40x, NH
+  38x, WV 39x. His member table has our last-horizon medians in line
+  with the other members (typical ratio to the others' median 1.05x
+  Groundhog, 1.04x Oracle; more than 1.5x apart in 4% and 13% of 53;
+  FourCAT 0.75x / 38%, Copycat 1.58x / 64%). He keeps both models in the
+  NAU ensemble and asks for a chat and a plan; Ely offered Monday after
+  2pm or Wednesday morning and replied (the text in chat; the cause by
+  model, the narrowing as the first attempt, why we submitted, the 30x
+  rule adopted, the screen starting, and that he may drop either model
+  if it keeps flagging).
+  - Why this lane did not catch it: the sense check measured width as
+    the 95% band over our own median, summarised by the median across
+    states (8.3x at h3 this week), and reported the extremes (Wyoming
+    28x, Ohio 31x) as the widest, not as failures; Spencer's rule
+    measures the 97.5% quantile against the recent observed level per
+    state with a threshold, and at h3 our medians are already 2-3x the
+    last count, so Michigan reads 21x by ours and 40x by his. No rule in
+    the check stopped the commit. Owned by this lane.
+  - The gate, from tonight (tools/tail_gate.py in the Submission
+    scratchpad; to go into scripts/sense_check.py on a branch for Ely's
+    merge): 97.5% at each horizon over the recent level (mean of the last
+    three reported weeks), FAIL when any horizon-3 ratio exceeds 30x. On
+    this week's files it fails both: Oracle 9 states (WV 55x, ND 44x, CT
+    43x, MI 43x, MD 42x, NH 40x, VT 39x, NM 35x, DE 32x; typical state
+    20x; the other teams' files 8-12x typical, 0-4 states over 30x),
+    Groundhog 9 (ID 81x, OH 80x, TX 58x, WV 52x, OR 51x, AZ 36x, TN 34x,
+    DE 33x, CT 31x). A file that fails the gate is not staged.
+  - Ely's goal (2026-10-22): by the 2026-10-28 round both models' width
+    near the NAU ensemble members'. Targets this lane will screen
+    against: no state over 30x at h3, the typical state's 97.5% over the
+    recent level near 10-12x (the members' range this week), the 95% band
+    over the median at h3 near 3-5x. The screen (tools/tail_screen.py,
+    no engine time, the 44 stored stage-rule weeks): narrowing exponent
+    by horizon, an upper-tail cap at N times the recent level after the
+    narrowing (N 10-30), combinations; leave-one-season-out; the gate as
+    a column; the Groundhog next (the cap on its retro cells, the Model
+    lane's kernel arm). Result and recommendation by Monday 2026-10-26.
+  - This week's submission stands as committed (2526b906); the files
+    passed the hub's checks and Spencer keeps them in his ensemble.
 - 2026-10-21 (19:00 UTC): WEEK 2 SCORED AT HORIZON 0 (the 2026-10-17 round
   against the week ending 10-17, truth as on the hub 10-21, 84ced076; 57
   models with 50+ cells; relative WIS against FluSight-baseline on common
