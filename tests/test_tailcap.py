@@ -128,13 +128,14 @@ def test_shrink_rows_uses_the_worst_horizons_exponent_for_every_horizon():
     ks = {h: TC.exponent_needed(by0[h], 150.0) for h in range(4)}
     kloc = min(ks.values())
     assert kloc < 1 and ks[3] == kloc              # horizon 3 is the worst
-    assert abs(by1[3][0.975] - 150.0) < 1e-6        # the worst horizon lands on the limit
+    assert abs(by1[3][0.975] - 150.0) <= 0.5        # the worst horizon lands on the limit
     for h in range(3):
         if by0[h][0.975] > by0[h][0.5]:
             # every other horizon shrunk by the same exponent: below the limit, not on it
+            # (to within the rounding back to whole admissions)
             expect = by0[h][0.5] * (by0[h][0.975] / by0[h][0.5]) ** kloc
-            assert abs(by1[h][0.975] - expect) < 1e-6
-            assert by1[h][0.975] < 150.0 or by0[h][0.975] <= by0[h][0.5]
+            assert abs(by1[h][0.975] - expect) <= 0.5
+            assert by1[h][0.975] <= 150.0 or by0[h][0.975] <= by0[h][0.5]
     for h in range(4):
         assert by1[h][0.5] == by0[h][0.5]
         vals = [by1[h][l] for l in sorted(by1[h])]
@@ -144,6 +145,32 @@ def test_shrink_rows_uses_the_worst_horizons_exponent_for_every_horizon():
     clipped, _ = TC.cap_rows(rows, lim, mode="clip")
     c3 = {float(r["output_type_id"]): float(r["value"]) for r in clipped if int(r["horizon"]) == 3}
     assert abs(c3[0.975] - by1[3][0.975]) < 1e-6 and c3[0.9] == 150.0 and by1[3][0.9] < 150.0
+
+
+@pytest.mark.parametrize("mode", TC.MODES)
+def test_capped_rows_stay_whole_admissions(mode):
+    # the hub rows arrive as whole admissions; a limit that is not a whole
+    # number (2.5 x 49 = 122.5) must not leave decimals in the file
+    import numpy as np
+    import pandas as pd
+    from app.core.submit import quantile_rows
+    rng = np.random.default_rng(3)
+    samples = {str(h): np.exp(np.log(20) + (0.3 + 0.5 * h) * rng.standard_normal(6000)) for h in range(4)}
+    rows = quantile_rows(samples, "33", "2026-10-17")
+    lim = {"33": TC.limit_for(2.5, [49, 49, 49])}
+    assert lim["33"] == 122.5
+    capped, cells = TC.cap_rows(rows, lim, mode=mode)
+    assert cells >= 1
+    assert all(type(r["value"]) is int for r in capped)
+    assert pd.DataFrame(capped)["value"].dtype.kind == "i"     # the CSV writes '14', never '14.0'
+    by = {}
+    for r in capped:
+        by.setdefault(int(r["horizon"]), {})[float(r["output_type_id"])] = r["value"]
+    for h, block in by.items():
+        vals = [block[l] for l in sorted(block)]
+        assert vals == sorted(vals), h
+    assert abs(by[3][0.975] - 122.5) <= 0.5
+    assert TC.whole_block({0.5: 10.0, 0.9: 12.0}, {0.5: 10.0, 0.9: 12.0}) == {0.5: 10.0, 0.9: 12.0}
 
 
 def test_cap_rows_refuses_an_unknown_mode():
