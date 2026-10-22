@@ -572,9 +572,19 @@ reported weeks at the forecast date, `flubnf.tailcap.RECENT_WEEKS`), and
 never below the block's own median. The median and every lower quantile
 are untouched; clipped levels tie at the limit, so the block stays
 monotone; a jurisdiction whose recent level is 0 or unknown is left alone.
+`output.tail_mode` chooses the form: `clip` (the registered default,
+`flubnf.tailcap.MODE_PRODUCTION`) clips the levels above the median at
+the limit, so they tie there; `shrink` (Ely, 2026-10-22) is the
+location-wide form: the exponent the worst horizon needs to bring its
+97.5% quantile to the limit, k = ln(L/m)/ln(q/m), is applied to every
+horizon of that location above the median, q' = m (q/m)^k, so the band
+keeps its fan across the weeks and only the worst horizon touches the
+limit. On the replays the clip scores a little better over whole seasons
+and the shrink better in September-October weeks (the Groundhog's
+September-October relWIS 1.02 to 0.91 at 15x, 0.82 at 10x).
 It runs in `app/ui/pipeline` on the rows after the Oracle step, the
-narrowing and the output floor, so the run record (`tail_cap`: n, the
-weeks, the cells touched per member) and the files agree; a run at n > 0
+narrowing and the output floor, so the run record (`tail_cap`: n, the mode,
+the weeks, the cells touched per member) and the files agree; a run at n > 0
 is a modified run (the override and its reason), and the replays do not
 apply it (`NOT_IN_RETRO`; it is screened post hoc).
 

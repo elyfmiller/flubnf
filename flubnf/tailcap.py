@@ -32,6 +32,16 @@ from typing import Iterable, Mapping
 
 #: the registered form: no cap (knob output.tail_cap; 0 = off)
 CAP_PRODUCTION = 0.0
+#: how the cap is applied (knob output.tail_mode): "clip" clips every level
+#: above the median at the limit (levels tie there); "shrink" is the
+#: location-wide form (Ely, 2026-10-22): the exponent the worst horizon
+#: needs to bring its 97.5% quantile to the limit is applied to every
+#: horizon of the location above the median, q' = m (q/m)^k, so the band
+#: keeps its shape across horizons and only the worst horizon touches the
+#: limit. On the replays the clip scores a little better over whole seasons,
+#: the shrink better in September-October weeks (docs/team/submission.md).
+MODE_PRODUCTION = "clip"
+MODES = ("clip", "shrink")
 #: the recent level is the mean of this many newest reported weeks
 RECENT_WEEKS = 3
 #: the hub target the cap applies to
@@ -76,23 +86,61 @@ def cap_block(values_by_level: Mapping[float, float], limit: float) -> dict:
     return out
 
 
-def cap_rows(rows: list, limit_by_fips: Mapping[str, float]) -> tuple:
+def exponent_needed(values_by_level: Mapping[float, float], limit: float) -> float:
+    """The exponent k <= 1 that brings a block's 97.5% quantile to `limit`
+    about its median (1.0 when the block is already under it, has no
+    positive median, or the limit is at or below the median)."""
+    if limit is None or not math.isfinite(limit):
+        return 1.0
+    m = values_by_level.get(0.5); q = values_by_level.get(0.975)
+    if m is None or q is None or not (float(m) > 0) or float(q) <= float(m):
+        return 1.0
+    if float(q) <= float(limit) or float(limit) <= float(m):
+        return 1.0
+    return math.log(float(limit) / float(m)) / math.log(float(q) / float(m))
+
+
+def shrink_block(values_by_level: Mapping[float, float], k: float) -> dict:
+    """One block narrowed above its median by exponent k (q' = m (q/m)^k for
+    levels above 0.5; everything else as given; k >= 1 returns the block)."""
+    out = dict(values_by_level)
+    m = out.get(0.5)
+    if k is None or k >= 1 or m is None or not (float(m) > 0):
+        return out
+    for level, v in out.items():
+        if float(level) > 0.5 and math.isfinite(float(v)) and float(v) > 0:
+            out[level] = float(m) * (float(v) / float(m)) ** k
+    return out
+
+
+def cap_rows(rows: list, limit_by_fips: Mapping[str, float],
+             mode: str = MODE_PRODUCTION) -> tuple:
     """Apply the cap to hub quantile rows (app.core.submit's dicts) in place
     of value: rows of TARGET with output_type "quantile" are grouped by
-    (location, horizon), each block capped with its location's limit.
-    Returns (rows, cells) where cells counts the blocks that changed."""
+    (location, horizon), each block capped with its location's limit by
+    `mode` ("clip" or "shrink", MODES). Returns (rows, cells) where cells
+    counts the blocks that changed."""
     blocks: dict = {}
     for i, r in enumerate(rows):
         if r.get("target") == TARGET and r.get("output_type") == "quantile":
             blocks.setdefault((str(r["location"]), str(r["horizon"])), []).append(i)
+    if mode not in MODES:
+        raise ValueError(f"tail cap mode must be one of {MODES}, got {mode!r}")
     cells = 0
     out = [dict(r) for r in rows]
+    # the location-wide exponent: the worst horizon's, for the shrink form
+    k_loc: dict = {}
+    if mode == "shrink":
+        for (fips, _h), idx in blocks.items():
+            lim = limit_by_fips.get(fips, float("nan"))
+            block = {float(out[i]["output_type_id"]): float(out[i]["value"]) for i in idx}
+            k_loc[fips] = min(k_loc.get(fips, 1.0), exponent_needed(block, lim))
     for (fips, _h), idx in blocks.items():
         lim = limit_by_fips.get(fips, float("nan"))
         if lim is None or not math.isfinite(lim):
             continue
         block = {float(out[i]["output_type_id"]): float(out[i]["value"]) for i in idx}
-        capped = cap_block(block, lim)
+        capped = cap_block(block, lim) if mode == "clip" else shrink_block(block, k_loc.get(fips, 1.0))
         changed = False
         for i in idx:
             level = float(out[i]["output_type_id"])

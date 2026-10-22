@@ -357,6 +357,17 @@ REGISTRY: tuple = (
                "coverage within a thousandth and removed every horizon-3 cell "
                "above 30x. Research; the run records n and the cells it "
                "touched; no card phrase until the default changes.")),
+    Knob("output.tail_mode", "Upper-tail form", BOTH, "output", "method",
+         "choice", TC.MODE_PRODUCTION, "flubnf.tailcap:MODE_PRODUCTION",
+         "clip: levels above the median clipped at the limit; shrink: the location-wide exponent form.",
+         choices=TC.MODES,
+         note=("shrink (Ely, 2026-10-22): the exponent the worst horizon needs "
+               "to bring its 97.5% quantile to the limit is applied to every "
+               "horizon of the location above the median, so the band keeps "
+               "its fan across the weeks and only the worst horizon touches "
+               "the limit. Replays: the clip scores a little better over "
+               "whole seasons, the shrink better in September-October weeks. "
+               "Takes effect only with output.tail_cap above 0.")),
     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
          "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
@@ -797,7 +808,7 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
 #: knob is the console's), and it writes no submission files (the optional
 #: hub rows)
 NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
-                          "output.tail_cap", *OPTIONAL_KEYS})
+                          "output.tail_cap", "output.tail_mode", *OPTIONAL_KEYS})
 
 #: form fields that predate the registry -> the knob they now set
 LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",
