@@ -30,12 +30,14 @@ agent's.
   shrink, 2,055 Oracle and 2,301 Groundhog values; a few hundred in
   clip mode, from a non-integer limit), and one decimal turns pandas'
   whole value column to float, so every row would read "14.0". Fixed
-  on branch `tail-cap-whole` (b3992e7, pushed), to merge into `dev` at
-  Ely's word once the full suite here is read: `whole_block` rounds the moved levels half to even and
+  on branch `tail-cap-whole` (b3992e7), merged into `dev` at Ely's word
+  (275134e): `whole_block` rounds the moved levels half to even and
   keeps the block monotone, so the limit is met within half an
   admission; on this week's files every value stays within 0.5 of the
   exact shrink and none is a decimal. Tests: two new, one tolerance
-  widened; tests/test_tailcap.py passes (12). `main` still carries the decimal form until a
+  widened; tests/test_tailcap.py passes (12); the full suite here
+  fails the same 22 tests on the branch and on untouched `dev` (this
+  Mac's stale hub clone and app setup), none in the cap or the writer. `main` still carries the decimal form until a
   `dev` to `main` pull request, which waits for Ely's word. Not done
   here, at Ely's word: the 44-week check of the shrink's scores and
   Ohio's double peak, both with the Submission lane.
