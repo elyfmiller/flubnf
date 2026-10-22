@@ -6,6 +6,31 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:20 UTC): PULL REQUEST #46 (dev TO main) OPENED BY THIS
+  LANE AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/46,
+  "Upper-tail cap: moved levels rounded back to whole admissions, kept
+  monotone", 7 commits over main (aacbefd), 5 files, +202/-5. The Oracle
+  SIHRS agent's fix (branch tail-cap-whole, b3992e7, merged into dev as
+  275134e at Ely's word): the cap ran on hub rows already in whole
+  admissions and wrote the moved levels back as decimals in both forms
+  (about 2,000 values a member at 10x shrink on the 2026-10-24 files; a
+  few hundred in clip mode from a non-integer limit), and one decimal
+  turns pandas' value column to float, so every row would have read
+  "14.0". whole_block rounds the moved levels half to even and keeps the
+  block monotone; the limit is met within half an admission; untouched
+  rows keep their integers. This lane's review: sound; a rounded shrunk
+  level cannot fall below the integer median and a rounded clipped level
+  cannot fall below an untouched level beneath the limit, so the
+  monotone step never writes a float. tests/test_tailcap.py (12) and
+  app/tests/test_knobs.py pass on dev, 153 tests; the full suite's cloud
+  result to follow on the PR. No effect on the screens or the
+  three-round review beyond rounding. The body carries no attribution
+  (the integration's footer edited out at once). Ely's merge command, a
+  merge commit, never squash:
+  `gh pr merge 46 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  main dev && git checkout main && git merge --no-ff origin/dev && git
+  push origin main`. Subscribed to the PR; the Wednesday round runs main
+  after this merge.
 - 2026-10-22 (04:20 UTC): WHAT HISTORY SAYS THE CAP SHOULD BE (Spencer's
   method, run on our data). Spencer's reply to Ely: his team caps on
   "historic changes observed in the data over 4 weeks" and wants it as a
