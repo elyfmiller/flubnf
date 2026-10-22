@@ -37,6 +37,24 @@ and CDC's rules. The season's facts are in
   epymorph and vulPES 12x; h3 band 5.4-5.7x against 2-5x); 10x would
   reach it. Week 1's Oracle cells are the old pin narrowed and capped,
   an approximation. Not yet independently verified.
+  Added 06:30 UTC, Ely's variant screened: a target-driven narrowing
+  instead of the clip (per block the smallest extra exponent about the
+  median that brings the 97.5% quantile to the limit, k = ln(L/m) /
+  ln(q/m), the shape kept, no ties; "up" = the levels above the median
+  only, "sym" = the whole block; a block whose median is already above
+  the limit is left alone). Oracle, 44 weeks, pooled relWIS natural /
+  log, cov95: cap 15x 0.670 / 0.727, 0.91; adapt 15x up 0.673 / 0.731,
+  0.91; adapt 15x sym 0.672 / 0.728, 0.91; adapt 20x up 0.671 / 0.728,
+  0.93; adapt 10x up 0.681 / 0.741, 0.87; the residual share of h3
+  cells over 30x 1.2-1.6% (medians already above the limit).
+  Leave-one-season-out still picks the clip (20x, 20x, 15x). Groundhog:
+  cap 15x 0.630 / 0.647; adapt 15x up 0.632 / 0.648; sym 0.631 / 0.648;
+  adapt 10x up 0.637 / 0.654. Reading: the clip scores 0.2-0.5% better
+  because it piles the excess mass at the limit, which WIS rewards
+  whenever truth lands below it; the target-driven form keeps a smooth
+  tail at that small cost. The hub's band plots draw the 50% and 95%
+  edges, so a clipped file shows no staircase there; the ties are
+  visible only in the quantile listing.
 - 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
   15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
   time; the cap = every quantile above the median clipped at N times the
