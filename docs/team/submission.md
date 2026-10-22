@@ -6,6 +6,17 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (04:35 UTC): THE FULL SUITE ON dev (519e20f, the rounding
+  fix and the notes) PASSES IN THE CLOUD: exit 0, no failure, on the
+  second run. The first run (stop at first failure) stopped at 88% on
+  app/tests/test_season_run_marks.py::test_the_season_page_and_its_report_keep_one_mark
+  (an extra "tip-restart" mark on the season page), a UI test the PR does
+  not touch; the test passes alone on dev and on main before the fix
+  (c401bbd), and the whole suite passed on the rerun, so it is an
+  order-dependent flake in the season page's tests, not the cap's. Noted
+  for the Model lane: the Mac's 22 failures are its setup; the cloud sees
+  none. GitHub's tests workflow runs on 744e654 (main) and 519e20f (dev)
+  were still in progress at this entry.
 - 2026-10-22 (04:21 UTC): PULL REQUEST #46 (dev TO main) MERGED BY ELY AT
   04:21 UTC, merge commit 744e654 (two parents, aacbefd and 0a45b16; a
   merge commit), a minute after it opened. main now carries the rounding
