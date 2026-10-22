@@ -6,6 +6,20 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (05:15 UTC): tail-gate MERGED INTO dev (a64b01d, a merge commit
+  as Ely, at Ely's word; parents 04935f9 and 152910f) AND PULL REQUEST #47
+  (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/47,
+  "Pre-submission tail gate (scripts/sense_check.py) and the lanes'
+  notes", 12 commits over main (744e654), 5 files, +463/-1: the script,
+  its five tests, the README row, both lanes' notes (the Model lane's
+  width screen pre-registered on the Mac and its Groundhog tail-cell
+  screen ride along). Every commit authored and committed as Ely, no
+  trailers; the body carries no attribution (the integration's footer
+  edited out at once). Ely's merge command, a merge commit, never
+  squash: `gh pr merge 47 --merge --repo elyfmiller/flubnf`, or
+  `git fetch origin main dev && git checkout main && git merge --no-ff
+  origin/dev && git push origin main`. Subscribed to the PR; after the
+  merge the laptop runs the gate from main on Wednesday.
 - 2026-10-22 (05:05 UTC): THE TAIL GATE IS IN THE REPO ON BRANCH tail-gate
   (152910f, one commit over dev bdc10c0, for Ely's merge into dev):
   scripts/sense_check.py, an OPS script beside validate_submission.py,
