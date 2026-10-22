@@ -71,6 +71,17 @@ agent's.
   card version, tests, README, dev to main); it needs Ely's go by
   Sunday.
 
+- 2026-10-22 (04:57 UTC): A REFERENCE ARM ADDED AT ELY'S REQUEST
+  (amendment R, sha256 51a85f76, before any score): REG, the registered
+  Oracle SIHRS as `main` runs it with no override (to_date seed, w 0.5, no
+  narrowing, no cap), on the same 84 weeks, right after C0 (about 7
+  hours), so the record can show how relWIS moves from the old
+  registration to the form now under test, one change at a time against
+  REG on common cells: the weight 0.25, the stage-rule seed, the
+  narrowing 0.7, then the upper-tail rule at 15x, 10x and 8x. The
+  structural arms move back by the same 7 hours (HP and HS Saturday). The
+  recommendation, with that table, goes here when the arms are read, for
+  the team review; the Groundhog agent posts its own beside it.
 - 2026-10-22 (04:47 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
   `research/oracle-width-screen/PREREG.md`, sha256 fd8f57d6, frozen before
   any score) AND QUEUED ON THE MAC. Order: C0 (running), its scoring (the
