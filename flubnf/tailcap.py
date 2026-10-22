@@ -14,7 +14,9 @@ the median and every lower quantile are untouched, order is preserved
 (clipped levels tie at the limit), and a block whose recent level is 0 or
 unknown is left alone. It runs on the hub rows at the output stage, after
 the Oracle step, the narrowing and the output floor, so the run record and
-the files agree.
+the files agree. The rows arrive in whole admissions (app.core.submit), so
+the levels the cap moves are rounded back to whole admissions and the block
+kept monotone: the limit is met to within half an admission.
 
 Screened post hoc on the stored replays (docs/team/submission.md,
 2026-10-22): on the Oracle member's 44 stage-rule weeks a cap at 15-20x
@@ -113,12 +115,33 @@ def shrink_block(values_by_level: Mapping[float, float], k: float) -> dict:
     return out
 
 
+def whole_block(capped: Mapping[float, float], block: Mapping[float, float]) -> dict:
+    """`capped` in whole admissions, as the hub rows came (app.core.submit
+    rounds every quantile and keeps the block monotone): the levels that
+    differ from `block` are rounded half to even, then the block is made
+    monotone in level order; levels the cap left alone are returned as
+    given, so an untouched block is unchanged."""
+    out: dict = {}
+    top = -math.inf
+    for level in sorted(capped):
+        v = capped[level]
+        if math.isfinite(float(v)):
+            if v != block[level]:
+                v = int(round(float(v)))
+            if v < top:
+                v = top
+            top = v
+        out[level] = v
+    return out
+
+
 def cap_rows(rows: list, limit_by_fips: Mapping[str, float],
              mode: str = MODE_PRODUCTION) -> tuple:
     """Apply the cap to hub quantile rows (app.core.submit's dicts) in place
     of value: rows of TARGET with output_type "quantile" are grouped by
     (location, horizon), each block capped with its location's limit by
-    `mode` ("clip" or "shrink", MODES). Returns (rows, cells) where cells
+    `mode` ("clip" or "shrink", MODES) and the moved levels rounded back to
+    whole admissions (whole_block). Returns (rows, cells) where cells
     counts the blocks that changed."""
     blocks: dict = {}
     for i, r in enumerate(rows):
@@ -141,6 +164,7 @@ def cap_rows(rows: list, limit_by_fips: Mapping[str, float],
             continue
         block = {float(out[i]["output_type_id"]): float(out[i]["value"]) for i in idx}
         capped = cap_block(block, lim) if mode == "clip" else shrink_block(block, k_loc.get(fips, 1.0))
+        capped = whole_block(capped, block)
         changed = False
         for i in idx:
             level = float(out[i]["output_type_id"])
