@@ -11,6 +11,66 @@ agent's.
 
 ## Now
 
+- 2026-10-22 (04:55 UTC, laptop): THE GROUNDHOG'S TAIL-CELL SCREEN IS
+  SCORED (the Submission handoff 4b0e03d, Ohio's double-peaked band; lab
+  archive `research/groundhog-tail-cells/`, prereg 28f0f33d6ea7e232 and
+  three amendments, all written before any capped score: the cap through
+  main's own code with the rounding fix; 8x, 10x and 15x at Ely's word;
+  all available seasons at Ely's word). Code on branch
+  groundhog-tail-cells (a32b941, on dev 519e20f): research options only,
+  the shipped path untouched. Arms on the own-share form: C0 shipped, C1
+  base-week floor 5, C2 ratios winsorised at the pool's 0.99 quantile, C3
+  single-week spike repair, C4 the 2024 voluntary-reporting weeks
+  (2024-05-04 to 10-26) removed, C5 the size-matched kernel s=1 with the
+  effective-donor guard, C6 C5+C3+C4, C7 C5+C1, C8 C5+C2. Seasons
+  2023-24, 2024-25, 2025-26 and the current season's four weeks (17,272
+  state cells; 2022-23 has no vintages and no admissions donors).
+  The diagnosis holds: C0 reproduces the submitted Ohio 97.5% quantiles
+  exactly (763, 3638, 936, 5864); Ohio has two own cells based on 1
+  admission (2024-09-28 and 10-12), so the 229 sits at h1 and h3. 28 of
+  the 46 ratios above 20x come from the 2024 voluntary-reporting weeks.
+  Pooled relWIS (states) and 95% coverage:
+    arm   none   shrink8 shrink10 shrink15 clip8  clip10 clip15
+    C0    .661   .691    .680     .666     .670   .665   .661
+    C1    .657   .688    .676     .663     .667   .662   .658
+    C5    .643   .676    .664     .649     .654   .648   .644
+    C6    .642   .676    .664     .649     .654   .648   .643
+    C7    .643   .676    .664     .649     .654   .648   .643
+    cov95 C5: none .937, shrink8 .884, shrink10 .904, shrink15 .928
+  C2, C3, C4 sit within 0.0002 of C0 (only 5 single-week spikes exist in
+  the whole bank). The kernel gains about 0.017 at every cap, in every
+  complete season, in 50 of 52 states (bootstrap under shrink 15x
+  [+0.010, +0.024]); adding the floor, the repair or the window moves the
+  pooled score by 0.0003 or less. On the live round every kernel arm gives
+  Ohio 253, 451, 620, 964 and no jurisdiction above 30x uncapped (C0: 9).
+  The registered decision rule returned no candidate: its symptom test
+  (a 97.5% quantile falling more than 10% from one horizon to the next)
+  fires on 26% of C0's location-weeks because it counts every honest
+  falling fan of a declining season. Measured post hoc on the defect's own
+  shape (the tail falls by more than half while the median holds or
+  rises): C0 13 location-weeks, C5 3, C6 and C7 2.
+  October, read post hoc (928 cells: 2023-24 and this season's weeks; the
+  2025-26 rounds began in November): uncapped the kernel helps (1.007 to
+  0.949); under the shrink it is neutral (15x 0.900 to 0.904, 10x 0.814 to
+  0.828; this season's weeks alone 0.708 to 0.695 at 10x); from November
+  on it gains (Nov 0.582 to 0.561 at 15x). Tighter caps help October and
+  cost November on: the kernel arm's Sep-Oct / Nov at shrink 8x .795 /
+  .632, 10x .828 / .599, 15x .904 / .561, none .949 / .542.
+  Recommendation to Ely for the 2026-10-28 round: (1) ship C5, the
+  kernel with the guard, as the Groundhog's form (it passed its own
+  pre-registered screen on 2026-10-17 and gains again here under every
+  cap); the floor, winsor, repair and window are held (no measurable gain
+  on history; the window and repair help only this season's in-sample
+  weeks); (2) the cap level is one value for both members: the Groundhog's
+  October cells favour shrink 10x for this round (coverage 0.91), with
+  the move back to 15x or the clip from the first November round; this
+  waits on the Oracle's full-season October reading (about 13:30 UTC),
+  and neither member's replays hold an early-surge October like 2022's,
+  so 10x is a bet on a mild October and 15x the hedge. Shipping C5 is the
+  same chores as the own-share change (shipped default, record pattern,
+  card version, tests, README, dev to main); it needs Ely's go by
+  Sunday.
+
 - 2026-10-22 (04:47 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
   `research/oracle-width-screen/PREREG.md`, sha256 fd8f57d6, frozen before
   any score) AND QUEUED ON THE MAC. Order: C0 (running), its scoring (the
