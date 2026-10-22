@@ -6,6 +6,43 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (05:05 UTC): THE TAIL GATE IS IN THE REPO ON BRANCH tail-gate
+  (152910f, one commit over dev bdc10c0, for Ely's merge into dev):
+  scripts/sense_check.py, an OPS script beside validate_submission.py,
+  pandas and numpy only, nothing imported from the app. For every
+  jurisdiction, the 97.5% quantile of wk inc flu hosp at each horizon
+  over the recent level (the mean of the last three reported dates in
+  the hub's target-hospital-admissions.csv); FAIL, exit 1, when any
+  horizon-3 ratio exceeds the threshold (30x unless --threshold says
+  otherwise); exit 2 on a missing file. It prints the field summary
+  beside the gate (the typical state's ratio, the 95% band over the
+  median, the count over the threshold per horizon) and names each
+  failing state with its 97.5%, median, recent level and last value. A
+  recent level of 0 (Wyoming's summer) gives no ratio and never fails;
+  other targets and pmf rows are ignored. tests/test_sense_check.py
+  (five tests: the recent level, the gate at 31x and 29x, the threshold
+  and horizon-3-only rule, the zero level and the ignored rows, the
+  script's output and exit codes by subprocess); scripts/README.md row.
+  On the 2026-10-24 Oracle file as submitted it fails with the same
+  nine states the scratch gate found (WV 55x ... DE 32x); on the
+  location-wide shrink at 15x it passes (max 15x, Mississippi). The one
+  difference from the scratch gate: the band-over-median summary now
+  drops the US row as the ratio summary always did (1.84x against 1.83x
+  at h0). Ely's merge: `git fetch origin tail-gate && git checkout dev &&
+  git merge --no-ff origin/tail-gate && git push origin dev`, then the
+  dev-to-main pull request when Ely says so; nothing reaches the laptop
+  until it is on main.
+  THE ROUND PROCEDURE from 2026-10-28 on, in order: (1) Ely runs main
+  with the override values and one reason; (2) the hub check
+  (app.core.hubcheck in the console; scripts/validate_submission.R with
+  conda R and TZDIR here) on both files; (3) the gate,
+  `python scripts/sense_check.py <target-hospital-admissions.csv> <both files>`,
+  with the truth file at the vintage the run used; a FAIL stops the
+  round, no file is committed, and this lane reports the failing states
+  to Ely with the cap level that would clear them; (4) the submission
+  commit on FluBNF_submission, the compare link, Ely opens the hub PR.
+  Until the branch is on main this lane runs the scratch copy
+  (tools/tail_gate.py) with the same rule; the two agree.
 - 2026-10-22 (04:46 UTC): GITHUB'S TESTS WORKFLOW IS GREEN ON main 744e654
   (the #46 merge; run 39721926994, success, 15 min), on the PR head
   0a45b16 (both the push and the pull_request runs) and on every dev
