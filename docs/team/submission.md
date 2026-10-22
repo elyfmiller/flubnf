@@ -6,7 +6,7 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-22 (10:05 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
+- 2026-10-22 (03:40 UTC): tail-cap MERGED INTO dev (69f5fc4, a merge commit
   as Ely, at Ely's word) AND PULL REQUEST #45 (dev TO main) OPENED BY
   THIS LANE: https://github.com/elyfmiller/flubnf/pull/45, "Upper-tail
   cap for both members (clip or location-wide shrink), for the
@@ -22,7 +22,7 @@ and CDC's rules. The season's facts are in
   git push origin main`. After the merge the laptop runs main on
   Wednesday with the override values (seed, weight, narrowing, the cap
   and its form) and the gate before the commit.
-- 2026-10-22 (05:40 UTC): THE CAP KNOB IS ON BRANCH tail-cap FOR ELY'S MERGE
+- 2026-10-22 (02:56 UTC): THE CAP KNOB IS ON BRANCH tail-cap FOR ELY'S MERGE
   INTO dev; THE LAST THREE ROUNDS REVIEWED WITH THE FIXES. At Ely's go
   ("write the cap knob, start at 15x"): flubnf/tailcap.py (CAP_PRODUCTION
   0 = no cap, RECENT_WEEKS 3; recent_level, limit_for, cap_block,
@@ -53,7 +53,7 @@ and CDC's rules. The season's facts are in
   epymorph and vulPES 12x; h3 band 5.4-5.7x against 2-5x); 10x would
   reach it. Week 1's Oracle cells are the old pin narrowed and capped,
   an approximation. Not yet independently verified.
-  Added 06:30 UTC, Ely's variant screened: a target-driven narrowing
+  Added 03:05 UTC, Ely's variant screened: a target-driven narrowing
   instead of the clip (per block the smallest extra exponent about the
   median that brings the 97.5% quantile to the limit, k = ln(L/m) /
   ln(q/m), the shape kept, no ties; "up" = the levels above the median
@@ -71,7 +71,7 @@ and CDC's rules. The season's facts are in
   tail at that small cost. The hub's band plots draw the 50% and 95%
   edges, so a clipped file shows no staircase there; the ties are
   visible only in the quantile listing.
-  Added 2026-10-22 08:30 UTC, Ely's form as meant: a LOCATION-WIDE shrink,
+  Added 03:20 UTC, Ely's form as meant: a LOCATION-WIDE shrink,
   the exponent the worst horizon needs applied to every horizon of that
   location above the median (k_loc = min over h of ln(L/m_h)/ln(q_h/m_h)),
   so the band keeps its fan across the weeks and only the worst horizon
@@ -88,7 +88,7 @@ and CDC's rules. The season's facts are in
   a location whenever its far tail is wild, in season too; the clip is
   the better scorer on whole seasons, the shrink the better October
   forecast and the better-looking file. Ely's call; a mode on the knob.
-  Added 09:40 UTC: the mode is on the branch (tail-cap aaa0e82, authored
+  Added 03:38 UTC: the mode is on the branch (tail-cap aaa0e82, authored
   as Ely, the full suite green): knob output.tail_mode, choices clip
   (the registered default, flubnf.tailcap.MODE_PRODUCTION) and shrink
   (the location-wide form, exponent_needed and shrink_block in
@@ -97,7 +97,7 @@ and CDC's rules. The season's facts are in
   Wednesday's settings panel can set either form and any n; Ely's choice
   of mode and n is still open (this lane's reading: shrink at 15x for
   both members, 10x if the first capped week scores well).
-- 2026-10-22 (03:50 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
+- 2026-10-22 (02:39 UTC): THE TAIL SCREENS, BOTH MODELS: AN UPPER-TAIL CAP AT
   15x THE RECENT LEVEL CLEARS THE GATE AT NO COST ON THE REPLAYS. No engine
   time; the cap = every quantile above the median clipped at N times the
   recent level (the mean of the last three reported weeks at the as-of
@@ -138,7 +138,7 @@ and CDC's rules. The season's facts are in
     median only, recorded in the run record), on a branch with Ely's go,
     then dev to main before Wednesday. The structural Oracle work (prior
     bounds, swarm carry) stays with the Model lane.
-- 2026-10-22 (02:30 UTC): SPENCER'S RED FLAGS ON ROUND 2026-10-24; THE TAIL
+- 2026-10-22 (02:26 UTC): SPENCER'S RED FLAGS ON ROUND 2026-10-24; THE TAIL
   GATE; ELY'S GOAL FOR 2026-10-28. Spencer Fox's mail to Ely and Rich
   (2026-10-21 18:47 MST, "Red flags from report", his NAU-ensemble round
   report attached): "the forecasts this and last week triggered some red
