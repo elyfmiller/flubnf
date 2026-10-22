@@ -11,7 +11,123 @@ agent's.
 
 ## Now
 
-- 2026-10-22 (04:40 UTC): THE UPPER-TAIL SHRINK CHECKED AGAINST ELY'S
+- 2026-10-22 (04:55 UTC, laptop): THE GROUNDHOG'S TAIL-CELL SCREEN IS
+  SCORED (the Submission handoff 4b0e03d, Ohio's double-peaked band; lab
+  archive `research/groundhog-tail-cells/`, prereg 28f0f33d6ea7e232 and
+  three amendments, all written before any capped score: the cap through
+  main's own code with the rounding fix; 8x, 10x and 15x at Ely's word;
+  all available seasons at Ely's word). Code on branch
+  groundhog-tail-cells (a32b941, on dev 519e20f): research options only,
+  the shipped path untouched. Arms on the own-share form: C0 shipped, C1
+  base-week floor 5, C2 ratios winsorised at the pool's 0.99 quantile, C3
+  single-week spike repair, C4 the 2024 voluntary-reporting weeks
+  (2024-05-04 to 10-26) removed, C5 the size-matched kernel s=1 with the
+  effective-donor guard, C6 C5+C3+C4, C7 C5+C1, C8 C5+C2. Seasons
+  2023-24, 2024-25, 2025-26 and the current season's four weeks (17,272
+  state cells; 2022-23 has no vintages and no admissions donors).
+  The diagnosis holds: C0 reproduces the submitted Ohio 97.5% quantiles
+  exactly (763, 3638, 936, 5864); Ohio has two own cells based on 1
+  admission (2024-09-28 and 10-12), so the 229 sits at h1 and h3. 28 of
+  the 46 ratios above 20x come from the 2024 voluntary-reporting weeks.
+  Pooled relWIS (states) and 95% coverage:
+    arm   none   shrink8 shrink10 shrink15 clip8  clip10 clip15
+    C0    .661   .691    .680     .666     .670   .665   .661
+    C1    .657   .688    .676     .663     .667   .662   .658
+    C5    .643   .676    .664     .649     .654   .648   .644
+    C6    .642   .676    .664     .649     .654   .648   .643
+    C7    .643   .676    .664     .649     .654   .648   .643
+    cov95 C5: none .937, shrink8 .884, shrink10 .904, shrink15 .928
+  C2, C3, C4 sit within 0.0002 of C0 (only 5 single-week spikes exist in
+  the whole bank). The kernel gains about 0.017 at every cap, in every
+  complete season, in 50 of 52 states (bootstrap under shrink 15x
+  [+0.010, +0.024]); adding the floor, the repair or the window moves the
+  pooled score by 0.0003 or less. On the live round every kernel arm gives
+  Ohio 253, 451, 620, 964 and no jurisdiction above 30x uncapped (C0: 9).
+  The registered decision rule returned no candidate: its symptom test
+  (a 97.5% quantile falling more than 10% from one horizon to the next)
+  fires on 26% of C0's location-weeks because it counts every honest
+  falling fan of a declining season. Measured post hoc on the defect's own
+  shape (the tail falls by more than half while the median holds or
+  rises): C0 13 location-weeks, C5 3, C6 and C7 2.
+  October, read post hoc (928 cells: 2023-24 and this season's weeks; the
+  2025-26 rounds began in November): uncapped the kernel helps (1.007 to
+  0.949); under the shrink it is neutral (15x 0.900 to 0.904, 10x 0.814 to
+  0.828; this season's weeks alone 0.708 to 0.695 at 10x); from November
+  on it gains (Nov 0.582 to 0.561 at 15x). Tighter caps help October and
+  cost November on: the kernel arm's Sep-Oct / Nov at shrink 8x .795 /
+  .632, 10x .828 / .599, 15x .904 / .561, none .949 / .542.
+  Recommendation to Ely for the 2026-10-28 round: (1) ship C5, the
+  kernel with the guard, as the Groundhog's form (it passed its own
+  pre-registered screen on 2026-10-17 and gains again here under every
+  cap); the floor, winsor, repair and window are held (no measurable gain
+  on history; the window and repair help only this season's in-sample
+  weeks); (2) the cap level is one value for both members: the Groundhog's
+  October cells favour shrink 10x for this round (coverage 0.91), with
+  the move back to 15x or the clip from the first November round; this
+  waits on the Oracle's full-season October reading (about 13:30 UTC),
+  and neither member's replays hold an early-surge October like 2022's,
+  so 10x is a bet on a mild October and 15x the hedge. Shipping C5 is the
+  same chores as the own-share change (shipped default, record pattern,
+  card version, tests, README, dev to main); it needs Ely's go by
+  Sunday.
+
+- 2026-10-22 (04:57 UTC): A REFERENCE ARM ADDED AT ELY'S REQUEST
+  (amendment R, sha256 51a85f76, before any score): REG, the registered
+  Oracle SIHRS as `main` runs it with no override (to_date seed, w 0.5, no
+  narrowing, no cap), on the same 84 weeks, right after C0 (about 7
+  hours), so the record can show how relWIS moves from the old
+  registration to the form now under test, one change at a time against
+  REG on common cells: the weight 0.25, the stage-rule seed, the
+  narrowing 0.7, then the upper-tail rule at 15x, 10x and 8x. The
+  structural arms move back by the same 7 hours (HP and HS Saturday). The
+  recommendation, with that table, goes here when the arms are read, for
+  the team review; the Groundhog agent posts its own beside it.
+- 2026-10-22 (04:47 UTC): THE WIDTH SCREEN IS PRE-REGISTERED (lab archive
+  `research/oracle-width-screen/PREREG.md`, sha256 fd8f57d6, frozen before
+  any score) AND QUEUED ON THE MAC. Order: C0 (running), its scoring (the
+  upper-tail rule at 8x, 10x, 15x, 20x and 30x, shrink and clip, the
+  narrowing exponent 0.5 to 1.0, a post-hoc growth cap at 1.5x, 2x and 3x
+  a week, the filter alone), the season-end fits for the harmonic boxes
+  (2022-23 at 2023-06-10 from the 2023-09-23 vintage cut to that date,
+  2023-24 at 2024-04-27, 2024-25 at 2025-06-14), R20, R22, then HP and HS
+  once amendment 1 (the boxes' values) is written and hashed. Each arm is
+  read with its narrowing and rule re-chosen by leave-one-season-out and
+  a week-cluster bootstrap; the rule for "better than C0" and six
+  predictions are in the file. Expected: the 8x/10x/15x reading on full
+  seasons about 13:30 UTC today; R20 and R22 by Friday morning; HP and HS
+  by Friday night. No arm starts after 2026-10-28 18:00 UTC and a running
+  one is stopped at 19:00 UTC.
+- 2026-10-22 (04:40 UTC): REPLAYS STARTING ON THE LAB MAC AT ELY'S GO: THE
+  ORACLE SIHRS WIDTH SCREEN ON FULL SEASONS. First the control, C0, the
+  live configuration of the 2026-10-24 round (pf.seed_denominator =
+  season_total_early, oracle.w = 0.25, oracle.narrow = 0.7): 2023-24 to
+  2025-26, the 84 as-of weeks with a FluSight-baseline file (the other 9
+  cannot be scored), 52 jurisdictions x 3 replicates, 10,000 particles;
+  flubnf `main` 744e654 (the rounding fix in), engine 2fdadee0 with
+  bngsim 0.15.1 and numpy 1.26.4 (~/.venvs/flubnf-engine, as on Ely's
+  laptop and the cloud testbed; not ~/.venvs/flubnf, bngsim 0.13.0);
+  about 8 hours. The upper-tail rule is never run in a replay
+  (NOT_IN_RETRO), so it is scored after: each week's hub rows rebuilt as
+  a live run builds them (the stored samples after the step, the
+  narrowing and the floor; `quantile_rows`, whole admissions), then
+  `flubnf.tailcap.cap_rows` at 8x, 10x and 15x (Ely), 20x and 30x, shrink
+  and clip, the limit from the as-of vintage as the pipeline reads it,
+  then the console's `score_quantiles` (FluSight's cell rule, the
+  validated baseline join). Checks, passed on a smoke week: the
+  unrounded scores equal the console's `retro.score_season` on every
+  cell (WIS, log WIS, both baseline columns, difference 0); an
+  independent WIS (the mean quantile score) equals `flubnf.wis` on every
+  cell; other narrowing exponents (re-exponentiated about the median, so
+  approximate) reproduce the step's own pre-floor quantiles within 0.05%
+  of WIS. Then the structural arms, about 8 hours each, each scored with
+  the narrowing and the cap re-chosen by leave-one-season-out: Reff
+  0.6-2.0, Reff 0.6-2.2, and the past-season eps1/phi1 priors (pooled,
+  and per state for the swarm carry), under a pre-registration posted
+  here before any arm is scored. Lab archive `research/oracle-width-screen/`.
+  The Mac stays free of other replays until the screen ends; anything
+  unfinished stops before the 2026-10-28 target-data update.
+
+- 2026-10-22 (04:14 UTC): THE UPPER-TAIL SHRINK CHECKED AGAINST ELY'S
   DESCRIPTION; ONE DEFECT FIXED. `flubnf/tailcap.py` as merged (main
   aacbefd) applied to the submitted 2026-10-24 files, the recent level
   from the 2026-10-17 vintage as the pipeline reads it. Shrink mode does

@@ -6,6 +6,117 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-22 (05:15 UTC): tail-gate MERGED INTO dev (a64b01d, a merge commit
+  as Ely, at Ely's word; parents 04935f9 and 152910f) AND PULL REQUEST #47
+  (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/47,
+  "Pre-submission tail gate (scripts/sense_check.py) and the lanes'
+  notes", 12 commits over main (744e654), 5 files, +463/-1: the script,
+  its five tests, the README row, both lanes' notes (the Model lane's
+  width screen pre-registered on the Mac and its Groundhog tail-cell
+  screen ride along). Every commit authored and committed as Ely, no
+  trailers; the body carries no attribution (the integration's footer
+  edited out at once). Ely's merge command, a merge commit, never
+  squash: `gh pr merge 47 --merge --repo elyfmiller/flubnf`, or
+  `git fetch origin main dev && git checkout main && git merge --no-ff
+  origin/dev && git push origin main`. Subscribed to the PR; after the
+  merge the laptop runs the gate from main on Wednesday.
+- 2026-10-22 (05:05 UTC): THE TAIL GATE IS IN THE REPO ON BRANCH tail-gate
+  (152910f, one commit over dev bdc10c0, for Ely's merge into dev):
+  scripts/sense_check.py, an OPS script beside validate_submission.py,
+  pandas and numpy only, nothing imported from the app. For every
+  jurisdiction, the 97.5% quantile of wk inc flu hosp at each horizon
+  over the recent level (the mean of the last three reported dates in
+  the hub's target-hospital-admissions.csv); FAIL, exit 1, when any
+  horizon-3 ratio exceeds the threshold (30x unless --threshold says
+  otherwise); exit 2 on a missing file. It prints the field summary
+  beside the gate (the typical state's ratio, the 95% band over the
+  median, the count over the threshold per horizon) and names each
+  failing state with its 97.5%, median, recent level and last value. A
+  recent level of 0 (Wyoming's summer) gives no ratio and never fails;
+  other targets and pmf rows are ignored. tests/test_sense_check.py
+  (five tests: the recent level, the gate at 31x and 29x, the threshold
+  and horizon-3-only rule, the zero level and the ignored rows, the
+  script's output and exit codes by subprocess); scripts/README.md row.
+  On the 2026-10-24 Oracle file as submitted it fails with the same
+  nine states the scratch gate found (WV 55x ... DE 32x); on the
+  location-wide shrink at 15x it passes (max 15x, Mississippi). The one
+  difference from the scratch gate: the band-over-median summary now
+  drops the US row as the ratio summary always did (1.84x against 1.83x
+  at h0). Ely's merge: `git fetch origin tail-gate && git checkout dev &&
+  git merge --no-ff origin/tail-gate && git push origin dev`, then the
+  dev-to-main pull request when Ely says so; nothing reaches the laptop
+  until it is on main.
+  THE ROUND PROCEDURE from 2026-10-28 on, in order: (1) Ely runs main
+  with the override values and one reason; (2) the hub check
+  (app.core.hubcheck in the console; scripts/validate_submission.R with
+  conda R and TZDIR here) on both files; (3) the gate,
+  `python scripts/sense_check.py <target-hospital-admissions.csv> <both files>`,
+  with the truth file at the vintage the run used; a FAIL stops the
+  round, no file is committed, and this lane reports the failing states
+  to Ely with the cap level that would clear them; (4) the submission
+  commit on FluBNF_submission, the compare link, Ely opens the hub PR.
+  Until the branch is on main this lane runs the scratch copy
+  (tools/tail_gate.py) with the same rule; the two agree.
+- 2026-10-22 (04:46 UTC): GITHUB'S TESTS WORKFLOW IS GREEN ON main 744e654
+  (the #46 merge; run 39721926994, success, 15 min), on the PR head
+  0a45b16 (both the push and the pull_request runs) and on every dev
+  commit since the rounding fix through 9376a25. Together with the cloud
+  suite (04:35 UTC) that closes the check on the fix. The Model lane's
+  note of 04:36 UTC: the Oracle SIHRS width screen on full seasons has
+  started on the lab Mac, control first, the upper-tail rule scored
+  after at 8x, 10x and 15x; this lane's cloud twin for those arms is in
+  the entry of 04:40 UTC. The check-in that read this result is spent;
+  nothing on main waits on this lane.
+- 2026-10-22 (04:40 UTC): ELY IS RUNNING 8x, 10x AND 15x RETROSPECTIVES ON
+  THE MAC FOR BOTH MEMBERS (the Oracle the longest). The cloud twin, run
+  now so the Mac's numbers have something to check against: the 8x arm
+  added to tools/shrinkloc_screen.py (post hoc on the stored cells, the
+  Oracle's 44 stage-rule weeks at k = 0.7, the Groundhog's three retro
+  seasons; replays/shrinkloc_result8.txt). relWIS natural, cov95, h3
+  band/median typical:
+    Oracle    k0.7 0.671 .930 4.6x | clip8 0.680 .884 3.4x | shrink8 0.699
+              .840 3.4x | clip10 0.674 .898 | shrink10 0.688 .869 | clip15
+              0.670 .917 | shrink15 0.674 .906
+    Groundhog none 0.660 .936 4.7x | clip8 0.667 .912 3.9x | shrink8 0.687
+              .881 3.9x | clip10 0.663 .921 | shrink10 0.676 .900 | clip15
+              0.660 .931 | shrink15 0.664 .924
+    Groundhog, September-October weeks only: none 1.024 | clip8 0.935 |
+              shrink8 0.791 | clip10 0.963 | shrink10 0.823 | clip15 0.996
+              | shrink15 0.913
+  Reading: 8x shrink costs the Oracle 4.3% season-wide with 95% coverage
+  down to 0.84, and the Groundhog 4% season-wide, while it is the best
+  September-October form for the Groundhog (whose October cells sit at
+  the baseline). The pattern is monotone: tighter helps the Groundhog's
+  October and hurts everything else. History (Now, 04:20 UTC) puts 8x
+  near the 80th percentile of realised October h3 growth, so an 8x cap
+  on a 97.5% quantile under-covers by construction in a 2022-like
+  October. The standing recommendation holds: shrink at 15x for both,
+  10x if the first capped week scores well. What the Mac should
+  reproduce: the cap is an output-stage rule on stored quantiles, so a
+  retrospective on the same weeks should land on these numbers within
+  rounding (the whole-admission rounding moves values by at most 0.5);
+  a difference beyond that is a difference in the cells (weeks, the
+  narrowing, the own-share form), not in the cap. The Model lane's
+  retrospective is the record; this screen is the check.
+- 2026-10-22 (04:35 UTC): THE FULL SUITE ON dev (519e20f, the rounding
+  fix and the notes) PASSES IN THE CLOUD: exit 0, no failure, on the
+  second run. The first run (stop at first failure) stopped at 88% on
+  app/tests/test_season_run_marks.py::test_the_season_page_and_its_report_keep_one_mark
+  (an extra "tip-restart" mark on the season page), a UI test the PR does
+  not touch; the test passes alone on dev and on main before the fix
+  (c401bbd), and the whole suite passed on the rerun, so it is an
+  order-dependent flake in the season page's tests, not the cap's. Noted
+  for the Model lane: the Mac's 22 failures are its setup; the cloud sees
+  none. GitHub's tests workflow runs on 744e654 (main) and 519e20f (dev)
+  were still in progress at this entry.
+- 2026-10-22 (04:21 UTC): PULL REQUEST #46 (dev TO main) MERGED BY ELY AT
+  04:21 UTC, merge commit 744e654 (two parents, aacbefd and 0a45b16; a
+  merge commit), a minute after it opened. main now carries the rounding
+  fix: the cap's moved levels are whole admissions in both forms. The
+  Wednesday 2026-10-28 round runs main at or after 744e654. The full
+  suite's cloud run on dev (275134e and after) was past 60% with no
+  failure when the merge landed; its result is recorded below when it
+  finishes. The PR subscription closed with the merge.
 - 2026-10-22 (04:20 UTC): PULL REQUEST #46 (dev TO main) OPENED BY THIS
   LANE AT ELY'S WORD: https://github.com/elyfmiller/flubnf/pull/46,
   "Upper-tail cap: moved levels rounded back to whole admissions, kept
