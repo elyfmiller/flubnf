@@ -6,6 +6,67 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-23 (02:10 UTC): THE MAC RESULTS READ (docs/team/model.md, the
+  entries of 2026-10-22 14:41 UTC to 2026-10-23 01:38 UTC); ELY'S
+  DECISION "SHIP THE KERNEL, CLIP AT 10x"; THIS LANE'S READING REVISED.
+  - The Oracle's full-season screen (C0, 84 weeks, 17,466 cells, the cap
+    through main's code with the rounding fix): at k 0.7, none 0.668 /
+    cov95 0.92; clip 15x 0.668 / 0.91 (free, no h3 cell over 30x); clip
+    10x 0.672 / 0.90 (+0.003, inside noise); shrink 15x 0.670 / 0.90;
+    shrink 10x 0.681 / 0.87; shrink 8x 0.691 / 0.85. In the first eight
+    scoreable weeks of each season, where the gate binds, the shrink at
+    10x costs +0.032 with 95% coverage down to 0.79, the clip at 10x
+    +0.008 at 0.86, the clip at 15x nothing. This lane's 44-week cloud
+    screen agrees with the Mac within 0.001-0.005 on every rule (natural
+    relWIS and coverage); the log scale runs 0.01 lower on the Mac
+    because it scores the submitted seed after the floor and rounding.
+    THE REVISION: this lane's standing recommendation (the location-wide
+    shrink at 15x) was wrong for the Oracle. The shrink's exponent, set by
+    the worst horizon, also squeezes the upper side of horizons 0-2,
+    where truth lands in a fast rise; the clip takes only the far tail.
+    The 44-week screen showed the same ordering (clip 15x 0.670, shrink
+    15x 0.674) and this lane read the Groundhog's October gain as the
+    tiebreaker; the Oracle's early-week cost is the larger effect and the
+    full seasons make it plain. The clip is the shared form.
+  - The Groundhog: the size-matched kernel (a donor week's weight falls
+    with the log-scale distance between its own count and the
+    jurisdiction's newest; the effective-donor guard at 30) gains about
+    0.017 at every cap level and form, in every complete season, in 50 of
+    52 states, and removes the Ohio defect at its source: on the 10-24
+    data Ohio's 97.5% quantiles become 253, 451, 620, 964 and no
+    jurisdiction is over 30x before any cap (own-share form: 9). The
+    floor, the winsor, the spike repair and the 2024 window move the
+    score by 0.0003 or less and are held. The handoff of 2026-10-22 is
+    answered; the kernel is the fix.
+  - Ely's decision, recorded by the Model lane at 01:38 UTC: the kernel
+    ships (commit 689a650 on dev; pull request #48, dev to main,
+    https://github.com/elyfmiller/flubnf/pull/48, 12 commits, 21 files,
+    +1058/-87, card GroundHogCGR 1.3, record 0.642); the cap for
+    2026-10-28 is the CLIP AT 10x, one setting for both members. On the
+    10-24 data with the kernel the clip at 10x binds at h3 in all 53
+    jurisdictions (the typical h3 tail is 14.8x), so this week the cap,
+    not the model, sets every h3 97.5% quantile; the h3 band is 4.1x the
+    median. From the 11-11 round the Groundhog's cells say no cap or
+    clip 15x.
+  - PR #48 as read at 02:10 UTC: open, mergeable_state clean, GitHub's
+    tests green on the head fa543d8 (both the push and the pull_request
+    runs) and on 689a650. Ely's merge command, a merge commit, never
+    squash: `gh pr merge 48 --merge --repo elyfmiller/flubnf`, or
+    `git fetch origin main dev && git checkout main && git merge --no-ff
+    origin/dev && git push origin main`. The Wednesday run needs main at
+    or after that merge.
+  - The gate on the 10-24 files rebuilt under clip 10x (own-share
+    Groundhog, this lane's review3): both PASS, typical and max h3 ratio
+    10.0x, h3 band over median 3.8x Oracle, 3.7x Groundhog.
+  - WEDNESDAY 2026-10-28, THE OVERRIDE VALUES (Ely's laptop, main at or
+    after the #48 merge; one reason): pf.seed_denominator
+    season_total_early, oracle.w 0.25, oracle.narrow 0.7, output.tail_cap
+    10, output.tail_mode clip. Then the hub check, the gate
+    (scripts/sense_check.py from main) on both files, the submission
+    commit "NAU_PyBNF forecast 2026-10-31 (EW43)", the compare link.
+    Card 1.3 goes to the hub fork when Ely asks for the hub pull
+    request; the cards' sentences for the narrowing and the cap go with
+    it.
 - 2026-10-22 (04:59 UTC): PULL REQUEST #47 (dev TO main) MERGED BY ELY AT
   04:59 UTC, merge commit 210f2fb (two parents, 744e654 and 3953b41; a
   merge commit), a minute after it opened. main now carries
