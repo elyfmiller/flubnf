@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-23 (02:50 UTC): ELY'S DECISION FOR 2026-10-28: THE LOCATION-WIDE
+  SHRINK AT 15x FOR BOTH MEMBERS (replacing the clip at 10x recorded by
+  the Model lane at 01:38 UTC; the kernel still ships, PR #48). The
+  reasoning, Ely's, in chat: in principle the shrink is the better
+  forecast; the clip cuts the tails of the quantiles and ties the top
+  levels at the limit (a point mass at the bound), which looks wrong on
+  the dashboard and claims more than the model can support; the shrink
+  keeps a proper, monotone fan. At 15x the Oracle's full-season screen
+  cannot tell the two forms apart (shrink 15x +0.002 season-wide, +0.007
+  in the early weeks, both inside the bootstrap interval on the natural
+  scale; 95% coverage 0.90 / 0.87 against the clip's 0.91 / 0.90), so
+  the choice is made on form, stated as such. For the Groundhog with the
+  kernel the shrink at 15x is 0.649 against the clip's 0.644 season-wide
+  and better in October. What it gives up: the width target (the typical
+  h3 tail lands at 15x the recent level, not the members' 8-12x; the
+  move to 10x is reconsidered once a capped week has scored, and the
+  shrink does not go to 10x: +0.032 in the early weeks). The sentence
+  for Spencer's call: the horizon-3 97.5% quantile is bounded at the
+  95th percentile of historically realised 4-week growth, and the band
+  is shrunk toward the median by one exponent per location so the fan
+  keeps its shape.
+  WEDNESDAY'S OVERRIDE VALUES, FINAL unless Ely says otherwise (main at
+  or after the #48 merge; one reason): pf.seed_denominator
+  season_total_early, oracle.w 0.25, oracle.narrow 0.7, output.tail_cap
+  15, output.tail_mode shrink. Then the hub check, the gate from main on
+  both files (expected: PASS, max h3 ratio 15x), the submission commit
+  "NAU_PyBNF forecast 2026-10-31 (EW43)", the compare link.
+  Ely's trajectory-exclusion idea (drop the forecasting-sample paths
+  that cross n times the recent level, the swarm untouched) is handed
+  to the Model lane as a screen (For other lanes); not on Wednesday's
+  file.
 - 2026-10-23 (02:10 UTC): THE MAC RESULTS READ (docs/team/model.md, the
   entries of 2026-10-22 14:41 UTC to 2026-10-23 01:38 UTC); ELY'S
   DECISION "SHIP THE KERNEL, CLIP AT 10x"; THIS LANE'S READING REVISED.
@@ -2184,6 +2215,52 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-23, from Ely): A TRAJECTORY
+  EXCLUSION ARM FOR THE WIDTH SCREEN, after the prior arms (R20, R22, HP,
+  HS), on the stored samples, scored post hoc as the cap arms were.
+  Ely's idea: the engine outputs trajectories and FluBNF turns them into
+  quantiles; before that step, drop from the FORECASTING SAMPLE (not
+  from the swarm, whose weights and state are untouched) every path
+  whose value at any horizon exceeds n times the recent level (the mean
+  of the last three reported weeks, as output.tail_cap defines it), and
+  form the quantiles from the rest. One path goes whole, so the result
+  is the joint distribution conditioned on "growth stays under n by
+  horizon 3": coherent across horizons, unlike a per-horizon rule. It is
+  an output-stage assumption like a prior bound and would be declared on
+  the card.
+  Arms: exclusion at 15x, 20x, 30x, 40x; and the pairing exclusion 40x +
+  shrink 15x; against none, clip 15x, shrink 15x, shrink 10x on the same
+  cells (the 84 weeks of C0; the early-week subset as in the C0
+  reading). Decide the point in the pipeline before scoring and record
+  it: this lane's reading is the raw forecasting sample after the Oracle
+  step and before the narrowing (so the narrowing and the cap act on
+  what remains); if the stored samples are post-narrowing, say so and
+  score it there. Report what the clip and shrink arms report, plus the
+  share of paths dropped per location-week (typical and maximum) and
+  the median's move (the capped h3 median over the uncapped, typical and
+  worst), because the median is where this rule differs from the clip
+  and the shrink.
+  Predictions, written before any score, this lane's: (P1) at 40x the
+  arm is free (within the bootstrap interval of none) and drops under 1%
+  of paths in all but a few location-weeks: realised 4-week growth over
+  the recent level in October windows at a level of 10 or more has a
+  maximum of 38x in 2022-2025 (97.5th percentile 19x, 95th 15x; any
+  week of the year 99th 16x, maximum 44x; Submission notes, 2026-10-22
+  04:20 UTC), so 40x removes only paths history never produced. (P2) at
+  15x the arm scores between shrink 15x and shrink 10x, worse than
+  shrink 15x, because it moves the median down (the paths crossing 15x
+  at h3 are also the higher paths at h1 and h2); the cost concentrates
+  in the early weeks and in fast-rise location-weeks (2022-23-like
+  cells, where the screen has none). (P3) exclusion 40x + shrink 15x
+  scores within noise of shrink 15x and leaves no path above 40x, which
+  is the only reason to prefer it. If P2 fails and exclusion at 15x
+  beats the shrink at 15x, the median's move is small enough that the
+  swarm's high paths were not carrying the score, and that is worth
+  knowing for the prior arms too.
+  Nothing of this is for the 2026-10-28 round, which runs the shrink at
+  15x (Now, 02:50 UTC). The usual rule: pre-registered as your other
+  arms are, nothing ships without Ely, a change to the registered
+  member ships by override with a card sentence.
 - Model, the Groundhog (2026-10-22, from Ely: "this should be tasked
   to be fixed by the groundhog model, this is a bad defect"): A DONOR
   CELL WITH A NEAR-ZERO BASE WEEK MUST NOT DEFINE A TAIL. The 10-24
