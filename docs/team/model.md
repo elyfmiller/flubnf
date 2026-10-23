@@ -11,6 +11,40 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (00:24 UTC): FROM THE OLD REGISTRATION TO THE FORM UNDER
+  TEST, ONE CHANGE AT A TIME (amendment R; REG complete, 84 weeks, no
+  failed cell, check A exact on every cell of the three seasons). Each
+  step against the registered member on the cells it shares with it,
+  three seasons pooled; relWIS natural / log, 50% and 95% coverage, share
+  of h3 cells over 30x the recent level; step minus registered with the
+  week-cluster bootstrap (natural | log):
+  1. registered (to_date, w 0.5, k 1): 0.749 / 0.805; 0.53, 0.94; 5.8%.
+     By season 0.766, 0.723, 0.778.
+  2. + weight 0.25 (the registered run's logged secondary, pre-floor):
+     0.720 / 0.764; 0.58, 0.96; 8.7%. -0.029 [-0.048, -0.012] | -0.041
+     [-0.056, -0.028].
+  3. + the stage-rule seed (C0 at k 1, re-exponentiated, within check
+     C): 0.712 / 0.705; 0.62, 0.98; 23.1%. -0.036 [-0.065, -0.006] |
+     -0.100 [-0.128, -0.075]. By season 0.828, 0.687, 0.687: the seed
+     costs 2023-24 on the natural scale (its one-season expectation) and
+     carries the log-scale gain; it is also where the wild far tails come
+     from (h3 cells over 30x 8.7% to 23.1%).
+  4. + narrowing 0.7, the live configuration of the 2026-10-24 round:
+     0.668 / 0.699; 0.48, 0.92; 10.0%. -0.080 [-0.099, -0.062] | -0.106
+     [-0.129, -0.085]. By season 0.706, 0.653, 0.670.
+  5. + the upper-tail rule: clip 15x 0.668 / 0.700, 0.91, 0%, -0.081 |
+     -0.105; clip 10x 0.672 / 0.703, 0.90, 0%, -0.077 | -0.102; shrink
+     15x 0.670 / 0.707, 0.90, 0.1%, -0.078 | -0.098; shrink 10x 0.681 /
+     0.720, 0.87, 0.1%, -0.067 | -0.085; shrink 8x 0.691 / 0.730, 0.85,
+     -0.058 | -0.075. Every interval excludes zero.
+  Reading: the three changes since the registration are worth 0.080 on
+  the natural scale and 0.106 on the log scale on these seasons, the
+  weight and the narrowing carrying the natural-scale gain and the seed
+  the log-scale gain; the cap gives back between nothing (clip 15x) and
+  0.014 / 0.021 (shrink 10x) of it. The interim recommendation for the
+  Oracle's rule on 2026-10-28 stands (the clip). Full table:
+  `research/oracle-width-screen/logs/steps_REG_C0.txt`. The season-end
+  fits started 00:03 UTC; R20 follows, then R22, HP and HS.
 - 2026-10-22 (14:41 UTC): THE ORACLE SIHRS'S UPPER-TAIL RULE ON FULL
   SEASONS (C0), AN INTERIM READING WITH A RECOMMENDATION FOR 2026-10-28;
   THE SCREEN'S VERDICT FOLLOWS WITH THE ARMS. C0 is complete: 84 weeks,
