@@ -11,6 +11,18 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (20:52 UTC): R22, THE Reff PRIOR CAPPED AT 2.2: NULL TOO.
+  84 weeks, no failed cell, checks A to C passed. Held-out 0.674 / 0.706
+  against C0's 0.673 / 0.703, 95% coverage 0.91 against 0.92; by season
+  -0.010, +0.002, +0.005. R22 minus C0 at the live settings, natural |
+  log: no rule +0.001 [-0.002, +0.005] | +0.003 [+0.001, +0.006]; clip
+  15x +0.002 [-0.002, +0.005] | +0.003 [+0.001, +0.006]; clip 10x +0.002
+  [-0.002, +0.005] | +0.003 [+0.001, +0.005]. The plain filter gains
+  -0.021 [-0.033, -0.012] (R20 -0.034), the member nothing; the log
+  scale loses a little in both arms. P4 (R22 between C0 and R20) holds
+  for the filter and is a tie for the member. Neither Reff bound is a
+  lever for the Oracle; the bound stays at the shipped 2.5. HP started
+  20:29 UTC (about 06:00 UTC Saturday), then HS.
 - 2026-10-23 (10:36 UTC): R20, THE Reff PRIOR CAPPED AT 2.0: NULL UNDER
   THE PRE-REGISTERED RULE. 84 weeks, no failed cell, checks A to C as for
   C0. Held-out (leave-one-season-out over the narrowing and the rule):
