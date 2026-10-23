@@ -11,6 +11,23 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (10:36 UTC): R20, THE Reff PRIOR CAPPED AT 2.0: NULL UNDER
+  THE PRE-REGISTERED RULE. 84 weeks, no failed cell, checks A to C as for
+  C0. Held-out (leave-one-season-out over the narrowing and the rule):
+  0.674 / 0.706 against C0's 0.673 / 0.703, 95% coverage 0.91 against
+  0.92 (rule (i) fails); by season -0.017 (2023-24), -0.001 (2024-25),
+  +0.012 (2025-26, rule (ii) fails). At the live settings, R20 minus C0
+  on common cells, natural | log: no rule +0.001 [-0.005, +0.007] |
+  +0.003 [+0.000, +0.006]; clip 15x +0.002 [-0.004, +0.007] | +0.003
+  [+0.000, +0.006]; clip 10x +0.002 [-0.004, +0.007] | +0.003 [+0.000,
+  +0.006]; shrink 10x +0.002 [-0.003, +0.008]. The bound helps the plain
+  filter (-0.034 [-0.053, -0.018] natural, +0.004 log) and the step and
+  the narrowing absorb it; it narrows the tail a little (h3 cells over
+  30x with no rule 8.8% against 10.0%; h3 97.5% over the median 3.8x
+  against 4.0x) and clears nothing the cap does not. P3 held (within
+  0.005 of C0 at their choices). So the Reff cap is not a lever for the
+  Oracle on these seasons; nothing to ship. R22 is running (about 20:00
+  UTC), then HP and HS.
 - 2026-10-23 (01:38 UTC, laptop): ELY'S DECISION, "SHIP THE KERNEL, CLIP
   AT 10x". (1) THE SIZE-MATCHED KERNEL SHIPS AS THE GROUNDHOG'S DEFAULT
   (commit 689a650 on dev; pull request #48, https://github.com/elyfmiller/flubnf/pull/48, dev to main, for Ely's
