@@ -11,6 +11,55 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (00:40 UTC, laptop): THE GROUNDHOG'S RECOMMENDATION FOR
+  2026-10-28, BESIDE THE ORACLE SIHRS'S (its interim reading 3991e0b7 and
+  step table e3d15a9f), for the team review. From the tail-cell screen
+  (entry of 2026-10-22 04:55 UTC; prereg 28f0f33d6ea7e232, three
+  amendments; four seasons, 17,272 state cells, the cap through main's
+  code with the rounding fix).
+  1. THE GROUNDHOG'S FORM: SHIP THE SIZE-MATCHED KERNEL (s = 1, the
+     effective-donor guard 30, on the own-share form). It is independent
+     of the cap and gains under every form and n: pooled relWIS, shipped
+     against kernel, none 0.661 / 0.643, clip 15x 0.661 / 0.644, clip 10x
+     0.665 / 0.648, shrink 15x 0.666 / 0.649, shrink 10x 0.680 / 0.664;
+     every complete season, 50 of 52 states, bootstrap [+0.010, +0.024].
+     It removes the Ohio defect at its source: on the 2026-10-24 round's
+     data Ohio's 97.5% quantiles become 253, 451, 620, 964, and no
+     jurisdiction is above 30x before any cap (shipped: 9). It passed its
+     own pre-registered screen on 2026-10-17. Shipping it is the
+     own-share chores (shipped default, record pattern, card version,
+     tests, README, dev to main) and needs Ely's go by Sunday 10-25.
+     The floor, the winsor, the spike repair and the 2024 window are not
+     recommended: each moves the pooled score by 0.003 or less.
+  2. THE CAP: ONE SETTING FOR BOTH MEMBERS (output.tail_cap and
+     output.tail_mode are BOTH knobs on main), AND THE TWO LANES NOW AGREE
+     ON THE FORM: THE CLIP. The Oracle's shrink costs it most in the early
+     weeks (shrink 10x +0.032, early 95% coverage 0.79), which rules the
+     shrink out as a shared setting. The Groundhog with the kernel under
+     the clip: none 0.643, clip 15x 0.644, clip 10x 0.648, clip 8x 0.654
+     season-wide; September-October 0.949, 0.939, 0.922, 0.905; November
+     0.542, 0.548, 0.569, 0.593; 95% coverage season-wide 0.937, 0.940,
+     0.928, 0.918. So for the Groundhog the clip at 15x is free and at 10x
+     costs 0.005 season-wide while gaining 0.017 in October.
+     On n: clip 15x is free for both members on whole seasons and clears
+     the 30x gate for both; clip 10x reaches Ely's typical width at a
+     small cost to both (Oracle +0.003, inside noise; Groundhog +0.005,
+     better in October), with the Oracle's early-week 95% coverage at
+     0.86. This lane's pick for the 10-28 round: clip 10x if Ely wants the
+     narrower width this October, clip 15x as the joint hedge; neither
+     lane's replays hold an early-surge October like 2022's.
+  3. NOT RECOMMENDED: SPLITTING THE CAP BY MEMBER. The Groundhog's shrink
+     at 10x is better still in October (0.828 against 0.922 for the clip)
+     but costs it from November on (0.599 against 0.569), so a per-member
+     shrink would pay for at most the two October-as-of rounds (10-28 and
+     11-04), rests on thin October evidence (928 cells: 2023-24 and this
+     season's four weeks; 2025-26's rounds began in November), and needs
+     a code change to knobs the Submission lane owns. The shared clip
+     keeps both members on the code that was screened.
+  4. FROM NOVEMBER (the 11-11 round, as-of 11-07): the Groundhog's cells
+     say no cap or clip 15x; tighter caps cost it from November on at
+     every form.
+
 - 2026-10-23 (00:33 UTC): AMENDMENT 1, THE PAST-SEASON BOXES' VALUES
   (sha256 affe3469, written by the frozen rule from the season-end fits,
   before HP or HS runs and before any arm is scored; R20 started 00:32
