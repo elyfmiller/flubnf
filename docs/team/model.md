@@ -11,6 +11,57 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (01:38 UTC, laptop): ELY'S DECISION, "SHIP THE KERNEL, CLIP
+  AT 10x". (1) THE SIZE-MATCHED KERNEL SHIPS AS THE GROUNDHOG'S DEFAULT
+  (commit 689a650 on dev; pull request #48, https://github.com/elyfmiller/flubnf/pull/48, dev to main, for Ely's
+  merge before the 2026-10-28 round). Inside each class (own cells, the
+  rest) a donor week's weight is exp(-(ln v0 - ln a)^2 / 2), v0 its own
+  count and a the jurisdiction's newest; a class of 30 or more cells left
+  with fewer than 30 effective donors takes equal weights. Record: the
+  console and the presets write local_pools {"own_share": 0.5,
+  "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30.0};
+  {"own_share": 0.5} alone is the form of 2026-10-15 to 2026-10-23, the
+  shipped Groundhog of its day (not research); no key is the pooled form.
+  New knob groundhog.kernel_sd (0 off); `flubnf groundhog retro
+  --kernel-sd 0` replays the earlier form, `--own-share 0 --kernel-sd 0`
+  the pooled one. The README's own command reproduces the screen on hub
+  3a83d410: 0.680, 0.627, 0.645, pooled 0.6423 on 17,116 cells, coverage
+  50/80/95 0.500 / 0.785 / 0.936 (the earlier form 0.6604). Card
+  GroundHogCGR 1.3 (methods 196 characters; the kernel in methods_long;
+  record 0.642). The default run's Groundhog bytes are re-pinned; with
+  the shipped form set back, the old hash returns exactly, so the kernel
+  is the only change. Full suite on the laptop: only the launcher and environment
+  failures plain dev also shows here; CI on the pull request is the
+  independent check. An independent review before the push confirmed the
+  record pattern and found two defects (the site's note for mixed trees,
+  a label prefix on research rows), both fixed with tests.
+  (2) THE CAP FOR 2026-10-28: CLIP AT 10x, ONE SETTING FOR BOTH MEMBERS
+  (override values output.tail_cap 10, output.tail_mode clip; the
+  registered form stays CAP_PRODUCTION 0, so the run carries the reason).
+  On the 2026-10-24 round's data with the kernel, the clip at 10x binds
+  at horizon 3 in all 53 jurisdictions (the model's typical h3 tail is
+  14.8x the recent level), so this week the cap, not the model, sets
+  every h3 97.5% quantile; the h3 band is 4.1x the median; Ohio reads
+  253, 451, 620, 733. Without the kernel the clip would have flattened
+  Ohio to 733 at every horizon.
+  Requests. Submission: the 10-28 override values are cap 10, form clip
+  (with seed season_total_early, weight 0.25, narrowing 0.7 as before);
+  run main at or after the merge of #48; carry card 1.3 to the hub fork
+  when Ely asks for the hub pull request (none opened by this lane).
+  App: the Models, Home and Methods pages and docs/FLUSIGHT-2026-27.md
+  still print the earlier record (0.660; 0.702, 0.651, 0.653): the
+  shipped record is 0.642 (0.680, 0.627, 0.645) on the same 17,116
+  cells, the earlier form 0.660, the pooled form 0.670; the site's new
+  label "Groundhog (own-state form)" names trees replayed under the
+  earlier form, and the mixed label is now "Groundhog (mixed forms)". The
+  review also found the earlier form in CITATION.cff (lines 34 and 38),
+  the Groundhog diagram's growth-ratios box (app/ui/templates/
+  diagrams.html, analogue_mech) and docs/SITE.md (lines 115-117, the
+  labels). Oracle SIHRS agent: docs/ORACLE-SIHRS.md line 283 points at
+  "the shipped own-state form's" README row, which is now the kernel
+  form's. From the 11-11 round the Groundhog's cells say no cap or
+  clip 15x (tighter caps cost it from November on).
+
 - 2026-10-23 (00:40 UTC, laptop): THE GROUNDHOG'S RECOMMENDATION FOR
   2026-10-28, BESIDE THE ORACLE SIHRS'S (its interim reading 3991e0b7 and
   step table e3d15a9f), for the team review. From the tail-cell screen
