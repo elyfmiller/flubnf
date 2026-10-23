@@ -53,6 +53,19 @@ MIN_DONORS = 30
 #: relWIS 0.6604 against 0.6701 pooled on 17,116 cells; the lead's decision
 #: 2026-10-15). 0 is the pooled form every jurisdiction shared before.
 SHIPPED_OWN_SHARE = 0.5
+#: the shipped size-matched kernel (LocalPooling.anchor_weight "kernel",
+#: kernel_sd, ess_floor): inside each class a donor week's weight falls with
+#: the log distance between its own count and the jurisdiction's newest
+#: count, exp(-(ln v0 - ln a)^2 / 2), and a class of 30 or more cells that
+#: the kernel leaves with fewer than 30 effective donors takes equal weights.
+#: Prereg 0815e4709ab06b2f with amendments 1-3 (screen of 2026-10-17:
+#: 0.6423 against 0.6604 on 17,116 cells, leave-one-season-out), screened
+#: again under the upper-tail cap, prereg 28f0f33d6ea7e232 (2026-10-22:
+#: about 0.017 better at every cap level and form); the lead's decision
+#: 2026-10-23. A record without these keys ran without the kernel.
+SHIPPED_ANCHOR_WEIGHT = "kernel"
+SHIPPED_KERNEL_SD = 1.0
+SHIPPED_ESS_FLOOR = 30.0
 
 #: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
@@ -580,7 +593,8 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
 
 # ---------------------------------------------------------------------------
 # Locally weighted donor pools (the shipped form since 2026-10-15, prereg
-# c66c50adc20bdf84; SHIPPED_OWN_SHARE above)
+# c66c50adc20bdf84; SHIPPED_OWN_SHARE above; the size-matched kernel since
+# 2026-10-23, SHIPPED_ANCHOR_WEIGHT above)
 # ---------------------------------------------------------------------------
 # forecast() with local=None is the POOLED form: every location scales one
 # pooled ratio distribution by its own anchor, so every forecast has the
@@ -608,7 +622,8 @@ class LocalPooling:
     own_site: bool = False
     region_of: Mapping = field(default_factory=dict)
     aux_sites: Mapping = field(default_factory=dict)
-    #: RESEARCH (prereg 0815e4709ab06b2f): the admissions pool by each
+    #: prereg 0815e4709ab06b2f (the kernel SHIPPED 2026-10-23, the floor and
+    #: the count weightings research): the admissions pool by each
     #: donor cell's own count v0. `anchor_floor`: a cell counts only if
     #: v0 >= the floor (fewer than MIN_DONORS left: the unfloored pool).
     #: `anchor_weight`: within each class every donor's weight is
@@ -618,7 +633,8 @@ class LocalPooling:
     anchor_floor: float = 0.0
     anchor_weight: str = "none"
     kernel_sd: float = 1.0
-    #: RESEARCH (amendments 2 and 3): a class holding at least this many
+    #: amendments 2 and 3 (SHIPPED with the kernel, SHIPPED_ESS_FLOOR): a
+    #: class holding at least this many
     #: cells whose effective donor count 1 / sum(w^2) falls below it under
     #: a weighting takes uniform weights for that forecast; a smaller class
     #: is exempt (it is small by construction: a jurisdiction's own cells);

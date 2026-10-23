@@ -128,8 +128,10 @@ def test_hub_path_quantiles_unchanged(tmp_path, monkeypatch):
 
 def test_hub_path_shipped_record_is_the_own_weighted_form(tmp_path, monkeypatch):
     """Since 2026-10-15 the shipped Groundhog weights the location's own
-    donors (flubnf.analogue.SHIPPED_OWN_SHARE), asked for by the record
-    the console and the presets write; a record without the key is the
+    donors (flubnf.analogue.SHIPPED_OWN_SHARE), and since 2026-10-23 donor
+    weeks of a similar size (SHIPPED_ANCHOR_WEIGHT), asked for by the record
+    the console and the presets write; the own-state form alone is the
+    record of 2026-10-15 to 2026-10-23; a record without the key is the
     pooled golden."""
     arch = _hub_archive(tmp_path / "hub")
     monkeypatch.setattr(EA, "vintage_path", lambda d: arch["vintages"][str(d)])
@@ -141,11 +143,16 @@ def test_hub_path_shipped_record_is_the_own_weighted_form(tmp_path, monkeypatch)
                              extra={"local_pools": EA.shipped_local_pools()}))
     explicit = EA.run(RunSpec(engine="analogue", forecast_date=fd,
                               locations=names,
+                              extra={"local_pools": {
+                                  "own_share": 0.5, "anchor_weight": "kernel",
+                                  "kernel_sd": 1.0, "ess_floor": 30.0}}))
+    own_only = EA.run(RunSpec(engine="analogue", forecast_date=fd,
+                              locations=names,
                               extra={"local_pools": {"own_share": 0.5}}))
     pooled = EA.run(RunSpec(engine="analogue", forecast_date=fd,
                             locations=names, extra={}))
     assert shipped == explicit
-    assert shipped != pooled
+    assert shipped != own_only and own_only != pooled and shipped != pooled
     want = json.loads(GOLDEN.read_text())[f"{fd}/bare"]
     got = {loc: {h: [round(float(lv[float(L)]), 9) for L in QL]
                  for h, lv in sorted(hq.items())} for loc, hq in sorted(pooled.items())}

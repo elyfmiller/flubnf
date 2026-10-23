@@ -86,8 +86,10 @@ def _post(data):
 GOLDEN_EXTRA = {"mode": "realtime",
                 "aux_pools": [{"stream": "flusurv", "weight": 0.5,
                                "committed": True}],
-                # the Groundhog's own-state weighting, recorded since 2026-10-15
-                "local_pools": {"own_share": 0.5}}
+                # the Groundhog's own-state weighting, recorded since
+                # 2026-10-15, with the size-matched kernel since 2026-10-23
+                "local_pools": {"own_share": 0.5, "anchor_weight": "kernel",
+                                "kernel_sd": 1.0, "ess_floor": 30.0}}
 
 
 def test_the_untouched_form_runs_the_golden_shipped_spec(tmp_path, monkeypatch):

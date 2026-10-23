@@ -127,11 +127,23 @@ def test_engine_local_args_parses_and_refuses(tmp_path, monkeypatch):
     csv.write_text(LOCATIONS_CSV, encoding="utf-8")
     monkeypatch.setattr(eng, "LOCATIONS", csv)
     # the shipped form rides in the record, as aux_pools does
-    assert eng.shipped_local_pools() == {"own_share": AN.SHIPPED_OWN_SHARE}
+    # since 2026-10-23 the shipped form is the own share with the
+    # size-matched kernel and its guard
+    assert eng.shipped_local_pools() == {
+        "own_share": AN.SHIPPED_OWN_SHARE, "anchor_weight": "kernel",
+        "kernel_sd": AN.SHIPPED_KERNEL_SD, "ess_floor": AN.SHIPPED_ESS_FLOOR}
+    assert (AN.SHIPPED_OWN_SHARE, AN.SHIPPED_ANCHOR_WEIGHT, AN.SHIPPED_KERNEL_SD,
+            AN.SHIPPED_ESS_FLOOR) == (0.5, "kernel", 1.0, 30.0)
     shipped = eng.local_args(SimpleNamespace(
         extra={"local_pools": eng.shipped_local_pools()}))
     assert shipped.own_share == 0.5 and not shipped.own_site
     assert shipped.region_share == 0
+    assert (shipped.anchor_weight, shipped.kernel_sd, shipped.ess_floor) == (
+        "kernel", 1.0, 30.0)
+    assert shipped.anchor_floor == 0 and shipped.winsor_q == 0
+    assert not shipped.repair_spikes and shipped.exclude_weeks == ()
+    # the form of 2026-10-15 to 2026-10-23 is the earlier shipped one
+    assert eng.EARLIER_SHIPPED_LOCAL_POOLS[0][0] == {"own_share": 0.5}
     # an absent key is the pooled form (every record before 2026-10-15);
     # so are None, False and a zero share
     assert eng.local_args(SimpleNamespace(extra={})) is None
@@ -140,13 +152,23 @@ def test_engine_local_args_parses_and_refuses(tmp_path, monkeypatch):
     # the knob sets the share, with or without the record's key
     assert eng.local_args(SimpleNamespace(
         extra={"knobs": {"groundhog.own_share": 0.75}})).own_share == 0.75
+    # the own share at 0 leaves the kernel; with the kernel at 0 too it is
+    # the pooled form
+    k0 = eng.local_args(SimpleNamespace(
+        extra={"local_pools": eng.shipped_local_pools(),
+               "knobs": {"groundhog.own_share": 0}}))
+    assert k0.own_share == 0 and k0.anchor_weight == "kernel"
     assert eng.local_args(SimpleNamespace(
         extra={"local_pools": eng.shipped_local_pools(),
-               "knobs": {"groundhog.own_share": 0}})) is None
+               "knobs": {"groundhog.own_share": 0, "groundhog.kernel_sd": 0}})) is None
     # the effective form drops zero entries, so an equivalent dict is shipped
     assert eng.effective_local_pools(
-        {"local_pools": {"own_share": 0.5, "region_share": 0, "own_site": False}}
+        {"local_pools": {**eng.shipped_local_pools(), "region_share": 0,
+                         "own_site": False, "anchor_floor": 0}}
     ) == eng.SHIPPED_LOCAL_POOLS
+    assert eng.effective_local_pools(
+        {"local_pools": {"own_share": 0.5, "region_share": 0, "own_site": False}}
+    ) == eng.EARLIER_SHIPPED_LOCAL_POOLS[0][0]
     lp = eng.local_args(SimpleNamespace(
         extra={"local_pools": {"own_share": 0.25, "own_site": True}}))
     assert lp.own_share == 0.25 and lp.own_site
@@ -274,10 +296,22 @@ def test_a_local_pools_run_is_labelled_and_is_research():
     shipped = _run_extra(2, "vintage")
     assert shipped["local_pools"] == eng.shipped_local_pools()
     assert runs.analogue_donors_label(shipped) == (
-        "flusurv+flusurv@06eff6a7, own-state donors 0.50")
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50, size-matched donors")
     assert not runs.is_research({"extra": shipped})
+    # a record of 2026-10-15 to 2026-10-23 (own share, no kernel) ran the
+    # shipped Groundhog of its day: named for its form, not research
+    earlier = {**shipped, "local_pools": {"own_share": 0.5}}
+    assert runs.analogue_donors_label(earlier) == (
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50")
+    assert not runs.is_research({"extra": earlier})
     assert not runs.is_research({"extra": {
         **shipped, "local_pools": {"own_share": 0.5, "region_share": 0}}})
+    # a kernel at another width is research and names its width
+    wide = {**shipped, "local_pools": {**eng.shipped_local_pools(), "kernel_sd": 0.5}}
+    assert runs.analogue_donors_label(wide).endswith(
+        "own-state donors 0.50, donors weighted by kernel s=0.5, "
+        "effective-donor floor 30")
+    assert runs.is_research({"extra": wide})
     # the bare analogue (no aux) stays the pooled form and carries no key
     assert "local_pools" not in _run_extra(2, "vintage", aux="")
     # the pooled form, asked for, is a research run and says so
@@ -290,11 +324,26 @@ def test_a_local_pools_run_is_labelled_and_is_research():
     # a knob off its default is a modified run, named, not research; the
     # knob at 0 names the pooled form too
     knob = {**shipped, "knobs": {"groundhog.own_share": 0.75}}
-    assert runs.analogue_donors_label(knob).endswith("own-state donors 0.75")
+    assert runs.analogue_donors_label(knob).endswith(
+        "own-state donors 0.75, size-matched donors")
     assert not runs.is_research({"extra": knob})
     zero = {**shipped, "knobs": {"groundhog.own_share": 0}}
-    assert runs.analogue_donors_label(zero).endswith("pooled (no own-state weight)")
+    assert runs.analogue_donors_label(zero).endswith(
+        "no own-state weight, size-matched donors")
     assert not runs.is_research({"extra": zero})
+    # the kernel knob at 0 is the earlier form, both at 0 the pooled form
+    nok = {**shipped, "knobs": {"groundhog.kernel_sd": 0}}
+    assert runs.analogue_donors_label(nok).endswith("own-state donors 0.50")
+    assert not runs.is_research({"extra": nok})
+    both = {**shipped, "knobs": {"groundhog.own_share": 0, "groundhog.kernel_sd": 0}}
+    assert runs.analogue_donors_label(both).endswith("pooled (no own-state weight)")
+    # research records without a weighting keep their labels (review
+    # 2026-10-23): the "no own-state weight" prefix is for a weighting only
+    region = {**shipped, "local_pools": {"region_share": 0.25}}
+    assert runs.analogue_donors_label(region) == "flusurv+flusurv@06eff6a7, region 0.25"
+    # a kernel knob turned on over a record of the earlier form adds the guard
+    on = {**earlier, "knobs": {"groundhog.kernel_sd": 1.0}}
+    assert eng.effective_local_pools(on) == eng.shipped_local_pools()
     # the replay presets carry the form too
     assert eng.aux_preset("flusurv")(None, 0, None)["local_pools"] == eng.shipped_local_pools()
 
@@ -350,11 +399,11 @@ def test_a_season_record_names_the_form_without_calling_the_week_dictionary(
                      week_extra=wrapped,
                      settings={"knobs": {"groundhog.own_share": 0.75}})
     assert retro.read_meta(root2)["settings"]["groundhog_local_pools"] == {
-        "own_share": 0.75}
+        **eng.shipped_local_pools(), "own_share": 0.75}
     root3 = tmp_path / "u"
     retro.run_season(root3, "2098-99", ["Ohio"], width=1, engine="analogue")
-    assert retro.read_meta(root3)["settings"]["groundhog_local_pools"] == {
-        "own_share": 0.5}
+    assert retro.read_meta(root3)["settings"]["groundhog_local_pools"] == (
+        eng.shipped_local_pools())
 
 
 def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
@@ -368,7 +417,8 @@ def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1])
     retro.run_season(root, "2098-99", ["Ohio"], width=1, engine="analogue")
     meta = retro.read_meta(root)
-    assert meta["settings"]["groundhog_local_pools"] == {"own_share": 0.5}
+    from app.core.engines import analogue as eng
+    assert meta["settings"]["groundhog_local_pools"] == eng.shipped_local_pools()
     # pretend the tree predates the key: a pooled-era record
     p = root / "run_meta.json"
     d = _json.loads(p.read_text()); d["settings"].pop("groundhog_local_pools")
@@ -514,7 +564,10 @@ def test_the_effective_donor_guard_falls_back_to_uniform():
     from app.core import runs
     cfg = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30}
     assert eng.effective_local_pools({"local_pools": cfg}) == cfg
-    assert runs.local_pools_label({"local_pools": cfg}).endswith("effective-donor floor 30")
+    # the shipped kernel and guard are named once; another floor is spelled out
+    assert runs.local_pools_label({"local_pools": cfg}).endswith("size-matched donors")
+    assert runs.local_pools_label({"local_pools": {**cfg, "ess_floor": 20}}).endswith(
+        "donors weighted by kernel s=1, effective-donor floor 20")
 
 
 # --- the tail-cell options (prereg 28f0f33d6ea7e232) -----------------------
@@ -636,3 +689,36 @@ def test_the_engine_accepts_and_labels_the_tail_options(tmp_path, monkeypatch):
         ", own-state donors 0.50, ratios winsorised at 0.99, single-week spikes "
         "repaired, weeks removed 2024-05-04 to 2024-10-26")
     assert runs.is_research({"extra": {"local_pools": cfg}})
+
+
+# --- the shipped kernel (2026-10-23) ----------------------------------------
+
+@pytest.mark.parametrize("own,kern,form,suffix", [
+    (None, None, "shipped", ""),
+    (None, 0, {"own_share": 0.5}, "-kern0"),
+    (0, 0, None, "-own0.00-kern0"),
+    (0, None, {"anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30.0}, "-own0.00"),
+    (0.75, 0.5, {"own_share": 0.75, "anchor_weight": "kernel", "kernel_sd": 0.5,
+                 "ess_floor": 30.0}, "-own0.75-kern0.5"),
+])
+def test_a_groundhog_replay_runs_the_form_it_is_asked_for(tmp_path, monkeypatch,
+                                                           own, kern, form, suffix):
+    """`flubnf groundhog retro --own-share/--kernel-sd`: the default is the
+    shipped form; --kernel-sd 0 the form of 2026-10-15 to 2026-10-23; both
+    0 the pooled form; the arm directory names what is off the default."""
+    import pandas as pd
+    from app.core import groundhog as gh
+    from app.core.engines import analogue as eng
+    seen = []
+    monkeypatch.setattr(gh.retro, "season_vintages", lambda s: ["2098-11-07"])
+    monkeypatch.setattr(gh, "console_locations", lambda: ["Ohio"])
+    monkeypatch.setattr(gh, "_name2fips", lambda: {"Ohio": "39"})
+    monkeypatch.setattr(gh.scoring, "load_truth", lambda: ({}, None))
+    monkeypatch.setattr(gh, "forecast_week", lambda s, a, l, extra: seen.append(extra) or {})
+    monkeypatch.setattr(gh, "score_week", lambda q, a, n, t: (pd.DataFrame(), pd.DataFrame()))
+    monkeypatch.setattr(gh, "STATE", tmp_path)
+    res = gh.run_season("2098-99", "flusurv", own_share=own, kernel_sd=kern)
+    want = eng.shipped_local_pools() if form == "shipped" else form
+    assert seen[0]["local_pools"] == want
+    assert res["meta"]["local_pools"] == want
+    assert (tmp_path / f"flusurv{suffix}" / "2098-99" / "run_meta.json").is_file()

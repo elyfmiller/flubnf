@@ -300,8 +300,14 @@ def groundhog_retro_cmd(
     own_share: float = typer.Option(
         None, "--own-share", min=0.0, max=1.0,
         help="Weight of the jurisdiction's own past weeks in the admissions "
-             "pool; default the shipped 0.5, 0 the pooled form every "
-             "jurisdiction shared before 2026-10-15."),
+             "pool; default the shipped 0.5, 0 no own-state weight (with "
+             "--kernel-sd 0: the pooled form every jurisdiction shared "
+             "before 2026-10-15)."),
+    kernel_sd: float = typer.Option(
+        None, "--kernel-sd", min=0.0, max=5.0,
+        help="Width in log counts of the size-matched donor kernel; default "
+             "the shipped 1, 0 no kernel (the form of 2026-10-15 to "
+             "2026-10-23)."),
 ):
     """Replay the calendar member alone over a season and score it.
 
@@ -321,7 +327,7 @@ def groundhog_retro_cmd(
             try:
                 r = gh.run_season(
                     s, "" if a == gh.SHIPPED else a, with_us=with_us,
-                    own_share=own_share,
+                    own_share=own_share, kernel_sd=kernel_sd,
                     progress=lambda asof, i, n: (
                         console.print(f"    {i:>3}/{n}  {asof}")
                         if (i % 8 == 0 or i == n) else None))

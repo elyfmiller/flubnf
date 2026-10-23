@@ -324,6 +324,20 @@ REGISTRY: tuple = (
                "leave-one-season-out; 0.75 scored 0.658 with lower "
                "coverage. The FluSurv-NET pool stays pooled."),
          card=(GROUNDHOG_CARD, {0.5: "own past weeks carry half"})),
+    Knob("groundhog.kernel_sd", "Size-matched donor kernel", GH_ONLY,
+         "groundhog", "method", "float", AN.SHIPPED_KERNEL_SD,
+         "flubnf.analogue:SHIPPED_KERNEL_SD",
+         "Log-count width of the weight on donor weeks sized like the newest; 0 is off.",
+         lo=0.0, hi=5.0,
+         note=("Pre-registered screen of 2026-10-17 (width 1 chosen by "
+               "leave-one-season-out over 0.5 and 1): 0.642 against 0.660 "
+               "on three replayed seasons, coverage unchanged; with its "
+               "effective-donor guard (30) it scored again on 2026-10-22 "
+               "under every upper-tail cap, about 0.017 better. It keeps a "
+               "donor week based on one or two admissions from setting a "
+               "large jurisdiction's tail (the Ohio band of 2026-10-24). "
+               "0 is the form of 2026-10-15 to 2026-10-23."),
+         card=(GROUNDHOG_CARD, {1.0: "similar-sized weeks carry the most weight"})),
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
@@ -440,11 +454,12 @@ LOCKED: tuple = (
            "Objective, bounds and start time pinned to the records' conventions."),
     Locked("pf.starting_values", "DEFAULTS_BLOCK", "app.core.engines.pf:DEFAULTS_BLOCK",
            "Inert under initialization=rand."),
-    Locked("pooling", "all jurisdictions, own weeks at half weight",
+    Locked("pooling", "all jurisdictions, own weeks at half weight, size-matched",
            "app.core.engines.analogue:run",
            "Every jurisdiction's donor cells are in the Groundhog's pool; the "
-           "share on its own weeks is groundhog.own_share. Jurisdictions fit "
-           "independently."),
+           "share on its own weeks is groundhog.own_share and the weighting "
+           "toward donor weeks of a similar size is groundhog.kernel_sd. "
+           "Jurisdictions fit independently."),
 )
 LOCKED_KEYS = frozenset(l.key for l in LOCKED)
 
@@ -729,6 +744,11 @@ def _read(knob: Knob, spec, extra: Mapping):
         # pooled form, 0) with the knob on top
         cfg = EA.effective_local_pools(extra)
         return float((cfg or {}).get("own_share", 0.0))
+    if key == "groundhog.kernel_sd":
+        # the kernel's width as the engine ran it (no kernel: 0)
+        cfg = EA.effective_local_pools(extra) or {}
+        return (float(cfg.get("kernel_sd", 1.0))
+                if cfg.get("anchor_weight") == "kernel" else 0.0)
     # knobs with no engine key yet live in extra["knobs"] (Stage 2)
     return (extra.get("knobs") or {}).get(key, knob.default)
 

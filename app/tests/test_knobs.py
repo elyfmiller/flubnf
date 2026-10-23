@@ -63,6 +63,7 @@ SOURCES = {
                                 for p in EA.AUX_PRESETS[EA.SHIPPED_AUX]),
     "groundhog.bandwidth": AN.DEFAULT_BANDWIDTH,
     "groundhog.own_share": AN.SHIPPED_OWN_SHARE,
+    "groundhog.kernel_sd": AN.SHIPPED_KERNEL_SD,
     "groundhog.min_donors": AN.MIN_DONORS,
     "groundhog.zero_anchor": MS.ZERO_ANCHOR_DEFAULT,
     "output.floor_lam": FL.LAM,
@@ -352,7 +353,8 @@ def test_effective_bare_analogue_is_modified_and_drops_the_weight():
     spec = RunSpec("all", FD, ["Ohio"], extra={"mode": "realtime"})
     # no auxiliary pool and no local_pools record: the bare, pooled analogue
     assert _modified(spec) == {"groundhog.aux": "none",
-                               "groundhog.own_share": 0.0}
+                               "groundhog.own_share": 0.0,
+                               "groundhog.kernel_sd": 0.0}
     rows = {r["key"]: r for r in K.effective(spec)}
     assert not rows["groundhog.aux_weight"]["applies"]
 

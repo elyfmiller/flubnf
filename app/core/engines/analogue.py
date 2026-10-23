@@ -340,9 +340,23 @@ _ABBR_REGION = {a: r for r, abbrs in HHS_REGION.items() for a in abbrs}
 _FLUSURV_SITES = {"NY": ("ny_albany", "ny_rochester")}
 
 
-#: the shipped Groundhog's local pooling (prereg c66c50adc20bdf84): the
-#: jurisdiction's own past weeks at half the admissions-pool weight
-SHIPPED_LOCAL_POOLS = {"own_share": AN.SHIPPED_OWN_SHARE}
+#: the shipped Groundhog's local pooling: the jurisdiction's own past weeks
+#: at half the admissions-pool weight (prereg c66c50adc20bdf84, since
+#: 2026-10-15) and, inside each half, donor weeks weighted by how close their
+#: own count is to the jurisdiction's newest (the size-matched kernel with
+#: its effective-donor guard, prereg 0815e4709ab06b2f and 28f0f33d6ea7e232,
+#: since 2026-10-23)
+SHIPPED_LOCAL_POOLS = {"own_share": AN.SHIPPED_OWN_SHARE,
+                       "anchor_weight": AN.SHIPPED_ANCHOR_WEIGHT,
+                       "kernel_sd": AN.SHIPPED_KERNEL_SD,
+                       "ess_floor": AN.SHIPPED_ESS_FLOOR}
+#: forms that shipped before the current one, newest first, each with the
+#: date it stopped being the default: a record carrying one ran the
+#: shipped Groundhog of its day (not research). The pooled form (no
+#: local_pools key, before 2026-10-15) is the record's absence of the key.
+EARLIER_SHIPPED_LOCAL_POOLS = (
+    ({"own_share": AN.SHIPPED_OWN_SHARE}, "2026-10-23"),
+)
 
 
 def shipped_local_pools() -> dict:
@@ -379,6 +393,15 @@ def effective_local_pools(extra, *, dataset: bool = False):
     knob = (extra.get("knobs") or {}).get("groundhog.own_share")
     if knob is not None:
         cfg = {**(cfg or {}), "own_share": float(knob)}
+    ksd = (extra.get("knobs") or {}).get("groundhog.kernel_sd")
+    if ksd is not None:
+        # the size-matched kernel's width; 0 turns the kernel (and its
+        # guard) off, the form before 2026-10-23
+        cfg = {k: v for k, v in (cfg or {}).items()
+               if k not in ("anchor_weight", "kernel_sd", "ess_floor")}
+        if float(ksd) > 0:
+            cfg.update({"anchor_weight": "kernel", "kernel_sd": float(ksd),
+                        "ess_floor": AN.SHIPPED_ESS_FLOOR})
     if cfg is None:
         return None
     out = {}
@@ -388,7 +411,8 @@ def effective_local_pools(extra, *, dataset: bool = False):
         out["region_share"] = float(cfg["region_share"])
     if cfg.get("own_site"):
         out["own_site"] = True
-    # RESEARCH (prereg 0815e4709ab06b2f): the admissions pool by donor count
+    # the admissions pool by donor count (prereg 0815e4709ab06b2f; the
+    # kernel and its guard shipped 2026-10-23, the rest research)
     if float(cfg.get("anchor_floor", 0) or 0) > 0:
         out["anchor_floor"] = float(cfg["anchor_floor"])
     aw = str(cfg.get("anchor_weight") or "none")

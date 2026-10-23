@@ -192,7 +192,9 @@ def test_the_tree_decides_the_groundhog_name(site):
     assert f"{sb.GH_LABEL_POOLED}, pooled relWIS" in text
     assert ("The Groundhog column is the pooled form these replays ran; "
             "since 2026-10-15 the shipped Groundhog gives each "
-            "jurisdiction's own past weeks half of the donor weight.") \
+            "jurisdiction's own past weeks half of the donor weight, and "
+            "since 2026-10-23 it gives donor weeks of a similar size the "
+            "most weight.") \
         in text.replace("&#x27;", "'").replace("&#39;", "'")
     members = json.loads(html.split('data-members="', 1)[1].split('"', 1)[0]
                          .replace("&quot;", '"'))
@@ -220,10 +222,17 @@ def test_gh_label_names_the_form_every_published_tree_ran(tmp_path):
                         "d": tree("d", None)}) == sb.GH_LABEL_POOLED
     assert sb.gh_label({"e": tree("e", shipped),
                         "f": tree("f", key=False)}) == sb.GH_LABEL_MIXED
+    # trees of the own-state form of 2026-10-15 to 2026-10-23 are named so
+    own = {"own_share": 0.5}
+    assert sb.gh_label({"g": tree("g", own),
+                        "h": tree("h", own)}) == sb.GH_LABEL_OWN
+    assert sb.gh_label({"i": tree("i", own),
+                        "j": tree("j", shipped)}) == sb.GH_LABEL_MIXED
     for label, says in (
             (sb.GH_LABEL_SHIPPED, None),
             (sb.GH_LABEL_POOLED, "is the pooled form these replays ran"),
-            (sb.GH_LABEL_MIXED, "is the pooled form in some of these replays")):
+            (sb.GH_LABEL_OWN, "is the own-state form these replays ran"),
+            (sb.GH_LABEL_MIXED, "comes from more than one form across these replays")):
         out = site_page._season_table({"seasons": [], "pooled": {},
                                        "pf_label": sb.PF_LABEL_ORACLE,
                                        "gh_label": label})
@@ -231,7 +240,7 @@ def test_gh_label_names_the_form_every_published_tree_ran(tmp_path):
         if says:
             assert says in out
         else:
-            assert "pooled form" not in out
+            assert "pooled form" not in out and "own-state form" not in out
     # a payload from before the key reads as the plain name, as it did
     assert '<th class="n">Groundhog</th>' in site_page._season_table(
         {"seasons": [], "pooled": {}, "pf_label": sb.PF_LABEL_ORACLE})
