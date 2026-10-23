@@ -11,6 +11,23 @@ agent's.
 
 ## Now
 
+- 2026-10-23 (00:33 UTC): AMENDMENT 1, THE PAST-SEASON BOXES' VALUES
+  (sha256 affe3469, written by the frozen rule from the season-end fits,
+  before HP or HS runs and before any arm is scored; R20 started 00:32
+  UTC). Season-end fits, per-jurisdiction medians: eps1 0.19 / 0.15 /
+  0.15 (5-95%: 0.06-0.40), phi1 30.3 / 28.5 / 25.4 weeks (5-95%:
+  10-36) for 2022-23, 2023-24, 2024-25. HP (pooled): eps1 0 to 0.52,
+  0.54, 0.56 for 2023-24, 2024-25, 2025-26 (shipped 0 to 1); phi1 10.5
+  to 41.9 and 11.2 to 44.6 weeks for the first two, and the shipped 0 to
+  52 for 2025-26, because two of its source fits (Massachusetts and
+  Texas, 2024-25) sit across the wrap: the registered fallback. HS (per
+  jurisdiction): the boxes come out nearly as wide as the shipped prior
+  (phi1 width median 46.7, 52.0, 52.0 weeks; eps1 0.62, 0.74, 0.86),
+  because one jurisdiction's season-end fit does not pin its own timing
+  tightly even with the season in hand, and the widened union over its
+  seasons covers almost everything. So HS will sit close to C0, and HP's
+  test is the amplitude cap plus the timing box in two seasons. Both run
+  as registered (HP about 06:30 UTC Saturday, HS about 16:30 UTC).
 - 2026-10-23 (00:24 UTC): FROM THE OLD REGISTRATION TO THE FORM UNDER
   TEST, ONE CHANGE AT A TIME (amendment R; REG complete, 84 weeks, no
   failed cell, check A exact on every cell of the three seasons). Each
