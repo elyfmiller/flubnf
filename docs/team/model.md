@@ -11,6 +11,69 @@ agent's.
 
 ## Now
 
+- 2026-10-24 (07:18 UTC): THE TRAJECTORY-EXCLUSION ARM (Ely's idea, the
+  Submission lane's handoff of 2026-10-23): IT COSTS AT EVERY n; NOT A
+  CANDIDATE. Pre-registered before any of it was computed (amendment 2,
+  sha256 525ab77f, frozen 07:03 UTC; research archive), scored post hoc
+  on C0's 84 stored weeks (17,466 cells). A path is one index of the
+  submitted seed's 30,000 samples, which stays one trajectory through the
+  Oracle step (each filter path times one donor's four-horizon factors),
+  the narrowing (monotone per horizon) and the floor (per-path noise).
+  The point in the pipeline, decided before scoring: XP (primary, the
+  Submission lane's reading) un-narrows the stored samples, drops every
+  path above n times the recent level at any horizon, and narrows the
+  rest again at 0.7 about their own median; XS (secondary) drops on the
+  stored, already narrowed samples. Checks passed on every week: the
+  comparators equal the C0 cells exactly, XP with no limit reproduces
+  them exactly (0 of 17,466 cells differ), no kept path exceeds its
+  limit, and the drop counts equal a plain loop's on the smoke week; no
+  location-week fell below the 300-path floor.
+  Pooled relWIS natural / log, 95% coverage (k 0.7): none 0.668 / 0.699,
+  0.92; clip 15x 0.668 / 0.700, 0.91; shrink 15x 0.670 / 0.707, 0.90;
+  shrink 10x 0.681 / 0.720, 0.87.
+  XP: X40 0.675 / 0.719, 0.90; X30 0.680 / 0.727; X20 0.691 / 0.745; X15
+  0.704 / 0.764, 0.86; X40 + shrink 15x 0.676 / 0.719. Against shrink
+  15x: X40 +0.005 [+0.001, +0.009] | +0.012 [+0.007, +0.017]; X15 +0.034
+  [+0.014, +0.054] | +0.057 [+0.035, +0.077]; September to November X15
+  +0.107 [+0.050, +0.134]. Paths dropped per location-week, X40: median
+  0.003%, 90th percentile 7.2%, maximum 38% (Maine 2023-10-07), over 1%
+  in 1,111 of 4,368; X15: median 0.07%, 90th 19%, maximum 58% (Utah
+  2025-11-15); in the location-weeks whose h3 97.5% was over 30x with no
+  rule, X15 drops a median 26%. The median moves: X15's h3 median is
+  unchanged in 60% of cells, but its 10th percentile is 0.67 of the none
+  median and its 1st 0.30 (South Dakota 2023-10-07 goes to 0).
+  XS: X40 0.668 / 0.702, 0.91 (minus none -0.000 [-0.002, +0.001] |
+  +0.003 [+0.001, +0.005]; 3.0% of h3 cells still over 30x); X30 0.668 /
+  0.704; X20 0.671 / 0.710; X15 0.676 / 0.718, 0.89 (minus shrink 15x
+  +0.005 [+0.002, +0.009] | +0.011 [+0.006, +0.015]); X40 + shrink 15x
+  0.670 / 0.707 (minus shrink 15x +0.000 [-0.000, +0.000] | +0.000
+  [-0.000, +0.001]).
+  The Submission lane's predictions: P1 fails on the drop share (over 1%
+  of paths in a quarter of location-weeks at XP, an eighth at XS, not "a
+  few"); free on the natural scale at XS and at the edge at XP (+0.007
+  [-0.000, +0.014]), not on the log scale. P2 holds in direction and
+  cause (the median moves down, the cost sits in the early weeks), and
+  is too mild for XP: X15 is worse than shrink 10x, not between. P3
+  holds for XS and fails for XP (+0.006 [+0.002, +0.009] against shrink
+  15x). Mine: Q1 wrong (X40 is not within 0.001 on both scales and drops
+  more than 0.1% in a third of location-weeks); Q2 right; Q3 wrong on the
+  score (X15 is 0.036 worse than clip 15x at XP, 0.008 at XS), right on
+  coverage; Q4 half (the worst 1% moves past 20%, but the h3 median moves
+  more than 1% in 35% of cells, not 10%); Q5 right.
+  Reading: the forecasting sample's high paths carry score. A path that
+  crosses n by horizon 3 is also high at h0 to h2, so dropping it whole
+  lowers the median and the lower quantiles at every horizon, which the
+  per-horizon caps (they touch only the levels above the median) never
+  do; the log scale shows it most (low-count cells lose their middle).
+  The only harmless form, XS at 40x with the shrink at 15x on top, is
+  indistinguishable from the shrink at 15x, so it buys the sentence "no
+  path above 40x" about samples the hub never sees. 2023-24 gains under
+  every exclusion (XP X15 0.681 against none 0.706), as it did under HP:
+  that season's blow-outs were wrong and the other seasons' were not.
+  Recommendation: drop the exclusion; the shrink at 15x stays the
+  output rule. Nothing here touches the 2026-10-28 round. HS (the
+  per-state prior) finishes about 16:00 UTC; the screen's full
+  recommendation follows it here.
 - 2026-10-24 (07:01 UTC): HP, THE POOLED PAST-SEASON PRIOR ON eps1 AND
   phi1: NULL UNDER THE PRE-REGISTERED RULE, THOUGH THE FIRST ARM TO BEAT
   C0 HELD OUT. 84 weeks, no failed cell, checks A to C passed (A exact on
