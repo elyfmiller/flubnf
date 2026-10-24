@@ -11,6 +11,52 @@ agent's.
 
 ## Now
 
+- 2026-10-24 (07:01 UTC): HP, THE POOLED PAST-SEASON PRIOR ON eps1 AND
+  phi1: NULL UNDER THE PRE-REGISTERED RULE, THOUGH THE FIRST ARM TO BEAT
+  C0 HELD OUT. 84 weeks, no failed cell, checks A to C passed (A exact on
+  all 17,466 cells). The boxes that ran (amendment 1): 2023-24 eps1
+  0-0.52, phi1 10.5-41.9; 2024-25 eps1 0-0.54, phi1 11.2-44.6; 2025-26
+  eps1 0-0.56, phi1 the shipped 0-52 (two fits straddle the wrap).
+  Held-out 0.663 / 0.691 against C0's 0.673 / 0.703, 95% coverage 0.92
+  against 0.92; by season -0.047, -0.011, +0.010 (+0.0097, inside rule
+  (ii)'s 0.010). Rules (i) to (iii) pass; (iv) fails: HP minus C0 at
+  C0's choice (k 0.7, shrink 20x, as R20 and R22 were read) -0.003
+  [-0.012, +0.005] | log -0.004 [-0.012, +0.004]; at C0's choice season
+  by season -0.006 [-0.015, +0.003] | -0.006 [-0.014, +0.002]. Each arm
+  at its own held-out choice (not the registered test) -0.011 [-0.021,
+  -0.001] | -0.013 [-0.021, -0.004]. HP chose k 0.8 in every fold: the
+  prior narrows the band itself, so it wants less of the Oracle's
+  narrowing.
+  At Ely's 2026-10-28 setting (k 0.7, shrink 15x): HP minus C0 -0.003
+  [-0.012, +0.005] | -0.005 [-0.013, +0.003], 95% coverage 0.88 against
+  0.90; by season -0.024, -0.009, +0.016. The clip at 15x is the same in
+  sign (-0.003; 2025-26 +0.018). At k 0.8 the gain is larger and clears
+  zero on the natural scale (shrink 20x -0.010 [-0.018, -0.002] | -0.009
+  [-0.016, -0.001], 95% coverage 0.92; clip 15x -0.009 [-0.019, -0.001]
+  | -0.007 [-0.015, +0.001]), but k 0.8 is HP's own choice, read after
+  the scores, so it is a lead, not a result.
+  Where it comes from: the plain filter gains most (0.808 against 0.863,
+  -0.055 [-0.082, -0.033]; 2023-24 0.940 against 1.074). The member gains
+  in 2023-24 through the October to December rise (Texas, Florida,
+  California first) and loses in 2025-26 at the December and January
+  peak in New York, New Jersey, Pennsylvania, Ohio and North Carolina
+  (95% coverage in December 0.80 against 0.85). 2025-26's box limited
+  only eps1 (to 0.56), so that season's sharp peak wanted more seasonal
+  amplitude than the past seasons had. The band narrows (h3 97.5% over
+  the median 3.4x against 4.0x; h3 cells over 30x with no rule 4.4%
+  against 10.0%). P5 is half right: net within 0.010 at the live
+  settings (held out -0.011), the cost at the peak only in 2025-26, and
+  the early weeks gain rather than cost (September to November, log
+  -0.027 [-0.048, -0.007] at clip 15x).
+  Reading: nothing ships. HP is a lead that these three seasons cannot
+  confirm: each test season's box comes from one to three earlier
+  seasons, and the one large gain, 2023-24, rests on a single
+  season-end fit on the cut 2022-23 vintage. The honest next test is
+  prospective: the 2026-27 box from all four seasons, run beside the
+  live member as a research shadow and scored as weeks settle; Ely's
+  call. HS is running (about 16:00 UTC), then the trajectory-exclusion
+  arm (Submission's handoff of 2026-10-23), pre-registered before
+  anything of it is scored.
 - 2026-10-23 (20:52 UTC): R22, THE Reff PRIOR CAPPED AT 2.2: NULL TOO.
   84 weeks, no failed cell, checks A to C passed. Held-out 0.674 / 0.706
   against C0's 0.673 / 0.703, 95% coverage 0.91 against 0.92; by season
