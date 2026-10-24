@@ -11,6 +11,107 @@ agent's.
 
 ## Now
 
+- 2026-10-24 (17:08 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECOMMENDATION,
+  FOR THE TEAM REVIEW (beside the Groundhog's of 2026-10-23 00:40 UTC,
+  laptop). All six arms are read: C0, R20, R22, HP, HS and G (post hoc),
+  plus the trajectory-exclusion arm X. Pre-registration fd8f57d6 (frozen
+  2026-10-22), amendment REG 51a85f76, amendment 1 (the boxes) affe3469,
+  amendment 2 (X) 525ab77f; 84 as-of weeks of 2023-24 to 2025-26, 17,466
+  scored state cells per rule, settled truth, FluSight's cell rule and
+  baseline join; every arm passed checks A to C (the console's own scorer
+  reproduced exactly on every cell). Pooled relWIS is natural / log;
+  intervals are the week-cluster bootstrap, 2,000 replicates. Nothing is
+  running on the lab Mac; the chain was stopped after HS, so the Mac is
+  idle for Wednesday's freeze.
+  1. FROM THE OLD REGISTRATION TO THE FORM OF 2026-10-28 (Ely's question;
+     each step on the cells it shares with the first):
+       registered member (to_date seed, w 0.5, no narrowing, no cap)
+         0.749 / 0.805, 95% coverage 0.94; by season 0.766, 0.723, 0.778
+       + Oracle weight 0.25          0.720 / 0.764
+       + stage-rule seed            0.712 / 0.705 (2023-24 alone worse:
+                                     0.828)
+       + narrowing 0.7 (live 10-24)  0.668 / 0.699, coverage 0.92
+       + shrink 15x (Ely's 10-28)    0.670 / 0.707, coverage 0.90; by
+                                     season 0.690, 0.656, 0.682
+     The 10-28 form against the registered member: -0.078 [-0.095,
+     -0.062] natural, -0.098 [-0.119, -0.080] log, better in every season
+     (-0.076, -0.067, -0.096). The narrowing is the largest single step;
+     the cap gives back 0.002 natural and 0.008 log of it in exchange for
+     the gate (h3 cells over 30x: 0.1% against 10.0%).
+  2. THE OUTPUT RULE: THE SHRINK AT 15x, AS ELY DECIDED, IS SUPPORTED.
+     Against no rule +0.002 [-0.004, +0.008] | +0.008 [+0.003, +0.014];
+     September to November +0.007 [-0.006, +0.017] | +0.020 [+0.007,
+     +0.031]. The clip at 15x is a little cheaper on the log scale
+     (-0.000 | +0.001) and the two cannot be told apart on the natural
+     scale, so the choice on form stands. The pre-registered "free line"
+     (the smallest shrink within 0.010 of no rule with 95% coverage at
+     least 0.90) is 20x: -0.000 | +0.003. Not 10x or 8x: shrink 10x
+     +0.013 | +0.021 season-wide and +0.032 | +0.052 in the early weeks
+     (early 95% coverage 0.79). Leave-one-season-out over the narrowing
+     and the rule held out 0.673 / 0.703; it never chose a cap below 20x.
+  3. THE STRUCTURAL ARMS: NONE PASSES THE PRE-REGISTERED RULE.
+     R20 and R22 (the Reff bound at 2.0 and 2.2): null; the filter gains
+     and the step and the narrowing absorb it. The bound stays at 2.5.
+     HP (the pooled past-season box on eps1 and phi1): null on rule (iv),
+     though the best arm here: held out 0.663 / 0.691 against 0.673 /
+     0.703. HS (the per-state box, the swarm carry): null on rules (ii)
+     and (iv), held out 0.668 / 0.701 (entry below). Both prior arms gain
+     most in 2023-24 (-0.047, -0.040) and lose at the 2025-26 December
+     and January peak in the Northeast (+0.010); HP chose k 0.8 in every
+     fold, and both gain more against C0 at k 0.8 than at 0.7.
+     G (the per-week growth cap): worse than the clip at every g (1.5x
+     0.719, 2x 0.677, 3x 0.672 against clip 15x 0.668), and far worse on
+     the log scale. X (the trajectory exclusion): costs at every n
+     (07:18 UTC entry).
+  4. RECOMMENDATIONS.
+     a. 2026-10-28: the override values of the Submission notes (stage
+        seed, w 0.25, narrowing 0.7, shrink 15x). Nothing from this screen
+        changes them.
+     b. Ship nothing from the structural arms; keep the shipped priors.
+     c. One lead, for Ely: HP as a pre-registered research shadow this
+        season (the 2026-27 box from all four past seasons, run beside the
+        live member, scored as weeks settle, read at k 0.7 and 0.8). The
+        three seasons here cannot confirm it: the 2023-24 gain rests on one
+        season-end fit from the cut 2022-23 vintage.
+     d. Revisit the cap's n after capped weeks score, as the Submission
+        notes plan: on these seasons the shrink is free from 20x and costs
+        below 15x.
+  5. PREDICTIONS (fd8f57d6 section 7): P1 right (shrink 10x +0.013, 1.9%;
+     coverage 0.92 to 0.87). P2 half: the clip is better than the shrink
+     at every n over whole seasons, but the shrink is not better in
+     September to November. P3 right (R20 within 0.005 of C0). P4 a tie
+     for the member, true for the filter. P5 half (net within 0.010; the
+     early weeks gain rather than cost; the cost sits at the 2025-26
+     peak). P6 right.
+  6. THE RECORDS: pre-registration, amendments, scorers, reports and the
+     per-cell tables are in the research archive on the lab Mac
+     (FluBNF-local/research/oracle-width-screen), not in the repository,
+     under the research-stays-local rule. Whether they go to a branch for
+     the review is Ely's call; until then, any number here can be
+     re-derived on request.
+- 2026-10-24 (17:08 UTC): HS, THE PER-STATE PAST-SEASON BOX (THE SWARM
+  CARRY): NULL. 84 weeks, no failed cell, checks A to C passed. The boxes
+  are wide: eps1 widths a median 0.62, 0.74, 0.86 by test season, and
+  phi1 fell back to the shipped 0-52 in 17, 43 and 47 of 52 states (a fit
+  straddling the wrap). In 2025-26 13 states kept both shipped ranges,
+  and their samples are bit-identical to C0's, while all 39 boxed states
+  differ: the hook ran, and the replay is deterministic. Held out 0.668 /
+  0.701 against C0's 0.673 / 0.703, 95% coverage 0.91 against 0.92; by
+  season -0.040, -0.004, +0.0104. Rule (ii) fails (2025-26 more than
+  0.010 worse) and rule (iv) fails: HS minus C0 at C0's choice (k 0.7,
+  shrink 20x) -0.003 [-0.010, +0.004] | -0.000 [-0.004, +0.004]; at C0's
+  per-season choices -0.006 [-0.014, +0.002] | -0.002 [-0.006, +0.002].
+  At Ely's 10-28 setting (shrink 15x) -0.003 [-0.010, +0.004] | -0.001
+  [-0.004, +0.003], 95% coverage 0.89 against 0.90. At k 0.8, clip 15x
+  -0.008 [-0.017, -0.001] | -0.003 [-0.007, +0.001] (k 0.8 read after
+  the scores, a lead only). September to November at clip 15x -0.020
+  [-0.052, -0.003] | -0.012 [-0.022, -0.004], not a registered test. The
+  plain filter gains -0.058 [-0.087, -0.036] (HP -0.055). Where: 2023-24
+  gains from October to December (Texas, Florida, California first);
+  2025-26 loses in December and January (Pennsylvania, New York, New
+  Jersey, Massachusetts, Michigan). HP's pattern, weaker: the pooled box
+  beats the per-state one. P5 holds for HS (net within 0.010, the cost at
+  the 2025-26 peak), except that the early weeks gain.
 - 2026-10-24 (07:18 UTC): THE TRAJECTORY-EXCLUSION ARM (Ely's idea, the
   Submission lane's handoff of 2026-10-23): IT COSTS AT EVERY n; NOT A
   CANDIDATE. Pre-registered before any of it was computed (amendment 2,
