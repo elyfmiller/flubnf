@@ -6,6 +6,107 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-23 (02:50 UTC): ELY'S DECISION FOR 2026-10-28: THE LOCATION-WIDE
+  SHRINK AT 15x FOR BOTH MEMBERS (replacing the clip at 10x recorded by
+  the Model lane at 01:38 UTC; the kernel still ships, PR #48). The
+  reasoning, Ely's, in chat: in principle the shrink is the better
+  forecast; the clip cuts the tails of the quantiles and ties the top
+  levels at the limit (a point mass at the bound), which looks wrong on
+  the dashboard and claims more than the model can support; the shrink
+  keeps a proper, monotone fan. At 15x the Oracle's full-season screen
+  cannot tell the two forms apart (shrink 15x +0.002 season-wide, +0.007
+  in the early weeks, both inside the bootstrap interval on the natural
+  scale; 95% coverage 0.90 / 0.87 against the clip's 0.91 / 0.90), so
+  the choice is made on form, stated as such. For the Groundhog with the
+  kernel the shrink at 15x is 0.649 against the clip's 0.644 season-wide
+  and better in October. What it gives up: the width target (the typical
+  h3 tail lands at 15x the recent level, not the members' 8-12x; the
+  move to 10x is reconsidered once a capped week has scored, and the
+  shrink does not go to 10x: +0.032 in the early weeks). The sentence
+  for Spencer's call: the horizon-3 97.5% quantile is bounded at the
+  95th percentile of historically realised 4-week growth, and the band
+  is shrunk toward the median by one exponent per location so the fan
+  keeps its shape.
+  WEDNESDAY'S OVERRIDE VALUES, FINAL unless Ely says otherwise (main at
+  or after the #48 merge; one reason): pf.seed_denominator
+  season_total_early, oracle.w 0.25, oracle.narrow 0.7, output.tail_cap
+  15, output.tail_mode shrink. Then the hub check, the gate from main on
+  both files (expected: PASS, max h3 ratio 15x), the submission commit
+  "NAU_PyBNF forecast 2026-10-31 (EW43)", the compare link.
+  Ely's trajectory-exclusion idea (drop the forecasting-sample paths
+  that cross n times the recent level, the swarm untouched) is handed
+  to the Model lane as a screen (For other lanes); not on Wednesday's
+  file.
+- 2026-10-23 (02:10 UTC): THE MAC RESULTS READ (docs/team/model.md, the
+  entries of 2026-10-22 14:41 UTC to 2026-10-23 01:38 UTC); ELY'S
+  DECISION "SHIP THE KERNEL, CLIP AT 10x"; THIS LANE'S READING REVISED.
+  - The Oracle's full-season screen (C0, 84 weeks, 17,466 cells, the cap
+    through main's code with the rounding fix): at k 0.7, none 0.668 /
+    cov95 0.92; clip 15x 0.668 / 0.91 (free, no h3 cell over 30x); clip
+    10x 0.672 / 0.90 (+0.003, inside noise); shrink 15x 0.670 / 0.90;
+    shrink 10x 0.681 / 0.87; shrink 8x 0.691 / 0.85. In the first eight
+    scoreable weeks of each season, where the gate binds, the shrink at
+    10x costs +0.032 with 95% coverage down to 0.79, the clip at 10x
+    +0.008 at 0.86, the clip at 15x nothing. This lane's 44-week cloud
+    screen agrees with the Mac within 0.001-0.005 on every rule (natural
+    relWIS and coverage); the log scale runs 0.01 lower on the Mac
+    because it scores the submitted seed after the floor and rounding.
+    THE REVISION: this lane's standing recommendation (the location-wide
+    shrink at 15x) was wrong for the Oracle. The shrink's exponent, set by
+    the worst horizon, also squeezes the upper side of horizons 0-2,
+    where truth lands in a fast rise; the clip takes only the far tail.
+    The 44-week screen showed the same ordering (clip 15x 0.670, shrink
+    15x 0.674) and this lane read the Groundhog's October gain as the
+    tiebreaker; the Oracle's early-week cost is the larger effect and the
+    full seasons make it plain. The clip is the shared form.
+  - The Groundhog: the size-matched kernel (a donor week's weight falls
+    with the log-scale distance between its own count and the
+    jurisdiction's newest; the effective-donor guard at 30) gains about
+    0.017 at every cap level and form, in every complete season, in 50 of
+    52 states, and removes the Ohio defect at its source: on the 10-24
+    data Ohio's 97.5% quantiles become 253, 451, 620, 964 and no
+    jurisdiction is over 30x before any cap (own-share form: 9). The
+    floor, the winsor, the spike repair and the 2024 window move the
+    score by 0.0003 or less and are held. The handoff of 2026-10-22 is
+    answered; the kernel is the fix.
+  - Ely's decision, recorded by the Model lane at 01:38 UTC: the kernel
+    ships (commit 689a650 on dev; pull request #48, dev to main,
+    https://github.com/elyfmiller/flubnf/pull/48, 12 commits, 21 files,
+    +1058/-87, card GroundHogCGR 1.3, record 0.642); the cap for
+    2026-10-28 is the CLIP AT 10x, one setting for both members. On the
+    10-24 data with the kernel the clip at 10x binds at h3 in all 53
+    jurisdictions (the typical h3 tail is 14.8x), so this week the cap,
+    not the model, sets every h3 97.5% quantile; the h3 band is 4.1x the
+    median. From the 11-11 round the Groundhog's cells say no cap or
+    clip 15x.
+  - PR #48 as read at 02:10 UTC: open, mergeable_state clean, GitHub's
+    tests green on the head fa543d8 (both the push and the pull_request
+    runs) and on 689a650. Ely's merge command, a merge commit, never
+    squash: `gh pr merge 48 --merge --repo elyfmiller/flubnf`, or
+    `git fetch origin main dev && git checkout main && git merge --no-ff
+    origin/dev && git push origin main`. The Wednesday run needs main at
+    or after that merge.
+  - The gate on the 10-24 files rebuilt under clip 10x (own-share
+    Groundhog, this lane's review3): both PASS, typical and max h3 ratio
+    10.0x, h3 band over median 3.8x Oracle, 3.7x Groundhog.
+  - WEDNESDAY 2026-10-28, THE OVERRIDE VALUES (Ely's laptop, main at or
+    after the #48 merge; one reason): pf.seed_denominator
+    season_total_early, oracle.w 0.25, oracle.narrow 0.7, output.tail_cap
+    10, output.tail_mode clip. Then the hub check, the gate
+    (scripts/sense_check.py from main) on both files, the submission
+    commit "NAU_PyBNF forecast 2026-10-31 (EW43)", the compare link.
+    Card 1.3 goes to the hub fork when Ely asks for the hub pull
+    request; the cards' sentences for the narrowing and the cap go with
+    it.
+- 2026-10-22 (04:59 UTC): PULL REQUEST #47 (dev TO main) MERGED BY ELY AT
+  04:59 UTC, merge commit 210f2fb (two parents, 744e654 and 3953b41; a
+  merge commit), a minute after it opened. main now carries
+  scripts/sense_check.py, the tail gate; the laptop runs it from main on
+  Wednesday as step three of the round procedure (entry of 05:05 UTC
+  above). The PR subscription closed with the merge and the check-in
+  was cancelled. What main carries for the 2026-10-28 round, in order
+  of landing: the narrowing knob (#44), the upper-tail cap in two forms
+  (#45), the whole-admission rounding of the cap (#46), the gate (#47).
 - 2026-10-22 (05:15 UTC): tail-gate MERGED INTO dev (a64b01d, a merge commit
   as Ely, at Ely's word; parents 04935f9 and 152910f) AND PULL REQUEST #47
   (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/47,
@@ -2114,6 +2215,52 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-23, from Ely): A TRAJECTORY
+  EXCLUSION ARM FOR THE WIDTH SCREEN, after the prior arms (R20, R22, HP,
+  HS), on the stored samples, scored post hoc as the cap arms were.
+  Ely's idea: the engine outputs trajectories and FluBNF turns them into
+  quantiles; before that step, drop from the FORECASTING SAMPLE (not
+  from the swarm, whose weights and state are untouched) every path
+  whose value at any horizon exceeds n times the recent level (the mean
+  of the last three reported weeks, as output.tail_cap defines it), and
+  form the quantiles from the rest. One path goes whole, so the result
+  is the joint distribution conditioned on "growth stays under n by
+  horizon 3": coherent across horizons, unlike a per-horizon rule. It is
+  an output-stage assumption like a prior bound and would be declared on
+  the card.
+  Arms: exclusion at 15x, 20x, 30x, 40x; and the pairing exclusion 40x +
+  shrink 15x; against none, clip 15x, shrink 15x, shrink 10x on the same
+  cells (the 84 weeks of C0; the early-week subset as in the C0
+  reading). Decide the point in the pipeline before scoring and record
+  it: this lane's reading is the raw forecasting sample after the Oracle
+  step and before the narrowing (so the narrowing and the cap act on
+  what remains); if the stored samples are post-narrowing, say so and
+  score it there. Report what the clip and shrink arms report, plus the
+  share of paths dropped per location-week (typical and maximum) and
+  the median's move (the capped h3 median over the uncapped, typical and
+  worst), because the median is where this rule differs from the clip
+  and the shrink.
+  Predictions, written before any score, this lane's: (P1) at 40x the
+  arm is free (within the bootstrap interval of none) and drops under 1%
+  of paths in all but a few location-weeks: realised 4-week growth over
+  the recent level in October windows at a level of 10 or more has a
+  maximum of 38x in 2022-2025 (97.5th percentile 19x, 95th 15x; any
+  week of the year 99th 16x, maximum 44x; Submission notes, 2026-10-22
+  04:20 UTC), so 40x removes only paths history never produced. (P2) at
+  15x the arm scores between shrink 15x and shrink 10x, worse than
+  shrink 15x, because it moves the median down (the paths crossing 15x
+  at h3 are also the higher paths at h1 and h2); the cost concentrates
+  in the early weeks and in fast-rise location-weeks (2022-23-like
+  cells, where the screen has none). (P3) exclusion 40x + shrink 15x
+  scores within noise of shrink 15x and leaves no path above 40x, which
+  is the only reason to prefer it. If P2 fails and exclusion at 15x
+  beats the shrink at 15x, the median's move is small enough that the
+  swarm's high paths were not carrying the score, and that is worth
+  knowing for the prior arms too.
+  Nothing of this is for the 2026-10-28 round, which runs the shrink at
+  15x (Now, 02:50 UTC). The usual rule: pre-registered as your other
+  arms are, nothing ships without Ely, a change to the registered
+  member ships by override with a card sentence.
 - Model, the Groundhog (2026-10-22, from Ely: "this should be tasked
   to be fixed by the groundhog model, this is a bad defect"): A DONOR
   CELL WITH A NEAR-ZERO BASE WEEK MUST NOT DEFINE A TAIL. The 10-24

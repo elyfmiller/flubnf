@@ -695,12 +695,19 @@ def _season_table(payload: dict) -> str:
                  "Methods tab.")
     from app.core import site_build as sb
     if gh_name != sb.GH_LABEL_SHIPPED:
-        # trees replayed before the own-state weighting: say which form
-        note += (" The Groundhog column is the pooled form "
-                 + ("these replays ran" if gh_name == sb.GH_LABEL_POOLED
-                    else "in some of these replays")
-                 + "; since 2026-10-15 the shipped Groundhog gives each "
-                 "jurisdiction's own past weeks half of the donor weight.")
+        # trees replayed under an earlier form: say which
+        if gh_name == sb.GH_LABEL_OWN:
+            note += (" The Groundhog column is the own-state form these "
+                     "replays ran, before the size weighting")
+        elif gh_name == sb.GH_LABEL_POOLED:
+            note += " The Groundhog column is the pooled form these replays ran"
+        else:
+            note += (" The Groundhog column comes from more than one form "
+                     "across these replays")
+        note += ("; since 2026-10-15 the shipped Groundhog gives each "
+                 "jurisdiction's own past weeks half of the donor weight, "
+                 "and since 2026-10-23 it gives donor weeks of a similar "
+                 "size the most weight.")
     # the field column was always withdrawn: said once here, not per row.
     # A restored standing (harvest_placement) is named per season instead.
     placed = [s for s in seasons if (s.get("placement") or {}).get("text")]

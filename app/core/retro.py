@@ -836,8 +836,9 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 
 
 class GroundhogFormMismatch(KnobsMismatch):
-    """A resume would mix the Groundhog's pooled form and its own-state
-    weighting (or two shares) in one season."""
+    """A resume would mix two Groundhog forms in one season: the pooled
+    form, the own-state form of 2026-10-15, the shipped form with the
+    size-matched kernel, or two values of a share or a width."""
 
 
 def run_season(root: Path, season: str, locations: list, replicates=3,

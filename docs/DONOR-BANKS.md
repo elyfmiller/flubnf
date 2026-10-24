@@ -362,7 +362,7 @@ Where that name is recorded, and what each entry point runs by default:
   submission withheld), and a re-run re-runs whatever the ledger row
   recorded.
 
-### Own-state weighting: the shipped form since 2026-10-15
+### Own-state weighting: shipped since 2026-10-15
 
 Until 2026-10-15 every jurisdiction's Groundhog had the same shape: one
 pooled ratio distribution, scaled by each jurisdiction's own anchor. The
@@ -405,8 +405,61 @@ jurisdiction-resampling one [0.003, 0.018]). The gain sits in the large
 jurisdictions (200 admissions and more: 0.666 to 0.654); 25 of 52 move
 slightly the other way, and on the log scale the gain is 0.003. Shares
 above 0.5 buy relWIS with coverage and with the small jurisdictions, which
-is why 0.5 ships. Replays: `flubnf groundhog retro all --aux flusurv`
-(shipped) and `--own-share 0` (pooled).
+is why 0.5 ships. Replays of this form: `flubnf groundhog retro all --aux
+flusurv --kernel-sd 0` (the own-state form, shipped 2026-10-15 to
+2026-10-23) and `--own-share 0 --kernel-sd 0` (pooled).
+
+### The size-matched kernel: the shipped form since 2026-10-23
+
+Own-state weighting gave each jurisdiction its own shape, and with it a
+defect: a jurisdiction's own October donor weeks are few (5 to 20 cells),
+and in small-count weeks a donor based on one or two admissions carries
+ratios of 50x to 229x. On the 2026-10-24 round Ohio's own cells based on
+1 admission (the weeks of 2024-09-28 and 2024-10-12, before a one-week
+reporting spike of 229 between 10 and 17) set its 97.5% quantiles at
+763, 3638, 936 and 5864 over medians of 76 to 191.
+
+The shipped form weights each donor cell, inside its class (own cells,
+the rest), by how close its own count v0 is to the target jurisdiction's
+newest count a: `exp(-(ln v0 - ln a)^2 / (2 s^2))` with `s = 1` in log
+counts (`SHIPPED_ANCHOR_WEIGHT = "kernel"`, `SHIPPED_KERNEL_SD = 1.0`),
+renormalised so the class shares (0.5 / 0.5) hold. A class of 30 or more
+cells that the weighting leaves with fewer than 30 effective donors
+(1 / sum(w^2)) takes equal weights instead (`SHIPPED_ESS_FLOOR = 30`); a
+smaller class, a jurisdiction's own cells, is exempt. The donors are the
+same cells; only their weights change. The FluSurv-NET pool is unchanged.
+
+The record carries the form like the own share: `local_pools` is
+`{"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0,
+"ess_floor": 30.0}` in the console's run record and the replay presets;
+`{"own_share": 0.5}` alone is the form of 2026-10-15 to 2026-10-23 and
+stays the shipped Groundhog of its day (not research,
+`EARLIER_SHIPPED_LOCAL_POOLS`); an absent key is the pooled form. The
+`groundhog.kernel_sd` knob sets the width (0 turns the kernel and its
+guard off; off its default the run is modified). The ledger names the
+form ", own-state donors 0.50, size-matched donors".
+
+The evidence is two pre-registered screens (lab archive). The width
+screen of 2026-10-17 (`research/groundhog-donor-width/`, prereg sha256
+0815e4709ab06b2f with three dated amendments: the kernel scored 0.6420
+against 0.6604 on 17,116 cells, leave-one-season-out picked a kernel in
+every fold, pooled held-out gain 0.0165 [0.012, 0.027]; the guarded form
+scored 0.6423, coverage 50/80/95 0.500 / 0.785 / 0.936, against 0.505 /
+0.791 / 0.936). The tail-cell screen of 2026-10-22
+(`research/groundhog-tail-cells/`, prereg sha256 28f0f33d6ea7e232 with
+three amendments) scored it with the upper-tail cap on top, through the
+hub rows and `flubnf.tailcap.cap_rows` at 8x, 10x and 15x in both forms,
+over the three seasons and the 2026-27 weeks to date (17,272 cells): it
+is about 0.017 better than the own-state form at every cap level and
+form, in every complete season and in 50 of 52 jurisdictions, and removes
+the Ohio defect (on the 2026-10-24 round's data Ohio's 97.5% quantiles
+become 253, 451, 620 and 964, and no jurisdiction is above 30x the recent
+level before any cap). A base-week floor of 5, ratios winsorised at the
+pool's 0.99 quantile, a single-week spike repair and removing the 2024
+voluntary-reporting weeks each moved the score by 0.003 or less and are
+research options only (`anchor_floor`, `winsor_q`, `repair_spikes`,
+`exclude_weeks` on `LocalPooling`). Replays: `flubnf groundhog retro all
+--aux flusurv` (shipped).
 
 ## 7. Reusing the banks for the Oracle SIHRS
 

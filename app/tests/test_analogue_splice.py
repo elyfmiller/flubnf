@@ -587,10 +587,13 @@ def test_aux_preset_carries_its_name_for_the_run_record():
     import re
     assert re.fullmatch(r"aux_preset:flusurv\+flusurv@[0-9a-f]{8}", f.__name__)
     # since 2026-10-15 the preset also carries the Groundhog's own-state
-    # weighting, and declares it on the callable for the run record
-    assert f.local_pools == {"own_share": 0.5}
+    # weighting (with the size-matched kernel since 2026-10-23), and
+    # declares it on the callable for the run record
+    shipped = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0,
+               "ess_floor": 30.0}
+    assert f.local_pools == shipped
     got = f("2025-12-20", 0, None)
-    assert got == {"local_pools": {"own_share": 0.5}, "aux_pools": [
+    assert got == {"local_pools": shipped, "aux_pools": [
         {"stream": "flusurv", "weight": 0.5, "committed": True}]}
 
 

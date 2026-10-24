@@ -71,7 +71,9 @@ FluBNF submits two models to FluSight, each under its own hub identity
   count scaled by the empirical quantiles of growth ratios seen at the same
   MMWR epiweek in strictly earlier seasons, pooled across jurisdictions
   with the jurisdiction's own past weeks carrying half of the weight (since
-  2026-10-15; [docs/DONOR-BANKS.md](docs/DONOR-BANKS.md)), with a committed
+  2026-10-15) and donor weeks whose count is near the jurisdiction's newest
+  weighted most (since 2026-10-23;
+  [docs/DONOR-BANKS.md](docs/DONOR-BANKS.md)), with a committed
   FluSurv-NET donor bank spliced in ([`data/banks/`](data/banks/)). Epiweek
   53 is seated between weeks 52 and 1. Nothing is fitted.
 
@@ -159,8 +161,9 @@ differ and are not read across.
 
 | model | cell rule | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|---|
-| Groundhog, own-state weighting, the shipped form since 2026-10-15 (`flubnf groundhog retro all --aux flusurv`, hub at 397226db) | FluSight's, since 2026-09-25 | 0.702 | 0.651 | 0.653 | 0.6604 | 17,116 |
-| Groundhog, pooled form, submitted 2026-10-10 and 2026-10-17 (`--own-share 0`, same cells) | FluSight's, since 2026-09-25 | 0.721 | 0.659 | 0.660 | 0.6701 | 17,116 |
+| Groundhog, own-state weighting with size-matched donors, the shipped form since 2026-10-23 (`flubnf groundhog retro all --aux flusurv`, hub at 3a83d410) | FluSight's, since 2026-09-25 | 0.680 | 0.627 | 0.645 | 0.6423 | 17,116 |
+| Groundhog, own-state weighting without the size weighting, shipped 2026-10-15 to 2026-10-23, submitted 2026-10-24 (`--kernel-sd 0`, hub at 397226db, same cells) | FluSight's, since 2026-09-25 | 0.702 | 0.651 | 0.653 | 0.6604 | 17,116 |
+| Groundhog, pooled form, submitted 2026-10-10 and 2026-10-17 (`--own-share 0 --kernel-sd 0`, same cells) | FluSight's, since 2026-09-25 | 0.721 | 0.659 | 0.660 | 0.6701 | 17,116 |
 | Oracle SIHRS, the stored forecasts with the step and its donor bank applied ([docs/ORACLE-SIHRS.md](docs/ORACLE-SIHRS.md)) | earlier[^earlier] | 0.767 | 0.697 | 0.781 | 0.738 | 15,300 |
 | calendar analogue without the donor bank, on the Groundhog's 2026-09-21 cells | earlier[^earlier] | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
@@ -188,9 +191,11 @@ The Groundhog's rows reproduce on any machine with a hub clone and no
 engine:
 
     flubnf groundhog retro all --aux flusurv
-    flubnf groundhog retro all --aux flusurv --own-share 0
+    flubnf groundhog retro all --aux flusurv --kernel-sd 0
+    flubnf groundhog retro all --aux flusurv --own-share 0 --kernel-sd 0
 
-(the shipped own-state weighting, then the pooled form), or from the
+(the shipped form, the own-state form without the size weighting, then
+the pooled form), or from the
 console, Retrospective tab, engine preset "Groundhog only" (minutes per
 season; the two paths agree cell for cell).
 
