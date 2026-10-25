@@ -6,6 +6,153 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (07:40 UTC): THE HISTORICAL CEILING IS CODED ON BRANCH
+  tail-hist (18b9fd6, one commit over dev b28b49c, at Ely's word "I want
+  to test this historical maximum"), FOR ELY'S MERGE INTO dev. Knob
+  output.tail_hist (both members, output stage, research, 0 = off, the
+  registered form): per horizon, the levels above the median are clipped
+  at the recent level times a quantile of the growth history produced at
+  this calendar position, y[W+h+1] over the recent level at W across
+  every jurisdiction's weeks within two epiweeks of the forecast date in
+  strictly earlier seasons with a recent level of at least 10, read from
+  the run's own truth vintage (flubnf.tailcap.history_ratios,
+  history_limits, clip_rows_by_horizon; HIST_WINDOW 2, HIST_FLOOR 10).
+  The knob is the quantile: 1 the maximum, 0.975 the 97.5th percentile.
+  It runs before output.tail_cap, so the ceiling deletes what never
+  happened and the cap or the shrink shapes the rest; whole admissions,
+  monotone, as the cap. The run record carries tail_hist (level, window,
+  floor, the ratios by horizon, the cells touched per member). Added to
+  NOT_IN_RETRO (screened post hoc, as the cap is). Tests: five new in
+  tests/test_tailcap.py (the maximum and a quantile over earlier seasons
+  in the window, the current season and far weeks ignored, the floor, the
+  limits, the per-horizon clip on hub rows); the knob in
+  app/tests/test_knobs.py's defaults. tests/test_tailcap.py,
+  app/tests/test_knobs.py, test_knobs_wiring.py and
+  test_optional_outputs.py pass (100). docs/ORACLE-SIHRS.md 6c has the
+  paragraph. Ely's merge, a merge commit: `git fetch origin tail-hist &&
+  git checkout dev && git merge --no-ff origin/tail-hist && git push
+  origin dev`, then the dev-to-main pull request when Ely says so.
+  NOT FOR WEDNESDAY: the round runs the shrink at 15x with no ceiling
+  (the override values of 2026-10-23 02:50 UTC stand); the ceiling is a
+  screened candidate for the 11-04 round at the earliest, after the
+  Model lane's 84-week result.
+  THE GROUNDHOG UNDER THE CEILING (tools/spencer_gh_screen.py,
+  replays/spencer_gh_result.txt; the three retro seasons regenerated in
+  the kernel form, 17,116 cells): none 0.6423 / cov95 .936; clip 15x
+  0.6423 / .931; shrink 15x 0.6472 / .922; histmax clip 0.6406 / .928
+  (-0.0015 [-0.005, +0.000] against clip 15x); histmax + shrink 15x
+  0.6445 / .916 (+0.002 [-0.003, +0.007] against clip 15x, 0.003 better
+  than the shrink alone). September-October: shrink 15x 0.923, histmax +
+  shrink 0.926, clip 15x 0.961, none 0.978. November: histmax clip 0.537
+  best, the shrinks 0.548-0.555. The Groundhog's tails rarely exceed
+  history because they are history, so the ceiling is near-neutral for
+  it.
+  LAST WEEK'S ROUND UNDER THE PAIRING (tools/lastweek_hist.py, the branch
+  code on the 2026-10-17 vintage; figures review3/lastweek_oracle_histmax.png
+  and lastweek_groundhog_histmax.png): the history maximum at this
+  calendar position is 11.7x, 19.5x, 26.2x, 37.8x the recent level at
+  h0-h3 (the 97.5th: 3.8x, 7.2x, 11.4x, 19.3x), above the 15x line at
+  h1-h3, so this October the pairing and the shrink alone are nearly the
+  same file: identical h3 tails (typical 15.0x, max 15x; the gate passes
+  both), and the ceiling changes 44 Oracle blocks and 10 Groundhog blocks
+  only by pre-clipping the wildest h3 tails (WV 425 to 290, MI 2216 to
+  1966, ND 148 to 125) before the shrink, which then needs a milder
+  exponent and leaves h0-h2 a few percent wider (Michigan h2 97.5% 495
+  to 531; Connecticut, Maryland, New Hampshire, Vermont, West Virginia
+  likewise). That is the mechanism of the 44-week gain: the ceiling
+  takes the impossible top, the shrink does less, the near-term fan
+  keeps more of its width. The ceiling bites on its own in mid-season
+  weeks, where the history maximum sits under the 15x line (typical
+  limits 3.5x on the 44 weeks).
+- 2026-10-25 (05:10 UTC): SPENCER'S RULE AGAINST OURS, SCREENED (Ely:
+  "how would using Spencer's method compare to ours?"). Spencer's cap is
+  a bound from historically realised 4-week changes; read two ways on
+  the Oracle's 44 stage-rule weeks (w 0.25, k 0.7; tools/spencer_screen.py,
+  replays/spencer_result.txt, spencer_cells.csv; 9,020 cells common to
+  every arm; post hoc, final truth for the history table, no
+  pre-registration): (a) HIST, a per-horizon ceiling of the recent level
+  times a quantile of y[W+h+1]/recent(W) over every state's weeks within
+  2 epiweeks of the as-of in strictly earlier seasons, base level 10 or
+  more, pooled; at the 97.5th percentile (typical 2.6, 2.7, 3.2, 3.8x at
+  h0-h3 on these in-season weeks) and at the maximum; (b) GH, the
+  Groundhog's own 97.5% quantile at the same (location, as-of, horizon)
+  in the kernel form (the three retro seasons regenerated here on dev
+  with --own-share 0.5 --kernel-sd 1; typical 2.6, 3.5, 4.4, 5.1x), the
+  calendar-conditioned, own-state-weighted reading of the same history.
+  Each as a clip (Spencer's form) and as the location-wide shrink with
+  per-horizon limits; plus the pairing histmax clip then our shrink 15x.
+  relWIS natural / log, cov95, h3 tail typical, share over 30x; and each
+  arm minus ours15-clip by 2,000 week-cluster resamples (natural | log):
+    k0.7 (none)      0.6705 0.7167 .931  5.0x .141 | +0.001 [-.001,+.004]
+    ours15-clip      0.6695 0.7174 .919  5.0x .000 | reference
+    ours15-shrink    0.6739 0.7253 .907  5.0x .003 | +0.004 [+.000,+.008] | +0.008 [+.001,+.014]
+    hist97-clip      0.6692 0.7246 .861  2.9x .000 | -0.000 [-.019,+.014] | +0.007 [-.002,+.017]
+    hist97-shrink    0.6988 0.7561 .843  2.8x .003 | +0.028 [+.002,+.055]
+    histmax-clip     0.6625 0.7147 .914  3.5x .092 | -0.007 [-.016,-.001] | -0.003 [-.007,+.001]
+    histmax-shrink   0.6668 0.7245 .902  3.5x .063 | -0.003 [-.019,+.009]
+    gh97-clip        0.6676 0.7173 .919  4.4x .052 | -0.002 [-.004,+.000] | -0.000
+    gh97-shrink      0.6763 0.7315 .902  4.0x .031 | +0.006 [-.007,+.020]
+    histmax+shrink15 0.6643 0.7193 .897  3.5x .003 | -0.005 [-.016,+.003] | +0.002 [-.004,+.007]
+  October-November as-ofs: none 0.598, ours15-clip 0.588, ours15-shrink
+  0.598, hist97-clip 0.587 (cov95 .917), histmax-clip 0.588 (.950),
+  gh97-clip 0.589, histmax+shrink15 0.588.
+  Reading. (1) Spencer's bound at a strict percentile is too tight for
+  the Oracle on in-season weeks: the history's 97.5th at these calendar
+  weeks sits at 3.8x the recent level at h3 while the Oracle's typical
+  tail is 5x, so the clip binds everywhere, 95% coverage falls to 0.86
+  and the log score worsens; as a shrink it is the worst arm (+0.028).
+  (2) At the historical MAXIMUM it is the best arm on both scales
+  (-0.007 natural, the interval excluding zero; -0.003 log), coverage
+  0.914: deleting what never happened is free or better. It does not
+  clear the 30x gate alone (9% of h3 cells over 30x, the calendar weeks
+  whose historical maximum is itself above 30x). (3) The Groundhog as
+  the ceiling is -0.002, within noise, coverage 0.919. (4) The pairing,
+  history's maximum then our shrink at 15x, scores 0.6643: 1% better
+  than our shrink alone on the natural scale (0.6739; log 0.719 against
+  0.725), clears the gate (0.3% over 30x, cells whose h3 median is
+  itself above the limit), 95% coverage 0.897, and keeps the fan. On
+  these weeks it is the best shape-keeping rule. (5) The clip beats the
+  shrink at every bound, as on the Mac.
+  Caveats: 44 in-season weeks (October to January), not the October
+  gate weeks; final truth for the history table (a live rule would read
+  the vintage); no pre-registration; one screen. What it does for
+  Wednesday: nothing (shrink 15x stands; a per-horizon historical limit
+  is not a knob on main). What it does for the handoff of 2026-10-23
+  (trajectory exclusion at 40x + shrink 15x): the same idea in quantile
+  form scored here as predicted, so the Model lane's arm has a prior
+  result to check against on the 84 weeks; if it holds there, the
+  historical-maximum clip is a one-table addition to tailcap for the
+  11-04 round at Ely's word.
+- 2026-10-25 (03:30 UTC): PR #48 MERGED BY ELY (main 757ce69, the kernel
+  form and card 1.3); ELY RUNS THE ROUND WEDNESDAY AND HANDS THIS LANE
+  THE FILES. LAST WEEK'S ROUND REBUILT UNDER THE WEDNESDAY PROTOCOL, for
+  Ely's eyes before the run (figures review3/lastweek_oracle_shrink15.png
+  and lastweek_groundhog_shrink15.png in the Submission scratchpad;
+  tools/lastweek_shrink.py). The Oracle: the submitted 10-24 file under
+  the location-wide shrink at 15x (main's tailcap, whole admissions).
+  The Groundhog: regenerated in the cloud on dev at the 2026-10-17
+  vintage in the kernel form (`flubnf groundhog retro 2026-27 --aux
+  flusurv --with-us --own-share 0.5 --kernel-sd 1`, the hub mirror
+  brought to cdcepi main de256fda, which holds the 10-17 vintage and
+  truth through 10-17; the record names local_pools own_share 0.5,
+  anchor_weight kernel, kernel_sd 1.0, ess_floor 30), then the shrink at
+  15x. Reproduction check: Ohio's uncapped kernel 97.5% quantiles read
+  253, 451, 620, 964, the Model lane's numbers exactly.
+  h3 97.5% over the recent level, states: Oracle as submitted typical
+  20.4x, max 55x (WV), 9 over 30x; under the shrink typical 15.0x, max
+  15x, none. Groundhog as submitted (own-share form) typical 20.4x, max
+  81x (ID), 9 over 30x; kernel form uncapped typical 14.8x, max 27x
+  (DE), none over 30x; kernel + shrink typical 14.8x, max 15x. So for
+  the Groundhog the kernel does most of the work and the shrink touches
+  only the states above 15x (DE, AZ, MI, US among them); Ohio's double
+  peak is gone before any cap. The gate (scripts/sense_check.py) passes
+  both protocol files (h3 band over median typical 5.4x Oracle, 5.8x
+  Groundhog). Files: review3/2026-10-24/2026-10-24-NAU_PyBNF-OracleSIHRS-shrink15.csv,
+  -GroundHogCGR-kernel.csv, -GroundHogCGR-kernel-shrink15.csv.
+  Note on the cloud replay: the retro without --aux runs the bare
+  single-pool analogue (arm "shipped"), not the Groundhog; the Groundhog
+  is --aux flusurv. The first attempt here ran the bare arm and was
+  discarded (app/state/groundhog/shipped/2026-27, untouched otherwise).
 - 2026-10-23 (02:50 UTC): ELY'S DECISION FOR 2026-10-28: THE LOCATION-WIDE
   SHRINK AT 15x FOR BOTH MEMBERS (replacing the clip at 10x recorded by
   the Model lane at 01:38 UTC; the kernel still ships, PR #48). The
@@ -2215,6 +2362,41 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Oracle SIHRS agent (2026-10-25, from Ely: "I want to test
+  this historical maximum"): THE HISTORICAL CEILING ON THE 84-WEEK
+  SCREEN, PRE-REGISTERED, after the prior arms and beside the
+  trajectory-exclusion arm of 2026-10-23 (the two are the same idea; the
+  ceiling is its quantile form and is now code). Branch tail-hist
+  (18b9fd6; Ely merges into dev): knob output.tail_hist, the quantile of
+  calendar-matched historical growth over the recent level used as a
+  per-horizon ceiling on the levels above the median (1 = the maximum),
+  applied before output.tail_cap; flubnf.tailcap.history_ratios reads
+  the run's truth vintage (window 2 epiweeks, floor 10, strictly earlier
+  seasons, every jurisdiction, states only). Score it post hoc as the cap
+  arms were, on C0's 84 weeks and the early-week subset: arms ceiling at
+  the maximum alone; ceiling at 0.975 alone; ceiling at the maximum +
+  shrink 15x; ceiling at the maximum + clip 15x; ceiling at the maximum +
+  shrink 10x; against none, clip 15x, shrink 15x, clip 10x. The ratios
+  must come from each week's vintage, not the final truth (this lane's
+  44-week screen used the final truth; strictly earlier seasons are
+  settled, so the difference should be small; report it). Report the
+  usual, plus the share of blocks the ceiling touched and the ceiling's
+  ratios by horizon over the season (the typical and the October
+  values), and the Groundhog on the same cells in its kernel form.
+  This lane's result on the 44 stage-rule weeks (Now, 2026-10-25 05:10
+  and 07:40 UTC): maximum alone -0.007 [-0.016, -0.001] against clip 15x,
+  coverage 0.91, best arm; maximum + shrink 15x 0.664 against the
+  shrink's 0.674 (1%), clears the gate; the 97.5th percentile too tight
+  (coverage 0.86). Predictions for the 84 weeks, written first: (P1)
+  the maximum alone is free or better than none, interval excluding a
+  loss; (P2) maximum + shrink 15x beats shrink 15x by 0.5-1.5% natural
+  and is within noise of clip 15x; (P3) in October as-ofs the pairing
+  equals shrink 15x (the October maximum is above 15x at h1-h3) and the
+  gain comes from November-January weeks; (P4) the 0.975 ceiling costs
+  coverage and loses on the log scale. If P1-P3 hold, the pairing is
+  this lane's recommendation for the 11-04 round at Ely's word (override
+  values output.tail_hist 1, output.tail_cap 15, output.tail_mode
+  shrink), with a card sentence. Nothing ships without Ely.
 - Model, the Oracle SIHRS agent (2026-10-23, from Ely): A TRAJECTORY
   EXCLUSION ARM FOR THE WIDTH SCREEN, after the prior arms (R20, R22, HP,
   HS), on the stored samples, scored post hoc as the cap arms were.
