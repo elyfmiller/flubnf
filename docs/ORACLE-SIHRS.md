@@ -592,6 +592,27 @@ the weeks, the cells touched per member) and the files agree; a run at n > 0
 is a modified run (the override and its reason), and the replays do not
 apply it (`NOT_IN_RETRO`; it is screened post hoc).
 
+The historical ceiling, `output.tail_hist` (research, 0 = off), is Spencer
+Fox's bound read on our data: per horizon, the levels above the median are
+clipped at the recent level times a quantile of the growth history has
+produced at this calendar position, y[W+h+1] over the recent level at W
+across every jurisdiction's weeks within two epiweeks of the forecast date
+in strictly earlier seasons with a recent level of at least 10, read from
+the run's own truth vintage (`flubnf.tailcap.history_ratios`). The knob is
+that quantile: 1 the maximum (only growth history never produced is
+removed), 0.975 its 97.5th percentile. It runs before the n-cap, so the two
+compose: the ceiling deletes the impossible and the cap or the shrink
+shapes the rest. The run record (`tail_hist`: the level, the window, the
+floor, the ratios by horizon, the cells touched) sits beside `tail_cap`.
+Screened post hoc on the Oracle's 44 stage-rule weeks (docs/team/
+submission.md, 2026-10-25): the maximum alone was the best arm, 0.663
+against the clip at 15x's 0.670 with 95% coverage 0.91, and with the
+shrink at 15x on top (0.664) it beat the shrink alone (0.674) by 1% and
+cleared the 30x gate; the 97.5th percentile was too tight for the Oracle
+(coverage 0.86). On the Groundhog's three kernel-form seasons the maximum
+alone is within noise of no cap (0.6406 against 0.6423) and the pairing
+sits between the clip and the shrink.
+
 The screen (docs/team/submission.md, 2026-10-22; `tools/tail_screen.py`
 and `tools/gh_cap_screen.py` in the Submission scratchpad): on the Oracle
 member's 44 stored stage-rule weeks at k = 0.7, a cap at 20x took pooled
