@@ -11,6 +11,91 @@ agent's.
 
 ## Now
 
+- 2026-10-25 (23:50 UTC, laptop): THE HISTORICAL CEILING ON THE GROUNDHOG'S
+  RETRO SEASONS: THE PAIRING IS SUPPORTED BY THE PRE-REGISTERED RULE, AND
+  FOR THE GROUNDHOG IT IS FREE RATHER THAN A GAIN (Ely's request in chat;
+  the Submission lane's handoff of 2026-10-25). Pre-registration c9587ab5
+  (FluBNF-local research/groundhog-hist-ceiling/, frozen at 23:40 UTC
+  before any replay of this screen), predictions G1 to G6 and the rule
+  written first. The Groundhog's own retro on dev fafa1db in the shipped
+  kernel form, every vintage of 2023-24 to 2025-26 (and 2026-27's four
+  weeks, supplementary), hub 3a83d410; it reproduces the record exactly
+  (0.6802, 0.6272, 0.6448, pooled 0.6423 on 17,116 cells). Then the
+  pipeline's own order on every week: hub rows in whole admissions, the
+  ceiling at the maximum with the ratios from that week's vintage
+  (history_ratios, history_limits, clip_rows_by_horizon), then cap_rows.
+  Three seasons, 17,116 state cells; relWIS natural / log, coverage 50 / 95:
+    none (hub rows)      0.6423 / 0.6249   0.519 / 0.946
+    clip 15x             0.6433 / 0.6261   0.519 / 0.939
+    shrink 15x           0.6491 / 0.6311   0.508 / 0.928
+    maximum alone        0.6419 / 0.6261   0.517 / 0.931
+    maximum + shrink 15x 0.6478 / 0.6311   0.507 / 0.917
+    maximum + clip 15x   0.6428 / 0.6271   0.517 / 0.926
+  September-October (2023-24's 772 cells; the only October as-ofs among
+  the three seasons), relWIS / cov95: none 0.978 / .916, clip 15x 0.967 /
+  .916, shrink 15x 0.935 / .909, maximum 0.975 / .916, maximum + shrink
+  0.937 / .909, maximum + clip 0.967 / .916. November (2,012 cells): none
+  0.542 / .949, clip 0.548 / .913, shrink 0.561 / .867, maximum 0.542 /
+  .940, maximum + shrink 0.561 / .867, maximum + clip 0.548 / .910.
+  December on: every arm 0.652 to 0.658. 2026-27's four weeks (156
+  cells): shrink 0.757, maximum + shrink 0.761, none 0.806.
+  Week-cluster bootstrap, 2,000 resamples (negative = first arm better):
+    maximum - none          -0.0004 [-0.0031, +0.0019]; Sep-Oct -0.0032 [-0.0058, -0.0016]
+    maximum - clip 15x      -0.0014 [-0.0043, +0.0013]; Sep-Oct +0.0078; Nov -0.0062
+    max + shrink - shrink   -0.0013 [-0.0039, +0.0009]; Sep-Oct +0.0015 [+0.0004, +0.0033]; Nov -0.0006
+    max + shrink - clip 15x +0.0045 [-0.0008, +0.0099]; Sep-Oct -0.0308
+    max + clip - clip 15x   -0.0005 [-0.0033, +0.0018]
+    shrink 15x - clip 15x   +0.0058 [+0.0012, +0.0109]
+  Reading. (1) The pairing passes every registered test (no worse than
+  the shrink pooled or in any season; Sep-Oct within 0.005; coverage at
+  least 0.90 and 0.40; code clean), and all six predictions hold. Its
+  gain over the shrink alone is all one month, December 2023 (2023-24
+  -0.0074; 2024-25 and 2025-26 0.0000), and in October it costs a little:
+  +0.0015 on 2023-24's October weeks, +0.004 on this season's four. So
+  the Groundhog does not stand in the way of the pairing, and does not
+  argue for it; Wednesday's call rests on the Oracle's 84 weeks. (2) The
+  maximum alone is within noise of none, as the Submission lane found
+  post hoc (its 0.6406 against 0.6423 used the final truth; here,
+  through the pipeline's own rows, 0.6419 against 0.6423), but it costs 95% coverage (0.946
+  to 0.931) and 0.001 on the log scale, and it costs in a season that
+  outgrows its history: 2024-25 +0.0020, December and January at the
+  record peak (Pennsylvania, Massachusetts, Ohio, Michigan, h2-h3),
+  against 2023-24 -0.0077. The live round reads four earlier seasons,
+  2024-25 among them, so its ceiling is looser than any replay's. It does
+  not clear the gate alone (h3 blocks over 30x: none 3.8%, maximum 2.4%,
+  shrink 0.11%, pairing 0.04%). (3) Where it acts it trims the top: it
+  changes 27% of state blocks (Sep-Oct 59%), 38% of those only at the
+  0.99 and a further 26% from the 0.975 up, the 97.5% quantile down by a
+  median 9%. (4) The vintage against the final truth: the same ratios in
+  most cells, different in 66 of 97 weeks (mostly 2023-24: its vintages
+  start a week later, and the final carries Ohio's 2023-05-20 spike, 218,
+  12.3x at h0 in late-April windows against 2.6x in the vintage); scores
+  -0.0003 [-0.0009, +0.0002]. 2023-24 reads history from 2022-23 and the
+  spring of 2022 only, and its ceiling falls to 1.0x at h3 in mid-January
+  2024.
+  Ratios of the ceiling (maximum, vintage), median over the season's weeks
+  at h0-h3: 2023-24 3.0, 3.9, 5.0, 6.0x; 2024-25 and 2025-26 3.1, 4.4,
+  5.6, 7.2x; September-October 2023 3.1-5.2x at h0, 16-38x at h3; this
+  season's weeks 3.5-11.7x at h0, 19.7-37.8x at h3. At the 10-17 vintage
+  the h0 and h1 maxima (11.7x, 19.5x) are Puerto Rico on 2024-11-02 (6,
+  14, 15, then 137 and 228), the return of mandatory reporting after the
+  2024 voluntary window, not epidemic growth; h2 and h3 (26.2x, 37.8x)
+  are Oregon's real rise of November 2022 (6, 5, 32, then 51, 113, 376,
+  542). A reporting artefact can only loosen the ceiling, so it errs
+  toward doing nothing; whether the ceiling's history should leave out
+  the 2024 voluntary window is a question for 11-04, not Wednesday.
+  CODE CHECK: the ratios re-implemented independently from the written
+  rule equal history_ratios on all 97 replay weeks at 1 and at 0.975 (194
+  week-levels, 0 mismatches); every block the ceiling touched in every week
+  equals the rule as written (whole admissions, monotone, the median and
+  below untouched); tests/test_tailcap.py and app/tests/test_knobs.py pass.
+  Two notes for the Submission lane, neither for Wednesday: the window's
+  distance min(dw, 52 - dw) puts ISO week 1 at distance 0 from week 53,
+  and 2026 has 53 ISO weeks, so the 2027-01-02 round reads weeks 51 to 3
+  instead of 51 to 2; and the pipeline skips the ceiling without a record
+  when its truth read fails (hist_series empty), so a run asked for the
+  ceiling could carry none and not say so.
+
 - 2026-10-25 (23:42 UTC): THE HISTORICAL CEILING ON THE 84 WEEKS, PRE-REGISTERED
   AND RUNNING (Ely's request in chat; the Submission lane's handoff of
   2026-10-25 under For other lanes, predictions P1 to P4). Amendment 3 to
