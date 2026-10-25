@@ -6,6 +6,65 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (05:10 UTC): SPENCER'S RULE AGAINST OURS, SCREENED (Ely:
+  "how would using Spencer's method compare to ours?"). Spencer's cap is
+  a bound from historically realised 4-week changes; read two ways on
+  the Oracle's 44 stage-rule weeks (w 0.25, k 0.7; tools/spencer_screen.py,
+  replays/spencer_result.txt, spencer_cells.csv; 9,020 cells common to
+  every arm; post hoc, final truth for the history table, no
+  pre-registration): (a) HIST, a per-horizon ceiling of the recent level
+  times a quantile of y[W+h+1]/recent(W) over every state's weeks within
+  2 epiweeks of the as-of in strictly earlier seasons, base level 10 or
+  more, pooled; at the 97.5th percentile (typical 2.6, 2.7, 3.2, 3.8x at
+  h0-h3 on these in-season weeks) and at the maximum; (b) GH, the
+  Groundhog's own 97.5% quantile at the same (location, as-of, horizon)
+  in the kernel form (the three retro seasons regenerated here on dev
+  with --own-share 0.5 --kernel-sd 1; typical 2.6, 3.5, 4.4, 5.1x), the
+  calendar-conditioned, own-state-weighted reading of the same history.
+  Each as a clip (Spencer's form) and as the location-wide shrink with
+  per-horizon limits; plus the pairing histmax clip then our shrink 15x.
+  relWIS natural / log, cov95, h3 tail typical, share over 30x; and each
+  arm minus ours15-clip by 2,000 week-cluster resamples (natural | log):
+    k0.7 (none)      0.6705 0.7167 .931  5.0x .141 | +0.001 [-.001,+.004]
+    ours15-clip      0.6695 0.7174 .919  5.0x .000 | reference
+    ours15-shrink    0.6739 0.7253 .907  5.0x .003 | +0.004 [+.000,+.008] | +0.008 [+.001,+.014]
+    hist97-clip      0.6692 0.7246 .861  2.9x .000 | -0.000 [-.019,+.014] | +0.007 [-.002,+.017]
+    hist97-shrink    0.6988 0.7561 .843  2.8x .003 | +0.028 [+.002,+.055]
+    histmax-clip     0.6625 0.7147 .914  3.5x .092 | -0.007 [-.016,-.001] | -0.003 [-.007,+.001]
+    histmax-shrink   0.6668 0.7245 .902  3.5x .063 | -0.003 [-.019,+.009]
+    gh97-clip        0.6676 0.7173 .919  4.4x .052 | -0.002 [-.004,+.000] | -0.000
+    gh97-shrink      0.6763 0.7315 .902  4.0x .031 | +0.006 [-.007,+.020]
+    histmax+shrink15 0.6643 0.7193 .897  3.5x .003 | -0.005 [-.016,+.003] | +0.002 [-.004,+.007]
+  October-November as-ofs: none 0.598, ours15-clip 0.588, ours15-shrink
+  0.598, hist97-clip 0.587 (cov95 .917), histmax-clip 0.588 (.950),
+  gh97-clip 0.589, histmax+shrink15 0.588.
+  Reading. (1) Spencer's bound at a strict percentile is too tight for
+  the Oracle on in-season weeks: the history's 97.5th at these calendar
+  weeks sits at 3.8x the recent level at h3 while the Oracle's typical
+  tail is 5x, so the clip binds everywhere, 95% coverage falls to 0.86
+  and the log score worsens; as a shrink it is the worst arm (+0.028).
+  (2) At the historical MAXIMUM it is the best arm on both scales
+  (-0.007 natural, the interval excluding zero; -0.003 log), coverage
+  0.914: deleting what never happened is free or better. It does not
+  clear the 30x gate alone (9% of h3 cells over 30x, the calendar weeks
+  whose historical maximum is itself above 30x). (3) The Groundhog as
+  the ceiling is -0.002, within noise, coverage 0.919. (4) The pairing,
+  history's maximum then our shrink at 15x, scores 0.6643: 1% better
+  than our shrink alone on the natural scale (0.6739; log 0.719 against
+  0.725), clears the gate (0.3% over 30x, cells whose h3 median is
+  itself above the limit), 95% coverage 0.897, and keeps the fan. On
+  these weeks it is the best shape-keeping rule. (5) The clip beats the
+  shrink at every bound, as on the Mac.
+  Caveats: 44 in-season weeks (October to January), not the October
+  gate weeks; final truth for the history table (a live rule would read
+  the vintage); no pre-registration; one screen. What it does for
+  Wednesday: nothing (shrink 15x stands; a per-horizon historical limit
+  is not a knob on main). What it does for the handoff of 2026-10-23
+  (trajectory exclusion at 40x + shrink 15x): the same idea in quantile
+  form scored here as predicted, so the Model lane's arm has a prior
+  result to check against on the 84 weeks; if it holds there, the
+  historical-maximum clip is a one-table addition to tailcap for the
+  11-04 round at Ely's word.
 - 2026-10-25 (03:30 UTC): PR #48 MERGED BY ELY (main 757ce69, the kernel
   form and card 1.3); ELY RUNS THE ROUND WEDNESDAY AND HANDS THIS LANE
   THE FILES. LAST WEEK'S ROUND REBUILT UNDER THE WEDNESDAY PROTOCOL, for
