@@ -11,6 +11,32 @@ agent's.
 
 ## Now
 
+- 2026-10-25 (23:42 UTC): THE HISTORICAL CEILING ON THE 84 WEEKS, PRE-REGISTERED
+  AND RUNNING (Ely's request in chat; the Submission lane's handoff of
+  2026-10-25 under For other lanes, predictions P1 to P4). Amendment 3 to
+  the screen's pre-registration, frozen at 23:41 UTC before any ceiling row
+  was computed, sha256 de645b23 (research/oracle-width-screen/
+  AMENDMENT3_HIST.md on the lab Mac). Post hoc on C0's stored weeks, no
+  engine time: the knob's own functions on main a99d53d
+  (flubnf.tailcap.history_ratios, history_limits, clip_rows_by_horizon,
+  then cap_rows), in the pipeline's order, the ratios from each week's
+  vintage. Arms: the maximum alone, the 0.975 alone, the maximum + shrink
+  15x, + clip 15x, + shrink 10x; against none, clip 15x, shrink 15x, clip
+  10x; all 84 weeks and the early-week subset (the first 8 scoreable weeks
+  of each season, 24, as in the C0 reading). The amendment makes P1 to P4
+  operational and writes the pass rule for the 2026-10-28 round before any
+  score: the checks pass, P1 to P3 hold (a miss in the favourable direction
+  is not a failure), and the pairing is no worse than shrink 15x on both
+  scales, in no season by more than 0.010, in 95% coverage by no more than
+  0.010, and in the early weeks by no more than 0.005. Known before any
+  score: the vintages start in 2022-02, so the 2023-24 as-ofs read history
+  from 2022-23 alone (the live round reads four seasons), and the screen's
+  only October as-ofs are the 4 of 2023-24. Checks on the smoke week
+  2024-12-07 (scores not read) pass: the comparators equal C0's cells, an
+  independent implementation of the ratios equals the code's, every
+  clipped block obeys its limit and the code's own touched count. Result
+  here well before Tuesday evening.
+
 - 2026-10-24 (17:08 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECOMMENDATION,
   FOR THE TEAM REVIEW (beside the Groundhog's of 2026-10-23 00:40 UTC,
   laptop). All six arms are read: C0, R20, R22, HP, HS and G (post hoc),

@@ -6,7 +6,63 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-25 (07:40 UTC): THE HISTORICAL CEILING IS CODED ON BRANCH
+- 2026-10-25 (23:31 UTC): PULL REQUEST #49 (dev TO main) MERGED BY ELY AT
+  23:31 UTC, merge commit a99d53d (two parents, 757ce69 and 21a9497; a
+  merge commit). Ely's first merge command at 23:30 was refused
+  ("Pull Request is not mergeable"): this lane had pushed a notes commit
+  to dev at 23:29 and GitHub was recomputing the mergeability; the second
+  try went through. Lesson for this lane: no push to dev between opening
+  a PR and Ely's merge. main now carries the historical ceiling (knob
+  output.tail_hist) beside the cap and the gate; the laptop on main has
+  everything a Wednesday ship of the pairing needs. The decision stays
+  Tuesday evening's, on the two agents' screens. The PR subscription
+  closed with the merge; the check-in was cancelled.
+- 2026-10-25 (23:35 UTC): TODAY'S ENTRY TIMES CORRECTED TO THE COMMIT
+  CLOCK (this lane's clock ran hours behind the commits again): the
+  entries written as 03:30, 05:10, 07:40, 08:00 and 08:20 UTC were
+  committed at 19:12, 19:35, 19:51, 21:02 and 23:28 UTC (9211243,
+  b28b49c, d3f5ae1, 96740b3, e35edcb). The Tuesday decision point and
+  everything else in them stand. PR #49 at 23:35 UTC: open, GitHub's
+  tests running on its head e35edcb; the check-in armed.
+- 2026-10-25 (23:28 UTC): tail-hist MERGED INTO dev (463ddba, a merge commit
+  as Ely, at Ely's word; parents 96740b3 and 18b9fd6) AND PULL REQUEST #49
+  (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/49,
+  "Historical ceiling on the upper tails (output.tail_hist), a research
+  knob for both members", 8 commits over main (757ce69), 10 files: the
+  ceiling, its tests, the knob, the pipeline wiring, the Oracle doc, the
+  notes (the App lane's bug-hunt report of 2026-10-25, find only, rides
+  along). Every commit authored and committed as Ely, no trailers; the
+  body carries no attribution (the integration's footer edited out at
+  once). Ely's merge command, a merge commit, never squash:
+  `gh pr merge 49 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  main dev && git checkout main && git merge --no-ff origin/dev && git
+  push origin main`. Subscribed to the PR. After the merge the laptop's
+  main has the knob; the Wednesday decision stays Tuesday evening's.
+  The paste-able messages to the two model agents went to Ely in chat
+  (the handoff entry below is the record).
+- 2026-10-25 (21:02 UTC): ELY'S PLAN FOR THE CEILING: the Oracle SIHRS
+  agent and the Groundhog agent each test it as a post-calibration step
+  on their own screens; if the results are good and the code is known
+  bug-free before Wednesday, it ships on 2026-10-28 with plots for the
+  Wednesday meetings. What that needs, in order: (1) the screens on the
+  Mac (the Oracle's 84 weeks; the Groundhog's three seasons in the
+  kernel form through its own retro, with the ceiling's ratios from each
+  week's vintage), the predictions P1-P4 of the handoff checked; (2)
+  tail-hist merged into dev by Ely, the dev-to-main pull request at
+  Ely's word, main on the laptop before the run (the knob is not on main
+  until then); (3) Wednesday's override values become six: seed
+  season_total_early, weight 0.25, narrowing 0.7, output.tail_hist 1,
+  output.tail_cap 15, output.tail_mode shrink; (4) this lane's round
+  procedure unchanged: the hub check, the gate, the submission commit;
+  plus the meeting figures from the fresh files (tools/lastweek_shrink.py
+  and lastweek_hist.py re-pointed at the 10-28 round: as submitted last
+  week, the shrink alone, the ceiling + shrink, beside the reported
+  series), ready within the hour of receiving the files. If either
+  screen is not in or a prediction fails, Wednesday runs the shrink at
+  15x alone as decided on 2026-10-23, and the ceiling waits for 11-04.
+  The decision point is Tuesday 2026-10-27 evening: the screens read,
+  the branch on main.
+- 2026-10-25 (19:51 UTC): THE HISTORICAL CEILING IS CODED ON BRANCH
   tail-hist (18b9fd6, one commit over dev b28b49c, at Ely's word "I want
   to test this historical maximum"), FOR ELY'S MERGE INTO dev. Knob
   output.tail_hist (both members, output stage, research, 0 = off, the
@@ -64,7 +120,7 @@ and CDC's rules. The season's facts are in
   keeps more of its width. The ceiling bites on its own in mid-season
   weeks, where the history maximum sits under the 15x line (typical
   limits 3.5x on the 44 weeks).
-- 2026-10-25 (05:10 UTC): SPENCER'S RULE AGAINST OURS, SCREENED (Ely:
+- 2026-10-25 (19:35 UTC): SPENCER'S RULE AGAINST OURS, SCREENED (Ely:
   "how would using Spencer's method compare to ours?"). Spencer's cap is
   a bound from historically realised 4-week changes; read two ways on
   the Oracle's 44 stage-rule weeks (w 0.25, k 0.7; tools/spencer_screen.py,
@@ -123,7 +179,7 @@ and CDC's rules. The season's facts are in
   result to check against on the 84 weeks; if it holds there, the
   historical-maximum clip is a one-table addition to tailcap for the
   11-04 round at Ely's word.
-- 2026-10-25 (03:30 UTC): PR #48 MERGED BY ELY (main 757ce69, the kernel
+- 2026-10-25 (19:12 UTC): PR #48 MERGED BY ELY (main 757ce69, the kernel
   form and card 1.3); ELY RUNS THE ROUND WEDNESDAY AND HANDS THIS LANE
   THE FILES. LAST WEEK'S ROUND REBUILT UNDER THE WEDNESDAY PROTOCOL, for
   Ely's eyes before the run (figures review3/lastweek_oracle_shrink15.png
@@ -2362,9 +2418,13 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- Model, the Oracle SIHRS agent (2026-10-25, from Ely: "I want to test
-  this historical maximum"): THE HISTORICAL CEILING ON THE 84-WEEK
-  SCREEN, PRE-REGISTERED, after the prior arms and beside the
+- Model, the Oracle SIHRS agent AND the Groundhog agent (2026-10-25,
+  from Ely: "I want to test this historical maximum"; Ely's plan, 21:02
+  UTC: each agent tests it as a post-calibration step on its own screen,
+  and if the results are good and the code known bug-free before
+  Wednesday it ships on 2026-10-28, so the results are wanted by Tuesday
+  2026-10-27 evening): THE HISTORICAL CEILING ON THE 84-WEEK SCREEN AND
+  ON THE GROUNDHOG'S RETRO SEASONS, PRE-REGISTERED, after the prior arms and beside the
   trajectory-exclusion arm of 2026-10-23 (the two are the same idea; the
   ceiling is its quantile form and is now code). Branch tail-hist
   (18b9fd6; Ely merges into dev): knob output.tail_hist, the quantile of
@@ -2383,8 +2443,8 @@ and CDC's rules. The season's facts are in
   usual, plus the share of blocks the ceiling touched and the ceiling's
   ratios by horizon over the season (the typical and the October
   values), and the Groundhog on the same cells in its kernel form.
-  This lane's result on the 44 stage-rule weeks (Now, 2026-10-25 05:10
-  and 07:40 UTC): maximum alone -0.007 [-0.016, -0.001] against clip 15x,
+  This lane's result on the 44 stage-rule weeks (Now, 2026-10-25 19:35
+  and 19:51 UTC): maximum alone -0.007 [-0.016, -0.001] against clip 15x,
   coverage 0.91, best arm; maximum + shrink 15x 0.664 against the
   shrink's 0.674 (1%), clears the gate; the 97.5th percentile too tight
   (coverage 0.86). Predictions for the 84 weeks, written first: (P1)
