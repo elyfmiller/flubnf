@@ -6,6 +6,36 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (03:30 UTC): PR #48 MERGED BY ELY (main 757ce69, the kernel
+  form and card 1.3); ELY RUNS THE ROUND WEDNESDAY AND HANDS THIS LANE
+  THE FILES. LAST WEEK'S ROUND REBUILT UNDER THE WEDNESDAY PROTOCOL, for
+  Ely's eyes before the run (figures review3/lastweek_oracle_shrink15.png
+  and lastweek_groundhog_shrink15.png in the Submission scratchpad;
+  tools/lastweek_shrink.py). The Oracle: the submitted 10-24 file under
+  the location-wide shrink at 15x (main's tailcap, whole admissions).
+  The Groundhog: regenerated in the cloud on dev at the 2026-10-17
+  vintage in the kernel form (`flubnf groundhog retro 2026-27 --aux
+  flusurv --with-us --own-share 0.5 --kernel-sd 1`, the hub mirror
+  brought to cdcepi main de256fda, which holds the 10-17 vintage and
+  truth through 10-17; the record names local_pools own_share 0.5,
+  anchor_weight kernel, kernel_sd 1.0, ess_floor 30), then the shrink at
+  15x. Reproduction check: Ohio's uncapped kernel 97.5% quantiles read
+  253, 451, 620, 964, the Model lane's numbers exactly.
+  h3 97.5% over the recent level, states: Oracle as submitted typical
+  20.4x, max 55x (WV), 9 over 30x; under the shrink typical 15.0x, max
+  15x, none. Groundhog as submitted (own-share form) typical 20.4x, max
+  81x (ID), 9 over 30x; kernel form uncapped typical 14.8x, max 27x
+  (DE), none over 30x; kernel + shrink typical 14.8x, max 15x. So for
+  the Groundhog the kernel does most of the work and the shrink touches
+  only the states above 15x (DE, AZ, MI, US among them); Ohio's double
+  peak is gone before any cap. The gate (scripts/sense_check.py) passes
+  both protocol files (h3 band over median typical 5.4x Oracle, 5.8x
+  Groundhog). Files: review3/2026-10-24/2026-10-24-NAU_PyBNF-OracleSIHRS-shrink15.csv,
+  -GroundHogCGR-kernel.csv, -GroundHogCGR-kernel-shrink15.csv.
+  Note on the cloud replay: the retro without --aux runs the bare
+  single-pool analogue (arm "shipped"), not the Groundhog; the Groundhog
+  is --aux flusurv. The first attempt here ran the bare arm and was
+  discarded (app/state/groundhog/shipped/2026-27, untouched otherwise).
 - 2026-10-23 (02:50 UTC): ELY'S DECISION FOR 2026-10-28: THE LOCATION-WIDE
   SHRINK AT 15x FOR BOTH MEMBERS (replacing the clip at 10x recorded by
   the Model lane at 01:38 UTC; the kernel still ships, PR #48). The
