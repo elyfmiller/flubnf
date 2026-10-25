@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (08:20 UTC): tail-hist MERGED INTO dev (463ddba, a merge commit
+  as Ely, at Ely's word; parents 96740b3 and 18b9fd6) AND PULL REQUEST #49
+  (dev TO main) OPENED BY THIS LANE: https://github.com/elyfmiller/flubnf/pull/49,
+  "Historical ceiling on the upper tails (output.tail_hist), a research
+  knob for both members", 8 commits over main (757ce69), 10 files: the
+  ceiling, its tests, the knob, the pipeline wiring, the Oracle doc, the
+  notes (the App lane's bug-hunt report of 2026-10-25, find only, rides
+  along). Every commit authored and committed as Ely, no trailers; the
+  body carries no attribution (the integration's footer edited out at
+  once). Ely's merge command, a merge commit, never squash:
+  `gh pr merge 49 --merge --repo elyfmiller/flubnf`, or `git fetch origin
+  main dev && git checkout main && git merge --no-ff origin/dev && git
+  push origin main`. Subscribed to the PR. After the merge the laptop's
+  main has the knob; the Wednesday decision stays Tuesday evening's.
+  The paste-able messages to the two model agents went to Ely in chat
+  (the handoff entry below is the record).
 - 2026-10-25 (08:00 UTC): ELY'S PLAN FOR THE CEILING: the Oracle SIHRS
   agent and the Groundhog agent each test it as a post-calibration step
   on their own screens; if the results are good and the code is known
