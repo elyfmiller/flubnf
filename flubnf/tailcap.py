@@ -46,6 +46,18 @@ MODE_PRODUCTION = "clip"
 MODES = ("clip", "shrink")
 #: the recent level is the mean of this many newest reported weeks
 RECENT_WEEKS = 3
+#: the historical ceiling (knob output.tail_hist; Spencer Fox's bound read
+#: on our data, 2026-10-25): per horizon, the upper quantiles are clipped at
+#: the recent level times a quantile of the growth history has produced,
+#: y[W+h+1] / recent(W), over every jurisdiction's weeks within HIST_WINDOW
+#: epiweeks of the forecast date in strictly earlier seasons whose recent
+#: level was at least HIST_FLOOR. The knob is that quantile level: 1.0 the
+#: maximum (nothing history never did), 0.975 the 97.5th percentile; 0 is
+#: off, the registered form. It runs before the n-cap, as a clip.
+HIST_PRODUCTION = 0.0
+HIST_WINDOW = 2
+HIST_FLOOR = 10.0
+HORIZONS = (0, 1, 2, 3)
 #: the hub target the cap applies to
 TARGET = "wk inc flu hosp"
 
@@ -133,6 +145,103 @@ def whole_block(capped: Mapping[float, float], block: Mapping[float, float]) -> 
             top = v
         out[level] = v
     return out
+
+
+def _epiweek(d: "date") -> int:
+    return int(d.isocalendar()[1])
+
+
+def _season_of(d: "date") -> int:
+    return d.year if d.month >= 8 else d.year - 1
+
+
+def history_ratios(series_by_fips: Mapping[str, Iterable], asof: "date | str",
+                   level: float = 1.0, window: int = HIST_WINDOW,
+                   floor: float = HIST_FLOOR, weeks: int = RECENT_WEEKS,
+                   horizons: Iterable[int] = HORIZONS) -> dict:
+    """{horizon: ratio}: the `level` quantile (1.0 = the maximum) of
+    y[W+h+1] / recent(W) over every series' weeks W within `window`
+    epiweeks of `asof` in strictly earlier seasons, recent(W) the mean of
+    the `weeks` values ending at W and at least `floor`. `series_by_fips`
+    maps a jurisdiction to (date, value) pairs, dates ISO strings or dates,
+    oldest first; the national row should not be among them. A horizon
+    with no history gives NaN."""
+    from datetime import date as _date, timedelta
+    asof_d = asof if isinstance(asof, _date) else _date.fromisoformat(str(asof)[:10])
+    ew, se = _epiweek(asof_d), _season_of(asof_d)
+    hs = [int(h) for h in horizons]
+    pools: dict = {h: [] for h in hs}
+    for _fips, pairs in series_by_fips.items():
+        pts = []
+        for d, v in pairs:
+            dd = d if isinstance(d, _date) else _date.fromisoformat(str(d)[:10])
+            if v is not None and math.isfinite(float(v)):
+                pts.append((dd, float(v)))
+        pts.sort()
+        by_date = dict(pts)
+        for i, (w, _v) in enumerate(pts):
+            if _season_of(w) >= se:
+                continue
+            dw = abs(_epiweek(w) - ew)
+            if min(dw, 52 - dw) > window:
+                continue
+            base_vals = [x for (_d, x) in pts[max(0, i - weeks + 1): i + 1]]
+            base = sum(base_vals) / len(base_vals)
+            if not (base >= floor):
+                continue
+            for h in hs:
+                y = by_date.get(w + timedelta(days=7 * (h + 1)))
+                if y is not None:
+                    pools[h].append(y / base)
+    out = {}
+    for h in hs:
+        r = sorted(pools[h])
+        if not r:
+            out[h] = float("nan")
+        elif level >= 1.0:
+            out[h] = float(r[-1])
+        else:
+            # the quantile by linear interpolation, as numpy's default
+            pos = (len(r) - 1) * float(level)
+            lo = int(math.floor(pos)); hi = min(lo + 1, len(r) - 1)
+            out[h] = float(r[lo] + (r[hi] - r[lo]) * (pos - lo))
+    return out
+
+
+def history_limits(ratios: Mapping[int, float], recent: float) -> dict:
+    """{horizon: limit}: the recent level times each horizon's ratio; NaN
+    (no ceiling) where either is unknown or the recent level is 0."""
+    if recent is None or not math.isfinite(float(recent)) or float(recent) <= 0:
+        return {int(h): float("nan") for h in ratios}
+    return {int(h): (float(recent) * float(r) if r is not None and math.isfinite(float(r))
+                     else float("nan")) for h, r in ratios.items()}
+
+
+def clip_rows_by_horizon(rows: list, limits_by_fips: Mapping[str, Mapping[int, float]]) -> tuple:
+    """The historical ceiling on hub quantile rows: each (location,
+    horizon) block of TARGET clipped above its median at that location's
+    limit FOR THAT HORIZON (cap_block, then whole_block), levels below or at
+    the median untouched. Returns (rows, cells changed)."""
+    blocks: dict = {}
+    for i, r in enumerate(rows):
+        if r.get("target") == TARGET and r.get("output_type") == "quantile":
+            blocks.setdefault((str(r["location"]), int(r["horizon"])), []).append(i)
+    out = [dict(r) for r in rows]
+    cells = 0
+    for (fips, h), idx in blocks.items():
+        lim = (limits_by_fips.get(fips) or {}).get(h, float("nan"))
+        if lim is None or not math.isfinite(float(lim)):
+            continue
+        block = {float(out[i]["output_type_id"]): float(out[i]["value"]) for i in idx}
+        capped = whole_block(cap_block(block, float(lim)), block)
+        changed = False
+        for i in idx:
+            level = float(out[i]["output_type_id"])
+            if capped[level] != block[level]:
+                out[i]["value"] = capped[level]
+                changed = True
+        cells += int(changed)
+    return out, cells
 
 
 def cap_rows(rows: list, limit_by_fips: Mapping[str, float],

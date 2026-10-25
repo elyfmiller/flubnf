@@ -176,3 +176,87 @@ def test_capped_rows_stay_whole_admissions(mode):
 def test_cap_rows_refuses_an_unknown_mode():
     with pytest.raises(ValueError):
         TC.cap_rows([], {}, mode="chop")
+
+
+# ---- the historical ceiling (knob output.tail_hist)
+
+def _history():
+    """Two states, weekly from 2022-08-06 to 2026-10-17. Ohio is flat at 20
+    except for one two-week spike of 320 at epiweeks 45-46 of 2022 (16x);
+    the anchors within two epiweeks of epiweek 42 (40-44) all sit before
+    it, so every horizon's maximum ratio is 16 and most ratios are 1.
+    Idaho (2 to 10 a week, a three-week mean under 10) sits under the
+    floor in every season and contributes nothing."""
+    from datetime import date, timedelta
+    oh, idh = [], []
+    d = date(2022, 8, 6)
+    while d <= date(2026, 10, 17):
+        yr = d.year if d.month >= 8 else d.year - 1
+        ew = d.isocalendar()[1]
+        v = 320.0 if (yr == 2022 and ew in (45, 46)) else 20.0
+        oh.append((d.isoformat(), v)); idh.append((d.isoformat(), 2.0 * (ew % 5 + 1)))
+        d += timedelta(days=7)
+    return {"39": oh, "16": idh}
+
+
+def test_history_ratios_take_the_maximum_over_earlier_seasons_in_the_window():
+    r = TC.history_ratios(_history(), "2026-10-17", level=1.0)
+    # the 2022 spike: an anchor at epiweek 41-44 (recent level 20) reaches
+    # 320 at some horizon, a 16x rise, and the window around epiweek 42
+    # holds those anchors
+    assert all(r[h] == pytest.approx(16.0) for h in range(4))
+    # a lower quantile never exceeds the maximum, and far enough down the
+    # pool (most ratios are 1) it sits at 1
+    q = TC.history_ratios(_history(), "2026-10-17", level=0.975)
+    assert all(1.0 <= q[h] <= 16.0 for h in range(4))
+    assert all(TC.history_ratios(_history(), "2026-10-17", level=0.5)[h] == pytest.approx(1.0) for h in range(4))
+    # Idaho's weeks are under the floor: raising the floor above Ohio's base removes everything
+    none = TC.history_ratios(_history(), "2026-10-17", level=1.0, floor=1000.0)
+    assert all(math.isnan(v) for v in none.values())
+
+
+def test_history_ratios_ignore_the_current_season_and_far_calendar_weeks():
+    h = _history()
+    # far from the spike's calendar position every ratio is 1
+    r = TC.history_ratios(h, "2027-03-13", level=1.0)
+    assert all(r[hh] == pytest.approx(1.0) for hh in range(4))
+    # an as-of in 2023 sees 2022's spike; 2023's own weeks never enter
+    r23 = TC.history_ratios(h, "2023-10-21", level=1.0)
+    assert r23[3] == pytest.approx(16.0)
+    r22 = TC.history_ratios(h, "2022-10-22", level=1.0)
+    assert all(math.isnan(v) for v in r22.values())      # no earlier season at all
+
+
+def test_history_limits_scale_by_the_recent_level_and_refuse_a_zero_level():
+    lim = TC.history_limits({0: 2.0, 3: 16.0}, 50.0)
+    assert lim == {0: 100.0, 3: 800.0}
+    assert all(math.isnan(v) for v in TC.history_limits({0: 2.0, 3: 16.0}, 0.0).values())
+    assert math.isnan(TC.history_limits({3: float("nan")}, 50.0)[3])
+
+
+def test_clip_rows_by_horizon_uses_each_horizons_own_limit():
+    rows = []
+    for h in range(4):
+        for l, v in _block(100.0, 0.6 + 0.3 * h).items():
+            rows.append({"target": TC.TARGET, "output_type": "quantile", "location": "39",
+                         "horizon": str(h), "output_type_id": str(l), "value": int(round(v))})
+    rows.append({"target": "peak inc flu hosp", "output_type": "quantile", "location": "39",
+                 "horizon": "3", "output_type_id": "0.975", "value": 99999})
+    limits = {"39": {0: 200.0, 1: 400.0, 2: 800.0, 3: float("nan")}}
+    out, cells = TC.clip_rows_by_horizon(rows, limits)
+    by = {}
+    for r in out:
+        if r["target"] == TC.TARGET:
+            by.setdefault(int(r["horizon"]), {})[float(r["output_type_id"])] = r["value"]
+    assert by[0][0.975] == 200 and by[1][0.975] == 400 and by[2][0.975] == 800
+    assert by[3][0.975] == int(round(_block(100.0, 1.5)[0.975]))         # NaN limit: untouched
+    for h in range(4):
+        assert by[h][0.5] == 100 and by[h][0.025] == int(round(_block(100.0, 0.6 + 0.3 * h)[0.025]))
+        vals = [by[h][l] for l in sorted(by[h])]; assert vals == sorted(vals)
+    assert cells == 3
+    assert [r for r in out if r["target"] != TC.TARGET][0]["value"] == 99999
+    assert all(type(r["value"]) is int for r in out)
+
+
+def test_registered_form_has_no_historical_ceiling():
+    assert TC.HIST_PRODUCTION == 0.0
