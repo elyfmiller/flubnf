@@ -6,6 +6,17 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (23:31 UTC): PULL REQUEST #49 (dev TO main) MERGED BY ELY AT
+  23:31 UTC, merge commit a99d53d (two parents, 757ce69 and 21a9497; a
+  merge commit). Ely's first merge command at 23:30 was refused
+  ("Pull Request is not mergeable"): this lane had pushed a notes commit
+  to dev at 23:29 and GitHub was recomputing the mergeability; the second
+  try went through. Lesson for this lane: no push to dev between opening
+  a PR and Ely's merge. main now carries the historical ceiling (knob
+  output.tail_hist) beside the cap and the gate; the laptop on main has
+  everything a Wednesday ship of the pairing needs. The decision stays
+  Tuesday evening's, on the two agents' screens. The PR subscription
+  closed with the merge; the check-in was cancelled.
 - 2026-10-25 (23:35 UTC): TODAY'S ENTRY TIMES CORRECTED TO THE COMMIT
   CLOCK (this lane's clock ran hours behind the commits again): the
   entries written as 03:30, 05:10, 07:40, 08:00 and 08:20 UTC were
