@@ -382,6 +382,27 @@ REGISTRY: tuple = (
                "the limit. Replays: the clip scores a little better over "
                "whole seasons, the shrink better in September-October weeks. "
                "Takes effect only with output.tail_cap above 0.")),
+    Knob("output.tail_hist", "Historical ceiling", BOTH, "output", "method",
+         "float", TC.HIST_PRODUCTION, "flubnf.tailcap:HIST_PRODUCTION",
+         "Upper quantiles clipped, per horizon, at this quantile of past growth over the recent level; 0 off.",
+         lo=0.0, hi=1.0,
+         note=("Spencer Fox's bound read on our data (2026-10-25): for each "
+               "horizon h, the growth y[W+h+1] over the recent level at W, "
+               "over every jurisdiction's weeks within two epiweeks of the "
+               "forecast date in strictly earlier seasons with a recent "
+               "level of at least 10, from the run's own truth vintage. The "
+               "knob is the quantile of that history used as the ceiling: 1 "
+               "the maximum (only growth history never produced is removed), "
+               "0.975 its 97.5th percentile. Applied as a clip before the "
+               "n-cap (output.tail_cap), so the two compose: the ceiling "
+               "deletes the impossible, the cap or the shrink shapes the "
+               "rest. Screened post hoc on the Oracle's 44 stage-rule weeks "
+               "(docs/team/submission.md, 2026-10-25): the maximum alone was "
+               "the best arm (-0.007 relWIS against the clip at 15x, "
+               "coverage 0.91) and with the shrink at 15x on top beat the "
+               "shrink alone by 1%; the 97.5th percentile was too tight "
+               "(coverage 0.86). Research; the run records the ratios and "
+               "the cells it touched.")),
     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
          "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
@@ -828,7 +849,8 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
 #: knob is the console's), and it writes no submission files (the optional
 #: hub rows)
 NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
-                          "output.tail_cap", "output.tail_mode", *OPTIONAL_KEYS})
+                          "output.tail_cap", "output.tail_mode",
+                          "output.tail_hist", *OPTIONAL_KEYS})
 
 #: form fields that predate the registry -> the knob they now set
 LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",

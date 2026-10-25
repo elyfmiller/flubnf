@@ -52,6 +52,7 @@ SOURCES = {
     "oracle.narrow": OR.K_PRODUCTION,
     "output.tail_cap": TC.CAP_PRODUCTION,
     "output.tail_mode": TC.MODE_PRODUCTION,
+    "output.tail_hist": TC.HIST_PRODUCTION,
     "oracle.w_aux": MX.W_AUX,
     "oracle.submitted_seed": OR.SUBMITTED_SEED,
     "oracle.bandwidth": AN.DEFAULT_BANDWIDTH,
