@@ -340,9 +340,23 @@ _ABBR_REGION = {a: r for r, abbrs in HHS_REGION.items() for a in abbrs}
 _FLUSURV_SITES = {"NY": ("ny_albany", "ny_rochester")}
 
 
-#: the shipped Groundhog's local pooling (prereg c66c50adc20bdf84): the
-#: jurisdiction's own past weeks at half the admissions-pool weight
-SHIPPED_LOCAL_POOLS = {"own_share": AN.SHIPPED_OWN_SHARE}
+#: the shipped Groundhog's local pooling: the jurisdiction's own past weeks
+#: at half the admissions-pool weight (prereg c66c50adc20bdf84, since
+#: 2026-10-15) and, inside each half, donor weeks weighted by how close their
+#: own count is to the jurisdiction's newest (the size-matched kernel with
+#: its effective-donor guard, prereg 0815e4709ab06b2f and 28f0f33d6ea7e232,
+#: since 2026-10-23)
+SHIPPED_LOCAL_POOLS = {"own_share": AN.SHIPPED_OWN_SHARE,
+                       "anchor_weight": AN.SHIPPED_ANCHOR_WEIGHT,
+                       "kernel_sd": AN.SHIPPED_KERNEL_SD,
+                       "ess_floor": AN.SHIPPED_ESS_FLOOR}
+#: forms that shipped before the current one, newest first, each with the
+#: date it stopped being the default: a record carrying one ran the
+#: shipped Groundhog of its day (not research). The pooled form (no
+#: local_pools key, before 2026-10-15) is the record's absence of the key.
+EARLIER_SHIPPED_LOCAL_POOLS = (
+    ({"own_share": AN.SHIPPED_OWN_SHARE}, "2026-10-23"),
+)
 
 
 def shipped_local_pools() -> dict:
@@ -370,12 +384,24 @@ def effective_local_pools(extra, *, dataset: bool = False):
             f"spec.extra['local_pools'] must be a dict, got "
             f"{type(cfg).__name__}")
     else:
-        unknown = set(cfg) - {"own_share", "region_share", "own_site"}
+        unknown = set(cfg) - {"own_share", "region_share", "own_site",
+                              "anchor_floor", "anchor_weight", "kernel_sd",
+                              "ess_floor", "winsor_q", "repair_spikes",
+                              "exclude_weeks"}
         if unknown:
             raise ValueError(f"local_pools: unknown keys {sorted(unknown)}")
     knob = (extra.get("knobs") or {}).get("groundhog.own_share")
     if knob is not None:
         cfg = {**(cfg or {}), "own_share": float(knob)}
+    ksd = (extra.get("knobs") or {}).get("groundhog.kernel_sd")
+    if ksd is not None:
+        # the size-matched kernel's width; 0 turns the kernel (and its
+        # guard) off, the form before 2026-10-23
+        cfg = {k: v for k, v in (cfg or {}).items()
+               if k not in ("anchor_weight", "kernel_sd", "ess_floor")}
+        if float(ksd) > 0:
+            cfg.update({"anchor_weight": "kernel", "kernel_sd": float(ksd),
+                        "ess_floor": AN.SHIPPED_ESS_FLOOR})
     if cfg is None:
         return None
     out = {}
@@ -385,6 +411,31 @@ def effective_local_pools(extra, *, dataset: bool = False):
         out["region_share"] = float(cfg["region_share"])
     if cfg.get("own_site"):
         out["own_site"] = True
+    # the admissions pool by donor count (prereg 0815e4709ab06b2f; the
+    # kernel and its guard shipped 2026-10-23, the rest research)
+    if float(cfg.get("anchor_floor", 0) or 0) > 0:
+        out["anchor_floor"] = float(cfg["anchor_floor"])
+    aw = str(cfg.get("anchor_weight") or "none")
+    if aw not in AN.ANCHOR_WEIGHTS:
+        raise ValueError(f"local_pools: anchor_weight must be one of "
+                         f"{AN.ANCHOR_WEIGHTS}, got {aw!r}")
+    if aw != "none":
+        out["anchor_weight"] = aw
+        if aw == "kernel":
+            # read literally: a width of 0 is refused by LocalPooling, never
+            # quietly turned into the default
+            out["kernel_sd"] = (float(cfg["kernel_sd"]) if "kernel_sd" in cfg
+                                and cfg["kernel_sd"] is not None else 1.0)
+        if float(cfg.get("ess_floor", 0) or 0) > 0:
+            out["ess_floor"] = float(cfg["ess_floor"])
+    # RESEARCH (prereg 28f0f33d6ea7e232): cells that must not define a tail
+    if float(cfg.get("winsor_q", 0) or 0) > 0:
+        out["winsor_q"] = float(cfg["winsor_q"])
+    if cfg.get("repair_spikes"):
+        out["repair_spikes"] = True
+    if cfg.get("exclude_weeks"):
+        out["exclude_weeks"] = [[str(a)[:10], str(b)[:10]]
+                                for a, b in cfg["exclude_weeks"]]
     return out or None                  # nothing weighted: the pooled form
 
 
@@ -420,6 +471,14 @@ def local_args(spec, *, dataset: bool = False, locations_csv=None):
         own_share=float(cfg.get("own_share", 0.0)),
         region_share=float(cfg.get("region_share", 0.0)),
         own_site=bool(cfg.get("own_site", False)),
+        anchor_floor=float(cfg.get("anchor_floor", 0.0) or 0.0),
+        anchor_weight=str(cfg.get("anchor_weight") or "none"),
+        kernel_sd=(float(cfg["kernel_sd"]) if "kernel_sd" in cfg
+                   and cfg["kernel_sd"] is not None else 1.0),
+        ess_floor=float(cfg.get("ess_floor", 0.0) or 0.0),
+        winsor_q=float(cfg.get("winsor_q", 0.0) or 0.0),
+        repair_spikes=bool(cfg.get("repair_spikes", False)),
+        exclude_weeks=tuple(tuple(w) for w in cfg.get("exclude_weeks", ())),
         region_of=region_of, aux_sites=aux_sites)
 
 

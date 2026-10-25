@@ -355,8 +355,10 @@ def analogue_donors_label(extra: dict | None) -> str:
 
 
 def local_pools_label(extra: dict | None) -> str:
-    """', own-state donors 0.50[, region 0.25][, own FluSurv-NET site]' for
-    a research run with locally weighted Groundhog pools
+    """', own-state donors 0.50, size-matched donors' for the shipped form
+    (since 2026-10-23; ', own-state donors 0.50' is the form of 2026-10-15
+    to 2026-10-23), the research options named, for a run with locally
+    weighted Groundhog pools
     (spec.extra['local_pools'], flubnf.analogue.LocalPooling); '' without."""
     from app.core.engines.analogue import effective_local_pools
     extra = extra if isinstance(extra, dict) else {}
@@ -377,6 +379,32 @@ def local_pools_label(extra: dict | None) -> str:
         parts.append(f"region {float(cfg['region_share']):.2f}")
     if cfg.get("own_site"):
         parts.append("own FluSurv-NET site")
+    if cfg.get("anchor_floor"):
+        parts.append(f"donor floor {float(cfg['anchor_floor']):g}")
+    from flubnf import analogue as _AN
+    if not cfg.get("own_share") and cfg.get("anchor_weight"):
+        # a weighting without the own share: say the own weight is off
+        parts.insert(0, "no own-state weight")
+    shipped_kernel = (cfg.get("anchor_weight") == "kernel"
+                      and float(cfg.get("kernel_sd", 1.0)) == _AN.SHIPPED_KERNEL_SD
+                      and float(cfg.get("ess_floor", 0) or 0) == _AN.SHIPPED_ESS_FLOOR)
+    if shipped_kernel:
+        # the shipped kernel and its guard, named once (since 2026-10-23)
+        parts.append("size-matched donors")
+    else:
+        if cfg.get("anchor_weight"):
+            parts.append("donors weighted by " + (
+                f"kernel s={float(cfg.get('kernel_sd', 1.0)):g}"
+                if cfg["anchor_weight"] == "kernel" else cfg["anchor_weight"]))
+        if cfg.get("ess_floor"):
+            parts.append(f"effective-donor floor {float(cfg['ess_floor']):g}")
+    if cfg.get("winsor_q"):
+        parts.append(f"ratios winsorised at {float(cfg['winsor_q']):g}")
+    if cfg.get("repair_spikes"):
+        parts.append("single-week spikes repaired")
+    if cfg.get("exclude_weeks"):
+        parts.append("weeks removed " + ", ".join(
+            f"{a} to {b}" for a, b in cfg["exclude_weeks"]))
     return (", " + ", ".join(parts)) if parts else ", local pools (no weight)"
 
 
@@ -392,9 +420,11 @@ def is_research(spec) -> bool:
     # dataset: never the date's forecast either
     # the Groundhog's local pooling: a run whose record asks for anything
     # but the shipped configuration (the pooled form included) is research;
-    # a record without the key is from before 2026-10-15 and is what it was;
+    # a record without the key is from before 2026-10-15 and is what it was,
+    # and so is one carrying a form that shipped before the current one;
     # a knob off its default is a modified run instead (app/core/knobs.py)
-    from app.core.engines.analogue import (SHIPPED_LOCAL_POOLS,
+    from app.core.engines.analogue import (EARLIER_SHIPPED_LOCAL_POOLS,
+                                           SHIPPED_LOCAL_POOLS,
                                            effective_local_pools)
     if "local_pools" in extra:
         try:
@@ -402,7 +432,10 @@ def is_research(spec) -> bool:
                 {k: v for k, v in extra.items() if k != "knobs"})
         except ValueError:
             form = "unreadable"
-        if form != SHIPPED_LOCAL_POOLS:
+        # the shipped form, or one that shipped before it (a record of its
+        # day), is not research
+        if form != SHIPPED_LOCAL_POOLS and all(
+                form != f for f, _until in EARLIER_SHIPPED_LOCAL_POOLS):
             return True
     return (extra.get("members") == 3 or extra.get("variant") == "2strain"
             or str(extra.get("oracle") or "") == "none"

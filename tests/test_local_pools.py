@@ -127,11 +127,23 @@ def test_engine_local_args_parses_and_refuses(tmp_path, monkeypatch):
     csv.write_text(LOCATIONS_CSV, encoding="utf-8")
     monkeypatch.setattr(eng, "LOCATIONS", csv)
     # the shipped form rides in the record, as aux_pools does
-    assert eng.shipped_local_pools() == {"own_share": AN.SHIPPED_OWN_SHARE}
+    # since 2026-10-23 the shipped form is the own share with the
+    # size-matched kernel and its guard
+    assert eng.shipped_local_pools() == {
+        "own_share": AN.SHIPPED_OWN_SHARE, "anchor_weight": "kernel",
+        "kernel_sd": AN.SHIPPED_KERNEL_SD, "ess_floor": AN.SHIPPED_ESS_FLOOR}
+    assert (AN.SHIPPED_OWN_SHARE, AN.SHIPPED_ANCHOR_WEIGHT, AN.SHIPPED_KERNEL_SD,
+            AN.SHIPPED_ESS_FLOOR) == (0.5, "kernel", 1.0, 30.0)
     shipped = eng.local_args(SimpleNamespace(
         extra={"local_pools": eng.shipped_local_pools()}))
     assert shipped.own_share == 0.5 and not shipped.own_site
     assert shipped.region_share == 0
+    assert (shipped.anchor_weight, shipped.kernel_sd, shipped.ess_floor) == (
+        "kernel", 1.0, 30.0)
+    assert shipped.anchor_floor == 0 and shipped.winsor_q == 0
+    assert not shipped.repair_spikes and shipped.exclude_weeks == ()
+    # the form of 2026-10-15 to 2026-10-23 is the earlier shipped one
+    assert eng.EARLIER_SHIPPED_LOCAL_POOLS[0][0] == {"own_share": 0.5}
     # an absent key is the pooled form (every record before 2026-10-15);
     # so are None, False and a zero share
     assert eng.local_args(SimpleNamespace(extra={})) is None
@@ -140,13 +152,23 @@ def test_engine_local_args_parses_and_refuses(tmp_path, monkeypatch):
     # the knob sets the share, with or without the record's key
     assert eng.local_args(SimpleNamespace(
         extra={"knobs": {"groundhog.own_share": 0.75}})).own_share == 0.75
+    # the own share at 0 leaves the kernel; with the kernel at 0 too it is
+    # the pooled form
+    k0 = eng.local_args(SimpleNamespace(
+        extra={"local_pools": eng.shipped_local_pools(),
+               "knobs": {"groundhog.own_share": 0}}))
+    assert k0.own_share == 0 and k0.anchor_weight == "kernel"
     assert eng.local_args(SimpleNamespace(
         extra={"local_pools": eng.shipped_local_pools(),
-               "knobs": {"groundhog.own_share": 0}})) is None
+               "knobs": {"groundhog.own_share": 0, "groundhog.kernel_sd": 0}})) is None
     # the effective form drops zero entries, so an equivalent dict is shipped
     assert eng.effective_local_pools(
-        {"local_pools": {"own_share": 0.5, "region_share": 0, "own_site": False}}
+        {"local_pools": {**eng.shipped_local_pools(), "region_share": 0,
+                         "own_site": False, "anchor_floor": 0}}
     ) == eng.SHIPPED_LOCAL_POOLS
+    assert eng.effective_local_pools(
+        {"local_pools": {"own_share": 0.5, "region_share": 0, "own_site": False}}
+    ) == eng.EARLIER_SHIPPED_LOCAL_POOLS[0][0]
     lp = eng.local_args(SimpleNamespace(
         extra={"local_pools": {"own_share": 0.25, "own_site": True}}))
     assert lp.own_share == 0.25 and lp.own_site
@@ -274,10 +296,22 @@ def test_a_local_pools_run_is_labelled_and_is_research():
     shipped = _run_extra(2, "vintage")
     assert shipped["local_pools"] == eng.shipped_local_pools()
     assert runs.analogue_donors_label(shipped) == (
-        "flusurv+flusurv@06eff6a7, own-state donors 0.50")
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50, size-matched donors")
     assert not runs.is_research({"extra": shipped})
+    # a record of 2026-10-15 to 2026-10-23 (own share, no kernel) ran the
+    # shipped Groundhog of its day: named for its form, not research
+    earlier = {**shipped, "local_pools": {"own_share": 0.5}}
+    assert runs.analogue_donors_label(earlier) == (
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50")
+    assert not runs.is_research({"extra": earlier})
     assert not runs.is_research({"extra": {
         **shipped, "local_pools": {"own_share": 0.5, "region_share": 0}}})
+    # a kernel at another width is research and names its width
+    wide = {**shipped, "local_pools": {**eng.shipped_local_pools(), "kernel_sd": 0.5}}
+    assert runs.analogue_donors_label(wide).endswith(
+        "own-state donors 0.50, donors weighted by kernel s=0.5, "
+        "effective-donor floor 30")
+    assert runs.is_research({"extra": wide})
     # the bare analogue (no aux) stays the pooled form and carries no key
     assert "local_pools" not in _run_extra(2, "vintage", aux="")
     # the pooled form, asked for, is a research run and says so
@@ -290,11 +324,26 @@ def test_a_local_pools_run_is_labelled_and_is_research():
     # a knob off its default is a modified run, named, not research; the
     # knob at 0 names the pooled form too
     knob = {**shipped, "knobs": {"groundhog.own_share": 0.75}}
-    assert runs.analogue_donors_label(knob).endswith("own-state donors 0.75")
+    assert runs.analogue_donors_label(knob).endswith(
+        "own-state donors 0.75, size-matched donors")
     assert not runs.is_research({"extra": knob})
     zero = {**shipped, "knobs": {"groundhog.own_share": 0}}
-    assert runs.analogue_donors_label(zero).endswith("pooled (no own-state weight)")
+    assert runs.analogue_donors_label(zero).endswith(
+        "no own-state weight, size-matched donors")
     assert not runs.is_research({"extra": zero})
+    # the kernel knob at 0 is the earlier form, both at 0 the pooled form
+    nok = {**shipped, "knobs": {"groundhog.kernel_sd": 0}}
+    assert runs.analogue_donors_label(nok).endswith("own-state donors 0.50")
+    assert not runs.is_research({"extra": nok})
+    both = {**shipped, "knobs": {"groundhog.own_share": 0, "groundhog.kernel_sd": 0}}
+    assert runs.analogue_donors_label(both).endswith("pooled (no own-state weight)")
+    # research records without a weighting keep their labels (review
+    # 2026-10-23): the "no own-state weight" prefix is for a weighting only
+    region = {**shipped, "local_pools": {"region_share": 0.25}}
+    assert runs.analogue_donors_label(region) == "flusurv+flusurv@06eff6a7, region 0.25"
+    # a kernel knob turned on over a record of the earlier form adds the guard
+    on = {**earlier, "knobs": {"groundhog.kernel_sd": 1.0}}
+    assert eng.effective_local_pools(on) == eng.shipped_local_pools()
     # the replay presets carry the form too
     assert eng.aux_preset("flusurv")(None, 0, None)["local_pools"] == eng.shipped_local_pools()
 
@@ -350,11 +399,11 @@ def test_a_season_record_names_the_form_without_calling_the_week_dictionary(
                      week_extra=wrapped,
                      settings={"knobs": {"groundhog.own_share": 0.75}})
     assert retro.read_meta(root2)["settings"]["groundhog_local_pools"] == {
-        "own_share": 0.75}
+        **eng.shipped_local_pools(), "own_share": 0.75}
     root3 = tmp_path / "u"
     retro.run_season(root3, "2098-99", ["Ohio"], width=1, engine="analogue")
-    assert retro.read_meta(root3)["settings"]["groundhog_local_pools"] == {
-        "own_share": 0.5}
+    assert retro.read_meta(root3)["settings"]["groundhog_local_pools"] == (
+        eng.shipped_local_pools())
 
 
 def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
@@ -368,7 +417,8 @@ def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1])
     retro.run_season(root, "2098-99", ["Ohio"], width=1, engine="analogue")
     meta = retro.read_meta(root)
-    assert meta["settings"]["groundhog_local_pools"] == {"own_share": 0.5}
+    from app.core.engines import analogue as eng
+    assert meta["settings"]["groundhog_local_pools"] == eng.shipped_local_pools()
     # pretend the tree predates the key: a pooled-era record
     p = root / "run_meta.json"
     d = _json.loads(p.read_text()); d["settings"].pop("groundhog_local_pools")
@@ -385,3 +435,290 @@ def test_a_resume_refuses_to_mix_the_groundhog_forms(tmp_path, monkeypatch):
     with pytest.raises(_retro.GroundhogFormMismatch, match="own_share 0.5"):
         retro.run_season(root2, "2098-99", ["Ohio"], width=1, engine="analogue",
                          week_extra=lambda a, i, v: {})
+
+
+# --- the research anchor options (prereg 0815e4709ab06b2f) ------------------
+
+def _sized_bank():
+    """Six locations, ten seasons, growth 1.05 everywhere, but the
+    LEVELS differ: A and B start at 4, the rest at 400, so a count floor
+    or an anchor weighting tells them apart; the ratios are made to differ
+    by size (small series: noisier)."""
+    rng = random.Random(3)
+    bank = {}
+    for s in range(2016, 2026):
+        for loc, base, noise in (("A", 4.0, 0.6), ("B", 4.0, 0.6), ("C", 400.0, 0.05),
+                                 ("D", 400.0, 0.05), ("E", 400.0, 0.05), ("F", 400.0, 0.05)):
+            d = date(s, 8, 1); d += timedelta(days=(5 - d.weekday()) % 7)
+            v = base
+            for _ in range(52):
+                v = max(v * 1.05 * (1 + rng.uniform(-noise, noise)), 1.0)
+                bank[(loc, d)] = v
+                d += timedelta(days=7)
+    return bank
+
+
+def test_anchor_options_are_validated():
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_floor=-1)
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_weight="cube")
+    with pytest.raises(ValueError):
+        AN.LocalPooling(anchor_weight="kernel", kernel_sd=0)
+
+
+def test_a_floor_drops_small_donors_and_falls_back_under_min_donors():
+    bank = _sized_bank()
+    r, locs, v0 = AN.keyed_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), 2,
+                                  with_anchor=True)
+    assert v0.size == r.size and (v0 > 0).all()
+    small = (v0 < 10).sum(); assert small > 0
+    plain = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                        local=AN.LocalPooling(own_share=0.5), location="C")
+    floored = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                          local=AN.LocalPooling(own_share=0.5, anchor_floor=10),
+                          location="C")
+    # the same forecast from the floored pool computed by hand: own cells
+    # at half weight, the rest shared, over the donors at 10 or more
+    keep = v0 >= 10
+    lp = AN.LocalPooling(own_share=0.5)
+    wq = AN.weighted_quantile(r[keep], AN.local_weights(locs[keep], "C", lp), LEVELS)
+    manual = {L: 400.0 * wq[L] for L in LEVELS}
+    assert floored == pytest.approx(manual) and floored != plain
+    assert floored[0.975] - floored[0.025] < plain[0.975] - plain[0.025]
+    # a floor nobody clears falls back to the unfloored pool
+    back = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                       local=AN.LocalPooling(own_share=0.5, anchor_floor=1e9),
+                       location="C")
+    assert back == plain
+
+
+def test_anchor_weighting_keeps_the_class_shares():
+    locs = np.array(["A", "A", "B", "C"], dtype=object)
+    v0 = np.array([4.0, 16.0, 100.0, 400.0])
+    for wname in ("count", "sqrt", "kernel"):
+        lp = AN.LocalPooling(own_share=0.5, anchor_weight=wname, kernel_sd=1.0)
+        w = AN.local_weights(locs, "A", lp, anchors=v0, target_anchor=100.0)
+        assert w.sum() == pytest.approx(1.0)
+        assert w[locs == "A"].sum() == pytest.approx(0.5)
+    w = AN.local_weights(locs, "A", AN.LocalPooling(own_share=0.5, anchor_weight="count"),
+                         anchors=v0, target_anchor=None)
+    assert w[1] == pytest.approx(4 * w[0])                  # 16 against 4
+    k = AN.local_weights(locs, "A", AN.LocalPooling(own_share=0.5, anchor_weight="kernel"),
+                         anchors=v0, target_anchor=100.0)
+    assert k[2] > k[3]                                       # 100 nearer 100 than 400
+
+
+def test_the_engine_accepts_and_labels_the_anchor_options(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.core import runs
+    from app.core.engines import analogue as eng
+    csv = tmp_path / "locations.csv"; csv.write_text(LOCATIONS_CSV, encoding="utf-8")
+    monkeypatch.setattr(eng, "LOCATIONS", csv)
+    cfg = {"own_share": 0.5, "anchor_floor": 10, "anchor_weight": "kernel", "kernel_sd": 0.5}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    lp = eng.local_args(SimpleNamespace(extra={"local_pools": cfg}))
+    assert lp.anchor_floor == 10 and lp.anchor_weight == "kernel" and lp.kernel_sd == 0.5
+    extra = {"aux_pools": [{"stream": "flusurv", "weight": 0.5, "committed": True}],
+             "analogue_aux": "flusurv+flusurv@06eff6a7", "local_pools": cfg}
+    assert runs.analogue_donors_label(extra) == (
+        "flusurv+flusurv@06eff6a7, own-state donors 0.50, donor floor 10, "
+        "donors weighted by kernel s=0.5")
+    assert runs.is_research({"extra": extra})
+
+
+def test_the_engine_refuses_a_zero_kernel_width_and_an_unknown_weighting():
+    from app.core.engines import analogue as eng
+    with pytest.raises(ValueError):
+        eng.effective_local_pools({"local_pools": {"anchor_weight": "cube"}})
+    cfg = eng.effective_local_pools({"local_pools": {"own_share": 0.5, "anchor_weight": "kernel",
+                                                      "kernel_sd": 0}})
+    assert cfg["kernel_sd"] == 0                     # read literally ...
+    with pytest.raises(ValueError):                  # ... and refused downstream
+        AN.LocalPooling(**cfg)
+
+
+def test_the_effective_donor_guard_falls_back_to_uniform():
+    """A kernel that concentrates a class onto one donor takes uniform
+    weights there when the guard is on (amendment 2)."""
+    locs = np.array(["A"] + ["R"] * 40, dtype=object)
+    v0 = np.array([100.0] + [100.0] + [1.0] * 39)   # one rest donor near the target
+    lp = AN.LocalPooling(own_share=0.5, anchor_weight="kernel", kernel_sd=0.5)
+    w = AN.local_weights(locs, "A", lp, anchors=v0, target_anchor=100.0)
+    rest = locs == "R"
+    ess = (w[rest].sum() ** 2) / (w[rest] ** 2).sum()
+    assert ess < 2                                     # one donor carries it
+    g = AN.LocalPooling(own_share=0.5, anchor_weight="kernel", kernel_sd=0.5, ess_floor=30)
+    wg = AN.local_weights(locs, "A", g, anchors=v0, target_anchor=100.0)
+    assert np.allclose(wg[rest], 0.5 / 40) and wg[locs == "A"].sum() == pytest.approx(0.5)
+    # a class smaller than the floor is exempt (amendment 3): the own
+    # class of a few cells keeps its kernel weights
+    locs2 = np.array(["A", "A", "A"] + ["R"] * 40, dtype=object)
+    v2 = np.array([100.0, 100.0, 1.0] + [100.0] + [1.0] * 39)
+    w2 = AN.local_weights(locs2, "A", g, anchors=v2, target_anchor=100.0)
+    own2 = locs2 == "A"
+    assert not np.allclose(w2[own2], w2[own2][0])        # still weighted
+    assert w2[own2].sum() == pytest.approx(0.5)
+    assert np.allclose(w2[locs2 == "R"], 0.5 / 40)        # the big class guarded
+    from app.core.engines import analogue as eng
+    from app.core import runs
+    cfg = {"own_share": 0.5, "anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    # the shipped kernel and guard are named once; another floor is spelled out
+    assert runs.local_pools_label({"local_pools": cfg}).endswith("size-matched donors")
+    assert runs.local_pools_label({"local_pools": {**cfg, "ess_floor": 20}}).endswith(
+        "donors weighted by kernel s=1, effective-donor floor 20")
+
+
+# --- the tail-cell options (prereg 28f0f33d6ea7e232) -----------------------
+
+def _ohio_like_bank():
+    """One location with Ohio's 2024 pattern (1, 10, 229, 17, 24) inside a
+    smooth series, plus a smooth neighbour; Saturdays."""
+    d0 = date(2024, 9, 7)
+    a = [2, 1, 1, 1, 10, 229, 17, 24, 40, 60, 90]
+    b = [20, 22, 24, 26, 28, 30, 33, 36, 40, 44, 48]
+    bank = {}
+    for i, (x, y) in enumerate(zip(a, b)):
+        d = d0 + timedelta(days=7 * i)
+        bank[("OH", d)] = float(x)
+        bank[("XX", d)] = float(y)
+    return bank, d0
+
+
+def test_the_spike_repair_replaces_a_single_week_spike_only():
+    bank, d0 = _ohio_like_bank()
+    out = AN.repaired_bank(bank)
+    spike = d0 + timedelta(days=35)
+    assert bank[("OH", spike)] == 229.0
+    assert out[("OH", spike)] == pytest.approx(0.5 * (10 + 17))
+    # nothing else moves: the smooth series, the rise from 1 to 10 (under
+    # the 10-admission excess), every other week
+    changed = {k for k in bank if bank[k] != out[k]}
+    assert changed == {("OH", spike)}
+    assert AN.repaired_bank({}) == {}
+    # a week beside a missing (zero) week is never called a spike
+    hole = dict(bank); del hole[("OH", spike + timedelta(days=7))]
+    assert AN.repaired_bank(hole)[("OH", spike)] == 229.0
+    # the input is not modified
+    assert bank[("OH", spike)] == 229.0
+
+
+def test_the_spike_rule_needs_both_the_factor_and_the_excess():
+    d = date(2024, 10, 5); w = timedelta(days=7)
+    small = {("A", d - w): 1.0, ("A", d): 9.0, ("A", d + w): 1.0}      # 9x but +8
+    assert AN.repaired_bank(small)[("A", d)] == 9.0
+    mild = {("A", d - w): 40.0, ("A", d): 190.0, ("A", d + w): 40.0}   # 4.75x
+    assert AN.repaired_bank(mild)[("A", d)] == 190.0
+    big = {("A", d - w): 40.0, ("A", d): 200.0, ("A", d + w): 30.0}    # 5x, +160
+    assert AN.repaired_bank(big)[("A", d)] == 35.0
+
+
+def test_excluded_weeks_are_removed_inclusive_and_accept_timestamps():
+    import pandas as pd
+    bank, d0 = _ohio_like_bank()
+    lo, hi = d0 + timedelta(days=7), d0 + timedelta(days=21)
+    out = AN.bank_without_weeks(bank, [(lo.isoformat(), hi.isoformat())])
+    gone = {k for k in bank if k not in out}
+    assert gone == {(l, lo + timedelta(days=7 * i)) for l in ("OH", "XX") for i in range(3)}
+    ts = {(l, pd.Timestamp(d)): v for (l, d), v in bank.items()}
+    assert len(AN.bank_without_weeks(ts, [(lo, hi)])) == len(out)
+
+
+def test_the_tail_options_are_validated():
+    for q in (-0.1, 0.4, 1.0, float("nan")):
+        with pytest.raises(ValueError):
+            AN.LocalPooling(own_share=0.5, winsor_q=q)
+    with pytest.raises(ValueError):
+        AN.LocalPooling(exclude_weeks=(("2024-10-26", "2024-05-04"),))
+    with pytest.raises(ValueError):
+        AN.LocalPooling(exclude_weeks=(("2024-10-26",),))
+    AN.LocalPooling(own_share=0.5, winsor_q=0.99,
+                    exclude_weeks=(("2024-05-04", "2024-10-26"),))
+
+
+def test_the_winsor_caps_the_pool_at_its_own_quantile():
+    bank = _sized_bank()
+    ew, se = AN.epiweek(ASOF), AN.season_of(ASOF)
+    r, locs, v0 = AN.keyed_ratios(bank, ew, se, 2, with_anchor=True)
+    lp = AN.LocalPooling(own_share=0.5, winsor_q=0.9)
+    got = AN.forecast(400.0, ASOF, 2, bank, LEVELS, local=lp, location="C")
+    rc = np.minimum(r, np.quantile(r, 0.9))
+    wq = AN.weighted_quantile(rc, AN.local_weights(locs, "C", AN.LocalPooling(own_share=0.5)),
+                              LEVELS)
+    assert got == pytest.approx({L: 400.0 * wq[L] for L in LEVELS})
+    plain = AN.forecast(400.0, ASOF, 2, bank, LEVELS,
+                        local=AN.LocalPooling(own_share=0.5), location="C")
+    assert got[0.975] <= plain[0.975] and got[0.025] == pytest.approx(plain[0.025])
+
+
+def test_the_research_bank_options_reach_the_ratios_and_are_memoised():
+    bank, d0 = _ohio_like_bank()
+    # pad with earlier seasons so the donor rule has cells: copy the two
+    # series a year back, three times
+    big = dict(bank)
+    for k in range(1, 4):
+        for (l, d), v in bank.items():
+            big[(l, d - timedelta(days=364 * k))] = v
+    lp = AN.LocalPooling(own_share=0.5, repair_spikes=True)
+    rb = AN._research_bank(big, lp)
+    assert rb is AN._research_bank(big, lp)              # memoised on the pooling
+    assert max(rb.values()) < 229.0
+    assert AN._research_bank(big, AN.LocalPooling(own_share=0.5)) is big
+    ex = AN.LocalPooling(own_share=0.5, repair_spikes=True,
+                         exclude_weeks=(("2024-10-19", "2024-10-26"),))
+    rb2 = AN._research_bank(big, ex)
+    # the spike week (2024-10-12) is repaired, the window's two weeks gone
+    assert rb2[("OH", date(2024, 10, 12))] == pytest.approx(13.5)
+    assert ("OH", date(2024, 10, 19)) not in rb2 and ("OH", date(2024, 10, 26)) not in rb2
+
+
+def test_the_engine_accepts_and_labels_the_tail_options(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.core import runs
+    from app.core.engines import analogue as eng
+    csv = tmp_path / "locations.csv"; csv.write_text(LOCATIONS_CSV, encoding="utf-8")
+    monkeypatch.setattr(eng, "LOCATIONS", csv)
+    cfg = {"own_share": 0.5, "winsor_q": 0.99, "repair_spikes": True,
+           "exclude_weeks": [["2024-05-04", "2024-10-26"]]}
+    assert eng.effective_local_pools({"local_pools": cfg}) == cfg
+    lp = eng.local_args(SimpleNamespace(extra={"local_pools": cfg}))
+    assert lp.winsor_q == 0.99 and lp.repair_spikes
+    assert lp.exclude_weeks == (("2024-05-04", "2024-10-26"),)
+    assert runs.local_pools_label({"local_pools": cfg}) == (
+        ", own-state donors 0.50, ratios winsorised at 0.99, single-week spikes "
+        "repaired, weeks removed 2024-05-04 to 2024-10-26")
+    assert runs.is_research({"extra": {"local_pools": cfg}})
+
+
+# --- the shipped kernel (2026-10-23) ----------------------------------------
+
+@pytest.mark.parametrize("own,kern,form,suffix", [
+    (None, None, "shipped", ""),
+    (None, 0, {"own_share": 0.5}, "-kern0"),
+    (0, 0, None, "-own0.00-kern0"),
+    (0, None, {"anchor_weight": "kernel", "kernel_sd": 1.0, "ess_floor": 30.0}, "-own0.00"),
+    (0.75, 0.5, {"own_share": 0.75, "anchor_weight": "kernel", "kernel_sd": 0.5,
+                 "ess_floor": 30.0}, "-own0.75-kern0.5"),
+])
+def test_a_groundhog_replay_runs_the_form_it_is_asked_for(tmp_path, monkeypatch,
+                                                           own, kern, form, suffix):
+    """`flubnf groundhog retro --own-share/--kernel-sd`: the default is the
+    shipped form; --kernel-sd 0 the form of 2026-10-15 to 2026-10-23; both
+    0 the pooled form; the arm directory names what is off the default."""
+    import pandas as pd
+    from app.core import groundhog as gh
+    from app.core.engines import analogue as eng
+    seen = []
+    monkeypatch.setattr(gh.retro, "season_vintages", lambda s: ["2098-11-07"])
+    monkeypatch.setattr(gh, "console_locations", lambda: ["Ohio"])
+    monkeypatch.setattr(gh, "_name2fips", lambda: {"Ohio": "39"})
+    monkeypatch.setattr(gh.scoring, "load_truth", lambda: ({}, None))
+    monkeypatch.setattr(gh, "forecast_week", lambda s, a, l, extra: seen.append(extra) or {})
+    monkeypatch.setattr(gh, "score_week", lambda q, a, n, t: (pd.DataFrame(), pd.DataFrame()))
+    monkeypatch.setattr(gh, "STATE", tmp_path)
+    res = gh.run_season("2098-99", "flusurv", own_share=own, kernel_sd=kern)
+    want = eng.shipped_local_pools() if form == "shipped" else form
+    assert seen[0]["local_pools"] == want
+    assert res["meta"]["local_pools"] == want
+    assert (tmp_path / f"flusurv{suffix}" / "2098-99" / "run_meta.json").is_file()
