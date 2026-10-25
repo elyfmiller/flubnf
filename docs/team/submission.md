@@ -6,6 +6,28 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-25 (08:00 UTC): ELY'S PLAN FOR THE CEILING: the Oracle SIHRS
+  agent and the Groundhog agent each test it as a post-calibration step
+  on their own screens; if the results are good and the code is known
+  bug-free before Wednesday, it ships on 2026-10-28 with plots for the
+  Wednesday meetings. What that needs, in order: (1) the screens on the
+  Mac (the Oracle's 84 weeks; the Groundhog's three seasons in the
+  kernel form through its own retro, with the ceiling's ratios from each
+  week's vintage), the predictions P1-P4 of the handoff checked; (2)
+  tail-hist merged into dev by Ely, the dev-to-main pull request at
+  Ely's word, main on the laptop before the run (the knob is not on main
+  until then); (3) Wednesday's override values become six: seed
+  season_total_early, weight 0.25, narrowing 0.7, output.tail_hist 1,
+  output.tail_cap 15, output.tail_mode shrink; (4) this lane's round
+  procedure unchanged: the hub check, the gate, the submission commit;
+  plus the meeting figures from the fresh files (tools/lastweek_shrink.py
+  and lastweek_hist.py re-pointed at the 10-28 round: as submitted last
+  week, the shrink alone, the ceiling + shrink, beside the reported
+  series), ready within the hour of receiving the files. If either
+  screen is not in or a prediction fails, Wednesday runs the shrink at
+  15x alone as decided on 2026-10-23, and the ceiling waits for 11-04.
+  The decision point is Tuesday 2026-10-27 evening: the screens read,
+  the branch on main.
 - 2026-10-25 (07:40 UTC): THE HISTORICAL CEILING IS CODED ON BRANCH
   tail-hist (18b9fd6, one commit over dev b28b49c, at Ely's word "I want
   to test this historical maximum"), FOR ELY'S MERGE INTO dev. Knob
@@ -2362,9 +2384,13 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
-- Model, the Oracle SIHRS agent (2026-10-25, from Ely: "I want to test
-  this historical maximum"): THE HISTORICAL CEILING ON THE 84-WEEK
-  SCREEN, PRE-REGISTERED, after the prior arms and beside the
+- Model, the Oracle SIHRS agent AND the Groundhog agent (2026-10-25,
+  from Ely: "I want to test this historical maximum"; Ely's plan, 08:00
+  UTC: each agent tests it as a post-calibration step on its own screen,
+  and if the results are good and the code known bug-free before
+  Wednesday it ships on 2026-10-28, so the results are wanted by Tuesday
+  2026-10-27 evening): THE HISTORICAL CEILING ON THE 84-WEEK SCREEN AND
+  ON THE GROUNDHOG'S RETRO SEASONS, PRE-REGISTERED, after the prior arms and beside the
   trajectory-exclusion arm of 2026-10-23 (the two are the same idea; the
   ceiling is its quantile form and is now code). Branch tail-hist
   (18b9fd6; Ely merges into dev): knob output.tail_hist, the quantile of
