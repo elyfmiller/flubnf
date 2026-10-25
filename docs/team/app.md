@@ -6,6 +6,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-25: Ely's bug hunt, find only, on `dev` at bcaafb7: one pass
+  per tab, one for wiring, one for the look of every page, and the full
+  suite. 208 bugs after merging duplicates (25 S2, 86 S3, 97 S4, no S1),
+  in [bug-hunt-2026-10-25.md](bug-hunt-2026-10-25.md) with each bug's
+  steps and evidence in the JSON beside it. Not covered: Oracle SIHRS
+  runs (no engine on the test machine). The fix run comes separately.
+  For Model: the Groundhog record on Home, Models and Methods is still the
+  own-state form's 0.660, not the size-matched form's 0.642 (HM-01).
 - 2026-10-15: Ely's cleanup request (Model settings shoved the forecasts
   down; "?" marks everywhere). On `dev`: the Model settings panel opens
   only after a refusal, stays in the settings column, shows each group's
