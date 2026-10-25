@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import NormalDist
 from typing import Iterable, Mapping, Optional
 
@@ -53,6 +53,19 @@ MIN_DONORS = 30
 #: relWIS 0.6604 against 0.6701 pooled on 17,116 cells; the lead's decision
 #: 2026-10-15). 0 is the pooled form every jurisdiction shared before.
 SHIPPED_OWN_SHARE = 0.5
+#: the shipped size-matched kernel (LocalPooling.anchor_weight "kernel",
+#: kernel_sd, ess_floor): inside each class a donor week's weight falls with
+#: the log distance between its own count and the jurisdiction's newest
+#: count, exp(-(ln v0 - ln a)^2 / 2), and a class of 30 or more cells that
+#: the kernel leaves with fewer than 30 effective donors takes equal weights.
+#: Prereg 0815e4709ab06b2f with amendments 1-3 (screen of 2026-10-17:
+#: 0.6423 against 0.6604 on 17,116 cells, leave-one-season-out), screened
+#: again under the upper-tail cap, prereg 28f0f33d6ea7e232 (2026-10-22:
+#: about 0.017 better at every cap level and form); the lead's decision
+#: 2026-10-23. A record without these keys ran without the kernel.
+SHIPPED_ANCHOR_WEIGHT = "kernel"
+SHIPPED_KERNEL_SD = 1.0
+SHIPPED_ESS_FLOOR = 30.0
 
 #: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
@@ -580,7 +593,8 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
 
 # ---------------------------------------------------------------------------
 # Locally weighted donor pools (the shipped form since 2026-10-15, prereg
-# c66c50adc20bdf84; SHIPPED_OWN_SHARE above)
+# c66c50adc20bdf84; SHIPPED_OWN_SHARE above; the size-matched kernel since
+# 2026-10-23, SHIPPED_ANCHOR_WEIGHT above)
 # ---------------------------------------------------------------------------
 # forecast() with local=None is the POOLED form: every location scales one
 # pooled ratio distribution by its own anchor, so every forecast has the
@@ -608,6 +622,35 @@ class LocalPooling:
     own_site: bool = False
     region_of: Mapping = field(default_factory=dict)
     aux_sites: Mapping = field(default_factory=dict)
+    #: prereg 0815e4709ab06b2f (the kernel SHIPPED 2026-10-23, the floor and
+    #: the count weightings research): the admissions pool by each
+    #: donor cell's own count v0. `anchor_floor`: a cell counts only if
+    #: v0 >= the floor (fewer than MIN_DONORS left: the unfloored pool).
+    #: `anchor_weight`: within each class every donor's weight is
+    #: multiplied by g(v0), "count" (v0), "sqrt" (v0 ** 0.5) or "kernel"
+    #: (exp(-(ln v0 - ln a)^2 / (2 kernel_sd^2)) in the target's own anchor
+    #: a), and the class is renormalised, so the class shares hold.
+    anchor_floor: float = 0.0
+    anchor_weight: str = "none"
+    kernel_sd: float = 1.0
+    #: amendments 2 and 3 (SHIPPED with the kernel, SHIPPED_ESS_FLOOR): a
+    #: class holding at least this many
+    #: cells whose effective donor count 1 / sum(w^2) falls below it under
+    #: a weighting takes uniform weights for that forecast; a smaller class
+    #: is exempt (it is small by construction: a jurisdiction's own cells);
+    #: 0 is off
+    ess_floor: float = 0.0
+    #: RESEARCH (prereg 28f0f33d6ea7e232, the tail-cell screen of
+    #: 2026-10-22): `winsor_q` clips the admissions-pool ratios above at
+    #: their own unweighted quantile q before any weighting (0 is off);
+    #: `repair_spikes` replaces a single-week spike in the admissions bank
+    #: (SPIKE_FACTOR times both neighbours and SPIKE_MIN_EXCESS above the
+    #: larger) by the mean of its neighbours before ratios are formed;
+    #: `exclude_weeks` removes bank weeks whose date falls in any
+    #: (start, end) window, ISO dates, inclusive (applied after the repair)
+    winsor_q: float = 0.0
+    repair_spikes: bool = False
+    exclude_weeks: tuple = ()
     #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
     #: epiweek, season, horizon and bandwidth
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
@@ -621,6 +664,105 @@ class LocalPooling:
             raise ValueError(
                 f"own_share + region_share = "
                 f"{self.own_share + self.region_share!r} exceeds 1")
+        f = float(self.anchor_floor)
+        if not math.isfinite(f) or f < 0:
+            raise ValueError(f"anchor_floor must be finite and >= 0, got {f!r}")
+        if self.anchor_weight not in ANCHOR_WEIGHTS:
+            raise ValueError(f"anchor_weight must be one of {ANCHOR_WEIGHTS}, "
+                             f"got {self.anchor_weight!r}")
+        k = float(self.kernel_sd)
+        if not math.isfinite(k) or k <= 0:
+            raise ValueError(f"kernel_sd must be finite and > 0, got {k!r}")
+        e = float(self.ess_floor)
+        if not math.isfinite(e) or e < 0:
+            raise ValueError(f"ess_floor must be finite and >= 0, got {e!r}")
+        q = float(self.winsor_q)
+        if not math.isfinite(q) or not (q == 0 or 0.5 < q < 1):
+            raise ValueError(f"winsor_q must be 0 (off) or in (0.5, 1), got {q!r}")
+        for win in self.exclude_weeks:
+            if len(win) != 2:
+                raise ValueError(f"exclude_weeks entries are (start, end), got {win!r}")
+            a, b = (_as_date(x) for x in win)
+            if a > b:
+                raise ValueError(f"exclude_weeks window {win!r} ends before it starts")
+
+
+#: the anchor weightings LocalPooling accepts
+ANCHOR_WEIGHTS = ("none", "count", "sqrt", "kernel")
+#: the single-week spike rule (research, repair_spikes): a bank week is a
+#: spike when its count is at least SPIKE_FACTOR times both neighbouring
+#: weeks AND at least SPIKE_MIN_EXCESS admissions above the larger of them
+SPIKE_FACTOR = 5.0
+SPIKE_MIN_EXCESS = 10.0
+
+
+def _as_date(x) -> date:
+    """A date from a date, a datetime (a pandas Timestamp included) or an
+    ISO string."""
+    if isinstance(x, datetime):
+        return x.date()
+    if isinstance(x, date):
+        return x
+    return date.fromisoformat(str(x)[:10])
+
+
+def repaired_bank(bank: Mapping[tuple, float]) -> dict:
+    """A copy of `bank` with every single-week spike replaced by the mean of
+    its two neighbouring weeks. Detection reads the original values, and a
+    week needs both neighbours in the bank (a zero week is not in a bank,
+    so a week next to one is never called a spike)."""
+    out = dict(bank)
+    for (loc, d), v in bank.items():
+        p = bank.get((loc, d - timedelta(days=7)))
+        n = bank.get((loc, d + timedelta(days=7)))
+        if p is None or n is None:
+            continue
+        m = max(p, n)
+        if v >= SPIKE_FACTOR * m and v - m >= SPIKE_MIN_EXCESS:
+            out[(loc, d)] = 0.5 * (p + n)
+    return out
+
+
+def bank_without_weeks(bank: Mapping[tuple, float], windows) -> dict:
+    """A copy of `bank` without the weeks dated inside any (start, end)
+    window, inclusive."""
+    wins = [(_as_date(a), _as_date(b)) for a, b in windows]
+    return {k: v for k, v in bank.items()
+            if not any(a <= _as_date(k[1]) <= b for a, b in wins)}
+
+
+def _research_bank(bank: Mapping[tuple, float], local: "LocalPooling"):
+    """The admissions bank a LocalPooling's research options read: the
+    spike repair, then the excluded weeks; the bank itself when neither is
+    asked. Memoised on the LocalPooling, keyed by the bank object."""
+    if not local.repair_spikes and not local.exclude_weeks:
+        return bank
+    key = ("research_bank", id(bank))
+    hit = local._memo.get(key)
+    if hit is not None and hit[0] is bank:
+        return hit[1]
+    out = repaired_bank(bank) if local.repair_spikes else dict(bank)
+    if local.exclude_weeks:
+        out = bank_without_weeks(out, local.exclude_weeks)
+    local._memo[key] = (bank, out)
+    return out
+
+
+def anchor_factor(anchors, local: "LocalPooling", target_anchor) -> np.ndarray:
+    """g(v0) per donor for the research anchor weightings; ones for "none"
+    (and for a kernel with no usable target anchor)."""
+    a = np.asarray(anchors, dtype=float)
+    w = local.anchor_weight
+    if w == "count":
+        return a
+    if w == "sqrt":
+        return np.sqrt(a)
+    if w == "kernel":
+        if target_anchor is None or not np.isfinite(target_anchor) or target_anchor <= 0:
+            return np.ones(a.size)
+        d = np.log(a) - math.log(float(target_anchor))
+        return np.exp(-0.5 * (d / float(local.kernel_sd)) ** 2)
+    return np.ones(a.size)
 
 
 def weighted_quantile(values, weights, levels: Iterable[float]) -> dict:
@@ -646,12 +788,14 @@ def keyed_ratios(bank: Mapping[tuple, float], target_epiweek: int,
                  target_season: int, horizon: int,
                  bandwidth: int = DEFAULT_BANDWIDTH, *,
                  exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
-                 sites=None) -> tuple:
+                 sites=None, with_anchor: bool = False) -> tuple:
     """donor_ratios with each ratio's donor location beside it: (ratios,
     locations), the same donors in the same order as donor_ratios. `sites`
-    (a set of bank location codes) keeps only those donors."""
+    (a set of bank location codes) keeps only those donors. `with_anchor`
+    adds a third array, each donor cell's own value v0 (its count at the
+    donor week, the research weightings' input)."""
     drop = resolve_donor_exclusions(exclude_seasons)
-    vals, locs = [], []
+    vals, locs, v0s = [], [], []
     for (loc, d), v0 in _donor_cells(bank, target_epiweek, target_season,
                                      bandwidth, False, drop):
         if sites is not None and loc not in sites:
@@ -661,15 +805,22 @@ def keyed_ratios(bank: Mapping[tuple, float], target_epiweek: int,
             continue
         vals.append(v1 / v0)
         locs.append(loc)
+        v0s.append(v0)
     arr = np.asarray(vals, dtype=float)
     ok = np.isfinite(arr)
-    return arr[ok], np.asarray(locs, dtype=object)[ok]
+    out = (arr[ok], np.asarray(locs, dtype=object)[ok])
+    if with_anchor:
+        out = out + (np.asarray(v0s, dtype=float)[ok],)
+    return out
 
 
-def local_weights(locs, location, local: "LocalPooling") -> np.ndarray:
+def local_weights(locs, location, local: "LocalPooling", anchors=None,
+                  target_anchor=None) -> np.ndarray:
     """One weight per donor so that the location's own cells sum to
     own_share, its region's other cells to region_share and the rest to the
-    remainder; a class with no cells passes its share to the rest."""
+    remainder; a class with no cells passes its share to the rest. With a
+    research anchor weighting, each donor inside its class is multiplied by
+    anchor_factor(v0) and the class renormalised, so the shares hold."""
     locs = np.asarray(locs, dtype=object)
     # a class whose share is 0 is not a class: its cells stay in the rest
     # (found in review 2026-10-15: same-region cells were being dropped)
@@ -691,9 +842,22 @@ def local_weights(locs, location, local: "LocalPooling") -> np.ndarray:
         s_own, s_reg, s_rest = (s_own / tot, s_reg / tot, 0.0) if tot > 0 else (
             1.0 if own.any() else 0.0, 0.0 if own.any() else 1.0, 0.0)
     w = np.zeros(locs.size, dtype=float)
+    g = (anchor_factor(anchors, local, target_anchor)
+         if (anchors is not None and local.anchor_weight != "none") else None)
     for mask, share in ((own, s_own), (same, s_reg), (rest, s_rest)):
-        if mask.any():
+        if not mask.any():
+            continue
+        if g is None or not np.isfinite(g[mask]).all() or g[mask].sum() <= 0:
             w[mask] = share / mask.sum()
+        else:
+            w[mask] = share * g[mask] / g[mask].sum()
+            # the effective-donor guard: a class large enough to hold the
+            # floor that the weighting has concentrated below it takes
+            # uniform weights; a smaller class is exempt
+            ess = (w[mask].sum() ** 2) / (w[mask] ** 2).sum()
+            if (local.ess_floor > 0 and mask.sum() >= local.ess_floor
+                    and ess < local.ess_floor):
+                w[mask] = share / mask.sum()
     return w
 
 
@@ -711,18 +875,31 @@ def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
     ew, se = epiweek(as_of), season_of(as_of)
-    r, locs = keyed_ratios(bank, ew, se, horizon, bandwidth,
-                           exclude_seasons=exclude_seasons)
+    target_anchor = float(anchor)                 # the newest count itself
+    bank = _research_bank(bank, local)
+    r, locs, v0 = keyed_ratios(bank, ew, se, horizon, bandwidth,
+                               exclude_seasons=exclude_seasons,
+                               with_anchor=True)
+    if local.anchor_floor > 0:
+        # RESEARCH: drop small-count donors; under MIN_DONORS keep them all
+        keep = v0 >= float(local.anchor_floor)
+        if keep.sum() >= MIN_DONORS:
+            r, locs, v0 = r[keep], locs[keep], v0[keep]
     anchor, r2 = _anchor_and_pool(anchor, r, completeness)
     if r2 is None:
         return None
-    if local.own_share == 0 and local.region_share == 0:
+    if local.winsor_q > 0:
+        # RESEARCH: the pool's own unweighted q-quantile caps every ratio
+        r2 = np.minimum(r2, np.quantile(r2, float(local.winsor_q)))
+    if (local.own_share == 0 and local.region_share == 0
+            and local.anchor_weight == "none"):
         # no local weight asked: the shipped quantile rule, exactly, so an
         # own_site-only pooling changes the auxiliary pool and nothing else
         rq_primary = {float(L): float(np.quantile(r2, L)) for L in levels}
     else:
-        rq_primary = weighted_quantile(r2, local_weights(locs, location, local),
-                                       levels)
+        rq_primary = weighted_quantile(
+            r2, local_weights(locs, location, local, anchors=v0,
+                              target_anchor=target_anchor), levels)
     if splice is None:
         return _scale_ratio_quantiles(anchor, rq_primary, widen_log_sd)
     ws = [float(p.weight) for p in splice.pools]

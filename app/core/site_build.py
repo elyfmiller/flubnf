@@ -89,13 +89,16 @@ class BuildError(RuntimeError):
 PF_LABEL_ORACLE = "Oracle SIHRS"
 PF_LABEL_FILTER = "Particle filter alone"
 
-#: the Groundhog column's names: the shipped form (each jurisdiction's own
-#: past weeks carry half of the donor weight, since 2026-10-15) only when
-#: every published tree replayed it; the pooled form every tree replayed
-#: before then; or both, across seasons
+#: the Groundhog column's names: the shipped form (own past weeks at half
+#: of the donor weight since 2026-10-15, donor weeks of a similar size
+#: weighted most since 2026-10-23) only when every published tree replayed
+#: it; the pooled form every tree replayed before 2026-10-15; the
+#: own-state form of 2026-10-15 to 2026-10-23; or more than one form
+#: across seasons
 GH_LABEL_SHIPPED = "Groundhog"
 GH_LABEL_POOLED = "Groundhog (pooled form)"
-GH_LABEL_MIXED = "Groundhog (two forms)"
+GH_LABEL_MIXED = "Groundhog (mixed forms)"
+GH_LABEL_OWN = "Groundhog (own-state form)"
 
 #: the particle filter alone on the production engine's replay (reseal of
 #: 2026-09-07, app/state/retro_reseal, 15,460 cells), per season: what
@@ -162,15 +165,21 @@ def tree_gh_form(root):
 
 def gh_label(seasons: dict) -> str:
     """The season tables' name for the Groundhog: its plain name only when
-    every published season replayed the shipped form. A tree's form is the
-    shipped one or the pooled one: any other share is a knob, and a
-    modified-settings replay never publishes (discover_seasons)."""
-    from app.core.engines.analogue import shipped_local_pools
+    every published season replayed the shipped form; the pooled form and
+    the own-state form of 2026-10-15 each named when every tree ran it, and
+    the mixed name otherwise. A tree's form is one of those three: any
+    other value is a knob, and a modified-settings replay never publishes
+    (discover_seasons)."""
+    from app.core.engines.analogue import (EARLIER_SHIPPED_LOCAL_POOLS,
+                                           shipped_local_pools)
     forms = [tree_gh_form(i["root"]) for i in seasons.values()]
     if forms and all(f == shipped_local_pools() for f in forms):
         return GH_LABEL_SHIPPED
     if all(f is None for f in forms):
         return GH_LABEL_POOLED
+    own = EARLIER_SHIPPED_LOCAL_POOLS[-1][0]       # the 2026-10-15 form
+    if forms and all(f == own for f in forms):
+        return GH_LABEL_OWN
     return GH_LABEL_MIXED
 
 
