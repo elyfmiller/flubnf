@@ -591,6 +591,7 @@ def _run_all(spec: RunSpec) -> None:
             outcome["data_source_error"] = str(e)[:300]
         # observed admissions per location (vintage-true): floor, report, run page
         obs = {}
+        hist_series: dict = {}
         try:
             from flubnf.settings import LOCATIONS as _LOCCSV
             _lo = pd.read_csv(_LOCCSV, dtype=str)
@@ -612,6 +613,12 @@ def _run_all(spec: RunSpec) -> None:
                 obs[loc] = [[str(r.date)[:10], float(r.value)]
                             for r in g.itertuples()
                             if _npo.isfinite(r.value)]
+            # every jurisdiction's whole history at this vintage (states
+            # only), for the historical ceiling (knob output.tail_hist)
+            hist_series = {f: [(str(r.date)[:10], float(r.value))
+                               for r in g.sort_values("date").itertuples()
+                               if _npo.isfinite(r.value)]
+                           for f, g in tdf.groupby("location") if f != "US"}
         except Exception:
             pass
         pf_samples = {}
@@ -823,6 +830,24 @@ def _run_all(spec: RunSpec) -> None:
         # members' quantile rows, levels above the median clipped at n times
         # the recent level; off (0) is the registered form. Recorded with the
         # cells it touched; a location without observed weeks is left alone.
+        # the historical ceiling (knob output.tail_hist, flubnf/tailcap.py):
+        # before the n-cap, each horizon's levels above the median clipped at
+        # the recent level times what history produced at this calendar
+        # position; off (0) is the registered form.
+        _hist_q = _knobs.value_of(spec.extra, "output.tail_hist")
+        if _hist_q and hist_series:
+            from flubnf import tailcap as _tc
+            _ratios = _tc.history_ratios(hist_series, spec.forecast_date,
+                                         level=float(_hist_q))
+            _hl = {n2f[loc]: _tc.history_limits(
+                       _ratios, _tc.recent_level([v for _, v in obs.get(loc, [])]))
+                   for loc in set(pf_samples) | set(an_q) if loc in n2f}
+            pf_rows, _hist_pf = _tc.clip_rows_by_horizon(pf_rows, _hl)
+            an_rows, _hist_an = _tc.clip_rows_by_horizon(an_rows, _hl)
+            outcome["tail_hist"] = {"level": float(_hist_q),
+                                    "window": _tc.HIST_WINDOW, "floor": _tc.HIST_FLOOR,
+                                    "ratios": {str(h): r for h, r in _ratios.items()},
+                                    "cells": {"pf": _hist_pf, "analogue": _hist_an}}
         _cap_n = _knobs.value_of(spec.extra, "output.tail_cap")
         if _cap_n:
             from flubnf import tailcap as _tc
