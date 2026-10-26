@@ -103,8 +103,8 @@ import` takes the same file or folder.
 
 ## Install and run
 
-Requirements: Python 3.11 or 3.12 (the engine pins numpy<2); the console
-alone runs on newer. Also git, and about 150 MB for the sparse hub clone.
+Requirements: Python 3.11 or 3.12 (the private engine pins numpy<2; the
+public one is Python 3.12); the console alone runs on newer. Also git, and about 150 MB for the sparse hub clone.
 Setup installs BioNetGen itself.
 
 macOS, one line (clones to `~/GitHub/flubnf`, runs setup, prints
@@ -125,12 +125,17 @@ in a clone does the same, first run setup included. Windows is
 experimental: clone outside `Documents` and double click
 [`FluBNF.bat`](FluBNF.bat); see [docs/WINDOWS.md](docs/WINDOWS.md).
 
-The particle filter engine lives in a PyBNF fork that is not yet public.
-The console runs without it, with the Groundhog's forecasts only. Lab members
-receive a small engine archive; saved in Downloads, it is installed the
-next time the app opens. The full procedure, including the GitHub routes,
-is [docs/ENGINE.md](docs/ENGINE.md); the student walkthrough is
-[docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
+The particle filter engine that produces the weekly forecasts lives in a
+PyBNF fork that is not public. The console runs without it, with the
+Groundhog's forecasts only. Lab members receive a small engine archive;
+saved in Downloads, it is installed the next time the app opens. The full
+procedure, including the GitHub routes, is [docs/ENGINE.md](docs/ENGINE.md);
+the student walkthrough is
+[docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md). The same Liu-West
+filter is now in public PyBNF, and a second, opt-in route installs that
+from this repository with no account or file
+([docs/ENGINE.md](docs/ENGINE.md#the-public-engine-opt-in)); it is being
+tested, and the private engine stays the default until the switch.
 
 On macOS and Linux, a machine whose copy is stale or broken reinstalls from
 scratch with one line, once the engine archive is saved in Downloads and
