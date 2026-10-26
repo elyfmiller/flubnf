@@ -29,7 +29,8 @@ def _text(html):
 
 @pytest.fixture
 def no_runs(monkeypatch):
-    monkeypatch.setattr(ui_shared, "_latest_results", lambda: (None, None))
+    monkeypatch.setattr(ui_shared, "_latest_results",
+                        lambda **kw: (None, None))
 
 
 def _run(monkeypatch, models):
@@ -37,7 +38,7 @@ def _run(monkeypatch, models):
            "models": {m: {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0, "0.9": 3.0}}}
                       for m in models}}
     monkeypatch.setattr(ui_shared, "_latest_results",
-                        lambda: ("20981114T093100-abcdef", res))
+                        lambda **kw: ("20981114T093100-abcdef", res))
 
 
 # ------------------------------------------------------------ the header
@@ -183,7 +184,9 @@ def test_a_run_without_this_model_names_itself_in_the_tip(monkeypatch):
     _run(monkeypatch, ["analogue"])
     t = client.get("/models").text
     assert "No forecasts from this model yet" in t
-    assert "The latest run (2098-11-14 · 11-14 09:31) has none from this model." in t
+    # the run is the newest real-time one, and named so (G06, MO-06)
+    assert ("The latest real-time run (2098-11-14 · 11-14 09:31) has none "
+            "from this model.") in t
 
 
 def test_the_latest_run_is_labelled_values_with_its_page_linked(monkeypatch):
@@ -191,7 +194,8 @@ def test_the_latest_run_is_labelled_values_with_its_page_linked(monkeypatch):
     t = client.get("/model/analogue").text
     facts = t.split('md-runfacts"', 1)[1].split("</dl>", 1)[0]
     # one fact: the run's forecast date and its clock time
-    assert "<dt>Latest run</dt>" in facts and "2098-11-14 · 11-14 09:31" in facts
+    assert "<dt>Latest real-time run</dt>" in facts
+    assert "2098-11-14 · 11-14 09:31" in facts
     assert "modified settings" not in facts
     assert 'href="/runs/20981114T093100-abcdef"' in facts
     assert "No forecasts from this model yet" not in t

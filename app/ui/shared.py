@@ -351,6 +351,25 @@ def _outcome_chips(outcome_json: str) -> str:
     return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
 
 
+def _wrote_forecasts(res: dict) -> bool:
+    """Whether a run's results hold forecasts from the model it asked for
+    (either member for "all": the Groundhog runs without the filter);
+    True for a record with no models table or no spec (older runs)."""
+    from app.core.runs import _spec_dict
+    models = res.get("models")
+    spec = _spec_dict(res.get("spec", ""))
+    if not isinstance(models, dict) or not spec:
+        return True
+    wanted = {"pf": ("pf",), "analogue": ("analogue",)}.get(
+        str(spec.get("engine") or "all"), ("pf", "analogue"))
+    if not all(m in models for m in wanted):
+        return True                       # a record without those tables
+    # the asked-for tables empty while another member's is not: the run
+    # produced something, but not what it was asked for
+    return (any(models.get(m) for m in wanted)
+            or not any(models.get(m) for m in models))
+
+
 def _latest_results(include_modified: bool = False, newest: bool = False):
     """(run_id, results) of the run a page shows, or (None, None). A
     corrupt results.json falls through to the next run; the file is read
@@ -361,11 +380,12 @@ def _latest_results(include_modified: bool = False, newest: bool = False):
     the newest real-time run, so a vintage backtest never replaces the
     current forecast (the newest vintage run only when no real-time run
     exists), and never a run with modified settings exported under the
-    non-hub name (an override puts one back, badged). The Output page's
-    report card passes include_modified: it shows such a run badged,
-    linking that run's own report. The Forecast tab passes include_modified
-    and newest: the newest run that wrote forecasts, whatever its settings
-    or week."""
+    non-hub name (an override puts one back, badged), and never a run whose
+    model produced nothing (an Oracle-only run whose fits all failed). The
+    Output page's report card passes include_modified: it shows such a run
+    badged, linking that run's own report. The Forecast tab passes
+    include_modified and newest: the newest run that wrote forecasts,
+    whatever its settings or week."""
     import json as _json
     from app.core.runs import _spec_dict, is_contained, is_research
     first = None
@@ -382,6 +402,11 @@ def _latest_results(include_modified: bool = False, newest: bool = False):
             continue
         if newest:
             return f.parent.name, res
+        # the model the run asked for produced nothing (an Oracle-only run
+        # whose fits all failed: the Groundhog it consults is for its own
+        # pages, not these)
+        if not _wrote_forecasts(res):
+            continue
         # a run recorded before the mode existed reads as real-time
         extra = _spec_dict(spec).get("extra")
         mode = extra.get("mode") if isinstance(extra, dict) else None

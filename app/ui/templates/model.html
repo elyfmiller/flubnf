@@ -186,16 +186,19 @@
  <div>
   <div class="card md-fc">
    {{ tips.heading("Forecasts", "md-fc") }}
+   {# the shipped rule's run: the newest real-time one, named so (a newer
+      backtest or modified run is on the Forecast tab) #}
+   {% set run_name = "real-time run" if run_realtime else "run" %}
    {% if has_fans %}
    {# one fact, the run: its forecast date and clock time, its page, and
       the modified-settings badge an override's run carries #}
-   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% endset %}
-   {% call tips.stats("uk-stats--row md-runfacts", label="Latest run") %}
-    {{- tips.stat("Latest run", (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
+   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% if newer_run %} <a href="/forecast">Newer run on the Forecast tab</a>{% endif %}{% endset %}
+   {% call tips.stats("uk-stats--row md-runfacts", label="Latest " ~ run_name) %}
+    {{- tips.stat("Latest " ~ run_name, (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
    {% endcall %}
    {% endif %}
    <div id="mfan">{% if not has_fans %}
-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest run ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
+    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
     {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
    {%- endif %}</div>
   </div>
