@@ -172,7 +172,12 @@ def model_page(request: Request, name: str):
                "pf2s": "two-strain"}
     if name not in HEADERS:
         return HTMLResponse("unknown model", status_code=404)
+    from app.core.archive_record import realtime_of
     rid, res = shared._latest_results()
+    # a newer run of any kind (a vintage week or modified settings, as a
+    # quick run from this page can make) is on the Forecast tab: the card
+    # says so beside the run it keeps to
+    newest_rid, _ = shared._latest_results(include_modified=True, newest=True)
     fanq = {}
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
@@ -213,6 +218,10 @@ def model_page(request: Request, name: str):
         # a modified run is here only when an override exported it under
         # the hub names: badged as Storage and the run page badge it
         "run_modified": _runs.is_modified((res or {}).get("spec", "")),
+        # the run is the newest real-time one (a vintage only when none
+        # exists): the card names it so, as a newer backtest is not here
+        "run_realtime": realtime_of((res or {}).get("spec", "")),
+        "newer_run": bool(newest_rid and newest_rid != rid),
         "date": (res or {}).get("forecast_date", ""),
         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
         "overlay_json": _script_json(overlay),

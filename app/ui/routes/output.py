@@ -82,6 +82,22 @@ def model_display(dir_name: str, d: Path) -> str:
     return _legacy_label(dir_name, d)[0]
 
 
+def _run_folder(run_id: str) -> Path:
+    """Where a run's files are: its workroot, else, once Storage deleted
+    it, the archive folder that holds the run (Output serves the date's
+    files from there); the workroot's path when neither."""
+    from app.core import archive_record as _ar
+    from app.core.runs import APP_STATE
+    w = APP_STATE / "workroots" / run_id
+    if w.is_dir():
+        return w
+    for date in _archive_dates():
+        d = APP_STATE / "archive" / date
+        if (_ar.read_record(d) or {}).get("run_id") == run_id:
+            return d
+    return w
+
+
 def _submission_files(d: Path) -> list:
     """Submission CSVs under a workroot/archive dir, each marked submittable
     iff its directory (the hub model id) is registered. A folder an earlier
@@ -424,8 +440,9 @@ def _file_complete(row, model_dir: str) -> bool:
 def _hub_candidates(app_state: Path, ledger) -> tuple:
     """(hub candidates, own-data runs). A hub candidate is one run's file
     for one registered or -modified model: {"asof", "dir", "run_id",
-    "path", "complete", "full", "row", "spec", "wr", "order" (the ledger's
-    (created_utc, rowid) for runs that share a start second)}; research
+    "path", "complete", "full", "realtime", "row", "spec", "wr", "order"
+    (the ledger's (created_utc, rowid) for runs that share a start
+    second)}; research
     runs and folders under retired names are left out (they stay on disk
     and in Storage). Files an archive folder holds count too when their
     run's workroot is gone. Own-data runs: [{"run_id", "res", "wr"}]."""
@@ -453,6 +470,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
                           "run_id": wr.name, "path": str(p),
                           "complete": _file_complete(row, p.parent.name),
                           "full": _ar.scope_of(res.get("spec", "")),
+                          "realtime": _ar.realtime_of(res.get("spec", "")),
                           "row": row, "spec": res.get("spec", ""),
                           "wr": wr})
     for date in shared._archive_dates():
@@ -469,6 +487,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
                           "run_id": rid, "path": str(p),
                           "complete": bool(rec.get("complete", True)),
                           "full": bool(rec.get("full", True)),
+                          "realtime": _ar.realtime_of(res.get("spec", "")),
                           "row": ledger.row(rid) if (ledger and rid) else None,
                           "spec": res.get("spec", ""), "wr": d})
     # runs that started in the same second take the ledger's order, as
@@ -585,6 +604,7 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
+    from app.core import archive_record as _ar
     from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
     # the newest run, a modified one included: the report card is where
@@ -600,6 +620,12 @@ def output_page(request: Request):
                            and is_contained(res.get("spec", "")))
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
+
+    def held_run(d: str) -> str:
+        """The run an archived week holds ('' for a folder from before
+        the record)."""
+        return str((_ar.read_record(APP_STATE / "archive" / d) or {})
+                   .get("run_id") or "")
     # each file gets the hub validator's command (--window for a round
     # that is open or coming)
     for d in dates:
@@ -609,15 +635,17 @@ def output_page(request: Request):
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
-        # the earlier weeks the picker offers: those whose archive holds a
+        # the archived weeks the picker offers: those whose archive holds a
         # report (a run whose report failed is archived without one), less
         # the week the card already offers above it, unless the card shows
-        # a modified run: that is never archived, so the archive's report
-        # for its week is the shipped run's and stays in the picker; each
-        # (as-of, reference date)
+        # another run than the archive holds for its week: a modified run
+        # (never archived) or a newer run on a few states (never archived
+        # over a whole-set one), so the week's report stays reachable;
+        # each (as-of, reference date)
         "archive_dates": [(d, _reference_date(d) or d)
                           for d in reversed(_archive_dates())
-                          if (d != report_asof or report_modified)
+                          if (d != report_asof or report_modified
+                              or held_run(d) not in ("", rid))
                           and (APP_STATE / "archive" / d
                                / "report.html").is_file()],
         "has_report": has_report,
