@@ -1,0 +1,324 @@
+diff --git a/app/core/datasets/checks.py b/app/core/datasets/checks.py
+index 49bc9ae..f7aa6a9 100644
+--- a/app/core/datasets/checks.py
++++ b/app/core/datasets/checks.py
+@@ -580,6 +580,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
+         names = sorted({r[1] for r in recs}, key=str.casefold)
+         integral = all(float(r[4]).is_integer() for r in recs
+                        if r[4] is not None)
++        if national not in names and integral:
++            # a group that every week is the sum of the others (the
++            # template's Overall) is the national row, as a "US" one is
++            national = _sum_group(recs, names) or national
+         asofs = sorted({r[0] for r in recs if r[0] is not None})
+         rep.summary = {
+             "format": fmt,
+@@ -656,6 +660,29 @@ def group_name_ok(name: str) -> bool:
+             and all(_name_char(c) for c in name[1:]))
+ 
+ 
++def _sum_group(recs, names) -> str | None:
++    """The one group whose count is, on every week all groups report, the
++    sum of the others' (to rounding), or None: three groups at least, two
++    such weeks at least, the newest snapshot of each week."""
++    if len(names) < 3:
++        return None
++    newest = {}
++    for a, n, _, d, v, _ in recs:
++        if v is not None and ((n, d) not in newest
++                              or (a or date.min) >= newest[(n, d)][0]):
++            newest[(n, d)] = (a or date.min, float(v))
++    weeks: dict = {}
++    for (n, d), (_, v) in newest.items():
++        weeks.setdefault(d, {})[n] = v
++    full = [w for w in weeks.values() if len(w) == len(names)]
++    if len(full) < 2:
++        return None
++    hits = [g for g in names
++            if any(w[g] > 0 for w in full)
++            and all(abs(2 * w[g] - sum(w.values())) <= 0.5 for w in full)]
++    return hits[0] if len(hits) == 1 else None
++
++
+ def is_national_name(name) -> bool:
+     return str(name or "").strip().upper() in NATIONAL_NAMES
+ 
+diff --git a/app/core/us_national.py b/app/core/us_national.py
+index de627d9..34d7edf 100644
+--- a/app/core/us_national.py
++++ b/app/core/us_national.py
+@@ -141,11 +141,19 @@ FALLBACK_NOTES = {
+ #: number. pooled_frame is the one gate; app/tests/test_us_national.py enforces it.
+ POOLED_INCLUDES_US = False
+ 
+-#: what every surface prints about the pooled figure's scope
+-POOLED_SCOPE_NOTE = (
+-    "Pooled relWIS covers the fitted states, DC and Puerto Rico; the US "
+-    "national cell, their sum, is scored apart and never joins the pooled "
+-    "average.")
++def pooled_scope_note(n_states: int | None = None) -> str:
++    """What a page prints about the pooled figure's scope: the replay's own
++    jurisdictions when it replayed fewer than the 52. The US cell is fitted
++    as its own location or summed from the states (NOTES), never pooled."""
++    who = ("the 50 states, DC and Puerto Rico" if not n_states
++           or n_states >= 52 else f"the {int(n_states)} replayed "
++           f"jurisdiction{'s' if int(n_states) != 1 else ''}")
++    return (f"Pooled relWIS covers {who}; the US national cell is scored "
++            "apart and never joins the pooled average.")
++
++
++#: the pooled figure's scope on a whole replay (pooled_scope_note)
++POOLED_SCOPE_NOTE = pooled_scope_note()
+ 
+ 
+ # ---------------------------------------------------------- identification
+@@ -470,6 +478,13 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
+             scores_df = playback._season_scores(root)
+         except Exception:
+             scores_df = None
++    # the replay's own settings (run_meta.json): whether it fitted US, and
++    # which jurisdictions it replayed; {} for a season from before them
++    try:
++        from app.core import retro as _retro
++        settings = (_retro.read_meta(root) or {}).get("settings") or {}
++    except Exception:
++        settings = {}
+ 
+     fitted = from_scores(scores_df)
+     if fitted is not None and fitted.has_scores:
+@@ -485,6 +500,18 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
+                                                        "columns", ()):
+         n_states = int(pooled_frame(scores_df)["location"].nunique()) or None
+ 
++    # a replay that fitted US draws a fitted US forecast before (or
++    # without) its scores: it is labelled fitted, its figures pending
++    if settings.get("national"):
++        return UsNational(FITTED, n_states=n_states)
++    # the states of a replay of part of the 52 do not sum to the nation
++    locs = settings.get("locations")
++    replayed = len(state_names(locs)) if locs else None
++    if replayed is not None and replayed < 52:
++        return UsNational(OFFICIALS_ONLY, n_states=n_states, reason=(
++            f"only {replayed} of the 52 jurisdictions were replayed, so "
++            "their forecasts do not sum to the nation"))
++
+     if not allow_aggregate:
+         return UsNational(OFFICIALS_ONLY, n_states=n_states,
+                           reason="the aggregate was not computed here")
+diff --git a/app/tests/test_datasets.py b/app/tests/test_datasets.py
+index a94f908..7b5d6b0 100644
+--- a/app/tests/test_datasets.py
++++ b/app/tests/test_datasets.py
+@@ -355,7 +355,10 @@ def test_two_national_spellings_are_refused():
+ 
+ 
+ def test_no_national_group_is_recorded_as_none():
+-    ds = D.ingest(TPL, "tpl", kind="count")
++    # two groups, neither named national nor the other's sum (the
++    # template's Overall is its parts' sum: national, G08 RE-17)
++    ds = D.ingest(grouped_csv(grouped_series(groups=("Adult", "Pediatric"))),
++                  "tpl", kind="count")
+     assert ds.national_group is None
+     assert all(g["national"] is False for g in ds.meta["groups"])
+ 
+@@ -694,7 +697,9 @@ def test_meta_records_the_ingest():
+                               "population_varies": False, "rows": 10,
+                               "first": "2022-01-01", "last": "2022-03-05",
+                               "national": False}
+-    assert m["national_group"] is None and m["na_dropped"] == 0
++    # Overall is every week the sum of the other two: the national row
++    # (G08 RE-17)
++    assert m["national_group"] == "Overall" and m["na_dropped"] == 0
+     assert ds.ref() == {"id": ds.id, "digest": m["digest"][:16],
+                         "name": "My Data!"}
+ 
+diff --git a/app/tests/test_retro_partial_scope.py b/app/tests/test_retro_partial_scope.py
+new file mode 100644
+index 0000000..937c664
+--- /dev/null
++++ b/app/tests/test_retro_partial_scope.py
+@@ -0,0 +1,124 @@
++"""The Retrospective's US national row and the pooled figure's labels on a
++replay of part of the hub set (the 2026-10-25 bug hunt, G08).
++
++  * a replay of fewer than the 52 jurisdictions has no sum of states: its
++    states do not add up to the nation (RE-01);
++  * a replay that fitted US is labelled fitted before its scores exist
++    (scoring pending or failed), as its forecast is drawn (UI-11);
++  * the pooled note names the replay's own jurisdictions and no longer
++    calls a fitted US "their sum" (RE-14); the live scores say they are
++    pooled whichever location the forecast detail shows (RE-10);
++  * a dataset group that is every week the sum of the others (the
++    template's Overall) is its national row, scored beside the pool (RE-17).
++"""
++import sys
++from pathlib import Path
++
++import pandas as pd
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import retro                                  # noqa: E402
++from app.core import us_national as usn                     # noqa: E402
++from app.ui.routes import retro as ui_retro                 # noqa: E402
++from app.ui.templating import templates                     # noqa: E402
++
++from test_results_prep import (SEASON, _groundhog_only,     # noqa: E402
++                               _mk_tree, _truth, _unscored)
++from test_retro_player import CONTEXT                       # noqa: E402
++
++TEMPLATE = Path(__file__).resolve().parents[1] / "ui" / "static" / \
++    "dataset-template.csv"
++
++
++def _states():
++    from flubnf.settings import load_locations
++    return [n for n in load_locations().location_name if not usn.is_us(n)]
++
++
++def _settings(root, **settings):
++    meta = retro.read_meta(root)
++    meta["settings"] = {**(meta.get("settings") or {}), **settings}
++    retro.write_meta(root, meta)
++
++
++def _scores(locs=("Ohio", "Utah")):
++    n = len(locs)
++    return pd.DataFrame({"location": list(locs), "model": ["analogue"] * n,
++                         "wis": [1.0] * n, "base_wis": [2.0] * n})
++
++
++# ---------------------------------------------------------- the US national row
++
++def test_a_replay_of_part_of_the_52_has_no_sum_of_states(tmp_path):
++    root = tmp_path / SEASON
++    _settings(root, locations=["Arizona", "Texas"], national=False)
++    us = usn.resolve(root, _scores(("Arizona", "Texas")))
++    assert us.provenance == usn.OFFICIALS_ONLY and not us.has_scores
++    assert us.reason == ("only 2 of the 52 jurisdictions were replayed, so "
++                         "their forecasts do not sum to the nation")
++    # the whole set is still summed (nothing stored to sum here: its own
++    # reason, not this one)
++    _settings(root, locations=_states() + ["US"], national=False)
++    us = usn.resolve(root, _scores(("Arizona", "Texas")))
++    assert "were replayed" not in us.reason
++
++
++def test_a_replay_that_fitted_us_is_labelled_fitted_before_its_scores(
++        tmp_path, monkeypatch):
++    root = _groundhog_only(_mk_tree(tmp_path))
++    _unscored(monkeypatch, tmp_path, _truth())
++    _settings(root, locations=["Ohio", "Utah", "US"], national=True)
++    us = usn.resolve(root, _scores())
++    assert us.provenance == usn.FITTED and us.label == "US national (fitted)"
++    # the season page, its scoring not done: the player's US label
++    ctx = ui_retro.season_page_context(root, SEASON)
++    assert ctx["us"]["provenance"] == usn.FITTED
++    assert ctx["us"]["label"] == "US national (fitted)"
++
++
++# ------------------------------------------------------------- the pooled words
++
++def test_the_pooled_note_names_the_replays_jurisdictions():
++    assert usn.pooled_scope_note(6) == (
++        "Pooled relWIS covers the 6 replayed jurisdictions; the US national "
++        "cell is scored apart and never joins the pooled average.")
++    assert usn.pooled_scope_note(52) == usn.POOLED_SCOPE_NOTE == (
++        "Pooled relWIS covers the 50 states, DC and Puerto Rico; the US "
++        "national cell is scored apart and never joins the pooled average.")
++
++
++def test_the_live_scores_say_they_are_pooled():
++    def stats(**kw):
++        html = templates.env.get_template("retro_season.html").render(
++            **dict(CONTEXT, **kw))
++        return html.split('class="playstats"', 1)[1].split("</table>", 1)[0]
++    assert '<span class="uk-tag">pooled, 52 jurisdictions</span>' in stats(
++        pooled_n=52)
++    assert '<span class="uk-tag">pooled, 6 jurisdictions</span>' in stats(
++        pooled_n=6)
++    assert "uk-tag" not in stats()                      # nothing scored yet
++
++
++# ---------------------------------------------- a dataset's sum-of-parts group
++
++def test_a_group_that_sums_the_others_is_the_national_row(tmp_path,
++                                                         monkeypatch):
++    from app.core import custom_retro as CX
++    from app.core import datasets as D
++    from app.core.datasets import checks
++    monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
++    ds = D.ingest(TEMPLATE.read_bytes(), "template", kind="count")
++    assert ds.national_group == "Overall"
++    weeks = CX.weeks_between(ds, "2023-12-02", "2024-02-24")
++    out = CX.replay_dir(ds, CX.new_stamp(ds))
++    s = CX.run(ds, weeks, ds.groups, out_dir=out)["summary"]["analogue"]
++    # Overall is scored beside the pool, its parts pooled
++    assert s["national"] and s["national"]["cells"] > 0
++    assert s["pooled"]["cells"] == sum(
++        g["cells"] for n, g in s["by_group"].items() if n != "Overall")
++    # two groups: nothing to guess
++    recs = [(None, n, n, pd.Timestamp(d).date(), v, None)
++            for d in ("2024-01-06", "2024-01-13")
++            for n, v in (("A", 1.0), ("B", 2.0))]
++    assert checks._sum_group(recs, ["A", "B"]) is None
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index 60b247d..6bc0889 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -878,7 +878,7 @@ def retro_results(request: Request, season: str, week: str = "",
+                 "heads": {}, "curve": [], "curves": {}, "states": [],
+                 "season_models": [], "member_colors": _member_colors(),
+                 "us_row": None,
+-                "us": None, "pooled_note": "",
++                "us": None, "pooled_note": "", "pooled_n": None,
+                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
+                 "weeks": weeks, "week": weeks[-1], "map_html": "",
+                 "timeline": weeks, "notes": {},
+@@ -956,11 +956,16 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+     # national series via usn.resolve (fitted > constructed > officials), with
+     # its provenance label printed; a failure never costs the page
+     us = None
+-    if scoreable:
+-        try:
+-            us = usn.resolve(root, df_all)
+-        except Exception:
+-            us = None
++    try:
++        # unscored too: a replay that fitted US is labelled so (its
++        # forecast is drawn), with no aggregate to build
++        us = (usn.resolve(root, df_all) if scoreable
++              else usn.resolve(root, df_all, allow_aggregate=False))
++    except Exception:
++        us = None
++    # the jurisdictions the pooled figures cover (the live scores' tag)
++    pooled_n = (int(df["location"].nunique())
++                if scoreable and "location" in df.columns else None)
+     # us_row (member -> relWIS plus provenance) is a ratio of sums, so it is
+     # offered to that convention only; `us` resolves either way for the player
+     us_row = (us.as_dict() if (us is not None and us.has_scores
+@@ -1127,7 +1132,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+         # provenance travels WITH the numbers (fitted vs constructed)
+         "us": (us.as_dict() if us is not None
+                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
+-        "pooled_note": usn.POOLED_SCOPE_NOTE,
++        # the pooled figure's scope: the jurisdictions this replay scored
++        "pooled_note": usn.pooled_scope_note(pooled_n),
++        "pooled_n": pooled_n,
+         "rule_note": rule_note,
+         "conv": convention, "figs": figs,
+         "weeks": weeks, "week": wk, "map_html": map_html,
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 36b91be..b02f1f6 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -600,6 +600,9 @@
+       the coverage colors' key are the page's "i" (LIVE_SCORES_NOTE,
+       COV_LEGEND, the line player.js covLegend writes) #}
+    <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>
++   {# pooled over the replay's jurisdictions, whichever location the
++      forecast detail shows #}
++   {% if pooled_n %}{{ tips.tag("pooled, " ~ pooled_n ~ " jurisdiction" ~ ("" if pooled_n == 1 else "s")) }}{% endif %}
+    {# the scale switch, written by the player, inline with the heading #}
+    <div class="pbscale" id="pb-scale"></div></div>
+    {# the player writes the table head and body (player.js renderStats) #}
