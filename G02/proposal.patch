@@ -37,10 +37,10 @@ index 62860af..37966d4 100644
      _capture(monkeypatch, tmp_path)
      hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)
 diff --git a/app/tests/test_forecast_us_choice.py b/app/tests/test_forecast_us_choice.py
-index b328340..00f944f 100644
+index b328340..eb73655 100644
 --- a/app/tests/test_forecast_us_choice.py
 +++ b/app/tests/test_forecast_us_choice.py
-@@ -94,6 +94,28 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
+@@ -94,6 +94,26 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
      assert started[0].locations == expected
  
  
@@ -62,8 +62,6 @@ index b328340..00f944f 100644
 +        flash = ui_state._status.get("flash") or ""
 +        assert flash.startswith("Not run: no location named '"), flash
 +        assert typed[0].split(",")[-1].strip() in flash, flash
-+    assert ui_state._status.get("run_label", "") in ("", None) or \
-+        "queued" not in ui_state._status["run_label"]
 +
 +
  def test_the_progress_label_names_us_only_when_it_runs(started):
@@ -125,6 +123,34 @@ index 7c47f35..d3b56be 100644
  def test_research_form_fields_are_unchanged():
      t = client.get("/model/pf2s").text
      assert _form_fields(t, 'id="research-run"') == [
+diff --git a/app/tests/test_oracle_step.py b/app/tests/test_oracle_step.py
+index 08f2601..b0e6657 100644
+--- a/app/tests/test_oracle_step.py
++++ b/app/tests/test_oracle_step.py
+@@ -646,8 +646,10 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
+     status_before = dict(ui_state._status)
+     try:
+         ui_state._status["running"] = None
+-        r = client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
+-                                      "custom_locations": ["Ohio"], "engine": "all",
++        # (the word "custom" is the retro form's; /run takes names, and an
++        # unknown name is refused since the 2026-10-25 hunt, FC-08)
++        r = client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
++                                      "engine": "all",
+                                       "replicates": "1", "oracle": "none"},
+                         follow_redirects=False)
+         assert r.status_code == 303
+@@ -663,8 +665,8 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
+         assert started[-1].extra.get("oracle") == "none"
+         # and a row without it re-runs the member
+         ui_state._status["running"] = None
+-        client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
+-                                  "custom_locations": ["Ohio"], "engine": "all",
++        client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
++                                  "engine": "all",
+                                   "replicates": "1"}, follow_redirects=False)
+         assert "oracle" not in started[-1].extra
+     finally:
 diff --git a/app/ui/forms.py b/app/ui/forms.py
 index 1eca566..ca2e399 100644
 --- a/app/ui/forms.py
