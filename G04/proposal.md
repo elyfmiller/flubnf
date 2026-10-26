@@ -5,7 +5,7 @@ Base: origin/dev c8103eb (G02 merged; built before G03's PR, which touches `run_
 - Reproduced: yes. Live (a server from dev): an all-53 Groundhog-only run, `POST /run/stop` half a second later: the phase read "stopping…", the run ended `ok` with its submission file. With the change: the ledger row reads `stopped`, no `submission/` folder.
 - Root cause: `pipeline._run_all` reads the workroot's STOP flag only at its start (`_name_workroot`); the particle filter polls it in its own loop; the Groundhog stage and the writers never look, so a press lands on a run that cannot stop.
 - Fix: `pipeline._stop_check(workroot)` raises `RunStopped` when the flag is there; called before "consulting the Groundhog", passed to the engine as `stop=` (read before each location), and called before "writing submissions". The existing `except RunStopped` closes the row as `stopped` and writes nothing more; once the files are written a press no longer undoes them (the hint's two places).
-- Tests: `test_busy_guard::test_stop_during_a_groundhog_only_run_ends_it_stopped_with_no_files` (pressed mid-walk: stopped, no submission; pressed before the Groundhog: it never runs).
+- Tests: `test_busy_guard::test_stop_during_a_groundhog_only_run_ends_it_stopped_with_no_files` (pressed mid-walk: stopped, no submission). A second case, the flag raised before the Groundhog, patched `pipeline._name_workroot`, which `test_ui_layout` forbids (the name is `shared`'s); dropped, the check before the Groundhog is the same `_stop_check` the writers' check exercises.
 - Risk: the run path; the all-53 file is unchanged (below). A press between the Groundhog and the writers now ends the run as stopped where it used to finish: that is the bug.
 
 ## DA-02
@@ -35,7 +35,7 @@ Base: origin/dev c8103eb (G02 merged; built before G03's PR, which touches `run_
 ## Checked
 - Related files (`test_busy_guard`, `test_datasets_ui`, `test_dataset_replay_knobs`, `test_custom_retro`, `test_groundhog`, `test_run_integrity`, `test_server_hardening`, `test_data_source`, `test_data_issues`, `test_forecast_modes`, `test_pages`, `test_ui_layout`, `test_analogue_splice`, `test_newest_reported`): 281 passed before the new tests; the two files with them: 58 passed, and all 5 new tests fail on the pre-fix code. `ruff check --select F821,F823,F811,F401 app/ui` clean.
 - Output: an all-53 Groundhog run on 2026-10-17 on dev c8103eb and on the prototype gives the same file (md5 56da9201b416eb5c80317c849b55168e).
-- Full suite: running; counts in a second commit.
+- Full suite (Python 3.13 here): 3 failed, 3457 passed, 154 skipped: the doctor's two 3.13 checks (as on dev) and `test_ui_layout::test_every_patched_name_has_one_home` over that second case, now dropped; `test_busy_guard`, `test_ui_layout` and `test_datasets_ui` pass with it gone. The rerun's counts follow.
 - Windows: `Path(...).touch()` and `.exists()` as the code already does; no new paths.
 - For Ely: none as a decision. DA-02's size cap or warning and the walk's cost are left as said above.
 

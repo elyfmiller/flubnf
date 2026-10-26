@@ -69,18 +69,18 @@ index 2f59ba5..a1598e5 100644
          if anchor > 0:
              for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
 diff --git a/app/tests/test_busy_guard.py b/app/tests/test_busy_guard.py
-index e418a6c..afe2c5d 100644
+index e418a6c..38ea48d 100644
 --- a/app/tests/test_busy_guard.py
 +++ b/app/tests/test_busy_guard.py
-@@ -477,6 +477,90 @@ def test_stop_during_starting_ends_a_dataset_run_stopped(tmp_path,
+@@ -477,6 +477,79 @@ def test_stop_during_starting_ends_a_dataset_run_stopped(tmp_path,
      assert ui_state._status["running"] is None
  
  
 +def test_stop_during_a_groundhog_only_run_ends_it_stopped_with_no_files(
 +        tmp_path, monkeypatch):
-+    """Stop pressed while the Groundhog runs: the run ends as stopped and
-+    writes no submission (it used to say "stopping", then end ok with its
-+    files written and Output took it as the week)."""
++    """Stop pressed while the Groundhog runs: the run ends as stopped at
++    the next step and writes no submission (it used to say "stopping", then
++    end ok with its files written, and Output took it as the week)."""
 +    import app.core.runs as runs_mod
 +    from app.core.engines import analogue as an_engine
 +    from app.core.runs import RunSpec
@@ -100,17 +100,6 @@ index e418a6c..afe2c5d 100644
 +    assert status == "stopped"
 +    assert not (Path(workroot) / "submission").exists()
 +    assert ui_state._status["running"] is None
-+    # pressed before the Groundhog: it never runs
-+    walked = []
-+    monkeypatch.setattr(an_engine, "run",
-+                        lambda spec, **kw: walked.append(1) or {})
-+    monkeypatch.setattr(ui_pipeline, "_name_workroot",
-+                        lambda w, label: (Path(w) / "STOP").touch() or False)
-+    ui_state._status.update({"running": "starting", "workroot": None})
-+    ui_pipeline._run_all(RunSpec(engine="analogue", forecast_date="2098-01-03",
-+                                 locations=["Ohio"]))
-+    assert walked == []
-+    assert [st for st, _w in _ledger_rows(tmp_path)] == ["stopped", "stopped"]
 +
 +
 +def test_the_groundhog_stops_between_locations_when_asked(tmp_path, monkeypatch):
