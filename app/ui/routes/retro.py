@@ -159,7 +159,6 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         "eta_s": prog["eta_s"],
                         "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
-    from flubnf.settings import PY_ENGINE, PYBNF
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
@@ -168,8 +167,10 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
                                        "knob_panel": _knob_panel("retro"),
-                                       "engine_ok": PY_ENGINE.exists()
-                                       and PYBNF.exists()})
+                                       # a half-installed engine cannot
+                                       # run the Oracle preset either
+                                       "engine_ok": pipeline._pf_engine_state()
+                                       == "ready"})
 
 
 @router.get("/api/retro/progress")
@@ -517,6 +518,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 "Not started: choose Oracle SIHRS and Groundhog, or "
                 "Groundhog alone.")
+        # the Oracle preset needs the particle-filter engine: refused before
+        # anything is archived (every week used to fail into failures.log
+        # and the season read "complete" with none done)
+        pf_state = pipeline._pf_engine_state() if engine == "pf" else "ready"
+        if pf_state != "ready":
+            return _refused(
+                "Not started: the Oracle SIHRS needs the particle-filter "
+                f"engine, {pipeline._pf_engine_missing(pf_state)}. "
+                "Choose Groundhog only.")
         from app.core import us_national as usn
         all_states = _retro_state_names()
         if locations == "all":

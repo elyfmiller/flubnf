@@ -10,7 +10,7 @@ from markupsafe import Markup
 
 from app.core import oracle_text as ot
 from app.core import runs as _runs
-from app.ui import shared, templating
+from app.ui import pipeline, shared, templating
 from app.ui.forms import _default_forecast_date, _knobs
 from app.ui.shared import _run_label
 from app.ui.state import REPO, _last_form, _status
@@ -220,5 +220,8 @@ def model_page(request: Request, name: str):
         "bngl_src": bngl_src, "bngl_file": bngl_file,
         "bngl_lines": len(bngl_src.splitlines()),
         "form": form, "status": _status,
+        # the Oracle SIHRS's runs (its quick run, the research run) need the
+        # particle-filter engine: why not, else ''
+        "pf_missing": pipeline._pf_engine_missing(pipeline._pf_engine_state()),
         # the replicates field's range is the knob's (the Forecast panel's)
         "replicates_knob": _knobs.BY_KEY["pf.replicates"]})

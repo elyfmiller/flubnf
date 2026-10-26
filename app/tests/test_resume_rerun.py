@@ -191,7 +191,8 @@ def test_retro_index_wires_resume_for_stopped_and_interrupted(tmp_path,
 # -------------------------------------------- retro resume POST, end to end
 
 def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
-                                                               monkeypatch):
+                                                               monkeypatch,
+                                                               pf_engine_ready):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
