@@ -181,19 +181,22 @@ def test_cap_rows_refuses_an_unknown_mode():
 # ---- the historical ceiling (knob output.tail_hist)
 
 def _history():
-    """Two states, weekly from 2022-08-06 to 2026-10-17. Ohio is flat at 20
-    except for one two-week spike of 320 at epiweeks 45-46 of 2022 (16x);
-    the anchors within two epiweeks of epiweek 42 (40-44) all sit before
-    it, so every horizon's maximum ratio is 16 and most ratios are 1.
-    Idaho (2 to 10 a week, a three-week mean under 10) sits under the
-    floor in every season and contributes nothing."""
+    """Two states, weekly from 2022-08-06 to 2026-10-17, on the donors'
+    calendar (MMWR weeks, flubnf.analogue.epiweek; 2026-10-17 is week 41).
+    Ohio is flat at 20 except for one two-week spike of 320 at weeks 44-45
+    of 2022 (16x); the anchors within two weeks of week 41 (39-43) all sit
+    before it and each horizon h reaches week 44 from anchor 43 - h, so
+    every horizon's maximum ratio is 16 and most ratios are 1. Idaho (2 to
+    10 a week, a three-week mean under 10) sits under the floor in every
+    season and contributes nothing."""
     from datetime import date, timedelta
+    from flubnf.analogue import epiweek
     oh, idh = [], []
     d = date(2022, 8, 6)
     while d <= date(2026, 10, 17):
         yr = d.year if d.month >= 8 else d.year - 1
-        ew = d.isocalendar()[1]
-        v = 320.0 if (yr == 2022 and ew in (45, 46)) else 20.0
+        ew = epiweek(d)
+        v = 320.0 if (yr == 2022 and ew in (44, 45)) else 20.0
         oh.append((d.isoformat(), v)); idh.append((d.isoformat(), 2.0 * (ew % 5 + 1)))
         d += timedelta(days=7)
     return {"39": oh, "16": idh}
@@ -201,8 +204,8 @@ def _history():
 
 def test_history_ratios_take_the_maximum_over_earlier_seasons_in_the_window():
     r = TC.history_ratios(_history(), "2026-10-17", level=1.0)
-    # the 2022 spike: an anchor at epiweek 41-44 (recent level 20) reaches
-    # 320 at some horizon, a 16x rise, and the window around epiweek 42
+    # the 2022 spike: an anchor at week 40-43 (recent level 20) reaches
+    # 320 at some horizon, a 16x rise, and the window around week 41
     # holds those anchors
     assert all(r[h] == pytest.approx(16.0) for h in range(4))
     # a lower quantile never exceeds the maximum, and far enough down the
@@ -260,3 +263,39 @@ def test_clip_rows_by_horizon_uses_each_horizons_own_limit():
 
 def test_registered_form_has_no_historical_ceiling():
     assert TC.HIST_PRODUCTION == 0.0
+
+
+def test_history_window_is_the_donors_calendar_across_week_53():
+    """2026 has 53 ISO weeks; the forecast date 2027-01-02 is MMWR week 52.
+    Under the donors' calendar (flubnf.analogue) a history week in week 3
+    (2025-01-18) is three weeks away and stays out of a two-week window;
+    the ISO shortcut min(dw, 52 - dw) put ISO week 1 at distance 0 from
+    week 53 and let it in."""
+    from datetime import date, timedelta
+    from flubnf.analogue import epiweek, calendar_distance
+    asof = date(2027, 1, 2)
+    assert epiweek(asof) == 52
+    far = date(2025, 1, 18)
+    assert calendar_distance(epiweek(far), epiweek(asof)) == 3
+    # a flat series with one 10x week exactly 4 weeks after `far`: only an
+    # anchor at `far` can produce a 10x h3 ratio
+    pts = []
+    d = date(2022, 8, 6)
+    while d <= asof:
+        pts.append((d.isoformat(), 100.0 if d == far + timedelta(weeks=4) else 10.0))
+        d += timedelta(days=7)
+    r = TC.history_ratios({"39": pts}, asof, level=1.0, window=2)
+    assert r[3] < 10.0                                   # the week-3 anchor is outside the window
+    r_wide = TC.history_ratios({"39": pts}, asof, level=1.0, window=3)
+    assert r_wide[3] == pytest.approx(10.0)              # and inside a three-week one
+
+
+def test_a_ceiling_that_could_not_be_applied_is_recorded_as_skipped():
+    rec = TC.skipped_record(1.0)
+    assert rec["skipped"] is True and rec["level"] == 1.0
+    assert "truth read failed" in rec["reason"]
+    assert rec["cells"] == {"pf": 0, "analogue": 0}
+    # the pipeline records it when the knob is set and no history was read
+    import re
+    src = open(__file__.replace("tests/test_tailcap.py", "app/ui/pipeline.py")).read()
+    assert re.search(r"if _hist_q and not hist_series:.*?skipped_record\(float\(_hist_q\)\)", src, re.S)

@@ -835,6 +835,12 @@ def _run_all(spec: RunSpec) -> None:
         # the recent level times what history produced at this calendar
         # position; off (0) is the registered form.
         _hist_q = _knobs.value_of(spec.extra, "output.tail_hist")
+        if _hist_q and not hist_series:
+            # the knob asked for a ceiling and the history could not be
+            # read (the truth read above failed): say so on the record
+            # rather than silently applying none
+            from flubnf import tailcap as _tc
+            outcome["tail_hist"] = _tc.skipped_record(float(_hist_q))
         if _hist_q and hist_series:
             from flubnf import tailcap as _tc
             _ratios = _tc.history_ratios(hist_series, spec.forecast_date,

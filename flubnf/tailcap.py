@@ -148,11 +148,21 @@ def whole_block(capped: Mapping[float, float], block: Mapping[float, float]) -> 
 
 
 def _epiweek(d: "date") -> int:
-    return int(d.isocalendar()[1])
+    """The donors' own calendar (flubnf.analogue.epiweek): the CDC MMWR
+    week, so the ceiling's window is the Groundhog's."""
+    from flubnf.analogue import epiweek
+    return int(epiweek(d))
 
 
 def _season_of(d: "date") -> int:
     return d.year if d.month >= 8 else d.year - 1
+
+
+def _calendar_distance(a: int, b: int) -> float:
+    """flubnf.analogue.calendar_distance: circular on 52 weeks, with week 53
+    between 52 and 1 (never on top of week 1)."""
+    from flubnf.analogue import calendar_distance
+    return float(calendar_distance(int(a), int(b)))
 
 
 def history_ratios(series_by_fips: Mapping[str, Iterable], asof: "date | str",
@@ -182,8 +192,7 @@ def history_ratios(series_by_fips: Mapping[str, Iterable], asof: "date | str",
         for i, (w, _v) in enumerate(pts):
             if _season_of(w) >= se:
                 continue
-            dw = abs(_epiweek(w) - ew)
-            if min(dw, 52 - dw) > window:
+            if _calendar_distance(_epiweek(w), ew) > window:
                 continue
             base_vals = [x for (_d, x) in pts[max(0, i - weeks + 1): i + 1]]
             base = sum(base_vals) / len(base_vals)
@@ -215,6 +224,18 @@ def history_limits(ratios: Mapping[int, float], recent: float) -> dict:
         return {int(h): float("nan") for h in ratios}
     return {int(h): (float(recent) * float(r) if r is not None and math.isfinite(float(r))
                      else float("nan")) for h, r in ratios.items()}
+
+
+SKIP_NO_HISTORY = ("no history at this vintage: the truth read failed, so the "
+                   "ceiling was not applied")
+
+
+def skipped_record(level: float, reason: str = SKIP_NO_HISTORY) -> dict:
+    """The run record's `tail_hist` entry when the knob asked for a ceiling
+    and none could be applied: the run page must say the knob did nothing
+    rather than record nothing (the Groundhog agent's finding, 2026-10-26)."""
+    return {"level": float(level), "skipped": True, "reason": str(reason),
+            "cells": {"pf": 0, "analogue": 0}}
 
 
 def clip_rows_by_horizon(rows: list, limits_by_fips: Mapping[str, Mapping[int, float]]) -> tuple:
