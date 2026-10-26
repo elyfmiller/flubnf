@@ -526,7 +526,7 @@ def test_no_data_weeks_are_wired_into_the_player():
     assert "function isNoData(w)" in SRC
     assert "function payloadFor(w)" in SRC
     assert "payloadFor(w).then(function(pl){" in SRC
-    assert "var wk = nodata ? 'noround'" in SRC
+    assert "var wk = (nodata || (pl && pl.no_round)) ? 'noround'" in SRC
     assert "? ' · ' + w + '<br>' + noteOf(w)" in SRC
     assert "noDataPayload: noDataPayload" in SRC
     # the host hands the caption over (the season page, which the season
