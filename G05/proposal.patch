@@ -1,0 +1,701 @@
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index c3020f4..7c5276c 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -161,6 +161,16 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
+     monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
+ 
+ 
++@pytest.fixture
++def pf_engine_ready(monkeypatch):
++    """A machine with the particle-filter engine, as the console's up-front
++    checks read it (pipeline._pf_engine_state): the Oracle SIHRS's runs and
++    replays are then started, not refused. The engine itself stays faked by
++    each test (opt-in; the suite's machine has none)."""
++    from app.ui import pipeline
++    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
++
++
+ @pytest.fixture
+ def shipped_vintages(monkeypatch):
+     """The real committed snapshot folder (opt-in; see the autouse fixture)."""
+diff --git a/app/tests/test_engine_build.py b/app/tests/test_engine_build.py
+index b092336..e396acd 100644
+--- a/app/tests/test_engine_build.py
++++ b/app/tests/test_engine_build.py
+@@ -557,7 +557,8 @@ def test_the_engine_build_rule_skips_groundhog_only_replays():
+ 
+ 
+ def test_the_retro_route_refuses_a_resume_on_another_build(tmp_path,
+-                                                            monkeypatch):
++                                                            monkeypatch,
++                                                            pf_engine_ready):
+     from app.ui import retro_seasons as RS
+     from app.ui import state as S
+     from app.ui.routes import retro as ui_retro
+diff --git a/app/tests/test_knobs_panel.py b/app/tests/test_knobs_panel.py
+index 8f50120..4d5536b 100644
+--- a/app/tests/test_knobs_panel.py
++++ b/app/tests/test_knobs_panel.py
+@@ -451,7 +451,8 @@ WEEKLY = {"replicates": "1", "particles": "1000",
+           "knob.oracle.w": "0.25"}
+ 
+ 
+-def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch):
++def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch,
++                                                         pf_engine_ready):
+     """The review of M3: a hidden row's field was turned off, so a
+     Groundhog-only run posted none of the particle filter's settings and
+     the next run's form lost the owner's weekly ones. The browser posts
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index c6b7ed1..3708d84 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -209,7 +209,8 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+     ({"knob.oracle.w": ["0.25", "0.25"]}, "knob.oracle.w"),
+     ({"knobs": "{not json"}, "not readable JSON"),
+ ])
+-def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
++def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg,
++                                       pf_engine_ready):
+     started = _capture_run(monkeypatch, tmp_path)
+     r = _post(data)
+     assert r.status_code == 303
+@@ -240,7 +241,8 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
+ 
+ 
+ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
+-                                                               monkeypatch):
++                                                               monkeypatch,
++                                                               pf_engine_ready):
+     from app.core import retro as core_retro
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+@@ -630,7 +632,8 @@ def test_a_tree_from_before_the_registry_resumes_unmarked(tmp_path, monkeypatch)
+         retro.run_season(root, SEASON, ["Ohio"], width=1, engine="analogue")
+ 
+ 
+-def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch):
++def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch,
++                                                           pf_engine_ready):
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
+@@ -678,7 +681,7 @@ def test_fit_manifest_leaves_post_fit_knobs_out():
+ 
+ 
+ def test_the_retro_route_refuses_a_resume_over_other_locations(
+-        tmp_path, monkeypatch):
++        tmp_path, monkeypatch, pf_engine_ready):
+     """Completed weeks are skipped on resume, so another location scope (or
+     the national row switched) would pool weeks fitted over different
+     lists; the recorded list resumes."""
+diff --git a/app/tests/test_no_engine.py b/app/tests/test_no_engine.py
+new file mode 100644
+index 0000000..df4c6f5
+--- /dev/null
++++ b/app/tests/test_no_engine.py
+@@ -0,0 +1,157 @@
++"""Runs when the particle-filter engine is missing (the 2026-10-25 bug
++hunt, G05).
++
++  * Oracle SIHRS only and the research run need the engine: refused up
++    front, where they ran the Groundhog alone and ended "ok" with no file
++    (FC-03, MO-05, WI-09); the model pages' buttons are off, saying why;
++  * Both runs the Groundhog alone without it, as a machine without the
++    engine always has: the form says so before the run, the Oracle-only
++    choice is off, and the Running card shows a Groundhog-only run
++    (FC-04);
++  * the ledger's chip tells a Groundhog-only run from a missing engine
++    (FC-17).
++The suite's machine has no engine; `pf_engine_ready` gives it one.
++"""
++import json
++import sys
++from pathlib import Path
++
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.ui import pipeline as ui_pipeline                   # noqa: E402
++from app.ui import shared as ui_shared                       # noqa: E402
++from app.ui import state as ui_state                         # noqa: E402
++
++from test_data_source import (W3, _capture, _hub,            # noqa: E402,F401
++                              _isolated, client)
++
++NO_ENGINE = ("Not run: the Oracle SIHRS needs the particle-filter engine, "
++             "which is not installed on this machine. Choose Groundhog only.")
++
++
++@pytest.fixture
++def started(tmp_path, monkeypatch):
++    out = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W3], [W3], monkeypatch)
++    return out
++
++
++def _post(data, referer="/forecast"):
++    ui_state._status.update({"running": None, "flash": None})
++    return client.post("/run", data={"forecast_date": W3, "locations": ["Ohio"],
++                                     **data},
++                       headers={"referer": f"http://testserver{referer}"},
++                       follow_redirects=False)
++
++
++# --------------------------------------------------------------- the refusals
++
++def test_oracle_sihrs_only_is_refused_without_the_engine(started, monkeypatch):
++    r = _post({"engine": "pf"}, referer="/models")
++    assert r.status_code == 303 and r.headers["location"] == "/models"
++    assert started == [] and ui_state._status["flash"] == NO_ENGINE
++    # a half-installed engine, in its own words
++    monkeypatch.setattr(ui_pipeline, "_pf_engine_state", lambda: "broken")
++    _post({"engine": "pf"})
++    assert started == []
++    assert "which is not fully installed on this machine" in \
++        ui_state._status["flash"]
++
++
++def test_a_research_run_is_refused_without_the_engine(started):
++    _post({"engine": "all", "members": "3"}, referer="/model/pf2s")
++    assert started == []
++    assert ui_state._status["flash"] == (
++        "Not run: the research run needs the particle-filter engine, which "
++        "is not installed on this machine.")
++
++
++def test_with_the_engine_they_run(started, pf_engine_ready):
++    _post({"engine": "pf"})
++    _post({"engine": "all", "members": "3"})
++    assert [s.engine for s in started] == ["pf", "all"]
++
++
++# ------------------------------------------- Both runs the Groundhog, and says so
++
++def test_both_says_before_the_run_that_the_groundhog_runs_alone(started):
++    page = " ".join(client.get("/forecast").text.split())
++    assert ("Groundhog only: the particle-filter engine is not installed "
++            "on this machine") in page
++    assert '<option value="pf" disabled>Oracle SIHRS only</option>' in page
++    assert 'id="fc-engine"' not in page          # no "Engine: Particle filter"
++    # Both still runs (the Groundhog's file), its progress with no fits
++    _post({"engine": "all"})
++    assert [s.engine for s in started] == ["all"]
++    assert ui_state._status["expected_total"] is None
++
++
++def test_with_the_engine_the_form_is_as_before(started, pf_engine_ready):
++    page = " ".join(client.get("/forecast").text.split())
++    assert "Groundhog only: the particle-filter engine" not in page
++    assert '<option value="pf" >Oracle SIHRS only</option>' in page
++    assert 'id="fc-engine"' in page
++    _post({"engine": "all"})
++    assert ui_state._status["expected_total"] == 3   # 1 location x 3
++
++
++def test_the_running_card_shows_a_groundhog_only_run(tmp_path, monkeypatch):
++    import app.core.runs as runs_mod
++    from app.core.engines import analogue as an_engine
++    from app.core.runs import RunSpec
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
++    seen = []
++    monkeypatch.setattr(an_engine, "run", lambda spec: seen.append(
++        dict(ui_state._status["settings"])) or {})
++    ui_state._status.update({"running": "starting", "workroot": None})
++    ui_pipeline._run_all(RunSpec(engine="all", forecast_date="2098-01-03",
++                                 locations=["Ohio"]))
++    (card,) = seen
++    assert card["engine"] == "Groundhog only (no PF engine on this machine)"
++    assert "particles" not in card and "replicates" not in card
++
++
++# ------------------------------------------------------------ the model pages
++
++def test_the_model_pages_say_why_the_oracle_cannot_run():
++    ui_state._status["running"] = None
++    html = " ".join(client.get("/model/pf").text.split())
++    assert ("The Oracle SIHRS needs the particle-filter engine, which is not "
++            "installed on this machine.") in html
++    quick = html.split('action="/run"')[1].split("</form>")[0]
++    assert 'disabled aria-describedby="md-busy">Run Oracle SIHRS only' in quick
++    html = " ".join(client.get("/model/analogue").text.split())
++    assert "particle-filter engine" not in html
++    quick = html.split('action="/run"')[1].split("</form>")[0]
++    assert "disabled" not in quick.split("<button", 1)[1].split(">")[0]
++    html = " ".join(client.get("/model/pf2s").text.split())
++    card = html.split('id="research-run"')[1]
++    assert ("A research run needs the particle-filter engine, which is not "
++            "installed on this machine.") in card
++    assert ('data-guard="console-run" disabled aria-describedby="rr-busy">'
++            'Start research run') in card
++
++
++def test_with_the_engine_the_model_pages_run(pf_engine_ready):
++    ui_state._status["running"] = None
++    for page in ("/model/pf", "/model/pf2s"):
++        html = " ".join(client.get(page).text.split())
++        assert "needs the particle-filter engine" not in html, page
++        assert 'aria-describedby="md-busy"' not in html
++        assert 'aria-describedby="rr-busy"' not in html
++
++
++# ------------------------------------------------------------------ the ledger
++
++def test_the_ledger_chip_says_why_the_filter_did_not_run():
++    def chips(outcome):
++        return [i["text"] for i in ui_shared._outcome_items(
++            json.dumps(outcome))]
++    assert "Groundhog only" in chips({"pf_skipped": "analogue-only run"})
++    assert "PF skipped" not in " ".join(
++        chips({"pf_skipped": "analogue-only run"}))
++    assert "PF skipped" in chips(
++        {"pf_skipped": "engine venv not installed (Tier A)"})
+diff --git a/app/tests/test_oracle_step.py b/app/tests/test_oracle_step.py
+index b0e6657..8cf58ca 100644
+--- a/app/tests/test_oracle_step.py
++++ b/app/tests/test_oracle_step.py
+@@ -431,7 +431,8 @@ def test_run_season_records_the_oracle_setting(tmp_path, monkeypatch):
+     assert "oracle" not in retro.read_meta(root3)["settings"]
+ 
+ 
+-def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch):
++def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch,
++                                                                    pf_engine_ready):
+     """The Retrospective run form -> _retro_bg -> run_season -> run_week path:
+     fits from the season start, applies the step with that week's vintage and
+     donor pool, records settings.oracle = "applied", writes oracle.json,
+diff --git a/app/tests/test_remembered_form.py b/app/tests/test_remembered_form.py
+index 131d19c..419ece1 100644
+--- a/app/tests/test_remembered_form.py
++++ b/app/tests/test_remembered_form.py
+@@ -100,10 +100,10 @@ def test_a_refused_date_keeps_the_other_choices(state):
+     assert '<option value="analogue" selected>' in page
+     assert f'id="ck-us" name="locations" value="{US_CHOICE}" checked>' in page
+     # a blank date keeps them too, and the last date
+-    _post({"forecast_date": "", "locations": ["Ohio"], "engine": "pf"})
++    _post({"forecast_date": "", "locations": ["Ohio"], "engine": "all"})
+     assert ui_state._status["flash"] == "Not run: give a forecast date."
+     assert form["forecast_date"] == W1 and form["locations"] == ["Ohio"]
+-    assert form["engine"] == "pf"
++    assert form["engine"] == "all"
+ 
+ 
+ # ----------------------------------------------------------------- the pick
+diff --git a/app/tests/test_research_run.py b/app/tests/test_research_run.py
+index fc6a734..33a4c45 100644
+--- a/app/tests/test_research_run.py
++++ b/app/tests/test_research_run.py
+@@ -84,7 +84,8 @@ def _capture_run(monkeypatch, tmp_path):
+     return started
+ 
+ 
+-def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
++def test_run_accepts_the_research_selection(tmp_path, monkeypatch,
++                                            pf_engine_ready):
+     started = _capture_run(monkeypatch, tmp_path)
+     r = client.post("/run", data={"forecast_date": "2098-01-04",
+                                   "locations": ["Ohio"], "members": "3",
+@@ -179,7 +180,8 @@ def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
+     assert "research" not in head(client.get(f"/runs/{nrid}").text)
+ 
+ 
+-def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch):
++def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch,
++                                                    pf_engine_ready):
+     """The re-run path reposts the recorded spec verbatim, particles
+     included, so a research run's knob survives the shortcut."""
+     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+diff --git a/app/tests/test_resume_rerun.py b/app/tests/test_resume_rerun.py
+index 1b8e77a..7e7f1fe 100644
+--- a/app/tests/test_resume_rerun.py
++++ b/app/tests/test_resume_rerun.py
+@@ -191,7 +191,8 @@ def test_retro_index_wires_resume_for_stopped_and_interrupted(tmp_path,
+ # -------------------------------------------- retro resume POST, end to end
+ 
+ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
+-                                                               monkeypatch):
++                                                               monkeypatch,
++                                                               pf_engine_ready):
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+     root = tmp_path / SEASON
+diff --git a/app/tests/test_retro_archive.py b/app/tests/test_retro_archive.py
+index 9fd9dc0..e18d792 100644
+--- a/app/tests/test_retro_archive.py
++++ b/app/tests/test_retro_archive.py
+@@ -357,7 +357,8 @@ def test_resume_keeps_the_existing_weeks(tmp_path, monkeypatch):
+ 
+ 
+ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
+-                                                                 monkeypatch):
++                                                                 monkeypatch,
++                                                                 pf_engine_ready):
+     rr = _roots(tmp_path, monkeypatch)
+     root = _season_tree(rr, SEASON)
+     before = _tree_snapshot(root)
+@@ -377,8 +378,56 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
+     assert "Archived" in ui_state._status.get("flash", "")
+ 
+ 
++def test_without_the_engine_the_oracle_preset_moves_nothing(tmp_path,
++                                                           monkeypatch):
++    """RE-02 (2026-10-25): with no particle-filter engine an Oracle replay
++    archived the season's results, failed every week into failures.log and
++    read "complete" with none done. It is refused before anything moves."""
++    rr = _roots(tmp_path, monkeypatch)
++    root = _season_tree(rr, SEASON)
++    before = _tree_snapshot(root)
++    started = []
++    monkeypatch.setattr(ui_retro, "_retro_bg",
++                        lambda *a, **k: started.append(a[0]))
++    r = client.post("/retro/run", data={"season": SEASON, "mode": "archive",
++                                        "engine": "pf",
++                                        "knob.groundhog.zero_anchor": "abstain"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and started == []
++    assert _tree_snapshot(root) == before
++    assert retro.list_archive_dirs(rr, SEASON) == []
++    assert ui_state._status["flash"] == (
++        "Not started: the Oracle SIHRS needs the particle-filter engine, "
++        "which is not installed on this machine. Choose Groundhog only.")
++    # a half-installed engine is refused the same way, in its own words
++    monkeypatch.setattr(ui_retro.pipeline, "_pf_engine_state",
++                        lambda: "broken")
++    client.post("/retro/run", data={"season": SEASON, "mode": "archive",
++                                    "engine": "pf",
++                                    "knob.groundhog.zero_anchor": "abstain"},
++                follow_redirects=False)
++    assert started == [] and "not fully installed" in ui_state._status["flash"]
++
++
++def test_without_the_engine_the_form_comes_set_to_what_can_run(tmp_path,
++                                                               monkeypatch):
++    """RE-23: the form opened on the Oracle preset with Run disabled; with
++    no engine the Groundhog-only preset comes selected and Run is live."""
++    _roots(tmp_path, monkeypatch)
++    form = client.get("/retro").text.split('action="/retro/run"')[1]
++    assert '<option value="analogue" selected>Groundhog only (minutes)' in form
++    head, tail = form.split('id="retro-run-btn"', 1)
++    run = head.rsplit("<button", 1)[1] + tail.split(">", 1)[0]
++    assert "data-uk-reason" in run and " disabled" not in run
++    monkeypatch.setattr(ui_retro.pipeline, "_pf_engine_state",
++                        lambda: "ready")
++    form = client.get("/retro").text.split('action="/retro/run"')[1]
++    assert '<option value="analogue">Groundhog only (minutes)' in form
++
++
+ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
+-                                                                 monkeypatch):
++                                                                 monkeypatch,
++                                                                 pf_engine_ready):
+     rr = _roots(tmp_path, monkeypatch)
+     root = _season_tree(rr, SEASON)
+     before = _tree_snapshot(root)
+@@ -401,7 +450,8 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
+ 
+ 
+ def test_discard_with_confirmation_removes_only_its_target(tmp_path,
+-                                                           monkeypatch):
++                                                           monkeypatch,
++                                                           pf_engine_ready):
+     rr = _roots(tmp_path, monkeypatch)
+     root = _season_tree(rr, SEASON)
+     other = _season_tree(rr, OTHER)
+diff --git a/app/tests/test_retro_pf_name.py b/app/tests/test_retro_pf_name.py
+index e639bd5..a221834 100644
+--- a/app/tests/test_retro_pf_name.py
++++ b/app/tests/test_retro_pf_name.py
+@@ -177,7 +177,7 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
+     assert FILTER not in by_stamp[STAMP_ORACLE]
+ 
+ 
+-def test_the_replay_form_names_the_oracle_sihrs(world):
++def test_the_replay_form_names_the_oracle_sihrs(world, pf_engine_ready):
+     """The run form's full preset is the Oracle SIHRS beside the Groundhog;
+     its value is still the member's internal key."""
+     t = _text(client.get("/retro").text)
+diff --git a/app/tests/test_server_hardening.py b/app/tests/test_server_hardening.py
+index 77e81af..4897c60 100644
+--- a/app/tests/test_server_hardening.py
++++ b/app/tests/test_server_hardening.py
+@@ -101,7 +101,8 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
+ 
+ 
+ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
+-                                                             monkeypatch):
++                                                             monkeypatch,
++                                                             pf_engine_ready):
+     """The same race in POST /retro/run claims exactly one season worker."""
+     from app.core import retro
+     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+diff --git a/app/ui/pipeline.py b/app/ui/pipeline.py
+index 35c4b40..ed63444 100644
+--- a/app/ui/pipeline.py
++++ b/app/ui/pipeline.py
+@@ -459,6 +459,13 @@ def _pf_engine_state() -> str:
+     return "ready" if pf_engine.engine_available() else "broken"
+ 
+ 
++def _pf_engine_missing(pf_state: str) -> str:
++    """How the pages finish "the particle-filter engine, which is ...":
++    '' when it is ready."""
++    return ("" if pf_state == "ready" else "not installed on this machine"
++            if pf_state == "absent" else "not fully installed on this machine")
++
++
+ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
+                    locs, n2f: dict, minus1: bool, pmf: bool,
+                    floor_kw: dict, vintage=None) -> tuple:
+@@ -542,8 +549,13 @@ def _run_all(spec: RunSpec) -> None:
+     from app.ui.routes.forecast import _scope_label
+     _status["run_label"] = (
+         f"{spec.forecast_date} · {_scope_label(spec.locations)}")
+-    # also set by the route; here so direct calls are described too
+-    _status["settings"] = spec_settings(spec)
++    # also set by the route; here so direct calls are described too. With
++    # no engine on this machine both models run as the Groundhog alone:
++    # the card says so, as the record will (spec_settings reads it)
++    _status["settings"] = spec_settings(
++        spec, {"pf_skipped": "engine venv not installed (Tier A)"}
++        if spec.engine in ("all", "pf") and _pf_engine_state() == "absent"
++        else None)
+     try:
+         # setup INSIDE the try so a failed insert/lease releases the claim;
+         # the row's engine_versions (not this process's) is "Produced by"
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 27bb24a..da48f9b 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -206,6 +206,9 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+         "live_only": live_only, "live_running": running,
+         "default_date": _default_forecast_date(),
+         "locations_error": locations_error, "form": form,
++        # without the particle-filter engine (the run refuses Oracle SIHRS
++        # only, and Both runs the Groundhog alone): why, else ''
++        "pf_missing": pipeline._pf_engine_missing(pipeline._pf_engine_state()),
+         "us_choice": US_CHOICE, "us_checked": us_checked,
+         "official_json": _script_json(official),
+         "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
+@@ -1143,6 +1146,17 @@ def run_models(request: Request,
+         _last_form["data_choices"] = {
+             newest: {k: v for k, v in gap_fields.items()
+                      if k != "_sha" and isinstance(v, str) and v}}
++    # the particle filter's runs need its engine: refused up front, where
++    # they used to run the Groundhog alone and end "ok" with no file (Both
++    # runs the Groundhog alone without it, and the form says so)
++    pf_state = (pipeline._pf_engine_state() if engine in ("all", "pf")
++                else "absent")
++    if (engine == "pf" or members == 3) and pf_state != "ready":
++        what = "the research run" if members == 3 else "the Oracle SIHRS"
++        _flash(f"Not run: {what} needs the particle-filter engine, which is "
++               f"{pipeline._pf_engine_missing(pf_state)}."
++               + (" Choose Groundhog only." if members != 3 else ""), "warn")
++        return _back(request, "/forecast")
+     if _d is None:
+         # a blank or typed non-date (the model page's text field) is said
+         # as such, never "no data for <text> yet"
+@@ -1287,7 +1301,8 @@ def run_models(request: Request,
+         _status["workroot"] = None
+         _status["expected_total"] = (len(locs_list) * int(replicates)
+                                      * (2 if members == 3 else 1)
+-                                     if engine in ("all", "pf") else None)
++                                     if engine in ("all", "pf")
++                                     and pf_state == "ready" else None)
+         # particles, replicates and weeks to drop were range-checked as knobs
+         # above (refused, never clamped: replicates = 0 once ran zero fits)
+         # mode follows the anchor: real-time means the newest week the hub
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 609eda5..1cab3a5 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -10,7 +10,7 @@ from markupsafe import Markup
+ 
+ from app.core import oracle_text as ot
+ from app.core import runs as _runs
+-from app.ui import shared, templating
++from app.ui import pipeline, shared, templating
+ from app.ui.forms import _default_forecast_date, _knobs
+ from app.ui.shared import _run_label
+ from app.ui.state import REPO, _last_form, _status
+@@ -220,5 +220,8 @@ def model_page(request: Request, name: str):
+         "bngl_src": bngl_src, "bngl_file": bngl_file,
+         "bngl_lines": len(bngl_src.splitlines()),
+         "form": form, "status": _status,
++        # the Oracle SIHRS's runs (its quick run, the research run) need the
++        # particle-filter engine: why not, else ''
++        "pf_missing": pipeline._pf_engine_missing(pipeline._pf_engine_state()),
+         # the replicates field's range is the knob's (the Forecast panel's)
+         "replicates_knob": _knobs.BY_KEY["pf.replicates"]})
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index 0d1b169..cdc64ab 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -159,7 +159,6 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+                         "eta_s": prog["eta_s"],
+                         "finished_utc": prog["finished_utc"],
+                         "scored": (root / "scores.json").exists()})
+-    from flubnf.settings import PY_ENGINE, PYBNF
+     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+     return templates.TemplateResponse(request, "retro.html",
+                                       {"active": "Retrospective",
+@@ -168,8 +167,10 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+                                        "default_width": DEFAULT_SHARD_WIDTH,
+                                        "width_cap": SHARD_WIDTH_CAP,
+                                        "knob_panel": _knob_panel("retro"),
+-                                       "engine_ok": PY_ENGINE.exists()
+-                                       and PYBNF.exists()})
++                                       # a half-installed engine cannot
++                                       # run the Oracle preset either
++                                       "engine_ok": pipeline._pf_engine_state()
++                                       == "ready"})
+ 
+ 
+ @router.get("/api/retro/progress")
+@@ -517,6 +518,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+             return _refused(
+                 "Not started: choose Oracle SIHRS and Groundhog, or "
+                 "Groundhog alone.")
++        # the Oracle preset needs the particle-filter engine: refused before
++        # anything is archived (every week used to fail into failures.log
++        # and the season read "complete" with none done)
++        pf_state = pipeline._pf_engine_state() if engine == "pf" else "ready"
++        if pf_state != "ready":
++            return _refused(
++                "Not started: the Oracle SIHRS needs the particle-filter "
++                f"engine, which is {pipeline._pf_engine_missing(pf_state)}. "
++                "Choose Groundhog only.")
+         from app.core import us_national as usn
+         all_states = _retro_state_names()
+         if locations == "all":
+diff --git a/app/ui/shared.py b/app/ui/shared.py
+index 79077b5..79455dd 100644
+--- a/app/ui/shared.py
++++ b/app/ui/shared.py
+@@ -286,8 +286,12 @@ def _outcome_items(outcome_json) -> list:
+         add(f'<span class="bad">{word}</span>', word, "error",
+             "The run page names each failed fit.")
+     if o.get("pf_skipped"):
+-        add("PF skipped (no engine)", "PF skipped", "",
+-            "No engine: a configuration, not a fault.")
++        # chosen (a Groundhog-only run) or this machine's (no engine)
++        if "analogue" in str(o["pf_skipped"]):
++            add("Groundhog only")
++        else:
++            add("PF skipped (no engine)", "PF skipped", "",
++                "No engine: a configuration, not a fault.")
+     # no engine is a configuration; a broken install is a fault
+     if o.get("pf_engine_broken"):
+         add('<span class="bad">PF engine install incomplete</span>',
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index 3f5f241..9695c5b 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -267,6 +267,7 @@
+      <p class="fc-nomatch" id="fc-nomatch" hidden>No match</p>
+    </div>
+    {{ tips.label("Model", "fc-model", for_="model-pick") }}
++   {% set pf_off = pf_missing is defined and pf_missing %}
+    {% if dataset %}
+    <select name="engine" id="model-pick">{% for e in engines %}
+      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
+@@ -285,8 +286,10 @@
+    {% set engine_names = {"all": "Both (Oracle SIHRS + Groundhog)",
+                           "pf": "Oracle SIHRS only",
+                           "analogue": "Groundhog only"} %}
++   {# without the engine Oracle SIHRS only cannot run: off, as on a
++      dataset's form #}
+    <select name="engine" id="model-pick">{% for e in engines %}
+-     <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
++     <option value="{{ e }}" {% if e == form.engine and not (e == "pf" and pf_off) %}selected{% endif %}{% if e == "pf" and pf_off %} disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+    {% endif %}
+    {# one engine today: a labelled value, not a select with nothing to
+       pick; the production build's badge beside it, another build's
+@@ -294,9 +297,15 @@
+    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
+     {% set eb_after %}{% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+     {% set eb_beside = 'data-engine-build="production"' in eb_after %}
++    {% if pf_off and not dataset %}
++    {# Both runs the Groundhog alone here: said before the run, in the
++       words the dataset form uses #}
++    <p class="fc-under">{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is " ~ pf_missing, id="fc-pf-off", icon_name="lock") }}</p>
++    {% else %}
+     {% call tips.stats("uk-stats--kv fc-kv") %}
+      {{- tips.stat("Engine", "Particle filter", id="fc-engine", after=(eb_after | trim if eb_beside else "")) -}}
+     {% endcall %}
++    {% endif %}
+     {% if eb_after | trim and not eb_beside %}<p class="fc-under">{{ eb_after | trim }}</p>{% endif %}
+    </div>
+    <script>
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index 47e1aa5..f1c2d5a 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -150,6 +150,8 @@
+   {% if status.running %}
+   {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
+   {{ tips.alert("warn", "A run is in progress.", id="md-busy", action=fc_link) }}
++  {% elif name == "pf" and pf_missing %}
++  {{ tips.alert("warn", "The Oracle SIHRS needs the particle-filter engine, which is " ~ pf_missing ~ ".", id="md-busy") }}
+   {% endif %}
+   <form method="post" action="/run" class="md-form">
+    <div class="md-fields">
+@@ -178,7 +180,7 @@
+    {# same /run endpoint, so the same interference guard as Forecast; off
+       while a run holds the engine (the alert above says why; the server
+       refuses a start then too) #}
+-   <button class="gold" data-guard="console-run"{% if status.running %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
++   <button class="gold" data-guard="console-run"{% if status.running or (name == "pf" and pf_missing) %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
+   </form>
+  </div></div>
+  <div>
+diff --git a/app/ui/templates/research_run.html b/app/ui/templates/research_run.html
+index 7ef78c0..6e458b6 100644
+--- a/app/ui/templates/research_run.html
++++ b/app/ui/templates/research_run.html
+@@ -14,6 +14,8 @@
+  {% if status.running %}
+  {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
+  {{ tips.alert("warn", "A run is in progress.", id="rr-busy", action=fc_link) }}
++ {% elif pf_missing %}
++ {{ tips.alert("warn", "A research run needs the particle-filter engine, which is " ~ pf_missing ~ ".", id="rr-busy") }}
+  {% endif %}
+  <form method="post" action="/run" class="md-form">
+   <div class="md-fields">
+@@ -46,6 +48,7 @@
+   {# off, with its reason, while a run holds the engine (the alert above
+      says so; the server refuses a start then too) #}
+   {% if status.running %}{{ tips.reason_button("Start research run", "rr-start-why", "A run is in progress; one run holds the engine at a time. Start this when it finishes.", cls="gold", data={"guard": "console-run"}) }}
++  {% elif pf_missing %}<button class="gold" data-guard="console-run" disabled aria-describedby="rr-busy">Start research run</button>
+   {% else %}<button class="gold" data-guard="console-run">Start research run</button>{% endif %}
+  </form>
+  <script>
+diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
+index 418f2b6..fd9ae76 100644
+--- a/app/ui/templates/retro.html
++++ b/app/ui/templates/retro.html
+@@ -62,7 +62,7 @@
+       published numbers anywhere #}
+    <select name="engine" id="retro-engine">
+      <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
+-     <option value="analogue">Groundhog only (minutes)</option></select>
++     <option value="analogue"{% if not engine_ok %} selected{% endif %}>Groundhog only (minutes)</option></select>
+    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
+       decision with no default, asked here rather than in the panel; a
+       season replayed before the rule existed resumes as abstain #}
+@@ -82,10 +82,11 @@
+    {# data-guard checks /api/busy (a paused season counts as busy) and offers
+       stop-and-proceed; data-startover asks resume/archive/discard when the
+       season has completed weeks. Without the engine only the Groundhog-only
+-      preset can run: the button is off, its "?" says why #}
++      preset can run, and it comes selected: the button is off only while
++      the Oracle preset is picked, its "?" says why #}
+    {{ tips.reason_button("Run retrospective", "rt-run-why",
+         "The Oracle SIHRS needs the particle-filter engine: choose Groundhog only, or install the engine (the alert above the page says how).",
+-        off=not engine_ok, cls="gold", data={"guard": "retro-run", "startover": "1"},
++        off=False, cls="gold", data={"guard": "retro-run", "startover": "1"},
+         attrs='id="retro-run-btn"' | safe) }}
+    {% if not engine_ok %}
+    <script>
