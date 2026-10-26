@@ -6,6 +6,61 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-26 (01:00 UTC): THE AGENTS' VERDICTS ON THE HISTORICAL CEILING
+  ARE IN (docs/team/model.md, 2026-10-25 23:50 UTC, both agents; records
+  in the repository under docs/team/model-oracle-width-screen-2026-10/
+  and model-groundhog-hist-ceiling-2026-10-25/). WEDNESDAY RUNS THE
+  SHRINK AT 15x ALONE, NO CEILING: the five override values of
+  2026-10-23 (pf.seed_denominator season_total_early, oracle.w 0.25,
+  oracle.narrow 0.7, output.tail_cap 15, output.tail_mode shrink), one
+  reason. Both agents recommend exactly that.
+  The Oracle's 84 weeks (pre-registered amendment 3, de645b23, the pass
+  rule written before any score; post hoc on C0's stored weeks through
+  main's own functions with each week's vintage): the pairing (maximum +
+  shrink 15x) FAILS the rule on two counts. (P3a) In the four October
+  as-ofs it loses to the shrink alone, 0.790 against 0.778, +0.0125
+  [+0.0016, +0.0329]; (rule iii) its 95% coverage sits 0.012 below the
+  shrink's (0.886 against 0.898), 0.014 in the early weeks. The rest
+  holds: P1 (the maximum alone -0.0056 [-0.0139, -0.0001] against none,
+  the best arm on the natural scale, 6% of h3 cells still over 30x), P2a
+  (the pairing 0.9% below shrink 15x pooled, -0.0060 [-0.0140,
+  -0.0004]), P2b (within noise of clip 15x), P3c (99% of the gain from
+  November-January as-ofs), P4 (the 0.975 ceiling: coverage 0.851, worse
+  on the log scale). P3b was wrong in its premise: the screen's October
+  as-ofs (2023-24's four) read one history season and their ceilings at
+  h1-h3 sat UNDER 15x, so the pairing bound there; and the October loss
+  comes by the mechanism this lane saw in last week's file (the ceiling
+  pre-clips h3, the shrink does less, h0-h2 stay wider, and in October
+  the narrowing is what scores). By season the pairing minus the shrink
+  is -0.026 in 2023-24 (one history season), -0.003 in 2024-25, +0.0003
+  in 2025-26, the season most like the live one. The Oracle agent sees
+  no case for the ceiling in November either. The vintage against the
+  settled truth moved the pooled score by +0.0003: this lane's
+  final-truth shortcut was harmless.
+  The Groundhog's three kernel-form seasons (pre-registration c9587ab5,
+  through its own retro, every week's vintage): the pairing passes every
+  registered test and all six predictions hold, but it is free, not a
+  gain (-0.0013 [-0.0039, +0.0009] against the shrink pooled; the whole
+  gain is December 2023; +0.0015 in 2023-24's October weeks and +0.004
+  on this season's four); the maximum alone is within noise of none
+  (0.6419 against 0.6423, this lane's post hoc 0.6406 used the final
+  truth) but costs 95% coverage (0.946 to 0.931) and 2024-25, the season
+  that outgrew its history (+0.002, the record peak). It does not clear
+  the gate alone. So the Groundhog neither blocks nor argues for the
+  pairing; the call rested on the Oracle's weeks, and it fails there.
+  This lane's reading: the two screens agree with each other and with
+  the mechanism this lane found on last week's file; the 44-week result
+  of 2026-10-25 was real but came from the in-season weeks and from the
+  2023-24 season, where one history season makes a tight ceiling; the
+  live round reads four seasons and sits in October. The ceiling stays
+  a research knob at 0. The three code findings from the Groundhog agent
+  are answered under For other lanes (2026-10-26); two are small fixes
+  for a branch at Ely's go, the third is a screen question for 11-04 at
+  the earliest.
+  Wednesday's meeting figures: last week's round as submitted against
+  the shrink at 15x (the two figures of 2026-10-25, 19:12 UTC entry),
+  and the same pair from the fresh files within the hour of receiving
+  them.
 - 2026-10-25 (23:31 UTC): PULL REQUEST #49 (dev TO main) MERGED BY ELY AT
   23:31 UTC, merge commit a99d53d (two parents, 757ce69 and 21a9497; a
   merge commit). Ely's first merge command at 23:30 was refused
@@ -2418,6 +2473,29 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- Model, the Groundhog agent and the Oracle SIHRS agent (2026-10-26,
+  answering the three findings of 2026-10-26 and the two verdicts):
+  thank you; the verdicts are recorded under Now (01:00 UTC) and
+  Wednesday runs the shrink at 15x alone. On the findings:
+  (1) THE WEEK-53 WINDOW: agreed, a defect at the rule's edge.
+  history_ratios will reuse flubnf.analogue.epiweek and
+  calendar_distance, so the ceiling's calendar is the donors' own, with
+  a test at 2027-01-02; on branch tail-hist-edges for Ely's merge (it
+  changes nothing before that date and nothing for Wednesday, where the
+  knob is off).
+  (2) THE UNRECORDED SKIP: agreed. The pipeline will record tail_hist
+  with "skipped" and the reason when the knob is set and the history
+  could not be read, so the run page says the knob did nothing; with a
+  test that makes the read fail. Same branch.
+  (3) THE 2024 VOLUNTARY WINDOW: agreed that it is a question for 11-04
+  at the earliest and needs its own screen; the artefact only loosens
+  the ceiling, so the merged code errs toward doing nothing, and with
+  the window out the ceiling would bind at h0-h1 in October under the
+  15x line, which is the direction the Oracle's screen says costs. Not
+  coded. If Ely wants it screened, the natural arm is the same
+  pre-registered form with HIST_EXCLUDE = the voluntary window's W
+  (base weeks W-2 to W inside 2024-05-01 to 2024-10-31), on the Oracle's
+  84 weeks and the Groundhog's seasons, beside the arms already run.
 - Model, the Oracle SIHRS agent AND the Groundhog agent (2026-10-25,
   from Ely: "I want to test this historical maximum"; Ely's plan, 21:02
   UTC: each agent tests it as a post-calibration step on its own screen,
