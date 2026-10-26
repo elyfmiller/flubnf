@@ -661,7 +661,7 @@ echo   looking for a Python for the engine, 64-bit (x64) %ENGINEPYS%:
 set "MAKEEXE="
 set "MAKEARG="
 rem A new venv: nothing in it for the public route's pip to replace.
-set "PUBLICFORCE="
+set "PUBLICSTALE="
 where py >nul 2>&1
 if errorlevel 1 goto :enginevenvnopy
 py -3.12 -c "%ENGINEGATE%" "py -3.12" <nul 2>nul
@@ -961,15 +961,15 @@ set "PUBLICREC=%FLUBNF_PY_ENGINE_PUBLIC%"
 rem Installed, and the lock's? engine_lock.py check: the Liu-West filter
 rem imports, bngsim is the version the lock pins, and pybnf came from the
 rem lock's wheel. A venv that is there but fails it (a new lock, a damaged
-rem install) gets every package again, from pip's cache where it can.
-set "PUBLICFORCE="
+rem install) is stale: :publicdeps puts back what the lock names.
+set "PUBLICSTALE="
 if not exist "%PUBLICPY%" goto :publiclock
 "%PUBLICPY%" "%~dp0scripts\engine_lock.py" check "%ENGINELOCK%" <nul >nul 2>&1
 set "PUBLICCODE=%ERRORLEVEL%"
 if "%PUBLICCODE%"=="0" goto :publicready
 rem 1 is the venv's own answer; 2 is the lock's, said again below.
 if "%PUBLICCODE%"=="1" echo   the public engine in "%PUBLICVENV%" does not match its lock file, or does not load: installing it again
-set "PUBLICFORCE=--force-reinstall"
+set "PUBLICSTALE=1"
 :publiclock
 rem The lock first, through the console's own Python: a lock that is not
 rem here yet, or has no usable wheel line, costs one line (engine_lock.py
@@ -989,9 +989,16 @@ rem From :engineindex: the venv passed its gate and the package index
 rem answered. --require-hashes checks every file against the lock's sha256,
 rem the PyBNF wheel's too; --only-binary :all: builds nothing here. Without
 rem -q, as for the private engine: the window shows what it fetches.
+rem pip keeps an installed pybnf of the lock's version whatever wheel it
+rem came from, so a stale venv loses pybnf first; pip then puts back the
+rem lock's wheel and moves any other package whose pin moved. Every package
+rem again (--force-reinstall, minutes) only when that is not enough.
 echo   downloading the public engine's packages and installing them, usually
 echo   2 to 5 minutes; leave this window open
-"%ENGINEPY%" -m pip install --disable-pip-version-check --require-hashes --only-binary :all: %PUBLICFORCE% -r "%ENGINELOCK%"
+if defined PUBLICSTALE "%ENGINEPY%" -m pip uninstall -y -q --disable-pip-version-check pybnf <nul
+set "PUBLICFORCED="
+:publicpip
+"%ENGINEPY%" -m pip install --disable-pip-version-check --require-hashes --only-binary :all: %PUBLICFORCED% -r "%ENGINELOCK%"
 if "%ERRORLEVEL%"=="0" goto :publiccheck
 echo   pip could not install the public engine's packages; its error is
 echo   above. A hash that does not match means a changed or damaged
@@ -1001,6 +1008,7 @@ goto :publicfailed
 :publiccheck
 "%ENGINEPY%" "%~dp0scripts\engine_lock.py" check "%ENGINELOCK%" <nul
 if "%ERRORLEVEL%"=="0" goto :publicready
+if defined PUBLICSTALE if not defined PUBLICFORCED goto :publicforce
 echo   The public engine's packages are installed, but the check above
 echo   failed.
 rem A compiled module that does not load may want the Visual C++ runtime,
@@ -1011,6 +1019,11 @@ echo   For a fresh install, rename its venv, then open FluBNF again:
 echo       ren "%ENGINEVENV%" "%VENVLEAF%-old"
 echo   If it happens again, send the lines above to the lab.
 goto :publicfailed
+
+:publicforce
+echo   still not what the lock names: installing every package again
+set "PUBLICFORCED=--force-reinstall"
+goto :publicpip
 
 :publicready
 set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%"

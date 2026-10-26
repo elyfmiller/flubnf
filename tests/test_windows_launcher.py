@@ -1027,8 +1027,16 @@ def test_the_public_install_is_hash_checked_and_its_python_is_3_12():
     block = _public_block()
     pips = [ln for ln in _code(block) if " -m pip install " in ln]
     assert pips == ['"%ENGINEPY%" -m pip install --disable-pip-version-check '
-                    "--require-hashes --only-binary :all: %PUBLICFORCE% "
+                    "--require-hashes --only-binary :all: %PUBLICFORCED% "
                     '-r "%ENGINELOCK%"'], pips
+    # a stale venv loses pybnf first (pip keeps one of the same version);
+    # every package again only when the check still fails, once
+    code = _code(block)
+    assert ('if defined PUBLICSTALE "%ENGINEPY%" -m pip uninstall -y -q '
+            '--disable-pip-version-check pybnf <nul') in code
+    assert "if defined PUBLICSTALE if not defined PUBLICFORCED goto :publicforce" in code
+    force = _code(_after_label("\r\n".join(block), "publicforce").splitlines())
+    assert force[1:3] == ['set "PUBLICFORCED=--force-reinstall"', "goto :publicpip"], force
     check = _code(_after_label("\r\n".join(block), "publiccheck").splitlines())
     assert check[0] == ('"%ENGINEPY%" "%~dp0scripts\\engine_lock.py" check '
                         '"%ENGINELOCK%" <nul')
@@ -2615,7 +2623,7 @@ def _run_public(pc: SimpleNamespace, **env) -> subprocess.CompletedProcess:
             + ":perlblock\ngoto :eof\n"
             + ":startconsole\necho REACHED-CONSOLE\nexit /b 0\n"
             + ":enginevenv\necho REACHED-VENV [%ENGINEVENV%] [%ENGINEPY%]"
-            + " [%PUBLICROUTE%] [%PUBLICFORCE%]\nexit /b 0\n"
+            + " [%PUBLICROUTE%] [%PUBLICSTALE%]\nexit /b 0\n"
             + ":enginevcruntime\necho REACHED-VCRT\nexit /b 0\n")
     settings = {"USERPROFILE": str(pc.home),
                 "LOCALAPPDATA": str(pc.home / "AppData" / "Local"),
