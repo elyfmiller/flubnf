@@ -267,6 +267,7 @@
      <p class="fc-nomatch" id="fc-nomatch" hidden>No match</p>
    </div>
    {{ tips.label("Model", "fc-model", for_="model-pick") }}
+   {% set pf_off = pf_state is defined and pf_state != "ready" %}
    {% if dataset %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
@@ -285,8 +286,10 @@
    {% set engine_names = {"all": "Both (Oracle SIHRS + Groundhog)",
                           "pf": "Oracle SIHRS only",
                           "analogue": "Groundhog only"} %}
+   {# without the engine Oracle SIHRS only cannot run: off, as on a
+      dataset's form #}
    <select name="engine" id="model-pick">{% for e in engines %}
-     <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+     <option value="{{ e }}" {% if e == form.engine and not (e == "pf" and pf_off) %}selected{% endif %}{% if e == "pf" and pf_off %} disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {% endif %}
    {# one engine today: a labelled value, not a select with nothing to
       pick; the production build's badge beside it, another build's
@@ -294,9 +297,16 @@
    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
     {% set eb_after %}{% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
     {% set eb_beside = 'data-engine-build="production"' in eb_after %}
+    {% if pf_off and not dataset %}
+    {# no engine: Both runs the Groundhog alone, said before the run in the
+       words the dataset form uses; a broken install fails Both at run
+       time, so it is named instead #}
+    <p class="fc-under">{% if pf_state == "absent" %}{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is not installed on this machine", id="fc-pf-off", icon_name="lock") }}{% else %}{{ tips.badge("warn", "Oracle SIHRS engine install incomplete", id="fc-pf-off", icon_name="lock") }}{% endif %}</p>
+    {% else %}
     {% call tips.stats("uk-stats--kv fc-kv") %}
      {{- tips.stat("Engine", "Particle filter", id="fc-engine", after=(eb_after | trim if eb_beside else "")) -}}
     {% endcall %}
+    {% endif %}
     {% if eb_after | trim and not eb_beside %}<p class="fc-under">{{ eb_after | trim }}</p>{% endif %}
    </div>
    <script>

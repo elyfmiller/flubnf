@@ -11,6 +11,267 @@ agent's.
 
 ## Now
 
+- 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
+  REPOSITORY (Ely: "make sure your results are visible to the Team agent
+  through the repo"):
+  [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md),
+  beside the Groundhog's
+  [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md).
+  For the Team agent's review of this lane's entries of 2026-10-22 to
+  2026-10-25 (the width screen, its recommendation, the historical
+  ceiling). The folder holds:
+  - prereg/: PREREG.md and amendments REG, 1, 2 (X) and 3 (the ceiling),
+    byte-identical to the frozen files; `shasum -a 256 -c SHA256SUMS`
+    verifies all five.
+  - scripts/: the replay launcher, the scorers (checks A to C, A' to C',
+    A3 to D3) and every script that printed a reported number, including
+    two run inline before and saved now (c0_early.py and h_extra.py, each
+    re-run and equal to its report).
+  - reports/: the full outputs.
+  - data/: week-level sums for every arm and rule. Pooled relWIS, coverage
+    and the week-cluster bootstrap are functions of these; the README's
+    example recomputes the pairing's interval, -0.0060 [-0.0140, -0.0004].
+  The per-cell tables (1.3 million rows for C0) and the stored samples stay
+  on the lab Mac, on request. Research files, not runtime: 1.6 MB, under
+  docs/, which no test reads. In the copies the lab's home directory is
+  written `~`, and one failed first run's traceback is replaced by a note
+  (README). The two record lines below that said the records stay on the
+  lab Mac now point here.
+
+- 2026-10-25 (23:50 UTC): THE HISTORICAL CEILING ON THE ORACLE'S 84 WEEKS: IT
+  DOES NOT PASS FOR 2026-10-28, ON THE RULE WRITTEN FIRST (amendment 3,
+  de645b23, frozen 23:41 UTC; announced above). So by the Submission
+  notes' plan of 21:02 UTC, Wednesday runs the shrink at 15x alone and the
+  ceiling waits for 11-04 at the earliest. It fails on two counts:
+  - In the October as-ofs, the Wednesday analog, the pairing loses to the
+    shrink alone (P3a): 0.790 against 0.778, +0.0125 [+0.0016, +0.0329].
+  - The pairing's 95% coverage falls more than 0.010 below the shrink's
+    (rule (iii)): -0.012 on all weeks, -0.014 on the early weeks.
+  Everything else holds: P1, P2a, P2b, P3c and P4, and rules (i), (ii)
+  and (iv). This agrees in direction with the Groundhog's screen
+  (laptop, 23:50 UTC), where the pairing costs a little in
+  September-October.
+  How it was scored: post hoc on C0's stored weeks, no engine time. The
+  knob's own functions on main a99d53d, in the pipeline's order
+  (history_ratios on that week's vintage, history_limits,
+  clip_rows_by_horizon, then cap_rows). 17,466 state cells; relWIS is
+  natural / log. "early" means the first 8 scoreable weeks of each
+  season, 24 weeks; "Oct" is the 4 October as-ofs of 2023-24.
+                          relWIS          c95    h3>30x  early (c95)     Oct
+    none                  0.6682 / 0.6987 0.916  10.0%   0.6715 (0.929)  0.861
+    clip 15x              0.6680 / 0.7000 0.907   0.0%   0.6715 (0.898)  0.831
+    shrink 15x            0.6705 / 0.7069 0.898   0.1%   0.6781 (0.867)  0.778
+    clip 10x              0.6716 / 0.7034 0.895   0.0%   0.6799 (0.858)  0.811
+    maximum alone         0.6626 / 0.6985 0.899   6.0%   0.6705 (0.899)  0.845
+    0.975 alone           0.6760 / 0.7098 0.851   0.0%   0.6939 (0.806)  0.835
+    maximum + shrink 15x  0.6645 / 0.7035 0.886   0.1%   0.6745 (0.853)  0.790
+    maximum + clip 15x    0.6629 / 0.6995 0.894   0.0%   0.6713 (0.880)  0.830
+    maximum + shrink 10x  0.6751 / 0.7153 0.865   0.1%   0.6985 (0.783)  0.746
+  Week-cluster bootstrap, 2,000 resamples, natural | log:
+    pairing - shrink 15x      -0.0060 [-0.0140, -0.0004] | -0.0034 [-0.0062, -0.0008]
+        early                 -0.0036 [-0.0073, -0.0007] | -0.0052 [-0.0105, -0.0002]
+        October               +0.0125 [+0.0016, +0.0329] | +0.0088
+    pairing - clip 15x        -0.0035 [-0.0130, +0.0032] | +0.0036 [-0.0007, +0.0077]
+    maximum - none            -0.0056 [-0.0139, -0.0001] | -0.0002 [-0.0028, +0.0018]
+    maximum + clip - shrink   -0.0075 [-0.0161, -0.0007] | -0.0074 [-0.0119, -0.0031]
+        October               +0.0522 [+0.0270, +0.0845]
+  Predictions:
+  - P1 holds (the maximum alone, above).
+  - P2a holds: the pairing is 0.90% below shrink 15x.
+  - P2b holds: within noise of the clip 15x.
+  - P3a FAILS: the October loss above.
+  - P3b (reported only): 0 of 4 October as-ofs had the maximum above 15x
+    at h1 to h3. The 2023-24 as-ofs read 2022-23 alone, so the October
+    ceilings were 5.2x, 8.7 to 12.4x, 15.6 to 25.4x and 20.3 to 37.8x at
+    h0 to h3, against 11.7, 19.5, 26.2 and 37.8x on last week's live
+    vintage.
+  - P3c holds: 99% of the gain is from as-ofs dated November to January
+    (September-October -2%, February to May 3%).
+  - P4 holds: the 0.975 ceiling drops 95% coverage to 0.851 and is worse
+    on the log scale.
+  This lane's Q1 FAILED. The maximum changed far more blocks than I
+  predicted: 21% at h0, 30% at h3, and 40% to 68% in October (the 97.5%
+  quantile itself in 14% to 22%, and 29% to 51% in October). The
+  Oracle's 99% and 97.5% levels run past history's maximum often, most
+  in the early weeks. Q2 and Q3 held.
+  Reading:
+  (1) The pooled gain sits where the live round is not:
+      - By season, the pairing minus the shrink is -0.026 in 2023-24
+        (history from one season), -0.003 in 2024-25, and +0.0003 in
+        2025-26.
+      - 2025-26 reads three seasons of history, the nearest to the live
+        round's four. There the ceiling touched 10% of h3 blocks, against
+        45% in 2023-24.
+  (2) In October the pairing loses at every horizon, by the mechanism
+      the Submission notes found in last week's file:
+      - The ceiling pre-clips h3, so the shrink needs a milder exponent
+        and leaves h0 to h2 a few percent wider. The typical 97.5% over
+        the median is 2.11 against 2.06 at h0, 3.11 against 3.00 at h1,
+        4.83 against 4.71 at h2, and equal at h3 (7.29).
+      - In October the narrowing is what scores.
+      - The October subset is 4 weeks of one season, with ceilings
+        tighter than the live round's, but the live file would move the
+        same way.
+  (3) Coverage: the pairing is below the shrink alone in every season
+      (0.930 against 0.946, 0.874 against 0.890, 0.849 against 0.852)
+      and at every horizon.
+  (4) The clip forms:
+      - The maximum alone is the best arm on the natural scale, with the
+        shrink's coverage, but leaves 6.0% of h3 cells over 30x.
+      - With the clip at 15x it clears the gate and beats the shrink
+        alone on both scales, but loses to it in October, +0.052.
+      - Every clip form loses to the shrink in October.
+  (5) The vintage against the settled truth:
+      - Pooled, the scores differ by +0.0003 [-0.0007, +0.0013].
+      - The ratios are identical in 54% of week-horizons, but the maximum
+        is an extreme statistic: 10% of week-horizons differ by more than
+        16%.
+      - One reporting spike sets a whole window: Ohio's 218 admissions in
+        the week of 2023-05-20, between 17 and 14, is the h0 and h1
+        maximum (12.3x, 12.1x) of the May 2026 as-ofs (the Groundhog
+        found it too).
+      - A spike can only loosen the ceiling, so it errs toward doing
+        nothing.
+  (6) Code:
+      - No defect found. The comparators equal C0's cells exactly.
+      - An independent implementation of the ratios equals history_ratios
+        on every week, at both levels and from both sources.
+      - Every touched block obeys its limit and the code's own count.
+      - The no-limit identity holds, and the unit tests pass (163).
+      - The two Submission-lane notes in the laptop entry (the ISO week
+        53 distance, and the silent skip when the truth read fails) are
+        the two this lane found.
+  (7) A correction to amendment 2 (the exclusion arm X):
+      - Its "September to November" rows were the 14 as-of weeks dated
+        September to November, not the C0 reading's 24 early weeks, as
+        the amendment said.
+      - Re-read on the 24 weeks, the primary form is worse than the
+        shrink at 15x at every n: X40 +0.0095 [+0.0025, +0.0165] up to
+        X15 +0.0727. The conclusion is unchanged.
+  What this lane recommends:
+  - 10-28: the five override values of 2026-10-23 as they stand (seed
+    season_total_early, weight 0.25, narrowing 0.7, output.tail_cap 15,
+    output.tail_mode shrink), no ceiling.
+  - 11-04: no case on these seasons to add the ceiling in November
+    either. Its gain is 2023-24's, a season whose ceiling came from one
+    history season. In 2025-26, the season most like the live one, it
+    changes nothing and costs a little coverage. Ely's call.
+  Records: in the repository,
+  [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md)
+  (AMENDMENT3_HIST.md, hist_arm.py, report_hist.py, report_H.txt,
+  report_H_extra.txt, report_H_argmax.txt, report_X_early24.txt, and the
+  week sums); the per-cell tables (arms/H_C0.pkl) stay on the lab Mac.
+
+- 2026-10-25 (23:50 UTC, laptop): THE HISTORICAL CEILING ON THE GROUNDHOG'S
+  RETRO SEASONS: THE PAIRING IS SUPPORTED BY THE PRE-REGISTERED RULE, AND
+  FOR THE GROUNDHOG IT IS FREE RATHER THAN A GAIN (Ely's request in chat;
+  the Submission lane's handoff of 2026-10-25). Pre-registration c9587ab5
+  (FluBNF-local research/groundhog-hist-ceiling/, frozen at 23:40 UTC
+  before any replay of this screen), predictions G1 to G6 and the rule
+  written first. The Groundhog's own retro on dev fafa1db in the shipped
+  kernel form, every vintage of 2023-24 to 2025-26 (and 2026-27's four
+  weeks, supplementary), hub 3a83d410; it reproduces the record exactly
+  (0.6802, 0.6272, 0.6448, pooled 0.6423 on 17,116 cells). Then the
+  pipeline's own order on every week: hub rows in whole admissions, the
+  ceiling at the maximum with the ratios from that week's vintage
+  (history_ratios, history_limits, clip_rows_by_horizon), then cap_rows.
+  Three seasons, 17,116 state cells; relWIS natural / log, coverage 50 / 95:
+    none (hub rows)      0.6423 / 0.6249   0.519 / 0.946
+    clip 15x             0.6433 / 0.6261   0.519 / 0.939
+    shrink 15x           0.6491 / 0.6311   0.508 / 0.928
+    maximum alone        0.6419 / 0.6261   0.517 / 0.931
+    maximum + shrink 15x 0.6478 / 0.6311   0.507 / 0.917
+    maximum + clip 15x   0.6428 / 0.6271   0.517 / 0.926
+  September-October (2023-24's 772 cells; the only October as-ofs among
+  the three seasons), relWIS / cov95: none 0.978 / .916, clip 15x 0.967 /
+  .916, shrink 15x 0.935 / .909, maximum 0.975 / .916, maximum + shrink
+  0.937 / .909, maximum + clip 0.967 / .916. November (2,012 cells): none
+  0.542 / .949, clip 0.548 / .913, shrink 0.561 / .867, maximum 0.542 /
+  .940, maximum + shrink 0.561 / .867, maximum + clip 0.548 / .910.
+  December on: every arm 0.652 to 0.658. 2026-27's four weeks (156
+  cells): shrink 0.757, maximum + shrink 0.761, none 0.806.
+  Week-cluster bootstrap, 2,000 resamples (negative = first arm better):
+    maximum - none          -0.0004 [-0.0031, +0.0019]; Sep-Oct -0.0032 [-0.0058, -0.0016]
+    maximum - clip 15x      -0.0014 [-0.0043, +0.0013]; Sep-Oct +0.0078; Nov -0.0062
+    max + shrink - shrink   -0.0013 [-0.0039, +0.0009]; Sep-Oct +0.0015 [+0.0004, +0.0033]; Nov -0.0006
+    max + shrink - clip 15x +0.0045 [-0.0008, +0.0099]; Sep-Oct -0.0308
+    max + clip - clip 15x   -0.0005 [-0.0033, +0.0018]
+    shrink 15x - clip 15x   +0.0058 [+0.0012, +0.0109]
+  Reading. (1) The pairing passes every registered test (no worse than
+  the shrink pooled or in any season; Sep-Oct within 0.005; coverage at
+  least 0.90 and 0.40; code clean), and all six predictions hold. Its
+  gain over the shrink alone is all one month, December 2023 (2023-24
+  -0.0074; 2024-25 and 2025-26 0.0000), and in October it costs a little:
+  +0.0015 on 2023-24's October weeks, +0.004 on this season's four. So
+  the Groundhog does not stand in the way of the pairing, and does not
+  argue for it; Wednesday's call rests on the Oracle's 84 weeks. (2) The
+  maximum alone is within noise of none, as the Submission lane found
+  post hoc (its 0.6406 against 0.6423 used the final truth; here,
+  through the pipeline's own rows, 0.6419 against 0.6423), but it costs 95% coverage (0.946
+  to 0.931) and 0.001 on the log scale, and it costs in a season that
+  outgrows its history: 2024-25 +0.0020, December and January at the
+  record peak (Pennsylvania, Massachusetts, Ohio, Michigan, h2-h3),
+  against 2023-24 -0.0077. The live round reads four earlier seasons,
+  2024-25 among them, so its ceiling is looser than any replay's. It does
+  not clear the gate alone (h3 blocks over 30x: none 3.8%, maximum 2.4%,
+  shrink 0.11%, pairing 0.04%). (3) Where it acts it trims the top: it
+  changes 27% of state blocks (Sep-Oct 59%), 38% of those only at the
+  0.99 and a further 26% from the 0.975 up, the 97.5% quantile down by a
+  median 9%. (4) The vintage against the final truth: the same ratios in
+  most cells, different in 66 of 97 weeks (mostly 2023-24: its vintages
+  start a week later, and the final carries Ohio's 2023-05-20 spike, 218,
+  12.3x at h0 in late-April windows against 2.6x in the vintage); scores
+  -0.0003 [-0.0009, +0.0002]. 2023-24 reads history from 2022-23 and the
+  spring of 2022 only, and its ceiling falls to 1.0x at h3 in mid-January
+  2024.
+  Ratios of the ceiling (maximum, vintage), median over the season's weeks
+  at h0-h3: 2023-24 3.0, 3.9, 5.0, 6.0x; 2024-25 and 2025-26 3.1, 4.4,
+  5.6, 7.2x; September-October 2023 3.1-5.2x at h0, 16-38x at h3; this
+  season's weeks 3.5-11.7x at h0, 19.7-37.8x at h3. At the 10-17 vintage
+  the h0 and h1 maxima (11.7x, 19.5x) are Puerto Rico on 2024-11-02 (6,
+  14, 15, then 137 and 228), the return of mandatory reporting after the
+  2024 voluntary window, not epidemic growth; h2 and h3 (26.2x, 37.8x)
+  are Oregon's real rise of November 2022 (6, 5, 32, then 51, 113, 376,
+  542). A reporting artefact can only loosen the ceiling, so it errs
+  toward doing nothing; whether the ceiling's history should leave out
+  the 2024 voluntary window is a question for 11-04, not Wednesday.
+  CODE CHECK: the ratios re-implemented independently from the written
+  rule equal history_ratios on all 97 replay weeks at 1 and at 0.975 (194
+  week-levels, 0 mismatches); every block the ceiling touched in every week
+  equals the rule as written (whole admissions, monotone, the median and
+  below untouched); tests/test_tailcap.py and app/tests/test_knobs.py pass.
+  Three findings for the Submission lane are under For other lanes
+  (2026-10-26, laptop). The full record (the pre-registration, the report,
+  the run log, the scripts) is in the repository:
+  [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md).
+
+- 2026-10-25 (23:42 UTC): THE HISTORICAL CEILING ON THE 84 WEEKS, PRE-REGISTERED
+  AND RUNNING (Ely's request in chat; the Submission lane's handoff of
+  2026-10-25 under For other lanes, predictions P1 to P4). Amendment 3 to
+  the screen's pre-registration, frozen at 23:41 UTC before any ceiling row
+  was computed, sha256 de645b23 (AMENDMENT3_HIST.md, in the repository
+  since 2026-10-26 under model-oracle-width-screen-2026-10/prereg/). Post
+  hoc on C0's stored weeks, no
+  engine time: the knob's own functions on main a99d53d
+  (flubnf.tailcap.history_ratios, history_limits, clip_rows_by_horizon,
+  then cap_rows), in the pipeline's order, the ratios from each week's
+  vintage. Arms: the maximum alone, the 0.975 alone, the maximum + shrink
+  15x, + clip 15x, + shrink 10x; against none, clip 15x, shrink 15x, clip
+  10x; all 84 weeks and the early-week subset (the first 8 scoreable weeks
+  of each season, 24, as in the C0 reading). The amendment makes P1 to P4
+  operational and writes the pass rule for the 2026-10-28 round before any
+  score: the checks pass, P1 to P3 hold (a miss in the favourable direction
+  is not a failure), and the pairing is no worse than shrink 15x on both
+  scales, in no season by more than 0.010, in 95% coverage by no more than
+  0.010, and in the early weeks by no more than 0.005. Known before any
+  score: the vintages start in 2022-02, so the 2023-24 as-ofs read history
+  from 2022-23 alone (the live round reads four seasons), and the screen's
+  only October as-ofs are the 4 of 2023-24. Checks on the smoke week
+  2024-12-07 (scores not read) pass: the comparators equal C0's cells, an
+  independent implementation of the ratios equals the code's, every
+  clipped block obeys its limit and the code's own touched count. Result
+  here well before Tuesday evening.
+
 - 2026-10-24 (17:08 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECOMMENDATION,
   FOR THE TEAM REVIEW (beside the Groundhog's of 2026-10-23 00:40 UTC,
   laptop). All six arms are read: C0, R20, R22, HP, HS and G (post hoc),
@@ -83,12 +344,13 @@ agent's.
      for the member, true for the filter. P5 half (net within 0.010; the
      early weeks gain rather than cost; the cost sits at the 2025-26
      peak). P6 right.
-  6. THE RECORDS: pre-registration, amendments, scorers, reports and the
-     per-cell tables are in the research archive on the lab Mac
-     (FluBNF-local/research/oracle-width-screen), not in the repository,
-     under the research-stays-local rule. Whether they go to a branch for
-     the review is Ely's call; until then, any number here can be
-     re-derived on request.
+  6. THE RECORDS: since 2026-10-26, at Ely's word, the pre-registration,
+     the amendments, the scorers, the reports and week-level sums are in
+     the repository:
+     [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md).
+     The per-cell tables and the stored samples stay in the research
+     archive on the lab Mac (FluBNF-local/research/oracle-width-screen),
+     on request.
 - 2026-10-24 (17:08 UTC): HS, THE PER-STATE PAST-SEASON BOX (THE SWARM
   CARRY): NULL. 84 weeks, no failed cell, checks A to C passed. The boxes
   are wide: eps1 widths a median 0.62, 0.74, 0.86 by test season, and
@@ -978,6 +1240,54 @@ agent's.
   avoid "seasonal pool" (Conformal Seasonal Pools is another method).
 
 ## For other lanes
+
+- 2026-10-26 (laptop), Submission: THREE FINDINGS ON THE HISTORICAL
+  CEILING (flubnf/tailcap.py and its wiring in app/ui/pipeline.py), from
+  the Groundhog's screen (Now, 2026-10-25 23:50 UTC, laptop; the record is
+  in [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md),
+  RUNLOG.md there). The code computes what its docstrings say: the ratios
+  equal an independent implementation on all 97 replay weeks, and every
+  clipped block equals the written rule. These findings are about the
+  rule's edges, and none touches the 2026-10-28 round, which runs the
+  shrink at 15x alone (the Oracle's entry of 2026-10-25 23:50 UTC).
+  (1) THE WEEK-53 WINDOW. history_ratios measures the calendar distance
+  as min(dw, 52 - dw) on ISO week numbers, which puts ISO week 1 at
+  distance 0 from week 53. 2026 has 53 ISO weeks, so the forecast date
+  2027-01-02 (ISO week 53, MMWR week 52) reads ISO weeks 51, 52, 1, 2 and
+  3. Shown on a synthetic series through history_ratios: a history week in
+  ISO week 3 (2025-01-18) enters, three weeks away by
+  flubnf.analogue.calendar_distance, the Groundhog donors' own rule, which
+  places week 53 at 52.5. One round is affected, and only if the ceiling
+  is on then. Two ways to fix it, your choice: reuse
+  flubnf.analogue.epiweek and calendar_distance, so the ceiling's calendar
+  is the donors' (MMWR rather than ISO numbering moves a few year-end
+  ratios), or wrap at the as-of ISO year's week count; either with a test
+  at 2027-01-02.
+  (2) THE UNRECORDED SKIP. In _run_all the truth read that builds obs and
+  hist_series sits in try / except Exception: pass, and the ceiling runs
+  only `if _hist_q and hist_series`. If that read fails, a run that asked
+  for output.tail_hist applies no ceiling and records no tail_hist entry,
+  and nothing on the run page says the knob did nothing. Suggested: when
+  the knob is set and hist_series is empty, record tail_hist with the
+  reason it was skipped (or refuse the run, as a broken filter install is
+  refused), with a test that makes the read fail.
+  (3) THE 2024 VOLUNTARY WINDOW IN THE HISTORY. The ceiling's history keeps
+  the weeks of the 2024 voluntary reporting window (May 1 to Oct 31, 2024)
+  and the jump when mandatory reporting returned. At the 10-17 vintage the
+  h0 and h1 maxima, 11.7x and 19.5x, are Puerto Rico's 2024-11-02 (6, 14,
+  15, then 137 and 228), and the next h1 cell is Arizona's 2024-10-12 (14,
+  40, 4, then 14 and 187); h2 and h3, 26.2x and 37.8x, are Oregon's real
+  rise of November 2022 (6, 5, 32, then 51, 113, 376, 542). Leaving out
+  every W whose base weeks (W-2 to W) fall in the window, the 10-17 maxima
+  at h0-h3 go from 11.7, 19.5, 26.2, 37.8x to 5.4, 9.2, 26.2, 37.8x (10-03
+  and 10-10: h0 9.7x to 5.4x). An artefact can only loosen the ceiling, so
+  the code as merged errs toward doing nothing. With the window out, the
+  ceiling would bind more at h0 and h1 in October, under the 15x line, so
+  that form would need its own screen before a round uses it. The
+  Groundhog's donors keep the window too, and there it is harmless (the
+  tail-cell screen's arm C4 removed it and moved the score by under
+  0.0002).
+  Please answer in your own file, as usual.
 
 - 2026-10-22, Submission (answering your handoffs of 2026-10-21 and
   10-22): the shrink and its rounding fix are under Now; please run the

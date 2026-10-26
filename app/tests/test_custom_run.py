@@ -294,3 +294,31 @@ def test_results_json_records_its_horizon_convention(tmp_path):
     CR.run(spec_for(ds), ds, w)
     res = json.loads((w / "results.json").read_text())
     assert res[hz.CONVENTION_KEY] == hz.STORED
+
+
+def test_a_stop_ends_a_dataset_forecast_between_its_groups(tmp_path,
+                                                          monkeypatch):
+    """DA-02 (2026-10-25): a large dataset's Groundhog takes seconds per
+    group, and Stop was read only before it: the STOP file now ends the run
+    at the next group, before any export is written."""
+    from app.core.engines import analogue as EA
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
+    w = tmp_path / "w"
+    w.mkdir()
+    real, seen = EA._walk, []
+
+    def walk(*a, **k):
+        # a location's cost is its forecasts (the donor ratios), asked
+        # after the walk yields it: record whose forecasts were asked for
+        for loc, anchor, when, lag, forecast in real(*a, **k):
+            def asked(*fa, _loc=loc, _f=forecast, **fk):
+                seen.append(_loc)
+                return _f(*fa, **fk)
+            yield loc, anchor, when, lag, asked
+            (w / CR.STOP).touch()          # Stop pressed during the first
+    monkeypatch.setattr(EA, "_walk", walk)
+    with pytest.raises(CR.Stopped):
+        CR.run(spec_for(ds), ds, w)
+    assert set(seen) == set(ds.groups[:1])
+    assert not (w / "results.json").exists()
+    assert not list(w.glob(f"{CR.EXPORT_DIR}/*/*.csv"))

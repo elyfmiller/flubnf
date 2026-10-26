@@ -111,6 +111,16 @@ def _live_root(season: str) -> Path:
     return RETRO_ROOT / season
 
 
+def _card_root(season: str, status: str) -> tuple:
+    """(root, is_seal) the season's card describes: the live tree while its
+    replay is active or has weeks (its progress, its time, its Resume),
+    else _season_root's (a sealed record when it holds more)."""
+    live = _live_root(season)
+    if status in _RETRO_ACTIVE or _weeks_done(live):
+        return live, False
+    return _season_root(season)
+
+
 @ttlcache.ttl_cache()
 def _seasons_on_disk(retro_root: Path) -> tuple:
     """Seasons under a retro root carrying a run record (cached per root)."""
@@ -400,7 +410,7 @@ def _retro_progress(season: str) -> dict:
     status = _season_status(season)
     meta = _season_meta(season)
     t = retro.timing(meta) if meta else {}
-    root, _is_seal = _season_root(season)
+    root, _is_seal = _card_root(season, status)
     done = _weeks_done(root)
     vints = retro.season_vintages(season)
     # the season's week list can grow after a replay finished (the hub

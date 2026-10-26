@@ -7,7 +7,8 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | What | Command |
 |---|---|
 | Both suites, as CI runs them (no hub, no engine) | `FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts=""` |
-| Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
+| Both suites, this machine's engine (never its hub: `app/tests/conftest.py` points `FLUBNF_HUB` at a missing folder) | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
+| The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
 CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
@@ -16,7 +17,8 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 
 | Missing on the machine | Skipped |
 |---|---|
-| FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
+| FluSight hub clone (always: the suite reads none) | hub-reading cases in `app/tests/test_playback.py`, `test_site_build.py` |
+| A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; `tests/test_sihrs_fit.py` |
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |

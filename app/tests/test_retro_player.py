@@ -96,7 +96,7 @@ def test_js_reads_only_contract_fields():
     # together as one JS surface)
     both = html + PLAYER_JS
     contract = {"asof", "locations", "truth", "seen", "models", "official",
-                "stats", "us_step"}
+                "stats", "us_step", "no_round"}
     fields = set(re.findall(r"\bpl\.(\w+)", both))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract

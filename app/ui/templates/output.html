@@ -14,7 +14,7 @@
 {%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
      else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
 <span class="out-bt">{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
-{%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress; when it finishes complete, this card shows its files.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
+{%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
 {%- endmacro %}
 {# One forecast date as a card (routes/output.forecast_dates): its
    reference date and window, the as-of and the data the runs read, then
@@ -80,10 +80,10 @@
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
 <span class="uk-tt-line">Your forecasts by date, newest first, as hub-format CSV files.</span>
-<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The round open now is outlined; past dates and dates that are not FluSight rounds take one line each, with their checks, coverage and folder on each run's page.</span>
+<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The newest date, a round open or coming (outlined) and a date a run is writing now each get a card; other dates take one line each, with their checks, coverage and folder on each run's page.</span>
 <span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
 <span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
-<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest run that finished complete, else from the newest run that wrote one; the other runs' files stay in their run folders.</span>
+<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest complete run on all 53 locations, else the newest complete run, else the newest run that wrote one; a run made in the round's own week comes before a later vintage run, and the other runs' files stay in their run folders.</span>
 <span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub. Its weekly report still shows above when it is the newest run, badged.</span>
 <span class="uk-tt-line">Files an earlier version wrote under retired hub names are not listed; they stay on disk and in <a href="/storage">Storage</a>.</span>
 <span class="uk-tt-line">The copy buttons beside a file copy its path, or the command that runs it through the hub's own validator (scripts/validate_submission.R; it needs R and the hubValidations package).</span>
@@ -108,10 +108,12 @@
  {{ tips.heading("Weekly report", "out-report", after=rep_when, aside=rep_acts) }}
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
  {% if archive_dates %}
- {# each earlier week by its reference date, as the cards are headed; the
-    value stays the as-of date the archive is filed under #}
+ {# each archived week by its reference date, as the cards are headed
+    (the card's own week too when the card shows a newer run on a few
+    states or a modified one); the value stays the as-of date the archive
+    is filed under #}
  <div class="out-arch">
-  <label for="archreport">Earlier weeks</label>
+  <label for="archreport">Archived weeks</label>
   <select id="archreport">
    {% for d, ref in archive_dates %}<option value="{{ d }}">{{ ref }} (as of {{ d }})</option>{% endfor %}
   </select>

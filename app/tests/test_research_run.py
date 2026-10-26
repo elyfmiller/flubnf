@@ -84,7 +84,8 @@ def _capture_run(monkeypatch, tmp_path):
     return started
 
 
-def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
+def test_run_accepts_the_research_selection(tmp_path, monkeypatch,
+                                            pf_engine_ready):
     started = _capture_run(monkeypatch, tmp_path)
     r = client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"], "members": "3",
@@ -179,7 +180,8 @@ def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
     assert "research" not in head(client.get(f"/runs/{nrid}").text)
 
 
-def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch):
+def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch,
+                                                    pf_engine_ready):
     """The re-run path reposts the recorded spec verbatim, particles
     included, so a research run's knob survives the shortcut."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)

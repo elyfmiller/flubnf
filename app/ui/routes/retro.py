@@ -100,6 +100,12 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     from app.ui import datasets_ui as _dsu
     own_tab = bool(dataset) or tab == "own"
     if own_tab:
+        # a dataset whose files are incomplete: said, and a whole one
+        # opened (choices() leaves it out)
+        ds = _dsu.get_dataset(dataset) if dataset else None
+        why = _dsu.damaged(ds) if ds is not None else ""
+        if why:
+            _flash(why, "warn")
         ids = [i for i, _ in _dsu.choices()]
         # tab=own, or a dataset since deleted: the first stored one
         if ids and dataset not in ids:
@@ -116,23 +122,27 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     # first option is the one selected)
     for s in sorted(available_seasons(), reverse=True):
         total = len(season_vintages(s))
-        root, is_seal = retro_seasons._season_root(s)
-        done = retro_seasons._weeks_done(root)
         prog = retro_seasons._retro_progress(s)
         status = prog["status"]
+        # the live replay's tree while it runs or has weeks, else the
+        # season's best (a sealed record): its facts, never a mix
+        root, is_seal = retro_seasons._card_root(s, status)
+        done = retro_seasons._weeks_done(root)
         # head scores: one relWIS per scored model
         _summ = _retro.run_summary(root)
         rel = _summ.get("headline_rel")
         rels = _summ.get("headline_rels") or ({"": rel} if rel is not None
                                               else {})
-        # one-click resume from the LIVE root's record (never the seal's)
-        resume_fields = None
-        if status in ("stopped", "interrupted"):
-            resume_fields = _retro.resume_form_fields(
-                _retro.read_meta(_live_root(s)))
         # weeks the season gained after this replay finished (hub archive
         # or shipped snapshots): Resume runs them (retro_seasons._retro_progress)
         added = list(prog.get("added") or [])
+        # one-click resume from the LIVE root's record (never the seal's):
+        # a stopped or interrupted replay, or a finished one that gained weeks
+        resume_fields = None
+        if status in ("stopped", "interrupted") or (status == "done"
+                                                    and added):
+            resume_fields = _retro.resume_form_fields(
+                _retro.read_meta(_live_root(s)))
         seasons.append({"name": s, "total": max(total, int(prog.get("total") or 0)),
                         "done": done,
                         "added": added, "added_n": len(added),
@@ -159,7 +169,6 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         "eta_s": prog["eta_s"],
                         "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
-    from flubnf.settings import PY_ENGINE, PYBNF
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
@@ -168,8 +177,10 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
                                        "knob_panel": _knob_panel("retro"),
-                                       "engine_ok": PY_ENGINE.exists()
-                                       and PYBNF.exists()})
+                                       # a half-installed engine cannot
+                                       # run the Oracle preset either
+                                       "engine_ok": pipeline._pf_engine_state()
+                                       == "ready"})
 
 
 @router.get("/api/retro/progress")
@@ -449,8 +460,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               locations: str = Form("panel6"),
               custom_locations: list = Form([]),
               national: str = Form("1"),
-              particles: int = Form(10_000),
-              replicates: int = Form(3),
+              # as typed: the knob parser refuses a non-number in words
+              particles: str = Form("10000"),
+              replicates: str = Form("3"),
               width: int = Form(4),
               engine: str = Form("pf"),
               mode: str = Form("resume"),
@@ -516,6 +528,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 "Not started: choose Oracle SIHRS and Groundhog, or "
                 "Groundhog alone.")
+        # the Oracle preset needs the particle-filter engine: refused before
+        # anything is archived (every week used to fail into failures.log
+        # and the season read "complete" with none done)
+        pf_state = pipeline._pf_engine_state() if engine == "pf" else "ready"
+        if pf_state != "ready":
+            return _refused(
+                "Not started: the Oracle SIHRS needs the particle-filter "
+                f"engine, {pipeline._pf_engine_missing(pf_state)}. "
+                "Choose Groundhog only.")
         from app.core import us_national as usn
         all_states = _retro_state_names()
         if locations == "all":
@@ -811,6 +832,13 @@ def retro_engine_label(engine: str) -> str:
     return retro.engine_label(engine)
 
 
+def _replaying(root: Path, season: str, archive: str = "") -> bool:
+    """True when `root` is the live tree of a season still replaying: its
+    page renders from the caches it has (the worker finalizes at the end)."""
+    return (not archive and Path(root) == _live_root(season)
+            and retro_seasons._season_status(season) in _RETRO_ACTIVE)
+
+
 # === Retrospective season page (/retro/{season}) and its APIs -> retro_season.html ===
 @router.get("/retro/{season}", response_class=HTMLResponse)
 def retro_results(request: Request, season: str, week: str = "",
@@ -849,8 +877,13 @@ def retro_results(request: Request, season: str, week: str = "",
     # the background finalize job and the page shows a polled preparing
     # state (after a short grace wait). A job covering these exact inputs is
     # believed, so an unsettled-truth season never loops.
-    if ((request.query_params.get("rescore") and not _is_sealed_root(root))
-            or _results_pending(root)):
+    # A season still replaying renders from the caches it has, beside its
+    # live card: a job per visit would rerun finalize on every new week
+    # (the worker finalizes at the end).
+    live = _replaying(root, season, archive)
+    if not live and ((request.query_params.get("rescore")
+                      and not _is_sealed_root(root))
+                     or _results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         job["done"].wait(_RESULTS_GRACE_S)
@@ -867,7 +900,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "heads": {}, "curve": [], "curves": {}, "states": [],
                 "season_models": [], "member_colors": _member_colors(),
                 "us_row": None,
-                "us": None, "pooled_note": "",
+                "us": None, "pooled_note": "", "pooled_n": None,
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
                 "timeline": weeks, "notes": {},
@@ -942,14 +975,26 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         from app.core.report_season import cumulative_curves
         curves = cumulative_curves(df)
         curve = curves.get("pf") or next(iter(curves.values()), [])
+    # a season still replaying shows what its caches hold: no national
+    # aggregate built in the request (the worker builds it at the end)
+    live = _replaying(root, season, archive)
     # national series via usn.resolve (fitted > constructed > officials), with
     # its provenance label printed; a failure never costs the page
     us = None
-    if scoreable:
-        try:
-            us = usn.resolve(root, df_all)
-        except Exception:
-            us = None
+    try:
+        # unscored too: a replay that fitted US is labelled so (its
+        # forecast is drawn), with no aggregate to build
+        us = usn.resolve(root, df_all,
+                         allow_aggregate=scoreable and not live)
+    except Exception:
+        us = None
+    # the jurisdictions the pooled figures cover (the live scores' tag):
+    # the replay's own, states only, else those the scores hold
+    rec_locs = (retro.read_meta(root).get("settings") or {}).get("locations")
+    pooled_n = (len(usn.state_names(rec_locs)) if isinstance(rec_locs, list)
+                and rec_locs else
+                int(df["location"].nunique()) if scoreable
+                and "location" in df.columns else None)
     # us_row (member -> relWIS plus provenance) is a ratio of sums, so it is
     # offered to that convention only; `us` resolves either way for the player
     us_row = (us.as_dict() if (us is not None and us.has_scores
@@ -1007,7 +1052,7 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     from app.core import usmap as _um
     map_legend = [(_um.cat_fill(c), c.replace("_", " "))
                   for c in _um.CATS] + [(_um.NO_DATA, "no data")]
-    if not scoreable and not score_error:
+    if not scoreable and not score_error and not live:
         # scored zero cells with no exception. That is benign while nothing
         # can be scored yet: a cell needs settled truth AND a
         # FluSight-baseline round for its date (scoring keeps only the cells
@@ -1089,8 +1134,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         if have_truth != 0:
             score_error = "scored zero cells with no exception. " + probe
     # no scores: the page says why above the player (a scoring failure as
-    # an alert, unsettled truth as an empty state); the weekly maps stay
-    unsettled = not scoreable and not score_error
+    # an alert, unsettled truth as an empty state); the weekly maps stay.
+    # A season still replaying is scored when it finishes: neither.
+    unsettled = not scoreable and not score_error and not live
     # comparators that submitted at least once this season (player toggles)
     try:
         official_catalog = _playback.season_official_catalog(root)
@@ -1116,12 +1162,16 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         # provenance travels WITH the numbers (fitted vs constructed)
         "us": (us.as_dict() if us is not None
                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
-        "pooled_note": usn.POOLED_SCOPE_NOTE,
+        # the pooled figure's scope: the jurisdictions this replay covers
+        "pooled_note": usn.pooled_scope_note(
+            pooled_n, us.provenance if us is not None else ""),
+        "pooled_n": pooled_n,
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "map_legend": map_legend, "map_horizon": MAP_HORIZON,
         "score_error": score_error if not scoreable else "",
+        "score_plain": score_error_plain(score_error) if not scoreable else "",
         "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
         "no_data_note": _playback.NO_DATA_NOTE,
@@ -1133,7 +1183,11 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         "imported": imported,
         # the map's click opens a state's forecast detail (abbr -> name)
         "state_names": by_abbr,
-        "n_weeks": len(weeks) if scoreable else 0}
+        # the title's weeks scored: the as-of weeks with a scored cell, none
+        # where the convention has no figures
+        "n_weeks": (int(df["asof"].nunique())
+                    if figs is not None and figs.available
+                    and "asof" in df.columns else 0)}
 
 
 #: the horizon the season page's categorical map shows (retro_prep
@@ -1146,6 +1200,19 @@ MAP_HORIZON = "horizon 0, the week after the newest data"
 #: the player's message when a week cannot be scored for lack of any
 #: observed data
 NO_TRUTH = "No observed data to score against. Update data from the Data tab."
+
+#: scoring failures a student can act on, in plain words (the season page's
+#: alert; the raw message stays in its Details fold)
+SCORE_FAILURES = (("model-output/FluSight-baseline",
+                   "The FluSight baseline forecasts are not on this computer "
+                   "yet. Update data from the Data tab, then open this page "
+                   "again."),)
+
+
+def score_error_plain(err: str) -> str:
+    """The plain sentence for a known scoring failure, else ""."""
+    return next((plain for key, plain in SCORE_FAILURES
+                 if key in (err or "")), "")
 
 
 @router.get("/api/retro/{season}/playback/{asof}")

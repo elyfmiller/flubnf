@@ -281,6 +281,12 @@ def last_run_values(ledger_rows: list) -> dict | None:
     from app.core import knobs as K
     from app.core import us_national as _usn
     locs = list(spec.get("locations") or [])
+    # a state left out in Data issues was still picked: the form's pick is
+    # the run's before the box's choices
+    dc = (spec.get("extra") or {}).get("data_choices") or {}
+    locs += [l for l, st in (dc.get("states") or {}).items()
+             if isinstance(st, dict) and st.get("choice") == "omit"
+             and l not in locs]
     states = _usn.state_names(locs)
     us = len(locs) > len(states)
     try:

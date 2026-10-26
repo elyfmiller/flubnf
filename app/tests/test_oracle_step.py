@@ -431,7 +431,8 @@ def test_run_season_records_the_oracle_setting(tmp_path, monkeypatch):
     assert "oracle" not in retro.read_meta(root3)["settings"]
 
 
-def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch):
+def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch,
+                                                                    pf_engine_ready):
     """The Retrospective run form -> _retro_bg -> run_season -> run_week path:
     fits from the season start, applies the step with that week's vintage and
     donor pool, records settings.oracle = "applied", writes oracle.json,
@@ -646,8 +647,10 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
     status_before = dict(ui_state._status)
     try:
         ui_state._status["running"] = None
-        r = client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
-                                      "custom_locations": ["Ohio"], "engine": "all",
+        # (the word "custom" is the retro form's; /run takes names, and an
+        # unknown name is refused since the 2026-10-25 hunt, FC-08)
+        r = client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
+                                      "engine": "all",
                                       "replicates": "1", "oracle": "none"},
                         follow_redirects=False)
         assert r.status_code == 303
@@ -663,8 +666,8 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
         assert started[-1].extra.get("oracle") == "none"
         # and a row without it re-runs the member
         ui_state._status["running"] = None
-        client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
-                                  "custom_locations": ["Ohio"], "engine": "all",
+        client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
+                                  "engine": "all",
                                   "replicates": "1"}, follow_redirects=False)
         assert "oracle" not in started[-1].extra
     finally:

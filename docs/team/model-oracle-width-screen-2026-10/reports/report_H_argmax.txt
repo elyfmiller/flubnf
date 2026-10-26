@@ -1,0 +1,7 @@
+2026-05-09 h0: max 12.34 from fips 39 base week 2023-05-13 (recent 17.7) -> 218 at W+1 (neighbours 17, 14)
+2026-05-09 h1: max 12.11 from fips 39 base week 2023-05-06 (recent 18.0) -> 218 at W+2 (neighbours 17, 14)
+2024-04-27 h0: max 2.55 from fips 33 base week 2022-04-16 (recent 13.3) -> 34 at W+1 (neighbours 19, 31)
+2023-10-21 h3: max 37.81 from fips 41 base week 2022-11-05 (recent 14.3) -> 542 at W+4 (neighbours 364, 658)
+2023-10-07 h1: max 8.65 from fips 21 base week 2022-10-22 (recent 14.3) -> 124 at W+2 (neighbours 66, 223)
+2025-12-06 h3: max 44.19 from fips 27 base week 2024-11-30 (recent 12.3) -> 545 at W+4 (neighbours 227, 952)
+2026-01-10 h3: max 10.71 from fips 11 base week 2024-12-28 (recent 19.3) -> 207 at W+4 (neighbours 58, 197)

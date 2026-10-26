@@ -397,6 +397,34 @@ def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
     assert "getDay()" not in script
 
 
+def test_a_quick_run_from_a_model_page_says_which_week_it_ran(tmp_path, monkeypatch):
+    """The model pages' quick form is a bare date box: a non-Saturday snaps
+    to the newest week on or before it, and the run says so. The Forecast
+    form shows its anchor week, so a run from there says nothing."""
+    started = _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
+    for referer, said in (("/model/analogue", True), ("/forecast", False),
+                          ("/models", True)):
+        ui_state._status["running"] = None
+        ui_state._status["flash"] = None
+        r = client.post("/run", data={"forecast_date": "2098-10-20",   # a Monday
+                                      "locations": ["Ohio"], "engine": "analogue"},
+                        headers={"referer": f"http://testserver{referer}"},
+                        follow_redirects=False)
+        assert r.status_code == 303 and started[-1].forecast_date == W3, referer
+        flash = ui_state._status.get("flash") or ""
+        assert (f"Anchor week {W3}: the newest week on or before 2098-10-20."
+                in flash) is said, (referer, flash)
+    # a typed Saturday is run as typed, with nothing to say
+    ui_state._status["running"] = None
+    ui_state._status["flash"] = None
+    client.post("/run", data={"forecast_date": W2, "locations": ["Ohio"],
+                              "engine": "analogue"},
+                headers={"referer": "http://testserver/model/analogue"},
+                follow_redirects=False)
+    assert "Anchor week" not in (ui_state._status.get("flash") or "")
+
+
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
     _capture(monkeypatch, tmp_path)
     hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)

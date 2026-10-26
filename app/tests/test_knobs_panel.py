@@ -173,6 +173,33 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
         assert f'<span class="fc-lk-why">{escape(lk.why)}</span>' in panel
 
 
+def test_no_auxiliary_bank_turns_the_donor_weights_off():
+    """FC-11 (2026-10-25): with the auxiliary bank at none the run is the
+    bare, pooled analogue, yet the panel showed the own-state weight and
+    the kernel at their shipped values and the Run row then read "Differs".
+    The three donor-weight rows are off (posted never, skipped by the Run
+    row's comparison) while the bank is none, and back on with it."""
+    js = (Path(__file__).resolve().parents[1] / "ui" / "static"
+          / "model_settings.js").read_text()
+    assert ("var BARE = ['groundhog.aux_weight', 'groundhog.own_share', "
+            "'groundhog.kernel_sd'];") in js
+    assert "var off = !!aux && aux.value === 'none';" in js
+    assert "if (BARE.indexOf(el.dataset.knob) >= 0) el.disabled = off;" in js
+    assert "if (aux) aux.addEventListener('change', bare);" in js
+    assert "bare(); syncSeason(); filter(); update();" in js
+    # Reset puts the bank back first, so the weights reset with the rest
+    assert "if (aux) { aux.value = aux.dataset.default || ''; bare(); }" in js
+    # the Run row skips an off field, and the panel counts none as changed
+    tpl = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+           / "forecast.html").read_text()
+    assert "if (el.disabled || el.closest('[hidden]') || !(k in LAST.knobs)) return;" in tpl
+    assert "if (el.disabled) return false;" in js
+    # and an off row looks it, as a coming-later one does
+    css = (Path(__file__).resolve().parents[1] / "ui" / "static"
+           / "nau.css").read_text()
+    assert ".ms-later,.ms-row:has(> [data-knob]:disabled){opacity:.62}" in css
+
+
 def test_every_panel_input_has_an_associated_label():
     for page in ("/forecast", "/retro"):
         f = _panel_form(client.get(page).text)
@@ -424,7 +451,8 @@ WEEKLY = {"replicates": "1", "particles": "1000",
           "knob.oracle.w": "0.25"}
 
 
-def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch):
+def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch,
+                                                         pf_engine_ready):
     """The review of M3: a hidden row's field was turned off, so a
     Groundhog-only run posted none of the particle filter's settings and
     the next run's form lost the owner's weekly ones. The browser posts
