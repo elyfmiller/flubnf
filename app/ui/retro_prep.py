@@ -198,11 +198,14 @@ def _ensure_results_job(root: Path, season: str,
 def _job_covered(root: Path) -> dict | None:
     """The completed job that ran on this root's CURRENT inputs, or None.
     Empty scores plus a covering job means truth has not settled (or
-    job['error']): render that state, do not recompute every visit."""
+    job['error']): render that state, do not recompute every visit. A
+    sealed record's job (no inputs stamp) covers it: a seal is never
+    recomputed."""
     from app.core import retro
     job = _results_jobs.get(str(root))
     if (job and job["done"].is_set()
-            and job["inputs"] >= retro.newest_samples_mtime(root)):
+            and (job["inputs"] is None
+                 or job["inputs"] >= retro.newest_samples_mtime(root))):
         return job
     return None
 
