@@ -141,11 +141,23 @@ FALLBACK_NOTES = {
 #: number. pooled_frame is the one gate; app/tests/test_us_national.py enforces it.
 POOLED_INCLUDES_US = False
 
-#: what every surface prints about the pooled figure's scope
-POOLED_SCOPE_NOTE = (
-    "Pooled relWIS covers the fitted states, DC and Puerto Rico; the US "
-    "national cell, their sum, is scored apart and never joins the pooled "
-    "average.")
+def pooled_scope_note(n_states: int | None = None,
+                      provenance: str = "") -> str:
+    """What a page prints about the pooled figure's scope: the replay's own
+    jurisdictions when it replayed fewer than the 52. The US cell is fitted
+    as its own location or summed from the states (NOTES), never pooled:
+    named as their sum only when it is one (AGGREGATED)."""
+    who = ("the 50 states, DC and Puerto Rico" if not n_states
+           or n_states >= 52 else f"the {int(n_states)} replayed "
+           f"jurisdiction{'s' if int(n_states) != 1 else ''}")
+    cell = ("the US national cell, their sum," if provenance == AGGREGATED
+            else "the US national cell")
+    return (f"Pooled relWIS covers {who}; {cell} is scored apart and never "
+            "joins the pooled average.")
+
+
+#: the pooled figure's scope on a whole replay (pooled_scope_note)
+POOLED_SCOPE_NOTE = pooled_scope_note()
 
 
 # ---------------------------------------------------------- identification
@@ -470,6 +482,13 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
             scores_df = playback._season_scores(root)
         except Exception:
             scores_df = None
+    # the replay's own settings (run_meta.json): whether it fitted US, and
+    # which jurisdictions it replayed; {} for a season from before them
+    try:
+        from app.core import retro as _retro
+        settings = (_retro.read_meta(root) or {}).get("settings") or {}
+    except Exception:
+        settings = {}
 
     fitted = from_scores(scores_df)
     if fitted is not None and fitted.has_scores:
@@ -484,6 +503,18 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
     if scores_df is not None and "location" in getattr(scores_df,
                                                        "columns", ()):
         n_states = int(pooled_frame(scores_df)["location"].nunique()) or None
+
+    # a replay that fitted US draws a fitted US forecast before (or
+    # without) its scores: it is labelled fitted, its figures pending
+    if settings.get("national"):
+        return UsNational(FITTED, n_states=n_states)
+    # the states of a replay of part of the 52 do not sum to the nation
+    locs = settings.get("locations")
+    replayed = len(state_names(locs)) if locs else None
+    if replayed is not None and replayed < 52:
+        return UsNational(OFFICIALS_ONLY, n_states=n_states, reason=(
+            f"only {replayed} of the 52 jurisdictions were replayed, so "
+            "their forecasts do not sum to the nation"))
 
     if not allow_aggregate:
         return UsNational(OFFICIALS_ONLY, n_states=n_states,
