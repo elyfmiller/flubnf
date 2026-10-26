@@ -50,7 +50,7 @@ Base: origin/dev 12281e7
 ## Checks
 - New `app/tests/test_dataset_sufficiency.py` (8): all fail on dev, pass here. Two fixtures were one week long for other purposes and now hold two (`test_datasets.py::test_minted_keys_stay_unique_past_99_groups`, `test_datasets_ui.py::test_a_multi_target_file_offers_its_targets`); what they test is unchanged.
 - `ruff check --select F821,F823,F811,F401 app/ui` clean.
-- Live: each bug on a server from the prototype (above). Full suite: running; counts follow.
+- Live: each bug on a server from the prototype (above). Full suite on the prototype (3.12): 3492 passed, 155 skipped, 0 failed.
 
 ## Patch
 G07/proposal.patch (git diff origin/dev...proto/G07-A)
