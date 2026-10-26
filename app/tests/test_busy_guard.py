@@ -477,6 +477,46 @@ def test_stop_during_starting_ends_a_dataset_run_stopped(tmp_path,
     assert ui_state._status["running"] is None
 
 
+def test_the_groundhog_stops_between_locations_when_asked(tmp_path, monkeypatch):
+    """The walk calls `stop` before each location, so a press reaches a
+    dataset of hundreds of groups within one group, not after them all."""
+    from app.core.engines import analogue as eng
+    from app.core.runs import RunSpec
+    weeks = [f"2025-12-{d:02d}" for d in (6, 13, 20, 27)]
+    rows = ["date,location,location_name,value"]
+    for i, w in enumerate(weeks):
+        for fips, name, base in (("39", "Ohio", 10), ("49", "Utah", 50),
+                                 ("06", "California", 70)):
+            rows.append(f"{w},{fips},{name},{base + i}")
+    v = tmp_path / "v.csv"
+    v.write_text("\n".join(rows) + "\n")
+    locs = tmp_path / "locations.csv"
+    locs.write_text("location,location_name,abbreviation\n39,Ohio,OH\n"
+                    "49,Utah,UT\n06,California,CA\n")
+    monkeypatch.setattr(eng, "vintage_path", lambda d: str(v))
+    monkeypatch.setattr(eng, "LOCATIONS", str(locs))
+    walked = []
+    monkeypatch.setattr(eng.AN, "forecast",
+                        lambda anchor, as_of, horizon, bank, levels, **kw:
+                        walked.append(anchor) or {0.5: anchor})
+
+    class Pressed(Exception):
+        pass
+    asked = []
+
+    def stop():
+        asked.append(1)
+        if len(asked) == 2:                 # pressed after the first group
+            raise Pressed
+    spec = RunSpec(engine="analogue", forecast_date=weeks[-1],
+                   locations=["Ohio", "Utah", "California"])
+    with pytest.raises(Pressed):
+        eng.run(spec, stop=stop)
+    assert len({a for a in walked}) == 1    # one location forecast, not three
+    # without a stop the walk is as it was
+    assert set(eng.run(spec)) == {"Ohio", "Utah", "California"}
+
+
 def test_a_run_without_a_stop_is_not_stopped(tmp_path, monkeypatch):
     """The flag is cleared by a fresh claim and at the end of every run: an
     old press never stops the next run."""
@@ -492,3 +532,64 @@ def test_a_run_without_a_stop_is_not_stopped(tmp_path, monkeypatch):
                                  locations=["Ohio"]))
     (status, _w), = _ledger_rows(tmp_path)
     assert status == "ok"
+
+
+# ------------------------------------- Stop during a Groundhog-only run (FC-01)
+
+def _groundhog_run_with_a_stop(tmp_path, monkeypatch, engine_run):
+    import app.core.runs as runs_mod
+    from app.core.engines import analogue as an_engine
+    from app.core.runs import RunSpec
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(an_engine, "run", engine_run)
+    ui_state._status.update({"running": "starting", "workroot": None})
+    ui_state._status.pop("stop_requested", None)
+    ui_pipeline._run_all(RunSpec(engine="analogue",
+                                 forecast_date="2098-01-03",
+                                 locations=["Ohio", "Utah", "Vermont"]))
+    (status, workroot), = _ledger_rows(tmp_path)
+    return status, Path(workroot)
+
+
+def test_stop_during_the_groundhog_ends_the_run_stopped_without_files(
+        tmp_path, monkeypatch):
+    """The 2026-10-25 hunt (FC-01): Stop on a Groundhog-only run said
+    "stopping" and the run ended ok with its submission file. The engine is
+    asked between its locations; the run ends stopped, no file written."""
+    asked = []
+
+    def engine_run(spec, stop=None, **kw):
+        out = {}
+        for loc in spec.locations:
+            stop()
+            asked.append(loc)
+            (Path(ui_state._status["workroot"]) / "STOP").touch()
+            out[loc] = {}
+        return out
+    status, workroot = _groundhog_run_with_a_stop(tmp_path, monkeypatch,
+                                                  engine_run)
+    assert status == "stopped" and asked == ["Ohio"]
+    assert not list(workroot.glob("submission/*/*.csv"))
+    assert ui_state._status["running"] is None
+
+
+def test_stop_after_the_groundhog_ends_the_run_before_its_files(
+        tmp_path, monkeypatch):
+    """An engine that cannot be asked mid-way (the stop keyword absent):
+    the press is read before any file is written."""
+    def engine_run(spec):
+        (Path(ui_state._status["workroot"]) / "STOP").touch()
+        return {}
+    status, workroot = _groundhog_run_with_a_stop(tmp_path, monkeypatch,
+                                                  engine_run)
+    assert status == "stopped"
+    assert not list(workroot.glob("submission/*/*.csv"))
+
+
+def test_the_guards_stop_leaves_its_notice_for_the_page_proceed_opens():
+    """WI-10: the modal's background stop followed the stop route's 303,
+    and that unseen page took its notice ("Stopping 2024-25 after the
+    fits in flight.")."""
+    html = client.get("/forecast").text
+    assert "fetch(p.conflict.stop,{method:'POST',redirect:'manual'})" in html

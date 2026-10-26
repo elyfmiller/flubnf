@@ -480,3 +480,43 @@ def test_dataset_pages_never_call_the_plain_filter_the_oracle_member():
         for m in re.finditer(r"(?<!Oracle )SIHRS", text):
             window = text[max(0, m.start() - 12):m.end() + 14]
             assert _ALLOWED.search(window), (url, window)
+
+
+# ------------------------------------------- a replay holds the console's claim
+
+def _replaying(ds):
+    """A dataset replay as replay_start leaves it: its own claim, and the
+    console's (a running label and the dataset) beside it."""
+    from app.core import custom_retro as CX
+    stamp = CX.new_stamp(ds)
+    CX.replay_dir(ds, stamp).mkdir(parents=True)
+    DU._REPLAY.update({"id": ds.id, "stamp": stamp})
+    ui_state._status.update({"running": f"dataset-replay:{stamp}",
+                             "dataset_id": ds.id, "workroot": None,
+                             "phase": ""})
+    return CX.replay_dir(ds, stamp)
+
+
+def test_the_forecast_tabs_stop_stops_a_dataset_replay():
+    """WI-03 (2026-10-25): Stop run on the Forecast tab, and the guard's
+    Stop run and proceed (both POST /run/stop), set a flag nothing read and
+    the Groundhog replay ran to its last week. They stop the replay as its
+    own page's Stop does."""
+    out = _replaying(stored())
+    r = client.post("/run/stop", follow_redirects=False)
+    assert r.status_code == 303
+    assert (out / "STOP").exists()
+    assert ui_state._status["phase"] == "stopping…"
+    assert not ui_state._status.get("stop_requested")
+
+
+def test_a_dataset_in_a_replay_says_a_replay_holds_it():
+    """DA-14: deleting a dataset during its replay said "a run on it is in
+    progress" (the replay sets the console's claim too)."""
+    ds = stored()
+    _replaying(ds)
+    assert DU.busy_with(ds.id) == "a replay on it is in progress"
+    client.post(f"/data/datasets/{ds.id}/delete", follow_redirects=False)
+    assert ("Kids not deleted: a replay on it is in progress."
+            in ui_state._status["flash"])
+    assert D.get(ds.id) is not None
