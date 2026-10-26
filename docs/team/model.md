@@ -11,6 +11,33 @@ agent's.
 
 ## Now
 
+- 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
+  REPOSITORY (Ely: "make sure your results are visible to the Team agent
+  through the repo"):
+  [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md),
+  beside the Groundhog's
+  [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md).
+  For the Team agent's review of this lane's entries of 2026-10-22 to
+  2026-10-25 (the width screen, its recommendation, the historical
+  ceiling). The folder holds:
+  - prereg/: PREREG.md and amendments REG, 1, 2 (X) and 3 (the ceiling),
+    byte-identical to the frozen files; `shasum -a 256 -c SHA256SUMS`
+    verifies all five.
+  - scripts/: the replay launcher, the scorers (checks A to C, A' to C',
+    A3 to D3) and every script that printed a reported number, including
+    two run inline before and saved now (c0_early.py and h_extra.py, each
+    re-run and equal to its report).
+  - reports/: the full outputs.
+  - data/: week-level sums for every arm and rule. Pooled relWIS, coverage
+    and the week-cluster bootstrap are functions of these; the README's
+    example recomputes the pairing's interval, -0.0060 [-0.0140, -0.0004].
+  The per-cell tables (1.3 million rows for C0) and the stored samples stay
+  on the lab Mac, on request. Research files, not runtime: 1.6 MB, under
+  docs/, which no test reads. In the copies the lab's home directory is
+  written `~`, and one failed first run's traceback is replaced by a note
+  (README). The two record lines below that said the records stay on the
+  lab Mac now point here.
+
 - 2026-10-25 (23:50 UTC): THE HISTORICAL CEILING ON THE ORACLE'S 84 WEEKS: IT
   DOES NOT PASS FOR 2026-10-28, ON THE RULE WRITTEN FIRST (amendment 3,
   de645b23, frozen 23:41 UTC; announced above). So by the Submission
@@ -129,10 +156,11 @@ agent's.
     either. Its gain is 2023-24's, a season whose ceiling came from one
     history season. In 2025-26, the season most like the live one, it
     changes nothing and costs a little coverage. Ely's call.
-  Records: research/oracle-width-screen on the lab Mac (AMENDMENT3_HIST.md,
-  hist_arm.py, report_hist.py, arms/H_C0.pkl, logs/hist_C0.log,
-  report_H.txt, report_H_extra.txt, report_H_argmax.txt,
-  report_X_early24.txt).
+  Records: in the repository,
+  [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md)
+  (AMENDMENT3_HIST.md, hist_arm.py, report_hist.py, report_H.txt,
+  report_H_extra.txt, report_H_argmax.txt, report_X_early24.txt, and the
+  week sums); the per-cell tables (arms/H_C0.pkl) stay on the lab Mac.
 
 - 2026-10-25 (23:50 UTC, laptop): THE HISTORICAL CEILING ON THE GROUNDHOG'S
   RETRO SEASONS: THE PAIRING IS SUPPORTED BY THE PRE-REGISTERED RULE, AND
@@ -221,8 +249,9 @@ agent's.
   AND RUNNING (Ely's request in chat; the Submission lane's handoff of
   2026-10-25 under For other lanes, predictions P1 to P4). Amendment 3 to
   the screen's pre-registration, frozen at 23:41 UTC before any ceiling row
-  was computed, sha256 de645b23 (research/oracle-width-screen/
-  AMENDMENT3_HIST.md on the lab Mac). Post hoc on C0's stored weeks, no
+  was computed, sha256 de645b23 (AMENDMENT3_HIST.md, in the repository
+  since 2026-10-26 under model-oracle-width-screen-2026-10/prereg/). Post
+  hoc on C0's stored weeks, no
   engine time: the knob's own functions on main a99d53d
   (flubnf.tailcap.history_ratios, history_limits, clip_rows_by_horizon,
   then cap_rows), in the pipeline's order, the ratios from each week's
@@ -315,12 +344,13 @@ agent's.
      for the member, true for the filter. P5 half (net within 0.010; the
      early weeks gain rather than cost; the cost sits at the 2025-26
      peak). P6 right.
-  6. THE RECORDS: pre-registration, amendments, scorers, reports and the
-     per-cell tables are in the research archive on the lab Mac
-     (FluBNF-local/research/oracle-width-screen), not in the repository,
-     under the research-stays-local rule. Whether they go to a branch for
-     the review is Ely's call; until then, any number here can be
-     re-derived on request.
+  6. THE RECORDS: since 2026-10-26, at Ely's word, the pre-registration,
+     the amendments, the scorers, the reports and week-level sums are in
+     the repository:
+     [model-oracle-width-screen-2026-10/](model-oracle-width-screen-2026-10/README.md).
+     The per-cell tables and the stored samples stay in the research
+     archive on the lab Mac (FluBNF-local/research/oracle-width-screen),
+     on request.
 - 2026-10-24 (17:08 UTC): HS, THE PER-STATE PAST-SEASON BOX (THE SWARM
   CARRY): NULL. 84 weeks, no failed cell, checks A to C passed. The boxes
   are wide: eps1 widths a median 0.62, 0.74, 0.86 by test season, and

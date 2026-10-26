@@ -1,0 +1,20 @@
+exact c95 all / early24 / Oct:
+  none                 0.9162 / 0.9295 / 0.9784   c50 0.4782
+  clip 15x             0.9071 / 0.8984 / 0.9772   c50 0.4778
+  shrink 15x           0.8975 / 0.8670 / 0.9712   c50 0.4589
+  hist max             0.8991 / 0.8992 / 0.9772   c50 0.4755
+  hist max+shrink 15x  0.8859 / 0.8530 / 0.9724   c50 0.4628
+  hist max+clip 15x    0.8935 / 0.8796 / 0.9760   c50 0.4752
+  pair - s15 c95: all -0.0116, early24 -0.0140
+c95 by season, pairing / shrink 15x: 2023-24 0.930/0.946; 2024-25 0.874/0.890; 2025-26 0.849/0.852
+c95 by horizon, pairing / shrink 15x / hist max / none: h0 0.892/0.896/0.901/0.909; h1 0.876/0.889/0.887/0.904; h2 0.885/0.899/0.899/0.918; h3 0.890/0.906/0.909/0.934
+October relWIS by horizon, pairing / shrink 15x / none:
+  h0 0.7643 / 0.7571 / 0.7937
+  h1 0.7399 / 0.7307 / 0.7813
+  h2 0.7740 / 0.7606 / 0.8388
+  h3 0.8334 / 0.8183 / 0.9331
+October per week relWIS, pairing / shrink 15x: 2023-10-07 0.908/0.859; 2023-10-14 0.749/0.733; 2023-10-21 0.729/0.726; 2023-10-28 0.807/0.806
+October h0-h3 typical 97.5%/median, pairing / shrink 15x: h0 2.11/2.06; h1 3.11/3.00; h2 4.83/4.71; h3 7.29/7.29
+October hist max - shrink 15x +0.0669 [+0.0412, +0.0993] | +0.0241
+October hist max+clip 15x - shrink 15x +0.0522 [+0.0270, +0.0845] | +0.0214
+October hist max+shrink 15x - shrink 15x +0.0125 [+0.0016, +0.0329] | +0.0088
