@@ -1,0 +1,686 @@
+diff --git a/app/core/archive_record.py b/app/core/archive_record.py
+index 0a1dd26..e664373 100644
+--- a/app/core/archive_record.py
++++ b/app/core/archive_record.py
+@@ -12,9 +12,11 @@ is that date's forecast. Beside its files:
+ 
+ The rule (never a downgrade): a newer run's files replace an earlier
+ run's for the same date only when the newer run is complete, or when the
+-earlier one is not. choose() applies it to the runs that wrote a file for
+-a date (the Output page shows the chosen run's file per model);
+-keep_reason() applies it to the archive folder.
++earlier one is not. A run made in the round's own week (real-time) is the
++date's forecast: a later backtest of that week (a vintage run) replaces
++it only when no real-time run wrote one. choose() applies it to the runs
++that wrote a file for a date (the Output page shows the chosen run's file
++per model); keep_reason() applies it to the archive folder.
+ """
+ from __future__ import annotations
+ 
+@@ -74,11 +76,23 @@ def scope_of(spec) -> bool:
+     return True if not locs else full_scope(locs)
+ 
+ 
++def realtime_of(spec) -> bool:
++    """Whether a recorded spec (a RunSpec dict or its JSON) is a real-time
++    run, made in its round's own week; True when unreadable or when it
++    records no mode, as for records from before the mode existed."""
++    try:
++        d = json.loads(spec) if isinstance(spec, str) else dict(spec or {})
++        return (d.get("extra") or {}).get("mode") != "vintage"
++    except (ValueError, TypeError, AttributeError):
++        return True
++
++
+ def choose(candidates):
+-    """The candidate a date shows: the newest complete one from a run on
+-    the whole hub set, then the newest complete one, then the newest.
+-    Each candidate is a dict with "run_id" (run ids sort by start time, to
+-    the second), "complete" and "full", and may carry "order", the
++    """The candidate a date shows: among the real-time runs (all of them
++    when none is), the newest complete one from a run on the whole hub
++    set, then the newest complete one, then the newest. Each candidate is
++    a dict with "run_id" (run ids sort by start time, to the second),
++    "complete", "full" and "realtime", and may carry "order", the
+     ledger's (created_utc, rowid): runs that started in the same second
+     are newest by it, as app/ui/shared._scan_results orders them, never by
+     the id's random suffix. None for none."""
+@@ -88,22 +102,31 @@ def choose(candidates):
+     cands = sorted(candidates or [], key=newest_last)
+     if not cands:
+         return None
++    # a backtest of a past week never replaces the run made in that week
++    cands = [c for c in cands if c.get("realtime", True)] or cands
+     done = [c for c in cands if c.get("complete", True)]
+     whole = [c for c in done if c.get("full", True)]
+     return (whole or done or cands)[-1]
+ 
+ 
+-def keep_reason(d: Path, complete: bool, full: bool = True) -> str:
++def keep_reason(d: Path, complete: bool, full: bool = True,
++                realtime: bool = True) -> str:
+     """Why a new run must NOT replace the archive in `d` ("" when it may):
+-    the new run is incomplete and the archive holds a complete one, or the
+-    new run covers part of the hub set and the archive holds a whole-set
+-    complete run (the rule of choose())."""
++    the new run is a backtest (vintage) and the archive holds a real-time
++    run, or the new run is incomplete and the archive holds a complete
++    one, or it covers part of the hub set and the archive holds a
++    whole-set complete run (the rule of choose())."""
+     d = Path(d)
+     if not d.is_dir():
+         return ""
+     rec = read_record(d) or {}
+     held = rec.get("run_id") or ""
+     held_done = rec.get("complete", True)
++    if not realtime and realtime_of((_read(d / "results.json") or {})
++                                    .get("spec", "")):
++        return ("this run is a vintage run of a past week, so the archive "
++                "kept the run made in that week"
++                + (f" {held}" if held else ""))
+     if not complete and held_done:
+         return ("this run is not complete, so the archive kept the "
+                 "earlier complete run" + (f" {held}" if held else ""))
+diff --git a/app/tests/test_models_tab.py b/app/tests/test_models_tab.py
+index d3b56be..581234b 100644
+--- a/app/tests/test_models_tab.py
++++ b/app/tests/test_models_tab.py
+@@ -183,7 +183,9 @@ def test_a_run_without_this_model_names_itself_in_the_tip(monkeypatch):
+     _run(monkeypatch, ["analogue"])
+     t = client.get("/models").text
+     assert "No forecasts from this model yet" in t
+-    assert "The latest run (2098-11-14 · 11-14 09:31) has none from this model." in t
++    # the run is the newest real-time one, and named so (G06, MO-06)
++    assert ("The latest real-time run (2098-11-14 · 11-14 09:31) has none "
++            "from this model.") in t
+ 
+ 
+ def test_the_latest_run_is_labelled_values_with_its_page_linked(monkeypatch):
+@@ -191,7 +193,8 @@ def test_the_latest_run_is_labelled_values_with_its_page_linked(monkeypatch):
+     t = client.get("/model/analogue").text
+     facts = t.split('md-runfacts"', 1)[1].split("</dl>", 1)[0]
+     # one fact: the run's forecast date and its clock time
+-    assert "<dt>Latest run</dt>" in facts and "2098-11-14 · 11-14 09:31" in facts
++    assert "<dt>Latest real-time run</dt>" in facts
++    assert "2098-11-14 · 11-14 09:31" in facts
+     assert "modified settings" not in facts
+     assert 'href="/runs/20981114T093100-abcdef"' in facts
+     assert "No forecasts from this model yet" not in t
+diff --git a/app/tests/test_output_by_date.py b/app/tests/test_output_by_date.py
+index 18f226e..c858d64 100644
+--- a/app/tests/test_output_by_date.py
++++ b/app/tests/test_output_by_date.py
+@@ -382,8 +382,9 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
+     assert "the modified run's report" in client.get(f"/runs/{mod.name}/report").text
+     assert "the hub run's report" in client.get("/output/report").text
+     assert '<option value="2098-01-03"' in html        # the picker keeps the week
+-    # with the override the run is back on every surface, unbadged here,
+-    # and the card's week leaves the picker again
++    # with the override the run is back on every surface, unbadged here;
++    # the week stays in the picker while the archive holds another run's
++    # report (G06, OU-01), and leaves it once the archive holds this run
+     over = _run(root, "2098-01-03", [GH], spec=json.dumps(
+         {"extra": K.write_extra({"oracle.w": 0.25}, {}, override="asked")}))
+     (over / "report.html").write_text("<p>the override run's report</p>")
+@@ -391,4 +392,7 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
+     html, c = card()
+     assert f'href="/runs/{over.name}"' in c
+     assert "non-hub names</span>" not in c
++    assert '<option value="2098-01-03"' in html
++    archive_record.write_record(arch, over.name, True)
++    html, c = card()
+     assert '<option value="2098-01-03"' not in html
+diff --git a/app/tests/test_which_run_shows.py b/app/tests/test_which_run_shows.py
+new file mode 100644
+index 0000000..95a16f7
+--- /dev/null
++++ b/app/tests/test_which_run_shows.py
+@@ -0,0 +1,230 @@
++"""Which run a page shows (the 2026-10-25 bug hunt, G06).
++
++  * Output's weekly report card keeps the newest run (app.md, 2026-10-01);
++    when that is a newer run on a few states, the week's archived report
++    (the whole-set run's, the one the date card shows) stays in the
++    picker, now named for what it offers (OU-01, OU-11);
++  * a vintage run of a past week never replaces the run made in that
++    week, on Output or in the archive (OU-02);
++  * a run's page and report come from the archive once Storage deleted
++    its workroot, as Output's files do (OU-09);
++  * Home, Models and Output's report pass over a run whose one model
++    produced nothing (HM-05); the Models card names the run it shows
++    (MO-06); Output's "i" and its live badge state the rules they follow
++    (OU-08).
++"""
++import json
++import sys
++from dataclasses import asdict
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core import archive_record as AR                      # noqa: E402
++from app.core.runs import Ledger, RunSpec                      # noqa: E402
++from app.ui import pipeline as P                               # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import output as O                          # noqa: E402
++
++from test_optional_outputs import pipeline_env                 # noqa: E402,F401
++from test_oracle_step import ASOF, hubfiles                    # noqa: E402,F401
++
++client = TestClient(srv.app)
++GH = "NAU_PyBNF-GroundHogCGR"
++DATE = "2098-01-03"
++FAN = {"1": {"0.5": 10.0}}
++
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    ui_state._status["running"] = None
++    ui_state._status["workroot"] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def _all53():
++    from flubnf.settings import load_locations
++    return [n for n in load_locations().location_name if n != "US"] + ["US"]
++
++
++def _run(root, tag, locations=("Ohio",), mode="realtime", engine="analogue",
++         models=None, asof=DATE) -> str:
++    """A closed run with a Groundhog file and a weekly report; its id."""
++    import time
++    time.sleep(1.05)                     # run ids sort by their start second
++    spec = RunSpec(engine=engine, forecast_date=asof,
++                   locations=list(locations), extra={"mode": mode})
++    led = Ledger()
++    rid = led.open_run(spec, Path("pending"), {})
++    w = root / "workroots" / rid
++    d = w / "submission" / GH
++    d.mkdir(parents=True)
++    (d / f"{O._reference_date(asof)}-{GH}.csv").write_text(tag)
++    (w / "report.html").write_text(f"<html><body>REPORT {tag}</body></html>")
++    (w / "results.json").write_text(json.dumps(
++        {"forecast_date": asof, "spec": json.dumps(asdict(spec)),
++         "models": models if models is not None
++         else {"analogue": {n: FAN for n in locations}}}))
++    led.set_workroot(rid, w)
++    led.close_run(rid, "ok", {})
++    ui_shared._invalidate_scans()
++    return rid
++
++
++def _shown_file(asof=DATE) -> str:
++    """The Groundhog file Output shows for a date, read back."""
++    (d,) = [x for x in O.forecast_dates()[0] if x["asof"] == asof]
++    (f,) = [f for f in d["files"] if f["model"] == GH]
++    return Path(f["path"]).read_text()
++
++
++# ------------------------------------------- the report card and its picker
++
++def test_the_weeks_archived_report_stays_reachable_beside_a_newer_few_state_run(
++        root):
++    whole = _run(root, "whole", _all53())
++    P._archive_run(root / "workroots" / whole, DATE)
++    html = client.get("/output").text
++    card = html.split('id="weekly-report"', 1)[1]
++    assert f'href="/runs/{whole}/report"' in card
++    assert f'<option value="{DATE}">' not in html     # the card offers it
++    ohio = _run(root, "ohio")
++    html = client.get("/output").text
++    card = html.split('id="weekly-report"', 1)[1]
++    # the card keeps the newest run; the date shows the whole-set file
++    assert f'href="/runs/{ohio}/report"' in card
++    assert _shown_file() == "whole"
++    # and the week's archived report, the whole set's, is in the picker
++    ref = O._reference_date(DATE)
++    assert (f'<label for="archreport">Archived weeks</label>' in html)
++    assert f'<option value="{DATE}">{ref} (as of {DATE})</option>' in html
++    assert "Earlier weeks" not in html
++    assert "REPORT whole" in client.get(f"/output/report?date={DATE}").text
++
++
++# ------------------------------------------------- a vintage run of a past week
++
++def test_a_vintage_run_of_a_past_week_never_replaces_the_run_made_in_that_week(
++        root):
++    week = _run(root, "in its week", _all53())
++    P._archive_run(root / "workroots" / week, DATE)
++    later = _run(root, "backtest", _all53(), mode="vintage")
++    assert _shown_file() == "in its week"
++    out = P._archive_run(root / "workroots" / later, DATE, realtime=False)
++    assert out.startswith("kept: this run is a vintage run of a past week")
++    assert AR.read_record(root / "archive" / DATE)["run_id"] == week
++    # with no run made in that week, the vintage run is the date's
++    other = "2098-01-10"
++    only = _run(root, "only backtest", _all53(), mode="vintage", asof=other)
++    assert _shown_file(other) == "only backtest"
++    assert not P._archive_run(root / "workroots" / only, other,
++                              realtime=False).startswith("kept")
++
++
++def test_choose_takes_a_run_made_in_its_week_before_a_later_vintage_run():
++    week = {"run_id": "20980103T100000-a", "complete": False, "full": False}
++    vintage = {"run_id": "20980110T100000-b", "complete": True, "full": True,
++               "realtime": False}
++    assert AR.choose([week, vintage]) is week
++    assert AR.choose([vintage]) is vintage
++    assert AR.realtime_of(json.dumps({"extra": {"mode": "vintage"}})) is False
++    assert AR.realtime_of(json.dumps({"extra": {"mode": "realtime"}}))
++    assert AR.realtime_of("") and AR.realtime_of("{bad")  # an old record
++
++
++def test_the_pipeline_hands_the_runs_mode_to_the_archive(pipeline_env,
++                                                        monkeypatch):
++    from app.ui.routes import forecast as F
++    seen = []
++    monkeypatch.setattr(P, "_archive_run", lambda w, d, **k: seen.append(
++        k.get("realtime", True)) or "archived")
++    for mode in ("realtime", "vintage"):
++        P._run_all(RunSpec(engine="all", forecast_date=ASOF,
++                           locations=pipeline_env["names"], replicates=1,
++                           extra=F._run_extra(2, mode)))
++    assert seen == [True, False]
++
++
++# --------------------------------------------- a run whose workroot is gone
++
++def test_a_runs_page_and_report_come_from_the_archive_once_its_workroot_is_gone(
++        root):
++    import shutil
++    whole = _run(root, "whole", _all53())
++    P._archive_run(root / "workroots" / whole, DATE)
++    shutil.rmtree(root / "workroots" / whole)
++    ui_shared._invalidate_scans()
++    page = client.get(f"/runs/{whole}").text
++    assert f"{O._reference_date(DATE)}-{GH}.csv" in page
++    assert "No submission files" not in page
++    assert f'href="/runs/{whole}/report"' in page
++    r = client.get(f"/runs/{whole}/report")
++    assert r.status_code == 200 and "REPORT whole" in r.text
++    r = client.get(f"/runs/{whole}/report/download")
++    assert r.status_code == 200 and "REPORT whole" in r.text
++    # a run nothing holds any more still answers "no report"
++    gone = _run(root, "gone")
++    shutil.rmtree(root / "workroots" / gone)
++    assert client.get(f"/runs/{gone}/report").status_code == 404
++
++
++# ------------------------------------------ the shipped pages and the Models card
++
++def test_a_run_whose_one_model_produced_nothing_never_replaces_the_shown_run(
++        root):
++    shown = _run(root, "two states", ("Arizona", "New York"))
++    failed = _run(root, "oracle failed", engine="pf",
++                  models={"pf": {}, "analogue": {"Ohio": FAN}})
++    assert ui_shared._latest_results()[0] == shown
++    assert ui_shared._latest_results(include_modified=True)[0] == shown
++    # the Forecast tab shows the newest run, whatever it produced
++    assert ui_shared._latest_results(include_modified=True,
++                                     newest=True)[0] == failed
++
++
++def test_the_models_card_names_the_real_time_run_it_shows(root):
++    week = _run(root, "in its week")
++    _run(root, "backtest", mode="vintage", asof="2097-12-27")
++    html = " ".join(client.get("/model/analogue").text.split())
++    assert "Latest real-time run" in html
++    assert f'href="/runs/{week}"' in html
++    # with no real-time run, the newest run is plainly the latest
++    import shutil
++    shutil.rmtree(root / "workroots" / week)
++    ui_shared._invalidate_scans()
++    html = " ".join(client.get("/model/analogue").text.split())
++    assert "Latest run" in html and "Latest real-time run" not in html
++
++
++# ------------------------------------------------------------ Output's words
++
++def test_outputs_words_state_the_rules_it_follows(root):
++    _run(root, "whole", _all53())
++    html = " ".join(client.get("/output").text.split())
++    assert "the newest run that finished complete" not in html
++    assert ("from the newest complete run on all 53 locations, else the "
++            "newest complete run, else the newest run that wrote one; a run "
++            "made in the round's own week comes before a later vintage "
++            "run") in html
++    assert "The round open now is outlined" not in html
++    # a run writing a date: the badge says so and promises nothing
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="analogue", forecast_date=DATE,
++                               locations=["Ohio"]), Path("pending"), {})
++    ui_state._status["running"] = f"run:{rid}"
++    html = " ".join(client.get("/output").text.split())
++    assert "newer run in progress" in html
++    assert "A console run for this date is in progress." in html
++    assert "this card shows its files" not in html
+diff --git a/app/ui/pipeline.py b/app/ui/pipeline.py
+index 4cadde2..0217061 100644
+--- a/app/ui/pipeline.py
++++ b/app/ui/pipeline.py
+@@ -1022,14 +1022,18 @@ def _run_all(spec: RunSpec) -> None:
+                          <= set(subs))
+             from app.core.archive_record import full_scope as _full_scope
+             _full = _full_scope(spec.locations)
++            # a backtest of a past week (vintage) never replaces the run
++            # made in that week
++            _rt = (spec.extra or {}).get("mode") != "vintage"
+             try:
+                 # the common case keeps the plain call; the rule's flags are
+                 # passed only when they differ from the defaults
+                 outcome["archived"] = (
+                     _archive_run(workroot, spec.forecast_date)
+-                    if _complete and _full
++                    if _complete and _full and _rt
+                     else _archive_run(workroot, spec.forecast_date,
+-                                      complete=_complete, full=_full))
++                                      complete=_complete, full=_full,
++                                      realtime=_rt))
+             except Exception as e:
+                 outcome["archive_error"] = str(e)[:200]
+         # the pipeline completed: fit failures make it "partial" (the chips
+@@ -1083,14 +1087,15 @@ def _run_all(spec: RunSpec) -> None:
+ 
+ # === Forecast archive ===
+ def _archive_run(workroot: Path, forecast_date: str,
+-                 complete: bool = True, full: bool = True) -> str:
++                 complete: bool = True, full: bool = True,
++                 realtime: bool = True) -> str:
+     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
+     replacing any earlier archive for the date. Built beside, then swapped:
+     a crash mid-copy costs this attempt, never the existing record.
+ 
+     Never a downgrade (app/core/archive_record.py): an incomplete run
+     (`complete` False) does not replace an archive that holds a complete
+-    one. Then nothing is copied, the run's files stay in its own folder,
++    one, nor a backtest (`realtime` False) one that holds a real-time run. Then nothing is copied, the run's files stay in its own folder,
+     and the answer is "kept: <why>". The archive records which run it holds (archive.json)."""
+     import os
+     import shutil
+@@ -1108,7 +1113,7 @@ def _archive_run(workroot: Path, forecast_date: str,
+             shutil.rmtree(old)
+         else:                   # crashed between the two renames below:
+             os.replace(old, arch)   # the parked previous archive comes back
+-    keep = _ar.keep_reason(arch, complete, full)
++    keep = _ar.keep_reason(arch, complete, full, realtime)
+     if keep:
+         return f"kept: {keep}"
+     build.mkdir(parents=True)
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index f4d1031..d4fce4c 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -502,6 +502,9 @@ def run_page(request: Request, run_id: str):
+             request, 404, "empty", f"No run {run_id} is recorded here",
+             tip="Storage lists the runs.", action=("/runs", "Open Storage"),
+             active="Storage", heading="Run")
++    # its files: the workroot, or the archive that holds the run once
++    # Storage deleted the workroot
++    w = output_routes._run_folder(run_id)
+     res = {}
+     if (w / "results.json").is_file():
+         res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
+@@ -631,11 +634,13 @@ def _no_run_report(request: Request, run_id: str):
+ 
+ @router.get("/runs/{run_id}/report", response_class=HTMLResponse)
+ def run_report(request: Request, run_id: str):
+-    from app.core.runs import APP_STATE
+     # the id names a folder: only a run id's shape may (the Output page
+-    # links here by the run it shows)
+-    d = APP_STATE / "workroots" / run_id
+-    if not (_runs.is_run_id(run_id) and (d / "report.html").is_file()):
++    # links here by the run it shows); the archive's copy once its
++    # workroot is deleted
++    if not _runs.is_run_id(run_id):
++        return _no_run_report(request, run_id)
++    d = output_routes._run_folder(run_id)
++    if not (d / "report.html").is_file():
+         return _no_run_report(request, run_id)
+     # rebuilt if stale, as /output/report
+     return HTMLResponse(output_routes._report_for_serving(d))
+@@ -644,10 +649,9 @@ def run_report(request: Request, run_id: str):
+ @router.get("/runs/{run_id}/report/download")
+ def run_report_download(request: Request, run_id: str):
+     """Save this run's weekly report, named for the run's forecast date."""
+-    from app.core.runs import APP_STATE
+     if not _runs.is_run_id(run_id):
+         return _no_run_report(request, run_id)
+-    d = APP_STATE / "workroots" / run_id
++    d = output_routes._run_folder(run_id)
+     date = ""
+     try:
+         import json as _json
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 609eda5..19f6701 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -172,6 +172,7 @@ def model_page(request: Request, name: str):
+                "pf2s": "two-strain"}
+     if name not in HEADERS:
+         return HTMLResponse("unknown model", status_code=404)
++    from app.core.archive_record import realtime_of
+     rid, res = shared._latest_results()
+     fanq = {}
+     if res and name in res.get("models", {}):
+@@ -213,6 +214,9 @@ def model_page(request: Request, name: str):
+         # a modified run is here only when an override exported it under
+         # the hub names: badged as Storage and the run page badge it
+         "run_modified": _runs.is_modified((res or {}).get("spec", "")),
++        # the run is the newest real-time one (a vintage only when none
++        # exists): the card names it so, as a newer backtest is not here
++        "run_realtime": realtime_of((res or {}).get("spec", "")),
+         "date": (res or {}).get("forecast_date", ""),
+         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
+         "overlay_json": _script_json(overlay),
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index fec6f7e..67cd9fd 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -82,6 +82,22 @@ def model_display(dir_name: str, d: Path) -> str:
+     return _legacy_label(dir_name, d)[0]
+ 
+ 
++def _run_folder(run_id: str) -> Path:
++    """Where a run's files are: its workroot, else, once Storage deleted
++    it, the archive folder that holds the run (Output serves the date's
++    files from there); the workroot's path when neither."""
++    from app.core import archive_record as _ar
++    from app.core.runs import APP_STATE
++    w = APP_STATE / "workroots" / run_id
++    if w.is_dir():
++        return w
++    for date in _archive_dates():
++        d = APP_STATE / "archive" / date
++        if (_ar.read_record(d) or {}).get("run_id") == run_id:
++            return d
++    return w
++
++
+ def _submission_files(d: Path) -> list:
+     """Submission CSVs under a workroot/archive dir, each marked submittable
+     iff its directory (the hub model id) is registered. A folder an earlier
+@@ -424,7 +440,7 @@ def _file_complete(row, model_dir: str) -> bool:
+ def _hub_candidates(app_state: Path, ledger) -> tuple:
+     """(hub candidates, own-data runs). A hub candidate is one run's file
+     for one registered or -modified model: {"asof", "dir", "run_id",
+-    "path", "complete", "full", "row", "spec", "wr", "order" (the ledger's
++    "path", "complete", "full", "realtime", "row", "spec", "wr", "order" (the ledger's
+     (created_utc, rowid) for runs that share a start second)}; research
+     runs and folders under retired names are left out (they stay on disk
+     and in Storage). Files an archive folder holds count too when their
+@@ -453,6 +469,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
+                           "run_id": wr.name, "path": str(p),
+                           "complete": _file_complete(row, p.parent.name),
+                           "full": _ar.scope_of(res.get("spec", "")),
++                          "realtime": _ar.realtime_of(res.get("spec", "")),
+                           "row": row, "spec": res.get("spec", ""),
+                           "wr": wr})
+     for date in shared._archive_dates():
+@@ -469,6 +486,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
+                           "run_id": rid, "path": str(p),
+                           "complete": bool(rec.get("complete", True)),
+                           "full": bool(rec.get("full", True)),
++                          "realtime": _ar.realtime_of(res.get("spec", "")),
+                           "row": ledger.row(rid) if (ledger and rid) else None,
+                           "spec": res.get("spec", ""), "wr": d})
+     # runs that started in the same second take the ledger's order, as
+@@ -585,6 +603,7 @@ def output_stamp() -> dict:
+ 
+ @router.get("/output", response_class=HTMLResponse)
+ def output_page(request: Request):
++    from app.core import archive_record as _ar
+     from app.core.runs import APP_STATE, is_contained
+     stamp = output_stamp()
+     # the newest run, a modified one included: the report card is where
+@@ -600,6 +619,12 @@ def output_page(request: Request):
+                            and is_contained(res.get("spec", "")))
+     report_asof = (str((res or {}).get("forecast_date") or "")
+                    if has_report else "")
++
++    def held_run(d: str) -> str:
++        """The run an archived week holds ('' for a folder from before
++        the record)."""
++        return str((_ar.read_record(APP_STATE / "archive" / d) or {})
++                   .get("run_id") or "")
+     # each file gets the hub validator's command (--window for a round
+     # that is open or coming)
+     for d in dates:
+@@ -609,15 +634,17 @@ def output_page(request: Request):
+     return templates.TemplateResponse(request, "output.html", {
+         "active": "Output", "rid": rid,
+         "dates": dates, "own": own,
+-        # the earlier weeks the picker offers: those whose archive holds a
++        # the archived weeks the picker offers: those whose archive holds a
+         # report (a run whose report failed is archived without one), less
+         # the week the card already offers above it, unless the card shows
+-        # a modified run: that is never archived, so the archive's report
+-        # for its week is the shipped run's and stays in the picker; each
+-        # (as-of, reference date)
++        # another run than the archive holds for its week: a modified run
++        # (never archived) or a newer run on a few states (never archived
++        # over a whole-set one), so the week's report stays reachable;
++        # each (as-of, reference date)
+         "archive_dates": [(d, _reference_date(d) or d)
+                           for d in reversed(_archive_dates())
+-                          if (d != report_asof or report_modified)
++                          if (d != report_asof or report_modified
++                              or held_run(d) not in ("", rid))
+                           and (APP_STATE / "archive" / d
+                                / "report.html").is_file()],
+         "has_report": has_report,
+diff --git a/app/ui/shared.py b/app/ui/shared.py
+index 79077b5..0903f7d 100644
+--- a/app/ui/shared.py
++++ b/app/ui/shared.py
+@@ -357,11 +357,12 @@ def _latest_results(include_modified: bool = False, newest: bool = False):
+     the newest real-time run, so a vintage backtest never replaces the
+     current forecast (the newest vintage run only when no real-time run
+     exists), and never a run with modified settings exported under the
+-    non-hub name (an override puts one back, badged). The Output page's
+-    report card passes include_modified: it shows such a run badged,
+-    linking that run's own report. The Forecast tab passes include_modified
+-    and newest: the newest run that wrote forecasts, whatever its settings
+-    or week."""
++    non-hub name (an override puts one back, badged), and never a run whose
++    model produced nothing (an Oracle-only run whose fits all failed). The
++    Output page's report card passes include_modified: it shows such a run
++    badged, linking that run's own report. The Forecast tab passes
++    include_modified and newest: the newest run that wrote forecasts,
++    whatever its settings or week."""
+     import json as _json
+     from app.core.runs import _spec_dict, is_contained, is_research
+     first = None
+@@ -378,6 +379,12 @@ def _latest_results(include_modified: bool = False, newest: bool = False):
+             continue
+         if newest:
+             return f.parent.name, res
++        # the one model the run asked for produced nothing: the Groundhog
++        # an Oracle-only run consults is for its own pages, not these
++        asked = _spec_dict(spec).get("engine")
++        if asked in ("pf", "analogue") and not (
++                res.get("models") or {}).get(asked):
++            continue
+         # a run recorded before the mode existed reads as real-time
+         extra = _spec_dict(spec).get("extra")
+         mode = extra.get("mode") if isinstance(extra, dict) else None
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index 47e1aa5..2ae4d2b 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -184,16 +184,19 @@
+  <div>
+   <div class="card md-fc">
+    {{ tips.heading("Forecasts", "md-fc") }}
++   {# the shipped rule's run: the newest real-time one, named so (a newer
++      backtest or modified run is on the Forecast tab) #}
++   {% set run_name = "real-time run" if run_realtime else "run" %}
+    {% if has_fans %}
+    {# one fact, the run: its forecast date and clock time, its page, and
+       the modified-settings badge an override's run carries #}
+    {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% endset %}
+-   {% call tips.stats("uk-stats--row md-runfacts", label="Latest run") %}
+-    {{- tips.stat("Latest run", (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
++   {% call tips.stats("uk-stats--row md-runfacts", label="Latest " ~ run_name) %}
++    {{- tips.stat("Latest " ~ run_name, (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
+    {% endcall %}
+    {% endif %}
+    <div id="mfan">{% if not has_fans %}
+-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest run ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
++    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
+     {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
+    {%- endif %}</div>
+   </div>
+diff --git a/app/ui/templates/output.html b/app/ui/templates/output.html
+index eea85f2..c206187 100644
+--- a/app/ui/templates/output.html
++++ b/app/ui/templates/output.html
+@@ -14,7 +14,7 @@
+ {%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
+      else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
+ <span class="out-bt">{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
+-{%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress; when it finishes complete, this card shows its files.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
++{%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
+ {%- endmacro %}
+ {# One forecast date as a card (routes/output.forecast_dates): its
+    reference date and window, the as-of and the data the runs read, then
+@@ -80,10 +80,10 @@
+ {# the page's explainer: what the files are and the rules they follow #}
+ {% set about %}<strong class="uk-tt-title">Submission files</strong>
+ <span class="uk-tt-line">Your forecasts by date, newest first, as hub-format CSV files.</span>
+-<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The round open now is outlined; past dates and dates that are not FluSight rounds take one line each, with their checks, coverage and folder on each run's page.</span>
++<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The newest date, a round open or coming (outlined) and a date a run is writing now each get a card; other dates take one line each, with their checks, coverage and folder on each run's page.</span>
+ <span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
+ <span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
+-<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest run that finished complete, else from the newest run that wrote one; the other runs' files stay in their run folders.</span>
++<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest complete run on all 53 locations, else the newest complete run, else the newest run that wrote one; a run made in the round's own week comes before a later vintage run, and the other runs' files stay in their run folders.</span>
+ <span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub. Its weekly report still shows above when it is the newest run, badged.</span>
+ <span class="uk-tt-line">Files an earlier version wrote under retired hub names are not listed; they stay on disk and in <a href="/storage">Storage</a>.</span>
+ <span class="uk-tt-line">The copy buttons beside a file copy its path, or the command that runs it through the hub's own validator (scripts/validate_submission.R; it needs R and the hubValidations package).</span>
+@@ -108,10 +108,12 @@
+  {{ tips.heading("Weekly report", "out-report", after=rep_when, aside=rep_acts) }}
+  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
+  {% if archive_dates %}
+- {# each earlier week by its reference date, as the cards are headed; the
+-    value stays the as-of date the archive is filed under #}
++ {# each archived week by its reference date, as the cards are headed
++    (the card's own week too when the card shows a newer run on a few
++    states or a modified one); the value stays the as-of date the archive
++    is filed under #}
+  <div class="out-arch">
+-  <label for="archreport">Earlier weeks</label>
++  <label for="archreport">Archived weeks</label>
+   <select id="archreport">
+    {% for d, ref in archive_dates %}<option value="{{ d }}">{{ ref }} (as of {{ d }})</option>{% endfor %}
+   </select>
