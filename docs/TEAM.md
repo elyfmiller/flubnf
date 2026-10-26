@@ -24,7 +24,7 @@ hand work across.
 
 | Lane | Works on | Where | Notes |
 |---|---|---|---|
-| App | the console, launchers (FluBNF.command, FluBNF.app, FluBNF.bat, setup scripts), Windows, CI, docs | cloud; branch `dev` | [team/app.md](team/app.md) |
+| App | the console, launchers (FluBNF.command, FluBNF.app, FluBNF.bat, setup scripts), Windows, CI, docs | Ely's Mac (local since 2026-10-26); branch `dev` | [team/app.md](team/app.md) |
 | Submission | the weekly FluSight run: data checks, validation, the hub pull requests, CDC rules | cloud | [team/submission.md](team/submission.md) |
 | Engine | the private PyBNF fork, the Liu-West filter, its port to public PyBNF as `lwf` | lab Mac | [team/engine.md](team/engine.md) |
 | Model | the Oracle SIHRS and Groundhog methods, replays and scores | lab Mac | [team/model.md](team/model.md) |
@@ -64,7 +64,8 @@ paste, or has a lane that can push commit it.
 
 ## Messages between agents
 
-- Agents running on the lab Mac can message other agents directly.
+- Agents running on the lab Mac can message other agents directly, and so
+  can the App lane, local on Ely's Mac since 2026-10-26.
 - Cloud agents can receive messages but cannot send them yet: they answer
   through their notes file, or through Ely.
 - A message is not a record: anything another lane must keep knowing goes
