@@ -9,3 +9,5 @@
 | Checks | invariance md5 56da9201... (same); targeted 1049 passed | invariance md5 56da9201... (same); full suite clean but for the 3.13 doctor checks | Both fine. |
 
 Vote: combine: FC-06 from A (raw `str` fields into the knob parser, in /run, /run/dataset and /retro/run, with A's three FC-06 tests moved into test_knobs_wiring/test_datasets_ui beside B's rows); FC-08 from B (codes, the refusal, the test_oracle_step repoint, its tests); MO-07 from either (B's, to keep its test in test_models_tab); MO-22 from B's mechanism and tests with A's wording ("Anchor week ...").
+
+Vote (final): combine as B's compare says: A's patch, plus B's `app/tests/test_oracle_step.py` repoint (`locations=["Ohio"]` in both posts, with its comment), and the PR noting that test pinned FC-08. B's reading of FC-08 holds under criteria 2 and 5 (the placeholder asks for state names; codes would be behaviour beyond the bug). Correction to my proposal, which B's compare quotes: the targeted run was 1049 passed, 10 skipped (the 1101 in my first push was a typo, fixed in a later push).
