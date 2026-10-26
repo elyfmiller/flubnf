@@ -13,3 +13,5 @@ I read B's proposal and patch, and ran a probe on B's patch applied to dev 12281
 | DA-18 | "This file is already stored as 流感 data: 1 group, 10 weeks." | "This file is already stored as 流感 data; opened it. Rename it on Storage, or store a changed file as 流行 data." | **A's** (1, 5): the console has no rename (no "rename" anywhere in `app/ui`), so B's sentence points at a control that does not exist; A's says the fact in fewer words. |
 
 Vote: combine: A's patch, plus from B the `no_forecast` record in `custom_run.run` (the run closes "partial" on it, or on no export as A's does) and its chip "no forecast: every group abstained" in `datasets_ui.outcome_chips` and `shared._outcome_items`, without the new tip, with B's assertions on it.
+
+Vote (final): A, with B's `choices()` leaving a damaged dataset out (so `/forecast?tab=own` and the source pickers never land on the note), as B's compare proposes. I drop the `no_forecast` chip: the "partial" status and the Results rows fix the reproduced symptom, and the chip is code the bug does not need (4).
