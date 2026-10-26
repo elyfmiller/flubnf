@@ -163,7 +163,44 @@ if [ ! -x .venv/bin/flubnf ]; then
 fi
 
 [ -f .flubnf.env ] && . ./.flubnf.env
-if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
+# Which engine this copy runs: FLUBNF_ENGINE, as the shell or .flubnf.env
+# (setup_engine.sh --public) sets it; private unless it says public.
+ROUTE="${FLUBNF_ENGINE:-private}"
+case "$ROUTE" in
+  private|public) ;;
+  *) echo "· FLUBNF_ENGINE is \"$ROUTE\"; it must be private or public, so the"
+     echo "  private engine, the default, is checked"
+     ROUTE=private ;;
+esac
+if [ "$ROUTE" = public ]; then
+  # The public engine (opt-in until the cutover; docs/ENGINE.md). Ready when
+  # its venv's Python is there and holds the lock as it is now: setup_engine.sh
+  # stamps the lock's hash into the venv, so this costs no engine import. No
+  # failed-attempt stamp: its failures are quick (the lock is read before any
+  # venv is made), and one would keep a machine off the engine after a dropped
+  # network. The private engine is left as it is, installed as the fallback.
+  PUBPY="${FLUBNF_PY_ENGINE_PUBLIC:-$HOME/.venvs/flubnf-public/bin/python}"
+  LOCKSUM="$(shasum -a 256 < "${FLUBNF_ENGINE_LOCK:-engine-requirements.txt}" 2>/dev/null | cut -c1-64)"
+  if [ -x "$PUBPY" ] && [ -n "$LOCKSUM" ] \
+     && [ "$(cat "${PUBPY%/bin/python}/flubnf-lock.sha256" 2>/dev/null)" = "$LOCKSUM" ]; then
+    :
+  elif ! .venv/bin/python scripts/engine_lock.py wheel >/dev/null; then
+    echo "· the public engine cannot install yet (reason above). The console"
+    echo "  starts without it; FLUBNF_ENGINE=private, or no FLUBNF_ENGINE at all,"
+    echo "  is the private engine"
+  else
+    needs_terminal "public engine install"
+    echo "· the public engine is not installed, or its lock changed: setting it"
+    echo "  up now (a few minutes)"
+    if ./setup_engine.sh; then
+      [ -f .flubnf.env ] && . ./.flubnf.env
+      echo "· public engine ready"
+    else
+      echo "· public engine setup did not finish (see above). The console still"
+      echo "  starts, and the next open tries again"
+    fi
+  fi
+elif [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   # PF engine missing: install it now (one time). Failure never blocks the
   # launch (analogue only). A checkout OR an unpacked archive (no .git) counts,
   # the same test as setup_engine.sh.
