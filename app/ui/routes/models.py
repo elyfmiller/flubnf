@@ -11,7 +11,7 @@ from markupsafe import Markup
 from app.core import oracle_text as ot
 from app.core import runs as _runs
 from app.ui import shared, templating
-from app.ui.forms import _default_forecast_date
+from app.ui.forms import _default_forecast_date, _knobs
 from app.ui.shared import _run_label
 from app.ui.state import REPO, _last_form, _status
 from app.ui.templating import _member_colors, _script_json, templates
@@ -215,4 +215,6 @@ def model_page(request: Request, name: str):
         "run_obs_json": _script_json((res or {}).get("observed", {})),
         "bngl_src": bngl_src, "bngl_file": bngl_file,
         "bngl_lines": len(bngl_src.splitlines()),
-        "form": form, "status": _status})
+        "form": form, "status": _status,
+        # the replicates field's range is the knob's (the Forecast panel's)
+        "replicates_knob": _knobs.BY_KEY["pf.replicates"]})

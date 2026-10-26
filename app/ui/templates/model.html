@@ -165,7 +165,7 @@
     {% if name == "pf" %}
     <div class="md-field">
      <label for="mf-reps">Replicates</label>
-     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="{{ replicates_knob.lo }}" max="{{ replicates_knob.hi }}">
     </div>
     {% endif %}
    </div>
