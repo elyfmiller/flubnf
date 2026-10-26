@@ -19,11 +19,17 @@
 # Refuses a machine already current, a checkout with uncommitted work, or a
 # shell exporting FluBNF settings; FLUBNF_REINSTALL_FORCE=1 overrides all three.
 #
+# FLUBNF_ENGINE=public (opt-in until the cutover) installs the public engine
+# instead, from engine-requirements.txt (setup_engine.sh --public): no engine
+# file is needed, and the private engine, its venv and its files are left
+# where they are, installed as the fallback.
+#
 # KNOBS, all optional:
 #   FLUBNF_DIR                   where the clone goes (default ~/GitHub/flubnf, or
 #                                an older setup's ~/Documents/GitHub/flubnf, which
 #                                FluBNF.command then moves to ~/GitHub)
 #   FLUBNF_ENGINE_VENV           where the engine venv goes (default ~/.venvs/flubnf-engine)
+#   FLUBNF_ENGINE=public         the public engine instead (see above)
 #   FLUBNF_REPO                  clone URL (default the public GitHub repository)
 #   FLUBNF_REINSTALL_YES=1       do not wait for Return before changing anything
 #   FLUBNF_REINSTALL_FORCE=1     reinstall even when the machine is already current
@@ -44,6 +50,7 @@ DEST="${DEST%/}"   # a trailing slash would put the rename target inside DEST
 REPO="${FLUBNF_REPO:-https://github.com/elyfmiller/flubnf}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 ENGINE_VENV="${ENGINE_VENV%/}"
+ROUTE="${FLUBNF_ENGINE:-private}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PARENT="$(dirname "$DEST")"
 KEEP="$HOME/Downloads/old-engine-files"
@@ -128,12 +135,17 @@ ok "git, curl, tar and pgrep are present"
 
 # Exported FLUBNF_* settings mean a development setup: the setup scripts would
 # follow them to folders never set aside. Documented knobs are exempt.
-STRAY="$(env | grep '^FLUBNF_' | grep -v -E '^FLUBNF_(REINSTALL_[A-Z_]*|REPO|DIR|ENGINE_VENV|HUB)=' || true)"
+STRAY="$(env | grep '^FLUBNF_' | grep -v -E '^FLUBNF_(REINSTALL_[A-Z_]*|REPO|DIR|ENGINE_VENV|ENGINE|HUB)=' || true)"
 if [ -n "$STRAY" ] && [ -z "${FLUBNF_REINSTALL_FORCE:-}" ]; then
   printf '%s\n' "$STRAY" | sed 's/^/      /'
   stop "this Terminal has FluBNF settings exported (above), so this is not a plain lab" \
        "install. Open a new Terminal window without them, or run with FLUBNF_REINSTALL_FORCE=1."
 fi
+case "$ROUTE" in
+  private) ;;
+  public) ok "the public engine (FLUBNF_ENGINE=public): installed from engine-requirements.txt" ;;
+  *) stop "FLUBNF_ENGINE is \"$ROUTE\"; it must be private or public." ;;
+esac
 
 # Engine needs 3.11/3.12 (numpy<2 wheels); same candidates as setup_engine.sh,
 # checked before anything moves, then put first on PATH so setup.sh probes the
@@ -188,60 +200,66 @@ REMOTE_SHA="$(git ls-remote "$REPO" refs/heads/main 2>/dev/null | cut -c1-40)"
 [ -n "$REMOTE_SHA" ] || stop "cannot reach $REPO (no internet, or a VPN in the way). Connect and paste the line again."
 ok "GitHub is reachable; latest FluBNF is ${REMOTE_SHA:0:7}"
 
-# As setup_engine.sh searches, plus a content check: the newest VALID archive
-# wins; every other engine file (only the names setup searches) is swept below.
+# The public route needs no engine file, and leaves the private engine's
+# files where they are (the fallback).
 ARCHIVE=""
 OTHERS=()
-while IFS= read -r d; do
-  [ -d "$d" ] || continue
-  for f in "$d"/pybnf*.tar.gz "$d"/PyBNF*.tar.gz "$d"/pybnf*.bundle "$d"/PyBNF*.bundle; do
-    [ -f "$f" ] || continue
-    if [ -n "$ARCHIVE" ] && [ "$f" -ef "$ARCHIVE" ]; then continue; fi
-    case "$f" in
-      *.tar.gz)
-        if is_engine_archive "$f"; then
-          if [ -z "$ARCHIVE" ]; then ARCHIVE="$f"
-          elif [ "$f" -nt "$ARCHIVE" ]; then OTHERS+=("$ARCHIVE"); ARCHIVE="$f"
-          else OTHERS+=("$f"); fi
-        else
-          OTHERS+=("$f")
-        fi ;;
-      *) OTHERS+=("$f") ;;
-    esac
-  done
-done < <(engine_dirs)
-if [ -z "$ARCHIVE" ]; then
-  stop "no engine file found. Save the pybnf-pf-<sha>.tar.gz you were sent in your Downloads" \
-       "folder (do not unzip or rename it), then paste the line again. If Downloads holds a" \
-       "pybnf-pf-<sha>.tar or a PyBNF-Private folder instead, the file was unpacked: ask for it again."
-fi
-STAMP_NEW="$(archive_version_line "$ARCHIVE" 1)"
-CUT_NEW="$(archive_version_line "$ARCHIVE" 2 | awk '{print $2}')"
-ok "engine file: $ARCHIVE"
-[ -n "$STAMP_NEW" ] && ok "its version stamp: $STAMP_NEW"
+STAMP_NEW=""
+INSTALLED_STAMP=""
+if [ "$ROUTE" = private ]; then
+  # As setup_engine.sh searches, plus a content check: the newest VALID archive
+  # wins; every other engine file (only the names setup searches) is swept below.
+  while IFS= read -r d; do
+    [ -d "$d" ] || continue
+    for f in "$d"/pybnf*.tar.gz "$d"/PyBNF*.tar.gz "$d"/pybnf*.bundle "$d"/PyBNF*.bundle; do
+      [ -f "$f" ] || continue
+      if [ -n "$ARCHIVE" ] && [ "$f" -ef "$ARCHIVE" ]; then continue; fi
+      case "$f" in
+        *.tar.gz)
+          if is_engine_archive "$f"; then
+            if [ -z "$ARCHIVE" ]; then ARCHIVE="$f"
+            elif [ "$f" -nt "$ARCHIVE" ]; then OTHERS+=("$ARCHIVE"); ARCHIVE="$f"
+            else OTHERS+=("$f"); fi
+          else
+            OTHERS+=("$f")
+          fi ;;
+        *) OTHERS+=("$f") ;;
+      esac
+    done
+  done < <(engine_dirs)
+  if [ -z "$ARCHIVE" ]; then
+    stop "no engine file found. Save the pybnf-pf-<sha>.tar.gz you were sent in your Downloads" \
+         "folder (do not unzip or rename it), then paste the line again. If Downloads holds a" \
+         "pybnf-pf-<sha>.tar or a PyBNF-Private folder instead, the file was unpacked: ask for it again."
+  fi
+  STAMP_NEW="$(archive_version_line "$ARCHIVE" 1)"
+  CUT_NEW="$(archive_version_line "$ARCHIVE" 2 | awk '{print $2}')"
+  ok "engine file: $ARCHIVE"
+  [ -n "$STAMP_NEW" ] && ok "its version stamp: $STAMP_NEW"
 
-# Installed stamp, read in a subshell so .flubnf.env's FLUBNF_* do not leak
-# into the setup scripts below.
-INSTALLED_STAMP="$(
-  [ -f "$DEST/.flubnf.env" ] || exit 0
-  # shellcheck disable=SC1091
-  . "$DEST/.flubnf.env"
-  [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && head -1 "$FLUBNF_PYBNF/VERSION"
-)"
-INSTALLED_CUT="$(
-  [ -f "$DEST/.flubnf.env" ] || exit 0
-  # shellcheck disable=SC1091
-  . "$DEST/.flubnf.env"
-  [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && sed -n 2p "$FLUBNF_PYBNF/VERSION" | awk '{print $2}'
-)"
+  # Installed stamp, read in a subshell so .flubnf.env's FLUBNF_* do not leak
+  # into the setup scripts below.
+  INSTALLED_STAMP="$(
+    [ -f "$DEST/.flubnf.env" ] || exit 0
+    # shellcheck disable=SC1091
+    . "$DEST/.flubnf.env"
+    [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && head -1 "$FLUBNF_PYBNF/VERSION"
+  )"
+  INSTALLED_CUT="$(
+    [ -f "$DEST/.flubnf.env" ] || exit 0
+    # shellcheck disable=SC1091
+    . "$DEST/.flubnf.env"
+    [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && sed -n 2p "$FLUBNF_PYBNF/VERSION" | awk '{print $2}'
+  )"
 
-# Refuse a silent downgrade here: setup_engine.sh's guard needs the installed
-# copy in place, which the rename below removes.
-if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -n "$CUT_NEW" ] && [ -n "$INSTALLED_CUT" ] \
-   && [ "$STAMP_NEW" != "$INSTALLED_STAMP" ] && [ "$CUT_NEW" \< "$INSTALLED_CUT" ]; then
-  stop "the engine file in Downloads ($STAMP_NEW, cut $CUT_NEW) is OLDER than the engine" \
-       "already installed ($INSTALLED_STAMP, cut $INSTALLED_CUT). Ask for the current file, or" \
-       "run with FLUBNF_REINSTALL_FORCE=1 to install the older one anyway."
+  # Refuse a silent downgrade here: setup_engine.sh's guard needs the installed
+  # copy in place, which the rename below removes.
+  if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -n "$CUT_NEW" ] && [ -n "$INSTALLED_CUT" ] \
+     && [ "$STAMP_NEW" != "$INSTALLED_STAMP" ] && [ "$CUT_NEW" \< "$INSTALLED_CUT" ]; then
+    stop "the engine file in Downloads ($STAMP_NEW, cut $CUT_NEW) is OLDER than the engine" \
+         "already installed ($INSTALLED_STAMP, cut $INSTALLED_CUT). Ask for the current file, or" \
+         "run with FLUBNF_REINSTALL_FORCE=1 to install the older one anyway."
+  fi
 fi
 
 # Already current (latest main, clean, console imports, this archive's engine
@@ -252,6 +270,14 @@ if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -d "$DEST/.git" ] && [ -x "$DEST/.v
   CONSOLE_OK="$("$DEST/.venv/bin/python" -c 'import flubnf' 2>/dev/null && echo 1)"
   ENGINE_OK="$(
     [ -f "$DEST/.flubnf.env" ] || exit 0
+    if [ "$ROUTE" = public ]; then
+      # set to public in its own record, and its venv holds the lock
+      grep -qE '^export FLUBNF_ENGINE="?public"?$' "$DEST/.flubnf.env" || exit 0
+      PUBPY="$(. "$DEST/.flubnf.env"; printf '%s' "${FLUBNF_PY_ENGINE_PUBLIC:-$HOME/.venvs/flubnf-public/bin/python}")"
+      [ -x "$PUBPY" ] || exit 0
+      "$PUBPY" "$DEST/scripts/engine_lock.py" check "$DEST/engine-requirements.txt" >/dev/null 2>&1 && echo 1
+      exit 0
+    fi
     # shellcheck disable=SC1091
     . "$DEST/.flubnf.env"
     [ -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ] || exit 0
@@ -274,6 +300,8 @@ fi
 # script (a developer's, updated by git pull); a clean one is named first.
 CANDIDATES=("$DEST" "$ENGINE_VENV" "$PARENT/PyBNF-Private" "$PARENT/PyBNF-pf"
             "$HOME/Documents/PyBNF-Private" "$HOME/PyBNF-Private")
+# The public route sets aside the FluBNF folder only: the private engine stays.
+[ "$ROUTE" = public ] && CANDIDATES=("$DEST")
 for d in "${CANDIDATES[@]}"; do
   [ -d "$d/.git" ] || continue
   # tracked changes only: a console clone always has untracked state
@@ -366,10 +394,18 @@ DONE=1
 say "installing the engine"
 # The archive the checks chose is the one installed, whatever else the
 # newest-by-mtime search in setup_engine.sh would find.
-( cd "$DEST" && FLUBNF_PYBNF_BUNDLE="$ARCHIVE" ./setup_engine.sh ) || {
-  warn "the engine did not install (see above). The console still runs without it;"
-  warn "double-click $DEST/SetupEngine.command to try again, or send Ely this window."
-}
+if [ "$ROUTE" = public ]; then
+  # --public records the route in .flubnf.env, so the launchers follow it.
+  ( cd "$DEST" && ./setup_engine.sh --public ) || {
+    warn "the public engine did not install (see above). The console still runs without"
+    warn "it; double-click $DEST/SetupEngine.command to try again, or send Ely this window."
+  }
+else
+  ( cd "$DEST" && FLUBNF_PYBNF_BUNDLE="$ARCHIVE" ./setup_engine.sh ) || {
+    warn "the engine did not install (see above). The console still runs without it;"
+    warn "double-click $DEST/SetupEngine.command to try again, or send Ely this window."
+  }
+fi
 
 say "done"
 if [ ${#SET_ASIDE[@]} -gt 0 ]; then
@@ -384,6 +420,7 @@ if [ ${#SET_ASIDE[@]} -gt 0 ]; then
   fi
 fi
 INSTALLED_STAMP="$(
+  [ "$ROUTE" = private ] || exit 0
   [ -f "$DEST/.flubnf.env" ] || exit 0
   # shellcheck disable=SC1091
   . "$DEST/.flubnf.env"
@@ -391,8 +428,12 @@ INSTALLED_STAMP="$(
 )"
 [ -n "$INSTALLED_STAMP" ] && ok "engine version stamp: $INSTALLED_STAMP"
 echo
-echo "Once the new console works, the -old-$STAMP folders and $KEEP"
-echo "(your old engine .tar.gz files) can go in the Trash."
+if [ "$ROUTE" = public ]; then
+  echo "Once the new console works, the -old-$STAMP folder can go in the Trash."
+else
+  echo "Once the new console works, the -old-$STAMP folders and $KEEP"
+  echo "(your old engine .tar.gz files) can go in the Trash."
+fi
 if [ ${#SET_ASIDE[@]} -gt 0 ]; then
   echo "If FluBNF sits in your Dock, remove that icon and drag $DEST/FluBNF.app"
   echo "there instead; the old icon points at the renamed copy and will not open."

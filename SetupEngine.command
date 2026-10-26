@@ -1,7 +1,25 @@
 #!/usr/bin/env bash
 # Double-click me to install the PF engine (Tier B). Finds your PyBNF
 # checkout, or an offline engine bundle, automatically; no typing needed.
+# A copy set to the public engine (setup_engine.sh --public) installs that
+# instead, from engine-requirements.txt, with no checkout or bundle.
 cd "$(dirname "$0")"
+# The route this copy recorded, unless this shell names one. Read in a
+# subshell: the rest of .flubnf.env (FLUBNF_PYBNF) must not change the
+# checkout search below.
+if [ -z "${FLUBNF_ENGINE:-}" ] && [ -f .flubnf.env ]; then
+  FLUBNF_ENGINE="$( . ./.flubnf.env >/dev/null 2>&1; printf '%s' "${FLUBNF_ENGINE:-}" )"
+  [ -n "$FLUBNF_ENGINE" ] && export FLUBNF_ENGINE
+fi
+if [ "${FLUBNF_ENGINE:-}" = public ]; then
+  echo "This copy runs the public engine (FLUBNF_ENGINE=public): public PyBNF"
+  echo "from engine-requirements.txt, no GitHub account or engine file needed."
+  ./setup_engine.sh
+  echo
+  echo "Done (or see messages above). Press enter to close."
+  read -r
+  exit 0
+fi
 # A checkout OR an unpacked archive (no .git), same test as setup_engine.sh.
 FOUND=""
 for c in "${FLUBNF_PYBNF:-}" "$HOME/GitHub/PyBNF-pf" "$HOME/GitHub/PyBNF-Private" \
