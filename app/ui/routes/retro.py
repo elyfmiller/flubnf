@@ -122,23 +122,27 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     # first option is the one selected)
     for s in sorted(available_seasons(), reverse=True):
         total = len(season_vintages(s))
-        root, is_seal = retro_seasons._season_root(s)
-        done = retro_seasons._weeks_done(root)
         prog = retro_seasons._retro_progress(s)
         status = prog["status"]
+        # the live replay's tree while it runs or has weeks, else the
+        # season's best (a sealed record): its facts, never a mix
+        root, is_seal = retro_seasons._card_root(s, status)
+        done = retro_seasons._weeks_done(root)
         # head scores: one relWIS per scored model
         _summ = _retro.run_summary(root)
         rel = _summ.get("headline_rel")
         rels = _summ.get("headline_rels") or ({"": rel} if rel is not None
                                               else {})
-        # one-click resume from the LIVE root's record (never the seal's)
-        resume_fields = None
-        if status in ("stopped", "interrupted"):
-            resume_fields = _retro.resume_form_fields(
-                _retro.read_meta(_live_root(s)))
         # weeks the season gained after this replay finished (hub archive
         # or shipped snapshots): Resume runs them (retro_seasons._retro_progress)
         added = list(prog.get("added") or [])
+        # one-click resume from the LIVE root's record (never the seal's):
+        # a stopped or interrupted replay, or a finished one that gained weeks
+        resume_fields = None
+        if status in ("stopped", "interrupted") or (status == "done"
+                                                    and added):
+            resume_fields = _retro.resume_form_fields(
+                _retro.read_meta(_live_root(s)))
         seasons.append({"name": s, "total": max(total, int(prog.get("total") or 0)),
                         "done": done,
                         "added": added, "added_n": len(added),
@@ -828,6 +832,13 @@ def retro_engine_label(engine: str) -> str:
     return retro.engine_label(engine)
 
 
+def _replaying(root: Path, season: str, archive: str = "") -> bool:
+    """True when `root` is the live tree of a season still replaying: its
+    page renders from the caches it has (the worker finalizes at the end)."""
+    return (not archive and Path(root) == _live_root(season)
+            and retro_seasons._season_status(season) in _RETRO_ACTIVE)
+
+
 # === Retrospective season page (/retro/{season}) and its APIs -> retro_season.html ===
 @router.get("/retro/{season}", response_class=HTMLResponse)
 def retro_results(request: Request, season: str, week: str = "",
@@ -866,8 +877,13 @@ def retro_results(request: Request, season: str, week: str = "",
     # the background finalize job and the page shows a polled preparing
     # state (after a short grace wait). A job covering these exact inputs is
     # believed, so an unsettled-truth season never loops.
-    if ((request.query_params.get("rescore") and not _is_sealed_root(root))
-            or _results_pending(root)):
+    # A season still replaying renders from the caches it has, beside its
+    # live card: a job per visit would rerun finalize on every new week
+    # (the worker finalizes at the end).
+    live = _replaying(root, season, archive)
+    if not live and ((request.query_params.get("rescore")
+                      and not _is_sealed_root(root))
+                     or _results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         job["done"].wait(_RESULTS_GRACE_S)
@@ -959,14 +975,17 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         from app.core.report_season import cumulative_curves
         curves = cumulative_curves(df)
         curve = curves.get("pf") or next(iter(curves.values()), [])
+    # a season still replaying shows what its caches hold: no national
+    # aggregate built in the request (the worker builds it at the end)
+    live = _replaying(root, season, archive)
     # national series via usn.resolve (fitted > constructed > officials), with
     # its provenance label printed; a failure never costs the page
     us = None
     try:
         # unscored too: a replay that fitted US is labelled so (its
         # forecast is drawn), with no aggregate to build
-        us = (usn.resolve(root, df_all) if scoreable
-              else usn.resolve(root, df_all, allow_aggregate=False))
+        us = usn.resolve(root, df_all,
+                         allow_aggregate=scoreable and not live)
     except Exception:
         us = None
     # the jurisdictions the pooled figures cover (the live scores' tag):
@@ -1033,7 +1052,7 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     from app.core import usmap as _um
     map_legend = [(_um.cat_fill(c), c.replace("_", " "))
                   for c in _um.CATS] + [(_um.NO_DATA, "no data")]
-    if not scoreable and not score_error:
+    if not scoreable and not score_error and not live:
         # scored zero cells with no exception. That is benign while nothing
         # can be scored yet: a cell needs settled truth AND a
         # FluSight-baseline round for its date (scoring keeps only the cells
@@ -1115,8 +1134,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         if have_truth != 0:
             score_error = "scored zero cells with no exception. " + probe
     # no scores: the page says why above the player (a scoring failure as
-    # an alert, unsettled truth as an empty state); the weekly maps stay
-    unsettled = not scoreable and not score_error
+    # an alert, unsettled truth as an empty state); the weekly maps stay.
+    # A season still replaying is scored when it finishes: neither.
+    unsettled = not scoreable and not score_error and not live
     # comparators that submitted at least once this season (player toggles)
     try:
         official_catalog = _playback.season_official_catalog(root)
@@ -1162,7 +1182,11 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         "imported": imported,
         # the map's click opens a state's forecast detail (abbr -> name)
         "state_names": by_abbr,
-        "n_weeks": len(weeks) if scoreable else 0}
+        # the title's weeks scored: the as-of weeks with a scored cell, none
+        # where the convention has no figures
+        "n_weeks": (int(df["asof"].nunique())
+                    if figs is not None and figs.available
+                    and "asof" in df.columns else 0)}
 
 
 #: the horizon the season page's categorical map shows (retro_prep
