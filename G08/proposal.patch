@@ -1,0 +1,353 @@
+diff --git a/app/core/us_national.py b/app/core/us_national.py
+index de627d9..acc8a21 100644
+--- a/app/core/us_national.py
++++ b/app/core/us_national.py
+@@ -141,13 +141,31 @@ FALLBACK_NOTES = {
+ #: number. pooled_frame is the one gate; app/tests/test_us_national.py enforces it.
+ POOLED_INCLUDES_US = False
+ 
+-#: what every surface prints about the pooled figure's scope
++#: the jurisdictions a whole replay covers: the states, DC and Puerto Rico
++JURISDICTIONS = 52
++
++#: what every surface prints about the pooled figure's scope, for a whole
++#: replay (pooled_scope_note says it for a partial one)
+ POOLED_SCOPE_NOTE = (
+-    "Pooled relWIS covers the fitted states, DC and Puerto Rico; the US "
+-    "national cell, their sum, is scored apart and never joins the pooled "
++    "Pooled relWIS covers the 52 jurisdictions (the states, DC and Puerto "
++    "Rico); the US national cell is scored apart and never joins the pooled "
+     "average.")
+ 
+ 
++def pooled_scope_note(n_states=None, provenance: str = "") -> str:
++    """The pooled figure's scope for one season: the replayed count when
++    fewer than every jurisdiction was replayed, and the US cell named as
++    the states' sum only when it is one (AGGREGATED)."""
++    n = int(n_states) if n_states else JURISDICTIONS
++    cell = ("the US national cell, their sum," if provenance == AGGREGATED
++            else "the US national cell")
++    if n < JURISDICTIONS:
++        return (f"Pooled relWIS covers the {n} replayed jurisdiction"
++                f"{'' if n == 1 else 's'}; {cell} is scored apart and never "
++                "joins the pooled average.")
++    return POOLED_SCOPE_NOTE.replace("the US national cell", cell)
++
++
+ # ---------------------------------------------------------- identification
+ 
+ def is_us(loc) -> bool:
+@@ -485,6 +503,17 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
+                                                        "columns", ()):
+         n_states = int(pooled_frame(scores_df)["location"].nunique()) or None
+ 
++    # a replay that fitted US stores its forecast whether or not the season
++    # was scored (no baseline in the clone): the US row is fitted, unscored
++    if _fitted_us_stored(root):
++        return UsNational(FITTED, n_states=n_states,
++                          reason="fitted, not scored here")
++    # a sum of states is the nation only when every jurisdiction is in it
++    if n_states is not None and n_states < JURISDICTIONS:
++        return UsNational(OFFICIALS_ONLY, n_states=n_states,
++                          reason=f"the replay scored {n_states} of the "
++                                 f"{JURISDICTIONS} jurisdictions, so no sum "
++                                 "of states is built")
+     if not allow_aggregate:
+         return UsNational(OFFICIALS_ONLY, n_states=n_states,
+                           reason="the aggregate was not computed here")
+@@ -500,6 +529,15 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
+     return UsNational(OFFICIALS_ONLY, n_states=n_states, reason=reason)
+ 
+ 
++def _fitted_us_stored(root) -> bool:
++    """Whether the season's replay fitted US as its own location (its
++    record asks for it) and stored a week."""
++    from app.core import retro as _retro
++    locs = (_retro.read_meta(root).get("settings") or {}).get("locations")
++    return (isinstance(locs, list) and any(is_us(l) for l in locs)
++            and bool(_retro.season_sample_files(root)))
++
++
+ def aggregate_row(root) -> tuple:
+     """(row, reason): the sum-of-states aggregate, or (None, a printable
+     reason). Never a silent omission."""
+diff --git a/app/tests/test_report_parity.py b/app/tests/test_report_parity.py
+index cef852d..9e38fbf 100644
+--- a/app/tests/test_report_parity.py
++++ b/app/tests/test_report_parity.py
+@@ -62,6 +62,10 @@ def _mk_root(tmp_path, monkeypatch):
+     # call time, so patch there too
+     monkeypatch.setattr(scoring, "load_truth", lambda: (truth, n2f))
+     monkeypatch.setattr(scoring, "_baseline_cells", _bases)
++    # a sum of states stands in for the nation only when every
++    # jurisdiction is in it: the two states here are the whole set
++    from app.core import us_national as usn
++    monkeypatch.setattr(usn, "JURISDICTIONS", len(n2f))
+ 
+     root = tmp_path / SEASON
+     for asof in (W1, W2):
+diff --git a/app/tests/test_results_prep.py b/app/tests/test_results_prep.py
+index 3c1c2d6..e1f04c3 100644
+--- a/app/tests/test_results_prep.py
++++ b/app/tests/test_results_prep.py
+@@ -466,6 +466,10 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
+ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
+         tmp_path, _stubbed, monkeypatch):
+     from app.core import report_season
++    from app.core import us_national as usn
++    # a sum of states stands in for the nation only when every
++    # jurisdiction is in it: the tree's two states are the whole set here
++    monkeypatch.setattr(usn, "JURISDICTIONS", 2)
+     root = _mk_tree(tmp_path)
+     retro.finalize_season(root, SEASON)
+     html = report_season.build_season_report(root, SEASON).read_text()
+@@ -505,6 +509,8 @@ def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
+     playback_cache/*.json is part of _newest_input."""
+     import os
+     from app.core import report_season
++    from app.core import us_national as usn
++    monkeypatch.setattr(usn, "JURISDICTIONS", 2)   # the tree's whole set
+     root = _mk_tree(tmp_path)
+     p = report_season.build_season_report(root, SEASON)
+     # the stand-in passes the builder's content test (its marker), so only
+diff --git a/app/tests/test_retro_player.py b/app/tests/test_retro_player.py
+index db1f1d4..b1bfe3b 100644
+--- a/app/tests/test_retro_player.py
++++ b/app/tests/test_retro_player.py
+@@ -40,6 +40,18 @@ def _render():
+     return templates.env.get_template("retro_season.html").render(**CONTEXT)
+ 
+ 
++def test_the_live_scores_say_how_many_jurisdictions_they_pool():
++    """Beside one location's forecast the live table showed the pooled
++    figures with no word on their scope."""
++    html = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, pooled_n=52))
++    assert ('<h2>Live scores</h2><span class="uk-tag">52 jurisdictions '
++            'pooled</span>') in html
++    one = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, pooled_n=1))
++    assert "1 jurisdiction pooled</span>" in one
++
++
+ def test_player_controls_present():
+     html = _render()
+     # player bar: prev / play-pause / next, speed select, scrubber
+diff --git a/app/tests/test_us_national.py b/app/tests/test_us_national.py
+index 254d1b6..0dd7a07 100644
+--- a/app/tests/test_us_national.py
++++ b/app/tests/test_us_national.py
+@@ -58,6 +58,18 @@ def _frame(with_us=True):
+     return pd.DataFrame(rows)
+ 
+ 
++def _wide_frame():
++    """Every jurisdiction scored, no US row: the one scope a sum of states
++    may stand in for the nation."""
++    rows = []
++    for i in range(usn.JURISDICTIONS):
++        for h in range(4):
++            rows.append({"model": "pf", "location": f"State {i + 1:02d}",
++                         "fips": f"{i + 1:02d}", "asof": "2098-01-03",
++                         "horizon": h, "wis": 1.0, "base_wis": 2.0})
++    return pd.DataFrame(rows)
++
++
+ def _rel_of(df):
+     return float(df.wis.sum()) / float(df.base_wis.sum())
+ 
+@@ -286,6 +298,35 @@ def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
+     assert "US (fitted)" in html
+     # 1.462 would be the pooled figure with US in
+     assert "1.462" not in html
++    # the pooled figures' scope, said in the "i" and beside the live scores
++    assert ("Pooled relWIS covers the 2 replayed jurisdictions; the US "
++            "national cell is scored apart") in html
++    assert "their sum" not in html
++    assert '<span class="uk-tag">2 jurisdictions pooled</span>' in html
++
++
++def test_an_unscored_season_with_a_fitted_us_labels_it_fitted(tmp_path,
++                                                             monkeypatch):
++    """With no scores (no baseline in the clone) the page read 'US
++    (official models only)' while drawing the fitted US forecast."""
++    from fastapi.testclient import TestClient
++
++    from app.core import retro as _retro
++    from app.ui import server as srv
++    from app.ui import retro_seasons as ui_retro_seasons
++
++    root, season = _console_season(tmp_path, monkeypatch)
++    (root / "scores.json").unlink()
++    _retro.write_meta(root, {"status": "done", "weeks_completed": 1,
++                             "total_weeks": 1,
++                             "settings": {"locations": ["Ohio", "Utah",
++                                                        "US"]}})
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
++    html = TestClient(srv.app).get(f"/retro/{season}").text
++    assert '"label": "US national (fitted)"' in html
++    assert "US (official models only)" not in html
++    assert '<span class="uk-tag">2 jurisdictions pooled</span>' in html
+ 
+ 
+ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
+@@ -371,17 +412,59 @@ def test_resolution_falls_back_to_the_aggregate(tmp_path, monkeypatch):
+         lambda *a, **k: {"pf": 0.494, "analogue": 0.981, "ensemble": 0.629,
+                          "cells": {"pf": 96, "analogue": 96,
+                                    "ensemble": 96}, "weeks": 27})
+-    root = _root_with_scores(tmp_path, _frame(with_us=False))
+-    us = usn.resolve(root, _frame(with_us=False))
++    root = _root_with_scores(tmp_path, _wide_frame())
++    us = usn.resolve(root, _wide_frame())
+     assert us.provenance == usn.AGGREGATED
+     assert us.is_fallback and not us.is_fitted
+     assert us.scores["ensemble"] == pytest.approx(0.629)
+     assert us.short_label == "US (aggregated)"
+-    assert us.label == "US national (sum of 2 states)"
++    assert us.label == "US national (sum of 52 states)"
+     assert "fallback" in us.fallback_note
+     assert "not a fitted national forecast" in us.note
+ 
+ 
++def test_a_partial_scope_never_gets_a_sum_of_states(tmp_path, monkeypatch):
++    """Two states summed were scored against the whole country's truth
++    and shown as 'US national (sum of 2 states)'; fewer than every
++    jurisdiction replayed means no national row, and the reason says so."""
++    from app.core import retro
++
++    def boom(*a, **k):
++        raise AssertionError("no sum of states on a partial scope")
++
++    monkeypatch.setattr(retro, "national_aggregate", boom)
++    root = _root_with_scores(tmp_path, _frame(with_us=False))
++    us = usn.resolve(root, _frame(with_us=False))
++    assert us.provenance == usn.OFFICIALS_ONLY and not us.has_scores
++    assert us.n_states == 2
++    assert us.reason == ("the replay scored 2 of the 52 jurisdictions, so "
++                         "no sum of states is built")
++    assert us.label == "US (official models only)"
++
++
++def test_a_replay_that_fitted_us_reads_fitted_without_scores(tmp_path,
++                                                             monkeypatch):
++    """With no scores (no baseline in the clone) the US row read 'official
++    models only' while the fitted US forecast was drawn: the record and a
++    stored week say it was fitted."""
++    from app.core import retro
++    monkeypatch.setattr(retro, "national_aggregate",
++                        lambda *a, **k: {"pf": 0.5, "cells": {"pf": 4}})
++    root = tmp_path / "season"
++    wd = root / "weeks" / "2098-01-03"
++    wd.mkdir(parents=True)
++    (wd / "samples.json").write_text("{}", encoding="utf-8")
++    retro.write_meta(root, {"settings": {"locations": ["Ohio", "Utah",
++                                                       "US"]}})
++    us = usn.resolve(root, None)
++    assert us.provenance == usn.FITTED and not us.has_scores
++    assert us.label == "US national (fitted)"
++    assert us.reason == "fitted, not scored here"
++    # states only: no US forecast was stored, so nothing is fitted
++    retro.write_meta(root, {"settings": {"locations": ["Ohio", "Utah"]}})
++    assert usn.resolve(root, None).provenance != usn.FITTED
++
++
+ def test_resolution_ends_at_officials_only(tmp_path, monkeypatch):
+     from app.core import retro
+     monkeypatch.setattr(retro, "national_aggregate", lambda *a, **k: None)
+@@ -402,8 +485,8 @@ def test_a_failing_aggregate_degrades_to_officials_with_a_reason(
+         raise RuntimeError("cold cache, no samples")
+ 
+     monkeypatch.setattr(retro, "national_aggregate", boom)
+-    root = _root_with_scores(tmp_path, _frame(with_us=False))
+-    us = usn.resolve(root, _frame(with_us=False))
++    root = _root_with_scores(tmp_path, _wide_frame())
++    us = usn.resolve(root, _wide_frame())
+     assert us.provenance == usn.OFFICIALS_ONLY
+     assert "RuntimeError" in us.reason
+ 
+@@ -423,6 +506,23 @@ def test_allow_aggregate_false_never_claims_an_aggregate(tmp_path,
+ 
+ # --------------------------------------------------------------- the wording
+ 
++def test_the_pooled_note_names_the_replayed_scope_and_the_us_cell():
++    """One static sentence said 'the fitted states, DC and Puerto Rico' and
++    called a fitted US 'their sum', whatever the replay covered."""
++    assert usn.pooled_scope_note(52, usn.FITTED) == usn.POOLED_SCOPE_NOTE
++    assert usn.pooled_scope_note(None, "") == usn.POOLED_SCOPE_NOTE
++    assert "their sum" not in usn.POOLED_SCOPE_NOTE
++    assert usn.pooled_scope_note(52, usn.AGGREGATED) == (
++        "Pooled relWIS covers the 52 jurisdictions (the states, DC and "
++        "Puerto Rico); the US national cell, their sum, is scored apart and "
++        "never joins the pooled average.")
++    assert usn.pooled_scope_note(6, usn.OFFICIALS_ONLY) == (
++        "Pooled relWIS covers the 6 replayed jurisdictions; the US national "
++        "cell is scored apart and never joins the pooled average.")
++    assert usn.pooled_scope_note(1, usn.FITTED).startswith(
++        "Pooled relWIS covers the 1 replayed jurisdiction;")
++
++
+ def test_every_provenance_has_a_distinct_label_and_note():
+     labels = {p: usn.label(p) for p in usn.PROVENANCES}
+     shorts = {p: usn.short_label(p) for p in usn.PROVENANCES}
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index 60b247d..db928d2 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -955,17 +955,25 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+         curve = curves.get("pf") or next(iter(curves.values()), [])
+     # national series via usn.resolve (fitted > constructed > officials), with
+     # its provenance label printed; a failure never costs the page
++    # resolved with or without scores: a fitted US forecast is drawn
++    # either way, so its label must say so; the sum of states needs scores
+     us = None
+-    if scoreable:
+-        try:
+-            us = usn.resolve(root, df_all)
+-        except Exception:
+-            us = None
++    try:
++        us = usn.resolve(root, df_all, allow_aggregate=scoreable)
++    except Exception:
++        us = None
+     # us_row (member -> relWIS plus provenance) is a ratio of sums, so it is
+     # offered to that convention only; `us` resolves either way for the player
+     us_row = (us.as_dict() if (us is not None and us.has_scores
+                                and convention == relwis.RATIO_OF_SUMS)
+               else None)
++    # the pooled figures' scope: the jurisdictions the replay was asked
++    # for (its record), else those the scores hold
++    rec_locs = (retro.read_meta(root).get("settings") or {}).get("locations")
++    pooled_n = (len(usn.state_names(rec_locs)) if isinstance(rec_locs, list)
++                and rec_locs else
++                int(df["location"].nunique()) if scoreable
++                and "location" in df.columns else 0)
+     # a sealed record's scores.json predates FluSight's cell rule
+     # (retro.SCORES_V); the live scores, and a US row built from the
+     # states, are scored under it, so the page says which figures are which
+@@ -1127,7 +1135,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+         # provenance travels WITH the numbers (fitted vs constructed)
+         "us": (us.as_dict() if us is not None
+                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
+-        "pooled_note": usn.POOLED_SCOPE_NOTE,
++        "pooled_note": usn.pooled_scope_note(
++            pooled_n, us.provenance if us is not None else ""),
++        "pooled_n": pooled_n,
+         "rule_note": rule_note,
+         "conv": convention, "figs": figs,
+         "weeks": weeks, "week": wk, "map_html": map_html,
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 36b91be..69aba66 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -599,7 +599,9 @@
+       export's too (report_season.LIVE_HEADING), and its explanation and
+       the coverage colors' key are the page's "i" (LIVE_SCORES_NOTE,
+       COV_LEGEND, the line player.js covLegend writes) #}
+-   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>
++   {# the figures pool every replayed jurisdiction, whichever location the
++      detail shows: the tag says so #}
++   <div class="rs-h"><h2>{{ live_scores("heading") }}</h2>{% if pooled_n %}{{ tips.tag(pooled_n ~ " jurisdiction" ~ ("" if pooled_n == 1 else "s") ~ " pooled") }}{% endif %}
+    {# the scale switch, written by the player, inline with the heading #}
+    <div class="pbscale" id="pb-scale"></div></div>
+    {# the player writes the table head and body (player.js renderStats) #}
