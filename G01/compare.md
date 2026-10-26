@@ -1,0 +1,8 @@
+# G01: compare (B)
+| Bug | A's | B's | Better, and why |
+|---|---|---|---|
+| TS-01 (also MO-21) | conftest pins `FLUBNF_HUB` to `TEST_STATE/no-hub` at import; the three vendored-vs-clone checks opt in through `FLUBNF_TEST_HUB`; `test_hubcheck` drops its now-dead `FLUBNF_HUB` fallback; guard test in the existing `test_state_isolation.py`, which also checks a child process sees the pin; README splits "always skipped" from "needs FLUBNF_TEST_HUB" | the same pin and the same three opt-ins; guard tests in a new `test_suite_hub.py` checking the module copies (`data.HUB`, `scoring.HUB`, `ARCHIVE`) and that `data.live_newest_week()` is None; README rows reworded in place | **A.** Same root cause, same mechanism, same five tests fixed; I applied A's patch on dev and ran the five, `test_state_isolation`, `test_hubcheck`, `test_core`, `test_model_metadata`, `tests/test_sihrs_fit` with the clone at the default path (pass, hub cases skip) and with `FLUBNF_TEST_HUB` (pass, hub cases run). A's is the smaller, better-placed change: the guard lives in the file that already owns suite isolation, the subprocess check covers what `FLUBNF_HUB` is for, `test_hubcheck`'s dead fallback goes, the opt-in idiom (`hub and Path(hub) / ...`) and `test_sihrs_fit`'s one-line import match the code around them, and the README's split skip table is clearer than my reworded rows. A ran the full suite on 3.12 both ways with identical skip lists, which settles "same result as CI". |
+
+Vote: A
+
+One optional line for the implementer, not a condition: B's guard asserted the exact leak, `data.live_newest_week() is None`; adding that one assertion to A's test would name what went wrong if the pin ever stops reaching `app.core.data`. Fine without it.
