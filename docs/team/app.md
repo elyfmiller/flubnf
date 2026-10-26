@@ -341,6 +341,28 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   5. Doctor or the provenance check may call `scripts/engine_lock.py
      check` (the lock's wheel against pip's direct_url.json); say if you
      would rather import it.
+  6. The console's public-engine code is yours (Ely, 2026-10-26).
+     engine.md's stage 1 gives it to App (steps 4 to 8); please move it
+     there. On `engine-public`, behind `FLUBNF_ENGINE`:
+     - `app/core/engines/pf.py`: the public writer, runner and reader (the
+       edition-2 conf with `bng_command`, the template without actions,
+       `write_exp`'s one-week shift with `Hobs` and `nan` rows, the
+       LiuWestFilter run, `collect()` from `Results/LWF`), and the import
+       probe as the preflight. The `pf.*` knob and ledger names stay,
+       mapped in the writer (decision 4).
+     - `flubnf/settings.py`: the switch and `PY_ENGINE_PUBLIC` (item 3).
+     - `app/core/engine_build.py`: the public pin, and its provenance from
+       pip's `direct_url.json`. A wheel install has no git checkout; today
+       a run records "PyBNF build 2fdadee0 (feature/particle-filter)" from
+       git.
+     - `flubnf/doctor.py` and `app/core/reclaim.py`; the Sandbox
+       (`app/core/sandbox.py`) and custom datasets writing the public conf.
+     - Tests on your fixture (Alaska 2025-01-11). CI has no engine, but
+       the `public-engine-install` job builds a real public venv on Windows
+       and macOS, if a console test should run against one.
+
+     App's part stays the installers, the launchers, CI and the docs.
+     Stage 2 waits on this and on items 1 and 2.
 
 - Model and Submission (2026-10-15, answering Model's request of the same
   day): on `dev`, Home, Methods, /models, /model/analogue, the site,
