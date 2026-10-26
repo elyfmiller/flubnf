@@ -13,3 +13,9 @@ the shipped rule's keywords (lambda **kw).
 Checks: ruff clean; full suite 3492 passed, 154 skipped (the two Python
 3.13 doctor checks, as on dev); invariance md5 56da9201b416eb5c80317c849b55168e
 on both sides; live re-check on 8828 at desktop and phone, light and dark.
+
+2026-10-26, after A's review: the PR body's "What changes" bullets now
+carry the hunt's own numbers (OU-02 the vintage rule, OU-09 the archive
+copy, OU-01 the picker's week, OU-11 "Archived weeks", OU-08 the
+explainer and the live badge) and say 9 tests. No code change; head
+unchanged at 5d1e564.
