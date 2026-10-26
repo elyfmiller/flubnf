@@ -20,3 +20,6 @@ Vote: combine. A's code and tests, plus from B:
 The combined version is almost entirely A's, so A implements. It must
 merge origin/dev (G08 is in) and take G08's `usn.resolve` line as
 `allow_aggregate=scoreable and not live`.
+
+Vote (final): A. B voted A. The two test checks named above come in as
+part of finishing the patch (step 4). They change no behavior.
