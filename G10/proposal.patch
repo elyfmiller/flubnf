@@ -1,0 +1,428 @@
+diff --git a/app/core/playback.py b/app/core/playback.py
+index 5ce91a0..c1e66cf 100644
+--- a/app/core/playback.py
++++ b/app/core/playback.py
+@@ -75,8 +75,9 @@ OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
+ #: bump when cached shapes or scoring logic change (v3: stored members only,
+ #: no blend; v4: the FluSight cell rule, log-scale relWIS and coverage;
+ #: v6: the Liu-West filter alone, from oracle.json, joins the members;
+-#: v7: "us_step", the week's Oracle step on the US cell)
+-CACHE_V = 7
++#: v7: "us_step", the week's Oracle step on the US cell; v8: "no_round",
++#: a week no FluSight baseline round covers)
++CACHE_V = 8
+ TARGET = "wk inc flu hosp"
+ #: canonical hub horizons; app.core.horizons owns the convention
+ HORIZONS = hz.HORIZONS
+@@ -182,6 +183,16 @@ def _official_files_present(asof: str) -> list:
+             if (HUB / "model-output" / om / f"{ref}-{om}.csv").is_file()]
+ 
+ 
++def no_baseline_round(asof: str) -> bool:
++    """Whether a clone that holds the FluSight baseline has no round for
++    this week: none of its cells can ever score, however settled the truth
++    (the player's week cells say so instead of 'pending'). False without
++    the baseline folder: then nothing is known about rounds, and the
++    season says scoring failed."""
++    return ((HUB / "model-output" / "FluSight-baseline").is_dir()
++            and "FluSight-baseline" not in _official_files_present(asof))
++
++
+ def season_official_catalog(root: Path) -> list:
+     """Official models that submitted in at least one week of the season:
+     the player's availability catalog (listed models keep a live toggle in
+@@ -600,6 +611,8 @@ def build_week(root: Path, season: str, asof: str) -> dict:
+         "official": {om: {name: _strq(hq) for name, hq in oq.items()}
+                      for om, oq in official_q.items() if oq},
+         "stats": _stats(root, season, asof, truth, n2f, model_q, official_q),
++        # a week no FluSight round covers: its cells read so, never pending
++        "no_round": no_baseline_round(asof),
+         # which US pf this week stored: the Oracle step's or the filter's
+         "us_step": usn.us_step_week(retro_store._week_dir(root, asof)),
+     }
+diff --git a/app/tests/test_month_axes.py b/app/tests/test_month_axes.py
+index d6abe40..68cf71b 100644
+--- a/app/tests/test_month_axes.py
++++ b/app/tests/test_month_axes.py
+@@ -105,10 +105,12 @@ def test_forecast_season_over_season_uses_month_ticks_and_dated_hover():
+ def test_month_ticks_for_dates_marks_each_month_change():
+     dates = ["2023-10-14", "2023-10-21", "2023-10-28", "2023-11-04",
+              "2023-11-25", "2023-12-02", "2024-01-06"]
++    # the first date's month too: the scrubber's first week was never
++    # labelled (G10 RE-15)
+     assert ui_templating._month_ticks_for_dates(dates) == [
+-        (3, "Nov"), (5, "Dec"), (6, "Jan")]
++        (0, "Oct"), (3, "Nov"), (5, "Dec"), (6, "Jan")]
+     assert ui_templating._month_ticks_for_dates([]) == []
+-    assert ui_templating._month_ticks_for_dates(["2024-05-04"]) == []
++    assert ui_templating._month_ticks_for_dates(["2024-05-04"]) == [(0, "May")]
+ 
+ 
+ def test_cumulative_chart_draws_the_month_ticks():
+diff --git a/app/tests/test_player_js.py b/app/tests/test_player_js.py
+index cdf0613..9a03b0e 100644
+--- a/app/tests/test_player_js.py
++++ b/app/tests/test_player_js.py
+@@ -526,7 +526,8 @@ def test_no_data_weeks_are_wired_into_the_player():
+     assert "function isNoData(w)" in SRC
+     assert "function payloadFor(w)" in SRC
+     assert "payloadFor(w).then(function(pl){" in SRC
+-    assert "var wk = nodata ? 'noround'" in SRC
++    assert "var noround = nodata || !!(pl && pl.no_round);" in SRC
++    assert "var wk = noround ? 'noround'" in SRC
+     assert "? ' · ' + w + '<br>' + noteOf(w)" in SRC
+     assert "noDataPayload: noDataPayload" in SRC
+     # the host hands the caption over (the season page, which the season
+diff --git a/app/tests/test_results_prep.py b/app/tests/test_results_prep.py
+index 3c1c2d6..1db757a 100644
+--- a/app/tests/test_results_prep.py
++++ b/app/tests/test_results_prep.py
+@@ -483,6 +483,21 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
+     assert "<script src" not in html
+ 
+ 
++def test_a_week_without_a_baseline_round_says_so_in_its_payload(
++        tmp_path, _stubbed):
++    """Weeks with settled truth but no FluSight round read 'pending'
++    forever in the live scores: the payload says the week has no round
++    (G10 RE-11), only when the clone holds the baseline at all."""
++    root = _mk_tree(tmp_path)
++    hub = tmp_path / "hub"
++    assert playback.build_week(root, SEASON, W1)["no_round"] is False
++    _baseline_round(hub, W1)
++    for p in (root / "playback_cache").glob("*.json"):
++        p.unlink()
++    assert playback.build_week(root, SEASON, W1)["no_round"] is False
++    assert playback.build_week(root, SEASON, W2)["no_round"] is True
++
++
+ def test_unscored_report_states_the_aggregate_absence_never_invents_it(
+         tmp_path, _stubbed, monkeypatch):
+     """A season that cannot be scored (no settled truth): the export
+diff --git a/app/tests/test_retro_player.py b/app/tests/test_retro_player.py
+index db1f1d4..65666e8 100644
+--- a/app/tests/test_retro_player.py
++++ b/app/tests/test_retro_player.py
+@@ -96,7 +96,7 @@ def test_js_reads_only_contract_fields():
+     # together as one JS surface)
+     both = html + PLAYER_JS
+     contract = {"asof", "locations", "truth", "seen", "models", "official",
+-                "stats", "us_step"}
++                "stats", "us_step", "no_round"}
+     fields = set(re.findall(r"\bpl\.(\w+)", both))
+     assert fields, "expected the player JS to read payload fields via pl.*"
+     assert fields <= contract, fields - contract
+@@ -417,3 +417,69 @@ def test_a_mixed_season_says_which_weeks_and_withholds_the_filters_figure():
+     assert str(escape(us_national.PF_FILTER_US_WITHHELD)) in _page_i(page)
+     assert ("The filter alone: 1 week, 2098-11-07; the Oracle step: 1 "
+             "week, 2098-11-14.") in page
++
++
++# -------------------------------------------- the player and its tables (G10)
++
++def test_the_player_gets_the_seasons_stored_members_as_its_catalog():
++    """Opened on a no-data week (a deep link), the toggles were built from
++    that week's empty placeholder payload and lost the replay's own model
++    for the visit: the host hands over the stored members."""
++    html = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, model_catalog=["analogue"],
++               official_catalog=["FluSight-baseline"]))
++    assert ('catalog: {models: ["analogue"],\n'
++            '             officials: ["FluSight-baseline"]},') in html
++    assert "catalog: {models: []," in _render()
++
++
++def test_the_scrubber_labels_the_first_week_and_keeps_the_ends_inside():
++    tl = ["2098-10-31", "2098-11-07", "2098-11-14", "2098-12-05"]
++    html = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, weeks=tl, timeline=tl, week=tl[-1]))
++    ticks = html.split('<span class="rt-ticks"', 1)[1].split("</span></span>", 1)[0]
++    assert '<span class="first" style="--f:0.0000">Oct</span>' in ticks
++    assert '<span style="--f:0.3333">Nov</span>' in ticks
++    assert '<span class="last" style="--f:1.0000">Dec' in ticks
++    # overlapping labels are hidden after layout, the last one winning
++    assert "function tickLabels()" in html
++    assert "addEventListener('fontsizechange', tickLabels)" in html
++
++
++def test_an_unscored_per_state_card_is_an_empty_state():
++    html = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, states=[]))
++    card = html.split('id="statefold"', 1)[1].split("</details>", 1)[0]
++    assert 'id="sf-none"' in card and "No jurisdiction scored yet" in card
++    assert 'id="sf-filter"' not in card and "thsort" not in card
++    assert "0 jurisdictions scored" in card
++    scored = _render().split('id="statefold"', 1)[1].split("</details>", 1)[0]
++    assert 'id="sf-filter"' in scored and 'id="sf-none"' not in scored
++
++
++def test_a_state_name_click_scrolls_to_the_player_after_the_click_guard():
++    """base.html undoes any scroll within two frames of a non-link click;
++    with reduced motion the jump was instant, so it was always undone."""
++    html = _render()
++    i = html.index("button.rt-locbtn[data-loc]")
++    tail = html[i:i + 900]
++    assert ("requestAnimationFrame(() => requestAnimationFrame(() =>\n"
++            "     card.scrollIntoView(") in tail
++
++
++def test_a_known_scoring_failure_reads_plain_with_the_error_folded():
++    from app.ui.routes import retro as ui_retro
++    raw = ("FileNotFoundError: the hub clone has no model-output/"
++           "FluSight-baseline (sparse checkout predates the baseline "
++           "requirement). Press Update data on the Data tab to fetch it.")
++    plain = ui_retro.score_plain_words(raw)
++    assert plain == ("The FluSight baseline is not in the hub clone yet; "
++                     "Update data on the Data tab fetches it.")
++    assert ui_retro.score_plain_words("RuntimeError: x") == ""
++    html = templates.env.get_template("retro_season.html").render(
++        **dict(CONTEXT, heads={}, figs=None, us=None, us_row=None,
++               score_error=raw, score_plain=plain))
++    alert = html.split('id="rs-scorefail"', 1)[1].split("</div>", 1)[0]
++    assert plain in alert and "FileNotFoundError" not in alert
++    fold = html.split('id="rs-scorefail-raw"', 1)[1].split("</details>", 1)[0]
++    assert "<code>FileNotFoundError: the hub clone has no model-output/" in fold
+diff --git a/app/tests/test_season_run_marks.py b/app/tests/test_season_run_marks.py
+index 03c7a02..511390c 100644
+--- a/app/tests/test_season_run_marks.py
++++ b/app/tests/test_season_run_marks.py
+@@ -199,7 +199,11 @@ def test_the_badges_and_lines_say_what_their_tips_did():
+     # a scoring failure points at the Data tab in place of a "?"
+     err = _page(heads={}, figs=None, us=None, us_row=None, score_error="boom")
+     fail = err.split('id="rs-scorefail"', 1)[1].split("</div>", 1)[0]
+-    assert "<code>boom</code>" in fail and 'href="/data"' in fail
++    # the raw error is folded under the alert, never in it (G10 UI-20)
++    assert "The error is below." in fail and 'href="/data"' in fail
++    assert "boom" not in fail
++    raw = err.split('id="rs-scorefail-raw"', 1)[1].split("</details>", 1)[0]
++    assert "<code>boom</code>" in raw
+     # the map's tag says which week it shows
+     assert ('<span class="uk-tag">horizon 0, the week after the newest '
+             'data</span>') in _page()
+diff --git a/app/tests/test_ui_kit.py b/app/tests/test_ui_kit.py
+index e1085ab..b467a61 100644
+--- a/app/tests/test_ui_kit.py
++++ b/app/tests/test_ui_kit.py
+@@ -558,3 +558,10 @@ def test_the_kit_script_is_es5():
+     code = re.sub(r"'[^'\n]*'", "''", re.sub(r"//[^\n]*", "", kit))
+     assert "=>" not in code and "`" not in code
+     assert not re.search(r"\b(?:let|const|class)\s", code)
++
++
++def test_the_alerts_action_drops_under_its_text_on_a_phone():
++    """At 390px the 'Data tab' action sat pinned at the right of eight
++    lines of text (G10 UI-20)."""
++    assert ("@media (max-width:30em){\n"
++            "  .uk-alert-action{flex-basis:100%;margin-left:0}\n}") in KIT_CSS
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index e0132d3..2728701 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -828,6 +828,16 @@ def retro_engine_label(engine: str) -> str:
+     return retro.engine_label(engine)
+ 
+ 
++def score_plain_words(score_error: str) -> str:
++    """A scoring failure a student can act on, in plain words, or "" for
++    one the page has no words for (its text is shown folded either way)."""
++    e = str(score_error or "")
++    if "FluSight-baseline" in e and "no model-output" in e:
++        return ("The FluSight baseline is not in the hub clone yet; Update "
++                "data on the Data tab fetches it.")
++    return ""
++
++
+ # === Retrospective season page (/retro/{season}) and its APIs -> retro_season.html ===
+ @router.get("/retro/{season}", response_class=HTMLResponse)
+ def retro_results(request: Request, season: str, week: str = "",
+@@ -1114,9 +1124,17 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+                          f"failed: {type(pe).__name__}: {str(pe)[:120]}")
+         if have_truth != 0:
+             score_error = "scored zero cells with no exception. " + probe
++    # a known failure in plain words (the error itself stays, folded)
++    score_plain = score_plain_words(score_error)
+     # no scores: the page says why above the player (a scoring failure as
+     # an alert, unsettled truth as an empty state); the weekly maps stay
+     unsettled = not scoreable and not score_error
++    # the members the newest stored week holds (its quantile sidecar)
++    try:
++        from app.core import retro_store as _rs
++        model_catalog = sorted(_rs.week_member_quantiles(root, weeks[-1]))
++    except Exception:
++        model_catalog = []
+     # comparators that submitted at least once this season (player toggles)
+     try:
+         official_catalog = _playback.season_official_catalog(root)
+@@ -1162,6 +1180,10 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+         "imported": imported,
+         # the map's click opens a state's forecast detail (abbr -> name)
+         "state_names": by_abbr,
++        # the members the replay stored: the player's toggles are built
++        # from them, so a visit opening on a no-data week keeps them
++        "model_catalog": model_catalog,
++        "score_plain": score_plain,
+         "n_weeks": len(weeks) if scoreable else 0}
+ 
+ 
+diff --git a/app/ui/static/player.js b/app/ui/static/player.js
+index 15ae155..4fde8a3 100644
+--- a/app/ui/static/player.js
++++ b/app/ui/static/player.js
+@@ -880,12 +880,15 @@ function createPlayer(cfg){
+     // "pending", never NaN.
+     var av = pl ? officialAvailability(pl, OFFS) : null;
+     var nodata = isNoData(weeks[P.idx]);
++    // a week with no FluSight baseline round never scores (the host's
++    // no_round): its week cells say so, as a no-data week's do
++    var noround = nodata || !!(pl && pl.no_round);
+     var rows = [];
+     ALLM.forEach(function(m){
+       if(!P.on[m]) return;
+       var st = pl && pl.stats ? pl.stats[m] : null;
+       var sv = statView(st, P.scale);
+-      var wk = nodata ? 'noround'
++      var wk = noround ? 'noround'
+         : weekCellState(sv.week.rel, OFFS.indexOf(m) >= 0, !!av,
+                         !!(av && av[m]), !!seasonOffs[m]);
+       var cum = isNum(sv.cum.rel) ? 'score' : 'pending';
+diff --git a/app/ui/static/tabs/retro.css b/app/ui/static/tabs/retro.css
+index 1b5a83b..58f8db8 100644
+--- a/app/ui/static/tabs/retro.css
++++ b/app/ui/static/tabs/retro.css
+@@ -137,6 +137,9 @@
+   font-size:var(--fs-hint);pointer-events:none}
+ .rt-ticks > span{position:absolute;top:0;line-height:1.15;white-space:nowrap;
+   left:calc(.5rem + (100% - 1rem) * var(--f,0));transform:translateX(-50%)}
++/* the end labels stay inside the track */
++.rt-ticks > span.first{transform:none}
++.rt-ticks > span.last{transform:translateX(-100%)}
+ .rt-weekl{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.1rem .3rem}
+ .rt-copy{padding:.2rem .45rem;line-height:1}
+ .rt-copied{color:var(--mut);font-size:var(--fs-label)}
+diff --git a/app/ui/static/ui-kit.css b/app/ui/static/ui-kit.css
+index 761b284..f9ed02d 100644
+--- a/app/ui/static/ui-kit.css
++++ b/app/ui/static/ui-kit.css
+@@ -409,3 +409,7 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
+ @media (prefers-reduced-motion:reduce){
+   details.uk-fold > summary::before,.uk-progress-fill{transition:none}
+ }
++/* a phone: the alert's action drops under its text */
++@media (max-width:30em){
++  .uk-alert-action{flex-basis:100%;margin-left:0}
++}
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 012259b..0d8cb99 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -444,8 +444,8 @@
+  {# show the failure, never pass it off as "truth not settled"; the
+     fitted forecasts below are intact, and the scoring input is usually
+     the FluSight hub clone, which the Data tab updates #}
+- {% set errc %}<code>{{ score_error }}</code>{% endset %}
+- {{ tips.alert("error", errc, title="Scoring failed.", id="rs-scorefail", action=('' if export else '<a href="/data">Data tab</a>' | safe)) }}
++ {{ tips.alert("error", score_plain or "The error is below.", title="Scoring failed.", id="rs-scorefail", action=('' if export else '<a href="/data">Data tab</a>' | safe)) }}
++ {% call tips.fold("The error", id="rs-scorefail-raw", cls="rsfold") %}<code>{{ score_error }}</code>{% endcall %}
+  {% elif unsettled and not heads %}
+  {# the title names both inputs a score waits on, so it needs no "?" #}
+  {{ tips.empty("No scoreable weeks yet: truth or the FluSight baseline is not in", "clock", id="rs-unsettled") }}
+@@ -546,7 +546,7 @@
+   {% set nt = (timeline|length) - 1 %}
+   <span class="rt-scrub"><input type="range" id="pb-scrub" min="0" max="{{ nt }}" step="1"
+          value="{{ timeline.index(week) if week in timeline else 0 }}" aria-label="Week scrubber">
+-   {% if nt > 0 %}<span class="rt-ticks" aria-hidden="true">{% for i, lab in month_ticks_for_dates(timeline) %}<span style="--f:{{ '%.4f' | format(i / nt) }}">{{ lab }}</span>{% endfor %}</span>{% endif %}</span>
++   {% if nt > 0 %}<span class="rt-ticks" aria-hidden="true">{% for i, lab in month_ticks_for_dates(timeline) %}<span{% if i == 0 %} class="first"{% elif i == nt %} class="last"{% endif %} style="--f:{{ '%.4f' | format(i / nt) }}">{{ lab }}</span>{% endfor %}</span>{% endif %}</span>
+   {# polite live regions announce the player advancing; the link button
+      copies the address of this week, location and view #}
+   <span class="rt-weekl"><span class="hint" id="pb-week" aria-live="polite"></span>
+@@ -709,6 +709,7 @@
+  <summary><h2 style="display:inline">Per-state scores</h2>
+   {{ tips.tag(conv_label) }}
+   {{ tips.badge("neutral", states|length ~ " jurisdiction" ~ ('' if states|length == 1 else 's') ~ " scored") }}</summary>
++ {% if states %}
+  {# the filter, its count, and the reset of a remembered sort (shown
+     while the table is sorted) #}
+  <div class="row rt-filter">
+@@ -773,6 +774,9 @@
+   {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
+ {% endfor %}</tbody></table>
+  </div>
++ {% else %}
++ {{ tips.empty("No jurisdiction scored yet", "clock", compact=True, id="sf-none") }}
++ {% endif %}
+ </details>
+ <script>
+  // the fold state persists (open by default), and the sort per season
+@@ -1124,6 +1128,10 @@
+  player = FluBNFPlayer.init({
+    weeks: WEEKS,
+    notes: NOTES,
++   // the toggles, built once from the season's stored members and
++   // comparators: a deep link's first week may be a no-data placeholder
++   catalog: {models: {{ (model_catalog or []) | tojson }},
++             officials: {{ (official_catalog or []) | tojson }}},
+    // a deep link's location, and the season's memory (checkboxes,
+    // location, time window)
+    initialLoc: LINK.loc || '',
+@@ -1184,8 +1192,11 @@
+    player.setLoc(b.dataset.loc);
+    setView('fc');
+    const card = document.getElementById('rs-playcard');
+-   if(card) card.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+-                                           ? 'auto' : 'smooth', block: 'start'});
++   // after base.html's click guard, which holds the scroll for two frames
++   // after any click (an instant scroll would be undone)
++   if(card) requestAnimationFrame(() => requestAnimationFrame(() =>
++     card.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
++                                    ? 'auto' : 'smooth', block: 'start'})));
+  });
+  // Copy link: the address of this week, location and view
+  (function(){
+@@ -1233,6 +1244,27 @@
+    ls.forEach((t, i) => t.setAttribute('y', (ys[i] - Math.max(0, over)).toFixed(1)));
+  }
+  cumLabels();
++ // the scrubber's month labels: one that would print over the label
++ // before it is hidden (months a week apart, a narrow track); the last
++ // label wins over its neighbour
++ function tickLabels(){
++   const ls = [].slice.call(document.querySelectorAll('.rt-ticks > span'));
++   let prev = null;
++   ls.forEach(s => { s.style.visibility = ''; });
++   ls.forEach((s, i) => {
++     const b = s.getBoundingClientRect();
++     if(prev && b.left < prev.getBoundingClientRect().right + 4){
++       if(i === ls.length - 1){ prev.style.visibility = 'hidden'; prev = s; }
++       else s.style.visibility = 'hidden';
++       return;
++     }
++     prev = s;
++   });
++ }
++ tickLabels();
++ let tickT = null;
++ addEventListener('resize', () => {clearTimeout(tickT); tickT = setTimeout(tickLabels, 150);});
++ addEventListener('fontsizechange', tickLabels);
+  let cumT = null;
+  addEventListener('resize', () => {clearTimeout(cumT); cumT = setTimeout(cumLabels, 150);});
+  addEventListener('fontsizechange', cumLabels);
+diff --git a/app/ui/templating.py b/app/ui/templating.py
+index 88151c2..3ab006a 100644
+--- a/app/ui/templating.py
++++ b/app/ui/templating.py
+@@ -286,12 +286,12 @@ templates.env.globals["season_week_name"] = _season_week_name
+ 
+ 
+ def _month_ticks_for_dates(dates) -> list:
+-    """[(index, month label)] at every month change across ordered ISO dates
+-    (ticks for a date-indexed axis)."""
++    """[(index, month label)] at the first date and every month change
++    across ordered ISO dates (ticks for a date-indexed axis)."""
+     out, prev = [], None
+     for i, d in enumerate(dates):
+         mm = str(d)[5:7]
+-        if prev is not None and mm != prev and mm.isdigit():
++        if mm.isdigit() and (prev is None or mm != prev):
+             out.append((i, _MON_NAME.get(int(mm), "")))
+         prev = mm
+     return out
