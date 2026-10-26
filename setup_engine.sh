@@ -24,7 +24,6 @@ else
   done
   [ -n "$PYBNF" ] || PYBNF="$HOME/GitHub/PyBNF-Private"
 fi
-BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -465,13 +464,17 @@ say "bngsim"
 if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
   ok "bngsim already importable"
 else
-  # Wheel first, source build as fallback. Pinned to 0.15.1: measured
-  # bit-identical (ODE, filter, WIS) to the unreleased build behind every
-  # published number; 0.13.0, the version that build reported, is not.
-  if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1" 2>/dev/null; then
-    warn "no PyPI/wheel match -- building from source (needs a C++ toolchain;"
-    warn "on macOS: xcode-select --install). This takes ~10 minutes."
-    "$ENGINE_VENV/bin/pip" install "git+$BNGSIM_REMOTE" || { warn "bngsim build failed"; exit 1; }
+  # Pinned to 0.15.1: measured bit-identical (ODE, filter, WIS) to the
+  # unreleased build behind every published number; 0.13.0, the version that
+  # build reported, is not. From PyPI or not at all: the source build from the
+  # head of elyfmiller/bngsim that used to follow here was unpinned, so it
+  # could install a bngsim no published number was made with.
+  if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1"; then
+    warn "pip could not install bngsim 0.15.1 into $ENGINE_VENV (its error is"
+    warn "above), so the engine is NOT ready. No other bngsim is tried: with"
+    warn "the network up, run this again; if it fails the same way, send Ely"
+    warn "this window. The console still runs, analogue forecasts only."
+    exit 1
   fi
   ok "bngsim installed: $("$ENGINE_VENV/bin/python" -c 'import bngsim; print(bngsim.__version__)')"
 fi
