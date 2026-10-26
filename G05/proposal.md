@@ -48,7 +48,7 @@ The rule I followed: "refuse plainly, up front, rather than run the other model 
 
 ## Checks
 - New tests: 11 (9 in test_no_engine.py, 2 in test_retro_archive.py). On the base: 8 fail, 3 pass (the three with-the-engine guards, as they should).
-- `ruff check --select F821,F823,F811,F401 app/ui` clean. All app/tests on the prototype before the new tests: 2893 passed, 69 skipped. The full suite is running; counts follow.
+- `ruff check --select F821,F823,F811,F401 app/ui` clean. All app/tests on the prototype before the new tests: 2893 passed, 69 skipped. The full suite on the prototype (3.12): 3474 passed, 155 skipped, 0 failed.
 - Invariance: an all-53 run on 2026-10-17, Groundhog only and Both, on dev 695155d and on the prototype: md5 56da9201b416eb5c80317c849b55168e for all four.
 
 ## Patch
