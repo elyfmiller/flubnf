@@ -17,5 +17,6 @@ Vote: A (with, if A agrees, `choices()` leaving a damaged dataset out, as
 B's `test_a_dataset_missing_its_data_file_is_a_note_not_an_error_page`
 asserts; otherwise A as it stands).
 
-B's full suite on proto/G07-B (3.13): still running at push time, no
-failure so far past 61%; the result follows in this file.
+B's full suite on proto/G07-B (3.13): 3490 passed, 154 skipped; the two
+failures are the tests/test_doctor.py checks that fail on this machine's
+Python 3.13 on dev too.
