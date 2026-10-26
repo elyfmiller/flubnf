@@ -68,9 +68,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
                                     status_code=303)
     if source:
         ds = _dsu.get_dataset(source)
-        if ds is not None:
+        why = _dsu.damaged(ds) if ds is not None else ""
+        if ds is not None and not why:
             return _dsu.forecast_page(request, ds)
-        _flash("That dataset is not stored; showing the FluSight hub.",
+        _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
     import pandas as pd
     from flubnf.settings import load_locations

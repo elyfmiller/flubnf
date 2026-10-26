@@ -626,7 +626,8 @@ def test_locations_table_has_the_hub_shape_and_safe_keys():
 
 
 def test_minted_keys_stay_unique_past_99_groups():
-    rows = [f"2024-08-03,G{i},1" for i in range(150)]
+    # two weeks: one week is refused (a forecast starts from the second)
+    rows = [f"2024-08-{d},G{i},1" for d in ("03", "10") for i in range(150)]
     ds = D.ingest(grouped_csv(rows), "wide", kind="count")
     keys = list(ds.name2key.values())
     assert len(set(keys)) == 150 and all(len(k) == 4 for k in keys)

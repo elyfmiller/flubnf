@@ -133,11 +133,27 @@ def max_mb() -> int:
 
 
 def choices() -> list:
-    """(id, name) for the data-source selectors; [] without datasets."""
+    """(id, name) for the data-source selectors; [] without datasets. A
+    dataset whose files are incomplete is left out (the Data tab's list
+    keeps it, with its Delete)."""
     try:
-        return [(ds.id, ds.name) for ds in _D().list_datasets()]
+        return [(ds.id, ds.name) for ds in _D().list_datasets()
+                if not damaged(ds)]
     except Exception:
         return []
+
+
+def damaged(ds) -> str:
+    """Why a stored dataset cannot be opened ('' when it can): a partial
+    copy of the state folder can lose the snapshot files every page of it
+    reads. The Data tab's list still shows it, with its Delete."""
+    try:
+        for v in ds.vintages():
+            ds.vintage_path(v)
+    except (FileNotFoundError, _D().DatasetError):
+        return (f"{ds.name} cannot be opened: its stored files are "
+                "incomplete. Delete it on the Data tab and upload it again.")
+    return ""
 
 
 def busy_with(ds_id: str) -> str:
@@ -281,7 +297,14 @@ async def upload(request: Request):
     if not ctype.startswith("multipart/form-data"):
         return PlainTextResponse("Expected a multipart/form-data upload.\n",
                                  status_code=400)
-    form = await _capped_form(request, cap)
+    try:
+        form = await _capped_form(request, cap)
+    except Exception:
+        # a malformed body or too many fields: said as the check says it
+        return _render_data(request, upload={
+            "name": "", "kind": "", "chk": _message_view(
+                "The upload could not be read; choose the file again.")},
+            _code=400)
     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
     if form is None:
         return _render_data(request, upload={
@@ -340,7 +363,11 @@ async def upload(request: Request):
     ng, nw = len(ds.groups), len(ds.weeks())
     counts = (f"{ng} group{'s' if ng != 1 else ''}, "
               f"{nw} week{'s' if nw != 1 else ''}.")
-    done = f"Stored the dataset {ds.name}: {counts}"
+    # the same bytes under a name with the same id (its letters dropped
+    # by the id's slug) open the dataset already stored: said, by its name
+    again = bool(name) and ds.name != name[:80]
+    done = (f"This file is already stored as {ds.name}: {counts}" if again
+            else f"Stored the dataset {ds.name}: {counts}")
     snaps = ""
     if ds.meta.get("snapshot_files"):
         vs = ds.vintages()
@@ -355,7 +382,8 @@ async def upload(request: Request):
         return RedirectResponse(f"/retro?dataset={ds.id}#main",
                                 status_code=303)
     # the counts on the line; the snapshots and any warnings in its tip
-    shared._flash(f"Stored {ds.name}: {counts}"
+    shared._flash((f"This file is already stored as {ds.name}: {counts}"
+                   if again else f"Stored {ds.name}: {counts}")
                   + (f" {len(warn)} warning(s)." if warn else ""),
                   "warn" if warn else "ok",
                   detail=" ".join(([snaps] if snaps else []) + warn))
@@ -841,7 +869,10 @@ def run_worker(spec) -> None:
                  else "absent")
         outcome, fails = custom_run.run(spec, ds, workroot,
                                         phase=shared._phase, pf_state=state)
-        ledger.close_run(run_id, "partial" if fails else "ok", outcome)
+        # no export file: every group abstained (or every export failed),
+        # never a green "ok" with no forecast; the Results rows say why
+        ledger.close_run(run_id, "partial" if fails or not outcome.get(
+            "exports") else "ok", outcome)
         if not fails:
             try:
                 from app.core import reclaim
@@ -1057,7 +1088,8 @@ def retro_context(selected: str = "") -> dict:
     ("stored")."""
     from app.core import custom_retro as CX
     try:
-        items = _D().list_datasets()
+        # a dataset whose files are incomplete is left out, as choices()
+        items = [d for d in _D().list_datasets() if not damaged(d)]
     except Exception:
         items = []
     ds = next((d for d in items if d.id == selected), None) or (

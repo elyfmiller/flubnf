@@ -79,7 +79,7 @@ PROBLEM_KINDS = (
     ("Groups", ("group_blank", "group_name", "group_reserved",
                 "national_multiple", "group_collision",
                 "location_name_conflict")),
-    ("Weeks", ("duplicate", "gap")),
+    ("Weeks", ("duplicate", "gap", "one_week")),
 )
 KIND_OF = {c: k for k, codes in PROBLEM_KINDS for c in codes}
 
