@@ -159,7 +159,7 @@
     </div>
     <div class="md-field">
      <label for="mf-locs">Locations</label>
-     <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+     <input id="mf-locs" name="locations" value="{{ 'all' if 'all' in form.locations else form.locations | join(', ') }}"
             placeholder='state names, comma-separated, or "all"'>
     </div>
     {% if name == "pf" %}

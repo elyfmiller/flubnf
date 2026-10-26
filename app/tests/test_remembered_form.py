@@ -135,6 +135,10 @@ def test_a_rerun_of_the_53_by_name_is_all_53_on_the_form(state):
     assert ui_state._last_form["locations"] == ["all", US_CHOICE]
     page = " ".join(client.get("/forecast").text.split())
     assert 'id="ck-all" value="all" name="locations" checked' in page
+    # the model pages' Locations box reads it as "all", as typed there
+    for page, box in (("/model/analogue", "mf-locs"), ("/model/pf2s", "rr-locs")):
+        html = " ".join(client.get(page).text.split())
+        assert f'id="{box}" name="locations" value="all"' in html, page
     # the 52 without US stay a pick of their own (States only)
     _post({"forecast_date": W3, "locations": names, "engine": "analogue"})
     assert ui_state._last_form["locations"] == names
