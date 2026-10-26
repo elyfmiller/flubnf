@@ -1,0 +1,201 @@
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 6c61413..c3020f4 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -13,6 +13,11 @@
+     their own APP_STATE still do; the session ends by checking app/state
+     was left untouched, which also catches a console started from this
+     checkout while the suite runs.
++  * the FluSight hub -> a missing folder, set HERE at import too
++    (FLUBNF_HUB), so every machine runs the suite as CI does: a clone at
++    the default path (~/GitHub/FluSight-forecast-hub) made its newest week
++    the suite's, and five run tests failed. A test that compares against
++    a real clone opts in through FLUBNF_TEST_HUB.
+   * the checkout's top folder: the session ends by checking no test left a
+     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
+ """
+@@ -36,6 +41,10 @@ REAL_STATE = REPO / "app" / "state"
+ TEST_STATE = Path(tempfile.mkdtemp(prefix="flubnf-test-state-"))
+ atexit.register(shutil.rmtree, TEST_STATE, True)
+ os.environ["FLUBNF_STATE_DIR"] = str(TEST_STATE)
++#: the suite's hub: a folder that never exists, whatever this machine has
++#: cloned, here and (through FLUBNF_HUB) in every process a test starts
++NO_HUB = TEST_STATE / "no-hub"
++os.environ["FLUBNF_HUB"] = str(NO_HUB)
+ 
+ from app.core import runs as _runs                       # noqa: E402
+ 
+diff --git a/app/tests/test_core.py b/app/tests/test_core.py
+index 770b5ff..bf4d1a7 100644
+--- a/app/tests/test_core.py
++++ b/app/tests/test_core.py
+@@ -1,4 +1,5 @@
+ """App core: the constitutional rules must hold as code."""
++import os
+ import sys
+ from pathlib import Path
+ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+@@ -79,12 +80,18 @@ def test_choropleth_renders_gaps_explicitly():
+     assert svg.count("<rect") > 50                            # all tiles render
+ 
+ 
+-def test_analogue_engine_runs_real_vintage():
+-    from flubnf.settings import ARCHIVE
+-    if not ARCHIVE.is_dir():
+-        pytest.skip("FluSight hub clone not present")
++def test_analogue_engine_runs_real_vintage(monkeypatch):
++    # the clone FLUBNF_TEST_HUB names: the suite itself reads no hub
++    hub = os.environ.get("FLUBNF_TEST_HUB")
++    arch = hub and Path(hub) / "auxiliary-data" / "target-data-archive"
++    if not (arch and arch.is_dir()):
++        pytest.skip("FluSight hub clone not present (FLUBNF_TEST_HUB)")
++    from app.core import data as core_data
+     from app.core.engines import analogue
+     from app.core.runs import RunSpec
++    monkeypatch.setattr(core_data, "ARCHIVE", arch)
++    monkeypatch.setattr(analogue, "LOCATIONS",
++                        Path(hub) / "auxiliary-data" / "locations.csv")
+     spec = RunSpec(engine="analogue", forecast_date="2026-01-24",
+                    locations=["Ohio", "Wyoming"], season_start="2025-08-01")
+     out = analogue.run(spec)
+diff --git a/app/tests/test_hubcheck.py b/app/tests/test_hubcheck.py
+index 5d7b6ae..7c9d6ca 100644
+--- a/app/tests/test_hubcheck.py
++++ b/app/tests/test_hubcheck.py
+@@ -6,10 +6,10 @@ of that file (app/core/assets/flusight-tasks.json), so CI checks every
+ file the writer produces for the first 2026-27 round (due Wednesday
+ 2026-10-07, reference date Saturday 2026-10-10) without a hub clone.
+ 
+-With a clone present (FLUBNF_TEST_HUB, else FLUBNF_HUB), the vendored copy
+-must equal the clone's tasks.json, and a real console run (the Groundhog
+-for real, the PF cells faked the way the other run tests fake them) is
+-checked against the clone's rules.
++With a clone named by FLUBNF_TEST_HUB (the suite itself reads no hub:
++conftest.py), the vendored copy must equal the clone's tasks.json, and a
++real console run (the Groundhog for real, the PF cells faked the way the
++other run tests fake them) is checked against the clone's rules.
+ """
+ import hashlib
+ import json
+@@ -32,10 +32,9 @@ PKG_LOCS = Path(__file__).resolve().parents[2] / "flubnf/data/locations.csv"
+ 
+ 
+ def _hub_clone():
+-    for cand in (os.environ.get("FLUBNF_TEST_HUB"),
+-                 os.environ.get("FLUBNF_HUB")):
+-        if cand and (Path(cand) / "hub-config" / "tasks.json").is_file():
+-            return Path(cand)
++    cand = os.environ.get("FLUBNF_TEST_HUB")
++    if cand and (Path(cand) / "hub-config" / "tasks.json").is_file():
++        return Path(cand)
+     return None
+ 
+ 
+diff --git a/app/tests/test_model_metadata.py b/app/tests/test_model_metadata.py
+index b79206e..63f1b30 100644
+--- a/app/tests/test_model_metadata.py
++++ b/app/tests/test_model_metadata.py
+@@ -8,6 +8,7 @@ other; jsonschema (Draft 2020-12) also validates when installed.
+ """
+ import hashlib
+ import json
++import os
+ import re
+ import sys
+ from pathlib import Path
+@@ -95,10 +96,11 @@ def test_the_vendored_schema_is_the_hubs_bytes():
+ 
+ 
+ def test_the_vendored_schema_equals_the_hub_clone_when_there_is_one():
+-    from flubnf.settings import HUB
+-    live = Path(HUB) / "hub-config" / "model-metadata-schema.json"
+-    if not live.is_file():
+-        pytest.skip("no FluSight hub clone on this machine")
++    # the clone FLUBNF_TEST_HUB names: the suite itself reads no hub
++    hub = os.environ.get("FLUBNF_TEST_HUB")
++    live = hub and Path(hub) / "hub-config" / "model-metadata-schema.json"
++    if not (live and live.is_file()):
++        pytest.skip("no FluSight hub clone (FLUBNF_TEST_HUB)")
+     assert live.read_bytes() == SCHEMA.read_bytes(), (
+         "the hub's model-metadata schema changed: re-vendor it, re-check "
+         "both cards, and update SCHEMA_SHA256")
+diff --git a/app/tests/test_state_isolation.py b/app/tests/test_state_isolation.py
+index c057884..e65721f 100644
+--- a/app/tests/test_state_isolation.py
++++ b/app/tests/test_state_isolation.py
+@@ -2,6 +2,7 @@
+ subprocess that imports the server (its startup thread writes
+ component_versions.json) or opens the ledger writes into the suite's temp
+ folder, never the checkout's app/state (conftest.py sets FLUBNF_STATE_DIR).
++The suite's hub is a folder that never exists (FLUBNF_HUB), as in CI.
+ """
+ import os
+ import subprocess
+@@ -32,3 +33,19 @@ def test_without_the_override_the_state_folder_is_the_checkouts():
+                          timeout=120)
+     assert out.returncode == 0, out.stderr[-2000:]
+     assert Path(out.stdout.strip()) == REPO / "app" / "state"
++
++
++def test_no_test_reads_this_machines_hub_clone():
++    """A clone at the default path (~/GitHub/FluSight-forecast-hub) made its
++    newest week the suite's and five run tests failed off CI: every Python
++    a test starts reads no hub, whatever the machine has."""
++    from flubnf import settings
++    hub = Path(os.environ["FLUBNF_HUB"])
++    assert hub.parent == Path(os.environ["FLUBNF_STATE_DIR"])
++    assert settings.HUB == hub and not hub.exists()
++    out = subprocess.run([sys.executable, "-c",
++                          "from flubnf import settings; print(settings.HUB)"],
++                         cwd=REPO, env=dict(os.environ), capture_output=True,
++                         text=True, timeout=120)
++    assert out.returncode == 0, out.stderr[-2000:]
++    assert Path(out.stdout.strip()) == hub
+diff --git a/tests/README.md b/tests/README.md
+index d1d6b2c..5f8fcfe 100644
+--- a/tests/README.md
++++ b/tests/README.md
+@@ -7,7 +7,8 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
+ | What | Command |
+ |---|---|
+ | Both suites, as CI runs them (no hub, no engine) | `FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts=""` |
+-| Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
++| Both suites, this machine's engine (never its hub: `app/tests/conftest.py` points `FLUBNF_HUB` at a missing folder) | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
++| The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
+ | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
+ 
+ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+@@ -16,7 +17,8 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
+ 
+ | Missing on the machine | Skipped |
+ |---|---|
+-| FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
++| FluSight hub clone (always: the suite reads none) | hub-reading cases in `app/tests/test_playback.py`, `test_site_build.py` |
++| A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; `tests/test_sihrs_fit.py` |
+ | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
+ | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
+ | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
+diff --git a/tests/test_sihrs_fit.py b/tests/test_sihrs_fit.py
+index 41d72e4..06d451a 100644
+--- a/tests/test_sihrs_fit.py
++++ b/tests/test_sihrs_fit.py
+@@ -69,12 +69,14 @@ def test_all_nan_errors_loudly(tmp_path):
+ def test_vendored_locations_matches_hub():
+     """settings.load_locations falls back to the vendored copy; drift up to
+     3.3% was found and fixed 2026-08-17. This pins them equal forever."""
+-    import pandas as pd, pytest
++    import os, pandas as pd, pytest
+     from pathlib import Path
+-    from flubnf import settings
+-    hub = Path(settings.HUB) / 'auxiliary-data/locations.csv'
+-    if not hub.is_file():
+-        pytest.skip("hub checkout not present")
++    # the clone FLUBNF_TEST_HUB names: the full suite reads no hub
++    # (app/tests/conftest.py)
++    hub = os.environ.get("FLUBNF_TEST_HUB")
++    hub = hub and Path(hub) / 'auxiliary-data/locations.csv'
++    if not (hub and hub.is_file()):
++        pytest.skip("hub checkout not present (FLUBNF_TEST_HUB)")
+     vendored = Path(__file__).resolve().parents[1] / 'flubnf/data/locations.csv'
+     h = pd.read_csv(hub); v = pd.read_csv(vendored)
+     m = h.merge(v, on='location', suffixes=('_h','_v'))
