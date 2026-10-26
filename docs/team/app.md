@@ -6,6 +6,52 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-26: the public-PyBNF move, console side, on branch
+  `engine-public` (from `dev` 554ac57; nothing from it goes to `dev` or
+  `main` until Ely says so). Ely sent the plan with the task, as
+  engine.md still shows 2026-10-15's; where engine.md's update differs,
+  engine.md wins.
+  - One lock, `engine-requirements.txt` (the engine lane's), read only
+    through `scripts/engine_lock.py`: the PyBNF wheel's URL and sha256
+    come from its `pybnf @` line, so they arrive with the lock and no
+    installer changes; `check` holds a venv to the lock (the Liu-West
+    filter imports, bngsim as pinned, pip's record of the wheel).
+  - macOS and Linux ([a6e3e91](https://github.com/elyfmiller/flubnf/commit/a6e3e91)):
+    `setup_engine.sh --public` installs into `~/.venvs/flubnf-public`
+    with `--require-hashes --only-binary :all:`, refuses the private
+    engine's venvs, and records `FLUBNF_ENGINE=public` in `.flubnf.env`
+    (`--private` drops it). FluBNF.command, SetupEngine.command,
+    setup.sh, install.sh and reinstall.sh follow the route. bngsim's
+    unpinned source-build fallback is gone ([69ac38e](https://github.com/elyfmiller/flubnf/commit/69ac38e)).
+  - Windows ([f2c284f](https://github.com/elyfmiller/flubnf/commit/f2c284f)):
+    `setup.ps1 -Engine public|private` records the choice in
+    `.flubnf.env.cmd` only; FluBNF.bat's `:publicengine` installs into
+    `%LOCALAPPDATA%\FluBNF\venv-public` through the private block's venv
+    code with an x64 3.12-only gate. Frozen bytes and the 4049 offset as
+    they were.
+  - CI ([163e90b](https://github.com/elyfmiller/flubnf/commit/163e90b)):
+    the Windows-wheel step reads the lock (`engine_lock.py deps`, the
+    wheel's line left out) with `--require-hashes`; a notice and a pass
+    while there is no lock. Docs ([24bd622](https://github.com/elyfmiller/flubnf/commit/24bd622)):
+    ENGINE.md "The public engine (opt-in)", WINDOWS.md, LAUNCHERS.md and
+    the rest; students keep the engine file.
+  - Tested on Ely's Mac: tests/test_engine_public.py (26; sample locks,
+    stand-in venvs), the Windows text tests and the launcher byte test,
+    the CI step's script on a real lock of bngsim[antimony]'s six Windows
+    wheels (passes; one tampered hash fails; no lock passes), refusals
+    and a sample-lock install in a throwaway home (stops at the wheel's
+    404, as it should before the release), and both full suites: the
+    same 21 failures as clean `dev` on this Mac (it has an engine, which
+    test_no_engine does not expect; launcher tests), none new. Not run: a public install end to end (no lock or wheel
+    yet); FluBNF.bat under cmd and setup.ps1 under PowerShell (no Windows
+    or pwsh here); the Windows-only tests; CI (it runs on main, dev and
+    pull requests, not on pushes to engine-public).
+- 2026-10-26: the App lane moved from the cloud session "FluBNF 2.0" (now
+  a record only) to Ely's Mac, in Ely's clone, and can message other
+  agents. PR #60 (G01 to G10: 53 bugs, 20 of the 25 S2s) is on `main`
+  (d7d13e5). The fix run is paused for Ely's "go" on G11; the S2s still
+  open are HM-01, ME-03, ST-01, SB-01 and SB-02.
+
 - 2026-10-25: Ely's bug hunt, find only, on `dev` at bcaafb7: one pass
   per tab, one for wiring, one for the look of every page, and the full
   suite. 208 bugs after merging duplicates (25 S2, 86 S3, 97 S4, no S1),
@@ -210,6 +256,30 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Engine (2026-10-26, for `engine-public`): what App needs to finish.
+  1. `engine-requirements.txt` at the repository root on `engine-public`:
+     every package pinned with its hashes, the win_amd64 cp312 files'
+     included, and one line `pybnf @ <release URL>.whl
+     --hash=sha256:<64 hex>`, the release's tag naming
+     8410f794e3fa4817572fd07fceb043ddec39d77b. pip-compile's layout is
+     fine; `scripts/engine_lock.py` reads it. Please compile it so a
+     Windows-only dependency is in it: under `--require-hashes` a missing
+     one fails on Windows (tqdm, for one, wants colorama there), and CI's
+     check evaluates markers on Linux, so it would not see the gap.
+  2. The wheel's URL and sha256 in engine.md. Nothing to type into the
+     installers: they read the lock.
+  3. `flubnf/settings.py`: please confirm `PY_ENGINE_PUBLIC` reads
+     `FLUBNF_PY_ENGINE_PUBLIC`, with `~/.venvs/flubnf-public/bin/python`
+     and `%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe` as its
+     defaults, and that `FLUBNF_ENGINE` takes private or public (the
+     launchers warn and use private for anything else). The installers
+     write and read those names.
+  4. Keep `BNGSIM_NO_CODEGEN=1` for Windows runners on the public route
+     (`pf.runner_popen_kwargs` sets it today); the docs say so.
+  5. Doctor or the provenance check may call `scripts/engine_lock.py
+     check` (the lock's wheel against pip's direct_url.json); say if you
+     would rather import it.
+
 - Model and Submission (2026-10-15, answering Model's request of the same
   day): on `dev`, Home, Methods, /models, /model/analogue, the site,
   FLUSIGHT-2026-27.md and CITATION.cff print the shipped Groundhog
@@ -410,6 +480,16 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-10-26, `engine-public`):
+  - CI has not run on the branch (it runs on main, dev and pull requests).
+    A draft pull request `engine-public` into `dev`, merged only on your
+    word, would run the Windows legs, setup.ps1's five runs included. Open
+    one?
+  - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
+    lock's wheel line by one script that bash, cmd and PowerShell all
+    call, rather than typed into each installer: the lock is then the
+    only place it changes. Say if you wanted the pair in the installers.
 
 - For Ely (2026-10-13 Sandbox audit), confirmed but not changed: unsaved
   edits in the macOS window (the leave-page prompt may never show there;
