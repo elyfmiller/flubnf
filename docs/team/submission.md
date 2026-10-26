@@ -6,6 +6,29 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-26 (01:25 UTC): THE TWO EDGE FIXES ON BRANCH tail-hist-edges
+  (c417743, one commit over dev 4daf9bd, for Ely's merge; nothing for
+  Wednesday, where the ceiling is off). (1) history_ratios measures the
+  window on the donors' own calendar: flubnf.analogue.epiweek (MMWR
+  weeks) and calendar_distance (week 53 between 52 and 1), so a forecast
+  date in week 53 no longer counts week 1 as distance 0; test at
+  2027-01-02. Note for anyone reading the ratios: MMWR and ISO week
+  numbers differ by one in some years (2026-10-17 is MMWR week 41, ISO
+  42), so the window moved by a week against the branch's first form;
+  the screens' ratios were computed from the merged (ISO) form, and the
+  difference is a handful of year-end and October cells, not a changed
+  conclusion. (2) When the knob is set and the history could not be
+  read, the run record carries tail_hist with skipped true and the
+  reason, so the run page says the knob did nothing
+  (flubnf.tailcap.skipped_record); tested at the helper and by the
+  pipeline's wiring text. A pipeline test that makes the truth read fail
+  was not built here (this lane has no cheap harness for _run_all); the
+  Groundhog agent asked for one, and it stays open. tests/test_tailcap.py
+  (19), app/tests/test_knobs.py and test_knobs_wiring.py pass. Ely's
+  merge: `git fetch origin tail-hist-edges && git checkout dev && git
+  merge --no-ff origin/tail-hist-edges && git push origin dev`; the
+  dev-to-main pull request at Ely's word, any time before a round that
+  turns the ceiling on.
 - 2026-10-26 (01:00 UTC): THE AGENTS' VERDICTS ON THE HISTORICAL CEILING
   ARE IN (docs/team/model.md, 2026-10-25 23:50 UTC, both agents; records
   in the repository under docs/team/model-oracle-width-screen-2026-10/
