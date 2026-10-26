@@ -179,6 +179,10 @@ def model_page(request: Request, name: str):
                 if all(isinstance(v, dict) for v in qs.values())}
     # the member overlay belonged to the retired blend's page: always empty
     overlay = {}
+    # after a restart the remembered form comes back here too, not only
+    # once the Forecast tab is opened
+    from app.ui import forecast_aids as _fa
+    _fa.restore_last_form(_last_form, _default_forecast_date)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "replicates": 3}
     # BNGL-backed models show their template source, read at render time

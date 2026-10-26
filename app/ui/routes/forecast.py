@@ -357,14 +357,10 @@ def _location_list(locations: list) -> list:
     picked = _usn.state_names(locations)
     want_all = "all" in [l.lower() for l in picked]
     want_us = want_all or any(_usn.is_us(l) for l in locations)
-    _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-    _l = _l[(_l.location.str.len() == 2) & (_l.abbreviation != "US")]
+    names, known = _hub_names()
     if want_all:
-        locs_list = list(_l.location_name)
+        locs_list = list(names)
     else:
-        known = {**{str(a).casefold(): n for a, n in
-                    zip(_l.abbreviation, _l.location_name)},
-                 **{str(n).casefold(): n for n in _l.location_name}}
         locs_list, unknown = [], []
         for l in picked:
             name = known.get(str(l).strip().casefold())
@@ -379,6 +375,42 @@ def _location_list(locations: list) -> list:
         spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
         locs_list.append("US" if spelled == US_CHOICE else spelled)
     return locs_list
+
+
+def _hub_names() -> tuple:
+    """(the 52 jurisdictions' names, {a name or two-letter code, case
+    folded: the hub's name}) from the hub's location table."""
+    _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+    _l = _l[(_l.location.str.len() == 2) & (_l.abbreviation != "US")]
+    names = list(_l.location_name)
+    known = {**{str(a).casefold(): n for a, n in zip(_l.abbreviation, names)},
+             **{str(n).casefold(): n for n in names}}
+    return names, known
+
+
+def _form_locations(locations: list) -> list:
+    """A run's location pick as the Forecast form's checklist holds it, for
+    the remembered form: a model page's comma-separated text split, each
+    name in the hub's spelling (one the hub has not stays as typed, for
+    the model page to show back), US as the national box's value, and the
+    52 with US (a re-run posts them by name) as "all"."""
+    from app.core import us_national as _usn
+    typed = [x.strip() for l in locations or []
+             for x in str(l).split(",") if x.strip()]
+    if any(t.lower() == "all" for t in typed):
+        return ["all", US_CHOICE]
+    try:
+        names, known = _hub_names()
+    except Exception:
+        return typed
+    out = []
+    for t in typed:
+        v = US_CHOICE if _usn.is_us(t) else known.get(t.casefold(), t)
+        if v not in out:
+            out.append(v)
+    if US_CHOICE in out and set(names) <= set(out):
+        return ["all", US_CHOICE]
+    return out
 
 
 def _from_forecast_tab(request: Request) -> bool:
@@ -1030,6 +1062,11 @@ def run_models(request: Request,
                # fields, or the recorded data_choices JSON (the re-run path)
                gap_fields: dict = Depends(_gap_form),
                data_choices: str = Form("")):
+    # a run already holds the console: refused first, and the form keeps
+    # what that run was given (these settings never ran)
+    if _status.get("running"):
+        _flash("Not run: a run is already in progress.", "warn")
+        return _back(request, "/forecast")
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
     from datetime import date as _date
@@ -1037,14 +1074,9 @@ def run_models(request: Request,
     try:
         _d = _date.fromisoformat(forecast_date)
     except ValueError:
-        # a blank or typed non-date (the model page's text field) is said
-        # as such, never "no data for <text> yet"
-        _flash(f"Not run: '{forecast_date}' is not a date (YYYY-MM-DD)."
-               if forecast_date else "Not run: give a forecast date.",
-               "warn")
-        return _back(request, "/forecast")
+        _d = None
     typed_day = forecast_date
-    if _d.weekday() != 5:
+    if _d is not None and _d.weekday() != 5:
         # the Forecast form shows this anchor; a model page's run says it
         # once started (below)
         _pick, _ = resolve_anchor(forecast_date)
@@ -1056,12 +1088,68 @@ def run_models(request: Request,
     # an unknown mode reads as the pill's default, so the anchor rule below
     # records what the run reads (never "realtime" on an archived week)
     mode = mode if mode in ("realtime", "vintage") else "realtime"
+    # A direct call (rerun) may pass Form default objects: read them as blank
+    season_start = _str_field(season_start).strip()
+    # the page fills Season start with August 1 of the TYPED day's season;
+    # when the day snapped back across August 1 (a September day anchors on
+    # July's data) that fill is not a choice: the anchor's default applies
+    from app.core.runs import default_season_start as _dss
+    if (_d is not None and season_start and typed_day != forecast_date
+            and season_start == _dss(typed_day)
+            and season_start != _dss(forecast_date)):
+        season_start = ""
+    try:
+        kraw = _knob_raw(knob_fields, knobs)
+    except ValueError as e:                  # KnobError is a ValueError
+        # the panel opens on its error, the reason under its head
+        _last_form["ms_refused"] = str(e) or True
+        _flash(f"Not run: model settings: {e}.", "warn")
+        return _back(request, "/forecast")
+    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+    reason = _str_field(modified_reason).strip()
+    kept, kept_fields = _kept_settings(
+        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
+    # the form as posted, kept BEFORE the date and data refusals below: a
+    # refused date keeps the other choices (it used to take the form back
+    # to the last run's); a date that is not one leaves the last date
+    _last_form.update({**({"forecast_date": forecast_date} if _d else {}),
+                       "locations": _form_locations(locations),
+                       "engine": engine, "weeks_to_drop": weeks_to_drop,
+                       "weeks_to_nowcast": weeks_to_nowcast,
+                       "replicates": replicates, "members": members,
+                       "season_start": season_start,
+                       "particles": particles,
+                       "drop_same_day": _int_field(drop_same_day),
+                       "knobs": {**kept, **{k: v for k, v in kraw.items()
+                                            if isinstance(v, str)}},
+                       "submit_modified": override,
+                       "modified_reason": reason, "ms_refused": False,
+                       **kept_fields})
+    # kept across a restart (its non-date fields; display memory only)
+    from app.ui import forecast_aids as _fa
+    _fa.save_last_form(_last_form)
     # the newest week any hub file holds: a run anchored there is real-time
     # and may read the live target file (app.core.data.observed_source)
     try:
         newest = state.data_mod.newest_week()
     except Exception:
         newest = None
+    # the Data issues choices come back on the form, keyed by their week,
+    # from a form that carried the box for that week: off the newest week
+    # (its fieldset disabled) and on a model page it posts nothing, and the
+    # choices stay
+    if (isinstance(gap_fields, dict) and "_sha" in gap_fields and newest
+            and forecast_date == newest):
+        _last_form["data_choices"] = {
+            newest: {k: v for k, v in gap_fields.items()
+                     if k != "_sha" and isinstance(v, str) and v}}
+    if _d is None:
+        # a blank or typed non-date (the model page's text field) is said
+        # as such, never "no data for <text> yet"
+        _flash(f"Not run: '{forecast_date}' is not a date (YYYY-MM-DD)."
+               if forecast_date else "Not run: give a forecast date.",
+               "warn")
+        return _back(request, "/forecast")
     try:
         state.data_mod.observed_source(
             forecast_date,
@@ -1102,47 +1190,6 @@ def run_models(request: Request,
             _flash(f"Not run: no archived data for {forecast_date}; the "
                    f"archive starts at {near}.", "warn")
         return _back(request, "/forecast")
-    # A direct call (rerun) may pass Form default objects: read them as blank
-    season_start = _str_field(season_start).strip()
-    # the page fills Season start with August 1 of the TYPED day's season;
-    # when the day snapped back across August 1 (a September day anchors on
-    # July's data) that fill is not a choice: the anchor's default applies
-    from app.core.runs import default_season_start as _dss
-    if (season_start and typed_day != forecast_date
-            and season_start == _dss(typed_day)
-            and season_start != _dss(forecast_date)):
-        season_start = ""
-    try:
-        kraw = _knob_raw(knob_fields, knobs)
-    except ValueError as e:                  # KnobError is a ValueError
-        # the panel opens on its error, the reason under its head
-        _last_form["ms_refused"] = str(e) or True
-        _flash(f"Not run: model settings: {e}.", "warn")
-        return _back(request, "/forecast")
-    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
-    reason = _str_field(modified_reason).strip()
-    kept, kept_fields = _kept_settings(
-        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
-    _last_form.update({"forecast_date": forecast_date, "locations": locations,
-                       "engine": engine, "weeks_to_drop": weeks_to_drop,
-                       "weeks_to_nowcast": weeks_to_nowcast,
-                       "replicates": replicates, "members": members,
-                       "season_start": season_start,
-                       "particles": particles,
-                       "drop_same_day": _int_field(drop_same_day),
-                       "knobs": {**kept, **{k: v for k, v in kraw.items()
-                                            if isinstance(v, str)}},
-                       "submit_modified": override,
-                       "modified_reason": reason, "ms_refused": False,
-                       **kept_fields})
-    # kept across a restart (its non-date fields; display memory only)
-    from app.ui import forecast_aids as _fa
-    _fa.save_last_form(_last_form)
-    # the Data issues choices come back on the form, keyed by their week
-    if isinstance(gap_fields, dict) and newest:
-        _last_form["data_choices"] = {
-            newest: {k: v for k, v in gap_fields.items()
-                     if k != "_sha" and isinstance(v, str) and v}}
     # model settings, validated BEFORE the engine is claimed: a refusal
     # starts nothing. The legacy fields (season start, weeks to drop,
     # replicates, particles, same-day week) set their knob; a value outside
@@ -1209,8 +1256,9 @@ def run_models(request: Request,
     # busy check + claim under _engine_lock (see its comment)
     with _engine_lock:
         if _status.get("running"):
-            _status["log"].append("A run is already in progress; not starting another.")
-            return RedirectResponse("/forecast#results", status_code=303)
+            # one that started since the check at the top
+            _flash("Not run: a run is already in progress.", "warn")
+            return _back(request, "/forecast")
         live_retro = sorted(x for x in retro_seasons._known_seasons()
                             if _season_status(x) in _RETRO_ACTIVE)
         if live_retro:
