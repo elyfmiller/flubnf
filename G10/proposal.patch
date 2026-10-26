@@ -59,6 +59,19 @@ index d6abe40..68cf71b 100644
  
  
  def test_cumulative_chart_draws_the_month_ticks():
+diff --git a/app/tests/test_playback.py b/app/tests/test_playback.py
+index b6b3315..4b48b05 100644
+--- a/app/tests/test_playback.py
++++ b/app/tests/test_playback.py
+@@ -97,7 +97,7 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
+     root = _mk_root(tmp_path, monkeypatch)
+     p = playback.build_week(root, SEASON, ASOF)
+     assert set(p) == {"_v", "asof", "locations", "truth", "seen", "models", "official",
+-                      "stats", "us_step"}
++                      "stats", "us_step", "no_round"}
+     assert p["asof"] == ASOF
+     # no oracle.json beside the week: it does not say what its US pf is
+     assert p["us_step"] is None
 diff --git a/app/tests/test_player_js.py b/app/tests/test_player_js.py
 index cdf0613..9a03b0e 100644
 --- a/app/tests/test_player_js.py
@@ -199,6 +212,22 @@ index 03c7a02..511390c 100644
      # the map's tag says which week it shows
      assert ('<span class="uk-tag">horizon 0, the week after the newest '
              'data</span>') in _page()
+diff --git a/app/tests/test_shipped_vintages.py b/app/tests/test_shipped_vintages.py
+index 4d60886..49ad92a 100644
+--- a/app/tests/test_shipped_vintages.py
++++ b/app/tests/test_shipped_vintages.py
+@@ -239,8 +239,9 @@ def test_the_no_data_week_is_a_placeholder_in_its_own_season_only(shipped_vintag
+     assert n4["2024-05-04"] == playback.NO_DATA_NOTE
+     # the placeholder adds no payload field of its own (the "seen" series
+     # is the contract's, playback.CACHE_V 5; 6 added the Liu-West filter,
+-    # 7 the week's Oracle step on the US cell, us_step)
+-    assert playback.CACHE_V == 7
++    # 7 the week's Oracle step on the US cell, us_step; 8 no_round, a week
++    # no FluSight baseline round covers)
++    assert playback.CACHE_V == 8
+ 
+ 
+ def test_the_season_page_hands_the_player_the_timeline_and_notes():
 diff --git a/app/tests/test_ui_kit.py b/app/tests/test_ui_kit.py
 index e1085ab..b467a61 100644
 --- a/app/tests/test_ui_kit.py

@@ -39,8 +39,9 @@ with the FluSight baseline, 2024-25 done with a placeholder week 2025-01-18,
   baseline folder in the hub nothing changes (the page then shows the
   scoring-failed alert, UI-20).
 - Tests: `test_a_week_without_a_baseline_round_says_so_in_its_payload`
-  (test_results_prep.py); the payload contract set and the wiring strings
-  in test_retro_player.py / test_player_js.py.
+  (test_results_prep.py); the payload contract sets in test_retro_player.py
+  and test_playback.py, the CACHE_V pin in test_shipped_vintages.py, the
+  wiring strings in test_player_js.py.
 - Risk: a one-key payload addition and a cache version bump; invariance: no
   (playback only).
 - For Ely: none
@@ -128,8 +129,9 @@ with the FluSight baseline, 2024-25 done with a placeholder week 2025-01-18,
   sentence, the fold, 104 px on the phone.
 - Targeted (12 files incl. retro_player, season_run_marks, player_js,
   month_axes, results_prep, ui_layout, ui_kit, us_national): 276 passed.
-  Full suite on the prototype: running, result in compare.md. Ruff gate
-  clean.
+  Full suite on the prototype: 3509 passed, 154 skipped, 2 failed
+  (tests/test_doctor.py, environmental: Python 3.13 here) after the two
+  payload pins above were updated. Ruff gate clean.
 
 ## Patch
 G10/proposal.patch (git diff origin/dev...proto/G10-B)
