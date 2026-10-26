@@ -431,7 +431,8 @@ def test_run_season_records_the_oracle_setting(tmp_path, monkeypatch):
     assert "oracle" not in retro.read_meta(root3)["settings"]
 
 
-def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch):
+def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch,
+                                                                    pf_engine_ready):
     """The Retrospective run form -> _retro_bg -> run_season -> run_week path:
     fits from the season start, applies the step with that week's vintage and
     donor pool, records settings.oracle = "applied", writes oracle.json,

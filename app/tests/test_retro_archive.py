@@ -357,7 +357,8 @@ def test_resume_keeps_the_existing_weeks(tmp_path, monkeypatch):
 
 
 def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
-                                                                 monkeypatch):
+                                                                 monkeypatch,
+                                                                 pf_engine_ready):
     rr = _roots(tmp_path, monkeypatch)
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
@@ -377,8 +378,57 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     assert "Archived" in ui_state._status.get("flash", "")
 
 
+def test_without_the_engine_the_oracle_preset_moves_nothing(tmp_path,
+                                                           monkeypatch):
+    """RE-02 (2026-10-25): with no particle-filter engine an Oracle replay
+    archived the season's results, failed every week into failures.log and
+    read "complete" with none done. It is refused before anything moves."""
+    rr = _roots(tmp_path, monkeypatch)
+    root = _season_tree(rr, SEASON)
+    before = _tree_snapshot(root)
+    started = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: started.append(a[0]))
+    r = client.post("/retro/run", data={"season": SEASON, "mode": "archive",
+                                        "engine": "pf",
+                                        "knob.groundhog.zero_anchor": "abstain"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and started == []
+    assert _tree_snapshot(root) == before
+    assert retro.list_archive_dirs(rr, SEASON) == []
+    assert ui_state._status["flash"] == (
+        "Not started: the Oracle SIHRS needs the particle-filter engine, "
+        "which is not installed on this machine. Choose Groundhog only.")
+    # a half-installed engine is refused the same way, in its own words
+    monkeypatch.setattr(ui_retro.pipeline, "_pf_engine_state",
+                        lambda: "broken")
+    client.post("/retro/run", data={"season": SEASON, "mode": "archive",
+                                    "engine": "pf",
+                                    "knob.groundhog.zero_anchor": "abstain"},
+                follow_redirects=False)
+    assert started == [] and "whose install is incomplete" in \
+        ui_state._status["flash"]
+
+
+def test_without_the_engine_the_form_comes_set_to_what_can_run(tmp_path,
+                                                               monkeypatch):
+    """RE-23: the form opened on the Oracle preset with Run disabled; with
+    no engine the Groundhog-only preset comes selected and Run is live."""
+    _roots(tmp_path, monkeypatch)
+    form = client.get("/retro").text.split('action="/retro/run"')[1]
+    assert '<option value="analogue" selected>Groundhog only (minutes)' in form
+    head, tail = form.split('id="retro-run-btn"', 1)
+    run = head.rsplit("<button", 1)[1] + tail.split(">", 1)[0]
+    assert "data-uk-reason" in run and " disabled" not in run
+    monkeypatch.setattr(ui_retro.pipeline, "_pf_engine_state",
+                        lambda: "ready")
+    form = client.get("/retro").text.split('action="/retro/run"')[1]
+    assert '<option value="analogue">Groundhog only (minutes)' in form
+
+
 def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
-                                                                 monkeypatch):
+                                                                 monkeypatch,
+                                                                 pf_engine_ready):
     rr = _roots(tmp_path, monkeypatch)
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
@@ -401,7 +451,8 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
 
 
 def test_discard_with_confirmation_removes_only_its_target(tmp_path,
-                                                           monkeypatch):
+                                                           monkeypatch,
+                                                           pf_engine_ready):
     rr = _roots(tmp_path, monkeypatch)
     root = _season_tree(rr, SEASON)
     other = _season_tree(rr, OTHER)

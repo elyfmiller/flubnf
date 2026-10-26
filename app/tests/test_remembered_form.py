@@ -100,10 +100,10 @@ def test_a_refused_date_keeps_the_other_choices(state):
     assert '<option value="analogue" selected>' in page
     assert f'id="ck-us" name="locations" value="{US_CHOICE}" checked>' in page
     # a blank date keeps them too, and the last date
-    _post({"forecast_date": "", "locations": ["Ohio"], "engine": "pf"})
+    _post({"forecast_date": "", "locations": ["Ohio"], "engine": "all"})
     assert ui_state._status["flash"] == "Not run: give a forecast date."
     assert form["forecast_date"] == W1 and form["locations"] == ["Ohio"]
-    assert form["engine"] == "pf"
+    assert form["engine"] == "all"
 
 
 # ----------------------------------------------------------------- the pick

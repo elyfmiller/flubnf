@@ -557,7 +557,8 @@ def test_the_engine_build_rule_skips_groundhog_only_replays():
 
 
 def test_the_retro_route_refuses_a_resume_on_another_build(tmp_path,
-                                                            monkeypatch):
+                                                            monkeypatch,
+                                                            pf_engine_ready):
     from app.ui import retro_seasons as RS
     from app.ui import state as S
     from app.ui.routes import retro as ui_retro

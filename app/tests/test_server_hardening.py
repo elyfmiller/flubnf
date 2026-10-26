@@ -101,7 +101,8 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
 
 
 def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
-                                                             monkeypatch):
+                                                             monkeypatch,
+                                                             pf_engine_ready):
     """The same race in POST /retro/run claims exactly one season worker."""
     from app.core import retro
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)

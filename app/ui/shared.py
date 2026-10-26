@@ -286,8 +286,12 @@ def _outcome_items(outcome_json) -> list:
         add(f'<span class="bad">{word}</span>', word, "error",
             "The run page names each failed fit.")
     if o.get("pf_skipped"):
-        add("PF skipped (no engine)", "PF skipped", "",
-            "No engine: a configuration, not a fault.")
+        # chosen (a Groundhog-only run) or this machine's (no engine)
+        if "analogue" in str(o["pf_skipped"]):
+            add("Groundhog only")
+        else:
+            add("PF skipped (no engine)", "PF skipped", "",
+                "No engine: a configuration, not a fault.")
     # no engine is a configuration; a broken install is a fault
     if o.get("pf_engine_broken"):
         add('<span class="bad">PF engine install incomplete</span>',
