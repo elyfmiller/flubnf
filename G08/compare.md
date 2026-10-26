@@ -17,3 +17,10 @@ the fitted 6-state panel (unscored) "US national (fitted)"; the whole
 | UI-11 | the page resolves unscored too (`allow_aggregate=False`); `resolve` answers fitted when the record's `national` is set | the same, from the record's locations naming US plus a stored week | Equal; A's simpler. |
 
 Vote: A.
+
+Vote (final): combine, as A proposes: A's RE-01 (the record's scope) and
+UI-11 (the record's `national`); B's `pooled_scope_note(n, provenance)`
+for RE-14; the RE-10 tag with B's count (the record's locations, else the
+scored frame); RE-17 for Ely, A's detection dropped (an existing test
+pins that "Overall" is not national, and the spelling is the 2026-09-24
+decision).
