@@ -884,7 +884,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "heads": {}, "curve": [], "curves": {}, "states": [],
                 "season_models": [], "member_colors": _member_colors(),
                 "us_row": None,
-                "us": None, "pooled_note": "",
+                "us": None, "pooled_note": "", "pooled_n": None,
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
                 "timeline": weeks, "notes": {},
@@ -962,11 +962,20 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
     # national series via usn.resolve (fitted > constructed > officials), with
     # its provenance label printed; a failure never costs the page
     us = None
-    if scoreable:
-        try:
-            us = usn.resolve(root, df_all)
-        except Exception:
-            us = None
+    try:
+        # unscored too: a replay that fitted US is labelled so (its
+        # forecast is drawn), with no aggregate to build
+        us = (usn.resolve(root, df_all) if scoreable
+              else usn.resolve(root, df_all, allow_aggregate=False))
+    except Exception:
+        us = None
+    # the jurisdictions the pooled figures cover (the live scores' tag):
+    # the replay's own, states only, else those the scores hold
+    rec_locs = (retro.read_meta(root).get("settings") or {}).get("locations")
+    pooled_n = (len(usn.state_names(rec_locs)) if isinstance(rec_locs, list)
+                and rec_locs else
+                int(df["location"].nunique()) if scoreable
+                and "location" in df.columns else None)
     # us_row (member -> relWIS plus provenance) is a ratio of sums, so it is
     # offered to that convention only; `us` resolves either way for the player
     us_row = (us.as_dict() if (us is not None and us.has_scores
@@ -1133,7 +1142,10 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         # provenance travels WITH the numbers (fitted vs constructed)
         "us": (us.as_dict() if us is not None
                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
-        "pooled_note": usn.POOLED_SCOPE_NOTE,
+        # the pooled figure's scope: the jurisdictions this replay covers
+        "pooled_note": usn.pooled_scope_note(
+            pooled_n, us.provenance if us is not None else ""),
+        "pooled_n": pooled_n,
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
