@@ -150,6 +150,8 @@
   {% if status.running %}
   {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
   {{ tips.alert("warn", "A run is in progress.", id="md-busy", action=fc_link) }}
+  {% elif name == "pf" and pf_missing %}
+  {{ tips.alert("warn", "The Oracle SIHRS needs the particle-filter engine, " ~ pf_missing ~ ".", id="md-busy") }}
   {% endif %}
   <form method="post" action="/run" class="md-form">
    <div class="md-fields">
@@ -178,7 +180,7 @@
    {# same /run endpoint, so the same interference guard as Forecast; off
       while a run holds the engine (the alert above says why; the server
       refuses a start then too) #}
-   <button class="gold" data-guard="console-run"{% if status.running %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
+   <button class="gold" data-guard="console-run"{% if status.running or (name == "pf" and pf_missing) %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
   </form>
  </div></div>
  <div>

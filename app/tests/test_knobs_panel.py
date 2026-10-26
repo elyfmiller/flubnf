@@ -451,7 +451,8 @@ WEEKLY = {"replicates": "1", "particles": "1000",
           "knob.oracle.w": "0.25"}
 
 
-def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch):
+def test_a_groundhog_only_run_keeps_the_filters_settings(tmp_path, monkeypatch,
+                                                         pf_engine_ready):
     """The review of M3: a hidden row's field was turned off, so a
     Groundhog-only run posted none of the particle filter's settings and
     the next run's form lost the owner's weekly ones. The browser posts

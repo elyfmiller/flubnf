@@ -206,6 +206,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "live_only": live_only, "live_running": running,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
+        # the particle-filter engine's state: without it the run refuses
+        # Oracle SIHRS only, and Both runs the Groundhog alone (a broken
+        # install fails Both at run time), which the form says
+        "pf_state": pipeline._pf_engine_state(),
         "us_choice": US_CHOICE, "us_checked": us_checked,
         "official_json": _script_json(official),
         "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
@@ -1151,6 +1155,17 @@ def run_models(request: Request,
         _last_form["data_choices"] = {
             newest: {k: v for k, v in gap_fields.items()
                      if k != "_sha" and isinstance(v, str) and v}}
+    # the particle filter's runs need its engine: refused up front, where
+    # they used to run the Groundhog alone and end "ok" with no file (Both
+    # runs the Groundhog alone without it, and the form says so)
+    pf_state = (pipeline._pf_engine_state()
+                if engine in ("all", "pf") or members == 3 else "absent")
+    if (engine == "pf" or members == 3) and pf_state != "ready":
+        what = "the research run" if members == 3 else "the Oracle SIHRS"
+        _flash(f"Not run: {what} needs the particle-filter engine, "
+               f"{pipeline._pf_engine_missing(pf_state)}."
+               + (" Choose Groundhog only." if members != 3 else ""), "warn")
+        return _back(request, "/forecast")
     if _d is None:
         # a blank or typed non-date (the model page's text field) is said
         # as such, never "no data for <text> yet"
@@ -1295,7 +1310,8 @@ def run_models(request: Request,
         _status["workroot"] = None
         _status["expected_total"] = (len(locs_list) * int(replicates)
                                      * (2 if members == 3 else 1)
-                                     if engine in ("all", "pf") else None)
+                                     if engine in ("all", "pf")
+                                     and pf_state == "ready" else None)
         # particles, replicates and weeks to drop were range-checked as knobs
         # above (refused, never clamped: replicates = 0 once ran zero fits)
         # mode follows the anchor: real-time means the newest week the hub

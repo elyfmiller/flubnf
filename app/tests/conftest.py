@@ -162,6 +162,16 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def pf_engine_ready(monkeypatch):
+    """A machine with the particle-filter engine, as the console's up-front
+    checks read it (pipeline._pf_engine_state): the Oracle SIHRS's runs and
+    replays are then started, not refused. The engine itself stays faked by
+    each test (opt-in; the suite's machine has none)."""
+    from app.ui import pipeline
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
+
+
+@pytest.fixture
 def shipped_vintages(monkeypatch):
     """The real committed snapshot folder (opt-in; see the autouse fixture)."""
     from app.core import data as core_data

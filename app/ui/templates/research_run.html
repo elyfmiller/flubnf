@@ -14,6 +14,8 @@
  {% if status.running %}
  {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
  {{ tips.alert("warn", "A run is in progress.", id="rr-busy", action=fc_link) }}
+ {% elif pf_missing %}
+ {{ tips.alert("warn", "A research run needs the particle-filter engine, " ~ pf_missing ~ ".", id="rr-busy") }}
  {% endif %}
  <form method="post" action="/run" class="md-form">
   <div class="md-fields">
@@ -46,6 +48,7 @@
   {# off, with its reason, while a run holds the engine (the alert above
      says so; the server refuses a start then too) #}
   {% if status.running %}{{ tips.reason_button("Start research run", "rr-start-why", "A run is in progress; one run holds the engine at a time. Start this when it finishes.", cls="gold", data={"guard": "console-run"}) }}
+  {% elif pf_missing %}<button class="gold" data-guard="console-run" disabled aria-describedby="rr-busy">Start research run</button>
   {% else %}<button class="gold" data-guard="console-run">Start research run</button>{% endif %}
  </form>
  <script>
