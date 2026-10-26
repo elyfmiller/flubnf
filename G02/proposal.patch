@@ -1,0 +1,320 @@
+diff --git a/app/tests/test_data_source.py b/app/tests/test_data_source.py
+index 62860af..37966d4 100644
+--- a/app/tests/test_data_source.py
++++ b/app/tests/test_data_source.py
+@@ -397,6 +397,33 @@ def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
+     assert "getDay()" not in script
+ 
+ 
++def test_a_quick_run_from_a_model_page_says_which_week_it_ran(tmp_path, monkeypatch):
++    """The model pages' quick form is a bare date box: a non-Saturday snaps
++    to the newest week on or before it, and the run says so. The Forecast
++    form shows its anchor week, so a run from there says nothing."""
++    started = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
++    for referer, said in (("/model/analogue", True), ("/forecast", False),
++                          ("/models", True)):
++        ui_state._status["running"] = None
++        ui_state._status["flash"] = None
++        r = client.post("/run", data={"forecast_date": "2098-10-20",   # a Monday
++                                      "locations": ["Ohio"], "engine": "analogue"},
++                        headers={"referer": f"http://testserver{referer}"},
++                        follow_redirects=False)
++        assert r.status_code == 303 and started[-1].forecast_date == W3, referer
++        flash = ui_state._status.get("flash") or ""
++        assert (f"Run for the week ending {W3}" in flash) is said, (referer, flash)
++    # a typed Saturday is run as typed, with nothing to say
++    ui_state._status["running"] = None
++    ui_state._status["flash"] = None
++    client.post("/run", data={"forecast_date": W2, "locations": ["Ohio"],
++                              "engine": "analogue"},
++                headers={"referer": "http://testserver/model/analogue"},
++                follow_redirects=False)
++    assert "week ending" not in (ui_state._status.get("flash") or "")
++
++
+ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
+     _capture(monkeypatch, tmp_path)
+     hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)
+diff --git a/app/tests/test_forecast_us_choice.py b/app/tests/test_forecast_us_choice.py
+index b328340..00f944f 100644
+--- a/app/tests/test_forecast_us_choice.py
++++ b/app/tests/test_forecast_us_choice.py
+@@ -94,6 +94,28 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
+     assert started[0].locations == expected
+ 
+ 
++def test_a_typed_name_is_matched_to_the_hubs_spelling_once(started):
++    """The model pages' Locations box is free text: case and the two-letter
++    code resolve to the hub's name, a repeat counts once."""
++    r = _post(["ohio, UT", "Ohio"])
++    assert r.status_code == 303
++    assert started[0].locations == ["Ohio", "Utah"]
++
++
++def test_an_unknown_location_name_is_refused_and_nothing_runs(started):
++    """A name the hub has not used to pass into the run and drop out of it
++    with the run still 'ok'."""
++    for typed in (["Ohio, Oiho"], ["US+(national)"], ["arizona"]):
++        ui_state._status.update({"running": None, "flash": None})
++        r = _post(typed)
++        assert r.status_code == 303 and started == [], typed
++        flash = ui_state._status.get("flash") or ""
++        assert flash.startswith("Not run: no location named '"), flash
++        assert typed[0].split(",")[-1].strip() in flash, flash
++    assert ui_state._status.get("run_label", "") in ("", None) or \
++        "queued" not in ui_state._status["run_label"]
++
++
+ def test_the_progress_label_names_us_only_when_it_runs(started):
+     _post(["Ohio"])
+     assert ui_state._status["run_label"].endswith("1 state · queued")
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index 2a87db8..e9d4832 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -198,6 +198,10 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+     ({"knob.oracle.count_floor": "5"}, "coming later"),
+     ({"knob.pf.particle": "5"}, "unknown knob"),
+     ({"replicates": "0"}, "pf.replicates"),
++    # typed as text: valid to the browser's number box, not a whole number
++    ({"particles": "1e4"}, "pf.particles"),
++    ({"replicates": "2.5"}, "pf.replicates"),
++    ({"weeks_to_drop": "one"}, "run.weeks_to_drop"),
+     ({"knob.oracle.w": "0.25", "submit_modified": "1"}, "needs a reason"),
+     ({"members": "3", "knob.pf.prior.r": "0.1,80"}, "two-strain"),
+     # a knob field repeated in one form: refused, never the last value
+@@ -215,6 +219,15 @@ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
+     assert ui_state._status.get("flash_kind") == "warn"
+ 
+ 
++def test_a_number_typed_with_commas_is_read_and_a_blank_is_the_default(
++        tmp_path, monkeypatch):
++    started = _capture_run(monkeypatch, tmp_path)
++    _post({"particles": "20,000", "replicates": "", "weeks_to_drop": ""})
++    assert len(started) == 1
++    assert (started[0].particles, started[0].replicates,
++            started[0].weeks_to_drop) == (20_000, 3, 0)
++
++
+ def test_a_knob_that_does_not_apply_is_ignored_and_not_recorded(tmp_path,
+                                                                 monkeypatch):
+     started = _capture_run(monkeypatch, tmp_path)
+diff --git a/app/tests/test_models_tab.py b/app/tests/test_models_tab.py
+index 7c47f35..d3b56be 100644
+--- a/app/tests/test_models_tab.py
++++ b/app/tests/test_models_tab.py
+@@ -251,6 +251,20 @@ def test_quick_run_posts_the_same_fields_as_before():
+         assert f'<label for="{fid}">{label}</label>' in quick, fid
+ 
+ 
++def test_the_quick_and_research_forms_take_the_replicates_the_setting_allows():
++    """The forms' bounds are the pf.replicates knob's (1 to 10, as the
++    Forecast tab and the server take), not a number of their own: after a
++    10-replicate run both forms used to refuse to submit."""
++    from app.core import knobs as K
++    k = K.BY_KEY["pf.replicates"]
++    for path, fid in (("/models", "mf-reps"), ("/model/pf2s", "rr-reps")):
++        t = client.get(path).text
++        m = re.search(rf'id="{fid}" name="replicates" type="number"[^>]*>', t)
++        assert m, path
++        assert f'min="{k.lo}"' in m.group(0) and f'max="{k.hi}"' in m.group(0), m.group(0)
++        assert k.hi == 10 and 'max="9"' not in t, path
++
++
+ def test_research_form_fields_are_unchanged():
+     t = client.get("/model/pf2s").text
+     assert _form_fields(t, 'id="research-run"') == [
+diff --git a/app/ui/forms.py b/app/ui/forms.py
+index 1eca566..ca2e399 100644
+--- a/app/ui/forms.py
++++ b/app/ui/forms.py
+@@ -137,6 +137,24 @@ def _int_field(v, default: int = 0) -> int:
+         return default
+ 
+ 
++def _legacy_int(raw, field: str) -> int:
++    """An older number field of the run form (replicates, particles, weeks
++    to drop) as a whole number, read as its knob reads one (knobs._coerce:
++    "10,000" and "10_000" are numbers, "1e4" is not and is refused, a
++    KnobError in the panel's words). Blank is the shipped value. The range
++    is the run's check (knobs.resolve), which knows which engine uses the
++    field; a typed value the run does not use is kept on the form."""
++    from app.core import knobs as _knobs
++    key = _knobs.LEGACY_FIELDS[field]
++    text = _str_field(raw).strip()
++    if not text:
++        return int(_knobs.BY_KEY[key].default)
++    try:
++        return int(text.replace(",", "").replace("_", ""))
++    except ValueError:
++        raise _knobs.KnobError(f"{key}: {text!r} is not a valid int") from None
++
++
+ def _season_auto(*days) -> set:
+     """August 1 of each day's season (RunSpec's rule), as the panel's
+     script fills Season start: the values that mean "the default"."""
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 95d57f4..8bacb40 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -21,6 +21,7 @@ from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
+                            spec_settings, version_pairs)
+ from app.ui import pipeline, retro_seasons, shared, state, templating
+ from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
++                          _legacy_int,
+                           _knob_form, _knob_panel, _knob_raw, _knobs,
+                           _season_auto, _str_field, resolve_anchor)
+ from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
+@@ -349,17 +350,31 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+ def _location_list(locations: list) -> list:
+     """The run's location names from the form's list: "all" is the hub's
+     53 (the 52 jurisdictions and US national, fitted directly); a custom
+-    pick fits US only when it is ticked."""
++    pick fits US only when it is ticked. A typed name is matched to the
++    hub's spelling whatever its case, by name or two-letter code, once;
++    a name the hub has not is refused (LookupError naming them), where it
++    used to pass into the run and drop out of it unseen."""
+     from app.core import us_national as _usn
+     picked = _usn.state_names(locations)
+     want_all = "all" in [l.lower() for l in picked]
+     want_us = want_all or any(_usn.is_us(l) for l in locations)
++    _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
++    _l = _l[(_l.location.str.len() == 2) & (_l.abbreviation != "US")]
+     if want_all:
+-        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+-        locs_list = list(_l.location_name[(_l.location.str.len() == 2)
+-                                          & (_l.abbreviation != "US")])
++        locs_list = list(_l.location_name)
+     else:
+-        locs_list = list(picked)
++        known = {**{str(a).casefold(): n for a, n in
++                    zip(_l.abbreviation, _l.location_name)},
++                 **{str(n).casefold(): n for n in _l.location_name}}
++        locs_list, unknown = [], []
++        for l in picked:
++            name = known.get(str(l).strip().casefold())
++            if name is None:
++                unknown.append(l)
++            elif name not in locs_list:
++                locs_list.append(name)
++        if unknown:
++            raise LookupError(", ".join(f"'{u}'" for u in unknown))
+     if want_us:
+         # a re-run keeps its recorded spelling; the form's box becomes "US"
+         spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
+@@ -367,6 +382,14 @@ def _location_list(locations: list) -> list:
+     return locs_list
+ 
+ 
++def _from_forecast_tab(request: Request) -> bool:
++    """Whether the posting page is the Forecast tab (its form shows the
++    anchor week), read as shared._back reads the posting page."""
++    from urllib.parse import urlsplit
++    path = urlsplit(request.headers.get("referer", "")).path
++    return path == "/forecast" or path.startswith("/forecast/")
++
++
+ def _official_overlay(fc_date: str, locs: list) -> dict:
+     """{model: {loc: {h: {level: value}}}}: FluSight-ensemble's and
+     FluSight-baseline's recorded forecasts for a run's forecast date, keyed
+@@ -982,12 +1005,16 @@ def run_models(request: Request,
+                background: BackgroundTasks,
+                forecast_date: str = Form(""),
+                locations: list = Form([]),
+-               weeks_to_drop: int = Form(0),
++               # the typed number fields arrive as text: the browser passes
++               # "1e4" for a number box, an int field turned it into a bare
++               # 422 page. Read below the way their knobs read them; blank
++               # is the shipped value
++               weeks_to_drop: str = Form(""),
+                weeks_to_nowcast: int = Form(0),
+-               replicates: int = Form(3),
++               replicates: str = Form(""),
+                engine: str = Form("all"),
+                members: int = Form(2),
+-               particles: int = Form(10_000),
++               particles: str = Form(""),
+                season_start: str = Form(""),   # blank = Aug 1 of the season
+                mode: str = Form("realtime"),   # recorded: vintage or real-time
+                # re-run-only fields (not on the form): None/0 = today's
+@@ -1089,6 +1116,10 @@ def run_models(request: Request,
+         season_start = ""
+     try:
+         kraw = _knob_raw(knob_fields, knobs)
++        # a number typed as text is refused in words, never clamped
++        weeks_to_drop = _legacy_int(weeks_to_drop, "weeks_to_drop")
++        replicates = _legacy_int(replicates, "replicates")
++        particles = _legacy_int(particles, "particles")
+     except ValueError as e:                  # KnobError is a ValueError
+         # the panel opens on its error, the reason under its head
+         _last_form["ms_refused"] = str(e) or True
+@@ -1148,6 +1179,10 @@ def run_models(request: Request,
+         return _back(request, "/forecast")
+     try:
+         locs_list = _location_list(locations)
++    except LookupError as e:
++        _flash(f"Not run: no location named {e}. Use state names or their "
++               f"two-letter codes, and US.", "warn")
++        return _back(request, "/forecast")
+     except Exception as e:
+         _flash(f"Not run: could not read the state list "
+                f"({type(e).__name__}).", "error")
+@@ -1214,6 +1249,11 @@ def run_models(request: Request,
+         # above (refused, never clamped: replicates = 0 once ran zero fits)
+         # mode follows the anchor: real-time means the newest week the hub
+         # holds (the live target file's, when the archive has not caught up)
++        if typed_day != forecast_date and not _from_forecast_tab(request):
++            # the Forecast form shows its anchor week; the model pages'
++            # quick forms are a bare date box, so the snap is said here
++            _flash(f"Run for the week ending {forecast_date}, the newest "
++                   f"data week on or before {typed_day}.")
+         if newest and mode == "realtime" and forecast_date != newest:
+             mode = "vintage"
+             extra["mode"] = mode
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 9b0a6d6..8d2cf85 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -192,6 +192,7 @@ def model_page(request: Request, name: str):
+         except OSError:
+             bngl_src, bngl_file = "", ""
+     header = HEADERS[name]
++    from app.core import knobs as _knobs
+     return templates.TemplateResponse(request, "model.html", {
+         "active": "Models", "name": name,
+         # title from the shared model-name map
+@@ -215,4 +216,7 @@ def model_page(request: Request, name: str):
+         "run_obs_json": _script_json((res or {}).get("observed", {})),
+         "bngl_src": bngl_src, "bngl_file": bngl_file,
+         "bngl_lines": len(bngl_src.splitlines()),
++        # the quick and research forms take what the setting allows
++        "replicates_range": (_knobs.BY_KEY["pf.replicates"].lo,
++                             _knobs.BY_KEY["pf.replicates"].hi),
+         "form": form, "status": _status})
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index 4e3c08f..f81be39 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -165,7 +165,7 @@
+     {% if name == "pf" %}
+     <div class="md-field">
+      <label for="mf-reps">Replicates</label>
+-     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
++     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="{{ replicates_range[0] }}" max="{{ replicates_range[1] }}">
+     </div>
+     {% endif %}
+    </div>
+diff --git a/app/ui/templates/research_run.html b/app/ui/templates/research_run.html
+index 9c5af67..f5af2b9 100644
+--- a/app/ui/templates/research_run.html
++++ b/app/ui/templates/research_run.html
+@@ -35,7 +35,7 @@
+    <div class="md-field">
+     <label for="rr-reps">Replicates</label>
+     <input id="rr-reps" name="replicates" type="number"
+-      value="{{ form.replicates }}" min="1" max="9">
++      value="{{ form.replicates }}" min="{{ replicates_range[0] }}" max="{{ replicates_range[1] }}">
+    </div>
+   </div>
+   <input type="hidden" name="engine" value="all">
