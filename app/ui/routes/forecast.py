@@ -506,6 +506,9 @@ def run_page(request: Request, run_id: str):
             request, 404, "empty", f"No run {run_id} is recorded here",
             tip="Storage lists the runs.", action=("/runs", "Open Storage"),
             active="Storage", heading="Run")
+    # its files: the workroot, or the archive that holds the run once
+    # Storage deleted the workroot
+    w = output_routes._run_folder(run_id)
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
@@ -635,11 +638,13 @@ def _no_run_report(request: Request, run_id: str):
 
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)
 def run_report(request: Request, run_id: str):
-    from app.core.runs import APP_STATE
     # the id names a folder: only a run id's shape may (the Output page
-    # links here by the run it shows)
-    d = APP_STATE / "workroots" / run_id
-    if not (_runs.is_run_id(run_id) and (d / "report.html").is_file()):
+    # links here by the run it shows); the archive's copy once its
+    # workroot is deleted
+    if not _runs.is_run_id(run_id):
+        return _no_run_report(request, run_id)
+    d = output_routes._run_folder(run_id)
+    if not (d / "report.html").is_file():
         return _no_run_report(request, run_id)
     # rebuilt if stale, as /output/report
     return HTMLResponse(output_routes._report_for_serving(d))
@@ -648,10 +653,9 @@ def run_report(request: Request, run_id: str):
 @router.get("/runs/{run_id}/report/download")
 def run_report_download(request: Request, run_id: str):
     """Save this run's weekly report, named for the run's forecast date."""
-    from app.core.runs import APP_STATE
     if not _runs.is_run_id(run_id):
         return _no_run_report(request, run_id)
-    d = APP_STATE / "workroots" / run_id
+    d = output_routes._run_folder(run_id)
     date = ""
     try:
         import json as _json

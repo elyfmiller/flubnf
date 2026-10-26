@@ -1035,14 +1035,18 @@ def _run_all(spec: RunSpec) -> None:
                          <= set(subs))
             from app.core.archive_record import full_scope as _full_scope
             _full = _full_scope(spec.locations)
+            # a backtest of a past week (vintage) never replaces the run
+            # made in that week
+            _rt = (spec.extra or {}).get("mode") != "vintage"
             try:
                 # the common case keeps the plain call; the rule's flags are
                 # passed only when they differ from the defaults
                 outcome["archived"] = (
                     _archive_run(workroot, spec.forecast_date)
-                    if _complete and _full
+                    if _complete and _full and _rt
                     else _archive_run(workroot, spec.forecast_date,
-                                      complete=_complete, full=_full))
+                                      complete=_complete, full=_full,
+                                      realtime=_rt))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
@@ -1096,15 +1100,18 @@ def _run_all(spec: RunSpec) -> None:
 
 # === Forecast archive ===
 def _archive_run(workroot: Path, forecast_date: str,
-                 complete: bool = True, full: bool = True) -> str:
+                 complete: bool = True, full: bool = True,
+                 realtime: bool = True) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the date. Built beside, then swapped:
     a crash mid-copy costs this attempt, never the existing record.
 
     Never a downgrade (app/core/archive_record.py): an incomplete run
     (`complete` False) does not replace an archive that holds a complete
-    one. Then nothing is copied, the run's files stay in its own folder,
-    and the answer is "kept: <why>". The archive records which run it holds (archive.json)."""
+    one, nor a backtest (`realtime` False) one that holds a real-time run.
+    Then nothing is copied, the run's files stay in its own folder, and the
+    answer is "kept: <why>". The archive records which run it holds
+    (archive.json)."""
     import os
     import shutil
     from app.core import archive_record as _ar
@@ -1121,7 +1128,7 @@ def _archive_run(workroot: Path, forecast_date: str,
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
-    keep = _ar.keep_reason(arch, complete, full)
+    keep = _ar.keep_reason(arch, complete, full, realtime)
     if keep:
         return f"kept: {keep}"
     build.mkdir(parents=True)

@@ -382,8 +382,9 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     assert "the modified run's report" in client.get(f"/runs/{mod.name}/report").text
     assert "the hub run's report" in client.get("/output/report").text
     assert '<option value="2098-01-03"' in html        # the picker keeps the week
-    # with the override the run is back on every surface, unbadged here,
-    # and the card's week leaves the picker again
+    # with the override the run is back on every surface, unbadged here;
+    # the week stays in the picker while the archive holds another run's
+    # report (G06, OU-01), and leaves it once the archive holds this run
     over = _run(root, "2098-01-03", [GH], spec=json.dumps(
         {"extra": K.write_extra({"oracle.w": 0.25}, {}, override="asked")}))
     (over / "report.html").write_text("<p>the override run's report</p>")
@@ -391,4 +392,7 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     html, c = card()
     assert f'href="/runs/{over.name}"' in c
     assert "non-hub names</span>" not in c
+    assert '<option value="2098-01-03"' in html
+    archive_record.write_record(arch, over.name, True)
+    html, c = card()
     assert '<option value="2098-01-03"' not in html
