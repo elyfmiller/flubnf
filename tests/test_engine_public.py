@@ -74,6 +74,10 @@ def test_the_wheel_line_is_read_from_the_lock(tmp_path):
     out = _lockpy("wheel", str(lock))
     assert out.returncode == 0, out.stderr
     assert out.stdout.splitlines() == [URL, SHA]
+    # a lock saved on Windows reads the same
+    crlf = tmp_path / "crlf.txt"
+    crlf.write_bytes(lock.read_bytes().replace(b"\n", b"\r\n"))
+    assert _lockpy("wheel", str(crlf)).stdout.splitlines() == [URL, SHA]
     # the default is the repository's lock, FLUBNF_ENGINE_LOCK before it
     out = _lockpy("wheel", FLUBNF_ENGINE_LOCK=str(lock))
     assert out.stdout.splitlines() == [URL, SHA], out.stderr
@@ -266,9 +270,12 @@ def test_the_route_is_recorded_only_when_asked_and_keeps_the_private_record(tmp_
 
 
 @posix_only
-def test_a_venv_that_holds_another_wheel_is_reinstalled_with_force(tmp_path):
-    """pip keeps a package of the same version unless told otherwise, so a
-    venv made from an older lock is reinstalled with --force-reinstall."""
+@pytest.mark.parametrize("pip_rc", [1, 0])
+def test_a_venv_that_holds_another_wheel_gets_pybnf_again_then_everything(tmp_path, pip_rc):
+    """pip keeps an installed pybnf of the lock's version whatever wheel it
+    came from (measured: "already satisfied"), so a venv made from an older
+    lock loses pybnf first and pip puts back the lock's; every package again
+    (--force-reinstall, minutes) only when the check still fails."""
     repo, home = _engine_repo(tmp_path), tmp_path / "home"
     _lock(repo / "engine-requirements.txt")
     venv = home / ".venvs" / "flubnf-public"
@@ -277,15 +284,24 @@ def test_a_venv_that_holds_another_wheel_is_reinstalled_with_force(tmp_path):
     # pip itself is a stand-in that records what it was asked
     py.write_text(py.read_text().replace(
         'PYTHONPATH=',
-        f'case "$*" in *"-m pip install"*) echo "$*" >> "{calls}"; exit 1 ;; esac\n'
+        f'case "$*" in *"-m pip "*) echo "$*" >> "{calls}"; '
+        f'case "$*" in *" install "*) exit {pip_rc} ;; esac; exit 0 ;; esac\n'
         'PYTHONPATH=', 1))
     out = _setup(repo, home, "--public")
     assert out.returncode == 1, out.stdout + out.stderr
-    asked = calls.read_text()
-    for flag in ("--require-hashes", "--only-binary :all:", "--force-reinstall",
+    asked = calls.read_text().splitlines()
+    assert "-m pip uninstall -y -q" in asked[0] and asked[0].endswith(" pybnf"), asked
+    installs = asked[1:]
+    for flag in ("--require-hashes", "--only-binary :all:",
                  "-r " + str(repo / "engine-requirements.txt")):
-        assert flag in asked, asked
-    assert "pip could not install the lock" in out.stdout
+        assert all(flag in a for a in installs), installs
+    assert "--force-reinstall" not in installs[0], installs
+    if pip_rc:
+        assert len(installs) == 1 and "pip could not install the lock" in out.stdout
+    else:
+        assert len(installs) == 2 and "--force-reinstall" in installs[1], installs
+        assert "installing every package again" in out.stdout
+        assert "is NOT ready" in out.stdout
     assert not (repo / ".flubnf.env").exists()
 
 

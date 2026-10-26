@@ -262,7 +262,7 @@ public_route() {
   ok "its sha256: $ENGINE_WHEEL_SHA256"
 
   say "public engine venv: $PUBLIC_VENV"
-  _force=""
+  _stale=""
   if [ -e "$PUBLIC_VENV" ] && [ ! -f "$PUBLIC_VENV/pyvenv.cfg" ] \
      && [ -n "$(ls -A "$PUBLIC_VENV" 2>/dev/null)" ]; then
     warn "$PUBLIC_VENV exists and is not a venv, so nothing was touched. Move it"
@@ -278,9 +278,9 @@ public_route() {
       record_public
       return 0
     else
-      # It holds something other than the lock names (an older lock's wheel):
-      # pip keeps a package of the same version unless told otherwise.
-      _force="--force-reinstall"
+      # It holds something other than the lock names: an older lock's wheel,
+      # or a damaged package.
+      _stale=1
     fi
   fi
   # A Python 3.12 to make it from, looked for only now: a venv that is
@@ -299,15 +299,29 @@ public_route() {
   fi
 
   say "public engine packages (the lock: by hash, wheels only)"
+  # pip keeps an installed pybnf of the lock's version whatever wheel it came
+  # from, so on a venv that fails the check pybnf goes first; pip then puts
+  # back the lock's wheel and moves any other package whose pin moved. Every
+  # package again (--force-reinstall, minutes) only when that is not enough.
   # pip's own output shows: minutes of a window that does not change invite
   # closing it.
-  # shellcheck disable=SC2086
-  if ! "$PUBLIC_VENV/bin/python" -m pip install --disable-pip-version-check \
-       --require-hashes --only-binary :all: $_force -r "$LOCK"; then
+  pip_lock() {
+    "$PUBLIC_VENV/bin/python" -m pip install --disable-pip-version-check \
+      --require-hashes --only-binary :all: "$@" -r "$LOCK" && return 0
     warn "pip could not install the lock (its error is above). A dropped"
     warn "connection: run this again, pip reuses what it already downloaded."
     warn "An HTTP 404 on the PyBNF wheel: that release is not published yet."
+    warn "Hashes that do not match: a changed or damaged download; tell Ely."
     exit 1
+  }
+  if [ -n "$_stale" ]; then
+    "$PUBLIC_VENV/bin/python" -m pip uninstall -y -q --disable-pip-version-check pybnf
+  fi
+  pip_lock
+  if [ -n "$_stale" ] \
+     && ! "$PUBLIC_VENV/bin/python" "$HERE/scripts/engine_lock.py" check "$LOCK" >/dev/null 2>&1; then
+    warn "still not what the lock names: installing every package again"
+    pip_lock --force-reinstall
   fi
 
   say "verify"
