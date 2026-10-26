@@ -212,12 +212,10 @@ agent's.
   week-levels, 0 mismatches); every block the ceiling touched in every week
   equals the rule as written (whole admissions, monotone, the median and
   below untouched); tests/test_tailcap.py and app/tests/test_knobs.py pass.
-  Two notes for the Submission lane, neither for Wednesday: the window's
-  distance min(dw, 52 - dw) puts ISO week 1 at distance 0 from week 53,
-  and 2026 has 53 ISO weeks, so the 2027-01-02 round reads weeks 51 to 3
-  instead of 51 to 2; and the pipeline skips the ceiling without a record
-  when its truth read fails (hist_series empty), so a run asked for the
-  ceiling could carry none and not say so.
+  Three findings for the Submission lane are under For other lanes
+  (2026-10-26, laptop). The full record (the pre-registration, the report,
+  the run log, the scripts) is in the repository:
+  [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md).
 
 - 2026-10-25 (23:42 UTC): THE HISTORICAL CEILING ON THE 84 WEEKS, PRE-REGISTERED
   AND RUNNING (Ely's request in chat; the Submission lane's handoff of
@@ -1212,6 +1210,54 @@ agent's.
   avoid "seasonal pool" (Conformal Seasonal Pools is another method).
 
 ## For other lanes
+
+- 2026-10-26 (laptop), Submission: THREE FINDINGS ON THE HISTORICAL
+  CEILING (flubnf/tailcap.py and its wiring in app/ui/pipeline.py), from
+  the Groundhog's screen (Now, 2026-10-25 23:50 UTC, laptop; the record is
+  in [model-groundhog-hist-ceiling-2026-10-25/](model-groundhog-hist-ceiling-2026-10-25/README.md),
+  RUNLOG.md there). The code computes what its docstrings say: the ratios
+  equal an independent implementation on all 97 replay weeks, and every
+  clipped block equals the written rule. These findings are about the
+  rule's edges, and none touches the 2026-10-28 round, which runs the
+  shrink at 15x alone (the Oracle's entry of 2026-10-25 23:50 UTC).
+  (1) THE WEEK-53 WINDOW. history_ratios measures the calendar distance
+  as min(dw, 52 - dw) on ISO week numbers, which puts ISO week 1 at
+  distance 0 from week 53. 2026 has 53 ISO weeks, so the forecast date
+  2027-01-02 (ISO week 53, MMWR week 52) reads ISO weeks 51, 52, 1, 2 and
+  3. Shown on a synthetic series through history_ratios: a history week in
+  ISO week 3 (2025-01-18) enters, three weeks away by
+  flubnf.analogue.calendar_distance, the Groundhog donors' own rule, which
+  places week 53 at 52.5. One round is affected, and only if the ceiling
+  is on then. Two ways to fix it, your choice: reuse
+  flubnf.analogue.epiweek and calendar_distance, so the ceiling's calendar
+  is the donors' (MMWR rather than ISO numbering moves a few year-end
+  ratios), or wrap at the as-of ISO year's week count; either with a test
+  at 2027-01-02.
+  (2) THE UNRECORDED SKIP. In _run_all the truth read that builds obs and
+  hist_series sits in try / except Exception: pass, and the ceiling runs
+  only `if _hist_q and hist_series`. If that read fails, a run that asked
+  for output.tail_hist applies no ceiling and records no tail_hist entry,
+  and nothing on the run page says the knob did nothing. Suggested: when
+  the knob is set and hist_series is empty, record tail_hist with the
+  reason it was skipped (or refuse the run, as a broken filter install is
+  refused), with a test that makes the read fail.
+  (3) THE 2024 VOLUNTARY WINDOW IN THE HISTORY. The ceiling's history keeps
+  the weeks of the 2024 voluntary reporting window (May 1 to Oct 31, 2024)
+  and the jump when mandatory reporting returned. At the 10-17 vintage the
+  h0 and h1 maxima, 11.7x and 19.5x, are Puerto Rico's 2024-11-02 (6, 14,
+  15, then 137 and 228), and the next h1 cell is Arizona's 2024-10-12 (14,
+  40, 4, then 14 and 187); h2 and h3, 26.2x and 37.8x, are Oregon's real
+  rise of November 2022 (6, 5, 32, then 51, 113, 376, 542). Leaving out
+  every W whose base weeks (W-2 to W) fall in the window, the 10-17 maxima
+  at h0-h3 go from 11.7, 19.5, 26.2, 37.8x to 5.4, 9.2, 26.2, 37.8x (10-03
+  and 10-10: h0 9.7x to 5.4x). An artefact can only loosen the ceiling, so
+  the code as merged errs toward doing nothing. With the window out, the
+  ceiling would bind more at h0 and h1 in October, under the 15x line, so
+  that form would need its own screen before a round uses it. The
+  Groundhog's donors keep the window too, and there it is harmless (the
+  tail-cell screen's arm C4 removed it and moved the score by under
+  0.0002).
+  Please answer in your own file, as usual.
 
 - 2026-10-22, Submission (answering your handoffs of 2026-10-21 and
   10-22): the shrink and its rounding fix are under Now; please run the
