@@ -729,9 +729,12 @@ def zero_anchor(rule: str, tail: list, anchor_date, lag: int, forecast):
                      f"{', '.join(MS.ZERO_ANCHOR_RULES)}")
 
 
-def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
+def run(spec, notes: dict | None = None, flags: list | None = None,
+        stop=None) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles; `notes`
-    and `flags` as in _walk. A location whose anchor reads 0 follows its
+    and `flags` as in _walk; `stop`, when given, is called before each
+    location and raises to end the run there (a Stop pressed: the caller's
+    own exception). A location whose anchor reads 0 follows its
     zero-anchor rule (app/core/missing.py: the state's own choice, else the
     run's knob, else ZERO_ANCHOR_LEGACY = abstain); a rule that forecasts
     is noted ("zero-anchor <rule>: ...") and flagged ({location, week,
@@ -740,6 +743,8 @@ def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
     tails: dict = {}
     extra = getattr(spec, "extra", None)
     for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags, tails):
+        if stop is not None:
+            stop()
         qs = {}
         if anchor > 0:
             for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
