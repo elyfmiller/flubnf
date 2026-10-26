@@ -704,7 +704,9 @@
     stopBtn.disabled=true;stopBtn.textContent='Stopping…';
     msg.textContent='Stopping the '+p.conflict.label
       +'… waiting for it to release the engine.';
-    fetch(p.conflict.stop,{method:'POST'}).catch(function(){});
+    // the stop's 303 is not followed: a page rendered in the background
+    // would take the stop's notice, which belongs to the page proceed opens
+    fetch(p.conflict.stop,{method:'POST',redirect:'manual'}).catch(function(){});
     (function poll(){
       if(pending!==p)return;                    // modal was dismissed
       fetch('/api/busy').then(function(r){return r.json();})
