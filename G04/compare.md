@@ -9,3 +9,5 @@
 | Tests | 7 (all fail on dev): pipeline (two), real-engine dataset replay and forecast stopping after the first group, run/stop on a replay, the busy reason, the guard script | 5 (all fail on pre-fix): pipeline, an engine-level unit test (three locations, pressed after the first; no stop: unchanged), run/stop, busy reason, guard script | Take B's engine-level test beside A's: it pins the engine's contract directly, including "without `stop` nothing changes". |
 
 Vote: combine: A's patch, plus B's `test_the_groundhog_stops_between_locations_when_asked` (adapted to A's `run()`-level check: it asserts forecasts, which holds for both), and the Status cell naming DA-02's size for Ely.
+
+Vote (final): A. (B's engine-level test would be a welcome extra, not a condition; as implementer of A's I would set the Status cell to `fixed in this PR; DA-02 for Ely: one week of a 200-group dataset still takes minutes (speed or an upload cap is the engine's or the limits' call)`.)
