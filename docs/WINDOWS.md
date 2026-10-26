@@ -907,7 +907,8 @@ standard `setup.sh` instructions inside the Linux environment.
   Machines without the engine run the analogue engine only, exactly as on
   a Tier-A Mac.
 - **Windows CI is required.** Three jobs in
-  `.github/workflows/tests.yml` run on `windows-latest`, and a red Windows
+  `.github/workflows/tests.yml`, and a leg of a fourth, run on
+  `windows-latest`, and a red Windows
   run fails the checks as a red Ubuntu one does. `test-windows` runs the
   test suite, which runs `FluBNF.bat`'s blocks in cmd.exe with stand-in
   programs (the update, a moved `.venv`, the engine file, `:sync`, the
@@ -924,8 +925,17 @@ standard `setup.sh` instructions inside the Linux environment.
   `Jane O'Brien (Lab)`; `tests/test_windows_own_perl.py`), then runs the
   real BNG2.pl under that Perl, and bngsim through a fit's calls with code
   generation off and no compiler on PATH
-  (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget, a
-  real engine venv build or a real fit.
+  (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget or a
+  real fit, and only `public-engine-install` builds a real engine venv.
+  `public-engine-install`, on Windows and on macOS, installs the public
+  engine for real: `FluBNF.bat`'s public block in cmd.exe (on macOS,
+  `setup_engine.sh --public`), real pip and PyPI, a venv under a folder
+  named `Jane O'Brien (Lab)`. The PyBNF wheel and its lock come from
+  `public-engine-wheel`, which builds the wheel from lanl/PyBNF at the
+  pinned commit and writes a lock for it on macOS
+  (`scripts/make_test_lock.py`; never the engine lane's lock). Then an open
+  with nothing to do, a new lock, a wheel whose hash does not match, and
+  PyBNF's lesson 50 in the venv (`tests/test_public_engine_real.py`).
   `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
@@ -945,8 +955,9 @@ standard `setup.sh` instructions inside the Linux environment.
   its job rather than running to GitHub's 6 hour default. The budgets are
   fuses, not targets: 20 minutes on ubuntu, which finishes in about 5, 90
   on windows, which took 71 at its worst, 30 for `windows-own-perl` (a
-  31 MB download and a few BNG2.pl runs), and 60 for
-  `windows-setup-script`. The windows number should come down a long way
+  31 MB download and a few BNG2.pl runs), 60 for
+  `windows-setup-script`, 20 for `public-engine-wheel` and 30 for
+  `public-engine-install` (a first install takes a few minutes). The windows number should come down a long way
   once the hour is accounted for, because a fuse sized far above the load
   never blows.
 - **The windows suite takes an hour and nobody yet knows on what.** 62 and

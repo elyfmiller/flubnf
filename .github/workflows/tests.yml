@@ -661,3 +661,51 @@ jobs:
           }
           Write-Host "run 5: an existing checkout under Documents is reused where it stands"
           exit 0
+
+  # The public engine's real install, ahead of the engine lane's lock: the
+  # PyBNF wheel built here from lanl/PyBNF at the pinned commit, and a lock
+  # written for it (scripts/make_test_lock.py), resolved on macOS as the lab
+  # Mac's will be. The install jobs then run the public route for real.
+  public-engine-wheel:
+    name: "public-engine-wheel"
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - name: the PyBNF wheel, its lock, a localhost certificate, lesson 50
+        run: |
+          set -e
+          SRC="$RUNNER_TEMP/pybnf-src" PUB="$RUNNER_TEMP/public-engine"
+          git clone -q --filter=blob:none https://github.com/lanl/PyBNF "$SRC"
+          git -C "$SRC" checkout -q 8410f794e3fa4817572fd07fceb043ddec39d77b
+          python -m pip wheel -q --no-deps -w "$RUNNER_TEMP/dist" "$SRC"
+          python scripts/make_test_lock.py "$RUNNER_TEMP"/dist/pybnf-*.whl "$PUB"
+          cp -R "$SRC/examples/tutorial/50_liu_west_filter" "$PUB/lesson50"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=localhost" \
+            -keyout "$PUB/key.pem" -out "$PUB/cert.pem" 2>/dev/null
+          ls -lR "$PUB/wheels"
+      - uses: actions/upload-artifact@v4
+        with: {name: public-engine, path: "${{ runner.temp }}/public-engine", retention-days: 1}
+
+  public-engine-install:
+    name: "public-engine-install"
+    needs: public-engine-wheel
+    runs-on: ${{ matrix.os }}
+    env: {PYTHONUTF8: "1"}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: {os: [windows-latest, macos-latest]}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - uses: actions/download-artifact@v4
+        with: {name: public-engine, path: "${{ runner.temp }}/public-engine"}
+      - run: pip install pytest bionetgen
+      - name: FluBNF.bat / setup_engine.sh install it (tests/test_public_engine_real.py)
+        shell: bash
+        env: {FLUBNF_PUBLIC_REAL: "${{ runner.temp }}/public-engine"}
+        run: pytest tests/test_public_engine_real.py -ra -s -o addopts="" --noconftest -p no:cacheprovider

@@ -11,7 +11,7 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways, and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 
@@ -24,6 +24,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_engine_public.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
 | `ruff` | the app/ui lint case in `app/tests/test_ui_layout.py` |
+| `FLUBNF_PUBLIC_REAL` (the `public-engine-install` CI job's wheel, lock and certificate) | `tests/test_public_engine_real.py`, the public engine's real install |
 
 `tests/test_reinstall_script.py` fails when run as root (`reinstall.sh` refuses root).
 
