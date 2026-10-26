@@ -36,7 +36,7 @@ Base: origin/dev 301466c (G01 merged: no FLUBNF_HUB needed for tests)
 
 ## Checks
 - New tests: 13 in app/tests/test_run_input.py; on dev 12 of them fail (the 13th, the Forecast form's own names, is a guard and passes on both).
-- Targeted: the run, dataset, retro, knobs, models, forecast, layout and marks test files: all pass (1101). ruff F821/F823/F811/F401 on app/ui: clean.
+- Targeted: the run, dataset, retro, knobs, models, forecast, layout and marks test files: 1049 passed, 10 skipped, 0 failed (test_run_input included). ruff F821/F823/F811/F401 on app/ui: clean.
 - Output invariance: all-53 Groundhog run on 2026-10-17, dev 301466c and the prototype: the same submission file, md5 56da9201b416eb5c80317c849b55168e.
 - Browser (Chromium, 1280x900): the panel refusal, the model-page refusal, the replicates range and the notice, each seen; screenshots in my scratchpad.
 
