@@ -255,7 +255,7 @@ index 45b0ea8..ddfcc40 100644
          if k is None or r["key"] in K.DECISION_KEYS:
              continue
 diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
-index 5455e36..08c7d30 100644
+index 5455e36..c47b7c0 100644
 --- a/app/ui/routes/forecast.py
 +++ b/app/ui/routes/forecast.py
 @@ -381,6 +381,19 @@ def _location_list(locations: list) -> list:
@@ -424,10 +424,12 @@ index 5455e36..08c7d30 100644
          return _back(request, "/forecast")
      # the per-state data choices (the Data issues box, or a re-run's
      # record): refused BEFORE the engine is claimed when a choice is not
-@@ -1210,6 +1241,7 @@ def run_models(request: Request,
+@@ -1209,7 +1240,8 @@ def run_models(request: Request,
+     # busy check + claim under _engine_lock (see its comment)
      with _engine_lock:
          if _status.get("running"):
-             _status["log"].append("A run is already in progress; not starting another.")
+-            _status["log"].append("A run is already in progress; not starting another.")
++            # said (and logged) as the check above says it
 +            _flash("Not run: a run is already in progress.", "warn")
              return RedirectResponse("/forecast#results", status_code=303)
          live_retro = sorted(x for x in retro_seasons._known_seasons()
