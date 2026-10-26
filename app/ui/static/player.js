@@ -681,6 +681,9 @@ function createPlayer(cfg){
       if(!isNoData(weeks[j])) src = weeks[j];
     if(src === null) return Promise.resolve(null);
     NDP[w] = cfg.getPayload(src).then(function(pl){
+      // the controls come from the stored week: the placeholder forecasts
+      // nothing, and a visit that opens on it would offer no member
+      if(pl) buildControls(pl);
       return noDataPayload(pl, w);
     });
     return NDP[w];
@@ -885,7 +888,9 @@ function createPlayer(cfg){
       if(!P.on[m]) return;
       var st = pl && pl.stats ? pl.stats[m] : null;
       var sv = statView(st, P.scale);
-      var wk = nodata ? 'noround'
+      // a stored week with no FluSight round to score against (the
+      // payload's no_round) reads as a no-data week does
+      var wk = (nodata || (pl && pl.no_round)) ? 'noround'
         : weekCellState(sv.week.rel, OFFS.indexOf(m) >= 0, !!av,
                         !!(av && av[m]), !!seasonOffs[m]);
       var cum = isNum(sv.cum.rel) ? 'score' : 'pending';

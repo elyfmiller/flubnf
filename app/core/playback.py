@@ -38,7 +38,8 @@ week; {} when that vintage is not on this machine. And "us_step": what the
 week's oracle.json did with the US cell (us_national.us_step_week):
 "stepped" (addendum A3: the US pf is the Oracle SIHRS), "filter" (stored
 before it: the US pf is the Liu-West filter alone), or None when the week
-does not say.
+does not say. And "no_round": true when the week can never score, its
+truth settled with no FluSight round for its reference date (_no_round).
 
 FluSight-baseline's rel and log rel are 1.0 by definition; its coverage is
 its own. A scores.json written before the log-scale and coverage columns (a
@@ -180,6 +181,19 @@ def _official_files_present(asof: str) -> list:
     ref = (pd.Timestamp(asof) + timedelta(days=7)).date().isoformat()
     return [om for om in OFFICIAL
             if (HUB / "model-output" / om / f"{ref}-{om}.csv").is_file()]
+
+
+def _no_round(asof: str, truth: dict) -> bool:
+    """True when this week can never score: the hub clone holds
+    FluSight-baseline rounds but none for this week's reference date, and
+    the week's target has settled. A clone without the baseline folder, or
+    a week still waiting on its truth, is not that. Checked on every serve
+    (an Update data can bring the round)."""
+    if not (HUB / "model-output" / "FluSight-baseline").is_dir():
+        return False
+    if "FluSight-baseline" in _official_files_present(asof):
+        return False
+    return ("US", pd.Timestamp(asof) + timedelta(days=7)) in truth
 
 
 def season_official_catalog(root: Path) -> list:
@@ -560,6 +574,7 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                 truth_c, n2f_c = load_truth()
                 payload["stats"] = _stats_fresh(root, asof, payload,
                                                 truth_c, n2f_c)
+                payload["no_round"] = _no_round(asof, truth_c)
                 return payload
         except Exception:
             pass                       # corrupt cache: rebuild below
@@ -602,6 +617,7 @@ def build_week(root: Path, season: str, asof: str) -> dict:
         "stats": _stats(root, season, asof, truth, n2f, model_q, official_q),
         # which US pf this week stored: the Oracle step's or the filter's
         "us_step": usn.us_step_week(retro_store._week_dir(root, asof)),
+        "no_round": _no_round(asof, truth),
     }
     _write_cache(cf, payload)
     return payload

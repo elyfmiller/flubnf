@@ -444,8 +444,11 @@
  {# show the failure, never pass it off as "truth not settled"; the
     fitted forecasts below are intact, and the scoring input is usually
     the FluSight hub clone, which the Data tab updates #}
- {% set errc %}<code>{{ score_error }}</code>{% endset %}
- {{ tips.alert("error", errc, title="Scoring failed.", id="rs-scorefail", action=('' if export else '<a href="/data">Data tab</a>' | safe)) }}
+ {# a known failure in plain words, the raw message in a fold (a phone
+    puts the Data tab link under the text: tabs/retro.css) #}
+ {% set score_plain = score_plain if score_plain is defined else "" %}
+ {% set errc %}{{ score_plain }}{% call tips.fold("Details", cls="rt-errfold") %}<code>{{ score_error }}</code>{% endcall %}{% endset %}
+ {{ tips.alert("error", errc, title="Scoring failed.", id="rs-scorefail", cls="rt-failalert", action=('' if export else '<a href="/data">Data tab</a>' | safe)) }}
  {% elif unsettled and not heads %}
  {# the title names both inputs a score waits on, so it needs no "?" #}
  {{ tips.empty("No scoreable weeks yet: truth or the FluSight baseline is not in", "clock", id="rs-unsettled") }}
@@ -541,12 +544,13 @@
   </select>
   {# the scrubber walks the timeline: the stored weeks plus the season's
      no-data weeks as placeholders (playback.week_notes) #}
-  {# the month of each month's first week under the scrubber
-     (month_ticks_for_dates), placed along the track #}
+  {# the month of each month's first week under the scrubber, the first
+     week's too (month_ticks_for_dates), placed along the track; the page
+     script keeps them inside it and apart (fitTicks) #}
   {% set nt = (timeline|length) - 1 %}
   <span class="rt-scrub"><input type="range" id="pb-scrub" min="0" max="{{ nt }}" step="1"
          value="{{ timeline.index(week) if week in timeline else 0 }}" aria-label="Week scrubber">
-   {% if nt > 0 %}<span class="rt-ticks" aria-hidden="true">{% for i, lab in month_ticks_for_dates(timeline) %}<span style="--f:{{ '%.4f' | format(i / nt) }}">{{ lab }}</span>{% endfor %}</span>{% endif %}</span>
+   {% if nt > 0 %}<span class="rt-ticks" aria-hidden="true">{% for i, lab in month_ticks_for_dates(timeline, first=True) %}<span style="--f:{{ '%.4f' | format(i / nt) }}">{{ lab }}</span>{% endfor %}</span>{% endif %}</span>
   {# polite live regions announce the player advancing; the link button
      copies the address of this week, location and view #}
   <span class="rt-weekl"><span class="hint" id="pb-week" aria-live="polite"></span>
@@ -709,6 +713,11 @@
  <summary><h2 style="display:inline">Per-state scores</h2>
   {{ tips.tag(conv_label) }}
   {{ tips.badge("neutral", states|length ~ " jurisdiction" ~ ('' if states|length == 1 else 's') ~ " scored") }}</summary>
+ {# no row yet (nothing scored): the kit's empty state, no filter and no
+    bare headers #}
+ {% if not states and not (us_row and (us_row.pf or us_row.analogue)) %}
+ {{ tips.empty("Arrives with the first scored week", "clock", id="rs-states-none", compact=True) }}
+ {% else %}
  {# the filter, its count, and the reset of a remembered sort (shown
     while the table is sorted) #}
  <div class="row rt-filter">
@@ -773,6 +782,7 @@
   {%- if show_cov %}{{ cov95(((r.detail or {}).get(m) or {}).get('cov')) }}{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody></table>
  </div>
+ {% endif %}
 </details>
 <script>
  // the fold state persists (open by default), and the sort per season
@@ -1184,8 +1194,11 @@
    player.setLoc(b.dataset.loc);
    setView('fc');
    const card = document.getElementById('rs-playcard');
-   if(card) card.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
-                                           ? 'auto' : 'smooth', block: 'start'});
+   // after base.html's click guard, which holds the scroll for two frames
+   // after any click (it undid the instant jump of reduced motion)
+   if(card) requestAnimationFrame(() => requestAnimationFrame(() =>
+     card.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+                                     ? 'auto' : 'smooth', block: 'start'})));
  });
  // Copy link: the address of this week, location and view
  (function(){
@@ -1236,6 +1249,38 @@
  let cumT = null;
  addEventListener('resize', () => {clearTimeout(cumT); cumT = setTimeout(cumLabels, 150);});
  addEventListener('fontsizechange', cumLabels);
+ // the scrubber's month labels, measured: the end ones kept inside the
+ // track, and one that would touch the label before it left out (weeks
+ // sit by index, so a month with few stored weeks crowds the next)
+ function fitTicks(){
+   const box = document.querySelector('.rt-ticks');
+   if(!box || !box.clientWidth) return;
+   const b = box.getBoundingClientRect(),
+         gap = parseFloat(getComputedStyle(box).fontSize) * .5;
+   const ss = [].slice.call(box.querySelectorAll('span'));
+   let end = -1e9;
+   ss.forEach(s => {
+     s.hidden = false; s.style.transform = '';
+     let r = s.getBoundingClientRect();
+     if(r.left < b.left) s.style.transform = 'none';
+     else if(r.right > b.right) s.style.transform = 'translateX(-100%)';
+     r = s.getBoundingClientRect();
+     if(r.left < end + gap) s.hidden = true;
+     else end = r.right;
+   });
+   // the season's last month keeps its label; the one before gives way
+   const last = ss[ss.length - 1];
+   if(last && last.hidden){
+     last.hidden = false;
+     const shown = ss.filter(s => !s.hidden && s !== last).pop();
+     if(shown) shown.hidden = true;
+   }
+ }
+ fitTicks();
+ if(document.fonts) document.fonts.ready.then(fitTicks);
+ let tickT = null;
+ addEventListener('resize', () => {clearTimeout(tickT); tickT = setTimeout(fitTicks, 150);});
+ addEventListener('fontsizechange', fitTicks);
  // a state clicked on the map (its "click for details") opens its
  // forecast detail (usmap's drill-down hook)
  const STATE_NAMES = {{ (state_names or {}) | tojson }};

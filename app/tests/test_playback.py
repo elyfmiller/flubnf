@@ -97,8 +97,10 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     p = playback.build_week(root, SEASON, ASOF)
     assert set(p) == {"_v", "asof", "locations", "truth", "seen", "models", "official",
-                      "stats", "us_step"}
+                      "stats", "us_step", "no_round"}
     assert p["asof"] == ASOF
+    # the week's round is in the hub: it scores
+    assert p["no_round"] is False
     # no oracle.json beside the week: it does not say what its US pf is
     assert p["us_step"] is None
     assert p["locations"] == ["Ohio", "Utah"]
@@ -285,6 +287,39 @@ def test_cached_payload_without_us_truth_upgrades(tmp_path, monkeypatch):
     os.utime(cf, (future, future))                # fresh by mtime alone
     p = playback.build_week(root, SEASON, ASOF)
     assert "US" in p["truth"]
+
+
+def test_a_settled_week_without_a_flusight_round_says_it_never_scores(
+        tmp_path, monkeypatch):
+    """A stored week whose reference date had no FluSight-baseline round,
+    its truth settled long ago, can never score: the payload says so
+    (no_round) and the player reads "no FluSight round", not "pending"."""
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    hub = tmp_path / "hub"
+    # the clone holds the baseline's rounds, another week's only
+    _write_official(hub, "FluSight-baseline", asof="2026-01-10")
+    p = playback.build_week(root, SEASON, ASOF)
+    assert p["no_round"] is True
+    # served again from the cache: still said, from the hub as it is now
+    assert playback.build_week(root, SEASON, ASOF)["no_round"] is True
+    # the round arrives (Update data): it scores
+    _write_official(hub, "FluSight-baseline")
+    assert playback.build_week(root, SEASON, ASOF)["no_round"] is False
+
+
+def test_a_week_is_not_called_roundless_on_too_little_evidence(
+        tmp_path, monkeypatch):
+    # a clone with no baseline rounds at all (a sparse checkout): pending,
+    # the Update-data hint says why
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    assert playback.build_week(root, SEASON, ASOF)["no_round"] is False
+    # the week's truth has not settled: it may still score
+    truth, n2f = _truth()
+    truth.pop(("US", pd.Timestamp(ASOF) + pd.Timedelta(days=7)))
+    assert playback._no_round(ASOF, truth) is False
+    _write_official(tmp_path / "hub", "FluSight-baseline", asof="2026-01-10")
+    assert playback._no_round(ASOF, truth) is False
+    assert playback._no_round(ASOF, _truth()[0]) is True
 
 
 def test_season_official_catalog(tmp_path, monkeypatch):
