@@ -13,3 +13,5 @@ I read B's proposal and patch in full.
 | Tests | `test_which_run_shows.py` (8, all failing on dev), three pinned asserts updated (the bug's behavior) | New tests in `test_output_by_date`, `test_archive_rule`, `test_models_tab` | Take each part's own tests. |
 
 Vote: combine: A's patch for OU-01, OU-02, OU-08, OU-09, OU-11; B's `shared._wrote_forecasts` for HM-05 (with its test); for MO-06 A's label rule plus B's "Newer run on the Forecast tab" link (`newer_run` from `_latest_results(include_modified=True, newest=True)`) and its test.
+
+Vote (final): combine: A's patch, plus from B the Models card's link "Newer run on the Forecast tab" (`newer_run` from `_latest_results(include_modified=True, newest=True)`, the link after "Run details") with its assertions in A's MO-06 test. I take B's reading on HM-05: every results.json the pipeline writes carries its `models` table, so A's simpler rule covers the reproduced case without the risk I raised.
