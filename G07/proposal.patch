@@ -1,0 +1,586 @@
+diff --git a/app/core/custom_retro.py b/app/core/custom_retro.py
+index 34eb8ee..2c092ab 100644
+--- a/app/core/custom_retro.py
++++ b/app/core/custom_retro.py
+@@ -336,7 +336,10 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
+             write_meta(out_dir, meta)
+             if progress:
+                 progress(asof, i + 1, len(weeks))
+-        meta["status"] = "done"
++        # every member abstained on every group-week: never a green "done"
++        meta["status"] = ("done" if any(q for f in forecasts.values()
++                                        for q in f.values())
++                          else "no forecast")
+     except (Stopped, pf_engine.RunStopped):
+         meta["status"] = "stopped"
+     except Exception as e:
+diff --git a/app/core/datasets/checks.py b/app/core/datasets/checks.py
+index 49bc9ae..e12fce5 100644
+--- a/app/core/datasets/checks.py
++++ b/app/core/datasets/checks.py
+@@ -878,3 +878,41 @@ def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
+                    "only weeks that ended by its as_of."
+                    if shift and all(d - timedelta(days=shift) <= a
+                                     for _, a, _, d in late) else ""), lines)
++
++
++#: how the Groundhog notice starts (the check shows it outside the notes
++#: on how a file was read, app/ui/dataset_upload.check_view)
++TOO_LITTLE_HISTORY = "Too little history for the Groundhog"
++
++
++def dataset_checks(rep: Report) -> None:
++    """What a whole dataset needs beyond each file's checks (a snapshot
++    file may hold one week; the dataset may not): two weeks at least, a
++    forecast starting from the second; and a notice when even its newest
++    week gives the Groundhog too few weeks like it in earlier seasons to
++    forecast from (flubnf/analogue.py: MIN_DONORS donor ratios within the
++    default donor window; the run abstains below that)."""
++    s = rep.summary
++    if not rep.ok or not s:
++        return
++    if s["weeks"] < 2:
++        rep.add("one_week", f"The data hold one week ({s['first']}): a "
++                "forecast starts from the week after the first, so at "
++                "least two weeks are needed.")
++        return
++    from flubnf import analogue as AN
++    newest = {}
++    for a, name, _, d, v, _ in rep.records:
++        k = (name, d)
++        if v is not None and (k not in newest
++                              or (a or date.min) >= newest[k][0]):
++            newest[k] = (a or date.min, float(v))
++    bank = {k: v for k, (_, v) in newest.items() if v > 0}
++    last = max(d for _, d in newest)
++    n = len(AN.donor_ratios(bank, AN.epiweek(last), AN.season_of(last), 1,
++                            exclude_seasons=()))
++    if n < AN.MIN_DONORS:
++        rep.warnings.append(
++            f"{TOO_LITTLE_HISTORY}: at the newest week it finds {n} weeks like it in earlier seasons and needs "
++            f"{AN.MIN_DONORS}, so it will not forecast this data on its "
++            "own.")
+diff --git a/app/core/datasets/dataset.py b/app/core/datasets/dataset.py
+index 4d3b8d6..8d0409a 100644
+--- a/app/core/datasets/dataset.py
++++ b/app/core/datasets/dataset.py
+@@ -101,7 +101,11 @@ class Dataset:
+     def vintage_path(self, date: str) -> Path:
+         """Exact vintage or a LOUD error naming nearby ones (rule 5)."""
+         p = self.path / VINTAGE_DIR / f"{VINTAGE_PREFIX}{date}.csv"
+-        if str(date) not in self.meta["vintages"] or not p.is_file():
++        if str(date) in self.meta["vintages"] and not p.is_file():
++            raise FileNotFoundError(
++                f"The snapshot file for {date} of dataset {self.name!r} is "
++                f"missing: {p}")
++        if str(date) not in self.meta["vintages"]:
+             vs = self.vintages()
+             try:
+                 t = saturday_on_or_before(parse_date(str(date))[0])
+diff --git a/app/core/datasets/report.py b/app/core/datasets/report.py
+index 4a62cb9..6952df0 100644
+--- a/app/core/datasets/report.py
++++ b/app/core/datasets/report.py
+@@ -79,7 +79,7 @@ PROBLEM_KINDS = (
+     ("Groups", ("group_blank", "group_name", "group_reserved",
+                 "national_multiple", "group_collision",
+                 "location_name_conflict")),
+-    ("Weeks", ("duplicate", "gap")),
++    ("Weeks", ("duplicate", "gap", "one_week")),
+ )
+ KIND_OF = {c: k for k, codes in PROBLEM_KINDS for c in codes}
+ 
+diff --git a/app/core/datasets/snapshots.py b/app/core/datasets/snapshots.py
+index fb48103..f245035 100644
+--- a/app/core/datasets/snapshots.py
++++ b/app/core/datasets/snapshots.py
+@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
+ #: read through it at call time, where tests monkeypatch them
+ from app.core import datasets as _pkg
+ 
++from .checks import dataset_checks
+ from .parsing import _fmt_num, saturday_on_or_before
+ from .reading import validate
+ from .report import (
+@@ -139,9 +140,11 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
+     files = list(files)
+     if len(files) == 1:
+         name, src = files[0]
+-        return _validate_kept(name, src, _tee_dir, kind=kind, target=target,
+-                              limits=limits, columns=columns,
+-                              series=_series_of(_base(name)))
++        rep = _validate_kept(name, src, _tee_dir, kind=kind, target=target,
++                             limits=limits, columns=columns,
++                             series=_series_of(_base(name)))
++        dataset_checks(rep)
++        return rep
+     rep = Report()
+     if not files:
+         rep.add("empty", "No files were given.")
+@@ -342,6 +345,7 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
+              "as_of": sorted({x[0].isoformat() for x in rs})}
+             for f, r, rs, how in dated],
+     }
++    dataset_checks(rep)
+     return rep
+ 
+ 
+diff --git a/app/core/datasets/store.py b/app/core/datasets/store.py
+index a42f8d4..73402a0 100644
+--- a/app/core/datasets/store.py
++++ b/app/core/datasets/store.py
+@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional
+ from app.core import datasets as _pkg
+ from app.core.runs import APP_STATE
+ 
+-from .checks import KINDS
++from .checks import KINDS, dataset_checks
+ from .parsing import _fmt_num, _int_or_float, saturday_on_or_before, slug
+ from .reading import validate
+ from .report import DEFAULT_LIMITS, DatasetError, Limits, Problem, Report
+@@ -205,6 +205,7 @@ def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
+             rep = validate(source, kind=kind, target=target, limits=limits,
+                            columns=columns, series=_series_of(filename, name),
+                            _tee=tee)
++        dataset_checks(rep)
+         _refuse(rep)
+         name = name or default_name(filename, rep.targets,
+                                     rep.summary.get("target"))
+diff --git a/app/core/runs.py b/app/core/runs.py
+index 8a1a3bd..7d5c361 100644
+--- a/app/core/runs.py
++++ b/app/core/runs.py
+@@ -538,6 +538,9 @@ def anchor_notes_row(o: dict, names: dict):
+ #: the engine note of a location with no forecast from its newest week
+ #: (the Groundhog: a newest count of 0 is a ratio of nothing)
+ NO_FORECAST = "no forecast"
++#: the engine note of a location whose donors were too few to forecast
++#: from (app/core/engines/analogue.py): not a newest week reading 0
++NO_DONORS = "no forecast: the donors gave no distribution"
+ #: notes with a Results row of their own (not "Unreported newest weeks")
+ _OWN_ROW_PREFIXES = (NO_FORECAST, "zero-anchor", "set-aside not applied")
+ 
+@@ -557,6 +560,8 @@ def zero_anchor_row(o: dict, names: dict):
+         by: dict = {}
+         for loc, v in sorted(notes.items()):
+             v = str(v)
++            if v == NO_DONORS:
++                continue                        # no_donors_row's
+             if v.startswith(NO_FORECAST):
+                 by.setdefault("abstain", []).append(loc)
+             elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
+@@ -588,6 +593,30 @@ def zero_anchor_row(o: dict, names: dict):
+ no_forecast_row = zero_anchor_row
+ 
+ 
++def no_donors_row(o: dict, names: dict):
++    """The Results table's row for the Groundhog's locations that abstained
++    because too few weeks in earlier seasons were like the newest one (the
++    engine's NO_DONORS note), or None: a count per member, the locations in
++    the "?" tip."""
++    import html as _html
++    parts, locs = [], []
++    for m, key in ANCHOR_NOTE_KEYS:
++        notes = o.get(key)
++        if not isinstance(notes, dict):
++            continue
++        few = sorted(loc for loc, v in notes.items() if str(v) == NO_DONORS)
++        if few:
++            parts.append(f"{names.get(m, m)}: {len(few)} abstain")
++            locs += few
++    if not parts:
++        return None
++    tip = _tip("no-donors", "locations with too few donors",
++               "The Groundhog forecasts from weeks like the newest one in "
++               "earlier seasons; with too few of them (30 by default) it "
++               "abstains. " + ", ".join(locs) + ".")
++    return ("Too few donors", _html.escape("; ".join(parts)) + tip)
++
++
+ def data_issues_row(o: dict, spec_extra: dict, names: dict):
+     """The Results table's row for the per-state choices a run carried
+     (app/core/missing.py): "3 set aside, 1 left out, 2 zero-anchor level",
+@@ -774,6 +803,9 @@ def results_html(outcome, spec, heading: bool = True) -> str:
+     nrow = zero_anchor_row(o, HUB_MEMBER_NAMES)
+     if nrow:
+         rows.append(nrow)
++    frow = no_donors_row(o, HUB_MEMBER_NAMES)
++    if frow:
++        rows.append(frow)
+     drow = data_issues_row(o, extra, HUB_MEMBER_NAMES)
+     if drow:
+         rows.append(drow)
+@@ -841,6 +873,9 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
+     nrow = zero_anchor_row(o, MEMBER_LABELS)
+     if nrow:
+         rows.append(nrow)
++    frow = no_donors_row(o, MEMBER_LABELS)
++    if frow:
++        rows.append(frow)
+     from app.core import missing as _missing
+     if _missing.rules_of(extra) and "data_flags" in o:
+         # only a run with a missing-data rule on
+diff --git a/app/tests/test_dataset_sufficiency.py b/app/tests/test_dataset_sufficiency.py
+new file mode 100644
+index 0000000..1287d50
+--- /dev/null
++++ b/app/tests/test_dataset_sufficiency.py
+@@ -0,0 +1,145 @@
++"""Own datasets the Groundhog cannot forecast, and stored datasets that
++cannot be read (the 2026-10-25 bug hunt, G07).
++
++  * the check says when even the newest week gives the Groundhog too few
++    weeks like it in earlier seasons; a dataset run that forecast no group
++    is "partial", never a green "ok", and a replay that forecast no
++    group-week ends "no forecast" (DA-01); the run page names the reason,
++    not a newest week reading 0 (DA-03);
++  * one week of data is refused: a forecast starts from the second (DA-08);
++  * a dataset whose files went missing is named on its pages, not a 500
++    (DA-12); an unreadable upload is said, not a 500 (DA-13); the same
++    bytes under a name with the same id say where they are stored (DA-18).
++"""
++from __future__ import annotations
++
++import json
++import shutil
++from datetime import date
++
++import app.core.runs as runs_mod
++from app.core import custom_retro as CX
++from app.core import datasets as D
++from app.ui import state as ui_state
++
++from test_dataset_engines import grouped_bytes         # noqa: E402
++from test_datasets_ui import (TEMPLATE, client,        # noqa: E402,F401
++                              isolated, stored, upload)
++
++
++def short_bytes() -> bytes:
++    """Two groups, two seasons before the newest week: 20 donor weeks."""
++    return grouped_bytes(groups=("North", "South"), start=date(2023, 8, 5),
++                         end=date(2025, 11, 15), pop=False)
++
++
++def check(raw: bytes) -> dict:
++    r = client.post("/data/datasets/check",
++                    files={"file": ("d.csv", raw, "text/csv")},
++                    data={"kind": "count"})
++    return r.json()
++
++
++# ----------------------------------------------- too little for the Groundhog
++
++def test_the_check_says_when_the_data_are_too_short_for_the_groundhog():
++    j = check(short_bytes())
++    assert j["ok"]
++    html = " ".join(j["html"].split())
++    assert ("Too little history for the Groundhog: at the newest week it "
++            "finds 20 weeks like it in earlier seasons and needs 30, so it "
++            "will not forecast this data on its own.") in html
++    assert "Too little history" not in check(TEMPLATE.read_bytes())["html"]
++
++
++def test_a_dataset_run_that_forecast_no_group_is_not_ok():
++    ds = stored(short_bytes(), "short")
++    client.post("/run/dataset", data={"dataset": ds.id,
++                                      "forecast_date": "2025-11-15",
++                                      "locations": "all",
++                                      "engine": "analogue"})
++    (row,) = runs_mod.Ledger().rows(5)
++    assert row["status"] == "partial"
++    o = json.loads(row["outcome"])
++    assert o["exports"] == {}
++    assert o["abstained"] == {"analogue": ["North", "South"]}
++    page = " ".join(client.get(f"/runs/{row['run_id']}").text.split())
++    # the reason is too few donors, not a newest week reading 0 (DA-03)
++    assert "Too few donors" in page and "Groundhog (own data): 2 abstain" in page
++    assert "Newest week reading 0" not in page
++
++
++def test_a_replay_that_forecast_no_group_week_ends_no_forecast():
++    ds = D.ingest(short_bytes(), "short", kind="count")
++    weeks = CX.weeks_between(ds, "2025-09-06", "2025-11-08")
++    out = CX.replay_dir(ds, CX.new_stamp(ds))
++    meta = CX.run(ds, weeks, ds.groups, out_dir=out)
++    assert meta["status"] == "no forecast"
++    ok = D.ingest(TEMPLATE.read_bytes(), "template", kind="count")
++    weeks = CX.weeks_between(ok, "2024-03-02", "2024-03-16")
++    out = CX.replay_dir(ok, CX.new_stamp(ok))
++    assert CX.run(ok, weeks, ok.groups, out_dir=out)["status"] == "done"
++
++
++# ---------------------------------------------------------------- one week
++
++def test_a_one_week_dataset_is_refused_at_the_check_and_the_store():
++    raw = b"date,group,value\n2024-01-06,A,5\n"
++    j = check(raw)
++    assert not j["ok"]
++    assert ("The data hold one week (<span class=\"nw\">2024-01-06</span>): "
++            "a forecast starts from the week after the first, so at least "
++            "two weeks are needed.") in " ".join(j["html"].split())
++    r = upload(raw, "one")
++    assert r.status_code == 422 and D.list_datasets() == []
++
++
++def test_a_group_with_one_week_reads_one_week():
++    raw = (b"date,group,value\n2024-01-06,A,5\n2024-01-13,A,6\n"
++           b"2024-01-13,B,3\n")
++    html = check(raw)["html"]
++    assert "B: 1 week, peak" in html and "1 weeks" not in html
++
++
++# --------------------------------------------------- a dataset's lost files
++
++def test_a_dataset_whose_files_went_missing_is_named_not_a_500():
++    ds = stored()
++    shutil.rmtree(ds.path / "vintages")
++    for page in (f"/data?source={ds.id}", f"/forecast?source={ds.id}",
++                 f"/retro?dataset={ds.id}"):
++        ui_state._status.pop("flash", None)
++        r = client.get(page)
++        assert r.status_code == 200, page
++        assert ("Kids cannot be opened: its stored files are incomplete. "
++                "Delete it on the Data tab and upload it again.") in r.text, page
++    # the Data tab still lists it, with its Delete
++    assert f'action="/data/datasets/{ds.id}/delete"' in client.get("/data").text
++
++
++# ------------------------------------------------------ an unreadable upload
++
++def test_an_unreadable_upload_is_said_not_a_500():
++    r = client.post("/data/datasets", content=b"garbage",
++                    headers={"content-type": "multipart/form-data"})
++    assert r.status_code == 400
++    assert "The upload could not be read; choose the file again." in r.text
++    r = client.post("/data/datasets",
++                    files={"file": ("d.csv", grouped_bytes(), "text/csv")},
++                    data={"kind": "count",
++                          **{f"f{i}": "x" for i in range(25)}})
++    assert r.status_code == 400 and "could not be read" in r.text
++    assert D.list_datasets() == []
++
++
++# ------------------------------------------- the same bytes, another name
++
++def test_the_same_file_under_a_name_with_the_same_id_says_where_it_is():
++    raw = grouped_bytes()
++    first = upload(raw, "流感 data")
++    ui_state._status.pop("flash", None)
++    second = upload(raw, "流行 data")
++    assert first.headers["location"] == second.headers["location"]
++    assert ui_state._status["flash"].startswith(
++        "This file is already stored as 流感 data: 3 groups")
++    assert len(D.list_datasets()) == 1
+diff --git a/app/tests/test_datasets.py b/app/tests/test_datasets.py
+index a94f908..3b2f840 100644
+--- a/app/tests/test_datasets.py
++++ b/app/tests/test_datasets.py
+@@ -626,7 +626,8 @@ def test_locations_table_has_the_hub_shape_and_safe_keys():
+ 
+ 
+ def test_minted_keys_stay_unique_past_99_groups():
+-    rows = [f"2024-08-03,G{i},1" for i in range(150)]
++    # two weeks: one week is refused (a forecast starts from the second)
++    rows = [f"2024-08-{d},G{i},1" for d in ("03", "10") for i in range(150)]
+     ds = D.ingest(grouped_csv(rows), "wide", kind="count")
+     keys = list(ds.name2key.values())
+     assert len(set(keys)) == 150 and all(len(k) == 4 for k in keys)
+diff --git a/app/tests/test_datasets_ui.py b/app/tests/test_datasets_ui.py
+index 7c937ac..d82bf94 100644
+--- a/app/tests/test_datasets_ui.py
++++ b/app/tests/test_datasets_ui.py
+@@ -92,7 +92,8 @@ def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
+ 
+ def test_a_multi_target_file_offers_its_targets():
+     raw = (b"target_end_date,target,location,observation\n"
+-           b"2024-08-03,a,01,1\n2024-08-03,b,01,2\n")
++           b"2024-08-03,a,01,1\n2024-08-03,b,01,2\n"
++           b"2024-08-10,a,01,1\n2024-08-10,b,01,2\n")
+     r = upload(raw, "multi")
+     assert r.status_code == 422
+     assert '<select name="target"' in r.text
+diff --git a/app/ui/dataset_upload.py b/app/ui/dataset_upload.py
+index 13a15c4..1912e9a 100644
+--- a/app/ui/dataset_upload.py
++++ b/app/ui/dataset_upload.py
+@@ -165,7 +165,8 @@ def _preview(rep, kind: str) -> dict:
+         peak = max(pts, key=lambda p: p[1])
+         sparks.append({"name": name, "points": _sparkline(pts, first, last,
+                                                           top),
+-                       "label": f"{name}: {len(pts)} weeks, peak "
++                       "label": f"{name}: {len(pts)} week"
++                                f"{'' if len(pts) == 1 else 's'}, peak "
+                                 f"{peak[1]:,.6g} ({peak[0].isoformat()})"})
+     return {"groups": s["groups"], "n_groups": len(s["groups"]),
+             "more": max(0, len(s["groups"]) - PREVIEW_GROUPS),
+@@ -255,10 +256,16 @@ def check_view(rep, *, kind: str = "", columns=None, files: int = 1) -> dict:
+     problems = [(k, [{"message": _whole_dates(p), "rows": list(p.rows)}
+                      for p in ps])
+                 for k, ps in _datasets().problem_groups(shown)]
++    # the Groundhog's notice is about the data, not how it was read: shown
++    # under the preview's heading, not in the notes' closed fold
++    from app.core.datasets.checks import TOO_LITTLE_HISTORY
++    gh = [w for w in rep.warnings if w.startswith(TOO_LITTLE_HISTORY)]
+     return {"ok": rep.ok, "problems": problems,
+             "n": sum(len(ps) for _, ps in problems),
+             "mapping": mapping, "needs_mapping": rep.needs_mapping,
+-            "notices": [_whole_dates(w) for w in rep.warnings],
++            "notices": [_whole_dates(w) for w in rep.warnings
++                        if w not in gh],
++            "groundhog": gh[0] if gh else "",
+             "targets": rep.targets if len(rep.targets) > 1 else [],
+             "target": (rep.summary or {}).get("target") or "",
+             "files": files,
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index dfdf606..b7fdb44 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -140,6 +140,19 @@ def choices() -> list:
+         return []
+ 
+ 
++def damaged(ds) -> str:
++    """Why a stored dataset cannot be opened ('' when it can): a partial
++    copy of the state folder can lose the snapshot files every page of it
++    reads. The Data tab's list still shows it, with its Delete."""
++    try:
++        for v in ds.vintages():
++            ds.vintage_path(v)
++    except (FileNotFoundError, _D().DatasetError):
++        return (f"{ds.name} cannot be opened: its stored files are "
++                "incomplete. Delete it on the Data tab and upload it again.")
++    return ""
++
++
+ def busy_with(ds_id: str) -> str:
+     """Why a dataset cannot be deleted now ('' when it can): a console run
+     or a replay is using it."""
+@@ -281,7 +294,14 @@ async def upload(request: Request):
+     if not ctype.startswith("multipart/form-data"):
+         return PlainTextResponse("Expected a multipart/form-data upload.\n",
+                                  status_code=400)
+-    form = await _capped_form(request, cap)
++    try:
++        form = await _capped_form(request, cap)
++    except Exception:
++        # a malformed body or too many fields: said as the check says it
++        return _render_data(request, upload={
++            "name": "", "kind": "", "chk": _message_view(
++                "The upload could not be read; choose the file again.")},
++            _code=400)
+     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
+     if form is None:
+         return _render_data(request, upload={
+@@ -340,7 +360,11 @@ async def upload(request: Request):
+     ng, nw = len(ds.groups), len(ds.weeks())
+     counts = (f"{ng} group{'s' if ng != 1 else ''}, "
+               f"{nw} week{'s' if nw != 1 else ''}.")
+-    done = f"Stored the dataset {ds.name}: {counts}"
++    # the same bytes under a name with the same id (its letters dropped
++    # by the id's slug) open the dataset already stored: said, by its name
++    again = bool(name) and ds.name != name[:80]
++    done = (f"This file is already stored as {ds.name}: {counts}" if again
++            else f"Stored the dataset {ds.name}: {counts}")
+     snaps = ""
+     if ds.meta.get("snapshot_files"):
+         vs = ds.vintages()
+@@ -355,7 +379,8 @@ async def upload(request: Request):
+         return RedirectResponse(f"/retro?dataset={ds.id}#main",
+                                 status_code=303)
+     # the counts on the line; the snapshots and any warnings in its tip
+-    shared._flash(f"Stored {ds.name}: {counts}"
++    shared._flash((f"This file is already stored as {ds.name}: {counts}"
++                   if again else f"Stored {ds.name}: {counts}")
+                   + (f" {len(warn)} warning(s)." if warn else ""),
+                   "warn" if warn else "ok",
+                   detail=" ".join(([snaps] if snaps else []) + warn))
+@@ -841,7 +866,10 @@ def run_worker(spec) -> None:
+                  else "absent")
+         outcome, fails = custom_run.run(spec, ds, workroot,
+                                         phase=shared._phase, pf_state=state)
+-        ledger.close_run(run_id, "partial" if fails else "ok", outcome)
++        # no export file: every group abstained (or every export failed),
++        # never a green "ok" with no forecast; the Results rows say why
++        ledger.close_run(run_id, "partial" if fails or not outcome.get(
++            "exports") else "ok", outcome)
+         if not fails:
+             try:
+                 from app.core import reclaim
+@@ -1060,8 +1088,10 @@ def retro_context(selected: str = "") -> dict:
+         items = _D().list_datasets()
+     except Exception:
+         items = []
+-    ds = next((d for d in items if d.id == selected), None) or (
+-        items[0] if items else None)
++    # a dataset whose files are incomplete is listed, never opened
++    whole = [d for d in items if not damaged(d)]
++    ds = next((d for d in whole if d.id == selected), None) or (
++        whole[0] if whole else None)
+     view = None
+     if ds is not None:
+         reps = []
+diff --git a/app/ui/routes/data.py b/app/ui/routes/data.py
+index 12bd818..7a084e9 100644
+--- a/app/ui/routes/data.py
++++ b/app/ui/routes/data.py
+@@ -228,11 +228,12 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
+         # (a foreign Host never gets here: shared._same_host_guard)
+         from app.ui import datasets_ui as _dsu
+         ds = _dsu.get_dataset(source)
+-        if ds is not None:
++        why = _dsu.damaged(ds) if ds is not None else ""
++        if ds is not None and not why:
+             ctx = _data_context()
+             ctx.update(_dsu.data_context(ds, loc, vintage))
+             return templates.TemplateResponse(request, "data.html", ctx)
+-        _flash("That dataset is not stored; showing the FluSight hub.",
++        _flash(why or "That dataset is not stored; showing the FluSight hub.",
+                "warn")
+     return templates.TemplateResponse(request, "data.html",
+                                       _data_context(loc, vintage))
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 3a9d1ab..56114c6 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -68,9 +68,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+                                     status_code=303)
+     if source:
+         ds = _dsu.get_dataset(source)
+-        if ds is not None:
++        why = _dsu.damaged(ds) if ds is not None else ""
++        if ds is not None and not why:
+             return _dsu.forecast_page(request, ds)
+-        _flash("That dataset is not stored; showing the FluSight hub.",
++        _flash(why or "That dataset is not stored; showing the FluSight hub.",
+                "warn")
+     import pandas as pd
+     from flubnf.settings import load_locations
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index 60b247d..f48d766 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -108,6 +108,11 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+         if dataset and not ids:
+             return RedirectResponse("/retro?tab=own", status_code=303)
+     if own_tab:
++        # a dataset whose files are incomplete: said, and another shown
++        ds = _dsu.get_dataset(dataset) if dataset else None
++        why = _dsu.damaged(ds) if ds is not None else ""
++        if why:
++            _flash(why, "warn")
+         return templates.TemplateResponse(request, "retro.html", {
+             **_dsu.retro_context(dataset), "active": "Retrospective",
+             "own_tab": True, "seasons": []})
+diff --git a/app/ui/templates/_dataset_check.html b/app/ui/templates/_dataset_check.html
+index 2deb86e..1854686 100644
+--- a/app/ui/templates/_dataset_check.html
++++ b/app/ui/templates/_dataset_check.html
+@@ -61,6 +61,8 @@
+ {% if chk.preview %}{% set pv = chk.preview %}
+ <div class="dspreview dt-panel">
+  {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
++ {# the data are too short for the Groundhog to forecast on its own #}
++ {% if chk.groundhog %}{{ tips.alert("warn", chk.groundhog, id=fid ~ "-gh", live="") }}{% endif %}
+  {# what the file holds, one labelled value each #}
+  {% call tips.stats("uk-stats--row dt-facts", label="What the file holds") %}
+   {# the national group is badged on its sparkline; named here when it
