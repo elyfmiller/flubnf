@@ -9,3 +9,5 @@
 | Full suite | Python 3.12: 3441 passed, 155 skipped, 0 failed, with the clone at the default path and with FLUBNF_HUB=/nonexistent; skip lists identical line for line | Python 3.13: 3441 passed, 154 skipped, 2 failed (the doctor's 3.13 warning, also on dev) | Both clean. |
 
 Vote: combine: A's patch, plus B's module-copy assertion added to A's test (`data.HUB == scoring.HUB == hub`, importing app.core.data and scoring inside the test), and B's shell-export note in the PR text.
+
+Vote (final): combine (unchanged): A's patch, plus B's guard asserts in A's test (data.HUB and scoring.HUB are the pin; data.live_newest_week() is None).
