@@ -6,6 +6,30 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-26 (evening): Wednesday's overrides on `main` (d7d13e5), end
+  to end through the Forecast form, in my own console (port 8790, a temp
+  state folder, private engine 2fdadee0): both models, all 53
+  locations, real-time on the hub clone's newest week (as-of 2026-10-17;
+  Wednesday's round needs 2026-10-24's data, due Wed Oct 28), with
+  `pf.seed_denominator season_total_early`, `oracle.w 0.25`,
+  `oracle.narrow 0.7`, `output.tail_cap 15`, `output.tail_mode shrink`.
+  - Finished `ok` in 314 s (preparation about 15 s, then 53 locations x 3
+    Independent Runs, 159 of 159 ok, no preparation failures). Two files
+    under the `-modified` names (the hub-name box was left unticked),
+    4,876 rows each, 53 locations, horizons 0 to 3, quantiles in order,
+    no negatives or NaNs. The run page, its report, Output and Home all
+    answer 200; no errors in the console log.
+  - The Oracle side (`oracle.json`): applied to 53 of 53, no abstentions,
+    no guard hits; w 0.25, narrowing k 0.7 applied; admissions bank 396
+    paths from 2022-2025, FluSurv-NET bank 381 paths from 14 seasons,
+    mixed half and half; submitted seed 2026091801. The tail cap touched
+    156 Oracle SIHRS cells and 103 Groundhog cells. US medians h0-h3:
+    Oracle SIHRS 5,907 / 7,375 / 9,335 / 11,961, Groundhog 5,236 / 6,769
+    / 9,180 / 11,708.
+  - For anyone running main from a worktree: BNG2.pl is looked up in the
+    checkout's own `.venv`, so a worktree without one fails preparation
+    for every location ("Can't open perl script"); set `FLUBNF_BNG` to the
+    app venv's BNG2.pl.
 - 2026-10-26: the public-PyBNF move, console side, on branch
   `engine-public` (from `dev` 554ac57; nothing from it goes to `dev` or
   `main` until Ely says so). Ely sent the plan with the task, as
