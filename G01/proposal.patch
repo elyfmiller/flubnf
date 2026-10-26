@@ -1,0 +1,169 @@
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 6c61413..3f590ab 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -15,6 +15,12 @@
+     checkout while the suite runs.
+   * the checkout's top folder: the session ends by checking no test left a
+     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
++  * the FluSight hub -> an empty path, set HERE with the state folder: the
++    suite is hub-free, as CI is. A clone at the default path (~/GitHub)
++    leaked in through flubnf.settings.HUB, and its live file's newest week
++    turned the tests' real-time runs into vintage ones (five failed on
++    any machine with the clone). A test that wants a real clone opts in
++    through FLUBNF_TEST_HUB, the way test_hubcheck does.
+ """
+ import atexit
+ import os
+@@ -36,6 +42,9 @@ REAL_STATE = REPO / "app" / "state"
+ TEST_STATE = Path(tempfile.mkdtemp(prefix="flubnf-test-state-"))
+ atexit.register(shutil.rmtree, TEST_STATE, True)
+ os.environ["FLUBNF_STATE_DIR"] = str(TEST_STATE)
++#: no hub clone, whatever the machine or the shell has (read at import by
++#: flubnf.settings and every module that copies HUB from it)
++os.environ["FLUBNF_HUB"] = str(TEST_STATE / "no-hub")
+ 
+ from app.core import runs as _runs                       # noqa: E402
+ 
+diff --git a/app/tests/test_core.py b/app/tests/test_core.py
+index 770b5ff..52de1c2 100644
+--- a/app/tests/test_core.py
++++ b/app/tests/test_core.py
+@@ -79,11 +79,20 @@ def test_choropleth_renders_gaps_explicitly():
+     assert svg.count("<rect") > 50                            # all tiles render
+ 
+ 
+-def test_analogue_engine_runs_real_vintage():
+-    from flubnf.settings import ARCHIVE
+-    if not ARCHIVE.is_dir():
+-        pytest.skip("FluSight hub clone not present")
++def test_analogue_engine_runs_real_vintage(monkeypatch):
++    # the suite reads no hub (conftest); a clone opts in through
++    # FLUBNF_TEST_HUB: the engine reads data.ARCHIVE at call time and
++    # copied LOCATIONS at import
++    import os
++    hub = os.environ.get("FLUBNF_TEST_HUB")
++    archive = Path(hub) / "auxiliary-data/target-data-archive" if hub else None
++    if archive is None or not archive.is_dir():
++        pytest.skip("no FluSight hub clone (FLUBNF_TEST_HUB)")
++    from app.core import data
+     from app.core.engines import analogue
++    monkeypatch.setattr(data, "ARCHIVE", archive)
++    monkeypatch.setattr(analogue, "LOCATIONS",
++                        Path(hub) / "auxiliary-data" / "locations.csv")
+     from app.core.runs import RunSpec
+     spec = RunSpec(engine="analogue", forecast_date="2026-01-24",
+                    locations=["Ohio", "Wyoming"], season_start="2025-08-01")
+diff --git a/app/tests/test_model_metadata.py b/app/tests/test_model_metadata.py
+index b79206e..28c2e0e 100644
+--- a/app/tests/test_model_metadata.py
++++ b/app/tests/test_model_metadata.py
+@@ -8,6 +8,7 @@ other; jsonschema (Draft 2020-12) also validates when installed.
+ """
+ import hashlib
+ import json
++import os
+ import re
+ import sys
+ from pathlib import Path
+@@ -95,10 +96,11 @@ def test_the_vendored_schema_is_the_hubs_bytes():
+ 
+ 
+ def test_the_vendored_schema_equals_the_hub_clone_when_there_is_one():
+-    from flubnf.settings import HUB
+-    live = Path(HUB) / "hub-config" / "model-metadata-schema.json"
+-    if not live.is_file():
+-        pytest.skip("no FluSight hub clone on this machine")
++    # the suite reads no hub (conftest): a clone opts in through FLUBNF_TEST_HUB
++    hub = os.environ.get("FLUBNF_TEST_HUB")
++    live = Path(hub) / "hub-config" / "model-metadata-schema.json" if hub else None
++    if live is None or not live.is_file():
++        pytest.skip("no FluSight hub clone (FLUBNF_TEST_HUB)")
+     assert live.read_bytes() == SCHEMA.read_bytes(), (
+         "the hub's model-metadata schema changed: re-vendor it, re-check "
+         "both cards, and update SCHEMA_SHA256")
+diff --git a/app/tests/test_suite_hub.py b/app/tests/test_suite_hub.py
+new file mode 100644
+index 0000000..f226a2b
+--- /dev/null
++++ b/app/tests/test_suite_hub.py
+@@ -0,0 +1,32 @@
++"""The suite reads no FluSight hub clone (app/tests/conftest.py).
++
++A clone at the default path, or one named by the shell's FLUBNF_HUB, made
++five tests fail on Ely's machine while CI (FLUBNF_HUB=/nonexistent) passed:
++the clone's live target file had a newer week than the tests' dates, so
++their real-time runs were recorded as vintage runs. The hub is pinned to an
++empty path beside the suite's state folder; a test that wants a real clone
++reads FLUBNF_TEST_HUB itself.
++"""
++import os
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import data, scoring                       # noqa: E402
++from flubnf import settings                              # noqa: E402
++
++
++def test_the_suite_reads_no_hub_clone_at_the_default_path():
++    pinned = Path(os.environ["FLUBNF_HUB"])
++    assert settings.HUB == pinned and not pinned.exists()
++    assert pinned != Path.home() / "GitHub" / "FluSight-forecast-hub"
++    # the copies modules took at import are the pinned path too
++    assert data.HUB == pinned and scoring.HUB == pinned
++    assert data.ARCHIVE == settings.ARCHIVE == pinned / "auxiliary-data/target-data-archive"
++
++
++def test_without_a_hub_the_live_file_has_no_week():
++    """What leaked: the clone's live file is newer than the tests' weeks."""
++    assert data.live_newest_week() is None
++    assert data.newest_week() == (data.vintages()[-1] if data.vintages() else None)
+diff --git a/tests/README.md b/tests/README.md
+index d1d6b2c..8a5fb9a 100644
+--- a/tests/README.md
++++ b/tests/README.md
+@@ -7,7 +7,8 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
+ | What | Command |
+ |---|---|
+ | Both suites, as CI runs them (no hub, no engine) | `FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts=""` |
+-| Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
++| Both suites, this machine's engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`). The suite never reads a hub clone: `app/tests/conftest.py` pins `FLUBNF_HUB` to an empty path, so the result matches CI's with or without a clone at the default path. |
++| Also the hub-reading cases | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
+ | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
+ 
+ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+@@ -16,7 +17,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
+ 
+ | Missing on the machine | Skipped |
+ |---|---|
+-| FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
++| FluSight hub clone (always, unless `FLUBNF_TEST_HUB` names one) | hub-reading cases in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
+ | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
+ | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
+ | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
+diff --git a/tests/test_sihrs_fit.py b/tests/test_sihrs_fit.py
+index 41d72e4..b225c3d 100644
+--- a/tests/test_sihrs_fit.py
++++ b/tests/test_sihrs_fit.py
+@@ -69,12 +69,15 @@ def test_all_nan_errors_loudly(tmp_path):
+ def test_vendored_locations_matches_hub():
+     """settings.load_locations falls back to the vendored copy; drift up to
+     3.3% was found and fixed 2026-08-17. This pins them equal forever."""
++    import os
+     import pandas as pd, pytest
+     from pathlib import Path
+-    from flubnf import settings
+-    hub = Path(settings.HUB) / 'auxiliary-data/locations.csv'
+-    if not hub.is_file():
+-        pytest.skip("hub checkout not present")
++    # the suite reads no hub (app/tests/conftest.py): a clone opts in
++    # through FLUBNF_TEST_HUB
++    clone = os.environ.get("FLUBNF_TEST_HUB")
++    hub = Path(clone) / 'auxiliary-data/locations.csv' if clone else None
++    if hub is None or not hub.is_file():
++        pytest.skip("no FluSight hub clone (FLUBNF_TEST_HUB)")
+     vendored = Path(__file__).resolve().parents[1] / 'flubnf/data/locations.csv'
+     h = pd.read_csv(hub); v = pd.read_csv(vendored)
+     m = h.merge(v, on='location', suffixes=('_h','_v'))
