@@ -1,0 +1,16 @@
+# G10: compare (A)
+
+B's patch applied on 68816e0 and served on 8812, with the same retro
+state as my servers (2024-25 done with its 2025-01-18 placeholder, 2025-26
+finished). My prototype was on 8814.
+
+| Bug | A's | B's | Better, and why |
+|---|---|---|---|
+| RE-04 | `payloadFor` builds the controls from the stored week a placeholder borrows from (one line in player.js) | the page passes `catalog: {models, officials}` to the player | **A**. Criterion 1, and B's breaks a working feature. With `cfg.catalog` set, `buildControls(null)` runs at init and reads locations from `cat.locations` only (`pl` is null). B's catalog has no `locations`, so the location menu is built with US alone, once, for the whole visit. Live on 8812, /retro/2024-25?week=2024-12-28&view=fc&loc=Texas: the menu has 1 option (US) and opens on US, not Texas. Clicking "California" in the per-state table leaves it on US (`setLoc` refuses a location not in `P.locs`). On 8814 (A): 53 options, Texas, then California. |
+| RE-11 | `_no_round(asof, truth)`: baseline folder present, no file for the week, and the week's target truth settled. Computed on every serve, so no cache bump | `no_baseline_round`: baseline folder present and no file for the week; CACHE_V 8 | **A**, on criteria 2 and 1. B's says "no FluSight round" for a recent week whose round exists upstream but was not pulled yet (truth not in either). That week would read "pending" on dev and can still score after Update data. A's settled-truth condition keeps it "pending". B's also bumps CACHE_V, so every stored payload rebuilds once. Both read the cell the same way. |
+| RE-15 (UI-06) | `_month_ticks_for_dates(..., first=True)` for the scrubber only; `fitTicks()` measures: ends pulled inside, overlaps hidden, the last month kept | the helper labels the first month for every caller (test_month_axes pins changed); `first`/`last` CSS classes for the ends; `tickLabels()` hides overlaps, the last label wins | **A**, criterion 2. B's changes the other month axes too (the cumulative chart and whatever test_month_axes covers), which no bug in the group asks for. The scrubber results are equivalent. A's checked: no overlap and nothing outside the track at 320 to 1600 for 2025-26 and 2024-25, and in the season report. |
+| UI-01 | the scroll after two rAFs | the same | Equal. |
+| UI-18 | `tips.empty("Arrives with the first scored week", "clock", compact)` in place of the filter and table | `tips.empty("No jurisdiction scored yet", …)` | Equal in effect. A's reuses the phrase the cumulative chart already shows (criterion 5: no new words). |
+| UI-20 | plain sentence for the known failure ("The FluSight baseline forecasts are not on this computer yet. Update data from the Data tab, then open this page again."); the raw message in a kit fold "Details" inside the alert; phone rule scoped to this alert (tabs/retro.css) | plain sentence ("…not in the hub clone yet; Update data on the Data tab fetches it."), "The error is below." for others, the fold under the alert; **ui-kit.css** moves every alert's action under its text on phones | **A**, criteria 2 and 5. B's kit rule changes every alert with an action on every tab at phone widths, beyond this bug. "hub clone" is the jargon the bug names, and "The error is below." adds words for every unknown failure. |
+
+Vote: A.
