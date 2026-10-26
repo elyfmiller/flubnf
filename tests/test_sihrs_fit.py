@@ -69,12 +69,14 @@ def test_all_nan_errors_loudly(tmp_path):
 def test_vendored_locations_matches_hub():
     """settings.load_locations falls back to the vendored copy; drift up to
     3.3% was found and fixed 2026-08-17. This pins them equal forever."""
-    import pandas as pd, pytest
+    import os, pandas as pd, pytest
     from pathlib import Path
-    from flubnf import settings
-    hub = Path(settings.HUB) / 'auxiliary-data/locations.csv'
-    if not hub.is_file():
-        pytest.skip("hub checkout not present")
+    # the clone FLUBNF_TEST_HUB names: the full suite reads no hub
+    # (app/tests/conftest.py)
+    hub = os.environ.get("FLUBNF_TEST_HUB")
+    hub = hub and Path(hub) / 'auxiliary-data/locations.csv'
+    if not (hub and hub.is_file()):
+        pytest.skip("hub checkout not present (FLUBNF_TEST_HUB)")
     vendored = Path(__file__).resolve().parents[1] / 'flubnf/data/locations.csv'
     h = pd.read_csv(hub); v = pd.read_csv(vendored)
     m = h.merge(v, on='location', suffixes=('_h','_v'))

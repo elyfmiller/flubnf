@@ -6,10 +6,10 @@ of that file (app/core/assets/flusight-tasks.json), so CI checks every
 file the writer produces for the first 2026-27 round (due Wednesday
 2026-10-07, reference date Saturday 2026-10-10) without a hub clone.
 
-With a clone present (FLUBNF_TEST_HUB, else FLUBNF_HUB), the vendored copy
-must equal the clone's tasks.json, and a real console run (the Groundhog
-for real, the PF cells faked the way the other run tests fake them) is
-checked against the clone's rules.
+With a clone named by FLUBNF_TEST_HUB (the suite itself reads no hub:
+conftest.py), the vendored copy must equal the clone's tasks.json, and a
+real console run (the Groundhog for real, the PF cells faked the way the
+other run tests fake them) is checked against the clone's rules.
 """
 import hashlib
 import json
@@ -32,10 +32,9 @@ PKG_LOCS = Path(__file__).resolve().parents[2] / "flubnf/data/locations.csv"
 
 
 def _hub_clone():
-    for cand in (os.environ.get("FLUBNF_TEST_HUB"),
-                 os.environ.get("FLUBNF_HUB")):
-        if cand and (Path(cand) / "hub-config" / "tasks.json").is_file():
-            return Path(cand)
+    cand = os.environ.get("FLUBNF_TEST_HUB")
+    if cand and (Path(cand) / "hub-config" / "tasks.json").is_file():
+        return Path(cand)
     return None
 
 
