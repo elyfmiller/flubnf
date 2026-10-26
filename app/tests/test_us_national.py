@@ -286,6 +286,11 @@ def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
     assert "US (fitted)" in html
     # 1.462 would be the pooled figure with US in
     assert "1.462" not in html
+    # the pooled figures' scope, said in the "i" and beside the live scores
+    assert ("Pooled relWIS covers the 2 replayed jurisdictions; the US "
+            "national cell is scored apart") in html
+    assert "their sum" not in html
+    assert '<span class="uk-tag">2 jurisdictions pooled</span>' in html
 
 
 def test_weekly_report_table_reports_us_apart_from_the_pooled_row():

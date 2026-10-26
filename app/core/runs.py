@@ -538,6 +538,9 @@ def anchor_notes_row(o: dict, names: dict):
 #: the engine note of a location with no forecast from its newest week
 #: (the Groundhog: a newest count of 0 is a ratio of nothing)
 NO_FORECAST = "no forecast"
+#: the engine note of a location whose donors were too few to forecast
+#: from (app/core/engines/analogue.py): not a newest week reading 0
+NO_DONORS = "no forecast: the donors gave no distribution"
 #: notes with a Results row of their own (not "Unreported newest weeks")
 _OWN_ROW_PREFIXES = (NO_FORECAST, "zero-anchor", "set-aside not applied")
 
@@ -557,6 +560,8 @@ def zero_anchor_row(o: dict, names: dict):
         by: dict = {}
         for loc, v in sorted(notes.items()):
             v = str(v)
+            if v == NO_DONORS:
+                continue                        # no_donors_row's
             if v.startswith(NO_FORECAST):
                 by.setdefault("abstain", []).append(loc)
             elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
@@ -586,6 +591,30 @@ def zero_anchor_row(o: dict, names: dict):
 
 #: kept for callers that knew the row by its old name
 no_forecast_row = zero_anchor_row
+
+
+def no_donors_row(o: dict, names: dict):
+    """The Results table's row for the Groundhog's locations that abstained
+    because too few weeks in earlier seasons were like the newest one (the
+    engine's NO_DONORS note), or None: a count per member, the locations in
+    the "?" tip."""
+    import html as _html
+    parts, locs = [], []
+    for m, key in ANCHOR_NOTE_KEYS:
+        notes = o.get(key)
+        if not isinstance(notes, dict):
+            continue
+        few = sorted(loc for loc, v in notes.items() if str(v) == NO_DONORS)
+        if few:
+            parts.append(f"{names.get(m, m)}: {len(few)} abstain")
+            locs += few
+    if not parts:
+        return None
+    tip = _tip("no-donors", "locations with too few donors",
+               "The Groundhog forecasts from weeks like the newest one in "
+               "earlier seasons; with too few of them (30 by default) it "
+               "abstains. " + ", ".join(locs) + ".")
+    return ("Too few donors", _html.escape("; ".join(parts)) + tip)
 
 
 def data_issues_row(o: dict, spec_extra: dict, names: dict):
@@ -774,6 +803,9 @@ def results_html(outcome, spec, heading: bool = True) -> str:
     nrow = zero_anchor_row(o, HUB_MEMBER_NAMES)
     if nrow:
         rows.append(nrow)
+    frow = no_donors_row(o, HUB_MEMBER_NAMES)
+    if frow:
+        rows.append(frow)
     drow = data_issues_row(o, extra, HUB_MEMBER_NAMES)
     if drow:
         rows.append(drow)
@@ -841,6 +873,9 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     nrow = zero_anchor_row(o, MEMBER_LABELS)
     if nrow:
         rows.append(nrow)
+    frow = no_donors_row(o, MEMBER_LABELS)
+    if frow:
+        rows.append(frow)
     from app.core import missing as _missing
     if _missing.rules_of(extra) and "data_flags" in o:
         # only a run with a missing-data rule on

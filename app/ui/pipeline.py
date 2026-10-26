@@ -459,6 +459,14 @@ def _pf_engine_state() -> str:
     return "ready" if pf_engine.engine_available() else "broken"
 
 
+def _pf_engine_missing(pf_state: str) -> str:
+    """How the pages finish "... needs the particle-filter engine, ...":
+    '' when it is ready."""
+    return ("" if pf_state == "ready"
+            else "which is not installed on this machine"
+            if pf_state == "absent" else "whose install is incomplete")
+
+
 def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
                    locs, n2f: dict, minus1: bool, pmf: bool,
                    floor_kw: dict, vintage=None) -> tuple:
@@ -542,8 +550,13 @@ def _run_all(spec: RunSpec) -> None:
     from app.ui.routes.forecast import _scope_label
     _status["run_label"] = (
         f"{spec.forecast_date} · {_scope_label(spec.locations)}")
-    # also set by the route; here so direct calls are described too
-    _status["settings"] = spec_settings(spec)
+    # also set by the route; here so direct calls are described too. With
+    # no engine on this machine both models run as the Groundhog alone:
+    # the card says so, as the record will (spec_settings reads it)
+    _status["settings"] = spec_settings(
+        spec, {"pf_skipped": "engine venv not installed (Tier A)"}
+        if spec.engine in ("all", "pf") and _pf_engine_state() == "absent"
+        else None)
     try:
         # setup INSIDE the try so a failed insert/lease releases the claim;
         # the row's engine_versions (not this process's) is "Produced by"
@@ -728,6 +741,13 @@ def _run_all(spec: RunSpec) -> None:
                                 recent=[v for _, v in obs.get(loc, [])],
                                 **_fkw)
                             for loc, s in pf2s_samples.items()}
+        # Stop pressed (its STOP file): the run ends stopped before the
+        # Groundhog, between its locations, and before any file is written
+        # (only the filter read the flag, so a Groundhog-only run ran on)
+        def _stop_check():
+            if (workroot / "STOP").exists():
+                raise pf_engine.RunStopped("stopped by user")
+        _stop_check()
         # 2. the Groundhog: calendar analogue + the aux donors _run_extra put
         # in spec.extra (none = research bare analogue). Always runs (instant);
         # its FILE is written only when the run asked for it.
@@ -750,6 +770,8 @@ def _run_all(spec: RunSpec) -> None:
                   _inspect.signature(an_engine.run).parameters else {})
         if _record:
             _an_kw["flags"] = _gh_flags
+        if "stop" in _inspect.signature(an_engine.run).parameters:
+            _an_kw["stop"] = _stop_check
         an_q = {loc: floor_quantiles(q, **_fkw)
                 for loc, q in an_engine.run(spec, **_an_kw).items()}
         if an_notes:
@@ -786,6 +808,7 @@ def _run_all(spec: RunSpec) -> None:
             outcome["data_flags"] = {"analogue": _gh_flags, "pf": _pf_flags}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
+        _stop_check()
         # 3. no blend: each member is its own submission; PF failures are just
         # absent from its file (the row's failure count names them)
         _phase("writing submissions")
@@ -1012,14 +1035,18 @@ def _run_all(spec: RunSpec) -> None:
                          <= set(subs))
             from app.core.archive_record import full_scope as _full_scope
             _full = _full_scope(spec.locations)
+            # a backtest of a past week (vintage) never replaces the run
+            # made in that week
+            _rt = (spec.extra or {}).get("mode") != "vintage"
             try:
                 # the common case keeps the plain call; the rule's flags are
                 # passed only when they differ from the defaults
                 outcome["archived"] = (
                     _archive_run(workroot, spec.forecast_date)
-                    if _complete and _full
+                    if _complete and _full and _rt
                     else _archive_run(workroot, spec.forecast_date,
-                                      complete=_complete, full=_full))
+                                      complete=_complete, full=_full,
+                                      realtime=_rt))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
@@ -1073,15 +1100,18 @@ def _run_all(spec: RunSpec) -> None:
 
 # === Forecast archive ===
 def _archive_run(workroot: Path, forecast_date: str,
-                 complete: bool = True, full: bool = True) -> str:
+                 complete: bool = True, full: bool = True,
+                 realtime: bool = True) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the date. Built beside, then swapped:
     a crash mid-copy costs this attempt, never the existing record.
 
     Never a downgrade (app/core/archive_record.py): an incomplete run
     (`complete` False) does not replace an archive that holds a complete
-    one. Then nothing is copied, the run's files stay in its own folder,
-    and the answer is "kept: <why>". The archive records which run it holds (archive.json)."""
+    one, nor a backtest (`realtime` False) one that holds a real-time run.
+    Then nothing is copied, the run's files stay in its own folder, and the
+    answer is "kept: <why>". The archive records which run it holds
+    (archive.json)."""
     import os
     import shutil
     from app.core import archive_record as _ar
@@ -1098,7 +1128,7 @@ def _archive_run(workroot: Path, forecast_date: str,
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
-    keep = _ar.keep_reason(arch, complete, full)
+    keep = _ar.keep_reason(arch, complete, full, realtime)
     if keep:
         return f"kept: {keep}"
     build.mkdir(parents=True)

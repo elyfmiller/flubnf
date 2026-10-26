@@ -61,6 +61,8 @@
 {% if chk.preview %}{% set pv = chk.preview %}
 <div class="dspreview dt-panel">
  {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
+ {# the data are too short for the Groundhog to forecast on its own #}
+ {% if chk.groundhog %}{{ tips.alert("warn", chk.groundhog, id=fid ~ "-gh", live="") }}{% endif %}
  {# what the file holds, one labelled value each #}
  {% call tips.stats("uk-stats--row dt-facts", label="What the file holds") %}
   {# the national group is badged on its sparkline; named here when it

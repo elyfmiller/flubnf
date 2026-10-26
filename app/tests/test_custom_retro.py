@@ -127,6 +127,32 @@ def test_a_stop_file_ends_the_replay_between_weeks():
     assert meta["status"] == "stopped" and meta["weeks_completed"] == 0
 
 
+def test_a_stop_file_ends_the_replay_between_a_weeks_groups(monkeypatch):
+    """DA-02 (2026-10-25): one week of a 200-group dataset took minutes, and
+    the replay read its STOP file only between weeks, holding the engine
+    long after Stop. It is read between a week's groups too."""
+    from app.core.engines import analogue as EA
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
+    out = CX.replay_dir(ds, CX.new_stamp())
+    out.mkdir(parents=True)
+    real, seen = EA._walk, []
+
+    def walk(*a, **k):
+        # a location's cost is its forecasts (the donor ratios), asked
+        # after the walk yields it: record whose forecasts were asked for
+        for loc, anchor, when, lag, forecast in real(*a, **k):
+            def asked(*fa, _loc=loc, _f=forecast, **fk):
+                seen.append(_loc)
+                return _f(*fa, **fk)
+            yield loc, anchor, when, lag, asked
+            (out / "STOP").touch()          # Stop pressed during the first
+    monkeypatch.setattr(EA, "_walk", walk)
+    meta = CX.run(ds, ["2023-12-02", "2023-12-09"], ds.groups, out_dir=out,
+                  stop_file=out / "STOP")
+    assert meta["status"] == "stopped" and meta["weeks_completed"] == 0
+    assert set(seen) == set(ds.groups[:1])
+
+
 def test_pf_replay_runs_plain_and_cleans_its_workroots(monkeypatch):
     ds = D.ingest(grouped_bytes(), "wave", kind="count")
     seen = []

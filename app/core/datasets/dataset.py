@@ -101,7 +101,11 @@ class Dataset:
     def vintage_path(self, date: str) -> Path:
         """Exact vintage or a LOUD error naming nearby ones (rule 5)."""
         p = self.path / VINTAGE_DIR / f"{VINTAGE_PREFIX}{date}.csv"
-        if str(date) not in self.meta["vintages"] or not p.is_file():
+        if str(date) in self.meta["vintages"] and not p.is_file():
+            raise FileNotFoundError(
+                f"The snapshot file for {date} of dataset {self.name!r} is "
+                f"missing: {p}")
+        if str(date) not in self.meta["vintages"]:
             vs = self.vintages()
             try:
                 t = saturday_on_or_before(parse_date(str(date))[0])

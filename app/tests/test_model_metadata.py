@@ -8,6 +8,7 @@ other; jsonschema (Draft 2020-12) also validates when installed.
 """
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -95,10 +96,11 @@ def test_the_vendored_schema_is_the_hubs_bytes():
 
 
 def test_the_vendored_schema_equals_the_hub_clone_when_there_is_one():
-    from flubnf.settings import HUB
-    live = Path(HUB) / "hub-config" / "model-metadata-schema.json"
-    if not live.is_file():
-        pytest.skip("no FluSight hub clone on this machine")
+    # the clone FLUBNF_TEST_HUB names: the suite itself reads no hub
+    hub = os.environ.get("FLUBNF_TEST_HUB")
+    live = hub and Path(hub) / "hub-config" / "model-metadata-schema.json"
+    if not (live and live.is_file()):
+        pytest.skip("no FluSight hub clone (FLUBNF_TEST_HUB)")
     assert live.read_bytes() == SCHEMA.read_bytes(), (
         "the hub's model-metadata schema changed: re-vendor it, re-check "
         "both cards, and update SCHEMA_SHA256")

@@ -138,6 +138,11 @@
 .rt-ticks > span{position:absolute;top:0;line-height:1.15;white-space:nowrap;
   left:calc(.5rem + (100% - 1rem) * var(--f,0));transform:translateX(-50%)}
 .rt-weekl{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.1rem .3rem}
+/* the scoring failure: its raw message folded, and on a phone the Data tab
+   link under the text */
+.rt-errfold{margin:.2rem 0 0}
+.rt-errfold code{overflow-wrap:anywhere}
+@media (max-width:30rem){.rt-failalert > .uk-alert-text{flex-basis:calc(100% - 2rem)}}
 .rt-copy{padding:.2rem .45rem;line-height:1}
 .rt-copied{color:var(--mut);font-size:var(--fs-label)}
 .rt-views{margin-left:auto}

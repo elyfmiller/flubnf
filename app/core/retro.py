@@ -237,24 +237,44 @@ def is_stale(meta: dict, now: float | None = None,
         return True
 
 
+def worker_gone(meta: dict) -> bool:
+    """True when the record names its worker's process (`pid`, written by
+    _start_record) and that process, another than this one, has ended: a
+    console closed or killed mid-replay. Known at once, where the heartbeat
+    takes HEARTBEAT_STALE_S to go quiet. A live pid (or a recycled one) and
+    a record without one leave it to the heartbeat."""
+    pid = (meta or {}).get("pid")
+    if not pid or int(pid) == os.getpid():
+        return False
+    from flubnf.cli import _pid_alive
+    return not _pid_alive(int(pid))
+
+
 def effective_status(meta: dict, now: float | None = None,
                      limit: float = HEARTBEAT_STALE_S) -> str:
-    """The recorded status, corrected for a dead worker: a stale heartbeat
-    turns any live-sounding status into 'interrupted'."""
+    """The recorded status, corrected for a dead worker: a stale heartbeat,
+    or a worker process that has ended, turns any live-sounding status into
+    'interrupted'."""
     st = str((meta or {}).get("status") or "")
-    if st in ACTIVE_STATUSES and is_stale(meta, now, limit):
+    if st in ACTIVE_STATUSES and (is_stale(meta, now, limit)
+                                  or worker_gone(meta)):
         return "interrupted"
     return st
 
 
 def elapsed_now(meta: dict, now: float | None = None) -> float:
     """Accumulated ACTIVE wall time. Time held at a pause does not count, and
-    a resumed run carries its earlier segments forward."""
+    a resumed run carries its earlier segments forward. A dead worker's open
+    segment ends at its last heartbeat, never at now."""
     total = float((meta or {}).get("elapsed_s") or 0.0)
     seg = (meta or {}).get("segment_start_utc")
     if seg and str((meta or {}).get("status") or "") in ("running", "stopping"):
         try:
-            total += max(0.0, (now if now is not None else _now()) - float(seg))
+            end = now if now is not None else _now()
+            if effective_status(meta, now) == "interrupted":
+                end = min(end, float((meta or {}).get("heartbeat_utc")
+                                     or seg))
+            total += max(0.0, end - float(seg))
         except (TypeError, ValueError):
             pass
     return total
@@ -336,6 +356,9 @@ def _start_record(root: Path, season: str, total_weeks: int,
         now = _now()
         m["season"] = season
         m["status"] = "running"
+        # the worker's process: a console killed mid-replay is known dead
+        # at once on the next launch (worker_gone)
+        m["pid"] = os.getpid()
         m.pop("stop_reason", None)
         m["total_weeks"] = int(total_weeks)
         if settings:
@@ -972,6 +995,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     beat = _Heartbeat(root)
     beat.start()
     done = []
+    failed: list = []
     try:
         for i, asof in enumerate(vintages):
             _check_stop(root)                 # stop before dispatching a NEW week
@@ -1016,6 +1040,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a", encoding="utf-8").write(
                     f"{asof}: {e}\n")
+                failed.append(f"{asof}: {e}")
             if progress:
                 progress(asof)
     except (SeasonStopped, EngineBuildChanged):
@@ -1026,7 +1051,10 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
         _finish_record(root, "stopped" if stop_path(root).exists() else "error")
         raise
     else:
-        _finish_record(root, "done")
+        # every week failed: an error naming the first (the card's badge
+        # shows it), never "complete" with no weeks
+        _finish_record(root, "done" if done or not failed
+                       else f"error: {failed[0][:150]}")
     finally:
         beat.stop()
     return done

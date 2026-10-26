@@ -150,6 +150,8 @@
   {% if status.running %}
   {% set fc_link %}<a href="/forecast">See the Forecast tab</a>{% endset %}
   {{ tips.alert("warn", "A run is in progress.", id="md-busy", action=fc_link) }}
+  {% elif name == "pf" and pf_missing %}
+  {{ tips.alert("warn", "The Oracle SIHRS needs the particle-filter engine, " ~ pf_missing ~ ".", id="md-busy") }}
   {% endif %}
   <form method="post" action="/run" class="md-form">
    <div class="md-fields">
@@ -159,13 +161,13 @@
     </div>
     <div class="md-field">
      <label for="mf-locs">Locations</label>
-     <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+     <input id="mf-locs" name="locations" value="{{ 'all' if 'all' in form.locations else form.locations | join(', ') }}"
             placeholder='state names, comma-separated, or "all"'>
     </div>
     {% if name == "pf" %}
     <div class="md-field">
      <label for="mf-reps">Replicates</label>
-     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+     <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="{{ replicates_knob.lo }}" max="{{ replicates_knob.hi }}">
     </div>
     {% endif %}
    </div>
@@ -175,23 +177,28 @@
    <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
    <input type="hidden" name="weeks_to_drop" value="0">
    <input type="hidden" name="weeks_to_nowcast" value="0">
-   {# same /run endpoint, so the same interference guard as Forecast #}
-   <button class="gold" data-guard="console-run">Run {{ title }} only</button>
+   {# same /run endpoint, so the same interference guard as Forecast; off
+      while a run holds the engine (the alert above says why; the server
+      refuses a start then too) #}
+   <button class="gold" data-guard="console-run"{% if status.running or (name == "pf" and pf_missing) %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
   </form>
  </div></div>
  <div>
   <div class="card md-fc">
    {{ tips.heading("Forecasts", "md-fc") }}
+   {# the shipped rule's run: the newest real-time one, named so (a newer
+      backtest or modified run is on the Forecast tab) #}
+   {% set run_name = "real-time run" if run_realtime else "run" %}
    {% if has_fans %}
    {# one fact, the run: its forecast date and clock time, its page, and
       the modified-settings badge an override's run carries #}
-   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% endset %}
-   {% call tips.stats("uk-stats--row md-runfacts", label="Latest run") %}
-    {{- tips.stat("Latest run", (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
+   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% if newer_run %} <a href="/forecast">Newer run on the Forecast tab</a>{% endif %}{% endset %}
+   {% call tips.stats("uk-stats--row md-runfacts", label="Latest " ~ run_name) %}
+    {{- tips.stat("Latest " ~ run_name, (date ~ " · " if date else "") ~ run_when, after=run_link) -}}
    {% endcall %}
    {% endif %}
    <div id="mfan">{% if not has_fans %}
-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest run ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
+    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
     {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
    {%- endif %}</div>
   </div>

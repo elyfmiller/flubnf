@@ -13,6 +13,11 @@
     their own APP_STATE still do; the session ends by checking app/state
     was left untouched, which also catches a console started from this
     checkout while the suite runs.
+  * the FluSight hub -> a missing folder, set HERE at import too
+    (FLUBNF_HUB), so every machine runs the suite as CI does: a clone at
+    the default path (~/GitHub/FluSight-forecast-hub) made its newest week
+    the suite's, and five run tests failed. A test that compares against
+    a real clone opts in through FLUBNF_TEST_HUB.
   * the checkout's top folder: the session ends by checking no test left a
     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
 """
@@ -36,6 +41,10 @@ REAL_STATE = REPO / "app" / "state"
 TEST_STATE = Path(tempfile.mkdtemp(prefix="flubnf-test-state-"))
 atexit.register(shutil.rmtree, TEST_STATE, True)
 os.environ["FLUBNF_STATE_DIR"] = str(TEST_STATE)
+#: the suite's hub: a folder that never exists, whatever this machine has
+#: cloned, here and (through FLUBNF_HUB) in every process a test starts
+NO_HUB = TEST_STATE / "no-hub"
+os.environ["FLUBNF_HUB"] = str(NO_HUB)
 
 from app.core import runs as _runs                       # noqa: E402
 
@@ -150,6 +159,16 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
     seasons. Opt in with the `shipped_vintages` fixture."""
     from app.core import data as core_data
     monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
+
+
+@pytest.fixture
+def pf_engine_ready(monkeypatch):
+    """A machine with the particle-filter engine, as the console's up-front
+    checks read it (pipeline._pf_engine_state): the Oracle SIHRS's runs and
+    replays are then started, not refused. The engine itself stays faked by
+    each test (opt-in; the suite's machine has none)."""
+    from app.ui import pipeline
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
 
 
 @pytest.fixture

@@ -3,7 +3,8 @@
    modified run's files will be named), each group's "N changed", the rows
    that do not apply to the chosen engine hidden (the server ignores them
    too, and never records them; their fields are still posted, so the form
-   keeps them for the next run, but never checked), "Reset to defaults",
+   keeps them for the next run, but never checked), the Groundhog's donor
+   weights off while no auxiliary bank is chosen, "Reset to defaults",
    the override's reason shown and required when its box is ticked, and a
    value the browser refuses shown even inside a closed fold. The server
    is the authority; this only keeps the page honest while the form is
@@ -74,6 +75,18 @@
         return a.length !== b.length || a.some(function (x, i) { return x !== b[i]; });
       }
       return v !== d;
+    }
+    // no auxiliary donor bank is the bare, pooled analogue: the pool
+    // weight, the own-state weight and the size-matched kernel do not apply
+    // to it, so their rows are off (a disabled field posts nothing, the run
+    // is that form, and the Run row's comparison skips them)
+    var BARE = ['groundhog.aux_weight', 'groundhog.own_share', 'groundhog.kernel_sd'];
+    var aux = box.querySelector('[data-knob="groundhog.aux"]');
+    function bare() {
+      var off = !!aux && aux.value === 'none';
+      inputs.forEach(function (el) {
+        if (BARE.indexOf(el.dataset.knob) >= 0) el.disabled = off;
+      });
     }
     function engineSelect() {
       if (box.dataset.engine) return document.getElementById(box.dataset.engine);
@@ -170,6 +183,8 @@
       if (reason) reason.required = !!(any && tick && tick.checked);
     }
     if (reset) reset.addEventListener('click', function () {
+      // the bank first: its default turns the donor weights back on
+      if (aux) { aux.value = aux.dataset.default || ''; bare(); }
       inputs.forEach(function (el) {
         if (!el.disabled) el.value = el.dataset.default || '';
       });
@@ -251,6 +266,7 @@
         }, 0);
       }, true);
     }
+    if (aux) aux.addEventListener('change', bare);
     box.addEventListener('input', update);
     box.addEventListener('change', update);
     if (form) form.addEventListener('change', function (e) {
@@ -264,7 +280,7 @@
     // the page says the kind of data changed (the own-data replay's
     // dataset select): refilter without waiting for a form change
     box.addEventListener('ms-refilter', function () { syncSeason(); filter(); update(); });
-    syncSeason(); filter(); update();
+    bare(); syncSeason(); filter(); update();
   }
   document.querySelectorAll('details[data-scope]').forEach(init);
 })();

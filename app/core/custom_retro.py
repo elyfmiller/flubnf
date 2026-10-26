@@ -268,10 +268,15 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
     write_meta(out_dir, meta)
     truth = ds.truth()
     forecasts, cells, covs = {}, [], []
+
+    def stop():
+        # read between weeks and between a week's groups: one week of a
+        # large dataset can take minutes
+        if stop_file is not None and Path(stop_file).exists():
+            raise Stopped("stopped by user")
     try:
         for i, asof in enumerate(weeks):
-            if stop_file is not None and Path(stop_file).exists():
-                raise Stopped("stopped by user")
+            stop()
             spec = week_spec(ds, asof, groups, engine,
                              weeks_to_drop=weeks_to_drop, extra=x0,
                              particles=particles, replicates=replicates,
@@ -281,8 +286,8 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
             # the missing-data rules (app/core/missing.py): the week's
             # flagged newest weeks, recorded only when a rule is on
             gh_flags: list = []
-            an_q = an_engine.run(spec, **({"flags": gh_flags} if rules
-                                          else {}))
+            an_q = an_engine.run(spec, stop=stop,
+                                 **({"flags": gh_flags} if rules else {}))
             wk_flags = {"analogue": gh_flags} if rules else None
             if count:
                 an_q = {n: floor_quantiles(q, **fkw)
@@ -331,7 +336,10 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
             write_meta(out_dir, meta)
             if progress:
                 progress(asof, i + 1, len(weeks))
-        meta["status"] = "done"
+        # every member abstained on every group-week: never a green "done"
+        meta["status"] = ("done" if any(q for f in forecasts.values()
+                                        for q in f.values())
+                          else "no forecast")
     except (Stopped, pf_engine.RunStopped):
         meta["status"] = "stopped"
     except Exception as e:

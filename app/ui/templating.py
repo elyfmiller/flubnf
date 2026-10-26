@@ -285,13 +285,14 @@ def _season_week_name(week: float) -> str:
 templates.env.globals["season_week_name"] = _season_week_name
 
 
-def _month_ticks_for_dates(dates) -> list:
+def _month_ticks_for_dates(dates, first: bool = False) -> list:
     """[(index, month label)] at every month change across ordered ISO dates
-    (ticks for a date-indexed axis)."""
+    (ticks for a date-indexed axis); `first` labels the first date's month
+    too."""
     out, prev = [], None
     for i, d in enumerate(dates):
         mm = str(d)[5:7]
-        if prev is not None and mm != prev and mm.isdigit():
+        if (prev is not None or first) and mm != prev and mm.isdigit():
             out.append((i, _MON_NAME.get(int(mm), "")))
         prev = mm
     return out
