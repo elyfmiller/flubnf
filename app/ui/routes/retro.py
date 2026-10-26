@@ -1171,6 +1171,7 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "map_legend": map_legend, "map_horizon": MAP_HORIZON,
         "score_error": score_error if not scoreable else "",
+        "score_plain": score_error_plain(score_error) if not scoreable else "",
         "unsettled": unsettled,
         "timeline": timeline, "notes": notes,
         "no_data_note": _playback.NO_DATA_NOTE,
@@ -1199,6 +1200,19 @@ MAP_HORIZON = "horizon 0, the week after the newest data"
 #: the player's message when a week cannot be scored for lack of any
 #: observed data
 NO_TRUTH = "No observed data to score against. Update data from the Data tab."
+
+#: scoring failures a student can act on, in plain words (the season page's
+#: alert; the raw message stays in its Details fold)
+SCORE_FAILURES = (("model-output/FluSight-baseline",
+                   "The FluSight baseline forecasts are not on this computer "
+                   "yet. Update data from the Data tab, then open this page "
+                   "again."),)
+
+
+def score_error_plain(err: str) -> str:
+    """The plain sentence for a known scoring failure, else ""."""
+    return next((plain for key, plain in SCORE_FAILURES
+                 if key in (err or "")), "")
 
 
 @router.get("/api/retro/{season}/playback/{asof}")
