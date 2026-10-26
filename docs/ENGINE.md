@@ -1,10 +1,100 @@
 # Getting the particle filter engine
 
 Everything in the README needs no GitHub login: this repository and the
-FluSight hub are both public. The particle filter engine is the one
-exception, because it needs a PyBNF fork that is not yet public. The
-console runs without it, with analogue forecasts only, so this never
+FluSight hub are both public. The particle filter engine has two routes:
+
+* **private, the default and the production engine this season**: the
+  lab's PyBNF fork, which is not public. It is the one part of an install
+  that can need a GitHub account, or a file from the lab. Most of this page
+  is about it.
+* **public, opt-in while it is tested**: public PyBNF, where the Liu-West
+  filter now lives, installed from this repository with no account and no
+  file ([below](#the-public-engine-opt-in)).
+
+The console runs without either, with analogue forecasts only, so this never
 blocks an install.
+
+## The public engine (opt-in)
+
+The Liu-West filter is merged into public lanl/PyBNF as `job_type = lwf`
+(merge commit `8410f794`, lanl/PyBNF#985). The public route installs that
+commit with bngsim 0.15.1 on Python 3.12, and nothing else: both are held
+for the whole season, and no installer takes a newer one. It is opt-in until
+the team lead's cutover decision, which follows an acceptance run in
+November 2026; until then the private engine is the default, it produces the
+weekly FluSight files, and it stays installed on every machine as the
+fallback.
+
+What gets installed, and how:
+
+* One lock file, `engine-requirements.txt` in the FluBNF folder, lists
+  every package with its SHA-256 hashes, plus one line for PyBNF itself: a
+  wheel built from `8410f794` and attached to a release of this repository
+  whose tag names the full commit. pip installs it with `--require-hashes`
+  and `--only-binary :all:`, so a file that differs from the lock by one
+  byte is refused and nothing is compiled. The wheel, not the commit's
+  source archive: that archive holds over 500 paths longer than 150
+  characters and breaks under the Windows path limit.
+* A Python environment of its own: `~/.venvs/flubnf-public` on macOS and
+  Linux, `%LOCALAPPDATA%\FluBNF\venv-public` on Windows
+  (`FLUBNF_PUBLIC_VENV` moves it). It never shares one with the private
+  engine (`~/.venvs/flubnf-engine`, and `~/.venvs/flubnf` on the lab Mac);
+  setup refuses to install into either.
+* Python 3.12 (on Windows, 64-bit x64 3.12). Setup finds one, or asks
+  conda for one.
+* As on the private route: Perl, and BNG2.pl from the `bionetgen` package
+  that setup puts in `.venv`. On macOS the engine also needs a C compiler,
+  Apple's Command Line Tools (`xcode-select --install`), because bngsim
+  compiles each model; the engine's own check says when it is missing. On
+  Windows bngsim's code generation stays off (`BNGSIM_NO_CODEGEN=1`), as it
+  is today, so no compiler is needed there.
+
+To choose it, on macOS and Linux, from the FluBNF folder:
+
+    ./setup_engine.sh --public
+
+On Windows, in Command Prompt, from the FluBNF folder:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine public
+
+Either one records the choice for this copy of FluBNF
+(`FLUBNF_ENGINE=public` in `.flubnf.env`, or in `.flubnf.env.cmd` on
+Windows). `setup_engine.sh` installs the public engine and checks it then;
+`setup.ps1` checks the lock and what is installed, and leaves the install to
+`FluBNF.bat`, as it does for the private engine. From then on the launchers
+(`FluBNF.command`, `FluBNF.app`, `SetupEngine.command`, `FluBNF.bat`) check
+the public engine instead of the private one, and install it when it is
+missing or no longer matches the lock.
+`./setup_engine.sh --private`, or `setup.ps1 -Engine private`, goes back to
+the default. A new machine can start on it directly:
+
+    curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | FLUBNF_ENGINE=public bash
+
+and `reinstall.sh` takes `FLUBNF_ENGINE=public` the same way: it then needs
+no engine file and leaves the private engine where it is.
+
+Until the lock is in the repository, the public route stops at its first
+step, before it makes anything, and says so; the private route is
+unaffected.
+
+Which one is installed: the lock is the reference. From the FluBNF folder,
+
+    ~/.venvs/flubnf-public/bin/python scripts/engine_lock.py check
+
+(on Windows, `"%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe"
+scripts\engine_lock.py check`) prints `public engine ready: pybnf 1.8.1 from
+<wheel>, bngsim 0.15.1`, or what differs from the lock. `pybnf.__version__`
+cannot tell: it reads 1.8.1 on the merge commit and on the August release,
+which has no Liu-West filter.
+
+Given the same random inputs, the two engines give the same forecast draws;
+each with its own random numbers, the forecasts differ draw by draw, and the
+lab's comparison found no difference in score (in-house, retrospective). A
+cell costs about 1.6 to 2.1 times as long on the public engine. The
+measurements and the acceptance plan are in [team/engine.md](team/engine.md).
+The output of either engine is a forecasting sample, not a posterior.
+
+The rest of this page is the private route.
 
 ## The shortest route: one small file, no account
 
@@ -137,7 +227,8 @@ the same file copied again.
 
 Production for the 2026-27 season is the fork's `feature/particle-filter`
 branch at commit `2fdadee0`, on bngsim 0.15.1 (docs/ORACLE-SIHRS.md,
-"Engine line-up"). The console reads the engine folder's branch and commit
+"Engine line-up"), until the cutover. This section is about that engine;
+for the public one, see [above](#the-public-engine-opt-in). The console reads the engine folder's branch and commit
 from git, or from the `VERSION` file an archive install carries, and says
 whether tracked files have local edits.
 

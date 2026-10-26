@@ -169,6 +169,8 @@ fit, with no restart, and `flubnf doctor` names the one it finds.
 | the record of a failed install | `.venv\engine-attempt.txt` in the FluBNF folder |
 | FluBNF's own Perl | `%LOCALAPPDATA%\FluBNF\perl` (`flubnf-perl.ok` marks it whole) |
 | the record of the Perl offer | `.venv\perl-offer.txt` in the FluBNF folder |
+| the public engine's Python environment ([below](#the-public-engine-opt-in)) | `%LOCALAPPDATA%\FluBNF\venv-public` (`FLUBNF_PUBLIC_VENV` puts it elsewhere) |
+| the Python 3.12 conda makes for it, when no other is found | `%LOCALAPPDATA%\FluBNF\python312-public` |
 
 None of these is in a folder Controlled Folder Access protects.
 
@@ -204,6 +206,40 @@ things and is not searched on Windows. While a folder higher in the list
 holds an engine, a new engine file is not unpacked at all, so an old clone
 under `Documents\GitHub` keeps winning. Renaming it (to `PyBNF-pf-old`, say)
 takes it out of the search.
+
+### The public engine (opt-in)
+
+A second route installs the Liu-West filter from public PyBNF instead of
+the lab's file ([ENGINE.md](ENGINE.md#the-public-engine-opt-in)): no file
+to hand out and no account. It is opt-in while it is tested; the lab's file
+stays the default and produces the weekly forecasts. To choose it, in
+Command Prompt, from the FluBNF folder:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine public
+
+That records `FLUBNF_ENGINE=public` in `.flubnf.env.cmd` (for this
+FluBNF folder only, never as a User variable), checks the lock, and prints
+the install steps; the next open of `FluBNF.bat` does the install. From then
+on `FluBNF.bat` checks the public engine on every open, and installs it when
+it is missing or no longer matches `engine-requirements.txt`:
+
+* 64-bit (x64) Python 3.12 and no other version, found as for the private
+  engine (`py -3.12`, `python`, Anaconda's own), else conda makes one in
+  `%LOCALAPPDATA%\FluBNF\python312-public`;
+* its own environment, `%LOCALAPPDATA%\FluBNF\venv-public`, never the
+  private engine's `%USERPROFILE%\.venvs\flubnf-engine`;
+* every package from `engine-requirements.txt`, by hash and as wheels only
+  (PyBNF itself is one wheel there, which also keeps it clear of the
+  Windows path limit), after the same five-second check that pypi.org is
+  reachable.
+
+Perl is still needed and is checked as before. bngsim's code generation
+stays off on Windows (`BNGSIM_NO_CODEGEN=1`), so no compiler is needed.
+`setup.ps1 -Engine private` goes back to the default (and clears an
+account-wide `FLUBNF_ENGINE`, if one was set by hand); the private engine's
+folders and environment are never touched by the public route, and stay
+installed as the fallback. The engine file a public copy finds in Downloads
+is left alone.
 
 ### Updates
 
