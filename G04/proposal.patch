@@ -1,0 +1,343 @@
+diff --git a/app/core/custom_retro.py b/app/core/custom_retro.py
+index 7b56160..1033a20 100644
+--- a/app/core/custom_retro.py
++++ b/app/core/custom_retro.py
+@@ -281,8 +281,14 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
+             # the missing-data rules (app/core/missing.py): the week's
+             # flagged newest weeks, recorded only when a rule is on
+             gh_flags: list = []
+-            an_q = an_engine.run(spec, **({"flags": gh_flags} if rules
+-                                          else {}))
++            an_kw = {"flags": gh_flags} if rules else {}
++            if stop_file is not None:
++                # between groups too: a large dataset takes minutes a week
++                def _stop(sf=stop_file):
++                    if Path(sf).exists():
++                        raise Stopped("stopped by user")
++                an_kw["stop"] = _stop
++            an_q = an_engine.run(spec, **an_kw)
+             wk_flags = {"analogue": gh_flags} if rules else None
+             if count:
+                 an_q = {n: floor_quantiles(q, **fkw)
+diff --git a/app/core/engines/analogue.py b/app/core/engines/analogue.py
+index 2f59ba5..a1598e5 100644
+--- a/app/core/engines/analogue.py
++++ b/app/core/engines/analogue.py
+@@ -517,7 +517,7 @@ MAX_ANCHOR_LAG = 2
+ 
+ 
+ def _walk(spec, notes: dict | None = None, flags: list | None = None,
+-          tails: dict | None = None):
++          tails: dict | None = None, stop=None):
+     """Per location, what the Groundhog forecasts from: yields (loc,
+     anchor, anchor_date, lag, forecast), where `lag` is the weeks between
+     the anchor and the as-of week and `forecast(h)` is the quantile dict h
+@@ -571,6 +571,10 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
+     bw_kw.update(src_kw)                     # empty on the hub path
+     extra = getattr(spec, "extra", None)
+     for loc in spec.locations:
++        # a Stop pressed mid-walk (`stop` raises): a dataset of hundreds of
++        # groups takes minutes per week, and the press once waited for all
++        if stop is not None:
++            stop()
+         # this location's rules: the run-wide ones, plus its own choice
+         # from the Forecast tab (app/core/missing.py rules_for); {} shipped
+         rules = MS.rules_for(extra, loc, "analogue")
+@@ -729,9 +733,12 @@ def zero_anchor(rule: str, tail: list, anchor_date, lag: int, forecast):
+                      f"{', '.join(MS.ZERO_ANCHOR_RULES)}")
+ 
+ 
+-def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
++def run(spec, notes: dict | None = None, flags: list | None = None,
++        stop=None) -> dict:
+     """location -> {horizon(str): {level(float): value}} quantiles; `notes`
+-    and `flags` as in _walk. A location whose anchor reads 0 follows its
++    and `flags` as in _walk; `stop`, when given, is called before each
++    location and may raise to end the walk (the caller's stop exception).
++    A location whose anchor reads 0 follows its
+     zero-anchor rule (app/core/missing.py: the state's own choice, else the
+     run's knob, else ZERO_ANCHOR_LEGACY = abstain); a rule that forecasts
+     is noted ("zero-anchor <rule>: ...") and flagged ({location, week,
+@@ -739,7 +746,8 @@ def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
+     out = {}
+     tails: dict = {}
+     extra = getattr(spec, "extra", None)
+-    for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags, tails):
++    for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags, tails,
++                                                    stop):
+         qs = {}
+         if anchor > 0:
+             for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
+diff --git a/app/tests/test_busy_guard.py b/app/tests/test_busy_guard.py
+index e418a6c..afe2c5d 100644
+--- a/app/tests/test_busy_guard.py
++++ b/app/tests/test_busy_guard.py
+@@ -477,6 +477,90 @@ def test_stop_during_starting_ends_a_dataset_run_stopped(tmp_path,
+     assert ui_state._status["running"] is None
+ 
+ 
++def test_stop_during_a_groundhog_only_run_ends_it_stopped_with_no_files(
++        tmp_path, monkeypatch):
++    """Stop pressed while the Groundhog runs: the run ends as stopped and
++    writes no submission (it used to say "stopping", then end ok with its
++    files written and Output took it as the week)."""
++    import app.core.runs as runs_mod
++    from app.core.engines import analogue as an_engine
++    from app.core.runs import RunSpec
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
++
++    def groundhog(spec, **kw):
++        # the press lands mid-walk: the flag is in the workroot
++        (Path(ui_state._status["workroot"]) / "STOP").touch()
++        return {loc: {str(h): {0.5: 1.0} for h in range(4)}
++                for loc in spec.locations}
++    monkeypatch.setattr(an_engine, "run", groundhog)
++    ui_state._status.update({"running": "starting", "workroot": None})
++    ui_pipeline._run_all(RunSpec(engine="analogue", forecast_date="2098-01-03",
++                                 locations=["Ohio"]))
++    (status, workroot), = _ledger_rows(tmp_path)
++    assert status == "stopped"
++    assert not (Path(workroot) / "submission").exists()
++    assert ui_state._status["running"] is None
++    # pressed before the Groundhog: it never runs
++    walked = []
++    monkeypatch.setattr(an_engine, "run",
++                        lambda spec, **kw: walked.append(1) or {})
++    monkeypatch.setattr(ui_pipeline, "_name_workroot",
++                        lambda w, label: (Path(w) / "STOP").touch() or False)
++    ui_state._status.update({"running": "starting", "workroot": None})
++    ui_pipeline._run_all(RunSpec(engine="analogue", forecast_date="2098-01-03",
++                                 locations=["Ohio"]))
++    assert walked == []
++    assert [st for st, _w in _ledger_rows(tmp_path)] == ["stopped", "stopped"]
++
++
++def test_the_groundhog_stops_between_locations_when_asked(tmp_path, monkeypatch):
++    """The walk calls `stop` before each location, so a press reaches a
++    dataset of hundreds of groups within one group, not after them all."""
++    from app.core.engines import analogue as eng
++    from app.core.runs import RunSpec
++    weeks = [f"2025-12-{d:02d}" for d in (6, 13, 20, 27)]
++    rows = ["date,location,location_name,value"]
++    for i, w in enumerate(weeks):
++        for fips, name, base in (("39", "Ohio", 10), ("49", "Utah", 50),
++                                 ("06", "California", 70)):
++            rows.append(f"{w},{fips},{name},{base + i}")
++    v = tmp_path / "v.csv"
++    v.write_text("\n".join(rows) + "\n")
++    locs = tmp_path / "locations.csv"
++    locs.write_text("location,location_name,abbreviation\n39,Ohio,OH\n"
++                    "49,Utah,UT\n06,California,CA\n")
++    monkeypatch.setattr(eng, "vintage_path", lambda d: str(v))
++    monkeypatch.setattr(eng, "LOCATIONS", str(locs))
++    walked = []
++    monkeypatch.setattr(eng.AN, "forecast",
++                        lambda anchor, as_of, horizon, bank, levels, **kw:
++                        walked.append(anchor) or {0.5: anchor})
++
++    class Pressed(Exception):
++        pass
++    asked = []
++
++    def stop():
++        asked.append(1)
++        if len(asked) == 2:                 # pressed after the first group
++            raise Pressed
++    spec = RunSpec(engine="analogue", forecast_date=weeks[-1],
++                   locations=["Ohio", "Utah", "California"])
++    with pytest.raises(Pressed):
++        eng.run(spec, stop=stop)
++    assert len({a for a in walked}) == 1    # one location forecast, not three
++    # without a stop the walk is as it was
++    assert set(eng.run(spec)) == {"Ohio", "Utah", "California"}
++
++
++def test_the_guard_keeps_the_stops_notice_for_the_landing_page():
++    """The modal's stop request no longer follows the stop route's redirect:
++    following it rendered /retro unseen and used up "Stopping ..." there."""
++    html = client.get("/forecast").text
++    assert "fetch(p.conflict.stop,{method:'POST',redirect:'manual'})" in html
++
++
+ def test_a_run_without_a_stop_is_not_stopped(tmp_path, monkeypatch):
+     """The flag is cleared by a fresh claim and at the end of every run: an
+     old press never stops the next run."""
+diff --git a/app/tests/test_datasets_ui.py b/app/tests/test_datasets_ui.py
+index 69f010f..de570c7 100644
+--- a/app/tests/test_datasets_ui.py
++++ b/app/tests/test_datasets_ui.py
+@@ -432,6 +432,45 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
+     assert not ui_state._status.get("running")
+ 
+ 
++def test_stop_run_reaches_a_dataset_replay(monkeypatch):
++    """The Forecast tab's Stop run (and the guard's) during a dataset replay
++    raises the replay's own flag, which it reads between weeks; it once set
++    a flag nothing read, and the replay ran to its end."""
++    from app.core import custom_retro as CX
++    ds = stored()
++    stamp = CX.new_stamp(ds)
++    out = CX.replay_dir(ds, stamp)
++    out.mkdir(parents=True, exist_ok=True)
++    DU._REPLAY.update({"id": ds.id, "stamp": stamp})
++    ui_state._status.update({"running": f"dataset-replay:{stamp}",
++                             "workroot": None, "phase": "replayed x (3 of 9 weeks)"})
++    try:
++        r = client.post("/run/stop", follow_redirects=False)
++        assert r.status_code == 303
++        assert (out / "STOP").exists()
++        assert ui_state._status["phase"] == "stopping…"
++    finally:
++        DU._REPLAY.clear()
++        ui_state._status.update({"running": None, "phase": ""})
++
++
++def test_a_dataset_under_replay_is_busy_with_the_replay():
++    """A replay sets the running claim and the dataset id too: the reason
++    for a refused delete names the replay, not 'a run'."""
++    ds = stored()
++    DU._REPLAY.update({"id": ds.id, "stamp": "20260101T000000Z"})
++    ui_state._status.update({"running": "dataset-replay:20260101T000000Z",
++                             "dataset_id": ds.id})
++    try:
++        assert DU.busy_with(ds.id) == "a replay on it is in progress"
++        r = client.post(f"/data/datasets/{ds.id}/delete", follow_redirects=False)
++        assert r.status_code == 303
++        assert "a replay on it is in progress" in ui_state._status.get("flash", "")
++    finally:
++        DU._REPLAY.clear()
++        ui_state._status.update({"running": None, "dataset_id": None})
++
++
+ def test_a_second_replay_is_refused_while_one_runs():
+     ds = stored()
+     DU._REPLAY.update({"id": ds.id, "stamp": "20260101T000000Z"})
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 3d009e1..e61bc95 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -143,14 +143,27 @@ def choices() -> list:
+ def busy_with(ds_id: str) -> str:
+     """Why a dataset cannot be deleted now ('' when it can): a console run
+     or a replay is using it."""
++    # a replay sets both; it is the replay that holds the dataset
++    if _REPLAY.get("id") == ds_id:
++        return "a replay on it is in progress"
+     if (ui_state._status.get("running")
+             and ui_state._status.get("dataset_id") == ds_id):
+         return "a run on it is in progress"
+-    if _REPLAY.get("id") == ds_id:
+-        return "a replay on it is in progress"
+     return ""
+ 
+ 
++def stop_live_replay() -> bool:
++    """Raise the live dataset replay's STOP flag (custom_retro.run reads it
++    between weeks, the Groundhog between groups); False when none runs."""
++    from app.core import custom_retro as CX
++    ds = get_dataset(str(_REPLAY.get("id") or ""))
++    stamp = str(_REPLAY.get("stamp") or "")
++    if ds is None or not CX.valid_stamp(stamp):
++        return False
++    (CX.replay_dir(ds, stamp) / "STOP").touch()
++    return True
++
++
+ # ------------------------------------------------------------- Data tab
+ 
+ def data_context(ds, loc: str = "", vintage: str = "") -> dict:
+@@ -1245,7 +1258,7 @@ def replay_stop(ds_id: str, stamp: str):
+     ds = get_dataset(ds_id)
+     if ds is not None and CX.valid_stamp(stamp) and \
+             _REPLAY.get("stamp") == stamp:
+-        (CX.replay_dir(ds, stamp) / "STOP").touch()
++        stop_live_replay()
+         w = ui_state._status.get("workroot")
+         if w:
+             (Path(w) / "STOP").touch()
+diff --git a/app/ui/pipeline.py b/app/ui/pipeline.py
+index 35c4b40..7be5dc8 100644
+--- a/app/ui/pipeline.py
++++ b/app/ui/pipeline.py
+@@ -517,6 +517,16 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
+     return pf_rows, an_rows, counts
+ 
+ 
++def _stop_check(workroot: Path) -> None:
++    """Stop pressed (the workroot's STOP flag, routes/forecast.run_stop):
++    the run ends as stopped at the next step. The particle filter polls the
++    flag itself; the Groundhog and the writers did not, so a Groundhog-only
++    run once said "stopping" and ended ok with its files written."""
++    from app.core.engines.pf import RunStopped
++    if (Path(workroot) / "STOP").exists():
++        raise RunStopped("stopped by user")
++
++
+ def _run_all(spec: RunSpec) -> None:
+     """The competition path: engines in ascending cost, then the two
+     standalone submissions (no blend; each under its own hub identity,
+@@ -731,6 +741,7 @@ def _run_all(spec: RunSpec) -> None:
+         # 2. the Groundhog: calendar analogue + the aux donors _run_extra put
+         # in spec.extra (none = research bare analogue). Always runs (instant);
+         # its FILE is written only when the run asked for it.
++        _stop_check(workroot)
+         _phase("consulting the Groundhog")
+         from app.core.floor import floor_quantiles
+         # anchors moved back by an unreported newest week, or abstentions,
+@@ -746,10 +757,12 @@ def _run_all(spec: RunSpec) -> None:
+                        or _missing.zero_anchor_of(spec.extra))
+         _gh_flags: list = []
+         an_notes: dict = {}
+-        _an_kw = ({"notes": an_notes} if "notes" in
+-                  _inspect.signature(an_engine.run).parameters else {})
++        _an_params = _inspect.signature(an_engine.run).parameters
++        _an_kw = {"notes": an_notes} if "notes" in _an_params else {}
+         if _record:
+             _an_kw["flags"] = _gh_flags
++        if "stop" in _an_params:
++            _an_kw["stop"] = lambda: _stop_check(workroot)
+         an_q = {loc: floor_quantiles(q, **_fkw)
+                 for loc, q in an_engine.run(spec, **_an_kw).items()}
+         if an_notes:
+@@ -788,6 +801,7 @@ def _run_all(spec: RunSpec) -> None:
+             (spec.extra or {}).get("analogue_aux") or "")
+         # 3. no blend: each member is its own submission; PF failures are just
+         # absent from its file (the row's failure count names them)
++        _stop_check(workroot)
+         _phase("writing submissions")
+         # 4. submissions (identity in the path)
+         locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 5455e36..b0aa339 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -444,6 +444,13 @@ def run_stop():
+         if (Path(w) / "pf2s").is_dir():        # the two-strain pass polls its
+             (Path(w) / "pf2s" / "STOP").touch()  # own subdir for the flag
+         _status["phase"] = "stopping…"
++    if running.startswith("dataset-replay:"):
++        # a dataset replay reads its own flag between weeks (and, for the
++        # Groundhog, between groups); a Groundhog-only replay has no
++        # workroot, so the flag above never reached it
++        from app.ui import datasets_ui as _dsu
++        if _dsu.stop_live_replay():
++            _status["phase"] = "stopping…"
+     return RedirectResponse("/forecast#results", status_code=303)
+ 
+ 
+diff --git a/app/ui/templates/base.html b/app/ui/templates/base.html
+index bddb4b7..748ae7b 100644
+--- a/app/ui/templates/base.html
++++ b/app/ui/templates/base.html
+@@ -704,7 +704,9 @@
+     stopBtn.disabled=true;stopBtn.textContent='Stopping…';
+     msg.textContent='Stopping the '+p.conflict.label
+       +'… waiting for it to release the engine.';
+-    fetch(p.conflict.stop,{method:'POST'}).catch(function(){});
++    // the stop's redirect is not followed: following it rendered /retro
++    // in the background and used up its "Stopping ..." notice unseen
++    fetch(p.conflict.stop,{method:'POST',redirect:'manual'}).catch(function(){});
+     (function poll(){
+       if(pending!==p)return;                    // modal was dismissed
+       fetch('/api/busy').then(function(r){return r.json();})
