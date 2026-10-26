@@ -175,8 +175,10 @@
    <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
    <input type="hidden" name="weeks_to_drop" value="0">
    <input type="hidden" name="weeks_to_nowcast" value="0">
-   {# same /run endpoint, so the same interference guard as Forecast #}
-   <button class="gold" data-guard="console-run">Run {{ title }} only</button>
+   {# same /run endpoint, so the same interference guard as Forecast; off
+      while a run holds the engine (the alert above says why; the server
+      refuses a start then too) #}
+   <button class="gold" data-guard="console-run"{% if status.running %} disabled aria-describedby="md-busy"{% endif %}>Run {{ title }} only</button>
   </form>
  </div></div>
  <div>
