@@ -257,11 +257,25 @@ def test_the_page_of_a_running_replay_shows_its_live_card(tmp_path,
 def test_a_replay_over_a_sealed_season_leaves_the_seals_page_whole(
         tmp_path, monkeypatch):
     """The page shows the seal while the fresh replay holds fewer weeks:
-    it reads the seal as it always has, the replay running or not."""
+    it reads the seal as it always has, the replay running or not. A seal
+    is never recomputed, so its finished job covers it: once its caches
+    are fresh the page renders, never a 500 over the job's empty stamp."""
     _stub_scoring(monkeypatch, tmp_path)
     seal = ui_retro_seasons.RETRO_SEAL / SEASON
     _weeks(seal, [W1, W2, W3])
     _record(seal, "done", total_weeks=3)
+    retro.finalize_season(seal, SEASON)
+    agg = seal / "playback_cache" / "us_aggregate.json"
+    agg.unlink(missing_ok=True)
+    # a stale aggregate: the first visit makes the seal's job
+    assert client.get(f"/retro/{SEASON}").status_code == 200
+    assert ui_retro_prep._results_jobs[str(seal)]["inputs"] is None
+    # the aggregate fresh again (an in-request build writes it): nothing
+    # is pending, and the page asks whether a job covers the seal
+    agg.parent.mkdir(parents=True, exist_ok=True)
+    agg.write_text(json.dumps({"key": retro._national_cache_key(seal)}))
+    ttlcache.clear_all()
+    assert ui_retro_prep._results_pending(seal) == ""
     assert client.get(f"/retro/{SEASON}").status_code == 200
     live = ui_retro_seasons.RETRO_ROOT / SEASON
     _weeks(live, [W1])
