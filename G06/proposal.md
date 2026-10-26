@@ -46,7 +46,7 @@ The rules kept (app.md, 2026-10-15): Home and Models keep the shipped rule (the 
 - `test_output_by_date`, `test_archive_rule`, `test_models_tab`, `test_output_run_pages`, `test_report_bundle`, `test_ui_layout`, `test_pages`, `test_download_links`, `test_storage`: 167 passed; the seven new tests fail on the pre-fix code. Earlier run with `test_forecast_mechanics`, `test_run_integrity`, `test_fewer_marks`, `test_reclaim`, `test_core`, `test_newest_reported`, `test_forecast_modes`, `test_submission_identity`, `test_oracle_step`: passing. `ruff check --select F821,F823,F811,F401 app/ui` clean.
 - Live (a server from the prototype): the Output texts; the Models card's label and its link after a vintage quick run.
 - Output: an all-53 Groundhog run on 2026-10-17 on dev 48e30bb and on the prototype gives the same file (md5 56da9201b416eb5c80317c849b55168e).
-- Full suite: running; counts in a second commit.
+- Full suite (Python 3.13 here): 2 failed, 3477 passed, 154 skipped: the doctor's 3.13 checks only.
 - Windows: paths through `Path` as the code does; no encodings or line endings.
 - For Ely: none. Both medium-confidence bugs reproduced by test on the pre-fix code.
 
