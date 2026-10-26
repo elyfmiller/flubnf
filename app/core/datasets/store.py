@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional
 from app.core import datasets as _pkg
 from app.core.runs import APP_STATE
 
-from .checks import KINDS
+from .checks import KINDS, dataset_checks
 from .parsing import _fmt_num, _int_or_float, saturday_on_or_before, slug
 from .reading import validate
 from .report import DEFAULT_LIMITS, DatasetError, Limits, Problem, Report
@@ -205,6 +205,7 @@ def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
             rep = validate(source, kind=kind, target=target, limits=limits,
                            columns=columns, series=_series_of(filename, name),
                            _tee=tee)
+        dataset_checks(rep)
         _refuse(rep)
         name = name or default_name(filename, rep.targets,
                                     rep.summary.get("target"))

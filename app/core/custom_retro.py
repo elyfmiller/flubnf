@@ -336,7 +336,10 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
             write_meta(out_dir, meta)
             if progress:
                 progress(asof, i + 1, len(weeks))
-        meta["status"] = "done"
+        # every member abstained on every group-week: never a green "done"
+        meta["status"] = ("done" if any(q for f in forecasts.values()
+                                        for q in f.values())
+                          else "no forecast")
     except (Stopped, pf_engine.RunStopped):
         meta["status"] = "stopped"
     except Exception as e:

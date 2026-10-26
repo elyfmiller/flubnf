@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 #: read through it at call time, where tests monkeypatch them
 from app.core import datasets as _pkg
 
+from .checks import dataset_checks
 from .parsing import _fmt_num, saturday_on_or_before
 from .reading import validate
 from .report import (
@@ -139,9 +140,11 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
     files = list(files)
     if len(files) == 1:
         name, src = files[0]
-        return _validate_kept(name, src, _tee_dir, kind=kind, target=target,
-                              limits=limits, columns=columns,
-                              series=_series_of(_base(name)))
+        rep = _validate_kept(name, src, _tee_dir, kind=kind, target=target,
+                             limits=limits, columns=columns,
+                             series=_series_of(_base(name)))
+        dataset_checks(rep)
+        return rep
     rep = Report()
     if not files:
         rep.add("empty", "No files were given.")
@@ -342,6 +345,7 @@ def validate_snapshots(files, *, kind: Optional[str] = None,
              "as_of": sorted({x[0].isoformat() for x in rs})}
             for f, r, rs, how in dated],
     }
+    dataset_checks(rep)
     return rep
 
 

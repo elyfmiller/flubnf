@@ -165,7 +165,8 @@ def _preview(rep, kind: str) -> dict:
         peak = max(pts, key=lambda p: p[1])
         sparks.append({"name": name, "points": _sparkline(pts, first, last,
                                                           top),
-                       "label": f"{name}: {len(pts)} weeks, peak "
+                       "label": f"{name}: {len(pts)} week"
+                                f"{'' if len(pts) == 1 else 's'}, peak "
                                 f"{peak[1]:,.6g} ({peak[0].isoformat()})"})
     return {"groups": s["groups"], "n_groups": len(s["groups"]),
             "more": max(0, len(s["groups"]) - PREVIEW_GROUPS),
@@ -255,10 +256,16 @@ def check_view(rep, *, kind: str = "", columns=None, files: int = 1) -> dict:
     problems = [(k, [{"message": _whole_dates(p), "rows": list(p.rows)}
                      for p in ps])
                 for k, ps in _datasets().problem_groups(shown)]
+    # the Groundhog's notice is about the data, not how it was read: shown
+    # under the preview's heading, not in the notes' closed fold
+    from app.core.datasets.checks import TOO_LITTLE_HISTORY
+    gh = [w for w in rep.warnings if w.startswith(TOO_LITTLE_HISTORY)]
     return {"ok": rep.ok, "problems": problems,
             "n": sum(len(ps) for _, ps in problems),
             "mapping": mapping, "needs_mapping": rep.needs_mapping,
-            "notices": [_whole_dates(w) for w in rep.warnings],
+            "notices": [_whole_dates(w) for w in rep.warnings
+                        if w not in gh],
+            "groundhog": gh[0] if gh else "",
             "targets": rep.targets if len(rep.targets) > 1 else [],
             "target": (rep.summary or {}).get("target") or "",
             "files": files,
