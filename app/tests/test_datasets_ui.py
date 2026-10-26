@@ -316,6 +316,19 @@ def test_run_refuses_a_week_the_dataset_lacks(monkeypatch):
     assert not ui_state._status.get("running")
 
 
+def test_run_refuses_a_number_the_browser_allows_in_words(monkeypatch):
+    """The panel's number fields on a dataset run: 1e1 (valid to the
+    browser's box) is refused in the panel's words, not a JSON 422 page."""
+    ds = stored()
+    got = _capture(monkeypatch)
+    r = client.post("/run/dataset", data={
+        "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
+        "engine": "analogue", "weeks_to_drop": "1e1"}, follow_redirects=False)
+    assert r.status_code == 303 and got == []
+    assert ("Not run: model settings: run.weeks_to_drop: '1e1' is not a "
+            "valid int." in ui_state._status["flash"])
+
+
 def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
     ds = stored()
     got = _capture(monkeypatch)

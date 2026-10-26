@@ -646,8 +646,10 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
     status_before = dict(ui_state._status)
     try:
         ui_state._status["running"] = None
-        r = client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
-                                      "custom_locations": ["Ohio"], "engine": "all",
+        # (the word "custom" is the retro form's; /run takes names, and an
+        # unknown name is refused since the 2026-10-25 hunt, FC-08)
+        r = client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
+                                      "engine": "all",
                                       "replicates": "1", "oracle": "none"},
                         follow_redirects=False)
         assert r.status_code == 303
@@ -663,8 +665,8 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
         assert started[-1].extra.get("oracle") == "none"
         # and a row without it re-runs the member
         ui_state._status["running"] = None
-        client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
-                                  "custom_locations": ["Ohio"], "engine": "all",
+        client.post("/run", data={"forecast_date": ASOF, "locations": ["Ohio"],
+                                  "engine": "all",
                                   "replicates": "1"}, follow_redirects=False)
         assert "oracle" not in started[-1].extra
     finally:

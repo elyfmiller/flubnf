@@ -94,6 +94,28 @@ def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
     assert started[0].locations == expected
 
 
+def test_a_typed_name_is_matched_to_the_hubs_spelling_once(started):
+    """The model pages' Locations box is free text: case and the two-letter
+    code resolve to the hub's name, a repeat counts once."""
+    r = _post(["ohio, UT", "Ohio"])
+    assert r.status_code == 303
+    assert started[0].locations == ["Ohio", "Utah"]
+
+
+def test_an_unknown_location_name_is_refused_and_nothing_runs(started):
+    """A name the hub has not used to pass into the run and drop out of it
+    with the run still 'ok'."""
+    for typed, named in ((["Ohio, Oiho"], "unknown location: Oiho."),
+                         (["US+(national)"], "unknown location: US+(national)."),
+                         (["arizona"], "unknown location: arizona."),
+                         (["Oiho, Arizonna, UT"],
+                          "unknown locations: Oiho, Arizonna.")):
+        ui_state._status.update({"running": None, "flash": None})
+        r = _post(typed)
+        assert r.status_code == 303 and started == [], typed
+        assert ui_state._status.get("flash") == f"Not run: {named}", typed
+
+
 def test_the_progress_label_names_us_only_when_it_runs(started):
     _post(["Ohio"])
     assert ui_state._status["run_label"].endswith("1 state · queued")

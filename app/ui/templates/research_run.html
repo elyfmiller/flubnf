@@ -35,7 +35,7 @@
    <div class="md-field">
     <label for="rr-reps">Replicates</label>
     <input id="rr-reps" name="replicates" type="number"
-      value="{{ form.replicates }}" min="1" max="9">
+      value="{{ form.replicates }}" min="{{ replicates_knob.lo }}" max="{{ replicates_knob.hi }}">
    </div>
   </div>
   <input type="hidden" name="engine" value="all">

@@ -198,6 +198,10 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
     ({"knob.oracle.count_floor": "5"}, "coming later"),
     ({"knob.pf.particle": "5"}, "unknown knob"),
     ({"replicates": "0"}, "pf.replicates"),
+    # typed as text: valid to the browser's number box, not a whole number
+    ({"particles": "1e4"}, "pf.particles"),
+    ({"replicates": "2.5"}, "pf.replicates"),
+    ({"weeks_to_drop": "one"}, "run.weeks_to_drop"),
     ({"knob.oracle.w": "0.25", "submit_modified": "1"}, "needs a reason"),
     ({"members": "3", "knob.pf.prior.r": "0.1,80"}, "two-strain"),
     # a knob field repeated in one form: refused, never the last value
@@ -213,6 +217,55 @@ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
     assert msg in ui_state._status.get("flash", "")
     assert "Not run" in ui_state._status.get("flash", "")
     assert ui_state._status.get("flash_kind") == "warn"
+
+
+@pytest.mark.parametrize("field,typed,key", [
+    ("particles", "1e4", "pf.particles"),
+    ("replicates", "2.5", "pf.replicates"),
+    ("weeks_to_drop", "1e1", "run.weeks_to_drop")])
+def test_a_number_the_browser_allows_is_refused_on_the_panel(
+        tmp_path, monkeypatch, field, typed, key):
+    """The browser's number box passes 1e4; an int field answered with a
+    raw JSON 422 page. Now the panel's own refusal, the typed value kept."""
+    started = _capture_run(monkeypatch, tmp_path)
+    r = _post({field: typed})
+    assert r.status_code == 303 and started == []
+    assert (f"Not run: model settings: {key}: '{typed}' is not a valid int."
+            in ui_state._status["flash"])
+    page = client.get("/forecast").text
+    assert '<details class="adv" open data-refused id="model-settings"' in page
+    why = page.split('id="ms-refused">')[1].split("</div>")[0]
+    assert f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a valid int." in why
+    assert f'name="{field}" id="ks-{key.replace(".", "-")}" value="{typed}"' in page
+
+
+def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
+                                                               monkeypatch):
+    from app.core import retro as core_retro
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(core_retro, "available_seasons", lambda: ["2024-25"])
+    monkeypatch.setattr(core_retro, "season_vintages",
+                        lambda s: ["2024-11-02", "2024-11-09"])
+    launched = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: launched.append((a, k)))
+    ui_state._status["running"] = None
+    r = client.post("/retro/run", data={
+        "season": "2024-25", "locations": "panel6", "engine": "pf",
+        "replicates": "3.5"}, follow_redirects=False)
+    assert r.status_code == 303 and launched == []
+    assert ("Not started: model settings: pf.replicates: '3.5' is not a "
+            "valid int." in ui_state._status["flash"])
+
+
+def test_a_number_typed_with_commas_is_read_and_a_blank_is_the_default(
+        tmp_path, monkeypatch):
+    started = _capture_run(monkeypatch, tmp_path)
+    _post({"particles": "20,000", "replicates": "", "weeks_to_drop": ""})
+    assert len(started) == 1
+    assert (started[0].particles, started[0].replicates,
+            started[0].weeks_to_drop) == (20_000, 3, 0)
 
 
 def test_a_knob_that_does_not_apply_is_ignored_and_not_recorded(tmp_path,
