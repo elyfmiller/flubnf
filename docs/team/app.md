@@ -44,8 +44,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     same 21 failures as clean `dev` on this Mac (it has an engine, which
     test_no_engine does not expect; launcher tests), none new. Not run: a public install end to end (no lock or wheel
     yet); FluBNF.bat under cmd and setup.ps1 under PowerShell (no Windows
-    or pwsh here); the Windows-only tests; CI (it runs on main, dev and
-    pull requests, not on pushes to engine-public).
+    or pwsh here); the Windows-only tests. CI runs through draft pull
+    request [#61](https://github.com/elyfmiller/flubnf/pull/61)
+    (`engine-public` into `dev`, opened at Ely's word for CI only: never
+    merged without it), on each push to the branch.
 - 2026-10-26: the App lane moved from the cloud session "FluBNF 2.0" (now
   a record only) to Ely's Mac, in Ely's clone, and can message other
   agents. PR #60 (G01 to G10: 53 bugs, 20 of the 25 S2s) is on `main`
@@ -482,10 +484,6 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 ## Open
 
 - For Ely (2026-10-26, `engine-public`):
-  - CI has not run on the branch (it runs on main, dev and pull requests).
-    A draft pull request `engine-public` into `dev`, merged only on your
-    word, would run the Windows legs, setup.ps1's five runs included. Open
-    one?
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
     lock's wheel line by one script that bash, cmd and PowerShell all
     call, rather than typed into each installer: the lock is then the
