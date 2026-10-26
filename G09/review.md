@@ -46,3 +46,9 @@ What I checked
   no ETA, /api/busy free; RE-03 could not be seen on the seal's page
   (request 1), and the interrupted season's page after the relaunch
   answered 200.
+
+## Re-review of 9956678 (B)
+Approve.
+- Request 1 answered: `_job_covered` treats a sealed record's job (inputs None) as covering its root. Live on 9956678 (port 8825, the finished 2025-26 tree as `retro_reseal/2025-26`, a fresh Groundhog replay over it with 6 states): the seal's page answered 200 on every visit, 2 through 18 weeks into the replay and after, "27 weeks scored" with "Replay in progress"; no traceback in the server log. On f005d2c the same setup gave the 500.
+- The seal test now drives that line: with the guard removed from 9956678's tree, `test_a_replay_over_a_sealed_season_leaves_the_seals_page_whole` fails with the TypeError; with it, passes.
+- Targeted: test_retro_live_progress, test_results_prep, test_retro_player, test_season_run_marks, test_retro_design_pass: 80 passed; ruff gate clean.
