@@ -1,4 +1,8 @@
 # G06: review (A)
+
+Approve (re-review, 2026-10-26 04:00): the PR body's bullets now carry the hunt's numbers (OU-02, OU-09, OU-01, OU-11, OU-08) and say 9 tests; head unchanged at 5d1e564, whose code I approved below.
+
+## The first review
 PR #55, head 5d1e564 (ac82edd the change, 5d1e564 the Status cell).
 
 The code: approve as it stands. The PR body: two changes requested (the body is the record; no code change, no new CI run needed for it).
