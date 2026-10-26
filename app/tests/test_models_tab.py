@@ -251,6 +251,20 @@ def test_quick_run_posts_the_same_fields_as_before():
         assert f'<label for="{fid}">{label}</label>' in quick, fid
 
 
+def test_the_quick_and_research_forms_take_the_replicates_the_setting_allows():
+    """The forms' bounds are the pf.replicates knob's (1 to 10, as the
+    Forecast tab and the server take), not a number of their own: after a
+    10-replicate run both forms used to refuse to submit."""
+    from app.core import knobs as K
+    k = K.BY_KEY["pf.replicates"]
+    for path, fid in (("/models", "mf-reps"), ("/model/pf2s", "rr-reps")):
+        t = client.get(path).text
+        m = re.search(rf'id="{fid}" name="replicates" type="number"[^>]*>', t)
+        assert m, path
+        assert f'min="{k.lo}"' in m.group(0) and f'max="{k.hi}"' in m.group(0), m.group(0)
+        assert k.hi == 10 and 'max="9"' not in t, path
+
+
 def test_research_form_fields_are_unchanged():
     t = client.get("/model/pf2s").text
     assert _form_fields(t, 'id="research-run"') == [
