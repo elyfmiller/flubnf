@@ -58,7 +58,7 @@ Two recorded rules bound this group: app.md Decided (2026-10-01) "The report car
 
 ## Checks
 - New `app/tests/test_which_run_shows.py` (8): all fail on dev, pass here. Changed: `test_models_tab.py` (2 label asserts), `test_output_by_date.py` (1 picker step), each pinning the bug's behavior.
-- `ruff check --select F821,F823,F811,F401 app/ui` clean. Targeted (models, output, layout, archive rule, browse safety, the new file): 104 passed. Full suite: running; counts follow.
+- `ruff check --select F821,F823,F811,F401 app/ui` clean. Targeted (models, output, layout, archive rule, browse safety, the new file): 104 passed. Full suite on the prototype (3.12): 3479 passed, 155 skipped, 0 failed.
 - Invariance: an all-53 run on 2026-10-17, Groundhog only and Both, on dev 48e30bb and on the prototype: md5 56da9201b416eb5c80317c849b55168e for all four.
 - Live: every bug re-checked on a server from the prototype as above; the picker at 1280 light and 390 dark; the Models label at 390 dark (it wraps to two lines in its row, as other labels do).
 
