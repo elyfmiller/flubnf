@@ -465,6 +465,14 @@ def run_stop():
     with _engine_lock:
         w = _status.get("workroot")
         running = _status.get("running") or ""
+        if running.startswith("dataset-replay:"):
+            # a dataset replay holds the claim: its own Stop (its STOP file),
+            # which the replay reads between groups; the guard's Stop too
+            from app.ui import datasets_ui as _dsu
+            if _dsu.stop_replay(str(_status.get("dataset_id") or ""),
+                                running.split(":", 1)[1]):
+                _status["phase"] = "stopping…"
+            return RedirectResponse("/forecast#results", status_code=303)
         if running and not w:
             # still starting (no workroot yet): the worker reads this once
             # it has one and ends the run as stopped before any fit; the

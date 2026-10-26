@@ -728,6 +728,13 @@ def _run_all(spec: RunSpec) -> None:
                                 recent=[v for _, v in obs.get(loc, [])],
                                 **_fkw)
                             for loc, s in pf2s_samples.items()}
+        # Stop pressed (its STOP file): the run ends stopped before the
+        # Groundhog, between its locations, and before any file is written
+        # (only the filter read the flag, so a Groundhog-only run ran on)
+        def _stop_check():
+            if (workroot / "STOP").exists():
+                raise pf_engine.RunStopped("stopped by user")
+        _stop_check()
         # 2. the Groundhog: calendar analogue + the aux donors _run_extra put
         # in spec.extra (none = research bare analogue). Always runs (instant);
         # its FILE is written only when the run asked for it.
@@ -750,6 +757,8 @@ def _run_all(spec: RunSpec) -> None:
                   _inspect.signature(an_engine.run).parameters else {})
         if _record:
             _an_kw["flags"] = _gh_flags
+        if "stop" in _inspect.signature(an_engine.run).parameters:
+            _an_kw["stop"] = _stop_check
         an_q = {loc: floor_quantiles(q, **_fkw)
                 for loc, q in an_engine.run(spec, **_an_kw).items()}
         if an_notes:
@@ -786,6 +795,7 @@ def _run_all(spec: RunSpec) -> None:
             outcome["data_flags"] = {"analogue": _gh_flags, "pf": _pf_flags}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
+        _stop_check()
         # 3. no blend: each member is its own submission; PF failures are just
         # absent from its file (the row's failure count names them)
         _phase("writing submissions")

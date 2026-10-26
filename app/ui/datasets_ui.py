@@ -143,11 +143,12 @@ def choices() -> list:
 def busy_with(ds_id: str) -> str:
     """Why a dataset cannot be deleted now ('' when it can): a console run
     or a replay is using it."""
+    # a replay first: it sets the console's claim and dataset too
+    if _REPLAY.get("id") == ds_id:
+        return "a replay on it is in progress"
     if (ui_state._status.get("running")
             and ui_state._status.get("dataset_id") == ds_id):
         return "a run on it is in progress"
-    if _REPLAY.get("id") == ds_id:
-        return "a replay on it is in progress"
     return ""
 
 
@@ -1239,16 +1240,25 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
         _release(guard)
 
 
-@router.post("/retro/dataset/{ds_id}/{stamp}/stop")
-def replay_stop(ds_id: str, stamp: str):
+def stop_replay(ds_id: str, stamp: str) -> bool:
+    """Ask the live dataset replay to stop after its current group (its
+    STOP file, and its filter workroot's); False when it is not the one
+    running."""
     from app.core import custom_retro as CX
     ds = get_dataset(ds_id)
-    if ds is not None and CX.valid_stamp(stamp) and \
-            _REPLAY.get("stamp") == stamp:
-        (CX.replay_dir(ds, stamp) / "STOP").touch()
-        w = ui_state._status.get("workroot")
-        if w:
-            (Path(w) / "STOP").touch()
+    if ds is None or not CX.valid_stamp(stamp) or \
+            _REPLAY.get("stamp") != stamp:
+        return False
+    (CX.replay_dir(ds, stamp) / "STOP").touch()
+    w = ui_state._status.get("workroot")
+    if w:
+        (Path(w) / "STOP").touch()
+    return True
+
+
+@router.post("/retro/dataset/{ds_id}/{stamp}/stop")
+def replay_stop(ds_id: str, stamp: str):
+    stop_replay(ds_id, stamp)
     return RedirectResponse(f"/retro/dataset/{ds_id}/{stamp}",
                             status_code=303)
 

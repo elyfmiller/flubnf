@@ -352,7 +352,8 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
     if spec.engine in ("all", "analogue"):
         phase("consulting the Groundhog")
         an_notes: dict = {}
-        an_kw = {"notes": an_notes}
+        an_kw = {"notes": an_notes,
+                 "stop": lambda: _check_stop(workroot)}
         if rules:
             an_kw["flags"] = gh_flags
         an_q = an_engine.run(spec, **an_kw)
@@ -375,6 +376,7 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
            if not (m == "pf" and ("pf_skipped" in outcome))}
     outcome["abstained"] = {m: sorted(set(names) - set(members[m]))
                             for m in ran if set(names) - set(members[m])}
+    _check_stop(workroot)
     # 3. exports: non-hub names, the dataset's own unit column
     phase("writing the export files")
     exports, errors = {}, {}
