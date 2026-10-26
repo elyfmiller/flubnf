@@ -100,8 +100,9 @@ app/state/retro_reseal, a vintage added to the copy's archive, and kill
 ruff (the F gate) clean; test_run_timing, test_results_prep,
 test_report_parity, test_retro_eta, test_resume_rerun,
 test_season_run_marks, test_ui_layout, test_retro_archive,
-test_us_national: 225 passed, 3 skipped. Full suite on the proto: in
-compare.md. Invariance: no (no run path touched). Windows: the pid check
+test_us_national: 225 passed, 3 skipped. Full suite on the proto (3.13):
+3506 passed, 154 skipped; the two failures are the tests/test_doctor.py
+checks that fail on this machine's Python 3.13 on dev too. Invariance: no (no run path touched). Windows: the pid check
 uses OpenProcess, never os.kill.
 
 ## Patch
