@@ -100,6 +100,12 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     from app.ui import datasets_ui as _dsu
     own_tab = bool(dataset) or tab == "own"
     if own_tab:
+        # a dataset whose files are incomplete: said, and a whole one
+        # opened (choices() leaves it out)
+        ds = _dsu.get_dataset(dataset) if dataset else None
+        why = _dsu.damaged(ds) if ds is not None else ""
+        if why:
+            _flash(why, "warn")
         ids = [i for i, _ in _dsu.choices()]
         # tab=own, or a dataset since deleted: the first stored one
         if ids and dataset not in ids:

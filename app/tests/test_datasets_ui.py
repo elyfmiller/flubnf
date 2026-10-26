@@ -92,7 +92,8 @@ def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
 
 def test_a_multi_target_file_offers_its_targets():
     raw = (b"target_end_date,target,location,observation\n"
-           b"2024-08-03,a,01,1\n2024-08-03,b,01,2\n")
+           b"2024-08-03,a,01,1\n2024-08-03,b,01,2\n"
+           b"2024-08-10,a,01,1\n2024-08-10,b,01,2\n")
     r = upload(raw, "multi")
     assert r.status_code == 422
     assert '<select name="target"' in r.text

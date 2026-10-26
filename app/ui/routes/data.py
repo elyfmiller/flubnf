@@ -228,11 +228,12 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
         # (a foreign Host never gets here: shared._same_host_guard)
         from app.ui import datasets_ui as _dsu
         ds = _dsu.get_dataset(source)
-        if ds is not None:
+        why = _dsu.damaged(ds) if ds is not None else ""
+        if ds is not None and not why:
             ctx = _data_context()
             ctx.update(_dsu.data_context(ds, loc, vintage))
             return templates.TemplateResponse(request, "data.html", ctx)
-        _flash("That dataset is not stored; showing the FluSight hub.",
+        _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(loc, vintage))

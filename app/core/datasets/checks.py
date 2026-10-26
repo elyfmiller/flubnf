@@ -878,3 +878,41 @@ def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
                    "only weeks that ended by its as_of."
                    if shift and all(d - timedelta(days=shift) <= a
                                     for _, a, _, d in late) else ""), lines)
+
+
+#: how the Groundhog notice starts (the check shows it outside the notes
+#: on how a file was read, app/ui/dataset_upload.check_view)
+TOO_LITTLE_HISTORY = "Too little history for the Groundhog"
+
+
+def dataset_checks(rep: Report) -> None:
+    """What a whole dataset needs beyond each file's checks (a snapshot
+    file may hold one week; the dataset may not): two weeks at least, a
+    forecast starting from the second; and a notice when even its newest
+    week gives the Groundhog too few weeks like it in earlier seasons to
+    forecast from (flubnf/analogue.py: MIN_DONORS donor ratios within the
+    default donor window; the run abstains below that)."""
+    s = rep.summary
+    if not rep.ok or not s:
+        return
+    if s["weeks"] < 2:
+        rep.add("one_week", f"The data hold one week ({s['first']}): a "
+                "forecast starts from the week after the first, so at "
+                "least two weeks are needed.")
+        return
+    from flubnf import analogue as AN
+    newest = {}
+    for a, name, _, d, v, _ in rep.records:
+        k = (name, d)
+        if v is not None and (k not in newest
+                              or (a or date.min) >= newest[k][0]):
+            newest[k] = (a or date.min, float(v))
+    bank = {k: v for k, (_, v) in newest.items() if v > 0}
+    last = max(d for _, d in newest)
+    n = len(AN.donor_ratios(bank, AN.epiweek(last), AN.season_of(last), 1,
+                            exclude_seasons=()))
+    if n < AN.MIN_DONORS:
+        rep.warnings.append(
+            f"{TOO_LITTLE_HISTORY}: at the newest week it finds {n} weeks like it in earlier seasons and needs "
+            f"{AN.MIN_DONORS}, so it will not forecast this data on its "
+            "own.")
