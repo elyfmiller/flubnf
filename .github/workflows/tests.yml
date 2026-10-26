@@ -60,28 +60,27 @@ jobs:
         env: {FLUBNF_BNG_REAL: "1", FLUBNF_HUB: /nonexistent}
         run: pytest app/tests/test_real_bng.py -ra -o addopts=""
 
-      # The engine's packages as FluBNF.bat installs them (its :enginedeps
-      # line, read here so the two cannot drift), fetched as Windows wheels
-      # for the engine venv's Python: a pin that loses its win_amd64 wheel
-      # fails here, not on a student's PC. pip reads environment markers on
-      # this runner, so a Windows-only dependency is not fetched.
+      # The public engine's lock, engine-requirements.txt, read through
+      # scripts/engine_lock.py as the installers read it, fetched as Windows
+      # wheels for Python 3.12 and checked against the lock's hashes: a pin
+      # that loses its win_amd64 wheel, or a hash that does not match, fails
+      # here, not on a student's PC. The PyBNF wheel's line is left out (pure
+      # Python, on a release page; the installers' check covers it). pip
+      # reads environment markers on this runner, so a Windows-only
+      # dependency missing from the lock is not caught here. Until the engine
+      # lane posts the lock there is nothing to check, and the step says so.
       - name: the engine's pins have Windows wheels
         if: ${{ !cancelled() && matrix.python-version == '3.12' }}
         run: |
-          python - FluBNF.bat > "$RUNNER_TEMP/engine-pins.txt" <<'EOF'
-          import shlex, sys
-          deps = open(sys.argv[1], encoding="utf-8").read().split("\n:enginedeps", 1)[1]
-          # either form of the pip call ("...\pip" install or -m pip install)
-          line = next(ln for ln in deps.splitlines()
-                      if " install " in ln and "bngsim==" in ln
-                      and not ln.lstrip().lower().startswith(("rem ", "echo")))
-          print("\n".join(a for a in shlex.split(line.split(" install ", 1)[1])
-                          if not a.startswith("-")))
-          EOF
+          if [ ! -f engine-requirements.txt ]; then
+            echo "::notice::engine-requirements.txt is not on this branch yet: no engine pins to check"
+            exit 0
+          fi
+          python scripts/engine_lock.py deps engine-requirements.txt > "$RUNNER_TEMP/engine-pins.txt"
           cat "$RUNNER_TEMP/engine-pins.txt"
           pip download --disable-pip-version-check --dest "$RUNNER_TEMP/win-wheels" \
             --platform win_amd64 --only-binary=:all: --python-version 3.12 \
-            -r "$RUNNER_TEMP/engine-pins.txt"
+            --require-hashes -r "$RUNNER_TEMP/engine-pins.txt"
 
   # Required, like the ubuntu job: a red Windows leg fails the run.
   test-windows:
