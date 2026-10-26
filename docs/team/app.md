@@ -6,6 +6,23 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-26 (late, Ely's go): the public engine's real install in CI, on
+  `engine-public` ([55bce80](https://github.com/elyfmiller/flubnf/commit/55bce80)),
+  so Windows no longer waits for the engine lane's lock. The
+  `public-engine-wheel` job builds the PyBNF wheel from lanl/PyBNF
+  8410f794 on macOS and writes a hashed lock for it
+  (`scripts/make_test_lock.py`, never the engine lane's lock).
+  `public-engine-install` then runs FluBNF.bat's public block in cmd.exe on
+  Windows, and `setup_engine.sh --public` on macOS, against that lock,
+  served over https on localhost, into a venv under `Jane O'Brien (Lab)`.
+  It runs a fresh install, an open with nothing to do, a new lock (the
+  wheel alone goes back), a tampered hash (refused) and PyBNF's lesson 50
+  in the venv (`tests/test_public_engine_real.py`). Here on the Mac all
+  five pass (108 s cold, 34 s with pip's cache). The Windows leg's first
+  run is CI's on [#61](https://github.com/elyfmiller/flubnf/pull/61).
+  Found: PyBNF asks for BNG2.pl (`BNGPATH` or `bng_command`) even with
+  `bngl_backend = bngsim`, so the public route still needs BioNetGen and
+  Perl.
 - 2026-10-26 (evening): Wednesday's overrides on `main` (d7d13e5), end
   to end through the Forecast form, in my own console (port 8790, a temp
   state folder, private engine 2fdadee0): both models, all 53
