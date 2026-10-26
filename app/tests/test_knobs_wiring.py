@@ -209,7 +209,8 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
     ({"knob.oracle.w": ["0.25", "0.25"]}, "knob.oracle.w"),
     ({"knobs": "{not json"}, "not readable JSON"),
 ])
-def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
+def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg,
+                                       pf_engine_ready):
     started = _capture_run(monkeypatch, tmp_path)
     r = _post(data)
     assert r.status_code == 303
@@ -240,7 +241,8 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
 
 
 def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
-                                                               monkeypatch):
+                                                               monkeypatch,
+                                                               pf_engine_ready):
     from app.core import retro as core_retro
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
@@ -630,7 +632,8 @@ def test_a_tree_from_before_the_registry_resumes_unmarked(tmp_path, monkeypatch)
         retro.run_season(root, SEASON, ["Ohio"], width=1, engine="analogue")
 
 
-def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch):
+def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch,
+                                                           pf_engine_ready):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
@@ -678,7 +681,7 @@ def test_fit_manifest_leaves_post_fit_knobs_out():
 
 
 def test_the_retro_route_refuses_a_resume_over_other_locations(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, pf_engine_ready):
     """Completed weeks are skipped on resume, so another location scope (or
     the national row switched) would pool weeks fitted over different
     lists; the recorded list resumes."""

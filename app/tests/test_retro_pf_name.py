@@ -177,7 +177,7 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
     assert FILTER not in by_stamp[STAMP_ORACLE]
 
 
-def test_the_replay_form_names_the_oracle_sihrs(world):
+def test_the_replay_form_names_the_oracle_sihrs(world, pf_engine_ready):
     """The run form's full preset is the Oracle SIHRS beside the Groundhog;
     its value is still the member's internal key."""
     t = _text(client.get("/retro").text)

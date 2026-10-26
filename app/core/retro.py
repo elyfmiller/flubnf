@@ -972,6 +972,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     beat = _Heartbeat(root)
     beat.start()
     done = []
+    failed: list = []
     try:
         for i, asof in enumerate(vintages):
             _check_stop(root)                 # stop before dispatching a NEW week
@@ -1016,6 +1017,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a", encoding="utf-8").write(
                     f"{asof}: {e}\n")
+                failed.append(f"{asof}: {e}")
             if progress:
                 progress(asof)
     except (SeasonStopped, EngineBuildChanged):
@@ -1026,7 +1028,10 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
         _finish_record(root, "stopped" if stop_path(root).exists() else "error")
         raise
     else:
-        _finish_record(root, "done")
+        # every week failed: an error naming the first (the card's badge
+        # shows it), never "complete" with no weeks
+        _finish_record(root, "done" if done or not failed
+                       else f"error: {failed[0][:150]}")
     finally:
         beat.stop()
     return done

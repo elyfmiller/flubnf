@@ -459,6 +459,14 @@ def _pf_engine_state() -> str:
     return "ready" if pf_engine.engine_available() else "broken"
 
 
+def _pf_engine_missing(pf_state: str) -> str:
+    """How the pages finish "... needs the particle-filter engine, ...":
+    '' when it is ready."""
+    return ("" if pf_state == "ready"
+            else "which is not installed on this machine"
+            if pf_state == "absent" else "whose install is incomplete")
+
+
 def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
                    locs, n2f: dict, minus1: bool, pmf: bool,
                    floor_kw: dict, vintage=None) -> tuple:
@@ -542,8 +550,13 @@ def _run_all(spec: RunSpec) -> None:
     from app.ui.routes.forecast import _scope_label
     _status["run_label"] = (
         f"{spec.forecast_date} · {_scope_label(spec.locations)}")
-    # also set by the route; here so direct calls are described too
-    _status["settings"] = spec_settings(spec)
+    # also set by the route; here so direct calls are described too. With
+    # no engine on this machine both models run as the Groundhog alone:
+    # the card says so, as the record will (spec_settings reads it)
+    _status["settings"] = spec_settings(
+        spec, {"pf_skipped": "engine venv not installed (Tier A)"}
+        if spec.engine in ("all", "pf") and _pf_engine_state() == "absent"
+        else None)
     try:
         # setup INSIDE the try so a failed insert/lease releases the claim;
         # the row's engine_versions (not this process's) is "Produced by"

@@ -62,7 +62,7 @@
       published numbers anywhere #}
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
-     <option value="analogue">Groundhog only (minutes)</option></select>
+     <option value="analogue"{% if not engine_ok %} selected{% endif %}>Groundhog only (minutes)</option></select>
    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
       decision with no default, asked here rather than in the panel; a
       season replayed before the rule existed resumes as abstain #}
@@ -82,10 +82,11 @@
    {# data-guard checks /api/busy (a paused season counts as busy) and offers
       stop-and-proceed; data-startover asks resume/archive/discard when the
       season has completed weeks. Without the engine only the Groundhog-only
-      preset can run: the button is off, its "?" says why #}
+      preset can run, and it comes selected: the button is off only while
+      the Oracle preset is picked, its "?" says why #}
    {{ tips.reason_button("Run retrospective", "rt-run-why",
         "The Oracle SIHRS needs the particle-filter engine: choose Groundhog only, or install the engine (the alert above the page says how).",
-        off=not engine_ok, cls="gold", data={"guard": "retro-run", "startover": "1"},
+        off=False, cls="gold", data={"guard": "retro-run", "startover": "1"},
         attrs='id="retro-run-btn"' | safe) }}
    {% if not engine_ok %}
    <script>
