@@ -196,10 +196,12 @@ def test_the_badges_and_lines_say_what_their_tips_did():
                 imported={"from": "lab-mac", "exported_at":
                           "2098-12-01T10:00:00", "source": "live"})
     assert "Exported there on 2098-12-01 from the live season; read only." in imp
-    # a scoring failure points at the Data tab in place of a "?"
+    # a scoring failure points at the Data tab in place of a "?", its raw
+    # message in a fold
     err = _page(heads={}, figs=None, us=None, us_row=None, score_error="boom")
-    fail = err.split('id="rs-scorefail"', 1)[1].split("</div>", 1)[0]
+    fail = err.split('id="rs-scorefail"', 1)[1].split("</span></div>", 1)[0]
     assert "<code>boom</code>" in fail and 'href="/data"' in fail
+    assert '<span class="uk-fold-sum">Details</span>' in fail
     # the map's tag says which week it shows
     assert ('<span class="uk-tag">horizon 0, the week after the newest '
             'data</span>') in _page()
