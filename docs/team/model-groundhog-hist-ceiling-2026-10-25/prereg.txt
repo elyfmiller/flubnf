@@ -1,0 +1,111 @@
+PRE-REGISTRATION: THE HISTORICAL CEILING (output.tail_hist) ON THE GROUNDHOG'S
+RETRO SEASONS, KERNEL FORM, RATIOS FROM EACH WEEK'S VINTAGE
+Model lane (laptop), written 2026-10-25 23:40 UTC, before any replay of this
+screen or any score of it. Asked by Ely in chat; the handoff is
+docs/team/submission.md "For other lanes", 2026-10-25 (Ely's plan, 21:02 UTC).
+Deadline: Tuesday 2026-10-27 evening.
+
+WHAT IS ALREADY KNOWN (read before writing this, so the predictions are not
+blind): the Submission lane's post hoc Groundhog screen on the same three
+seasons in the kernel form, ratios from the final truth, 17,116 cells
+(submission.md, entry committed 19:51 UTC, d3f5ae1): none 0.6423 cov95 .936;
+clip 15x 0.6423 / .931; shrink 15x 0.6472 / .922; maximum alone 0.6406 / .928
+(-0.0015 [-0.005, +0.000] against clip 15x); maximum + shrink 15x 0.6445 /
+.916. Sep-Oct: shrink 15x 0.923, maximum + shrink 0.926, clip 15x 0.961, none
+0.978. November: maximum alone 0.537, the shrinks 0.548-0.555. The October
+2026 maxima at the 10-17 vintage: 11.7x, 19.5x, 26.2x, 37.8x at h0-h3.
+
+CODE. dev fafa1db (carries merge 463ddba, the ceiling, and main's a99d53d
+content), in a scratch worktree (wt-hist, this session's scratchpad); the
+main checkout runs nothing. Hub mirror at 3a83d410 (the record's). The
+ceiling, the cap and the hub rows are called from the repository unchanged:
+app.core.submit.rows_from_quantiles, flubnf.tailcap.history_ratios,
+history_limits, clip_rows_by_horizon, recent_level, limit_for, cap_rows.
+
+REPLAY ("through your own retro"). The Groundhog in the shipped kernel form,
+no local_pools override (the record must name own_share 0.5, anchor_weight
+kernel, kernel_sd 1.0, ess_floor 30), the FluSurv-NET aux preset, every
+vintage of 2023-24, 2024-25 and 2025-26 (app.core.retro.season_vintages),
+through app.core.groundhog.forecast_week and score_week as the tail-cell
+screen ran (prereg 28f0f33d6ea7e232), the quantiles of every week stored.
+REPRODUCTION GATE: uncapped per-season relWIS on states must equal the
+record, 0.6802, 0.6272, 0.6448 (pooled 0.6423, 17,116 cells), to four
+decimals. If not, stop and report before any capped score.
+Supplementary, not in any decision: 2026-27's four weeks (2026-09-26 to
+2026-10-17), reported separately.
+
+THE POST-CALIBRATION STEP, the pipeline's own order (app/ui/pipeline.py:
+hub rows, then the ceiling, then the n-cap), for every replay week W:
+- hub rows in whole admissions from the stored quantiles
+  (rows_from_quantiles(q, fips, W)), every location including US;
+- hist_series: the week's vintage file (app.core.data.vintage_path(W)), rows
+  dated on or before W, every location except US, finite values, oldest
+  first, exactly as the pipeline builds it;
+- ratios = history_ratios(hist_series, W, level=1.0) (window 2 epiweeks,
+  floor 10, strictly earlier seasons, horizons 0-3);
+- per location, recent level = recent_level of the location's vintage
+  series (dated on or before W); ceiling limits = history_limits(ratios,
+  recent); n-cap limit = limit_for(n, series);
+- clip_rows_by_horizon for the ceiling, then cap_rows for the n-cap.
+
+ARMS (all from the same stored quantiles, so the cells are common by
+construction):
+  N     none: the hub rows, no ceiling, no cap
+  C15   clip 15x
+  S15   shrink 15x (location-wide)
+  H     the ceiling at the maximum (output.tail_hist 1) alone
+  HS15  the ceiling, then shrink 15x
+  HC15  the ceiling, then clip 15x
+Descriptive only, not in any decision:
+  K0    the replay's raw quantiles (the record convention)
+  Hf    the ceiling at the maximum with the ratios from the final truth
+        (app.core.scoring.load_truth, states only, rows dated on or before W),
+        to measure the vintage against the final truth.
+
+SCORING. app.core.groundhog.score_week against the scoring truth (FluSight's
+cell rule); the 52 state jurisdictions pooled, US separately. relWIS as a
+ratio of WIS sums against the FluSight baseline; log relWIS; 50 and 95
+percent coverage. Breakdowns: pooled over the three seasons; each season;
+by as-of month, September-October (2023-24 only among the three; 2025-26's
+first round was in November, 2024-25's in mid-November), November, and
+December onward. Week-cluster bootstrap, 2,000 resamples stratified by
+season, seed 20261025, of the differences H-N, H-C15, HS15-S15, HS15-C15,
+HC15-C15, HC15-H (negative = the first arm better). Also reported: the share
+of (location, horizon) blocks the ceiling changed, by horizon, overall and
+Sep-Oct; the ceiling's ratios by horizon (median over the season's weeks,
+the October weeks' values, the minimum); the typical h3 97.5% quantile over
+the recent level and the share of state h3 blocks above 30x (the gate's
+measure); the vintage-to-final ratio difference by horizon (median absolute
+relative difference) and Hf against H.
+
+CODE CHECK (the plan needs the code known bug-free): an independent
+re-implementation of the ratios in pandas, from the written rule (ISO
+epiweeks, distance with wrap at 52, the mean of the last three reported
+values ending at W, the floor, the August season boundary, y at W + 7(h+1)
+days), compared with history_ratios on every replay week to 1e-9; and on the
+H rows: every block's levels above the median at or under max(the limit
+rounded to whole admissions, the median), monotone, the median and below
+unchanged, blocks with no finite limit unchanged. Any mismatch is reported
+as a defect before any recommendation.
+
+PREDICTIONS, written now:
+  G1 H - N pooled is in [-0.004, +0.002], and the interval of H - C15
+     includes zero or lies below it.
+  G2 HS15 beats S15 pooled by 0.001 to 0.006 and is worse than C15.
+  G3 Sep-Oct (2023-24): HS15 is within 0.005 of S15.
+  G4 HC15 - H pooled is within +-0.003.
+  G5 95% coverage: H at least 0.925, HS15 at least 0.910.
+  G6 vintage against final ratios: median absolute relative difference
+     under 5% at every horizon; Hf within 0.002 of H pooled.
+
+DECISION RULE (for the Groundhog's part of Tuesday's call; Ely's plan is the
+ceiling at 1 + shrink 15x if both screens are good and the code is clean,
+else shrink 15x alone):
+  The pairing HS15 is SUPPORTED for the Groundhog when (a) HS15 - S15 pooled
+  <= 0.000; (b) no complete season has HS15 worse than S15 by more than
+  0.003; (c) Sep-Oct HS15 - S15 <= +0.005; (d) HS15 95% coverage >= 0.90 and
+  50% >= 0.40; (e) the code check finds no defect. Otherwise NOT SUPPORTED,
+  and the reason is named. The ceiling alone (H) is reported against N and
+  C15 with the same (b)-(d) tests, for the record; it is not Wednesday's
+  question.
+Nothing ships without Ely.
