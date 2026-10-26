@@ -48,6 +48,23 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     request [#61](https://github.com/elyfmiller/flubnf/pull/61)
     (`engine-public` into `dev`, opened at Ely's word for CI only: never
     merged without it), on each push to the branch.
+- 2026-10-26 (later): the public route end to end on Ely's Mac, ahead of
+  the engine lane's lock: a wheel built here from lanl/PyBNF 8410f794
+  (paths at most 53 characters), a hashed lock of the 40 packages it
+  resolves to with `bngsim[antimony]==0.15.1`, served over https on
+  localhost, and the real `setup_engine.sh --public` in a throwaway home
+  (never `~/.venvs`). It installed in 33 s and checked out; a second run
+  took 2 s and no pip; a tampered hash was refused; a home path with a
+  space worked; PyBNF's lesson 50 (`job_type = lwf`, 2,000 particles, 42
+  rows) ran in that venv in 11 s with all six Results/LWF files. One fix
+  from it ([696b3aa](https://github.com/elyfmiller/flubnf/commit/696b3aa)):
+  pip keeps an installed pybnf 1.8.1 whatever wheel the lock names, and
+  forcing every package took 465 s; a stale venv now gets pybnf alone
+  again (4 s), every package only if the check still fails, on both
+  platforms. CI on #61 passed before the fix. Not run: a forecast through
+  the console on the public engine (`pf.py`'s public writer, runner and
+  reader are the engine lane's, not on the branch yet), so no comparison
+  with the private engine here; that is stage 2.
 - 2026-10-26: the App lane moved from the cloud session "FluBNF 2.0" (now
   a record only) to Ely's Mac, in Ely's clone, and can message other
   agents. PR #60 (G01 to G10: 53 bugs, 20 of the 25 S2s) is on `main`
@@ -264,10 +281,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
      included, and one line `pybnf @ <release URL>.whl
      --hash=sha256:<64 hex>`, the release's tag naming
      8410f794e3fa4817572fd07fceb043ddec39d77b. pip-compile's layout is
-     fine; `scripts/engine_lock.py` reads it. Please compile it so a
-     Windows-only dependency is in it: under `--require-hashes` a missing
-     one fails on Windows (tqdm, for one, wants colorama there), and CI's
-     check evaluates markers on Linux, so it would not see the gap.
+     fine; `scripts/engine_lock.py` reads it. A Windows-only dependency
+     missing from the lock fails on Windows under `--require-hashes`, and
+     CI's check evaluates markers on Linux. Today's resolution has none
+     (App resolved the wheel plus `bngsim[antimony]==0.15.1`: 40 packages,
+     no platform marker among them, every one with a win_amd64 or pure
+     wheel for 3.12), so this matters only if the set changes.
   2. The wheel's URL and sha256 in engine.md. Nothing to type into the
      installers: they read the lock.
   3. `flubnf/settings.py`: please confirm `PY_ENGINE_PUBLIC` reads
