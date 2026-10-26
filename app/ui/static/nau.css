@@ -1177,7 +1177,9 @@ details.adv[open]>summary::before{content:"\25BE"}
 .ms-group > summary{font-size:.92rem}
 .ms-fields{border:0;margin:0;padding:0 0 .3rem;min-width:0}
 .ms-row input,.ms-row select{max-width:100%}
-.ms-later{opacity:.62}
+/* a row that cannot apply: coming later, or a donor weight the bare
+   analogue does not use (model_settings.js turns its field off) */
+.ms-later,.ms-row:has(> [data-knob]:disabled){opacity:.62}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
 .ms-override .ck{font-weight:600}
 /* the "?" explainer (templates/_tips.html, static/tips.js): a small round

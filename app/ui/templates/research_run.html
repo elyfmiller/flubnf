@@ -24,7 +24,7 @@
    <div class="md-field">
     <label for="rr-locs">Locations</label>
     <input id="rr-locs" name="locations"
-      value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+      value="{{ 'all' if 'all' in form.locations else form.locations | join(', ') }}"
       placeholder='state names, comma-separated, or "all"'>
    </div>
    <div class="md-field">
