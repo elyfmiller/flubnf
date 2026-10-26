@@ -349,22 +349,43 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
 def _location_list(locations: list) -> list:
     """The run's location names from the form's list: "all" is the hub's
     53 (the 52 jurisdictions and US national, fitted directly); a custom
-    pick fits US only when it is ticked."""
+    pick fits US only when it is ticked. A typed name (a model page's text
+    field) takes the hub's spelling whatever its case, by name or two-letter
+    code, once; a name the hub has no location for is refused (LookupError
+    naming them), where it used to pass into the run and drop out unseen."""
     from app.core import us_national as _usn
     picked = _usn.state_names(locations)
     want_all = "all" in [l.lower() for l in picked]
     want_us = want_all or any(_usn.is_us(l) for l in locations)
+    _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+    _l = _l[(_l.location.str.len() == 2) & (_l.abbreviation != "US")]
     if want_all:
-        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-        locs_list = list(_l.location_name[(_l.location.str.len() == 2)
-                                          & (_l.abbreviation != "US")])
+        locs_list = list(_l.location_name)
     else:
-        locs_list = list(picked)
+        known = {**{str(a).casefold(): n for a, n in
+                    zip(_l.abbreviation, _l.location_name)},
+                 **{str(n).casefold(): n for n in _l.location_name}}
+        locs_list, unknown = [], []
+        for l in picked:
+            name = known.get(str(l).strip().casefold())
+            if name is None:
+                unknown.append(l)
+            elif name not in locs_list:
+                locs_list.append(name)
+        if unknown:
+            raise LookupError(", ".join(unknown))
     if want_us:
         # a re-run keeps its recorded spelling; the form's box becomes "US"
         spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
         locs_list.append("US" if spelled == US_CHOICE else spelled)
     return locs_list
+
+
+def _from_forecast_tab(request: Request) -> bool:
+    """Whether the posting page is the Forecast tab (its form shows the
+    anchor week), read as shared._back reads the posting page."""
+    from urllib.parse import urlsplit
+    return urlsplit(request.headers.get("referer", "")).path == "/forecast"
 
 
 def _official_overlay(fc_date: str, locs: list) -> dict:
@@ -982,12 +1003,15 @@ def run_models(request: Request,
                background: BackgroundTasks,
                forecast_date: str = Form(""),
                locations: list = Form([]),
-               weeks_to_drop: int = Form(0),
+               # the panel's number fields arrive as typed: the knob parser
+               # refuses what is not a whole number in words (1e4, which
+               # the browser allows, gave a raw JSON 422 page)
+               weeks_to_drop: str = Form("0"),
                weeks_to_nowcast: int = Form(0),
-               replicates: int = Form(3),
+               replicates: str = Form("3"),
                engine: str = Form("all"),
                members: int = Form(2),
-               particles: int = Form(10_000),
+               particles: str = Form("10000"),
                season_start: str = Form(""),   # blank = Aug 1 of the season
                mode: str = Form("realtime"),   # recorded: vintage or real-time
                # re-run-only fields (not on the form): None/0 = today's
@@ -1021,7 +1045,8 @@ def run_models(request: Request,
         return _back(request, "/forecast")
     typed_day = forecast_date
     if _d.weekday() != 5:
-        # the form already shows this anchor; no banner
+        # the Forecast form shows this anchor; a model page's run says it
+        # once started (below)
         _pick, _ = resolve_anchor(forecast_date)
         forecast_date = _pick or forecast_date
     # refused before any notice about the anchor or the settings
@@ -1148,6 +1173,11 @@ def run_models(request: Request,
         return _back(request, "/forecast")
     try:
         locs_list = _location_list(locations)
+    except LookupError as e:
+        unknown = str(e).split(", ")
+        _flash(f"Not run: unknown location{'s' if len(unknown) > 1 else ''}: "
+               f"{', '.join(unknown[:5])}.", "warn")
+        return _back(request, "/forecast")
     except Exception as e:
         _flash(f"Not run: could not read the state list "
                f"({type(e).__name__}).", "error")
@@ -1214,6 +1244,11 @@ def run_models(request: Request,
         # above (refused, never clamped: replicates = 0 once ran zero fits)
         # mode follows the anchor: real-time means the newest week the hub
         # holds (the live target file's, when the archive has not caught up)
+        # the Forecast form shows the anchor beside the date; a model
+        # page's quick run does not, so it says which week it took
+        if typed_day != forecast_date and not _from_forecast_tab(request):
+            _flash(f"Anchor week {forecast_date}: the newest week on or "
+                   f"before {typed_day}.")
         if newest and mode == "realtime" and forecast_date != newest:
             mode = "vintage"
             extra["mode"] = mode
