@@ -364,3 +364,177 @@ def test_a_venv_that_cannot_import_names_a_missing_visual_cpp_runtime():
     assert "Test-Path -LiteralPath $vcrt" in branch
     link = "https://aka.ms/vc14/vc_redist.x64.exe"
     assert link in branch and link in BAT
+
+
+# ------------------------------------------ the public engine (-Engine public)
+PUBLIC = PS1[PS1.index('Say "public engine'):PS1.index('Say "engine venv')]
+ENV = PS1[PS1.index('Say "environment"'):PS1.index('Say "doctor"')]
+PUBLIC_EXPANSIONS = {
+    "PublicVenv": PROFILE + r"\AppData\Local\FluBNF\venv-public",
+    "PublicPy": PROFILE + r"\AppData\Local\FluBNF\venv-public\Scripts\python.exe",
+    "PublicConda": PROFILE + r"\AppData\Local\FluBNF\python312-public",
+    "EngineLock": PROFILE + r"\AppData\Local\FluBNF\flubnf\engine-requirements.txt",
+    "LockTool": PROFILE + r"\AppData\Local\FluBNF\flubnf\scripts\engine_lock.py",
+    "PublicBootCmd": "py -3.12",
+    "force": "",
+}
+
+
+def _public_commands() -> list[str]:
+    out = []
+    for m in re.finditer(r'^\s*Info "(.*)"\s*$', PUBLIC, flags=re.MULTILINE):
+        text = m.group(1).replace('`"', '"')
+        text = re.sub(r"\$(env:\w+|\w+)",
+                      lambda v: PUBLIC_EXPANSIONS.get(v.group(1), v.group(0)),
+                      text)
+        if text.startswith("  ") and text.strip().startswith(
+                ("py ", "conda ", '"', "set ")):
+            out.append(text.strip())
+    return out
+
+
+def test_setup_takes_an_engine_and_otherwise_keeps_the_choice_made():
+    """-Engine private|public; without it the record in .flubnf.env.cmd,
+    which FluBNF.bat reads on every open and so outranks the account's
+    variable, then FLUBNF_ENGINE, then private. A value that is neither is
+    said and read as private, as the launcher reads it."""
+    head = PS1[:PS1.index("function Say")]
+    assert '[ValidateSet("private", "public")][string]$Engine = ""' in head
+    assert "-Engine private|public" in head
+    route = PS1[PS1.index("$EngineRoute = if ($Engine)"):]
+    order = [route.index(s) for s in (
+        "if ($Engine) { $Engine }", "elseif ($EngineRecord) { $EngineRecord }",
+        "elseif ($env:FLUBNF_ENGINE) { $env:FLUBNF_ENGINE }",
+        'else { "private" }')]
+    assert order == sorted(order), order
+    assert PS1.index('$EngineRecord = Get-EnvCmdValue "FLUBNF_ENGINE"') \
+        < PS1.index("$EngineRoute = if ($Engine)")
+    assert '$EngineRoute = "private"' in route[:route.index('Say "plan')]
+    assert "neither private nor public" in PS1[:PS1.index('Say "controlled')]
+
+
+def test_setup_reads_flubnf_env_cmd_as_cmd_does():
+    """The last `set "NAME=..."` wins, the form both setup.ps1 and
+    FluBNF.bat write; read in the OEM code page they are written in."""
+    body = _body("Get-EnvCmdValue")
+    assert "[IO.File]::ReadAllLines($EnvCmd, (Get-OemEncoding))" in body
+    m = re.search(r"\$pat = '(.*?)' \+ \[regex\]::Escape\(\$Name\) \+ '(.*?)'",
+                  body)
+    pat = re.compile(m.group(1) + re.escape("FLUBNF_PY_ENGINE_PUBLIC") + m.group(2))
+    written = [
+        'set "FLUBNF_PY_ENGINE_PUBLIC=C:\\Users\\Jane Doe\\AppData\\Local\\FluBNF\\venv-public\\Scripts\\python.exe"',
+        'rem FluBNF.bat verified the public engine below; a later set wins.',
+        'set "FLUBNF_PY_ENGINE_PUBLIC=D:\\venv (2)\\Scripts\\python.exe"']
+    found = [pm.group(1) for ln in written if (pm := pat.match(ln))]
+    assert found[-1] == "D:\\venv (2)\\Scripts\\python.exe", found
+    assert len(found) == 2
+    # what the launcher appends has exactly that shape
+    assert ('echo set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%">>".flubnf.env.cmd"'
+            in BAT)
+    assert "$val = $Matches[1]" in body
+    assert ('[IO.File]::WriteAllText($EnvCmd, (($EnvLines -join "`r`n") + '
+            '"`r`n"), (Get-OemEncoding))') in ENV, "the write uses the same code page"
+
+
+def test_setup_keeps_the_public_lines_it_did_not_change():
+    """.flubnf.env.cmd is rewritten whole, so the switch and the public
+    engine's Python are carried over unless this run changed them: -Engine
+    public writes FLUBNF_ENGINE, -Engine private drops it, and nothing else
+    touches it. It is never the account's variable; -Engine private clears
+    one set there by hand."""
+    assert ('$EngineLine = if ($Engine -eq "public") { "public" }' in ENV
+            and 'elseif ($Engine -eq "private") { $null }' in ENV
+            and "else { $EngineRecord }" in ENV)
+    assert 'if ($EngineLine) { $EnvLines += "set `"FLUBNF_ENGINE=$EngineLine`"" }' in ENV
+    assert "$PublicLine = if ($PublicReady) { $PublicPy }" in ENV
+    assert 'else { Get-EnvCmdValue "FLUBNF_PY_ENGINE_PUBLIC" }' in ENV
+    assert ('if ($PublicLine) { $EnvLines += '
+            '"set `"FLUBNF_PY_ENGINE_PUBLIC=$PublicLine`"" }') in ENV
+    write = ENV.index("[IO.File]::WriteAllText($EnvCmd")
+    assert ENV.index("$EnvLines += \"set `\"FLUBNF_ENGINE=") < write
+    sets = re.findall(r'SetEnvironmentVariable\("FLUBNF_ENGINE", ([^,]+),', PS1)
+    assert sets == ["$null"], sets
+    clear = _block(ENV, ENV.index('if ($Engine -eq "private") {'))
+    assert 'GetEnvironmentVariable("FLUBNF_ENGINE", "User")' in clear
+    record = _block(ENV, ENV.index("if ($PublicReady) {"))
+    assert 'SetEnvironmentVariable("FLUBNF_PY_ENGINE_PUBLIC", $PublicPy, "User")' in record
+    assert PS1.count('$EnvCmd = Join-Path $Here ".flubnf.env.cmd"') == 1
+    assert PS1.index('$EnvCmd = Join-Path $Here ".flubnf.env.cmd"') \
+        < PS1.index('$EngineRecord = Get-EnvCmdValue "FLUBNF_ENGINE"')
+
+
+def test_the_public_section_never_reaches_for_the_private_fork():
+    """No GitHub probe, clone, engine file or attempt record on the public
+    route: the private engine is reported as the fallback and left alone.
+    The lock is read only through scripts\\engine_lock.py, with the console
+    venv's Python, and a venv inside a private one is refused first."""
+    code = "\n".join(ln for ln in PUBLIC.splitlines()
+                     if not ln.lstrip().startswith("#"))
+    for word in ("Test-RemoteAccess", "git clone", "PyBNF-Private",
+                 "Find-EngineFile", "Clear-EngineAttempt", "github.com",
+                 ".whl", "sha256"):
+        assert word not in code, word
+    taken = PUBLIC.index("if ($PublicVenvTaken) {")
+    wheel = PUBLIC.index('Invoke-Captured $VenvPy @($LockTool, "wheel", $EngineLock)')
+    check = PUBLIC.index('Invoke-Captured $PublicPy @($LockTool, "check", $EngineLock)')
+    assert taken < wheel < check
+    assert '$LockTool = Join-Path $Here "scripts\\engine_lock.py"' in PS1
+    guard = PS1[PS1.index("$PublicVenvTaken = $null"):PS1.index('Say "plan')]
+    assert 'Resolve-ProfilePath ".venvs\\flubnf"' in guard
+    assert 'Resolve-ProfilePath ".venvs\\flubnf-engine"), $EngineVenv' in guard
+    assert "Test-PathInside $PublicVenv $v" in guard
+    assert 'Join-Path $FluBnfRoot "venv-public"' in PS1
+    fallback = ENGINE[ENGINE.index('if ($EngineRoute -eq "public") {'):
+                      ENGINE.index("} elseif ($EngineReady) {")]
+    assert "Warn" not in fallback and "Invoke-Captured" not in fallback
+    assert ENGINE.index('if ($EngineRoute -eq "public") {') \
+        < ENGINE.index('Warn "engine venv not ready."')
+
+
+def test_the_public_commands_are_hash_checked_and_survive_a_space():
+    """The by-hand steps build what FluBNF.bat builds: x64 3.12, conda's
+    own 3.12 under %LOCALAPPDATA%\\FluBNF (never the private engine's),
+    pip from the lock with every hash checked and nothing built, then the
+    check. Each path stays one argument with a space in the profile."""
+    commands = _public_commands()
+    pip = [ln for ln in commands if " -m pip install " in ln]
+    assert len(pip) == 1, commands
+    args = _cmd_split(pip[0])
+    assert args[0] == PUBLIC_EXPANSIONS["PublicPy"]
+    assert args[1:] == ["-m", "pip", "install", "--require-hashes",
+                        "--only-binary", ":all:", "-r",
+                        PUBLIC_EXPANSIONS["EngineLock"]], args
+    check = [ln for ln in commands if " check " in ln]
+    assert _cmd_split(check[0]) == [PUBLIC_EXPANSIONS["PublicPy"],
+                                    PUBLIC_EXPANSIONS["LockTool"], "check",
+                                    PUBLIC_EXPANSIONS["EngineLock"]]
+    venv = [ln for ln in commands if " -m venv " in ln]
+    assert [_cmd_split(ln)[-1] for ln in venv] == [PUBLIC_EXPANSIONS["PublicVenv"]] * 2
+    conda = [ln for ln in commands if ln.startswith("conda create")]
+    assert _cmd_split(conda[0])[4] == PUBLIC_EXPANSIONS["PublicConda"], conda
+    assert 'set "CONDA_SUBDIR=win-64"' in commands
+    assert ".venvs" not in " ".join(commands)
+    assert ' --force-reinstall' in PUBLIC   # a venv that is there but wrong
+    assert BAT.count('if defined PUBLICROUTE set "CONDAENV=%LOCALAPPDATA%'
+                     '\\FluBNF\\python312-public"') == 1
+
+
+def test_the_public_python_is_gated_as_the_launcher_gates_it():
+    """x64 3.12 alone, in the launcher's order: py -3.12, python, conda's
+    base. The gate runs here with the version and platform swapped in."""
+    gate = re.search(r'\$PublicGate = "([^"]+)"', PUBLIC).group(1)
+    for version, platform, fits in [((3, 12, 10), "win-amd64", "1"),
+                                    ((3, 11, 9), "win-amd64", "0"),
+                                    ((3, 13, 1), "win-amd64", "0"),
+                                    ((3, 12, 10), "win-arm64", "0")]:
+        swap = (f"import sys, sysconfig; sys.version_info = {version!r}; "
+                f"sysconfig.get_platform = lambda: {platform!r}; "
+                "exec(sys.argv.pop(1))")
+        out = subprocess.run([sys.executable, "-c", swap, gate],
+                             capture_output=True, text=True, timeout=60,
+                             check=False)
+        assert out.stdout.strip() == fits, (version, platform, out)
+    cands = PUBLIC[PUBLIC.index("$pubCands = @("):PUBLIC.index("foreach ($c in $pubCands)")]
+    order = [cands.index(s) for s in ('@("-3.12")', 'exe = "python"',
+                                      'Join-Path $CondaRoot "python.exe"')]
+    assert order == sorted(order) and '"-3.11"' not in cands
