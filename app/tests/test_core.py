@@ -1,4 +1,5 @@
 """App core: the constitutional rules must hold as code."""
+import os
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -79,12 +80,18 @@ def test_choropleth_renders_gaps_explicitly():
     assert svg.count("<rect") > 50                            # all tiles render
 
 
-def test_analogue_engine_runs_real_vintage():
-    from flubnf.settings import ARCHIVE
-    if not ARCHIVE.is_dir():
-        pytest.skip("FluSight hub clone not present")
+def test_analogue_engine_runs_real_vintage(monkeypatch):
+    # the clone FLUBNF_TEST_HUB names: the suite itself reads no hub
+    hub = os.environ.get("FLUBNF_TEST_HUB")
+    arch = hub and Path(hub) / "auxiliary-data" / "target-data-archive"
+    if not (arch and arch.is_dir()):
+        pytest.skip("FluSight hub clone not present (FLUBNF_TEST_HUB)")
+    from app.core import data as core_data
     from app.core.engines import analogue
     from app.core.runs import RunSpec
+    monkeypatch.setattr(core_data, "ARCHIVE", arch)
+    monkeypatch.setattr(analogue, "LOCATIONS",
+                        Path(hub) / "auxiliary-data" / "locations.csv")
     spec = RunSpec(engine="analogue", forecast_date="2026-01-24",
                    locations=["Ohio", "Wyoming"], season_start="2025-08-01")
     out = analogue.run(spec)
