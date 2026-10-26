@@ -1,0 +1,473 @@
+diff --git a/app/tests/test_busy_guard.py b/app/tests/test_busy_guard.py
+index e418a6c..177a268 100644
+--- a/app/tests/test_busy_guard.py
++++ b/app/tests/test_busy_guard.py
+@@ -172,6 +172,15 @@ def test_the_guard_hint_says_what_stopping_the_run_in_the_way_costs(tmp_path):
+     assert label == "sandbox fit (20991231-000000_mine)"
+ 
+ 
++def test_a_console_run_is_a_conflict_for_the_run_buttons_too():
++    """Run models and a model page's quick run during a console run raise
++    the guard (stop it, or cancel), where the click once went by in silence."""
++    html = client.get("/forecast").text
++    assert ("if(kind==='console-run')\n"
++            "      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);"
++            in html)
++
++
+ def test_guarded_attributes_on_exactly_the_classified_controls():
+     import re
+ 
+diff --git a/app/tests/test_data_source.py b/app/tests/test_data_source.py
+index 5de390f..d767055 100644
+--- a/app/tests/test_data_source.py
++++ b/app/tests/test_data_source.py
+@@ -425,6 +425,111 @@ def test_a_quick_run_from_a_model_page_says_which_week_it_ran(tmp_path, monkeypa
+     assert "Anchor week" not in (ui_state._status.get("flash") or "")
+ 
+ 
++# --- the remembered form (bug hunt 2026-10-25, G03) ---------------------------
++
++def test_a_run_during_a_run_is_said_and_leaves_the_form_alone(tmp_path, monkeypatch):
++    """A second Run while a run is in progress once went by in silence and
++    overwrote the remembered form with settings that never ran."""
++    started = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
++    ui_state._last_form.clear()
++    ui_state._last_form.update({"forecast_date": W3, "locations": ["all"],
++                                "engine": "all", "knobs": {}})
++    ui_state._status.update({"running": "starting",
++                             "run_label": f"{W3} · all 53 jurisdictions · queued",
++                             "flash": None})
++    r = client.post("/run", data={"forecast_date": W1, "mode": "vintage",
++                                  "locations": ["Ohio"], "engine": "analogue",
++                                  "knob.groundhog.bandwidth": "4"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and started == []
++    flash = ui_state._status.get("flash") or ""
++    assert flash.startswith("Not run: a run is already in progress"), flash
++    assert "all 53 jurisdictions" in flash
++    assert ui_state._last_form["locations"] == ["all"]
++    assert ui_state._last_form["engine"] == "all"
++    assert ui_state._last_form["knobs"] == {}
++    assert ui_state._last_form["forecast_date"] == W3
++
++
++def test_a_refused_date_keeps_the_other_edits(tmp_path, monkeypatch):
++    """A Saturday the archive has not: the refusal moves the date, and the
++    locations, model and settings posted with it stay on the form."""
++    started = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
++    ui_state._last_form.clear()
++    ui_state._last_form.update({"forecast_date": W3, "locations": ["Arizona"],
++                                "engine": "pf", "knobs": {}})
++    ui_state._status["running"] = None
++    r = client.post("/run", data={"forecast_date": "2098-09-05", "mode": "vintage",
++                                  "locations": ["US (national)"],
++                                  "engine": "analogue",
++                                  "knob.groundhog.bandwidth": "5"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and started == []
++    assert (ui_state._status.get("flash") or "").startswith("Not run:")
++    f = ui_state._last_form
++    assert f["forecast_date"] == W1                 # moved by the refusal
++    assert f["locations"] == ["US (national)"] and f["engine"] == "analogue"
++    assert f["knobs"]["groundhog.bandwidth"] == "5"
++
++
++def test_the_form_remembers_locations_as_the_checklist_holds_them(tmp_path, monkeypatch):
++    """A model page's text field posts one comma-separated string; a re-run
++    posts the 52 and US one by one. Both come back as the checklist's own
++    values, so the boxes tick and the Run row reads 'Same as last run'."""
++    from flubnf.settings import load_locations
++    started = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
++    names = [n for n in load_locations().location_name if n != "US"]
++    for posted, remembered in (
++            (["Arizona, Ohio"], ["Arizona", "Ohio"]),
++            (names + ["US"], ["all"]),
++            (["all"], ["all"]),
++            (["Ohio", "US (national)"], ["Ohio", "US (national)"]),
++            (["US (national)"], ["US (national)"])):
++        ui_state._status["running"] = None
++        r = client.post("/run", data={"forecast_date": W3, "locations": posted,
++                                      "engine": "analogue"},
++                        headers={"referer": "http://testserver/model/analogue"},
++                        follow_redirects=False)
++        assert r.status_code == 303 and started, posted
++        assert ui_state._last_form["locations"] == remembered, posted
++        started.clear()
++    # the kept file holds the same, so a restart ticks the boxes too
++    from app.ui import forecast_aids as FA
++    assert FA.load_last_form()["locations"] == ["US (national)"]
++    # a typo stays on the form, where the model page shows it to be fixed
++    ui_state._status["running"] = None
++    client.post("/run", data={"forecast_date": W3, "locations": ["Ohio, Oiho"],
++                              "engine": "analogue"}, follow_redirects=False)
++    assert started == [] and ui_state._last_form["locations"] == ["Ohio", "Oiho"]
++
++
++def test_data_issues_choices_survive_a_run_that_did_not_post_the_box(tmp_path, monkeypatch):
++    """The saved choices for the newest week are replaced only by a form
++    that carried the box for that week; a vintage run or a model page's run
++    leaves them alone."""
++    started = _capture(monkeypatch, tmp_path)
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
++    ui_state._last_form.clear()
++    ui_state._last_form.update({"forecast_date": W3, "locations": ["all"],
++                                "engine": "analogue",
++                                "data_choices": {W3: {"02": "omit"}}})
++    for date, extra in ((W3, {}),                                  # a model page
++                        (W2, {"gap._sha": "x", "gap.02": "carry"})):  # a vintage run
++        ui_state._status["running"] = None
++        client.post("/run", data={"forecast_date": date, "locations": ["Ohio"],
++                                  "engine": "analogue", **extra},
++                    follow_redirects=False)
++        assert started and ui_state._last_form["data_choices"] == {W3: {"02": "omit"}}, date
++    ui_state._status["running"] = None
++    client.post("/run", data={"forecast_date": W3, "locations": ["Ohio"],
++                              "engine": "analogue", "gap._sha": "x",
++                              "gap.02": "carry"}, follow_redirects=False)
++    assert ui_state._last_form["data_choices"] == {W3: {"02": "carry"}}
++
++
+ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
+     _capture(monkeypatch, tmp_path)
+     hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)
+diff --git a/app/tests/test_forecast_aids.py b/app/tests/test_forecast_aids.py
+index b4ab0e8..5319a87 100644
+--- a/app/tests/test_forecast_aids.py
++++ b/app/tests/test_forecast_aids.py
+@@ -129,6 +129,75 @@ def test_last_run_values_say_how_a_modified_runs_files_were_named():
+     assert "tick.checked !== LAST.hub_names) diff.push('File names')" in src
+ 
+ 
++def _ledger_row(engine, locations, extra):
++    from app.core.runs import RunSpec
++    spec = RunSpec(engine=engine, forecast_date="2098-01-03",
++                   locations=list(locations), extra=extra)
++    return {"spec": spec.to_json(), "status": "ok"}
++
++
++def test_a_state_left_out_in_data_issues_is_still_the_forms_pick():
++    """Alaska 'Leave out' takes it out of the run, not out of the pick: the
++    unchanged form read 'Differs: Locations' after such a run."""
++    from flubnf.settings import load_locations
++    from app.ui.routes import forecast as fc
++    names = [n for n in load_locations().location_name if n != "US"]
++    extra = fc._run_extra(2, "realtime")
++    extra["data_choices"] = {"week": "2098-01-03", "source_sha256": "x",
++                             "states": {"Alaska": {"choice": "omit"},
++                                        "Ohio": {"choice": "carry"}}}
++    row = _ledger_row("analogue", [n for n in names if n != "Alaska"] + ["US"],
++                      extra)
++    assert FA.last_run_values([row])["locations"] == ["all"]
++    row = _ledger_row("analogue", ["Ohio"], extra)
++    assert FA.last_run_values([row])["locations"] == ["Alaska", "Ohio"]
++
++
++def test_without_an_auxiliary_bank_untouched_own_state_rows_are_no_difference():
++    """Auxiliary donor bank = none runs the pooled form: the panel's
++    Own-state weight and Size-matched kernel defaults are not what ran,
++    and an untouched row is not a difference. A typed one is compared."""
++    from app.core import knobs as K
++    from app.ui.routes import forecast as fc
++    extra = fc._run_extra(2, "realtime", aux="")
++    K.write_extra({"groundhog.aux": "none"}, extra)
++    kn = FA.last_run_values([_ledger_row("analogue", ["US"], extra)])["knobs"]
++    assert kn["groundhog.aux"] == "none"
++    assert "groundhog.own_share" not in kn and "groundhog.kernel_sd" not in kn
++    extra = fc._run_extra(2, "realtime", aux="")
++    K.write_extra({"groundhog.aux": "none", "groundhog.own_share": 0.8}, extra)
++    kn = FA.last_run_values([_ledger_row("analogue", ["US"], extra)])["knobs"]
++    assert kn["groundhog.own_share"] == "0.8" and "groundhog.kernel_sd" not in kn
++    # with the shipped bank both rows ran as the panel shows them
++    kn = FA.last_run_values([_ledger_row("analogue", ["US"],
++                                         fc._run_extra(2, "realtime"))])["knobs"]
++    assert kn["groundhog.own_share"] == "0.5" and kn["groundhog.kernel_sd"] == "1"
++
++
++def test_a_model_page_restores_the_kept_form_after_a_restart_too(monkeypatch, tmp_path):
++    """The model pages' quick run showed 'all' after a restart until the
++    Forecast tab had been opened once."""
++    from fastapi.testclient import TestClient
++    from app.core import runs as _runs
++    from app.ui import state as ui_state
++    from app.ui.server import app as srv
++    monkeypatch.setattr(_runs, "APP_STATE", tmp_path)
++    FA.save_last_form({"locations": ["Ohio", "Utah"], "engine": "analogue",
++                       "replicates": 3})
++    old = time.time() - 3600
++    os.utime(tmp_path / FA.LAST_FORM_NAME, (old, old))
++    monkeypatch.setattr(FA, "_STARTED", time.time())
++    monkeypatch.setitem(FA._restored, "done", False)
++    before = dict(ui_state._last_form)
++    ui_state._last_form.clear()
++    try:
++        html = TestClient(srv).get("/model/analogue").text
++        assert 'id="mf-locs" name="locations" value="Ohio, Utah"' in html
++        assert ui_state._last_form["locations"] == ["Ohio", "Utah"]
++    finally:
++        ui_state._last_form.clear(); ui_state._last_form.update(before)
++
++
+ def test_the_last_form_survives_a_restart_without_its_date(monkeypatch, tmp_path):
+     from app.core import runs as _runs
+     monkeypatch.setattr(_runs, "APP_STATE", tmp_path)
+diff --git a/app/ui/forecast_aids.py b/app/ui/forecast_aids.py
+index 45b0ea8..ddfcc40 100644
+--- a/app/ui/forecast_aids.py
++++ b/app/ui/forecast_aids.py
+@@ -281,6 +281,14 @@ def last_run_values(ledger_rows: list) -> dict | None:
+     from app.core import knobs as K
+     from app.core import us_national as _usn
+     locs = list(spec.get("locations") or [])
++    # the pick as the form made it: a state a Data issues choice left out
++    # of the run was ticked all the same
++    dc = (spec.get("extra") or {}).get("data_choices") if isinstance(
++        spec.get("extra"), dict) else None
++    for name, st in ((dc or {}).get("states") or {}).items() \
++            if isinstance(dc, dict) else ():
++        if str((st or {}).get("choice")) == "omit" and name not in locs:
++            locs.append(name)
+     states = _usn.state_names(locs)
+     us = len(locs) > len(states)
+     try:
+@@ -294,10 +302,20 @@ def last_run_values(ledger_rows: list) -> dict | None:
+     except Exception:
+         table = []
+     reg = {k.key: k for k in K.REGISTRY}
++    # with no auxiliary bank the own-state rows (a share, a kernel) act only
++    # when typed: the bare analogue runs the pooled form, so an untouched
++    # row is not a difference from the panel's shipped default
++    typed = (spec.get("extra") or {}).get("knobs") or {} if isinstance(
++        spec.get("extra"), dict) else {}
++    no_aux = {k for k in ("groundhog.own_share", "groundhog.kernel_sd")
++              if k not in typed} if K._aux_preset_of(
++                  spec.get("extra") or {}) == "none" else set()
+     kn = {}
+     for r in table:
+         if not r.get("applies") or r["key"] == "run.season_start":
+             continue
++        if r["key"] in no_aux:
++            continue
+         k = reg.get(r["key"])
+         if k is None or r["key"] in K.DECISION_KEYS:
+             continue
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 5455e36..08c7d30 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -381,6 +381,19 @@ def _location_list(locations: list) -> list:
+     return locs_list
+ 
+ 
++def _form_locations(locs_list: list) -> list:
++    """A run's location list as the Forecast checklist holds it: ["all"]
++    for the 52 and US (a re-run of all 53 once came back as 52 boxes and
++    US ticked one by one, "Differs: Locations"), else the hub's names with
++    the national box's value."""
++    from app.core import us_national as _usn
++    states = _usn.state_names(locs_list)
++    us = len(locs_list) > len(states)
++    if us and len(states) >= 52:
++        return ["all"]
++    return list(states) + ([US_CHOICE] if us else [])
++
++
+ def _from_forecast_tab(request: Request) -> bool:
+     """Whether the posting page is the Forecast tab (its form shows the
+     anchor week), read as shared._back reads the posting page."""
+@@ -1053,6 +1066,67 @@ def run_models(request: Request,
+     if engine not in ENGINES:
+         _flash(f"Not run: '{engine}' is not an available engine.", "warn")
+         return _back(request, "/forecast")
++    # a run in progress is said now, before the form remembers what was
++    # posted (the lock below checks again before the claim)
++    if _status.get("running"):
++        _flash("Not run: a run is already in progress"
++               + (f" ({_status.get('run_label')})" if _status.get("run_label") else "")
++               + ".", "warn")
++        return _back(request, "/forecast")
++    # A direct call (rerun) may pass Form default objects: read them as blank
++    season_start = _str_field(season_start).strip()
++    # the page fills Season start with August 1 of the TYPED day's season;
++    # when the day snapped back across August 1 (a September day anchors on
++    # July's data) that fill is not a choice: the anchor's default applies
++    from app.core.runs import default_season_start as _dss
++    if (season_start and typed_day != forecast_date
++            and season_start == _dss(typed_day)
++            and season_start != _dss(forecast_date)):
++        season_start = ""
++    try:
++        kraw = _knob_raw(knob_fields, knobs)
++    except ValueError as e:                  # KnobError is a ValueError
++        # the panel opens on its error, the reason under its head
++        _last_form["ms_refused"] = str(e) or True
++        _flash(f"Not run: model settings: {e}.", "warn")
++        return _back(request, "/forecast")
++    # checkboxes arrive as a list, text inputs as comma-separated strings
++    locations = [x.strip() for l in locations
++                 for x in str(l).split(",") if x.strip()]
++    try:
++        locs_list = _location_list(locations) if locations else []
++        unknown = []
++    except LookupError as e:
++        locs_list, unknown = [], str(e).split(", ")
++    except Exception as e:
++        _flash(f"Not run: could not read the state list "
++               f"({type(e).__name__}).", "error")
++        return _back(request, "/forecast")
++    # the form remembers this run's settings from here on, whatever is
++    # refused below (a refused date once threw the other edits away): the
++    # locations as the Forecast checklist holds them ("all" for the 53, the
++    # hub's names, the national box), or the typed names when one is unknown
++    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
++    reason = _str_field(modified_reason).strip()
++    kept, kept_fields = _kept_settings(
++        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
++    _last_form.update({"forecast_date": forecast_date,
++                       "locations": (locations if unknown
++                                     else _form_locations(locs_list)),
++                       "engine": engine, "weeks_to_drop": weeks_to_drop,
++                       "weeks_to_nowcast": weeks_to_nowcast,
++                       "replicates": replicates, "members": members,
++                       "season_start": season_start,
++                       "particles": particles,
++                       "drop_same_day": _int_field(drop_same_day),
++                       "knobs": {**kept, **{k: v for k, v in kraw.items()
++                                            if isinstance(v, str)}},
++                       "submit_modified": override,
++                       "modified_reason": reason, "ms_refused": False,
++                       **kept_fields})
++    # kept across a restart (its non-date fields; display memory only)
++    from app.ui import forecast_aids as _fa
++    _fa.save_last_form(_last_form)
+     # an unknown mode reads as the pill's default, so the anchor rule below
+     # records what the run reads (never "realtime" on an archived week)
+     mode = mode if mode in ("realtime", "vintage") else "realtime"
+@@ -1102,44 +1176,11 @@ def run_models(request: Request,
+             _flash(f"Not run: no archived data for {forecast_date}; the "
+                    f"archive starts at {near}.", "warn")
+         return _back(request, "/forecast")
+-    # A direct call (rerun) may pass Form default objects: read them as blank
+-    season_start = _str_field(season_start).strip()
+-    # the page fills Season start with August 1 of the TYPED day's season;
+-    # when the day snapped back across August 1 (a September day anchors on
+-    # July's data) that fill is not a choice: the anchor's default applies
+-    from app.core.runs import default_season_start as _dss
+-    if (season_start and typed_day != forecast_date
+-            and season_start == _dss(typed_day)
+-            and season_start != _dss(forecast_date)):
+-        season_start = ""
+-    try:
+-        kraw = _knob_raw(knob_fields, knobs)
+-    except ValueError as e:                  # KnobError is a ValueError
+-        # the panel opens on its error, the reason under its head
+-        _last_form["ms_refused"] = str(e) or True
+-        _flash(f"Not run: model settings: {e}.", "warn")
+-        return _back(request, "/forecast")
+-    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+-    reason = _str_field(modified_reason).strip()
+-    kept, kept_fields = _kept_settings(
+-        _last_form, kraw, getattr(knob_fields, "sent", None), engine, oracle)
+-    _last_form.update({"forecast_date": forecast_date, "locations": locations,
+-                       "engine": engine, "weeks_to_drop": weeks_to_drop,
+-                       "weeks_to_nowcast": weeks_to_nowcast,
+-                       "replicates": replicates, "members": members,
+-                       "season_start": season_start,
+-                       "particles": particles,
+-                       "drop_same_day": _int_field(drop_same_day),
+-                       "knobs": {**kept, **{k: v for k, v in kraw.items()
+-                                            if isinstance(v, str)}},
+-                       "submit_modified": override,
+-                       "modified_reason": reason, "ms_refused": False,
+-                       **kept_fields})
+-    # kept across a restart (its non-date fields; display memory only)
+-    from app.ui import forecast_aids as _fa
+-    _fa.save_last_form(_last_form)
+-    # the Data issues choices come back on the form, keyed by their week
+-    if isinstance(gap_fields, dict) and newest:
++    # the Data issues choices come back on the form, keyed by their week:
++    # only from a form that carried the box (its gap._sha) for this week;
++    # a vintage run or a model page's run leaves the saved choices alone
++    if (isinstance(gap_fields, dict) and gap_fields.get("_sha")
++            and newest and forecast_date == newest):
+         _last_form["data_choices"] = {
+             newest: {k: v for k, v in gap_fields.items()
+                      if k != "_sha" and isinstance(v, str) and v}}
+@@ -1164,23 +1205,13 @@ def run_models(request: Request,
+     weeks_to_drop = int(kspec.get("weeks_to_drop", 0))
+     replicates = int(kspec.get("replicates", RunSpec.replicates))
+     particles = int(kspec.get("particles", RunSpec.particles))
+-    # checkboxes arrive as a list, text inputs as comma-separated strings
+-    locations = [x.strip() for l in locations
+-                 for x in str(l).split(",") if x.strip()]
+-    if not locations:
+-        _flash("Not run: select a location, or all 53 jurisdictions.",
+-               "warn")
+-        return _back(request, "/forecast")
+-    try:
+-        locs_list = _location_list(locations)
+-    except LookupError as e:
+-        unknown = str(e).split(", ")
++    if unknown:
+         _flash(f"Not run: unknown location{'s' if len(unknown) > 1 else ''}: "
+                f"{', '.join(unknown[:5])}.", "warn")
+         return _back(request, "/forecast")
+-    except Exception as e:
+-        _flash(f"Not run: could not read the state list "
+-               f"({type(e).__name__}).", "error")
++    if not locations:
++        _flash("Not run: select a location, or all 53 jurisdictions.",
++               "warn")
+         return _back(request, "/forecast")
+     # the per-state data choices (the Data issues box, or a re-run's
+     # record): refused BEFORE the engine is claimed when a choice is not
+@@ -1210,6 +1241,7 @@ def run_models(request: Request,
+     with _engine_lock:
+         if _status.get("running"):
+             _status["log"].append("A run is already in progress; not starting another.")
++            _flash("Not run: a run is already in progress.", "warn")
+             return RedirectResponse("/forecast#results", status_code=303)
+         live_retro = sorted(x for x in retro_seasons._known_seasons()
+                             if _season_status(x) in _RETRO_ACTIVE)
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 151a5e8..76e92cb 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -179,6 +179,9 @@ def model_page(request: Request, name: str):
+                 if all(isinstance(v, dict) for v in qs.values())}
+     # the member overlay belonged to the retired blend's page: always empty
+     overlay = {}
++    # after a restart the kept form comes back here as on the Forecast tab
++    from app.ui import forecast_aids as _fa
++    _fa.restore_last_form(_last_form, _default_forecast_date)
+     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
+                                 "locations": ["all"], "replicates": 3}
+     # BNGL-backed models show their template source, read at render time
+diff --git a/app/ui/templates/base.html b/app/ui/templates/base.html
+index bddb4b7..28e1fa8 100644
+--- a/app/ui/templates/base.html
++++ b/app/ui/templates/base.html
+@@ -493,8 +493,8 @@
+   }catch(e){}},0);});
+  // run-interference guards: a data-guard control checks /api/busy on
+  // click; only a genuine conflict raises the modal. Kinds and conflicts:
+- //   console-run: starting a console run while a retrospective or a
+- //                sandbox fit is running
++ //   console-run: starting a console run while another console run, a
++ //                retrospective or a sandbox fit is running
+  //   retro-run:   starting a retrospective while a console run, another
+  //                retrospective or a sandbox fit runs
+  //   sandbox-run: starting a sandbox fit while any of those runs
+@@ -551,7 +551,8 @@
+       done:function(x){return !x.sandbox;}}:null;
+   }
+   function conflictFor(kind,b){
+-    if(kind==='console-run') return retroConflict(b)||sandboxConflict(b);
++    if(kind==='console-run')
++      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
+     if(kind==='retro-run')
+       return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
+     if(kind==='sandbox-run')
