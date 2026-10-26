@@ -1,0 +1,409 @@
+diff --git a/app/core/retro.py b/app/core/retro.py
+index 5d0e51d..14f4100 100644
+--- a/app/core/retro.py
++++ b/app/core/retro.py
+@@ -237,24 +237,68 @@ def is_stale(meta: dict, now: float | None = None,
+         return True
+ 
+ 
++def _pid_alive(pid: int) -> bool:
++    """Whether a process with this id exists (any user's)."""
++    if sys.platform == "win32":
++        # os.kill on Windows terminates: ask the kernel for a handle instead
++        import ctypes
++        query = 0x1000                      # PROCESS_QUERY_LIMITED_INFORMATION
++        h = ctypes.windll.kernel32.OpenProcess(query, False, int(pid))
++        if not h:
++            return False
++        ctypes.windll.kernel32.CloseHandle(h)
++        return True
++    try:
++        os.kill(int(pid), 0)
++    except ProcessLookupError:
++        return False
++    except PermissionError:
++        return True
++    return True
++
++
++def worker_dead(meta: dict) -> bool:
++    """Whether the record names a worker process (`pid`, this app's or
++    the CLI's) that no longer exists: the app was closed mid-replay. A
++    record without a pid (from before it was kept) leaves the heartbeat to
++    decide."""
++    pid = (meta or {}).get("pid")
++    try:
++        pid = int(pid)
++    except (TypeError, ValueError):
++        return False
++    if pid <= 0 or pid == os.getpid():
++        return False
++    try:
++        return not _pid_alive(pid)
++    except Exception:
++        return False
++
++
+ def effective_status(meta: dict, now: float | None = None,
+                      limit: float = HEARTBEAT_STALE_S) -> str:
+-    """The recorded status, corrected for a dead worker: a stale heartbeat
+-    turns any live-sounding status into 'interrupted'."""
++    """The recorded status, corrected for a dead worker: a worker process
++    that is gone, or a stale heartbeat, turns any live-sounding status
++    into 'interrupted'."""
+     st = str((meta or {}).get("status") or "")
+-    if st in ACTIVE_STATUSES and is_stale(meta, now, limit):
++    if st in ACTIVE_STATUSES and (worker_dead(meta)
++                                  or is_stale(meta, now, limit)):
+         return "interrupted"
+     return st
+ 
+ 
+ def elapsed_now(meta: dict, now: float | None = None) -> float:
+     """Accumulated ACTIVE wall time. Time held at a pause does not count, and
+-    a resumed run carries its earlier segments forward."""
++    a resumed run carries its earlier segments forward. A dead worker's
++    open segment ends at its last heartbeat, not now."""
+     total = float((meta or {}).get("elapsed_s") or 0.0)
+     seg = (meta or {}).get("segment_start_utc")
+     if seg and str((meta or {}).get("status") or "") in ("running", "stopping"):
++        end = now if now is not None else _now()
++        if worker_dead(meta) or is_stale(meta, now):
++            end = (meta or {}).get("heartbeat_utc") or seg
+         try:
+-            total += max(0.0, (now if now is not None else _now()) - float(seg))
++            total += max(0.0, float(end) - float(seg))
+         except (TypeError, ValueError):
+             pass
+     return total
+@@ -344,6 +388,7 @@ def _start_record(root: Path, season: str, total_weeks: int,
+         m["segment_start_utc"] = now
+         m["finished_utc"] = None
+         m["heartbeat_utc"] = now
++        m["pid"] = os.getpid()             # the worker: dead means interrupted
+         m["elapsed_s"] = float(m.get("elapsed_s") or 0.0)
+         m["week_seconds"] = dict(m.get("week_seconds") or {})
+         m["weeks_completed"] = _weeks_on_disk(root)
+diff --git a/app/tests/test_results_prep.py b/app/tests/test_results_prep.py
+index 3c1c2d6..74c79e6 100644
+--- a/app/tests/test_results_prep.py
++++ b/app/tests/test_results_prep.py
+@@ -195,6 +195,53 @@ def test_small_season_first_visit_renders_complete_in_one_round_trip(
+     assert "Download report" in html
+ 
+ 
++def test_a_running_seasons_page_shows_its_weeks_without_a_finalize_job(
++        tmp_path, _stubbed, _routed, monkeypatch):
++    """While a replay ran, every visit started a finalize job (each new
++    week made the caches stale), so the page looped on 'preparing
++    results': a live season renders what it has, with its progress card;
++    the worker finalizes the season when it ends."""
++    import os
++    root = _mk_tree(_routed)
++
++    def _never(*a, **k):
++        raise AssertionError("no finalize job while the replay runs")
++
++    monkeypatch.setattr(retro, "finalize_season", _never)
++    ui_retro_seasons._retro_status[SEASON] = "running"
++    retro.write_meta(root, {"status": "running", "total_weeks": 10,
++                            "weeks_completed": 2, "elapsed_s": 50.0,
++                            "segment_start_utc": None,
++                            "heartbeat_utc": time.time(),
++                            "pid": os.getpid()})
++    try:
++        r = client.get(f"/retro/{SEASON}")
++        assert r.status_code == 200
++        assert "preparing results</h1>" not in r.text
++        assert ": 0 weeks scored</h1>" in r.text
++        assert "Replay in progress" in r.text
++        assert "preparing results</h1>" not in client.get(
++            f"/retro/{SEASON}?rescore=1").text
++    finally:
++        ui_retro_seasons._retro_status.pop(SEASON, None)
++    assert ui_retro_prep._results_jobs == {}
++
++
++def test_the_season_title_counts_the_weeks_scored(tmp_path, _stubbed,
++                                                  _routed):
++    """'31 weeks scored' counted the stored weeks (27 were scored), and the
++    pairwise view said it above 'No scores under this convention'."""
++    root = _mk_tree(_routed)
++    retro.finalize_season(root, SEASON)
++    assert ui_retro.season_page_context(root, SEASON)["n_weeks"] == 2
++    df = pd.read_json(root / "scores.json")
++    df[df["asof"] == W1].to_json(root / "scores.json", orient="records")
++    ui_retro_prep._SCORES_FRAMES.clear()
++    assert ui_retro.season_page_context(root, SEASON)["n_weeks"] == 1
++    assert ui_retro.season_page_context(root, SEASON,
++                                        conv="pairwise")["n_weeks"] == 0
++
++
+ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
+         tmp_path, _stubbed, _routed, monkeypatch):
+     _mk_tree(_routed)
+diff --git a/app/tests/test_run_timing.py b/app/tests/test_run_timing.py
+index 795252f..591bae9 100644
+--- a/app/tests/test_run_timing.py
++++ b/app/tests/test_run_timing.py
+@@ -24,6 +24,7 @@ from app.ui import server as srv                      # noqa: E402
+ from app.ui.routes import retro as ui_retro           # noqa: E402
+ from app.ui import pipeline as ui_pipeline            # noqa: E402
+ from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
++from app.ui import shared as ui_shared                # noqa: E402
+ from app.ui import state as ui_state                  # noqa: E402
+ from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
+ 
+@@ -863,3 +864,118 @@ def test_both_run_pages_draw_from_the_shared_quip_list():
+     assert "FLUBNF_RETRO_QUIPS" not in fc
+     # the paused card holds its quip still
+     assert "st.quips.pause()" in ticker
++
++
++# ------------------------------------------- a dead worker, a sealed record
++
++def test_a_dead_workers_record_reads_interrupted_at_once(monkeypatch):
++    """After a relaunch the record of a replay the closed app was running
++    read 'running' with a ticking clock and an ETA for four minutes, and
++    refused every Run, until its heartbeat went stale: the record names
++    its worker, and a worker that is gone means interrupted now."""
++    import os
++    now = 5_000.0
++    live = {"status": "running", "heartbeat_utc": now - 5, "pid": 424242}
++    monkeypatch.setattr(retro, "_pid_alive", lambda pid: False)
++    assert retro.worker_dead(live) is True
++    assert retro.effective_status(live, now=now) == "interrupted"
++    # this process is the worker: alive by definition
++    own = {**live, "pid": os.getpid()}
++    assert retro.worker_dead(own) is False
++    assert retro.effective_status(own, now=now) == "running"
++    # a record from before the pid was kept leaves it to the heartbeat
++    assert retro.effective_status({"status": "running",
++                                   "heartbeat_utc": now - 5}, now=now) \
++        == "running"
++    # the real check, on this process
++    monkeypatch.undo()
++    assert retro._pid_alive(os.getpid()) is True
++
++
++def test_an_interrupted_replays_wall_time_stops_at_its_heartbeat():
++    """The clock of a dead replay grew without bound (the open segment
++    was counted to now); it ends at the last heartbeat."""
++    now = 5_000.0
++    meta = {"status": "running", "elapsed_s": 12.0,
++            "segment_start_utc": now - 300,
++            "heartbeat_utc": now - retro.HEARTBEAT_STALE_S - 10}
++    assert retro.elapsed_now(meta, now=now) == pytest.approx(
++        12.0 + 300 - retro.HEARTBEAT_STALE_S - 10)
++    assert retro.elapsed_now(meta, now=now + 600) == \
++        retro.elapsed_now(meta, now=now)
++    alive = {**meta, "heartbeat_utc": now - 5}
++    assert retro.elapsed_now(alive, now=now) == pytest.approx(312.0)
++
++
++def test_the_progress_poll_describes_the_live_tree_beside_a_sealed_record(
++        tmp_path, monkeypatch):
++    """A fresh replay over a sealed season read '100% · 32/32 weeks' with
++    a live clock and no ETA: the weeks came from the sealed tree (the one
++    with most weeks) while the status and clock came from the live run."""
++    import os
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "live")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "seal")
++    seal = tmp_path / "seal" / SEASON
++    for i in range(5):
++        wd = seal / "weeks" / f"2098-11-{7 + 7 * i:02d}"
++        wd.mkdir(parents=True)
++        (wd / "samples.json").write_text("{}")
++    retro.write_meta(seal, {"status": "done", "total_weeks": 5,
++                            "weeks_completed": 5, "elapsed_s": 900.0})
++    # no live tree: the sealed record's facts
++    p = client.get(f"/api/retro/progress?season={SEASON}").json()[SEASON]
++    assert (p["done"], p["total"], p["sealed"]) == (5, 5, True)
++    # a live replay over it: its own weeks, total and clock
++    live = tmp_path / "live" / SEASON
++    for w in (W1, W2):
++        (live / "weeks" / w).mkdir(parents=True)
++        (live / "weeks" / w / "samples.json").write_text("{}")
++    ui_retro_seasons._retro_status[SEASON] = "running"
++    retro.write_meta(live, {"status": "running", "total_weeks": 5,
++                            "weeks_completed": 2, "elapsed_s": 30.0,
++                            "segment_start_utc": None,
++                            "week_seconds": {W1: 15.0, W2: 15.0},
++                            "heartbeat_utc": time.time(),
++                            "pid": os.getpid()})
++    ui_shared._invalidate_scans()          # as every Run does
++    p = client.get(f"/api/retro/progress?season={SEASON}").json()[SEASON]
++    assert p["status"] == "running"
++    assert (p["done"], p["total"], p["sealed"]) == (2, 5, False)
++    assert p["elapsed_s"] == pytest.approx(30.0) and p["eta_s"]
++    # stopped at two weeks: still the live tree's facts, not the seal's
++    ui_retro_seasons._retro_status[SEASON] = "stopped"
++    retro.write_meta(live, {"status": "stopped", "total_weeks": 5,
++                            "weeks_completed": 2, "elapsed_s": 30.0})
++    ui_shared._invalidate_scans()
++    p = client.get(f"/api/retro/progress?season={SEASON}").json()[SEASON]
++    assert (p["status"], p["done"], p["sealed"]) == ("stopped", 2, False)
++
++
++def test_a_finished_replay_that_gained_weeks_offers_one_click_resume(
++        tmp_path, monkeypatch):
++    """The card said '1 week added' with no Resume, and the form started
++    at its defaults: any mismatch with the recorded settings was refused."""
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
++    monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
++    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2, W3])
++    root = tmp_path / SEASON
++    for w in (W1, W2):
++        (root / "weeks" / w).mkdir(parents=True)
++        (root / "weeks" / w / "samples.json").write_text("{}")
++    retro.write_meta(root, {
++        "status": "done", "total_weeks": 2, "weeks_completed": 2,
++        "elapsed_s": 40.0, "finished_utc": time.time(),
++        "settings": {"season": SEASON, "locations": ["Arizona", "Texas"],
++                     "engine": "analogue", "replicates": 3,
++                     "particles": 10000, "width": 4}})
++    html = client.get("/retro").text
++    assert "1 week added" in html
++    form = html.split('class="resume-run"', 1)[1].split("</form>", 1)[0]
++    assert f'name="season" value="{SEASON}"' in form
++    assert 'name="mode" value="resume"' in form
++    assert 'name="custom_locations" value="Arizona"' in form
++    assert 'name="national" value="0"' in form
++    # nothing added: a finished replay offers no Resume
++    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
++    assert 'class="resume-run"' not in client.get("/retro").text
+diff --git a/app/ui/retro_seasons.py b/app/ui/retro_seasons.py
+index bc515ea..fe8ebbb 100644
+--- a/app/ui/retro_seasons.py
++++ b/app/ui/retro_seasons.py
+@@ -111,6 +111,17 @@ def _live_root(season: str) -> Path:
+     return RETRO_ROOT / season
+ 
+ 
++def shown_root(season: str) -> tuple:
++    """(root, is_seal) the index card and the progress poll describe: the
++    live tree while its replay runs or holds completed weeks (its status,
++    clock and ETA are the live record's, so its weeks and scores are too),
++    else the tree with the most weeks (_season_root: a sealed record)."""
++    live = _live_root(season)
++    if _season_status(season) in _RETRO_ACTIVE or _weeks_done(live):
++        return live, False
++    return _season_root(season)
++
++
+ @ttlcache.ttl_cache()
+ def _seasons_on_disk(retro_root: Path) -> tuple:
+     """Seasons under a retro root carrying a run record (cached per root)."""
+@@ -400,7 +411,7 @@ def _retro_progress(season: str) -> dict:
+     status = _season_status(season)
+     meta = _season_meta(season)
+     t = retro.timing(meta) if meta else {}
+-    root, _is_seal = _season_root(season)
++    root, _is_seal = shown_root(season)
+     done = _weeks_done(root)
+     vints = retro.season_vintages(season)
+     # the season's week list can grow after a replay finished (the hub
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index 197e3d1..1001a0f 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -122,7 +122,9 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+     # first option is the one selected)
+     for s in sorted(available_seasons(), reverse=True):
+         total = len(season_vintages(s))
+-        root, is_seal = retro_seasons._season_root(s)
++        # the live tree's facts while it runs or holds weeks (never a
++        # sealed record's weeks beside a live clock)
++        root, is_seal = retro_seasons.shown_root(s)
+         done = retro_seasons._weeks_done(root)
+         prog = retro_seasons._retro_progress(s)
+         status = prog["status"]
+@@ -132,13 +134,14 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+         rels = _summ.get("headline_rels") or ({"": rel} if rel is not None
+                                               else {})
+         # one-click resume from the LIVE root's record (never the seal's)
+-        resume_fields = None
+-        if status in ("stopped", "interrupted"):
+-            resume_fields = _retro.resume_form_fields(
+-                _retro.read_meta(_live_root(s)))
+         # weeks the season gained after this replay finished (hub archive
+         # or shipped snapshots): Resume runs them (retro_seasons._retro_progress)
+         added = list(prog.get("added") or [])
++        resume_fields = None
++        if status in ("stopped", "interrupted") or (
++                status == "done" and added and not is_seal):
++            resume_fields = _retro.resume_form_fields(
++                _retro.read_meta(_live_root(s)))
+         seasons.append({"name": s, "total": max(total, int(prog.get("total") or 0)),
+                         "done": done,
+                         "added": added, "added_n": len(added),
+@@ -862,12 +865,18 @@ def retro_results(request: Request, season: str, week: str = "",
+             f"{season}: that archived run has no completed weeks, or it "
+             "has been deleted.")
+     score_error = ""
++    # a live replay's page shows the weeks scored so far with its progress
++    # card: every stored week makes the caches stale again, so a finalize
++    # job per visit would never let the page through (the worker finalizes
++    # the season when it ends)
++    live = not archive and _season_status(season) in _RETRO_ACTIVE
+     # Heavy scoring never runs in-request: stale caches or ?rescore=1 start
+     # the background finalize job and the page shows a polled preparing
+     # state (after a short grace wait). A job covering these exact inputs is
+     # believed, so an unsettled-truth season never loops.
+-    if ((request.query_params.get("rescore") and not _is_sealed_root(root))
+-            or _results_pending(root)):
++    if not live and ((request.query_params.get("rescore")
++                      and not _is_sealed_root(root))
++                     or _results_pending(root)):
+         job = retro_prep._ensure_results_job(
+             root, season, force=bool(request.query_params.get("rescore")))
+         job["done"].wait(_RESULTS_GRACE_S)
+@@ -903,7 +912,7 @@ def retro_results(request: Request, season: str, week: str = "",
+                                  score_error=score_error, names=names,
+                                  knobs_modified=knobs_modified,
+                                  imported=imported,
+-                                 weeks=weeks),
++                                 weeks=weeks, live=live),
+              active="Retrospective"))
+ 
+ 
+@@ -912,11 +921,13 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+                         score_error: str = "", names: dict | None = None,
+                         knobs_modified: bool | None = None,
+                         imported: dict | None = None,
+-                        weeks: list | None = None) -> dict:
++                        weeks: list | None = None,
++                        live: bool = False) -> dict:
+     """The scored season page's context (retro_season.html), for the page
+     and for the exported season report (app/core/report_season), which
+     renders the same template. The caller has settled the scores (or
+-    passes their failure as `score_error`)."""
++    passes their failure as `score_error`); `live` (the replay is still
++    running) reads the caches as they stand and builds no aggregate."""
+     import pandas as pd
+     from app.core import playback as _playback
+     from app.core import relwis
+@@ -964,7 +975,9 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+     us = None
+     if scoreable:
+         try:
+-            us = usn.resolve(root, df_all)
++            # a live replay reads the aggregate's cache as it stands and
++            # never builds one (minutes, beside the worker)
++            us = usn.resolve(root, df_all, allow_aggregate=not live)
+         except Exception:
+             us = None
+     # us_row (member -> relWIS plus provenance) is a ratio of sums, so it is
+@@ -1150,7 +1163,10 @@ def season_page_context(root: Path, season: str, archive: str = "", *,
+         "imported": imported,
+         # the map's click opens a state's forecast detail (abbr -> name)
+         "state_names": by_abbr,
+-        "n_weeks": len(weeks) if scoreable else 0}
++        # the weeks with a scored cell (the pooled frame's as-of dates),
++        # none under a convention the page has no figures for
++        "n_weeks": (int(df["asof"].nunique()) if scoreable and figs is not None
++                    and figs.available and "asof" in df.columns else 0)}
+ 
+ 
+ #: the horizon the season page's categorical map shows (retro_prep
