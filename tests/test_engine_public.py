@@ -74,9 +74,10 @@ def test_the_wheel_line_is_read_from_the_lock(tmp_path):
     out = _lockpy("wheel", str(lock))
     assert out.returncode == 0, out.stderr
     assert out.stdout.splitlines() == [URL, SHA]
-    # a lock saved on Windows reads the same
+    # a lock saved on Windows reads the same (made from LF on every
+    # platform: write_text already writes CRLF on Windows)
     crlf = tmp_path / "crlf.txt"
-    crlf.write_bytes(lock.read_bytes().replace(b"\n", b"\r\n"))
+    crlf.write_bytes(lock.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     assert _lockpy("wheel", str(crlf)).stdout.splitlines() == [URL, SHA]
     # the default is the repository's lock, FLUBNF_ENGINE_LOCK before it
     out = _lockpy("wheel", FLUBNF_ENGINE_LOCK=str(lock))
