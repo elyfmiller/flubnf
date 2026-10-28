@@ -52,6 +52,7 @@ from app.core.html_page import (
     FONT_STACK,
     NAU_CSS,
     PLAYER_SRC,
+    THEMES,
     charts_js,
     font_face_css,
     kit_css,
@@ -535,15 +536,81 @@ _VISION_BTN = (
     "if(b)b.setAttribute('aria-pressed',String(document.documentElement"
     ".getAttribute('data-vision')==='cvd'));})();</script>")
 
+#: the console's eight themes by their Display menu names (base.html), in
+#: its order; html_page.THEMES is the id list both are held to
+THEME_NAMES = {"light": "Light", "paper": "Paper", "github": "GitHub Light",
+               "solarized": "Solarized Light", "dim": "Dim", "dark": "Dark",
+               "nord": "Nord", "dracula": "Dracula"}
+
+
+def _theme_select() -> str:
+    """The header's theme picker (Ely, 2026-10-28): a saved copy chooses
+    its own look instead of keeping the OS's. Served by the console it
+    reads and writes the console's own `theme` key, so the two agree; a
+    file keeps its choice under `rpTheme`. System follows the OS, as the
+    first-paint script does. The charts redraw on the themechange event."""
+    opts = '<option value="">System</option>' + "".join(
+        f'<option value="{t}">{THEME_NAMES[t]}</option>' for t in THEMES)
+    ids = json.dumps(list(THEMES))
+    return (
+        '<label class="rp-themesel">Theme <select id="themesel">'
+        + opts + "</select></label>"
+        "<script>(function(){var s=document.getElementById('themesel'),"
+        "de=document.documentElement,T=" + ids + ",v=null,"
+        "served=location.protocol==='http:'||location.protocol==='https:',"
+        "KEY=served?'theme':'rpTheme';"
+        "if(!s)return;"
+        "try{v=localStorage.getItem(KEY);}catch(e){}"
+        "if(T.indexOf(v)<0)v='';"
+        "if(v&&!served)de.setAttribute('data-theme',v);"
+        "s.value=v;"
+        "s.addEventListener('change',function(){var t=s.value;"
+        "try{if(t)localStorage.setItem(KEY,t);"
+        "else localStorage.removeItem(KEY);}catch(e){}"
+        "if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches"
+        "?'dark':'light';"
+        "de.setAttribute('data-theme',t);"
+        "try{dispatchEvent(new Event('themechange'));}catch(e){}});"
+        "})();</script>")
+
+
+#: the map card's fold (Ely, 2026-10-28): Hide map folds the map and its
+#: keys away on screen, the US panel under them stays, and the choice is
+#: kept; paper always prints the map (the fold rule is screen only)
+_MAP_FOLD_JS = """<script>
+(function(){
+  var b = document.getElementById('mapfold'),
+      card = document.getElementById('map-anchor');
+  if (!b || !card) return;
+  function set(folded) {
+    card.classList.toggle('is-folded', folded);
+    b.setAttribute('aria-expanded', String(!folded));
+    b.textContent = folded ? 'Show map' : 'Hide map';
+  }
+  var folded = false;
+  try { folded = localStorage.getItem('rpMapFolded') === '1'; } catch (e) {}
+  set(folded);
+  b.addEventListener('click', function () {
+    folded = !folded;
+    set(folded);
+    try { localStorage.setItem('rpMapFolded', folded ? '1' : '0'); } catch (e) {}
+    // a chart unfolded from display:none takes its width again
+    if (!folded) try { dispatchEvent(new Event('resize')); } catch (e) {}
+  });
+})();
+</script>"""
+
 
 def page_header() -> str:
     """The report's header bar, one source: the console's navbar lockup
-    (the theme's mark, the wordmark) with the report's name, the
-    color-blind safe switch and the way back. build_report embeds it, and
-    legacy_theme_carry inserts it into stored reports that predate it."""
+    (the theme's mark, the wordmark) with the report's name, the theme
+    picker, the color-blind safe switch and the way back. build_report
+    embeds it, and legacy_theme_carry inserts it into stored reports that
+    predate it."""
     return """<header class="brandrow"><span class="brand"><span class="mark" aria-hidden="true"></span><span><em>Flu</em>BNF</span></span>
  <span class="brandsub">weekly forecast report</span>
  <span class="spacer"></span>
+ """ + _theme_select() + """
  """ + _VISION_BTN + """
  <a id="appback" class="rp-btn" href="#" hidden
   onclick="history.back();return false">&larr; back to FluBNF</a>
@@ -633,6 +700,15 @@ def _report_css() -> str:
  /* the header's color-blind safe switch */
  .rp-btn[aria-pressed="true"]{background:var(--gold-bright);
    border-color:var(--gold-bright);color:var(--on-accent)}
+ /* the header's theme picker */
+ .rp-themesel{display:inline-flex;align-items:center;gap:.35rem;
+   color:var(--nav-ink);font-size:var(--fs-label);font-weight:600}
+ .rp-themesel select{font:inherit;font-weight:500;color:var(--ink);
+   background:var(--card);border:1px solid var(--field-line);
+   border-radius:6px;padding:.15rem .3rem}
+ /* the map card's fold: the map and its keys; the US panel stays */
+ .rp-mapfold{margin-left:auto}
+ @media screen{.rp-mapcard.is-folded .rp-mapbody{display:none}}
  /* phones: the run settings wrap inside the card, and the view switch
     keeps the national button beside it */
  .rp-ctlpair{display:inline-flex;align-items:center;gap:.5rem .9rem;
@@ -1270,15 +1346,20 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 </div>
 {jump_bar}
 <div class="card rp-mapcard" id="map-anchor">
- <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2></div>
+ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>
+  <button type="button" class="rp-btn rp-mapfold" id="mapfold"
+   aria-controls="map-body" aria-expanded="true">Hide map</button></div>
+ <div class="rp-mapbody" id="map-body">
  <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="rp-legends">
   {legend_html}
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
  </div>
+ </div>
  {us_feature}
 </div>
+{_MAP_FOLD_JS}
 {"".join(sections)}
 {nat}
 {grid_section}

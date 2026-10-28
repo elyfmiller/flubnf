@@ -184,12 +184,47 @@ def flags(panel: dict) -> list:
     return out
 
 
+#: horizon 3's 97.5% quantile over the recent level above which a panel's
+#: figure turns red (Ely, 2026-10-28; the upper-tail cap's 15 times)
+TAIL_X = 15.0
+
+
+def tail_ratios(panel: dict) -> dict:
+    """Each member's horizon-3 97.5% quantile over the location's recent
+    level, the upper-tail cap's own (flubnf.tailcap.recent_level: the mean
+    of the last three reported weeks), as {model: (ratio, over)}; `over`
+    above TAIL_X. The panel's quantiles are the model's own, before the
+    output stage's upper-tail cap (ui/pipeline.py hands the grid those), so
+    on a capped run a red figure is where the cap moved the file: Ely,
+    2026-10-28, "I would still like to see the growth itself". {} when the
+    level is 0 or unknown."""
+    from flubnf.tailcap import recent_level
+    o = panel.get("observed") or []
+    r = recent_level([v for _, v in o])
+    if not r > 0:
+        return {}
+    out = {}
+    for m in MODELS:
+        f = (panel.get("models") or {}).get(m)
+        if f:
+            q = float(f["q"][3][4])
+            out[m] = (q / r, q > TAIL_X * r)
+    return out
+
+
+def _times(x: float) -> str:
+    """A ratio as the figure prints it: 8.3x below ten, 15x above."""
+    return f"{x:.1f}\u00d7" if x < 10 else f"{x:.0f}\u00d7"
+
+
 def flag_key(when: str = "the last target week") -> str:
     """The flag words, explained once per page (a paper copy has no
     hover). `when`: the last target week ("Oct 31")."""
     return ("falls: a 4-week-ahead median below the latest count · "
             f"disagree: by {when} one model's median is outside the "
-            "other's 95% interval")
+            "other's 95% interval · h3 97.5%: each model's own 4-week-ahead "
+            "97.5% quantile (before any upper-tail cap) over the mean of the "
+            f"last three weeks, red above {TAIL_X:.0f}\u00d7")
 
 
 #: the flag key without a date (kept for callers that have no grid)
@@ -260,17 +295,24 @@ def panel_label(panel: dict) -> str:
                         f"95% interval {_fmt(r[0])} to {_fmt(r[4])}")
     if o and not fans:
         bits.append("no forecast")
+    for m, (x, over) in sorted(tail_ratios(panel).items(),
+                               key=lambda kv: kv[0] != "pf"):
+        bits.append(f"{_SHORT[m]} 4-week-ahead 97.5% quantile "
+                    f"{x:.1f} times the recent level"
+                    + (f", above {TAIL_X:.0f}" if over else ""))
     fl = flags(panel)
     if fl:
         bits.append("flagged: " + "; ".join(why for _w, why in fl))
     return ". ".join(bits)
 
 
-def _scale(panel: dict):
+def _scale(panel: dict, whole: bool = False):
     """(top, first date, last date, clipped) for one panel: the counts,
     last season and the medians in full; the 95% bands up to CLIP_X times
     that, clipped beyond (a Groundhog band can reach ten times its median
-    and would flatten the rest). None without any date."""
+    and would flatten the rest). `whole`: the 95% bands in full too, the
+    live charts' first view (Ely, 2026-10-28: they zoom; paper cannot).
+    None without any date."""
     o = panel.get("observed") or []
     ls = panel.get("last_season") or []
     fans = panel.get("models") or {}
@@ -288,7 +330,7 @@ def _scale(panel: dict):
             wide.append(r[4])
     top = max(core + [1.0])
     if wide and max(wide) > top:
-        top = min(max(wide), top * CLIP_X)
+        top = max(wide) if whole else min(max(wide), top * CLIP_X)
     top = _nice(top * 1.05)
     return top, d0, d1, bool(wide) and max(wide) > top
 
@@ -416,6 +458,29 @@ def _latest(p: dict) -> str:
             '</span>')
 
 
+def _tail(p: dict, colors: dict) -> str:
+    """Beside the name: each model's horizon-3 97.5% quantile over the
+    recent level (tail_ratios), after its colour's dot, red above TAIL_X.
+    A legend switch hides its model's figure. "" without a level."""
+    rs = tail_ratios(p)
+    if not rs:
+        return ""
+    vals, why = [], []
+    for m in reversed(MODELS):
+        if m not in rs:
+            continue
+        x, over = rs[m]
+        vals.append(f'<span class="g-tail-v{" g-tail-v--over" if over else ""}"'
+                    f' data-s="{m}"><i style="background:'
+                    f'{model_color(m, colors)}"></i>{_times(x)}</span>')
+        why.append(f"{_SHORT[m]} {x:.1f}\u00d7")
+    title = ("Each model's own 4-week-ahead (h3) 97.5% quantile, before "
+             "any upper-tail cap, over the mean of the last three weeks: "
+             + ", ".join(why) + f"; red above {TAIL_X:.0f}\u00d7")
+    return (f'<span class="g-tail" title="{_html.escape(title)}">'
+            f'<span class="g-tail-l">h3 97.5%</span>{"".join(vals)}</span>')
+
+
 def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
             cls: str = "gpanel", anchor: bool = True, **size) -> str:
     """One panel: the name and latest count, then the flags at the right,
@@ -425,7 +490,8 @@ def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
     data_key = _html.escape(str(p.get("data_key", p.get("key", ""))))
     return (f'<figure class="{cls}" id="g-{key}" data-key="{data_key}">'
-            f'<figcaption><b>{title}</b>{_latest(p)}{flags_html}'
+            f'<figcaption><b>{title}</b>{_latest(p)}{_tail(p, colors)}'
+            f'{flags_html}'
             f'</figcaption>{svg}</figure>')
 
 
@@ -539,6 +605,16 @@ def grid_css() -> str:
  .gpanel figcaption a{color:inherit}
  .gpanel:target{outline:2px solid var(--gold);outline-offset:2px}
  .g-cur{color:var(--mut);font-size:var(--fs-label)}
+ /* horizon 3's 97.5% over the recent level, each model's dot, red over */
+ .g-tail{display:inline-flex;align-items:baseline;gap:.35rem;
+   color:var(--mut);font-size:var(--fs-label);cursor:help}
+ .g-tail-v{display:inline-flex;align-items:baseline;gap:.2rem;
+   font-variant-numeric:tabular-nums}
+ .g-tail-v i{display:inline-block;width:7px;height:7px;border-radius:50%;
+   align-self:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .g-tail-v--over{color:var(--bad);font-weight:700}
+ html.g-off-pf .g-tail [data-s="pf"],
+ html.g-off-analogue .g-tail [data-s="analogue"]{display:none}
  .g-flag{font-size:var(--fs-micro);font-weight:650;color:var(--bad);
    border:1px solid currentColor;border-radius:999px;padding:0 .35rem;
    cursor:help}
@@ -580,7 +656,7 @@ def grid_css() -> str:
   .g-cells{grid-template-columns:repeat(3,minmax(0,1fr));gap:2mm}
   .gpanel{padding:1mm 1.5mm 0;border-radius:2mm}
   .gpanel figcaption{font-size:8pt}
-  .g-cur,.g-flag{font-size:7pt}
+  .g-cur,.g-flag,.g-tail{font-size:7pt}
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
  }
@@ -590,11 +666,12 @@ def grid_css() -> str:
 # ------------------------------------------------------------- live charts
 def grid_payload(grid: dict | None) -> dict:
     """What the live charts draw, by panel key: the observed weeks, last
-    season, each member's times and five levels, and the drawing's own
-    scale (top, first and last date)."""
+    season, each member's times and five levels, and the first view's
+    scale (top, first and last date): the drawing's, with the 95% bands in
+    full."""
     out = {}
     for p in (grid or {}).get("panels") or []:
-        sc = _scale(p)
+        sc = _scale(p, whole=True)
         if sc is None:
             continue
         top, d0, d1, _c = sc
@@ -609,8 +686,8 @@ def grid_payload(grid: dict | None) -> dict:
 
 def grid_js(grid: dict | None, colors: dict) -> str:
     """The panels as live charts on screen (the drawings stay for paper
-    and for a page without plotly.js): hover for the values, drag to zoom,
-    double-click for the whole 95% band. The legend keys switch a series
+    and for a page without plotly.js): the whole 95% band in the first
+    view, hover for the values, drag to zoom, double-click to go back. The legend keys switch a series
     on or off in every panel, the drawings too, and the choice is kept."""
     data = grid_payload(grid)
     if not data:
