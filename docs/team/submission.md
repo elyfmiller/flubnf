@@ -6,6 +6,19 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (18:20 UTC): ROUND 2026-10-31, FLAT OR HIGHER (Decided,
+  2026-10-28). Ely's rerun is byte-identical to the staged files (the
+  run is deterministic). Five Oracle states fail: Alaska (median 6, 7,
+  7, 7 against a last week of 7, after 22), District of Columbia (3, 4,
+  4, 3; a falling step), Hawaii (53, 56, 61, 68 against 63, after 82),
+  Maine (15, 17, 18, 20 against 16) and Montana (13, 13, 14, 17 against
+  15); the Groundhog passes everywhere. Nebraska and Vermont pass on the
+  median; what looks like "going down" in the report is the Oracle's
+  lower band (its 25% quantile falls across horizons in 6 states and
+  ends below the last week in 14). The member table: only epymorph was
+  in at 18:20 UTC, so no comparison yet (the check needs three other
+  members; the first version of the script compared against two, fixed
+  before any use).
 - 2026-10-28 (16:55 UTC): THE FLAG CHECK ON ROUND 2026-10-31 (Decided,
   2026-10-28). (1) Spencer's red flag, as submitted: none over 30x;
   typical state 11.9x Oracle, 13.0x Groundhog; widest Vermont 21x
@@ -2480,6 +2493,14 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-28 (Ely): in the rising phase of the season a forecast's
+  median may be flat or higher, never falling ("we know cases must go
+  up and not down"). The check: our median at every horizon is at least
+  the last reported week, and never lower than the horizon before.
+  A location that fails is corrected or left out of that model's
+  submission, under the rule above. Applied from round 2026-10-31 in
+  tools/spencer_report.py (Submission scratchpad); Ely says when the
+  season turns and the rule lifts.
 - 2026-10-28 (Ely): a location whose forecast would be flagged is left
   out of that week's submission, on Spencer Fox's thresholds (Ely trusts
   his judgment of what is plausible). Every round, before the hub pull
@@ -2574,6 +2595,13 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-10-28, Submission to App: after Ely's fresh run for round
+  2026-10-31, the Output page's report download first gave the 2026-10-24
+  report (reference date 2026-10-24, data through Oct 17, the uncapped
+  files of 10-21); a second download gave the right one. The file named
+  2026-10-24-NAU_PyBNF-weekly-report.html is in the Submission
+  scratchpad if you want it. Worth a look at which run the report button
+  serves straight after a run finishes.
 - Model, the Groundhog agent and the Oracle SIHRS agent (2026-10-26,
   answering the three findings of 2026-10-26 and the two verdicts):
   thank you; the verdicts are recorded under Now (01:00 UTC) and
