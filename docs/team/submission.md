@@ -6,6 +6,25 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (19:59 UTC): ROUND 2026-10-31 RESTAGED AT 10x (Decided).
+  Ely's 10x run: the shrink form (medians and lower halves identical to
+  the uncapped run; the few tied upper levels are whole-number rounding
+  in small states). Both files GREEN on all 31 hubValidations checks,
+  gate PASS with the typical and widest state at 10.0x at horizon 3
+  (95% band over the median 3.2x), no red flag, the Groundhog flat or
+  higher everywhere; the Oracle fails flat in the same five states as at
+  15x (medians do not move with the cap) and leaves them out again (48
+  locations). Widths, typical state at h3 (97.5% over the three-week
+  mean): ours 10.0x; epymorph today 11.2x; last week's members ABERT 6.3x,
+  INFLAenza 7.6x, FourCAT 8.6x, epymorph 11.7x, Copycat 19.5x, Spencer's
+  ensemble 11.5x. Medians against today's field (10 other teams' CSVs
+  on cdcepi main or in open pull requests, FluSight models left out):
+  Oracle typical 0.98x, 13 states more than 1.5x apart (low: AK, NE, ID,
+  KS, VT, ME, MT; high: MS, TX, PA, NM, CA, FL); Groundhog 1.08x, 6 (RI
+  low; US, FL, NY, CA, WA high); informative only, the rule's member
+  table waits for three other NAU members (only epymorph at 19:55 UTC).
+  FluBNF_submission: commit d68fcfca on top of 1238d4ee, both files
+  byte-identical to the checked ones, pushed to the fork.
 - 2026-10-28 (18:38 UTC): ROUND 2026-10-31, THE ORACLE FILE LEAVES OUT
   FIVE STATES (Ely's choice over a weight-0 rerun of them): Alaska,
   District of Columbia, Hawaii, Maine and Montana, all four horizons,
@@ -2506,6 +2525,9 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-28 (Ely, with the PI): round 2026-10-31 goes out with the
+  upper-tail shrink at 10x for both models instead of 15x, because 10x
+  sits closer to the NAU peers' widths. Every other rule stands.
 - 2026-10-28 (Ely): in the rising phase of the season a forecast's
   median may be flat or higher, never falling ("we know cases must go
   up and not down"). The check: our median at every horizon is at least
