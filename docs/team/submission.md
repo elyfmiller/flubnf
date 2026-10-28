@@ -6,6 +6,14 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (20:19 UTC): ROUND 2026-10-31, HUB PULL REQUEST #3929
+  OPENED BY ELY (cdcepi/FluSight-forecast-hub#3929, "NAU_PyBNF forecast
+  2026-10-31 (EW43)", from elyfmiller:FluBNF_submission). Head b71aadb6,
+  a merge commit from GitHub's fork sync (parents d68fcfca and cdcepi
+  main d4b8c556); the pull request still adds only our two files, both
+  byte-identical to the checked ones. The hub's "Hub Submission
+  Validation (R)" workflow started 20:17 UTC; the same 31 checks passed
+  here on these files. The 6 PM Arizona check-in confirms its result.
 - 2026-10-28 (20:15 UTC): ROUND 2026-10-31, FINAL CHECK PASSED; Ely opens
   the hub pull request. On the files as committed on the fork (d68fcfca,
   byte-identical to the checked ones): structure clean (Oracle 48
