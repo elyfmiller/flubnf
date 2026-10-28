@@ -6,6 +6,34 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (16:25 UTC): ROUND 2026-10-31 (EW43) STAGED, THE FIRST WITH
+  THE 15x SHRINK. Ely ran main d7d13e5 (PR #60) on the laptop with the
+  five override values (pf.seed_denominator season_total_early, oracle.w
+  0.25, oracle.narrow 0.7, output.tail_cap 15, output.tail_mode shrink;
+  historical ceiling 0) and one override reason; the panel screenshots
+  showed the five changes and nothing else. Hub data through 2026-10-24
+  (53 locations; US 6,006, 1.21x the week before; states median 1.18x).
+  Both files: 4,877 lines, 53 locations, horizons 0-3 for 2026-10-31 to
+  2026-11-21, 212 monotone integer blocks; both GREEN on all 31
+  hubValidations checks (scripts/validate_submission.R --window, TZDIR
+  set) against cdcepi main ac4e5a04. The gate (scripts/sense_check.py
+  from main, truth through 2026-10-24): PASS for both; the h3 97.5% over
+  the recent level is 15.0x for the typical state and 15x at most (last
+  week as submitted: 20x typical, 9 states over 30x in each file).
+  Plausibility: Oracle h0 medians 1.23x the last observed week
+  (10th-90th 1.00-1.37), Groundhog 1.14x (1.00-1.20); the last observed
+  week inside the h0 95% band in every state for both; US h3 Oracle
+  2,944-16,736-73,238, Groundhog 2,937-17,520-75,165. Last week's pull
+  request was cdcepi/FluSight-forecast-hub#3856, merged (14f17caf).
+  Submission: FluBNF_submission fast-forwarded to cdcepi main ac4e5a04
+  (fetched by URL), the two files byte-identical to the uploads under
+  model-output/NAU_PyBNF-OracleSIHRS/ and
+  model-output/NAU_PyBNF-GroundHogCGR/, commit 93314fb1 "NAU_PyBNF
+  forecast 2026-10-31 (EW43)" as Ely, pushed to the fork, one commit over
+  main. Compare link for Ely's hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  Still owed: the cap-0 export of the same run (Ely, after the hub pull
+  request is open) for the meeting page's with-and-without figures.
 - 2026-10-26 (01:25 UTC): THE TWO EDGE FIXES ON BRANCH tail-hist-edges
   (c417743, one commit over dev 4daf9bd, for Ely's merge; nothing for
   Wednesday, where the ceiling is off). (1) history_ratios measures the
