@@ -6,7 +6,7 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-28 (19:59 UTC): ROUND 2026-10-31 RESTAGED AT 10x (Decided).
+- 2026-10-28 (19:58 UTC): ROUND 2026-10-31 RESTAGED AT 10x (Decided).
   Ely's 10x run: the shrink form (medians and lower halves identical to
   the uncapped run; the few tied upper levels are whole-number rounding
   in small states). Both files GREEN on all 31 hubValidations checks,
