@@ -6,6 +6,112 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-26 (late, Ely's go): the public engine's real install in CI, on
+  `engine-public` ([55bce80](https://github.com/elyfmiller/flubnf/commit/55bce80)),
+  so Windows no longer waits for the engine lane's lock. The
+  `public-engine-wheel` job builds the PyBNF wheel from lanl/PyBNF
+  8410f794 on macOS and writes a hashed lock for it
+  (`scripts/make_test_lock.py`, never the engine lane's lock).
+  `public-engine-install` then runs FluBNF.bat's public block in cmd.exe on
+  Windows, and `setup_engine.sh --public` on macOS, against that lock,
+  served over https on localhost, into a venv under `Jane O'Brien (Lab)`.
+  It runs a fresh install, an open with nothing to do, a new lock (the
+  wheel alone goes back), a tampered hash (refused) and PyBNF's lesson 50
+  in the venv (`tests/test_public_engine_real.py`). Here on the Mac all
+  five pass (108 s cold, 34 s with pip's cache). The Windows leg's first
+  run is CI's on [#61](https://github.com/elyfmiller/flubnf/pull/61).
+  Found: PyBNF asks for BNG2.pl (`BNGPATH` or `bng_command`) even with
+  `bngl_backend = bngsim`, so the public route still needs BioNetGen and
+  Perl.
+- 2026-10-26 (evening): Wednesday's overrides on `main` (d7d13e5), end
+  to end through the Forecast form, in my own console (port 8790, a temp
+  state folder, private engine 2fdadee0): both models, all 53
+  locations, real-time on the hub clone's newest week (as-of 2026-10-17;
+  Wednesday's round needs 2026-10-24's data, due Wed Oct 28), with
+  `pf.seed_denominator season_total_early`, `oracle.w 0.25`,
+  `oracle.narrow 0.7`, `output.tail_cap 15`, `output.tail_mode shrink`.
+  - Finished `ok` in 314 s (preparation about 15 s, then 53 locations x 3
+    Independent Runs, 159 of 159 ok, no preparation failures). Two files
+    under the `-modified` names (the hub-name box was left unticked),
+    4,876 rows each, 53 locations, horizons 0 to 3, quantiles in order,
+    no negatives or NaNs. The run page, its report, Output and Home all
+    answer 200; no errors in the console log.
+  - The Oracle side (`oracle.json`): applied to 53 of 53, no abstentions,
+    no guard hits; w 0.25, narrowing k 0.7 applied; admissions bank 396
+    paths from 2022-2025, FluSurv-NET bank 381 paths from 14 seasons,
+    mixed half and half; submitted seed 2026091801. The tail cap touched
+    156 Oracle SIHRS cells and 103 Groundhog cells. US medians h0-h3:
+    Oracle SIHRS 5,907 / 7,375 / 9,335 / 11,961, Groundhog 5,236 / 6,769
+    / 9,180 / 11,708.
+  - For anyone running main from a worktree: BNG2.pl is looked up in the
+    checkout's own `.venv`, so a worktree without one fails preparation
+    for every location ("Can't open perl script"); set `FLUBNF_BNG` to the
+    app venv's BNG2.pl.
+- 2026-10-26: the public-PyBNF move, console side, on branch
+  `engine-public` (from `dev` 554ac57; nothing from it goes to `dev` or
+  `main` until Ely says so). Ely sent the plan with the task, as
+  engine.md still shows 2026-10-15's; where engine.md's update differs,
+  engine.md wins.
+  - One lock, `engine-requirements.txt` (the engine lane's), read only
+    through `scripts/engine_lock.py`: the PyBNF wheel's URL and sha256
+    come from its `pybnf @` line, so they arrive with the lock and no
+    installer changes; `check` holds a venv to the lock (the Liu-West
+    filter imports, bngsim as pinned, pip's record of the wheel).
+  - macOS and Linux ([a6e3e91](https://github.com/elyfmiller/flubnf/commit/a6e3e91)):
+    `setup_engine.sh --public` installs into `~/.venvs/flubnf-public`
+    with `--require-hashes --only-binary :all:`, refuses the private
+    engine's venvs, and records `FLUBNF_ENGINE=public` in `.flubnf.env`
+    (`--private` drops it). FluBNF.command, SetupEngine.command,
+    setup.sh, install.sh and reinstall.sh follow the route. bngsim's
+    unpinned source-build fallback is gone ([69ac38e](https://github.com/elyfmiller/flubnf/commit/69ac38e)).
+  - Windows ([f2c284f](https://github.com/elyfmiller/flubnf/commit/f2c284f)):
+    `setup.ps1 -Engine public|private` records the choice in
+    `.flubnf.env.cmd` only; FluBNF.bat's `:publicengine` installs into
+    `%LOCALAPPDATA%\FluBNF\venv-public` through the private block's venv
+    code with an x64 3.12-only gate. Frozen bytes and the 4049 offset as
+    they were.
+  - CI ([163e90b](https://github.com/elyfmiller/flubnf/commit/163e90b)):
+    the Windows-wheel step reads the lock (`engine_lock.py deps`, the
+    wheel's line left out) with `--require-hashes`; a notice and a pass
+    while there is no lock. Docs ([24bd622](https://github.com/elyfmiller/flubnf/commit/24bd622)):
+    ENGINE.md "The public engine (opt-in)", WINDOWS.md, LAUNCHERS.md and
+    the rest; students keep the engine file.
+  - Tested on Ely's Mac: tests/test_engine_public.py (26; sample locks,
+    stand-in venvs), the Windows text tests and the launcher byte test,
+    the CI step's script on a real lock of bngsim[antimony]'s six Windows
+    wheels (passes; one tampered hash fails; no lock passes), refusals
+    and a sample-lock install in a throwaway home (stops at the wheel's
+    404, as it should before the release), and both full suites: the
+    same 21 failures as clean `dev` on this Mac (it has an engine, which
+    test_no_engine does not expect; launcher tests), none new. Not run: a public install end to end (no lock or wheel
+    yet); FluBNF.bat under cmd and setup.ps1 under PowerShell (no Windows
+    or pwsh here); the Windows-only tests. CI runs through draft pull
+    request [#61](https://github.com/elyfmiller/flubnf/pull/61)
+    (`engine-public` into `dev`, opened at Ely's word for CI only: never
+    merged without it), on each push to the branch.
+- 2026-10-26 (later): the public route end to end on Ely's Mac, ahead of
+  the engine lane's lock: a wheel built here from lanl/PyBNF 8410f794
+  (paths at most 53 characters), a hashed lock of the 40 packages it
+  resolves to with `bngsim[antimony]==0.15.1`, served over https on
+  localhost, and the real `setup_engine.sh --public` in a throwaway home
+  (never `~/.venvs`). It installed in 33 s and checked out; a second run
+  took 2 s and no pip; a tampered hash was refused; a home path with a
+  space worked; PyBNF's lesson 50 (`job_type = lwf`, 2,000 particles, 42
+  rows) ran in that venv in 11 s with all six Results/LWF files. One fix
+  from it ([696b3aa](https://github.com/elyfmiller/flubnf/commit/696b3aa)):
+  pip keeps an installed pybnf 1.8.1 whatever wheel the lock names, and
+  forcing every package took 465 s; a stale venv now gets pybnf alone
+  again (4 s), every package only if the check still fails, on both
+  platforms. CI on #61 passed before the fix. Not run: a forecast through
+  the console on the public engine (`pf.py`'s public writer, runner and
+  reader are the engine lane's, not on the branch yet), so no comparison
+  with the private engine here; that is stage 2.
+- 2026-10-26: the App lane moved from the cloud session "FluBNF 2.0" (now
+  a record only) to Ely's Mac, in Ely's clone, and can message other
+  agents. PR #60 (G01 to G10: 53 bugs, 20 of the 25 S2s) is on `main`
+  (d7d13e5). The fix run is paused for Ely's "go" on G11; the S2s still
+  open are HM-01, ME-03, ST-01, SB-01 and SB-02.
+
 - 2026-10-25: Ely's bug hunt, find only, on `dev` at bcaafb7: one pass
   per tab, one for wiring, one for the look of every page, and the full
   suite. 208 bugs after merging duplicates (25 S2, 86 S3, 97 S4, no S1),
@@ -210,6 +316,54 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## For other lanes
 
+- Engine (2026-10-26, for `engine-public`): what App needs to finish.
+  1. `engine-requirements.txt` at the repository root on `engine-public`:
+     every package pinned with its hashes, the win_amd64 cp312 files'
+     included, and one line `pybnf @ <release URL>.whl
+     --hash=sha256:<64 hex>`, the release's tag naming
+     8410f794e3fa4817572fd07fceb043ddec39d77b. pip-compile's layout is
+     fine; `scripts/engine_lock.py` reads it. A Windows-only dependency
+     missing from the lock fails on Windows under `--require-hashes`, and
+     CI's check evaluates markers on Linux. Today's resolution has none
+     (App resolved the wheel plus `bngsim[antimony]==0.15.1`: 40 packages,
+     no platform marker among them, every one with a win_amd64 or pure
+     wheel for 3.12), so this matters only if the set changes.
+  2. The wheel's URL and sha256 in engine.md. Nothing to type into the
+     installers: they read the lock.
+  3. `flubnf/settings.py`: please confirm `PY_ENGINE_PUBLIC` reads
+     `FLUBNF_PY_ENGINE_PUBLIC`, with `~/.venvs/flubnf-public/bin/python`
+     and `%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe` as its
+     defaults, and that `FLUBNF_ENGINE` takes private or public (the
+     launchers warn and use private for anything else). The installers
+     write and read those names.
+  4. Keep `BNGSIM_NO_CODEGEN=1` for Windows runners on the public route
+     (`pf.runner_popen_kwargs` sets it today); the docs say so.
+  5. Doctor or the provenance check may call `scripts/engine_lock.py
+     check` (the lock's wheel against pip's direct_url.json); say if you
+     would rather import it.
+  6. The console's public-engine code is yours (Ely, 2026-10-26).
+     engine.md's stage 1 gives it to App (steps 4 to 8); please move it
+     there. On `engine-public`, behind `FLUBNF_ENGINE`:
+     - `app/core/engines/pf.py`: the public writer, runner and reader (the
+       edition-2 conf with `bng_command`, the template without actions,
+       `write_exp`'s one-week shift with `Hobs` and `nan` rows, the
+       LiuWestFilter run, `collect()` from `Results/LWF`), and the import
+       probe as the preflight. The `pf.*` knob and ledger names stay,
+       mapped in the writer (decision 4).
+     - `flubnf/settings.py`: the switch and `PY_ENGINE_PUBLIC` (item 3).
+     - `app/core/engine_build.py`: the public pin, and its provenance from
+       pip's `direct_url.json`. A wheel install has no git checkout; today
+       a run records "PyBNF build 2fdadee0 (feature/particle-filter)" from
+       git.
+     - `flubnf/doctor.py` and `app/core/reclaim.py`; the Sandbox
+       (`app/core/sandbox.py`) and custom datasets writing the public conf.
+     - Tests on your fixture (Alaska 2025-01-11). CI has no engine, but
+       the `public-engine-install` job builds a real public venv on Windows
+       and macOS, if a console test should run against one.
+
+     App's part stays the installers, the launchers, CI and the docs.
+     Stage 2 waits on this and on items 1 and 2.
+
 - Model and Submission (2026-10-15, answering Model's request of the same
   day): on `dev`, Home, Methods, /models, /model/analogue, the site,
   FLUSIGHT-2026-27.md and CITATION.cff print the shipped Groundhog
@@ -410,6 +564,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-10-26, `engine-public`):
+  - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
+    lock's wheel line by one script that bash, cmd and PowerShell all
+    call, rather than typed into each installer: the lock is then the
+    only place it changes. Say if you wanted the pair in the installers.
 
 - For Ely (2026-10-13 Sandbox audit), confirmed but not changed: unsaved
   edits in the macOS window (the leave-page prompt may never show there;

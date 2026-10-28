@@ -362,11 +362,12 @@ def test_each_panel_goes_live_and_the_legend_switches_series():
     assert 'html.g-off-pf .g-svg [data-s="pf"]' in css
     assert ".g-live > .g-svg{display:none}" in css     # screen only
     assert ".g-plot{display:none!important}" in css     # print keeps SVG
-    # the data: each panel's series and the drawing's own scale
+    # the data: each panel's series and the first view's scale, the whole
+    # band in frame
     data = G.grid_payload(g)
     oh = data["OH"]
     assert set(oh) == {"o", "ls", "m", "top", "d0", "d1"}
-    top, d0, d1, _c = G._scale(g["panels"][2])
+    top, d0, d1, _c = G._scale(g["panels"][2], whole=True)
     assert oh["top"] == top and oh["d0"] == d0.isoformat()
     assert oh["m"]["pf"]["q"] == g["panels"][2]["models"]["pf"]["q"]
     js = G.grid_js(g, COLORS)
@@ -383,3 +384,63 @@ def test_the_report_carries_the_live_panels(tmp_path):
     # the theme pass leaves the live panels to their own redraw
     assert "if(g.closest&&g.closest('.gpanel')) continue;" in html
     assert report_v2.BUNDLE_VERSION >= 8
+
+
+# ------------------------------------------- Ely's report notes, 2026-10-28
+
+def _wide(q975=900.0, obs=20.0):
+    """A panel whose Groundhog band reaches far above everything else."""
+    return {"key": "XX", "name": "X",
+            "observed": [["2097-12-20", obs], ["2097-12-27", obs],
+                         [ASOF, obs]],
+            "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
+                                              "2098-01-24", "2098-01-31"],
+                                    "q": [[1, 9, 20, 30, q975]] * 4}}}
+
+
+def test_the_live_view_starts_with_the_whole_band_and_paper_keeps_the_clip():
+    """Wide forecasts open with the median and the whole 95% band in
+    frame (the live charts zoom); the printed drawing keeps CLIP_X."""
+    p = _wide()
+    top_paper, _d0, _d1, clipped = G._scale(p)
+    assert clipped and top_paper < 900
+    data = G.grid_payload({"panels": [p]})
+    assert data["XX"]["top"] >= 900
+    assert "whole 95% band in the first" in G.grid_js.__doc__.replace("\n    ", " ")
+
+
+def test_each_panel_names_its_h3_97_5_over_the_recent_level():
+    """Beside the name: horizon 3's 97.5% quantile over the mean of the last
+    three reported weeks (flubnf.tailcap's level), one figure per model."""
+    p = _wide(q975=170.0, obs=20.0)                 # 8.5x
+    rs = G.tail_ratios(p)
+    assert set(rs) == {"analogue"}
+    x, over = rs["analogue"]
+    assert abs(x - 8.5) < 1e-9 and not over
+    html = G._figure(p, "X", "", 0, COLORS)
+    cap = html[html.index("<figcaption>"):html.index("</figcaption>")]
+    assert 'class="g-tail"' in cap and "h3 97.5%" in cap
+    assert ">8.5\u00d7</span>" in cap and "g-tail-v--over" not in cap
+    assert 'data-s="analogue"' in cap               # the legend switch hides it
+    assert "8.5 times the recent level" in G.panel_label(p)
+    assert "h3 97.5%" in G.flag_key("Jan 31")
+
+
+def test_over_fifteen_times_reads_red():
+    """Red above 15x the level. The figure is the model's own growth, before
+    the upper-tail cap (Ely: "I would still like to see the growth
+    itself"), so on a capped run red marks where the cap moved the file."""
+    at = G.tail_ratios(_wide(q975=15 * 3, obs=3.0))["analogue"]
+    assert not at[1] and G._times(at[0]) == "15\u00d7"
+    over = G.tail_ratios(_wide(q975=15 * 3 + 1, obs=3.0))["analogue"]
+    assert over[1]
+    assert "before any upper-tail cap" in G.flag_key("Jan 31")
+    html = G._figure(_wide(q975=600.0), "X", "", 0, COLORS)
+    assert 'class="g-tail-v g-tail-v--over" data-s="analogue"' in html
+    assert ">30\u00d7</span>" in html
+    css = G.grid_css()
+    assert ".g-tail-v--over{color:var(--bad)" in css
+    assert 'html.g-off-analogue .g-tail [data-s="analogue"]' in css
+    # no level, no figure
+    assert G._tail(_wide(obs=0.0), COLORS) == ""
+    assert G.tail_ratios({"observed": [], "models": {}}) == {}
