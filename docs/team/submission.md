@@ -6,6 +6,26 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (16:55 UTC): THE FLAG CHECK ON ROUND 2026-10-31 (Decided,
+  2026-10-28). (1) Spencer's red flag, as submitted: none over 30x;
+  typical state 11.9x Oracle, 13.0x Groundhog; widest Vermont 21x
+  (Oracle), District of Columbia and Alaska 20x (Groundhog). Without the
+  shrink the Oracle would have had 5 (Michigan 36x, North Dakota 35x,
+  Rhode Island 32x, Wyoming 30.1x, West Virginia 30.1x), the Groundhog
+  none. (2) The member medians: not yet possible; at 16:55 UTC no NAU
+  member had a 2026-10-31 file on cdcepi main or in an open hub pull
+  request (the only one open was NU-EMBERS, #3912). Ely holds the hub
+  pull request until the members are in, then this lane runs the
+  comparison, drops any flagged location, re-validates and recommits;
+  the deadline is 8 PM Arizona time (03:00 UTC). Six states' newest week
+  fell 20% or more (Alaska, Connecticut, Hawaii, Idaho, Kansas,
+  Montana); both models start near the lower value (the Groundhog
+  anchors on it, the Oracle's filter followed it); the previous newest
+  week was revised up by a median 3.7%, so these read as small-count
+  noise more than reporting lag. The Groundhog's medians step up most
+  from horizon 1 to 2 in 97% of states, both weeks (1.27x, 1.46x, 1.21x
+  this week); the raw admissions donors show a milder form, so most of
+  it comes later in the chain; a question for the Model lane.
 - 2026-10-28 (16:25 UTC): ROUND 2026-10-31 (EW43) STAGED, THE FIRST WITH
   THE 15x SHRINK. Ely ran main d7d13e5 (PR #60) on the laptop with the
   five override values (pf.seed_denominator season_total_early, oracle.w
@@ -2460,6 +2480,36 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-28 (Ely): a location whose forecast would be flagged is left
+  out of that week's submission, on Spencer Fox's thresholds (Ely trusts
+  his judgment of what is plausible). Every round, before the hub pull
+  request opens, this lane reproduces his NAU-ensemble report for the
+  admissions target (tools/spencer_report.py and members_tonight.sh in
+  the Submission scratchpad, to move into the repository at Ely's word)
+  and drops a location, all four horizons, from that model's file when
+  either check fails; the file is then re-validated and re-gated before
+  the commit (the hub treats every location as optional,
+  hub-config/tasks.json). Definitions, from his report of 2026-10-21
+  (code db60066; his members are ABERT, Copycat, INFLAenza, epymorph,
+  FourCAT and our two; NAU-vulPES is his ensemble, not a member): (1) RED
+  FLAG, "do not submit as is": the horizon-3 97.5% quantile over the
+  last reported week above 30x, where that week is at least 10
+  admissions. This reproduces all ten of his 2026-10-24 flags; his one
+  unexplained omission is the Groundhog's Minnesota (35x over 14), so
+  our check is slightly stricter. (2) MEMBER TABLE: each member's
+  horizon-3 median over the median of the other members' horizon-3
+  medians; "apart" is more than 1.5x either way (Ely, 2026-10-28: keep
+  Spencer's 1.5x), counted where the others' median is at least 10. This
+  reproduces his typical ratios for our two (1.04x Oracle, 1.05x
+  Groundhog) and his apart counts for six of seven members (Copycat 33
+  against his 34). On the 2026-10-24 files the rule would have left out
+  10 Oracle states (CT, IA, ME, MI, MN, MT, NE, NH, WI, WV) and 9
+  Groundhog states (AK, AZ, HI, ID, MN, OH, OR, TX, WV). The members'
+  files are read from cdcepi main or, before they merge, from their open
+  hub pull requests; with fewer than three other members in there is no
+  comparison. Ely's reasoning: early mistakes are part of learning, and
+  from now on a forecast we are not confident in is not submitted. This
+  turns the 2026-10-12 rule (drop by judgment) into a fixed check.
 - 2026-10-15 (Ely): whenever a dev to main pull request is ready to merge
   (open, tests green), the lane gives Ely the terminal merge command with
   the number filled in, in chat and in the notes, and the command itself
