@@ -125,9 +125,13 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    the panels worth a second look (a horizon-3 median below the latest
    count, or two models outside each other's 95% bands). Beside each name,
    each model's own horizon-3 97.5% quantile (before any upper-tail cap)
-   over the mean of the last three weeks, red above 15x. On screen each
-   panel opens with the whole 95% band in view (drag to zoom); the header
-   picks the theme, and Hide map folds the map. Print, Save as PDF gives
+   over the mean of the last three weeks, red above 15x, then the
+   submitted file's where the cap moved it (55x -> 15x). Such a location
+   opens on what was submitted; its Submitted / Before cap switch (the
+   panel and the detail move together) shows the model's own, to review
+   how much the output stage narrows the width. On screen each panel opens
+   with the whole 95% band in view (drag to zoom); the header picks the
+   theme, and Hide map folds the map. Print, Save as PDF gives
    four pages of 3 by 5 panels. The report saves as
    `<reference_date>-NAU_PyBNF-weekly-report.html`, beside the CSVs.
    Then check the hub-check badge and the due / soon / closed badge.
