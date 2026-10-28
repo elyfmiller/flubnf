@@ -6,6 +6,19 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (20:15 UTC): ROUND 2026-10-31, FINAL CHECK PASSED; Ely opens
+  the hub pull request. On the files as committed on the fork (d68fcfca,
+  byte-identical to the checked ones): structure clean (Oracle 48
+  locations, Groundhog 53), GREEN on all 31 hubValidations checks, gate
+  PASS at 10x typical and widest, no red flag, flat or higher
+  everywhere; the pull request adds only our two files and merges
+  cleanly into cdcepi main d4b8c556 (hub-config unchanged since our
+  base). The member table never had three other members (only epymorph
+  by 20:13 UTC); Ely (2026-10-28): that is fine this week, the aim is to
+  be around the pack. Against the field's median (ten other teams'
+  CSVs) the Oracle sits at 1.00x typical, the Groundhog 1.08x; against
+  epymorph alone 1.26x and 1.29x, as expected (last week epymorph sat at
+  0.87x of the other members). The 6 PM Arizona check-in reports only.
 - 2026-10-28 (19:58 UTC): ROUND 2026-10-31 RESTAGED AT 10x (Decided).
   Ely's 10x run: the shrink form (medians and lower halves identical to
   the uncapped run; the few tied upper levels are whole-number rounding
