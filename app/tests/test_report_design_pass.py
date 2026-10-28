@@ -272,3 +272,27 @@ def test_the_map_folds_and_the_us_panel_stays(tmp_path):
         # the national panel sits after the fold's body closes
         fold = card[card.index('id="map-body"'):]
         assert fold.index('id="us-feature"') > fold.index("</div>\n </div>")
+
+
+
+def test_each_changed_location_switches_in_its_detail_too(tmp_path):
+    """The detail's fan and numbers come in both versions behind one
+    switch (the numbers follow the fan's); every switch for a location
+    moves together; ids stay unique."""
+    from app.tests.test_report_grid import _filed
+    b = _bundle()
+    oh = next(p for p in b["grid"]["panels"] if p["key"] == "OH")
+    _filed(tmp_path, oh, top=30.0)
+    html = _render(tmp_path)
+    sec = html[html.index('<section class="state" id="st-OH"'):]
+    sec = sec[:sec.index("</section>")]
+    assert sec.count('data-ba-for="OH"') == 2            # the fan, the numbers
+    assert sec.count('data-ba-key="OH" data-ba="b"') == 1   # one switch
+    assert 'id="num-OH"' in sec and 'id="num-OH-before"' in sec
+    assert sec.count('<div data-ba-v="b" hidden>') == 2
+    # the panel's switch is the same key, and the handler moves them all
+    assert html.count('data-ba-key="OH" data-ba="b"') == 2
+    assert "window.rpBA = set;" in html and "Plotly.Plots.resize" in html
+    # without the files, no switch anywhere
+    plain = _render(tmp_path / "plain")
+    assert 'data-ba-key="' not in plain
