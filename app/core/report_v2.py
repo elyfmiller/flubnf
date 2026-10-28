@@ -601,6 +601,59 @@ _MAP_FOLD_JS = """<script>
 </script>"""
 
 
+def _ba_pair(key: str, shown: str, before: str, switch: bool = True) -> str:
+    """A detail part in both versions: the submitted one (as it opens) and
+    the model's own before the upper-tail cap, behind the location's
+    switch (`switch`: drawn here; the numbers follow the fan's); `shown`
+    alone when the file did not move it."""
+    if not before or not shown:
+        return shown
+    from app.core.report_grid import ba_switch
+    k = _esc(key)
+    sw = ba_switch(key) if switch else ""
+    return (f'<div class="rp-ba" data-ba-for="{k}">{sw}'
+            f'<div data-ba-v="s">{shown}</div>'
+            f'<div data-ba-v="b" hidden>{before}</div></div>')
+
+
+#: every switch for one location moves together: its buttons, its detail
+#: parts and (the rp-ba event) its live panels; a chart shown from hidden
+#: takes its width again
+_BA_JS = """<script>
+(function(){
+  function set(key, mode) {
+    var bs = document.querySelectorAll('button[data-ba-key]');
+    for (var i = 0; i < bs.length; i++)
+      if (bs[i].getAttribute('data-ba-key') === key)
+        bs[i].setAttribute('aria-pressed',
+                           String(bs[i].getAttribute('data-ba') === mode));
+    var ws = document.querySelectorAll('[data-ba-for]');
+    for (var j = 0; j < ws.length; j++) {
+      if (ws[j].getAttribute('data-ba-for') !== key) continue;
+      var vs = ws[j].querySelectorAll('[data-ba-v]');
+      for (var k = 0; k < vs.length; k++) {
+        var on = vs[k].getAttribute('data-ba-v') === mode;
+        vs[k].hidden = !on;
+        if (on && window.Plotly) {
+          var gs = vs[k].querySelectorAll('.js-plotly-plot');
+          for (var n = 0; n < gs.length; n++)
+            try { Plotly.Plots.resize(gs[n]); } catch (e) {}
+        }
+      }
+    }
+    try {
+      dispatchEvent(new CustomEvent('rp-ba', {detail: {key: key, mode: mode}}));
+    } catch (e) {}
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-ba-key]');
+    if (b) set(b.getAttribute('data-ba-key'), b.getAttribute('data-ba'));
+  });
+  window.rpBA = set;
+})();
+</script>"""
+
+
 def page_header() -> str:
     """The report's header bar, one source: the console's navbar lockup
     (the theme's mark, the wordmark) with the report's name, the theme
@@ -706,6 +759,9 @@ def _report_css() -> str:
  .rp-themesel select{font:inherit;font-weight:500;color:var(--ink);
    background:var(--card);border:1px solid var(--field-line);
    border-radius:6px;padding:.15rem .3rem}
+ /* a location's switch in its detail: under the card heading */
+ .rp-ba > .g-ba{margin:0 0 .4rem}
+ .rp-ba > .g-ba > button{font-size:var(--fs-label)}
  /* the map card's fold: the map and its keys; the US panel stays */
  .rp-mapfold{margin-left:auto}
  @media screen{.rp-mapcard.is-folded .rp-mapbody{display:none}}
@@ -1190,13 +1246,20 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
         cat_head = str(kit.heading(f"Next week ({who})", id=f"cat-{a}",
                                    level=3))
-        numbers = _forecast_numbers(a, d.get("numbers") or {},
-                                    d.get("times") or [])
+        numbers = _ba_pair(
+            a, _forecast_numbers(a, d.get("numbers") or {},
+                                 d.get("times") or []),
+            _forecast_numbers(a + "-before", d.get("numbers_before") or {},
+                              d.get("times") or [])
+            if d.get("numbers_before") else "", switch=False)
+        fan_html = _ba_pair(a, _html(d['fan']),
+                            _html(d['fan_before']) if d.get("fan_before")
+                            else "")
         sections.append(f"""
 <section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
   <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
   <div class="rp-detail">
-    <div class="card">{fan_head}{_html(d['fan'])}</div>
+    <div class="card">{fan_head}{fan_html}</div>
     <div class="card">{cat_head}{_html(d['cat'])}
       <table><tr><th>Week ending</th><th class="num">Admissions</th></tr>{rows}</table></div>
   </div>
@@ -1209,10 +1272,17 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national.get("fan"):
         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
                                    level=3))
-        nat_cards.append(f'<div class="card">{nat_head}'
-                         f'{_html(national["fan"])}</div>')
-        nat_num = _forecast_numbers("US", national.get("numbers") or {},
-                                    national.get("times") or [])
+        nat_fan = _ba_pair("US", _html(national["fan"]),
+                           _html(national["fan_before"])
+                           if national.get("fan_before") else "")
+        nat_cards.append(f'<div class="card">{nat_head}{nat_fan}</div>')
+        nat_num = _ba_pair(
+            "US", _forecast_numbers("US", national.get("numbers") or {},
+                                    national.get("times") or []),
+            _forecast_numbers("US-before",
+                              national.get("numbers_before") or {},
+                              national.get("times") or [])
+            if national.get("numbers_before") else "", switch=False)
         if nat_num:
             nat_cards.append(nat_num)
     nat_body = "\n  ".join(nat_cards) or str(kit.empty(
@@ -1364,6 +1434,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 {nat}
 {grid_section}
 {report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
+{_BA_JS}
 <script>
 window.showState = show;
 var _ab = document.getElementById('appback');
@@ -1517,7 +1588,12 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     gives each detail fan the other member's interval (its whole-admission
     quantiles) and the forecast numbers; an older bundle draws the one
     member its detail stored."""
-    grid = bundle.get("grid")
+    from app.core import report_grid
+    # what went to the hub, read from the run's own files beside the
+    # report; where it differs from the model's own (the upper-tail cap),
+    # a location opens on the file and switches to the model's own
+    submitted = report_grid.submitted_fans(Path(out_path).parent)
+    grid = report_grid.attach_submitted(bundle.get("grid"), submitted)
     by_key = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     details = {}
     for key, d in (bundle.get("details") or {}).items():
@@ -1530,19 +1606,31 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
             panel_fans = (by_key.get(key) or {}).get("models") or {}
             others = {m: grid_quantiles(f) for m, f in panel_fans.items()
                       if m != model and f.get("times") == list(ft)}
-            fan = fan_figure_from_quantiles(
-                fan_in.get("observed_times") or [],
-                fan_in.get("observed") or [],
-                ft, fan_in["quantiles"],
-                title=fan_in.get("title", ""), settled=settled or None,
-                model=model, others=others)
+
+            def _fan(own, rest):
+                return fan_figure_from_quantiles(
+                    fan_in.get("observed_times") or [],
+                    fan_in.get("observed") or [],
+                    ft, own, title=fan_in.get("title", ""),
+                    settled=settled or None, model=model, others=rest)
+            fan = _fan(fan_in["quantiles"], others)
             numbers = {model: fan_in["quantiles"], **others}
-            details[key] = {
+            row = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
                 "model": model,
                 "table_rows": [tuple(r) for r in (d.get("table_rows") or [])],
                 "numbers": numbers, "times": list(ft)}
+            filed = {m: submitted[m][key] for m in submitted
+                     if key in submitted[m]
+                     and all(str(x) in submitted[m][key] for x in ft)}
+            if (by_key.get(key) or {}).get("submitted") and model in filed:
+                s_others = {m: q for m, q in filed.items()
+                            if m != model and m in others}
+                row.update(fan=_fan(filed[model], s_others),
+                           numbers={model: filed[model], **s_others},
+                           fan_before=fan, numbers_before=numbers)
+            details[key] = row
         except Exception:
             continue      # one broken state must not sink the whole report
     nat_map_html = ""
@@ -1562,6 +1650,8 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
          "numbers": us_d.get("numbers"), "times": us_d.get("times"),
+         "fan_before": us_d.get("fan_before"),
+         "numbers_before": us_d.get("numbers_before"),
          "summary_html": national.get("summary_html", "")},
         Path(out_path), national_map_html=nat_map_html,
         elapsed_s=bundle.get("elapsed_s"),
