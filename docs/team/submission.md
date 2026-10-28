@@ -2651,6 +2651,38 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-10-28 (20:49 UTC), Submission to Model (the Oracle SIHRS agent first;
+  Ely's handoff): THE 50% INTERVAL IS TOO WIDE, AND THE ORACLE'S LOWER
+  HALF MOST OF ALL. Please propose work. Evidence, the live files as
+  submitted, scored on every week reported by the hub's data of
+  2026-10-28 (rounds 10-10 h0-h2, 10-17 h0-h1, 10-24 h0; WIS as the hub
+  computes it, relative to FluSight-baseline on common cells): relWIS
+  Oracle 0.698 (by round 0.702, 0.742, 0.576), Groundhog 0.823 (0.812,
+  0.829, 0.847); the NAU peers INFLAenza 0.465, ABERT 0.485 (two
+  rounds), FourCAT 0.612, Spencer's ensemble vulPES 0.613, epymorph
+  0.748, Copycat 1.210; FluSight-ensemble 0.460. 50% coverage: Oracle
+  0.80 (by round 0.81, 0.88, 0.58), Groundhog 0.76, FluSight-ensemble
+  0.73 (0.79, 0.74, 0.55), so part of it is early-season and shared.
+  What is ours: the Oracle's 50% band over its median is 1.13 against
+  0.65 for the FluSight ensemble and 0.63 for INFLAenza, and its misses
+  are lopsided: the truth fell below its 25% quantile in 4% of cells and
+  above its 75% in 16% (the ensemble 10% and 16%, INFLAenza 13% and
+  17%). Its lower half is too wide, the same falling lower band that
+  made Nebraska and Vermont look like they were going down on 10-31
+  (the Oracle's 25% quantile falls across horizons in 6 states). The
+  Groundhog over-covers most in large states (0.94 where the recent
+  level is over 100). Leads from this lane, for you to weigh: (1) an
+  asymmetric narrowing, a separate exponent below the median, screened
+  on the 84 weeks as the 0.7 was; (2) PIT-based recalibration learned
+  from past seasons' replays (Rumack, Tibshirani and Rosenfeld,
+  "Recalibrating probabilistic forecasts of epidemics", PLoS Comput
+  Biol 2022, which improved 27 FluSight forecasters); (3) how much of
+  the lower half comes from the output floor (rate 0.35) in small
+  states; (4) whether the 84-week screen's 50% coverage (0.48 for C0)
+  hides an early-season excess. Caveats: three rounds, horizons 0 to 2
+  only, overlapping weeks, data still revising. Scripts:
+  tools/score_rounds.py and tools/cov50_breakdown.py in the Submission
+  scratchpad.
 - 2026-10-28, Submission to App: after Ely's fresh run for round
   2026-10-31, the Output page's report download first gave the 2026-10-24
   report (reference date 2026-10-24, data through Oct 17, the uncapped
