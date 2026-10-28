@@ -6,6 +6,19 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-28 (18:35 UTC): ROUND 2026-10-31, THE ORACLE FILE LEAVES OUT
+  FIVE STATES (Ely's choice over a weight-0 rerun of them): Alaska,
+  District of Columbia, Hawaii, Maine and Montana, all four horizons,
+  for failing flat-or-higher. The Groundhog file keeps all 53 and passes
+  every rule, so for these five our forecast this week is the
+  Groundhog's. The trimmed Oracle file is the staged one minus those 460
+  rows byte for byte (48 locations); GREEN on all 31 hubValidations
+  checks, gate PASS (h3 15.0x typical and at most), no red flag, flat or
+  higher everywhere. FluBNF_submission: commit 1238d4ee on top of
+  93314fb1, pushed to the fork (no force); compare link unchanged:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  The member table still waits for three other members (only epymorph
+  in); the 6 PM Arizona check-in runs it on the trimmed files.
 - 2026-10-28 (18:20 UTC): ROUND 2026-10-31, FLAT OR HIGHER (Decided,
   2026-10-28). Ely's rerun is byte-identical to the staged files (the
   run is deterministic). Five Oracle states fail: Alaska (median 6, 7,
