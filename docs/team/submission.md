@@ -6,7 +6,7 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-28 (18:35 UTC): ROUND 2026-10-31, THE ORACLE FILE LEAVES OUT
+- 2026-10-28 (18:39 UTC): ROUND 2026-10-31, THE ORACLE FILE LEAVES OUT
   FIVE STATES (Ely's choice over a weight-0 rerun of them): Alaska,
   District of Columbia, Hawaii, Maine and Montana, all four horizons,
   for failing flat-or-higher. The Groundhog file keeps all 53 and passes
