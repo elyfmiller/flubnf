@@ -6,6 +6,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-28: Ely's weekly-report notes, on `main` through
+  [#62](https://github.com/elyfmiller/flubnf/pull/62)
+  ([1ff557a](https://github.com/elyfmiller/flubnf/commit/1ff557a); Ely
+  merged it while its checks were still running). The header picks the
+  theme: System or the console's eight. Served by the console it shares
+  the console's choice; a saved copy keeps its own (`rpTheme`). Hide map
+  folds the categorical map and its keys on screen, and paper always
+  prints it. The live panels open with the median and the whole 95% band
+  in frame (the printed drawing keeps CLIP_X). Beside each name: each
+  model's horizon-3 97.5% quantile over the mean of the last three
+  reported weeks (`flubnf.tailcap.recent_level`), red above 15x.
+  Found: the report's bands and that figure are the model's own, before
+  the output stage's upper-tail cap. `ui/pipeline.py` hands the report
+  `pf_q`/`an_q` from before the cap, the detail fans too: on Monday's
+  15x-shrink run West Virginia's Oracle SIHRS h3 97.5% is 425 in the
+  report and 115 in the file, and US Groundhog 78,635 against 61,180.
+  Medians agree. Tested: the report tests (137), the full suite (the same
+  21 machine-specific failures as clean dev), Monday's report in the
+  browser in two themes at desktop and phone width.
 - 2026-10-26 (late, Ely's go): the public engine's real install in CI, on
   `engine-public` ([55bce80](https://github.com/elyfmiller/flubnf/commit/55bce80)),
   so Windows no longer waits for the engine lane's lock. The
@@ -564,6 +583,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-10-28, the weekly report): on a capped run the report
+  draws each model's own bands, above what the files hold (Now,
+  2026-10-28). Keep that ("see the growth itself"), or draw the
+  submitted bands and keep the figure beside the name as the model's own?
+  The second needs `ui/pipeline.py` (the engine lane's) to hand the report
+  the capped quantiles as well.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
