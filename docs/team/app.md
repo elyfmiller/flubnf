@@ -6,6 +6,20 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-28 (later, Ely's answer to the Open question below): a
+  Submitted / Before cap switch per location
+  ([0e16723](https://github.com/elyfmiller/flubnf/commit/0e16723)), to
+  review how much the output stage narrows the width. Where the cap moved
+  a location's file (43 of 53 on Monday's 15x-shrink run), its panel and
+  its detail open on what went to the hub, read from the run's own CSVs
+  beside the report (`submission/`, in the workroot and the archive
+  alike, so no change to `ui/pipeline.py`); Before cap shows the model's
+  own, after the Oracle step and the narrowing (Ely chose that over the
+  filter's own). The panel, the US panel and the detail's fan and numbers
+  move together. The h3 97.5% figure reads the model's own, then the
+  file's (55x -> 15x). Tested: the report tests (140), the full suite
+  (the same 21 machine-specific failures), Monday's report in the
+  browser, desktop and phone.
 - 2026-10-28: Ely's weekly-report notes, on `main` through
   [#62](https://github.com/elyfmiller/flubnf/pull/62)
   ([1ff557a](https://github.com/elyfmiller/flubnf/commit/1ff557a); Ely
@@ -583,13 +597,6 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
-
-- For Ely (2026-10-28, the weekly report): on a capped run the report
-  draws each model's own bands, above what the files hold (Now,
-  2026-10-28). Keep that ("see the growth itself"), or draw the
-  submitted bands and keep the figure beside the name as the model's own?
-  The second needs `ui/pipeline.py` (the engine lane's) to hand the report
-  the capped quantiles as well.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
