@@ -6,7 +6,7 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
-- 2026-10-28 (16:30 UTC): ROUND 2026-10-31 (EW43) STAGED, THE FIRST WITH
+- 2026-10-28 (16:25 UTC): ROUND 2026-10-31 (EW43) STAGED, THE FIRST WITH
   THE 15x SHRINK. Ely ran main d7d13e5 (PR #60) on the laptop with the
   five override values (pf.seed_denominator season_total_early, oracle.w
   0.25, oracle.narrow 0.7, output.tail_cap 15, output.tail_mode shrink;
