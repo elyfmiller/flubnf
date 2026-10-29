@@ -65,7 +65,8 @@ def test_the_record_sentences_ride_the_record_toggletip():
     both = ot.RECORD["both"]
     wanted = {
         "/models": (
-            ("relWIS vs the FluSight baseline (below 1 beats it): "
+            ("relWIS vs the FluSight baseline (below 1 beats it), under "
+             "the earlier cell rule: "
              f"{ot.fmt(both['oracle'])} against the plain filter's "
              f"{ot.fmt(both['filter'])} on the same "
              f"{ot.cells(both['cells'])} cells of 2024-25 and 2025-26."),
@@ -79,9 +80,9 @@ def test_the_record_sentences_ride_the_record_toggletip():
              "size-matched donors, submitted 2026-10-24; 0.670 for the "
              "pooled form submitted 2026-10-10 and 2026-10-17)."),),
         "/model/pf2s": (
-            ("It scored worse on the full grid (relWIS 0.719 "
-             "against 0.704 for the two-member blend it was "
-             "tested in), so it is kept for research runs only."),),
+            ("It scored worse than the blend it was tested in, in the "
+             "August 2026 evaluation (relWIS 0.719 against 0.704), so it "
+             "is kept for research runs only."),),
     }
     for path, needles in wanted.items():
         t = client.get(path).text
@@ -105,7 +106,7 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
     assert 'id="tip-md-behind"' not in pf2s
     rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])
-    assert "relWIS 0.719 against 0.704 for the two-member blend" in rec
+    assert "the blend it was tested in, in the August 2026 evaluation" in rec
 
 
 # ------------------------------------------------- equations: kit and plain
@@ -126,7 +127,7 @@ def test_model_pages_name_each_equation_and_show_its_note():
         assert f'<span class="uk-name">{name}</span>' in t, name
     assert 'id="tip-dg-' not in t
     notes = " ".join(_notes(t))
-    assert "A week with too few donors (30 paths per stream)" in notes
+    assert "A week where neither stream supplies 30 donor paths" in notes
     assert "the fixed removal rate 7/3.2" in notes
     assert "keeping the filter's spread and adding the donors'" in notes
     # the chips show both parameter rows; the Variables fold's source

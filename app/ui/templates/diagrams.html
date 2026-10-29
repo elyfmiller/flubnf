@@ -428,8 +428,9 @@
 {%- set blend_note %}the growth blend: each path's growth over forecast
   week <i>k</i> is the geometric mean of the filter's rate at the origin
   <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
-{%- set few %}A week with too few donors (30 paths per stream) leaves
- the filter unchanged.{% endset %}
+{%- set few %}A week where neither stream supplies 30 donor paths leaves
+ the filter unchanged; where only one does, that stream supplies every
+ donor.{% endset %}
 {%- set rate %}<i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
   <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;){% endset %}
 {%- set rate_note %}new infections per infected per week: the log
@@ -454,7 +455,7 @@
    ("<i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>", "medians of the filter's samples at the origin and one week ahead", "admissions per week", "derived"),
    ("<i>W</i>", "the donor's week: a Saturday of a strictly earlier season within two epiweeks of <i>T</i>'s, any jurisdiction", "date", "data"),
    ("<i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;)", "donor <i>d</i>'s <i>G</i> at the midpoint of week <i>W</i> + <i>k</i>, from smoothed log counts of its series: NHSN admissions, or FluSurv-NET rates shrunk to the admissions scale", "per week", "data"),
-   ("&#189;", "the blend weight, set a priori", "0.5", "fixed"),
+   ("&#189;", "the registered blend weight, set a priori", "0.5", "fixed"),
    ("<i>&#947;</i>", "the compartment model's removal rate, 7/3.2", "2.19 per week", "fixed"),
    ("<i>x</i><sub><i>i,h</i></sub>", "the filter's forecast sample path <i>i</i> at week <i>h</i>", "admissions per week", "derived"),
    ("<i>d</i><sub><i>i</i></sub>", "the one donor path drawn for sample path <i>i</i>, by a seeded uniform draw", "index", "index"),
