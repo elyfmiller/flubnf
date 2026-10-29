@@ -357,6 +357,20 @@ def _outcome_chips(outcome_json: str) -> str:
     return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
 
 
+def _run_aside(rid) -> dict:
+    """A run's set-aside weeks by member and location (missing.aside_weeks
+    of its ledger outcome); {} for no run or an unreadable row."""
+    import json as _json
+    from app.core import missing as _missing
+    from app.core.runs import Ledger
+    try:
+        row = Ledger().row(rid) if rid else None
+        return _missing.aside_weeks(_json.loads((row or {}).get("outcome")
+                                                or "{}"))
+    except Exception:
+        return {}
+
+
 def _wrote_forecasts(res: dict) -> bool:
     """Whether a run's results hold forecasts from the model it asked for
     (either member for "all": the Groundhog runs without the filter);
