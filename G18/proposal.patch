@@ -1,0 +1,432 @@
+diff --git a/app/core/usmap.py b/app/core/usmap.py
+index 0f3f41d..0644c13 100644
+--- a/app/core/usmap.py
++++ b/app/core/usmap.py
+@@ -240,8 +240,10 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
+                 '</pattern></defs>')
+     return f"""
+ <div id="{dom_id}-wrap" class="usmap-wrap" style="position:relative">
++<a class="skip" href="#{dom_id}-end">Skip past the map</a>
+ <svg id="{dom_id}" viewBox="{VIEWBOX}" xmlns="http://www.w3.org/2000/svg"
+-     style="width:100%;height:auto;display:block;touch-action:none">
++     role="group" aria-label="Map of the United States" tabindex="-1"
++     style="width:100%;height:auto;display:block;touch-action:manipulation">
+ <style>
+  #{dom_id} .st{{cursor:pointer;transition:fill-opacity .12s}}
+  #{dom_id} .st.noclick{{cursor:default}}
+@@ -261,6 +263,7 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
+ {defs}
+ {inner}
+ </svg>
++<span id="{dom_id}-end" tabindex="-1"></span>
+ <div id="{dom_id}-tip" style="position:absolute;pointer-events:none;display:none;
+  background:#151729;border:1px solid #262A45;border-radius:10px;
+  padding:.6rem .8rem;font-size:.82rem;line-height:1.45;color:{ink};
+@@ -361,7 +364,10 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
+     coverage; `gap_fips` and `reasons`: see _no_card_hover.
+     """
+     paths = []
+-    for fips, (topo_name, d) in state_paths().items():
++    # by name, so the keyboard walks the states in a predictable order
++    # (the topology's order scattered them)
++    for fips, (topo_name, d) in sorted(state_paths().items(),
++                                       key=lambda kv: kv[1][0]):
+         card = cards_by_fips.get(fips, {})
+         fill, op, hover, label = _state_view(fips, topo_name, card,
+                                              scope_fips, gap_fips, reasons)
+@@ -522,12 +528,14 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
+ </script>"""
+ 
+ 
+-def map_legend() -> str:
++def map_legend(no_data: str = "no data") -> str:
+     """One-line legend beside every category map: the five categories and
+-    no-data as .sw swatches on the same --cat-* tokens as the fills."""
++    the uncoloured states as .sw swatches on the same --cat-* tokens as
++    the fills. `no_data` names the uncoloured states as the hovers do
++    ("not in this run" when the run's scope is known)."""
+     items = [
+         (cat_fill(c), c.replace("_", " ")) for c in CATS
+-    ] + [(NO_DATA, "no data")]
++    ] + [(NO_DATA, no_data)]
+     spans = "".join(
+         f'<span><span class="sw" style="background:{color}"></span>'
+         f'{label}</span>'
+diff --git a/app/tests/test_home_map.py b/app/tests/test_home_map.py
+new file mode 100644
+index 0000000..2ab6cb7
+--- /dev/null
++++ b/app/tests/test_home_map.py
+@@ -0,0 +1,145 @@
++"""Home's outlook map (bug hunt 2026-10-25, G18).
++
++  * The card's heading carries the reference date, as the report and the
++    files do; the data's own date is a fact in the bar.
++  * Without the run's report, no state is a link and nothing promises one.
++  * The national forecast, which has no shape on the map, is a line in
++    the bar ("United States  stable 45%"), following the model toggle.
++  * A finger swipe on the map scrolls the page; the map is a named group
++    the keyboard can skip, and its states come in alphabetical order.
++  * The legend names the uncoloured states as the hovers do, with a
++    swatch that keeps an edge on a dark card; the hero chips are white.
++"""
++import json
++import re
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core import usmap                                     # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui.routes import home as H                            # noqa: E402
++
++client = TestClient(srv.app)
++RID = "20980103T000000-abcdef"
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++def _q(med):
++    return {"0": {"0.1": med * .8, "0.25": med * .9, "0.5": med,
++                  "0.75": med * 1.1, "0.9": med * 1.3}}
++
++
++@pytest.fixture()
++def run(tmp_path, monkeypatch):
++    """A Groundhog run for Ohio and US with its report (results.json's
++    quantiles give Home its cards)."""
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    w = tmp_path / "workroots" / RID
++    w.mkdir(parents=True)
++    obs = {loc: [[f"2097-12-{d:02d}", 120.0 + d] for d in (13, 20, 27)]
++           for loc in ("Ohio", "US")}
++    (w / "results.json").write_text(json.dumps({
++        "forecast_date": "2098-01-03", "observed": obs,
++        "models": {"analogue": {"Ohio": _q(150.0), "US": _q(2000.0)}}}))
++    (w / "report.html").write_text("<p>r</p>")
++    ui_shared._invalidate_scans()
++    H._outlook_block_cached.cache_clear() if hasattr(
++        H._outlook_block_cached, "cache_clear") else None
++    yield w
++    ui_shared._invalidate_scans()
++
++
++# ----------------------------------------- HM-02: one date for one forecast
++
++def test_the_heading_carries_the_reference_date_and_the_bar_the_data_date(run):
++    ob = H._outlook_block(RID)
++    assert ob["outlook_date"] == "2098-01-03" and ob["outlook_ref"] == "2098-01-10"
++    html = client.get("/").text
++    assert "US categorical forecast · 2098-01-10" in html
++    assert '<span class="uk-stat-v" id="hm-asof">2098-01-03</span>' in html
++
++
++# -------------------------------- HM-03: no report, no link and no promise
++
++def test_without_the_report_no_state_is_a_link_and_nothing_promises_one(run):
++    html = client.get("/").text
++    assert "window.MAP_LINK='/output/report'" in html
++    assert 'role="button" tabindex="0" aria-label="Ohio: ' in html
++    assert "click one to open its" in html and "click for details" in html
++    (run / "report.html").unlink()
++    html = client.get("/").text
++    assert "window.MAP_LINK='/output/report'" not in html
++    assert 'class="st noclick" data-fips="39"' in html
++    assert "click one to open" not in html and "click for details" not in html
++    assert 'class="btn quiet hm-report"' not in html
++
++
++# ------------------------------------- HM-04: the national forecast's line
++
++def test_the_national_forecast_is_a_line_in_the_bar(run):
++    html = client.get("/").text
++    line = html.split('id="hm-us"', 1)[1].split("</dd>", 1)[0]
++    assert re.search(r"<span data-us-words>[a-z ]+ \d+%</span>", line)
++    assert "<dt>United States</dt>" in html.split('id="hm-us"', 1)[0][-200:]
++    assert H._us_words({"probs": {"stable": 0.449, "increase": 0.3}}) == "stable 45%"
++    assert H._us_words({"probs": {}}) == "" and H._us_words(None) == ""
++    # a US-only run: a dated card with its one forecast on it
++    (run / "results.json").write_text(json.dumps({
++        "forecast_date": "2098-01-03",
++        "observed": {"US": [["2097-12-27", 1900.0]]},
++        "models": {"analogue": {"US": _q(2000.0)}}}))
++    ui_shared._invalidate_scans()
++    html = client.get("/").text
++    assert "US categorical forecast · 2098-01-10" in html
++    assert 'id="hm-cover">0 of 52</span>' in html and 'id="hm-us"' in html
++
++
++# -------------------------- HM-07 and HM-16: touch, the map's name, the order
++
++def test_the_map_scrolls_under_a_finger_and_is_a_named_group_in_order():
++    svg = usmap.svg_map({})
++    assert "touch-action:manipulation" in svg and "touch-action:none" not in svg
++    assert ('<svg id="usmap" viewBox="0 0 975 610" xmlns="http://www.w3.org/2000/svg"\n'
++            '     role="group" aria-label="Map of the United States" tabindex="-1"') in svg
++    assert '<a class="skip" href="#usmap-end">Skip past the map</a>' in svg
++    assert '<span id="usmap-end" tabindex="-1"></span>' in svg
++    names = re.findall(r'<path [^>]*aria-label="([A-Za-z .]+?)(?::|")', svg)
++    assert names[:5] == ["Alabama", "Alaska", "Arizona", "Arkansas", "California"]
++    assert len(names) == len(usmap.state_paths()) and names == sorted(names)
++
++
++# --------------------------- HM-18 and UI-08: the legend's words, the chips
++
++def test_the_legend_names_states_left_out_of_the_run_and_keeps_an_edge(run):
++    assert "not in this run</span>" in usmap.map_legend("not in this run")
++    assert "no data</span>" in usmap.map_legend()
++    # from results.json alone the run's scope is unknown: the hovers say
++    # "no data in this view" and so does the legend
++    html = client.get("/").text
++    assert 'aria-label="Texas: no data in this view"' in html
++    legend = html.split('class="hint maplegend"', 1)[1].split("</p>", 1)[0]
++    assert legend.endswith("no data</span>")
++    # the report bundle names the run's scope: the legend follows the hovers
++    card = {"fips": "39", "abbr": "OH", "name": "Ohio",
++            "probs": {"stable": 0.6, "increase": 0.4}, "hover_html": "<b>Ohio</b>"}
++    (run / "report_inputs.json").write_text(json.dumps({
++        "version": 8, "cards": {"Ohio": card}, "cards_model": "analogue",
++        "fitted_fips": ["39"], "gap_fips": []}))
++    ui_shared._invalidate_scans()
++    html = client.get("/").text
++    assert 'aria-label="Texas: not fitted in this run"' in html
++    legend = html.split('class="hint maplegend"', 1)[1].split("</p>", 1)[0]
++    assert legend.endswith("not in this run</span>") and "no data" not in legend
++    css = (STATIC / "nau.css").read_text(encoding="utf-8")
++    rule = css.split(".sw{", 1)[1].split("}", 1)[0]
++    assert "box-shadow:inset 0 0 0 1px" in rule
++    assert ".hero .hm-facts b{color:#fff}" in css
++    home_css = (STATIC / "tabs" / "home.css").read_text(encoding="utf-8")
++    assert "gold-bright" not in home_css.split(".hm-facts b{", 1)[1].split("}", 1)[0]
+diff --git a/app/tests/test_pages.py b/app/tests/test_pages.py
+index 057fa73..4ddfe5b 100644
+--- a/app/tests/test_pages.py
++++ b/app/tests/test_pages.py
+@@ -348,10 +348,13 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
+     from app.ui.server import templates
+     html = templates.env.get_template("home.html").render(
+         active="Home", map_svg="<svg></svg>", outlook_date="2026-01-24",
+-        outlook_n=1, missing=[],
++        outlook_ref="2026-01-31", outlook_n=1, missing=[],
+         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
+                   "fastapi": "x", "plotly": "x"})
+-    assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
++    # the heading carries the reference date, as the report and the files
++    # do; the data's own date is a fact in the bar (HM-02)
++    assert "US categorical forecast · 2026-01-31" in html
++    assert '<span class="uk-stat-v" id="hm-asof">2026-01-24</span>' in html
+     # one green state is not a national outlook: the coverage stat says
+     # how many (the map's own legend names the rest "no data")
+     assert ('<span class="uk-stat-v" id="hm-cover">1 of 52</span> '
+diff --git a/app/ui/routes/home.py b/app/ui/routes/home.py
+index de6f5e1..954b8cf 100644
+--- a/app/ui/routes/home.py
++++ b/app/ui/routes/home.py
+@@ -220,10 +220,24 @@ def _outlook_results_mtime(rid: str | None) -> float:
+         return 0.0
+ 
+ 
++def _us_words(card: dict | None) -> str:
++    """The national card's most likely category and its chance, as the
++    state hovers word them: "stable 45%"; "" without a forecast."""
++    from app.core.report_v2 import CAT_LABEL
++    probs = (card or {}).get("probs") or {}
++    if not probs:
++        return ""
++    top = max(probs, key=probs.get)
++    return f"{CAT_LABEL.get(top, top)} {float(probs[top]):.0%}"
++
++
+ @ttlcache.ttl_cache(ttl_s=300.0)
+-def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
++def _outlook_block_cached(rid: str | None, mtime: float,
++                          has_report: bool = False) -> dict:
+     """Home outlook (map, caption facts, model toggle), cached per (run,
+-    results mtime) so the long TTL never serves a stale map."""
++    results mtime, whether its report exists) so the long TTL never serves
++    a stale map. Without the report a state is not a link (the report
++    section it would open is not there)."""
+     import json as _json
+     res = None
+     if rid:
+@@ -237,6 +251,7 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+     map_svg, outlook_date, outlook_n = "", "", 0
+     outlook_src: dict = {}
+     outlook_toggle = ""
++    us_words, us_by_model = "", {}
+     try:
+         from app.core import report_v2, usmap
+         from app.core.usmap import map_legend, svg_map
+@@ -259,12 +274,16 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+         gaps = outlook_src.get("gap_fips") if outlook_src else None
+         gaps = set(gaps) if gaps is not None else None
+         why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
++        # the national forecast, which has no shape on the map
++        us_words = _us_words(cards.get("US"))
+         map_svg = (f"<div class='{MAP_BOX}'>"
+-                   "<script>window.MAP_LINK='/output/report';</script>"
+-                   + svg_map(cards, clickable=with_data, scope_fips=scope,
+-                             gap_fips=gaps,
++                   + ("<script>window.MAP_LINK='/output/report';</script>"
++                      if has_report else "")
++                   + svg_map(cards, clickable=with_data if has_report
++                             else set(), scope_fips=scope, gap_fips=gaps,
+                              reasons=why.get(outlook_src.get("model")))
+-                   + map_legend() + "</div>")
++                   + map_legend("not in this run" if scope is not None
++                                else "no data") + "</div>")
+         # toggle from the v3 bundle's per-model cards, else the approximate
+         # sets; fewer than two models -> label only, never a dead control
+         try:
+@@ -272,6 +291,8 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+             if not by_model and outlook_src.get("approx"):
+                 by_model = outlook_src.get("by_model") or {}
+             order = report_v2.toggle_models(by_model)
++            us_by_model = {m: _us_words(by_model[m].get("US"))
++                           for m in order}
+             if len(order) >= 2:
+                 default = (outlook_src.get("model")
+                            if outlook_src.get("model") in order
+@@ -291,15 +312,22 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+             outlook_toggle = ""
+     except Exception:
+         pass
++    # the heading's date is the reference date, as the report's and the
++    # files' are; the as-of is said as the data's
++    ref = (report_v2.report_dates(outlook_date).get("ref", "")
++           if outlook_date else "")
+     return {"map_svg": map_svg, "outlook_date": outlook_date,
+-            "outlook_n": outlook_n,
++            "outlook_ref": ref or outlook_date,
++            "outlook_n": outlook_n, "us_words": us_words,
++            "us_by_model": us_by_model,
+             "label": outlook_src.get("label", ""),
+             "approx": bool(outlook_src.get("approx")),
+             "toggle": outlook_toggle}
+ 
+ 
+ def _outlook_block(rid: str | None) -> dict:
+-    return _outlook_block_cached(rid, _outlook_results_mtime(rid))
++    return _outlook_block_cached(rid, _outlook_results_mtime(rid),
++                                 _has_report(rid))
+ 
+ 
+ def _has_report(rid: str | None) -> bool:
+@@ -362,7 +390,8 @@ def home(request: Request):
+         ob = {"map_svg": (f"<div class='{MAP_BOX}'>"
+                           + svg_map({}, clickable=set()) + map_legend()
+                           + "</div>"),
+-              "outlook_date": "", "outlook_n": 0,
++              "outlook_date": "", "outlook_ref": "", "outlook_n": 0,
++              "us_words": "", "us_by_model": {},
+               "label": "", "approx": False, "toggle": ""}
+     else:
+         ob = _outlook_block(rid)
+@@ -373,7 +402,10 @@ def home(request: Request):
+     return templates.TemplateResponse(request, "home.html", {
+         "active": "Home", "map_svg": ob["map_svg"],
+         "outlook_date": ob["outlook_date"],
++        "outlook_ref": ob["outlook_ref"],
+         "outlook_n": ob["outlook_n"],
++        "outlook_us": ob["us_words"],
++        "outlook_us_by_model": ob["us_by_model"],
+         "outlook_model_label": ob["label"],
+         "outlook_approx": ob["approx"],
+         "outlook_toggle": ob["toggle"],
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index bf9a1ba..30ec246 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -745,6 +745,7 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
+ .hero h1{color:#fff;font-size:var(--fs-hero-h1);margin:0 0 .4rem}
+ .hero p{color:#C6CFEE;margin:0;font-size:var(--fs-lead)}
+ .hero .gold{color:var(--gold-bright)}
++.hero .hm-facts b{color:#fff}
+ .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--gap)}
+ /* grid2 cards keep their content height (no dead band under a short one) */
+ .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+@@ -1000,7 +1001,8 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
+ .pbscale .seg{margin:0;gap:.3rem}
+ .pbscale .seg button{padding:.08rem .6rem;font-size:var(--fs-label)}
+ .sw{display:inline-block;width:.7rem;height:.7rem;border-radius:3px;
+-  margin-right:.35rem;vertical-align:-1px}
++  margin-right:.35rem;vertical-align:-1px;
++  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 35%,transparent)}
+ .fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}
+ .fdmodels .ck input{width:auto}
+ 
+diff --git a/app/ui/static/tabs/home.css b/app/ui/static/tabs/home.css
+index ab20545..297b2d1 100644
+--- a/app/ui/static/tabs/home.css
++++ b/app/ui/static/tabs/home.css
+@@ -22,7 +22,10 @@
+   background:color-mix(in srgb,currentColor 8%,transparent);
+   color:color-mix(in srgb,currentColor 84%,transparent);
+   font-size:var(--fs-label);line-height:1.5}
+-.hm-facts b{color:var(--gold-bright);font-weight:700}
++/* the labels' white is the hero's own (nau.css .hero .hm-facts b):
++   small bold text needs 4.5:1 on every theme's navy, which the accent
++   held at 3.8:1 in Dracula */
++.hm-facts b{font-weight:700}
+ 
+ /* ---- 2. outlook ---- */
+ /* one bar over the map: the model (its toggle), the coverage, the report */
+diff --git a/app/ui/templates/home.html b/app/ui/templates/home.html
+index c2d44ef..8fe6dd5 100644
+--- a/app/ui/templates/home.html
++++ b/app/ui/templates/home.html
+@@ -19,14 +19,16 @@
+ <div class="card hm-outlook">
+  {# the h2 names the payload and its date, like every other card; how to
+     read the map is its "i" #}
+- {% call tips.heading("US categorical forecast" ~ (" · " ~ outlook_date if outlook_date else ""),
++ {# the date is the reference date, as the report and the files carry it;
++    the data's own date is a fact in the bar below #}
++ {% call tips.heading("US categorical forecast" ~ (" · " ~ outlook_ref if outlook_date else ""),
+                       "hm-map", rich=True, tip_label="reading the map") %}
+   <span class="uk-tt-line">Most likely direction of admissions next week.</span>
+   <span class="uk-tt-line">Each state takes the color of its most likely
+   category; the stronger the color, the more likely that category.</span>
+   {% if outlook_date %}
+-  <span class="uk-tt-line">Hover a state for its numbers; click one to open its
+-  section of the weekly report.</span>
++  <span class="uk-tt-line">Hover a state for its numbers{% if outlook_report %}; click one to open its
++  section of the weekly report{% endif %}.</span>
+   <span class="uk-tt-line">Ctrl or Cmd with the mouse wheel zooms, dragging
+   pans, and a double-click resets the view.</span>
+   {% endif %}
+@@ -52,10 +54,28 @@
+    quantiles it stored.{% endcall %}{% endif %}
+   </div>
+   {% endif %}
+-  {# the rest of the map reads "no data" in its legend #}
++  {# the rest of the map reads "not in this run" in its legend; the
++     national forecast has no shape, so it is a fact here #}
+   {% call tips.stats("uk-stats--row hm-mapstats") %}
++   {{ tips.stat("Data through", outlook_date, id="hm-asof") }}
+    {{ tips.stat("Coverage", outlook_n ~ " of 52", "jurisdictions", id="hm-cover") }}
++   {% if outlook_us %}{% set us %}<span data-us-words>{{ outlook_us }}</span>{% endset %}
++   {{ tips.stat("United States", us, id="hm-us") }}{% endif %}
+   {% endcall %}
++  {% if outlook_toggle and outlook_us %}
++  <script>
++  (function () {
++    // the national line follows the model toggle, as the states do
++    var W = {{ outlook_us_by_model | tojson }};
++    var g = document.getElementById('outlook-model'), v = document.querySelector('[data-us-words]');
++    if (!g || !v) return;
++    g.addEventListener('click', function (e) {
++      var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
++      if (b && W[b.dataset.mmodel]) v.textContent = W[b.dataset.mmodel];
++    });
++  })();
++  </script>
++  {% endif %}
+   {% if outlook_report %}<a class="btn quiet hm-report" href="/output/report">Weekly report</a>{% endif %}
+  </div>
+  {% endif %}
