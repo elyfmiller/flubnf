@@ -1,0 +1,385 @@
+diff --git a/app/tests/test_console_qol.py b/app/tests/test_console_qol.py
+index 32e53a0..081b298 100644
+--- a/app/tests/test_console_qol.py
++++ b/app/tests/test_console_qol.py
+@@ -97,7 +97,7 @@ def test_zoom_tip_names_ctrl_off_macos():
+ # ------------------------------------------------------------ diagrams
+ 
+ def test_wide_figures_are_labelled_focusable_regions():
+-    for page in ("/methods", "/models", "/model/analogue", "/model/pf2s"):
++    for page in ("/", "/methods", "/models", "/model/analogue", "/model/pf2s"):
+         html = client.get(page).text
+         figs = re.findall(r'<div class="figscroll[^"]*"([^>]*)>', html)
+         assert figs, page
+diff --git a/app/tests/test_fewer_marks.py b/app/tests/test_fewer_marks.py
+index 4984b21..dac68d8 100644
+--- a/app/tests/test_fewer_marks.py
++++ b/app/tests/test_fewer_marks.py
+@@ -396,10 +396,10 @@ def test_methods_lists_every_model_setting_the_panel_offers():
+             assert " ".join(str(Markup_escape(k.help)).split()) in text, k.key
+     # a choice's default reads as its option does, and the console's
+     # contents row links the card; the public site has no Forecast tab
+-    assert "<td>2026091801</td>" in text
++    assert '<td data-label="Default">2026091801</td>' in text
+     # the other choices read in the panel's words, the stored value beside
+     assert "expected total (early season) (season_total_early)" in text
+-    assert "<td>random draws (rand)</td>" in text
++    assert '<td data-label="Default">random draws (rand)</td>' in text
+     assert '<a href="#settings">Model settings</a>' in t
+     from app.core import site_build
+     assert 'id="settings"' not in site_build.harvest_methods({})
+diff --git a/app/tests/test_phone_tables.py b/app/tests/test_phone_tables.py
+new file mode 100644
+index 0000000..deedf23
+--- /dev/null
++++ b/app/tests/test_phone_tables.py
+@@ -0,0 +1,127 @@
++"""Phone width and large text: the tables, drawings and folds that were cut
++off or fell apart at 390 px (and at text 130 to 160%) keep their facts on
++the screen (checked in Chromium; these pin the rules and markup)."""
++import re
++from pathlib import Path
++
++from fastapi.testclient import TestClient
++
++from app.ui import server as srv
++
++client = TestClient(srv.app)
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++def _css(name):
++    return (STATIC / name).read_text(encoding="utf-8")
++
++
++def _flat(css):
++    return re.sub(r"\s+", " ", css)
++
++
++def _media(css, query):
++    """The body of the first @media block with this query."""
++    i = css.index(query)
++    body, depth = "", 0
++    for ch in css[css.index("{", i):]:
++        depth += ch == "{"
++        depth -= ch == "}"
++        body += ch
++        if depth == 0:
++            return body
++    raise AssertionError(query)
++
++
++def _phone(name, query="@media(max-width:640px){\n  .eqpanel"):
++    return _flat(_media(_css(name), query))
++
++
++def test_the_home_workflow_and_performance_table_scroll_with_the_figures_cue():
++    # HM-06, HM-09: the drawing was cut at the card's edge with no cue; at
++    # larger text the table's last column was too. Both are now the kit's
++    # scrolling regions (shadow at the edge, focusable, named)
++    html = client.get("/").text
++    assert ('<div class="pipe figscroll" tabindex="0" role="region" '
++            'aria-label="Weekly forecasting workflow (scrolls)">') in html
++    assert ('<div class="figscroll" tabindex="0" role="region" '
++            'aria-label="Measured performance table (scrolls)">\n'
++            '  <table class="perf">') in html
++    phone = _phone("nau.css")
++    assert ".pipe,.figscroll{overflow-x:auto;" in phone
++    assert ".figscroll,.sbscroll{background:" in phone
++
++
++def test_a_setting_stacks_with_its_range_and_default_on_a_phone():
++    # ME-06: Range and Default sat 300 px off-screen in a 38rem table
++    html = client.get("/methods").text
++    assert '<td data-label="Range">' in html and '<td data-label="Default">' in html
++    phone = _phone("tabs/methods.css", "@media (max-width:640px){\n  .mt-rec")
++    assert ".mt-settings{min-width:0}" in phone
++    assert ".mt-settings thead{display:none}" in phone
++    assert '.mt-settings td[data-label]::before{content:attr(data-label) ": "}' in phone
++
++
++def test_a_variables_table_puts_the_units_and_source_under_the_meaning_on_a_phone():
++    # ME-07 (also MO-19): the Source column was cut to "ind", "der", "fitt"
++    # while one-letter symbols took a quarter of the width
++    phone = _phone("nau.css")
++    assert ".eqvars-t thead{display:none}" in phone
++    assert (".eqvars-t tr{display:grid;grid-template-columns:fit-content(6rem) "
++            "minmax(0,1fr) auto;") in phone
++    assert ".eqvars-t tbody th{grid-row:span 2;white-space:normal}" in phone
++    assert ".eqvars-t td:nth-child(2){grid-column:2/4;" in phone
++
++
++def test_the_records_seasons_never_split_at_their_hyphen():
++    # ME-08: "2023-" / "24" on a phone, and the table 7 px wider than its box
++    html = client.get("/methods").text
++    for label in ("2023&#8209;24", "2024&#8209;25", "2025&#8209;26",
++                  "2024&#8209;25 and 2025&#8209;26"):
++        assert f"<td>{label}</td>" in html, label
++    assert "<td>2023-24</td>" not in html
++    assert '<table class="mt-rec">' in html
++    phone = _phone("tabs/methods.css", "@media (max-width:640px){\n  .mt-rec")
++    assert ".mt-rec td,.mt-rec th{padding:.28rem .3rem}" in phone
++
++
++def test_a_long_label_cannot_starve_a_fact_lists_values():
++    # ME-09: "Placement among teams" took its full width at 160% text and
++    # the values broke letter by letter
++    kit = _flat(_css("ui-kit.css"))
++    assert ".uk-stats--kv{grid-template-columns:fit-content(40%) minmax(0,1fr);" in kit
++
++
++def test_a_long_fold_title_wraps_beside_its_chevron():
++    # ME-10: the chevron sat alone on a line and the title started below it
++    kit = _flat(_css("ui-kit.css"))
++    assert ".uk-fold-sum{min-width:0;max-width:calc(100% - 1.4em);overflow-wrap:anywhere}" in kit
++
++
++def test_the_harmonic_scrolls_on_a_phone_and_set_expressions_hold_together():
++    # MO-23: the harmonic's labels shrank to 8 px; "s ∈" / "{A, B}" and
++    # "Binomial( n, shareA/" / "(A+B))" broke mid-expression
++    for page in ("/models", "/model/pf2s", "/"):
++        html = client.get(page).text
++        assert re.search(r'<div class="figscroll" tabindex="0" role="region" '
++                         r'aria-label="(Two-strain s|S)easonal harmonic \(scrolls\)">'
++                         r'<svg class="dg-harm" viewBox="0 0 560 232"', html), page
++    pf2s = client.get("/model/pf2s").text
++    assert '<span class="nw"><i>s</i> &#8712; {A, B}</span>' in pf2s
++    assert ('<span class="nw">Binomial(&#8239;<i>n</i>, '
++            'share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>') in pf2s
++    assert ".figscroll > svg.dg-harm{min-width:560px}" in _phone("nau.css")
++
++
++def test_a_long_dataset_name_wraps_and_the_stored_table_scrolls_in_its_card():
++    # DA-10: an 80-character name tripled every row and ran the browser's
++    # heading off the card; DA-11: the hidden "Actions" header escaped the
++    # card and scrolled the page sideways at 768 px and 160% text
++    nau = _flat(_css("nau.css"))
++    assert ".dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}" in nau
++    assert ".dstable td.dsname{min-width:12rem}" in nau
++    assert (".dsup .tablewrap,#datasets .tablewrap{max-width:100%;overflow-x:auto;"
++            "position:relative}") in nau
++    data = _flat(_css("tabs/data.css"))
++    assert ".dt-rowacts{display:flex;flex-wrap:nowrap;" in data
++    assert "@media(max-width:600px){.dt-rowacts{flex-wrap:wrap}}" in data
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index ae7ba2f..ee702c2 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -1105,7 +1105,9 @@ kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid v
+   border-bottom:1px solid var(--line)}
+ .dsspark figcaption{font-size:var(--fs-micro);color:var(--mut);
+   overflow-wrap:anywhere}
+-.dsup .tablewrap{max-width:100%;overflow-x:auto}
++/* the stored datasets scroll inside their card too, and the hidden
++   "Actions" header stays inside the scroller (it is positioned) */
++.dsup .tablewrap,#datasets .tablewrap{max-width:100%;overflow-x:auto;position:relative}
+ .dsfirst caption{caption-side:top;text-align:left}
+ /* the first rows fit a 360px column: tight cells, the date as written
+    under its week, names wrap at their spaces, numbers and weeks never */
+@@ -1123,6 +1125,11 @@ details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
+ details.dsup-fold>summary::-webkit-details-marker{display:none}
+ details.dsup-fold>summary::before{content:"\25B8"}
+ details.dsup-fold[open]>summary::before{content:"\25BE"}
++/* a long unbroken name (up to 80 characters) wraps, in the table and as
++   the browser's heading, instead of widening both */
++.dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}
++/* and keeps a readable column when the table is squeezed */
++.dstable td.dsname{min-width:12rem}
+ .dstable td.dsactions{white-space:nowrap}
+ .dstable td.dsactions form{display:inline;margin:0}
+ .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
+@@ -1272,6 +1279,21 @@ tr[aria-current="true"] td{font-weight:600}
+   .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
+     scrollbar-color:var(--mut) transparent}
+   .pipe svg,.figscroll > svg{min-width:620px}
++  /* the harmonic keeps its drawn size (560 wide) rather than growing */
++  .figscroll > svg.dg-harm{min-width:560px}
++  /* a Variables table: each row a grid, the symbol beside its meaning
++     and the units and source under the meaning, so no column is cut
++     off-card and a long meaning gets the width */
++  .eqvars-t thead{display:none}
++  .eqvars-t,.eqvars-t tbody{display:block}
++  .eqvars-t tr{display:grid;grid-template-columns:fit-content(6rem) minmax(0,1fr) auto;
++    border-bottom:1px solid var(--line)}
++  .eqvars-t tbody th,.eqvars-t td{border:0}
++  .eqvars-t tbody th{grid-row:span 2;white-space:normal}
++  .eqvars-t tbody th .math{white-space:normal}
++  .eqvars-t td:nth-child(2){grid-column:2/4;padding-bottom:0}
++  .eqvars-t td:nth-child(3){grid-column:2}
++  .eqvars-t td:nth-child(4){grid-column:3;padding-right:0}
+   .perf td,.perf th{padding:.28rem .3rem}
+   /* a figure that scrolls says so: a soft shadow at the edge with more
+      drawing past it (the classic local/scroll background pair, so it
+diff --git a/app/ui/static/tabs/data.css b/app/ui/static/tabs/data.css
+index 7f770b1..12f0610 100644
+--- a/app/ui/static/tabs/data.css
++++ b/app/ui/static/tabs/data.css
+@@ -61,8 +61,10 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
+ 
+ /* ---- 5. Your datasets ---- */
+ .dt-listhead{margin-top:1.3rem}
+-/* the row's links and Delete on one line */
+-.dt-rowacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .8rem}
++/* the row's links and Delete on one line, whatever a long name leaves
++   them; a stacked row (under 600px, nau.css .dstable) lets them wrap */
++.dt-rowacts{display:flex;flex-wrap:nowrap;align-items:center;gap:.25rem .8rem}
++@media(max-width:600px){.dt-rowacts{flex-wrap:wrap}}
+ .dt-delform{margin:0;gap:.3rem}
+ 
+ /* ---- 6. the upload box ---- */
+diff --git a/app/ui/static/tabs/methods.css b/app/ui/static/tabs/methods.css
+index 4e173af..747cacd 100644
+--- a/app/ui/static/tabs/methods.css
++++ b/app/ui/static/tabs/methods.css
+@@ -141,6 +141,21 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
+ .mt-settings td{font-size:var(--fs-hint)}
+ .mt-settings td:nth-child(3),.mt-settings td:nth-child(4){color:var(--mut)}
+ .mt-setnote{display:block;margin-top:.2rem;color:var(--mut)}
++/* a phone: the record fits the card (tight cells, as Home's performance
++   table); each setting stacks: its name, what it does, then its range and
++   default on one line, named by data-label (the dataset rows do the same),
++   so nothing scrolls off-screen */
++@media (max-width:640px){
++  .mt-rec td,.mt-rec th{padding:.28rem .3rem}
++  .mt-settings{min-width:0}
++  .mt-settings thead{display:none}
++  .mt-settings,.mt-settings tbody,.mt-settings tr{display:block}
++  .mt-settings tr{padding:.4rem 0;border-bottom:1px solid var(--line)}
++  .mt-settings th,.mt-settings td{display:block;padding:0;border:0;min-width:0}
++  .mt-settings td:nth-child(3),.mt-settings td:nth-child(4){display:inline-block;
++    margin:.15rem .9rem 0 0}
++  .mt-settings td[data-label]::before{content:attr(data-label) ": "}
++}
+ 
+ /* ---- 5. policies ---- */
+ /* the rules every run keeps, each with a check mark drawn in borders */
+diff --git a/app/ui/static/ui-kit.css b/app/ui/static/ui-kit.css
+index 5405572..2b8b11b 100644
+--- a/app/ui/static/ui-kit.css
++++ b/app/ui/static/ui-kit.css
+@@ -197,8 +197,9 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
+ .uk-stat--ok .uk-stat-v{color:var(--ok)}
+ .uk-stat--warn .uk-stat-v{color:var(--warn)}
+ .uk-stat--error .uk-stat-v{color:var(--bad)}
+-/* labels left, values right, one row per fact */
+-.uk-stats--kv{grid-template-columns:max-content minmax(0,1fr);
++/* labels left, values right, one row per fact; a label takes its own
++   width up to 40%, so a long one wraps instead of starving the values */
++.uk-stats--kv{grid-template-columns:fit-content(40%) minmax(0,1fr);
+   gap:.35rem .9rem;align-items:baseline}
+ .uk-stats--kv .uk-stat{display:contents}
+ .uk-stats--kv .uk-stat dd{margin:0}
+@@ -322,7 +323,10 @@ details.uk-fold > summary::before{content:"";width:.42em;height:.42em;
+   border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg);
+   transition:transform .15s}
+ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
+-.uk-fold-sum{min-width:0;overflow-wrap:anywhere}
++/* the title never drops below its chevron: capped at the line less the
++   chevron, a long one wraps beside it and only a badge after it moves to
++   the next line */
++.uk-fold-sum{min-width:0;max-width:calc(100% - 1.4em);overflow-wrap:anywhere}
+ .uk-fold-body{margin:.35rem 0 .2rem 1.1rem}
+ .uk-fold-body > :first-child{margin-top:0}
+ /* facts in a row, each an icon and a value */
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index 8d10a7c..a8abf93 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -575,7 +575,7 @@
+ 
+ {% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30, kit=false) -%}
+ {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
+-<svg viewBox="0 0 560 232" role="img"
++<div class="figscroll" tabindex="0" role="region" aria-label="{{ 'Two-strain seasonal harmonic' if two else 'Seasonal harmonic' }} (scrolls)"><svg class="dg-harm" viewBox="0 0 560 232" role="img"
+      aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
+      style="width:100%;max-width:560px;display:block;margin:.4rem auto 0;color:inherit">
+  <desc>{% if two %}Two phase-shifted copies of the same seasonal harmonic,
+@@ -662,7 +662,7 @@
+        dy="3">1</tspan><tspan dy="-3"> &#183; peak week
+        ({{ season_week_name(phi) }})</tspan></text>
+  {% endif %}
+-</svg>
++</svg></div>
+ {# the caption: plain, or with the kit a badge that carries the values
+    (the figure's own labels name the peak week) #}
+ {% set caption %}{% if two %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
+@@ -733,7 +733,7 @@
+   <i>&#946;</i><sub>0,s</sub> exp(&#8239;<i>&#949;</i><sub>1</sub>
+   cos(&#8239;2&#960;(<i>t</i> &#8722;
+   <i>&#966;</i><sub>s</sub>)&#8202;/&#8202;52&#8239;)&#8239;),
+-  <i>s</i> &#8712; {A, B}{% endset %}
++  <span class="nw"><i>s</i> &#8712; {A, B}</span>{% endset %}
+ {%- set forcing_note %}one harmonic form shared by both circuits; each strain
+   fits its own <i>R</i><sub>eff</sub> and phase{% endset %}
+ {%- set adm %}admissions<sub>w</sub> &#8764;
+@@ -744,7 +744,7 @@
+   accumulated across the reporting week, from the one accumulator that sums
+   both circuits{% endset %}
+ {%- set typed %}typed positives: <i>k</i><sub>A</sub> &#8764;
+-  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;){% endset %}
++  <span class="nw">Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>{% endset %}
+ {%- set typed_note %}the second likelihood channel: the admissions channel
+   sees only the ascertained total, so typed specimens fit the A/B
+   share{% endset %}
+diff --git a/app/ui/templates/home.html b/app/ui/templates/home.html
+index 83fff32..cd05a1c 100644
+--- a/app/ui/templates/home.html
++++ b/app/ui/templates/home.html
+@@ -162,6 +162,9 @@
+      literals here, held equal to oracle_text.fmt(RECORD) by
+      app/tests/test_pages.py. The plain filter's figures are its ablation,
+      in the card's "i" #}
++  {# at larger text the table outgrows a phone's card: it scrolls with
++     the figures' cue (nau.css .figscroll) #}
++  <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
+   <table class="perf">
+    {# columns named for whose forecast they score; the unit is beside the
+       card's heading #}
+@@ -179,6 +182,7 @@
+      <td class="num rel">0.642</td><td class="num">0.685</td></tr>
+    </tbody>
+   </table>
++  </div>
+   {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
+      the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
+      cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
+@@ -222,7 +226,7 @@
+  {% endcall %}
+  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
+     title element (its tooltip pops over the drawing) #}
+- <div class="pipe">
++ <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
+  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
+   <desc>One weekly data pull feeds the Oracle SIHRS (the particle-filter
+   fit, its forecast growth then blended with donor growth from past seasons
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index 8450015..f61df04 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -304,12 +304,13 @@
+   the stored forecasts' shared cells</span>
+   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
+  </div>
+- <div style="overflow-x:auto"><table>
++ {# a season label never splits at its hyphen (non-breaking hyphens) #}
++ <div style="overflow-x:auto"><table class="mt-rec">
+   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
+-  {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
+-                         ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
++  {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
++                         ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
+   {% set r = oracle_text.RECORD[key] %}
+-  <tr><td>{{ label }}</td>
++  <tr><td>{{ label | safe }}</td>
+    <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}{{ rel_verdict(r.oracle) }}</td>
+    <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}{{ rel_verdict(r.filter) }}</td>
+    <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
+@@ -425,7 +426,7 @@
+   {%- for r in g.rows %}
+    <tr id="set-{{ r.key | replace('.', '-') }}"><th scope="row">{{ r.label }}{% if r.later %} {{ tips.tag("coming later") }}{% elif r.optional %} {{ tips.tag("optional") }}{% endif %}</th>
+     <td>{{ r.help }}{% if r.note %}<span class="mt-setnote">{{ r.note }}</span>{% endif %}</td>
+-    <td>{{ r.range }}</td><td>{{ r.default }}</td></tr>
++    <td data-label="Range">{{ r.range }}</td><td data-label="Default">{{ r.default }}</td></tr>
+   {%- endfor %}
+   </tbody>
+  </table></div>
