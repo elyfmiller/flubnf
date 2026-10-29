@@ -317,7 +317,7 @@ REGISTRY: tuple = (
          "method", "float", AN.SHIPPED_OWN_SHARE,
          "flubnf.analogue:SHIPPED_OWN_SHARE",
          "Weight share of the jurisdiction's own past weeks in the admissions "
-         "pool; 0 is the pooled form.",
+         "pool; 0 drops it.",
          lo=0.0, hi=1.0,
          note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
                "against 0.670 pooled on three replayed seasons, "

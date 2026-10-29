@@ -36,7 +36,7 @@ def test_home_renders_workflow_performance_and_component_cards():
     # table must not carry them and must say so.
     assert 'class="perf"' in r.text
     for cell in ("0.767", "0.697", "0.781", "0.738",
-                 "0.702", "0.651", "0.653", "0.660",
+                 "0.680", "0.627", "0.645", "0.642",
                  "0.741", "0.663", "0.684", "0.685",
                  "15,460", "17,116", "15,300", "Oracle SIHRS", "Groundhog",
                  # the plain filter on the same cells, in the card's "i"
@@ -103,31 +103,38 @@ def test_home_table_headlines_the_recorded_oracle_sihrs():
 
 
 def _readme_groundhog_rows():
-    """README's Measured record, the Groundhog's two rows: the shipped
-    own-state weighting and the pooled form, each (2023-24, 2024-25,
-    2025-26, pooled, cells)."""
+    """README's Measured record, the Groundhog's three rows: the shipped
+    form (own-state weighting with size-matched donors, since 2026-10-23),
+    the form it replaced (without the size weighting) and the pooled form,
+    each (2023-24, 2024-25, 2025-26, pooled, cells). Both own-state rows
+    start alike: the one that ships says so."""
     readme = (Path(__file__).resolve().parents[2] / "README.md").read_text(
         encoding="utf-8")
     rows = {}
     for line in readme.splitlines():
-        for key, lead in (("shipped", "| Groundhog, own-state weighting"),
-                          ("pooled", "| Groundhog, pooled form")):
+        for key, lead in (
+                ("shipped", "| Groundhog, own-state weighting with "
+                            "size-matched donors, the shipped form"),
+                ("replaced", "| Groundhog, own-state weighting without the "
+                             "size weighting"),
+                ("pooled", "| Groundhog, pooled form")):
             if line.startswith(lead):
                 cells = [c.strip() for c in line.strip().strip("|").split("|")]
                 rows[key] = (*(float(v) for v in cells[2:6]), cells[6])
-    assert set(rows) == {"shipped", "pooled"}, "README's record moved"
+    assert set(rows) == {"shipped", "replaced", "pooled"}, \
+        "README's record moved"
     return rows
 
 
 def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
     """README's Measured record is the source of truth: Home's Groundhog
     column, Methods' Groundhog row and the model page carry its shipped
-    row (own-state weighting, FluSight's cell rule) and name the cells and
+    row (size-matched donors, FluSight's cell rule) and name the cells and
     the rule; the pooled form's 0.666 under the earlier rule is printed
     only where it is labelled so (Methods' Cells fold)."""
     rows = _readme_groundhog_rows()
     y23, y24, y25, three, cells = rows["shipped"]
-    pooled_form = rows["pooled"][3]
+    replaced, pooled_form = rows["replaced"][3], rows["pooled"][3]
 
     def fmt(v):
         return f"{v:.3f}"
@@ -145,7 +152,7 @@ def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
     # each column's cells and cell rule: the Groundhog's alone is FluSight's
     assert ("15,460 (placement among teams withdrawn) under the earlier cell "
             f"rule, the shipped Groundhog on {cells} under FluSight's (the "
-            f"pooled form it replaced: {fmt(pooled_form)}).") in tip
+            f"form it replaced: {fmt(replaced)}).") in tip
     assert "0.666" not in home and "15,340" not in home
     # Methods: the Groundhog row and its three-season tile
     methods = client.get("/methods").text
@@ -161,10 +168,13 @@ def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
     # the model page: its bars, facts and Record "i"
     from app.ui.routes.models import _record
     rec = _record("analogue")
-    assert [b["text"] for b in rec["bars"]] == [fmt(three), fmt(pooled_form)]
-    # "pooled" names the form, not the three-season figure
+    assert [b["text"] for b in rec["bars"]] == [fmt(three), fmt(replaced)]
+    # the bar beside it is the form the size-matched donors replaced
     assert [b["label"] for b in rec["bars"]] == [
-        "Groundhog", "Without own-state weighting"]
+        "Groundhog", "Without size-matched donors"]
+    assert (f"{fmt(replaced)} without size-matched donors, submitted "
+            f"2026-10-24; {fmt(pooled_form)} for the pooled form") in \
+        rec["lines"][0]
     assert [f[1] for f in rec["facts"]] == [fmt(y23), fmt(y24), fmt(y25),
                                             cells]
     assert "FluSight's cell rule" in rec["lines"][0]

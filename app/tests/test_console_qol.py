@@ -123,7 +123,7 @@ def test_diagram_crops_and_labels():
     assert 'class="dg-h-ink">H' in html
     assert "svg .dg-h-ink{fill:color-mix(in srgb,var(--slate) 55%,var(--ink))}" in NAU
     # the ratio axis has its 1.0 tick, the title its own class
-    ratio = html.split('aria-label="Each donor season contributes', 1)[1].split("</svg>", 1)[0]
+    ratio = html.split('aria-label="Each donor week contributes', 1)[1].split("</svg>", 1)[0]
     assert '<text x="454" y="212">1.0</text>' in ratio
     assert 'class="svgt-md" font-weight="600"' in ratio
     # k = 1..4 never breaks
