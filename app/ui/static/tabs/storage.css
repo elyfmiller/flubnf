@@ -67,6 +67,14 @@
 /* the row's action: a small button or link */
 .st-del{min-height:24px;margin-top:0;padding:.22rem .7rem;
   font-size:var(--fs-label);white-space:nowrap}
+/* a phone: the title and its facts take the whole row, the size and the
+   action the line under them (three columns left the title none at large
+   text) */
+@media (max-width:40rem){
+  .st-row{grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"title title" "meta meta" "size act"}
+  .st-size{text-align:left}
+}
 
 /* ---- 5. run ledger: badges and fact chips instead of a sentence ---- */
 /* the table scrolls sideways inside its own box when it must, never the

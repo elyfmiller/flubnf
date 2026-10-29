@@ -200,7 +200,11 @@ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
    sideways rather than wrap ---- */
 @media (max-width:640px){
   .sbhead{flex-direction:column;align-items:stretch;gap:.35rem}
-  .sbhead-menus{flex-wrap:wrap;margin:0 0 .5rem}
+  .sbhead-menus{position:relative;flex-wrap:wrap;margin:0 0 .5rem}
+  /* the menus now sit at the left: each opens from the row's left edge,
+     inside the screen (right:0 hung it off the left) */
+  .sbhead-menus > details.sbmanage{position:static}
+  .sbhead-menus .sbmenu{left:0;right:auto}
   .sb-title > h1{overflow-wrap:anywhere}
   .sbtabs{flex-wrap:wrap;border-bottom:0}
   .sbtablist{flex:1 1 100%;overflow-x:auto;border-bottom:1px solid var(--line)}
