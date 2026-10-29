@@ -3,7 +3,7 @@ PR #68, head eafcd8b.
 
 Approve.
 
-- The diff is my prototype (proto/G14-A at 79a7f7f's tree) plus exactly
+- The diff is my prototype (proto/G14-A, 78bb25d) plus exactly
   the decided changes: the SB-02 server words, the SB-11 refusal (366 days,
   naming production's start) with its test, and the 64-character trim in
   `free()`. Nothing else differs. The Status cell reads "fixed in #68;
