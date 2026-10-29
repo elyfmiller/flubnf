@@ -216,7 +216,7 @@
  a forecast fan formed by scaling the last observed value by quantiles of the
  growth ratios recorded at the same calendar weeks in prior seasons, pooled
  across states with the state's own past weeks carrying half of the
- weight.</desc>
+ weight and weeks sized like its newest count the most.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -260,10 +260,11 @@
        stroke-dasharray="5 4" fill="none"/>
  <text x="430" y="48" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">forecast date</text>
- <!-- forecast fan: the anchor scaled by donor growth-ratio quantiles -->
- <polygon points="430,140 545,96 545,190" fill="var(--gold-bright)"
+ <!-- forecast fan: the anchor scaled by donor growth-ratio quantiles,
+      over the four weeks forecast (745/52 units a week) -->
+ <polygon points="430,140 487,96 487,190" fill="var(--gold-bright)"
           fill-opacity=".22"/>
- <path d="M430,140 C470,132 510,140 545,150" fill="none"
+ <path d="M430,140 C450,132 470,140 487,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
  {# key in the clear zone, well right of the fan's wedge; long entries
     wrap (one line clipped at A+) #}
@@ -462,7 +463,7 @@
 </div>
 {%- endmacro %}
 
-{# ---- what the analogue MEASURES: one growth ratio per donor season and
+{# ---- what the analogue MEASURES: one growth ratio per donor week and
    horizon (admissions h weeks after the matched week over admissions at
    it), pooled on a ratio axis whose quantiles scale the fan. Illustrative
    values. Defines an arrow marker, so the uid matters. The donor curves
@@ -473,7 +474,7 @@
 
 {% macro analogue_ratios(uid='r') -%}
 <svg viewBox="0 30 560 222" role="img"
-     aria-label="Each donor season contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
+     aria-label="Each donor week contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Three prior-season curves crossing the matched calendar week. On each,
  a marked segment runs from that week to h weeks later, and the ratio of the
@@ -484,7 +485,7 @@
 
  <!-- ---------- left: the measurement ---------- -->
  <text x="195" y="48" text-anchor="middle" class="svgt-md" font-weight="600"
-       fill="currentColor">one ratio per donor season</text>
+       fill="currentColor">one ratio per donor week</text>
  <g stroke="currentColor" stroke-width="1.3" fill="none">
   <path d="M46,224 H322"/>
  </g>
@@ -783,7 +784,7 @@
    ("<i>&#964;</i>", "a quantile level, one of FluSight's 23", "0.01 to 0.99", "fixed"),
    ("<i>y</i><sub>last</sub>", "the last observed admissions value, as archived on the forecast date", "admissions per week", "data"),
    ("<i>Q</i><sub><i>&#964;</i></sub>", "the weighted empirical <i>&#964;</i> quantile of the pooled ratios", "ratio", "derived"),
-   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction (the forecast jurisdiction's own carrying half of the weight), strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, pooled across sites, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
+   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction (the forecast jurisdiction's own carrying half of the weight, weeks sized like its newest count the most), strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, pooled across sites, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
 </div>
 {%- endmacro %}
 
