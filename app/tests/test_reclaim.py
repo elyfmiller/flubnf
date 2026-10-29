@@ -586,7 +586,8 @@ def test_run_display_orphan_reads_as_unrecorded(routed):
     row = html.split('data-wid="20980118T100000-bbbbbb"', 1)[1] \
               .split("</div>", 1)[0]
     assert "Unrecorded run" in row
-    assert "run 2098-01-18 10:00" in row
+    # its time as the ledger reads a run's (ST-09)
+    assert "run 01-18 10:00:00" in row
     assert "<code" in row and "20980118T100000-bbbbbb" in row
 
 

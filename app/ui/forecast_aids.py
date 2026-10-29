@@ -182,7 +182,8 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
     "earlier"}. modified: it ran with modified model settings (the card
     badges it). earlier: "" when it is the newest hub row of the ledger,
     else the badge's words, saying why the newest is not drawn (it failed,
-    stopped or is still running, is a research run, or left no forecasts)."""
+    stopped or is still running, is a research run, Storage deleted its
+    files, or it left no forecasts)."""
     if not rid:
         return None
     from app.core import runs as _runs
@@ -203,6 +204,7 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
     if top and top.get("run_id") != rid:
         why = (_NOT_DRAWN.get(top.get("status") or "")
                or ("is research" if _runs.is_research(top.get("spec") or "")
+                   else "has its files deleted" if top.get("files_deleted")
                    else "has no forecasts"))
         earlier = f"earlier run · newest {why}"
     return {"run_id": rid, "label": _run_label(rid, spec, tag=False),

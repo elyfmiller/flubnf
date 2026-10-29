@@ -30,8 +30,10 @@
 {# which run's files Output shows for this date (archive_record.choose):
    a run Output passes over names the one it shows; a run it shows says
    so. The rule it picks by is in Output's "i" #}
-{% set sup = run_supersession(run_id) if (status != "running" and not dataset) else {} %}
-{% if sup %}
+{% set sup = run_supersession(run_id) if (status != "running" and not dataset and not files_deleted) else {} %}
+{% if files_deleted %}
+<div class="out-rp-sup" id="run-supersession">{{ tips.alert("info", "This run's files were deleted in Storage.", id="run-deleted", live="") }}</div>
+{% elif sup %}
 <div class="out-rp-sup" id="run-supersession">
 {% if sup.by and not sup.shown %}
  {% set to_run %}<a class="btn quiet" href="/runs/{{ sup.by }}">Open run {{ sup.by_when }}</a>{% endset %}
@@ -211,6 +213,6 @@
  {% endif %}
 </div>
 {% elif not error and not live %}
-<div class="card">{{ tips.empty("No results stored for this run", "folder", id="run-noresults") }}</div>
+<div class="card">{{ tips.empty("This run's results file could not be read" if results_unreadable else "No results stored for this run", "folder", id="run-noresults") }}</div>
 {% endif %}
 {% endblock %}
