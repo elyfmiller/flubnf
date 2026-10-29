@@ -1,0 +1,74 @@
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index 3708d84..0d164b7 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -261,6 +261,34 @@ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
+             "valid int." in ui_state._status["flash"])
+ 
+ 
++@pytest.mark.parametrize("typed,launches", [
++    ("2e0", 0), ("1.5", 0), ("two", 0), ("2", 1), ("", 1)])
++def test_a_replay_refuses_a_runner_count_the_browser_allows_in_words(
++        tmp_path, monkeypatch, typed, launches):
++    """The runners box is a number field too: 2e0 passes the browser and an
++    int field answered it with a raw 422 page. Now the same refusal as the
++    other numbers; a blank is this machine's default."""
++    from app.core import retro as core_retro
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
++    monkeypatch.setattr(core_retro, "available_seasons", lambda: ["2024-25"])
++    monkeypatch.setattr(core_retro, "season_vintages",
++                        lambda s: ["2024-11-02", "2024-11-09"])
++    launched = []
++    monkeypatch.setattr(ui_retro, "_retro_bg",
++                        lambda *a, **k: launched.append((a, k)))
++    ui_state._status["running"] = None
++    r = client.post("/retro/run", data={
++        "season": "2024-25", "locations": "panel6", "engine": "analogue",
++        "knob.groundhog.zero_anchor": "level", "width": typed},
++        follow_redirects=False)
++    assert r.status_code == 303 and len(launched) == launches, (
++        ui_state._status["flash"])
++    if not launches:
++        assert (f"Not started: runners: '{typed}' is not a valid int."
++                in ui_state._status["flash"])
++
++
+ def test_a_number_typed_with_commas_is_read_and_a_blank_is_the_default(
+         tmp_path, monkeypatch):
+     started = _capture_run(monkeypatch, tmp_path)
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index e28dad2..17c274d 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -463,7 +463,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+               # as typed: the knob parser refuses a non-number in words
+               particles: str = Form("10000"),
+               replicates: str = Form("3"),
+-              width: int = Form(4),
++              width: str = Form(""),
+               engine: str = Form("pf"),
+               mode: str = Form("resume"),
+               confirm: str = Form(""),
+@@ -575,7 +575,20 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+             return _refused(f"Not started: model settings: {e}.")
+         particles = int(nd.get("pf.particles", RunSpec.particles))
+         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
+-        width = max(1, min(int(width), 16))
++        # runners, as typed: the browser's number box lets 2e0 through, and
++        # an int field answered it with a raw 422 page; blank is this
++        # machine's default
++        w = _str_field(width).strip().replace(",", "")
++        if w:
++            try:
++                width = int(w)
++            except ValueError:
++                return _refused(f"Not started: runners: '{w}' is not a "
++                                "valid int.")
++        else:
++            from app.core.engines.pf import DEFAULT_SHARD_WIDTH
++            width = DEFAULT_SHARD_WIDTH
++        width = max(1, min(width, 16))
+         # start-over handling only AFTER all validation
+         live = _live_root(season)
+         existing = retro_seasons._weeks_done(live)
