@@ -752,12 +752,14 @@ def _results_table(body: str, d: dict, heading: bool,
     return f'<table class="results">{cap}{body}</table>'
 
 
-def results_html(outcome, spec, heading: bool = True) -> str:
+def results_html(outcome, spec, heading: bool = True,
+                 deleted: bool = False) -> str:
     """One run's results as a small table: run type, each member's relWIS
     with its cells, Oracle SIHRS fits and failures, submissions, report. Markup from
     fixed phrases and numbers only; unreadable input yields "". The table
     carries its own "Results" heading with the relWIS convention in a "?"
-    tip; heading=False leaves both to the page (results_tip)."""
+    tip; heading=False leaves both to the page (results_tip). deleted: Storage
+    deleted the run's files, so its files and report read "deleted"."""
     if isinstance(outcome, str):
         try:
             o = json.loads(outcome or "{}")
@@ -828,8 +830,10 @@ def results_html(outcome, spec, heading: bool = True) -> str:
                             "on the run page.")))
     if o.get("submissions"):
         n = len(o["submissions"])
-        rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
-    rows.append(("Weekly report", "written" if o.get("report") else "none"))
+        rows.append(("Submission files", "deleted" if deleted
+                     else f"{n} file{'s' if n != 1 else ''}"))
+    rows.append(("Weekly report", ("deleted" if deleted else "written")
+                 if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
     return _results_table(body, d, heading, has_relwis(o))
 

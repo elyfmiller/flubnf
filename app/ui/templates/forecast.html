@@ -767,7 +767,7 @@
    {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
-    <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
+    <div>{{ results_html(r.outcome, r.spec, deleted=r.files_deleted) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <div class="fc-actions">

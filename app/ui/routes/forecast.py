@@ -152,6 +152,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
+        r["files_deleted"] = output_routes._files_deleted(r["run_id"])
         # the latest-run card links the weekly report while its file is on
         # disk (Storage may have deleted the workroot), and a run that died
         # says why in its alert
@@ -510,9 +511,15 @@ def run_page(request: Request, run_id: str):
     # its files: the workroot, or the archive that holds the run once
     # Storage deleted the workroot
     w = output_routes._run_folder(run_id)
-    res = {}
+    res, unreadable = {}, False
     if (w / "results.json").is_file():
-        res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
+        # a damaged file is said on the page, as Output skips it
+        try:
+            res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            unreadable = True
+        if not isinstance(res, dict):
+            res, unreadable = {}, True
     subs = output_routes._submission_files(w)
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
@@ -574,7 +581,11 @@ def run_page(request: Request, run_id: str):
         **dsx,
         "active": "Forecast" if hub_live else "Storage",
         "run_id": run_id, "status": status, "error": err,
-        "results": results_html(o, spec_json, heading=False),
+        # Storage deleted its files: the ledger row is all that is left
+        "files_deleted": not w.is_dir(),
+        "results_unreadable": unreadable,
+        "results": results_html(o, spec_json, heading=False,
+                                deleted=not w.is_dir()),
         # the relWIS convention only beside a relWIS
         "results_tip": results_tip(spec_json, o),
         # the page shows a research badge, so the label stays untagged
