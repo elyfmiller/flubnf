@@ -1,0 +1,416 @@
+diff --git a/app/tests/golden/ui_routes.json b/app/tests/golden/ui_routes.json
+index 0d58b24..d14e6c3 100644
+--- a/app/tests/golden/ui_routes.json
++++ b/app/tests/golden/ui_routes.json
+@@ -102,6 +102,7 @@
+   "engine_build_view": "callable engine_build_view",
+   "engine_setup_hint": "callable _engine_setup_hint",
+   "hub_setup_hint": "callable _hub_setup_hint",
++  "analogue_on_light": "callable _analogue_on_light",
+   "harmonic_fig": "callable _harmonic_fig",
+   "inline_static": "callable inline_static",
+   "live_scores": "callable _live_scores",
+diff --git a/app/tests/test_chart_fixes.py b/app/tests/test_chart_fixes.py
+new file mode 100644
+index 0000000..13f1f1f
+--- /dev/null
++++ b/app/tests/test_chart_fixes.py
+@@ -0,0 +1,139 @@
++"""The console's charts (bug hunt 2026-10-25, G19).
++
++  * The Groundhog's gold is the report's darker one on a light card, on
++    the Forecast tab, the model pages and the season page.
++  * A chart toolbar's buttons wear the app's focus ring.
++  * On a phone's width the toolbar is not drawn over the chart's title.
++  * The fan's settled line stops at the last horizon.
++  * The Forecasts pager draws only the latest page asked for.
++  * A fan starts where the model did: a week the run set aside is drawn
++    apart, hollow, and the fan is anchored on the week before it.
++"""
++import json
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core.report_v2 import ANALOGUE_ON_LIGHT               # noqa: E402
++from app.core.runs import Ledger, RunSpec                      # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import forecast as FC                       # noqa: E402
++
++client = TestClient(srv.app)
++UI = Path(__file__).resolve().parents[1] / "ui"
++FLAGS = {"analogue": [{"location": "Ohio", "week": "2026-10-24", "value": 2.0,
++                       "rule": "set aside (Forecast tab)"}], "pf": []}
++
++
++def _tpl(name: str) -> str:
++    return (UI / "templates" / name).read_text(encoding="utf-8")
++
++
++# ------------------------------------------- UI-03 (MO-10): the Groundhog's gold
++
++def test_the_groundhog_wears_the_reports_darker_gold_on_a_light_card():
++    assert ANALOGUE_ON_LIGHT == "#A87300"
++    for name in ("forecast.html", "model.html"):
++        t = _tpl(name)
++        assert "const ANALOGUE_LIGHT={{ analogue_on_light() | tojson }};" in t, name
++        assert ("if(m==='analogue'&&css('--scheme')==='light') return "
++                "ANALOGUE_LIGHT;") in t, name
++    season = _tpl("retro_season.html")
++    assert ("css('--scheme') === 'light'\n"
++            "                             ? {analogue: {{ analogue_on_light() | tojson }}} : {}"
++            ) in season
++    # the rendered pages carry the value
++    html = client.get("/forecast").text
++    assert f'const ANALOGUE_LIGHT="{ANALOGUE_ON_LIGHT}";' in html
++
++
++# ------------------------------------------- UI-04: the toolbar's focus ring
++
++def test_a_chart_toolbars_buttons_wear_the_apps_focus_ring():
++    css = (UI / "static" / "nau.css").read_text(encoding="utf-8")
++    rule = css.split(".js-plotly-plot .plotly .modebar .modebar-btn:focus-visible{", 1)[1] \
++              .split("}", 1)[0]
++    assert "outline:var(--focus-w,2px) solid var(--gold)" in rule
++    assert "outline-offset:2px" in rule
++
++
++# ------------------------------- FC-31 (UI-22): no toolbar on a phone's width
++
++def test_the_toolbar_stays_off_a_narrow_screen():
++    js = (UI / "static" / "charts.js").read_text(encoding="utf-8")
++    assert "matchMedia('(max-width: 599px)').matches" in js
++    conf = js.split("function conf(extra){", 1)[1].split("return c;", 1)[0]
++    assert "if(narrow()) c.displayModeBar = false;" in conf
++    # after the caller's own config, so a narrow screen always wins
++    assert conf.index("if(extra)") < conf.index("if(narrow())")
++
++
++# -------------------------------------- FC-24: the settled line's last week
++
++def test_the_settled_line_stops_at_the_last_horizon():
++    for name in ("forecast.html", "model.html"):
++        t = _tpl(name)
++        assert "getUTCDate()+35" not in t, name
++        assert "lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));" in t, name
++
++
++# ----------------------------------------- MO-09: the pager draws the latest
++
++def test_the_forecasts_pager_draws_only_the_page_last_asked_for():
++    t = _tpl("model.html")
++    draw = t.split("async function draw(){", 1)[1].split("FluCharts.react", 1)[0]
++    assert "const tok=++drawSeq;" in draw
++    assert draw.index("const tok=++drawSeq;") < draw.index("await fetch('/api/series")
++    assert draw.index("await fetch('/api/series") < draw.index("if(tok!==drawSeq) return;")
++    assert draw.index("if(tok!==drawSeq) return;") < draw.index("const traces=")
++
++
++# ------------------------------------- FC-14: the fan starts where the model did
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    for k in ("running", "workroot", "phase", "flash", "flash_kind",
++              "flash_detail"):
++        ui_state._status[k] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def test_the_forecast_page_carries_the_weeks_the_run_set_aside(root):
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="analogue", forecast_date="2026-10-24",
++                               locations=["Ohio"]), Path("pending"), {})
++    w = root / "workroots" / rid
++    w.mkdir(parents=True)
++    (w / "results.json").write_text(json.dumps(
++        {"forecast_date": "2026-10-24", "models": {}, "observed": {}}))
++    led.set_workroot(rid, w)
++    led.close_run(rid, "ok", {"data_flags": FLAGS})
++    ui_shared._invalidate_scans()
++    assert FC._run_flags(rid) == FLAGS
++    assert FC._run_flags(None) == {} and FC._run_flags("20980101T000000-aaaaaa") == {}
++    html = client.get("/forecast").text
++    assert 'const RFLAGS = {"analogue": [{"location": "Ohio", "week": "2026-10-24"' in html
++    # the fan: the set-aside weeks apart, the anchor on the week before them
++    fan = html.split("async function drawFan(", 1)[1].split("FluCharts.react(", 1)[0]
++    assert "const aside=new Set((RFLAGS[FMODEL]||[]).filter(f=>f.location===loc&&f.week)" in fan
++    assert "while(anc>0&&aside.has(obsX[anc])) anc--;" in fan
++    assert "const fx=[...ax,...xs];" in fan and "const med=[...ay," in fan
++    assert "name:'set aside (not used)'" in fan and "symbol:'circle-open'" in fan
++    assert "offTraces(loc, xs, ax, ay)" in fan
++    # a run without rules records no flags: the page carries none
++    led.close_run(rid, "ok", {})
++    ui_shared._invalidate_scans()
++    assert "const RFLAGS = {};" in client.get("/forecast").text
+diff --git a/app/tests/test_display_themes.py b/app/tests/test_display_themes.py
+index 48e0b72..891dd36 100644
+--- a/app/tests/test_display_themes.py
++++ b/app/tests/test_display_themes.py
+@@ -247,9 +247,16 @@ def test_text_and_boundaries_hold_aa_in_every_theme_and_mode():
+ 
+ 
+ def test_series_and_members_hold_3_to_1_on_every_ground():
++    from app.core.report_v2 import ANALOGUE_ON_LIGHT, MEMBER_COLORS
+     members = ("#1979FF", "#A66395")              # player.js pf and pf2s
+     for th in ORDER:
+         r = resolve(th)
++        # the Groundhog: the shared gold on a dark card, the report's
++        # darker gold on a light one (the console's charts pick by --scheme)
++        gh = ANALOGUE_ON_LIGHT if r.get("scheme") == "light" \
++            else MEMBER_COLORS["analogue"]
++        for bg in ("bg", "card"):
++            assert _cr(gh, r[bg]) >= 3.0, (th, "analogue", bg)
+         series = [r[f"season-{i}"] for i in range(1, 7)]
+         series += [r[f"season-cvd-{i}"] for i in range(1, 7)]
+         for c in series + list(members) + [r["gold"], r["ink"], r["mut"]]:
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 7523a3e..6f70371 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -224,6 +224,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+         "member_colors_json": _script_json(_member_colors()),
+         "season_colors_json": _script_json(_season_colors()),
+         "run_obs_json": _script_json((res or {}).get("observed", {})),
++        # the weeks the run set aside or treated as unreported, per
++        # member (the outcome's data_flags): the fan starts where the
++        # model did and marks them
++        "run_flags_json": _script_json(_run_flags(rid)),
+         "fc_date": (res or {}).get("forecast_date", ""),
+         # display-only aids (app/ui/forecast_aids.py): the fans' run, the
+         # next round, the location presets, the last run's values
+@@ -1054,6 +1058,20 @@ def _spec_mode(d: dict) -> str:
+     return m if m in ("realtime", "vintage") else "realtime"
+ 
+ 
++def _run_flags(rid) -> dict:
++    """A run's data_flags from its ledger row ({member: [{location, week,
++    value, rule}]}); {} for no run, an older row or one without rules."""
++    if not rid:
++        return {}
++    try:
++        import json as _json
++        row = Ledger().row(rid) or {}
++        flags = _json.loads(row.get("outcome") or "{}").get("data_flags")
++        return flags if isinstance(flags, dict) else {}
++    except Exception:
++        return {}
++
++
+ def _report_v2_retired() -> tuple:
+     """report_v2.RETIRED_MODELS, imported lazily (report_v2 pulls plotly)."""
+     from app.core.report_v2 import RETIRED_MODELS
+diff --git a/app/ui/static/charts.js b/app/ui/static/charts.js
+index 267f942..a589f51 100644
+--- a/app/ui/static/charts.js
++++ b/app/ui/static/charts.js
+@@ -31,10 +31,17 @@
+   // legend" hint sat over the expanded view's Close button)
+   var BASE_CONF = {responsive: true, displaylogo: false, showTips: false};
+ 
++  // a phone's width has no room for the toolbar beside a chart's title
++  // (it was drawn over it); the chart still zooms and pans by touch
++  function narrow(){
++    return !!(root.matchMedia && root.matchMedia('(max-width: 599px)').matches);
++  }
++
+   function conf(extra){
+     var c = {}, k;
+     for(k in BASE_CONF) c[k] = BASE_CONF[k];
+     if(extra) for(k in extra) c[k] = extra[k];
++    if(narrow()) c.displayModeBar = false;
+     return c;
+   }
+ 
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index bf9a1ba..f8cb4b3 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -672,6 +672,10 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
+ input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
+ summary:focus-visible{
+   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
++/* a chart's toolbar buttons too: plotly.js injects a 1px black outline
++   under three classes, so this rule carries four */
++.js-plotly-plot .plotly .modebar .modebar-btn:focus-visible{
++  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
+ /* buttons: default = secondary outline, .gold = primary (cyan), .quiet.
+    Every theme states its own colors as tokens (--btn-ink: LANL Blue on
+    light grounds, the accent on dark ones, where the blue would vanish;
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index e452ec8..b3489c3 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -878,6 +878,7 @@
+  const SERIES = {{ series_json | safe }};
+  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
+  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
++ const RFLAGS = {{ run_flags_json | safe }};  // member -> the weeks the run set aside
+  // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
+  // date, keyed like FANQ ({} when none were recorded: no toggle)
+  const OFFQ = {{ official_json | default('{}', true) | safe }};
+@@ -898,7 +899,11 @@
+  const SCOLORS = {{ season_colors_json | safe }};
+  const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
+                           || SCOLORS[i % SCOLORS.length];
++ // the Groundhog's gold is the report's darker one on a light card
++ // (the shared #FFC72C reads 1.6:1 on white)
++ const ANALOGUE_LIGHT={{ analogue_on_light() | tojson }};
+  function memberColor(m){
++   if(m==='analogue'&&css('--scheme')==='light') return ANALOGUE_LIGHT;
+    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
+         : MCOLORS[m]||css('--mut');
+  }
+@@ -1079,29 +1084,41 @@
+    if(ro.length){obsX=ro.map(p=>p[0]); obsY=ro.map(p=>p[1]);}
+    else if(s){s.dates.forEach((d,i)=>{if(d<=FCDATE){obsX.push(d);obsY.push(s.values[i]);}});}
+    obsX=obsX.slice(-12); obsY=obsY.slice(-12);
++   // the weeks the run set aside (its data_flags) are drawn apart, and
++   // the fan starts where the model did: the last week it used
++   const aside=new Set((RFLAGS[FMODEL]||[]).filter(f=>f.location===loc&&f.week)
++                        .map(f=>String(f.week).slice(0,10)));
++   let anc=obsX.length-1; while(anc>0&&aside.has(obsX[anc])) anc--;
++   const ax=obsX.slice(anc,anc+1), ay=obsY.slice(anc,anc+1);
++   const asX=obsX.filter(d=>aside.has(d)), asY=obsY.filter((v,i)=>aside.has(obsX[i]));
++   const keptX=obsX.filter(d=>!aside.has(d)), keptY=obsY.filter((v,i)=>!aside.has(obsX[i]));
+    // whole weeks in UTC: local-time days shift a day across a DST change
+    const base=new Date(FCDATE+'T00:00:00Z');
+    const xs=hs.map(h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
+      return d.toISOString().slice(0,10);});
+-   // what happened after the origin (settled data), framed to the horizon
+-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
++   // what happened after the origin (settled data), framed to the last
++   // horizon (the last target week the fan draws)
++   const lim=new Date(base);
++   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
+    const limIso=lim.toISOString().slice(0,10);
+    const aftX=[],aftY=[];
+    if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
+-   const fx=[...(obsX.slice(-1)),...xs];
+-   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
+-   const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
+-   const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
++   const fx=[...ax,...xs];
++   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
++   const lo9=[...ay,...hs.map(h=>qs[h]['0.1'])];
++   const hi9=[...ay,...hs.map(h=>qs[h]['0.9'])];
+    // the fan wears the DISPLAYED member's color
+    const mc=memberColor(FMODEL);
+    const traces=[
+-     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
++     {x:keptX,y:keptY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
+      {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
+      {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:rgba(mc,.2),
+       line:{width:0},name:'10-90% interval'},
+      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
+    ];
+-   if(SHOWOFF) traces.push(...offTraces(loc, xs, obsX.slice(-1), obsY.slice(-1)));
++   if(asX.length) traces.push({x:asX,y:asY,mode:'markers',name:'set aside (not used)',
++     marker:{size:8,symbol:'circle-open',color:css('--ink')}});
++   if(SHOWOFF) traces.push(...offTraces(loc, xs, ax, ay));
+    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+      // dotted ink, as on every surface; hollow markers tell it from the
+      // dotted grey FluSight baseline
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index d5dafb8..ad8970c 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -220,7 +220,10 @@
+  // the shared member-color map; the retired blend resolves through --gold
+  // (re-read per draw)
+  const MCOLORS = {{ member_colors_json | safe }};
++ // the Groundhog's gold is the report's darker one on a light card
++ const ANALOGUE_LIGHT={{ analogue_on_light() | tojson }};
+  function memberColor(m){
++   if(m==='analogue'&&css('--scheme')==='light') return ANALOGUE_LIGHT;
+    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
+         : MCOLORS[m]||css('--mut');
+  }
+@@ -244,7 +247,7 @@
+   yaxis:{gridcolor:css('--line'),rangemode:'tozero',automargin:true}};}
+  // no forecasts card (the research view): nothing to page through
+  const MFAN=document.getElementById('mfan');
+- const LOCS=MFAN?Object.keys(FANQ):[]; let IDX=0;
++ const LOCS=MFAN?Object.keys(FANQ):[]; let IDX=0, drawSeq=0;
+  // the pager shell renders once and Plotly.react repaints in place (with a
+  // reserved height), so a flip never collapses the card or jumps the scroll;
+  // the readout between the arrows is announced as it changes
+@@ -261,11 +264,13 @@
+    if(!LOCS.length) return;
+    IDX=((IDX%LOCS.length)+LOCS.length)%LOCS.length;
+    const loc=LOCS[IDX], qs=FANQ[loc];
++   const tok=++drawSeq;
+    document.getElementById('pos').textContent=loc+' · '+(IDX+1)+'/'+LOCS.length;
+    if(!SERIES[loc]){
+      const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+      Object.assign(SERIES, await r.json());
+    }
++   if(tok!==drawSeq) return;            // a newer page superseded this one
+    const s=SERIES[loc]||{dates:[],values:[]};
+    const hs=Object.keys(qs).sort();
+    const FD={{ date | tojson }};
+@@ -280,7 +285,9 @@
+    if(ro.length){obsX=ro.map(q=>q[0]);obsY=ro.map(q=>q[1]);}
+    else{s.dates.forEach((d,i)=>{if(d<=FD){obsX.push(d);obsY.push(s.values[i]);}});}
+    obsX=obsX.slice(-12);obsY=obsY.slice(-12);
+-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
++   // settled data framed to the last horizon the fan draws
++   const lim=new Date(base);
++   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
+    const limIso=lim.toISOString().slice(0,10);
+    const aftX=[],aftY=[];
+    s.dates.forEach((d,i)=>{if(d>FD&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 2ef1133..05376b4 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -1165,10 +1165,13 @@
+    // re-read per redraw; card = the explicit chart background (saved PNGs)
+    palette: () => ({ink: css('--ink'), mut: css('--mut'),
+      line: css('--line'), card: css('--card'),
+-     // the player's member colors; ensemble alone resolves through --gold
++     // the player's member colors; ensemble alone resolves through --gold,
++     // and the Groundhog wears the report's darker gold on a light card
+      models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
+                            {ensemble: css('--gold')
+-                                      || FluBNFPlayer.MODEL_COLORS.ensemble}),
++                                      || FluBNFPlayer.MODEL_COLORS.ensemble},
++                           css('--scheme') === 'light'
++                             ? {analogue: {{ analogue_on_light() | tojson }}} : {}),
+      flusightEnsemble: css('--official') || '#AAB1C9'})
+  });
+  function setView(v){
+diff --git a/app/ui/templating.py b/app/ui/templating.py
+index 369b62c..52f2dc8 100644
+--- a/app/ui/templating.py
++++ b/app/ui/templating.py
+@@ -261,6 +261,17 @@ def _member_colors() -> dict:
+     return model_colors()
+ 
+ 
++def _analogue_on_light() -> str:
++    """The Groundhog's darker gold for light cards (the weekly report's
++    ANALOGUE_ON_LIGHT), so the console's charts read it at 3:1 where the
++    shared #FFC72C does not."""
++    from app.core.report_v2 import ANALOGUE_ON_LIGHT
++    return ANALOGUE_ON_LIGHT
++
++
++templates.env.globals["analogue_on_light"] = _analogue_on_light
++
++
+ def _season_colors() -> list:
+     """The one season-line palette (player.js SEASON_COLORS, parsed by
+     report_v2.season_colors); already CV-safe, so never remapped."""
