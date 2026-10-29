@@ -1,0 +1,176 @@
+diff --git a/app/tests/test_phone_layout.py b/app/tests/test_phone_layout.py
+new file mode 100644
+index 0000000..322ec1f
+--- /dev/null
++++ b/app/tests/test_phone_layout.py
+@@ -0,0 +1,55 @@
++"""Phone-width rules of the bug hunt 2026-10-25, G13: Storage's on-disk
++rows and ledger filter, the Sandbox menus and Runs table, the Display menu
++at large text, and the research form's particles box."""
++import re
++from pathlib import Path
++
++from fastapi.testclient import TestClient
++
++from app.ui.server import app
++
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++client = TestClient(app)
++
++
++def _block(css: str, start: str) -> str:
++    """The text of the media block that starts with `start`."""
++    i = css.index(start)
++    return css[i:css.index("\n}", i)]
++
++
++def test_storage_rows_stack_at_phone_width():
++    css = (STATIC / "tabs" / "storage.css").read_text(encoding="utf-8")
++    phone = _block(css, "@media (max-width:40rem)")
++    assert ".st-row{grid-template-columns:minmax(0,1fr) auto;" in phone
++    assert '"title title" "meta meta" "size act"' in phone
++
++
++def test_a_segmented_control_wraps_instead_of_squeezing_its_words():
++    css = (STATIC / "ui-kit.css").read_text(encoding="utf-8")
++    seg = css[css.index(".uk-seg{"):css.index(".uk-seg > :not(:first-child)")]
++    assert "flex-wrap:wrap" in seg
++    assert "flex:0 0 auto" in seg
++
++
++def test_the_sandbox_menus_open_from_the_left_at_phone_width():
++    css = (STATIC / "tabs" / "sandbox.css").read_text(encoding="utf-8")
++    phone = _block(css, "@media (max-width:640px)")
++    assert ".sbhead-menus > details.sbmanage{position:static}" in phone
++    assert ".sbhead-menus .sbmenu{left:0;right:0;width:auto;max-width:none}" in phone
++    assert ".sbrunlist td:first-child{overflow-wrap:anywhere}" in css
++
++
++def test_the_display_menu_fits_its_readout_and_theme_names():
++    css = (STATIC / "nau.css").read_text(encoding="utf-8")
++    assert re.search(r"\.fontsize input\[type=range\]\{[^}]*min-width:3rem", css)
++    assert (".dm-grid{display:grid;grid-template-columns:"
++            "repeat(auto-fill,minmax(5.2rem,1fr))") in css
++
++
++def test_the_research_particles_box_keeps_its_digits():
++    page = client.get("/model/pf2s").text
++    assert '<span class="uk-affix md-count"><input id="rr-particles"' in page
++    css = (STATIC / "tabs" / "models.css").read_text(encoding="utf-8")
++    assert ".md-count{flex-wrap:wrap}" in css
++    assert ".md-count > input{flex:1 0 7.5em}" in css
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index a812725..dd800d3 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -494,7 +494,7 @@ header.nav details.display[open] > summary{
+ /* text size: small A, the slider, large A, the readout; Reset at the right
+    of the heading */
+ .fontsize{display:flex;align-items:center;gap:.55rem}
+-.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
++.fontsize input[type=range]{flex:1 1 auto;min-width:3rem;width:auto;
+   height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
+   accent-color:var(--accent-ink);cursor:pointer}
+ .fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
+@@ -523,7 +523,9 @@ button.dm-reset[disabled]{opacity:.45}
+ .dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
+   font-size:var(--fs-micro);font-weight:650}
+ .dm-grid + .dm-grp{margin-top:.7rem}
+-.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
++/* as many theme tiles per row as the names fit (four at the standard
++   size; two at the largest text on a phone) */
++.dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.2rem,1fr));gap:.45rem}
+ label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
+   position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
+   padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
+diff --git a/app/ui/static/tabs/models.css b/app/ui/static/tabs/models.css
+index 8fee49c..462a266 100644
+--- a/app/ui/static/tabs/models.css
++++ b/app/ui/static/tabs/models.css
+@@ -125,5 +125,9 @@ code.md-code{padding:0;background:transparent;color:inherit;
+   grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr));
+   gap:0 var(--gap)}
+ .md-field{min-width:0}
++/* a count with its live unit ("10,000 particles"): the box keeps room for
++   six digits and the unit wraps under it when the field is narrow */
++.md-count{flex-wrap:wrap}
++.md-count > input{flex:1 0 7.5em}
+ .md-quick .uk-alert,.md-research .uk-alert{margin:.2rem 0 .5rem}
+ .md-runfacts{margin:.1rem 0 .5rem}
+diff --git a/app/ui/static/tabs/sandbox.css b/app/ui/static/tabs/sandbox.css
+index af5d987..7f04fbe 100644
+--- a/app/ui/static/tabs/sandbox.css
++++ b/app/ui/static/tabs/sandbox.css
+@@ -186,6 +186,10 @@ details.sbhow[open] > summary{margin-bottom:.7rem}
+ /* the workbench menu: as wide as its steps */
+ .sbmenu.sb-howmenu{width:max-content;max-width:min(22rem,calc(100vw - 2rem))}
+ 
++/* the Runs table at phone width: a run id wraps so the four columns fit
++   the box instead of scrolling the numbers out of sight */
++.sbrunlist td:first-child{overflow-wrap:anywhere}
++
+ /* ---- the diagram ---- */
+ .sb-key{margin:.45rem 0 0}
+ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
+@@ -201,6 +205,12 @@ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
+ @media (max-width:640px){
+   .sbhead{flex-direction:column;align-items:stretch;gap:.35rem}
+   .sbhead-menus{flex-wrap:wrap;margin:0 0 .5rem}
++  /* the menus hang under their row, as wide as it: anchored to a summary
++     at the right they hung off the left edge, and off the right edge when
++     opened from a summary mid-row */
++  .sbhead-menus{position:relative}
++  .sbhead-menus > details.sbmanage{position:static}
++  .sbhead-menus .sbmenu{left:0;right:0;width:auto;max-width:none}
+   .sb-title > h1{overflow-wrap:anywhere}
+   .sbtabs{flex-wrap:wrap;border-bottom:0}
+   .sbtablist{flex:1 1 100%;overflow-x:auto;border-bottom:1px solid var(--line)}
+diff --git a/app/ui/static/tabs/storage.css b/app/ui/static/tabs/storage.css
+index 6cb7c0f..f5ea8aa 100644
+--- a/app/ui/static/tabs/storage.css
++++ b/app/ui/static/tabs/storage.css
+@@ -100,6 +100,12 @@
+ /* under 40rem: one card per run, the label and status on top, then the
+    elapsed time and the disk use labelled, then the facts */
+ @media (max-width:40rem){
++  /* an on-disk row stacks: the title and its facts full width, then the
++     size and the action on one line (the three-column row squeezed the
++     title to nothing at larger text) */
++  .st-row{grid-template-columns:minmax(0,1fr) auto;
++    grid-template-areas:"title title" "meta meta" "size act";gap:.2rem .8rem}
++  .st-size{text-align:left}
+   .st-ledger{overflow-x:visible}
+   .st-ledger table,.st-ledger tbody{display:block;width:100%}
+   .st-ledger tr:first-child{display:none}
+diff --git a/app/ui/static/ui-kit.css b/app/ui/static/ui-kit.css
+index 761b284..4a5d9e9 100644
+--- a/app/ui/static/ui-kit.css
++++ b/app/ui/static/ui-kit.css
+@@ -363,9 +363,12 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
+    aria-pressed says which is on, or links with the current choice a span
+    carrying aria-current; one outline, a divider between, the choice
+    filled as a primary button is */
+-.uk-seg{display:inline-flex;max-width:100%;border:1px solid var(--field-line);
++.uk-seg{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid var(--field-line);
+   border-radius:var(--r-sm);overflow:hidden;vertical-align:middle}
+-.uk-seg > button,.uk-seg > a,.uk-seg > span{display:inline-flex;
++/* each segment keeps its word's width; a row that runs out of room wraps
++   (at phone width with larger text) rather than squeezing the words over
++   each other */
++.uk-seg > button,.uk-seg > a,.uk-seg > span{display:inline-flex;flex:0 0 auto;
+   align-items:center;justify-content:center;min-width:2rem;margin:0;
+   padding:.3rem .85rem;border:0;border-radius:0;background:transparent;
+   color:var(--ink);font-size:var(--fs-label);font-weight:650;line-height:1.4;
+diff --git a/app/ui/templates/research_run.html b/app/ui/templates/research_run.html
+index 8da138a..9911921 100644
+--- a/app/ui/templates/research_run.html
++++ b/app/ui/templates/research_run.html
+@@ -31,7 +31,7 @@
+    </div>
+    <div class="md-field">
+     <label for="rr-particles">Particles</label>
+-    <span class="uk-affix"><input id="rr-particles" name="particles" type="number" value="10000"
++    <span class="uk-affix md-count"><input id="rr-particles" name="particles" type="number" value="10000"
+       min="1000" max="100000" step="1000" aria-describedby="rr-particles-n"><span id="rr-particles-n">particles</span></span>
+    </div>
+    <div class="md-field">
