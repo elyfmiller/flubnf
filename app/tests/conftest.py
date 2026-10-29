@@ -222,4 +222,7 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
     ui_state._status["running"] = None
     ui_state._status.pop("flash", None)
+    # a refused New model form waits for the next page (one-shot)
+    from app.ui.routes import sandbox as ui_sandbox
+    ui_sandbox._sandbox_new_refused.clear()
     return root
