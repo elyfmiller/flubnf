@@ -433,7 +433,7 @@ def test_every_equation_group_defines_its_symbols():
                    "prior 0.002 to 1, log-uniform", "prior 0.1 to 40, log-uniform",
                    "2.19 per week", "0.02, a working assumption",
                    "1.17 per week", "0.019 per week", ">0.85<",
-                   "the as-of Saturday", "the blend weight, set a priori"):
+                   "the as-of Saturday", "the registered blend weight, set a priori"):
         assert needle in t, needle
     # the site (no kit) renders the same fold as plain markup
     from app.core import site_build as sb
