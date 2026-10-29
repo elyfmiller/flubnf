@@ -1,0 +1,69 @@
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index 3708d84..dc3a5bc 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -261,6 +261,35 @@ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
+             "valid int." in ui_state._status["flash"])
+ 
+ 
++@pytest.mark.parametrize("typed,width", [("3", 3), ("", 4)])
++def test_a_replay_refuses_a_shard_width_the_browser_allows_in_words(
++        tmp_path, monkeypatch, pf_engine_ready, typed, width):
++    """The Run form's shard width is a number box too: 2e0 (or a cleared
++    box) gave a raw JSON 422 page. Now a refusal in words; a whole number
++    runs as before, a blank as the default."""
++    from app.core import retro as core_retro
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
++    monkeypatch.setattr(core_retro, "available_seasons", lambda: ["2024-25"])
++    monkeypatch.setattr(core_retro, "season_vintages",
++                        lambda s: ["2024-11-02", "2024-11-09"])
++    launched = []
++    monkeypatch.setattr(ui_retro, "_retro_bg",
++                        lambda *a, **k: launched.append((a, k)))
++    ui_state._status["running"] = None
++    form = {"season": "2024-25", "locations": "panel6", "engine": "pf",
++            "knob.groundhog.zero_anchor": "abstain"}
++    r = client.post("/retro/run", data={**form, "width": "2e0"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and launched == []
++    assert ("Not started: shard width: '2e0' is not a whole number."
++            in ui_state._status["flash"])
++    r = client.post("/retro/run", data={**form, "width": typed},
++                    follow_redirects=False)
++    assert r.status_code == 303 and len(launched) == 1
++    assert launched[0][0][2] == width
++
++
+ def test_a_number_typed_with_commas_is_read_and_a_blank_is_the_default(
+         tmp_path, monkeypatch):
+     started = _capture_run(monkeypatch, tmp_path)
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index e28dad2..26a1328 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -463,7 +463,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+               # as typed: the knob parser refuses a non-number in words
+               particles: str = Form("10000"),
+               replicates: str = Form("3"),
+-              width: int = Form(4),
++              # as typed too: 2e0, which the browser's number box allows,
++              # gave a raw JSON 422 page
++              width: str = Form("4"),
+               engine: str = Form("pf"),
+               mode: str = Form("resume"),
+               confirm: str = Form(""),
+@@ -575,7 +577,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+             return _refused(f"Not started: model settings: {e}.")
+         particles = int(nd.get("pf.particles", RunSpec.particles))
+         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
+-        width = max(1, min(int(width), 16))
++        typed = _str_field(width).strip()
++        try:
++            width = max(1, min(int(typed or 4), 16))
++        except ValueError:
++            return _refused(f"Not started: shard width: '{typed}' is not a "
++                            "whole number.")
+         # start-over handling only AFTER all validation
+         live = _live_root(season)
+         existing = retro_seasons._weeks_done(live)
