@@ -347,29 +347,43 @@
     says "All components installed" beside a "not installed" value; the
     script below recounts when a resolving version lands #}
  {% set gaps = setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list) %}
- {% if gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
+ {# a cold launch paints "checking…" until the version probe lands (the
+    script below then counts); a badge from values still resolving said
+    "All components installed" beside "resolving…" #}
+ {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
+ {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
- {{ tips.heading("Setup", "hm-setup", after=setup_state) }}
+ {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
+ {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
  {% if missing %}
-  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
-     filename. The one line to act on, for what is missing: the engine
-     install when the engine itself is, the run preflight's Perl message
-     when Perl is (a first Windows open can install Perl the console's PATH
-     does not see yet); what is missing follows #}
+  {# platform-aware (templating.py _hub_setup_hint, _engine_setup_hint):
+     never a macOS-only filename. The lines to act on, the most basic
+     piece first: the setup step that fetches the FluSight data and
+     BioNetGen, the engine install when the engine itself is missing, the
+     run preflight's Perl message when Perl is (a first Windows open can
+     install Perl the console's PATH does not see yet); what is missing
+     follows #}
   {% set missing_names = missing | map(attribute="0") | list %}
+  {% set need_hub = "FLUBNF_HUB" in missing_names %}
+  {% set need_bng = "FLUBNF_BNG" in missing_names %}
+  {% if need_hub or need_bng %}
+  {% set fix %}To add {{ "the FluSight data and BioNetGen" if need_hub and need_bng else ("the FluSight data" if need_hub else "BioNetGen") }}, {{ hub_setup_hint() }}.{% endset %}
+  {{ tips.alert("warn", fix, id="hm-fix-data", live="") }}
+  {% endif %}
   {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names %}
   {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
   {% elif "perl" in missing_names %}
   {{ tips.alert("warn", perl_missing_hint(), id="hm-fix", live="") }}
   {% endif %}
-  {# each missing component by name; the rest of its description and the
+  {# each missing component by name, in plain words (routes/home.py
+     _setup_rows: the engine's parts are one row); what it is and the
      path looked at are its "?" #}
   <ul class="hm-missing" aria-label="Not installed on this machine">
-   {% for m in missing %}{% set name, _sep, rest = m[2].partition(": ") %}
-   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ name }}</span>
-    {%- call tips.tip("hm-miss-" ~ loop.index, name) %}{% if rest %}{{ rest[:1] | upper }}{{ rest[1:] }}. {% endif %}Looked
-    for at <span class="hm-mono">{{ m[1] }}</span> ({{ m[0] }}).{% endcall %}</li>
+   {% for r in setup_rows %}
+   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ r.name }}</span>
+    {%- call tips.tip("hm-miss-" ~ loop.index, r.name) %}{{ r.words }}. Looked
+    for at {% for p, var in r.paths %}{% if not loop.first %} and {% endif %}<span class="hm-mono">{{ p }}</span> ({{ var }}){% endfor %}.{% endcall %}</li>
    {% endfor %}
   </ul>
  {% endif %}
@@ -383,41 +397,56 @@
     self-reported version until then. data-vkey spans are base.html's
     version poll targets #}
  {% set ebv = engine_build_view() %}
+ {# the engine absent, by the check (its files) or by the probe (both
+    parts): one value, as the badge counts it #}
+ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF"]) | list %}
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
+  {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
+  {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
+  {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine", state=("" if versions.pybnf == version_pending else "warn")) }}
+  {% else %}
   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
-  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending) %}Reproducing
+  {# the pin note only beside a known build that is not the pin #}
+  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending, "not installed") %}Reproducing
   the sealed numbers needs bngsim {{ bngsim_pin }} (pinned by every engine installer),
   whatever version a build reports.{% endif %}{% endset %}
   {{ tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version", tiptext=pin_note) }}
+  {% endif %}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
   {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
   {% endfor %}
  {% endcall %}
  {# a version that was still resolving at paint lands through base.html's
-    poll: the badge recounts (the components check() reported, plus each
-    value now reading "not installed", each once) #}
+    poll: once none is, the badge is drawn again with its "?" naming what
+    is missing (the components check() reported, plus each value now
+    reading "not installed", each once), as a fresh load draws it #}
  <script>
  (function () {
    var box = document.querySelector('.hm-versions');
    if (!box || !window.MutationObserver) return;
    var CHECKED = {{ (setup_checked if setup_checked is defined else []) | tojson }};
-   var NAMES = {pybnf: 'PyBNF', bngsim: 'bngsim', bionetgen: 'BioNetGen',
+   var ENGINE = {{ (engine_name if engine_name is defined else "Particle-filter engine") | tojson }};
+   var NAMES = {pybnf: ENGINE, bngsim: ENGINE, bionetgen: 'BioNetGen',
                 perl: 'Perl', fastapi: 'FastAPI', plotly: 'Plotly'};
    function recount() {
      var names = CHECKED.slice();
      var spans = box.querySelectorAll('[data-vkey]');
      for (var i = 0; i < spans.length; i++) {
+       var t = spans[i].textContent.replace(/^\s+|\s+$/g, '');
+       if (t.indexOf('resolving') >= 0) return;
        var n = NAMES[spans[i].getAttribute('data-vkey')];
-       if (n && spans[i].textContent.replace(/^\s+|\s+$/g, '') === 'not installed'
-           && names.indexOf(n) < 0) names.push(n);
+       if (n && t === 'not installed' && names.indexOf(n) < 0) names.push(n);
      }
-     var b = document.getElementById('hm-missing') || document.getElementById('hm-installed');
-     if (!b || !window.FluBNFUI) return;
-     if (names.length) FluBNFUI.setBadge(b, 'warn', names.length + ' not installed');
-     else FluBNFUI.setBadge(b, 'ok', 'All components installed');
+     var slot = document.getElementById('hm-setup-state');
+     if (!slot || !window.FluBNFUI) return;
+     if (names.length) {
+       var word = names.length + ' not installed';
+       slot.innerHTML = '<span class="uk-badge-pair">' + FluBNFUI.badge('warn', word)
+         + FluBNFUI.tip('hm-missing', word, names.join(', ')) + '</span>';
+     } else slot.innerHTML = FluBNFUI.badge('ok', 'All components installed');
    }
    new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});
  })();

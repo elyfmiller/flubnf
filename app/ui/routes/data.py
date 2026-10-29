@@ -63,6 +63,12 @@ def _newest_report():
     return reported.check(rule or reported.MS.TRAILING_ZERO)
 
 
+#: the clone's state a pull just established, for the page the pull
+#: reloads (one-shot: later visits read "not checked" until a check, so
+#: no "up to date" outlives the moment it was true)
+_pulled: dict = {}
+
+
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     """Data page context: the latest vintage's freshness panel and the
     vintage browser's selection. Read-only; bad selections fall back to the
@@ -96,6 +102,9 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["live_week"] = None
     ctx["live_age"] = _data_age(ctx["live_week"])
     ctx["hub_behind"] = _clone_behind(freshness)
+    # no clone at all: the card says so and what fetches it (nothing on
+    # this page can; Update data pulls an existing clone)
+    ctx["hub_missing"] = state.data_mod.hub_missing()
     # the newest week's reporting, from the file a real-time run reads
     ctx["newest_report"] = _newest_report()
     # the hub models runs are compared against (an older sparse clone may
@@ -235,8 +244,9 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
             return templates.TemplateResponse(request, "data.html", ctx)
         _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
-    return templates.TemplateResponse(request, "data.html",
-                                      _data_context(loc, vintage))
+    return templates.TemplateResponse(
+        request, "data.html",
+        _data_context(loc, vintage, freshness=_pulled.pop("freshness", None)))
 
 
 # === Console controls on the Data tab: /data/pull, /freshness ===
@@ -319,6 +329,13 @@ def _pull() -> tuple:
                    "again once fitting starts or the run finishes.")
             _flash(msg, "warn", detail=why)
             return False, f"{msg} {why}"
+    # no folder to pull: the setup step fetches a clone
+    why = state.data_mod.hub_missing(data=False)
+    if why:
+        from app.ui.templating import hub_setup_text
+        msg = f"Could not update the hub clone: {why}."
+        _flash(msg, "error", detail=f"To fetch it, {hub_setup_text()}.")
+        return False, f"{msg} To fetch it, {hub_setup_text()}."
     try:
         before = state.data_mod.newest_week()
     except Exception:
@@ -361,6 +378,8 @@ def _pull() -> tuple:
         bits.append(clause)
     bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
     _flash(" · ".join(bits), "ok")
+    # the pull just matched origin: the page it reloads says so
+    _pulled["freshness"] = state.data_mod.fresh_after_pull()
     return True, " · ".join(bits)
 
 

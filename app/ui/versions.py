@@ -97,13 +97,29 @@ def _component_versions() -> dict:
             out["bionetgen"] = "installed"
     except Exception:
         pass
-    # Perl: BNG2.pl needs it (without it every location fails at preparation)
+    # Perl: BNG2.pl needs it (without it every location fails at preparation);
+    # its version, as the other rows read, not the path it was found at
+    import json
     import shutil as _shutil
-    out["perl"] = _shutil.which("perl") or "not installed"
+    import subprocess
+    out["perl"] = "not installed"
+    try:
+        from flubnf.settings import resolve_perl
+        perl = resolve_perl() or _shutil.which("perl")
+    except Exception:
+        perl = _shutil.which("perl")
+    if perl:
+        out["perl"] = "installed"
+        try:
+            r = subprocess.run([str(perl), "-e", "print $^V"],
+                               capture_output=True, text=True, timeout=15)
+            v = (r.stdout or "").strip().lstrip("v")
+            if r.returncode == 0 and v:
+                out["perl"] = v
+        except Exception:
+            pass
     out["pybnf"] = out["bngsim"] = "not installed"
     try:
-        import json
-        import subprocess
         from flubnf.settings import PY_ENGINE, PYBNF
         if Path(PY_ENGINE).exists():
             r = subprocess.run(

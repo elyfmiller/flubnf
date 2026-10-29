@@ -18,7 +18,7 @@ from app.core import horizons as _hzmod
 from app.core import ttlcache
 from app.ui import shared, state
 from app.ui.templating import templates
-from app.ui.versions import VERSIONS
+from app.ui.versions import VERSION_PENDING, VERSIONS
 
 router = APIRouter()
 
@@ -313,13 +313,52 @@ def _has_report(rid: str | None) -> bool:
 
 
 #: the Setup card's component names, by flubnf.settings.check() key and by
-#: version key (the two name one component once, never twice)
-_CHECK_NAMES = {"FLUBNF_HUB": "FluSight hub", "FLUBNF_BNG": "BioNetGen",
-                "perl": "Perl", "FLUBNF_PY_ENGINE": "Engine venv",
-                "FLUBNF_PYBNF": "PyBNF"}
-_VERSION_NAMES = (("pybnf", "PyBNF"), ("bngsim", "bngsim"),
+#: version key (the two name one component once, never twice). The engine
+#: is one component however many parts the check and the probe see
+#: (its venv, the PyBNF fork, bngsim): one install step, counted once
+ENGINE_NAME = "Particle-filter engine"
+_CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
+                "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
+                "FLUBNF_PYBNF": ENGINE_NAME}
+_VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
+#: what each missing component is, in plain words (the check's own phrase
+#: names its parts; the path looked at follows in the row's "?")
+_ROW_WORDS = {
+    "FLUBNF_HUB": "The FluSight hub's data: truth vintages and the "
+                  "locations table",
+    "FLUBNF_BNG": "BioNetGen's BNG2.pl, which builds each cell's reaction "
+                  "network",
+    "perl": "Perl, which runs BNG2.pl",
+    "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
+                        "bngsim",
+    "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
+}
+
+
+def _setup_rows(missing: list) -> list:
+    """The Setup card's rows for what check() reports missing, one per
+    component: [{"name", "words", "paths": [(path, variable)]}]; the
+    engine's parts fold into one row, each path kept. `words` is the
+    component in plain words, then the check's own detail when it has one
+    (a clone present but sparse, a checkout without pf.py)."""
+    rows = []
+    for var, path, why in missing or []:
+        name = _CHECK_NAMES.get(var, var)
+        _head, _sep, rest = why.partition(": ")
+        words = _ROW_WORDS.get(var, _head)
+        if rest:
+            words += f": {rest}"
+        for r in rows:
+            if r["name"] == name:
+                r["paths"].append((path, var))
+                r["words"] += f". {words}"
+                break
+        else:
+            rows.append({"name": name, "words": words,
+                         "paths": [(path, var)]})
+    return rows
 
 
 def _setup_gaps(missing: list, versions: dict,
@@ -380,9 +419,14 @@ def home(request: Request):
         "outlook_pending": pending,
         "outlook_report": bool(ob["outlook_date"]) and _has_report(rid),
         "versions": VERSIONS, "diagram": _diagram_data(res),
-        "missing": missing,
+        "missing": missing, "setup_rows": _setup_rows(missing),
         "setup_gaps": _setup_gaps(missing, VERSIONS, _engine_known()),
-        "setup_checked": _setup_gaps(missing, {})})
+        "setup_checked": _setup_gaps(missing, {}),
+        # the badge waits while any version is still resolving (a cold
+        # launch): the page recounts when the probe lands
+        "setup_pending": any(v == VERSION_PENDING
+                             for v in VERSIONS.values()),
+        "engine_name": ENGINE_NAME})
 
 
 def _engine_known() -> bool:

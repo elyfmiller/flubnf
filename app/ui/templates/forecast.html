@@ -77,6 +77,9 @@
       when no week is on or before the day. A dataset page passes only
       anchor_note ("Anchor week: <w>." or the no-week sentence). The line
       hides when it has nothing to say (a typed Saturday, archived). #}
+   {% if hub_missing is defined and hub_missing and not dataset %}
+   {{ tips.alert("warn", "No FluSight data: " ~ hub_missing ~ ". To fetch it, " ~ hub_setup_hint() ~ ".", id="fc-hub-missing", live="") }}
+   {% endif %}
    {% set an = anchor_note or "" %}
    {% set aw = anchor_week if anchor_week is defined and anchor_week else (an[13:] | trim(".") if an.startswith("Anchor week: ") else "") %}
    {% set kv_off = aw and aw == (form.forecast_date or default_date) %}
