@@ -1,0 +1,680 @@
+diff --git a/app/core/report_grid.py b/app/core/report_grid.py
+index 841a097..7d7d194 100644
+--- a/app/core/report_grid.py
++++ b/app/core/report_grid.py
+@@ -522,7 +522,9 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
+     return "".join(parts), clipped
+ 
+ 
+-def _legend(colors: dict, label: str) -> str:
++def _legend(colors: dict, label: str, drawn=None) -> str:
++    """The key: each model drawn (`drawn`, the panels' models; every model
++    when None), then observed and last season."""
+     def key(s, inner, title=""):
+         t = f' title="{_html.escape(title)}"' if title else ""
+         return (f'<span class="g-key" data-s="{s}" role="button" '
+@@ -530,7 +532,7 @@ def _legend(colors: dict, label: str) -> str:
+     sw = "".join(
+         key(m, f'<i class="g-k-{m}" style="background:'
+                f'{model_color(m, colors)}"></i>{_SHORT[m]}')
+-        for m in reversed(MODELS))
++        for m in reversed(MODELS) if drawn is None or m in drawn)
+     return (sw + key("obs", '<i class="g-k-obs"></i>observed')
+             + key("last", '<i class="g-k-last"></i>last season',
+                   f"{label}, same weeks"))
+@@ -641,7 +643,8 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
+     if not us:
+         return ""
+     head = ('<div class="g-head">'
+-            + _legend(colors, (grid or {}).get("last_season_label", ""))
++            + _legend(colors, (grid or {}).get("last_season_label", ""),
++                      us.get("models") or {})
+             + "</div>")
+     return ('<aside class="rp-usfeature" id="us-feature" '
+             'aria-label="United States forecast">'
+@@ -660,6 +663,9 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
+         return ""
+     panels = grid["panels"]
+     label = grid.get("last_season_label", "")
++    # the key names the models some panel draws (a Groundhog-only run has
++    # no Oracle SIHRS series to switch)
++    drawn = {m for p in panels for m in (p.get("models") or {})}
+     times = grid.get("times") or []
+     when = _md(times[-1]) if times else "the last target week"
+     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
+@@ -669,7 +675,7 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
+     for k, page in enumerate(pages, 1):
+         out.append('<div class="gpage">'
+                    f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
+-                   f'{_legend(colors, label)}</div>'
++                   f'{_legend(colors, label, drawn)}</div>'
+                    '<div class="g-cells">')
+         for i, p in enumerate(page):
+             key = str(p.get("key", ""))
+diff --git a/app/core/report_season.py b/app/core/report_season.py
+index 28702e0..97af81f 100644
+--- a/app/core/report_season.py
++++ b/app/core/report_season.py
+@@ -79,8 +79,11 @@ def names_for_root(root: Path, base: dict | None = None) -> dict:
+     return names
+ 
+ 
+-def report_path(root: Path, season: str) -> Path:
+-    return Path(root) / f"{season}-FluBNF-season-report.html"
++def report_path(root: Path, season: str, archive: str = "") -> Path:
++    """<root>/<season>-FluBNF-season-report.html; an archived run's carries
++    its stamp (-archived-<stamp>), so it never saves over the live one."""
++    tail = f"-archived-{archive}" if archive else ""
++    return Path(root) / f"{season}-FluBNF-season-report{tail}.html"
+ 
+ 
+ def _newest_input(root: Path) -> float:
+@@ -250,7 +253,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
+         raise playback.UnknownWeek(
+             f"{season}: no completed weeks yet, so there is no season "
+             "report to build.")
+-    out = report_path(root, season)
++    out = report_path(root, season, archive)
+     marker = _report_marker(archive, names_for_root(root))
+     if out.is_file() and out.stat().st_mtime >= _newest_input(root):
+         # mtime is not enough: an archived copy keeps its old mtime, and
+diff --git a/app/core/report_v2.py b/app/core/report_v2.py
+index 0d59b93..2dde78b 100644
+--- a/app/core/report_v2.py
++++ b/app/core/report_v2.py
+@@ -416,12 +416,27 @@ def cat_bar(probs):
+     return f
+ 
+ 
+-def _html(fig, include_js=False, div_id=None):
++def _html(fig, include_js=False, div_id=None, lazy=False):
+     # save-PNG at 2x with a meaningful filename (figures have an opaque ground)
+     config = dict(PLOTLY_CONFIG)
+     config["toImageButtonOptions"] = {
+         "format": "png", "scale": 2,
+         "filename": f"flubnf_{div_id or 'report_figure'}"}
++    if lazy:
++        # a hidden section's figure: its JSON beside an empty div, drawn by
++        # show() when the section opens (drawing every state's figures at
++        # load kept a 53-location report's buttons dead for seconds)
++        import uuid
++        import plotly.io as pio
++        gid = div_id or str(uuid.uuid4())
++        d = fig.to_plotly_json()
++        payload = ('{"data":' + pio.json.to_json_plotly(d.get("data", []))
++                   + ',"layout":' + pio.json.to_json_plotly(d.get("layout", {}))
++                   + ',"config":' + json.dumps(config) + "}").replace("</", "<\\/")
++        return (f'<div><div id="{gid}" class="plotly-graph-div" '
++                'style="height:100%; width:100%;"></div>'
++                '<script type="application/json" class="rp-figjson" '
++                f'data-for="{gid}">{payload}</script></div>')
+     return fig.to_html(full_html=False,
+                        include_plotlyjs=True if include_js else False,
+                        div_id=div_id, config=config)
+@@ -463,11 +478,12 @@ def _retint_js() -> str:
+       else walk(v,MAP);
+     }
+   }
+-  function pass(){
++  function pass(one){
+     var MAP={};""" + lines + """
+     var dirty=Object.keys(MAP).some(function(k){
+       return MAP[k].toLowerCase()!==k.toLowerCase();});
+-    var plots=document.querySelectorAll('.js-plotly-plot');
++    var plots=(one&&one.nodeType===1)?[one]
++      :document.querySelectorAll('.js-plotly-plot');
+     for(var i=0;i<plots.length;i++){
+       var g=plots[i];
+       if(!g.data||!g.layout) continue;
+@@ -483,6 +499,7 @@ def _retint_js() -> str:
+   }
+   pass();
+   addEventListener('themechange',pass);
++  window.rpRetint=pass;
+ })();
+ </script>"""
+ 
+@@ -616,6 +633,21 @@ def _ba_pair(key: str, shown: str, before: str, switch: bool = True) -> str:
+             f'<div data-ba-v="b" hidden>{before}</div></div>')
+ 
+ 
++#: a hidden section's figures (_html lazy), drawn the first time it opens
++#: by show(): each JSON once, retinted and given its week ticks
++_DRAW_JS = """window.rpDraw = function(el) {
++  var js = el.querySelectorAll('script.rp-figjson');
++  for (var i = 0; i < js.length; i++) {
++    var gd = document.getElementById(js[i].getAttribute('data-for'));
++    var f = JSON.parse(js[i].textContent);
++    js[i].remove();
++    if (!gd) continue;
++    Plotly.newPlot(gd, f.data, f.layout, f.config);
++    if (window.rpRetint) rpRetint(gd);
++    if (window.FluCharts) FluCharts.adopt(gd);
++  }
++};"""
++
+ #: every switch for one location moves together: its buttons, its detail
+ #: parts and (the rp-ba event) its live panels; a chart shown from hidden
+ #: takes its width again
+@@ -666,7 +698,7 @@ def page_header() -> str:
+  """ + _theme_select() + """
+  """ + _VISION_BTN + """
+  <a id="appback" class="rp-btn" href="#" hidden
+-  onclick="history.back();return false">&larr; back to FluBNF</a>
++  onclick="if(this.getAttribute('href')==='#'){history.back();return false}">&larr; back to FluBNF</a>
+ </header>"""
+ 
+ 
+@@ -1252,15 +1284,15 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
+             _forecast_numbers(a + "-before", d.get("numbers_before") or {},
+                               d.get("times") or [])
+             if d.get("numbers_before") else "", switch=False)
+-        fan_html = _ba_pair(a, _html(d['fan']),
+-                            _html(d['fan_before']) if d.get("fan_before")
+-                            else "")
++        fan_html = _ba_pair(a, _html(d['fan'], lazy=True),
++                            _html(d['fan_before'], lazy=True)
++                            if d.get("fan_before") else "")
+         sections.append(f"""
+ <section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
+   <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
+   <div class="rp-detail">
+     <div class="card">{fan_head}{fan_html}</div>
+-    <div class="card">{cat_head}{_html(d['cat'])}
++    <div class="card">{cat_head}{_html(d['cat'], lazy=True)}
+       <table><tr><th>Week ending</th><th class="num">Admissions</th></tr>{rows}</table></div>
+   </div>
+   {numbers}
+@@ -1272,8 +1304,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
+     if national.get("fan"):
+         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
+                                    level=3))
+-        nat_fan = _ba_pair("US", _html(national["fan"]),
+-                           _html(national["fan_before"])
++        nat_fan = _ba_pair("US", _html(national["fan"], lazy=True),
++                           _html(national["fan_before"], lazy=True)
+                            if national.get("fan_before") else "")
+         nat_cards.append(f'<div class="card">{nat_head}{nat_fan}</div>')
+         nat_num = _ba_pair(
+@@ -1436,9 +1468,19 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
+ {report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
+ {_BA_JS}
+ <script>
++{_DRAW_JS if plotly_js else ""}
+ window.showState = show;
+ var _ab = document.getElementById('appback');
+-if (_ab && history.length > 1) {{ _ab.hidden = false; }}
++if (_ab && history.length > 1) {{
++  // the console page that opened the report, whatever the in-page jumps
++  // since added to the history; a history step when there is none
++  try {{
++    var from = new URL(document.referrer);
++    if (from.origin === location.origin && from.pathname !== location.pathname)
++      _ab.href = from.href;
++  }} catch (e) {{}}
++  _ab.hidden = false;
++}}
+ if (location.hash && location.hash.indexOf('#st-') === 0 &&
+     document.getElementById(location.hash.slice(1))) {{
+   show(location.hash.slice(1));
+@@ -1449,7 +1491,8 @@ function show(id, then) {{
+   var all = document.querySelectorAll('section.state');
+   for (var i = 0; i < all.length; i++) all[i].hidden = true;
+   el.hidden = false;
+-  if (window.Plotly) {{
++  if (window.Plotly && window.rpDraw) {{
++    rpDraw(el);
+     var gs = el.querySelectorAll('.js-plotly-plot');
+     for (var j = 0; j < gs.length; j++) Plotly.Plots.resize(gs[j]);
+   }}
+diff --git a/app/core/scoring.py b/app/core/scoring.py
+index 3f8fa57..9fc5b49 100644
+--- a/app/core/scoring.py
++++ b/app/core/scoring.py
+@@ -358,13 +358,14 @@ def _member_name(model: str) -> str:
+ 
+ 
+ def summary_table_html(df: pd.DataFrame, model: str | None = None,
+-                       us_step: str | None = None) -> str:
++                       us_step: str | None = None, error: str = "") -> str:
+     """The weekly report's accuracy table for one member (`model`, default
+     the Oracle SIHRS), folded: the summary line names the member and its
+     pooled relWIS over its scored weeks (data-model, data-pooled and data-n
+     carry them for the page), the table opens beneath with ok/bad classes
+     and each score's count; a placeholder when empty, naming the member
+-    when `model` is given. The US row keeps its own (fitted) line but stays
++    when `model` is given, and saying why when its scoring failed
++    (`error`, the run's words). The US row keeps its own (fitted) line but stays
+     out of the pooled total (us_national.POOLED_INCLUDES_US). `us_step` is
+     the run's Oracle step on the US cell (us_national.us_step_week of its
+     workroot), which the Oracle SIHRS US row's note follows; None (the run
+@@ -375,6 +376,10 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
+     if df.empty:
+         if model is None:
+             return NO_SCORES_HTML
++        if error:
++            import html as _h
++            return (f"<p class='hint'>{_member_name(model)} could not be "
++                    f"scored: {_h.escape(str(error))}</p>")
+         return (f"<p class='hint'>{_member_name(model)}: no scored weeks "
+                 "yet.</p>")
+     member = _member_name(model or "pf")
+diff --git a/app/tests/test_output_freshness.py b/app/tests/test_output_freshness.py
+index 6b73adf..0d00fe5 100644
+--- a/app/tests/test_output_freshness.py
++++ b/app/tests/test_output_freshness.py
+@@ -86,7 +86,7 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
+     # the link serves that run's report, under the dated name
+     r = client.get(f"/runs/{latest}/report/download")
+     assert r.status_code == 200 and "REPORT latest" in r.text
+-    assert "2098-01-17-NAU_PyBNF-weekly-report.html" in \
++    assert f"2098-01-17-NAU_PyBNF-weekly-report-{latest}.html" in \
+         r.headers["content-disposition"]
+     # a page left open keeps naming its own run's report
+     _run(root, "2098-01-17", "newer")
+diff --git a/app/tests/test_report_bundle.py b/app/tests/test_report_bundle.py
+index 60bd318..f5ab9f2 100644
+--- a/app/tests/test_report_bundle.py
++++ b/app/tests/test_report_bundle.py
+@@ -467,8 +467,9 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
+     ui_shared._invalidate_scans()
+     r = client.get(f"/runs/{rid}/report/download")
+     assert r.status_code == 200
++    # the run's own id follows the date (two runs of a week never collide)
+     assert r.headers["content-disposition"] == (
+-        'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report.html"')
++        f'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report-{rid}.html"')
+     # no results.json yet: fall back to the run id, never bare report.html
+     bare = "20980108T000000-bbbbbb"
+     b = tmp_path / "workroots" / bare
+diff --git a/app/tests/test_report_weekly.py b/app/tests/test_report_weekly.py
+index 811748c..612426a 100644
+--- a/app/tests/test_report_weekly.py
++++ b/app/tests/test_report_weekly.py
+@@ -131,7 +131,7 @@ def test_weekly_report_is_theme_aware(tmp_path):
+     assert "addEventListener('themechange',pass)" in charted
+     assert "_flubnfBaked" in charted
+     from app.core.report_v2 import MEMBER_COLORS, band_literal
+-    retint = charted.split("function pass()", 1)[1].split("</script>", 1)[0]
++    retint = charted.split("function pass(", 1)[1].split("</script>", 1)[0]
+     for m in ("pf", "analogue"):
+         assert f'MAP["{MEMBER_COLORS[m]}"]=css("--model-{m}"' in retint, m
+         for lvl in ("95", "50"):
+diff --git a/app/tests/test_weekly_report_files.py b/app/tests/test_weekly_report_files.py
+new file mode 100644
+index 0000000..300a6b5
+--- /dev/null
++++ b/app/tests/test_weekly_report_files.py
+@@ -0,0 +1,230 @@
++"""The weekly and season report files (bug hunt 2026-10-25, G16).
++
++  * A run's weekly report downloads under a name that carries the run,
++    and a modified run's the -modified of its files, so two runs of one
++    week never save over each other; the archived week's names its run.
++  * An archived run's season report carries the archive stamp.
++  * The grid's key lists only the models the panels draw.
++  * The report's way back goes to the console page that opened it.
++  * A hidden section's figures are drawn when it opens, not at load.
++  * A member whose scoring failed says why: on the run page and in the
++    report's accuracy card.
++"""
++import json
++import sys
++from pathlib import Path
++
++import numpy as np
++import pandas as pd
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core import archive_record, report_grid, report_season, report_v2  # noqa: E402
++from app.core.runs import Ledger, RunSpec                      # noqa: E402
++from app.core.scoring import summary_table_html                # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import output as O                          # noqa: E402
++
++client = TestClient(srv.app)
++RID = "20980101T143105-aaaaaa"
++MODIFIED = {"knobs": {"groundhog.own_share": 0.6}}
++
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    for k in ("running", "workroot", "phase", "flash", "flash_kind",
++              "flash_detail"):
++        ui_state._status[k] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def _workroot(root, rid=RID, asof="2098-01-03", extra=None) -> Path:
++    """A run folder with a report and its results.json (the spec in it)."""
++    w = root / "workroots" / rid
++    w.mkdir(parents=True)
++    (w / "report.html").write_text("<html><body>REPORT</body></html>")
++    spec = RunSpec(engine="analogue", forecast_date=asof,
++                   locations=["Ohio"], extra=extra or {})
++    (w / "results.json").write_text(json.dumps(
++        {"forecast_date": asof, "spec": spec.to_json(), "models": {}}))
++    ui_shared._invalidate_scans()
++    return w
++
++
++def _name(r) -> str:
++    return r.headers["content-disposition"].split('filename="')[1][:-1]
++
++
++# ------------------------------------------- OU-03: the weekly report's name
++
++def test_two_runs_of_one_week_download_their_reports_under_their_own_names(root):
++    _workroot(root)
++    _workroot(root, "20980101T151200-bbbbbb")
++    a = client.get(f"/runs/{RID}/report/download")
++    b = client.get("/runs/20980101T151200-bbbbbb/report/download")
++    assert a.status_code == b.status_code == 200
++    assert _name(a) == f"2098-01-10-NAU_PyBNF-weekly-report-{RID}.html"
++    assert _name(b) == ("2098-01-10-NAU_PyBNF-weekly-report-"
++                        "20980101T151200-bbbbbb.html")
++
++
++def test_a_modified_runs_report_is_named_like_its_files(root):
++    _workroot(root, extra=MODIFIED)
++    r = client.get(f"/runs/{RID}/report/download")
++    assert _name(r) == f"2098-01-10-NAU_PyBNF-modified-weekly-report-{RID}.html"
++    assert O._weekly_report_name("2098-01-03", RID, modified=True) == _name(r)
++    # a run id with no results.json yet keeps the older name
++    assert O._weekly_report_name(RID, RID) == f"FluBNF-weekly-report-{RID}.html"
++
++
++def test_an_archived_weeks_report_names_the_run_its_record_holds(root):
++    d = root / "archive" / "2098-01-03"
++    d.mkdir(parents=True)
++    (d / "report.html").write_text("<html><body>ARCHIVE</body></html>")
++    r = client.get("/output/report/download?date=2098-01-03")
++    assert _name(r) == "2098-01-10-NAU_PyBNF-weekly-report.html"
++    archive_record.write_record(d, RID, complete=True)
++    r = client.get("/output/report/download?date=2098-01-03")
++    assert _name(r) == f"2098-01-10-NAU_PyBNF-weekly-report-{RID}.html"
++
++
++# ----------------------------------------- RE-26: the season report's name
++
++def test_an_archived_runs_season_report_carries_its_stamp(tmp_path, monkeypatch):
++    stamp = "20980204T101500Z"
++    assert report_season.report_path(tmp_path, "2097-98").name == \
++        "2097-98-FluBNF-season-report.html"
++    assert report_season.report_path(tmp_path, "2097-98", stamp).name == \
++        f"2097-98-FluBNF-season-report-archived-{stamp}.html"
++    # the download, through the route (the build itself stubbed)
++    from app.ui import retro_seasons
++    monkeypatch.setattr(retro_seasons, "RETRO_ROOT", tmp_path)
++
++    def build(root, season, archive="", **kw):
++        p = report_season.report_path(root, season, archive)
++        p.parent.mkdir(parents=True, exist_ok=True)
++        p.write_text("<html><body>SEASON</body></html>")
++        return p
++    monkeypatch.setattr(report_season, "build_season_report", build)
++    live = client.get("/retro/2097-98/report")
++    arch = client.get(f"/retro/2097-98/report?archive={stamp}")
++    assert live.status_code == arch.status_code == 200
++    assert _name(live) == "2097-98-FluBNF-season-report.html"
++    assert _name(arch) == f"2097-98-FluBNF-season-report-archived-{stamp}.html"
++
++
++# ------------------------------------- OU-04: the key lists the models drawn
++
++def _fan(med):
++    return {str(h): {L: med * (1 + 0.2 * z) for L, z in
++                     ((0.025, -1.9), (0.25, -0.7), (0.5, 0),
++                      (0.75, 0.7), (0.975, 1.9))} for h in range(4)}
++
++
++def test_a_groundhog_only_reports_key_has_no_oracle_sihrs_switch():
++    from datetime import date, timedelta
++    asof = "2098-01-03"
++    names = ("Ohio", "US")
++    e = date.fromisoformat(asof)
++    weeks = [((e - timedelta(days=7 * (13 - i))).isoformat(), 10.0 + i)
++             for i in range(14)]
++    obs = {n: weeks for n in names}
++    hist = {n: weeks for n in names}
++    colors = {"pf": "#1979FF", "analogue": "#FFC72C"}
++    gh_only = report_grid.grid_data(
++        asof, list(names), {"Ohio": "OH", "US": "US"},
++        {"US": "United States"}, obs,
++        {"analogue": {n: _fan(24.0) for n in names}}, hist)
++    for html in (report_grid.grid_html(gh_only, colors),
++                 report_grid.us_feature_html(gh_only, colors)):
++        assert 'data-s="analogue"' in html and 'data-s="obs"' in html
++        assert 'class="g-key" data-s="pf"' not in html
++    both = report_grid.grid_data(
++        asof, list(names), {"Ohio": "OH", "US": "US"},
++        {"US": "United States"}, obs,
++        {"pf": {n: _fan(23.0) for n in names},
++         "analogue": {n: _fan(24.0) for n in names}}, hist)
++    assert 'class="g-key" data-s="pf"' in report_grid.grid_html(both, colors)
++
++
++# --------------------------- OU-05 and OU-06: the report page's own scripts
++
++def _charted(tmp_path) -> str:
++    rng = np.random.default_rng(5)
++    f_t = ["2098-01-10", "2098-01-17", "2098-01-24", "2098-01-31"]
++    q = report_v2.fan_quantiles(
++        f_t, {t: rng.gamma(4.0, 30.0, 300).tolist() for t in f_t})
++    fan = report_v2.fan_figure_from_quantiles(
++        ["2098-01-03"], [110.0], f_t, q, title="t")
++    return report_v2.build_report(
++        "2098-01-03", {}, {"OH": {"name": "Ohio", "fan": fan,
++                                  "cat": report_v2.cat_bar({"stable": 1.0}),
++                                  "table_rows": []}},
++        {}, tmp_path / "c.html").read_text(encoding="utf-8")
++
++
++def test_the_way_back_goes_to_the_console_page_that_opened_the_report(tmp_path):
++    html = _charted(tmp_path)
++    back = html.split('id="appback"', 1)[1].split("</a>", 1)[0]
++    assert "history.back()" in back            # no page to go back to by name
++    script = html.split("var _ab = document.getElementById('appback')", 1)[1]
++    assert "document.referrer" in script
++    assert "from.origin === location.origin" in script
++    assert "_ab.href = from.href" in script
++
++
++def test_a_hidden_sections_figures_wait_for_it_to_open(tmp_path):
++    html = _charted(tmp_path)
++    section = html.split('<section class="state" id="st-OH"', 1)[1] \
++                  .split("</section>", 1)[0]
++    assert section.count('<script type="application/json" class="rp-figjson"') == 2
++    assert "Plotly.newPlot" not in section
++    assert '<\\/' not in section.split("rp-figjson")[0]
++    # the figure's JSON holds its data, layout and the save-PNG config
++    payload = json.loads(section.split('data-for="', 1)[1]
++                         .split(">", 1)[1].split("</script>", 1)[0])
++    assert set(payload) == {"data", "layout", "config"}
++    assert payload["config"]["toImageButtonOptions"]["filename"] == \
++        "flubnf_report_figure"
++    # show() draws them once, retinted and fitted like the rest
++    show = html.split("function show(id", 1)[1].split("window.backToMap", 1)[0]
++    assert "rpDraw(el);" in show
++    draw = html.split("window.rpDraw = function(el)", 1)[1].split("};", 1)[0]
++    for step in ("Plotly.newPlot(gd, f.data, f.layout, f.config)",
++                 "rpRetint(gd)", "FluCharts.adopt(gd)", "js[i].remove()"):
++        assert step in draw, step
++    assert "window.rpRetint=pass" in html
++    # a report without figures carries none of it
++    bare = report_v2.build_report("2098-01-03", {}, {}, {},
++                                  tmp_path / "b.html").read_text(encoding="utf-8")
++    assert "window.rpDraw = function" not in bare and "FluCharts" not in bare
++
++
++# ------------------------------- FC-20: a member's scoring failure is said
++
++def test_a_members_scoring_failure_is_said_on_the_run_page_and_in_the_report(root):
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="analogue", forecast_date="2098-01-03",
++                               locations=["Ohio"]), Path("pending"), {})
++    why = "the hub clone has no model-output/FluSight-baseline"
++    led.close_run(rid, "ok", {"analogue_score_error": why})
++    ui_shared._invalidate_scans()
++    page = client.get(f"/runs/{rid}").text
++    assert "Step that failed" in page
++    assert f"<code>analogue_score_error</code> <span>{why}</span>" in page
++    # the accuracy card names the reason instead of "no scored weeks yet"
++    card = summary_table_html(pd.DataFrame(), model="analogue", error=why)
++    assert card == f"<p class='hint'>Groundhog could not be scored: {why}</p>"
++    assert summary_table_html(pd.DataFrame(), model="analogue") == \
++        "<p class='hint'>Groundhog: no scored weeks yet.</p>"
+diff --git a/app/ui/pipeline.py b/app/ui/pipeline.py
+index 8adf404..312141d 100644
+--- a/app/ui/pipeline.py
++++ b/app/ui/pipeline.py
+@@ -269,8 +269,12 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
+     from app.core.us_national import us_step_week
+     us_step = us_step_week(workroot)
+     if ran:
++        # a member whose scoring failed says why (the run's own words)
++        # instead of "no scored weeks yet"
+         wis_body = "".join(summary_table_html(
+-            frames.get(m, pd.DataFrame()), model=m, us_step=us_step)
++            frames.get(m, pd.DataFrame()), model=m, us_step=us_step,
++            error=str(outcome.get(f"{m}_score_error")
++                      or outcome.get("score_error") or ""))
+             for m in ran)
+     else:
+         wis_body = summary_table_html(df, us_step=us_step)
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 576c052..3e11eb9 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -539,8 +539,9 @@ def run_page(request: Request, run_id: str):
+             # failures and step errors in full (the chips only count them)
+             pf_failures = o.get("pf_failures", {}) or {}
+             step_errors = {k: str(o[k]) for k in
+-                           ("score_error", "archive_error",
+-                            "report_inputs_error", "report_error")
++                           ("score_error", "analogue_score_error",
++                            "archive_error", "report_inputs_error",
++                            "report_error")
+                            if o.get(k)}
+         except Exception:
+             err = ""
+@@ -657,17 +658,18 @@ def run_report_download(request: Request, run_id: str):
+     if not _runs.is_run_id(run_id):
+         return _no_run_report(request, run_id)
+     d = output_routes._run_folder(run_id)
+-    date = ""
++    date, spec = "", ""
+     try:
+         import json as _json
+-        date = _json.loads((d / "results.json").read_text(encoding="utf-8")).get(
+-            "forecast_date", "")
++        res = _json.loads((d / "results.json").read_text(encoding="utf-8"))
++        date, spec = res.get("forecast_date", ""), res.get("spec") or ""
+     except Exception:
+         pass                 # no results.json yet: fall back to the run id
+     return output_routes._weekly_report_file(
+         d, date or run_id, request,
+         notice={"action": (f"/runs/{run_id}", "Back to the run"),
+                 "active": "Storage", "heading": "Run report"},
++        run_id=run_id, modified=_runs.is_modified(spec),
+         route=f"/runs/{run_id}/report/download")
+ 
+ 
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 76ee3f5..31fa73d 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -855,26 +855,36 @@ def output_report(request: Request, date: str = ""):
+     return HTMLResponse(_report_for_serving(d))
+ 
+ 
+-def _weekly_report_name(date: str) -> str:
++def _weekly_report_name(date: str, run_id: str = "",
++                        modified: bool = False) -> str:
+     """Saved weekly report name (every run writes report.html). An as-of
+     date names it by its hub reference date, as the submission CSVs are
+     (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
+-    sorts beside the files it describes; anything else (a run id with no
++    sorts beside the files it describes; a modified run's carries their
++    -modified too (2026-10-03-NAU_PyBNF-modified-weekly-report.html); the
++    run's id follows (-20260928T143105-5dbec2), so two runs of one week
++    never save over each other. Anything else (a run id with no
+     results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
++    from app.core.knobs import MODIFIED_SUFFIX
++    from app.core.runs import is_run_id
+     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
+         ref = _reference_date(date)
+         if ref:
+-            return f"{ref}-NAU_PyBNF-weekly-report.html"
++            run = f"-{run_id}" if is_run_id(run_id) else ""
++            return (f"{ref}-NAU_PyBNF{MODIFIED_SUFFIX if modified else ''}"
++                    f"-weekly-report{run}.html")
+     return f"FluBNF-weekly-report-{date}.html" if date \
+         else "FluBNF-weekly-report.html"
+ 
+ 
+ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+-                        notice: dict | None = None, route: str = ""):
++                        notice: dict | None = None, route: str = "",
++                        run_id: str = "", modified: bool = False):
+     """The weekly report as a download, refreshed first (same bytes as the
+     page); missing -> 404 (a console page when `request` is given;
+     `notice` holds _notice's action, active and heading for a run's).
+-    The download log names `route` (app/ui/downloadlog.py)."""
++    The download log names `route` (app/ui/downloadlog.py); `run_id` and
++    `modified` name the file (_weekly_report_name)."""
+     from fastapi.responses import FileResponse
+     f = Path(dirpath) / "report.html"
+     if not f.is_file():
+@@ -884,7 +894,8 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+         return HTMLResponse("<p>No report to download.</p>", status_code=404)
+     _report_for_serving(dirpath)
+     downloadlog.write(route or "report download", f)
+-    return FileResponse(f, filename=_weekly_report_name(date),
++    return FileResponse(f, filename=_weekly_report_name(date, run_id,
++                                                        modified),
+                         media_type="text/html",
+                         content_disposition_type="attachment")
+ 
+@@ -892,17 +903,24 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+ @router.get("/output/report/download")
+ def output_report_download(request: Request, date: str = ""):
+     """/output/report's file, as a download."""
+-    from app.core.runs import APP_STATE
++    from app.core import archive_record as _ar
++    from app.core.runs import APP_STATE, is_modified
+     if date:
+         if bad := _bad_date(date, request):
+             return bad
+-        return _weekly_report_file(APP_STATE / "archive" / date, date,
+-                                   request,
+-                                   route=f"/output/report/download?date={date}")
++        d = APP_STATE / "archive" / date
++        # the archive's record names the run its file came from
++        rid = str((_ar.read_record(d) or {}).get("run_id") or "")
++        return _weekly_report_file(d, date, request,
++                                   route=f"/output/report/download?date={date}",
++                                   run_id=rid)
+     rid, res = shared._latest_results()        # the shipped rule, as above
+     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
+                                (res or {}).get("forecast_date", ""), request,
+-                               route="/output/report/download")
++                               route="/output/report/download",
++                               run_id=rid or "",
++                               modified=is_modified(
++                                   (res or {}).get("spec") or ""))
+ 
+ 
+ # === Shared with the run pages (run.html, through template globals) ===
