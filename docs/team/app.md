@@ -6,6 +6,34 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-29: the student workspace, designed with Ely (decisions under
+  Decided); nothing is built yet, and building starts when Ely says.
+  Students try beta variants and other configurations of SIHRS, later
+  RSV and COVID-19 models, from the Sandbox through to replays, for
+  people and scripts alike:
+  - Models: a "SIHRS template" Sandbox start keeps the per-state
+    placeholders (`{{POP}}`, `{{S0FRAC}}`, `{{I0FRAC}}` ...); Check gains
+    "Ready for replays"; Register freezes a version with a fingerprint of
+    its files, and any edit is a new version.
+  - Experiments: one folder each, never the shipped season tree; three
+    sizes (smoke: 2 locations, 2 weeks; pilot: about 10 locations every
+    other week, 1 replicate; full: the shipped settings, 7.0 h for
+    2024-25 on Ely's Mac); a compare page against the shipped replay on
+    the same cells (log WIS, relative WIS, 50/80/95 coverage); one
+    `summary.json` for the page and for scripts. A shipped replay's
+    `oracle.json` already keeps the filter's own quantiles
+    (`quantiles.null`), so a variant without the Oracle step compares
+    without another replay; scoring them is new.
+  - On the runner: one queue, a time and disk estimate before a job is
+    accepted, lean storage for experiments (forecasting samples dropped
+    once a week is scored: about 1.5 GB to under 100 MB a season), the
+    Storage tab by experiment.
+  - Every page action also a `flubnf` command with `--json` output and
+    fixed exit codes; Check's problems get stable codes; one guide for
+    anyone working from a terminal. Students' work lives in untracked
+    folders only: the launchers set aside edits to tracked files.
+  - Pathogen a field on models, datasets and experiments; RSV and
+    COVID-19 come in first as snapshot datasets and run the plain filter.
 - 2026-10-28 (later, Ely's answer to the Open question below): a
   Submitted / Before cap switch per location
   ([0e16723](https://github.com/elyfmiller/flubnf/commit/0e16723)), to
@@ -331,6 +359,38 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): GitHub rules, set that day (rulesets 26160504 and
+  26160505). `main` changes only through a merged pull request whose six
+  checks are green (`test` and `test-windows` on 3.11 and 3.12,
+  `windows-own-perl`, `windows-setup-script`), with no bypass, no force
+  push and no deletion. The checks do not ask the branch to be up to
+  date, since main's merge commits are never in `dev`. Merge commits only:
+  squash and rebase are off for the repository. `dev`: no force push or
+  deletion. CI on every pull request from outside waits for Ely's
+  approval (before, only a first-time contributor's did). TEAM.md says so.
+- 2026-10-29 (Ely): the student workspace (plan under Now).
+  - Students, and agents working for them, fork, branch and open pull
+    requests against `dev`; Ely and Ely's agents review; only Ely merges.
+    Everything in the repository is human-authored: commits under the
+    contributor's own name, with no co-author trailers or generated-by
+    lines. A CI check on pull requests will refuse them, naming no tool.
+    No file in the repository is written for a particular assistant: the
+    guide is for anyone working from a terminal.
+  - A proposal is a folder, `proposals/<name>/`: the model files, the
+    experiment settings, the results summary and the student's own
+    write-up. CI checks it, and review reruns it on the lab runner, where
+    the fingerprints must match. It becomes a shipped model only through
+    Ely's lanes.
+  - Long runs go on the lab's 24-core Mac Studio, a different machine
+    from the lab Mac the Engine and Model lanes use. They go through one
+    shared runner: a FluBNF install on `main` in its own account works
+    one queue. Each student has a standard account of their own, submits
+    experiments from it and reads results back. Code from a fork never
+    runs on the runner. Off-site, students reach the Mac Studio through
+    remote sessions.
+  - The Oracle step is a switch on every experiment: it belongs to the
+    shipped SIHRS, and other models may try it or not. It is off by
+    default for any other model (App's proposal).
 - 2026-10-01 (Ely): the Liu-West filter's US figure is shown for seasons
   stored since addendum A3 (the step makes it the right comparison), n/a
   for seasons stored before it. The saved weekly report is named by its hub reference date, as
@@ -348,6 +408,31 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- All lanes (2026-10-29): `main` refuses a merge pushed by hand; merge a
+  `dev` to `main` pull request with `gh pr merge <n> --merge --repo
+  elyfmiller/flubnf` or the website, once all six checks are green.
+  `dev` refuses a force push. Submission: the hand-pushed merge in your
+  notes no longer works.
+- Engine (2026-10-29, the student workspace; requests to schedule with
+  Ely, nothing to start yet):
+  1. `pf.prepare` takes a registered model (template, prior block,
+     starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
+     which become registered models themselves.
+  2. A replay into an experiment's own root, with the model's
+     fingerprint in `run_meta.json` and a resume refused when it
+     changed, as for knobs.
+  3. Lean storage for experiments: forecasting samples dropped once the
+     week's national aggregate and scores are written, if nothing reads
+     them later.
+  4. Sandbox promotion (`sandbox.py`): a Sandbox model registered.
+- Model (2026-10-29, the student workspace):
+  - What makes a fair comparison: the same cells, a pilot's 1 replicate
+    against the shipped 3, and how many seasons.
+  - Whether `oracle.json`'s `quantiles.null` can be scored as the
+    shipped filter without the step (the floor and the cap).
+  - Which beta variants to offer as starts.
+  - RSV and COVID-19 priors and season starts.
 
 - Engine (2026-10-26, for `engine-public`): what App needs to finish.
   1. `engine-requirements.txt` at the repository root on `engine-public`:
@@ -597,6 +682,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-10-29, the Mac Studio): the accounts are yours to make,
+  a standard one for each student and one for the runner. Also to
+  decide: how much disk each student may fill.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the

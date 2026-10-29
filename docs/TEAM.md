@@ -86,13 +86,17 @@ paste, or has a lane that can push commit it.
 
       gh pr merge <number> --merge --repo elyfmiller/flubnf
 
-  or, without the GitHub CLI, from a clone with push access:
-
-      git fetch origin && git checkout main && git pull --ff-only origin main \
-        && git merge --no-ff origin/dev -m "Merge pull request #<number> from elyfmiller/dev" \
-        && git push origin main
-
-  GitHub marks the pull request merged once `main` holds `dev`'s head.
+  or the pull request's Merge button on the website. Since 2026-10-29
+  `main` takes nothing else (repository rules, no bypass): only a merged
+  pull request whose six test checks are green, merge commits only, and
+  no force push or deletion. A merge pushed to `main` by hand is refused.
+  `dev` takes direct pushes as before, but no force push or deletion.
+- People outside the team (students, and agents working for them) never
+  push here: they fork, branch, and open a pull request against `dev`.
+  Ely and Ely's agents review it and only Ely merges. Its CI waits for
+  Ely's approval. Everything in this public repository is human-authored:
+  commits carry their author's own name, with no co-author trailers or
+  generated-by lines.
 - Never open a pull request to cdcepi/FluSight-forecast-hub or email CDC
   unless Ely asks.
 - Say "Liu-West filter" for the filter and "forecasting sample" for its
