@@ -250,7 +250,7 @@ index bf9a1ba..f8cb4b3 100644
     Every theme states its own colors as tokens (--btn-ink: LANL Blue on
     light grounds, the accent on dark ones, where the blue would vanish;
 diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
-index e452ec8..b3489c3 100644
+index e452ec8..73a5ede 100644
 --- a/app/ui/templates/forecast.html
 +++ b/app/ui/templates/forecast.html
 @@ -878,6 +878,7 @@
@@ -266,7 +266,7 @@ index e452ec8..b3489c3 100644
   const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
                            || SCOLORS[i % SCOLORS.length];
 + // the Groundhog's gold is the report's darker one on a light card
-+ // (the shared #FFC72C reads 1.6:1 on white)
++ // (the shared yellow reads 1.6:1 on white)
 + const ANALOGUE_LIGHT={{ analogue_on_light() | tojson }};
   function memberColor(m){
 +   if(m==='analogue'&&css('--scheme')==='light') return ANALOGUE_LIGHT;

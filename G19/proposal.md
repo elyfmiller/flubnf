@@ -90,7 +90,7 @@ request delayed 1.5 s.
   test_ui_layout (the golden lists the new template global),
   test_models_tab, test_forecast_aids, test_ui_kit, test_week_ticks: all
   pass. ruff gate clean.
-- Full suite (FLUBNF_HUB=/nonexistent), in a worktree pinned at the prototype: 3589 passed, 154 skipped; the two test_doctor failures are this container's Python 3.13, as on dev.
+- Full suite (FLUBNF_HUB=/nonexistent), in a worktree pinned at the prototype: 3589 passed, 154 skipped; the two test_doctor failures are this container's Python 3.13, as on dev; the third, test_design_batch3's "no private literals" on a template comment that named the shared yellow by its hex, is fixed in the patch (the comment reworded).
 - Invariance: not needed (templates, two static files, the page's
   context; `routes/forecast.py`'s change is the GET page, not /run).
 - Windows: markup, CSS and JS only.
