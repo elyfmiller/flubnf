@@ -203,11 +203,13 @@ def _console_elapsed(now: float | None = None) -> float | None:
 
 # === Run labels, outcome chips, latest results ===
 def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
-    """'2026-07-04 · 08-18 09:31' (forecast date · run time). Research runs
-    get ' · research' unless tag=False (pages with a styled badge)."""
+    """'2026-07-04 · 08-18 09:31:05' (forecast date · run time, to the
+    second: two runs in one minute read apart). Research runs get
+    ' · research' unless tag=False (pages with a styled badge)."""
     import json as _json
     from app.core.runs import is_research
-    when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+    when = (f"{run_id[4:6]}-{run_id[6:8]} "
+            f"{run_id[9:11]}:{run_id[11:13]}:{run_id[13:15]}")
     suffix = " · research" if (tag and is_research(spec_json)) else ""
     if tag and _runs.is_modified(spec_json):
         suffix += " · modified settings"
@@ -248,14 +250,16 @@ def _pf_member_label(o: dict) -> str:
     return ("Oracle SIHRS" if ox else "PF") + tail
 
 
-def _outcome_items(outcome_json) -> list:
+def _outcome_items(outcome_json, deleted: bool = False) -> list:
     """One run's outcome as facts, for pages that draw each one with the UI
     kit (the Storage ledger): [{"chip", "text", "state", "tip"}]. "chip" is
     the fact as _outcome_chips writes it; "text" the short word or figure
     (Markup for a relWIS figure), "state" a badge state ("" = a plain
     fact), "tip" what the chip's parenthesis or tail said. A relWIS
     figure's text carries its verdict icon after the number. Fixed phrases
-    and numbers only: raw error strings stay on the run page."""
+    and numbers only: raw error strings stay on the run page. deleted:
+    Storage deleted the run's files, said once in place of its files and
+    report."""
     import json as _json
 
     from markupsafe import Markup
@@ -298,7 +302,9 @@ def _outcome_items(outcome_json) -> list:
             "PF engine install incomplete", "error",
             "A broken install is a fault, unlike no engine at all. The run "
             "page has the message.")
-    if o.get("submissions"):
+    if deleted and (o.get("submissions") or o.get("report")):
+        add("files deleted")
+    elif o.get("submissions"):
         ns = len(o["submissions"])
         add(f"{ns} submission{'s' if ns != 1 else ''}")
     if o.get("submission_errors"):
@@ -322,7 +328,7 @@ def _outcome_items(outcome_json) -> list:
             "Modified model settings: the files carry the non-hub name "
             "unless the operator exported under the hub names with a reason"
             + ("; this run did (hub names by override)." if over else "."))
-    if o.get("report"):
+    if o.get("report") and not deleted:
         add("report ✓", "report", "ok")
     if o.get("pf_relwis"):
         # scored-cell count; older rows only carry the fit-cell count

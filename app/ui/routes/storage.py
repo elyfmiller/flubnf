@@ -21,7 +21,7 @@ from app.ui.retro_prep import _results_jobs
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
                                   _season_status, _valid_season)
 from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
-                           _scan_archive_dates)
+                           _run_label, _scan_archive_dates)
 from app.ui.state import _status
 from app.ui.templating import templates
 
@@ -120,10 +120,11 @@ def _round_label(spec, fallback: str) -> str:
 
 def _ledger_parts(run_id: str, spec) -> list:
     """A ledger row's label in its parts, each kept whole on a narrow
-    screen: ["as of 2026-10-03", "run 10-05 14:31"] (the run's local start,
-    from its id); just the run's time when the spec names no date."""
+    screen: ["as of 2026-10-03", "run 10-05 14:31:07"] (the run's local
+    start, from its id, as every run label reads it); just the run's time
+    when the spec names no date."""
     asof = str(_spec_of(spec).get("forecast_date") or "").strip()
-    when = (f"run {run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+    when = (f"run {_run_label(run_id, '', tag=False)}"
             if _runs.is_run_id(run_id) else run_id)
     return ([f"as of {asof}"] if asof else []) + [when]
 
@@ -168,7 +169,10 @@ def _storage_inventory() -> dict:
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
                 "label": _round_label(row.get("spec"), disp["what"]),
-                "status": st, "when": disp["when"],
+                # the run's time as the ledger row and every label read it
+                "status": st,
+                "when": (_run_label(p.name, "", tag=False)
+                         if _runs.is_run_id(p.name) else disp["when"]),
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
@@ -214,6 +218,8 @@ def _storage_inventory() -> dict:
         inv["total_bytes"] += size
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size), "bytes": size,
+            # its round, as the workroot rows above name it
+            "label": _round_label({"forecast_date": d}, d),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
             "busy": console_busy, "why": _busy_why("report-archive", d)})
@@ -281,6 +287,7 @@ def runs_page(request: Request):
     alias (old reports and bookmarks link it)."""
     from app.core.runs import APP_STATE, is_research
     from app.core import retro
+    from app.ui.routes.output import _files_deleted
     ledger = Ledger()
     rows = ledger.rows(LEDGER_ROWS)
     for r in rows:
@@ -293,7 +300,8 @@ def runs_page(request: Request):
         r["research"] = is_research(r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         # the outcome as facts the page draws as chips and badges
-        r["facts"] = _outcome_items(r.get("outcome", ""))
+        r["facts"] = _outcome_items(r.get("outcome", ""),
+                                    deleted=_files_deleted(r["run_id"]))
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
