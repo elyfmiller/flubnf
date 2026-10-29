@@ -1,0 +1,270 @@
+diff --git a/app/core/knobs.py b/app/core/knobs.py
+index 331cc8d..5b43468 100644
+--- a/app/core/knobs.py
++++ b/app/core/knobs.py
+@@ -253,8 +253,11 @@ REGISTRY: tuple = (
+                "x' = m (x / m)^k about each horizon's median: the median is "
+                "untouched and a value ten times it becomes 10^k times it. "
+                "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
+-               "(docs/team/submission.md, 2026-10-16): k = 0.7 took pooled "
+-               "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
++               "(docs/team/submission.md, 2026-10-16), on the stage-rule "
++               "member's stored quantiles (seed season_total_early, blend "
++               "weight 0.25; 9,152 cells), not the record's default blend: "
++               "k = 0.7 took its pooled relWIS from 0.720 to 0.671 with "
++               "50 / 80 / 95 coverage at "
+                "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
+                "the run records k and the unnarrowed quantiles beside the "
+                "narrowed ones; no card phrase until the default changes.")),
+@@ -1151,7 +1154,8 @@ PANEL_GROUPS = (
+     ("fit", "Oracle SIHRS: particle filter",
+      "Settings of the fit itself; a change refits every state."),
+     ("step", "Oracle SIHRS: Oracle step",
+-     "Runs after the fit on its samples; a change costs no refit."),
++     "Runs after the fit on its samples; a replay reuses its fitted weeks, "
++     "a console run fits again."),
+     ("groundhog", "Groundhog",
+      "The calendar analogue; instant. Its donor settings are independent "
+      "of the Oracle step's."),
+diff --git a/app/tests/test_models_tab.py b/app/tests/test_models_tab.py
+index 67094db..f4145fa 100644
+--- a/app/tests/test_models_tab.py
++++ b/app/tests/test_models_tab.py
+@@ -68,7 +68,8 @@ def test_the_record_sentences_ride_the_record_toggletip():
+             ("relWIS vs the FluSight baseline (below 1 beats it): "
+              f"{ot.fmt(both['oracle'])} against the plain filter's "
+              f"{ot.fmt(both['filter'])} on the same "
+-             f"{ot.cells(both['cells'])} cells of 2024-25 and 2025-26."),
++             f"{ot.cells(both['cells'])} cells of 2024-25 and 2025-26, "
++             "under the earlier cell rule."),
+             ("a frozen-specification replication whose prospective "
+              'test is the 2026-27 season (<a href="/methods#oracle">'
+              "Methods</a>).")),
+@@ -125,7 +126,9 @@ def test_model_pages_name_each_equation_and_show_its_note():
+         assert f'<span class="uk-name">{name}</span>' in t, name
+     assert 'id="tip-dg-' not in t
+     notes = " ".join(_notes(t))
+-    assert "A week with too few donors (30 paths per stream)" in notes
++    assert ("A week where neither stream supplies 30 donor paths leaves the "
++            "filter unchanged; where only one does, that stream supplies "
++            "every donor.") in notes
+     assert "the fixed removal rate 7/3.2" in notes
+     assert "keeping the filter's spread and adding the donors'" in notes
+     # the chips show both parameter rows; the Variables fold's source
+diff --git a/app/tests/test_oracle_text_pages.py b/app/tests/test_oracle_text_pages.py
+new file mode 100644
+index 0000000..e4932e0
+--- /dev/null
++++ b/app/tests/test_oracle_text_pages.py
+@@ -0,0 +1,65 @@
++"""The Oracle SIHRS text on Methods, the model pages and the settings
++reference describes what runs and what was submitted (bug hunt 2026-10-25,
++G12: ME-03, ME-12, ME-15, ME-20, MO-13, ME-24)."""
++from fastapi.testclient import TestClient
++
++from app.core import knobs as K
++from app.ui.server import app
++
++client = TestClient(app)
++
++
++def _flat(t: str) -> str:
++    return " ".join(t.replace("&#39;", "'").split())
++
++
++def test_methods_says_the_blend_weight_submitted_since_2026_10_17():
++    """Card 1.4 and the Submission lane's decision of 2026-10-12: the code
++    default stays one half; the rounds submitted since 2026-10-17 put one
++    quarter on the filter's growth, recorded with each run."""
++    t = _flat(client.get("/methods").text)
++    assert ("one quarter on the filter in the rounds submitted since "
++            "2026-10-17") in t
++    assert ("half and half by default, and one quarter on the filter's "
++            "growth in the rounds submitted since 2026-10-17, each run "
++            "recording the weight it used") in t
++    assert "<i>w</i> ln <i>G</i><sub><i>T</i></sub>" in t
++    assert "at half weight" not in t and "half filter growth" not in t
++    # the bank's own half-and-half (two donor streams) is a different fact
++    assert "mixed half and half" in t
++    assert K.BY_KEY["oracle.w"].default == 0.5
++
++
++def test_the_narrowing_note_names_the_member_its_screen_used():
++    note = K.BY_KEY["oracle.narrow"].note
++    assert "blend weight 0.25; 9,152 cells" in note
++    assert "not the record's default blend" in note
++    assert "took its pooled relWIS from 0.720 to 0.671" in note
++
++
++def test_the_donor_floor_note_matches_the_pool_fold():
++    t = _flat(client.get("/methods").text)
++    assert ("A week where neither stream supplies 30 donor paths leaves the "
++            "filter unchanged; where only one does, that stream supplies "
++            "every donor.") in t
++    assert "30 paths per stream" not in t
++    assert "30 paths per stream" not in _flat(client.get("/models").text)
++
++
++def test_the_oracle_step_group_says_a_console_run_refits():
++    tip = dict((g[0], g[2]) for g in K.PANEL_GROUPS)["step"]
++    assert "a replay reuses its fitted weeks, a console run fits again" in tip
++    assert "costs no refit" not in tip
++
++
++def test_the_oracle_record_names_its_cell_rule_like_the_groundhogs():
++    from app.ui.routes.models import _record
++    assert "under the earlier cell rule" in _record("pf")["lines"][0]
++    assert "FluSight's cell rule" in _record("analogue")["lines"][0]
++
++
++def test_the_two_strain_fold_no_longer_calls_its_linked_page_hidden():
++    t = _flat(client.get("/methods").text)
++    assert "reachable by URL" not in t
++    assert ('it stays a research run, on the <a href="/model/pf2s">'
++            "two-strain model page</a>.") in t
+diff --git a/app/tests/test_pages.py b/app/tests/test_pages.py
+index 7ddc77a..408a97e 100644
+--- a/app/tests/test_pages.py
++++ b/app/tests/test_pages.py
+@@ -423,7 +423,8 @@ def test_every_equation_group_defines_its_symbols():
+                    "prior 0.002 to 1, log-uniform", "prior 0.1 to 40, log-uniform",
+                    "2.19 per week", "0.02, a working assumption",
+                    "1.17 per week", "0.019 per week", ">0.85<",
+-                   "the as-of Saturday", "the blend weight, set a priori"):
++                   "the as-of Saturday",
++                   "the rounds submitted since 2026-10-17 use one quarter"):
+         assert needle in t, needle
+     # the site (no kit) renders the same fold as plain markup
+     from app.core import site_build as sb
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 2b3e16b..1db89a5 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -94,7 +94,7 @@ def _record(name: str) -> dict:
+             (f"relWIS vs the FluSight baseline (below 1 beats it): "
+              f"{fmt(both['oracle'])} against the plain filter's "
+              f"{fmt(both['filter'])} on the same {ot.cells(both['cells'])} "
+-             f"cells of 2024-25 and 2025-26."),
++             f"cells of 2024-25 and 2025-26, under the earlier cell rule."),
+             Markup("{} against {} in 2023-24 and {} against {} over three "
+                    "seasons, a frozen-specification replication whose "
+                    "prospective test is the 2026-27 season "
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index e9766e1..2fce3b0 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -301,8 +301,9 @@
+  the as-of week. Second, the filter's forecast: its sample paths for the
+  next four weeks, and the filter's own growth at the forecast origin.
+  Third, the growth blend: each sample path draws one donor path, and its
+- forward growth becomes the geometric mean, half and half, of the filter's
+- growth and that donor's growth. Fourth, the Oracle SIHRS forecast, propagated from the
++ forward growth becomes the weighted geometric mean of the filter's growth
++ and that donor's growth (half and half by default; one quarter on the
++ filter's in the rounds submitted since 2026-10-17). Fourth, the Oracle SIHRS forecast, propagated from the
+  filter's own state and reduced to 23 quantiles. Below the blend, the donor
+  pool feeds it: growth paths from strictly earlier seasons at this calendar
+  week, within two epiweeks, half from NHSN admissions and half from
+@@ -348,8 +349,8 @@
+   <text x="375" y="124" class="svgt-sm">filter growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
+   <text x="635" y="66"  class="svgt-md" font-weight="700">Growth blend</text>
+   <text x="635" y="88"  class="svgt-sm">per sample path:</text>
+-  <text x="635" y="106" class="svgt-sm">half filter growth,</text>
+-  <text x="635" y="124" class="svgt-sm">half its donor's</text>
++  <text x="635" y="106" class="svgt-sm">filter growth and its</text>
++  <text x="635" y="124" class="svgt-sm">donor's, at weight w</text>
+   <text x="890" y="66"  class="svgt-md" font-weight="700">Oracle SIHRS</text>
+   <text x="890" y="88"  class="svgt-sm">from the filter's</text>
+   <text x="890" y="106" class="svgt-sm">own current state,</text>
+@@ -404,8 +405,8 @@
+   <text x="170" y="214" class="svgt-sm">filter growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
+   <text x="170" y="276" class="svgt-md" font-weight="700">Growth blend</text>
+   <text x="170" y="298" class="svgt-sm">per sample path:</text>
+-  <text x="170" y="316" class="svgt-sm">half filter growth,</text>
+-  <text x="170" y="334" class="svgt-sm">half its donor's</text>
++  <text x="170" y="316" class="svgt-sm">filter growth and its</text>
++  <text x="170" y="334" class="svgt-sm">donor's, at weight w</text>
+   <text x="170" y="408" class="svgt-md" font-weight="700">Donor pool</text>
+   <text x="170" y="430" class="svgt-sm">earlier seasons, this</text>
+   <text x="170" y="448" class="svgt-sm">calendar week &#177; 2,</text>
+@@ -421,14 +422,16 @@
+ 
+ {% macro eq_oracle(kit=false) -%}
+ {%- set blend %}ln <i>G</i><sub><i>k</i></sub> =
+-  &#189; ln <i>G</i><sub><i>T</i></sub> +
+-  &#189; ln <i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;),
++  <i>w</i> ln <i>G</i><sub><i>T</i></sub> +
++  (1 &#8722; <i>w</i>) ln <i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;),
+   &#8195;<span class="nw"><i>k</i> = 1..4</span>{% endset %}
+ {%- set blend_note %}the growth blend: each path's growth over forecast
+-  week <i>k</i> is the geometric mean of the filter's rate at the origin
+-  <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
+-{%- set few %}A week with too few donors (30 paths per stream) leaves
+- the filter unchanged.{% endset %}
++  week <i>k</i> is the weighted geometric mean of the filter's rate at the
++  origin <i>T</i> and its donor's at the matching earlier-season week
++  <i>W</i>{% endset %}
++{%- set few %}A week where neither stream supplies 30 donor paths leaves
++ the filter unchanged; where only one does, that stream supplies every
++ donor.{% endset %}
+ {%- set rate %}<i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
+   <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;){% endset %}
+ {%- set rate_note %}new infections per infected per week: the log
+@@ -453,7 +456,7 @@
+    ("<i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>", "medians of the filter's samples at the origin and one week ahead", "admissions per week", "derived"),
+    ("<i>W</i>", "the donor's week: a Saturday of a strictly earlier season within two epiweeks of <i>T</i>'s, any jurisdiction", "date", "data"),
+    ("<i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;)", "donor <i>d</i>'s <i>G</i> at the midpoint of week <i>W</i> + <i>k</i>, from smoothed log counts of its series: NHSN admissions, or FluSurv-NET rates shrunk to the admissions scale", "per week", "data"),
+-   ("&#189;", "the blend weight, set a priori", "0.5", "fixed"),
++   ("<i>w</i>", "the filter's share of the blend, set before the season: one half by default; the rounds submitted since 2026-10-17 use one quarter, recorded with each run", "0 to 1", "fixed"),
+    ("<i>&#947;</i>", "the compartment model's removal rate, 7/3.2", "2.19 per week", "fixed"),
+    ("<i>x</i><sub><i>i,h</i></sub>", "the filter's forecast sample path <i>i</i> at week <i>h</i>", "admissions per week", "derived"),
+    ("<i>d</i><sub><i>i</i></sub>", "the one donor path drawn for sample path <i>i</i>, by a seeded uniform draw", "index", "index"),
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index d21c7cc..c750594 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -260,7 +260,7 @@
+   {{ tips.stat("Sample paths", "30,000", "per state", id="mt-paths") }}
+   {{ tips.stat("Donors", "1", "per sample path", id="mt-donor") }}
+   {{ tips.stat("Donor window", "2", "epiweeks", id="mt-window") }}
+-  {{ tips.stat("Growth blend", "half and half", "", id="mt-blend") }}
++  {{ tips.stat("Growth blend", "half and half", "one quarter on the filter in the rounds submitted since 2026-10-17", id="mt-blend") }}
+  {% endcall %}
+  {{ dg.eq_oracle(kit=(active is defined)) }}
+  <div class="mt-folds">
+@@ -269,9 +269,11 @@
+  (30,000 per state at three replicates) gets one donor: a growth path from
+  an earlier season within two epiweeks of the forecast week, any
+  jurisdiction, the calendar-donor principle the Groundhog uses. Its growth
+- over each forecast week becomes the geometric mean, half and half, of the
++ over each forecast week becomes the weighted geometric mean of the
+  filter's and the donor's, propagated in closed form from the filter's own
+- state. One donor per sample, not per forecast, keeps both the filter's
++ state: half and half by default, and one quarter on the filter's growth in
++ the rounds submitted since 2026-10-17, each run recording the weight it
++ used. One donor per sample, not per forecast, keeps both the filter's
+  uncertainty and the donors' spread.</p>
+  {% endcall %}
+  {% call tips.fold("Donor pool", id="mt-oracle-donors", cls="mt-fold") %}
+@@ -285,8 +287,8 @@
+  {% call tips.fold("How it relates to the Groundhog", id="mt-oracle-gh", cls="mt-fold") %}
+  <p>The Groundhog applies donor
+  growth <em>ratios</em> to the last observed count, with no mechanism; the
+- Oracle SIHRS applies donor <em>growth</em> to the fitted state, at half
+- weight. The two are submitted as separate models.</p>
++ Oracle SIHRS applies donor <em>growth</em> to the fitted state, at the
++ blend weight. The two are submitted as separate models.</p>
+  {% endcall %}
+  </div>
+ 
+@@ -351,8 +353,8 @@
+  {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
+  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
+  <p>Stronger at turning points but worse on
+- the full grid in the August 2026 evaluation; it stays a research run (the
+- {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %} is reachable by URL).</p>
++ the full grid in the August 2026 evaluation; it stays a research run, on
++ the {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %}.</p>
+  {% endcall %}
+  </div>
+ </div>
