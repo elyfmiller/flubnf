@@ -187,7 +187,7 @@ def test_a_run_without_this_model_names_itself_in_the_tip(monkeypatch):
     t = client.get("/models").text
     assert "No forecasts from this model yet" in t
     # the run is the newest real-time one, and named so (G06, MO-06)
-    assert ("The latest real-time run (2098-11-14 · 11-14 09:31) has none "
+    assert ("The latest real-time run (2098-11-14 · 11-14 09:31:00) has none "
             "from this model.") in t
 
 

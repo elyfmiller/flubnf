@@ -98,6 +98,13 @@ def _run_folder(run_id: str) -> Path:
     return w
 
 
+def _files_deleted(run_id: str) -> bool:
+    """Whether Storage deleted a run's files: neither its workroot nor an
+    archive folder holds it (its ledger row stays as the run's record)."""
+    from app.core.runs import is_run_id
+    return is_run_id(run_id) and not _run_folder(run_id).is_dir()
+
+
 def _submission_files(d: Path) -> list:
     """Submission CSVs under a workroot/archive dir, each marked submittable
     iff its directory (the hub model id) is registered. A folder an earlier
@@ -505,7 +512,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
 
 def _run_when(run_id: str) -> str:
     """A run's start as the page shows it beside a file or the report:
-    "MM-DD HH:MM" (_run_label's time); "" for no run."""
+    "MM-DD HH:MM:SS" (_run_label's time); "" for no run."""
     return (_run_label(run_id, "", tag=False).split(" · ")[-1]
             if run_id else "")
 
