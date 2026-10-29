@@ -158,7 +158,9 @@ def report_job(root: Path, season: str, archive: str = "", build: str = "",
             p = report_season.build_season_report(
                 root, season, archive=archive, build=build,
                 versions=versions, progress=progress)
-            job.update(state="done", phase="Ready", name=p.name,
+            # the name the page saves it under (an archived run's apart)
+            job.update(state="done", phase="Ready",
+                       name=report_season.download_name(season, archive),
                        size_h=_size_h(p.stat().st_size),
                        done=None, total=None)
         except Exception as e:

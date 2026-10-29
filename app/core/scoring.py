@@ -358,7 +358,7 @@ def _member_name(model: str) -> str:
 
 
 def summary_table_html(df: pd.DataFrame, model: str | None = None,
-                       us_step: str | None = None) -> str:
+                       us_step: str | None = None, error: str = "") -> str:
     """The weekly report's accuracy table for one member (`model`, default
     the Oracle SIHRS), folded: the summary line names the member and its
     pooled relWIS over its scored weeks (data-model, data-pooled and data-n
@@ -370,11 +370,16 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
     workroot), which the Oracle SIHRS US row's note follows; None (the run
     does not say) is accepted and unused. No notes under the table: the
     rule and the US row's era are the console's to explain (Ely,
-    2026-10-07: the figures speak for themselves)."""
+    2026-10-07: the figures speak for themselves). `error`: why scoring
+    failed, said in place of "no scored weeks yet"."""
     from app.core import us_national as usn
     if df.empty:
         if model is None:
             return NO_SCORES_HTML
+        if error:
+            import html as _html
+            return (f"<p class='hint'>{_member_name(model)} could not be "
+                    f"scored: {_html.escape(error)}</p>")
         return (f"<p class='hint'>{_member_name(model)}: no scored weeks "
                 "yet.</p>")
     member = _member_name(model or "pf")

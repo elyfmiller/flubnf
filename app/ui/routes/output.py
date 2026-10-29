@@ -862,18 +862,35 @@ def output_report(request: Request, date: str = ""):
     return HTMLResponse(_report_for_serving(d))
 
 
-def _weekly_report_name(date: str) -> str:
+def _weekly_report_name(date: str, suffix: str = "") -> str:
     """Saved weekly report name (every run writes report.html). An as-of
     date names it by its hub reference date, as the submission CSVs are
     (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
-    sorts beside the files it describes; anything else (a run id with no
+    sorts beside the files it describes; `suffix` is its files' own
+    (_report_suffix: -modified). Anything else (a run id with no
     results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
         ref = _reference_date(date)
         if ref:
-            return f"{ref}-NAU_PyBNF-weekly-report.html"
+            return f"{ref}-NAU_PyBNF-weekly-report{suffix}.html"
     return f"FluBNF-weekly-report-{date}.html" if date \
         else "FluBNF-weekly-report.html"
+
+
+def _report_suffix(dirpath: Path) -> str:
+    """The suffix the report's own run put on its files: "-modified" for
+    modified settings without the override (pipeline names them so), ""
+    otherwise. The run is the workroot's id, or the run an archive holds."""
+    from app.core import archive_record as _ar
+    from app.core.runs import Ledger, is_run_id
+    d = Path(dirpath)
+    rid = d.name if is_run_id(d.name) else str(
+        (_ar.read_record(d) or {}).get("run_id") or "")
+    try:
+        spec = ((Ledger().row(rid) or {}).get("spec") or "") if rid else ""
+    except Exception:
+        spec = ""
+    return "" if not spec or _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
@@ -891,7 +908,8 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
         return HTMLResponse("<p>No report to download.</p>", status_code=404)
     _report_for_serving(dirpath)
     downloadlog.write(route or "report download", f)
-    return FileResponse(f, filename=_weekly_report_name(date),
+    return FileResponse(f, filename=_weekly_report_name(
+                            date, _report_suffix(dirpath)),
                         media_type="text/html",
                         content_disposition_type="attachment")
 
