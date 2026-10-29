@@ -1,0 +1,600 @@
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 75120fc..a265195 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -518,6 +518,12 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
+     if ss >= fd:
+         raise SandboxError(f"the season start {ss} is not before the "
+                            f"forecast date {fd}")
++    # the template fits a single season: more than a year of data would
++    # hand it two (production starts on August 1 of the forecast's season)
++    if (dt.date.fromisoformat(fd) - dt.date.fromisoformat(ss)).days > 364:
++        raise SandboxError(f"the season start {ss} is more than a year "
++                           f"before the forecast date {fd}; the model fits "
++                           "one season")
+     extra, ref = {}, None
+     if dataset:
+         from app.core import datasets
+diff --git a/app/core/sandbox_data.py b/app/core/sandbox_data.py
+index 77f2233..1d34c71 100644
+--- a/app/core/sandbox_data.py
++++ b/app/core/sandbox_data.py
+@@ -53,13 +53,15 @@ def _check_range(start: str, end: str) -> tuple:
+     return a.isoformat(), b.isoformat()
+ 
+ 
+-def _window(got: dict, start: str, end: str) -> dict:
++def _window(got: dict, start: str, end: str, newest: str = "") -> dict:
+     """{"dates", "values", "dropped"} of a {date: value} map within a
+-    range; dropped counts the range's Saturdays with no value."""
++    range; dropped counts the range's Saturdays with no value up to the
++    source's newest week (newest, any location's: a week the source cannot
++    hold yet is not missing)."""
+     dates = sorted(d for d in got if start <= d <= end)
+     d = dt.date.fromisoformat(_first_saturday(start))
+     dropped = 0
+-    last = dt.date.fromisoformat(end)
++    last = dt.date.fromisoformat(min(end, newest) if newest else end)
+     while d <= last:
+         if d.isoformat() not in got:
+             dropped += 1
+@@ -84,11 +86,14 @@ def series_for(location_name: str, start: str, end: str,
+             raise SandboxError(f"unknown location {location_name!r}")
+         got = {d.strftime("%Y-%m-%d"): v for (f, d), v in truth.items()
+                if f == fips}
++        newest = (max(d for _, d in truth).strftime("%Y-%m-%d")
++                  if truth else "")
+     else:
+         from app.core import data as data_mod
+         s = data_mod.vintage_series(str(asof), str(location_name))
+         got = dict(zip(s["dates"], s["values"]))
+-    return _window(got, start, end)
++        newest = str(asof)               # a vintage holds weeks to its date
++    return _window(got, start, end, newest)
+ 
+ 
+ # ------------------------------------------------------ your own datasets
+@@ -99,18 +104,28 @@ def series_for(location_name: str, start: str, end: str,
+ 
+ def dataset_choices() -> list:
+     """The stored datasets for the Load data form, newest first, as
+-    [{"id", "name", "kind", "groups": [{"name", "first", "last",
++    [{"id", "name", "label", "kind", "groups": [{"name", "first", "last",
+     "population"}]}]; empty when there are none or the store is unreadable."""
+     try:
+         from app.core import datasets
+-        return [{"id": d.id, "name": d.name, "kind": d.kind,
+-                 "pf": d.pf_eligible,
+-                 "groups": [{k: g.get(k) for k in ("name", "first", "last",
+-                                                   "population")}
+-                            for g in d.meta.get("groups", [])]}
+-                for d in datasets.list_datasets()]
++        out = [{"id": d.id, "name": d.name, "kind": d.kind,
++                "pf": d.pf_eligible,
++                "groups": [{k: g.get(k) for k in ("name", "first", "last",
++                                                  "population")}
++                           for g in d.meta.get("groups", [])]}
++               for d in datasets.list_datasets()]
+     except Exception:
+         return []
++    # "label": the name, with its weeks when another dataset shares it (two
++    # uploads of cases.csv read as two identical "cases" otherwise)
++    names = [d["name"] for d in out]
++    for d in out:
++        firsts = [g["first"] for g in d["groups"] if g.get("first")]
++        lasts = [g["last"] for g in d["groups"] if g.get("last")]
++        d["label"] = (f"{d['name']} ({min(firsts)} to {max(lasts)})"
++                      if names.count(d["name"]) > 1 and firsts and lasts
++                      else d["name"])
++    return out
+ 
+ 
+ class UploadRefused(SandboxError):
+@@ -172,7 +187,8 @@ def dataset_series(dataset_id: str, group: str, start: str = "",
+                     got[r["date"]] = float(r["value"])
+                 except (KeyError, TypeError, ValueError):
+                     continue
+-    out = _window(got, start, end)
++    lasts = [g["last"] for g in ds.meta.get("groups", []) if g.get("last")]
++    out = _window(got, start, end, max(lasts) if lasts else "")
+     out.update(start=start, end=end, ref=ds.ref(), kind=ds.kind,
+                population=ds.populations.get(group))
+     return out
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 7c5276c..770cd93 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -222,4 +222,7 @@ def sandbox_root(tmp_path, monkeypatch):
+     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
+     ui_state._status["running"] = None
+     ui_state._status.pop("flash", None)
++    # a refused New model form waits for the next page (one-shot)
++    from app.ui.routes import sandbox as ui_sandbox
++    ui_sandbox._sandbox_new_refused.clear()
+     return root
+diff --git a/app/tests/test_sandbox_forms_runs.py b/app/tests/test_sandbox_forms_runs.py
+new file mode 100644
+index 0000000..a245402
+--- /dev/null
++++ b/app/tests/test_sandbox_forms_runs.py
+@@ -0,0 +1,194 @@
++"""The Sandbox's forms and runs say and keep what they should: an upload
++over the limit never costs the editor's text, Load data names the weeks it
++loaded and calls no future week missing, two datasets of one name are told
++apart, every run of a model is counted and reachable, the New model form
++suggests free names and comes back as posted after a refusal, an Oracle
++start fits one season, and the one-run-at-a-time refusals claim no engine
++a Groundhog-only run does not use. Hub-free and engine-free
++(conftest.sandbox_root)."""
++import json
++import sys
++import types
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import pandas as pd                                      # noqa: E402
++import pytest                                            # noqa: E402
++from fastapi.testclient import TestClient                # noqa: E402
++
++from app.core import sandbox as sb                       # noqa: E402
++from app.core import sandbox_data as sbd                 # noqa: E402
++from app.ui import server as srv                         # noqa: E402
++from app.ui import state as ui_state                     # noqa: E402
++from app.ui.routes import sandbox as rs                  # noqa: E402
++
++client = TestClient(srv.app)
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++@pytest.fixture
++def box(sandbox_root):
++    return sandbox_root
++
++
++def _runs(n, model="kinetics_example"):
++    for i in range(n):
++        d = sb.RUNS / f"2099010{i // 10}-0000{i % 10:02d}_{model}"
++        d.mkdir(parents=True)
++        (d / "meta.json").write_text(json.dumps(
++            {"model": model, "status": "stopped", "particles": 500,
++             "started_utc": "2099-01-01T00:00:00Z"}))
++
++
++# -------------------------------------------- SB-02: an upload over the limit
++
++def test_an_upload_over_the_limit_is_refused_before_the_editor_text_goes(box):
++    sb.add_example("kinetics_example")
++    html = client.get("/sandbox?model=kinetics_example").text
++    assert f'data-max-bytes="{sb.UPLOAD_MAX_BYTES}"' in html
++    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
++    # the page refuses it before it leaves, keeping the unsaved edits
++    assert "f.size > max" in js and "e.preventDefault();" in js
++    # a body the server reads none of says the editor's text went unread too
++    big = b"x" * (32 * 1024 * 1024)            # past the read cap too
++    client.post("/sandbox/models/kinetics_example/upload-data",
++                files={"csv": ("big.csv", big, "text/csv")},
++                data={"model_bngl": "# MY EDIT"}, follow_redirects=False)
++    page = client.get("/sandbox?model=kinetics_example").text
++    assert "nothing was read past it or stored, the editor&#39;s text " \
++        "included." in page
++
++
++# ------------------------------------------- SB-03: the weeks loaded, no future
++
++def test_load_data_counts_no_week_past_the_sources_newest_as_missing(
++        monkeypatch):
++    from app.core import data as data_mod, scoring
++    weeks = {"2026-09-26": 5.0, "2026-10-03": 6.0, "2026-10-10": 7.0}
++    monkeypatch.setattr(data_mod, "vintage_series", lambda d, loc: {
++        "dates": list(weeks), "values": list(weeks.values())})
++    # the vintage of 2026-10-10 cannot hold 2026-10-17: not missing
++    v = sbd.series_for("New York", "2026-09-26", "2026-10-17",
++                       asof="2026-10-10")
++    assert v["dates"] == list(weeks) and v["dropped"] == 0
++    # settled truth: no week past the newest any location has is missing,
++    # but a location short of that newest week is
++    ts = pd.Timestamp
++    truth = {("36", ts(d)): x for d, x in weeks.items()}
++    truth[("04", ts("2026-10-17"))] = 9.0
++    monkeypatch.setattr(scoring, "load_truth", lambda: (
++        truth, {"New York": "36", "Arizona": "04"}))
++    assert sbd.series_for("New York", "2026-09-26",
++                          "2026-12-31")["dropped"] == 1
++    # a week the source does hold is still missing
++    del weeks["2026-10-03"]
++    v = sbd.series_for("New York", "2026-09-26", "2026-10-17",
++                       asof="2026-10-10")
++    assert v["dropped"] == 1
++
++
++def test_load_data_names_the_weeks_it_loaded_not_the_range_asked_for():
++    ui_state._status.pop("flash", None)
++    rs._sandbox_fill_flash({"asof": "2026-10-10", "rows": 3,
++                            "location": "New York", "start": "2026-09-26",
++                            "end": "2026-10-17", "dropped": 0,
++                            "dates": ["2026-09-26", "2026-10-03",
++                                      "2026-10-10"]})
++    assert ("3 weeks of New York, 2026-09-26 to 2026-10-10."
++            in ui_state._status["flash"])
++
++
++# ------------------------------------------ SB-06: two datasets of one name
++
++def test_two_datasets_of_one_name_are_told_apart_by_their_weeks(monkeypatch):
++    from app.core import datasets
++
++    def ds(i, first, last):
++        return types.SimpleNamespace(
++            id=f"cases-{i}", name="cases", kind="count", pf_eligible=False,
++            meta={"groups": [{"name": "cases", "first": first,
++                              "last": last}]})
++    monkeypatch.setattr(datasets, "list_datasets", lambda: [
++        ds(1, "2024-01-06", "2024-06-29"), ds(2, "2025-01-04", "2025-03-29"),
++        types.SimpleNamespace(id="flu-3", name="flu", kind="count",
++                              pf_eligible=False, meta={"groups": []})])
++    labels = [d["label"] for d in sbd.dataset_choices()]
++    assert labels == ["cases (2024-01-06 to 2024-06-29)",
++                      "cases (2025-01-04 to 2025-03-29)", "flu"]
++
++
++# --------------------------------------------- SB-08: every run is counted
++
++def test_a_model_with_27_runs_counts_and_lists_all_27(box):
++    sb.add_example("kinetics_example")
++    _runs(27)
++    html = client.get("/sandbox?model=kinetics_example").text
++    assert ">27 runs<" in html
++    assert 'data-sb-delete="kinetics_example and its 27 runs"' in html
++    # the oldest run is reachable from the list
++    assert "/sandbox?run=20990100-000000_kinetics_example&amp;model=" in html
++
++
++# ------------------------------- SB-09 and SB-17: the New model form's names
++
++def test_the_new_model_form_suggests_names_no_model_has(box):
++    sb.add_example("kinetics_example")
++    html = client.get("/sandbox").text
++    form = html.split('<form method="post" action="/sandbox/new"', 1)[1]
++    assert 'data-taken="kinetics_example"' in form.split(">", 1)[0]
++    # a copy start names its copy (it blanked the field)
++    assert ('value="copy:kinetics_example" data-note="A copy of '
++            'kinetics_example, with its data and priors." '
++            'data-name="kinetics_example_copy_1"') in form
++    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
++    assert "s = free(suggestName(loc.value, date.value));" in js
++
++
++def test_a_refused_new_model_comes_back_as_it_was_posted(box):
++    sb.add_example("kinetics_example")
++    client.post("/sandbox/new", data={
++        "name": "kinetics_example", "start": "skeleton",
++        "season_start": "2026-08-01"}, follow_redirects=False)
++    html = client.get("/sandbox").text
++    assert "already exists" in html
++    name = html.split('id="sbnew-name"', 1)[1].split(">", 1)[0]
++    assert 'value="kinetics_example" data-kept' in name
++    assert ('<option value="skeleton" data-note="The smallest runnable '
++            'model') in html
++    assert 'data-name="skeleton_1" selected>Blank skeleton' in html
++    assert 'name="season_start" type="date" value="2026-08-01"' in html
++    # one-shot: the next visit is the plain form
++    assert "data-kept" not in client.get("/sandbox").text
++
++
++# ------------------------------------ SB-11: an Oracle start fits one season
++
++def test_an_oracle_start_refuses_a_season_start_over_a_year_back(box):
++    with pytest.raises(sb.SandboxError, match="more than a year before the "
++                       "forecast date 2026-10-17; the model fits one season"):
++        sb.from_shipped("ora", "Arizona", "2026-10-17",
++                        season_start="2025-08-01")
++
++
++# ------------------------- SB-12: one run at a time, said without an engine
++
++def test_the_one_run_refusals_claim_no_engine_a_groundhog_run_does_not_use(box):
++    ui_state._sandbox_status["running"] = "20990101-000000_mine"
++    try:
++        ui_state._status.pop("flash", None)
++        client.post("/run", data={"forecast_date": "2099-01-02",
++                                  "locations": "Alabama",
++                                  "engine": "analogue"},
++                    follow_redirects=False)
++        flash = ui_state._status["flash"]
++        assert ("Not started: a sandbox fit is running (20990101-000000_mine); "
++                "one run at a time.") in flash
++        assert "holds the engine" not in flash
++    finally:
++        ui_state._sandbox_status["running"] = None
++    ui_state._status["running"] = "console"
++    try:
++        assert rs._sandbox_busy_reason() == "a console run is in progress"
++    finally:
++        ui_state._status["running"] = None
+diff --git a/app/tests/test_sandbox_guard.py b/app/tests/test_sandbox_guard.py
+index 93fd9c1..5ed3a9e 100644
+--- a/app/tests/test_sandbox_guard.py
++++ b/app/tests/test_sandbox_guard.py
+@@ -281,7 +281,8 @@ def test_console_run_and_replay_refuse_while_a_sandbox_fit_is_live(box):
+                     follow_redirects=False)
+     assert r.status_code == 303 and r.headers["location"] == "/forecast"
+     assert ui_state._status.get("running") is None                  # nothing claimed
+-    assert "sandbox fit holds the engine (20990101-000000_mine)" in ui_state._status["flash"]
++    assert ("a sandbox fit is running (20990101-000000_mine); one run at a "
++            "time") in ui_state._status["flash"]
+     ui_state._status.pop("flash", None)
+     r = client.post("/retro/run", data={"season": "2098-99"}, follow_redirects=False)
+     assert r.status_code == 303 and r.headers["location"] == "/retro"
+diff --git a/app/ui/routes/sandbox.py b/app/ui/routes/sandbox.py
+index d8c6ae8..fdaa22f 100644
+--- a/app/ui/routes/sandbox.py
++++ b/app/ui/routes/sandbox.py
+@@ -37,8 +37,10 @@ router = APIRouter()
+ 
+ def _sandbox_busy_reason() -> str:
+     """Why a sandbox fit may not start now ("" when the engine is free)."""
++    # a Groundhog-only run fits nothing, but it holds the console's one run
++    # slot all the same: said as a run, not a fit
+     if _status.get("running"):
+-        return "a console run is fitting"
++        return "a console run is in progress"
+     live = [x for x in retro_seasons._known_seasons()
+             if _season_status(x) in _RETRO_ACTIVE]
+     if live:
+@@ -62,8 +64,11 @@ async def _sandbox_engine_guard(request: Request, call_next):
+         # a plain read: an async middleware must not wait on _engine_lock
+         live = _sandbox_live()
+         if local and live:
+-            _flash(f"Not started: a sandbox fit holds the engine ({live}).",
+-                   "warn", detail="Stop it from the Sandbox tab first.")
++            # one run at a time, whatever the model: a Groundhog-only run
++            # needs no engine, so the refusal claims none
++            _flash(f"Not started: a sandbox fit is running ({live}); one run "
++                   "at a time.", "warn",
++                   detail="Stop it from the Sandbox tab first.")
+             return RedirectResponse("/retro" if path == "/retro/run"
+                                     else "/forecast", status_code=303)
+     return await call_next(request)
+@@ -105,6 +110,10 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
+ FIRST_START = "sir_example"
+ 
+ 
++#: the New model form a refusal sends back (one-shot, read by the page)
++_sandbox_new_refused: dict = {}
++
++
+ def _free_name(stem: str, taken: set) -> str:
+     """The first of stem_1, stem_2, ... that no model has: the name the
+     New model form fills in, so a first visit need not invent one."""
+@@ -136,7 +145,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+     last = {}
+     for r in all_runs:
+         last.setdefault(r.get("model"), r)
+-    runs = [r for r in all_runs if r.get("model") == model][:25] if model else []
++    runs = [r for r in all_runs if r.get("model") == model] if model else []
+     res = None
+     try:
+         if run:
+@@ -178,6 +187,9 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
+            "example_names": {e: _free_name(e, taken)
+                              for e in examples + ["skeleton"]},
++           "copy_names": {m: _free_name(m + "_copy", taken) for m in taken},
++           # a refused New model form comes back as it was posted (SB-09)
++           "new_form": _sandbox_new_refused.pop("form", {}),
+            "runs": runs,
+            "res": res, "res_json": _script_json(res or {}),
+            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
+@@ -244,6 +256,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+             # your own data: stored datasets, and an upload's refusal
+             "datasets": sandbox_mod.dataset_choices(),
+             "pick_dataset": dataset,
++            "upload_max": sandbox_mod.UPLOAD_MAX_BYTES,
+             "upload_report": _sandbox_upload_report.pop(name, None)})
+     return templates.TemplateResponse(request, "sandbox.html", ctx)
+ 
+@@ -331,6 +344,11 @@ def sandbox_new(request: Request, name: str = Form(...),
+         return _sandbox_redirect(name)
+     except Exception as e:
+         _not_done("Not created", e)
++        if kind != "copy":
++            _sandbox_new_refused["form"] = {
++                "name": name, "start": start, "location": location,
++                "forecast_date": forecast_date, "season_start": season_start,
++                "group": group, "as_of": as_of}
+         return _sandbox_redirect(what if kind == "copy" else "")
+ 
+ 
+@@ -409,8 +427,10 @@ def _sandbox_fill_flash(info: dict) -> None:
+     # a file with no group column says so, so a date,count file read as
+     # one series is not a surprise
+     one = " (one series)" if info.get("one_series") else ""
++    # the weeks loaded, not the range asked for
++    wk = info.get("dates") or [info["start"], info["end"]]
+     msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
+-           f"{one}, {info['start']} to {info['end']}.")
++           f"{one}, {wk[0]} to {wk[-1]}.")
+     detail = f"Source: {what}."
+     if info["dropped"]:
+         detail += f" {info['dropped']} missing weeks dropped."
+@@ -536,9 +556,10 @@ async def sandbox_upload_data(request: Request, name: str):
+         sandbox_mod.check_name(name)
+         form = await _sandbox_capped_form(request, cap + _SANDBOX_BODY_SLACK)
+     except _SandboxTooLarge:
++        # the editor's text rode in the same body: it was not saved either
+         _sandbox_upload_report[name] = {"problems": [
+             f"The upload is larger than the {cap // (1024 * 1024)} MB limit; "
+-            "nothing was read past it or stored."]}
++            "nothing was read past it or stored, the editor's text included."]}
+         return _sandbox_redirect(name)
+     except Exception as e:
+         _flash(f"Could not read the upload: {e}", "error")
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index ede6ac8..311f326 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -86,13 +86,21 @@
+     var loc = $('sbnew-loc'), date = $('sbnew-date'), grp = $('sbnew-group'), asof = $('sbnew-asof');
+     // the page fills in the first start's name; it is replaced as the
+     // start changes until the user types one of their own
+-    var suggested = nm ? nm.value : '';
++    // a form a refusal sent back keeps its name and its week (data-kept)
++    var kept = !!(nm && nm.hasAttribute('data-kept'));
++    var suggested = nm && !kept ? nm.value : '';
++    // the models already here: an Oracle start's name is never one of them
++    var taken = (start.form.getAttribute('data-taken') || '').split(' ');
++    function free(s) {
++      if (!s || taken.indexOf(s) < 0) return s;
++      for (var n = 2; ; n++) if (taken.indexOf(s + '_' + n) < 0) return s + '_' + n;
++    }
+     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
+     function name() {
+       if (!nm || (nm.value && nm.value !== suggested)) return;
+       var v = start.value, s = '', o = start.options[start.selectedIndex];
+-      if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
+-      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
++      if (v === 'shipped:sihrs' && loc && date) s = free(suggestName(loc.value, date.value));
++      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = free(suggestName(grp.value, asof ? asof.value : ''));
+       else if (o && o.getAttribute('data-name')) s = o.getAttribute('data-name');
+       nm.value = suggested = s;
+     }
+@@ -134,7 +142,7 @@
+     function lastWeek() {
+       var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+       if (!o || !asof) return;
+-      asof.value = o.getAttribute('data-last') || asof.value;
++      if (!(kept && asof.value)) asof.value = o.getAttribute('data-last') || asof.value;
+       asof.min = o.getAttribute('data-first') || '';
+       asof.max = o.getAttribute('data-last') || '';
+       asofCheck();
+@@ -160,6 +168,7 @@
+     [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
+     if (grp) grp.addEventListener('change', function () { lastWeek(); name(); });
+     show();
++    kept = false;
+   }
+ 
+   // ---- the three files as tabs: without this script they stack, each
+@@ -396,7 +405,23 @@
+         var rep = $('sb-checked');
+         if (rep && rep.firstChild) rep.classList.add('sb-stale');
+       });
+-      form.addEventListener('submit', function () { dirty = false; });
++      // a CSV over the upload limit is refused here, before the page
++      // leaves: the server reads none of a body that size, so the editor's
++      // unsaved text would go with it
++      var csv = $('sbfill-csv');
++      form.addEventListener('submit', function (e) {
++        var b = e.submitter, f = csv && csv.files && csv.files[0];
++        var max = csv ? parseInt(csv.getAttribute('data-max-bytes'), 10) : 0;
++        if (b && /\/upload-data$/.test(b.getAttribute('formaction') || '') && f && max && f.size > max) {
++          e.preventDefault();
++          csv.setCustomValidity('This file is larger than the ' + Math.round(max / 1048576) +
++                                ' MB limit; choose a smaller one.');
++          csv.reportValidity();
++          return;
++        }
++        dirty = false;
++      });
++      if (csv) csv.addEventListener('change', function () { csv.setCustomValidity(''); });
+       addEventListener('beforeunload', function (e) {
+         if (!dirty) return;
+         e.preventDefault();
+diff --git a/app/ui/templates/sandbox.html b/app/ui/templates/sandbox.html
+index 86c04bd..635a57f 100644
+--- a/app/ui/templates/sandbox.html
++++ b/app/ui/templates/sandbox.html
+@@ -29,11 +29,12 @@
+ <div class="cols">
+  <div>
+   <div class="card">{{ tips.heading("New model", "sb-new") }}
+-   <form method="post" action="/sandbox/new" class="sbnew">
++   <form method="post" action="/sandbox/new" class="sbnew" data-taken="{{ models | map(attribute='name') | join(' ') }}">
+     {# the input's pattern and title say what a name may hold #}
+     <div class="lblrow"><label for="sbnew-name">Name</label></div>
+     {% set _first = (examples or templates or [""])[0] %}
+-    <input id="sbnew-name" name="name" placeholder="model name" value="{{ example_names.get(_first, '') }}" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
++    {% set _nf = new_form or {} %}
++    <input id="sbnew-name" name="name" placeholder="model name" value="{{ _nf.name or example_names.get(_first, '') }}"{% if _nf.name %} data-kept{% endif %} pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
+     <div class="lblrow"><label for="sbnew-start">Start from</label></div>
+     {% set pf_sets = datasets | selectattr("pf") | list %}
+     {# every start says what it is in its own note, shown in the "i" beside
+@@ -45,13 +46,13 @@
+     {% set _about = example_notes.get(_first, "") ~ (edit_note if _first in (templates or []) else "") %}
+     <div class="sb-startrow">
+      <select id="sbnew-start" name="start">
+-      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+-      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+-      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
+-      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
++      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if (_nf.start or "example:" ~ _first) == "example:" ~ e %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
++      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if (_nf.start or "example:" ~ _first) == "example:" ~ e %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
++      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}"{% if _nf.start == "skeleton" %} selected{% endif %}>Blank skeleton</option>
++      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors." data-name="{{ copy_names[m.name] }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+       <optgroup label="Oracle SIHRS filter">
+-       <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
+-       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week.">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
++       <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}{% if _nf.start == "shipped:sihrs" %} selected{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
++       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+       </optgroup>
+      </select>
+      <span class="sb-about"{% if not _about %} hidden{% endif %}>{% call tips.icon_tip("sbnew-about-t", "the chosen start", "info") %}<span id="sbnew-about">{{ _about }}</span>{% endcall %}</span>
+@@ -63,18 +64,18 @@
+      <div class="row sb-shiprow">
+       {% if vintages and locations %}
+       <span class="sbnew-hub"><label for="sbnew-loc">Location</label>
+-       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}</select></span>
++       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}"{% if _nf.location == l.name %} selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></span>
+       <span class="sbnew-hub">{{ tips.label("Forecast date", "sb-fdate", "The hub vintage archived that day: the data exactly as the forecaster saw it then.", for_="sbnew-date") }}
+-       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}">{{ v }}</option>{% endfor %}</select></span>
++       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}"{% if _nf.forecast_date == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></span>
+       {% endif %}
+       {% if pf_sets %}
+       <span class="sbnew-ds"><label for="sbnew-group">Group</label>
+-       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
++       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}"{% if _nf.group == g.name %} selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
+       <span class="sbnew-ds">{{ tips.label("As of", "sb-asof", "A week the dataset holds; the fit sees the data up to it.", for_="sbnew-asof") }}
+-       <input id="sbnew-asof" name="as_of" type="date"></span>
++       <input id="sbnew-asof" name="as_of" type="date" value="{{ _nf.as_of or '' }}"></span>
+       {% endif %}
+       <span>{{ tips.label("Season start", "sb-season", "Optional. t = 0 and the seasonal phase count from it; blank takes August 1, as production does.", for_="sbnew-season") }}
+-       <input id="sbnew-season" name="season_start" type="date"></span>
++       <input id="sbnew-season" name="season_start" type="date" value="{{ _nf.season_start or '' }}"></span>
+      </div>
+     </fieldset>
+     <div class="row"><button class="gold">Create</button></div>
+diff --git a/app/ui/templates/sandbox_data.html b/app/ui/templates/sandbox_data.html
+index e1f1a76..c4dc75a 100644
+--- a/app/ui/templates/sandbox_data.html
++++ b/app/ui/templates/sandbox_data.html
+@@ -25,8 +25,10 @@
+ {# where data.exp came from: one row of facts under the editor #}
+ {% set _kind %}{% if data_source.asof == "settled" %}settled truth{% elif data_source.asof == "dataset" %}dataset {{ data_source.dataset.name }}{% else %}vintage of {{ data_source.asof }}{% endif %}{% endset %}
+ {% set _rows = data_source.rows ~ " weeks" ~ ((", " ~ data_source.dropped ~ " dropped missing") if data_source.dropped else "") %}
++{# the weeks it holds, not the range asked for (older sidecars: the range) #}
++{% set _wk = data_source.dates or [data_source.start, data_source.end] %}
+ {% set _facts = [("folder", data_source.location, "Location"),
+-                 ("calendar", data_source.start ~ " to " ~ data_source.end, "Weeks"),
++                 ("calendar", _wk[0] ~ " to " ~ _wk[-1], "Weeks"),
+                  ("dot", _kind, "Source"), ("", _rows, "Rows")] %}
+ {% if data_source.population %}{% set _facts = _facts + [("", "population " ~ "{:,}".format(data_source.population | int), "")] %}{% endif %}
+ <div class="sb-src"><span class="sb-src-k">data.exp holds</span>{{ tips.meta(_facts, label="data.exp holds") }}</div>
+@@ -51,7 +53,7 @@
+       {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
+      </optgroup>{% endif %}
+      {% if datasets %}<optgroup label="Your datasets">
+-      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
++      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.label }}</option>{% endfor %}
+      </optgroup>{% endif %}
+     </select></span>
+    {% if locations %}<span class="sb-f" id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
+@@ -83,7 +85,7 @@
+   <h3 class="sb-pane-h">Upload a CSV</h3>
+   <div class="sb-fgrid sb-fgrid--up">
+    <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", for_="sbfill-csv") }}
+-    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
++    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" data-max-bytes="{{ upload_max }}"></span>
+    <span class="sb-f"><label for="sbfill-kind">Values</label>
+     <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
+   </div>
