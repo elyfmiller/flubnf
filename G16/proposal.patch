@@ -1,0 +1,626 @@
+diff --git a/app/core/report_grid.py b/app/core/report_grid.py
+index 841a097..da4e136 100644
+--- a/app/core/report_grid.py
++++ b/app/core/report_grid.py
+@@ -522,7 +522,9 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
+     return "".join(parts), clipped
+ 
+ 
+-def _legend(colors: dict, label: str) -> str:
++def _legend(colors: dict, label: str, models=MODELS) -> str:
++    """The panels' key: each model `models` drew (a Groundhog-only run
++    lists no Oracle SIHRS), observed and last season."""
+     def key(s, inner, title=""):
+         t = f' title="{_html.escape(title)}"' if title else ""
+         return (f'<span class="g-key" data-s="{s}" role="button" '
+@@ -530,7 +532,7 @@ def _legend(colors: dict, label: str) -> str:
+     sw = "".join(
+         key(m, f'<i class="g-k-{m}" style="background:'
+                f'{model_color(m, colors)}"></i>{_SHORT[m]}')
+-        for m in reversed(MODELS))
++        for m in reversed(MODELS) if m in models)
+     return (sw + key("obs", '<i class="g-k-obs"></i>observed')
+             + key("last", '<i class="g-k-last"></i>last season',
+                   f"{label}, same weeks"))
+@@ -633,6 +635,12 @@ def reference_date(asof: str) -> str:
+         return ""
+ 
+ 
++def _drawn(panels) -> tuple:
++    """The models with a fan in any of these panels, in MODELS order."""
++    return tuple(m for m in MODELS
++                 if any((p.get("models") or {}).get(m) for p in panels))
++
++
+ def us_feature_html(grid: dict | None, colors: dict) -> str:
+     """The national panel at a larger size, for the space under the map
+     ("" when the run has no US panel)."""
+@@ -641,7 +649,8 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
+     if not us:
+         return ""
+     head = ('<div class="g-head">'
+-            + _legend(colors, (grid or {}).get("last_season_label", ""))
++            + _legend(colors, (grid or {}).get("last_season_label", ""),
++                      _drawn([us]))
+             + "</div>")
+     return ('<aside class="rp-usfeature" id="us-feature" '
+             'aria-label="United States forecast">'
+@@ -663,13 +672,14 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
+     times = grid.get("times") or []
+     when = _md(times[-1]) if times else "the last target week"
+     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
++    drawn = _drawn(panels)
+     out = ['<section class="card rp-grid" id="all-locations" '
+            'aria-labelledby="h-grid">',
+            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
+     for k, page in enumerate(pages, 1):
+         out.append('<div class="gpage">'
+                    f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
+-                   f'{_legend(colors, label)}</div>'
++                   f'{_legend(colors, label, drawn)}</div>'
+                    '<div class="g-cells">')
+         for i, p in enumerate(page):
+             key = str(p.get("key", ""))
+diff --git a/app/core/report_season.py b/app/core/report_season.py
+index 28702e0..f06431c 100644
+--- a/app/core/report_season.py
++++ b/app/core/report_season.py
+@@ -83,6 +83,14 @@ def report_path(root: Path, season: str) -> Path:
+     return Path(root) / f"{season}-FluBNF-season-report.html"
+ 
+ 
++def download_name(season: str, archive: str = "") -> str:
++    """The name a season report saves under: an archived run's carries
++    its stamp, so it never lands on the live run's file (Export replay
++    names its bundles apart the same way)."""
++    return (f"{season}-FluBNF-season-report"
++            f"{'-' + archive if archive else ''}.html")
++
++
+ def _newest_input(root: Path) -> float:
+     """Newest mtime among the export's inputs: stored weeks, scores.json,
+     settled truth, player.js, charts.js, this builder and html_page, the
+diff --git a/app/core/report_v2.py b/app/core/report_v2.py
+index 0d59b93..0872c8f 100644
+--- a/app/core/report_v2.py
++++ b/app/core/report_v2.py
+@@ -666,7 +666,7 @@ def page_header() -> str:
+  """ + _theme_select() + """
+  """ + _VISION_BTN + """
+  <a id="appback" class="rp-btn" href="#" hidden
+-  onclick="history.back();return false">&larr; back to FluBNF</a>
++  onclick="var r=document.referrer;if(r&&r.indexOf(location.origin+'/')===0&&r.split('#')[0]!==location.href.split('#')[0])location.href=r;else history.back();return false">&larr; back to FluBNF</a>
+ </header>"""
+ 
+ 
+@@ -1415,34 +1415,11 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
+  </div>
+ </div>
+ {jump_bar}
+-<div class="card rp-mapcard" id="map-anchor">
+- <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>
+-  <button type="button" class="rp-btn rp-mapfold" id="mapfold"
+-   aria-controls="map-body" aria-expanded="true">Hide map</button></div>
+- <div class="rp-mapbody" id="map-body">
+- <div id="map-state" class="mapcap">{map_html}</div>
+- {nat_map_div}
+- <div class="rp-legends">
+-  {legend_html}
+-  <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
+- </div>
+- </div>
+- {us_feature}
+-</div>
+-{_MAP_FOLD_JS}
+-{"".join(sections)}
+-{nat}
+-{grid_section}
+-{report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
+-{_BA_JS}
+ <script>
+-window.showState = show;
+-var _ab = document.getElementById('appback');
+-if (_ab && history.length > 1) {{ _ab.hidden = false; }}
+-if (location.hash && location.hash.indexOf('#st-') === 0 &&
+-    document.getElementById(location.hash.slice(1))) {{
+-  show(location.hash.slice(1));
+-}}
++// the page's controls, wired before the map and every state's charts
++// below them, so each works as soon as it is drawn: one listener on the
++// document, finding its elements when clicked (the national section comes
++// before the states' for the same reason)
+ function show(id, then) {{
+   var el = document.getElementById(id);
+   if (!el) return;
+@@ -1456,6 +1433,7 @@ function show(id, then) {{
+   var target = (then && document.getElementById(then)) || el;
+   target.scrollIntoView({{behavior: 'smooth'}});
+ }}
++window.showState = show;
+ window.backToMap = function() {{
+   var all = document.querySelectorAll('section.state');
+   for (var i = 0; i < all.length; i++) all[i].hidden = true;
+@@ -1465,19 +1443,47 @@ window.backToMap = function() {{
+ window.openAccuracy = function() {{
+   show('st-US', 'accuracy');
+ }};
+-document.getElementById('natbtn').addEventListener('click', function() {{ show('st-US'); }});
+ (function() {{
+-  // the jump bar: a hidden target (the national detail) opens first
+-  var nav = document.querySelector('.rp-jump');
+-  if (nav) nav.addEventListener('click', function(e) {{
+-    var a = e.target.closest ? e.target.closest('a[data-jump]') : null;
+-    if (!a) return;
+-    var id = a.getAttribute('data-jump');
+-    if (id === 'accuracy') {{ e.preventDefault(); window.openAccuracy(); }}
+-    else if (id === 'st-US') {{ e.preventDefault(); show('st-US'); }}
++  var _ab = document.getElementById('appback');
++  if (_ab && history.length > 1) _ab.hidden = false;
++  function setView(v) {{
++    var mS = document.getElementById('map-state'),
++        mN = document.getElementById('map-national'),
++        bS = document.getElementById('btn-state-view'),
++        bN = document.getElementById('btn-national-view');
++    if (!mS || !mN || !bS || !bN) return;
++    mS.hidden = (v === 'national');
++    mN.hidden = (v === 'state');
++    bS.classList.toggle('on', v === 'state');
++    bN.classList.toggle('on', v === 'national');
++    bS.setAttribute('aria-pressed', String(v === 'state'));
++    bN.setAttribute('aria-pressed', String(v === 'national'));
++  }}
++  document.addEventListener('click', function(e) {{
++    var t = e.target;
++    if (!t || !t.closest) return;
++    if (t.closest('#natbtn')) {{ show('st-US'); return; }}
++    if (t.closest('#btn-state-view')) {{ setView('state'); return; }}
++    if (t.closest('#btn-national-view')) {{ setView('national'); return; }}
++    // the jump bar: a hidden target (the national detail) opens first
++    var a = t.closest('.rp-jump a[data-jump]');
++    if (a) {{
++      var id = a.getAttribute('data-jump');
++      if (id === 'accuracy') {{ e.preventDefault(); window.openAccuracy(); }}
++      else if (id === 'st-US') {{ e.preventDefault(); show('st-US'); }}
++      return;
++    }}
++    // the category lists follow the model toggle
++    var b = t.closest('#outlook-model button[data-mmodel]');
++    if (b) {{
++      var ls = document.querySelectorAll('[data-catmodel]');
++      for (var i = 0; i < ls.length; i++)
++        ls[i].hidden = ls[i].getAttribute('data-catmodel') !== b.dataset.mmodel;
++    }}
+   }});
+-  var sel = document.getElementById('jumploc');
+-  if (sel) sel.addEventListener('change', function() {{
++  document.addEventListener('change', function(e) {{
++    var sel = e.target;
++    if (!sel || sel.id !== 'jumploc') return;
+     var t = sel.value && document.getElementById(sel.value);
+     if (!t) return;
+     if (history.replaceState) history.replaceState(null, '', '#' + sel.value);
+@@ -1486,33 +1492,33 @@ document.getElementById('natbtn').addEventListener('click', function() {{ show('
+     var a = t.querySelector('figcaption a');
+     if (a) a.focus({{preventScroll: true}});
+   }});
+-  // the category lists follow the model toggle
+-  var g = document.getElementById('outlook-model');
+-  if (g) g.addEventListener('click', function(e) {{
+-    var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
+-    if (!b) return;
+-    var ls = document.querySelectorAll('[data-catmodel]');
+-    for (var i = 0; i < ls.length; i++)
+-      ls[i].hidden = ls[i].getAttribute('data-catmodel') !== b.dataset.mmodel;
+-  }});
+-}})();
+-(function() {{
+-  var mS = document.getElementById('map-state'),
+-      mN = document.getElementById('map-national'),
+-      bS = document.getElementById('btn-state-view'),
+-      bN = document.getElementById('btn-national-view');
+-  if (!mN || !bS || !bN) return;
+-  var setView = function(v) {{
+-    mS.hidden = (v === 'national');
+-    mN.hidden = (v === 'state');
+-    bS.classList.toggle('on', v === 'state');
+-    bN.classList.toggle('on', v === 'national');
+-    bS.setAttribute('aria-pressed', String(v === 'state'));
+-    bN.setAttribute('aria-pressed', String(v === 'national'));
+-  }};
+-  bS.addEventListener('click', function() {{ setView('state'); }});
+-  bN.addEventListener('click', function() {{ setView('national'); }});
+ }})();
++</script>
++<div class="card rp-mapcard" id="map-anchor">
++ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>
++  <button type="button" class="rp-btn rp-mapfold" id="mapfold"
++   aria-controls="map-body" aria-expanded="true">Hide map</button></div>
++ <div class="rp-mapbody" id="map-body">
++ <div id="map-state" class="mapcap">{map_html}</div>
++ {nat_map_div}
++ <div class="rp-legends">
++  {legend_html}
++  <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
++ </div>
++ </div>
++ {us_feature}
++</div>
++{_MAP_FOLD_JS}
++{nat}
++{"".join(sections)}
++{grid_section}
++{report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
++{_BA_JS}
++<script>
++if (location.hash && location.hash.indexOf('#st-') === 0 &&
++    document.getElementById(location.hash.slice(1))) {{
++  show(location.hash.slice(1));
++}}
+ (function() {{
+   // print: the light theme with the color-vision categories (the print
+   // stylesheet's tokens), the charts redrawn to the page width, and the
+diff --git a/app/core/scoring.py b/app/core/scoring.py
+index 3f8fa57..e8eb16b 100644
+--- a/app/core/scoring.py
++++ b/app/core/scoring.py
+@@ -358,7 +358,7 @@ def _member_name(model: str) -> str:
+ 
+ 
+ def summary_table_html(df: pd.DataFrame, model: str | None = None,
+-                       us_step: str | None = None) -> str:
++                       us_step: str | None = None, error: str = "") -> str:
+     """The weekly report's accuracy table for one member (`model`, default
+     the Oracle SIHRS), folded: the summary line names the member and its
+     pooled relWIS over its scored weeks (data-model, data-pooled and data-n
+@@ -370,11 +370,16 @@ def summary_table_html(df: pd.DataFrame, model: str | None = None,
+     workroot), which the Oracle SIHRS US row's note follows; None (the run
+     does not say) is accepted and unused. No notes under the table: the
+     rule and the US row's era are the console's to explain (Ely,
+-    2026-10-07: the figures speak for themselves)."""
++    2026-10-07: the figures speak for themselves). `error`: why scoring
++    failed, said in place of "no scored weeks yet"."""
+     from app.core import us_national as usn
+     if df.empty:
+         if model is None:
+             return NO_SCORES_HTML
++        if error:
++            import html as _html
++            return (f"<p class='hint'>{_member_name(model)} could not be "
++                    f"scored: {_html.escape(error)}</p>")
+         return (f"<p class='hint'>{_member_name(model)}: no scored weeks "
+                 "yet.</p>")
+     member = _member_name(model or "pf")
+diff --git a/app/tests/test_report_design_pass.py b/app/tests/test_report_design_pass.py
+index 241a705..9563985 100644
+--- a/app/tests/test_report_design_pass.py
++++ b/app/tests/test_report_design_pass.py
+@@ -135,8 +135,10 @@ def test_the_page_is_figures_without_prose(tmp_path):
+ 
+ def test_detail_sections_sit_before_the_grid_with_both_members(tmp_path):
+     html = _render(tmp_path)
+-    assert (html.index('id="map-anchor"') < html.index('id="st-OH"')
+-            < html.index('id="st-US"') < html.index('id="all-locations"'))
++    # the national section first, so US forecast detail opens as soon as
++    # it is drawn (G16, OU-06)
++    assert (html.index('id="map-anchor"') < html.index('id="st-US"')
++            < html.index('id="st-OH"') < html.index('id="all-locations"'))
+     sec = html[html.index('id="st-OH"'):].split("</section>", 1)[0]
+     assert 'id="h-fan-OH">Weekly admissions</h3>' in sec
+     assert "Next week (Oracle SIHRS)" in sec
+diff --git a/app/tests/test_weekly_report_files.py b/app/tests/test_weekly_report_files.py
+new file mode 100644
+index 0000000..2f8c77f
+--- /dev/null
++++ b/app/tests/test_weekly_report_files.py
+@@ -0,0 +1,186 @@
++"""The weekly and season report files (bug hunt 2026-10-25, G16).
++
++  * A modified run's weekly report saves with its files' "-modified"; the
++    date's name stays the hub reference date's otherwise (Decided
++    2026-10-01).
++  * The report's keys list only the models its panels drew.
++  * "back to FluBNF" returns to the console page that opened the report,
++    past any jump inside it.
++  * The report's controls are wired before its charts, and the national
++    section comes before the states', so they work as soon as they are
++    drawn.
++  * A member whose scoring failed says why, on the run page and in the
++    report.
++  * An archived run's season report saves under its own name.
++"""
++import json
++import sys
++from pathlib import Path
++
++import pandas as pd
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core import report_grid, report_season, report_v2      # noqa: E402
++from app.core.runs import Ledger, RunSpec                      # noqa: E402
++from app.core.scoring import summary_table_html                # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import output as O                          # noqa: E402
++
++client = TestClient(srv.app)
++NO_BASELINE = ("the hub clone has no model-output/FluSight-baseline. Press "
++               "Update data on the Data tab to fetch it, then rescore.")
++
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    for k in ("running", "workroot", "phase", "flash", "flash_kind",
++              "flash_detail"):
++        ui_state._status[k] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def _run(root, extra=None, outcome=None) -> str:
++    """A closed ledger row and its workroot with a report."""
++    import time
++    time.sleep(1.05)                     # run ids sort by their start second
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="analogue", forecast_date="2026-10-17",
++                               locations=["Ohio"], extra=extra or {}),
++                       Path("pending"), {})
++    w = root / "workroots" / rid
++    w.mkdir(parents=True)
++    (w / "results.json").write_text(json.dumps(
++        {"forecast_date": "2026-10-17", "models": {}}))
++    (w / "report.html").write_text("<p>r</p>")
++    led.set_workroot(rid, w)
++    led.close_run(rid, "ok", outcome or {"report": "report.html"})
++    return rid
++
++
++def _saved_as(path: str) -> str:
++    r = client.get(path)
++    assert r.status_code == 200
++    return r.headers["content-disposition"].split("filename=", 1)[1].strip('"')
++
++
++# ------------------------------------- OU-03: a modified run's report name
++
++def test_a_modified_runs_report_saves_with_its_files_suffix(root, monkeypatch):
++    monkeypatch.setattr(O, "_report_for_serving", lambda d: None)
++    shipped = _run(root)
++    modified = _run(root, extra={"knobs": {"oracle.w": 0.25}})
++    override = _run(root, extra={"knobs": {"oracle.w": 0.25},
++                                 "knobs_override": "the registered weight"})
++    assert _saved_as(f"/runs/{shipped}/report/download") == \
++        "2026-10-24-NAU_PyBNF-weekly-report.html"
++    assert _saved_as(f"/runs/{modified}/report/download") == \
++        "2026-10-24-NAU_PyBNF-weekly-report-modified.html"
++    # exported under the hub names by override: named as its files are
++    assert _saved_as(f"/runs/{override}/report/download") == \
++        "2026-10-24-NAU_PyBNF-weekly-report.html"
++
++
++# --------------------------------- OU-04: the keys list the models drawn
++
++def test_the_keys_list_only_the_models_the_panels_drew():
++    def fan(med):                 # horizon -> {level: value}, as members give
++        return {str(h): {L: med * (1 + 0.2 * z) for L, z in
++                         ((0.025, -1.9), (0.5, 0), (0.975, 1.9))}
++                for h in range(4)}
++    names = ["US", "Ohio"]
++    obs = {n: [("2098-01-03", 10.0)] for n in names}
++
++    def grid(models):
++        return report_grid.grid_data(
++            "2098-01-03", names, {"US": "US", "Ohio": "OH"},
++            {"US": "United States"}, obs,
++            {m: {n: fan(20.0) for n in names} for m in models}, {})
++    colors = report_v2.MEMBER_COLORS
++    gh_only = grid(["analogue"])                  # a Groundhog-only run
++    for html in (report_grid.us_feature_html(gh_only, colors),
++                 report_grid.grid_html(gh_only, colors)):
++        assert 'data-s="analogue"' in html and 'data-s="obs"' in html
++        assert 'data-s="pf"' not in html and "Oracle SIHRS" not in html
++    assert 'data-s="pf"' in report_grid.grid_html(grid(["analogue", "pf"]),
++                                                  colors)
++
++
++# ------------------------------------ OU-05 and OU-06: the way back, early
++
++def test_back_to_flubnf_goes_to_the_page_that_opened_the_report():
++    back = report_v2.page_header().split('id="appback"', 1)[1].split(">", 1)[0]
++    assert "document.referrer" in back and "location.origin" in back
++    assert "history.back()" in back       # a saved copy with no console
++
++
++def test_the_controls_and_the_national_section_come_before_the_charts(
++        tmp_path):
++    rng = __import__("numpy").random.default_rng(5)
++    f_t = ["2098-01-10", "2098-01-17", "2098-01-24", "2098-01-31"]
++    q = report_v2.fan_quantiles(
++        f_t, {t: rng.gamma(4.0, 30.0, 300).tolist() for t in f_t})
++    fan = report_v2.fan_figure_from_quantiles(
++        ["2098-01-03"], [110.0], f_t, q, title="t")
++    html = report_v2.build_report(
++        "2098-01-03", {}, {"OH": {"name": "Ohio", "fan": fan,
++                                  "cat": report_v2.cat_bar({"stable": 1.0}),
++                                  "table_rows": []}},
++        {}, tmp_path / "r.html").read_text(encoding="utf-8")
++    wired = html.index("window.backToMap = function")
++    assert wired < html.index('id="map-anchor"')
++    assert wired < html.index("Plotly.newPlot")
++    assert "document.addEventListener('click'" in html[:html.index(
++        'id="map-anchor"')]
++    # US forecast detail has its section before the states' charts
++    assert html.index('id="st-US"') < html.index('id="st-OH"')
++    # defined once
++    assert html.count("function show(id, then)") == 1
++
++
++# --------------------------------- FC-20: a failed score says why it failed
++
++def test_a_member_whose_scoring_failed_says_why():
++    line = summary_table_html(pd.DataFrame(), model="analogue",
++                              error=NO_BASELINE)
++    assert "Groundhog could not be scored: the hub clone has no " \
++        "model-output/FluSight-baseline." in line
++    assert "no scored weeks" not in line
++    assert "Groundhog: no scored weeks yet." in summary_table_html(
++        pd.DataFrame(), model="analogue")
++
++
++def test_the_run_page_names_the_groundhogs_scoring_error(root):
++    rid = _run(root, outcome={"report": "report.html",
++                              "analogue_score_error": NO_BASELINE})
++    page = client.get(f"/runs/{rid}").text
++    assert "<code>analogue_score_error</code>" in page
++    assert "model-output/FluSight-baseline" in page
++
++
++# ---------------------------- RE-26: an archived season report's own name
++
++def test_an_archived_season_report_saves_under_its_own_name(monkeypatch,
++                                                            tmp_path):
++    from app.ui.routes import retro as R
++    built = tmp_path / "2026-27-FluBNF-season-report.html"
++    built.write_text("<p>s</p>")
++    monkeypatch.setattr(R, "_season_report", lambda season, archive: built)
++    assert _saved_as("/retro/2026-27/report") == \
++        "2026-27-FluBNF-season-report.html"
++    assert _saved_as("/retro/2026-27/report?archive=20260204T101500Z") == \
++        "2026-27-FluBNF-season-report-20260204T101500Z.html"
++    # the page's own download takes the job's name
++    assert report_season.download_name("2026-27", "20260204T101500Z") == \
++        "2026-27-FluBNF-season-report-20260204T101500Z.html"
+diff --git a/app/ui/pipeline.py b/app/ui/pipeline.py
+index 8adf404..9a3dfbf 100644
+--- a/app/ui/pipeline.py
++++ b/app/ui/pipeline.py
+@@ -269,8 +269,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
+     from app.core.us_national import us_step_week
+     us_step = us_step_week(workroot)
+     if ran:
++        # a member whose scoring failed says why (the step's own error)
+         wis_body = "".join(summary_table_html(
+-            frames.get(m, pd.DataFrame()), model=m, us_step=us_step)
++            frames.get(m, pd.DataFrame()), model=m, us_step=us_step,
++            error=str(outcome.get(f"{m}_score_error")
++                      or outcome.get("score_error") or ""))
+             for m in ran)
+     else:
+         wis_body = summary_table_html(df, us_step=us_step)
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index cec9901..d30538f 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -546,8 +546,9 @@ def run_page(request: Request, run_id: str):
+             # failures and step errors in full (the chips only count them)
+             pf_failures = o.get("pf_failures", {}) or {}
+             step_errors = {k: str(o[k]) for k in
+-                           ("score_error", "archive_error",
+-                            "report_inputs_error", "report_error")
++                           ("score_error", "analogue_score_error",
++                            "archive_error", "report_inputs_error",
++                            "report_error")
+                            if o.get(k)}
+         except Exception:
+             err = ""
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index a7eecfa..2cecdce 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -862,20 +862,37 @@ def output_report(request: Request, date: str = ""):
+     return HTMLResponse(_report_for_serving(d))
+ 
+ 
+-def _weekly_report_name(date: str) -> str:
++def _weekly_report_name(date: str, suffix: str = "") -> str:
+     """Saved weekly report name (every run writes report.html). An as-of
+     date names it by its hub reference date, as the submission CSVs are
+     (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
+-    sorts beside the files it describes; anything else (a run id with no
++    sorts beside the files it describes; `suffix` is its files' own
++    (_report_suffix: -modified). Anything else (a run id with no
+     results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
+     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
+         ref = _reference_date(date)
+         if ref:
+-            return f"{ref}-NAU_PyBNF-weekly-report.html"
++            return f"{ref}-NAU_PyBNF-weekly-report{suffix}.html"
+     return f"FluBNF-weekly-report-{date}.html" if date \
+         else "FluBNF-weekly-report.html"
+ 
+ 
++def _report_suffix(dirpath: Path) -> str:
++    """The suffix the report's own run put on its files: "-modified" for
++    modified settings without the override (pipeline names them so), ""
++    otherwise. The run is the workroot's id, or the run an archive holds."""
++    from app.core import archive_record as _ar
++    from app.core.runs import Ledger, is_run_id
++    d = Path(dirpath)
++    rid = d.name if is_run_id(d.name) else str(
++        (_ar.read_record(d) or {}).get("run_id") or "")
++    try:
++        spec = ((Ledger().row(rid) or {}).get("spec") or "") if rid else ""
++    except Exception:
++        spec = ""
++    return "" if not spec or _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
++
++
+ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+                         notice: dict | None = None, route: str = ""):
+     """The weekly report as a download, refreshed first (same bytes as the
+@@ -891,7 +908,8 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
+         return HTMLResponse("<p>No report to download.</p>", status_code=404)
+     _report_for_serving(dirpath)
+     downloadlog.write(route or "report download", f)
+-    return FileResponse(f, filename=_weekly_report_name(date),
++    return FileResponse(f, filename=_weekly_report_name(
++                            date, _report_suffix(dirpath)),
+                         media_type="text/html",
+                         content_disposition_type="attachment")
+ 
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index dc8d545..f4bd85e 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -1289,11 +1289,15 @@ def _season_report(season: str, archive: str):
+ 
+ @router.get("/retro/{season}/report")
+ def retro_season_report(season: str, archive: str = ""):
+-    """Download the season report (_season_report)."""
++    """Download the season report (_season_report), under
++    report_season.download_name."""
++    from app.core import report_season
+     p = _season_report(season, archive)
+     if isinstance(p, PlainTextResponse):
+         return p
+-    return FileResponse(p, filename=p.name, media_type="text/html",
++    return FileResponse(p, filename=report_season.download_name(season,
++                                                                archive),
++                        media_type="text/html",
+                         content_disposition_type="attachment")
+ 
+ 
+diff --git a/app/ui/season_export.py b/app/ui/season_export.py
+index 7610081..f9e7691 100644
+--- a/app/ui/season_export.py
++++ b/app/ui/season_export.py
+@@ -158,7 +158,9 @@ def report_job(root: Path, season: str, archive: str = "", build: str = "",
+             p = report_season.build_season_report(
+                 root, season, archive=archive, build=build,
+                 versions=versions, progress=progress)
+-            job.update(state="done", phase="Ready", name=p.name,
++            # the name the page saves it under (an archived run's apart)
++            job.update(state="done", phase="Ready",
++                       name=report_season.download_name(season, archive),
+                        size_h=_size_h(p.stat().st_size),
+                        done=None, total=None)
+         except Exception as e:
