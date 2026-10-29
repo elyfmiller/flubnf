@@ -494,7 +494,7 @@ header.nav details.display[open] > summary{
 /* text size: small A, the slider, large A, the readout; Reset at the right
    of the heading */
 .fontsize{display:flex;align-items:center;gap:.55rem}
-.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
+.fontsize input[type=range]{flex:1 1 auto;min-width:3rem;width:auto;
   height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
   accent-color:var(--accent-ink);cursor:pointer}
 .fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
@@ -523,7 +523,8 @@ button.dm-reset[disabled]{opacity:.45}
 .dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
   font-size:var(--fs-micro);font-weight:650}
 .dm-grid + .dm-grp{margin-top:.7rem}
-.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
+.dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5em,1fr));
+  gap:.45rem}
 label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
   position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
   padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
@@ -1273,7 +1274,7 @@ tr[aria-current="true"] td{font-weight:600}
   /* a figure that scrolls says so: a soft shadow at the edge with more
      drawing past it (the classic local/scroll background pair, so it
      follows the scroll with no script) */
-  .figscroll{background:
+  .figscroll,.sbscroll{background:
     linear-gradient(to right,var(--card) 40%,transparent) left/1.5rem 100% no-repeat local,
     linear-gradient(to left,var(--card) 40%,transparent) right/1.5rem 100% no-repeat local,
     radial-gradient(farthest-side at 0 50%,color-mix(in srgb,var(--ink) 40%,transparent),transparent) left/1rem 100% no-repeat scroll,
