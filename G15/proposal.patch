@@ -1,0 +1,590 @@
+diff --git a/app/core/runs.py b/app/core/runs.py
+index 7d5c361..8429f58 100644
+--- a/app/core/runs.py
++++ b/app/core/runs.py
+@@ -752,12 +752,14 @@ def _results_table(body: str, d: dict, heading: bool,
+     return f'<table class="results">{cap}{body}</table>'
+ 
+ 
+-def results_html(outcome, spec, heading: bool = True) -> str:
++def results_html(outcome, spec, heading: bool = True,
++                 deleted: bool = False) -> str:
+     """One run's results as a small table: run type, each member's relWIS
+     with its cells, Oracle SIHRS fits and failures, submissions, report. Markup from
+     fixed phrases and numbers only; unreadable input yields "". The table
+     carries its own "Results" heading with the relWIS convention in a "?"
+-    tip; heading=False leaves both to the page (results_tip)."""
++    tip; heading=False leaves both to the page (results_tip). deleted: Storage
++    deleted the run's files, so its files and report read "deleted"."""
+     if isinstance(outcome, str):
+         try:
+             o = json.loads(outcome or "{}")
+@@ -828,8 +830,10 @@ def results_html(outcome, spec, heading: bool = True) -> str:
+                             "on the run page.")))
+     if o.get("submissions"):
+         n = len(o["submissions"])
+-        rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
+-    rows.append(("Weekly report", "written" if o.get("report") else "none"))
++        rows.append(("Submission files", "deleted" if deleted
++                     else f"{n} file{'s' if n != 1 else ''}"))
++    rows.append(("Weekly report", ("deleted" if deleted else "written")
++                 if o.get("report") else "none"))
+     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
+     return _results_table(body, d, heading, has_relwis(o))
+ 
+diff --git a/app/tests/test_archive_rule.py b/app/tests/test_archive_rule.py
+index a140b7e..7d9fb61 100644
+--- a/app/tests/test_archive_rule.py
++++ b/app/tests/test_archive_rule.py
+@@ -182,7 +182,8 @@ def test_a_marker_left_by_an_earlier_version_neither_locks_nor_shows(root):
+     assert _held(root) == "B"
+     (root / "archive" / DATE / "submitted.json").write_text("{}")
+     html = client.get("/storage").text
+-    row = html.split(f"Weekly report and submissions · {DATE}", 1)[1]
++    row = html.split("Weekly report and submissions · Round ", 1)[1]
++    assert f"(as of {DATE})" in row.split("</strong>", 1)[0]
+     assert "data-del-storage" in row.split("</div>", 1)[0]
+     assert "Submitted" not in html and "unmarked" not in html
+     out = client.get("/output").text
+diff --git a/app/tests/test_models_tab.py b/app/tests/test_models_tab.py
+index ca17e60..acadf7b 100644
+--- a/app/tests/test_models_tab.py
++++ b/app/tests/test_models_tab.py
+@@ -187,7 +187,7 @@ def test_a_run_without_this_model_names_itself_in_the_tip(monkeypatch):
+     t = client.get("/models").text
+     assert "No forecasts from this model yet" in t
+     # the run is the newest real-time one, and named so (G06, MO-06)
+-    assert ("The latest real-time run (2098-11-14 · 11-14 09:31) has none "
++    assert ("The latest real-time run (2098-11-14 · 11-14 09:31:00) has none "
+             "from this model.") in t
+ 
+ 
+diff --git a/app/tests/test_output_freshness.py b/app/tests/test_output_freshness.py
+index 6b73adf..d51fb59 100644
+--- a/app/tests/test_output_freshness.py
++++ b/app/tests/test_output_freshness.py
+@@ -80,7 +80,8 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
+     assert 'href="/output/report"' not in html
+     assert 'href="/output/report/download"' not in html
+     # beside "as of": the run, as the file rows name theirs
+-    when = f"{latest[4:6]}-{latest[6:8]} {latest[9:11]}:{latest[11:13]}"
++    when = (f"{latest[4:6]}-{latest[6:8]} "
++            f"{latest[9:11]}:{latest[11:13]}:{latest[13:15]}")
+     assert "as of 2098-01-10" in card
+     assert f'<a href="/runs/{latest}">run {when}</a>' in card
+     # the link serves that run's report, under the dated name
+diff --git a/app/tests/test_reclaim.py b/app/tests/test_reclaim.py
+index 1d36850..096a44a 100644
+--- a/app/tests/test_reclaim.py
++++ b/app/tests/test_reclaim.py
+@@ -586,7 +586,8 @@ def test_run_display_orphan_reads_as_unrecorded(routed):
+     row = html.split('data-wid="20980118T100000-bbbbbb"', 1)[1] \
+               .split("</div>", 1)[0]
+     assert "Unrecorded run" in row
+-    assert "run 2098-01-18 10:00" in row
++    # its time as the ledger reads a run's (ST-09)
++    assert "run 01-18 10:00:00" in row
+     assert "<code" in row and "20980118T100000-bbbbbb" in row
+ 
+ 
+diff --git a/app/tests/test_run_labels_deleted.py b/app/tests/test_run_labels_deleted.py
+new file mode 100644
+index 0000000..4436e37
+--- /dev/null
++++ b/app/tests/test_run_labels_deleted.py
+@@ -0,0 +1,175 @@
++"""Run labels, a run whose files Storage deleted, and run pages that fail
++soft (bug hunt 2026-10-25, G15).
++
++  * Every run label reads the run's time to the second, so two runs in one
++    minute read apart: the run page, its Superseded notice, Output, the
++    Storage ledger and the workroot rows; a report archive names its round
++    as the workroot rows do.
++  * A run whose workroot Storage deleted says so: its page (no Superseded
++    notice), its Results, the ledger's facts, the Forecast tab's card and
++    the fans' badge.
++  * A run page whose results.json cannot be read renders and says so.
++  * An unknown run's page is titled as a run's page is.
++  * Every workroot row on Storage links its run page, an unrecorded one too.
++"""
++import json
++import re
++import shutil
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core.runs import Ledger, RunSpec, results_html        # noqa: E402
++from app.ui import forecast_aids as fa                         # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import output as O                          # noqa: E402
++from app.ui.routes import storage as ui_storage                # noqa: E402
++
++client = TestClient(srv.app)
++GH = "NAU_PyBNF-GroundHogCGR"
++#: the outcome of a run that wrote one file and the weekly report
++WROTE = {"submissions": [GH], "report": "report.html"}
++
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    from app.core import datasets as datasets_mod
++    monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
++    for k in ("running", "workroot", "phase", "flash", "flash_kind",
++              "flash_detail"):
++        ui_state._status[k] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def _run(root, asof="2026-10-17") -> str:
++    """A closed ledger row and its workroot: one Groundhog file, the
++    report, results.json."""
++    import time
++    time.sleep(1.05)                     # run ids sort by their start second
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="analogue", forecast_date=asof,
++                               locations=["Ohio"]), Path("pending"), {})
++    w = root / "workroots" / rid
++    d = w / "submission" / GH
++    d.mkdir(parents=True)
++    (d / f"{O._reference_date(asof)}-{GH}.csv").write_text("x")
++    (w / "results.json").write_text(json.dumps({"forecast_date": asof,
++                                                "models": {}}))
++    (w / "report.html").write_text("<p>r</p>")
++    led.set_workroot(rid, w)
++    led.close_run(rid, "ok", dict(WROTE))
++    ui_shared._invalidate_scans()
++    return rid
++
++
++def _time(rid: str) -> str:
++    """A run's time as every label now reads it."""
++    return f"{rid[4:6]}-{rid[6:8]} {rid[9:11]}:{rid[11:13]}:{rid[13:15]}"
++
++
++# ----------------------------------------------- FC-15: labels to the second
++
++def test_two_runs_in_one_minute_read_apart_everywhere(root):
++    a, b = _run(root), _run(root)
++    assert ui_shared._run_label(a, "", tag=False) == _time(a)
++    assert _time(a) != _time(b)
++    # the passed-over run names the one Output shows, by a label of its own
++    page = client.get(f"/runs/{a}").text
++    assert f"Run: 2026-10-17 · {_time(a)}" in page
++    assert f"Output shows run {_time(b)} for 2026-10-24." in page
++    assert f"Open run {_time(b)}</a>" in page
++    assert O._run_when(b) == _time(b)
++    # Storage: the ledger row and the workroot row read the same time
++    assert ui_storage._ledger_parts(a, "")[-1] == f"run {_time(a)}"
++    rows = {w["id"]: w for w in ui_storage._storage_inventory()["workroots"]}
++    assert rows[a]["when"] == _time(a)
++
++
++def test_a_report_archive_names_its_round_as_the_workroot_rows_do(root):
++    _run(root)
++    arch = root / "archive" / "2026-10-17"
++    arch.mkdir(parents=True)
++    (arch / "report.html").write_text("<p>r</p>")
++    page = client.get("/storage").text
++    assert ("Weekly report and submissions · Round 2026-10-24 (as of "
++            "2026-10-17)") in page
++    assert "Round 2026-10-24 (as of 2026-10-17)</a>" in page   # workroot
++
++
++# -------------------------------------- FC-16: files Storage deleted say so
++
++def test_a_run_whose_files_storage_deleted_says_so(root):
++    a, b = _run(root), _run(root)
++    shutil.rmtree(root / "workroots" / b)
++    ui_shared._invalidate_scans()
++    assert O._files_deleted(b) and not O._files_deleted(a)
++    page = client.get(f"/runs/{b}").text
++    assert "This run&#39;s files were deleted in Storage." in page
++    assert "Superseded." not in page
++    assert ('<th scope="row">Submission files</th><td>deleted</td>'
++            in page)
++    assert '<th scope="row">Weekly report</th><td>deleted</td>' in page
++    # the Forecast tab's card reads its Results the same way
++    card = results_html(WROTE, "", deleted=True)
++    assert "1 file" not in card and "written" not in card
++    # the ledger: one "files deleted" in place of the files and report
++    chips = [i["text"] for i in ui_shared._outcome_items(WROTE, deleted=True)]
++    assert "files deleted" in chips and "report" not in chips
++    assert not any("submission" in c for c in chips)
++    storage = client.get("/storage").text
++    row = re.search(r'<tr[^>]*>(?:(?!</tr>).)*' + b + r'(?:(?!</tr>).)*</tr>',
++                    storage, re.S).group(0)
++    assert "files deleted" in row and "report" not in row
++    # the fans are the earlier run's, and the badge says why
++    rows = [{"run_id": b, "status": "ok", "spec": "",
++             "files_deleted": True}, {"run_id": a, "status": "ok"}]
++    assert fa.fan_run(rows, a)["earlier"] == \
++        "earlier run · newest has its files deleted"
++
++
++# ------------------------------------ FC-19: an unreadable results.json
++
++def test_a_run_page_with_an_unreadable_results_file_renders_and_says_so(root):
++    a = _run(root)
++    f = root / "workroots" / a / "results.json"
++    f.write_text(f.read_text()[:12])                 # cut off mid-string
++    r = client.get(f"/runs/{a}")
++    assert r.status_code == 200
++    assert "This run&#39;s results file could not be read" in r.text
++
++
++# --------------------------------------- UI-17: an unknown run's page title
++
++def test_an_unknown_runs_page_is_titled_as_a_runs_page(root):
++    a = _run(root)
++    r = client.get("/runs/nope")
++    assert r.status_code == 404
++    assert "<title>FluBNF · Run</title>" in r.text
++    assert "<title>FluBNF · Run</title>" in client.get(f"/runs/{a}").text
++
++
++# ----------------------------------- ST-13: every workroot row links its run
++
++def test_every_workroot_row_links_its_run_page_an_unrecorded_one_too(root):
++    rid = "20261025T184651-0f80ce"
++    w = root / "workroots" / rid
++    w.mkdir(parents=True)
++    (w / "report.html").write_text("<p>r</p>")
++    ui_shared._invalidate_scans()
++    page = client.get("/storage").text
++    row = page.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
++    assert f'<a href="/runs/{rid}">Unrecorded run</a>' in row
++    assert client.get(f"/runs/{rid}").status_code == 200
+diff --git a/app/tests/test_storage.py b/app/tests/test_storage.py
+index e383056..5651c15 100644
+--- a/app/tests/test_storage.py
++++ b/app/tests/test_storage.py
+@@ -169,16 +169,18 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
+     assert (f'<strong><a href="/runs/{rid}">Round 2098-01-10 (as of '
+             '2098-01-03)</a></strong>') in row
+     meta = row.split('class="uk-meta"', 1)[1]
+-    assert "<span>run 2" in meta                  # the wall-clock moment
++    assert f"<span>run {rid[4:6]}-{rid[6:8]} " in meta   # the wall clock
+     assert f"<code" in meta and rid in meta       # the id, small and mono
+-    # an unrecorded workroot (no ledger row) says so instead of guessing
++    # an unrecorded workroot (no ledger row) says so instead of guessing,
++    # and its page still opens (ST-13)
+     orphan = "20980118T093000-0aacd0"
+     (state["root"] / "workroots" / orphan).mkdir()
+     ui_shared._invalidate_scans()
+     html = client.get("/storage").text
+     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
+-    assert "<strong>Unrecorded run</strong>" in row   # no run page to link
+-    assert "run 2098-01-18 09:30" in row          # parsed from the id
++    assert (f'<strong><a href="/runs/{orphan}">Unrecorded run</a></strong>'
++            in row)
++    assert "run 01-18 09:30:00" in row            # parsed from the id
+ 
+ 
+ def test_protected_trees_render_no_delete_controls(state):
+diff --git a/app/ui/forecast_aids.py b/app/ui/forecast_aids.py
+index 93ea80a..4fc967f 100644
+--- a/app/ui/forecast_aids.py
++++ b/app/ui/forecast_aids.py
+@@ -182,7 +182,8 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
+     "earlier"}. modified: it ran with modified model settings (the card
+     badges it). earlier: "" when it is the newest hub row of the ledger,
+     else the badge's words, saying why the newest is not drawn (it failed,
+-    stopped or is still running, is a research run, or left no forecasts)."""
++    stopped or is still running, is a research run, Storage deleted its
++    files, or it left no forecasts)."""
+     if not rid:
+         return None
+     from app.core import runs as _runs
+@@ -203,6 +204,7 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
+     if top and top.get("run_id") != rid:
+         why = (_NOT_DRAWN.get(top.get("status") or "")
+                or ("is research" if _runs.is_research(top.get("spec") or "")
++                   else "has its files deleted" if top.get("files_deleted")
+                    else "has no forecasts"))
+         earlier = f"earlier run · newest {why}"
+     return {"run_id": rid, "label": _run_label(rid, spec, tag=False),
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 576c052..cec9901 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -152,6 +152,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+         r["modified"] = _runs.is_modified(r.get("spec", ""))
+         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
++        r["files_deleted"] = output_routes._files_deleted(r["run_id"])
+         # the latest-run card links the weekly report while its file is on
+         # disk (Storage may have deleted the workroot), and a run that died
+         # says why in its alert
+@@ -510,9 +511,15 @@ def run_page(request: Request, run_id: str):
+     # its files: the workroot, or the archive that holds the run once
+     # Storage deleted the workroot
+     w = output_routes._run_folder(run_id)
+-    res = {}
++    res, unreadable = {}, False
+     if (w / "results.json").is_file():
+-        res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
++        # a damaged file is said on the page, as Output skips it
++        try:
++            res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
++        except (ValueError, OSError):
++            unreadable = True
++        if not isinstance(res, dict):
++            res, unreadable = {}, True
+     subs = output_routes._submission_files(w)
+     report = (w / "report.html").name if (w / "report.html").is_file() else None
+     status, err, spec_json = "", "", ""
+@@ -574,7 +581,11 @@ def run_page(request: Request, run_id: str):
+         **dsx,
+         "active": "Forecast" if hub_live else "Storage",
+         "run_id": run_id, "status": status, "error": err,
+-        "results": results_html(o, spec_json, heading=False),
++        # Storage deleted its files: the ledger row is all that is left
++        "files_deleted": not w.is_dir(),
++        "results_unreadable": unreadable,
++        "results": results_html(o, spec_json, heading=False,
++                                deleted=not w.is_dir()),
+         # the relWIS convention only beside a relWIS
+         "results_tip": results_tip(spec_json, o),
+         # the page shows a research badge, so the label stays untagged
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 76ee3f5..a7eecfa 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -98,6 +98,13 @@ def _run_folder(run_id: str) -> Path:
+     return w
+ 
+ 
++def _files_deleted(run_id: str) -> bool:
++    """Whether Storage deleted a run's files: neither its workroot nor an
++    archive folder holds it (its ledger row stays as the run's record)."""
++    from app.core.runs import is_run_id
++    return is_run_id(run_id) and not _run_folder(run_id).is_dir()
++
++
+ def _submission_files(d: Path) -> list:
+     """Submission CSVs under a workroot/archive dir, each marked submittable
+     iff its directory (the hub model id) is registered. A folder an earlier
+@@ -505,7 +512,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
+ 
+ def _run_when(run_id: str) -> str:
+     """A run's start as the page shows it beside a file or the report:
+-    "MM-DD HH:MM" (_run_label's time); "" for no run."""
++    "MM-DD HH:MM:SS" (_run_label's time); "" for no run."""
+     return (_run_label(run_id, "", tag=False).split(" · ")[-1]
+             if run_id else "")
+ 
+diff --git a/app/ui/routes/storage.py b/app/ui/routes/storage.py
+index 0cd3703..db1b168 100644
+--- a/app/ui/routes/storage.py
++++ b/app/ui/routes/storage.py
+@@ -21,7 +21,7 @@ from app.ui.retro_prep import _results_jobs
+ from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
+                                   _season_status, _valid_season)
+ from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
+-                           _scan_archive_dates)
++                           _run_label, _scan_archive_dates)
+ from app.ui.state import _status
+ from app.ui.templating import templates
+ 
+@@ -120,10 +120,11 @@ def _round_label(spec, fallback: str) -> str:
+ 
+ def _ledger_parts(run_id: str, spec) -> list:
+     """A ledger row's label in its parts, each kept whole on a narrow
+-    screen: ["as of 2026-10-03", "run 10-05 14:31"] (the run's local start,
+-    from its id); just the run's time when the spec names no date."""
++    screen: ["as of 2026-10-03", "run 10-05 14:31:07"] (the run's local
++    start, from its id, as every run label reads it); just the run's time
++    when the spec names no date."""
+     asof = str(_spec_of(spec).get("forecast_date") or "").strip()
+-    when = (f"run {run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
++    when = (f"run {_run_label(run_id, '', tag=False)}"
+             if _runs.is_run_id(run_id) else run_id)
+     return ([f"as of {asof}"] if asof else []) + [when]
+ 
+@@ -168,7 +169,10 @@ def _storage_inventory() -> dict:
+             inv["workroots"].append({
+                 "id": p.name, "size_h": retro.human_bytes(size),
+                 "label": _round_label(row.get("spec"), disp["what"]),
+-                "status": st, "when": disp["when"],
++                # the run's time as the ledger row and every label read it
++                "status": st,
++                "when": (_run_label(p.name, "", tag=False)
++                         if _runs.is_run_id(p.name) else disp["when"]),
+                 "scope": disp["scope"], "recorded": disp["recorded"],
+                 "research": is_research(row.get("spec", "")),
+                 "modified": _runs.is_modified(row.get("spec", "")),
+@@ -214,6 +218,8 @@ def _storage_inventory() -> dict:
+         inv["total_bytes"] += size
+         inv["report_archives"].append({
+             "id": d, "size_h": retro.human_bytes(size), "bytes": size,
++            # its round, as the workroot rows above name it
++            "label": _round_label({"forecast_date": d}, d),
+             # the Output tab serves an archived report by its date
+             "report": (arch / d / "report.html").is_file(),
+             "busy": console_busy, "why": _busy_why("report-archive", d)})
+@@ -281,6 +287,7 @@ def runs_page(request: Request):
+     alias (old reports and bookmarks link it)."""
+     from app.core.runs import APP_STATE, is_research
+     from app.core import retro
++    from app.ui.routes.output import _files_deleted
+     ledger = Ledger()
+     rows = ledger.rows(LEDGER_ROWS)
+     for r in rows:
+@@ -293,7 +300,8 @@ def runs_page(request: Request):
+         r["research"] = is_research(r.get("spec", ""))
+         r["modified"] = _runs.is_modified(r.get("spec", ""))
+         # the outcome as facts the page draws as chips and badges
+-        r["facts"] = _outcome_items(r.get("outcome", ""))
++        r["facts"] = _outcome_items(r.get("outcome", ""),
++                                    deleted=_files_deleted(r["run_id"]))
+         # a 'running' row with no live worker = the app was closed mid-run
+         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
+             r["status"] = "interrupted"
+diff --git a/app/ui/shared.py b/app/ui/shared.py
+index a3afccd..12b1fb1 100644
+--- a/app/ui/shared.py
++++ b/app/ui/shared.py
+@@ -203,11 +203,13 @@ def _console_elapsed(now: float | None = None) -> float | None:
+ 
+ # === Run labels, outcome chips, latest results ===
+ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
+-    """'2026-07-04 · 08-18 09:31' (forecast date · run time). Research runs
+-    get ' · research' unless tag=False (pages with a styled badge)."""
++    """'2026-07-04 · 08-18 09:31:05' (forecast date · run time, to the
++    second: two runs in one minute read apart). Research runs get
++    ' · research' unless tag=False (pages with a styled badge)."""
+     import json as _json
+     from app.core.runs import is_research
+-    when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
++    when = (f"{run_id[4:6]}-{run_id[6:8]} "
++            f"{run_id[9:11]}:{run_id[11:13]}:{run_id[13:15]}")
+     suffix = " · research" if (tag and is_research(spec_json)) else ""
+     if tag and _runs.is_modified(spec_json):
+         suffix += " · modified settings"
+@@ -248,14 +250,16 @@ def _pf_member_label(o: dict) -> str:
+     return ("Oracle SIHRS" if ox else "PF") + tail
+ 
+ 
+-def _outcome_items(outcome_json) -> list:
++def _outcome_items(outcome_json, deleted: bool = False) -> list:
+     """One run's outcome as facts, for pages that draw each one with the UI
+     kit (the Storage ledger): [{"chip", "text", "state", "tip"}]. "chip" is
+     the fact as _outcome_chips writes it; "text" the short word or figure
+     (Markup for a relWIS figure), "state" a badge state ("" = a plain
+     fact), "tip" what the chip's parenthesis or tail said. A relWIS
+     figure's text carries its verdict icon after the number. Fixed phrases
+-    and numbers only: raw error strings stay on the run page."""
++    and numbers only: raw error strings stay on the run page. deleted:
++    Storage deleted the run's files, said once in place of its files and
++    report."""
+     import json as _json
+ 
+     from markupsafe import Markup
+@@ -298,7 +302,9 @@ def _outcome_items(outcome_json) -> list:
+             "PF engine install incomplete", "error",
+             "A broken install is a fault, unlike no engine at all. The run "
+             "page has the message.")
+-    if o.get("submissions"):
++    if deleted and (o.get("submissions") or o.get("report")):
++        add("files deleted")
++    elif o.get("submissions"):
+         ns = len(o["submissions"])
+         add(f"{ns} submission{'s' if ns != 1 else ''}")
+     if o.get("submission_errors"):
+@@ -322,7 +328,7 @@ def _outcome_items(outcome_json) -> list:
+             "Modified model settings: the files carry the non-hub name "
+             "unless the operator exported under the hub names with a reason"
+             + ("; this run did (hub names by override)." if over else "."))
+-    if o.get("report"):
++    if o.get("report") and not deleted:
+         add("report ✓", "report", "ok")
+     if o.get("pf_relwis"):
+         # scored-cell count; older rows only carry the fit-cell count
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index 3ee86e6..bc622be 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -767,7 +767,7 @@
+    {# settings left, results right #}
+    <div class="runsplit">
+     <div>{{ settings_html(r.settings) | safe }}</div>
+-    <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
++    <div>{{ results_html(r.outcome, r.spec, deleted=r.files_deleted) | safe }}</div>
+    </div>
+    {# straight to the run's outputs, so the tab never dead-ends here #}
+    <div class="fc-actions">
+diff --git a/app/ui/templates/output.html b/app/ui/templates/output.html
+index c206187..63f719e 100644
+--- a/app/ui/templates/output.html
++++ b/app/ui/templates/output.html
+@@ -1,4 +1,4 @@
+-{% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
++{% extends "base.html" %}{% block title %}FluBNF · {{ notice.heading if notice else "Output" }}{% endblock %}
+ {% block head %}<link rel="stylesheet" href="/static/tabs/output.css">{% endblock %}
+ {% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}{% import "_filerow.html" as fr with context %}
+ {# the file rows, their checks and the run that wrote each come from
+diff --git a/app/ui/templates/run.html b/app/ui/templates/run.html
+index cb1441c..d049f9d 100644
+--- a/app/ui/templates/run.html
++++ b/app/ui/templates/run.html
+@@ -30,8 +30,10 @@
+ {# which run's files Output shows for this date (archive_record.choose):
+    a run Output passes over names the one it shows; a run it shows says
+    so. The rule it picks by is in Output's "i" #}
+-{% set sup = run_supersession(run_id) if (status != "running" and not dataset) else {} %}
+-{% if sup %}
++{% set sup = run_supersession(run_id) if (status != "running" and not dataset and not files_deleted) else {} %}
++{% if files_deleted %}
++<div class="out-rp-sup" id="run-supersession">{{ tips.alert("info", "This run's files were deleted in Storage.", id="run-deleted", live="") }}</div>
++{% elif sup %}
+ <div class="out-rp-sup" id="run-supersession">
+ {% if sup.by and not sup.shown %}
+  {% set to_run %}<a class="btn quiet" href="/runs/{{ sup.by }}">Open run {{ sup.by_when }}</a>{% endset %}
+@@ -211,6 +213,6 @@
+  {% endif %}
+ </div>
+ {% elif not error and not live %}
+-<div class="card">{{ tips.empty("No results stored for this run", "folder", id="run-noresults") }}</div>
++<div class="card">{{ tips.empty("This run's results file could not be read" if results_unreadable else "No results stored for this run", "folder", id="run-noresults") }}</div>
+ {% endif %}
+ {% endblock %}
+diff --git a/app/ui/templates/runs.html b/app/ui/templates/runs.html
+index e0bba1a..db34082 100644
+--- a/app/ui/templates/runs.html
++++ b/app/ui/templates/runs.html
+@@ -272,9 +272,10 @@
+  {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
+  {% for w in storage.workroots %}
+  {# label from the run's ledger row, linked to its run page (the id is
+-    secondary); no row = an unrecorded run, time parsed from the id #}
++    secondary); no row = an unrecorded run, time parsed from the id, whose
++    page still shows its report and files #}
+  <div class="st-row" data-wid="{{ w.id }}">
+-  <span class="st-title"><strong>{% if w.recorded %}<a href="/runs/{{ w.id }}">{{ w.label }}</a>{% else %}{{ w.label }}{% endif %}</strong>
++  <span class="st-title"><strong><a href="/runs/{{ w.id }}">{{ w.label }}</a></strong>
+    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
+    {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
+    {%- if w.busy %} {{ tips.badge("pending", "running now") }}
+@@ -334,7 +335,7 @@
+  {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
+  {% for f in storage.report_archives %}
+  <div class="st-row">
+-  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong></span>
++  <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
+   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
+   {{ tips.meta([rlink]) }}{% endif %}
+   <span class="st-size">{{ f.size_h }}</span>
