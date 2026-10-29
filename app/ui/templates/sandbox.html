@@ -29,11 +29,12 @@
 <div class="cols">
  <div>
   <div class="card">{{ tips.heading("New model", "sb-new") }}
-   <form method="post" action="/sandbox/new" class="sbnew">
+   <form method="post" action="/sandbox/new" class="sbnew" data-taken="{{ models | map(attribute='name') | join(' ') }}">
     {# the input's pattern and title say what a name may hold #}
     <div class="lblrow"><label for="sbnew-name">Name</label></div>
     {% set _first = (examples or templates or [""])[0] %}
-    <input id="sbnew-name" name="name" placeholder="model name" value="{{ example_names.get(_first, '') }}" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
+    {% set _nf = new_form or {} %}
+    <input id="sbnew-name" name="name" placeholder="model name" value="{{ _nf.name or example_names.get(_first, '') }}"{% if _nf.name %} data-kept{% endif %} pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, _ and -, starting with a letter or digit (no spaces), up to 64 characters" required>
     <div class="lblrow"><label for="sbnew-start">Start from</label></div>
     {% set pf_sets = datasets | selectattr("pf") | list %}
     {# every start says what it is in its own note, shown in the "i" beside
@@ -45,13 +46,13 @@
     {% set _about = example_notes.get(_first, "") ~ (edit_note if _first in (templates or []) else "") %}
     <div class="sb-startrow">
      <select id="sbnew-start" name="start">
-      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
-      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
-      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
-      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if (_nf.start or "example:" ~ _first) == "example:" ~ e %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if (_nf.start or "example:" ~ _first) == "example:" ~ e %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+      <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}"{% if _nf.start == "skeleton" %} selected{% endif %}>Blank skeleton</option>
+      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors." data-name="{{ copy_names[m.name] }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
-       <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
-       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week.">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+       <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}{% if _nf.start == "shipped:sihrs" %} selected{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
+       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
       </optgroup>
      </select>
      <span class="sb-about"{% if not _about %} hidden{% endif %}>{% call tips.icon_tip("sbnew-about-t", "the chosen start", "info") %}<span id="sbnew-about">{{ _about }}</span>{% endcall %}</span>
@@ -63,18 +64,18 @@
      <div class="row sb-shiprow">
       {% if vintages and locations %}
       <span class="sbnew-hub"><label for="sbnew-loc">Location</label>
-       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}</select></span>
+       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}"{% if _nf.location == l.name %} selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></span>
       <span class="sbnew-hub">{{ tips.label("Forecast date", "sb-fdate", "The hub vintage archived that day: the data exactly as the forecaster saw it then.", for_="sbnew-date") }}
-       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}">{{ v }}</option>{% endfor %}</select></span>
+       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}"{% if _nf.forecast_date == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></span>
       {% endif %}
       {% if pf_sets %}
       <span class="sbnew-ds"><label for="sbnew-group">Group</label>
-       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
+       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}"{% if _nf.group == g.name %} selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
       <span class="sbnew-ds">{{ tips.label("As of", "sb-asof", "A week the dataset holds; the fit sees the data up to it.", for_="sbnew-asof") }}
-       <input id="sbnew-asof" name="as_of" type="date"></span>
+       <input id="sbnew-asof" name="as_of" type="date" value="{{ _nf.as_of or '' }}"></span>
       {% endif %}
       <span>{{ tips.label("Season start", "sb-season", "Optional. t = 0 and the seasonal phase count from it; blank takes August 1, as production does.", for_="sbnew-season") }}
-       <input id="sbnew-season" name="season_start" type="date"></span>
+       <input id="sbnew-season" name="season_start" type="date" value="{{ _nf.season_start or '' }}"></span>
      </div>
     </fieldset>
     <div class="row"><button class="gold">Create</button></div>

@@ -53,13 +53,15 @@ def _check_range(start: str, end: str) -> tuple:
     return a.isoformat(), b.isoformat()
 
 
-def _window(got: dict, start: str, end: str) -> dict:
+def _window(got: dict, start: str, end: str, newest: str = "") -> dict:
     """{"dates", "values", "dropped"} of a {date: value} map within a
-    range; dropped counts the range's Saturdays with no value."""
+    range; dropped counts the range's Saturdays with no value up to the
+    source's newest week (newest, any location's: a week the source cannot
+    hold yet is not missing)."""
     dates = sorted(d for d in got if start <= d <= end)
     d = dt.date.fromisoformat(_first_saturday(start))
     dropped = 0
-    last = dt.date.fromisoformat(end)
+    last = dt.date.fromisoformat(min(end, newest) if newest else end)
     while d <= last:
         if d.isoformat() not in got:
             dropped += 1
@@ -84,11 +86,14 @@ def series_for(location_name: str, start: str, end: str,
             raise SandboxError(f"unknown location {location_name!r}")
         got = {d.strftime("%Y-%m-%d"): v for (f, d), v in truth.items()
                if f == fips}
+        newest = (max(d for _, d in truth).strftime("%Y-%m-%d")
+                  if truth else "")
     else:
         from app.core import data as data_mod
         s = data_mod.vintage_series(str(asof), str(location_name))
         got = dict(zip(s["dates"], s["values"]))
-    return _window(got, start, end)
+        newest = str(asof)               # a vintage holds weeks to its date
+    return _window(got, start, end, newest)
 
 
 # ------------------------------------------------------ your own datasets
@@ -99,18 +104,28 @@ def series_for(location_name: str, start: str, end: str,
 
 def dataset_choices() -> list:
     """The stored datasets for the Load data form, newest first, as
-    [{"id", "name", "kind", "groups": [{"name", "first", "last",
+    [{"id", "name", "label", "kind", "groups": [{"name", "first", "last",
     "population"}]}]; empty when there are none or the store is unreadable."""
     try:
         from app.core import datasets
-        return [{"id": d.id, "name": d.name, "kind": d.kind,
-                 "pf": d.pf_eligible,
-                 "groups": [{k: g.get(k) for k in ("name", "first", "last",
-                                                   "population")}
-                            for g in d.meta.get("groups", [])]}
-                for d in datasets.list_datasets()]
+        out = [{"id": d.id, "name": d.name, "kind": d.kind,
+                "pf": d.pf_eligible,
+                "groups": [{k: g.get(k) for k in ("name", "first", "last",
+                                                  "population")}
+                           for g in d.meta.get("groups", [])]}
+               for d in datasets.list_datasets()]
     except Exception:
         return []
+    # "label": the name, with its weeks when another dataset shares it (two
+    # uploads of cases.csv read as two identical "cases" otherwise)
+    names = [d["name"] for d in out]
+    for d in out:
+        firsts = [g["first"] for g in d["groups"] if g.get("first")]
+        lasts = [g["last"] for g in d["groups"] if g.get("last")]
+        d["label"] = (f"{d['name']} ({min(firsts)} to {max(lasts)})"
+                      if names.count(d["name"]) > 1 and firsts and lasts
+                      else d["name"])
+    return out
 
 
 class UploadRefused(SandboxError):
@@ -172,7 +187,8 @@ def dataset_series(dataset_id: str, group: str, start: str = "",
                     got[r["date"]] = float(r["value"])
                 except (KeyError, TypeError, ValueError):
                     continue
-    out = _window(got, start, end)
+    lasts = [g["last"] for g in ds.meta.get("groups", []) if g.get("last")]
+    out = _window(got, start, end, max(lasts) if lasts else "")
     out.update(start=start, end=end, ref=ds.ref(), kind=ds.kind,
                population=ds.populations.get(group))
     return out
