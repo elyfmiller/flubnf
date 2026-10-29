@@ -269,9 +269,11 @@
  (30,000 per state at three replicates) gets one donor: a growth path from
  an earlier season within two epiweeks of the forecast week, any
  jurisdiction, the calendar-donor principle the Groundhog uses. Its growth
- over each forecast week becomes the geometric mean, half and half, of the
+ over each forecast week becomes the weighted geometric mean of the
  filter's and the donor's, propagated in closed form from the filter's own
- state. One donor per sample, not per forecast, keeps both the filter's
+ state: half and half by default, and one quarter on the filter's growth in
+ the rounds submitted since 2026-10-17, each run recording the weight it
+ used. One donor per sample, not per forecast, keeps both the filter's
  uncertainty and the donors' spread.</p>
  {% endcall %}
  {% call tips.fold("Donor pool", id="mt-oracle-donors", cls="mt-fold") %}
@@ -285,8 +287,8 @@
  {% call tips.fold("How it relates to the Groundhog", id="mt-oracle-gh", cls="mt-fold") %}
  <p>The Groundhog applies donor
  growth <em>ratios</em> to the last observed count, with no mechanism; the
- Oracle SIHRS applies donor <em>growth</em> to the fitted state, at half
- weight. The two are submitted as separate models.</p>
+ Oracle SIHRS applies donor <em>growth</em> to the fitted state, at the
+ blend weight. The two are submitted as separate models.</p>
  {% endcall %}
  </div>
 
@@ -351,8 +353,7 @@
  {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
  <p>Stronger at turning points but worse on
- the full grid in the August 2026 evaluation; it stays a research run (the
- {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %} is reachable by URL).</p>
+ the full grid in the August 2026 evaluation; it stays a research run.</p>
  {% endcall %}
  </div>
 </div>

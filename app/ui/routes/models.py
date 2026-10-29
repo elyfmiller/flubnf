@@ -93,7 +93,8 @@ def _record(name: str) -> dict:
         facts = [("Cells", ot.cells(both["cells"])),
                  ("Seasons", "2024-25 and 2025-26")]
         lines = [
-            (f"relWIS vs the FluSight baseline (below 1 beats it): "
+            (f"relWIS vs the FluSight baseline (below 1 beats it), under "
+             f"the earlier cell rule: "
              f"{fmt(both['oracle'])} against the plain filter's "
              f"{fmt(both['filter'])} on the same {ot.cells(both['cells'])} "
              f"cells of 2024-25 and 2025-26."),
@@ -131,13 +132,13 @@ def _record(name: str) -> dict:
     # this one fell behind the blend it was tested in, from the two values
     return _bars({
         "bars": [("Two-strain SIHRS", two, True),
-                 ("Two-member blend", blend, False)],
+                 ("Blend it was tested in", blend, False)],
         "facts": [],
         "behind": {"text": f"{fmt(two - blend)} behind the blend"},
         "lines": [
-            (f"It scored worse on the full grid (relWIS {fmt(two)} against "
-             f"{fmt(blend)} for the two-member blend it was tested in), so "
-             f"it is kept for research runs only.")]})
+            (f"It scored worse than the blend it was tested in, in the "
+             f"August 2026 evaluation (relWIS {fmt(two)} against "
+             f"{fmt(blend)}), so it is kept for research runs only.")]})
 
 
 def _rule(v: float) -> str:
