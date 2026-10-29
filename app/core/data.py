@@ -60,6 +60,19 @@ def vintages() -> list:
     return sorted(set(archive_vintages()) | set(shipped_weeks()))
 
 
+def hub_missing(data: bool = True) -> str:
+    """Why no hub data can be read, in plain words; "" when the clone's
+    data directories are there (data=False: when the folder is there at
+    all, whatever it holds). The folder is absent, or a sparse checkout
+    left without them (the test flubnf.settings.check applies)."""
+    if not HUB.exists():
+        return f"there is no hub folder at {HUB}"
+    if data and not (HUB / "auxiliary-data").is_dir():
+        return (f"the hub folder {HUB} holds no data directories (a sparse "
+                "checkout without them)")
+    return ""
+
+
 def vintage_path(date: str) -> Path:
     """The file holding the truth as of `date`: the hub archive's vintage
     when it has one, else the shipped snapshot (sha256 verified against its
@@ -343,6 +356,15 @@ def comparators() -> dict:
     return {name: (HUB / sub).is_dir() for name, sub in COMPARATORS}
 
 
+def fresh_after_pull() -> "Freshness":
+    """The clone right after a pull that succeeded: level with origin."""
+    local = vintages()
+    live = live_newest_week()
+    return Freshness(local[-1] if local else None,
+                     local[-1] if local else None, 0, True,
+                     "up to date with origin", live, live)
+
+
 @dataclass
 class Freshness:
     local_latest: Optional[str]
@@ -358,6 +380,8 @@ class Freshness:
         """(class, words) for the Data tab's hub-clone pill: ok "up to
         date"; warn "N weeks behind", "new vintage", "N commits behind",
         "stale files"; bad "offline"."""
+        if self.detail.startswith("no hub clone"):
+            return "bad", "missing"
         if self.detail.startswith("fetch failed"):
             return "bad", "offline"
         if self.remote_live and (not self.local_live
@@ -424,6 +448,11 @@ def check_freshness(fetch: bool = True) -> Freshness:
     local_latest = local[-1] if local else None
     behind, remote_latest, detail = None, None, ""
     local_live, remote_live, stale = live_newest_week(), None, False
+    # no folder to compare: said as such, not as an offline fetch
+    why = hub_missing(data=False)
+    if why:
+        return Freshness(local_latest, None, None, False,
+                         f"no hub clone: {why}", local_live)
     if fetch:
         try:
             f = subprocess.run(["git", "fetch", "origin"], cwd=HUB,
