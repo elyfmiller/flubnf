@@ -89,6 +89,8 @@
    draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
 {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
+{# the Groundhog per theme (--model-analogue, as the weekly report) #}
+{% set member_colors = dict(member_colors, analogue="var(--model-analogue)") %}
 {% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
 {# the US figures as the tiles and the table show them: the Liu-West
    filter's own (pf_filter) only when every stored week has one (addendum
@@ -1168,7 +1170,9 @@
      // the player's member colors; ensemble alone resolves through --gold
      models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
                            {ensemble: css('--gold')
-                                      || FluBNFPlayer.MODEL_COLORS.ensemble}),
+                                      || FluBNFPlayer.MODEL_COLORS.ensemble,
+                            analogue: css('--model-analogue')
+                                      || FluBNFPlayer.MODEL_COLORS.analogue}),
      flusightEnsemble: css('--official') || '#AAB1C9'})
  });
  function setView(v){

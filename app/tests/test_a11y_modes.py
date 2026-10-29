@@ -345,6 +345,20 @@ def test_member_palette_audit_and_its_non_color_redundancy():
         for th, (bg, card) in grounds.items():
             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
             assert _cr(mem[m], card) >= 3.0, (m, th, "card")
+    # the Groundhog as each theme draws it in the console (--model-analogue:
+    # a darker gold on light grounds, G19): 3:1 on its own grounds, and
+    # still apart from every member it can share a chart with, the
+    # Liu-West filter's orange included, under both matrices and normally
+    for th in THEMES:
+        r = resolve(th)
+        ga = r["model-analogue"]
+        assert _cr(ga, r["bg"]) >= 3.0 and _cr(ga, r["card"]) >= 3.0, th
+        for m in ("pf", "pf_filter", "pf2s"):
+            for M in (_DEUTAN, _PROTAN):
+                assert _simdist(ga, mem[m], M) >= 60, (th, m)
+            d = sum((int(ga[i:i + 2], 16) - int(mem[m][i:i + 2], 16)) ** 2
+                    for i in (1, 3, 5)) ** 0.5
+            assert d >= 60, (th, m)
     # redundancy still backs up the color channel (a fitted US pf fan
     # stored before addendum A3 names what it is instead, player.js
     # US_PF_LABEL)
