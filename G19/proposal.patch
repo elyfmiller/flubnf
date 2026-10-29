@@ -1,0 +1,498 @@
+diff --git a/app/core/missing.py b/app/core/missing.py
+index 6d25f68..20711f3 100644
+--- a/app/core/missing.py
++++ b/app/core/missing.py
+@@ -288,6 +288,20 @@ def line(flags) -> str:
+             f"unreported ({', '.join(rules)}): " + ", ".join(bits))
+ 
+ 
++def aside_weeks(outcome) -> dict:
++    """{member: {location: [weeks]}}: the weeks each member treated as
++    unreported (unreported_flags of a run's outcome), for the charts that
++    start a fan where the member started and mark those weeks."""
++    out: dict = {}
++    o = outcome if isinstance(outcome, Mapping) else {}
++    for m, rows in unreported_flags(o.get("data_flags")).items():
++        for r in rows:
++            if r.get("location") and r.get("week"):
++                out.setdefault(m, {}).setdefault(
++                    str(r["location"]), []).append(str(r["week"])[:10])
++    return out
++
++
+ def unreported_flags(flags) -> dict:
+     """A run record's flags without the zero-anchor and left-out rows
+     (those name a forecast made or a state left out, not a week treated as
+diff --git a/app/tests/test_a11y_modes.py b/app/tests/test_a11y_modes.py
+index f3bf8bf..4358114 100644
+--- a/app/tests/test_a11y_modes.py
++++ b/app/tests/test_a11y_modes.py
+@@ -345,6 +345,20 @@ def test_member_palette_audit_and_its_non_color_redundancy():
+         for th, (bg, card) in grounds.items():
+             assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
+             assert _cr(mem[m], card) >= 3.0, (m, th, "card")
++    # the Groundhog as each theme draws it in the console (--model-analogue:
++    # a darker gold on light grounds, G19): 3:1 on its own grounds, and
++    # still apart from every member it can share a chart with, the
++    # Liu-West filter's orange included, under both matrices and normally
++    for th in THEMES:
++        r = resolve(th)
++        ga = r["model-analogue"]
++        assert _cr(ga, r["bg"]) >= 3.0 and _cr(ga, r["card"]) >= 3.0, th
++        for m in ("pf", "pf_filter", "pf2s"):
++            for M in (_DEUTAN, _PROTAN):
++                assert _simdist(ga, mem[m], M) >= 60, (th, m)
++            d = sum((int(ga[i:i + 2], 16) - int(mem[m][i:i + 2], 16)) ** 2
++                    for i in (1, 3, 5)) ** 0.5
++            assert d >= 60, (th, m)
+     # redundancy still backs up the color channel (a fitted US pf fan
+     # stored before addendum A3 names what it is instead, player.js
+     # US_PF_LABEL)
+diff --git a/app/tests/test_chart_fixes.py b/app/tests/test_chart_fixes.py
+new file mode 100644
+index 0000000..10d0a19
+--- /dev/null
++++ b/app/tests/test_chart_fixes.py
+@@ -0,0 +1,108 @@
++"""The console's charts (bug hunt 2026-10-25, G19).
++
++  * The Groundhog is drawn per theme (--model-analogue: a darker gold on
++    light cards, the yellow on dark ones) on the Forecast tab, the model
++    pages, the season page and a dataset's replay.
++  * The charts' toolbar takes the app's focus ring, and stays off on a
++    phone, where it sat on the chart's title.
++  * A fan starts where its member started, before any week it set aside,
++    and marks those weeks; the settled outcome stops at the last horizon.
++  * The model page's pager draws only the location its readout names.
++"""
++import json
++import re
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import missing                                   # noqa: E402
++
++UI = Path(__file__).resolve().parents[2] / "app" / "ui"
++NAU = (UI / "static" / "nau.css").read_text(encoding="utf-8")
++
++
++def _tpl(name: str) -> str:
++    return (UI / "templates" / name).read_text(encoding="utf-8")
++
++
++# ------------------------------------------- UI-03 (MO-10): the Groundhog
++
++def test_the_groundhog_is_drawn_per_theme_on_every_console_chart():
++    # every theme block carries it with its scheme: dark gold on light
++    for scheme, colour in (("light", "#806000"), ("dark", "#FFC72C")):
++        n = NAU.count(f"--scheme:{scheme};")
++        assert n == 4 and NAU.count(
++            f"--scheme:{scheme}; --model-analogue:{colour};") == n
++    for name in ("forecast.html", "model.html"):
++        assert ("m==='analogue'?(css('--model-analogue')||MCOLORS.analogue)"
++                in _tpl(name)), name
++    season = _tpl("retro_season.html")
++    assert ('{% set member_colors = dict(member_colors, '
++            'analogue="var(--model-analogue)") %}') in season
++    assert "analogue: css('--model-analogue')" in season
++    assert ("(M === 'analogue' && css('--model-analogue'))"
++            in _tpl("retro_dataset.html"))
++
++
++# ------------------------------------------------ UI-04, FC-31: the toolbar
++
++def test_the_chart_toolbar_wears_the_focus_ring_and_stays_off_on_a_phone():
++    rule = re.search(r"\.js-plotly-plot \.plotly \.modebar \.modebar-btn"
++                     r":focus-visible\{\s*([^}]*)\}", NAU)
++    assert rule and "var(--focus-w,2px) solid var(--gold)" in rule.group(1)
++    assert ("displayModeBar:matchMedia('(max-width: 640px)').matches?false"
++            ":'hover'") in _tpl("forecast.html")
++
++
++# ---------------------------------------- FC-14, FC-24: where a fan starts
++
++def test_the_weeks_a_member_set_aside_come_from_the_runs_flags():
++    outcome = {"data_flags": {
++        "analogue": [
++            {"location": "Ohio", "week": "2026-10-17", "value": 2.0,
++             "rule": missing.SET_ASIDE_RULE},
++            {"location": "Ohio", "week": "2026-10-17", "value": 0.0,
++             "rule": missing.LEFT_OUT_RULE}],
++        "pf": [{"location": "Arizona", "week": "2026-10-17", "value": 0.0,
++                "rule": "trailing zero"}]}}
++    assert missing.aside_weeks(outcome) == {
++        "analogue": {"Ohio": ["2026-10-17"]},
++        "pf": {"Arizona": ["2026-10-17"]}}
++    assert missing.aside_weeks({}) == {}
++
++
++def test_a_fan_starts_before_its_set_aside_weeks_and_ends_at_its_horizon():
++    for name in ("forecast.html", "model.html"):
++        js = _tpl(name)
++        assert "while(ai>=0&&aside.has(obsX[ai])) ai--;" in js, name
++        assert "name:'set aside'" in js, name
++        assert "obsY.slice(-1)" not in js, name       # never the set-aside value
++        # the settled outcome to the last horizon, not a week past it
++        assert "+35" not in js, name
++        assert ("lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map("
++                "h=>parseInt(h))));") in js, name
++    assert "const RASIDE = {{ run_aside_json | safe }};" in _tpl("forecast.html")
++
++
++# ------------------------------------------------- MO-09: the pager's race
++
++def test_the_model_pager_draws_only_the_location_it_names():
++    js = _tpl("model.html").split("async function draw()", 1)[1]
++    fetch = js.index("await fetch('/api/series")
++    guard = js.index("if(tok!==drawSeq) return;")
++    assert js.index("const tok=++drawSeq;") < fetch < guard
++
++
++def test_the_forecast_and_model_pages_receive_the_set_aside_weeks(monkeypatch):
++    from app.ui import shared
++    from app.core import runs
++
++    class Row:
++        def row(self, rid):
++            return {"outcome": json.dumps({"data_flags": {"analogue": [
++                {"location": "Ohio", "week": "2026-10-17",
++                 "rule": missing.SET_ASIDE_RULE}]}})}
++    monkeypatch.setattr(runs, "Ledger", Row)
++    assert shared._run_aside("r1") == {"analogue": {"Ohio": ["2026-10-17"]}}
++    assert shared._run_aside(None) == {}
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index 7523a3e..f52a964 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -224,6 +224,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+         "member_colors_json": _script_json(_member_colors()),
+         "season_colors_json": _script_json(_season_colors()),
+         "run_obs_json": _script_json((res or {}).get("observed", {})),
++        # the weeks each member set aside: the fan starts before them
++        "run_aside_json": _script_json(shared._run_aside(rid)),
+         "fc_date": (res or {}).get("forecast_date", ""),
+         # display-only aids (app/ui/forecast_aids.py): the fans' run, the
+         # next round, the location presets, the last run's values
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 9d8dd71..93b383d 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -230,6 +230,8 @@ def model_page(request: Request, name: str):
+         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
+         "overlay_json": _script_json(overlay),
+         "run_obs_json": _script_json((res or {}).get("observed", {})),
++        # the weeks each member set aside: the fan starts before them
++        "run_aside_json": _script_json(shared._run_aside(rid)),
+         "bngl_src": bngl_src, "bngl_file": bngl_file,
+         "bngl_lines": len(bngl_src.splitlines()),
+         "form": form, "status": _status,
+diff --git a/app/ui/shared.py b/app/ui/shared.py
+index 12b1fb1..a22a31d 100644
+--- a/app/ui/shared.py
++++ b/app/ui/shared.py
+@@ -357,6 +357,20 @@ def _outcome_chips(outcome_json: str) -> str:
+     return " · ".join(i["chip"] for i in _outcome_items(outcome_json))
+ 
+ 
++def _run_aside(rid) -> dict:
++    """A run's set-aside weeks by member and location (missing.aside_weeks
++    of its ledger outcome); {} for no run or an unreadable row."""
++    import json as _json
++    from app.core import missing as _missing
++    from app.core.runs import Ledger
++    try:
++        row = Ledger().row(rid) if rid else None
++        return _missing.aside_weeks(_json.loads((row or {}).get("outcome")
++                                                or "{}"))
++    except Exception:
++        return {}
++
++
+ def _wrote_forecasts(res: dict) -> bool:
+     """Whether a run's results hold forecasts from the model it asked for
+     (either member for "all": the Groundhog runs without the filter);
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index bf9a1ba..8002077 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -74,7 +74,7 @@
+   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+   /* outline buttons, text on a primary fill and on a --bad fill; the
+      native controls' scheme */
+-  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
++  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
+   /* official comparator lines (FluSight ensemble): neutral grey, never a
+      member color, 3:1+ on the card */
+   --official:#6E7590;
+@@ -115,7 +115,7 @@
+   --gold:#34C0F0; --gold-bright:#34C0F0;
+   --nav-bg:#151729; --nav-ink:#E9EAF4;
+   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+-  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
++  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark; --model-analogue:#FFC72C;
+   --official:#AAB1C9;
+   --map-nodata:#2A2F50;
+   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+@@ -147,7 +147,7 @@
+   --gold:#0173A9; --gold-bright:#34C0F0;
+   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
+   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+-  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
++  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
+   --official:#6E7590;
+   --map-nodata:#C4CAD8;
+   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
+@@ -179,7 +179,7 @@
+   --gold:#34C0F0; --gold-bright:#34C0F0;
+   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
+   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
+-  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
++  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark; --model-analogue:#FFC72C;
+   --official:#AAB1C9;
+   --map-nodata:#434A68;
+   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+@@ -213,7 +213,7 @@
+   --gold:#0550AE; --gold-bright:#54AEFF;
+   --nav-bg:#FFFFFF; --nav-ink:#1F2328;
+   --ok:#1A7F37; --warn:#8A5D00; --bad:#CF222E;
+-  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light;
++  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
+   --official:#6E7781;
+   --map-nodata:#CFCCD6;
+   --shadow:0 1px 2px rgba(31,35,40,.08),0 2px 8px rgba(31,35,40,.06);
+@@ -247,7 +247,7 @@
+   --gold:#1C6BA3; --gold-bright:#5DADE6;
+   --nav-bg:#EEE8D5; --nav-ink:#073642;
+   --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
+-  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
++  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
+   --official:#657B83;
+   --map-nodata:#C6CCD4;
+   --shadow:0 1px 2px rgba(88,110,117,.10),0 2px 8px rgba(88,110,117,.08);
+@@ -281,7 +281,7 @@
+   --gold:#88C0D0; --gold-bright:#88C0D0;
+   --nav-bg:#2E3440; --nav-ink:#ECEFF4;
+   --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
+-  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
++  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark; --model-analogue:#FFC72C;
+   --official:#9AA4B8;
+   --map-nodata:#414D62;
+   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+@@ -315,7 +315,7 @@
+   --gold:#BD93F9; --gold-bright:#BD93F9;
+   --nav-bg:#282A36; --nav-ink:#F8F8F2;
+   --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
+-  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
++  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark; --model-analogue:#FFC72C;
+   --official:#A2A7C2;
+   --map-nodata:#44475A;
+   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+@@ -672,6 +672,10 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
+ input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
+ summary:focus-visible{
+   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
++/* the charts' toolbar too: Plotly's own rule (.js-plotly-plot .plotly
++   .modebar-btn) draws a 1px black ring, lost on a dark card */
++.js-plotly-plot .plotly .modebar .modebar-btn:focus-visible{
++  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
+ /* buttons: default = secondary outline, .gold = primary (cyan), .quiet.
+    Every theme states its own colors as tokens (--btn-ink: LANL Blue on
+    light grounds, the accent on dark ones, where the blue would vanish;
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index e452ec8..61cd933 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -877,7 +877,9 @@
+ <script>
+  const SERIES = {{ series_json | safe }};
+  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
+- const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
++ const ROBS = {{ run_obs_json | safe }};
++ // member -> loc -> the weeks it treated as unreported (outcome data_flags)
++ const RASIDE = {{ run_aside_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
+  // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
+  // date, keyed like FANQ ({} when none were recorded: no toggle)
+  const OFFQ = {{ official_json | default('{}', true) | safe }};
+@@ -899,7 +901,10 @@
+  const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
+                           || SCOLORS[i % SCOLORS.length];
+  function memberColor(m){
++   // the Groundhog per theme (--model-analogue: the report's dark gold on
++   // light cards, its yellow on dark ones)
+    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
++        : m==='analogue'?(css('--model-analogue')||MCOLORS.analogue)
+         : MCOLORS[m]||css('--mut');
+  }
+  function rgba(c,a){
+@@ -937,7 +942,9 @@
+  function fmtDate(ds){const p=ds.slice(0,10).split('-');
+    return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
+  let SHOWPTS=false, CURMODE='season';
+- const PCONF={responsive:true, displaylogo:false};
++ // no toolbar on a phone, where it sits on the chart's title
++ const PCONF={responsive:true, displaylogo:false,
++              displayModeBar:matchMedia('(max-width: 640px)').matches?false:'hover'};
+  // save-PNG at 2x under a meaningful filename
+  function pconf(name){return Object.assign({},PCONF,
+    {toImageButtonOptions:{format:'png',scale:2,
+@@ -1084,14 +1091,21 @@
+    const xs=hs.map(h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
+      return d.toISOString().slice(0,10);});
+    // what happened after the origin (settled data), framed to the horizon
+-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
++   const lim=new Date(base);
++   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
+    const limIso=lim.toISOString().slice(0,10);
+    const aftX=[],aftY=[];
+    if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
+-   const fx=[...(obsX.slice(-1)),...xs];
+-   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
+-   const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
+-   const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
++   // the weeks this member set aside (unreported: set aside on the
++   // Forecast tab, a trailing zero, a partial week) are marked, and the fan
++   // starts from the last week it used, where the model started
++   const aside=new Set((RASIDE[FMODEL]||{})[loc]||[]);
++   let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
++   const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
++   const fx=[...ax,...xs];
++   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
++   const lo9=[...ay,...hs.map(h=>qs[h]['0.1'])];
++   const hi9=[...ay,...hs.map(h=>qs[h]['0.9'])];
+    // the fan wears the DISPLAYED member's color
+    const mc=memberColor(FMODEL);
+    const traces=[
+@@ -1101,7 +1115,12 @@
+       line:{width:0},name:'10-90% interval'},
+      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
+    ];
+-   if(SHOWOFF) traces.push(...offTraces(loc, xs, obsX.slice(-1), obsY.slice(-1)));
++   if(aside.size){
++     const sx=obsX.filter(d=>aside.has(d)), sy=obsY.filter((v,i)=>aside.has(obsX[i]));
++     if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
++       marker:{symbol:'x-open',size:9,color:css('--mut')}});
++   }
++   if(SHOWOFF) traces.push(...offTraces(loc, xs, ax, ay));
+    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+      // dotted ink, as on every surface; hollow markers tell it from the
+      // dotted grey FluSight baseline
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index d5dafb8..c0006db 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -208,6 +208,8 @@
+ <script>
+  const FANQ = {{ fanq_json | safe }};
+  const ROBS = {{ run_obs_json | safe }};
++ // member -> loc -> the weeks it treated as unreported (outcome data_flags)
++ const RASIDE = {{ run_aside_json | safe }};
+  // raw member medians over the fan: server.py always sends {} now (the
+  // retired blend's page), so the overlay loop below never runs
+  const OVERLAY = {{ overlay_json | safe }};
+@@ -221,7 +223,9 @@
+  // (re-read per draw)
+  const MCOLORS = {{ member_colors_json | safe }};
+  function memberColor(m){
++   // the Groundhog per theme (--model-analogue, as the weekly report)
+    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
++        : m==='analogue'?(css('--model-analogue')||MCOLORS.analogue)
+         : MCOLORS[m]||css('--mut');
+  }
+  function rgba(c,a){
+@@ -257,15 +261,18 @@
+    document.getElementById('pv').onclick=()=>{IDX--;draw();};
+    document.getElementById('nx').onclick=()=>{IDX++;draw();};
+  }
++ let drawSeq=0;
+  async function draw(){
+    if(!LOCS.length) return;
+    IDX=((IDX%LOCS.length)+LOCS.length)%LOCS.length;
+    const loc=LOCS[IDX], qs=FANQ[loc];
++   const tok=++drawSeq;
+    document.getElementById('pos').textContent=loc+' · '+(IDX+1)+'/'+LOCS.length;
+    if(!SERIES[loc]){
+      const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+      Object.assign(SERIES, await r.json());
+    }
++   if(tok!==drawSeq) return;            // a later flip draws its own location
+    const s=SERIES[loc]||{dates:[],values:[]};
+    const hs=Object.keys(qs).sort();
+    const FD={{ date | tojson }};
+@@ -280,14 +287,20 @@
+    if(ro.length){obsX=ro.map(q=>q[0]);obsY=ro.map(q=>q[1]);}
+    else{s.dates.forEach((d,i)=>{if(d<=FD){obsX.push(d);obsY.push(s.values[i]);}});}
+    obsX=obsX.slice(-12);obsY=obsY.slice(-12);
+-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
++   const lim=new Date(base);
++   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
+    const limIso=lim.toISOString().slice(0,10);
+    const aftX=[],aftY=[];
+    s.dates.forEach((d,i)=>{if(d>FD&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});
+-   const fx=[...(obsX.slice(-1)),...xs];
+-   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
+-   const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
+-   const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
++   // the fan starts from the last week the member used, before any week it
++   // set aside (marked below), as on the Forecast tab
++   const aside=new Set((RASIDE[MNAME]||{})[loc]||[]);
++   let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
++   const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
++   const fx=[...ax,...xs];
++   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
++   const lo=[...ay,...hs.map(h=>qs[h]['0.1'])];
++   const hi=[...ay,...hs.map(h=>qs[h]['0.9'])];
+    // the fan wears THIS page's member color
+    const mc=memberColor(MNAME);
+    const traces=[
+@@ -296,6 +309,11 @@
+     {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:rgba(mc,.2),line:{width:0},name:'10-90% interval'},
+     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
+    ];
++   if(aside.size){
++     const sx=obsX.filter(d=>aside.has(d)), sy=obsY.filter((v,i)=>aside.has(obsX[i]));
++     if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
++       marker:{symbol:'x-open',size:9,color:css('--mut')}});
++   }
+    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
+    // overlay medians: legend-only lines in each member's color
+diff --git a/app/ui/templates/retro_dataset.html b/app/ui/templates/retro_dataset.html
+index 5a3dbc0..d558f97 100644
+--- a/app/ui/templates/retro_dataset.html
++++ b/app/ui/templates/retro_dataset.html
+@@ -105,7 +105,8 @@
+   let M = models[0];
+   function draw(){
+     const g = gs.value, d = F[g]; if(!d) return;
+-    const mc = COLS[M] || css('--gold');
++    // the Groundhog per theme (--model-analogue, as the weekly report)
++    const mc = (M === 'analogue' && css('--model-analogue')) || COLS[M] || css('--gold');
+     const pts = (d.fc||{})[M] || [];
+     const x = pts.map(p=>p[0]);
+     const fs = rootPx(), surf = css('--card');
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 2ef1133..53eb2c7 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -89,6 +89,8 @@
+    draws, unlabelled, in the accent colour #}
+ {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
+ {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
++{# the Groundhog per theme (--model-analogue, as the weekly report) #}
++{% set member_colors = dict(member_colors, analogue="var(--model-analogue)") %}
+ {% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
+ {# the US figures as the tiles and the table show them: the Liu-West
+    filter's own (pf_filter) only when every stored week has one (addendum
+@@ -1168,7 +1170,9 @@
+      // the player's member colors; ensemble alone resolves through --gold
+      models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
+                            {ensemble: css('--gold')
+-                                      || FluBNFPlayer.MODEL_COLORS.ensemble}),
++                                      || FluBNFPlayer.MODEL_COLORS.ensemble,
++                            analogue: css('--model-analogue')
++                                      || FluBNFPlayer.MODEL_COLORS.analogue}),
+      flusightEnsemble: css('--official') || '#AAB1C9'})
+  });
+  function setView(v){
