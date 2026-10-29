@@ -1,0 +1,5 @@
+# V01: compare (B)
+| Bug | A's | B's | Better, and why |
+|---|---|---|---|
+| width 2e0 (FC-06 on /retro/run) | `width: str = Form("4")`; typed read where it was clamped; refusal "Not started: shard width: '2e0' is not a whole number."; blank = 4; test asserts the launched width (3, and 4 for a blank), pf engine | `width: str = Form("")`; same place; refusal "Not started: runners: '2e0' is not a valid int." (the knob parser's words); blank = DEFAULT_SHARD_WIDTH; test refuses 2e0, 1.5, two and launches "2" and blank, analogue | A's, with one token from B's: A's wording names the field as the form labels it and reads plainer for students than "valid int", and A's test pins the width the replay is launched with. B's blank is the better default: the box shows DEFAULT_SHARD_WIDTH (test_retro_width_default_is_this_machines_auto_value), so a cleared box should read as what it showed, not 4 on every machine. A's Status row for the record: yes. |
+Vote: combine: A's patch (code, wording, test) with the blank reading as DEFAULT_SHARD_WIDTH (`int(typed or DEFAULT_SHARD_WIDTH)`, the test's blank case expecting that value), plus A's V01 row in the Fix groups table.
