@@ -13,10 +13,11 @@ router = APIRouter()
 
 def _choice(key: str, v) -> str:
     """A choice in the panel's words, its stored value after it when the
-    two differ: 'random draws (rand)'."""
+    words do not already start with it: 'random draws (rand)', but 'none
+    (bare analogue)'."""
     from app.core import knobs as K
     w = K.choice_word(key, v)
-    return w if w == str(v) else f"{w} ({v})"
+    return w if w.split(" ", 1)[0] == str(v) else f"{w} ({v})"
 
 
 def settings_reference() -> list:
