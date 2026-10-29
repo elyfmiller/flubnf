@@ -1,0 +1,379 @@
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 75120fc..6621283 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -518,6 +518,13 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
+     if ss >= fd:
+         raise SandboxError(f"the season start {ss} is not before the "
+                            f"forecast date {fd}")
++    # the model fits one season: a start more than a year back would hand
++    # it two (production starts August 1 of the forecast's own season)
++    if (dt.date.fromisoformat(fd) - dt.date.fromisoformat(ss)).days > 366:
++        raise SandboxError(f"the season start {ss} is more than a year "
++                           f"before the forecast date {fd}; the Oracle "
++                           f"SIHRS fits one season (production starts "
++                           f"{default_season_start(fd)})")
+     extra, ref = {}, None
+     if dataset:
+         from app.core import datasets
+diff --git a/app/core/sandbox_data.py b/app/core/sandbox_data.py
+index 77f2233..1e04b6e 100644
+--- a/app/core/sandbox_data.py
++++ b/app/core/sandbox_data.py
+@@ -55,11 +55,13 @@ def _check_range(start: str, end: str) -> tuple:
+ 
+ def _window(got: dict, start: str, end: str) -> dict:
+     """{"dates", "values", "dropped"} of a {date: value} map within a
+-    range; dropped counts the range's Saturdays with no value."""
++    range; dropped counts the range's Saturdays with no value, up to the
++    newest week the source holds in it (a week it cannot hold yet, a future
++    one or one past a vintage, is not missing)."""
+     dates = sorted(d for d in got if start <= d <= end)
+     d = dt.date.fromisoformat(_first_saturday(start))
+     dropped = 0
+-    last = dt.date.fromisoformat(end)
++    last = dt.date.fromisoformat(dates[-1] if dates else end)
+     while d <= last:
+         if d.isoformat() not in got:
+             dropped += 1
+@@ -266,7 +268,10 @@ def fill_data(name: str, location_name: str, start: str, end: str,
+     text = header + "\n" + "\n".join(
+         f"{t} {_fmt(v)}" for t, v in zip(ts, s["values"])) + "\n"
+     exp.write_text(text, encoding="utf-8", newline="\n")
+-    info = {"location": str(location_name), "start": start, "end": end,
++    # the range reported and recorded is the one loaded, not the one asked
++    # (t still counts from the asked start)
++    info = {"location": str(location_name),
++            "start": s["dates"][0], "end": s["dates"][-1],
+             "asof": ("dataset" if dataset else str(asof) if asof
+                      else "settled"),
+             "rows": len(s["values"]), "dropped": int(s["dropped"]),
+diff --git a/app/tests/test_sandbox_guard.py b/app/tests/test_sandbox_guard.py
+index 93fd9c1..6431bc8 100644
+--- a/app/tests/test_sandbox_guard.py
++++ b/app/tests/test_sandbox_guard.py
+@@ -281,7 +281,8 @@ def test_console_run_and_replay_refuse_while_a_sandbox_fit_is_live(box):
+                     follow_redirects=False)
+     assert r.status_code == 303 and r.headers["location"] == "/forecast"
+     assert ui_state._status.get("running") is None                  # nothing claimed
+-    assert "sandbox fit holds the engine (20990101-000000_mine)" in ui_state._status["flash"]
++    assert ("sandbox fit is running (20990101-000000_mine); the console "
++            "runs one thing at a time") in ui_state._status["flash"]
+     ui_state._status.pop("flash", None)
+     r = client.post("/retro/run", data={"season": "2098-99"}, follow_redirects=False)
+     assert r.status_code == 303 and r.headers["location"] == "/retro"
+diff --git a/app/tests/test_sandbox_mechanics.py b/app/tests/test_sandbox_mechanics.py
+new file mode 100644
+index 0000000..7aedf39
+--- /dev/null
++++ b/app/tests/test_sandbox_mechanics.py
+@@ -0,0 +1,147 @@
++"""Sandbox mechanics of the bug hunt 2026-10-25, G14: the loaded range is
++the one reported (SB-03), same-name datasets are told apart (SB-06), every
++run is listed and counted (SB-08), a suggested name is free (SB-09), a
++copy's start suggests a name (SB-17), an Oracle SIHRS start keeps to one
++season (SB-11), the console's refusal beside a sandbox fit says what it
++waits for (SB-12), and an upload over the cap is refused on the page before
++the editor's unsaved text is lost (SB-02). Hub-free and engine-free."""
++import json
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import pytest                                            # noqa: E402
++from fastapi.testclient import TestClient                # noqa: E402
++
++from app.core import sandbox as sb                       # noqa: E402
++from app.core import sandbox_data as sd                  # noqa: E402
++from app.ui import server as srv                         # noqa: E402
++from app.ui import state as ui_state                     # noqa: E402
++from app.ui.routes import sandbox as ui_sandbox          # noqa: E402
++
++client = TestClient(srv.app)
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++@pytest.fixture
++def box(sandbox_root):
++    return sandbox_root
++
++
++def _sat(first, n):
++    import datetime as dt
++    d = dt.date.fromisoformat(first)
++    return [(d + dt.timedelta(days=7 * i)).isoformat() for i in range(n)]
++
++
++def test_a_week_the_source_cannot_hold_yet_is_not_called_missing():
++    # a vintage of 2026-10-10 asked up to 10-17: nothing is missing
++    got = {d: 1.0 for d in _sat("2026-06-06", 19)}      # 06-06 .. 10-10
++    w = sd._window(got, "2026-06-06", "2026-10-17")
++    assert (len(w["dates"]), w["dropped"]) == (19, 0)
++    # a gap inside the loaded range still counts
++    del got["2026-08-01"]
++    assert sd._window(got, "2026-06-06", "2026-10-17")["dropped"] == 1
++
++
++def test_the_loaded_range_is_reported_not_the_requested_one(box, monkeypatch):
++    sb.new_model("m1")
++    dates = _sat("2026-09-05", 7)                           # .. 2026-10-17
++    monkeypatch.setattr(sd, "series_for", lambda *a, **k: {
++        "dates": dates, "values": [float(i) for i in range(7)], "dropped": 0})
++    monkeypatch.setattr(sd._sb, "locations", lambda: [{"name": "Arizona"}])
++    info = sd.fill_data("m1", "Arizona", "2026-09-05", "2026-12-31")
++    assert (info["start"], info["end"], info["rows"], info["dropped"]) == (
++        "2026-09-05", "2026-10-17", 7, 0)
++    assert json.loads((sb.MODELS / "m1" / "data.source.json").read_text(
++        encoding="utf-8"))["end"] == "2026-10-17"
++
++
++def test_two_datasets_with_one_name_are_told_apart_in_the_source_list(
++        box, monkeypatch):
++    sb.new_model("m1")
++    two = [{"id": "cases-aaaa", "name": "cases", "kind": "count", "pf": False,
++            "groups": [{"name": "cases", "first": "2025-01-04",
++                        "last": "2025-02-22", "population": None}]},
++           {"id": "cases-bbbb", "name": "cases", "kind": "count", "pf": False,
++            "groups": [{"name": "cases", "first": "2025-03-01",
++                        "last": "2025-04-19", "population": None}]},
++           {"id": "wire-cccc", "name": "wire", "kind": "count", "pf": False,
++            "groups": [{"name": "A", "first": "2025-01-04",
++                        "last": "2025-02-22", "population": None}]}]
++    monkeypatch.setattr(sb, "dataset_choices", lambda: two)
++    html = client.get("/sandbox?model=m1").text
++    assert ">cases (2025-01-04 to 2025-02-22)</option>" in html
++    assert ">cases (2025-03-01 to 2025-04-19)</option>" in html
++    assert ">wire</option>" in html
++
++
++def test_every_run_is_listed_and_the_delete_prompt_counts_them_all(box):
++    sb.new_model("m1")
++    sb.RUNS.mkdir(parents=True, exist_ok=True)
++    for i in range(27):
++        d = sb.RUNS / f"20261020-10{i:02d}00_m1"
++        d.mkdir()
++        (d / "meta.json").write_text(json.dumps({
++            "model": "m1", "status": "ok", "particles": 500,
++            "started_utc": f"2026-10-20T10:{i:02d}:00Z", "elapsed_s": 3}),
++            encoding="utf-8")
++    html = client.get("/sandbox?model=m1").text
++    assert 'data-sb-delete="m1 and its 27 runs"' in html
++    assert html.count("20261020-10") >= 27
++
++
++def test_a_suggested_name_is_free_and_a_copy_start_suggests_one(box):
++    sb.new_model("sir_example_1")
++    html = client.get("/sandbox").text
++    # a copy's own suggestion, as the examples get theirs
++    assert ('<option value="copy:sir_example_1" data-note="A copy of '
++            'sir_example_1, with its data and priors." '
++            'data-name="sir_example_1_1">') in html
++    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
++    assert "if (o.value.indexOf('copy:') === 0) taken[o.value.slice(5)] = true;" in js
++    assert "s = free(suggestName(loc.value, date.value));" in js
++
++
++def test_an_oracle_start_more_than_a_year_back_is_refused(box):
++    r = client.post("/sandbox/new", data={
++        "name": "o3", "start": "shipped:sihrs", "location": "Arizona",
++        "forecast_date": "2026-10-17", "season_start": "2025-08-01"},
++        follow_redirects=False)
++    assert r.status_code == 303
++    flash = ui_state._status["flash"]
++    assert ("the season start 2025-08-01 is more than a year before the "
++            "forecast date 2026-10-17; the Oracle SIHRS fits one season "
++            "(production starts 2026-08-01)") in flash
++    assert not (sb.MODELS / "o3").exists()
++
++
++def test_the_refusal_beside_a_sandbox_fit_says_what_the_console_waits_for(
++        box, monkeypatch):
++    monkeypatch.setitem(ui_state._sandbox_status, "running", "20990101-000000_mine")
++    r = client.post("/run", data={"forecast_date": "2099-01-02",
++                                  "engine": "analogue", "locations": "Arizona"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and r.headers["location"] == "/forecast"
++    flash = ui_state._status["flash"]
++    assert ("Not started: a sandbox fit is running (20990101-000000_mine); "
++            "the console runs one thing at a time.") in flash
++    assert "holds the engine" not in flash
++    monkeypatch.setitem(ui_state._sandbox_status, "running", None)
++    monkeypatch.setitem(ui_state._status, "running", "x")
++    assert ui_sandbox._sandbox_busy_reason() == "a console run is in progress"
++
++
++def test_an_upload_over_the_cap_is_refused_on_the_page_with_the_edits_kept(box):
++    sb.new_model("m1")
++    html = client.get("/sandbox?model=m1").text
++    assert f'id="sbfill-csv" name="csv" type="file"' in html
++    assert f'data-cap="{sb.UPLOAD_MAX_BYTES}"' in html
++    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
++    assert "if (cap > 0 && up.files[0].size > cap) {" in js
++    assert "your edits stay in the editor." in js
++    # the server's own refusal says the editor's text never arrived
++    src = Path(ui_sandbox.__file__).read_text(encoding="utf-8")
++    assert ('"nothing was read past it or stored, and unsaved edits in the "\n'
++            '            "editor were not saved."') in src
+diff --git a/app/ui/routes/sandbox.py b/app/ui/routes/sandbox.py
+index d8c6ae8..0f2a49c 100644
+--- a/app/ui/routes/sandbox.py
++++ b/app/ui/routes/sandbox.py
+@@ -38,7 +38,7 @@ router = APIRouter()
+ def _sandbox_busy_reason() -> str:
+     """Why a sandbox fit may not start now ("" when the engine is free)."""
+     if _status.get("running"):
+-        return "a console run is fitting"
++        return "a console run is in progress"
+     live = [x for x in retro_seasons._known_seasons()
+             if _season_status(x) in _RETRO_ACTIVE]
+     if live:
+@@ -62,8 +62,11 @@ async def _sandbox_engine_guard(request: Request, call_next):
+         # a plain read: an async middleware must not wait on _engine_lock
+         live = _sandbox_live()
+         if local and live:
+-            _flash(f"Not started: a sandbox fit holds the engine ({live}).",
+-                   "warn", detail="Stop it from the Sandbox tab first.")
++            # one thing at a time, whichever model the run asks for
++            _flash(f"Not started: a sandbox fit is running ({live}); the "
++                   "console runs one thing at a time.", "warn",
++                   detail="Stop it from the Sandbox tab first, or wait for "
++                   "it to end.")
+             return RedirectResponse("/retro" if path == "/retro/run"
+                                     else "/forecast", status_code=303)
+     return await call_next(request)
+@@ -136,7 +139,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+     last = {}
+     for r in all_runs:
+         last.setdefault(r.get("model"), r)
+-    runs = [r for r in all_runs if r.get("model") == model][:25] if model else []
++    runs = [r for r in all_runs if r.get("model") == model] if model else []
+     res = None
+     try:
+         if run:
+@@ -178,6 +181,10 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
+            "example_names": {e: _free_name(e, taken)
+                              for e in examples + ["skeleton"]},
++           # a copy's suggested name, free like an example's
++           "copy_names": {m["name"]: _free_name(m["name"], taken)
++                          for m in models},
++           "upload_cap": sandbox_mod.UPLOAD_MAX_BYTES,
+            "runs": runs,
+            "res": res, "res_json": _script_json(res or {}),
+            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
+@@ -243,6 +250,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+             "data_source": sandbox_mod.read_data_source(name),
+             # your own data: stored datasets, and an upload's refusal
+             "datasets": sandbox_mod.dataset_choices(),
++            "upload_cap": sandbox_mod.UPLOAD_MAX_BYTES,
+             "pick_dataset": dataset,
+             "upload_report": _sandbox_upload_report.pop(name, None)})
+     return templates.TemplateResponse(request, "sandbox.html", ctx)
+@@ -536,9 +544,12 @@ async def sandbox_upload_data(request: Request, name: str):
+         sandbox_mod.check_name(name)
+         form = await _sandbox_capped_form(request, cap + _SANDBOX_BODY_SLACK)
+     except _SandboxTooLarge:
++        # refused before the form is read, so the editor's unsaved text
++        # never arrived (the page itself refuses such a file first)
+         _sandbox_upload_report[name] = {"problems": [
+             f"The upload is larger than the {cap // (1024 * 1024)} MB limit; "
+-            "nothing was read past it or stored."]}
++            "nothing was read past it or stored, and unsaved edits in the "
++            "editor were not saved."]}
+         return _sandbox_redirect(name)
+     except Exception as e:
+         _flash(f"Could not read the upload: {e}", "error")
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index 648cc54..7810a6b 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -88,11 +88,22 @@
+     // start changes until the user types one of their own
+     var suggested = nm ? nm.value : '';
+     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
++    // the models that exist (the Copy of choices name them): a suggestion
++    // one of them already has takes _2, _3, ... as the examples do
++    var taken = {};
++    Array.prototype.forEach.call(start.options, function (o) {
++      if (o.value.indexOf('copy:') === 0) taken[o.value.slice(5)] = true;
++    });
++    function free(s) {
++      var t = s, n = 2;
++      while (t && taken[t]) { t = s.slice(0, 64 - String(n).length - 1) + '_' + n; n++; }
++      return t;
++    }
+     function name() {
+       if (!nm || (nm.value && nm.value !== suggested)) return;
+       var v = start.value, s = '', o = start.options[start.selectedIndex];
+-      if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
+-      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
++      if (v === 'shipped:sihrs' && loc && date) s = free(suggestName(loc.value, date.value));
++      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = free(suggestName(grp.value, asof ? asof.value : ''));
+       else if (o && o.getAttribute('data-name')) s = o.getAttribute('data-name');
+       nm.value = suggested = s;
+     }
+@@ -383,7 +394,27 @@
+         var rep = $('sb-checked');
+         if (rep && rep.firstChild) rep.classList.add('sb-stale');
+       });
+-      form.addEventListener('submit', function () { dirty = false; });
++      form.addEventListener('submit', function (e) {
++        // a CSV over the upload cap is refused here, before the post: the
++        // server refuses it before reading the form, so the editor's
++        // unsaved text would be lost with it
++        var up = $('sbfill-csv'), b = e.submitter;
++        if (up && up.files && up.files[0] && b && /\/upload-data$/.test(b.getAttribute('formaction') || '')) {
++          var cap = parseInt(up.getAttribute('data-cap'), 10);
++          if (cap > 0 && up.files[0].size > cap) {
++            e.preventDefault();
++            var note = $('sb-upload-size');
++            if (!note) {
++              note = document.createElement('p');
++              note.id = 'sb-upload-size'; note.className = 'uk-alert uk-alert--warn'; note.setAttribute('role', 'alert');
++              up.closest('.sb-pane').appendChild(note);
++            }
++            note.textContent = 'Not uploaded: the file is larger than the ' + Math.round(cap / 1048576) + ' MB limit. Choose a smaller file; your edits stay in the editor.';
++            return;
++          }
++        }
++        dirty = false;
++      });
+       addEventListener('beforeunload', function (e) {
+         if (!dirty) return;
+         e.preventDefault();
+diff --git a/app/ui/templates/sandbox.html b/app/ui/templates/sandbox.html
+index 86c04bd..b4146a9 100644
+--- a/app/ui/templates/sandbox.html
++++ b/app/ui/templates/sandbox.html
+@@ -48,7 +48,7 @@
+       {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+       {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] ~ edit_note }}" data-name="{{ example_names[e] }}"{% if e == _first %} selected{% endif %}>{{ exname(e) }}</option>{% endfor %}</optgroup>{% endif %}
+       <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts." data-name="{{ example_names.skeleton }}">Blank skeleton</option>
+-      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors.">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
++      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors." data-name="{{ copy_names[m.name] }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+       <optgroup label="Oracle SIHRS filter">
+        <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
+        {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week.">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+diff --git a/app/ui/templates/sandbox_data.html b/app/ui/templates/sandbox_data.html
+index e1f1a76..112c349 100644
+--- a/app/ui/templates/sandbox_data.html
++++ b/app/ui/templates/sandbox_data.html
+@@ -51,7 +51,7 @@
+       {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
+      </optgroup>{% endif %}
+      {% if datasets %}<optgroup label="Your datasets">
+-      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
++      {% for d in datasets %}{% set _dup = (datasets | selectattr("name", "equalto", d.name) | list | length) > 1 %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}{% if _dup and d.groups %} ({{ d.groups[0].first }} to {{ d.groups[-1].last }}){% endif %}</option>{% endfor %}
+      </optgroup>{% endif %}
+     </select></span>
+    {% if locations %}<span class="sb-f" id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
+@@ -83,7 +83,7 @@
+   <h3 class="sb-pane-h">Upload a CSV</h3>
+   <div class="sb-fgrid sb-fgrid--up">
+    <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", for_="sbfill-csv") }}
+-    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
++    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" data-cap="{{ upload_cap }}"></span>
+    <span class="sb-f"><label for="sbfill-kind">Values</label>
+     <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
+   </div>
