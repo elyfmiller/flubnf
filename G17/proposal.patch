@@ -1,0 +1,810 @@
+diff --git a/app/core/data.py b/app/core/data.py
+index e535074..89f5b24 100644
+--- a/app/core/data.py
++++ b/app/core/data.py
+@@ -60,6 +60,19 @@ def vintages() -> list:
+     return sorted(set(archive_vintages()) | set(shipped_weeks()))
+ 
+ 
++def hub_missing(data: bool = True) -> str:
++    """Why no hub data can be read, in plain words; "" when the clone's
++    data directories are there (data=False: when the folder is there at
++    all, whatever it holds). The folder is absent, or a sparse checkout
++    left without them (the test flubnf.settings.check applies)."""
++    if not HUB.exists():
++        return f"there is no hub folder at {HUB}"
++    if data and not (HUB / "auxiliary-data").is_dir():
++        return (f"the hub folder {HUB} holds no data directories (a sparse "
++                "checkout without them)")
++    return ""
++
++
+ def vintage_path(date: str) -> Path:
+     """The file holding the truth as of `date`: the hub archive's vintage
+     when it has one, else the shipped snapshot (sha256 verified against its
+@@ -358,6 +371,8 @@ class Freshness:
+         """(class, words) for the Data tab's hub-clone pill: ok "up to
+         date"; warn "N weeks behind", "new vintage", "N commits behind",
+         "stale files"; bad "offline"."""
++        if self.detail.startswith("no hub clone"):
++            return "bad", "missing"
+         if self.detail.startswith("fetch failed"):
+             return "bad", "offline"
+         if self.remote_live and (not self.local_live
+@@ -424,6 +439,11 @@ def check_freshness(fetch: bool = True) -> Freshness:
+     local_latest = local[-1] if local else None
+     behind, remote_latest, detail = None, None, ""
+     local_live, remote_live, stale = live_newest_week(), None, False
++    # no folder to compare: said as such, not as an offline fetch
++    why = hub_missing(data=False)
++    if why:
++        return Freshness(local_latest, None, None, False,
++                         f"no hub clone: {why}", local_live)
+     if fetch:
+         try:
+             f = subprocess.run(["git", "fetch", "origin"], cwd=HUB,
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 770cd93..b47329b 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -92,6 +92,12 @@ def _top_files() -> set:
+ _STATE_BEFORE, _TOP_BEFORE = _state_listing(), _top_files()
+ 
+ 
++from app.core import data as _core_data  # noqa: E402
++
++#: app.core.data.hub_missing before the autouse fake below replaces it
++_REAL_HUB_MISSING = _core_data.hub_missing
++
++
+ @pytest.fixture(scope="session", autouse=True)
+ def _app_state_untouched():
+     """The whole suite leaves the working tree's app/state as it found it,
+@@ -161,6 +167,25 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
+     monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
+ 
+ 
++@pytest.fixture(autouse=True)
++def _hub_present_for_the_fakes(monkeypatch):
++    """The suite fakes the hub's data layer (vintages, truth, locations)
++    and the runs themselves, so the console's one test of the clone's
++    presence (app.core.data.hub_missing, which refuses a run and words the
++    Data and Forecast tabs) answers "present" too; the missing folder the
++    suite points FLUBNF_HUB at would otherwise refuse every faked run.
++    Opt in to the real test with the `hub_check_real` fixture."""
++    from app.core import data as core_data
++    monkeypatch.setattr(core_data, "hub_missing", lambda data=True: "")
++
++
++@pytest.fixture
++def hub_check_real(monkeypatch):
++    """The real test of the clone's presence (see the autouse fixture)."""
++    from app.core import data as core_data
++    monkeypatch.setattr(core_data, "hub_missing", _REAL_HUB_MISSING)
++
++
+ @pytest.fixture
+ def pf_engine_ready(monkeypatch):
+     """A machine with the particle-filter engine, as the console's up-front
+diff --git a/app/tests/golden/ui_routes.json b/app/tests/golden/ui_routes.json
+index a985970..0d58b24 100644
+--- a/app/tests/golden/ui_routes.json
++++ b/app/tests/golden/ui_routes.json
+@@ -101,6 +101,7 @@
+   "downloads_example": "callable _downloads_example",
+   "engine_build_view": "callable engine_build_view",
+   "engine_setup_hint": "callable _engine_setup_hint",
++  "hub_setup_hint": "callable _hub_setup_hint",
+   "harmonic_fig": "callable _harmonic_fig",
+   "inline_static": "callable inline_static",
+   "live_scores": "callable _live_scores",
+diff --git a/app/tests/test_data_view.py b/app/tests/test_data_view.py
+index e43d741..0dff810 100644
+--- a/app/tests/test_data_view.py
++++ b/app/tests/test_data_view.py
+@@ -47,6 +47,9 @@ def archive(tmp_path, monkeypatch):
+         ("2098-01-03", "US", "US", 1600),
+     ])
+     monkeypatch.setattr(data_mod, "ARCHIVE", tmp_path)
++    # the archive's clone is there (the page says so when it is not)
++    monkeypatch.setattr(data_mod, "HUB", tmp_path)
++    (tmp_path / "auxiliary-data").mkdir(exist_ok=True)
+     ui_shared._invalidate_scans()
+     yield tmp_path
+     ui_shared._invalidate_scans()      # answers for this root must not outlive it
+diff --git a/app/tests/test_hub_setup.py b/app/tests/test_hub_setup.py
+new file mode 100644
+index 0000000..c03c149
+--- /dev/null
++++ b/app/tests/test_hub_setup.py
+@@ -0,0 +1,229 @@
++"""A missing hub clone, the Setup card and the component versions (bug
++hunt 2026-10-25, G17).
++
++  * No hub folder: Data and Forecast say so and name the setup step that
++    fetches it; a run is refused before it starts; the Data tab's check
++    reads "missing", not "offline" with a Python error.
++  * The Setup card's action lines start with the most basic piece (the
++    FluSight data and BioNetGen, through setup.sh), the engine's parts
++    are one component in the badge, the rows and the versions, and the
++    bngsim pin note stays off beside "not installed".
++  * A cold launch paints "checking…" until the version probe lands; the
++    badge then names what is missing.
++  * Perl shows its version, on Home and on Methods.
++  * The hub badge keeps what Update data or a check just established.
++"""
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import flubnf.settings as fs                          # noqa: E402
++from app.core import data as data_mod                 # noqa: E402
++from app.ui import server as srv                      # noqa: E402
++from app.ui import state as ui_state                  # noqa: E402
++from app.ui import templating                         # noqa: E402
++from app.ui import versions as V                      # noqa: E402
++from app.ui.routes import data as D                   # noqa: E402
++from app.ui.routes import home as H                   # noqa: E402
++
++client = TestClient(srv.app)
++ENGINE = "Particle-filter engine"
++
++
++@pytest.fixture()
++def nohub(tmp_path, monkeypatch, hub_check_real):
++    """A hub path that does not exist, as FLUBNF_HUB can name (the real
++    test of its presence, which the suite otherwise fakes)."""
++    gone = tmp_path / "nohub"
++    monkeypatch.setattr(data_mod, "HUB", gone)
++    monkeypatch.setattr(D, "_last_check", ("", None))
++    monkeypatch.setattr(templating, "_platform", lambda: "linux")
++    for k in ("flash", "flash_kind", "flash_detail", "running"):
++        ui_state._status[k] = None
++    return gone
++
++
++# ------------------------------------------- WI-08 and DA-06: no hub folder
++
++def test_the_hubs_absence_is_one_tested_state(nohub):
++    assert data_mod.hub_missing() == f"there is no hub folder at {nohub}"
++    nohub.mkdir()
++    assert data_mod.hub_missing(data=False) == ""
++    assert data_mod.hub_missing() == (
++        f"the hub folder {nohub} holds no data directories (a sparse "
++        "checkout without them)")
++    (nohub / "auxiliary-data").mkdir()
++    assert data_mod.hub_missing() == ""
++
++
++def test_data_says_the_clone_is_missing_and_what_fetches_it(nohub):
++    html = client.get("/data").text
++    line = html.split('id="hub-missing"', 1)[1].split("</div>", 1)[0]
++    assert f"No FluSight data: there is no hub folder at {nohub}. To fetch " \
++        "it, run <code>./setup.sh</code> and relaunch the console." in line
++    assert "Update data downloads it" not in html
++    pill = html.split('id="hub-pill"', 1)[1].split("</span></span>", 1)[0]
++    assert 'data-state="error"' in pill and pill.endswith(
++        '<span class="uk-badge-t">missing')
++    # the check says the same, as words, not a Python error
++    r = client.post("/freshness", headers={"Accept": "application/json"})
++    assert r.json()["pill"] == "bad" and r.json()["words"] == "missing"
++    assert r.json()["detail"] == f"no hub clone: there is no hub folder at {nohub}"
++    assert "Errno" not in r.text and "PosixPath" not in r.text
++    # Update data cannot clone one: refused with the step that does
++    r = client.post("/data/pull", headers={"Accept": "application/json"})
++    assert r.json()["ok"] is False
++    assert r.json()["message"] == (
++        f"Could not update the hub clone: there is no hub folder at {nohub}. "
++        "To fetch it, run ./setup.sh and relaunch the console.")
++
++
++def test_forecast_says_the_clone_is_missing_and_refuses_a_run(nohub):
++    html = client.get("/forecast").text
++    alert = html.split('id="fc-hub-missing"', 1)[1].split("</div>", 1)[0]
++    assert f"No FluSight data: there is no hub folder at {nohub}. To fetch " \
++        "it, run <code>./setup.sh</code> and relaunch the console." in alert
++    r = client.post("/run", data={"forecast_date": "2026-04-25",
++                                  "locations": ["Arizona"],
++                                  "engine": "analogue"},
++                    follow_redirects=False)
++    assert r.status_code == 303
++    assert ui_state._status.get("flash") == \
++        f"Not run: no FluSight data (there is no hub folder at {nohub})."
++    assert ui_state._status.get("flash_detail") == \
++        "To fetch it, run ./setup.sh and relaunch the console."
++    assert not ui_state._status.get("running")
++
++
++# --------------------------------------------- HM-08 and HM-11: the Setup card
++
++def _home(missing, versions, engine_known=False, platform="linux"):
++    with pytest.MonkeyPatch.context() as mp:
++        mp.setattr(fs, "check", lambda verbose=True: missing)
++        mp.setattr(H, "_engine_known", lambda: engine_known)
++        mp.setattr(templating, "_platform", lambda: platform)
++        for k, v in versions.items():
++            mp.setitem(V.VERSIONS, k, v)
++        return client.get("/").text
++
++
++INSTALLED = {"pybnf": "1.0", "bngsim": "0.15.1", "bionetgen": "2.9",
++             "perl": "5.38", "fastapi": "0.1", "plotly": "7.0"}
++HUB_GONE = ("FLUBNF_HUB", "/x/auxiliary-data",
++            "FluSight hub clone (truth vintages, locations)")
++BNG_GONE = ("FLUBNF_BNG", "/x/BNG2.pl", "BioNetGen BNG2.pl (network generation)")
++ENGINE_GONE = [("FLUBNF_PY_ENGINE", "/v/bin/python",
++                "engine venv python (pybnf + bngsim)"),
++               ("FLUBNF_PYBNF", "/p/pybnf/pf.py", "PyBNF fork with fit_type=pf")]
++
++
++def test_a_missing_hub_gets_its_action_line_first():
++    html = _home([HUB_GONE], INSTALLED)
++    fix = html.split('id="hm-fix-data"', 1)[1].split("</div>", 1)[0]
++    assert "To add the FluSight data, run <code>./setup.sh</code> and " \
++        "relaunch the console." in fix
++    assert 'id="hm-fix"' not in html                # no engine line
++    # with the engine missing too, the data line comes first
++    html = _home([HUB_GONE, BNG_GONE] + ENGINE_GONE,
++                 dict(INSTALLED, pybnf="not installed", bngsim="not installed",
++                      bionetgen="not installed"))
++    assert "To add the FluSight data and BioNetGen, run <code>./setup.sh" in html
++    assert html.index('id="hm-fix-data"') < html.index('id="hm-fix"')
++    # Windows names its own setup
++    html = _home([HUB_GONE], INSTALLED, platform="win32")
++    assert "run <code>setup.ps1</code> and open FluBNF.bat again" in html
++
++
++def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
++    html = _home(ENGINE_GONE,
++                 dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
++    assert ">1 not installed<" in html
++    assert html.split('id="tip-hm-missing"', 1)[1].split(">", 1)[1] \
++        .split("</span>", 1)[0].strip() == ENGINE
++    rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
++    assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
++    assert "fit_type=pf" not in rows and "venv" not in rows
++    assert "(FLUBNF_PY_ENGINE) and <span class=\"hm-mono\">/p/pybnf/pf.py" in rows
++    assert 'id="hm-v-engine"' in html and 'id="hm-v-pybnf"' not in html
++    assert "<dt>PyBNF</dt>" not in html and "<dt>bngsim</dt>" not in html
++    assert H._setup_gaps(ENGINE_GONE, {"pybnf": "not installed",
++                                       "bngsim": "not installed"}) == [ENGINE]
++    # installed: PyBNF and bngsim read their versions, as before
++    html = _home([], INSTALLED)
++    assert 'id="hm-v-pybnf"' in html and 'id="home-pin"' in html
++    assert 'id="hm-v-engine"' not in html
++
++
++def test_the_bngsim_pin_note_stays_off_beside_not_installed():
++    html = _home([], dict(INSTALLED, bngsim="not installed"))
++    assert 'id="tip-home-pin"' not in html
++
++
++# ------------------------------------------ HM-13: a cold launch's badge
++
++def test_a_cold_launch_says_checking_until_the_probe_lands():
++    html = _home([], dict(INSTALLED, pybnf=V.VERSION_PENDING,
++                          bngsim=V.VERSION_PENDING))
++    assert 'id="hm-checking"' in html and ">checking…<" in html
++    assert 'id="hm-installed"' not in html and 'id="hm-missing"' not in html
++    assert 'id="hm-setup-state"' in html
++    # the recount waits for every value and draws the badge with its "?"
++    script = html.split("function recount()", 1)[1].split("</script>", 1)[0]
++    assert "indexOf('resolving') >= 0) return" in script
++    assert "FluBNFUI.tip('hm-missing', word, names.join(', '))" in script
++    assert "FluBNFUI.badge('ok', 'All components installed')" in script
++
++
++# ----------------------------------------- HM-14 and ME-19: Perl's version
++
++def test_perl_shows_its_version_not_its_path(monkeypatch):
++    import subprocess
++
++    class R:
++        returncode, stdout = 0, "v5.38.2\n"
++    monkeypatch.setattr(fs, "resolve_perl", lambda: "/usr/bin/perl")
++    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
++    assert V._component_versions()["perl"] == "5.38.2"
++    with pytest.MonkeyPatch.context() as mp:
++        mp.setitem(V.VERSIONS, "perl", "5.38.2")
++        home = client.get("/").text
++        methods = client.get("/methods").text
++    assert '<span data-vkey="perl">5.38.2</span>' in home
++    assert '<span data-vkey="perl">5.38.2</span>' in methods
++    assert "/usr/bin/perl" not in home and "/usr/bin/perl" not in methods
++
++
++# ------------------------------------- DA-22: the badge after Update data
++
++def test_the_hub_badge_keeps_what_update_data_established(monkeypatch, tmp_path,
++                                                            hub_check_real):
++    hub = tmp_path / "hub"
++    (hub / "auxiliary-data").mkdir(parents=True)
++    monkeypatch.setattr(data_mod, "HUB", hub)
++    monkeypatch.setattr(D, "_last_check", ("", None))
++    monkeypatch.setattr(data_mod, "pull_hub", lambda: (True, "Already up to date."))
++    monkeypatch.setattr(data_mod, "newest_week", lambda: "2026-10-17")
++    monkeypatch.setattr(D, "_live_values", lambda: None)
++    before = client.get("/data").text
++    assert '<span class="uk-badge-t">not checked' in before
++    r = client.post("/data/pull", headers={"Accept": "application/json"})
++    assert r.json()["ok"] is True
++    after = client.get("/data").text
++    pill = after.split('id="hub-pill"', 1)[1].split("</span></span>", 1)[0]
++    assert 'data-state="ok"' in pill and pill.endswith(
++        '<span class="uk-badge-t">up to date')
++    assert "up to date with origin" in after
++    # a check's own verdict stays the same way; another clone's does not
++    monkeypatch.setattr(data_mod, "check_freshness",
++                        lambda fetch=True: data_mod.Freshness(
++                            None, None, 3, False,
++                            "3 commit(s) behind origin, no new vintage yet"))
++    client.post("/freshness", headers={"Accept": "application/json"})
++    assert "3 commits behind" in client.get("/data").text
++    monkeypatch.setattr(data_mod, "HUB", tmp_path / "other")
++    (tmp_path / "other" / "auxiliary-data").mkdir(parents=True)
++    assert '<span class="uk-badge-t">not checked' in client.get("/data").text
+diff --git a/app/tests/test_setup_badge.py b/app/tests/test_setup_badge.py
+index a1dc591..e439c61 100644
+--- a/app/tests/test_setup_badge.py
++++ b/app/tests/test_setup_badge.py
+@@ -22,7 +22,9 @@ def test_setup_gaps_union_each_component_once():
+     vers = {"pybnf": "not installed", "bngsim": "0.15.1",
+             "bionetgen": "not installed", "perl": "not installed",
+             "fastapi": "0.1", "plotly": "resolving…"}
+-    assert H._setup_gaps(missing, vers) == ["BioNetGen", "Perl", "PyBNF"]
++    # the engine's parts count as one component (HM-11)
++    assert H._setup_gaps(missing, vers) == ["BioNetGen", "Perl",
++                                            "Particle-filter engine"]
+     # a known engine build names PyBNF by its build, not its probe
+     assert H._setup_gaps(missing, vers, engine_known=True) == ["BioNetGen", "Perl"]
+     assert H._setup_gaps([], {"bngsim": "0.15.1"}) == []
+diff --git a/app/ui/routes/data.py b/app/ui/routes/data.py
+index 7a084e9..3729b5d 100644
+--- a/app/ui/routes/data.py
++++ b/app/ui/routes/data.py
+@@ -63,11 +63,28 @@ def _newest_report():
+     return reported.check(rule or reported.MS.TRAILING_ZERO)
+ 
+ 
++#: the last check's (or pull's) verdict on the hub clone, so the page after
++#: a reload shows what was just established instead of "not checked";
++#: kept with the clone it judged (the folder can be pointed elsewhere)
++_last_check: tuple = ("", None)
++
++
++def _remember_check(f) -> None:
++    global _last_check
++    _last_check = (str(state.data_mod.HUB), f)
++
++
++def _remembered_check():
++    hub, f = _last_check
++    return f if hub == str(state.data_mod.HUB) else None
++
++
+ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+     """Data page context: the latest vintage's freshness panel and the
+     vintage browser's selection. Read-only; bad selections fall back to the
+     defaults with a note, never an error page."""
+     import re as _re
++    freshness = freshness or _remembered_check()
+     vs = state.data_mod.vintages()
+     # the weeks served from the shipped snapshots (data/vintages/), not the
+     # hub archive: the page marks them so a reader can tell the two apart
+@@ -96,6 +113,9 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+         ctx["live_week"] = None
+     ctx["live_age"] = _data_age(ctx["live_week"])
+     ctx["hub_behind"] = _clone_behind(freshness)
++    # no clone at all: the card says so and what fetches it (nothing on
++    # this page can; Update data pulls an existing clone)
++    ctx["hub_missing"] = state.data_mod.hub_missing()
+     # the newest week's reporting, from the file a real-time run reads
+     ctx["newest_report"] = _newest_report()
+     # the hub models runs are compared against (an older sparse clone may
+@@ -319,6 +339,13 @@ def _pull() -> tuple:
+                    "again once fitting starts or the run finishes.")
+             _flash(msg, "warn", detail=why)
+             return False, f"{msg} {why}"
++    # no folder to pull: the setup step fetches a clone
++    why = state.data_mod.hub_missing(data=False)
++    if why:
++        from app.ui.templating import hub_setup_text
++        msg = f"Could not update the hub clone: {why}."
++        _flash(msg, "error", detail=f"To fetch it, {hub_setup_text()}.")
++        return False, f"{msg} To fetch it, {hub_setup_text()}."
+     try:
+         before = state.data_mod.newest_week()
+     except Exception:
+@@ -337,6 +364,11 @@ def _pull() -> tuple:
+         after = state.data_mod.newest_week()
+     except Exception:
+         after = None
++    # the pull just matched origin: the reloaded page's clone badge says so
++    vs = state.data_mod.vintages()
++    _remember_check(state.data_mod.Freshness(
++        vs[-1] if vs else None, None, 0, True, "up to date with origin",
++        after))
+     if after and after != before:
+         # new data: the Forecast tab's date follows it (a stale remembered
+         # date would otherwise hold the form on last week)
+@@ -376,6 +408,7 @@ def data_pull(request: Request):
+ @router.post("/freshness", response_class=HTMLResponse)
+ def freshness(request: Request):
+     f = state.data_mod.check_freshness()
++    _remember_check(f)
+     if _wants_json(request):
+         cls, words = f.pill()
+         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index cec9901..a20d862 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -206,6 +206,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+         "newest_report": newest_report, "anchor_week": _anchor or "",
+         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
+         "live_only": live_only, "live_running": running,
++        # no hub clone: every run reads its data, so the page says so
++        "hub_missing": state.data_mod.hub_missing(),
+         "default_date": _default_forecast_date(),
+         "locations_error": locations_error, "form": form,
+         # the particle-filter engine's state: without it the run refuses
+@@ -1182,6 +1184,14 @@ def run_models(request: Request,
+                f"{pipeline._pf_engine_missing(pf_state)}."
+                + (" Choose Groundhog only." if members != 3 else ""), "warn")
+         return _back(request, "/forecast")
++    # every run reads the hub's data (the locations table, the truth):
++    # refused here, where a missing clone used to end the run with a raw
++    # file error
++    why = state.data_mod.hub_missing()
++    if why:
++        _flash(f"Not run: no FluSight data ({why}).", "warn",
++               detail=f"To fetch it, {templating.hub_setup_text()}.")
++        return _back(request, "/forecast")
+     if _d is None:
+         # a blank or typed non-date (the model page's text field) is said
+         # as such, never "no data for <text> yet"
+diff --git a/app/ui/routes/home.py b/app/ui/routes/home.py
+index de6f5e1..febbff1 100644
+--- a/app/ui/routes/home.py
++++ b/app/ui/routes/home.py
+@@ -18,7 +18,7 @@ from app.core import horizons as _hzmod
+ from app.core import ttlcache
+ from app.ui import shared, state
+ from app.ui.templating import templates
+-from app.ui.versions import VERSIONS
++from app.ui.versions import VERSION_PENDING, VERSIONS
+ 
+ router = APIRouter()
+ 
+@@ -313,13 +313,52 @@ def _has_report(rid: str | None) -> bool:
+ 
+ 
+ #: the Setup card's component names, by flubnf.settings.check() key and by
+-#: version key (the two name one component once, never twice)
+-_CHECK_NAMES = {"FLUBNF_HUB": "FluSight hub", "FLUBNF_BNG": "BioNetGen",
+-                "perl": "Perl", "FLUBNF_PY_ENGINE": "Engine venv",
+-                "FLUBNF_PYBNF": "PyBNF"}
+-_VERSION_NAMES = (("pybnf", "PyBNF"), ("bngsim", "bngsim"),
++#: version key (the two name one component once, never twice). The engine
++#: is one component however many parts the check and the probe see
++#: (its venv, the PyBNF fork, bngsim): one install step, counted once
++ENGINE_NAME = "Particle-filter engine"
++_CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
++                "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
++                "FLUBNF_PYBNF": ENGINE_NAME}
++_VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
+                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
+                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
++#: what each missing component is, in plain words (the check's own phrase
++#: names its parts; the path looked at follows in the row's "?")
++_ROW_WORDS = {
++    "FLUBNF_HUB": "The FluSight hub's data: truth vintages and the "
++                  "locations table",
++    "FLUBNF_BNG": "BioNetGen's BNG2.pl, which builds each cell's reaction "
++                  "network",
++    "perl": "Perl, which runs BNG2.pl",
++    "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
++                        "bngsim",
++    "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
++}
++
++
++def _setup_rows(missing: list) -> list:
++    """The Setup card's rows for what check() reports missing, one per
++    component: [{"name", "words", "paths": [(path, variable)]}]; the
++    engine's parts fold into one row, each path kept. `words` is the
++    component in plain words, then the check's own detail when it has one
++    (a clone present but sparse, a checkout without pf.py)."""
++    rows = []
++    for var, path, why in missing or []:
++        name = _CHECK_NAMES.get(var, var)
++        _head, _sep, rest = why.partition(": ")
++        words = _ROW_WORDS.get(var, _head)
++        if rest:
++            words += f": {rest}"
++        for r in rows:
++            if r["name"] == name:
++                r["paths"].append((path, var))
++                r["words"] += f". {words}"
++                break
++        else:
++            rows.append({"name": name, "words": words,
++                         "paths": [(path, var)]})
++    return rows
+ 
+ 
+ def _setup_gaps(missing: list, versions: dict,
+@@ -380,9 +419,14 @@ def home(request: Request):
+         "outlook_pending": pending,
+         "outlook_report": bool(ob["outlook_date"]) and _has_report(rid),
+         "versions": VERSIONS, "diagram": _diagram_data(res),
+-        "missing": missing,
++        "missing": missing, "setup_rows": _setup_rows(missing),
+         "setup_gaps": _setup_gaps(missing, VERSIONS, _engine_known()),
+-        "setup_checked": _setup_gaps(missing, {})})
++        "setup_checked": _setup_gaps(missing, {}),
++        # the badge waits while any version is still resolving (a cold
++        # launch): the page recounts when the probe lands
++        "setup_pending": any(v == VERSION_PENDING
++                             for v in VERSIONS.values()),
++        "engine_name": ENGINE_NAME})
+ 
+ 
+ def _engine_known() -> bool:
+diff --git a/app/ui/templates/data.html b/app/ui/templates/data.html
+index 1e70295..b08d1f0 100644
+--- a/app/ui/templates/data.html
++++ b/app/ui/templates/data.html
+@@ -13,7 +13,11 @@
+   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
+   {{ tips.heading("FluSight hub", "hub") }}
+   {% set data_through = "Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values." %}
+-  {% if not live_week and not n_vintages %}
++  {# no clone: nothing on this page fetches one (Update data pulls an
++     existing clone), so the line names the setup step that does #}
++  {% if hub_missing %}
++  {{ tips.alert("warn", "No FluSight data: " ~ hub_missing ~ ". To fetch it, " ~ hub_setup_hint() ~ ".", id="hub-missing", live="") }}
++  {% elif not live_week and not n_vintages %}
+   {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it. {{ data_through }}{% endcall %}
+   {% endif %}
+   {% call tips.stats("dt-hubstats", label="FluSight hub") %}
+@@ -32,11 +36,12 @@
+    {% endif %}
+    {# the clone against origin: a badge for the state, the check's own
+       words in the "?" beside it (the script below fills both) #}
+-   {% set pc, pw = freshness.pill() if freshness else ("", "not checked") %}
++   {% set pc, pw = freshness.pill() if freshness else (("bad", "missing") if hub_missing else ("", "not checked")) %}
+    {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
++   {% set hub_detail = freshness.detail if freshness else hub_missing %}
+    {# the badge and its "?" held together (uk-badge-pair), so a wrapping
+       line never splits them; #hub-detail stays the span the script shows #}
+-   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span></span>{% endset %}
++   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not hub_detail %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", hub_detail) }}</span></span>{% endset %}
+    {{ tips.stat("Hub clone", clone, id="hub-clone") }}
+    {# the hub's baseline and official ensemble, which runs are scored
+       against (an older sparse clone may lack them; Update data adds
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index bc622be..e452ec8 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -77,6 +77,9 @@
+       when no week is on or before the day. A dataset page passes only
+       anchor_note ("Anchor week: <w>." or the no-week sentence). The line
+       hides when it has nothing to say (a typed Saturday, archived). #}
++   {% if hub_missing is defined and hub_missing and not dataset %}
++   {{ tips.alert("warn", "No FluSight data: " ~ hub_missing ~ ". To fetch it, " ~ hub_setup_hint() ~ ".", id="fc-hub-missing", live="") }}
++   {% endif %}
+    {% set an = anchor_note or "" %}
+    {% set aw = anchor_week if anchor_week is defined and anchor_week else (an[13:] | trim(".") if an.startswith("Anchor week: ") else "") %}
+    {% set kv_off = aw and aw == (form.forecast_date or default_date) %}
+diff --git a/app/ui/templates/home.html b/app/ui/templates/home.html
+index c2d44ef..416c2d8 100644
+--- a/app/ui/templates/home.html
++++ b/app/ui/templates/home.html
+@@ -347,29 +347,43 @@
+     says "All components installed" beside a "not installed" value; the
+     script below recounts when a resolving version lands #}
+  {% set gaps = setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list) %}
+- {% if gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
++ {# a cold launch paints "checking…" until the version probe lands (the
++    script below then counts); a badge from values still resolving said
++    "All components installed" beside "resolving…" #}
++ {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
++ {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
+  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
+- {{ tips.heading("Setup", "hm-setup", after=setup_state) }}
++ {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
++ {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
+  {% if missing %}
+-  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
+-     filename. The one line to act on, for what is missing: the engine
+-     install when the engine itself is, the run preflight's Perl message
+-     when Perl is (a first Windows open can install Perl the console's PATH
+-     does not see yet); what is missing follows #}
++  {# platform-aware (templating.py _hub_setup_hint, _engine_setup_hint):
++     never a macOS-only filename. The lines to act on, the most basic
++     piece first: the setup step that fetches the FluSight data and
++     BioNetGen, the engine install when the engine itself is missing, the
++     run preflight's Perl message when Perl is (a first Windows open can
++     install Perl the console's PATH does not see yet); what is missing
++     follows #}
+   {% set missing_names = missing | map(attribute="0") | list %}
++  {% set need_hub = "FLUBNF_HUB" in missing_names %}
++  {% set need_bng = "FLUBNF_BNG" in missing_names %}
++  {% if need_hub or need_bng %}
++  {% set fix %}To add {{ "the FluSight data and BioNetGen" if need_hub and need_bng else ("the FluSight data" if need_hub else "BioNetGen") }}, {{ hub_setup_hint() }}.{% endset %}
++  {{ tips.alert("warn", fix, id="hm-fix-data", live="") }}
++  {% endif %}
+   {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names %}
+   {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
+   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
+   {% elif "perl" in missing_names %}
+   {{ tips.alert("warn", perl_missing_hint(), id="hm-fix", live="") }}
+   {% endif %}
+-  {# each missing component by name; the rest of its description and the
++  {# each missing component by name, in plain words (routes/home.py
++     _setup_rows: the engine's parts are one row); what it is and the
+      path looked at are its "?" #}
+   <ul class="hm-missing" aria-label="Not installed on this machine">
+-   {% for m in missing %}{% set name, _sep, rest = m[2].partition(": ") %}
+-   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ name }}</span>
+-    {%- call tips.tip("hm-miss-" ~ loop.index, name) %}{% if rest %}{{ rest[:1] | upper }}{{ rest[1:] }}. {% endif %}Looked
+-    for at <span class="hm-mono">{{ m[1] }}</span> ({{ m[0] }}).{% endcall %}</li>
++   {% for r in setup_rows %}
++   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ r.name }}</span>
++    {%- call tips.tip("hm-miss-" ~ loop.index, r.name) %}{{ r.words }}. Looked
++    for at {% for p, var in r.paths %}{% if not loop.first %} and {% endif %}<span class="hm-mono">{{ p }}</span> ({{ var }}){% endfor %}.{% endcall %}</li>
+    {% endfor %}
+   </ul>
+  {% endif %}
+@@ -383,41 +397,56 @@
+     self-reported version until then. data-vkey spans are base.html's
+     version poll targets #}
+  {% set ebv = engine_build_view() %}
++ {# the engine absent, by the check (its files) or by the probe (both
++    parts): one value, as the badge counts it #}
++ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF"]) | list %}
+  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
++  {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
++  {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
++  {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine", state=("" if versions.pybnf == version_pending else "warn")) }}
++  {% else %}
+   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
+   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
+   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
+-  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending) %}Reproducing
++  {# the pin note only beside a known build that is not the pin #}
++  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending, "not installed") %}Reproducing
+   the sealed numbers needs bngsim {{ bngsim_pin }} (pinned by every engine installer),
+   whatever version a build reports.{% endif %}{% endset %}
+   {{ tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version", tiptext=pin_note) }}
++  {% endif %}
+   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
+   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
+   {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
+   {% endfor %}
+  {% endcall %}
+  {# a version that was still resolving at paint lands through base.html's
+-    poll: the badge recounts (the components check() reported, plus each
+-    value now reading "not installed", each once) #}
++    poll: once none is, the badge is drawn again with its "?" naming what
++    is missing (the components check() reported, plus each value now
++    reading "not installed", each once), as a fresh load draws it #}
+  <script>
+  (function () {
+    var box = document.querySelector('.hm-versions');
+    if (!box || !window.MutationObserver) return;
+    var CHECKED = {{ (setup_checked if setup_checked is defined else []) | tojson }};
+-   var NAMES = {pybnf: 'PyBNF', bngsim: 'bngsim', bionetgen: 'BioNetGen',
++   var ENGINE = {{ (engine_name if engine_name is defined else "Particle-filter engine") | tojson }};
++   var NAMES = {pybnf: ENGINE, bngsim: ENGINE, bionetgen: 'BioNetGen',
+                 perl: 'Perl', fastapi: 'FastAPI', plotly: 'Plotly'};
+    function recount() {
+      var names = CHECKED.slice();
+      var spans = box.querySelectorAll('[data-vkey]');
+      for (var i = 0; i < spans.length; i++) {
++       var t = spans[i].textContent.replace(/^\s+|\s+$/g, '');
++       if (t.indexOf('resolving') >= 0) return;
+        var n = NAMES[spans[i].getAttribute('data-vkey')];
+-       if (n && spans[i].textContent.replace(/^\s+|\s+$/g, '') === 'not installed'
+-           && names.indexOf(n) < 0) names.push(n);
++       if (n && t === 'not installed' && names.indexOf(n) < 0) names.push(n);
+      }
+-     var b = document.getElementById('hm-missing') || document.getElementById('hm-installed');
+-     if (!b || !window.FluBNFUI) return;
+-     if (names.length) FluBNFUI.setBadge(b, 'warn', names.length + ' not installed');
+-     else FluBNFUI.setBadge(b, 'ok', 'All components installed');
++     var slot = document.getElementById('hm-setup-state');
++     if (!slot || !window.FluBNFUI) return;
++     if (names.length) {
++       var word = names.length + ' not installed';
++       slot.innerHTML = '<span class="uk-badge-pair">' + FluBNFUI.badge('warn', word)
++         + FluBNFUI.tip('hm-missing', word, names.join(', ')) + '</span>';
++     } else slot.innerHTML = FluBNFUI.badge('ok', 'All components installed');
+    }
+    new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});
+  })();
+diff --git a/app/ui/templating.py b/app/ui/templating.py
+index ccdbb0b..369b62c 100644
+--- a/app/ui/templating.py
++++ b/app/ui/templating.py
+@@ -67,6 +67,29 @@ def _engine_setup_hint():
+     return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
+ 
+ 
++def _hub_setup_words() -> tuple:
++    """(script, the rest): the setup step that fetches the FluSight data
++    (and installs BioNetGen) on this machine. Windows: setup.ps1, the full
++    first-time setup; elsewhere setup.sh."""
++    if _platform() == "win32":
++        return "setup.ps1", "and open FluBNF.bat again"
++    return "./setup.sh", "and relaunch the console"
++
++
++def _hub_setup_hint():
++    """HTML clause telling this machine's user how to fetch the hub data
++    (_engine_setup_hint's twin for the FluSight clone and BioNetGen)."""
++    from markupsafe import Markup
++    script, rest = _hub_setup_words()
++    return Markup(f"run <code>{script}</code> {rest}")
++
++
++def hub_setup_text() -> str:
++    """The same clause as plain text, for a flash."""
++    script, rest = _hub_setup_words()
++    return f"run {script} {rest}"
++
++
+ def _perl_missing_hint() -> str:
+     """The run preflight's Perl message (engines/pf.perl_missing_message) for
+     this machine: Home's Setup card shows it when Perl is all that is
+@@ -87,6 +110,7 @@ def _downloads_example(name: str) -> str:
+ 
+ 
+ templates.env.globals["engine_setup_hint"] = _engine_setup_hint
++templates.env.globals["hub_setup_hint"] = _hub_setup_hint
+ templates.env.globals["perl_missing_hint"] = _perl_missing_hint
+ templates.env.globals["downloads_example"] = _downloads_example
+ 
+diff --git a/app/ui/versions.py b/app/ui/versions.py
+index a681540..5e89900 100644
+--- a/app/ui/versions.py
++++ b/app/ui/versions.py
+@@ -97,13 +97,29 @@ def _component_versions() -> dict:
+             out["bionetgen"] = "installed"
+     except Exception:
+         pass
+-    # Perl: BNG2.pl needs it (without it every location fails at preparation)
++    # Perl: BNG2.pl needs it (without it every location fails at preparation);
++    # its version, as the other rows read, not the path it was found at
++    import json
+     import shutil as _shutil
+-    out["perl"] = _shutil.which("perl") or "not installed"
++    import subprocess
++    out["perl"] = "not installed"
++    try:
++        from flubnf.settings import resolve_perl
++        perl = resolve_perl() or _shutil.which("perl")
++    except Exception:
++        perl = _shutil.which("perl")
++    if perl:
++        out["perl"] = "installed"
++        try:
++            r = subprocess.run([str(perl), "-e", "print $^V"],
++                               capture_output=True, text=True, timeout=15)
++            v = (r.stdout or "").strip().lstrip("v")
++            if r.returncode == 0 and v:
++                out["perl"] = v
++        except Exception:
++            pass
+     out["pybnf"] = out["bngsim"] = "not installed"
+     try:
+-        import json
+-        import subprocess
+         from flubnf.settings import PY_ENGINE, PYBNF
+         if Path(PY_ENGINE).exists():
+             r = subprocess.run(
