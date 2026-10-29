@@ -118,7 +118,7 @@ How:
   static files and pass here. They pin the rules: the repo's CSS tests do
   this, and the measurements above are the browser half.
 - test_ui_kit, test_console_qol and test_ui_layout pass. ruff clean.
-- The full suite is running.
+- Full suite (FLUBNF_HUB=/nonexistent): 3548 passed, 155 skipped, 0 failed.
 - Invariance: not needed (CSS and one script).
 - Windows: CSS and JS only.
 
