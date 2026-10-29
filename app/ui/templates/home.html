@@ -19,14 +19,15 @@
 <div class="card hm-outlook">
  {# the h2 names the payload and its date, like every other card; how to
     read the map is its "i" #}
- {% call tips.heading("US categorical forecast" ~ (" · " ~ outlook_date if outlook_date else ""),
+ {% set _when = ("Round " ~ outlook_ref ~ " (as of " ~ outlook_date ~ ")") if outlook_ref else outlook_date %}
+ {% call tips.heading("US categorical forecast" ~ (" · " ~ _when if _when else ""),
                       "hm-map", rich=True, tip_label="reading the map") %}
   <span class="uk-tt-line">Most likely direction of admissions next week.</span>
   <span class="uk-tt-line">Each state takes the color of its most likely
   category; the stronger the color, the more likely that category.</span>
   {% if outlook_date %}
-  <span class="uk-tt-line">Hover a state for its numbers; click one to open its
-  section of the weekly report.</span>
+  <span class="uk-tt-line">Hover a state for its numbers{% if outlook_report %}; click one to open its
+  section of the weekly report{% endif %}.</span>
   <span class="uk-tt-line">Ctrl or Cmd with the mouse wheel zooms, dragging
   pans, and a double-click resets the view.</span>
   {% endif %}
@@ -52,14 +53,33 @@
    quantiles it stored.{% endcall %}{% endif %}
   </div>
   {% endif %}
-  {# the rest of the map reads "no data" in its legend #}
+  {# the rest of the map reads "not in this run" in its legend; the
+     national forecast has no shape, so it is a fact here #}
   {% call tips.stats("uk-stats--row hm-mapstats") %}
    {{ tips.stat("Coverage", outlook_n ~ " of 52", "jurisdictions", id="hm-cover") }}
+   {% if outlook_us %}{% set us %}<span data-us-words>{{ outlook_us }}</span>{% endset %}
+   {{ tips.stat("United States", us, id="hm-us") }}{% endif %}
   {% endcall %}
+  {% if outlook_toggle and outlook_us %}
+  <script>
+  (function () {
+    // the national line follows the model toggle, as the states do
+    var W = {{ (outlook_us_by_model if outlook_us_by_model is defined else {}) | tojson }};
+    var g = document.getElementById('outlook-model'), v = document.querySelector('[data-us-words]');
+    if (!g || !v) return;
+    g.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
+      if (b && W[b.dataset.mmodel]) v.textContent = W[b.dataset.mmodel];
+    });
+  })();
+  </script>
+  {% endif %}
   {% if outlook_report %}<a class="btn quiet hm-report" href="/output/report">Weekly report</a>{% endif %}
  </div>
  {% endif %}
  <div class="hm-stage">
+  {# with clickable states, a way past their tab stops (shown on focus) #}
+  {% if outlook_report and outlook_n %}<a class="skip" href="#hm-map-end">Skip the map</a>{% endif %}
   {{ map_svg | safe }}
   {% if outlook_pending %}
   {# cold first paint: the silhouette under a preparing card #}
@@ -77,6 +97,7 @@
   </div></div>
   {% endif %}
  </div>
+ {% if outlook_report and outlook_n %}<span id="hm-map-end" tabindex="-1"></span>{% endif %}
  {% if outlook_pending %}
  {# poll /api/outlook-ready and reload ONCE (lands on the ready branch).
     600 ms, then 2.5 s forever: the endpoint answering again is the
