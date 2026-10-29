@@ -1,0 +1,212 @@
+diff --git a/app/tests/test_phone_menus_rows.py b/app/tests/test_phone_menus_rows.py
+new file mode 100644
+index 0000000..be87179
+--- /dev/null
++++ b/app/tests/test_phone_menus_rows.py
+@@ -0,0 +1,75 @@
++"""Phone width and large text: Storage's rows, the run ledger's filter, the
++Sandbox's menus and runs table, the Display menu and the research run's
++particles field keep their words readable and inside the screen (checked in
++Chromium at 390 and 768 px, text 100, 130 and 160%; these pin the rules)."""
++import re
++from pathlib import Path
++
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++def _css(name):
++    return (STATIC / name).read_text(encoding="utf-8")
++
++
++def _flat(css):
++    return re.sub(r"\s+", " ", css)
++
++
++def _media(css, query):
++    """The body of the first @media block with this query."""
++    i = css.index(query)
++    body, depth = "", 0
++    for ch in css[css.index("{", i):]:
++        depth += ch == "{"
++        depth -= ch == "}"
++        body += ch
++        if depth == 0:
++            return body
++    raise AssertionError(query)
++
++
++def test_a_storage_row_stacks_its_size_and_action_under_the_title_on_a_phone():
++    # three columns left the title 0 px at 160% and pushed Delete off screen
++    phone = _flat(_media(_css("tabs/storage.css"), "@media (max-width:40rem)"))
++    assert ('.st-row{grid-template-columns:minmax(0,1fr) auto; '
++            'grid-template-areas:"title title" "meta meta" "size act"}') in phone
++
++
++def test_a_segmented_switch_wraps_rather_than_squeezing_its_words():
++    # the ledger's six filters drew over each other at 130 and 160%
++    kit = _flat(_css("ui-kit.css"))
++    assert ".uk-seg{flex-wrap:wrap}" in kit
++    assert (".uk-seg > *{flex:1 1 auto;margin-left:-1px; "
++            "box-shadow:0 -1px 0 var(--field-line)}") in kit
++
++
++def test_the_sandbox_menus_open_inside_the_screen():
++    # anchored right:0 to a button that sits at the left on a phone, they
++    # hung off the left edge
++    phone = _flat(_media(_css("tabs/sandbox.css"), "@media (max-width:640px)"))
++    assert ".sbhead-menus > details.sbmanage{position:static}" in phone
++    assert ".sbhead-menus .sbmenu{left:0;right:auto}" in phone
++    # wider windows at large text: moved back inside when opened
++    js = _css("sandbox.js")
++    assert "d.addEventListener('toggle'" in js
++    assert "if (left < 8) m.style.right = (left - 8) + 'px';" in js
++
++
++def test_the_sandbox_runs_table_shows_it_scrolls_sideways_on_a_phone():
++    # its last columns were cut mid-number with no cue
++    phone = _flat(_media(_css("nau.css"), "@media(max-width:640px){\n  .eqpanel"))
++    assert ".figscroll,.sbscroll{background:" in phone
++
++
++def test_the_display_menu_fits_its_readout_and_theme_names_at_large_text():
++    nau = _flat(_css("nau.css"))
++    assert ".fontsize input[type=range]{flex:1 1 auto;min-width:3rem;" in nau
++    assert ".dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5em,1fr));" in nau
++
++
++def test_the_research_runs_particles_keep_their_number_visible():
++    # the live count beside the field squeezed it to "1000C"
++    css = _flat(_css("tabs/models.css"))
++    assert ".md-research .uk-affix{flex-wrap:wrap}" in css
++    assert ".md-research .uk-affix > input{flex-basis:9ch;min-width:9ch}" in css
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index a812725..bf9a1ba 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -494,7 +494,7 @@ header.nav details.display[open] > summary{
+ /* text size: small A, the slider, large A, the readout; Reset at the right
+    of the heading */
+ .fontsize{display:flex;align-items:center;gap:.55rem}
+-.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
++.fontsize input[type=range]{flex:1 1 auto;min-width:3rem;width:auto;
+   height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
+   accent-color:var(--accent-ink);cursor:pointer}
+ .fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
+@@ -523,7 +523,8 @@ button.dm-reset[disabled]{opacity:.45}
+ .dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
+   font-size:var(--fs-micro);font-weight:650}
+ .dm-grid + .dm-grp{margin-top:.7rem}
+-.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
++.dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5em,1fr));
++  gap:.45rem}
+ label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
+   position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
+   padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
+@@ -1273,7 +1274,7 @@ tr[aria-current="true"] td{font-weight:600}
+   /* a figure that scrolls says so: a soft shadow at the edge with more
+      drawing past it (the classic local/scroll background pair, so it
+      follows the scroll with no script) */
+-  .figscroll{background:
++  .figscroll,.sbscroll{background:
+     linear-gradient(to right,var(--card) 40%,transparent) left/1.5rem 100% no-repeat local,
+     linear-gradient(to left,var(--card) 40%,transparent) right/1.5rem 100% no-repeat local,
+     radial-gradient(farthest-side at 0 50%,color-mix(in srgb,var(--ink) 40%,transparent),transparent) left/1rem 100% no-repeat scroll,
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index 648cc54..ede6ac8 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -249,6 +249,19 @@
+     document.addEventListener('click', function (e) {
+       menus.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
+     });
++    // a menu hangs from its button's right edge; in a narrow window at a
++    // large text size that reaches past the screen's left, so it is moved
++    // back inside (a phone's menus open from the left: sandbox.css)
++    menus.forEach(function (d) {
++      d.addEventListener('toggle', function () {
++        var m = d.querySelector('.sbmenu');
++        if (!m) return;
++        m.style.right = '';
++        if (!d.open) return;
++        var left = m.getBoundingClientRect().left;
++        if (left < 8) m.style.right = (left - 8) + 'px';
++      });
++    });
+   }
+ 
+   function setup() {
+diff --git a/app/ui/static/tabs/models.css b/app/ui/static/tabs/models.css
+index 8fee49c..4d160e7 100644
+--- a/app/ui/static/tabs/models.css
++++ b/app/ui/static/tabs/models.css
+@@ -125,5 +125,7 @@ code.md-code{padding:0;background:transparent;color:inherit;
+   grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr));
+   gap:0 var(--gap)}
+ .md-field{min-width:0}
++.md-research .uk-affix{flex-wrap:wrap}
++.md-research .uk-affix > input{flex-basis:9ch;min-width:9ch}
+ .md-quick .uk-alert,.md-research .uk-alert{margin:.2rem 0 .5rem}
+ .md-runfacts{margin:.1rem 0 .5rem}
+diff --git a/app/ui/static/tabs/sandbox.css b/app/ui/static/tabs/sandbox.css
+index af5d987..d5f63ed 100644
+--- a/app/ui/static/tabs/sandbox.css
++++ b/app/ui/static/tabs/sandbox.css
+@@ -200,7 +200,11 @@ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
+    sideways rather than wrap ---- */
+ @media (max-width:640px){
+   .sbhead{flex-direction:column;align-items:stretch;gap:.35rem}
+-  .sbhead-menus{flex-wrap:wrap;margin:0 0 .5rem}
++  .sbhead-menus{position:relative;flex-wrap:wrap;margin:0 0 .5rem}
++  /* the menus now sit at the left: each opens from the row's left edge,
++     inside the screen (right:0 hung it off the left) */
++  .sbhead-menus > details.sbmanage{position:static}
++  .sbhead-menus .sbmenu{left:0;right:auto}
+   .sb-title > h1{overflow-wrap:anywhere}
+   .sbtabs{flex-wrap:wrap;border-bottom:0}
+   .sbtablist{flex:1 1 100%;overflow-x:auto;border-bottom:1px solid var(--line)}
+diff --git a/app/ui/static/tabs/storage.css b/app/ui/static/tabs/storage.css
+index 6cb7c0f..8588987 100644
+--- a/app/ui/static/tabs/storage.css
++++ b/app/ui/static/tabs/storage.css
+@@ -67,6 +67,14 @@
+ /* the row's action: a small button or link */
+ .st-del{min-height:24px;margin-top:0;padding:.22rem .7rem;
+   font-size:var(--fs-label);white-space:nowrap}
++/* a phone: the title and its facts take the whole row, the size and the
++   action the line under them (three columns left the title none at large
++   text) */
++@media (max-width:40rem){
++  .st-row{grid-template-columns:minmax(0,1fr) auto;
++    grid-template-areas:"title title" "meta meta" "size act"}
++  .st-size{text-align:left}
++}
+ 
+ /* ---- 5. run ledger: badges and fact chips instead of a sentence ---- */
+ /* the table scrolls sideways inside its own box when it must, never the
+diff --git a/app/ui/static/ui-kit.css b/app/ui/static/ui-kit.css
+index 761b284..5405572 100644
+--- a/app/ui/static/ui-kit.css
++++ b/app/ui/static/ui-kit.css
+@@ -377,15 +377,16 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
+   outline:var(--focus-w,2px) solid var(--gold);outline-offset:-3px}
+ .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current]{
+   background:var(--gold-bright);color:var(--on-accent)}
++/* where it wraps (a phone, large text), each row fills the width and a
++   rule parts the rows: every choice draws a line above itself (clipped on
++   the first row) and tucks its left divider under the outline at a row's
++   start. Its choices never shrink under their words */
++.uk-seg{flex-wrap:wrap}
++.uk-seg > *{flex:1 1 auto;margin-left:-1px;
++  box-shadow:0 -1px 0 var(--field-line)}
+ /* .uk-seg--quiet: a switch between pages (links), where the current one
+    reads as where you are, never as the page's primary action: a light
+    tint, the ink, and an accent bar under it */
+-/* where it wraps (a phone), each row fills the width and a rule parts the
+-   rows: every choice draws a line above itself (clipped on the first row)
+-   and tucks its left divider under the outline at a row's start */
+-.uk-seg--quiet{flex-wrap:wrap}
+-.uk-seg--quiet > *{flex:1 1 auto;margin-left:-1px;
+-  box-shadow:0 -1px 0 var(--field-line)}
+ .uk-seg--quiet > button[aria-pressed="true"],.uk-seg--quiet > [aria-current]{
+   background:color-mix(in srgb,var(--accent-ink) 12%,var(--card));
+   color:var(--ink);box-shadow:inset 0 -3px 0 var(--accent-ink),0 -1px 0 var(--field-line)}
