@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-29 (01:02 UTC): ROUND 2026-10-31 MERGED ON THE HUB.
+  cdcepi/FluSight-forecast-hub#3929 passed "Hub Submission Validation
+  (R)" (2 min 33 s; the bot: all validation checks passed for both
+  files) and was merged by Annabella-Hines on 2026-10-28 (merge commit
+  3790ae7); both files on cdcepi main are byte-identical to the checked
+  ones. The member table, once all five other members were in (report
+  only; Ely had chosen to submit without it): our typical ratio is 1.01x
+  for both models, the centre of the pack. Apart by more than 1.5x: the
+  Oracle in 6 of 48 states (NE 0.42x, KS 0.47x, VT 0.56x, ID 0.56x, SD
+  0.59x, NM 1.58x), the Groundhog in 5 of 53 (HI 2.04x, WA 1.63x, KS
+  0.62x, CA 1.52x, SD 0.66x); the other members: INFLAenza 6%, ABERT
+  11%, epymorph 34%, Copycat 68%, FourCAT 85%. No red flag in any
+  member's file. Under the rule these 11 location-model cells would
+  have been left out had the members been in before the deadline; the
+  Oracle's low states (NE, KS, VT, ID, SD) are the small states where
+  its starting level runs low, the Model lane's open item.
 - 2026-10-28 (20:19 UTC): ROUND 2026-10-31, HUB PULL REQUEST #3929
   OPENED BY ELY (cdcepi/FluSight-forecast-hub#3929, "NAU_PyBNF forecast
   2026-10-31 (EW43)", from elyfmiller:FluBNF_submission). Head b71aadb6,
