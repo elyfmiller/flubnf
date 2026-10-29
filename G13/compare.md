@@ -1,0 +1,11 @@
+# G13: compare (B)
+A's patch applied on fc6dce9 (scratch worktree): its tests and test_ui_kit, test_console_qol, test_ui_layout pass (102).
+| Bug | A's | B's | Better, and why |
+|---|---|---|---|
+| ST-01 | the same stacking ("title title" / "meta meta" / "size act", size left-aligned), in a new 40rem block | the same rule inside storage.css's existing 40rem block | Equal (one block or two is taste). |
+| ST-02 (UI-05) | the kit's own wrap rule (rows that fill the width, a rule parting the rows, dividers tucked) moves from .uk-seg--quiet to .uk-seg; choices flex:1 1 auto | .uk-seg wraps with each choice at its word's width (flex:0 0 auto); ragged rows, doubled borders where a row starts | A, criterion 4: the kit already had the wrapped look designed for its quiet variant; A reuses it, B invents a second one. |
+| SB-01 (UI-02) | the row as the containing block, the menus from its left edge (left:0; right:auto), plus a small clamp in sandbox.js for windows of 641 to 720 px at 160%, where the How it works popover still hung off the left (measured) | the row as the containing block, the menus as wide as the row (left:0; right:0; width:auto; max-width:none); 641 to 720 px at large text not covered | A, criterion 1: it covers the narrow windows above the phone rule, which UI-02 names ("below about 700px"). B's full-row width is a wash. |
+| SB-13 | the sideways-scroll cue wide figures already wear (.figscroll's edge shadows) on .sbscroll at phone width; the run id kept whole (app.md's Sandbox answer of 2026-10-14: run ids stay as they are) | the run id wraps (overflow-wrap:anywhere), so the four columns fit at 390 and 100%; at 130 and 160% the table would still scroll with no cue | A, criteria 2 and 1: the recorded answer on run ids, the cue at every text size, the kit's idiom. |
+| UI-07 | range min 3rem; .dm-grid repeat(auto-fill, minmax(5em, 1fr)) | the same with 5.2rem | Equal (both keep four columns on the desktop popup, measured). |
+| MO-08 | .md-research .uk-affix wraps, the input flex-basis 9ch; min-width 9ch | the box carries a page class (md-count) with the same wrap, the input flex:1 0 7.5em | Equal in effect. B's keeps the kit class unstyled by a tab sheet (the sandbox.css note); A's touches no template. Either. |
+Vote: A
