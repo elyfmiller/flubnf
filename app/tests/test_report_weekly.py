@@ -131,7 +131,7 @@ def test_weekly_report_is_theme_aware(tmp_path):
     assert "addEventListener('themechange',pass)" in charted
     assert "_flubnfBaked" in charted
     from app.core.report_v2 import MEMBER_COLORS, band_literal
-    retint = charted.split("function pass()", 1)[1].split("</script>", 1)[0]
+    retint = charted.split("function pass(", 1)[1].split("</script>", 1)[0]
     for m in ("pf", "analogue"):
         assert f'MAP["{MEMBER_COLORS[m]}"]=css("--model-{m}"' in retint, m
         for lvl in ("95", "50"):

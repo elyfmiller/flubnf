@@ -1289,11 +1289,15 @@ def _season_report(season: str, archive: str):
 
 @router.get("/retro/{season}/report")
 def retro_season_report(season: str, archive: str = ""):
-    """Download the season report (_season_report)."""
+    """Download the season report (_season_report), under
+    report_season.download_name."""
+    from app.core import report_season
     p = _season_report(season, archive)
     if isinstance(p, PlainTextResponse):
         return p
-    return FileResponse(p, filename=p.name, media_type="text/html",
+    return FileResponse(p, filename=report_season.download_name(season,
+                                                                archive),
+                        media_type="text/html",
                         content_disposition_type="attachment")
 
 

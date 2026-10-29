@@ -522,7 +522,9 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
     return "".join(parts), clipped
 
 
-def _legend(colors: dict, label: str) -> str:
+def _legend(colors: dict, label: str, models=MODELS) -> str:
+    """The panels' key: each model `models` drew (a Groundhog-only run
+    lists no Oracle SIHRS), observed and last season."""
     def key(s, inner, title=""):
         t = f' title="{_html.escape(title)}"' if title else ""
         return (f'<span class="g-key" data-s="{s}" role="button" '
@@ -530,7 +532,7 @@ def _legend(colors: dict, label: str) -> str:
     sw = "".join(
         key(m, f'<i class="g-k-{m}" style="background:'
                f'{model_color(m, colors)}"></i>{_SHORT[m]}')
-        for m in reversed(MODELS))
+        for m in reversed(MODELS) if m in models)
     return (sw + key("obs", '<i class="g-k-obs"></i>observed')
             + key("last", '<i class="g-k-last"></i>last season',
                   f"{label}, same weeks"))
@@ -633,6 +635,12 @@ def reference_date(asof: str) -> str:
         return ""
 
 
+def _drawn(panels) -> tuple:
+    """The models with a fan in any of these panels, in MODELS order."""
+    return tuple(m for m in MODELS
+                 if any((p.get("models") or {}).get(m) for p in panels))
+
+
 def us_feature_html(grid: dict | None, colors: dict) -> str:
     """The national panel at a larger size, for the space under the map
     ("" when the run has no US panel)."""
@@ -641,7 +649,8 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
     if not us:
         return ""
     head = ('<div class="g-head">'
-            + _legend(colors, (grid or {}).get("last_season_label", ""))
+            + _legend(colors, (grid or {}).get("last_season_label", ""),
+                      _drawn([us]))
             + "</div>")
     return ('<aside class="rp-usfeature" id="us-feature" '
             'aria-label="United States forecast">'
@@ -663,13 +672,14 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
     times = grid.get("times") or []
     when = _md(times[-1]) if times else "the last target week"
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
+    drawn = _drawn(panels)
     out = ['<section class="card rp-grid" id="all-locations" '
            'aria-labelledby="h-grid">',
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
     for k, page in enumerate(pages, 1):
         out.append('<div class="gpage">'
                    f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
-                   f'{_legend(colors, label)}</div>'
+                   f'{_legend(colors, label, drawn)}</div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):
             key = str(p.get("key", ""))

@@ -546,8 +546,9 @@ def run_page(request: Request, run_id: str):
             # failures and step errors in full (the chips only count them)
             pf_failures = o.get("pf_failures", {}) or {}
             step_errors = {k: str(o[k]) for k in
-                           ("score_error", "archive_error",
-                            "report_inputs_error", "report_error")
+                           ("score_error", "analogue_score_error",
+                            "archive_error", "report_inputs_error",
+                            "report_error")
                            if o.get(k)}
         except Exception:
             err = ""
