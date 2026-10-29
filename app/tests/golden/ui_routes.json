@@ -101,6 +101,7 @@
   "downloads_example": "callable _downloads_example",
   "engine_build_view": "callable engine_build_view",
   "engine_setup_hint": "callable _engine_setup_hint",
+  "hub_setup_hint": "callable _hub_setup_hint",
   "harmonic_fig": "callable _harmonic_fig",
   "inline_static": "callable inline_static",
   "live_scores": "callable _live_scores",

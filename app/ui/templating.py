@@ -67,6 +67,29 @@ def _engine_setup_hint():
     return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
 
 
+def _hub_setup_words() -> tuple:
+    """(script, the rest): the setup step that fetches the FluSight data
+    (and installs BioNetGen) on this machine. Windows: setup.ps1, the full
+    first-time setup; elsewhere setup.sh."""
+    if _platform() == "win32":
+        return "setup.ps1", "and open FluBNF.bat again"
+    return "./setup.sh", "and relaunch the console"
+
+
+def _hub_setup_hint():
+    """HTML clause telling this machine's user how to fetch the hub data
+    (_engine_setup_hint's twin for the FluSight clone and BioNetGen)."""
+    from markupsafe import Markup
+    script, rest = _hub_setup_words()
+    return Markup(f"run <code>{script}</code> {rest}")
+
+
+def hub_setup_text() -> str:
+    """The same clause as plain text, for a flash."""
+    script, rest = _hub_setup_words()
+    return f"run {script} {rest}"
+
+
 def _perl_missing_hint() -> str:
     """The run preflight's Perl message (engines/pf.perl_missing_message) for
     this machine: Home's Setup card shows it when Perl is all that is
@@ -87,6 +110,7 @@ def _downloads_example(name: str) -> str:
 
 
 templates.env.globals["engine_setup_hint"] = _engine_setup_hint
+templates.env.globals["hub_setup_hint"] = _hub_setup_hint
 templates.env.globals["perl_missing_hint"] = _perl_missing_hint
 templates.env.globals["downloads_example"] = _downloads_example
 
