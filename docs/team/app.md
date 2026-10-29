@@ -382,12 +382,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     the fingerprints must match. It becomes a shipped model only through
     Ely's lanes.
   - Long runs go on the lab's 24-core Mac Studio, a different machine
-    from the lab Mac the Engine and Model lanes use. They go through one
-    shared runner: a FluBNF install on `main` in its own account works
-    one queue. Each student has a standard account of their own, submits
-    experiments from it and reads results back. Code from a fork never
-    runs on the runner. Off-site, students reach the Mac Studio through
-    remote sessions.
+    from the lab Mac the Engine and Model lanes use. All the students
+    work in one shared lab account there, which has the whole disk, and
+    reach it off-site through remote sessions. One shared runner, a
+    FluBNF install on `main`, works one queue. Each student's work sits
+    in a folder of their own, and code from a fork never runs on the
+    runner. Nothing caps the disk, so the size checks are the guard: a
+    job is refused when it would leave too little free space, and the
+    storage figures are a command with JSON output as well as a page.
   - The Oracle step is a switch on every experiment: it belongs to the
     shipped SIHRS, and other models may try it or not. It is off by
     default for any other model (App's proposal).
@@ -683,9 +685,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Open
 
-- For Ely (2026-10-29, the Mac Studio): the accounts are yours to make,
-  a standard one for each student and one for the runner. Also to
-  decide: how much disk each student may fill.
+- For Ely (2026-10-29, the student workspace): should the build change
+  the Engine lane's files (`pf.py`, `retro.py`, `sandbox.py`) directly,
+  or leave them to the Engine lane? The core of the design runs through
+  them.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
