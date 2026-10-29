@@ -1,0 +1,252 @@
+diff --git a/app/core/knobs.py b/app/core/knobs.py
+index 331cc8d..298b716 100644
+--- a/app/core/knobs.py
++++ b/app/core/knobs.py
+@@ -253,7 +253,8 @@ REGISTRY: tuple = (
+                "x' = m (x / m)^k about each horizon's median: the median is "
+                "untouched and a value ten times it becomes 10^k times it. "
+                "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
+-               "(docs/team/submission.md, 2026-10-16): k = 0.7 took pooled "
++               "(docs/team/submission.md, 2026-10-16), on the stage-rule "
++               "member at weight 0.25 (9,152 cells): k = 0.7 took pooled "
+                "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
+                "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
+                "the run records k and the unnarrowed quantiles beside the "
+@@ -1151,7 +1152,8 @@ PANEL_GROUPS = (
+     ("fit", "Oracle SIHRS: particle filter",
+      "Settings of the fit itself; a change refits every state."),
+     ("step", "Oracle SIHRS: Oracle step",
+-     "Runs after the fit on its samples; a change costs no refit."),
++     "Runs after the fit on its samples; a replay keeps its fitted weeks "
++     "when only this changes."),
+     ("groundhog", "Groundhog",
+      "The calendar analogue; instant. Its donor settings are independent "
+      "of the Oracle step's."),
+diff --git a/app/tests/test_models_tab.py b/app/tests/test_models_tab.py
+index 67094db..94cebc4 100644
+--- a/app/tests/test_models_tab.py
++++ b/app/tests/test_models_tab.py
+@@ -65,7 +65,8 @@ def test_the_record_sentences_ride_the_record_toggletip():
+     both = ot.RECORD["both"]
+     wanted = {
+         "/models": (
+-            ("relWIS vs the FluSight baseline (below 1 beats it): "
++            ("relWIS vs the FluSight baseline (below 1 beats it), under "
++             "the earlier cell rule: "
+              f"{ot.fmt(both['oracle'])} against the plain filter's "
+              f"{ot.fmt(both['filter'])} on the same "
+              f"{ot.cells(both['cells'])} cells of 2024-25 and 2025-26."),
+@@ -78,9 +79,9 @@ def test_the_record_sentences_ride_the_record_toggletip():
+              "0.653; 0.660 over the three seasons (0.670 for the pooled "
+              "form submitted 2026-10-10 and 2026-10-17)."),),
+         "/model/pf2s": (
+-            ("It scored worse on the full grid (relWIS 0.719 "
+-             "against 0.704 for the two-member blend it was "
+-             "tested in), so it is kept for research runs only."),),
++            ("It scored worse than the blend it was tested in, in the "
++             "August 2026 evaluation (relWIS 0.719 against 0.704), so it "
++             "is kept for research runs only."),),
+     }
+     for path, needles in wanted.items():
+         t = client.get(path).text
+@@ -104,7 +105,7 @@ def test_the_record_sentences_ride_the_record_toggletip():
+     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
+     assert 'id="tip-md-behind"' not in pf2s
+     rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])
+-    assert "relWIS 0.719 against 0.704 for the two-member blend" in rec
++    assert "the blend it was tested in, in the August 2026 evaluation" in rec
+ 
+ 
+ # ------------------------------------------------- equations: kit and plain
+@@ -125,7 +126,7 @@ def test_model_pages_name_each_equation_and_show_its_note():
+         assert f'<span class="uk-name">{name}</span>' in t, name
+     assert 'id="tip-dg-' not in t
+     notes = " ".join(_notes(t))
+-    assert "A week with too few donors (30 paths per stream)" in notes
++    assert "A week where neither stream has 30 donor paths" in notes
+     assert "the fixed removal rate 7/3.2" in notes
+     assert "keeping the filter's spread and adding the donors'" in notes
+     # the chips show both parameter rows; the Variables fold's source
+diff --git a/app/tests/test_oracle_card_words.py b/app/tests/test_oracle_card_words.py
+new file mode 100644
+index 0000000..677fec8
+--- /dev/null
++++ b/app/tests/test_oracle_card_words.py
+@@ -0,0 +1,71 @@
++"""The Oracle SIHRS's words on Methods and the Models tab: the submitted
++weight beside the registered one, the donor floor, the narrowing screen's
++member, what a step change costs, each record's cell rule, and the
++two-strain card."""
++import sys
++from pathlib import Path
++
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import knobs as K                       # noqa: E402
++from app.ui.routes.models import _record              # noqa: E402
++from app.ui.server import app as srv                  # noqa: E402
++
++client = TestClient(srv)
++
++
++def _flat(html):
++    return " ".join(html.split())
++
++
++def test_methods_says_the_submitted_weight_beside_the_registered_one():
++    # the hub card (1.4): one quarter on the filter's growth from the
++    # 2026-10-17 round, one half before
++    t = _flat(client.get("/methods").text)
++    what = t.split('id="mt-oracle-what"', 1)[1].split("</details>", 1)[0]
++    assert ("Half and half is the registered weight, the one this card and "
++            "the record use. From the 2026-10-17 round the submitted "
++            "forecasts give the filter's growth one quarter of the weight"
++            ) in what
++    rel = t.split('id="mt-oracle-gh"', 1)[1].split("</details>", 1)[0]
++    assert "at half weight" not in rel
++    assert "the registered blend weight, set a priori" in t
++
++
++def test_the_donor_floor_is_neither_stream_not_each():
++    # where only one stream has 30 paths, it supplies every donor
++    for path in ("/methods", "/models"):
++        t = _flat(client.get(path).text)
++        assert ("A week where neither stream has 30 donor paths leaves the "
++                "filter unchanged.") in t, path
++        assert "30 paths per stream" not in t, path
++
++
++def test_the_narrowing_note_names_the_member_its_screen_used():
++    note = K.BY_KEY["oracle.narrow"].note
++    assert ("on the stage-rule member at weight 0.25 (9,152 cells): k = 0.7 "
++            "took pooled relWIS from 0.720 to 0.671") in note
++
++
++def test_the_oracle_steps_cost_line_promises_no_refit_on_the_forecast_tab():
++    # a Forecast-tab run fits every state; a replay keeps its fitted weeks
++    tip = dict((g, tip) for g, _title, tip in K.PANEL_GROUPS)["step"]
++    assert "costs no refit" not in tip
++    assert tip.endswith("a replay keeps its fitted weeks when only this "
++                        "changes.")
++
++
++def test_each_record_names_its_cell_rule_and_its_comparison():
++    assert "under the earlier cell rule" in _record("pf")["lines"][0]
++    pf2s = _record("pf2s")
++    assert [b["label"] for b in pf2s["bars"]] == [
++        "Two-strain SIHRS", "Blend it was tested in"]
++    assert "full grid" not in pf2s["lines"][0]
++
++
++def test_the_two_strain_card_does_not_call_its_linked_page_hidden():
++    t = _flat(client.get("/methods").text)
++    assert "reachable by URL" not in t
++    assert "it stays a research run.</p>" in t
+diff --git a/app/tests/test_pages.py b/app/tests/test_pages.py
+index 7ddc77a..ca2a3e9 100644
+--- a/app/tests/test_pages.py
++++ b/app/tests/test_pages.py
+@@ -423,7 +423,7 @@ def test_every_equation_group_defines_its_symbols():
+                    "prior 0.002 to 1, log-uniform", "prior 0.1 to 40, log-uniform",
+                    "2.19 per week", "0.02, a working assumption",
+                    "1.17 per week", "0.019 per week", ">0.85<",
+-                   "the as-of Saturday", "the blend weight, set a priori"):
++                   "the as-of Saturday", "the registered blend weight, set a priori"):
+         assert needle in t, needle
+     # the site (no kit) renders the same fold as plain markup
+     from app.core import site_build as sb
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 2b3e16b..ea46be3 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -91,7 +91,8 @@ def _record(name: str) -> dict:
+         facts = [("Cells", ot.cells(both["cells"])),
+                  ("Seasons", "2024-25 and 2025-26")]
+         lines = [
+-            (f"relWIS vs the FluSight baseline (below 1 beats it): "
++            (f"relWIS vs the FluSight baseline (below 1 beats it), under "
++             f"the earlier cell rule: "
+              f"{fmt(both['oracle'])} against the plain filter's "
+              f"{fmt(both['filter'])} on the same {ot.cells(both['cells'])} "
+              f"cells of 2024-25 and 2025-26."),
+@@ -128,13 +129,13 @@ def _record(name: str) -> dict:
+     # this one fell behind the blend it was tested in, from the two values
+     return _bars({
+         "bars": [("Two-strain SIHRS", two, True),
+-                 ("Two-member blend", blend, False)],
++                 ("Blend it was tested in", blend, False)],
+         "facts": [],
+         "behind": {"text": f"{fmt(two - blend)} behind the blend"},
+         "lines": [
+-            (f"It scored worse on the full grid (relWIS {fmt(two)} against "
+-             f"{fmt(blend)} for the two-member blend it was tested in), so "
+-             f"it is kept for research runs only.")]})
++            (f"It scored worse than the blend it was tested in, in the "
++             f"August 2026 evaluation (relWIS {fmt(two)} against "
++             f"{fmt(blend)}), so it is kept for research runs only.")]})
+ 
+ 
+ def _rule(v: float) -> str:
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index e9766e1..33295b1 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -427,8 +427,8 @@
+ {%- set blend_note %}the growth blend: each path's growth over forecast
+   week <i>k</i> is the geometric mean of the filter's rate at the origin
+   <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
+-{%- set few %}A week with too few donors (30 paths per stream) leaves
+- the filter unchanged.{% endset %}
++{%- set few %}A week where neither stream has 30 donor paths leaves the
++ filter unchanged.{% endset %}
+ {%- set rate %}<i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
+   <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;){% endset %}
+ {%- set rate_note %}new infections per infected per week: the log
+@@ -453,7 +453,7 @@
+    ("<i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>", "medians of the filter's samples at the origin and one week ahead", "admissions per week", "derived"),
+    ("<i>W</i>", "the donor's week: a Saturday of a strictly earlier season within two epiweeks of <i>T</i>'s, any jurisdiction", "date", "data"),
+    ("<i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;)", "donor <i>d</i>'s <i>G</i> at the midpoint of week <i>W</i> + <i>k</i>, from smoothed log counts of its series: NHSN admissions, or FluSurv-NET rates shrunk to the admissions scale", "per week", "data"),
+-   ("&#189;", "the blend weight, set a priori", "0.5", "fixed"),
++   ("&#189;", "the registered blend weight, set a priori", "0.5", "fixed"),
+    ("<i>&#947;</i>", "the compartment model's removal rate, 7/3.2", "2.19 per week", "fixed"),
+    ("<i>x</i><sub><i>i,h</i></sub>", "the filter's forecast sample path <i>i</i> at week <i>h</i>", "admissions per week", "derived"),
+    ("<i>d</i><sub><i>i</i></sub>", "the one donor path drawn for sample path <i>i</i>, by a seeded uniform draw", "index", "index"),
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index d21c7cc..0ac0370 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -273,6 +273,11 @@
+  filter's and the donor's, propagated in closed form from the filter's own
+  state. One donor per sample, not per forecast, keeps both the filter's
+  uncertainty and the donors' spread.</p>
++ <p>Half and half is the registered weight, the one this card and the
++ record use. From the 2026-10-17 round the submitted forecasts give the
++ filter's growth one quarter of the weight, with the season-start seed
++ set from the expected season total early in the season; each run records
++ the settings it used.</p>
+  {% endcall %}
+  {% call tips.fold("Donor pool", id="mt-oracle-donors", cls="mt-fold") %}
+  <p>{{ oracle_text.BANK_TEXT.pool }}</p>
+@@ -285,8 +290,8 @@
+  {% call tips.fold("How it relates to the Groundhog", id="mt-oracle-gh", cls="mt-fold") %}
+  <p>The Groundhog applies donor
+  growth <em>ratios</em> to the last observed count, with no mechanism; the
+- Oracle SIHRS applies donor <em>growth</em> to the fitted state, at half
+- weight. The two are submitted as separate models.</p>
++ Oracle SIHRS applies donor <em>growth</em> to the fitted state, blended
++ with the filter's own. The two are submitted as separate models.</p>
+  {% endcall %}
+  </div>
+ 
+@@ -351,8 +356,7 @@
+  {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
+  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
+  <p>Stronger at turning points but worse on
+- the full grid in the August 2026 evaluation; it stays a research run (the
+- {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %} is reachable by URL).</p>
++ the full grid in the August 2026 evaluation; it stays a research run.</p>
+  {% endcall %}
+  </div>
+ </div>
