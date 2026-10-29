@@ -463,7 +463,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               # as typed: the knob parser refuses a non-number in words
               particles: str = Form("10000"),
               replicates: str = Form("3"),
-              width: int = Form(4),
+              width: str = Form(""),
               engine: str = Form("pf"),
               mode: str = Form("resume"),
               confirm: str = Form(""),
@@ -575,7 +575,20 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(f"Not started: model settings: {e}.")
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
-        width = max(1, min(int(width), 16))
+        # runners, as typed: the browser's number box lets 2e0 through, and
+        # an int field answered it with a raw 422 page; blank is this
+        # machine's default
+        w = _str_field(width).strip().replace(",", "")
+        if w:
+            try:
+                width = int(w)
+            except ValueError:
+                return _refused(f"Not started: shard width: '{w}' is not "
+                                "a whole number.")
+        else:
+            from app.core.engines.pf import DEFAULT_SHARD_WIDTH
+            width = DEFAULT_SHARD_WIDTH
+        width = max(1, min(width, 16))
         # start-over handling only AFTER all validation
         live = _live_root(season)
         existing = retro_seasons._weeks_done(live)
