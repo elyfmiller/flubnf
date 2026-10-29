@@ -22,7 +22,9 @@ def test_setup_gaps_union_each_component_once():
     vers = {"pybnf": "not installed", "bngsim": "0.15.1",
             "bionetgen": "not installed", "perl": "not installed",
             "fastapi": "0.1", "plotly": "resolving…"}
-    assert H._setup_gaps(missing, vers) == ["BioNetGen", "Perl", "PyBNF"]
+    # the engine's parts count as one component (HM-11)
+    assert H._setup_gaps(missing, vers) == ["BioNetGen", "Perl",
+                                            "Particle-filter engine"]
     # a known engine build names PyBNF by its build, not its probe
     assert H._setup_gaps(missing, vers, engine_known=True) == ["BioNetGen", "Perl"]
     assert H._setup_gaps([], {"bngsim": "0.15.1"}) == []

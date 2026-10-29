@@ -206,6 +206,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "newest_report": newest_report, "anchor_week": _anchor or "",
         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
         "live_only": live_only, "live_running": running,
+        # no hub clone: every run reads its data, so the page says so
+        "hub_missing": state.data_mod.hub_missing(),
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         # the particle-filter engine's state: without it the run refuses
@@ -1182,6 +1184,14 @@ def run_models(request: Request,
         _flash(f"Not run: {what} needs the particle-filter engine, "
                f"{pipeline._pf_engine_missing(pf_state)}."
                + (" Choose Groundhog only." if members != 3 else ""), "warn")
+        return _back(request, "/forecast")
+    # every run reads the hub's data (the locations table, the truth):
+    # refused here, where a missing clone used to end the run with a raw
+    # file error
+    why = state.data_mod.hub_missing()
+    if why:
+        _flash(f"Not run: no FluSight data ({why}).", "warn",
+               detail=f"To fetch it, {templating.hub_setup_text()}.")
         return _back(request, "/forecast")
     if _d is None:
         # a blank or typed non-date (the model page's text field) is said
