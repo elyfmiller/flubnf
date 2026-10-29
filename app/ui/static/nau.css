@@ -69,7 +69,7 @@
   --line:#DCD8E9; --track:#DBD7E8; --field-line:#8A86A3;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
-  --gold:#0173A9; --gold-bright:#34C0F0;
+  --gold:#0173A9; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   /* outline buttons, text on a primary fill and on a --bad fill; the
@@ -112,7 +112,7 @@
   --line:#262A45; --track:#191C31; --field-line:#5B639E;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
-  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --gold:#34C0F0; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
   --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
@@ -144,7 +144,7 @@
   --line:#DFD7C2; --track:#E7E0CD; --field-line:#8E8468;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
-  --gold:#0173A9; --gold-bright:#34C0F0;
+  --gold:#0173A9; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
@@ -176,7 +176,7 @@
   --line:#3C4263; --track:#262B3F; --field-line:#7A84B8;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
-  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --gold:#34C0F0; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
   --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
@@ -210,7 +210,7 @@
   --line:#D1D9E0; --track:#E1E6EB; --field-line:#818B98;
   --navy:#0A3069; --navy-deep:#07214A;
   --accent:#54AEFF; --accent-ink:#0969DA; --slate:#8250DF;
-  --gold:#0550AE; --gold-bright:#54AEFF;
+  --gold:#0550AE; --gold-bright:#54AEFF; --hero-chip-ink:#54AEFF;
   --nav-bg:#FFFFFF; --nav-ink:#1F2328;
   --ok:#1A7F37; --warn:#8A5D00; --bad:#CF222E;
   --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light;
@@ -244,7 +244,7 @@
   --line:#E3DBC4; --track:#EBE4CF; --field-line:#788789;
   --navy:#073642; --navy-deep:#002B36;
   --accent:#268BD2; --accent-ink:#1C6BA3; --slate:#6C71C4;
-  --gold:#1C6BA3; --gold-bright:#5DADE6;
+  --gold:#1C6BA3; --gold-bright:#5DADE6; --hero-chip-ink:#5DADE6;
   --nav-bg:#EEE8D5; --nav-ink:#073642;
   --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
   --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
@@ -278,7 +278,7 @@
   --line:#3B4252; --track:#353B48; --field-line:#727D97;
   --navy:#434C5E; --navy-deep:#2E3440;
   --accent:#88C0D0; --accent-ink:#88C0D0; --slate:#81A1C1;
-  --gold:#88C0D0; --gold-bright:#88C0D0;
+  --gold:#88C0D0; --gold-bright:#88C0D0; --hero-chip-ink:#A3D4E0;
   --nav-bg:#2E3440; --nav-ink:#ECEFF4;
   --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
   --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
@@ -312,7 +312,7 @@
   --line:#44475A; --track:#343746; --field-line:#6878AE;
   --navy:#44475A; --navy-deep:#282A36;
   --accent:#BD93F9; --accent-ink:#BD93F9; --slate:#FF79C6;
-  --gold:#BD93F9; --gold-bright:#BD93F9;
+  --gold:#BD93F9; --gold-bright:#BD93F9; --hero-chip-ink:#D6BCFA;
   --nav-bg:#282A36; --nav-ink:#F8F8F2;
   --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
   --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
@@ -890,6 +890,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
+/* the swatches keep an edge, so the gray one shows on a dark card */
+.maplegend .sw{box-shadow:inset 0 0 0 1px var(--line)}
 
 /* ---- home: workflow pipeline, performance table, card glyphs ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
