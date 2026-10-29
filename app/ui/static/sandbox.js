@@ -249,6 +249,19 @@
     document.addEventListener('click', function (e) {
       menus.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
     });
+    // a menu hangs from its button's right edge; in a narrow window at a
+    // large text size that reaches past the screen's left, so it is moved
+    // back inside (a phone's menus open from the left: sandbox.css)
+    menus.forEach(function (d) {
+      d.addEventListener('toggle', function () {
+        var m = d.querySelector('.sbmenu');
+        if (!m) return;
+        m.style.right = '';
+        if (!d.open) return;
+        var left = m.getBoundingClientRect().left;
+        if (left < 8) m.style.right = (left - 8) + 'px';
+      });
+    });
   }
 
   function setup() {
