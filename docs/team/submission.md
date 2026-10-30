@@ -6,6 +6,12 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-30 (21:07 UTC): THE DASHBOARD SCORER'S PULL REQUEST, SEPARATE FROM
+  THE PUBLIC ENGINE ONE (Ely): https://github.com/elyfmiller/flubnf/pull/76,
+  assited_dev/bold-sagan-kfw8gg (0ca59ad) into dev; it touches none of
+  #61's files. GitHub's tests run on the pull request; once they are
+  green, Ely's merge, a merge commit: `gh pr merge 76 --merge --repo
+  elyfmiller/flubnf`. It replaces the git sequence in the entry below.
 - 2026-10-30 (20:41 UTC): THE DASHBOARD SCORER IS ON BRANCH
   assited_dev/bold-sagan-kfw8gg FOR ELY'S MERGE INTO dev (Ely's go;
   0ca59ad, authored as Ely, based on dev 90b1bfd). scripts/dashboard_score.py
