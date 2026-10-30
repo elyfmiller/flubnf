@@ -104,7 +104,13 @@ SEED_RULE = "runs.derive_seed(location, forecast_date, 0), as the console's repl
 
 
 class SandboxError(ValueError):
-    """A model or a request the sandbox refuses, with the reason in words."""
+    """A model or a request the sandbox refuses, with the reason in words;
+    `code` is its problem code (app/core/problem_codes.py) where it has
+    one, else ''."""
+
+    def __init__(self, *args, code: str = ""):
+        super().__init__(*args)
+        self.code = code
 
 
 def check_name(name: str) -> str:
