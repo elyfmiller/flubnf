@@ -6,14 +6,14 @@ One line per module, with the role tag its docstring opens with and its main cal
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `engines/pf.py` | SHIPPED | the Oracle SIHRS filter: writes `pf.conf`, runs PyBNF `fit_type=pf` in the engine venv, sharded; engine preflight. `FLUBNF_ENGINE=public` (opt-in until the cutover) runs public PyBNF's `job_type = lwf` from its own venv instead, with the console's `pf.*` names mapped in the conf writer ([docs/ENGINE.md](../../docs/ENGINE.md#the-public-engine-opt-in)) | `retro`, `sandbox`, server, `flubnf/cli.py`, `flubnf/doctor.py` |
+| `engines/pf.py` | SHIPPED | the Oracle SIHRS filter: writes `pf.conf`, runs PyBNF `fit_type=pf` in the engine venv, sharded; engine preflight; a model named by reference (`spec.extra["model"]`: a shipped name, or a library version through `library.resolve` and `replay_conf`). `FLUBNF_ENGINE=public` (opt-in until the cutover) runs public PyBNF's `job_type = lwf` from its own venv instead, with the console's `pf.*` names mapped in the conf writer ([docs/ENGINE.md](../../docs/ENGINE.md#the-public-engine-opt-in)) | `retro`, `sandbox`, server, `flubnf/cli.py`, `flubnf/doctor.py` |
 | `engines/analogue.py` | SHIPPED | the Groundhog: `flubnf.analogue` with the committed FluSurv-NET bank spliced in (`SHIPPED_AUX`) | `retro`, `groundhog`, server |
 
 ## Storage and replay
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `retro.py` | PRODUCTION | season replay engine: calendar, sample store, run record, fit-level runner, scoring, finalize, archives | server Retrospective tab, `flubnf retro` |
+| `retro.py` | PRODUCTION | season replay engine: calendar, sample store, run record, fit-level runner, scoring, finalize, archives; an experiment's frozen weeks (`run_season(weeks=)`) | server Retrospective tab, `flubnf retro`, `experiments` |
 | `retro_store.py` | PRODUCTION | the replay samples store and quantile sidecars (re-exported by `retro`) | `retro`, `playback`, `replay_bundle` |
 | `retro_settings.py` | PRODUCTION | engine presets, floor record values, the resume-mismatch rules and the settings summary (re-exported by `retro`) | `retro`, server Retrospective tab |
 | `retro_archive.py` | PRODUCTION | archived runs: stamps, archive folders, sizes, delete (re-exported by `retro`) | `retro`, server Retrospective and Storage tabs |
@@ -82,8 +82,8 @@ See [docs/SITE.md](../../docs/SITE.md).
 | `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/` (the production preflight, `check` without the engine, stop, delete, compare, zip downloads); examples from `flubnf/sandbox_examples/`; the Oracle SIHRS start (`from_shipped`, composed from `engines/pf.py` and `flubnf/sihrs_fit.py`) and the Oracle step on its runs (`oracle.apply_week`, inside the run folder); data from the hub, a `datasets.py` dataset or simulated from the model; the model at its written values in Check and a run's outcome in plain words (`fit_health`) | server `/sandbox` routes |
 | `sandbox_bngl.py`, `sandbox_check.py`, `sandbox_results.py`, `sandbox_data.py`, `sandbox_export.py` | SANDBOX | the sandbox by topic: the three files as text, Check, results and fit health, filling data.exp, compare and zips. `sandbox.py` keeps the runs and model folders and loads these on first use | `sandbox` |
 | `contactmap.py` | SANDBOX | contact map and reaction network from BNG2.pl, as SVG and graph JSON | server `/api/sandbox/models/...` |
-| `library.py` | SANDBOX | the model library: whether a Sandbox model is ready for replays (`validate`, placeholders kept), its replay normal form and sha256 fingerprint, `register` into `sandbox/library/<name>/<n>/` (written once, re-hashed on every `resolve`), `name@version` references and the shipped models composed from `engines/pf.py` | `experiments` (the Register button and the replay runner come later) |
-| `experiments.py` | SANDBOX | experiments: `experiment.json` (model and season; size and Oracle step defaulted), the derived id, the fingerprint, the size presets and their week rules, the shipped replay compared with (`reference`), `plan`, and `summary.json` (sums over the cells both sides scored) | none yet (the queue and the page come later) |
+| `library.py` | SANDBOX | the model library: whether a Sandbox model is ready for replays (`validate`, placeholders kept), its replay normal form and sha256 fingerprint, `register` into `sandbox/library/<name>/<n>/` (written once, re-hashed on every `resolve`), `name@version` references and the shipped models composed from `engines/pf.py`; a version's cumulative output and priors written again for the engine (`replay_conf`) | `experiments`, `engines/pf.py` (the Register button comes later) |
+| `experiments.py` | SANDBOX | experiments: `experiment.json` (model and season; size and Oracle step defaulted), the derived id, the fingerprint, the size presets and their week rules, the shipped replay compared with (`reference`), `plan`, the replay itself (`replay`, into `sandbox/experiments/<id>/` through `retro.run_season`), and `summary.json` (sums over the cells both sides scored) | none yet (the queue and the page come later) |
 | `problem_codes.py` | REGISTRY | every problem code the student workspace says, its one tier (problem, warning, machine) and meaning; append-only, pinned by `app/tests/golden/problem_codes.json`; `finding`, `Refusal` | `sandbox_check` (Check's `codes`), `library`, `experiments`, server `/api/sandbox/models/.../check` |
 
 `assets/states-albers-10m.json` is the US map geometry `usmap.py` draws.

@@ -1,6 +1,7 @@
 """SANDBOX: experiments, one model replayed over one season at a preset
-size and compared with the shipped replay (the queue, the runner and the
-page come in later steps; the formats are fixed here).
+size and compared with the shipped replay: the formats, the plan and the
+replay itself (replay; the queue, the scoring and the page come in later
+steps).
 
   sandbox/experiments/<id>/
     experiment.json   the settings people write: model (name@version or a
@@ -14,6 +15,8 @@ page come in later steps; the formats are fixed here).
                       pooling experiments later is still a ratio of sums
     run_meta.json, weeks/<asof>/...
                       the replay's own files: the folder is its root
+                      (retro.run_season over the plan's weeks, frozen in
+                      run_meta.json at the first start)
 
 The id is derived, never typed: <name>[-v<n>]_<season>_<size>[_oracle],
 so the same settings give the same folder and running again resumes.
@@ -23,6 +26,11 @@ rule, replicates and particles. A changed preset or week rule gets a new
 name, never an edit, and the experiment fingerprint hashes the constants
 with the model's fingerprint, the season and the resolved Oracle setting,
 so an edit cannot pass unnoticed.
+
+A replay runs every planned week with the model named
+(spec.extra["model"], which engines/pf.py prepare resolves), the shipped
+Groundhog beside it and the Oracle step on or off; each week first checks
+that the model still has the fingerprint the experiment planned.
 
 The shipped side of a summary is the shipped replay of the season
 (reference): the live root first, then the archived ones, newest first,
@@ -347,6 +355,70 @@ def plan(settings: Mapping, *, retro_root: Path) -> dict:
             "weeks": weeks, "replicates": size.replicates,
             "particles": size.particles, "reference": ref,
             "findings": found}
+
+
+# --------------------------------------------------------------- the replay
+
+
+def replay(settings: Path | Mapping, *, retro_root: Path) -> dict:
+    """Replay an experiment into its folder, root()/<id>: the settings read
+    and the plan worked out (Refusal for any problem, before anything is
+    written), the Groundhog's bank read and checked, experiment.json
+    written, then retro.run_season over the plan's locations and weeks at
+    its size, each week naming the model, refusing it (MODEL_CHANGED) if
+    its fingerprint moved since the plan, running the shipped Groundhog
+    and the Oracle step on or off. The run record gains model,
+    model_fingerprint, experiment, oracle and the frozen weeks; the same
+    settings run again resume on the weeks recorded at the first start.
+    Synchronous: STOP and PAUSE in the folder (retro.request_stop,
+    request_pause) work as for any replay, and a stop raises
+    retro.SeasonStopped. Returns the plan, its weeks those recorded.
+    Scoring and the summary come with the compare page."""
+    from app.core import retro
+    from app.core.runs import oracle_label
+    s = read(settings)
+    p = plan(s, retro_root=retro_root)
+    week_extra = _week_extra(p)                  # reads and checks the bank
+    folder = root() / p["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    library.write_json(folder / SETTINGS, json.loads(settings_text(s)))
+    retro.run_season(folder, p["season"], p["locations"],
+                     replicates=p["replicates"], particles=p["particles"],
+                     settings={"model": p["model"],
+                               "model_fingerprint": p["model_fingerprint"],
+                               "experiment": p["experiment"],
+                               "oracle": ("applied" if p["oracle"] else
+                                          oracle_label({"oracle": "none"}))},
+                     week_extra=week_extra, weeks=p["weeks"])
+    return {**p, "weeks": retro.read_meta(folder)["settings"]["weeks"]}
+
+
+def _week_extra(p: Mapping):
+    """Each week's spec.extra for a plan: the shipped Groundhog's
+    (an_engine.aux_preset, as a shipped replay runs it) with the model
+    named, and oracle = none with the step off; the preset's name and the
+    own-state pools it declares carried over, so the run record says which
+    Groundhog ran. A week whose model no longer has the planned
+    fingerprint (a version rewritten whole, a shipped template changed by
+    an update) is refused, MODEL_CHANGED, before anything of it is
+    prepared."""
+    from app.core.engines import analogue as an
+    base = an.aux_preset(an.SHIPPED_AUX)
+    ref, fp = p["model"], p["model_fingerprint"]
+    add = {"model": ref} if p["oracle"] else {"model": ref, "oracle": "none"}
+
+    def week_extra(asof, i, vintages):
+        now = library.resolve(ref)["fingerprint"]
+        if now != fp:
+            raise Refusal(finding(
+                "MODEL_CHANGED", f"{ref} is {library.short(now)} now, and "
+                f"this experiment started with {library.short(fp)}: {asof} "
+                "is not fitted"))
+        return {**base(asof, i, vintages), **add}
+    week_extra.__name__ = (base.__name__
+                           + ("" if p["oracle"] else "+oracle:none"))
+    week_extra.local_pools = base.local_pools
+    return week_extra
 
 
 # ------------------------------------------------------------- the summary

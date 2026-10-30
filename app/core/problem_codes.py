@@ -110,6 +110,13 @@ CODES: dict[str, tuple[str, str]] = {
     "NO_REFERENCE": ("warning", "no shipped replay here on the shipped "
                      "settings holding the needed member; the summary has "
                      "no shipped side"),
+    # ready for replays, since the engine runs a registered model
+    # (library._tokens_rules, library._structure)
+    "SUFFIX_IN_MODEL": ("problem", "model.bngl names a suffix (suffix=>) "
+                        "before end model"),
+    "LINE_BREAK_NOT_ALLOWED": ("problem", "a line break other than a "
+                               "newline up to end model: PyBNF reads a "
+                               "line there and BNG2.pl does not"),
 }
 
 
