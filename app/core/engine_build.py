@@ -8,6 +8,11 @@ defined once here, and fix() says how to reach it with this machine's
 launcher. archive_step() is the one wording for installing the engine from
 its archive, shared by the run errors and doctor. Every function is cheap
 to call wrong: none raises.
+
+With FLUBNF_ENGINE=public the engine is lanl/PyBNF in its own venv
+(app/core/engines/lwf.py): engine_build() then reads pip's record of the
+installed wheel (lwf.public_build, "engine": "public"), and the functions
+below judge it against the pin in engine-requirements.txt instead.
 """
 from __future__ import annotations
 
@@ -112,6 +117,9 @@ def engine_build(path=None) -> dict:
     if path is None:
         try:
             from flubnf import settings
+            if settings.engine_public():
+                from app.core.engines import lwf
+                return lwf.public_build()
             path = settings.PYBNF
         except Exception:
             path = ""
@@ -163,8 +171,12 @@ def engine_build(path=None) -> dict:
 
 def is_production(build: dict | None) -> bool:
     """True when the build is the production commit with no local edits
-    (commit prefix match; the branch is informative only)."""
+    (commit prefix match; the branch is informative only). A public build
+    is judged against its own pin (lwf.is_pinned)."""
     b = build or {}
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        return lwf.is_pinned(b)
     c = str(b.get("commit") or "").lower()
     if not c or b.get("dirty"):
         return False
@@ -185,7 +197,9 @@ def label(build: dict | None) -> str:
         return ""
     s = str(b["commit"])
     bits = [x for x in (str(b.get("branch") or ""),
-                        "local changes" if b.get("dirty") else "") if x]
+                        "local changes" if b.get("dirty") else "",
+                        f"bngsim {b['bngsim']}" if b.get("bngsim") else "")
+            if x]
     return f"{s} ({', '.join(bits)})" if bits else s
 
 
@@ -209,7 +223,16 @@ def warning(build: dict | None) -> str:
             why = why[len("fatal: "):]
         return f"git could not read {where}: {why.rstrip('.')}."
     if not known(b) or is_production(b):
+        if b.get("engine") == "public" and not known(b):
+            why = str(b.get("error") or "pip has no record of its wheel")
+            return f"The public engine's build could not be read: {why}."
         return ""
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        what = ("not the lock's wheel" if b.get("source") == "wheel"
+                else "not the pinned commit")
+        return (f"The public engine is lanl/PyBNF at {b['commit']}, {what} "
+                f"({lwf.PUBLIC_ENGINE_COMMIT[:8]}, {lwf.LOCK_NAME}).")
     where = str(b.get("branch") or "a detached HEAD")
     s = (f"The engine is {where} at {b['commit']}, not the production build "
          f"{PRODUCTION_ENGINE_COMMIT} on {PRODUCTION_ENGINE_BRANCH}")
@@ -310,6 +333,9 @@ def fix(build: dict | None, platform: str | None = None) -> str:
     machine's launcher (`platform`, sys.platform by default: Windows opens
     FluBNF.bat and has no setup_engine.sh)."""
     b = build or {}
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        return (f"To install the pinned build, {lwf._setup_step(platform)}.")
     if b.get("source") == "unreadable":
         return _unreadable_fix(b, platform)
     if b.get("source") == "archive":
@@ -326,9 +352,16 @@ def record(build: dict | None) -> dict:
     b = build or {}
     if not known(b):
         return {}
-    return {"branch": str(b.get("branch") or ""), "commit": str(b["commit"]),
-            "dirty": bool(b.get("dirty")),
-            "source": str(b.get("source") or "unknown")}
+    out = {"branch": str(b.get("branch") or ""), "commit": str(b["commit"]),
+           "dirty": bool(b.get("dirty")),
+           "source": str(b.get("source") or "unknown")}
+    if b.get("engine") == "public":
+        # what a run on the public engine names: the full commit, the
+        # wheel's hash, bngsim's version and build (never pybnf.__version__)
+        out.update({k: b[k] for k in ("engine", "full_commit", "wheel_sha256",
+                                      "lock_wheel", "bngsim", "bngsim_build")
+                    if k in b})
+    return out
 
 
 def change(prior: dict | None, now: dict | None) -> str | None:

@@ -55,6 +55,10 @@ def _engine_setup_hint():
     """
     from markupsafe import Markup
     from app.core import engine_build
+    from flubnf.settings import engine_public
+    if engine_public():
+        from app.core.engines import lwf
+        return Markup.escape(lwf._setup_step(_platform()))
     if _platform() == "win32":
         return Markup(
             "save the engine file from the lab (<code>"

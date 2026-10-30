@@ -875,12 +875,20 @@ def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
     engine = pf_engine.engine_available()
     if not engine:
         out.append(pf_engine.engine_missing_message())
+    elif pf_engine._public():
+        # the lock check loads the filter and bngsim in the public venv: a
+        # page waits `wait` seconds for it and says nothing while it runs
+        from app.core.engines import lwf
+        res = lwf.lock_check_soon(wait)
+        if res is not None and not res[0]:
+            out.append(lwf.engine_stale_message())
     elif not pf_engine.engine_current():
         out.append(pf_engine.engine_stale_message())
     # the engine's Python only once the engine is unpacked: installing the
     # engine file is what makes it, so without one it is not another thing
-    # to fix
-    if engine:
+    # to fix. The public engine is its venv alone, and engine_current has
+    # already loaded the filter and bngsim there (lwf.lock_check).
+    if engine and not pf_engine._public():
         if not Path(pf_engine.PY310).exists():
             out.append(engine_python_missing_message())
         else:
@@ -1149,6 +1157,11 @@ def _with_load_remedy(error: str) -> str:
     hit = next(ln for ln in error.splitlines()
                if any(s in ln for s in _LOAD_FAILURES))
     said = hit.strip().removeprefix("FAIL: ")[:300]
+    if pf_engine._public():
+        from app.core.engines import lwf
+        return (error + "\n\n" + f"The public engine's Python ({lwf.python()}) "
+                f"cannot load the engine ({said}). To reinstall it, "
+                f"{lwf._setup_step()}.")
     return error + "\n\n" + engine_import_message(said)
 
 

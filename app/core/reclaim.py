@@ -14,7 +14,8 @@ LOAD-BEARING (never touched here):
 
 INTERMEDIATE (deletable once its week or run is COMPLETE):
   * per-cell fit trees (<location>_r<n>/: BNGL copies, .net, .cdat/.gdat,
-    trajectories, pf_state.npz);
+    trajectories, pf_state.npz; on the public engine its lwf/ files and
+    Results/LWF tables);
   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
     .prog files.
 

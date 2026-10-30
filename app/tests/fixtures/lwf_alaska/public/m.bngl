@@ -1,0 +1,106 @@
+begin model
+# FluBNF SIHRS, the single-strain production template. Five fitted
+# parameters (Reff, eps1, phi1, mult, r); everything else is fixed or is
+# per-state data. Compartments are people; time is in WEEKS and every
+# rate is per week. A TOKEN in double braces is per-state data substituted
+# before the fit (strictly: an unresolved token raises); a *__FREE name is
+# a fitted parameter, proposed by the engine against its prior in
+# app/core/engines/pf.py (VARS_1S). Single season only. Sources and design
+# history: docs/MODEL-PROVENANCE.md.
+begin parameters
+Reff__FREE 1.20
+eps1__FREE 0.15
+phi1__FREE 22.0
+mult__FREE 0.05
+r__FREE 8.0
+
+### -- transmission: scale-free reproduction number + seasonal forcing -- ###
+Reff    Reff__FREE     # BASE reproduction number at the initial susceptible
+                       # fraction s0, harmonic-neutral; R0 = Reff/s0 post hoc
+eps1    eps1__FREE     # annual-harmonic amplitude
+# t = 0 is the first FITTED week (season start + 1 week), so a fitted phi1
+# reads one week late against the calendar; forecasts are unaffected.
+phi1    phi1__FREE     # annual-harmonic phase
+
+### -- progression / removal -- ###
+gamma   2.187500      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
+rho     0.02        # FIXED: true IHR branching fraction I->H; rules only,
+                       # never the observable
+mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: never in a rule;
+                       # admissions identify only rho*mult, rho held fixed
+gammaH  1.17     # FIXED: discharge; moves the census only, unidentifiable here
+omega   0.019      # FIXED: waning R->S, weakly identified from <3 seasons
+
+### -- observation noise -- ###
+r       r__FREE        # negative-binomial dispersion (AMCMC)
+
+### -- derived -- ###
+beta0   Reff*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI(), which will not compile
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       740133        # state population (absolute people)
+s0      0.85     # initial susceptible fraction; FIXED -- R0*s0 is product-identified
+i0      3.59326263e-04     # initial infected fraction
+
+end parameters
+
+begin molecule types
+S()         # susceptible people
+I()         # infectious people
+H()         # hospitalized census / occupancy
+R()         # recovered / immune people
+Hadm()      # cumulative admissions accumulator (never decays)
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+# Absolute counts. R(0) takes the remainder, so S+I+H+R = N exactly and
+# pre-existing immunity (s0 < 1) is representable.
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()        # census -- do NOT fit to an admissions target
+Molecules R     R()
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is its change over the week
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
+
+### -- ascertained admission flux, an INSTANTANEOUS rate, not a weekly total -- ###
+# kept as the name binding the .exp count column to a model output
+H_weekly() = rho*mult*gamma*I
+
+### -- the particle filter's fit target -- ###
+# the engine differences this over each reporting week; the model owns
+# its observation scale (pf_cumulative_observable in the conf)
+Hobs() = mult*H_Cum
+
+end functions
+
+begin reaction rules
+0 -> counter() 1
+# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+S() + I() -> I() + I()   beta()/N
+I() -> H()   rho*gamma
+I() -> R()   (1-rho)*gamma
+H() -> R()   gammaH
+R() -> S()   omega
+# accumulator: tallies the I->H flux without consuming I, so S+I+H+R = N
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+
+end model
+
