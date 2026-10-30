@@ -6,6 +6,11 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-30 (21:46 UTC): PULL REQUEST #76 MERGED BY ELY INTO dev (merge
+  commit 44f5224): scripts/dashboard_score.py and its tests are on dev, the
+  weekly standing check from here on. GitHub's tests were green on the
+  head 0ca59ad (Ubuntu and Windows, Python 3.11 and 3.12). It reaches
+  main with the next dev to main pull request.
 - 2026-10-30 (21:07 UTC): THE DASHBOARD SCORER'S PULL REQUEST, SEPARATE FROM
   THE PUBLIC ENGINE ONE (Ely): https://github.com/elyfmiller/flubnf/pull/76,
   assited_dev/bold-sagan-kfw8gg (0ca59ad) into dev; it touches none of
