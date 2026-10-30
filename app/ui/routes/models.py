@@ -230,6 +230,8 @@ def model_page(request: Request, name: str):
         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
         "overlay_json": _script_json(overlay),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
+        # the weeks each member set aside: the fan starts before them
+        "run_aside_json": _script_json(shared._run_aside(rid)),
         "bngl_src": bngl_src, "bngl_file": bngl_file,
         "bngl_lines": len(bngl_src.splitlines()),
         "form": form, "status": _status,

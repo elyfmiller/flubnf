@@ -224,6 +224,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "member_colors_json": _script_json(_member_colors()),
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
+        # the weeks each member set aside: the fan starts before them
+        "run_aside_json": _script_json(shared._run_aside(rid)),
         "fc_date": (res or {}).get("forecast_date", ""),
         # display-only aids (app/ui/forecast_aids.py): the fans' run, the
         # next round, the location presets, the last run's values
