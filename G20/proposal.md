@@ -130,8 +130,9 @@ are CSS and markup only: no route, no core file; no invariance check.
 - Root cause: diagrams.html `harmonic()` is a bare svg (width:100%)
   outside `.figscroll`; the two expressions have no `.nw`.
 - Fix: the harmonic sits in the same `figscroll` region as the other
-  drawings (aria-label "Seasonal harmonic (scrolls)" / "Two-strain
-  seasonal harmonic (scrolls)"), its svg `dg-harm` with `min-width:560px`
+  drawings (aria-label "Harmonic figure (scrolls)" / "Two-strain harmonic
+  figure (scrolls)": named apart from the svg's own label, which
+  test_theme_and_harmonic counts once per surface), its svg `dg-harm` with `min-width:560px`
   on a phone (its drawn width, not the 620 the 840-wide drawings use),
   so its labels keep 14 px and it scrolls with the cue; Home's copy too.
   `<span class="nw">` around `s ∈ {A, B}` and `Binomial(…)`: the lines
@@ -180,5 +181,6 @@ are CSS and markup only: no route, no core file; no invariance check.
 G20/proposal.patch (git diff origin/dev...proto/G20-B): 10 files,
 +194 −19: home.html, diagrams.html, methods.html, nau.css, ui-kit.css,
 tabs/methods.css, tabs/data.css, test_phone_tables.py (8 tests),
-test_console_qol.py, test_fewer_marks.py. Targeted tests 297 passed;
+test_console_qol.py, test_fewer_marks.py. Targeted tests 297 passed
+(revised 2026-10-30: the region's name; test_theme_and_harmonic passes);
 ruff clean; Windows: no path or encoding (the hyphen is an entity).

@@ -30,7 +30,7 @@ index 4984b21..dac68d8 100644
      assert 'id="settings"' not in site_build.harvest_methods({})
 diff --git a/app/tests/test_phone_tables.py b/app/tests/test_phone_tables.py
 new file mode 100644
-index 0000000..deedf23
+index 0000000..219e67e
 --- /dev/null
 +++ b/app/tests/test_phone_tables.py
 @@ -0,0 +1,127 @@
@@ -140,7 +140,7 @@ index 0000000..deedf23
 +    for page in ("/models", "/model/pf2s", "/"):
 +        html = client.get(page).text
 +        assert re.search(r'<div class="figscroll" tabindex="0" role="region" '
-+                         r'aria-label="(Two-strain s|S)easonal harmonic \(scrolls\)">'
++                         r'aria-label="(Two-strain h|H)armonic figure \(scrolls\)">'
 +                         r'<svg class="dg-harm" viewBox="0 0 560 232"', html), page
 +    pf2s = client.get("/model/pf2s").text
 +    assert '<span class="nw"><i>s</i> &#8712; {A, B}</span>' in pf2s
@@ -282,7 +282,7 @@ index 5405572..2b8b11b 100644
  .uk-fold-body > :first-child{margin-top:0}
  /* facts in a row, each an icon and a value */
 diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
-index 8d10a7c..a8abf93 100644
+index 8d10a7c..b29d7a4 100644
 --- a/app/ui/templates/diagrams.html
 +++ b/app/ui/templates/diagrams.html
 @@ -575,7 +575,7 @@
@@ -290,7 +290,7 @@ index 8d10a7c..a8abf93 100644
  {% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30, kit=false) -%}
  {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
 -<svg viewBox="0 0 560 232" role="img"
-+<div class="figscroll" tabindex="0" role="region" aria-label="{{ 'Two-strain seasonal harmonic' if two else 'Seasonal harmonic' }} (scrolls)"><svg class="dg-harm" viewBox="0 0 560 232" role="img"
++<div class="figscroll" tabindex="0" role="region" aria-label="{{ 'Two-strain harmonic figure' if two else 'Harmonic figure' }} (scrolls)"><svg class="dg-harm" viewBox="0 0 560 232" role="img"
       aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
       style="width:100%;max-width:560px;display:block;margin:.4rem auto 0;color:inherit">
   <desc>{% if two %}Two phase-shifted copies of the same seasonal harmonic,
