@@ -1,6 +1,7 @@
 """SANDBOX: the model library, Sandbox models registered for replays
-(app/core/experiments.py; the Register button and the engine's use of a
-registered model come in later steps).
+(app/core/experiments.py) and the engine's reading of a registered model
+(engines/pf.py prepare, through resolve and replay_conf; the Register
+button comes in a later step).
 
 A model ready for replays is the Sandbox's own three-file folder with its
 placeholders kept ({{POP}}, {{I0FRAC}}, ...: what sihrs_fit.
@@ -36,6 +37,11 @@ would not have stored (a folder written by hand, whose hashes agree with
 themselves): text not in its normal form, or breaking validate's own
 rules.
 
+The rules (_rules) are validate's, resolve's and the engine's: what a
+replay would refuse is refused at Register and at every resolve too, and
+the engine writes priors.conf's values again rather than copying them
+(replay_conf).
+
 Findings and refusals carry the codes of app/core/problem_codes.py.
 """
 from __future__ import annotations
@@ -43,6 +49,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -107,6 +114,12 @@ _WS = " \t\n\r\f\v"
 _CONTINUED = re.compile(r"\\\s*$", re.ASCII)
 _BEGIN_MODEL = re.compile(r"begin\s+model\s*$", re.ASCII)
 _BLOCK_END = re.compile(r"\s*end\s+", re.ASCII)
+#: the line breaks of Python's str.splitlines besides \n and \r, which
+#: BNG2.pl reads as none: PyBNF reads the model again through splitlines
+#: (pybnf/pset.py BNGLModel) and writes what it read back out for BNG2.pl,
+#: so a comment could end at one for PyBNF and hide a statement
+#: (LINE_BREAK_NOT_ALLOWED)
+_BREAKS = re.compile("[\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 #: the actions every replay runs (the suffix is rewritten per cell)
 REPLAY_ACTIONS = ('begin actions\n'
                   'generate_network({overwrite=>1})\n'
@@ -126,6 +139,16 @@ _CHECK_DROPPED = ("EXP_UNREADABLE", "EXP_TIME_ORDER", "ROW_BEFORE_START",
                   "NO_GENERATE_NETWORK")
 #: the most dropped action lines ACTIONS_DROPPED names
 _DROPPED_SHOWN = 5
+#: a suffix named before end model: materialize_model rewrites every
+#: suffix=>"..." in the file, comments included (SUFFIX_IN_MODEL)
+_SUFFIX = re.compile(r"suffix\s*=>")
+#: a prior's number: a subset of PyBNF's number grammar (pybnf/parse.py),
+#: ASCII digits, a digit before any point, no bounds letter after it
+_NUMBER = re.compile(r"[+-]?[0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?")
+#: a fitted parameter's name: PyBNF's bng_parameter, ending in __FREE
+_FREE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*__FREE")
+#: the output pf_cumulative_observable names
+_OUTPUT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def root() -> Path:
@@ -233,12 +256,23 @@ def _bngl_lines(lines: list) -> list:
 def _structure(bngl: str) -> list:
     """The structure rules on model.bngl as written (LF only, _lf), read
     as BNG2.pl reads it up to the end model line replay_text cuts at:
-    NO_MODEL_BLOCK, OUTSIDE_MODEL, BLOCK_NOT_ALLOWED and ACTIONS_DROPPED.
-    A statement outside every block is what BNG2.pl runs through Perl."""
+    NO_MODEL_BLOCK, OUTSIDE_MODEL, BLOCK_NOT_ALLOWED and ACTIONS_DROPPED;
+    and LINE_BREAK_NOT_ALLOWED up to that line and on it, where PyBNF
+    would read other lines than BNG2.pl. A statement outside every block
+    is what BNG2.pl runs through Perl."""
     out = []
     m = END_MODEL_RE.search(bngl)
     lines = bngl.split("\n")
     end = bngl.count("\n", 0, m.start()) if m else 0
+    for i, line in enumerate(lines[:end + 1], 1):
+        b = _BREAKS.search(line)
+        if b:
+            out.append(finding(
+                "LINE_BREAK_NOT_ALLOWED", f"model.bngl line {i}: "
+                f"{b.group()!r} is a line break to PyBNF, which reads the "
+                "model too, and not to BNG2.pl, so the two would read "
+                "different lines; write a newline or a space instead",
+                file="model.bngl", line=i))
     in_model, block = False, None
     for i, line in _bngl_lines(lines[:end]):
         if block is not None:
@@ -292,7 +326,8 @@ def _structure(bngl: str) -> list:
 
 
 def _tokens_rules(files: Mapping[str, str], shipped: bool) -> list:
-    """The placeholder rules: TOKEN_MALFORMED, TOKEN_UNKNOWN,
+    """The placeholder rules: TOKEN_MALFORMED, SUFFIX_IN_MODEL (the
+    suffix is a placeholder FluBNF fills too), TOKEN_UNKNOWN,
     NO_STATE_TOKENS and the GAMMA_ASSUMED warning."""
     out = []
     bngl = files["model.bngl"]
@@ -303,6 +338,13 @@ def _tokens_rules(files: Mapping[str, str], shipped: bool) -> list:
                 "TOKEN_MALFORMED", f"model.bngl line {i}: double braces that "
                 "are not a placeholder; one is written {{NAME}}, capitals, "
                 "digits and _ only, no spaces", file="model.bngl", line=i))
+        if _SUFFIX.search(line):
+            out.append(finding(
+                "SUFFIX_IN_MODEL", f"model.bngl line {i}: a suffix "
+                "(suffix=>) before end model: FluBNF writes each location's "
+                "suffix into its own actions, over the whole file, comments "
+                "included, so the model may not name one", file="model.bngl",
+                line=i))
     for i, line in enumerate(files["priors.conf"].splitlines(), 1):
         if "{{" in line or "}}" in line:
             out.append(finding(
@@ -333,30 +375,123 @@ def _tokens_rules(files: Mapping[str, str], shipped: bool) -> list:
     return out
 
 
-def _replay_rules(files: Mapping[str, str]) -> list:
-    """KEY_NOT_ALLOWED (one per line), CUMULATIVE_REQUIRED, NO_H_WEEKLY
-    and NO_DISPERSION."""
-    out, cum = [], ""
+def _conf(files: Mapping[str, str]) -> tuple[list, str, str]:
+    """(findings, the cumulative output, the prior lines) of priors.conf,
+    read against model.bngl as given (_rules gives it up to end model).
+    Each line is read without its comment, stripped, and gives the first
+    finding of these it meets: PRIORS_LINE (no '='); CUMULATIVE_NOT_OUTPUT
+    (pf_cumulative_observable naming no observable or function);
+    KEY_NOT_ALLOWED (any other key but a prior kind); PRIOR_MALFORMED
+    (not 'kind = name low high', each number in PyBNF's form and finite);
+    PRIOR_NOT_FREE; PRIOR_UNDEFINED; PRIOR_BOUNDS. Then
+    CUMULATIVE_REQUIRED without a cumulative line, and FREE_NO_PRIOR for
+    each __FREE parameter of model.bngl no prior line names. The
+    cumulative output is the first line's; each prior is written again as
+    'kind = name low high', each number its float's repr, in file order."""
+    out, cums, priors, named = [], [], [], set()
     kinds = RANGE_PRIORS + SPREAD_PRIORS
+    bngl = files["model.bngl"]
+    params, outputs = bngl_parameters(bngl), bngl_outputs(bngl)
+
+    def problem(code: str, text: str) -> None:
+        out.append(finding(code, f"priors.conf line {i}: {text}",
+                           file="priors.conf", line=i))
     for i, line in enumerate(files["priors.conf"].splitlines(), 1):
         s = _code(line)
+        if not s:
+            continue
         if "=" not in s:
-            continue                       # Check's PRIORS_LINE says it
+            problem("PRIORS_LINE", f"{s!r} has no '=': every line is 'key "
+                    "= value', a prior 'uniform_var = name low high'")
+            continue
         k, v = (x.strip() for x in s.split("=", 1))
         if k in REPLAY_KEYS:
-            cum = cum or v
-        elif k not in kinds:
-            out.append(finding(
-                "KEY_NOT_ALLOWED", f"priors.conf line {i}: {k} is not a key "
-                "a model for replays may set (the priors and "
-                "pf_cumulative_observable only: every replay runs the "
-                "shipped filter settings)", file="priors.conf", line=i))
-    if not cum:
+            cums.append(v)
+            if not (_OUTPUT_NAME.fullmatch(v) and v in outputs):
+                problem("CUMULATIVE_NOT_OUTPUT", "pf_cumulative_observable "
+                        f"names {v!r}, which is neither an observable nor a "
+                        "function of the model")
+            continue
+        if k not in kinds:
+            problem("KEY_NOT_ALLOWED", f"{k} is not a key a model for "
+                    "replays may set (the priors and pf_cumulative_observable "
+                    "only: every replay runs the shipped filter settings)")
+            continue
+        toks = v.split()
+        if toks:
+            named.add(toks[0])           # one problem for it, not two
+        if len(toks) != 3:
+            problem("PRIOR_MALFORMED", f"{s!r}: a prior is '{k} = name low "
+                    "high', a name and two numbers, nothing after them")
+            continue
+        name, lo, hi = toks
+        nums = [float(x) if _NUMBER.fullmatch(x) else None for x in (lo, hi)]
+        if not all(x is not None and math.isfinite(x) for x in nums):
+            problem("PRIOR_MALFORMED", f"{s!r}: {lo} and {hi} must be finite "
+                    "numbers, written with digits and a point (2.5, 0.1, "
+                    "1e-3)")
+            continue
+        if not _FREE_NAME.fullmatch(name):
+            if not name.endswith("__FREE"):
+                problem("PRIOR_NOT_FREE", f"{name} has a prior line but its "
+                        "name does not end in __FREE: only a __FREE "
+                        "parameter is fitted")
+            else:
+                problem("PRIOR_MALFORMED", f"{name} is not a parameter name: "
+                        "a letter first, then letters, digits and _")
+            continue
+        if name not in params:
+            problem("PRIOR_UNDEFINED", f"{k} names {name}, which the "
+                    "parameters block does not define")
+            continue
+        a, b = nums
+        if k in RANGE_PRIORS and a >= b:
+            problem("PRIOR_BOUNDS", f"{k} {name}: the low end {lo} is not "
+                    f"below the high end {hi}")
+        elif k == "loguniform_var" and a <= 0:
+            problem("PRIOR_BOUNDS", f"loguniform_var {name}: the low end must "
+                    "be above 0")
+        elif k in SPREAD_PRIORS and b <= 0:
+            problem("PRIOR_BOUNDS", f"{k} {name}: the spread {hi} must be "
+                    "above 0")
+        else:
+            priors.append(f"{k} = {name} {a!r} {b!r}\n")
+    if not cums:
         out.append(finding(
             "CUMULATIVE_REQUIRED", "priors.conf has no "
             "pf_cumulative_observable line: a replay fits each week's "
             "count as the increment of the output it names",
             file="priors.conf"))
+    for p in dict.fromkeys(params):
+        if p.endswith("__FREE") and p not in named:
+            out.append(finding(
+                "FREE_NO_PRIOR", f"{p} ends in __FREE but has no prior line: "
+                "give it one in priors.conf, or drop __FREE to keep its "
+                "written value fixed", file="priors.conf"))
+    return out, (cums[0] if cums else ""), "".join(priors)
+
+
+def replay_conf(files: Mapping[str, str]) -> tuple[str, str]:
+    """(the cumulative output, the prior lines) a replay writes into a
+    library model's pf.conf: priors.conf parsed (_conf, against model.bngl
+    up to end model as _rules cuts it) and written again, never copied:
+    the first pf_cumulative_observable's value, and each prior as
+    'kind = name low high' with each number its float's repr, in file
+    order. Refusal for any problem (resolve has refused such a version
+    already)."""
+    texts = {f: _lf(files[f]) for f in REPLAY_FILES}
+    m = END_MODEL_RE.search(texts["model.bngl"])
+    if m:
+        texts["model.bngl"] = texts["model.bngl"][:m.end()]
+    found, cum, priors = _conf(texts)
+    if found:
+        raise Refusal(found)
+    return cum, priors
+
+
+def _replay_rules(files: Mapping[str, str]) -> list:
+    """priors.conf's rules (_conf), NO_H_WEEKLY and NO_DISPERSION."""
+    out = _conf(files)[0]
     bngl = files["model.bngl"]
     if "H_weekly" not in bngl_outputs(bngl):
         out.append(finding(

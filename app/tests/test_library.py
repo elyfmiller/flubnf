@@ -378,6 +378,21 @@ def test_resolve_hashes_the_bytes_again(box):
 
 #: a statement BNG2.pl would run through Perl before end model
 STMT = 'setOption("SpeciesLabel","HNauty")'
+#: the line breaks str.splitlines reads (PyBNF's reading of a model)
+#: besides \n and \r, which BNG2.pl reads as none
+PY_BREAKS = ("\x0b\x0c\x1c\x1d\x1e\x85\N{LINE SEPARATOR}"
+             "\N{PARAGRAPH SEPARATOR}")
+
+
+def suffixed(text: str) -> str:
+    """model.bngl with a suffix before end model that passes every other
+    rule, and that materialize_model's rewrite (suffix=>"..." over the whole
+    file) turns into a statement outside every block: it eats end
+    parameters ... begin functions, and BNG2.pl then runs the writeXML
+    line through Perl."""
+    return text.replace("end parameters\n", 'end parameters # suffix=>"\n'
+                        'begin functions # "\nwriteXML({prefix=>\'x\'})\n'
+                        "end functions\n", 1)
 
 
 def _by_hand(name: str, files: dict) -> None:
@@ -412,6 +427,22 @@ def test_a_version_written_by_hand_is_not_one(box):
         "MODEL_CHANGED", L.resolve, "acts@1")
     assert [r["intact"] for r in L.list_models() if not r["shipped"]] == [
         False, False, True, False]
+    # what the engine would run from a version written by hand is refused
+    # too: a suffix before end model, an unbounded prior, a dropped prior
+    _by_hand("sfx", dict(stored, **{"model.bngl": suffixed(
+        stored["model.bngl"])}))
+    assert "model.bngl (SUFFIX_IN_MODEL)" in _refused("MODEL_CHANGED",
+                                                      L.resolve, "sfx@1")
+    _by_hand("wide", dict(stored, **{"priors.conf": stored["priors.conf"]
+                                     .replace("r__FREE 0.1 40.0",
+                                              "r__FREE 0.1 1e999 u")}))
+    assert "priors.conf (PRIOR_MALFORMED)" in _refused("MODEL_CHANGED",
+                                                       L.resolve, "wide@1")
+    _by_hand("nor", dict(stored, **{"priors.conf": stored["priors.conf"]
+                                    .replace("loguniform_var = r__FREE "
+                                             "0.1 40.0\n", "")}))
+    assert "priors.conf (FREE_NO_PRIOR)" in _refused("MODEL_CHANGED",
+                                                     L.resolve, "nor@1")
 
 
 def test_references(box):
@@ -499,8 +530,52 @@ def _tail(files: dict, more: str) -> dict:
      "KEY_NOT_ALLOWED"),
     (_edit(**{"priors.conf": ("pf_cumulative_observable = Hobs\n", "")}),
      "CUMULATIVE_REQUIRED"),
+    # a priors.conf the engine reads only as written again (replay_conf):
+    # 'kind = name low high', PyBNF's number form, finite, nothing after
+    *[(_edit(**{"priors.conf": ("r__FREE 0.1 40.0", f"r__FREE {v}")}),
+       "PRIOR_MALFORMED") for v in ("0.1 40.0 u", "0.1 1e999", "nan 40.0",
+                                    "0.1 2_5", ".5 40.0", "0.1 \u0664\u0660",
+                                    "0.1")],
+    (_edit(**{"priors.conf": ("loguniform_var = r__FREE",
+                              "loguniform_var = 9a__FREE")}),
+     "PRIOR_MALFORMED"),
+    (_edit(**{"priors.conf": ("r__FREE 0.1 40.0", "r__FREE 0 40.0")}),
+     "PRIOR_BOUNDS"),
+    (_edit(**{"priors.conf": ("loguniform_var = r__FREE 0.1 40.0",
+                              "normal_var = r__FREE 8 0")}), "PRIOR_BOUNDS"),
+    (_edit(**{"priors.conf": ("pf_cum", "uniform_var = N 1 2\npf_cum")}),
+     "PRIOR_NOT_FREE"),
+    (_edit(**{"priors.conf": ("pf_cum", "uniform_var = gone__FREE 1 2\n"
+                              "pf_cum")}), "PRIOR_UNDEFINED"),
+    (_edit(**{"priors.conf": ("pf_cum", "uniform_var k__FREE 1 2\npf_cum")}),
+     "PRIORS_LINE"),
+    (_edit(**{"priors.conf": ("= Hobs", "= Nope")}), "CUMULATIVE_NOT_OUTPUT"),
+    (_edit(**{"priors.conf": ("= Hobs", "= Hobs Hcum")}),
+     "CUMULATIVE_NOT_OUTPUT"),
+    # every __FREE parameter has its prior: none dropped, r__FREE's either
+    (_edit(**{"priors.conf": ("loguniform_var = r__FREE 0.1 40.0\n", "")}),
+     "FREE_NO_PRIOR"),
+    # a suffix before end model, in a comment inside a block or not
+    (_edit(**{"model.bngl": ("end parameters\n", "# simulate({suffix=>\"x\"})"
+                             "\nend parameters\n")}), "SUFFIX_IN_MODEL"),
+    (_edit(**{"model.bngl": ("\nend model", "\n# suffix =>\nend model")}),
+     "SUFFIX_IN_MODEL"),
+    ({**_good(), "model.bngl": suffixed(_good()["model.bngl"])},
+     "SUFFIX_IN_MODEL"),
+    # a line break PyBNF reads and BNG2.pl does not, in a comment before
+    # end model or on its line: PyBNF would write the statement back out
+    *[(_edit(**{"model.bngl": ("end parameters\n", f"end parameters\n# a{c}"
+                               f"{STMT}\n")}), "LINE_BREAK_NOT_ALLOWED")
+      for c in PY_BREAKS],
+    (_edit(**{"model.bngl": ("\nend model", f"\nend model # a\x0c{STMT}")}),
+     "LINE_BREAK_NOT_ALLOWED"),
 ])
-def test_each_replay_problem_fires(box, files, code):
+def test_each_replay_problem_fires(box, files, code, monkeypatch):
+    def check(*a, **k):
+        raise AssertionError("Check ran: the library's own rules found no "
+                             "problem")
+    # each code from the library's own rules, never from Check's
+    monkeypatch.setattr("app.core.sandbox_check.check", check)
     found = L.validate(files)
     assert code in _codes(found), found
     hit = next(f for f in found if f["code"] == code)
@@ -527,6 +602,16 @@ def test_a_statement_is_found_where_bng2_reads_one(box, old, new):
             and "setOption" in f["text"]], found
 
 
+def test_every_line_break_pybnf_reads_is_refused():
+    """PyBNF reads model.bngl through str.splitlines: every break that
+    reads but LF and CR (pinned to LF before the rules) is one the library
+    refuses, so PyBNF and BNG2.pl read the same lines."""
+    breaks = {chr(c) for c in range(sys.maxunicode + 1)
+              if len(f"a{chr(c)}b".splitlines()) == 2}
+    assert breaks == set(PY_BREAKS) | {"\n", "\r"}
+    assert all(L._BREAKS.fullmatch(c) for c in PY_BREAKS)
+
+
 def test_the_problems_name_their_lines(box):
     found = L.validate(_edit(**{"priors.conf": (
         "pf_cum", "postprocess = x\npf_jitter = 0.2\npf_cum")}))
@@ -536,6 +621,18 @@ def test_the_problems_name_their_lines(box):
     assert "postprocess" in keys[0]["text"] and "pf_jitter" in keys[1]["text"]
     bare = L.validate(_edit(**{"model.bngl": ("begin model\n", "")}))
     assert _codes(bare) == ["NO_MODEL_BLOCK"]          # one, not one per line
+    # one FREE_NO_PRIOR per parameter, in the model's order; a malformed
+    # prior still names its parameter: one problem, not two
+    files = _good()
+    for gone in ("uniform_var = eps1__FREE 0.0 1.0\n",
+                 "loguniform_var = r__FREE 0.1 40.0\n"):
+        assert gone in files["priors.conf"]
+        files["priors.conf"] = files["priors.conf"].replace(gone, "")
+    found = L.validate(files)
+    assert _codes(found) == ["FREE_NO_PRIOR", "FREE_NO_PRIOR"]
+    assert [f["text"].split()[0] for f in found] == ["eps1__FREE", "r__FREE"]
+    assert _codes(L.validate(_edit(**{"priors.conf": (
+        "r__FREE 0.1 40.0", "r__FREE 0.1 40.0 u")}))) == ["PRIOR_MALFORMED"]
 
 
 def test_the_replay_warnings(box):
@@ -563,7 +660,7 @@ def test_the_replay_warnings(box):
 
 
 def test_check_runs_last_and_keeps_its_own_codes(box, monkeypatch):
-    # a prior out of order is Check's own problem, kept with its code
+    # a prior out of order is the library's own problem, with Check's code
     found = L.validate(_edit(**{"priors.conf": ("Reff__FREE 0.6 2.5",
                                                 "Reff__FREE 2.5 0.6")}))
     assert _codes(found) == ["PRIOR_BOUNDS"]
@@ -592,6 +689,32 @@ def test_check_runs_last_and_keeps_its_own_codes(box, monkeypatch):
     seen.clear()
     L.validate(_edit(**{"model.bngl": ("{{POP}}", "{{ POP }}")}))
     assert seen == []
+
+
+def test_replay_conf_rewrites_every_line():
+    assert L.replay_conf(L.shipped_files("sihrs")) == ("Hobs", PF.VARS_1S)
+    assert L.replay_conf(L.shipped_files("sihrs-2strain")) == ("Hobs",
+                                                                PF.VARS_2S)
+    # comments, spaces and any number PyBNF reads become canonical lines;
+    # the first cumulative line is written, its comment cut
+    files = _good()
+    files["priors.conf"] = (
+        "# by hand\n"
+        "  uniform_var   =   Reff__FREE   0.60  +2.5E0   # wide\n\n"
+        "uniform_var = eps1__FREE 0 1\n"
+        "uniform_var=phi1__FREE 0.0 52\n"
+        "loguniform_var = mult__FREE 2e-3 1\n"
+        "loguniform_var = r__FREE 1E-1 40.\n"
+        "pf_cumulative_observable = Hobs#x\n"
+        "pf_cumulative_observable = H_weekly\n")
+    assert L.replay_conf(files) == ("Hobs", PF.VARS_1S)
+    # a bad second cumulative line is refused all the same
+    files["priors.conf"] += "pf_cumulative_observable = Nope\n"
+    _refused("CUMULATIVE_NOT_OUTPUT", L.replay_conf, files)
+    # what lies after end model counts for nothing
+    files = _tail(_good(), "begin functions\nHcum2() = Hobs\nend functions\n")
+    files["priors.conf"] = files["priors.conf"].replace("= Hobs", "= Hcum2")
+    _refused("CUMULATIVE_NOT_OUTPUT", L.replay_conf, files)
 
 
 def test_the_shipped_models_validate_clean(box):

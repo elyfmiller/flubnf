@@ -868,7 +868,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
                progress=None, settings: dict | None = None,
                drop_same_day: bool = False, week_extra=None,
-               engine: str = "pf") -> list:
+               engine: str = "pf", weeks: list | None = None) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
 
@@ -880,16 +880,56 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     `engine` "analogue" replays the Groundhog alone; recorded under
     `engine`, and a tree replayed one way is not resumed the other.
 
+    `weeks`, an experiment's frozen plan (app/core/experiments.py), replays
+    those weeks in place of the season's vintages; each must be a vintage
+    of the season, once. It is recorded under settings.weeks at the first
+    start, and a tree that records weeks replays them on every resume,
+    whatever `weeks` says. A tree whose record holds another
+    settings.experiment (an experiment's fingerprint) is never resumed,
+    and one without it (a record that cannot be read, or weeks on disk
+    without one, included) matches only a run without it. Both refusals
+    come before any flag is cleared or anything written.
+
     Control points sit between fits (see run_week); a pause holds inside
     this call. `settings` (what the caller was asked for) is recorded with
     everything this function was given folded in.
     """
     root = Path(root).resolve()    # see run_week: subprocesses read these paths
     root.mkdir(parents=True, exist_ok=True)
+    # an experiment's tree (app/core/experiments.py) resumes only as the
+    # same experiment, on the weeks recorded at its first start; read before
+    # anything is written, so a refused call clears no flag of a live run
+    meta = read_meta(root)                    # {}: none, or unreadable
+    had = meta.get("settings") if meta else None
+    if not isinstance(had, dict) and (meta or meta_path(root).exists()
+                                      or _weeks_on_disk(root)):
+        # a damaged record, or weeks without one: no experiment
+        had = {}
+    want = (settings or {}).get("experiment")
+    if had is not None and had.get("experiment") != want:
+        raise ResumeMismatch(
+            f"{season} at {root} holds a replay of experiment "
+            f"{str(had.get('experiment') or 'none')[:8]}; this run is "
+            f"{str(want or 'none')[:8]}. Resuming would mix two experiments "
+            "in one folder. Delete the folder to run it again.")
+    seen = season_vintages(season)
+    frozen = (had or {}).get("weeks")
+    if frozen is None:
+        frozen = weeks
+    if frozen is not None and not (
+            isinstance(frozen, (list, tuple)) and frozen
+            and all(isinstance(w, str) and w in seen for w in frozen)
+            and len(set(frozen)) == len(frozen)):
+        # each week names a folder _prepare_week may remove
+        raise ValueError(
+            f"{season} at {root}: {str(frozen)[:120]} is not a list of "
+            "distinct weeks of the season here; nothing was replayed")
+    vintages = list(seen if frozen is None else frozen)
     clear_flags(root)              # no stale STOP/PAUSE from an earlier replay
-    vintages = season_vintages(season)
     # recorded before the first week, so an interrupted run still says what ran
     rec = dict(settings or {})
+    if frozen is not None:
+        rec["weeks"] = vintages
     rec.setdefault("season", season)
     rec.setdefault("locations", [str(l) for l in locations])
     rec.setdefault("replicates", int(replicates))
