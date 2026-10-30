@@ -22,7 +22,13 @@ Sections, in file order:
   execution       RunStopped, shard width and cost constants, resolve_width,
                   runner_popen_kwargs, record_runner_pids, shard_cells,
                   cell_seconds, budget_seconds, _stop_all, execute
-  collect         _cell_statuses, _record_collect_failure, _save_cloud, collect
+  collect         _cell_statuses, _record_collect_failure, _save_cloud, collect,
+                  _pool
+
+FLUBNF_ENGINE=public (flubnf.settings.engine_choice) runs the same cells on
+lanl/PyBNF's job_type = lwf instead (app/core/engines/lwf.py): the engine
+checks, runner_cmd, execute() and collect() hand over to it; prepare() is the
+same for both engines.
 """
 from __future__ import annotations
 
@@ -237,7 +243,11 @@ def runner_cmd(runner) -> list:
     an install compiles config.py and parse.py inside the runner, whose
     stderr is the Sandbox's Engine messages fold (every fit does where
     __pycache__ cannot be written). A runner compiles no student input as
-    Python, so the warnings tell nobody anything."""
+    Python, so the warnings tell nobody anything. On the public engine,
+    that venv's Python (lwf.runner_cmd)."""
+    if _public():
+        from app.core.engines import lwf
+        return lwf.runner_cmd(runner)
     return [str(PY310), "-W", "ignore::SyntaxWarning", str(runner)]
 
 
@@ -452,11 +462,21 @@ def engine_fix(_platform: str | None = None) -> str:
             "FLUBNF_PYBNF at the unpacked engine.")
 
 
+def _public() -> bool:
+    """Whether FLUBNF_ENGINE asks for the public engine (lwf.py)."""
+    from flubnf.settings import engine_public
+    return engine_public()
+
+
 def engine_missing_message(_platform: str | None = None) -> str:
     """Operator message for a fork path without pybnf/pf.py. The runner would
     silently import the engine venv's stock PyBNF (no filter) and every cell
     would fail late with an opaque config error. The remedy comes before the
-    reason because the ledger's error field keeps only a prefix."""
+    reason because the ledger's error field keeps only a prefix. On the
+    public engine: its venv is missing (lwf.engine_missing_message)."""
+    if _public():
+        from app.core.engines import lwf
+        return lwf.engine_missing_message(_platform)
     p = Path(PYBNF_PF)
     if not p.is_dir():
         found = ("there is no such directory" if not p.exists()
@@ -473,7 +493,11 @@ def engine_missing_message(_platform: str | None = None) -> str:
 
 def engine_available() -> bool:
     """Whether the fork path holds PF_MODULE (the directory merely existing
-    proves nothing: half-unpacked archive, wrong FLUBNF_PYBNF, ...)."""
+    proves nothing: half-unpacked archive, wrong FLUBNF_PYBNF, ...). On the
+    public engine: whether its venv's Python is there."""
+    if _public():
+        from app.core.engines import lwf
+        return lwf.engine_available()
     return (Path(PYBNF_PF) / PF_MODULE).is_file()
 
 
@@ -499,7 +523,12 @@ def engine_missing_keys() -> tuple:
 
 
 def engine_current() -> bool:
-    """Whether the fork accepts every key this console writes."""
+    """Whether the fork accepts every key this console writes. On the
+    public engine: whether its venv holds engine-requirements.txt's build
+    (lwf.lock_check)."""
+    if _public():
+        from app.core.engines import lwf
+        return lwf.engine_current()
     return not engine_missing_keys()
 
 
@@ -552,7 +581,11 @@ def engine_update_hint(_platform: str | None = None) -> str:
 
 def engine_stale_message(_platform: str | None = None) -> str:
     """Operator message for an engine older than the console, named once at
-    prepare instead of once per cell."""
+    prepare instead of once per cell. On the public engine: its venv does
+    not match the lock."""
+    if _public():
+        from app.core.engines import lwf
+        return lwf.engine_stale_message(_platform)
     p = Path(PYBNF_PF)
     missing = ", ".join(engine_missing_keys())
     stamp = ""
@@ -1377,12 +1410,21 @@ def shard_cells(cells: list, width: int | None = None) -> list:
     return [cells[i::w] for i in range(w) if cells[i::w]]
 
 
+#: the public engine's cost per cell over the private engine's model above:
+#: 2.07 at the median and 2.21 at most on the 144-cell replay (lab Mac, six
+#: cells at once, 2026-10-29). Kept above both until the model is refitted
+#: on public runs; budget_seconds keeps its own margin on top.
+PUBLIC_COST_RATIO = 2.4
+
+
 def cell_seconds(cell: dict) -> float:
-    """Predicted seconds for one cell (no particle count: the reference 10,000)."""
+    """Predicted seconds for one cell (no particle count: the reference
+    10,000), on the engine FLUBNF_ENGINE names."""
     n_obs = int(cell.get("n_obs") or 0)
     particles = float(cell.get("particles") or COST_REFERENCE_PARTICLES)
-    return ((COST_INTERCEPT_S + COST_PER_WEEK_S * (n_obs + COST_FORECAST_WEEKS))
-            * max(particles, 1.0) / COST_REFERENCE_PARTICLES)
+    s = ((COST_INTERCEPT_S + COST_PER_WEEK_S * (n_obs + COST_FORECAST_WEEKS))
+         * max(particles, 1.0) / COST_REFERENCE_PARTICLES)
+    return s * PUBLIC_COST_RATIO if _public() else s
 
 
 def expected_seconds(shards: list) -> float:
@@ -1466,6 +1508,14 @@ def _signal_tree(p, sig) -> None:
         p.kill() if sig == _SIGKILL else p.terminate()
     except Exception:
         pass
+    if os.name == "posix" and _public():
+        # the public runner starts a PyBNF process per cell, one that may
+        # start between the ps above and the signal; the runner leads its
+        # own session (runner_popen_kwargs), so its group reaches it too
+        try:
+            os.killpg(p.pid, sig)
+        except Exception:
+            pass
     for child in kids:
         try:
             os.kill(child, sig)
@@ -1540,6 +1590,17 @@ def execute(workroot: Path, timeout: float | None = None,
         # nothing to fit is not a failure; prepare's refusals still surface
         out_json.write_text(json.dumps(prep_failures), encoding="utf-8")
         return dict(prep_failures)
+    public = _public()
+    if public:
+        # the public engine's files, from what prepare wrote; a cell it
+        # cannot run is a failed cell with its reason, never dropped
+        from app.core.engines import lwf
+        untranslated = lwf.translate_cells(cells)
+        prep_failures = {**prep_failures, **untranslated}
+        cells = [c for c in cells if c["key"] not in untranslated]
+        if not cells:
+            out_json.write_text(json.dumps(prep_failures), encoding="utf-8")
+            return dict(prep_failures)
     shards = shard_cells(cells, width)
     sized = not timeout
     budget = budget_seconds(shards) if sized else float(timeout)
@@ -1558,12 +1619,16 @@ def execute(workroot: Path, timeout: float | None = None,
             runner = workroot / f"pf_runner_{i}.py"
             # utf-8, which Python reads a script in whatever the locale:
             # the paths in it may hold letters outside ASCII
-            runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
-                                             common=RUNNER_COMMON,
-                                             cells_json=str(sj),
-                                             out_json=str(sf),
-                                             halt_path=str(stop)),
-                              encoding="utf-8")
+            runner.write_text(
+                lwf.runner_text(lwf.RUNNER, RUNNER_COMMON,
+                                cells_json=str(sj), out_json=str(sf),
+                                halt_path=str(stop)) if public
+                else _RUNNER.format(pybnf_path=str(PYBNF_PF),
+                                    common=RUNNER_COMMON,
+                                    cells_json=str(sj),
+                                    out_json=str(sf),
+                                    halt_path=str(stop)),
+                encoding="utf-8")
             # stderr to a FILE: an undrained pipe would fill and hang the runner
             fh = open(ef, "w", encoding="utf-8")
             handles.append(fh)
@@ -1685,8 +1750,13 @@ def collect(workroot: Path) -> dict:
 
     Only cells whose status is ok (or unrecorded) are read. A torn
     trajectory (empty, one row, ragged) is recorded as a failure and
-    skipped, so one dead cell cannot cost the others their samples."""
+    skipped, so one dead cell cannot cost the others their samples.
+
+    Each cell is read by what it holds: the public engine's Results/LWF
+    tables (lwf.cell_blocks) or the private engine's trajectory, anchored
+    alike (_pool)."""
     import numpy as np
+    from app.core.engines import lwf
     cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     status = _cell_statuses(workroot)
     by_loc: dict = {}
@@ -1694,6 +1764,16 @@ def collect(workroot: Path) -> dict:
         st = status.get(c["key"])
         if st is not None and st != "ok":
             continue              # a recorded failure has nothing to pool
+        if lwf.has_outputs(c):
+            try:
+                origin, as_of, horizons = lwf.cell_blocks(c)
+            except lwf.Unreadable as e:
+                _record_collect_failure(
+                    workroot, c["key"],
+                    f"FAIL: {e}; the cell is excluded from assembly")
+                continue
+            _pool(by_loc, c, origin, as_of, horizons)
+            continue
         runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
         tr_files = sorted(runs.glob("*traj_noise*"))
         if not tr_files:
@@ -1737,21 +1817,10 @@ def collect(workroot: Path) -> dict:
                     f"{lwo + k + 5} (one per week) or {n + k + 4} (one "
                     "per data row); the cell is excluded from assembly")
                 continue
-        origin = tr[:, col]
-        med = float(np.median(origin[np.isfinite(origin)]))
-        last = float(c["last_observed"])
-        # The anchor ratio needs a positive count at both ends: a newest week
-        # that reads 0 would make the scale 0 and every sample at every
-        # horizon 0. The filter has already conditioned on that 0 through its
-        # likelihood, so its forecast draws are kept as they are. The origin
-        # block is still pinned to the report (0): the Oracle step's m_0, the
-        # horizon -1 row and the retro map baseline all read it as y_T.
-        scale = last / med if (last > 0 and med > 0) else 1.0
-        origin_scale = scale if last > 0 else 0.0
         # Horizons are AS-OF-relative: with k trimmed weeks the conf asked for
         # pf_forecast_intervals = 4 + k, so horizon h is column col+k+h and
-        # the as-of week is col+k. The anchor pair (last_observed, med) is
-        # still the fit origin's.
+        # the as-of week is col+k. The anchor pair (last_observed, median of
+        # the origin column) is still the fit origin's.
         need = col + 1 + k + 4
         if tr.shape[1] < need:
             # a recorded trim the engine did not extend the forecast for
@@ -1760,12 +1829,32 @@ def collect(workroot: Path) -> dict:
                 f"{need} needed for weeks_dropped={k}; the engine did not "
                 "extend the forecast for the recorded trim -- rerun the "
                 "forecast on a current engine")
-        # Canonical keys (app.core.horizons): anchor under hz.ORIGIN, physical
-        # week h under hub label h-1 (an anchor keyed "0" would shift every
-        # submitted row a week early).
-        d = by_loc.setdefault(c["location"],
-                              {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
-        d[hz.ORIGIN].extend((tr[:, col + k] * origin_scale).tolist())
-        for h in (1, 2, 3, 4):
-            d[str(h - 1)].extend((tr[:, col + k + h] * scale).tolist())
+        _pool(by_loc, c, tr[:, col], tr[:, col + k],
+              [tr[:, col + k + h] for h in (1, 2, 3, 4)])
     return by_loc
+
+
+def _pool(by_loc: dict, c: dict, origin, as_of, horizons) -> None:
+    """Anchor one cell's draws at its fit origin and add them to its
+    location's pool. origin: the fit origin's column; as_of: the as-of
+    week's; horizons: as-of-relative weeks 1 to 4. Either engine's cells
+    come through here, so both are anchored by the one rule."""
+    import numpy as np
+    med = float(np.median(origin[np.isfinite(origin)]))
+    last = float(c["last_observed"])
+    # The anchor ratio needs a positive count at both ends: a newest week
+    # that reads 0 would make the scale 0 and every sample at every
+    # horizon 0. The filter has already conditioned on that 0 through its
+    # likelihood, so its forecast draws are kept as they are. The origin
+    # block is still pinned to the report (0): the Oracle step's m_0, the
+    # horizon -1 row and the retro map baseline all read it as y_T.
+    scale = last / med if (last > 0 and med > 0) else 1.0
+    origin_scale = scale if last > 0 else 0.0
+    # Canonical keys (app.core.horizons): anchor under hz.ORIGIN, physical
+    # week h under hub label h-1 (an anchor keyed "0" would shift every
+    # submitted row a week early).
+    d = by_loc.setdefault(c["location"],
+                          {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
+    d[hz.ORIGIN].extend((as_of * origin_scale).tolist())
+    for h in (1, 2, 3, 4):
+        d[str(h - 1)].extend((horizons[h - 1] * scale).tolist())

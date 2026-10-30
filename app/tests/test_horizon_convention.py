@@ -57,12 +57,14 @@ def test_an_unknown_key_is_carried_through_not_guessed_at():
 def test_pf_collect_emits_the_anchor_under_origin():
     import inspect
     src = inspect.getsource(PF.collect)
-    assert "d[hz.ORIGIN].extend" in src
+    pool = inspect.getsource(PF._pool)          # both engines' cells pool here
+    assert "_pool(by_loc, c," in src
+    assert "d[hz.ORIGIN].extend" in pool
     # col is the fit origin's column (n - 1, or the last week offset for a
     # gapped series laid out one column per week)
     assert "tr[:, col + k]" in src              # the origin: no horizon added
     assert "tr[:, col + k + h]" in src          # the forecasts: h weeks on
-    assert "d[str(h - 1)]" in src               # ... stored under hub labels
+    assert "d[str(h - 1)]" in pool              # ... stored under hub labels
 
 
 def test_floor_excludes_the_origin_from_the_collapse_test():
