@@ -173,8 +173,9 @@ def test_data_in_other_time_units_is_refused(text):
 def test_windows_model_line_splits_at_the_spaced_colon():
     m, d = lwf._model_and_data([("model", "C:/Users/ELY~1/w/A_r0/m.bngl : "
                                           "C:/Users/ELY~1/w/A_r0/A_flu.exp")])
-    assert str(m).endswith("A_r0/m.bngl") and str(m).startswith("C:")
-    assert str(d).endswith("A_r0/A_flu.exp") and str(d).startswith("C:")
+    # as_posix: on Windows str() gives the path back with backslashes
+    assert m.as_posix().endswith("A_r0/m.bngl") and str(m).startswith("C:")
+    assert d.as_posix().endswith("A_r0/A_flu.exp") and str(d).startswith("C:")
     with pytest.raises(lwf.Untranslatable, match="does not pair"):
         lwf._model_and_data([("model", "m.bngl")])
 
@@ -542,7 +543,9 @@ def test_a_season_from_before_build_records_stays_private(public, monkeypatch):
 def test_load_failure_names_the_public_venv(public):
     from app.core import sandbox
     said = sandbox._with_load_remedy("FAIL: ModuleNotFoundError: No module named 'pybnf'")
-    assert str(lwf.python()) in said and "setup_engine.sh --public" in said
+    # the remedy is the platform's own: FluBNF.bat on Windows
+    step = "FluBNF.bat" if sys.platform == "win32" else "setup_engine.sh --public"
+    assert str(lwf.python()) in said and step in said
 
 
 def test_harvest_params_reads_a_public_cell(tmp_path):
