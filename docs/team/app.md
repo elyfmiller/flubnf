@@ -6,6 +6,36 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-30: student workspace step 3, the Sandbox side, on `dev`
+  ([ed75622](https://github.com/elyfmiller/flubnf/commit/ed75622)). New
+  model gains one start, "Oracle SIHRS template, for replays", in the
+  Oracle SIHRS group and only with a hub; it uses the Location, Forecast
+  date and Season start fields that exist. It writes the production
+  template with its placeholders kept (`{{POP}}`, `{{I0FRAC}}` ...)
+  under a three-line note, the shipped priors, and the Oracle start's
+  data. The Sandbox fills the placeholders in memory, never in the files
+  (`sandbox_data.filled_bngl`): N is the population of the location
+  data.exp was loaded for and i0 is pinned from its counts, as a replay
+  pins it; Check, Save and run and Simulate data use it, the diagrams
+  sample values, and Set N is not offered where N is a placeholder. For
+  such a model Check says Ready for replays or Not ready, each finding
+  with its code, and which registered version the files already are;
+  Register, a button in that line only, saves the editor text and
+  freezes the next version (`beta2@1`), or names the one that holds
+  them. One new code, PLACEHOLDERS_UNFILLED. Models without placeholders
+  are unchanged: their Check JSON, runs, diagrams and pages compared
+  byte for byte with `dev` before. A version file that is not a regular
+  file now reads as MODEL_CHANGED (left over from step 2). Added: one
+  start option, one route, and the Register button inside Check's Ready
+  line; taken away: Set N on the template. Tested: the full suite with
+  only the 22 failures this Mac already had, and in the browser on a
+  spare console (create, Check, Register @1, Not ready on a `pf_jitter`
+  line, an edit, Register @2; phone width). Defaults taken, for Ely to
+  change: the template from the hub only (the core takes a dataset group
+  too); registered versions listed nowhere until step 4's experiment
+  form; Register saves unsaved editor text first, as Save and run does;
+  no location means a run or Simulate is refused in words. Step 4
+  (experiments and the compare page) waits for Ely's go.
 - 2026-10-29 (later still): student workspace step 2, the engine side,
   on `dev`
   ([0abd3e8](https://github.com/elyfmiller/flubnf/commit/0abd3e8),
@@ -33,7 +63,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   reverses step 1's default. Tested: the full suite with only the 22
   failures this Mac already had. Left for later: a library model with
   `reporting` (step 7), and refusing a version file that is not a
-  regular file. Step 3 waits for Ely's go.
+  regular file (done in step 3).
 - 2026-10-29 (later): student workspace step 1, the file formats, on
   `dev` ([e2dba2e](https://github.com/elyfmiller/flubnf/commit/e2dba2e)).
   No page, button or setting changes. `app/core/library.py`: the Ready
@@ -541,8 +571,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   `test_pf_named_model.py` checks it. Item 1 is done in a narrow form:
   the three templates stay in `pf.py`, and the shipped names are
   composed from them (`library.shipped_files`), not stored as versions.
-  Items 3 (step 5) and 4 (step 3) are not started. The items as first
-  listed:
+  Item 4 is on `dev` (step 3, ed75622): in `sandbox.py`, the template
+  start (`from_shipped(template=True)`), `placeholder_n` and the
+  placeholder fill in `prepare` and `simulate_data`; in
+  `sandbox_check.py`, `check(name=)` fills them before BNG2.pl and adds
+  Ready for replays; `sandbox_data.filled_bngl` is new. Item 3 (step 5)
+  is not started. The items as first listed:
   1. `pf.prepare` takes a registered model (template, prior block,
      starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
      which become registered models themselves.
