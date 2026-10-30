@@ -35,7 +35,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | SIHRS templates and fit inputs | `min_template`, `sihrs_fit` |
 | Analogue and donor paths | `analogue`, `donor_paths`, `epiweek53` |
 | Oracle SIHRS | `oracle`, `oracle_bank`, `oracle_mix` |
-| Quantiles and WIS | `quantiles`, `baseline_forecast`, `wis` |
+| Quantiles and WIS | `quantiles`, `baseline_forecast`, `wis`, `dashboard_score` |
 | Console CLI | `doctor`, `doctor_engine_hub`, `dataset_cli`, `cli_panels` |
 
 ## Subject map: `app/tests/`
