@@ -2,7 +2,7 @@
 
 B's patch applied to origin/dev 0e9e90b on a scratch worktree. The two
 proposals take the same route on eight of the ten bugs; they differ on
-ME-10, MO-23's width, DA-10's details and ME-08's markup.
+ME-07's grid, ME-10, MO-23's width, DA-10's details and ME-08's markup.
 
 | Bug | A's | B's | Better, and why |
 |---|---|---|---|
