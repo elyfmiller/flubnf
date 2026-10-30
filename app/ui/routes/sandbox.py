@@ -402,7 +402,8 @@ def sandbox_save(request: Request, name: str,
 def api_sandbox_check(name: str, model_bngl: str = Form(""),
                       data_exp: str = Form(""), priors_conf: str = Form("")):
     """Check the posted editor text (each field falling back to the saved
-    file) without the engine: JSON problems, warnings and facts."""
+    file) without the engine: JSON problems, warnings, facts and their
+    codes (app/core/problem_codes.py)."""
     try:
         files = sandbox_mod.read_model(name)
         for f, v in (("model.bngl", model_bngl), ("data.exp", data_exp),
@@ -411,8 +412,12 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                 files[f] = v.replace("\r\n", "\n")
         return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check")
     except Exception as e:
-        return JSONResponse({"ok": False, "problems": [str(e)[:1500]],
-                             "warnings": [], "facts": {}}, status_code=200)
+        from app.core.problem_codes import finding
+        said = str(e)[:1500]
+        return JSONResponse({"ok": False, "problems": [said],
+                             "warnings": [], "facts": {},
+                             "codes": [finding("CHECK_FAILED", said)]},
+                            status_code=200)
 
 
 # ------------------------------------------------------------ data.exp
