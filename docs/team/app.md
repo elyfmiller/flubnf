@@ -7,7 +7,9 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 ## Now
 
 - 2026-10-29: the student workspace, designed with Ely (decisions under
-  Decided); nothing is built yet, and building starts when Ely says.
+  Decided). It is built one step at a time, in the order of the steps
+  below, starting with the file formats, and under the rule in UI-KIT.md
+  "Before adding a control".
   Students try beta variants and other configurations of SIHRS, later
   RSV and COVID-19 models, from the Sandbox through to replays, for
   people and scripts alike:
@@ -34,6 +36,18 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     folders only: the launchers set aside edits to tracked files.
   - Pathogen a field on models, datasets and experiments; RSV and
     COVID-19 come in first as snapshot datasets and run the plain filter.
+  - From the protection audit (2026-10-29), also to build:
+    - A check on pull requests from forks. It refuses co-author or
+      generated-by lines, and commits authored or committed under Ely's
+      emails. It flags changes to the launchers, the installers,
+      `.github/` and the engine updater. `proposals/<name>/` holds only a
+      fixed list of file names, with no links, executables or oversized
+      files; a name list, so the check names no tool.
+    - The runner cleans every model before it runs. A model's actions
+      block is code (BNG2.pl runs each action through Perl `eval`), so it
+      gets FluBNF's own. `priors.conf` takes keys from a fixed list only
+      (`postprocess` would run Python). The `suffix` may not name a path.
+      Each job has time, memory and disk limits.
 - 2026-10-28 (later, Ely's answer to the Open question below): a
   Submitted / Before cap switch per location
   ([0e16723](https://github.com/elyfmiller/flubnf/commit/0e16723)), to
@@ -359,6 +373,30 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): minimalism. The console is already close to too much
+  to take in, the shipped models' settings most of all, so the student
+  workspace adds as few choices as it can. An experiment asks for a
+  model, a season, a size (smoke, pilot, full) and the Oracle step on or
+  off; the sizes are presets, never separate particle, replicate,
+  location or week fields. New work goes into the tabs that exist, and
+  nothing is added to the shipped models' forms. Each step's review
+  counts what it adds. The rules: UI-KIT.md, "Before adding a control".
+- 2026-10-29 (Ely): the student workspace build changes the Engine
+  lane's files directly where the design needs it (`pf.py`, `retro.py`,
+  `sandbox.py` and their tests), instead of waiting on the Engine lane.
+  The work lands on `dev` like any other, and the Engine lane's notes
+  are read first for anything in flight.
+- 2026-10-29 (Ely, after a protection audit): the wiki is off (never
+  used). Actions run only GitHub's own actions, which are all any branch
+  uses. `tests.yml` states a read-only token
+  ([1b83158](https://github.com/elyfmiller/flubnf/commit/1b83158)).
+  TEAM.md now holds the rules for the two machines, Ely's credentials,
+  reviewing a fork's pull request and merging it. Found: only Ely's
+  account can write here, so the risks left are ways to act as Ely.
+  These are Ely's credentials on the students' Mac Studio, the
+  students' shared cloud account connected to Ely's GitHub, and student
+  code or models run where Ely's login is. A BNGL file runs Perl when
+  BNG2.pl reads it.
 - 2026-10-29 (Ely): GitHub rules, set that day (rulesets 26160504 and
   26160505). `main` changes only through a merged pull request whose six
   checks are green (`test` and `test-windows` on 3.11 and 3.12,
@@ -416,8 +454,38 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   elyfmiller/flubnf` or the website, once all six checks are green.
   `dev` refuses a force push. Submission: the hand-pushed merge in your
   notes no longer works.
-- Engine (2026-10-29, the student workspace; requests to schedule with
-  Ely, nothing to start yet):
+- All lanes (2026-10-29): read TEAM.md's new rules on reviewing a fork's
+  pull request. Its code and models never run where Ely's GitHub login
+  is, and only Ely's merge brings its work into `dev`. Cloud sessions:
+  set the git name and email to Ely's before the first commit, merges
+  included. 490cf08 (a merge into fix/G16-weekly-report, on `dev`
+  through #70) carries the session's default identity, not Ely's. It
+  stays in history, since `dev` takes no force push.
+- Model (2026-10-29): your notes call the lab Mac "the Mac Studio"
+  (model.md:5 and about ten more). The students' machine is a different
+  Mac Studio, and the notes record Ely's `gh` login on yours. Please say
+  "lab Mac" for yours.
+- Engine (2026-10-29, from the protection audit):
+  1. The engine pin by its full commit ID, in a constant of its own for
+     `engine_update`'s compare and merge. Keep the 8-character name for
+     archive names and display (`archive_name`, `cut_engine_archive.sh`
+     and their tests). Today a fresh install takes the branch tip, and
+     PyBNF-Private has three writers besides Ely and no branch
+     protection on the Free plan.
+  2. A fresh install (the `setup_engine.sh` clone, the bundle) ends at
+     the pin by a fast-forward, not a detached checkout, so that
+     `engine_update` still sees the branch.
+  3. An engine archive in Downloads is installed with no hash check.
+     Check it against the pin's archive.
+  4. For the runner: the cleaning described under Now. PyBNF reads the
+     model's `generate_network` options and `setOption` again, so
+     cleaning only the first BNG2.pl call is not enough.
+- Engine (2026-10-29, the student workspace). Ely has decided that the
+  build changes your files directly (see Decided), so items 1 to 4 below
+  and the audit's runner cleaning will arrive on `dev` from App's build,
+  with their tests. Say in your notes if you have work in flight in
+  `pf.py`, `retro.py` or `sandbox.py`, so the two don't collide.
+  The items, nothing started yet:
   1. `pf.prepare` takes a registered model (template, prior block,
      starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
      which become registered models themselves.
@@ -684,11 +752,6 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
-
-- For Ely (2026-10-29, the student workspace): should the build change
-  the Engine lane's files (`pf.py`, `retro.py`, `sandbox.py`) directly,
-  or leave them to the Engine lane? The core of the design runs through
-  them.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
