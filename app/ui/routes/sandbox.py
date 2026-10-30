@@ -7,9 +7,10 @@ registers as the sandbox_storage Jinja global). app/core/sandbox.py does
 the work. An APIRouter server.py includes.
 
 Sections: the engine guard and busy reason; redirects and the posted
-editor; the page (GET /sandbox); models (new, save, delete, check);
-data.exp (fill, simulate, upload); runs (start, stop); the diagram API
-and the run poll; downloads; the Oracle step; the Storage line.
+editor; the page (GET /sandbox); models (new, save, delete, check,
+register); data.exp (fill, simulate, upload); runs (start, stop); the
+diagram API and the run poll; downloads; the Oracle step; the Storage
+line.
 """
 from __future__ import annotations
 
@@ -186,7 +187,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "templates": [e for e in examples if e.endswith("_template")],
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
            "example_names": {e: _free_name(e, taken)
-                             for e in examples + ["skeleton"]},
+                             for e in examples + ["skeleton", "variant"]},
            "copy_names": {m: _free_name(m + "_copy", taken) for m in taken},
            # a refused New model form comes back as it was posted (SB-09)
            "new_form": _sandbox_new_refused.pop("form", {}),
@@ -253,6 +254,9 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "vintages": sandbox_mod.vintages(),
             "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
             "data_source": sandbox_mod.read_data_source(name),
+            # N written as a placeholder: every run fills it, so Load data
+            # offers no Set N
+            "n_placeholder": sandbox_mod.placeholder_n(editing["model.bngl"]),
             # your own data: stored datasets, and an upload's refusal
             "datasets": sandbox_mod.dataset_choices(),
             "pick_dataset": dataset,
@@ -311,10 +315,12 @@ def sandbox_new(request: Request, name: str = Form(...),
                 forecast_date: str = Form(""), season_start: str = Form(""),
                 group: str = Form(""), as_of: str = Form("")):
     """A new model: the skeleton (fits as written), a copy of a shipped
-    example (example:<name>) or of a sandbox model (copy:<name>), or the
+    example (example:<name>) or of a sandbox model (copy:<name>), the
     Oracle SIHRS filter as production builds it for one hub location and
     forecast date (shipped:sihrs) or one group of a stored dataset with a
-    population (shipped:dataset:<id>, as of as_of)."""
+    population (shipped:dataset:<id>, as of as_of), or the Oracle SIHRS
+    template for replays, its placeholders kept, with one hub location's
+    data as of forecast_date (template:sihrs)."""
     # a space reads as part of a name; the folder takes _ for it
     name = re.sub(r"\s+", "_", (name or "").strip())
     kind, _, what = (start or "skeleton").partition(":")
@@ -330,6 +336,11 @@ def sandbox_new(request: Request, name: str = Form(...),
                                      dataset=what.split(":", 1)[1])
             _flash(f"{name}: the Oracle SIHRS filter for {group.strip()} "
                    f"as of {as_of.strip()}.", "ok")
+        elif kind == "template" and what == "sihrs":
+            sandbox_mod.from_shipped(name, location, forecast_date,
+                                     season_start=season_start, template=True)
+            _flash(f"{name}: the Oracle SIHRS template, with data for "
+                   f"{location.strip()} as of {forecast_date.strip()}.", "ok")
         elif kind == "example":
             sandbox_mod.add_example(what, as_name=name)
             _flash(f"{name} copied from the example {what}.", "ok")
@@ -403,14 +414,16 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                       data_exp: str = Form(""), priors_conf: str = Form("")):
     """Check the posted editor text (each field falling back to the saved
     file) without the engine: JSON problems, warnings, facts and their
-    codes (app/core/problem_codes.py)."""
+    codes (app/core/problem_codes.py), and, for a model that keeps
+    placeholders, whether it is ready for replays."""
     try:
         files = sandbox_mod.read_model(name)
         for f, v in (("model.bngl", model_bngl), ("data.exp", data_exp),
                      ("priors.conf", priors_conf)):
             if (v or "").strip():
                 files[f] = v.replace("\r\n", "\n")
-        return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check")
+        return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check",
+                                 name=name)
     except Exception as e:
         from app.core.problem_codes import finding
         said = str(e)[:1500]
@@ -418,6 +431,58 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                              "warnings": [], "facts": {},
                              "codes": [finding("CHECK_FAILED", said)]},
                             status_code=200)
+
+
+#: one Register at a time in this console: a double click registers once
+#: (library.register takes no lock; test_library.py pins two processes
+#: getting distinct versions)
+_sandbox_register_lock = threading.Lock()
+
+
+@router.post("/sandbox/models/{name}/register")
+def sandbox_register(name: str, model_bngl: str = Form(""),
+                     data_exp: str = Form(""), priors_conf: str = Form("")):
+    """Register for replays: the posted editor fields are saved first (as
+    Save and run's), then the saved model.bngl and priors.conf are frozen
+    as the library's next version of this name (library.register), or
+    named as the version that already holds them. Refused in words, each
+    finding with its code. A name that is not exactly a Sandbox model's
+    saves nothing. Redirects to the model."""
+    from app.core import library
+    from app.core.problem_codes import Refusal
+    models = sandbox_mod.MODELS
+    # the exact name before anything is saved: where folders ignore case,
+    # BETA would save into beta's folder
+    if not (models.is_dir() and name in {p.name for p in models.iterdir()}):
+        _flash(f"Not registered: no Sandbox model is named {name!r} "
+               "(letter case counts).", "warn")
+        return _sandbox_redirect()
+    with _sandbox_register_lock:
+        try:
+            if _sandbox_save_posted(name, model_bngl, data_exp, priors_conf):
+                _flash(f"Saved {name}.", "ok")
+        except Exception as e:
+            _not_done("Not saved, not registered", e)
+            return _sandbox_redirect(name)
+        try:
+            r = library.register(name)
+        except Refusal as e:
+            # the problems first, each with its code; the rest in the "?"
+            found = ([f for f in e.findings if f["tier"] == "problem"]
+                     + [f for f in e.findings if f["tier"] != "problem"])
+            _not_done("Not registered", sandbox_mod.SandboxError(
+                "\n".join(f"{f['text']} ({f['code']})" for f in found)))
+            return _sandbox_redirect(name)
+        except Exception as e:                    # the computer, not the model
+            _not_done("Not registered", e)
+            return _sandbox_redirect(name)
+    s = library.short(r["fingerprint"])
+    notes = "; ".join(f"{f['text']} ({f['code']})" for f in r["findings"])
+    _flash(f"Registered {r['ref']} ({s})." if r["new"] else
+           f"{r['ref']} already holds these files ({s}); nothing new was "
+           "registered.", "ok",
+           detail=f"Worth a look: {notes}" if notes else "")
+    return _sandbox_redirect(name)
 
 
 # ------------------------------------------------------------ data.exp
@@ -778,7 +843,9 @@ def api_sandbox_contactmap(name: str):
     visualize action draws on a copy of the model (no engine, no run).
     "sites": any molecule with components, the only models whose contact
     map and network say more than the flow. BNG2.pl's words come back as
-    "error" beside the flow. Cached by the model text until it changes."""
+    "error" beside the flow. Cached by the model text until it changes. A
+    model that keeps placeholders is drawn with the sample values in them
+    (sandbox_data.filled_bngl; no value reaches a drawing)."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
@@ -794,7 +861,8 @@ def api_sandbox_contactmap(name: str):
         flow = None
     try:
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        cm = contactmap.parse(contactmap.graphml_from_bngl(bngl, work))
+        cm = contactmap.parse(contactmap.graphml_from_bngl(
+            sandbox_mod.filled_bngl(name, files, sample=True)[0], work))
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500], "flow": flow}, status_code=200)
     out = {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
@@ -808,7 +876,8 @@ def api_sandbox_contactmap(name: str):
 def api_sandbox_network(name: str):
     """BNG2.pl's generated reaction network as inline SVG (generate-only
     copy, no run); too large -> counts and a note. "graph" always returned.
-    Cached by the model text until it changes."""
+    Cached by the model text until it changes; a model that keeps
+    placeholders is generated with the sample values in them."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
@@ -817,7 +886,8 @@ def api_sandbox_network(name: str):
         if hit is not None:
             return hit
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        net = contactmap.parse_net(contactmap.network_from_bngl(bngl, work))
+        net = contactmap.parse_net(contactmap.network_from_bngl(
+            sandbox_mod.filled_bngl(name, files, sample=True)[0], work))
         drawing = contactmap.svg_network(net)
         out = {"svg": drawing if drawing.startswith("<svg") else "",
                "species": len(net["species"]), "reactions": len(net["reactions"]),

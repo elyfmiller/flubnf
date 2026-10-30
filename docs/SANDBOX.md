@@ -33,6 +33,7 @@ New model, Start from:
 | Kinetics example | A to B, not an epidemic | any count that is the increment of something |
 | Blank skeleton | one conversion, three fitted values | writing from scratch |
 | Oracle SIHRS filter | the production model, priors and data for one jurisdiction and week | comparing with production (the hub location start needs the hub: Update data on the Data tab first) |
+| Oracle SIHRS template, for replays | the production model and priors with the per-state values kept as placeholders (`{{POP}}`, `{{I0FRAC}}`, ...), and one hub location's data as of a week | a variant of the production model to register and replay |
 
 Every example's `data.exp` was simulated from the model itself at the
 values written in its `model.bngl`, with negative-binomial noise, and its
@@ -89,6 +90,18 @@ runs the model once at its written values and sets its weekly counts
 beside the data: if the two differ tenfold, N, the starting state or the
 reporting scale is off, and the fit will start far from the data. No
 problems means the model can run, not that it fits.
+
+A model that keeps placeholders (the Oracle SIHRS template's `{{POP}}`,
+`{{I0FRAC}}`, ...) is filled for the Sandbox, never in its files. Check,
+Save and run and Simulate data use the population of the location
+data.exp was last loaded for and the starting infected fraction pinned
+from its counts, as a replay does for each location and week; the
+diagrams use sample values. Load a location first. Set N is not offered.
+Check then says whether it is **Ready for replays**, each finding with
+its code, and offers **Register**: it saves the editor text and freezes
+model.bngl and priors.conf as the next version of the name (`beta2@1`);
+identical files name the version that holds them, and any edit, a
+comment too, is a new one.
 
 **Save and run** fits the saved files. The full fit (10,000 particles,
 the production setting) gives the estimates, in seconds to minutes; with

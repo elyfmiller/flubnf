@@ -733,3 +733,162 @@ def test_every_example_is_refused_for_replays(box):
         codes = _codes(L.validate(files))
         assert "NO_STATE_TOKENS" in codes, (e, codes)
         assert ("NO_H_WEEKLY" in codes) == (e != "sihrs_example"), (e, codes)
+
+
+# ---------------------------------------- Check's Ready for replays, lookup
+
+
+def _template() -> dict:
+    """The Oracle SIHRS template as the Sandbox starts it (its note on
+    top), with the sample data beside it."""
+    files = _good()
+    files["model.bngl"] = sb.TEMPLATE_NOTE + files["model.bngl"]
+    return files
+
+
+@pytest.mark.parametrize("edit, code", [
+    ({}, None),
+    ({"priors.conf": ("pf_cum", "pf_jitter = 0.2\npf_cum")},
+     "KEY_NOT_ALLOWED"),
+    ({"model.bngl": ("Reff__FREE 1.20", "Reff__FREE 9")},
+     "START_OUTSIDE_PRIOR"),
+    ({"model.bngl": ("begin model\n", "begin model\n# broken\n")},
+     "NETWORK_FAILS"),
+    ({"model.bngl": ("Reff__FREE 1.20", "reff__free 1.20")},
+     "PRIOR_UNDEFINED"),
+    ({"model.bngl": ("generate_network({overwrite=>1})",
+                     "generate_network({overwrite=>1})\nwriteSBML()")},
+     "ACTIONS_DROPPED"),
+    ({"model.bngl": ("{{GAMMA}}", "2.1875")}, "GAMMA_ASSUMED"),
+])
+def test_check_says_what_validate_says(box, edit, code):
+    """Check's verdict on a model that keeps placeholders is validate's:
+    its own codes stand in for validate's run of Check, so no second
+    BNG2.pl run (Sandbox data, actions and placeholders aside)."""
+    files = _template()
+    for f, (old, new) in edit.items():
+        assert old in files[f], old
+        files[f] = files[f].replace(old, new, 1)
+    want = L.validate(files)
+    assert (code in _codes(want)) if code else want == []
+    r = sb.check({**files, "data.exp": L.SAMPLE_EXP})
+    assert r["replays"]["findings"] == want
+    assert r["replays"]["ready"] == (not [f for f in want
+                                          if f["tier"] == "problem"])
+    assert r["replays"]["registered"] is None          # no name, no lookup
+
+
+def test_readiness_puts_the_name_rules_first(box):
+    r = sb.check({**_template(), "data.exp": L.SAMPLE_EXP}, name="SIHRS")
+    assert r["replays"]["findings"][0]["code"] == "NAME_RESERVED"
+    assert r["replays"]["ready"] is False
+    # the rest are validate's, after the name's
+    assert r["replays"]["findings"][1:] == L.validate(_template())
+
+
+def test_lookup_finds_the_intact_version_the_files_match(box):
+    good, edited = _good(), _edit(**{"model.bngl": ("# FluBNF SIHRS",
+                                                     "# My SIHRS")})
+    src = _sandbox_model("beta", good)
+    assert L.lookup("beta", good) is None             # nothing registered
+    assert L.register("beta")["ref"] == "beta@1"
+    (src / "model.bngl").write_text(edited["model.bngl"], encoding="utf-8")
+    assert L.register("beta")["ref"] == "beta@2"
+    assert L.lookup("beta", good) == {"ref": "beta@1", "version": 1,
+                                       "fingerprint": SIHRS_FP,
+                                       "short": SIHRS_FP[:8]}
+    assert L.lookup("beta", edited)["ref"] == "beta@2"
+    # the stored form is what counts: newlines and the actions do not
+    assert L.lookup("beta", {f: t.replace("\n", "\r\n")
+                             for f, t in good.items()})["version"] == 1
+    assert L.lookup("beta", _edit(**{"priors.conf": ("0.6 2.5",
+                                                     "0.6 2.6")})) is None
+    # the exact name only, and files with no end model match nothing
+    _sandbox_model("gamma", good)
+    assert L.lookup("gamma", good) is None
+    assert L.lookup("BETA", good) is None
+    assert L.lookup("", good) is None
+    assert L.lookup("beta", {"model.bngl": "begin parameters\n",
+                             "priors.conf": good["priors.conf"]}) is None
+    assert L.lookup("beta", {"model.bngl": good["model.bngl"]}) is None
+    # register names the same version lookup does
+    (src / "model.bngl").write_text(good["model.bngl"], encoding="utf-8")
+    again = L.register("beta")
+    assert (again["ref"], again["new"]) == ("beta@1", False)
+    # a changed version is skipped: the files are registered again
+    with open(L.root() / "beta" / "1" / "priors.conf", "ab") as fh:
+        fh.write(b"# edited\n")
+    assert L.lookup("beta", good) is None
+    assert L.register("beta")["ref"] == "beta@3"
+    assert L.lookup("beta", good)["ref"] == "beta@3"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_a_fifo_in_a_version_never_hangs_resolve_or_lookup(box):
+    """A pipe where a version's file should be would wait for a writer
+    on every read: resolve and lookup (which Check runs) read regular
+    files only."""
+    for name, f in (("beta", "priors.conf"), ("gamma", "model.json")):
+        _sandbox_model(name, _good())
+        L.register(name)
+        p = L.root() / name / "1" / f
+        p.unlink()
+        os.mkfifo(p)
+        out = {}
+
+        def go():
+            try:
+                L.resolve(f"{name}@1")
+            except Refusal as e:
+                out["resolve"] = e.code
+            out["lookup"] = L.lookup(name, _good())
+            out["register"] = L.register(name)["ref"]
+        t = threading.Thread(target=go, daemon=True)
+        t.start()
+        t.join(5)
+        assert not t.is_alive(), f"a pipe for {f} hung the read"
+        assert out == {"resolve": "MODEL_CHANGED", "lookup": None,
+                       "register": f"{name}@2"}, f
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_a_fifo_in_the_sandbox_folder_never_hangs_register(box):
+    """Register reads the Sandbox model's regular files only: a pipe in
+    place of one is a file it cannot read, never a wait for a writer
+    (the Register route holds its lock meanwhile)."""
+    src = _sandbox_model("beta", _good())
+    (src / "priors.conf").unlink()
+    os.mkfifo(src / "priors.conf")
+    out = {}
+
+    def go():
+        try:
+            L.register("beta")
+        except Refusal as e:
+            out["codes"] = _codes(e.findings)
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(5)
+    assert not t.is_alive(), "a pipe for priors.conf hung register"
+    assert out == {"codes": ["FILE_UNREADABLE"]}
+
+
+@pytest.mark.skipif(os.name == "nt" or getattr(os, "geteuid", int)() == 0,
+                    reason="a folder's permissions do not shut this user out")
+def test_a_version_this_user_cannot_open_reads_as_changed(box):
+    """A version folder that cannot be entered is a changed version, as
+    one with its files gone is: never an error out of resolve, lookup,
+    list_models or register."""
+    _sandbox_model("beta", _good())
+    L.register("beta")
+    d = L.root() / "beta" / "1"
+    d.chmod(0)
+    try:
+        said = _refused("MODEL_CHANGED", L.resolve, "beta@1")
+        assert "model.json (missing or unreadable)" in said
+        assert L.lookup("beta", _good()) is None
+        assert [r["intact"] for r in L.list_models()
+                if r["name"] == "beta"] == [False]
+        assert L.register("beta")["ref"] == "beta@2"
+    finally:
+        d.chmod(0o755)
