@@ -6,6 +6,34 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-29 (later still): student workspace step 2, the engine side,
+  on `dev`
+  ([0abd3e8](https://github.com/elyfmiller/flubnf/commit/0abd3e8),
+  [2f55419](https://github.com/elyfmiller/flubnf/commit/2f55419)). No
+  page, button or setting changes. `pf.prepare` reads
+  `spec.extra["model"]`: a shipped name (`sihrs`, `sihrs-2strain`,
+  `sihrs-natg`) gives today's cells for its variant; a library version's
+  verified text becomes the cell's template, and its cumulative output
+  and priors are parsed and written again (`library.replay_conf`), never
+  copied. `fit_i0`, `prior_ranges`, `iota` and `neff_cap` are refused
+  beside a library model. `retro.run_season(weeks=)` replays an
+  experiment's frozen weeks and never resumes a folder holding another
+  experiment; that refusal comes before any flag is cleared.
+  `experiments.replay` runs a plan with the shipped Groundhog beside the
+  model and the Oracle step on or off, and checks the model's
+  fingerprint before each week. Two new codes: SUFFIX_IN_MODEL, and
+  LINE_BREAK_NOT_ALLOWED (PyBNF splits lines on a form feed and the
+  like, BNG2.pl does not, so a comment could hide a statement from the
+  structure rules). The shipped cells are pinned byte for byte by
+  `test_prepare_golden.py`, committed before `pf.py` changed. On the
+  real hub (2024-12-28, California and Vermont), the shipped, 2strain
+  and natg cells are the same before and after, by `variant` or by name,
+  and a library copy of sihrs differs by one comment line in `m.bngl`.
+  Experiments now keep the Groundhog (about 1% of a filter week), which
+  reverses step 1's default. Tested: the full suite with only the 22
+  failures this Mac already had. Left for later: a library model with
+  `reporting` (step 7), and refusing a version file that is not a
+  regular file. Step 3 waits for Ely's go.
 - 2026-10-29 (later): student workspace step 1, the file formats, on
   `dev` ([e2dba2e](https://github.com/elyfmiller/flubnf/commit/e2dba2e)).
   No page, button or setting changes. `app/core/library.py`: the Ready
@@ -20,9 +48,9 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   which BNG2.pl runs as Perl, is refused. Defaults taken: smoke and
   pilot run 1 replicate against the shipped 3; with the Oracle step off
   a shipped side exists for 2024-25 only (`quantiles.null`); experiments
-  skip the Groundhog. Tested: the new and Sandbox tests (379), and the
-  full suite with only the 22 failures this Mac already had. Step 2
-  (engine side) waits for Ely's go.
+  skip the Groundhog (step 2 keeps it). Tested: the new and Sandbox
+  tests (379), and the full suite with only the 22 failures this Mac
+  already had. Step 2 (engine side) waits for Ely's go.
 - 2026-10-29: the student workspace, designed with Ely (decisions under
   Decided). It is built one step at a time, in the order of the steps
   below, starting with the file formats, and under the rule in UI-KIT.md
@@ -502,7 +530,19 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   and the audit's runner cleaning will arrive on `dev` from App's build,
   with their tests. Say in your notes if you have work in flight in
   `pf.py`, `retro.py` or `sandbox.py`, so the two don't collide.
-  The items, nothing started yet:
+  Items 1 and 2 are on `dev` (step 2, 2f55419). In `pf.py`:
+  `LIBRARY_REFUSED` and `_named_model` (new), and `prepare` (a branch
+  for a library model: its text as the cell's template, the DEFAULTS
+  splice skipped, and its cumulative output and priors in `pf.conf`). In
+  `retro.py`: `run_season` (`weeks=`, and the experiment check before
+  `clear_flags`). `run_week`, `execute` and `collect` are unchanged. A
+  library cell keeps the public engine's cell contract (one `model =`
+  line, a two-column `.exp`, the four prior kinds, no new `pf_*` key);
+  `test_pf_named_model.py` checks it. Item 1 is done in a narrow form:
+  the three templates stay in `pf.py`, and the shipped names are
+  composed from them (`library.shipped_files`), not stored as versions.
+  Items 3 (step 5) and 4 (step 3) are not started. The items as first
+  listed:
   1. `pf.prepare` takes a registered model (template, prior block,
      starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
      which become registered models themselves.

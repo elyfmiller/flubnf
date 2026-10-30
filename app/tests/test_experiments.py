@@ -1,6 +1,8 @@
 """The experiment file (app/core/experiments.py): its fields and defaults,
 the derived id, the fingerprint, the size presets and their week rules,
-the shipped replay an experiment is compared with, and the plan.
+the shipped replay an experiment is compared with, the plan, and the
+replay itself (run_week faked, and once the real prepare on
+test_prepare_golden.py's hub).
 
 The calendar is the literal 2024-25 one and the shipped replays are
 synthetic trees: the suite reads no hub.
@@ -399,3 +401,251 @@ def test_the_plan_refuses(season):
     retro.write_meta(folder, {"settings": {"experiment": SMOKE_FP}})
     assert X.plan({"model": "sihrs", "season": "2024-25"},
                   retro_root=season)["experiment"] == SMOKE_FP
+
+
+# ---------------------------------------------------------------- replay
+
+
+def _weeks_run(monkeypatch, after=lambda root, asof: None) -> list:
+    """retro.run_week faked: each call's (asof, locations, replicates,
+    particles, extra) recorded and its samples file written, then
+    after(root, asof)."""
+    calls = []
+
+    def fake_week(root, season, asof, locations, replicates, particles,
+                  width, drop_same_day=False, extra=None, engine="pf"):
+        calls.append({"asof": asof, "locations": list(locations),
+                      "replicates": replicates, "particles": particles,
+                      "extra": extra})
+        wd = Path(root) / "weeks" / asof
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / RS.SAMPLES_JSON).write_text("{}", encoding="utf-8")
+        after(Path(root), asof)
+        return {"asof": asof}
+    monkeypatch.setattr(retro, "run_week", fake_week)
+    return calls
+
+
+def test_replay_writes_the_settings_then_runs_the_plan(season, monkeypatch):
+    from app.core.engines import analogue as an
+    calls = _weeks_run(monkeypatch)
+    s = {"model": "sihrs", "season": "2024-25"}
+    got = X.replay(s, retro_root=season)
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    assert ((folder / X.SETTINGS).read_text(encoding="utf-8")
+            == X.settings_text(s))
+    assert [c["asof"] for c in calls] == SMOKE_WEEKS
+    base = an.aux_preset(an.SHIPPED_AUX)
+    for i, c in enumerate(calls):
+        assert (c["locations"], c["replicates"], c["particles"]) == (
+            ["California", "Vermont"], 1, 10_000)
+        assert c["extra"] == {**base(c["asof"], i, SMOKE_WEEKS),
+                              "model": "sihrs"}
+    st = retro.read_meta(folder)["settings"]
+    assert (st["model"], st["model_fingerprint"], st["experiment"]) == (
+        "sihrs", SIHRS_FP, SMOKE_FP)
+    assert (st["weeks"], st["oracle"]) == (SMOKE_WEEKS, "applied")
+    assert st["week_extra"].startswith("aux_preset:flusurv")
+    assert st["groundhog_local_pools"] == an.effective_local_pools(
+        {"local_pools": an.shipped_local_pools()})
+    assert got == X.plan(s, retro_root=season)
+
+
+def test_the_oracle_switch_reaches_every_week(season, monkeypatch, tmp_path):
+    calls = _weeks_run(monkeypatch)
+    ref = _register("beta")
+    X.replay({"model": ref, "season": "2024-25"}, retro_root=season)
+    off = retro.read_meta(X.root() / "beta-v1_2024-25_smoke")["settings"]
+    assert [c["extra"]["oracle"] for c in calls] == ["none", "none"]
+    assert [c["extra"]["model"] for c in calls] == [ref, ref]
+    assert off["week_extra"].endswith("+oracle:none")
+    # the words a replay records on its own with the step off
+    retro.run_season(tmp_path / "plain", "2024-25", ["Vermont"],
+                     week_extra=lambda asof, i, v: {"oracle": "none"})
+    plain = retro.read_meta(tmp_path / "plain")["settings"]["oracle"]
+    assert off["oracle"] == plain
+    calls.clear()
+    on = {"model": ref, "season": "2024-25", "oracle": True}
+    X.replay(on, retro_root=season)
+    assert [("oracle" in c["extra"]) for c in calls] == [False, False]
+    folder = X.root() / "beta-v1_2024-25_smoke_oracle"
+    assert retro.read_meta(folder)["settings"]["oracle"] == "applied"
+    # a finished experiment run again keeps what it recorded
+    calls.clear()
+    X.replay(on, retro_root=season)
+    assert calls == []
+    assert retro.read_meta(folder)["settings"]["oracle"] == "applied"
+
+
+def test_a_refused_experiment_writes_nothing(season, monkeypatch):
+    from flubnf import bank
+    calls = _weeks_run(monkeypatch)
+    _refused("MODEL_NOT_FOUND", X.replay, {"model": "beta@9",
+                                           "season": "2024-25"},
+             retro_root=season)
+    assert not X.root().exists()
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    retro.write_meta(folder, {"settings": {"experiment": "0" * 64}})
+    _refused("EXPERIMENT_CHANGED", X.replay, {"model": "sihrs",
+                                              "season": "2024-25"},
+             retro_root=season)
+    assert sorted(p.name for p in folder.iterdir()) == [retro.META_NAME]
+
+    def no_bank(stream):
+        raise FileNotFoundError(f"no {stream} bank")
+    monkeypatch.setattr(bank, "read", no_bank)
+    with pytest.raises(FileNotFoundError, match="no flusurv bank"):
+        X.replay({"model": "sihrs", "season": "2024-25", "oracle": False},
+                 retro_root=season)
+    assert not (X.root() / "sihrs_2024-25_smoke").exists()
+    assert calls == []
+
+
+def test_stop_pause_and_resume(season, monkeypatch):
+    held = [w for w in VINTAGES if w != "2025-03-08"]
+    monkeypatch.setattr(retro, "season_vintages", lambda s: list(held))
+    folder = X.root() / "sihrs_2024-25_pilot_oracle"
+    slept = []
+
+    def sleep(seconds):                 # the person presses Resume
+        slept.append(seconds)
+        retro.clear_pause(folder)
+    monkeypatch.setattr(retro, "_sleep", sleep)
+    first, second = PILOT_WEEKS[:2]
+
+    def after(root, asof):
+        if asof == first:
+            retro.request_pause(root)
+        if asof == second:
+            retro.request_stop(root)
+    calls = _weeks_run(monkeypatch, after)
+    s = {"model": "sihrs", "season": "2024-25", "size": "pilot"}
+    with pytest.raises(retro.SeasonStopped):
+        X.replay(s, retro_root=season)
+    planned = [w for w in PILOT_WEEKS if w != "2025-03-08"]
+    assert [c["asof"] for c in calls] == [first, second] and slept
+    m = retro.read_meta(folder)
+    assert m["status"] == "stopped" and m["settings"]["weeks"] == planned
+    # a week added since: the plan picks it, the replay keeps its own
+    held.append("2025-03-08")
+    assert X.plan(s, retro_root=season)["weeks"] == PILOT_WEEKS
+    calls.clear()
+    got = X.replay(s, retro_root=season)
+    assert [c["asof"] for c in calls] == planned[2:]
+    assert got["weeks"] == planned
+    assert retro.read_meta(folder)["status"] == "done"
+
+
+def test_a_week_whose_model_changed_is_not_fitted(season, monkeypatch):
+    from app.tests.test_library import _by_hand
+    import shutil
+    ref = _register("beta")
+    other = {f: L.replay_text(f, t)
+             for f, t in L.shipped_files("sihrs").items()}
+    other["model.bngl"] = other["model.bngl"].replace("# FluBNF SIHRS",
+                                                      "# My SIHRS")
+
+    def rewrite(root, asof):
+        if asof == SMOKE_WEEKS[0]:
+            shutil.rmtree(L.root() / "beta" / "1")
+            _by_hand("beta", other)
+    calls = _weeks_run(monkeypatch, rewrite)
+    X.replay({"model": ref, "season": "2024-25"}, retro_root=season)
+    folder = X.root() / "beta-v1_2024-25_smoke"
+    new = L.resolve(ref)["fingerprint"]
+    assert new != SIHRS_FP
+    assert [c["asof"] for c in calls] == SMOKE_WEEKS[:1]
+    log = (folder / "failures.log").read_text(encoding="utf-8")
+    assert log == (f"{SMOKE_WEEKS[1]}: {ref} is {new[:8]} now, and this "
+                   f"experiment started with {SIHRS_FP[:8]}: "
+                   f"{SMOKE_WEEKS[1]} is not fitted\n")
+    assert retro.read_meta(folder)["status"] == "done"
+    # a shipped template changed by an update reads the same
+    real = L.resolve
+
+    def updated(root, asof):
+        if asof == SMOKE_WEEKS[0]:
+            monkeypatch.setattr(L, "resolve", lambda r: {
+                **real(r), "fingerprint": "0" * 64})
+    calls = _weeks_run(monkeypatch, updated)
+    X.replay({"model": "sihrs", "season": "2024-25"}, retro_root=season)
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    assert [c["asof"] for c in calls] == SMOKE_WEEKS[:1]
+    assert "sihrs is 00000000 now" in (folder / "failures.log").read_text(
+        encoding="utf-8")
+
+
+def test_a_library_experiment_prepares_its_model(season, monkeypatch,
+                                                 tmp_path):
+    """The whole week path with the real prepare, on test_prepare_golden's
+    hub: the runners, the collected draws, the Groundhog and the pruning
+    faked."""
+    from app.core import horizons as hz
+    from app.core import reclaim
+    from app.core.engines import pf as PF
+    from app.core.runs import derive_seed
+    from app.tests.test_pf_named_model import _filled
+    from app.tests.test_prepare_golden import VINTAGES as HUB_WEEKS, _env
+    from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
+    from flubnf.settings import BNG
+    ref = _register("beta")            # before the hub's BNG2.pl fake
+    _env(monkeypatch, tmp_path / "hub")
+    locs = ("Vermont", "New York")
+    monkeypatch.setitem(X.SIZES, "smoke", dataclasses.replace(
+        X.SIZES["smoke"], locations=locs))
+    monkeypatch.setattr(retro, "season_vintages", lambda s: list(HUB_WEEKS))
+
+    class Runner:
+        """Every cell of its shard fitted at once."""
+        def __init__(self, wd, shard):
+            self.wd, self.shard = Path(wd), list(shard)
+
+        def poll(self):
+            for c in self.shard:
+                retro.mark_cell_done(self.wd, c["key"], "ok")
+            return 0
+
+        def kill(self):
+            pass
+    monkeypatch.setattr(retro, "_launch_runners",
+                        lambda wd, shards, halt: [Runner(wd, s)
+                                                  for s in shards])
+    draws = {hz.ORIGIN: [3.0] * 50, **{h: [4.0] * 50 for h in hz.HORIZONS}}
+    monkeypatch.setattr(retro.pf_engine, "collect",
+                        lambda wd: {n: dict(draws) for n in locs})
+    monkeypatch.setattr(retro.an_engine, "run", lambda spec: {
+        n: {h: {float(q): 2.0 for q in QL} for h in hz.HORIZONS}
+        for n in spec.locations})
+    monkeypatch.setattr(reclaim, "prune_week", lambda wd: 0)
+    got = X.replay({"model": ref, "season": "2024-25"}, retro_root=season)
+    assert got["weeks"] == ["2024-12-14", "2024-12-28"]
+    folder = X.root() / got["id"]
+    stored = L.resolve(ref)["files"]
+    for asof in got["weeks"]:
+        wd = folder / "weeks" / asof
+        cells = json.loads((wd / "cells.json").read_text(encoding="utf-8"))
+        assert [c["key"] for c in cells] == ["Vermont_r0", "New_York_r0"]
+        for c in cells:
+            d, at = wd / c["key"], PF.conf_safe_path(c["dir"])
+            assert (d / "m.bngl").read_text(encoding="utf-8") == _filled(
+                stored["model.bngl"], c)
+            conf = (d / "pf.conf").read_text().splitlines()
+            sfx = c["key"][:-3] + "_flu"
+            assert conf[:15] == [
+                f"bng_command = {PF.conf_safe_path(BNG)}",
+                f"model = {at}/m.bngl : {at}/{sfx}.exp",
+                f"output_dir = {at}/out",
+                "fit_type = pf", "objfunc = neg_bin_dynamic",
+                "pf_particles = 10000", "pf_jitter = 0.15",
+                "pf_bounds = reflect", "pf_start_time = -1",
+                "pf_cumulative_observable = Hobs",
+                "pf_forecast_intervals = 4", "population_size = 1",
+                "max_iterations = 1",
+                f"pf_seed = {derive_seed(c['location'], asof, 0)}",
+                "initialization = rand"]
+            assert "\n".join(conf[15:]) + "\n" == PF.VARS_1S
+        prov = json.loads((wd / RS.ORACLE_NAME).read_text(encoding="utf-8"))
+        assert prov["applied"] is False
+        week = retro.read_week_samples(folder, asof)
+        assert {"pf", "analogue"} <= set(week)
+        assert set(week["pf"]) == set(week["analogue"]) == set(locs)
