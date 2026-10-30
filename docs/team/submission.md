@@ -6,6 +6,36 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-30 (20:41 UTC): THE DASHBOARD SCORER IS ON BRANCH
+  assited_dev/bold-sagan-kfw8gg FOR ELY'S MERGE INTO dev (Ely's go;
+  0ca59ad, authored as Ely, based on dev 90b1bfd). scripts/dashboard_score.py
+  reproduces the FluSight dashboard's scores from the hub's files: WIS per
+  forecast against target-data/oracle-output.csv (natural and log(x + 1)),
+  split into spread and the penalties for truth below or above the
+  intervals, 50% and 95% coverage, and scoringutils' pairwise relative
+  skill scaled to FluSight-baseline; it prints our two models' relative
+  WIS, placement among this season's models and the error split, national
+  and states, and --dashboard compares every model with the dashboard's
+  published scores (exit 1 on any difference). On the hub's files of the
+  rounds 2026-05-30, 10-10, 10-17 and 10-24 it matches the dashboard of
+  2026-10-29 for all 76 national and 79 state models to 5e-15. Tests:
+  tests/test_dashboard_score.py (WIS against flubnf.wis, the split, the
+  pairwise ratios, a small hub end to end, the dashboard check); with
+  test_sense_check.py 12 passed here, ruff clean; GitHub's tests run once
+  the branch is on dev. The weekly check, once the dashboard updates:
+  (1) the hub's files: `git clone --filter=blob:none --no-checkout
+  --depth 1 https://github.com/cdcepi/FluSight-forecast-hub.git field`,
+  then in it `git sparse-checkout set --no-cone 'model-output/*/<round>-*'`
+  (one pattern per round) `'/target-data/oracle-output.csv'` and `git
+  checkout main`; (2) the dashboard's scores: `git clone --depth 1 --branch
+  predevals/data https://github.com/reichlab/flusight-dashboard.git dash`;
+  (3) `python scripts/dashboard_score.py field <rounds> --dashboard dash`.
+  The "Last 4 weeks" set holds the last five round ids
+  (predevals-config.yml), so from the 2026-11-07 round the 2026-05-30
+  round drops out; four teams submit parquet, which needs pyarrow (the
+  script says when a file is skipped). Ely's merge, a merge commit:
+  `git fetch origin && git checkout dev && git merge --no-ff
+  origin/assited_dev/bold-sagan-kfw8gg && git push origin dev`.
 - 2026-10-30 (20:30 UTC): FIRST DASHBOARD SCORES (THREE ROUNDS); THE GAP TO
   THE ENSEMBLE IS WIDTH; THE ORACLE CAP SCREEN SPLIT BY SEED STAGE (handed
   to the Model lane under For other lanes).
