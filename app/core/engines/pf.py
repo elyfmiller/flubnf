@@ -18,7 +18,8 @@ Sections, in file order:
                   read_anchor_notes, read_prepare_failures
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
-  prepare         DATASET_REFUSED, dataset_tag, prepare
+  prepare         DATASET_REFUSED, LIBRARY_REFUSED, _named_model,
+                  dataset_tag, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
                   runner_popen_kwargs, record_runner_pids, shard_cells,
                   cell_seconds, budget_seconds, _stop_all, execute
@@ -598,10 +599,10 @@ def read_prepare_failures(workroot: Path) -> dict:
 
 
 # --- research knobs (spec.extra; none set on the shipped path) ---------------
-# variant (2strain|natg), iota, fit_i0, seed_denominator, anchor_asof,
-# reporting, neff_cap, pf_keys, prior_ranges, initialization, seed_anchor,
-# seed_salt, continue_states, save_states. All are read by prepare() or the
-# helpers below.
+# model (a library reference, _named_model), variant (2strain|natg), iota,
+# fit_i0, seed_denominator, anchor_asof, reporting, neff_cap, pf_keys,
+# prior_ranges, initialization, seed_anchor, seed_salt, continue_states,
+# save_states. All are read by prepare() or the helpers below.
 
 #: A cell's saved/continued particle cloud; outside out/, which runners clear.
 CLOUD_NAME = "cloud.npz"
@@ -712,6 +713,49 @@ def initialization_for(spec) -> str:
 #: (national growth, NREVSS typing, FluSight completeness, a hub vintage)
 DATASET_REFUSED = ("variant", "reporting", "anchor_asof")
 
+#: research keys refused beside a library model (spec.extra["model"] =
+#: name@version): each edits the shipped template or its prior block, or
+#: feeds a shipped variant, and a library model has none of them
+LIBRARY_REFUSED = ("fit_i0", "prior_ranges", "iota", "neff_cap")
+
+
+def _named_model(extra: dict) -> tuple:
+    """(variant, library model) for a run that names its model by
+    reference (spec.extra["model"], app/core/library.py), resolved here
+    once per prepare, so hashed and checked again. A shipped name gives
+    its variant, read from its placeholders ({{A0SHARE}} the two-strain
+    model, {{GAPEXPR}} natg, neither the shipped SIHRS), and None: the
+    code below writes its cells as for extra["variant"]. A library version
+    gives None and {"model.bngl": its verified stored text, "cum": its
+    cumulative output, "priors": its prior lines}, the last two re-parsed
+    and written again by library.replay_conf; its folder is not read
+    again. Refusal for what resolve refuses; ValueError beside a variant,
+    for a shipped feed model on a custom dataset, or for a LIBRARY_REFUSED
+    key."""
+    from app.core import library          # library imports pf at its top
+    ref = extra["model"]
+    if extra.get("variant"):
+        raise ValueError(f"model {ref!r} and variant {extra['variant']!r} "
+                         "both name the model; give the model only")
+    r = library.resolve(ref)
+    if r["shipped"]:
+        t = library.tokens(r["files"]["model.bngl"])
+        variant = ("2strain" if "{{A0SHARE}}" in t
+                   else "natg" if "{{GAPEXPR}}" in t else None)
+        if variant and extra.get("dataset"):
+            raise ValueError(f"{r['ref']} reads NREVSS or the national growth "
+                             "gap, hub data, and cannot run on a custom "
+                             "dataset; sihrs can")
+        return variant, None
+    bad = [k for k in LIBRARY_REFUSED if extra.get(k)]
+    if bad:
+        raise ValueError(f"{', '.join(bad)}: these change the shipped "
+                         f"template or its priors, and {r['ref']} is a library "
+                         "model; write the change into the model instead")
+    cum, priors = library.replay_conf(r["files"])
+    return None, {"model.bngl": r["files"]["model.bngl"], "cum": cum,
+                  "priors": priors}
+
 
 def _hub_tag(loc: str) -> str:
     """A hub location's cell-directory and BNGL-suffix stem (unchanged)."""
@@ -785,6 +829,12 @@ def prepare(spec, workroot: Path) -> list:
         loc_csv = ds.locations_csv
         tag_of = dataset_tag
     variant = (spec.extra or {}).get("variant")
+    reg = None              # a library model's verified files (_named_model)
+    if (spec.extra or {}).get("model") is not None:
+        variant, reg = _named_model(spec.extra)
+    if variant and variant not in ("2strain", "natg"):
+        raise ValueError(f"variant must be 2strain or natg (or left out for "
+                         f"the shipped SIHRS), not {variant!r}")
     # fit_i0 = [lo, hi]: fit i0 (loguniform) instead of deriving it.
     fit_i0 = (spec.extra or {}).get("fit_i0")
     if fit_i0 is not None:
@@ -1020,15 +1070,23 @@ def prepare(spec, workroot: Path) -> list:
                 tmpl, tok = TEMPLATE_2S, {"{{A0SHARE}}": f"{a0:.4f}"}
             elif natg:
                 tmpl, tok = TEMPLATE_NATG, natg_tokens(gg, iota)
+            elif reg:
+                # the library model's verified text, from memory, as the
+                # cell's own template; its folder is never read again
+                tmpl, tok = d / "m.bngl", None
+                tmpl.write_text(reg["model.bngl"], newline="\n",
+                                encoding="utf-8")
             else:
                 tmpl, tok = TEMPLATE, None
             m = materialize_model(s, tmpl, d / "m.bngl", sfx, extra_tokens=tok)
             # newline="\n" on the write below: it is the last write of the
             # model, and Windows text mode would hand BNG2.pl a CRLF file.
             # (Universal-newline read_text needs no such care.)
-            txt = m.read_text(encoding="utf-8").replace("begin parameters\n",
-                                        DEFAULTS_2S if two_strain
-                                        else DEFAULTS_BLOCK, 1)
+            txt = m.read_text(encoding="utf-8")
+            if not reg:         # a library model holds its own starting values
+                txt = txt.replace("begin parameters\n",
+                                  DEFAULTS_2S if two_strain
+                                  else DEFAULTS_BLOCK, 1)
             if fit_i0:
                 # i0 becomes a sixth fitted parameter (per-particle initial
                 # state), defaulting to this week's data-derived value. The
@@ -1094,13 +1152,13 @@ pf_particles = {spec.particles}
 pf_jitter = {spec.jitter}
 pf_bounds = reflect
 pf_start_time = -1
-pf_cumulative_observable = Hobs
+pf_cumulative_observable = {reg['cum'] if reg else 'Hobs'}
 pf_forecast_intervals = {4 + k_total}
 population_size = 1
 max_iterations = 1
 pf_seed = {seed}
 initialization = {initialization_for(spec)}
-{si_line}{pf_key_lines(spec)}{priors_for(spec, two_strain)}"""
+{si_line}{pf_key_lines(spec)}{reg['priors'] if reg else priors_for(spec, two_strain)}"""
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")

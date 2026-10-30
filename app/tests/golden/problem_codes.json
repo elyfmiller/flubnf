@@ -20,6 +20,7 @@
  "KEY_RESERVED": "problem",
  "KEY_RETIRED": "warning",
  "KEY_UNKNOWN": "warning",
+ "LINE_BREAK_NOT_ALLOWED": "problem",
  "MACHINE": "machine",
  "MODEL_CHANGED": "problem",
  "MODEL_NOT_FOUND": "problem",
@@ -49,6 +50,7 @@
  "SEASON_NO_WEEKS": "problem",
  "SIZE_UNKNOWN": "problem",
  "START_OUTSIDE_PRIOR": "warning",
+ "SUFFIX_IN_MODEL": "problem",
  "TOKEN_MALFORMED": "problem",
  "TOKEN_UNKNOWN": "problem"
 }
