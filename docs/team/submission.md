@@ -6,6 +6,92 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-30 (20:30 UTC): FIRST DASHBOARD SCORES (THREE ROUNDS); THE GAP TO
+  THE ENSEMBLE IS WIDTH; THE ORACLE CAP SCREEN SPLIT BY SEED STAGE (handed
+  to the Model lane under For other lanes).
+  - The scores. The FluSight dashboard (reichlab/flusight-dashboard,
+    branch predevals/data, scores of 2026-10-29) has no 2026-27 season set
+    yet; our rounds 10-10 (h0-h2), 10-17 (h0-h1) and 10-24 (h0) are in its
+    "Last 4 weeks" sets, which also hold other models' 2026-05-30 round.
+    Relative WIS (pairwise relative skill scaled to FluSight-baseline;
+    rank among the 63 national and 65 state models with 2026-27
+    forecasts): Oracle SIHRS national 0.50 (41st), states 0.72 (49th),
+    log scale 0.31 (40th) and 0.73 (53rd); GroundHog CGR 0.73 (56th) and
+    0.75 (52nd), log 0.42 (52nd) and 0.67 (39th); FluSight-ensemble 0.29
+    (12th) and 0.50 (7th); FluSight-baseline 61st and 62nd. State 50% /
+    95% coverage: Oracle 0.79 / 0.99, Groundhog 0.75 / 0.99, ensemble
+    0.73 / 1.00. The pack, states: INFLAenza 0.53, FourCAT 0.56, ABERT
+    0.57, vulPES 0.57, epymorph 0.71, Oracle 0.72, Groundhog 0.75, Copycat
+    0.79. This lane's scorer, rebuilt from every team's hub files (WIS on
+    the 23 quantiles, also on the log(x+1) scale; each pair of models'
+    mean-score ratio on the forecasts both made, the self-ratio 1
+    included, geometric mean, scaled to the baseline), matches the
+    dashboard for all 76 national and 79 state models to 1e-14. It
+    differs from this lane's earlier pooled ratios (Oracle 0.698,
+    Groundhog 0.823; For other lanes, 2026-10-28) by method only.
+  - Where the error comes from (states, mean WIS per forecast over the
+    three rounds): spread (interval width) 13.1 Oracle, 14.4 Groundhog,
+    8.0 ensemble; below truth 4.4, 3.4, 3.6; above truth 1.0, 1.0, 1.2;
+    total 18.5, 18.8, 12.9. The spread is 90% of the Oracle's gap to the
+    ensemble, and 90% of its national WIS. In the 10-10 round (the old
+    seed) the Oracle's under-prediction was 5.6 per state forecast against
+    the ensemble's 3.6 (national 106 against 37).
+  - What-if, the 2026-10-31 settings from the first round (left out of
+    the report at Ely's word; for the record): the Oracle's 10-10 round
+    rerun in the cloud on the 10-03 vintage (seed season_total_early,
+    weight 0.25, narrowing 0.7; the same retro run on the 10-10 vintage
+    reproduced Ely's narrowed 10-17 US rows exactly, 92 of 92); 10-17
+    Ely's narrowed rerun; 10-24 as submitted; the Groundhog's kernel
+    retro (own share 0.5, kernel sd 1) on each vintage; the 10x
+    location-wide shrink through main's tailcap; locations as submitted,
+    other teams unchanged. Oracle 0.34 (20th) and 0.56 (20th); Groundhog
+    0.49 (41st) and 0.60 (31st). The seed fix alone would have scored
+    worse (states 0.72 -> 0.85, national 0.50 -> 0.62), because it widened
+    the 10-10 bands; with the width controls it adds 0.02 (states; 0.04
+    on the log scale). After the fixes the gap is the medians: misses
+    (below plus above truth) 5.8 Oracle and 6.3 Groundhog per state
+    forecast, the ensemble 4.8.
+  - The one-page report for Bill and Rich (placements, the error split,
+    the three fixes for over-dispersion; the what-if removed at Ely's
+    word) went to Ely on 2026-10-30.
+  - THE ORACLE CAP SCREEN, SPLIT BY SEED STAGE (Ely's question: did the
+    replays carry the S drain?). Every arm of the 84-week screen ran the
+    corrected seed (model-oracle-width-screen-2026-10/prereg/PREREG.md,
+    section 1), but that rule returns a jurisdiction to the old to_date
+    pin once it passes a quarter of its expected season total.
+    resolve_state (season_total_early) on every archived hub vintage of
+    the three seasons gives the share of state-weeks on the old pin:
+    2023-24 Oct 2%, Nov 7%, Dec 31%, Jan 92%, Feb-Apr 100%; 2024-25 Nov
+    1%, Dec 24%, Jan 94%, Feb-Jun 100%; 2025-26 Nov 2%, Dec 28%, Jan 92%,
+    Feb-Jun 100%. Joined to the screen's week sums
+    (data/week_sums_C0.csv.gz at k 0.7; 76 of the 84 weeks have an
+    archived vintage): in the 50 weeks with more than 90% of states on
+    the old pin every rule scores the same (relWIS 0.616, log 0.734, 95%
+    coverage 0.90 under none, shrink 10x and 15x, clip 10x and 15x): the
+    false depletion holds the tails under any cap. Only the 15
+    corrected-seed weeks (under 10% on the old pin: 2023-10-07 to 12-02,
+    2024-11-16 to 12-14, 2025-11-15 to 12-06) test a rule (relWIS / log /
+    95% coverage): none 0.572 / 0.599 / 0.96; shrink 15x 0.577 / 0.617 /
+    0.88; shrink 10x 0.614 / 0.649 / 0.80; clip 10x 0.584 / 0.611 / 0.88;
+    clip 15x 0.571 / 0.602 / 0.92. By season: 2023-24 (9 weeks, an
+    October start) favours the tight caps (none 0.594, shrink 15x 0.542,
+    shrink 10x 0.518); 2024-25 (3 weeks) none 0.650, 15x 0.653, 10x
+    0.691; 2025-26 (3 weeks) none 0.489, 15x 0.530, 10x 0.601. The 11
+    mixed weeks: every rule 0.793-0.796. Reading: the full-season "15x is
+    free" result is mostly weeks where no cap acts; on the weeks that
+    test it, 10x costs about 0.04 and 15x about nothing, except in the one
+    October-start season, which (like this season's three rounds)
+    favoured 10x. The Groundhog's month split (model.md, 2026-10-22) has
+    no seed and stands: from November shrink 15x 0.561 against 10x 0.599.
+    Caveat: three weeks each in the two November-start seasons.
+  - This season's stage (resolve_state on the hub data through
+    2026-10-24): AK, HI and PR are on the old pin; next are WA 21%, CA
+    20%, UT 20%, FL 18%, LA 14%, NV 14%, MT 12% and TX 12% of their
+    expected totals.
+  - Files: the Submission scratchpad was lost to a container restart at
+    20:14 UTC (the rerun roots, the scorers, the report sources); the
+    numbers above were computed before it, except the stage split, whose
+    script is tools/stage_share.py in the new scratchpad.
 - 2026-10-29 (01:02 UTC): ROUND 2026-10-31 MERGED ON THE HUB.
   cdcepi/FluSight-forecast-hub#3929 passed "Hub Submission Validation
   (R)" (2 min 33 s; the bot: all validation checks passed for both
@@ -2562,6 +2648,15 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-30 (Ely): this lane stays on top of forecast plausibility and
+  our standing every week, to optimize as far as we can. Beating the
+  baseline, our goal, is met; the ensemble's level is the harder target.
+  Each round, on top of the standing checks (Spencer's report, flat or
+  higher, the gate): the seed stage of every jurisdiction (who is past a
+  quarter of the expected total, and who is next, since those Oracle
+  forecasts flatten); and, once the dashboard updates, our placements
+  and the error split (spread against misses) against the field, with
+  the reproduced scorer.
 - 2026-10-28 (Ely, with the PI): round 2026-10-31 goes out with the
   upper-tail shrink at 10x for both models instead of 15x, because 10x
   sits closer to the NAU peers' widths. Every other rule stands.
@@ -2667,6 +2762,24 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-10-30 (20:30 UTC), Submission to Model (Ely's handoff): THE
+  FULL-SEASON CAP SCREENS ARE MOSTLY OLD-PIN WEEKS, AND THE SEED SWITCH IS
+  NOW URGENT. The split is under Now (2026-10-30): in the replayed seasons
+  92-100% of state-weeks are on the to_date pin from January, and in
+  those weeks every cap rule scores identically (relWIS 0.616), so only
+  the 15 corrected-seed weeks (October to early December) and 11 mixed
+  weeks test a rule. Asks: (1) the smooth version of the stage switch
+  (open with you since 2026-10-14) before WA, CA, UT and FL cross the
+  quarter, likely within one to three rounds at this season's growth; AK,
+  HI and PR are already on the old pin, and under the flat-or-higher rule
+  a flattening Oracle forecast is left out; (2) report the corrected-seed
+  weeks separately in any full-season Oracle screen (week sums joined to
+  each vintage's stage, as here), the narrowing's k = 0.7 included; (3)
+  once a smooth switch lands, rescreen the cap and the narrowing on the
+  December-on weeks, where the old pin's brake now hides the tails; (4)
+  after the width fixes the remaining gap to the ensemble is the medians
+  (misses 5.8 Oracle and 6.3 Groundhog per state forecast, the ensemble
+  4.8), the next lever toward ensemble-level scores.
 - 2026-10-28 (20:49 UTC), Submission to Model (the Oracle SIHRS agent first;
   Ely's handoff): THE 50% INTERVAL IS TOO WIDE, AND THE ORACLE'S LOWER
   HALF MOST OF ALL. Please propose work. Evidence, the live files as
@@ -3218,3 +3331,12 @@ and CDC's rules. The season's facts are in
   hub clone is current: re-vendor the schema and update `SCHEMA_SHA256`.
 
 ## Open
+
+- 2026-10-30: the upper-tail limit back to 15x (shrink) from round
+  2026-11-07 (run Wednesday 2026-11-04), Ely's proposal for the higher
+  growth; it waits on Ely and the PI, since 10x was their joint choice.
+  Evidence under Now (2026-10-30): on the corrected-seed weeks of the
+  Oracle screen 10x costs about 0.04 and drops 95% coverage to 0.80 while
+  15x is about free; the Groundhog from November: 15x 0.561 against 10x
+  0.599. If agreed, the 11-04 run changes output.tail_cap from 10 to 15
+  and nothing else.
