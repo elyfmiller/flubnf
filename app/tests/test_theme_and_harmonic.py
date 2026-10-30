@@ -25,8 +25,10 @@ NAU = (UI / "static" / "nau.css").read_text()
 BASE_T = (UI / "templates" / "base.html").read_text()
 DIAGRAMS_T = (UI / "templates" / "diagrams.html").read_text()
 
-ARIA_ONE = 'aria-label="Seasonal harmonic'
-ARIA_TWO = 'aria-label="Two-strain seasonal harmonic'
+# the figure's own label (its scrolling region is named after it, with
+# "(scrolls)" and no colon)
+ARIA_ONE = 'aria-label="Seasonal harmonic:'
+ARIA_TWO = 'aria-label="Two-strain seasonal harmonic:'
 
 
 def _macro(**kw):

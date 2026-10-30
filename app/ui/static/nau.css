@@ -1109,7 +1109,9 @@ kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid v
   border-bottom:1px solid var(--line)}
 .dsspark figcaption{font-size:var(--fs-micro);color:var(--mut);
   overflow-wrap:anywhere}
-.dsup .tablewrap{max-width:100%;overflow-x:auto}
+/* the stored datasets scroll inside their card too, and the hidden
+   "Actions" header stays inside the scroller (it is positioned) */
+.dsup .tablewrap,#datasets .tablewrap{max-width:100%;overflow-x:auto;position:relative}
 .dsfirst caption{caption-side:top;text-align:left}
 /* the first rows fit a 360px column: tight cells, the date as written
    under its week, names wrap at their spaces, numbers and weeks never */
@@ -1127,6 +1129,11 @@ details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
 details.dsup-fold>summary::-webkit-details-marker{display:none}
 details.dsup-fold>summary::before{content:"\25B8"}
 details.dsup-fold[open]>summary::before{content:"\25BE"}
+/* a long unbroken name (up to 80 characters) wraps, in the table and as
+   the browser's heading, instead of widening both */
+.dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}
+/* and keeps a readable column when the table is squeezed */
+.dstable td.dsname{min-width:12rem}
 .dstable td.dsactions{white-space:nowrap}
 .dstable td.dsactions form{display:inline;margin:0}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
@@ -1276,6 +1283,19 @@ tr[aria-current="true"] td{font-weight:600}
   .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
     scrollbar-color:var(--mut) transparent}
   .pipe svg,.figscroll > svg{min-width:620px}
+  /* the harmonic keeps its drawn size (560 wide) rather than growing */
+  .figscroll > svg.dg-harm{min-width:560px}
+  /* a Variables table: each row a two-column grid, the symbol (wrapping,
+     at most 6rem) beside its meaning, units and source, which flow down
+     the second column, so no column is cut off-card and a long meaning
+     gets the width */
+  .eqvars-t thead{display:none}
+  .eqvars-t,.eqvars-t tbody{display:block}
+  .eqvars-t tr{display:grid;grid-template-columns:fit-content(6rem) minmax(0,1fr);
+    column-gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--line)}
+  .eqvars-t tbody th,.eqvars-t td{padding:0;border:0}
+  .eqvars-t tbody th{grid-row:span 3;white-space:normal}
+  .eqvars-t tbody th .math{white-space:normal}
   .perf td,.perf th{padding:.28rem .3rem}
   /* a figure that scrolls says so: a soft shadow at the edge with more
      drawing past it (the classic local/scroll background pair, so it
