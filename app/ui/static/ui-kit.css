@@ -197,8 +197,9 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-stat--ok .uk-stat-v{color:var(--ok)}
 .uk-stat--warn .uk-stat-v{color:var(--warn)}
 .uk-stat--error .uk-stat-v{color:var(--bad)}
-/* labels left, values right, one row per fact */
-.uk-stats--kv{grid-template-columns:max-content minmax(0,1fr);
+/* labels left, values right, one row per fact; a label takes its own
+   width up to 40%, so a long one wraps instead of starving the values */
+.uk-stats--kv{grid-template-columns:fit-content(40%) minmax(0,1fr);
   gap:.35rem .9rem;align-items:baseline}
 .uk-stats--kv .uk-stat{display:contents}
 .uk-stats--kv .uk-stat dd{margin:0}
@@ -322,7 +323,10 @@ details.uk-fold > summary::before{content:"";width:.42em;height:.42em;
   border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg);
   transition:transform .15s}
 details.uk-fold[open] > summary::before{transform:rotate(45deg)}
-.uk-fold-sum{min-width:0;overflow-wrap:anywhere}
+/* the title never drops below its chevron: capped at the line less the
+   chevron, a long one wraps beside it and only a badge after it moves to
+   the next line */
+.uk-fold-sum{min-width:0;max-width:calc(100% - 1.4em);overflow-wrap:anywhere}
 .uk-fold-body{margin:.35rem 0 .2rem 1.1rem}
 .uk-fold-body > :first-child{margin-top:0}
 /* facts in a row, each an icon and a value */

@@ -575,7 +575,7 @@
 
 {% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30, kit=false) -%}
 {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
-<svg viewBox="0 0 560 232" role="img"
+<div class="figscroll" tabindex="0" role="region" aria-label="{{ 'Two-strain seasonal harmonic' if two else 'Seasonal harmonic' }} (scrolls)"><svg class="dg-harm" viewBox="0 0 560 232" role="img"
      aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
      style="width:100%;max-width:560px;display:block;margin:.4rem auto 0;color:inherit">
  <desc>{% if two %}Two phase-shifted copies of the same seasonal harmonic,
@@ -662,7 +662,7 @@
        dy="3">1</tspan><tspan dy="-3"> &#183; peak week
        ({{ season_week_name(phi) }})</tspan></text>
  {% endif %}
-</svg>
+</svg></div>
 {# the caption: plain, or with the kit a badge that carries the values
    (the figure's own labels name the peak week) #}
 {% set caption %}{% if two %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
@@ -733,7 +733,7 @@
   <i>&#946;</i><sub>0,s</sub> exp(&#8239;<i>&#949;</i><sub>1</sub>
   cos(&#8239;2&#960;(<i>t</i> &#8722;
   <i>&#966;</i><sub>s</sub>)&#8202;/&#8202;52&#8239;)&#8239;),
-  <i>s</i> &#8712; {A, B}{% endset %}
+  <span class="nw"><i>s</i> &#8712; {A, B}</span>{% endset %}
 {%- set forcing_note %}one harmonic form shared by both circuits; each strain
   fits its own <i>R</i><sub>eff</sub> and phase{% endset %}
 {%- set adm %}admissions<sub>w</sub> &#8764;
@@ -744,7 +744,7 @@
   accumulated across the reporting week, from the one accumulator that sums
   both circuits{% endset %}
 {%- set typed %}typed positives: <i>k</i><sub>A</sub> &#8764;
-  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;){% endset %}
+  <span class="nw">Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>{% endset %}
 {%- set typed_note %}the second likelihood channel: the admissions channel
   sees only the ascertained total, so typed specimens fit the A/B
   share{% endset %}

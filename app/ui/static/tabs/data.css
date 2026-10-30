@@ -61,8 +61,10 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 
 /* ---- 5. Your datasets ---- */
 .dt-listhead{margin-top:1.3rem}
-/* the row's links and Delete on one line */
-.dt-rowacts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .8rem}
+/* the row's links and Delete on one line, whatever a long name leaves
+   them; a stacked row (under 600px, nau.css .dstable) lets them wrap */
+.dt-rowacts{display:flex;flex-wrap:nowrap;align-items:center;gap:.25rem .8rem}
+@media(max-width:600px){.dt-rowacts{flex-wrap:wrap}}
 .dt-delform{margin:0;gap:.3rem}
 
 /* ---- 6. the upload box ---- */

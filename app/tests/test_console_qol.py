@@ -97,7 +97,7 @@ def test_zoom_tip_names_ctrl_off_macos():
 # ------------------------------------------------------------ diagrams
 
 def test_wide_figures_are_labelled_focusable_regions():
-    for page in ("/methods", "/models", "/model/analogue", "/model/pf2s"):
+    for page in ("/", "/methods", "/models", "/model/analogue", "/model/pf2s"):
         html = client.get(page).text
         figs = re.findall(r'<div class="figscroll[^"]*"([^>]*)>', html)
         assert figs, page
