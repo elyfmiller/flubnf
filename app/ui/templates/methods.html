@@ -304,12 +304,13 @@
   the stored forecasts' shared cells</span>
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
- <div style="overflow-x:auto"><table>
+ {# a season label never splits at its hyphen (non-breaking hyphens) #}
+ <div style="overflow-x:auto"><table class="mt-rec">
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
-  {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
-                         ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
+  {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
+                         ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
   {% set r = oracle_text.RECORD[key] %}
-  <tr><td>{{ label }}</td>
+  <tr><td>{{ label | safe }}</td>
    <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}{{ rel_verdict(r.oracle) }}</td>
    <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}{{ rel_verdict(r.filter) }}</td>
    <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
@@ -425,7 +426,7 @@
   {%- for r in g.rows %}
    <tr id="set-{{ r.key | replace('.', '-') }}"><th scope="row">{{ r.label }}{% if r.later %} {{ tips.tag("coming later") }}{% elif r.optional %} {{ tips.tag("optional") }}{% endif %}</th>
     <td>{{ r.help }}{% if r.note %}<span class="mt-setnote">{{ r.note }}</span>{% endif %}</td>
-    <td>{{ r.range }}</td><td>{{ r.default }}</td></tr>
+    <td data-label="Range">{{ r.range }}</td><td data-label="Default">{{ r.default }}</td></tr>
   {%- endfor %}
   </tbody>
  </table></div>

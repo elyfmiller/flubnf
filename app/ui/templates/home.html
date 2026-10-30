@@ -162,6 +162,9 @@
      literals here, held equal to oracle_text.fmt(RECORD) by
      app/tests/test_pages.py. The plain filter's figures are its ablation,
      in the card's "i" #}
+  {# at larger text the table outgrows a phone's card: it scrolls with
+     the figures' cue (nau.css .figscroll) #}
+  <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
   <table class="perf">
    {# columns named for whose forecast they score; the unit is beside the
       card's heading #}
@@ -179,6 +182,7 @@
      <td class="num rel">0.642</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
+  </div>
   {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
      the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
      cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
@@ -222,7 +226,7 @@
  {% endcall %}
  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
     title element (its tooltip pops over the drawing) #}
- <div class="pipe">
+ <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
   <desc>One weekly data pull feeds the Oracle SIHRS (the particle-filter
   fit, its forecast growth then blended with donor growth from past seasons
