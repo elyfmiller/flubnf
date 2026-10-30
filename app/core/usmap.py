@@ -241,7 +241,8 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
     return f"""
 <div id="{dom_id}-wrap" class="usmap-wrap" style="position:relative">
 <svg id="{dom_id}" viewBox="{VIEWBOX}" xmlns="http://www.w3.org/2000/svg"
-     style="width:100%;height:auto;display:block;touch-action:none">
+     role="group" aria-label="Map of the states" tabindex="-1"
+     style="width:100%;height:auto;display:block;touch-action:manipulation">
 <style>
  #{dom_id} .st{{cursor:pointer;transition:fill-opacity .12s}}
  #{dom_id} .st.noclick{{cursor:default}}
@@ -361,7 +362,10 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
     coverage; `gap_fips` and `reasons`: see _no_card_hover.
     """
     paths = []
-    for fips, (topo_name, d) in state_paths().items():
+    # by name: the order Tab walks the states (drawing order is moot, no
+    # two states overlap)
+    for fips, (topo_name, d) in sorted(state_paths().items(),
+                                       key=lambda kv: kv[1][0]):
         card = cards_by_fips.get(fips, {})
         fill, op, hover, label = _state_view(fips, topo_name, card,
                                              scope_fips, gap_fips, reasons)
@@ -522,12 +526,15 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
 </script>"""
 
 
-def map_legend() -> str:
+def map_legend(no_data: str = "no data") -> str:
     """One-line legend beside every category map: the five categories and
-    no-data as .sw swatches on the same --cat-* tokens as the fills."""
+    the uncoloured states as .sw swatches on the same --cat-* tokens as
+    the fills. `no_data` names the uncoloured states as the hovers do
+    ("not in this run" when the run's scope is known: a state in the run
+    with no data wears the hatch, not this grey)."""
     items = [
         (cat_fill(c), c.replace("_", " ")) for c in CATS
-    ] + [(NO_DATA, "no data")]
+    ] + [(NO_DATA, no_data)]
     spans = "".join(
         f'<span><span class="sw" style="background:{color}"></span>'
         f'{label}</span>'

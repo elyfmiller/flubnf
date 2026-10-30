@@ -22,7 +22,9 @@
   background:color-mix(in srgb,currentColor 8%,transparent);
   color:color-mix(in srgb,currentColor 84%,transparent);
   font-size:var(--fs-label);line-height:1.5}
-.hm-facts b{color:var(--gold-bright);font-weight:700}
+/* small bold text: its own ink where a theme's accent is under 4.5:1 on
+   --navy (Nord, Dracula); the accent word above is large text */
+.hm-facts b{color:var(--hero-chip-ink);font-weight:700}
 
 /* ---- 2. outlook ---- */
 /* one bar over the map: the model (its toggle), the coverage, the report */

@@ -6,6 +6,204 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-29 (later): student workspace step 1, the file formats, on
+  `dev` ([e2dba2e](https://github.com/elyfmiller/flubnf/commit/e2dba2e)).
+  No page, button or setting changes. `app/core/library.py`: the Ready
+  for replays rules, the replay normal form and fingerprint, Register
+  into `sandbox/library/<name>/<n>/`, `name@version`.
+  `app/core/experiments.py`: `experiment.json` (model, season, size,
+  oracle), the size presets, the shipped replay compared with,
+  `summary.json` as sums. `app/core/problem_codes.py`: 52 codes, pinned
+  by `app/tests/golden/problem_codes.json`; Check returns a code beside
+  each problem and warning (`SandboxError` gained `code=`). The structure
+  rules read model.bngl as BNG2.pl does, so a statement outside a block,
+  which BNG2.pl runs as Perl, is refused. Defaults taken: smoke and
+  pilot run 1 replicate against the shipped 3; with the Oracle step off
+  a shipped side exists for 2024-25 only (`quantiles.null`); experiments
+  skip the Groundhog. Tested: the new and Sandbox tests (379), and the
+  full suite with only the 22 failures this Mac already had. Step 2
+  (engine side) waits for Ely's go.
+- 2026-10-29: the student workspace, designed with Ely (decisions under
+  Decided). It is built one step at a time, in the order of the steps
+  below, starting with the file formats, and under the rule in UI-KIT.md
+  "Before adding a control".
+  Students try beta variants and other configurations of SIHRS, later
+  RSV and COVID-19 models, from the Sandbox through to replays, for
+  people and scripts alike:
+  - Models: a "SIHRS template" Sandbox start keeps the per-state
+    placeholders (`{{POP}}`, `{{S0FRAC}}`, `{{I0FRAC}}` ...); Check gains
+    "Ready for replays"; Register freezes a version with a fingerprint of
+    its files, and any edit is a new version.
+  - Experiments: one folder each, never the shipped season tree; three
+    sizes (smoke: 2 locations, 2 weeks; pilot: about 10 locations every
+    other week, 1 replicate; full: the shipped settings, 7.0 h for
+    2024-25 on Ely's Mac); a compare page against the shipped replay on
+    the same cells (log WIS, relative WIS, 50/80/95 coverage); one
+    `summary.json` for the page and for scripts. A shipped replay's
+    `oracle.json` already keeps the filter's own quantiles
+    (`quantiles.null`), so a variant without the Oracle step compares
+    without another replay; scoring them is new.
+  - On the runner: one queue, a time and disk estimate before a job is
+    accepted, lean storage for experiments (forecasting samples dropped
+    once a week is scored: about 1.5 GB to under 100 MB a season), the
+    Storage tab by experiment.
+  - Every page action also a `flubnf` command with `--json` output and
+    fixed exit codes; Check's problems get stable codes; one guide for
+    anyone working from a terminal. Students' work lives in untracked
+    folders only: the launchers set aside edits to tracked files.
+  - Pathogen a field on models, datasets and experiments; RSV and
+    COVID-19 come in first as snapshot datasets and run the plain filter.
+  - From the protection audit (2026-10-29), also to build:
+    - A check on pull requests from forks. It refuses co-author or
+      generated-by lines, and commits authored or committed under Ely's
+      emails. It flags changes to the launchers, the installers,
+      `.github/` and the engine updater. `proposals/<name>/` holds only a
+      fixed list of file names, with no links, executables or oversized
+      files; a name list, so the check names no tool.
+    - The runner cleans every model before it runs. A model's actions
+      block is code (BNG2.pl runs each action through Perl `eval`), so it
+      gets FluBNF's own. `priors.conf` takes keys from a fixed list only
+      (`postprocess` would run Python). The `suffix` may not name a path.
+      Each job has time, memory and disk limits.
+- 2026-10-28 (later, Ely's answer to the Open question below): a
+  Submitted / Before cap switch per location
+  ([0e16723](https://github.com/elyfmiller/flubnf/commit/0e16723)), to
+  review how much the output stage narrows the width. Where the cap moved
+  a location's file (43 of 53 on Monday's 15x-shrink run), its panel and
+  its detail open on what went to the hub, read from the run's own CSVs
+  beside the report (`submission/`, in the workroot and the archive
+  alike, so no change to `ui/pipeline.py`); Before cap shows the model's
+  own, after the Oracle step and the narrowing (Ely chose that over the
+  filter's own). The panel, the US panel and the detail's fan and numbers
+  move together. The h3 97.5% figure reads the model's own, then the
+  file's (55x -> 15x). Tested: the report tests (140), the full suite
+  (the same 21 machine-specific failures), Monday's report in the
+  browser, desktop and phone.
+- 2026-10-28: Ely's weekly-report notes, on `main` through
+  [#62](https://github.com/elyfmiller/flubnf/pull/62)
+  ([1ff557a](https://github.com/elyfmiller/flubnf/commit/1ff557a); Ely
+  merged it while its checks were still running). The header picks the
+  theme: System or the console's eight. Served by the console it shares
+  the console's choice; a saved copy keeps its own (`rpTheme`). Hide map
+  folds the categorical map and its keys on screen, and paper always
+  prints it. The live panels open with the median and the whole 95% band
+  in frame (the printed drawing keeps CLIP_X). Beside each name: each
+  model's horizon-3 97.5% quantile over the mean of the last three
+  reported weeks (`flubnf.tailcap.recent_level`), red above 15x.
+  Found: the report's bands and that figure are the model's own, before
+  the output stage's upper-tail cap. `ui/pipeline.py` hands the report
+  `pf_q`/`an_q` from before the cap, the detail fans too: on Monday's
+  15x-shrink run West Virginia's Oracle SIHRS h3 97.5% is 425 in the
+  report and 115 in the file, and US Groundhog 78,635 against 61,180.
+  Medians agree. Tested: the report tests (137), the full suite (the same
+  21 machine-specific failures as clean dev), Monday's report in the
+  browser in two themes at desktop and phone width.
+- 2026-10-26 (late, Ely's go): the public engine's real install in CI, on
+  `engine-public` ([55bce80](https://github.com/elyfmiller/flubnf/commit/55bce80)),
+  so Windows no longer waits for the engine lane's lock. The
+  `public-engine-wheel` job builds the PyBNF wheel from lanl/PyBNF
+  8410f794 on macOS and writes a hashed lock for it
+  (`scripts/make_test_lock.py`, never the engine lane's lock).
+  `public-engine-install` then runs FluBNF.bat's public block in cmd.exe on
+  Windows, and `setup_engine.sh --public` on macOS, against that lock,
+  served over https on localhost, into a venv under `Jane O'Brien (Lab)`.
+  It runs a fresh install, an open with nothing to do, a new lock (the
+  wheel alone goes back), a tampered hash (refused) and PyBNF's lesson 50
+  in the venv (`tests/test_public_engine_real.py`). Here on the Mac all
+  five pass (108 s cold, 34 s with pip's cache). The Windows leg's first
+  run is CI's on [#61](https://github.com/elyfmiller/flubnf/pull/61).
+  Found: PyBNF asks for BNG2.pl (`BNGPATH` or `bng_command`) even with
+  `bngl_backend = bngsim`, so the public route still needs BioNetGen and
+  Perl.
+- 2026-10-26 (evening): Wednesday's overrides on `main` (d7d13e5), end
+  to end through the Forecast form, in my own console (port 8790, a temp
+  state folder, private engine 2fdadee0): both models, all 53
+  locations, real-time on the hub clone's newest week (as-of 2026-10-17;
+  Wednesday's round needs 2026-10-24's data, due Wed Oct 28), with
+  `pf.seed_denominator season_total_early`, `oracle.w 0.25`,
+  `oracle.narrow 0.7`, `output.tail_cap 15`, `output.tail_mode shrink`.
+  - Finished `ok` in 314 s (preparation about 15 s, then 53 locations x 3
+    Independent Runs, 159 of 159 ok, no preparation failures). Two files
+    under the `-modified` names (the hub-name box was left unticked),
+    4,876 rows each, 53 locations, horizons 0 to 3, quantiles in order,
+    no negatives or NaNs. The run page, its report, Output and Home all
+    answer 200; no errors in the console log.
+  - The Oracle side (`oracle.json`): applied to 53 of 53, no abstentions,
+    no guard hits; w 0.25, narrowing k 0.7 applied; admissions bank 396
+    paths from 2022-2025, FluSurv-NET bank 381 paths from 14 seasons,
+    mixed half and half; submitted seed 2026091801. The tail cap touched
+    156 Oracle SIHRS cells and 103 Groundhog cells. US medians h0-h3:
+    Oracle SIHRS 5,907 / 7,375 / 9,335 / 11,961, Groundhog 5,236 / 6,769
+    / 9,180 / 11,708.
+  - For anyone running main from a worktree: BNG2.pl is looked up in the
+    checkout's own `.venv`, so a worktree without one fails preparation
+    for every location ("Can't open perl script"); set `FLUBNF_BNG` to the
+    app venv's BNG2.pl.
+- 2026-10-26: the public-PyBNF move, console side, on branch
+  `engine-public` (from `dev` 554ac57; nothing from it goes to `dev` or
+  `main` until Ely says so). Ely sent the plan with the task, as
+  engine.md still shows 2026-10-15's; where engine.md's update differs,
+  engine.md wins.
+  - One lock, `engine-requirements.txt` (the engine lane's), read only
+    through `scripts/engine_lock.py`: the PyBNF wheel's URL and sha256
+    come from its `pybnf @` line, so they arrive with the lock and no
+    installer changes; `check` holds a venv to the lock (the Liu-West
+    filter imports, bngsim as pinned, pip's record of the wheel).
+  - macOS and Linux ([a6e3e91](https://github.com/elyfmiller/flubnf/commit/a6e3e91)):
+    `setup_engine.sh --public` installs into `~/.venvs/flubnf-public`
+    with `--require-hashes --only-binary :all:`, refuses the private
+    engine's venvs, and records `FLUBNF_ENGINE=public` in `.flubnf.env`
+    (`--private` drops it). FluBNF.command, SetupEngine.command,
+    setup.sh, install.sh and reinstall.sh follow the route. bngsim's
+    unpinned source-build fallback is gone ([69ac38e](https://github.com/elyfmiller/flubnf/commit/69ac38e)).
+  - Windows ([f2c284f](https://github.com/elyfmiller/flubnf/commit/f2c284f)):
+    `setup.ps1 -Engine public|private` records the choice in
+    `.flubnf.env.cmd` only; FluBNF.bat's `:publicengine` installs into
+    `%LOCALAPPDATA%\FluBNF\venv-public` through the private block's venv
+    code with an x64 3.12-only gate. Frozen bytes and the 4049 offset as
+    they were.
+  - CI ([163e90b](https://github.com/elyfmiller/flubnf/commit/163e90b)):
+    the Windows-wheel step reads the lock (`engine_lock.py deps`, the
+    wheel's line left out) with `--require-hashes`; a notice and a pass
+    while there is no lock. Docs ([24bd622](https://github.com/elyfmiller/flubnf/commit/24bd622)):
+    ENGINE.md "The public engine (opt-in)", WINDOWS.md, LAUNCHERS.md and
+    the rest; students keep the engine file.
+  - Tested on Ely's Mac: tests/test_engine_public.py (26; sample locks,
+    stand-in venvs), the Windows text tests and the launcher byte test,
+    the CI step's script on a real lock of bngsim[antimony]'s six Windows
+    wheels (passes; one tampered hash fails; no lock passes), refusals
+    and a sample-lock install in a throwaway home (stops at the wheel's
+    404, as it should before the release), and both full suites: the
+    same 21 failures as clean `dev` on this Mac (it has an engine, which
+    test_no_engine does not expect; launcher tests), none new. Not run: a public install end to end (no lock or wheel
+    yet); FluBNF.bat under cmd and setup.ps1 under PowerShell (no Windows
+    or pwsh here); the Windows-only tests. CI runs through draft pull
+    request [#61](https://github.com/elyfmiller/flubnf/pull/61)
+    (`engine-public` into `dev`, opened at Ely's word for CI only: never
+    merged without it), on each push to the branch.
+- 2026-10-26 (later): the public route end to end on Ely's Mac, ahead of
+  the engine lane's lock: a wheel built here from lanl/PyBNF 8410f794
+  (paths at most 53 characters), a hashed lock of the 40 packages it
+  resolves to with `bngsim[antimony]==0.15.1`, served over https on
+  localhost, and the real `setup_engine.sh --public` in a throwaway home
+  (never `~/.venvs`). It installed in 33 s and checked out; a second run
+  took 2 s and no pip; a tampered hash was refused; a home path with a
+  space worked; PyBNF's lesson 50 (`job_type = lwf`, 2,000 particles, 42
+  rows) ran in that venv in 11 s with all six Results/LWF files. One fix
+  from it ([696b3aa](https://github.com/elyfmiller/flubnf/commit/696b3aa)):
+  pip keeps an installed pybnf 1.8.1 whatever wheel the lock names, and
+  forcing every package took 465 s; a stale venv now gets pybnf alone
+  again (4 s), every package only if the check still fails, on both
+  platforms. CI on #61 passed before the fix. Not run: a forecast through
+  the console on the public engine (`pf.py`'s public writer, runner and
+  reader are the engine lane's, not on the branch yet), so no comparison
+  with the private engine here; that is stage 2.
+- 2026-10-26: the App lane moved from the cloud session "FluBNF 2.0" (now
+  a record only) to Ely's Mac, in Ely's clone, and can message other
+  agents. PR #60 (G01 to G10: 53 bugs, 20 of the 25 S2s) is on `main`
+  (d7d13e5). The fix run is paused for Ely's "go" on G11; the S2s still
+  open are HM-01, ME-03, ST-01, SB-01 and SB-02.
+
 - 2026-10-25: Ely's bug hunt, find only, on `dev` at bcaafb7: one pass
   per tab, one for wiring, one for the look of every page, and the full
   suite. 208 bugs after merging duplicates (25 S2, 86 S3, 97 S4, no S1),
@@ -192,6 +390,64 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): minimalism. The console is already close to too much
+  to take in, the shipped models' settings most of all, so the student
+  workspace adds as few choices as it can. An experiment asks for a
+  model, a season, a size (smoke, pilot, full) and the Oracle step on or
+  off; the sizes are presets, never separate particle, replicate,
+  location or week fields. New work goes into the tabs that exist, and
+  nothing is added to the shipped models' forms. Each step's review
+  counts what it adds. The rules: UI-KIT.md, "Before adding a control".
+- 2026-10-29 (Ely): the student workspace build changes the Engine
+  lane's files directly where the design needs it (`pf.py`, `retro.py`,
+  `sandbox.py` and their tests), instead of waiting on the Engine lane.
+  The work lands on `dev` like any other, and the Engine lane's notes
+  are read first for anything in flight.
+- 2026-10-29 (Ely, after a protection audit): the wiki is off (never
+  used). Actions run only GitHub's own actions, which are all any branch
+  uses. `tests.yml` states a read-only token
+  ([1b83158](https://github.com/elyfmiller/flubnf/commit/1b83158)).
+  TEAM.md now holds the rules for the two machines, Ely's credentials,
+  reviewing a fork's pull request and merging it. Found: only Ely's
+  account can write here, so the risks left are ways to act as Ely.
+  These are Ely's credentials on the students' Mac Studio, the
+  students' shared cloud account connected to Ely's GitHub, and student
+  code or models run where Ely's login is. A BNGL file runs Perl when
+  BNG2.pl reads it.
+- 2026-10-29 (Ely): GitHub rules, set that day (rulesets 26160504 and
+  26160505). `main` changes only through a merged pull request whose six
+  checks are green (`test` and `test-windows` on 3.11 and 3.12,
+  `windows-own-perl`, `windows-setup-script`), with no bypass, no force
+  push and no deletion. The checks do not ask the branch to be up to
+  date, since main's merge commits are never in `dev`. Merge commits only:
+  squash and rebase are off for the repository. `dev`: no force push or
+  deletion. CI on every pull request from outside waits for Ely's
+  approval (before, only a first-time contributor's did). TEAM.md says so.
+- 2026-10-29 (Ely): the student workspace (plan under Now).
+  - Students, and agents working for them, fork, branch and open pull
+    requests against `dev`; Ely and Ely's agents review; only Ely merges.
+    Everything in the repository is human-authored: commits under the
+    contributor's own name, with no co-author trailers or generated-by
+    lines. A CI check on pull requests will refuse them, naming no tool.
+    No file in the repository is written for a particular assistant: the
+    guide is for anyone working from a terminal.
+  - A proposal is a folder, `proposals/<name>/`: the model files, the
+    experiment settings, the results summary and the student's own
+    write-up. CI checks it, and review reruns it on the lab runner, where
+    the fingerprints must match. It becomes a shipped model only through
+    Ely's lanes.
+  - Long runs go on the lab's 24-core Mac Studio, a different machine
+    from the lab Mac the Engine and Model lanes use. All the students
+    work in one shared lab account there, which has the whole disk, and
+    reach it off-site through remote sessions. One shared runner, a
+    FluBNF install on `main`, works one queue. Each student's work sits
+    in a folder of their own, and code from a fork never runs on the
+    runner. Nothing caps the disk, so the size checks are the guard: a
+    job is refused when it would leave too little free space, and the
+    storage figures are a command with JSON output as well as a page.
+  - The Oracle step is a switch on every experiment: it belongs to the
+    shipped SIHRS, and other models may try it or not. It is off by
+    default for any other model (App's proposal).
 - 2026-10-01 (Ely): the Liu-West filter's US figure is shown for seasons
   stored since addendum A3 (the step makes it the right comparison), n/a
   for seasons stored before it. The saved weekly report is named by its hub reference date, as
@@ -209,6 +465,109 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- All lanes (2026-10-29): `main` refuses a merge pushed by hand; merge a
+  `dev` to `main` pull request with `gh pr merge <n> --merge --repo
+  elyfmiller/flubnf` or the website, once all six checks are green.
+  `dev` refuses a force push. Submission: the hand-pushed merge in your
+  notes no longer works.
+- All lanes (2026-10-29): read TEAM.md's new rules on reviewing a fork's
+  pull request. Its code and models never run where Ely's GitHub login
+  is, and only Ely's merge brings its work into `dev`. Cloud sessions:
+  set the git name and email to Ely's before the first commit, merges
+  included. 490cf08 (a merge into fix/G16-weekly-report, on `dev`
+  through #70) carries the session's default identity, not Ely's. It
+  stays in history, since `dev` takes no force push.
+- Model (2026-10-29): your notes call the lab Mac "the Mac Studio"
+  (model.md:5 and about ten more). The students' machine is a different
+  Mac Studio, and the notes record Ely's `gh` login on yours. Please say
+  "lab Mac" for yours.
+- Engine (2026-10-29, from the protection audit):
+  1. The engine pin by its full commit ID, in a constant of its own for
+     `engine_update`'s compare and merge. Keep the 8-character name for
+     archive names and display (`archive_name`, `cut_engine_archive.sh`
+     and their tests). Today a fresh install takes the branch tip, and
+     PyBNF-Private has three writers besides Ely and no branch
+     protection on the Free plan.
+  2. A fresh install (the `setup_engine.sh` clone, the bundle) ends at
+     the pin by a fast-forward, not a detached checkout, so that
+     `engine_update` still sees the branch.
+  3. An engine archive in Downloads is installed with no hash check.
+     Check it against the pin's archive.
+  4. For the runner: the cleaning described under Now. PyBNF reads the
+     model's `generate_network` options and `setOption` again, so
+     cleaning only the first BNG2.pl call is not enough.
+- Engine (2026-10-29, the student workspace). Ely has decided that the
+  build changes your files directly (see Decided), so items 1 to 4 below
+  and the audit's runner cleaning will arrive on `dev` from App's build,
+  with their tests. Say in your notes if you have work in flight in
+  `pf.py`, `retro.py` or `sandbox.py`, so the two don't collide.
+  The items, nothing started yet:
+  1. `pf.prepare` takes a registered model (template, prior block,
+     starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
+     which become registered models themselves.
+  2. A replay into an experiment's own root, with the model's
+     fingerprint in `run_meta.json` and a resume refused when it
+     changed, as for knobs.
+  3. Lean storage for experiments: forecasting samples dropped once the
+     week's national aggregate and scores are written, if nothing reads
+     them later.
+  4. Sandbox promotion (`sandbox.py`): a Sandbox model registered.
+- Model (2026-10-29, the student workspace):
+  - What makes a fair comparison: the same cells, a pilot's 1 replicate
+    against the shipped 3, and how many seasons.
+  - Whether `oracle.json`'s `quantiles.null` can be scored as the
+    shipped filter without the step (the floor and the cap).
+  - Which beta variants to offer as starts.
+  - RSV and COVID-19 priors and season starts.
+
+- Engine (2026-10-26, for `engine-public`): what App needs to finish.
+  1. `engine-requirements.txt` at the repository root on `engine-public`:
+     every package pinned with its hashes, the win_amd64 cp312 files'
+     included, and one line `pybnf @ <release URL>.whl
+     --hash=sha256:<64 hex>`, the release's tag naming
+     8410f794e3fa4817572fd07fceb043ddec39d77b. pip-compile's layout is
+     fine; `scripts/engine_lock.py` reads it. A Windows-only dependency
+     missing from the lock fails on Windows under `--require-hashes`, and
+     CI's check evaluates markers on Linux. Today's resolution has none
+     (App resolved the wheel plus `bngsim[antimony]==0.15.1`: 40 packages,
+     no platform marker among them, every one with a win_amd64 or pure
+     wheel for 3.12), so this matters only if the set changes.
+  2. The wheel's URL and sha256 in engine.md. Nothing to type into the
+     installers: they read the lock.
+  3. `flubnf/settings.py`: please confirm `PY_ENGINE_PUBLIC` reads
+     `FLUBNF_PY_ENGINE_PUBLIC`, with `~/.venvs/flubnf-public/bin/python`
+     and `%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe` as its
+     defaults, and that `FLUBNF_ENGINE` takes private or public (the
+     launchers warn and use private for anything else). The installers
+     write and read those names.
+  4. Keep `BNGSIM_NO_CODEGEN=1` for Windows runners on the public route
+     (`pf.runner_popen_kwargs` sets it today); the docs say so.
+  5. Doctor or the provenance check may call `scripts/engine_lock.py
+     check` (the lock's wheel against pip's direct_url.json); say if you
+     would rather import it.
+  6. The console's public-engine code is yours (Ely, 2026-10-26).
+     engine.md's stage 1 gives it to App (steps 4 to 8); please move it
+     there. On `engine-public`, behind `FLUBNF_ENGINE`:
+     - `app/core/engines/pf.py`: the public writer, runner and reader (the
+       edition-2 conf with `bng_command`, the template without actions,
+       `write_exp`'s one-week shift with `Hobs` and `nan` rows, the
+       LiuWestFilter run, `collect()` from `Results/LWF`), and the import
+       probe as the preflight. The `pf.*` knob and ledger names stay,
+       mapped in the writer (decision 4).
+     - `flubnf/settings.py`: the switch and `PY_ENGINE_PUBLIC` (item 3).
+     - `app/core/engine_build.py`: the public pin, and its provenance from
+       pip's `direct_url.json`. A wheel install has no git checkout; today
+       a run records "PyBNF build 2fdadee0 (feature/particle-filter)" from
+       git.
+     - `flubnf/doctor.py` and `app/core/reclaim.py`; the Sandbox
+       (`app/core/sandbox.py`) and custom datasets writing the public conf.
+     - Tests on your fixture (Alaska 2025-01-11). CI has no engine, but
+       the `public-engine-install` job builds a real public venv on Windows
+       and macOS, if a console test should run against one.
+
+     App's part stays the installers, the launchers, CI and the docs.
+     Stage 2 waits on this and on items 1 and 2.
 
 - Model and Submission (2026-10-15, answering Model's request of the same
   day): on `dev`, Home, Methods, /models, /model/analogue, the site,
@@ -410,6 +769,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-10-26, `engine-public`):
+  - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
+    lock's wheel line by one script that bash, cmd and PowerShell all
+    call, rather than typed into each installer: the lock is then the
+    only place it changes. Say if you wanted the pair in the installers.
 
 - For Ely (2026-10-13 Sandbox audit), confirmed but not changed: unsaved
   edits in the macOS window (the leave-page prompt may never show there;

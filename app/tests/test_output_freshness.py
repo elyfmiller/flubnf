@@ -80,7 +80,8 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
     assert 'href="/output/report"' not in html
     assert 'href="/output/report/download"' not in html
     # beside "as of": the run, as the file rows name theirs
-    when = f"{latest[4:6]}-{latest[6:8]} {latest[9:11]}:{latest[11:13]}"
+    when = (f"{latest[4:6]}-{latest[6:8]} "
+            f"{latest[9:11]}:{latest[11:13]}:{latest[13:15]}")
     assert "as of 2098-01-10" in card
     assert f'<a href="/runs/{latest}">run {when}</a>' in card
     # the link serves that run's report, under the dated name

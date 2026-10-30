@@ -237,3 +237,62 @@ def test_a_run_without_scores_keeps_a_short_line_per_member():
     assert 'data-model="pf"' in out
     assert "Groundhog: no scored weeks yet.</p>" in out
     assert scoring.NO_SCORES_HTML == "<p class='hint'>No scored weeks yet.</p>"
+
+
+# ------------------------------------------- Ely's report notes, 2026-10-28
+
+def test_the_header_picks_any_of_the_consoles_themes(tmp_path):
+    """A saved copy picks its own theme: System and the console's eight, in
+    the Display menu's order and names; served, the console's own key."""
+    from app.core.html_page import THEMES
+    html = _render(tmp_path)
+    head = html[html.index('<header class="brandrow">'):html.index("</header>")]
+    sel = head[head.index('<select id="themesel">'):head.index("</select>")]
+    assert re.findall(r'<option value="(\w*)"', sel) == [""] + list(THEMES)
+    assert ">System<" in sel and ">GitHub Light<" in sel and ">Dracula<" in sel
+    assert list(report_v2.THEME_NAMES) == list(THEMES)
+    assert head.index('id="themesel"') < head.index('id="visionbtn"')
+    assert "KEY=served?'theme':'rpTheme'" in head
+    assert "dispatchEvent(new Event('themechange'))" in head
+    assert ".rp-themesel select{" in html
+
+
+def test_the_map_folds_and_the_us_panel_stays(tmp_path):
+    """Hide map folds the map and its keys on screen, remembered; the US
+    panel under them stays, and paper always prints the map."""
+    html = _render(tmp_path)
+    card = html[html.index('id="map-anchor"'):]
+    body = card[card.index('id="map-body"'):]
+    assert body.index('id="map-state"') < body.index('class="rp-legends"')
+    btn = card[card.index('id="mapfold"'):card.index("</button>")]
+    assert 'aria-controls="map-body"' in btn and ">Hide map" in btn
+    assert "rpMapFolded" in html and "'Show map'" in html
+    assert "@media screen{.rp-mapcard.is-folded .rp-mapbody{display:none}}" in html
+    if 'id="us-feature"' in html:
+        # the national panel sits after the fold's body closes
+        fold = card[card.index('id="map-body"'):]
+        assert fold.index('id="us-feature"') > fold.index("</div>\n </div>")
+
+
+
+def test_each_changed_location_switches_in_its_detail_too(tmp_path):
+    """The detail's fan and numbers come in both versions behind one
+    switch (the numbers follow the fan's); every switch for a location
+    moves together; ids stay unique."""
+    from app.tests.test_report_grid import _filed
+    b = _bundle()
+    oh = next(p for p in b["grid"]["panels"] if p["key"] == "OH")
+    _filed(tmp_path, oh, top=30.0)
+    html = _render(tmp_path)
+    sec = html[html.index('<section class="state" id="st-OH"'):]
+    sec = sec[:sec.index("</section>")]
+    assert sec.count('data-ba-for="OH"') == 2            # the fan, the numbers
+    assert sec.count('data-ba-key="OH" data-ba="b"') == 1   # one switch
+    assert 'id="num-OH"' in sec and 'id="num-OH-before"' in sec
+    assert sec.count('<div data-ba-v="b" hidden>') == 2
+    # the panel's switch is the same key, and the handler moves them all
+    assert html.count('data-ba-key="OH" data-ba="b"') == 2
+    assert "window.rpBA = set;" in html and "Plotly.Plots.resize" in html
+    # without the files, no switch anywhere
+    plain = _render(tmp_path / "plain")
+    assert 'data-ba-key="' not in plain

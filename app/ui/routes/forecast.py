@@ -152,6 +152,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
+        r["files_deleted"] = output_routes._files_deleted(r["run_id"])
         # the latest-run card links the weekly report while its file is on
         # disk (Storage may have deleted the workroot), and a run that died
         # says why in its alert
@@ -205,6 +206,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "newest_report": newest_report, "anchor_week": _anchor or "",
         "data_issues": data_issues, "data_issues_sha": data_issues_sha,
         "live_only": live_only, "live_running": running,
+        # no hub clone: every run reads its data, so the page says so
+        "hub_missing": state.data_mod.hub_missing(),
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         # the particle-filter engine's state: without it the run refuses
@@ -221,6 +224,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "member_colors_json": _script_json(_member_colors()),
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
+        # the weeks each member set aside: the fan starts before them
+        "run_aside_json": _script_json(shared._run_aside(rid)),
         "fc_date": (res or {}).get("forecast_date", ""),
         # display-only aids (app/ui/forecast_aids.py): the fans' run, the
         # next round, the location presets, the last run's values
@@ -510,9 +515,15 @@ def run_page(request: Request, run_id: str):
     # its files: the workroot, or the archive that holds the run once
     # Storage deleted the workroot
     w = output_routes._run_folder(run_id)
-    res = {}
+    res, unreadable = {}, False
     if (w / "results.json").is_file():
-        res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
+        # a damaged file is said on the page, as Output skips it
+        try:
+            res = _json.loads((w / "results.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            unreadable = True
+        if not isinstance(res, dict):
+            res, unreadable = {}, True
     subs = output_routes._submission_files(w)
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
@@ -539,8 +550,9 @@ def run_page(request: Request, run_id: str):
             # failures and step errors in full (the chips only count them)
             pf_failures = o.get("pf_failures", {}) or {}
             step_errors = {k: str(o[k]) for k in
-                           ("score_error", "archive_error",
-                            "report_inputs_error", "report_error")
+                           ("score_error", "analogue_score_error",
+                            "archive_error", "report_inputs_error",
+                            "report_error")
                            if o.get(k)}
         except Exception:
             err = ""
@@ -574,7 +586,11 @@ def run_page(request: Request, run_id: str):
         **dsx,
         "active": "Forecast" if hub_live else "Storage",
         "run_id": run_id, "status": status, "error": err,
-        "results": results_html(o, spec_json, heading=False),
+        # Storage deleted its files: the ledger row is all that is left
+        "files_deleted": not w.is_dir(),
+        "results_unreadable": unreadable,
+        "results": results_html(o, spec_json, heading=False,
+                                deleted=not w.is_dir()),
         # the relWIS convention only beside a relWIS
         "results_tip": results_tip(spec_json, o),
         # the page shows a research badge, so the label stays untagged
@@ -1170,6 +1186,14 @@ def run_models(request: Request,
         _flash(f"Not run: {what} needs the particle-filter engine, "
                f"{pipeline._pf_engine_missing(pf_state)}."
                + (" Choose Groundhog only." if members != 3 else ""), "warn")
+        return _back(request, "/forecast")
+    # every run reads the hub's data (the locations table, the truth):
+    # refused here, where a missing clone used to end the run with a raw
+    # file error
+    why = state.data_mod.hub_missing()
+    if why:
+        _flash(f"Not run: no FluSight data ({why}).", "warn",
+               detail=f"To fetch it, {templating.hub_setup_text()}.")
         return _back(request, "/forecast")
     if _d is None:
         # a blank or typed non-date (the model page's text field) is said

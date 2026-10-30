@@ -269,9 +269,11 @@
  (30,000 per state at three replicates) gets one donor: a growth path from
  an earlier season within two epiweeks of the forecast week, any
  jurisdiction, the calendar-donor principle the Groundhog uses. Its growth
- over each forecast week becomes the geometric mean, half and half, of the
+ over each forecast week becomes the weighted geometric mean of the
  filter's and the donor's, propagated in closed form from the filter's own
- state. One donor per sample, not per forecast, keeps both the filter's
+ state: half and half by default, and one quarter on the filter's growth in
+ the rounds submitted since 2026-10-17, each run recording the weight it
+ used. One donor per sample, not per forecast, keeps both the filter's
  uncertainty and the donors' spread.</p>
  {% endcall %}
  {% call tips.fold("Donor pool", id="mt-oracle-donors", cls="mt-fold") %}
@@ -285,8 +287,8 @@
  {% call tips.fold("How it relates to the Groundhog", id="mt-oracle-gh", cls="mt-fold") %}
  <p>The Groundhog applies donor
  growth <em>ratios</em> to the last observed count, with no mechanism; the
- Oracle SIHRS applies donor <em>growth</em> to the fitted state, at half
- weight. The two are submitted as separate models.</p>
+ Oracle SIHRS applies donor <em>growth</em> to the fitted state, at the
+ blend weight. The two are submitted as separate models.</p>
  {% endcall %}
  </div>
 
@@ -302,12 +304,13 @@
   the stored forecasts' shared cells</span>
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
- <div style="overflow-x:auto"><table>
+ {# a season label never splits at its hyphen (non-breaking hyphens) #}
+ <div style="overflow-x:auto"><table class="mt-rec">
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
-  {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
-                         ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
+  {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
+                         ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
   {% set r = oracle_text.RECORD[key] %}
-  <tr><td>{{ label }}</td>
+  <tr><td>{{ label | safe }}</td>
    <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}{{ rel_verdict(r.oracle) }}</td>
    <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}{{ rel_verdict(r.filter) }}</td>
    <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
@@ -351,8 +354,7 @@
  {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
  <p>Stronger at turning points but worse on
- the full grid in the August 2026 evaluation; it stays a research run (the
- {% if active is defined %}<a href="/model/pf2s">two-strain model page</a>{% else %}two-strain model page{% endif %} is reachable by URL).</p>
+ the full grid in the August 2026 evaluation; it stays a research run.</p>
  {% endcall %}
  </div>
 </div>
@@ -381,8 +383,10 @@
  forecast date, and scales the last observed value by the empirical
  quantiles of their h-week growth ratios; fewer than 30 donors means no
  forecast. Donors are pooled across jurisdictions with the jurisdiction's
- own past weeks carrying half of the weight (since 2026-10-15). They are
- pooled because one state gives about five donors per season; the US row
+ own past weeks carrying half of the weight (since 2026-10-15); within each
+ half, donor weeks whose count is near the jurisdiction's newest count
+ carry the most weight (since 2026-10-23), with equal weights when that
+ would leave fewer than 30 effective donors. They are pooled because one state gives about five donors per season; the US row
  is about 2 percent of donors, epiweek 53 sits between 52 and 1, and
  future values are read by date, never by week label.</p>
  <p>2021-22 is excluded from the donors: it peaked in April 2022 and the
@@ -399,9 +403,9 @@
  own-state weight, on FluSurv-NET hospitalization rates, a committed,
  digest-checked file; its ratios are shrunk to the admissions scale (fitted
  on earlier seasons only) and averaged in at a fixed equal weight. This
- bank, and since 2026-10-15 the own-state weighting, separate the Groundhog
- from the bare calendar analogue; the bank was pre-registered and chosen
- over an ILI+ bank.</p>
+ bank, the own-state weighting (since 2026-10-15) and the size-matched
+ donors (since 2026-10-23) separate the Groundhog from the bare calendar
+ analogue; the bank was pre-registered and chosen over an ILI+ bank.</p>
  {% endcall %}
  </div>
 </div>
@@ -422,7 +426,7 @@
   {%- for r in g.rows %}
    <tr id="set-{{ r.key | replace('.', '-') }}"><th scope="row">{{ r.label }}{% if r.later %} {{ tips.tag("coming later") }}{% elif r.optional %} {{ tips.tag("optional") }}{% endif %}</th>
     <td>{{ r.help }}{% if r.note %}<span class="mt-setnote">{{ r.note }}</span>{% endif %}</td>
-    <td>{{ r.range }}</td><td>{{ r.default }}</td></tr>
+    <td data-label="Range">{{ r.range }}</td><td data-label="Default">{{ r.default }}</td></tr>
   {%- endfor %}
   </tbody>
  </table></div>
@@ -462,14 +466,14 @@
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
   <tr><td>Oracle SIHRS</td>
    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
-  <tr><td>Groundhog</td><td class="num ok">0.702{{ rel_verdict(0.702) }}</td><td class="num ok">0.651{{ rel_verdict(0.651) }}</td><td class="num ok">0.653{{ rel_verdict(0.653) }}</td></tr>
+  <tr><td>Groundhog</td><td class="num ok">0.680{{ rel_verdict(0.680) }}</td><td class="num ok">0.627{{ rel_verdict(0.627) }}</td><td class="num ok">0.645{{ rel_verdict(0.645) }}</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="num bad">1.045{{ rel_verdict(1.045) }}</td><td class="num ok">0.756{{ rel_verdict(0.756) }}</td><td class="num ok">0.618{{ rel_verdict(0.618) }}</td></tr>
  </table></div>
  {% call tips.stats("uk-stats--row mt-pooled", label="Pooled over three seasons") %}
   {# each tile names its own cells: they and their cell rules differ
      (the Cells fold below) #}
   {{ tips.stat("Oracle SIHRS, pooled", oracle_text.fmt(rec.three.oracle), oracle_text.cells(rec.three.cells) ~ " cells", id="mt-pool-oracle") }}
-  {{ tips.stat("Groundhog, pooled", "0.660", "17,116 cells", id="mt-pool-gh") }}
+  {{ tips.stat("Groundhog, pooled", "0.642", "17,116 cells", id="mt-pool-gh") }}
   {{ tips.stat("Bare analogue, pooled", "0.771", "15,340 cells", id="mt-pool-bare") }}
  {% endcall %}
  <div class="mt-folds">
@@ -484,8 +488,8 @@
  particle filter alone, the production engine's replay (reseal of
  2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.</p>
  <p>The Groundhog row is its shipped form, on 17,116 cells under
- FluSight's cell rule; the pooled form it replaced scores 0.670 on the same
- cells. The other rows use the earlier rule. Under it the pooled form
+ FluSight's cell rule; the form it replaced scores 0.660 on the same cells,
+ the pooled form before that 0.670. The other rows use the earlier rule. Under it the pooled form
  (0.666) and the bare analogue share 15,340 cells; their paired difference
  is below zero in all 4,000 bootstrap replicates.</p>
  {% endcall %}

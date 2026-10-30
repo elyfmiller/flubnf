@@ -18,7 +18,7 @@ from app.core import horizons as _hzmod
 from app.core import ttlcache
 from app.ui import shared, state
 from app.ui.templating import templates
-from app.ui.versions import VERSIONS
+from app.ui.versions import VERSION_PENDING, VERSIONS
 
 router = APIRouter()
 
@@ -220,10 +220,23 @@ def _outlook_results_mtime(rid: str | None) -> float:
         return 0.0
 
 
+def _us_words(card: dict | None) -> str:
+    """The national card's most likely category and how likely, as the
+    state hovers word them: "stable 45%"; "" without a forecast."""
+    probs = (card or {}).get("probs") or {}
+    if not probs:
+        return ""
+    top = max(probs, key=probs.get)
+    return f"{top.replace('_', ' ')} {float(probs[top]):.0%}"
+
+
 @ttlcache.ttl_cache(ttl_s=300.0)
-def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+def _outlook_block_cached(rid: str | None, mtime: float,
+                          has_report: bool = False) -> dict:
     """Home outlook (map, caption facts, model toggle), cached per (run,
-    results mtime) so the long TTL never serves a stale map."""
+    results mtime, whether its report is written) so the long TTL never
+    serves a stale map. Without the report no state promises or opens a
+    section of it."""
     import json as _json
     res = None
     if rid:
@@ -234,9 +247,9 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         except Exception:
             res = None
     # latest run's outlook, else the empty-country silhouette
-    map_svg, outlook_date, outlook_n = "", "", 0
+    map_svg, outlook_date, outlook_n, outlook_us = "", "", 0, ""
     outlook_src: dict = {}
-    outlook_toggle = ""
+    outlook_toggle, us_by_model = "", {}
     try:
         from app.core import report_v2, usmap
         from app.core.usmap import map_legend, svg_map
@@ -252,6 +265,10 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         with_data = {c["abbr"] for c in cards.values() if c.get("probs")}
         # caption counts only colored jurisdictions (US has no state shape)
         outlook_n = len(with_data - {"US"})
+        # the national category, which has no state shape: its most likely
+        # category and how likely, beside the coverage
+        outlook_us = _us_words(next((c for c in cards.values()
+                                     if c.get("abbr") == "US"), None))
         # fitted_fips (bundle v4) lets hovers tell a reporting gap from 'not
         # fitted'; absent -> hovers claim only 'no data'
         scope = outlook_src.get("fitted_fips") if outlook_src else None
@@ -260,11 +277,14 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         gaps = set(gaps) if gaps is not None else None
         why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
         map_svg = (f"<div class='{MAP_BOX}'>"
-                   "<script>window.MAP_LINK='/output/report';</script>"
-                   + svg_map(cards, clickable=with_data, scope_fips=scope,
-                             gap_fips=gaps,
+                   + ("<script>window.MAP_LINK='/output/report';</script>"
+                      if has_report else "")
+                   + svg_map(cards,
+                             clickable=with_data if has_report else set(),
+                             scope_fips=scope, gap_fips=gaps,
                              reasons=why.get(outlook_src.get("model")))
-                   + map_legend() + "</div>")
+                   + map_legend("not in this run" if scope is not None
+                                else "no data") + "</div>")
         # toggle from the v3 bundle's per-model cards, else the approximate
         # sets; fewer than two models -> label only, never a dead control
         try:
@@ -272,6 +292,9 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
             if not by_model and outlook_src.get("approx"):
                 by_model = outlook_src.get("by_model") or {}
             order = report_v2.toggle_models(by_model)
+            # the national line follows the toggle, as the states do
+            us_by_model = {m: _us_words(by_model[m].get("US"))
+                           for m in order}
             if len(order) >= 2:
                 default = (outlook_src.get("model")
                            if outlook_src.get("model") in order
@@ -292,14 +315,16 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
     except Exception:
         pass
     return {"map_svg": map_svg, "outlook_date": outlook_date,
-            "outlook_n": outlook_n,
+            "outlook_n": outlook_n, "outlook_us": outlook_us,
+            "us_by_model": us_by_model,
             "label": outlook_src.get("label", ""),
             "approx": bool(outlook_src.get("approx")),
             "toggle": outlook_toggle}
 
 
 def _outlook_block(rid: str | None) -> dict:
-    return _outlook_block_cached(rid, _outlook_results_mtime(rid))
+    return _outlook_block_cached(rid, _outlook_results_mtime(rid),
+                                 _has_report(rid))
 
 
 def _has_report(rid: str | None) -> bool:
@@ -313,13 +338,52 @@ def _has_report(rid: str | None) -> bool:
 
 
 #: the Setup card's component names, by flubnf.settings.check() key and by
-#: version key (the two name one component once, never twice)
-_CHECK_NAMES = {"FLUBNF_HUB": "FluSight hub", "FLUBNF_BNG": "BioNetGen",
-                "perl": "Perl", "FLUBNF_PY_ENGINE": "Engine venv",
-                "FLUBNF_PYBNF": "PyBNF"}
-_VERSION_NAMES = (("pybnf", "PyBNF"), ("bngsim", "bngsim"),
+#: version key (the two name one component once, never twice). The engine
+#: is one component however many parts the check and the probe see
+#: (its venv, the PyBNF fork, bngsim): one install step, counted once
+ENGINE_NAME = "Particle-filter engine"
+_CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
+                "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
+                "FLUBNF_PYBNF": ENGINE_NAME}
+_VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
+#: what each missing component is, in plain words (the check's own phrase
+#: names its parts; the path looked at follows in the row's "?")
+_ROW_WORDS = {
+    "FLUBNF_HUB": "The FluSight hub's data: truth vintages and the "
+                  "locations table",
+    "FLUBNF_BNG": "BioNetGen's BNG2.pl, which builds each cell's reaction "
+                  "network",
+    "perl": "Perl, which runs BNG2.pl",
+    "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
+                        "bngsim",
+    "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
+}
+
+
+def _setup_rows(missing: list) -> list:
+    """The Setup card's rows for what check() reports missing, one per
+    component: [{"name", "words", "paths": [(path, variable)]}]; the
+    engine's parts fold into one row, each path kept. `words` is the
+    component in plain words, then the check's own detail when it has one
+    (a clone present but sparse, a checkout without pf.py)."""
+    rows = []
+    for var, path, why in missing or []:
+        name = _CHECK_NAMES.get(var, var)
+        _head, _sep, rest = why.partition(": ")
+        words = _ROW_WORDS.get(var, _head)
+        if rest:
+            words += f": {rest}"
+        for r in rows:
+            if r["name"] == name:
+                r["paths"].append((path, var))
+                r["words"] += f". {words}"
+                break
+        else:
+            rows.append({"name": name, "words": words,
+                         "paths": [(path, var)]})
+    return rows
 
 
 def _setup_gaps(missing: list, versions: dict,
@@ -367,22 +431,32 @@ def home(request: Request):
     else:
         ob = _outlook_block(rid)
     from flubnf.settings import check as _check
+    from app.ui.routes.output import _reference_date
     missing = _check(verbose=False)
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": ob["map_svg"],
         "outlook_date": ob["outlook_date"],
-        "outlook_n": ob["outlook_n"],
+        # the round the date answers, as Output and the report head it
+        "outlook_ref": (_reference_date(ob["outlook_date"])
+                        if ob["outlook_date"] else ""),
+        "outlook_n": ob["outlook_n"], "outlook_us": ob.get("outlook_us", ""),
+        "outlook_us_by_model": ob.get("us_by_model", {}),
         "outlook_model_label": ob["label"],
         "outlook_approx": ob["approx"],
         "outlook_toggle": ob["toggle"],
         "outlook_pending": pending,
         "outlook_report": bool(ob["outlook_date"]) and _has_report(rid),
         "versions": VERSIONS, "diagram": _diagram_data(res),
-        "missing": missing,
+        "missing": missing, "setup_rows": _setup_rows(missing),
         "setup_gaps": _setup_gaps(missing, VERSIONS, _engine_known()),
-        "setup_checked": _setup_gaps(missing, {})})
+        "setup_checked": _setup_gaps(missing, {}),
+        # the badge waits while any version is still resolving (a cold
+        # launch): the page recounts when the probe lands
+        "setup_pending": any(v == VERSION_PENDING
+                             for v in VERSIONS.values()),
+        "engine_name": ENGINE_NAME})
 
 
 def _engine_known() -> bool:

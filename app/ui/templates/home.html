@@ -19,14 +19,15 @@
 <div class="card hm-outlook">
  {# the h2 names the payload and its date, like every other card; how to
     read the map is its "i" #}
- {% call tips.heading("US categorical forecast" ~ (" · " ~ outlook_date if outlook_date else ""),
+ {% set _when = ("Round " ~ outlook_ref ~ " (as of " ~ outlook_date ~ ")") if outlook_ref else outlook_date %}
+ {% call tips.heading("US categorical forecast" ~ (" · " ~ _when if _when else ""),
                       "hm-map", rich=True, tip_label="reading the map") %}
   <span class="uk-tt-line">Most likely direction of admissions next week.</span>
   <span class="uk-tt-line">Each state takes the color of its most likely
   category; the stronger the color, the more likely that category.</span>
   {% if outlook_date %}
-  <span class="uk-tt-line">Hover a state for its numbers; click one to open its
-  section of the weekly report.</span>
+  <span class="uk-tt-line">Hover a state for its numbers{% if outlook_report %}; click one to open its
+  section of the weekly report{% endif %}.</span>
   <span class="uk-tt-line">Ctrl or Cmd with the mouse wheel zooms, dragging
   pans, and a double-click resets the view.</span>
   {% endif %}
@@ -52,14 +53,33 @@
    quantiles it stored.{% endcall %}{% endif %}
   </div>
   {% endif %}
-  {# the rest of the map reads "no data" in its legend #}
+  {# the rest of the map reads "not in this run" in its legend; the
+     national forecast has no shape, so it is a fact here #}
   {% call tips.stats("uk-stats--row hm-mapstats") %}
    {{ tips.stat("Coverage", outlook_n ~ " of 52", "jurisdictions", id="hm-cover") }}
+   {% if outlook_us %}{% set us %}<span data-us-words>{{ outlook_us }}</span>{% endset %}
+   {{ tips.stat("United States", us, id="hm-us") }}{% endif %}
   {% endcall %}
+  {% if outlook_toggle and outlook_us %}
+  <script>
+  (function () {
+    // the national line follows the model toggle, as the states do
+    var W = {{ (outlook_us_by_model if outlook_us_by_model is defined else {}) | tojson }};
+    var g = document.getElementById('outlook-model'), v = document.querySelector('[data-us-words]');
+    if (!g || !v) return;
+    g.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
+      if (b && W[b.dataset.mmodel]) v.textContent = W[b.dataset.mmodel];
+    });
+  })();
+  </script>
+  {% endif %}
   {% if outlook_report %}<a class="btn quiet hm-report" href="/output/report">Weekly report</a>{% endif %}
  </div>
  {% endif %}
  <div class="hm-stage">
+  {# with clickable states, a way past their tab stops (shown on focus) #}
+  {% if outlook_report and outlook_n %}<a class="skip" href="#hm-map-end">Skip the map</a>{% endif %}
   {{ map_svg | safe }}
   {% if outlook_pending %}
   {# cold first paint: the silhouette under a preparing card #}
@@ -77,6 +97,7 @@
   </div></div>
   {% endif %}
  </div>
+ {% if outlook_report and outlook_n %}<span id="hm-map-end" tabindex="-1"></span>{% endif %}
  {% if outlook_pending %}
  {# poll /api/outlook-ready and reload ONCE (lands on the ready branch).
     600 ms, then 2.5 s forever: the endpoint answering again is the
@@ -113,8 +134,8 @@
    <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
    {{ oracle_text.cells(oracle_text.RECORD.three.cells) }} and the FluSight
    Ensemble on 15,460 (placement among teams withdrawn) under the earlier
-   cell rule, the shipped Groundhog on 17,116 under FluSight's (the pooled
-   form it replaced: 0.670).</span>
+   cell rule, the shipped Groundhog on 17,116 under FluSight's (the form
+   it replaced: 0.660).</span>
    <span class="uk-tt-line">Oracle SIHRS: the stored forecasts with the
    Oracle step and its donor bank applied, a
    frozen-specification replication (<a href="/methods#oracle">Methods</a>), on
@@ -141,6 +162,9 @@
      literals here, held equal to oracle_text.fmt(RECORD) by
      app/tests/test_pages.py. The plain filter's figures are its ablation,
      in the card's "i" #}
+  {# at larger text the table outgrows a phone's card: it scrolls with
+     the figures' cue (nau.css .figscroll) #}
+  <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
   <table class="perf">
    {# columns named for whose forecast they score; the unit is beside the
       card's heading #}
@@ -149,21 +173,22 @@
     </tr></thead>
    <tbody>
     <tr><td>2023-24</td><td class="num rel">0.767</td>
-     <td class="num rel">0.702</td><td class="num">0.741</td></tr>
+     <td class="num rel">0.680</td><td class="num">0.741</td></tr>
     <tr><td>2024-25</td><td class="num rel">0.697</td>
-     <td class="num rel">0.651</td><td class="num">0.663</td></tr>
+     <td class="num rel">0.627</td><td class="num">0.663</td></tr>
     <tr><td>2025-26</td><td class="num rel">0.781</td>
-     <td class="num rel">0.653</td><td class="num">0.684</td></tr>
+     <td class="num rel">0.645</td><td class="num">0.684</td></tr>
     <tr class="total"><td>Pooled</td><td class="num rel">0.738</td>
-     <td class="num rel">0.660</td><td class="num">0.685</td></tr>
+     <td class="num rel">0.642</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
+  </div>
   {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
      the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
      cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
-     15,460 cells); Groundhog = its shipped own-state weighting (flubnf
-     groundhog retro all --aux flusurv, 17,116 cells, FluSight's cell rule,
-     README's Measured record). The particle filter alone on the reseal
+     15,460 cells); Groundhog = its shipped own-state weighting with
+     size-matched donors (flubnf groundhog retro all --aux flusurv, 17,116
+     cells, FluSight's cell rule, README's Measured record). The particle filter alone on the reseal
      (0.840 / 0.797 / 0.846, 0.821 pooled) is site_build.FILTER_RESEAL_REL,
      the site's reference for trees that predate the step. #}
  </div>
@@ -201,7 +226,7 @@
  {% endcall %}
  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
     title element (its tooltip pops over the drawing) #}
- <div class="pipe">
+ <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
   <desc>One weekly data pull feeds the Oracle SIHRS (the particle-filter
   fit, its forecast growth then blended with donor growth from past seasons
@@ -347,29 +372,43 @@
     says "All components installed" beside a "not installed" value; the
     script below recounts when a resolving version lands #}
  {% set gaps = setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list) %}
- {% if gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
+ {# a cold launch paints "checking…" until the version probe lands (the
+    script below then counts); a badge from values still resolving said
+    "All components installed" beside "resolving…" #}
+ {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
+ {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
- {{ tips.heading("Setup", "hm-setup", after=setup_state) }}
+ {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
+ {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
  {% if missing %}
-  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
-     filename. The one line to act on, for what is missing: the engine
-     install when the engine itself is, the run preflight's Perl message
-     when Perl is (a first Windows open can install Perl the console's PATH
-     does not see yet); what is missing follows #}
+  {# platform-aware (templating.py _hub_setup_hint, _engine_setup_hint):
+     never a macOS-only filename. The lines to act on, the most basic
+     piece first: the setup step that fetches the FluSight data and
+     BioNetGen, the engine install when the engine itself is missing, the
+     run preflight's Perl message when Perl is (a first Windows open can
+     install Perl the console's PATH does not see yet); what is missing
+     follows #}
   {% set missing_names = missing | map(attribute="0") | list %}
+  {% set need_hub = "FLUBNF_HUB" in missing_names %}
+  {% set need_bng = "FLUBNF_BNG" in missing_names %}
+  {% if need_hub or need_bng %}
+  {% set fix %}To add {{ "the FluSight data and BioNetGen" if need_hub and need_bng else ("the FluSight data" if need_hub else "BioNetGen") }}, {{ hub_setup_hint() }}.{% endset %}
+  {{ tips.alert("warn", fix, id="hm-fix-data", live="") }}
+  {% endif %}
   {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names %}
   {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
   {% elif "perl" in missing_names %}
   {{ tips.alert("warn", perl_missing_hint(), id="hm-fix", live="") }}
   {% endif %}
-  {# each missing component by name; the rest of its description and the
+  {# each missing component by name, in plain words (routes/home.py
+     _setup_rows: the engine's parts are one row); what it is and the
      path looked at are its "?" #}
   <ul class="hm-missing" aria-label="Not installed on this machine">
-   {% for m in missing %}{% set name, _sep, rest = m[2].partition(": ") %}
-   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ name }}</span>
-    {%- call tips.tip("hm-miss-" ~ loop.index, name) %}{% if rest %}{{ rest[:1] | upper }}{{ rest[1:] }}. {% endif %}Looked
-    for at <span class="hm-mono">{{ m[1] }}</span> ({{ m[0] }}).{% endcall %}</li>
+   {% for r in setup_rows %}
+   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ r.name }}</span>
+    {%- call tips.tip("hm-miss-" ~ loop.index, r.name) %}{{ r.words }}. Looked
+    for at {% for p, var in r.paths %}{% if not loop.first %} and {% endif %}<span class="hm-mono">{{ p }}</span> ({{ var }}){% endfor %}.{% endcall %}</li>
    {% endfor %}
   </ul>
  {% endif %}
@@ -383,41 +422,56 @@
     self-reported version until then. data-vkey spans are base.html's
     version poll targets #}
  {% set ebv = engine_build_view() %}
+ {# the engine absent, by the check (its files) or by the probe (both
+    parts): one value, as the badge counts it #}
+ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF"]) | list %}
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
+  {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
+  {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
+  {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine", state=("" if versions.pybnf == version_pending else "warn")) }}
+  {% else %}
   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
   {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
-  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending) %}Reproducing
+  {# the pin note only beside a known build that is not the pin #}
+  {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending, "not installed") %}Reproducing
   the sealed numbers needs bngsim {{ bngsim_pin }} (pinned by every engine installer),
   whatever version a build reports.{% endif %}{% endset %}
   {{ tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version", tiptext=pin_note) }}
+  {% endif %}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
   {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
   {% endfor %}
  {% endcall %}
  {# a version that was still resolving at paint lands through base.html's
-    poll: the badge recounts (the components check() reported, plus each
-    value now reading "not installed", each once) #}
+    poll: once none is, the badge is drawn again with its "?" naming what
+    is missing (the components check() reported, plus each value now
+    reading "not installed", each once), as a fresh load draws it #}
  <script>
  (function () {
    var box = document.querySelector('.hm-versions');
    if (!box || !window.MutationObserver) return;
    var CHECKED = {{ (setup_checked if setup_checked is defined else []) | tojson }};
-   var NAMES = {pybnf: 'PyBNF', bngsim: 'bngsim', bionetgen: 'BioNetGen',
+   var ENGINE = {{ (engine_name if engine_name is defined else "Particle-filter engine") | tojson }};
+   var NAMES = {pybnf: ENGINE, bngsim: ENGINE, bionetgen: 'BioNetGen',
                 perl: 'Perl', fastapi: 'FastAPI', plotly: 'Plotly'};
    function recount() {
      var names = CHECKED.slice();
      var spans = box.querySelectorAll('[data-vkey]');
      for (var i = 0; i < spans.length; i++) {
+       var t = spans[i].textContent.replace(/^\s+|\s+$/g, '');
+       if (t.indexOf('resolving') >= 0) return;
        var n = NAMES[spans[i].getAttribute('data-vkey')];
-       if (n && spans[i].textContent.replace(/^\s+|\s+$/g, '') === 'not installed'
-           && names.indexOf(n) < 0) names.push(n);
+       if (n && t === 'not installed' && names.indexOf(n) < 0) names.push(n);
      }
-     var b = document.getElementById('hm-missing') || document.getElementById('hm-installed');
-     if (!b || !window.FluBNFUI) return;
-     if (names.length) FluBNFUI.setBadge(b, 'warn', names.length + ' not installed');
-     else FluBNFUI.setBadge(b, 'ok', 'All components installed');
+     var slot = document.getElementById('hm-setup-state');
+     if (!slot || !window.FluBNFUI) return;
+     if (names.length) {
+       var word = names.length + ' not installed';
+       slot.innerHTML = '<span class="uk-badge-pair">' + FluBNFUI.badge('warn', word)
+         + FluBNFUI.tip('hm-missing', word, names.join(', ')) + '</span>';
+     } else slot.innerHTML = FluBNFUI.badge('ok', 'All components installed');
    }
    new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});
  })();

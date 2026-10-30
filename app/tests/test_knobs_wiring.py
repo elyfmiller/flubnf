@@ -261,6 +261,40 @@ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
             "valid int." in ui_state._status["flash"])
 
 
+@pytest.mark.parametrize("typed,width", [
+    ("2e0", None), ("1.5", None), ("two", None), ("2", 2), ("", "default")])
+def test_a_replay_refuses_a_shard_width_the_browser_allows_in_words(
+        tmp_path, monkeypatch, typed, width):
+    """The Run form's shard width is a number box too: 2e0 passes the
+    browser, and an int field answered it with a raw JSON 422 page. Now a
+    refusal in words, nothing started; a whole number runs with that width
+    and a cleared box with the default the box showed."""
+    from app.core import retro as core_retro
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(core_retro, "available_seasons", lambda: ["2024-25"])
+    monkeypatch.setattr(core_retro, "season_vintages",
+                        lambda s: ["2024-11-02", "2024-11-09"])
+    launched = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: launched.append((a, k)))
+    ui_state._status["running"] = None
+    r = client.post("/retro/run", data={
+        "season": "2024-25", "locations": "panel6", "engine": "analogue",
+        "knob.groundhog.zero_anchor": "level", "width": typed},
+        follow_redirects=False)
+    assert r.status_code == 303, ui_state._status["flash"]
+    if width is None:
+        assert launched == []
+        assert (f"Not started: shard width: '{typed}' is not a whole number."
+                in ui_state._status["flash"])
+    else:
+        assert len(launched) == 1, ui_state._status["flash"]
+        want = DEFAULT_SHARD_WIDTH if width == "default" else width
+        assert launched[0][0][2] == want
+
+
 def test_a_number_typed_with_commas_is_read_and_a_blank_is_the_default(
         tmp_path, monkeypatch):
     started = _capture_run(monkeypatch, tmp_path)

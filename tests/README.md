@@ -18,8 +18,8 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | Missing on the machine | Skipped |
 |---|---|
 | FluSight hub clone (always: the suite reads none) | hub-reading cases in `app/tests/test_playback.py`, `test_site_build.py` |
-| A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; `tests/test_sihrs_fit.py` |
-| `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
+| A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; the recorded sums in `test_experiment_summary.py`; `tests/test_sihrs_fit.py` |
+| `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py`; the recorded sums in `test_experiment_summary.py` (the shipped 2024-25 replay) |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_engine_public.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
@@ -61,5 +61,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 Fixtures in `app/tests/`: `flusurv_fixture.json`, `iliplus_fixture.json`, `nrevss_fixture.json`, `contactmap_bind.graphml`, `hub_model_metadata_schema.json` (sha-pinned).
 
 `app/tests/golden/ui_routes.json` is the console's route table, middleware, Jinja additions and import profile, captured at 029c028 for `test_ui_layout.py` (and the GET count `test_browse_safety.py` walks); regenerate it only for a deliberate change: `python app/tests/test_ui_layout.py --write-golden`.
+
+`app/tests/golden/problem_codes.json` holds every problem code and its tier (`{code: tier}`, `app/core/problem_codes.py`); it only grows, and `test_problem_codes.py` pins it.
 
 `test_ui_layout.py` also keeps app/ui's modules honest with each other and with the tests: a name a test patches is defined by exactly the module it patches and bound by no other at import (a from-import copy would miss the patch); a name imported from another app/ui module is its owner's object; no module alias (`state`, `shared`, ...) is rebound in its file; tests reach a moved private name through its owner, never through `app.ui.server`, and never patch an app/ui module with `raising=False`; `server.py` only assembles (its own names are `app`, the warm start and the public `templates`, `VERSIONS` and `RUNNING_SHA`; it includes the tab routers in a fixed order, datasets_ui's last), and no module in `app/ui/routes` computes a path from its own `__file__`.

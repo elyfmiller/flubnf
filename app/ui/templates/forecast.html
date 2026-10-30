@@ -77,6 +77,9 @@
       when no week is on or before the day. A dataset page passes only
       anchor_note ("Anchor week: <w>." or the no-week sentence). The line
       hides when it has nothing to say (a typed Saturday, archived). #}
+   {% if hub_missing is defined and hub_missing and not dataset %}
+   {{ tips.alert("warn", "No FluSight data: " ~ hub_missing ~ ". To fetch it, " ~ hub_setup_hint() ~ ".", id="fc-hub-missing", live="") }}
+   {% endif %}
    {% set an = anchor_note or "" %}
    {% set aw = anchor_week if anchor_week is defined and anchor_week else (an[13:] | trim(".") if an.startswith("Anchor week: ") else "") %}
    {% set kv_off = aw and aw == (form.forecast_date or default_date) %}
@@ -767,7 +770,7 @@
    {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
-    <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
+    <div>{{ results_html(r.outcome, r.spec, deleted=r.files_deleted) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <div class="fc-actions">
@@ -875,6 +878,8 @@
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
+ // member -> loc -> the weeks it treated as unreported (outcome data_flags)
+ const RASIDE = {{ run_aside_json | safe }};
  // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
  // date, keyed like FANQ ({} when none were recorded: no toggle)
  const OFFQ = {{ official_json | default('{}', true) | safe }};
@@ -896,7 +901,10 @@
  const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
                           || SCOLORS[i % SCOLORS.length];
  function memberColor(m){
+   // the Groundhog per theme (--model-analogue: the report's dark gold on
+   // light cards, its yellow on dark ones)
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
+        : m==='analogue'?(css('--model-analogue')||MCOLORS.analogue)
         : MCOLORS[m]||css('--mut');
  }
  function rgba(c,a){
@@ -934,7 +942,9 @@
  function fmtDate(ds){const p=ds.slice(0,10).split('-');
    return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
  let SHOWPTS=false, CURMODE='season';
- const PCONF={responsive:true, displaylogo:false};
+ // no toolbar on a phone, where it sits on the chart's title
+ const PCONF={responsive:true, displaylogo:false,
+              displayModeBar:matchMedia('(max-width: 640px)').matches?false:'hover'};
  // save-PNG at 2x under a meaningful filename
  function pconf(name){return Object.assign({},PCONF,
    {toImageButtonOptions:{format:'png',scale:2,
@@ -1081,14 +1091,21 @@
    const xs=hs.map(h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
    // what happened after the origin (settled data), framed to the horizon
-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
+   const lim=new Date(base);
+   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
    if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
-   const fx=[...(obsX.slice(-1)),...xs];
-   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
-   const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
-   const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
+   // the weeks this member set aside (unreported: set aside on the
+   // Forecast tab, a trailing zero, a partial week) are marked, and the fan
+   // starts from the last week it used, where the model started
+   const aside=new Set((RASIDE[FMODEL]||{})[loc]||[]);
+   let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
+   const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
+   const fx=[...ax,...xs];
+   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
+   const lo9=[...ay,...hs.map(h=>qs[h]['0.1'])];
+   const hi9=[...ay,...hs.map(h=>qs[h]['0.9'])];
    // the fan wears the DISPLAYED member's color
    const mc=memberColor(FMODEL);
    const traces=[
@@ -1098,7 +1115,12 @@
       line:{width:0},name:'10-90% interval'},
      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
    ];
-   if(SHOWOFF) traces.push(...offTraces(loc, xs, obsX.slice(-1), obsY.slice(-1)));
+   if(aside.size){
+     const sx=obsX.filter(d=>aside.has(d)), sy=obsY.filter((v,i)=>aside.has(obsX[i]));
+     if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
+       marker:{symbol:'x-open',size:9,color:css('--mut')}});
+   }
+   if(SHOWOFF) traces.push(...offTraces(loc, xs, ax, ay));
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      // dotted ink, as on every surface; hollow markers tell it from the
      // dotted grey FluSight baseline

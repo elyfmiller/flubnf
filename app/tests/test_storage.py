@@ -169,16 +169,18 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     assert (f'<strong><a href="/runs/{rid}">Round 2098-01-10 (as of '
             '2098-01-03)</a></strong>') in row
     meta = row.split('class="uk-meta"', 1)[1]
-    assert "<span>run 2" in meta                  # the wall-clock moment
+    assert f"<span>run {rid[4:6]}-{rid[6:8]} " in meta   # the wall clock
     assert f"<code" in meta and rid in meta       # the id, small and mono
-    # an unrecorded workroot (no ledger row) says so instead of guessing
+    # an unrecorded workroot (no ledger row) says so instead of guessing,
+    # and its page still opens (ST-13)
     orphan = "20980118T093000-0aacd0"
     (state["root"] / "workroots" / orphan).mkdir()
     ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
-    assert "<strong>Unrecorded run</strong>" in row   # no run page to link
-    assert "run 2098-01-18 09:30" in row          # parsed from the id
+    assert (f'<strong><a href="/runs/{orphan}">Unrecorded run</a></strong>'
+            in row)
+    assert "run 01-18 09:30:00" in row            # parsed from the id
 
 
 def test_protected_trees_render_no_delete_controls(state):

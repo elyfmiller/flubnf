@@ -253,7 +253,8 @@ REGISTRY: tuple = (
                "x' = m (x / m)^k about each horizon's median: the median is "
                "untouched and a value ten times it becomes 10^k times it. "
                "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
-               "(docs/team/submission.md, 2026-10-16): k = 0.7 took pooled "
+               "(docs/team/submission.md, 2026-10-16), on the stage-rule "
+               "member at weight 0.25 (9,152 cells): k = 0.7 took pooled "
                "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
                "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
                "the run records k and the unnarrowed quantiles beside the "
@@ -317,7 +318,7 @@ REGISTRY: tuple = (
          "method", "float", AN.SHIPPED_OWN_SHARE,
          "flubnf.analogue:SHIPPED_OWN_SHARE",
          "Weight share of the jurisdiction's own past weeks in the admissions "
-         "pool; 0 is the pooled form.",
+         "pool; 0 drops it.",
          lo=0.0, hi=1.0,
          note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
                "against 0.670 pooled on three replayed seasons, "
@@ -1151,7 +1152,8 @@ PANEL_GROUPS = (
     ("fit", "Oracle SIHRS: particle filter",
      "Settings of the fit itself; a change refits every state."),
     ("step", "Oracle SIHRS: Oracle step",
-     "Runs after the fit on its samples; a change costs no refit."),
+     "Runs after the fit on its samples; a replay reuses its fitted weeks, "
+     "a console run fits again."),
     ("groundhog", "Groundhog",
      "The calendar analogue; instant. Its donor settings are independent "
      "of the Oracle step's."),

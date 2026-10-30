@@ -69,12 +69,12 @@
   --line:#DCD8E9; --track:#DBD7E8; --field-line:#8A86A3;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
-  --gold:#0173A9; --gold-bright:#34C0F0;
+  --gold:#0173A9; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   /* outline buttons, text on a primary fill and on a --bad fill; the
      native controls' scheme */
-  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
   /* official comparator lines (FluSight ensemble): neutral grey, never a
      member color, 3:1+ on the card */
   --official:#6E7590;
@@ -112,10 +112,10 @@
   --line:#262A45; --track:#191C31; --field-line:#5B639E;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
-  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --gold:#34C0F0; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
-  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark; --model-analogue:#FFC72C;
   --official:#AAB1C9;
   --map-nodata:#2A2F50;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
@@ -144,10 +144,10 @@
   --line:#DFD7C2; --track:#E7E0CD; --field-line:#8E8468;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
-  --gold:#0173A9; --gold-bright:#34C0F0;
+  --gold:#0173A9; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
-  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light;
+  --btn-ink:#000F7E; --on-accent:#0C0D17; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
   --official:#6E7590;
   --map-nodata:#C4CAD8;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
@@ -176,10 +176,10 @@
   --line:#3C4263; --track:#262B3F; --field-line:#7A84B8;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
-  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --gold:#34C0F0; --gold-bright:#34C0F0; --hero-chip-ink:#34C0F0;
   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
-  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark;
+  --btn-ink:#34C0F0; --on-accent:#0C0D17; --on-bad:#0C0D17; --scheme:dark; --model-analogue:#FFC72C;
   --official:#AAB1C9;
   --map-nodata:#434A68;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
@@ -210,10 +210,10 @@
   --line:#D1D9E0; --track:#E1E6EB; --field-line:#818B98;
   --navy:#0A3069; --navy-deep:#07214A;
   --accent:#54AEFF; --accent-ink:#0969DA; --slate:#8250DF;
-  --gold:#0550AE; --gold-bright:#54AEFF;
+  --gold:#0550AE; --gold-bright:#54AEFF; --hero-chip-ink:#54AEFF;
   --nav-bg:#FFFFFF; --nav-ink:#1F2328;
   --ok:#1A7F37; --warn:#8A5D00; --bad:#CF222E;
-  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light;
+  --btn-ink:#1F2328; --on-accent:#1F2328; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
   --official:#6E7781;
   --map-nodata:#CFCCD6;
   --shadow:0 1px 2px rgba(31,35,40,.08),0 2px 8px rgba(31,35,40,.06);
@@ -244,10 +244,10 @@
   --line:#E3DBC4; --track:#EBE4CF; --field-line:#788789;
   --navy:#073642; --navy-deep:#002B36;
   --accent:#268BD2; --accent-ink:#1C6BA3; --slate:#6C71C4;
-  --gold:#1C6BA3; --gold-bright:#5DADE6;
+  --gold:#1C6BA3; --gold-bright:#5DADE6; --hero-chip-ink:#5DADE6;
   --nav-bg:#EEE8D5; --nav-ink:#073642;
   --ok:#5B6B00; --warn:#7F5E00; --bad:#BD2B28;
-  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light;
+  --btn-ink:#073642; --on-accent:#002B36; --on-bad:#FFFFFF; --scheme:light; --model-analogue:#806000;
   --official:#657B83;
   --map-nodata:#C6CCD4;
   --shadow:0 1px 2px rgba(88,110,117,.10),0 2px 8px rgba(88,110,117,.08);
@@ -278,10 +278,10 @@
   --line:#3B4252; --track:#353B48; --field-line:#727D97;
   --navy:#434C5E; --navy-deep:#2E3440;
   --accent:#88C0D0; --accent-ink:#88C0D0; --slate:#81A1C1;
-  --gold:#88C0D0; --gold-bright:#88C0D0;
+  --gold:#88C0D0; --gold-bright:#88C0D0; --hero-chip-ink:#A3D4E0;
   --nav-bg:#2E3440; --nav-ink:#ECEFF4;
   --ok:#A3BE8C; --warn:#EBCB8B; --bad:#E0868E;
-  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark;
+  --btn-ink:#88C0D0; --on-accent:#2E3440; --on-bad:#242933; --scheme:dark; --model-analogue:#FFC72C;
   --official:#9AA4B8;
   --map-nodata:#414D62;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
@@ -312,10 +312,10 @@
   --line:#44475A; --track:#343746; --field-line:#6878AE;
   --navy:#44475A; --navy-deep:#282A36;
   --accent:#BD93F9; --accent-ink:#BD93F9; --slate:#FF79C6;
-  --gold:#BD93F9; --gold-bright:#BD93F9;
+  --gold:#BD93F9; --gold-bright:#BD93F9; --hero-chip-ink:#D6BCFA;
   --nav-bg:#282A36; --nav-ink:#F8F8F2;
   --ok:#50FA7B; --warn:#FFB86C; --bad:#FF6E6E;
-  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark;
+  --btn-ink:#BD93F9; --on-accent:#21222C; --on-bad:#21222C; --scheme:dark; --model-analogue:#FFC72C;
   --official:#A2A7C2;
   --map-nodata:#44475A;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
@@ -494,7 +494,7 @@ header.nav details.display[open] > summary{
 /* text size: small A, the slider, large A, the readout; Reset at the right
    of the heading */
 .fontsize{display:flex;align-items:center;gap:.55rem}
-.fontsize input[type=range]{flex:1 1 auto;min-width:5rem;width:auto;
+.fontsize input[type=range]{flex:1 1 auto;min-width:3rem;width:auto;
   height:max(1.6rem,24px);margin:0;padding:0;border:0;background:transparent;
   accent-color:var(--accent-ink);cursor:pointer}
 .fontsize input[type=range]:focus-visible{outline:var(--focus-w,2px) solid var(--gold);
@@ -523,7 +523,8 @@ button.dm-reset[disabled]{opacity:.45}
 .dm-grp{display:block;margin:.1rem 0 .35rem;color:var(--mut);
   font-size:var(--fs-micro);font-weight:650}
 .dm-grid + .dm-grp{margin-top:.7rem}
-.dm-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem}
+.dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5em,1fr));
+  gap:.45rem}
 label.dm-th{--dm-ring:var(--accent-ink);--dm-focus:var(--gold);
   position:relative;display:flex;flex-direction:column;gap:.3rem;margin:0;
   padding:.25rem;border-radius:var(--r-sm);color:var(--nav-ink);
@@ -670,6 +671,10 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
 summary:focus-visible{
+  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
+/* the charts' toolbar too: Plotly's own rule (.js-plotly-plot .plotly
+   .modebar-btn) draws a 1px black ring, lost on a dark card */
+.js-plotly-plot .plotly .modebar .modebar-btn:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
 /* buttons: default = secondary outline, .gold = primary (cyan), .quiet.
    Every theme states its own colors as tokens (--btn-ink: LANL Blue on
@@ -889,6 +894,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
+/* the swatches keep an edge, so the gray one shows on a dark card */
+.maplegend .sw{box-shadow:inset 0 0 0 1px var(--line)}
 
 /* ---- home: workflow pipeline, performance table, card glyphs ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
@@ -1102,7 +1109,9 @@ kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid v
   border-bottom:1px solid var(--line)}
 .dsspark figcaption{font-size:var(--fs-micro);color:var(--mut);
   overflow-wrap:anywhere}
-.dsup .tablewrap{max-width:100%;overflow-x:auto}
+/* the stored datasets scroll inside their card too, and the hidden
+   "Actions" header stays inside the scroller (it is positioned) */
+.dsup .tablewrap,#datasets .tablewrap{max-width:100%;overflow-x:auto;position:relative}
 .dsfirst caption{caption-side:top;text-align:left}
 /* the first rows fit a 360px column: tight cells, the date as written
    under its week, names wrap at their spaces, numbers and weeks never */
@@ -1120,6 +1129,11 @@ details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
 details.dsup-fold>summary::-webkit-details-marker{display:none}
 details.dsup-fold>summary::before{content:"\25B8"}
 details.dsup-fold[open]>summary::before{content:"\25BE"}
+/* a long unbroken name (up to 80 characters) wraps, in the table and as
+   the browser's heading, instead of widening both */
+.dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}
+/* and keeps a readable column when the table is squeezed */
+.dstable td.dsname{min-width:12rem}
 .dstable td.dsactions{white-space:nowrap}
 .dstable td.dsactions form{display:inline;margin:0}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
@@ -1269,11 +1283,24 @@ tr[aria-current="true"] td{font-weight:600}
   .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
     scrollbar-color:var(--mut) transparent}
   .pipe svg,.figscroll > svg{min-width:620px}
+  /* the harmonic keeps its drawn size (560 wide) rather than growing */
+  .figscroll > svg.dg-harm{min-width:560px}
+  /* a Variables table: each row a two-column grid, the symbol (wrapping,
+     at most 6rem) beside its meaning, units and source, which flow down
+     the second column, so no column is cut off-card and a long meaning
+     gets the width */
+  .eqvars-t thead{display:none}
+  .eqvars-t,.eqvars-t tbody{display:block}
+  .eqvars-t tr{display:grid;grid-template-columns:fit-content(6rem) minmax(0,1fr);
+    column-gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--line)}
+  .eqvars-t tbody th,.eqvars-t td{padding:0;border:0}
+  .eqvars-t tbody th{grid-row:span 3;white-space:normal}
+  .eqvars-t tbody th .math{white-space:normal}
   .perf td,.perf th{padding:.28rem .3rem}
   /* a figure that scrolls says so: a soft shadow at the edge with more
      drawing past it (the classic local/scroll background pair, so it
      follows the scroll with no script) */
-  .figscroll{background:
+  .figscroll,.sbscroll{background:
     linear-gradient(to right,var(--card) 40%,transparent) left/1.5rem 100% no-repeat local,
     linear-gradient(to left,var(--card) 40%,transparent) right/1.5rem 100% no-repeat local,
     radial-gradient(farthest-side at 0 50%,color-mix(in srgb,var(--ink) 40%,transparent),transparent) left/1rem 100% no-repeat scroll,

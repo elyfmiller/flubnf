@@ -3,6 +3,10 @@ on:
   # dev too: its Windows launcher changes get the Windows jobs before a PR.
   push: {branches: [main, dev]}
   pull_request:
+# Read only, whatever the repository default becomes: no job writes to the
+# repository, and a pull request's own copy of this file runs with it.
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest

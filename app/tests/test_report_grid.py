@@ -362,11 +362,12 @@ def test_each_panel_goes_live_and_the_legend_switches_series():
     assert 'html.g-off-pf .g-svg [data-s="pf"]' in css
     assert ".g-live > .g-svg{display:none}" in css     # screen only
     assert ".g-plot{display:none!important}" in css     # print keeps SVG
-    # the data: each panel's series and the drawing's own scale
+    # the data: each panel's series and the first view's scale, the whole
+    # band in frame
     data = G.grid_payload(g)
     oh = data["OH"]
     assert set(oh) == {"o", "ls", "m", "top", "d0", "d1"}
-    top, d0, d1, _c = G._scale(g["panels"][2])
+    top, d0, d1, _c = G._scale(g["panels"][2], whole=True)
     assert oh["top"] == top and oh["d0"] == d0.isoformat()
     assert oh["m"]["pf"]["q"] == g["panels"][2]["models"]["pf"]["q"]
     js = G.grid_js(g, COLORS)
@@ -383,3 +384,138 @@ def test_the_report_carries_the_live_panels(tmp_path):
     # the theme pass leaves the live panels to their own redraw
     assert "if(g.closest&&g.closest('.gpanel')) continue;" in html
     assert report_v2.BUNDLE_VERSION >= 8
+
+
+# ------------------------------------------- Ely's report notes, 2026-10-28
+
+def _wide(q975=900.0, obs=20.0):
+    """A panel whose Groundhog band reaches far above everything else."""
+    return {"key": "XX", "name": "X",
+            "observed": [["2097-12-20", obs], ["2097-12-27", obs],
+                         [ASOF, obs]],
+            "models": {"analogue": {"times": ["2098-01-10", "2098-01-17",
+                                              "2098-01-24", "2098-01-31"],
+                                    "q": [[1, 9, 20, 30, q975]] * 4}}}
+
+
+def test_the_live_view_starts_with_the_whole_band_and_paper_keeps_the_clip():
+    """Wide forecasts open with the median and the whole 95% band in
+    frame (the live charts zoom); the printed drawing keeps CLIP_X."""
+    p = _wide()
+    top_paper, _d0, _d1, clipped = G._scale(p)
+    assert clipped and top_paper < 900
+    data = G.grid_payload({"panels": [p]})
+    assert data["XX"]["top"] >= 900
+    assert "whole 95% band in the first" in G.grid_js.__doc__.replace("\n    ", " ")
+
+
+def test_each_panel_names_its_h3_97_5_over_the_recent_level():
+    """Beside the name: horizon 3's 97.5% quantile over the mean of the last
+    three reported weeks (flubnf.tailcap's level), one figure per model."""
+    p = _wide(q975=170.0, obs=20.0)                 # 8.5x
+    rs = G.tail_ratios(p)
+    assert set(rs) == {"analogue"}
+    x, over, filed = rs["analogue"]
+    assert abs(x - 8.5) < 1e-9 and not over and filed is None
+    html = G._figure(p, "X", "", 0, COLORS)
+    cap = html[html.index("<figcaption>"):html.index("</figcaption>")]
+    assert 'class="g-tail"' in cap and "h3 97.5%" in cap
+    assert ">8.5\u00d7</span>" in cap and "g-tail-over" not in cap
+    assert 'data-s="analogue"' in cap               # the legend switch hides it
+    assert "8.5 times the recent level" in G.panel_label(p)
+    assert "h3 97.5%" in G.flag_key("Jan 31")
+
+
+def test_over_fifteen_times_reads_red():
+    """Red above 15x the level. The figure is the model's own growth, before
+    the upper-tail cap (Ely: "I would still like to see the growth
+    itself"), so on a capped run red marks where the cap moved the file."""
+    at = G.tail_ratios(_wide(q975=15 * 3, obs=3.0))["analogue"]
+    assert not at[1] and G._times(at[0]) == "15\u00d7"
+    over = G.tail_ratios(_wide(q975=15 * 3 + 1, obs=3.0))["analogue"]
+    assert over[1]
+    assert "before any upper-tail cap" in G.flag_key("Jan 31")
+    html = G._figure(_wide(q975=600.0), "X", "", 0, COLORS)
+    assert '<span class="g-tail-over">30\u00d7</span>' in html
+    css = G.grid_css()
+    assert ".g-tail-over{color:var(--bad)" in css
+    assert 'html.g-off-analogue .g-tail [data-s="analogue"]' in css
+    # no level, no figure
+    assert G._tail(_wide(obs=0.0), COLORS) == ""
+    assert G.tail_ratios({"observed": [], "models": {}}) == {}
+
+
+# ---------------------- before and after the cap, per location (2026-10-28)
+
+def _filed(tmp_path, panel, model="pf", hub="NAU_PyBNF-OracleSIHRS-modified",
+           fips="39", top=None):
+    """A panel's fan into its model's submitted CSV (appended, one file
+    per model as a run writes), its 97.5% replaced by `top`."""
+    from app.core.submit import hub_model_id
+    assert hub.startswith(hub_model_id(model))
+    d = tmp_path / "submission" / hub
+    d.mkdir(parents=True, exist_ok=True)
+    f = panel["models"][model]
+    rows = ["reference_date,target,horizon,target_end_date,location,"
+            "output_type,output_type_id,value"]
+    for h, (x, q) in enumerate(zip(f["times"], f["q"])):
+        for L, v in zip(G.LEVELS, q):
+            if L == 0.975 and top is not None:
+                v = top
+            rows.append(f"2098-01-10,wk inc flu hosp,{h},{x},{fips},"
+                        f"quantile,{L},{v:.0f}")
+        rows.append(f"2098-01-10,wk flu hosp rate change,{h},{x},{fips},"
+                    "pmf,increase,0.5")
+    out = d / f"2098-01-10-{hub}.csv"                # one file per model
+    if out.is_file():
+        rows = out.read_text().splitlines() + rows[1:]
+    out.write_text("\n".join(rows) + "\n")
+
+
+def test_the_submitted_files_are_read_beside_the_report(tmp_path):
+    """What went to the hub comes from the run's own CSVs (a suffixed
+    directory too), keyed as the panels are, quantile rows only."""
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    _filed(tmp_path, oh, top=30.0)
+    sub = G.submitted_fans(tmp_path)
+    assert set(sub) == {"pf"} and set(sub["pf"]) == {"OH"}
+    assert sub["pf"]["OH"]["2098-01-31"]["0.975"] == 30.0
+    assert G.submitted_fans(tmp_path / "nowhere") == {}
+
+
+def test_a_location_opens_on_its_file_and_keeps_the_models_own(tmp_path):
+    """Where the file differs (the cap moved it) the panel carries both:
+    it opens on the file and its switch shows the model's own; where it
+    does not, nothing changes."""
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    al = next(p for p in g["panels"] if p["key"] == "AL")
+    _filed(tmp_path, oh, top=30.0)
+    _filed(tmp_path, al, fips="01")                     # the same numbers
+    g2 = G.attach_submitted(g, G.submitted_fans(tmp_path))
+    oh2 = next(p for p in g2["panels"] if p["key"] == "OH")
+    al2 = next(p for p in g2["panels"] if p["key"] == "AL")
+    assert "submitted" not in al2
+    assert oh2["submitted"]["pf"]["q"][3][4] == 30.0
+    assert oh2["models"]["pf"]["q"][3][4] == 46.0        # the model's own
+    shown = G.shown(oh2)
+    assert shown["models"]["pf"]["q"][3][4] == 30.0
+    assert shown["before"]["pf"]["q"][3][4] == 46.0
+    # the switch, Submitted pressed; the drawing is the file's
+    html = G._figure(oh2, "Ohio", "", 0, COLORS)
+    assert ('data-ba-key="OH" data-ba="s" aria-pressed="true"' in html
+            and 'data-ba-key="OH" data-ba="b" aria-pressed="false"' in html)
+    assert ">Before cap</button>" in html
+    assert "data-ba-key" not in G._figure(al2, "Alabama", "", 0, COLORS)
+    # the figure: the model's own, then the file's
+    x, _over, filed = G.tail_ratios(shown)["pf"]
+    assert filed is not None and filed < x
+    assert "\u2192" in html and "as submitted" in G.panel_label(shown)
+    # the live charts: the file's fans and the model's own view's top
+    d = G.grid_payload(g2)
+    assert d["OH"]["s"]["pf"]["q"][3][4] == 30.0
+    assert d["OH"]["m"]["pf"]["q"][3][4] == 46.0
+    assert d["OH"]["topb"] >= 46 and "s" not in d["AL"]
+    js = G.grid_js(g2, COLORS)
+    assert "addEventListener('rp-ba'" in js and "p.topb" in js

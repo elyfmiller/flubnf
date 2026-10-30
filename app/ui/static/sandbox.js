@@ -86,13 +86,25 @@
     var loc = $('sbnew-loc'), date = $('sbnew-date'), grp = $('sbnew-group'), asof = $('sbnew-asof');
     // the page fills in the first start's name; it is replaced as the
     // start changes until the user types one of their own
-    var suggested = nm ? nm.value : '';
+    // a form a refusal sent back keeps its name and its week (data-kept)
+    var kept = !!(nm && nm.hasAttribute('data-kept'));
+    var suggested = nm && !kept ? nm.value : '';
+    // the models already here: an Oracle start's name is never one of them
+    var taken = (start.form.getAttribute('data-taken') || '').split(' ');
+    function free(s) {
+      if (!s || taken.indexOf(s) < 0) return s;
+      for (var n = 2; ; n++) {
+        // the suffix fits inside the 64-character name
+        var t = s.slice(0, 64 - String(n).length - 1) + '_' + n;
+        if (taken.indexOf(t) < 0) return t;
+      }
+    }
     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
     function name() {
       if (!nm || (nm.value && nm.value !== suggested)) return;
       var v = start.value, s = '', o = start.options[start.selectedIndex];
-      if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
-      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
+      if (v === 'shipped:sihrs' && loc && date) s = free(suggestName(loc.value, date.value));
+      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = free(suggestName(grp.value, asof ? asof.value : ''));
       else if (o && o.getAttribute('data-name')) s = o.getAttribute('data-name');
       nm.value = suggested = s;
     }
@@ -134,7 +146,7 @@
     function lastWeek() {
       var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
       if (!o || !asof) return;
-      asof.value = o.getAttribute('data-last') || asof.value;
+      if (!(kept && asof.value)) asof.value = o.getAttribute('data-last') || asof.value;
       asof.min = o.getAttribute('data-first') || '';
       asof.max = o.getAttribute('data-last') || '';
       asofCheck();
@@ -160,6 +172,7 @@
     [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
     if (grp) grp.addEventListener('change', function () { lastWeek(); name(); });
     show();
+    kept = false;
   }
 
   // ---- the three files as tabs: without this script they stack, each
@@ -248,6 +261,19 @@
     });
     document.addEventListener('click', function (e) {
       menus.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
+    });
+    // a menu hangs from its button's right edge; in a narrow window at a
+    // large text size that reaches past the screen's left, so it is moved
+    // back inside (a phone's menus open from the left: sandbox.css)
+    menus.forEach(function (d) {
+      d.addEventListener('toggle', function () {
+        var m = d.querySelector('.sbmenu');
+        if (!m) return;
+        m.style.right = '';
+        if (!d.open) return;
+        var left = m.getBoundingClientRect().left;
+        if (left < 8) m.style.right = (left - 8) + 'px';
+      });
     });
   }
 
@@ -383,7 +409,23 @@
         var rep = $('sb-checked');
         if (rep && rep.firstChild) rep.classList.add('sb-stale');
       });
-      form.addEventListener('submit', function () { dirty = false; });
+      // a CSV over the upload limit is refused here, before the page
+      // leaves: the server reads none of a body that size, so the editor's
+      // unsaved text would go with it
+      var csv = $('sbfill-csv');
+      form.addEventListener('submit', function (e) {
+        var b = e.submitter, f = csv && csv.files && csv.files[0];
+        var max = csv ? parseInt(csv.getAttribute('data-max-bytes'), 10) : 0;
+        if (b && /\/upload-data$/.test(b.getAttribute('formaction') || '') && f && max && f.size > max) {
+          e.preventDefault();
+          csv.setCustomValidity('This file is larger than the ' + Math.round(max / 1048576) +
+                                ' MB limit; choose a smaller one.');
+          csv.reportValidity();
+          return;
+        }
+        dirty = false;
+      });
+      if (csv) csv.addEventListener('change', function () { csv.setCustomValidity(''); });
       addEventListener('beforeunload', function (e) {
         if (!dirty) return;
         e.preventDefault();

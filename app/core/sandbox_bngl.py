@@ -122,7 +122,7 @@ def simulate_suffix(bngl_text: str) -> str:
     if not m:
         raise SandboxError("the model's simulate action must name a suffix "
                            '(suffix=>"..."): the engine matches the data '
-                           "file to the model by it")
+                           "file to the model by it", code="NO_SUFFIX")
     return m.group(1)
 
 
@@ -143,10 +143,11 @@ def read_exp(exp_text: str) -> dict:
                   and _DATED.search(l)), None)
     if dated is not None:
         raise SandboxError(f"data.exp holds dates (row {dated.strip()!r}): "
-                           "for dated rows use Load data, Upload a CSV")
+                           "for dated rows use Load data, Upload a CSV",
+                           code="EXP_UNREADABLE")
     if not lines or not lines[0].lstrip().startswith("#"):
         raise SandboxError("data.exp must start with a header line such as "
-                           "'# time H_weekly'")
+                           "'# time H_weekly'", code="EXP_UNREADABLE")
     cols = lines[0].lstrip("#").split()
     rows = []
     for l in lines[1:]:
@@ -159,11 +160,13 @@ def read_exp(exp_text: str) -> dict:
                                f"{lines[0].strip()!r} names "
                                f"{', '.join(cols) or 'none'}. The first line "
                                "is the header, '#' then one name per column, "
-                               "such as '# time H_weekly'")
+                               "such as '# time H_weekly'",
+                               code="EXP_UNREADABLE")
         rows.append([float(x) for x in parts])
     if len(cols) < 2 or not rows:
         raise SandboxError("data.exp needs a time column, one observation "
-                           "column and at least one row")
+                           "column and at least one row",
+                           code="EXP_UNREADABLE")
     return {"columns": cols, "rows": rows}
 
 
@@ -183,7 +186,8 @@ def split_priors(priors_text: str) -> tuple:
                    if word.endswith("_var") and rest.strip() else
                    ": a prior reads 'uniform_var = name low high'")
             raise SandboxError(f"priors.conf line '{s}' has no '=' (every "
-                               f"line is 'key = value'){fix}")
+                               f"line is 'key = value'){fix}",
+                               code="PRIORS_LINE")
         k, v = (x.strip() for x in s.split("=", 1))
         if k in ENGINE_KEYS or k in RETIRED_KEYS:
             keys[k] = v
@@ -191,12 +195,12 @@ def split_priors(priors_text: str) -> tuple:
         if k in RESERVED_KEYS:
             raise SandboxError(
                 f"priors.conf sets {k}, which the sandbox writes from "
-                "the run settings; remove that line")
+                "the run settings; remove that line", code="KEY_RESERVED")
         priors.append(s)
     if not any(p.split("=", 1)[0].strip().endswith("_var") for p in priors):
         raise SandboxError("priors.conf declares no free parameter "
                            "(no uniform_var, loguniform_var, normal_var or "
-                           "lognormal_var line)")
+                           "lognormal_var line)", code="NO_FREE_PARAMETER")
     return priors, keys
 
 
@@ -288,29 +292,40 @@ RANGE_PRIORS = ("uniform_var", "loguniform_var")
 SPREAD_PRIORS = ("normal_var", "lognormal_var")
 
 
-def _check_prior(line: str, params: set, problems: list) -> str:
-    """One *_var line; its parameter name ('' when unreadable)."""
+def _check_prior(line: str, params: set, problems: list, codes: list) -> str:
+    """One *_var line; its parameter name ('' when unreadable). Each
+    problem's code (app/core/problem_codes.py) goes to `codes`, in step
+    with `problems`."""
+
+    def problem(code: str, text: str) -> None:
+        problems.append(text)
+        codes.append(code)
+
     kind, _, rest = (x.strip() for x in line.partition("="))
     toks = rest.split()
     if len(toks) < 3:
-        problems.append(f"'{line}' needs a parameter name and two numbers")
+        problem("PRIOR_MALFORMED",
+                f"'{line}' needs a parameter name and two numbers")
         return ""
     name = toks[0]
     try:
         a, b = float(toks[1]), float(toks[2])
     except ValueError:
-        problems.append(f"'{line}': {toks[1]} and {toks[2]} must be numbers")
+        problem("PRIOR_MALFORMED",
+                f"'{line}': {toks[1]} and {toks[2]} must be numbers")
         return name
     if name not in params:
-        problems.append(f"{kind} names {name}, which the parameters block "
-                        "does not define")
+        problem("PRIOR_UNDEFINED", f"{kind} names {name}, which the "
+                "parameters block does not define")
     if kind in RANGE_PRIORS and a >= b:
-        problems.append(f"{kind} {name}: the low end {toks[1]} is not below "
-                        f"the high end {toks[2]}")
+        problem("PRIOR_BOUNDS", f"{kind} {name}: the low end {toks[1]} is "
+                f"not below the high end {toks[2]}")
     if kind == "loguniform_var" and a <= 0:
-        problems.append(f"loguniform_var {name}: the low end must be above 0")
+        problem("PRIOR_BOUNDS",
+                f"loguniform_var {name}: the low end must be above 0")
     if kind in SPREAD_PRIORS and b <= 0:
-        problems.append(f"{kind} {name}: the spread {toks[2]} must be above 0")
+        problem("PRIOR_BOUNDS",
+                f"{kind} {name}: the spread {toks[2]} must be above 0")
     return name
 
 

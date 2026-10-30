@@ -125,5 +125,7 @@ code.md-code{padding:0;background:transparent;color:inherit;
   grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr));
   gap:0 var(--gap)}
 .md-field{min-width:0}
+.md-research .uk-affix{flex-wrap:wrap}
+.md-research .uk-affix > input{flex-basis:9ch;min-width:9ch}
 .md-quick .uk-alert,.md-research .uk-alert{margin:.2rem 0 .5rem}
 .md-runfacts{margin:.1rem 0 .5rem}

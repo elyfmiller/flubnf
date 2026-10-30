@@ -269,8 +269,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     from app.core.us_national import us_step_week
     us_step = us_step_week(workroot)
     if ran:
+        # a member whose scoring failed says why (the step's own error)
         wis_body = "".join(summary_table_html(
-            frames.get(m, pd.DataFrame()), model=m, us_step=us_step)
+            frames.get(m, pd.DataFrame()), model=m, us_step=us_step,
+            error=str(outcome.get(f"{m}_score_error")
+                      or outcome.get("score_error") or ""))
             for m in ran)
     else:
         wis_body = summary_table_html(df, us_step=us_step)
