@@ -105,7 +105,8 @@
   let M = models[0];
   function draw(){
     const g = gs.value, d = F[g]; if(!d) return;
-    const mc = COLS[M] || css('--gold');
+    // the Groundhog per theme (--model-analogue, as the weekly report)
+    const mc = (M === 'analogue' && css('--model-analogue')) || COLS[M] || css('--gold');
     const pts = (d.fc||{})[M] || [];
     const x = pts.map(p=>p[0]);
     const fs = rootPx(), surf = css('--card');

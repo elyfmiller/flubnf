@@ -281,7 +281,8 @@ def test_console_run_and_replay_refuse_while_a_sandbox_fit_is_live(box):
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/forecast"
     assert ui_state._status.get("running") is None                  # nothing claimed
-    assert "sandbox fit holds the engine (20990101-000000_mine)" in ui_state._status["flash"]
+    assert ("a sandbox fit is running (20990101-000000_mine); one run at a "
+            "time") in ui_state._status["flash"]
     ui_state._status.pop("flash", None)
     r = client.post("/retro/run", data={"season": "2098-99"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/retro"

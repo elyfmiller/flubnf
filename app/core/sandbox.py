@@ -104,7 +104,13 @@ SEED_RULE = "runs.derive_seed(location, forecast_date, 0), as the console's repl
 
 
 class SandboxError(ValueError):
-    """A model or a request the sandbox refuses, with the reason in words."""
+    """A model or a request the sandbox refuses, with the reason in words;
+    `code` is its problem code (app/core/problem_codes.py) where it has
+    one, else ''."""
+
+    def __init__(self, *args, code: str = ""):
+        super().__init__(*args)
+        self.code = code
 
 
 def check_name(name: str) -> str:
@@ -518,6 +524,13 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
     if ss >= fd:
         raise SandboxError(f"the season start {ss} is not before the "
                            f"forecast date {fd}")
+    # the template fits a single season: more than a year of data would
+    # hand it two (production starts on August 1 of the forecast's season)
+    if (dt.date.fromisoformat(fd) - dt.date.fromisoformat(ss)).days > 366:
+        raise SandboxError(f"the season start {ss} is more than a year "
+                           f"before the forecast date {fd}; the Oracle "
+                           f"SIHRS fits one season (production starts "
+                           f"{default_season_start(fd)})")
     extra, ref = {}, None
     if dataset:
         from app.core import datasets

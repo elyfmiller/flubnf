@@ -6,6 +6,136 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-10-29 (01:02 UTC): ROUND 2026-10-31 MERGED ON THE HUB.
+  cdcepi/FluSight-forecast-hub#3929 passed "Hub Submission Validation
+  (R)" (2 min 33 s; the bot: all validation checks passed for both
+  files) and was merged by Annabella-Hines on 2026-10-28 (merge commit
+  3790ae7); both files on cdcepi main are byte-identical to the checked
+  ones. The member table, once all five other members were in (report
+  only; Ely had chosen to submit without it): our typical ratio is 1.01x
+  for both models, the centre of the pack. Apart by more than 1.5x: the
+  Oracle in 6 of 48 states (NE 0.42x, KS 0.47x, VT 0.56x, ID 0.56x, SD
+  0.59x, NM 1.58x), the Groundhog in 5 of 53 (HI 2.04x, WA 1.63x, KS
+  0.62x, CA 1.52x, SD 0.66x); the other members: INFLAenza 6%, ABERT
+  11%, epymorph 34%, Copycat 68%, FourCAT 85%. No red flag in any
+  member's file. Under the rule these 11 location-model cells would
+  have been left out had the members been in before the deadline; the
+  Oracle's low states (NE, KS, VT, ID, SD) are the small states where
+  its starting level runs low, the Model lane's open item.
+- 2026-10-28 (20:19 UTC): ROUND 2026-10-31, HUB PULL REQUEST #3929
+  OPENED BY ELY (cdcepi/FluSight-forecast-hub#3929, "NAU_PyBNF forecast
+  2026-10-31 (EW43)", from elyfmiller:FluBNF_submission). Head b71aadb6,
+  a merge commit from GitHub's fork sync (parents d68fcfca and cdcepi
+  main d4b8c556); the pull request still adds only our two files, both
+  byte-identical to the checked ones. The hub's "Hub Submission
+  Validation (R)" workflow started 20:17 UTC; the same 31 checks passed
+  here on these files. The 6 PM Arizona check-in confirms its result.
+- 2026-10-28 (20:15 UTC): ROUND 2026-10-31, FINAL CHECK PASSED; Ely opens
+  the hub pull request. On the files as committed on the fork (d68fcfca,
+  byte-identical to the checked ones): structure clean (Oracle 48
+  locations, Groundhog 53), GREEN on all 31 hubValidations checks, gate
+  PASS at 10x typical and widest, no red flag, flat or higher
+  everywhere; the pull request adds only our two files and merges
+  cleanly into cdcepi main d4b8c556 (hub-config unchanged since our
+  base). The member table never had three other members (only epymorph
+  by 20:13 UTC); Ely (2026-10-28): that is fine this week, the aim is to
+  be around the pack. Against the field's median (ten other teams'
+  CSVs) the Oracle sits at 1.00x typical, the Groundhog 1.08x; against
+  epymorph alone 1.26x and 1.29x, as expected (last week epymorph sat at
+  0.87x of the other members). The 6 PM Arizona check-in reports only.
+- 2026-10-28 (19:58 UTC): ROUND 2026-10-31 RESTAGED AT 10x (Decided).
+  Ely's 10x run: the shrink form (medians and lower halves identical to
+  the uncapped run; the few tied upper levels are whole-number rounding
+  in small states). Both files GREEN on all 31 hubValidations checks,
+  gate PASS with the typical and widest state at 10.0x at horizon 3
+  (95% band over the median 3.2x), no red flag, the Groundhog flat or
+  higher everywhere; the Oracle fails flat in the same five states as at
+  15x (medians do not move with the cap) and leaves them out again (48
+  locations). Widths, typical state at h3 (97.5% over the three-week
+  mean): ours 10.0x; epymorph today 11.2x; last week's members ABERT 6.3x,
+  INFLAenza 7.6x, FourCAT 8.6x, epymorph 11.7x, Copycat 19.5x, Spencer's
+  ensemble 11.5x. Medians against today's field (10 other teams' CSVs
+  on cdcepi main or in open pull requests, FluSight models left out):
+  Oracle typical 0.98x, 13 states more than 1.5x apart (low: AK, NE, ID,
+  KS, VT, ME, MT; high: MS, TX, PA, NM, CA, FL); Groundhog 1.08x, 6 (RI
+  low; US, FL, NY, CA, WA high); informative only, the rule's member
+  table waits for three other NAU members (only epymorph at 19:55 UTC).
+  FluBNF_submission: commit d68fcfca on top of 1238d4ee, both files
+  byte-identical to the checked ones, pushed to the fork.
+- 2026-10-28 (18:38 UTC): ROUND 2026-10-31, THE ORACLE FILE LEAVES OUT
+  FIVE STATES (Ely's choice over a weight-0 rerun of them): Alaska,
+  District of Columbia, Hawaii, Maine and Montana, all four horizons,
+  for failing flat-or-higher. The Groundhog file keeps all 53 and passes
+  every rule, so for these five our forecast this week is the
+  Groundhog's. The trimmed Oracle file is the staged one minus those 460
+  rows byte for byte (48 locations); GREEN on all 31 hubValidations
+  checks, gate PASS (h3 15.0x typical and at most), no red flag, flat or
+  higher everywhere. FluBNF_submission: commit 1238d4ee on top of
+  93314fb1, pushed to the fork (no force); compare link unchanged:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  The member table still waits for three other members (only epymorph
+  in); the 6 PM Arizona check-in runs it on the trimmed files.
+- 2026-10-28 (18:20 UTC): ROUND 2026-10-31, FLAT OR HIGHER (Decided,
+  2026-10-28). Ely's rerun is byte-identical to the staged files (the
+  run is deterministic). Five Oracle states fail: Alaska (median 6, 7,
+  7, 7 against a last week of 7, after 22), District of Columbia (3, 4,
+  4, 3; a falling step), Hawaii (53, 56, 61, 68 against 63, after 82),
+  Maine (15, 17, 18, 20 against 16) and Montana (13, 13, 14, 17 against
+  15); the Groundhog passes everywhere. Nebraska and Vermont pass on the
+  median; what looks like "going down" in the report is the Oracle's
+  lower band (its 25% quantile falls across horizons in 6 states and
+  ends below the last week in 14). The member table: only epymorph was
+  in at 18:20 UTC, so no comparison yet (the check needs three other
+  members; the first version of the script compared against two, fixed
+  before any use).
+- 2026-10-28 (16:55 UTC): THE FLAG CHECK ON ROUND 2026-10-31 (Decided,
+  2026-10-28). (1) Spencer's red flag, as submitted: none over 30x;
+  typical state 11.9x Oracle, 13.0x Groundhog; widest Vermont 21x
+  (Oracle), District of Columbia and Alaska 20x (Groundhog). Without the
+  shrink the Oracle would have had 5 (Michigan 36x, North Dakota 35x,
+  Rhode Island 32x, Wyoming 30.1x, West Virginia 30.1x), the Groundhog
+  none. (2) The member medians: not yet possible; at 16:55 UTC no NAU
+  member had a 2026-10-31 file on cdcepi main or in an open hub pull
+  request (the only one open was NU-EMBERS, #3912). Ely holds the hub
+  pull request until the members are in, then this lane runs the
+  comparison, drops any flagged location, re-validates and recommits;
+  the deadline is 8 PM Arizona time (03:00 UTC). Six states' newest week
+  fell 20% or more (Alaska, Connecticut, Hawaii, Idaho, Kansas,
+  Montana); both models start near the lower value (the Groundhog
+  anchors on it, the Oracle's filter followed it); the previous newest
+  week was revised up by a median 3.7%, so these read as small-count
+  noise more than reporting lag. The Groundhog's medians step up most
+  from horizon 1 to 2 in 97% of states, both weeks (1.27x, 1.46x, 1.21x
+  this week); the raw admissions donors show a milder form, so most of
+  it comes later in the chain; a question for the Model lane.
+- 2026-10-28 (16:25 UTC): ROUND 2026-10-31 (EW43) STAGED, THE FIRST WITH
+  THE 15x SHRINK. Ely ran main d7d13e5 (PR #60) on the laptop with the
+  five override values (pf.seed_denominator season_total_early, oracle.w
+  0.25, oracle.narrow 0.7, output.tail_cap 15, output.tail_mode shrink;
+  historical ceiling 0) and one override reason; the panel screenshots
+  showed the five changes and nothing else. Hub data through 2026-10-24
+  (53 locations; US 6,006, 1.21x the week before; states median 1.18x).
+  Both files: 4,877 lines, 53 locations, horizons 0-3 for 2026-10-31 to
+  2026-11-21, 212 monotone integer blocks; both GREEN on all 31
+  hubValidations checks (scripts/validate_submission.R --window, TZDIR
+  set) against cdcepi main ac4e5a04. The gate (scripts/sense_check.py
+  from main, truth through 2026-10-24): PASS for both; the h3 97.5% over
+  the recent level is 15.0x for the typical state and 15x at most (last
+  week as submitted: 20x typical, 9 states over 30x in each file).
+  Plausibility: Oracle h0 medians 1.23x the last observed week
+  (10th-90th 1.00-1.37), Groundhog 1.14x (1.00-1.20); the last observed
+  week inside the h0 95% band in every state for both; US h3 Oracle
+  2,944-16,736-73,238, Groundhog 2,937-17,520-75,165. Last week's pull
+  request was cdcepi/FluSight-forecast-hub#3856, merged (14f17caf).
+  Submission: FluBNF_submission fast-forwarded to cdcepi main ac4e5a04
+  (fetched by URL), the two files byte-identical to the uploads under
+  model-output/NAU_PyBNF-OracleSIHRS/ and
+  model-output/NAU_PyBNF-GroundHogCGR/, commit 93314fb1 "NAU_PyBNF
+  forecast 2026-10-31 (EW43)" as Ely, pushed to the fork, one commit over
+  main. Compare link for Ely's hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  Still owed: the cap-0 export of the same run (Ely, after the hub pull
+  request is open) for the meeting page's with-and-without figures.
 - 2026-10-26 (01:25 UTC): THE TWO EDGE FIXES ON BRANCH tail-hist-edges
   (c417743, one commit over dev 4daf9bd, for Ely's merge; nothing for
   Wednesday, where the ceiling is off). (1) history_ratios measures the
@@ -2432,6 +2562,47 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-10-28 (Ely, with the PI): round 2026-10-31 goes out with the
+  upper-tail shrink at 10x for both models instead of 15x, because 10x
+  sits closer to the NAU peers' widths. Every other rule stands.
+- 2026-10-28 (Ely): in the rising phase of the season a forecast's
+  median may be flat or higher, never falling ("we know cases must go
+  up and not down"). The check: our median at every horizon is at least
+  the last reported week, and never lower than the horizon before.
+  A location that fails is corrected or left out of that model's
+  submission, under the rule above. Applied from round 2026-10-31 in
+  tools/spencer_report.py (Submission scratchpad); Ely says when the
+  season turns and the rule lifts.
+- 2026-10-28 (Ely): a location whose forecast would be flagged is left
+  out of that week's submission, on Spencer Fox's thresholds (Ely trusts
+  his judgment of what is plausible). Every round, before the hub pull
+  request opens, this lane reproduces his NAU-ensemble report for the
+  admissions target (tools/spencer_report.py and members_tonight.sh in
+  the Submission scratchpad, to move into the repository at Ely's word)
+  and drops a location, all four horizons, from that model's file when
+  either check fails; the file is then re-validated and re-gated before
+  the commit (the hub treats every location as optional,
+  hub-config/tasks.json). Definitions, from his report of 2026-10-21
+  (code db60066; his members are ABERT, Copycat, INFLAenza, epymorph,
+  FourCAT and our two; NAU-vulPES is his ensemble, not a member): (1) RED
+  FLAG, "do not submit as is": the horizon-3 97.5% quantile over the
+  last reported week above 30x, where that week is at least 10
+  admissions. This reproduces all ten of his 2026-10-24 flags; his one
+  unexplained omission is the Groundhog's Minnesota (35x over 14), so
+  our check is slightly stricter. (2) MEMBER TABLE: each member's
+  horizon-3 median over the median of the other members' horizon-3
+  medians; "apart" is more than 1.5x either way (Ely, 2026-10-28: keep
+  Spencer's 1.5x), counted where the others' median is at least 10. This
+  reproduces his typical ratios for our two (1.04x Oracle, 1.05x
+  Groundhog) and his apart counts for six of seven members (Copycat 33
+  against his 34). On the 2026-10-24 files the rule would have left out
+  10 Oracle states (CT, IA, ME, MI, MN, MT, NE, NH, WI, WV) and 9
+  Groundhog states (AK, AZ, HI, ID, MN, OH, OR, TX, WV). The members'
+  files are read from cdcepi main or, before they merge, from their open
+  hub pull requests; with fewer than three other members in there is no
+  comparison. Ely's reasoning: early mistakes are part of learning, and
+  from now on a forecast we are not confident in is not submitted. This
+  turns the 2026-10-12 rule (drop by judgment) into a fixed check.
 - 2026-10-15 (Ely): whenever a dev to main pull request is ready to merge
   (open, tests green), the lane gives Ely the terminal merge command with
   the number filled in, in chat and in the notes, and the command itself
@@ -2496,6 +2667,45 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-10-28 (20:49 UTC), Submission to Model (the Oracle SIHRS agent first;
+  Ely's handoff): THE 50% INTERVAL IS TOO WIDE, AND THE ORACLE'S LOWER
+  HALF MOST OF ALL. Please propose work. Evidence, the live files as
+  submitted, scored on every week reported by the hub's data of
+  2026-10-28 (rounds 10-10 h0-h2, 10-17 h0-h1, 10-24 h0; WIS as the hub
+  computes it, relative to FluSight-baseline on common cells): relWIS
+  Oracle 0.698 (by round 0.702, 0.742, 0.576), Groundhog 0.823 (0.812,
+  0.829, 0.847); the NAU peers INFLAenza 0.465, ABERT 0.485 (two
+  rounds), FourCAT 0.612, Spencer's ensemble vulPES 0.613, epymorph
+  0.748, Copycat 1.210; FluSight-ensemble 0.460. 50% coverage: Oracle
+  0.80 (by round 0.81, 0.88, 0.58), Groundhog 0.76, FluSight-ensemble
+  0.73 (0.79, 0.74, 0.55), so part of it is early-season and shared.
+  What is ours: the Oracle's 50% band over its median is 1.13 against
+  0.65 for the FluSight ensemble and 0.63 for INFLAenza, and its misses
+  are lopsided: the truth fell below its 25% quantile in 4% of cells and
+  above its 75% in 16% (the ensemble 10% and 16%, INFLAenza 13% and
+  17%). Its lower half is too wide, the same falling lower band that
+  made Nebraska and Vermont look like they were going down on 10-31
+  (the Oracle's 25% quantile falls across horizons in 6 states). The
+  Groundhog over-covers most in large states (0.94 where the recent
+  level is over 100). Leads from this lane, for you to weigh: (1) an
+  asymmetric narrowing, a separate exponent below the median, screened
+  on the 84 weeks as the 0.7 was; (2) PIT-based recalibration learned
+  from past seasons' replays (Rumack, Tibshirani and Rosenfeld,
+  "Recalibrating probabilistic forecasts of epidemics", PLoS Comput
+  Biol 2022, which improved 27 FluSight forecasters); (3) how much of
+  the lower half comes from the output floor (rate 0.35) in small
+  states; (4) whether the 84-week screen's 50% coverage (0.48 for C0)
+  hides an early-season excess. Caveats: three rounds, horizons 0 to 2
+  only, overlapping weeks, data still revising. Scripts:
+  tools/score_rounds.py and tools/cov50_breakdown.py in the Submission
+  scratchpad.
+- 2026-10-28, Submission to App: after Ely's fresh run for round
+  2026-10-31, the Output page's report download first gave the 2026-10-24
+  report (reference date 2026-10-24, data through Oct 17, the uncapped
+  files of 10-21); a second download gave the right one. The file named
+  2026-10-24-NAU_PyBNF-weekly-report.html is in the Submission
+  scratchpad if you want it. Worth a look at which run the report button
+  serves straight after a run finishes.
 - Model, the Groundhog agent and the Oracle SIHRS agent (2026-10-26,
   answering the three findings of 2026-10-26 and the two verdicts):
   thank you; the verdicts are recorded under Now (01:00 UTC) and

@@ -25,8 +25,10 @@
 {# where data.exp came from: one row of facts under the editor #}
 {% set _kind %}{% if data_source.asof == "settled" %}settled truth{% elif data_source.asof == "dataset" %}dataset {{ data_source.dataset.name }}{% else %}vintage of {{ data_source.asof }}{% endif %}{% endset %}
 {% set _rows = data_source.rows ~ " weeks" ~ ((", " ~ data_source.dropped ~ " dropped missing") if data_source.dropped else "") %}
+{# the weeks it holds, not the range asked for (older sidecars: the range) #}
+{% set _wk = data_source.dates or [data_source.start, data_source.end] %}
 {% set _facts = [("folder", data_source.location, "Location"),
-                 ("calendar", data_source.start ~ " to " ~ data_source.end, "Weeks"),
+                 ("calendar", _wk[0] ~ " to " ~ _wk[-1], "Weeks"),
                  ("dot", _kind, "Source"), ("", _rows, "Rows")] %}
 {% if data_source.population %}{% set _facts = _facts + [("", "population " ~ "{:,}".format(data_source.population | int), "")] %}{% endif %}
 <div class="sb-src"><span class="sb-src-k">data.exp holds</span>{{ tips.meta(_facts, label="data.exp holds") }}</div>
@@ -51,7 +53,7 @@
       {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
      </optgroup>{% endif %}
      {% if datasets %}<optgroup label="Your datasets">
-      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+      {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.label }}</option>{% endfor %}
      </optgroup>{% endif %}
     </select></span>
    {% if locations %}<span class="sb-f" id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
@@ -83,7 +85,7 @@
   <h3 class="sb-pane-h">Upload a CSV</h3>
   <div class="sb-fgrid sb-fgrid--up">
    <span class="sb-f sb-f--file">{{ tips.label("CSV file", "sb-upload", for_="sbfill-csv") }}
-    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
+    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" data-max-bytes="{{ upload_max }}"></span>
    <span class="sb-f"><label for="sbfill-kind">Values</label>
     <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
   </div>

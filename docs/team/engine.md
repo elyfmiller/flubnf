@@ -6,6 +6,30 @@ this file here.
 
 ## Now
 
+- 2026-10-29 (Ely's go on plan v3 and the wheel release): stage 1's
+  engine side, on `engine-public`. **In flight there: `pf.py`,
+  `retro.py`, `sandbox.py`, `engine_build.py`, `flubnf/settings.py`,
+  `flubnf/doctor.py`, `reclaim.py`.** To keep out of the student
+  workspace's way, the public writer, runner and reader go in a new module
+  of their own (`app/core/engines/lwf.py`); `pf.py` and the others gain
+  only small switch points on `FLUBNF_ENGINE`. `dev` is merged into
+  `engine-public` (never rebased) before each push, so a change on `dev`
+  shows up there as a merge. Done today:
+  - The PyBNF wheel, rebuilt byte for byte from lanl/PyBNF 8410f794
+    (pinned setuptools, `SOURCE_DATE_EPOCH` = the commit's time): sha256
+    `18a59bc24caa99ae1b4cc14518a4233cf17a0e4edac45d50d5e4189413ee21e5`.
+    Its release, `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b` on this
+    repository, is Ely's to publish (pending).
+  - The lock, `engine-requirements.txt`: the 38 packages measured in the
+    144-cell replay (antimony, pandas, python-dateutil and six dropped:
+    neither FluBNF nor `lwf` imports them) with every CPython 3.12 wheel's
+    sha256, plus the wheel line. One platform split: cryptography 50.0.2
+    has no Intel macOS wheel, so Intel Macs get 48.0.1 behind a marker.
+    Intel Macs need macOS 15 (libroadrunner's Intel wheel). macOS
+    arm64, Windows x64 and Linux x64 resolve to the same 38. Installed in
+    a scratch venv in 20 s; the filter imports; bngsim 0.15.1, build
+    458bf7d72354.
+
 - 2026-10-15 (overnight, Ely lent the lab Mac): stage 1's engine part is
   done. `~/.venvs/flubnf-lwf` holds public PyBNF at the merge commit
   8410f794 with bngsim 0.15.1; fed the production engine's random inputs it
@@ -200,6 +224,29 @@ this file here.
   listing seven are stale.
 
 ## For other lanes
+
+- App (2026-10-29, answering your 2026-10-26 list for `engine-public`):
+  1. The lock: as above, pushed to `engine-public` at the root.
+  2. The wheel's URL is
+     `https://github.com/elyfmiller/flubnf/releases/download/pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b/pybnf-1.8.1-py3-none-any.whl`
+     (your test's form), sha256 above. It answers 404 until Ely publishes
+     the release.
+  3. `flubnf/settings.py`: `FLUBNF_ENGINE` (private or public, anything
+     else warns and means private) and `PY_ENGINE_PUBLIC` from
+     `FLUBNF_PY_ENGINE_PUBLIC`, with your two defaults. Coming on
+     `engine-public`.
+  4. `BNGSIM_NO_CODEGEN=1` stays on Windows runners on both routes.
+  5. Doctor and the preflight import `scripts/engine_lock.py`'s `check`
+     under the public venv's Python, rather than copy it.
+  6. Taken: the public writer, runner and reader, the switch, provenance
+     from `direct_url.json`, the doctor, reclaim, the Sandbox, tests on a
+     trimmed Alaska fixture (about 130 KB, no lab paths).
+  Superseded: the 2026-10-15 handoff's git install line and
+  `bngsim[antimony]`; the wheel and the lock replace them.
+- App (2026-10-29, your protection-audit items 1 to 3, the private
+  engine's pin, update and archive check): taken, after `engine-public`'s
+  stage 1 closes (Tuesday 2026-11-03). The runner cleaning and the student
+  workspace items stay yours, as Ely decided.
 
 - App (2026-10-15, stage 1 handoff, the engine lane's part is done):
   everything the `engine-public` branch needs, measured on the lab Mac.

@@ -37,8 +37,10 @@ router = APIRouter()
 
 def _sandbox_busy_reason() -> str:
     """Why a sandbox fit may not start now ("" when the engine is free)."""
+    # a Groundhog-only run fits nothing, but it holds the console's one run
+    # slot all the same: said as a run, not a fit
     if _status.get("running"):
-        return "a console run is fitting"
+        return "a console run is in progress"
     live = [x for x in retro_seasons._known_seasons()
             if _season_status(x) in _RETRO_ACTIVE]
     if live:
@@ -62,8 +64,11 @@ async def _sandbox_engine_guard(request: Request, call_next):
         # a plain read: an async middleware must not wait on _engine_lock
         live = _sandbox_live()
         if local and live:
-            _flash(f"Not started: a sandbox fit holds the engine ({live}).",
-                   "warn", detail="Stop it from the Sandbox tab first.")
+            # one run at a time, whatever the model: a Groundhog-only run
+            # needs no engine, so the refusal claims none
+            _flash(f"Not started: a sandbox fit is running ({live}); one run "
+                   "at a time.", "warn",
+                   detail="Stop it from the Sandbox tab first.")
             return RedirectResponse("/retro" if path == "/retro/run"
                                     else "/forecast", status_code=303)
     return await call_next(request)
@@ -105,6 +110,10 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 FIRST_START = "sir_example"
 
 
+#: the New model form a refusal sends back (one-shot, read by the page)
+_sandbox_new_refused: dict = {}
+
+
 def _free_name(stem: str, taken: set) -> str:
     """The first of stem_1, stem_2, ... that no model has: the name the
     New model form fills in, so a first visit need not invent one."""
@@ -136,7 +145,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     last = {}
     for r in all_runs:
         last.setdefault(r.get("model"), r)
-    runs = [r for r in all_runs if r.get("model") == model][:25] if model else []
+    runs = [r for r in all_runs if r.get("model") == model] if model else []
     res = None
     try:
         if run:
@@ -178,6 +187,9 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
            "example_names": {e: _free_name(e, taken)
                              for e in examples + ["skeleton"]},
+           "copy_names": {m: _free_name(m + "_copy", taken) for m in taken},
+           # a refused New model form comes back as it was posted (SB-09)
+           "new_form": _sandbox_new_refused.pop("form", {}),
            "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
@@ -244,6 +256,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             # your own data: stored datasets, and an upload's refusal
             "datasets": sandbox_mod.dataset_choices(),
             "pick_dataset": dataset,
+            "upload_max": sandbox_mod.UPLOAD_MAX_BYTES,
             "upload_report": _sandbox_upload_report.pop(name, None)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
 
@@ -331,6 +344,11 @@ def sandbox_new(request: Request, name: str = Form(...),
         return _sandbox_redirect(name)
     except Exception as e:
         _not_done("Not created", e)
+        if kind != "copy":
+            _sandbox_new_refused["form"] = {
+                "name": name, "start": start, "location": location,
+                "forecast_date": forecast_date, "season_start": season_start,
+                "group": group, "as_of": as_of}
         return _sandbox_redirect(what if kind == "copy" else "")
 
 
@@ -384,7 +402,8 @@ def sandbox_save(request: Request, name: str,
 def api_sandbox_check(name: str, model_bngl: str = Form(""),
                       data_exp: str = Form(""), priors_conf: str = Form("")):
     """Check the posted editor text (each field falling back to the saved
-    file) without the engine: JSON problems, warnings and facts."""
+    file) without the engine: JSON problems, warnings, facts and their
+    codes (app/core/problem_codes.py)."""
     try:
         files = sandbox_mod.read_model(name)
         for f, v in (("model.bngl", model_bngl), ("data.exp", data_exp),
@@ -393,8 +412,12 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                 files[f] = v.replace("\r\n", "\n")
         return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check")
     except Exception as e:
-        return JSONResponse({"ok": False, "problems": [str(e)[:1500]],
-                             "warnings": [], "facts": {}}, status_code=200)
+        from app.core.problem_codes import finding
+        said = str(e)[:1500]
+        return JSONResponse({"ok": False, "problems": [said],
+                             "warnings": [], "facts": {},
+                             "codes": [finding("CHECK_FAILED", said)]},
+                            status_code=200)
 
 
 # ------------------------------------------------------------ data.exp
@@ -409,8 +432,10 @@ def _sandbox_fill_flash(info: dict) -> None:
     # a file with no group column says so, so a date,count file read as
     # one series is not a surprise
     one = " (one series)" if info.get("one_series") else ""
+    # the weeks loaded, not the range asked for
+    wk = info.get("dates") or [info["start"], info["end"]]
     msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
-           f"{one}, {info['start']} to {info['end']}.")
+           f"{one}, {wk[0]} to {wk[-1]}.")
     detail = f"Source: {what}."
     if info["dropped"]:
         detail += f" {info['dropped']} missing weeks dropped."
@@ -536,9 +561,11 @@ async def sandbox_upload_data(request: Request, name: str):
         sandbox_mod.check_name(name)
         form = await _sandbox_capped_form(request, cap + _SANDBOX_BODY_SLACK)
     except _SandboxTooLarge:
+        # the editor's text rode in the same body: it was not saved either
         _sandbox_upload_report[name] = {"problems": [
             f"The upload is larger than the {cap // (1024 * 1024)} MB limit; "
-            "nothing was read past it or stored."]}
+            "nothing was read past it or stored, and unsaved edits in the "
+            "editor were not saved."]}
         return _sandbox_redirect(name)
     except Exception as e:
         _flash(f"Could not read the upload: {e}", "error")

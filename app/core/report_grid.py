@@ -84,6 +84,85 @@ def model_fan(qd: dict, times: list) -> dict | None:
     return {"times": list(times), "q": rows}
 
 
+def submitted_fans(folder) -> dict:
+    """What went to the hub: the run's submitted CSVs beside its report
+    (submission/<hub id>[-suffix]/, in the workroot and the archive alike),
+    after the whole output stage, the upper-tail cap included, as model ->
+    location key ("US" or the abbreviation) -> target date -> {level:
+    value}. {} without them (an older run, a site build)."""
+    import csv
+    from pathlib import Path
+
+    from app.core.submit import hub_model_id
+    root = Path(folder) / "submission"
+    if not root.is_dir():
+        return {}
+    try:
+        from flubnf.settings import load_locations
+        locs = load_locations()
+        f2k = dict(zip(locs.location.astype(str), locs.abbreviation))
+    except Exception:
+        return {}
+    out = {}
+    for m in MODELS:
+        hub = hub_model_id(m)
+        files = sorted((f for d in root.iterdir() if d.is_dir()
+                        and (d.name == hub or d.name.startswith(hub + "-"))
+                        for f in d.glob("*.csv")),
+                       key=lambda f: f.stat().st_mtime)
+        if not files:
+            continue
+        by = {}
+        try:
+            with open(files[-1], newline="", encoding="utf-8") as fh:
+                for r in csv.DictReader(fh):
+                    if (r.get("output_type") != "quantile"
+                            or r.get("target") != "wk inc flu hosp"):
+                        continue
+                    k = f2k.get(str(r.get("location")))
+                    if not k:
+                        continue
+                    by.setdefault(k, {}).setdefault(
+                        str(r["target_end_date"]), {})[
+                        str(float(r["output_type_id"]))] = float(r["value"])
+        except (OSError, KeyError, ValueError):
+            continue
+        out[m] = by
+    return out
+
+
+def attach_submitted(grid: dict | None, sub: dict) -> dict | None:
+    """The grid with each panel's submitted fans ("submitted": model ->
+    {"times", "q"}) where the file differs from the panel's own, the
+    model's before the upper-tail cap (Ely, 2026-10-28: a switch per
+    location between the two). Unchanged where nothing moved."""
+    if not grid or not sub:
+        return grid
+    panels = []
+    for p in grid.get("panels") or []:
+        s = {}
+        for m, f in (p.get("models") or {}).items():
+            by_t = (sub.get(m) or {}).get(p.get("key"))
+            if not by_t or not all(str(x) in by_t for x in f["times"]):
+                continue
+            q = [[_whole(_q(by_t[str(x)], L)) for L in LEVELS]
+                 for x in f["times"]]
+            if q != f["q"]:
+                s[m] = {"times": list(f["times"]), "q": q}
+        panels.append(dict(p, submitted=s) if s else p)
+    return dict(grid, panels=panels)
+
+
+def shown(panel: dict) -> dict:
+    """The panel as it opens: the submitted fans where they differ, the
+    model's own kept under "before" (tail_ratios reads both)."""
+    s = panel.get("submitted")
+    if not s:
+        return panel
+    return dict(panel, models={**(panel.get("models") or {}), **s},
+                before=panel.get("before") or panel.get("models") or {})
+
+
 def last_season(history: list, first: str, last: str) -> list:
     """history: [(iso date, value)] for one location, any span. The
     counts 52 weeks before [first, last], dated 52 weeks later so they sit
@@ -184,12 +263,54 @@ def flags(panel: dict) -> list:
     return out
 
 
+#: horizon 3's 97.5% quantile over the recent level above which a panel's
+#: figure turns red (Ely, 2026-10-28; the upper-tail cap's 15 times)
+TAIL_X = 15.0
+
+
+def tail_ratios(panel: dict) -> dict:
+    """Each member's horizon-3 97.5% quantile over the location's recent
+    level, the upper-tail cap's own (flubnf.tailcap.recent_level: the mean
+    of the last three reported weeks), as {model: (ratio, over, filed)}:
+    `ratio` the model's own, before the output stage's upper-tail cap
+    (ui/pipeline.py hands the grid those; Ely, 2026-10-28, "I would still
+    like to see the growth itself"), `over` that above TAIL_X, so on a
+    capped run red is where the cap moved the file; `filed` the submitted
+    file's ratio where it differs, else None. {} when the level is 0 or
+    unknown."""
+    from flubnf.tailcap import recent_level
+    o = panel.get("observed") or []
+    r = recent_level([v for _, v in o])
+    if not r > 0:
+        return {}
+    own = panel.get("before") or panel.get("models") or {}
+    filed = panel.get("submitted") or {}
+    out = {}
+    for m in MODELS:
+        f = own.get(m)
+        if f:
+            q = float(f["q"][3][4])
+            s = filed.get(m)
+            qs = float(s["q"][3][4]) if s else q
+            out[m] = (q / r, q > TAIL_X * r, qs / r if qs != q else None)
+    return out
+
+
+def _times(x: float) -> str:
+    """A ratio as the figure prints it: 8.3x below ten, 15x above."""
+    return f"{x:.1f}\u00d7" if x < 10 else f"{x:.0f}\u00d7"
+
+
 def flag_key(when: str = "the last target week") -> str:
     """The flag words, explained once per page (a paper copy has no
     hover). `when`: the last target week ("Oct 31")."""
     return ("falls: a 4-week-ahead median below the latest count · "
             f"disagree: by {when} one model's median is outside the "
-            "other's 95% interval")
+            "other's 95% interval · h3 97.5%: each model's own 4-week-ahead "
+            "97.5% quantile (before any upper-tail cap) over the mean of the "
+            f"last three weeks, red above {TAIL_X:.0f}\u00d7, then the "
+            "submitted file's where the cap moved it · Submitted / Before "
+            "cap: which of the two a location's chart shows")
 
 
 #: the flag key without a date (kept for callers that have no grid)
@@ -260,17 +381,26 @@ def panel_label(panel: dict) -> str:
                         f"95% interval {_fmt(r[0])} to {_fmt(r[4])}")
     if o and not fans:
         bits.append("no forecast")
+    for m, (x, over, filed) in sorted(tail_ratios(panel).items(),
+                                      key=lambda kv: kv[0] != "pf"):
+        bits.append(f"{_SHORT[m]} 4-week-ahead 97.5% quantile "
+                    f"{x:.1f} times the recent level"
+                    + (f", above {TAIL_X:.0f}" if over else "")
+                    + (f", {filed:.1f} as submitted" if filed is not None
+                       else ""))
     fl = flags(panel)
     if fl:
         bits.append("flagged: " + "; ".join(why for _w, why in fl))
     return ". ".join(bits)
 
 
-def _scale(panel: dict):
+def _scale(panel: dict, whole: bool = False):
     """(top, first date, last date, clipped) for one panel: the counts,
     last season and the medians in full; the 95% bands up to CLIP_X times
     that, clipped beyond (a Groundhog band can reach ten times its median
-    and would flatten the rest). None without any date."""
+    and would flatten the rest). `whole`: the 95% bands in full too, the
+    live charts' first view (Ely, 2026-10-28: they zoom; paper cannot).
+    None without any date."""
     o = panel.get("observed") or []
     ls = panel.get("last_season") or []
     fans = panel.get("models") or {}
@@ -288,7 +418,7 @@ def _scale(panel: dict):
             wide.append(r[4])
     top = max(core + [1.0])
     if wide and max(wide) > top:
-        top = min(max(wide), top * CLIP_X)
+        top = max(wide) if whole else min(max(wide), top * CLIP_X)
     top = _nice(top * 1.05)
     return top, d0, d1, bool(wide) and max(wide) > top
 
@@ -392,7 +522,9 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
     return "".join(parts), clipped
 
 
-def _legend(colors: dict, label: str) -> str:
+def _legend(colors: dict, label: str, models=MODELS) -> str:
+    """The panels' key: each model `models` drew (a Groundhog-only run
+    lists no Oracle SIHRS), observed and last season."""
     def key(s, inner, title=""):
         t = f' title="{_html.escape(title)}"' if title else ""
         return (f'<span class="g-key" data-s="{s}" role="button" '
@@ -400,7 +532,7 @@ def _legend(colors: dict, label: str) -> str:
     sw = "".join(
         key(m, f'<i class="g-k-{m}" style="background:'
                f'{model_color(m, colors)}"></i>{_SHORT[m]}')
-        for m in reversed(MODELS))
+        for m in reversed(MODELS) if m in models)
     return (sw + key("obs", '<i class="g-k-obs"></i>observed')
             + key("last", '<i class="g-k-last"></i>last season',
                   f"{label}, same weeks"))
@@ -416,16 +548,68 @@ def _latest(p: dict) -> str:
             '</span>')
 
 
+def _tail(p: dict, colors: dict) -> str:
+    """Beside the name: each model's horizon-3 97.5% quantile over the
+    recent level (tail_ratios), after its colour's dot, red above TAIL_X.
+    A legend switch hides its model's figure. "" without a level."""
+    rs = tail_ratios(p)
+    if not rs:
+        return ""
+    vals, why = [], []
+    for m in reversed(MODELS):
+        if m not in rs:
+            continue
+        x, over, filed = rs[m]
+        then = (f'<span class="g-tail-f">\u2192{_times(filed)}</span>'
+                if filed is not None else "")
+        vals.append(f'<span class="g-tail-v" data-s="{m}"><i style="'
+                    f'background:{model_color(m, colors)}"></i>'
+                    f'<span class="{"g-tail-over" if over else "g-tail-own"}">'
+                    f'{_times(x)}</span>{then}</span>')
+        why.append(f"{_SHORT[m]} {x:.1f}\u00d7"
+                   + (f", {filed:.1f}\u00d7 as submitted"
+                      if filed is not None else ""))
+    title = ("Each model's own 4-week-ahead (h3) 97.5% quantile, before "
+             "any upper-tail cap, over the mean of the last three weeks, "
+             "then the submitted file's where the cap moved it: "
+             + "; ".join(why) + f". Red above {TAIL_X:.0f}\u00d7")
+    return (f'<span class="g-tail" title="{_html.escape(title)}">'
+            f'<span class="g-tail-l">h3 97.5%</span>{"".join(vals)}</span>')
+
+
+def ba_switch(key: str) -> str:
+    """A location's switch between its submitted forecast (as it opens)
+    and the model's own before the upper-tail cap (Ely, 2026-10-28: to
+    review how much the output stage moves the width). Every switch for
+    the same key moves together (report_v2's handler)."""
+    k = _html.escape(str(key))
+    return ('<span class="uk-seg g-ba" role="group" '
+            'aria-label="Which forecast to show">'
+            f'<button type="button" data-ba-key="{k}" data-ba="s" '
+            'aria-pressed="true" title="what went to the hub">Submitted'
+            '</button>'
+            f'<button type="button" data-ba-key="{k}" data-ba="b" '
+            'aria-pressed="false" title="the model\'s own, before the '
+            'upper-tail cap">Before cap</button></span>')
+
+
 def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
             cls: str = "gpanel", anchor: bool = True, **size) -> str:
     """One panel: the name and latest count, then the flags at the right,
-    then the chart. `anchor` is kept for callers."""
-    svg, _clipped = panel_svg(p, idx, colors, **size)
+    the switch where the file differs from the model's own, then the
+    chart (the drawing as it opens, the submitted fans). `anchor` is kept
+    for callers."""
+    svg, _clipped = panel_svg(shown(p), idx, colors, **size)
     key = _html.escape(str(p.get("key", "")))
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
-    data_key = _html.escape(str(p.get("data_key", p.get("key", ""))))
-    return (f'<figure class="{cls}" id="g-{key}" data-key="{data_key}">'
-            f'<figcaption><b>{title}</b>{_latest(p)}{flags_html}'
+    data_key = str(p.get("data_key", p.get("key", "")))
+    # on a line of its own, at its own width
+    ba = ('<span class="g-nl"></span>' + ba_switch(data_key)
+          if p.get("submitted") else "")
+    return (f'<figure class="{cls}" id="g-{key}" '
+            f'data-key="{_html.escape(data_key)}">'
+            f'<figcaption><b>{title}</b>{_latest(p)}{_tail(p, colors)}'
+            f'{flags_html}{ba}'
             f'</figcaption>{svg}</figure>')
 
 
@@ -451,6 +635,12 @@ def reference_date(asof: str) -> str:
         return ""
 
 
+def _drawn(panels) -> tuple:
+    """The models with a fan in any of these panels, in MODELS order."""
+    return tuple(m for m in MODELS
+                 if any((p.get("models") or {}).get(m) for p in panels))
+
+
 def us_feature_html(grid: dict | None, colors: dict) -> str:
     """The national panel at a larger size, for the space under the map
     ("" when the run has no US panel)."""
@@ -459,13 +649,15 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
     if not us:
         return ""
     head = ('<div class="g-head">'
-            + _legend(colors, (grid or {}).get("last_season_label", ""))
+            + _legend(colors, (grid or {}).get("last_season_label", ""),
+                      _drawn([us]))
             + "</div>")
     return ('<aside class="rp-usfeature" id="us-feature" '
             'aria-label="United States forecast">'
             + _figure(dict(us, key="US-feature", data_key="US"),
                       "United States",
-                      _flag_spans(us), 999, colors, cls="gpanel g-feature",
+                      _flag_spans(shown(us)), 999, colors,
+                      cls="gpanel g-feature",
                       anchor=False, w=FEATURE_W, h=FEATURE_H, fs=FEATURE_FS)
             + head + "</aside>")
 
@@ -480,13 +672,14 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
     times = grid.get("times") or []
     when = _md(times[-1]) if times else "the last target week"
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
+    drawn = _drawn(panels)
     out = ['<section class="card rp-grid" id="all-locations" '
            'aria-labelledby="h-grid">',
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
     for k, page in enumerate(pages, 1):
         out.append('<div class="gpage">'
                    f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
-                   f'{_legend(colors, label)}</div>'
+                   f'{_legend(colors, label, drawn)}</div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):
             key = str(p.get("key", ""))
@@ -494,7 +687,7 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
             title = (f'<a href="#st-{key}" onclick="if(window.showState)'
                      f'{{showState(\'st-{key}\');return false;}}">{name}</a>'
                      if key in details else name)
-            fl = _flag_spans(p)
+            fl = _flag_spans(shown(p))
             out.append(_figure(p, title, fl, (k - 1) * PER_PAGE + i,
                                colors))
         out.append("</div></div>")
@@ -539,6 +732,22 @@ def grid_css() -> str:
  .gpanel figcaption a{color:inherit}
  .gpanel:target{outline:2px solid var(--gold);outline-offset:2px}
  .g-cur{color:var(--mut);font-size:var(--fs-label)}
+ /* horizon 3's 97.5% over the recent level, each model's dot, red over */
+ .g-tail{display:inline-flex;align-items:baseline;gap:.35rem;
+   color:var(--mut);font-size:var(--fs-label);cursor:help}
+ .g-tail-v{display:inline-flex;align-items:baseline;gap:.2rem;
+   font-variant-numeric:tabular-nums}
+ .g-tail-v i{display:inline-block;width:7px;height:7px;border-radius:50%;
+   align-self:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .g-tail-over{color:var(--bad);font-weight:700}
+ .g-tail-f{color:var(--mut)}
+ /* the switch: Submitted (as it opens) or the model's own before the cap */
+ .g-nl{flex-basis:100%;height:0}
+ .g-ba{margin:.15rem 0 .1rem}
+ .g-ba > button{padding:.05rem .5rem;font-size:var(--fs-micro);
+   font-weight:650}
+ html.g-off-pf .g-tail [data-s="pf"],
+ html.g-off-analogue .g-tail [data-s="analogue"]{display:none}
  .g-flag{font-size:var(--fs-micro);font-weight:650;color:var(--bad);
    border:1px solid currentColor;border-radius:999px;padding:0 .35rem;
    cursor:help}
@@ -580,7 +789,7 @@ def grid_css() -> str:
   .g-cells{grid-template-columns:repeat(3,minmax(0,1fr));gap:2mm}
   .gpanel{padding:1mm 1.5mm 0;border-radius:2mm}
   .gpanel figcaption{font-size:8pt}
-  .g-cur,.g-flag{font-size:7pt}
+  .g-cur,.g-flag,.g-tail{font-size:7pt}
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
  }
@@ -590,27 +799,34 @@ def grid_css() -> str:
 # ------------------------------------------------------------- live charts
 def grid_payload(grid: dict | None) -> dict:
     """What the live charts draw, by panel key: the observed weeks, last
-    season, each member's times and five levels, and the drawing's own
-    scale (top, first and last date)."""
+    season, each member's times and five levels, and the first view's
+    scale (top, first and last date): the drawing's, with the 95% bands in
+    full."""
     out = {}
     for p in (grid or {}).get("panels") or []:
-        sc = _scale(p)
+        sc = _scale(shown(p), whole=True)
         if sc is None:
             continue
         top, d0, d1, _c = sc
-        out[str(p.get("key", ""))] = {
+        d = out[str(p.get("key", ""))] = {
             "o": p.get("observed") or [],
             "ls": p.get("last_season") or [],
             "m": {m: {"t": f["times"], "q": f["q"]}
                   for m, f in (p.get("models") or {}).items()},
             "top": top, "d0": d0.isoformat(), "d1": d1.isoformat()}
+        if p.get("submitted"):
+            # the submitted fans ("s", as it opens) and the model's own
+            # view's top ("topb", the Before cap side of the switch)
+            d["s"] = {m: {"t": f["times"], "q": f["q"]}
+                      for m, f in p["submitted"].items()}
+            d["topb"] = _scale(p, whole=True)[0]
     return out
 
 
 def grid_js(grid: dict | None, colors: dict) -> str:
     """The panels as live charts on screen (the drawings stay for paper
-    and for a page without plotly.js): hover for the values, drag to zoom,
-    double-click for the whole 95% band. The legend keys switch a series
+    and for a page without plotly.js): the whole 95% band in the first
+    view, hover for the values, drag to zoom, double-click to go back. The legend keys switch a series
     on or off in every panel, the drawings too, and the choice is kept."""
     data = grid_payload(grid)
     if not data:
@@ -671,6 +887,10 @@ function ticks(p) {
   return t;
 }
 function col(p, i) { return p.map(function (r) { return r[i]; }); }
+var BA = {};
+function fan(p, m) {
+  return (BA[p.k] !== 'b' && p.s && p.s[m]) || p.m[m];
+}
 function traces(p) {
   var ink = css('--ink', '#000F7E'), mut = css('--mut', '#5B5F7A');
   var a = parseFloat(css('--rp-band-a', '.22')) || 0.22, t = [];
@@ -678,14 +898,14 @@ function traces(p) {
     line: {color: mut, width: 1.5, dash: 'dash'}, meta: 'last',
     name: 'last season', hovertemplate: '%{y:,.0f}<extra>last season</extra>'});
   ['analogue', 'pf'].forEach(function (m) {
-    var f = p.m[m]; if (!f) return;
+    var f = fan(p, m); if (!f) return;
     var up = col(f.q, 4), dn = col(f.q, 0).slice().reverse();
     t.push({x: f.t.concat(f.t.slice().reverse()), y: up.concat(dn),
       fill: 'toself', fillcolor: rgba(HEX[m], a), line: {width: 0},
       mode: 'lines', hoverinfo: 'skip', meta: m, name: NAME[m] + ' 95%'});
   });
   ['analogue', 'pf'].forEach(function (m) {
-    var f = p.m[m]; if (!f) return;
+    var f = fan(p, m); if (!f) return;
     var x = f.t.slice(), y = col(f.q, 2), cd = f.q.map(function (r) {
       return [r[0], r[4]]; });
     var tpl = f.t.map(function () {
@@ -709,6 +929,7 @@ function traces(p) {
 }
 function layout(p) {
   var mut = css('--mut', '#5B5F7A'), line = css('--line', '#DCD8E9');
+  var top = BA[p.k] === 'b' && p.topb ? p.topb : p.top;
   var lay = {margin: {l: 36, r: 8, t: 6, b: 24}, showlegend: false,
     hovermode: 'x unified', paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)', font: {size: 10, color: mut},
@@ -717,7 +938,7 @@ function layout(p) {
     xaxis: {type: 'date', range: [day(p.d0, -2), day(p.d1, 2)],
       tickvals: ticks(p), ticktext: ticks(p).map(md), showgrid: false,
       zeroline: false, linecolor: line},
-    yaxis: {range: [0, p.top], rangemode: 'tozero', tickformat: p.top >= 1000 ? '~s' : ',~g',
+    yaxis: {range: [0, top], rangemode: 'tozero', tickformat: top >= 1000 ? '~s' : ',~g',
       nticks: 4, gridcolor: line, zeroline: false}};
   if (p.o.length) {
     var x0 = p.o[p.o.length - 1][0];
@@ -733,6 +954,7 @@ function draw(fig) {
   if (fig._gplot) return;
   var p = D[fig.getAttribute('data-key')];
   if (!p) return;
+  p.k = fig.getAttribute('data-key');
   var div = document.createElement('div');
   div.className = 'g-plot';
   fig.appendChild(div);
@@ -772,6 +994,15 @@ document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   var k = e.target.closest && e.target.closest('.g-key[data-s]');
   if (k) { e.preventDefault(); flip(k.getAttribute('data-s')); }
+});
+// a location's switch (report_v2 sends rp-ba): its live charts redraw
+addEventListener('rp-ba', function (e) {
+  var k = e.detail && e.detail.key;
+  if (!k || !D[k]) return;
+  BA[k] = e.detail.mode;
+  live.forEach(function (lp) {
+    if (lp[1].k === k) Plotly.react(lp[0], traces(lp[1]), layout(lp[1]), CFG);
+  });
 });
 addEventListener('themechange', function () {
   live.forEach(function (lp) { Plotly.react(lp[0], traces(lp[1]), layout(lp[1]), CFG); });

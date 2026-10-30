@@ -52,6 +52,7 @@ from app.core.html_page import (
     FONT_STACK,
     NAU_CSS,
     PLAYER_SRC,
+    THEMES,
     charts_js,
     font_face_css,
     kit_css,
@@ -415,12 +416,27 @@ def cat_bar(probs):
     return f
 
 
-def _html(fig, include_js=False, div_id=None):
+def _html(fig, include_js=False, div_id=None, lazy=False):
     # save-PNG at 2x with a meaningful filename (figures have an opaque ground)
     config = dict(PLOTLY_CONFIG)
     config["toImageButtonOptions"] = {
         "format": "png", "scale": 2,
         "filename": f"flubnf_{div_id or 'report_figure'}"}
+    if lazy:
+        # a hidden section's figure: its JSON beside an empty div, drawn by
+        # show() when the section opens (drawing every state's figures at
+        # load kept a 53-location report's buttons dead for seconds)
+        import uuid
+        import plotly.io as pio
+        gid = div_id or str(uuid.uuid4())
+        d = fig.to_plotly_json()
+        payload = ('{"data":' + pio.json.to_json_plotly(d.get("data", []))
+                   + ',"layout":' + pio.json.to_json_plotly(d.get("layout", {}))
+                   + ',"config":' + json.dumps(config) + "}").replace("</", "<\\/")
+        return (f'<div><div id="{gid}" class="plotly-graph-div" '
+                'style="height:100%; width:100%;"></div>'
+                '<script type="application/json" class="rp-figjson" '
+                f'data-for="{gid}">{payload}</script></div>')
     return fig.to_html(full_html=False,
                        include_plotlyjs=True if include_js else False,
                        div_id=div_id, config=config)
@@ -462,11 +478,12 @@ def _retint_js() -> str:
       else walk(v,MAP);
     }
   }
-  function pass(){
+  function pass(one){
     var MAP={};""" + lines + """
     var dirty=Object.keys(MAP).some(function(k){
       return MAP[k].toLowerCase()!==k.toLowerCase();});
-    var plots=document.querySelectorAll('.js-plotly-plot');
+    var plots=(one&&one.nodeType===1)?[one]
+      :document.querySelectorAll('.js-plotly-plot');
     for(var i=0;i<plots.length;i++){
       var g=plots[i];
       if(!g.data||!g.layout) continue;
@@ -482,6 +499,7 @@ def _retint_js() -> str:
   }
   pass();
   addEventListener('themechange',pass);
+  window.rpRetint=pass;
 })();
 </script>"""
 
@@ -535,18 +553,152 @@ _VISION_BTN = (
     "if(b)b.setAttribute('aria-pressed',String(document.documentElement"
     ".getAttribute('data-vision')==='cvd'));})();</script>")
 
+#: the console's eight themes by their Display menu names (base.html), in
+#: its order; html_page.THEMES is the id list both are held to
+THEME_NAMES = {"light": "Light", "paper": "Paper", "github": "GitHub Light",
+               "solarized": "Solarized Light", "dim": "Dim", "dark": "Dark",
+               "nord": "Nord", "dracula": "Dracula"}
+
+
+def _theme_select() -> str:
+    """The header's theme picker (Ely, 2026-10-28): a saved copy chooses
+    its own look instead of keeping the OS's. Served by the console it
+    reads and writes the console's own `theme` key, so the two agree; a
+    file keeps its choice under `rpTheme`. System follows the OS, as the
+    first-paint script does. The charts redraw on the themechange event."""
+    opts = '<option value="">System</option>' + "".join(
+        f'<option value="{t}">{THEME_NAMES[t]}</option>' for t in THEMES)
+    ids = json.dumps(list(THEMES))
+    return (
+        '<label class="rp-themesel">Theme <select id="themesel">'
+        + opts + "</select></label>"
+        "<script>(function(){var s=document.getElementById('themesel'),"
+        "de=document.documentElement,T=" + ids + ",v=null,"
+        "served=location.protocol==='http:'||location.protocol==='https:',"
+        "KEY=served?'theme':'rpTheme';"
+        "if(!s)return;"
+        "try{v=localStorage.getItem(KEY);}catch(e){}"
+        "if(T.indexOf(v)<0)v='';"
+        "if(v&&!served)de.setAttribute('data-theme',v);"
+        "s.value=v;"
+        "s.addEventListener('change',function(){var t=s.value;"
+        "try{if(t)localStorage.setItem(KEY,t);"
+        "else localStorage.removeItem(KEY);}catch(e){}"
+        "if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches"
+        "?'dark':'light';"
+        "de.setAttribute('data-theme',t);"
+        "try{dispatchEvent(new Event('themechange'));}catch(e){}});"
+        "})();</script>")
+
+
+#: the map card's fold (Ely, 2026-10-28): Hide map folds the map and its
+#: keys away on screen, the US panel under them stays, and the choice is
+#: kept; paper always prints the map (the fold rule is screen only)
+_MAP_FOLD_JS = """<script>
+(function(){
+  var b = document.getElementById('mapfold'),
+      card = document.getElementById('map-anchor');
+  if (!b || !card) return;
+  function set(folded) {
+    card.classList.toggle('is-folded', folded);
+    b.setAttribute('aria-expanded', String(!folded));
+    b.textContent = folded ? 'Show map' : 'Hide map';
+  }
+  var folded = false;
+  try { folded = localStorage.getItem('rpMapFolded') === '1'; } catch (e) {}
+  set(folded);
+  b.addEventListener('click', function () {
+    folded = !folded;
+    set(folded);
+    try { localStorage.setItem('rpMapFolded', folded ? '1' : '0'); } catch (e) {}
+    // a chart unfolded from display:none takes its width again
+    if (!folded) try { dispatchEvent(new Event('resize')); } catch (e) {}
+  });
+})();
+</script>"""
+
+
+def _ba_pair(key: str, shown: str, before: str, switch: bool = True) -> str:
+    """A detail part in both versions: the submitted one (as it opens) and
+    the model's own before the upper-tail cap, behind the location's
+    switch (`switch`: drawn here; the numbers follow the fan's); `shown`
+    alone when the file did not move it."""
+    if not before or not shown:
+        return shown
+    from app.core.report_grid import ba_switch
+    k = _esc(key)
+    sw = ba_switch(key) if switch else ""
+    return (f'<div class="rp-ba" data-ba-for="{k}">{sw}'
+            f'<div data-ba-v="s">{shown}</div>'
+            f'<div data-ba-v="b" hidden>{before}</div></div>')
+
+
+#: a hidden section's figures (_html lazy), drawn the first time it opens
+#: by show(): each JSON once, retinted and given its week ticks
+_DRAW_JS = """window.rpDraw = function(el) {
+  var js = el.querySelectorAll('script.rp-figjson');
+  for (var i = 0; i < js.length; i++) {
+    var gd = document.getElementById(js[i].getAttribute('data-for'));
+    var f = JSON.parse(js[i].textContent);
+    js[i].remove();
+    if (!gd) continue;
+    Plotly.newPlot(gd, f.data, f.layout, f.config);
+    if (window.rpRetint) rpRetint(gd);
+    if (window.FluCharts) FluCharts.adopt(gd);
+  }
+};"""
+
+#: every switch for one location moves together: its buttons, its detail
+#: parts and (the rp-ba event) its live panels; a chart shown from hidden
+#: takes its width again
+_BA_JS = """<script>
+(function(){
+  function set(key, mode) {
+    var bs = document.querySelectorAll('button[data-ba-key]');
+    for (var i = 0; i < bs.length; i++)
+      if (bs[i].getAttribute('data-ba-key') === key)
+        bs[i].setAttribute('aria-pressed',
+                           String(bs[i].getAttribute('data-ba') === mode));
+    var ws = document.querySelectorAll('[data-ba-for]');
+    for (var j = 0; j < ws.length; j++) {
+      if (ws[j].getAttribute('data-ba-for') !== key) continue;
+      var vs = ws[j].querySelectorAll('[data-ba-v]');
+      for (var k = 0; k < vs.length; k++) {
+        var on = vs[k].getAttribute('data-ba-v') === mode;
+        vs[k].hidden = !on;
+        if (on && window.Plotly) {
+          var gs = vs[k].querySelectorAll('.js-plotly-plot');
+          for (var n = 0; n < gs.length; n++)
+            try { Plotly.Plots.resize(gs[n]); } catch (e) {}
+        }
+      }
+    }
+    try {
+      dispatchEvent(new CustomEvent('rp-ba', {detail: {key: key, mode: mode}}));
+    } catch (e) {}
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-ba-key]');
+    if (b) set(b.getAttribute('data-ba-key'), b.getAttribute('data-ba'));
+  });
+  window.rpBA = set;
+})();
+</script>"""
+
 
 def page_header() -> str:
     """The report's header bar, one source: the console's navbar lockup
-    (the theme's mark, the wordmark) with the report's name, the
-    color-blind safe switch and the way back. build_report embeds it, and
-    legacy_theme_carry inserts it into stored reports that predate it."""
+    (the theme's mark, the wordmark) with the report's name, the theme
+    picker, the color-blind safe switch and the way back. build_report
+    embeds it, and legacy_theme_carry inserts it into stored reports that
+    predate it."""
     return """<header class="brandrow"><span class="brand"><span class="mark" aria-hidden="true"></span><span><em>Flu</em>BNF</span></span>
  <span class="brandsub">weekly forecast report</span>
  <span class="spacer"></span>
+ """ + _theme_select() + """
  """ + _VISION_BTN + """
  <a id="appback" class="rp-btn" href="#" hidden
-  onclick="history.back();return false">&larr; back to FluBNF</a>
+  onclick="var r=document.referrer;if(r&&r.indexOf(location.origin+'/')===0&&r.split('#')[0]!==location.href.split('#')[0])location.href=r;else history.back();return false">&larr; back to FluBNF</a>
 </header>"""
 
 
@@ -633,6 +785,18 @@ def _report_css() -> str:
  /* the header's color-blind safe switch */
  .rp-btn[aria-pressed="true"]{background:var(--gold-bright);
    border-color:var(--gold-bright);color:var(--on-accent)}
+ /* the header's theme picker */
+ .rp-themesel{display:inline-flex;align-items:center;gap:.35rem;
+   color:var(--nav-ink);font-size:var(--fs-label);font-weight:600}
+ .rp-themesel select{font:inherit;font-weight:500;color:var(--ink);
+   background:var(--card);border:1px solid var(--field-line);
+   border-radius:6px;padding:.15rem .3rem}
+ /* a location's switch in its detail: under the card heading */
+ .rp-ba > .g-ba{margin:0 0 .4rem}
+ .rp-ba > .g-ba > button{font-size:var(--fs-label)}
+ /* the map card's fold: the map and its keys; the US panel stays */
+ .rp-mapfold{margin-left:auto}
+ @media screen{.rp-mapcard.is-folded .rp-mapbody{display:none}}
  /* phones: the run settings wrap inside the card, and the view switch
     keeps the national button beside it */
  .rp-ctlpair{display:inline-flex;align-items:center;gap:.5rem .9rem;
@@ -1114,14 +1278,21 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
         cat_head = str(kit.heading(f"Next week ({who})", id=f"cat-{a}",
                                    level=3))
-        numbers = _forecast_numbers(a, d.get("numbers") or {},
-                                    d.get("times") or [])
+        numbers = _ba_pair(
+            a, _forecast_numbers(a, d.get("numbers") or {},
+                                 d.get("times") or []),
+            _forecast_numbers(a + "-before", d.get("numbers_before") or {},
+                              d.get("times") or [])
+            if d.get("numbers_before") else "", switch=False)
+        fan_html = _ba_pair(a, _html(d['fan'], lazy=True),
+                            _html(d['fan_before'], lazy=True)
+                            if d.get("fan_before") else "")
         sections.append(f"""
 <section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
   <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
   <div class="rp-detail">
-    <div class="card">{fan_head}{_html(d['fan'])}</div>
-    <div class="card">{cat_head}{_html(d['cat'])}
+    <div class="card">{fan_head}{fan_html}</div>
+    <div class="card">{cat_head}{_html(d['cat'], lazy=True)}
       <table><tr><th>Week ending</th><th class="num">Admissions</th></tr>{rows}</table></div>
   </div>
   {numbers}
@@ -1133,10 +1304,17 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national.get("fan"):
         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
                                    level=3))
-        nat_cards.append(f'<div class="card">{nat_head}'
-                         f'{_html(national["fan"])}</div>')
-        nat_num = _forecast_numbers("US", national.get("numbers") or {},
-                                    national.get("times") or [])
+        nat_fan = _ba_pair("US", _html(national["fan"], lazy=True),
+                           _html(national["fan_before"], lazy=True)
+                           if national.get("fan_before") else "")
+        nat_cards.append(f'<div class="card">{nat_head}{nat_fan}</div>')
+        nat_num = _ba_pair(
+            "US", _forecast_numbers("US", national.get("numbers") or {},
+                                    national.get("times") or []),
+            _forecast_numbers("US-before",
+                              national.get("numbers_before") or {},
+                              national.get("times") or [])
+            if national.get("numbers_before") else "", switch=False)
         if nat_num:
             nat_cards.append(nat_num)
     nat_body = "\n  ".join(nat_cards) or str(kit.empty(
@@ -1270,20 +1448,27 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 </div>
 {jump_bar}
 <div class="card rp-mapcard" id="map-anchor">
- <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2></div>
+ <div class="uk-heading"><h2 class="mapmodel" data-mapmodel-label>{model_label}</h2>
+  <button type="button" class="rp-btn rp-mapfold" id="mapfold"
+   aria-controls="map-body" aria-expanded="true">Hide map</button></div>
+ <div class="rp-mapbody" id="map-body">
  <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="rp-legends">
   {legend_html}
   <span class="rp-conf"><span class="rp-lbl" aria-hidden="true">Confidence</span>{conf_html}</span>
  </div>
+ </div>
  {us_feature}
 </div>
+{_MAP_FOLD_JS}
 {"".join(sections)}
 {nat}
 {grid_section}
 {report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
+{_BA_JS}
 <script>
+{_DRAW_JS if plotly_js else ""}
 window.showState = show;
 var _ab = document.getElementById('appback');
 if (_ab && history.length > 1) {{ _ab.hidden = false; }}
@@ -1297,7 +1482,8 @@ function show(id, then) {{
   var all = document.querySelectorAll('section.state');
   for (var i = 0; i < all.length; i++) all[i].hidden = true;
   el.hidden = false;
-  if (window.Plotly) {{
+  if (window.Plotly && window.rpDraw) {{
+    rpDraw(el);
     var gs = el.querySelectorAll('.js-plotly-plot');
     for (var j = 0; j < gs.length; j++) Plotly.Plots.resize(gs[j]);
   }}
@@ -1436,7 +1622,12 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     gives each detail fan the other member's interval (its whole-admission
     quantiles) and the forecast numbers; an older bundle draws the one
     member its detail stored."""
-    grid = bundle.get("grid")
+    from app.core import report_grid
+    # what went to the hub, read from the run's own files beside the
+    # report; where it differs from the model's own (the upper-tail cap),
+    # a location opens on the file and switches to the model's own
+    submitted = report_grid.submitted_fans(Path(out_path).parent)
+    grid = report_grid.attach_submitted(bundle.get("grid"), submitted)
     by_key = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     details = {}
     for key, d in (bundle.get("details") or {}).items():
@@ -1449,19 +1640,31 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
             panel_fans = (by_key.get(key) or {}).get("models") or {}
             others = {m: grid_quantiles(f) for m, f in panel_fans.items()
                       if m != model and f.get("times") == list(ft)}
-            fan = fan_figure_from_quantiles(
-                fan_in.get("observed_times") or [],
-                fan_in.get("observed") or [],
-                ft, fan_in["quantiles"],
-                title=fan_in.get("title", ""), settled=settled or None,
-                model=model, others=others)
+
+            def _fan(own, rest):
+                return fan_figure_from_quantiles(
+                    fan_in.get("observed_times") or [],
+                    fan_in.get("observed") or [],
+                    ft, own, title=fan_in.get("title", ""),
+                    settled=settled or None, model=model, others=rest)
+            fan = _fan(fan_in["quantiles"], others)
             numbers = {model: fan_in["quantiles"], **others}
-            details[key] = {
+            row = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
                 "model": model,
                 "table_rows": [tuple(r) for r in (d.get("table_rows") or [])],
                 "numbers": numbers, "times": list(ft)}
+            filed = {m: submitted[m][key] for m in submitted
+                     if key in submitted[m]
+                     and all(str(x) in submitted[m][key] for x in ft)}
+            if (by_key.get(key) or {}).get("submitted") and model in filed:
+                s_others = {m: q for m, q in filed.items()
+                            if m != model and m in others}
+                row.update(fan=_fan(filed[model], s_others),
+                           numbers={model: filed[model], **s_others},
+                           fan_before=fan, numbers_before=numbers)
+            details[key] = row
         except Exception:
             continue      # one broken state must not sink the whole report
     nat_map_html = ""
@@ -1481,6 +1684,8 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
          "numbers": us_d.get("numbers"), "times": us_d.get("times"),
+         "fan_before": us_d.get("fan_before"),
+         "numbers_before": us_d.get("numbers_before"),
          "summary_html": national.get("summary_html", "")},
         Path(out_path), national_map_html=nat_map_html,
         elapsed_s=bundle.get("elapsed_s"),

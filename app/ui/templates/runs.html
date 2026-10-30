@@ -272,9 +272,10 @@
  {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
  {% for w in storage.workroots %}
  {# label from the run's ledger row, linked to its run page (the id is
-    secondary); no row = an unrecorded run, time parsed from the id #}
+    secondary); no row = an unrecorded run, time parsed from the id, whose
+    page still shows its report and files #}
  <div class="st-row" data-wid="{{ w.id }}">
-  <span class="st-title"><strong>{% if w.recorded %}<a href="/runs/{{ w.id }}">{{ w.label }}</a>{% else %}{{ w.label }}{% endif %}</strong>
+  <span class="st-title"><strong><a href="/runs/{{ w.id }}">{{ w.label }}</a></strong>
    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
    {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
    {%- if w.busy %} {{ tips.badge("pending", "running now") }}
@@ -334,7 +335,7 @@
  {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
  {% for f in storage.report_archives %}
  <div class="st-row">
-  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong></span>
+  <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
   {{ tips.meta([rlink]) }}{% endif %}
   <span class="st-size">{{ f.size_h }}</span>

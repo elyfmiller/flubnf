@@ -92,6 +92,12 @@ def _top_files() -> set:
 _STATE_BEFORE, _TOP_BEFORE = _state_listing(), _top_files()
 
 
+from app.core import data as _core_data  # noqa: E402
+
+#: app.core.data.hub_missing before the autouse fake below replaces it
+_REAL_HUB_MISSING = _core_data.hub_missing
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
     """The whole suite leaves the working tree's app/state as it found it,
@@ -161,6 +167,25 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
 
 
+@pytest.fixture(autouse=True)
+def _hub_present_for_the_fakes(monkeypatch):
+    """The suite fakes the hub's data layer (vintages, truth, locations)
+    and the runs themselves, so the console's one test of the clone's
+    presence (app.core.data.hub_missing, which refuses a run and words the
+    Data and Forecast tabs) answers "present" too; the missing folder the
+    suite points FLUBNF_HUB at would otherwise refuse every faked run.
+    Opt in to the real test with the `hub_check_real` fixture."""
+    from app.core import data as core_data
+    monkeypatch.setattr(core_data, "hub_missing", lambda data=True: "")
+
+
+@pytest.fixture
+def hub_check_real(monkeypatch):
+    """The real test of the clone's presence (see the autouse fixture)."""
+    from app.core import data as core_data
+    monkeypatch.setattr(core_data, "hub_missing", _REAL_HUB_MISSING)
+
+
 @pytest.fixture
 def pf_engine_ready(monkeypatch):
     """A machine with the particle-filter engine, as the console's up-front
@@ -222,4 +247,7 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
     ui_state._status["running"] = None
     ui_state._status.pop("flash", None)
+    # a refused New model form waits for the next page (one-shot)
+    from app.ui.routes import sandbox as ui_sandbox
+    ui_sandbox._sandbox_new_refused.clear()
     return root
