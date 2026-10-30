@@ -6,6 +6,23 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-29 (later): student workspace step 1, the file formats, on
+  `dev` ([e2dba2e](https://github.com/elyfmiller/flubnf/commit/e2dba2e)).
+  No page, button or setting changes. `app/core/library.py`: the Ready
+  for replays rules, the replay normal form and fingerprint, Register
+  into `sandbox/library/<name>/<n>/`, `name@version`.
+  `app/core/experiments.py`: `experiment.json` (model, season, size,
+  oracle), the size presets, the shipped replay compared with,
+  `summary.json` as sums. `app/core/problem_codes.py`: 52 codes, pinned
+  by `app/tests/golden/problem_codes.json`; Check returns a code beside
+  each problem and warning (`SandboxError` gained `code=`). The structure
+  rules read model.bngl as BNG2.pl does, so a statement outside a block,
+  which BNG2.pl runs as Perl, is refused. Defaults taken: smoke and
+  pilot run 1 replicate against the shipped 3; with the Oracle step off
+  a shipped side exists for 2024-25 only (`quantiles.null`); experiments
+  skip the Groundhog. Tested: the new and Sandbox tests (379), and the
+  full suite with only the 22 failures this Mac already had. Step 2
+  (engine side) waits for Ely's go.
 - 2026-10-29: the student workspace, designed with Ely (decisions under
   Decided). It is built one step at a time, in the order of the steps
   below, starting with the file formats, and under the rule in UI-KIT.md
