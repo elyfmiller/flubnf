@@ -371,6 +371,11 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): the student workspace build changes the Engine
+  lane's files directly where the design needs it (`pf.py`, `retro.py`,
+  `sandbox.py` and their tests), instead of waiting on the Engine lane.
+  The work lands on `dev` like any other, and the Engine lane's notes
+  are read first for anything in flight.
 - 2026-10-29 (Ely, after a protection audit): the wiki is off (never
   used). Actions run only GitHub's own actions, which are all any branch
   uses. `tests.yml` states a read-only token
@@ -465,8 +470,12 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   4. For the runner: the cleaning described under Now. PyBNF reads the
      model's `generate_network` options and `setOption` again, so
      cleaning only the first BNG2.pl call is not enough.
-- Engine (2026-10-29, the student workspace; requests to schedule with
-  Ely, nothing to start yet):
+- Engine (2026-10-29, the student workspace). Ely has decided that the
+  build changes your files directly (see Decided), so items 1 to 4 below
+  and the audit's runner cleaning will arrive on `dev` from App's build,
+  with their tests. Say in your notes if you have work in flight in
+  `pf.py`, `retro.py` or `sandbox.py`, so the two don't collide.
+  The items, nothing started yet:
   1. `pf.prepare` takes a registered model (template, prior block,
      starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
      which become registered models themselves.
@@ -733,11 +742,6 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
-
-- For Ely (2026-10-29, the student workspace): should the build change
-  the Engine lane's files (`pf.py`, `retro.py`, `sandbox.py`) directly,
-  or leave them to the Engine lane? The core of the design runs through
-  them.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the
