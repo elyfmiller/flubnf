@@ -52,7 +52,8 @@
       {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}" data-note="A copy of {{ m.name }}, with its data and priors." data-name="{{ copy_names[m.name] }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
       <optgroup label="Oracle SIHRS filter">
        <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}{% if _nf.start == "shipped:sihrs" %} selected{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
-       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+       {% if vintages and locations %}<option value="template:sihrs" data-note="The production model with its per-state values kept as placeholders, ready to register for replays; data.exp holds one hub location's counts as of a week." data-name="{{ example_names.variant }}"{% if _nf.start == "template:sihrs" %} selected{% endif %}>Oracle SIHRS template, for replays</option>
+       {% endif %}{% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
       </optgroup>
      </select>
      <span class="sb-about"{% if not _about %} hidden{% endif %}>{% call tips.icon_tip("sbnew-about-t", "the chosen start", "info") %}<span id="sbnew-about">{{ _about }}</span>{% endcall %}</span>

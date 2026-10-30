@@ -110,7 +110,7 @@
     }
 
     function show() {
-      var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
+      var v = start.value, hub = v === 'shipped:sihrs' || v === 'template:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
       // what the chosen start is: its note in the "i" beside the list,
       // hidden for a start without one (the Oracle start shows its fields)
@@ -510,8 +510,37 @@
                                 f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length && probs.length) html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
+            // a model that keeps placeholders: what Register would say of
+            // these files, each finding with its code; one already listed
+            // above is counted, not repeated
+            var rp = d.replays;
+            if (rp) {
+              var seen = probs.concat(warns, f.machine ? [f.machine] : []);
+              var found = rp.findings || [];
+              var bad = found.filter(function (x) { return x.tier === 'problem'; });
+              var rest = found.filter(function (x) { return x.tier !== 'problem'; });
+              var listed = bad.concat(rest).filter(function (x) { return seen.indexOf(x.text) < 0; })
+                .map(function (x) { return x.text + ' (' + x.code + ')'; });
+              if (bad.length) {
+                html += alertHtml('warn', 'Not ready for replays:', (bad.length === 1 ? '1 thing'
+                  : bad.length + ' things') + ' to fix before Register.') + listHtml(listed);
+              } else {
+                var reg = rp.registered;
+                html += alertHtml(rest.length ? 'warn' : 'ok', 'Ready for replays:',
+                  (reg ? 'these files are ' + reg.ref + ' (' + reg.short + ').'
+                       : 'Register freezes these files as a new version.')
+                  + (rest.length ? ' ' + (rest.length === 1 ? '1 note.' : rest.length + ' notes.') : ''))
+                  + listHtml(listed)
+                  + (reg ? '' : '<div class="row"><button formaction="/sandbox/models/'
+                     + encodeURIComponent(form.getAttribute('data-model'))
+                     + '/register" formnovalidate>Register</button></div>');
+              }
+            }
             if (f.suffix) rows.push(['Simulate suffix', f.suffix, '']);
             if (f.rows) rows.push(['Data rows', f.rows, '']);
+            var pl = f.placeholders;
+            if (pl && pl.location) rows.push(['Placeholders filled for', pl.location,
+              'population ' + Number(pl.population).toLocaleString('en-US')]);
             if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '']);
             if (f.network) rows.push(['Network', f.network, f.species != null
               ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '']);

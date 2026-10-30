@@ -1,7 +1,8 @@
 """SANDBOX: the model library, Sandbox models registered for replays
-(app/core/experiments.py) and the engine's reading of a registered model
-(engines/pf.py prepare, through resolve and replay_conf; the Register
-button comes in a later step).
+(app/core/experiments.py), the engine's reading of a registered model
+(engines/pf.py prepare, through resolve and replay_conf) and the
+Sandbox's Register (routes/sandbox.py sandbox_register; Check's Ready for
+replays is readiness).
 
 A model ready for replays is the Sandbox's own three-file folder with its
 placeholders kept ({{POP}}, {{I0FRAC}}, ...: what sihrs_fit.
@@ -132,11 +133,12 @@ REF_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:@([1-9][0-9]{0,5}))?$"
 #: a version folder's name; .reg-* building folders are not one
 _VERSION_RE = re.compile(r"[1-9][0-9]{0,5}")
 #: check() codes a model ready for replays never keeps: data.exp is the
-#: sample's, the cumulative line is CUMULATIVE_REQUIRED here, and the
-#: actions are FluBNF's
+#: sample's, the cumulative line is CUMULATIVE_REQUIRED here, the actions
+#: are FluBNF's, and a replay fills the placeholders for each location
+#: (the Sandbox fills them from its own data: a data condition)
 _CHECK_DROPPED = ("EXP_UNREADABLE", "EXP_TIME_ORDER", "ROW_BEFORE_START",
                   "ONE_ROW", "SCALE_OFF", "NO_CUMULATIVE", "NO_SUFFIX",
-                  "NO_GENERATE_NETWORK")
+                  "NO_GENERATE_NETWORK", "PLACEHOLDERS_UNFILLED")
 #: the most dropped action lines ACTIONS_DROPPED names
 _DROPPED_SHOWN = 5
 #: a suffix named before end model: materialize_model rewrites every
@@ -518,6 +520,21 @@ def _rules(texts: Mapping[str, str], shipped: bool) -> list:
             + _replay_rules(kept))
 
 
+def _read_texts(files: Mapping[str, str]) -> tuple[dict, list]:
+    """(the two texts, LF only (_lf), and the FILE_UNREADABLE findings):
+    a str as given, bytes read as strict UTF-8; no texts when a file is
+    missing or not UTF-8 text."""
+    texts = {f: _text(files.get(f)) for f in REPLAY_FILES}
+    bad = [finding("FILE_UNREADABLE", f"{f} is missing or is not UTF-8 "
+                   "text", file=f) for f, t in texts.items() if t is None]
+    return ({} if bad else {f: _lf(t) for f, t in texts.items()}), bad
+
+
+def _kept(codes: list) -> list:
+    """Check's codes a model ready for replays keeps (_CHECK_DROPPED)."""
+    return [f for f in codes if f["code"] not in _CHECK_DROPPED]
+
+
 def validate(files: Mapping[str, str], *, shipped: bool = False,
              work: Path | None = None) -> list[dict]:
     """Whether model.bngl and priors.conf are ready for replays, as
@@ -529,12 +546,9 @@ def validate(files: Mapping[str, str], *, shipped: bool = False,
     the actions' and NO_CUMULATIVE. A file's bytes are read as strict
     UTF-8, and the rules read it as replay_text does: no byte order mark,
     LF newlines. shipped allows the shipped models' own placeholders."""
-    texts = {f: _text(files.get(f)) for f in REPLAY_FILES}
-    out = [finding("FILE_UNREADABLE", f"{f} is missing or is not UTF-8 "
-                   "text", file=f) for f, t in texts.items() if t is None]
+    texts, out = _read_texts(files)
     if out:
         return out
-    texts = {f: _lf(t) for f, t in texts.items()}
     out = _rules(texts, shipped)
     if any(f["tier"] == "problem" for f in out):
         return out
@@ -544,7 +558,42 @@ def validate(files: Mapping[str, str], *, shipped: bool = False,
         bngl = bngl.replace(t, v)
     r = check({"model.bngl": bngl, "priors.conf": texts["priors.conf"],
                "data.exp": SAMPLE_EXP}, work=work)
-    return out + [f for f in r["codes"] if f["code"] not in _CHECK_DROPPED]
+    return out + _kept(r["codes"])
+
+
+def readiness(files: Mapping[str, str], checked: Mapping,
+              name: str = "") -> dict:
+    """Ready for replays, from a Check already run on the same files
+    (check() calls it for a model that keeps placeholders): {"ready",
+    "findings", "registered"}. The findings are what Register would say:
+    with name, the name rules (_check_name) first, and the name must be
+    exactly a Sandbox model's, as register reads it; then validate's,
+    with Check's own codes standing in for validate's run of it once the
+    rules pass (_kept), so no second BNG2.pl run. registered is
+    lookup(name, files), None for a name not exactly a Sandbox model's."""
+    found = []
+    # where folders ignore case, BETA reads beta's files: register does not
+    exact = (sb.MODELS.is_dir()
+             and name in {p.name for p in sb.MODELS.iterdir()})
+    if name:
+        try:
+            _check_name(name)
+            if not exact:
+                raise Refusal(finding(
+                    "NAME_INVALID", f"no Sandbox model is named {name!r} "
+                    "(letter case counts)"))
+        except Refusal as e:
+            found += e.findings
+    texts, bad = _read_texts(files)
+    found += bad
+    if not bad:
+        rules = _rules(texts, False)
+        found += rules
+        if not any(f["tier"] == "problem" for f in rules):
+            found += _kept(checked.get("codes") or [])
+    return {"ready": not any(f["tier"] == "problem" for f in found),
+            "findings": found,
+            "registered": lookup(name, texts) if exact and not bad else None}
 
 
 # ---------------------------------------------------------- shipped models
@@ -629,8 +678,12 @@ def _verified(name: str, version: int) -> tuple[dict, dict]:
     again: MODEL_CHANGED naming the file (or model.json) that no longer
     matches, or that register would not have stored (a version written
     by hand, however well its hashes agree), FORMAT_UNKNOWN for a
-    model.json of another format."""
+    model.json of another format. Only a regular file is read (a pipe
+    in its place would wait for a writer: Check's lookup reads here), and
+    one that cannot be looked at reads as missing."""
     ref, d = f"{name}@{version}", root() / name / str(version)
+    if not os.path.isfile(d / MANIFEST):     # False on any OSError
+        raise _changed(ref, f"{MANIFEST} (missing or unreadable)")
     try:
         manifest = json.loads((d / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -647,6 +700,8 @@ def _verified(name: str, version: int) -> tuple[dict, dict]:
         raise _changed(ref, MANIFEST)
     texts = {}
     for f in REPLAY_FILES:
+        if not os.path.isfile(d / f):
+            raise _changed(ref, f"{f} (missing)")
         try:
             raw = (d / f).read_bytes()
         except OSError:
@@ -731,6 +786,39 @@ def _read_json(path: Path) -> dict:
     return obj if isinstance(obj, dict) else {}
 
 
+def _match(name: str, fp: str) -> int | None:
+    """The first intact version of name (the exact name) whose
+    fingerprint is fp, or None: a version is read whole (_verified) only
+    when its model.json, a regular file, names fp."""
+    if name not in _names():
+        return None
+    for v in _versions(name):
+        m = root() / name / str(v) / MANIFEST
+        if not os.path.isfile(m) or _read_json(m).get("fingerprint") != fp:
+            continue
+        try:
+            _verified(name, v)
+        except Refusal:
+            continue                       # a changed version is not this one
+        return v
+    return None
+
+
+def lookup(name: str, files: Mapping[str, str]) -> dict | None:
+    """The version of name that already holds these files: {"ref",
+    "version", "fingerprint", "short"}, or None (none does, or the files
+    have no end model to be stored)."""
+    try:
+        fp = fingerprint(file_hashes(files))
+    except (Refusal, KeyError):
+        return None
+    v = _match(name, fp)
+    if v is None:
+        return None
+    return {"ref": f"{name}@{v}", "version": v, "fingerprint": fp,
+            "short": short(fp)}
+
+
 # ------------------------------------------------------------------ register
 
 
@@ -766,6 +854,8 @@ def register(name: str) -> dict:
     # would read beta2's files and register them renamed
     if sb.MODELS.is_dir() and name in {p.name for p in sb.MODELS.iterdir()}:
         for f in REPLAY_FILES:
+            if not os.path.isfile(src / f):  # a pipe would wait for a writer
+                continue
             try:
                 raw[f] = (src / f).read_bytes()
             except OSError:
@@ -776,13 +866,10 @@ def register(name: str) -> dict:
     stored = {f: replay_text(f, raw[f].decode("utf-8")) for f in REPLAY_FILES}
     hashes = file_hashes(stored)
     fp = fingerprint(hashes)
-    for v in _versions(name):
-        try:
-            if _verified(name, v)[0]["fingerprint"] == fp:
-                return {"ref": f"{name}@{v}", "version": v,
-                        "fingerprint": fp, "new": False, "findings": found}
-        except Refusal:
-            continue                       # a changed version is not this one
+    v = _match(name, fp)
+    if v is not None:
+        return {"ref": f"{name}@{v}", "version": v, "fingerprint": fp,
+                "new": False, "findings": found}
     manifest = {"format_version": FORMAT_VERSION, "fingerprint": fp,
                 "files": hashes, "registered_utc": sb._stamp()}
     origin = sb.read_info(name).get("origin")

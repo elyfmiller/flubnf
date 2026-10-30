@@ -4,8 +4,10 @@ production cell composed from the production pieces, byte for byte what
 pf.prepare materializes for the same location and date (suffix, model,
 data, conf keys and seed), with calendar-true week offsets, creation
 digests that an edit or a copy cannot carry, and a stored dataset with a
-population as the other source. Hub-free and engine-free: a tiny vintage
-and locations table in tmp, BNG2.pl faked (conftest.sandbox_root).
+population as the other source. And the Oracle SIHRS template for
+replays (template=True): the production model and priors with their
+placeholders kept, beside the same data. Hub-free and engine-free: a tiny
+vintage and locations table in tmp, BNG2.pl faked (conftest.sandbox_root).
 """
 import csv
 import json
@@ -21,11 +23,13 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import data as data_mod                    # noqa: E402
 from app.core import datasets as D                       # noqa: E402
+from app.core import library as L                        # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 from app.core.runs import RunSpec, derive_seed           # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 from app.ui import state as ui_state                     # noqa: E402
+from test_fewer_marks import marks                       # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -330,7 +334,8 @@ def test_without_a_hub_the_start_is_disabled(sandbox_root, monkeypatch):
 
 def test_no_bare_model_name_in_the_sandbox_pages(hub):
     sb.from_shipped("al", "Alabama", FD)
-    for page in ("/sandbox", "/sandbox?model=al"):
+    sb.from_shipped("tpl", "Alabama", FD, template=True)
+    for page in ("/sandbox", "/sandbox?model=al", "/sandbox?model=tpl"):
         html = client.get(page).text
         html = re.sub(r"<textarea.*?</textarea>", "", html, flags=re.S)
         html = re.sub(r"<script.*?</script>", "", html, flags=re.S)
@@ -341,3 +346,160 @@ def test_no_bare_model_name_in_the_sandbox_pages(hub):
         bare = [text[max(0, m.start() - 20):m.end() + 10]
                 for m in re.finditer(r"(?<!Oracle )SIHRS(?! compartment)", text)]
         assert not bare, (page, bare)
+        # no placeholder reaches a page outside the editor
+        assert "{{" not in text, page
+    # the template's workbench keeps the page's two marks, no more
+    assert marks(client.get("/sandbox?model=tpl").text) == ["tt-sb-files",
+                                                             "tt-sb-run"]
+
+
+# ---------------------------------------------- the Oracle SIHRS template
+
+#: the template start's fingerprint, unedited: shipped sihrs's files under
+#: TEMPLATE_NOTE (shipped sihrs is 5edca88e...); one for every location
+TEMPLATE_FP = "64fe86400df1aca476da4532c6ff5e2818b8014b3c82c659a43aa2727dcd0d1b"
+
+
+def test_the_template_start_writes_the_shipped_files_with_a_note(hub):
+    sb.from_shipped("tpl", "Alabama", FD, template=True)
+    files = sb.read_model("tpl")
+    shipped = L.shipped_files("sihrs")
+    assert files["model.bngl"] == sb.TEMPLATE_NOTE + shipped["model.bngl"]
+    assert files["priors.conf"] == shipped["priors.conf"]
+    # the data and its sidecar are an Oracle start's
+    sb.from_shipped("al", "Alabama", FD)
+    assert files["data.exp"] == sb.read_model("al")["data.exp"]
+
+    def side(n):
+        src = json.loads((sb.MODELS / n / sb.SOURCE_FILE).read_text())
+        src.pop("written_utc")
+        return src
+    assert side("tpl") == side("al")
+    info = sb.read_info("tpl")
+    assert set(info) == {"origin", "created_utc", "season_start"}
+    assert info["origin"] == sb.TEMPLATE_START == "template:sihrs"
+    assert info["season_start"] == "2024-08-01"
+    # every placeholder kept, none in the note; ready for replays
+    assert L.tokens(files["model.bngl"]) == set(L.TOKENS)
+    assert L.tokens(sb.TEMPLATE_NOTE) == set()
+    assert [f for f in L.validate(files) if f["tier"] != "machine"] == []
+    assert L.fingerprint(L.file_hashes(files)) == TEMPLATE_FP
+    note = ("The Oracle SIHRS filter's model, its per-state values kept as "
+            "placeholders.")
+    assert sb._first_comment(sb.MODELS / "tpl" / "model.bngl") == note
+    assert {m["name"]: m["note"] for m in sb.list_models()}["tpl"] == note
+    assert sb.model_origin("tpl") == "the Oracle SIHRS template"
+    assert not sb.shipped_state("tpl")["shipped"]
+
+
+def test_the_template_start_takes_a_dataset_group_too(sandbox_root, tmp_path,
+                                                      monkeypatch):
+    monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
+    ds = D.ingest(_mh(), "wave", kind="count")
+    sb.from_shipped("adult", "Adult", "2024-01-06", dataset=ds.id,
+                    template=True)
+    src = sb.read_data_source("adult")
+    assert src["dataset"]["id"] == ds.id and src["population"] == 250000
+    assert src["location"] == "Adult" and src["kind"] == "count"
+    assert sb.read_info("adult")["origin"] == sb.TEMPLATE_START
+    assert sb.read_model("adult")["model.bngl"].startswith(sb.TEMPLATE_NOTE)
+
+
+def test_the_template_start_refuses_and_leaves_nothing(hub):
+    def refused(name, *a, **k):
+        with pytest.raises(sb.SandboxError) as e:
+            sb.from_shipped(name, *a, template=True, **k)
+        assert not (sb.MODELS / name).exists(), name
+        return e.value
+    assert "no hub vintage for 2024-11-02" in str(
+        refused("x1", "Alabama", "2024-11-02"))
+    assert "unknown location 'Atlantis'" in str(refused("x2", "Atlantis", FD))
+    assert "not before the forecast date" in str(
+        refused("x3", "Alabama", FD, season_start="2024-12-01"))
+    assert str(refused("x4", " ", FD)) == ("choose a location for the "
+                                           "Oracle SIHRS template")
+    # the library's name rules, in its words and codes, before anything
+    e = refused("SIHRS", "Alabama", FD)
+    assert e.code == "NAME_RESERVED" and "shipped model's name" in str(e)
+    (L.root() / "Beta2").mkdir(parents=True)
+    e = refused("beta2", "Alabama", FD)
+    assert e.code == "NAME_INVALID"
+    assert "the same as Beta2 ignoring case" in str(e)
+    assert not sb.MODELS.exists() or not any(sb.MODELS.iterdir())
+
+
+def test_the_gallery_offers_the_template_and_creates_it(hub):
+    html = client.get("/sandbox").text
+    group = html.split('<optgroup label="Oracle SIHRS filter">', 1)[1].split(
+        "</optgroup>", 1)[0]
+    assert re.search(r'<option value="template:sihrs" data-note="The '
+                     r'production model with its per-state values kept as '
+                     r'placeholders, ready to register for replays[^"]*" '
+                     r'data-name="variant_1">Oracle SIHRS template, for '
+                     r'replays</option>', group), group
+    r = client.post("/sandbox/new", data={
+        "name": "beta", "start": "template:sihrs", "location": "Alabama",
+        "forecast_date": FD}, follow_redirects=False)
+    assert r.headers["location"] == "/sandbox?model=beta"
+    assert ui_state._status.get("flash") == (
+        f"beta: the Oracle SIHRS template, with data for Alabama as of {FD}.")
+    assert sb.read_info("beta")["origin"] == sb.TEMPLATE_START
+    assert "<td>the Oracle SIHRS template</td>" in client.get("/sandbox").text
+    assert "from the Oracle SIHRS template" in client.get(
+        "/sandbox?model=beta").text
+    # a refusal comes back with the template chosen
+    ui_state._status.pop("flash", None)
+    client.post("/sandbox/new", data={
+        "name": "nope", "start": "template:sihrs", "location": "Alabama",
+        "forecast_date": "2020-01-04"}, follow_redirects=False)
+    assert "Not created: no hub vintage" in ui_state._status.get("flash", "")
+    assert re.search(r'<option value="template:sihrs"[^>]* selected>',
+                     client.get("/sandbox").text)
+    assert not (sb.MODELS / "nope").exists()
+
+
+def test_without_a_hub_the_template_is_not_offered(sandbox_root, monkeypatch):
+    monkeypatch.setattr(sb, "vintages", lambda: [])
+    html = client.get("/sandbox").text
+    assert 'value="template:sihrs"' not in html
+    # nothing of it left either, not even a blank line: the group's end
+    # is as it was (no dataset with a population here)
+    assert "first)</option>\n       \n      </optgroup>" in html
+
+
+def test_n_written_as_a_placeholder_is_never_rewritten(hub):
+    sb.from_shipped("tpl", "Alabama", FD, template=True)
+    before = {p.name: p.read_bytes() for p in (sb.MODELS / "tpl").iterdir()}
+    with pytest.raises(sb.SandboxError, match=re.escape(sb.PLACEHOLDER_N)):
+        sb.set_population("tpl", 5)
+    # Load data's Set N: refused before anything is loaded
+    with pytest.raises(sb.SandboxError, match=re.escape(sb.PLACEHOLDER_N)):
+        sb.fill_data("tpl", "Alabama", "2024-09-07", FD, asof=FD,
+                     set_pop=True)
+    assert {p.name: p.read_bytes()
+            for p in (sb.MODELS / "tpl").iterdir()} == before
+    # N written {{POP}} in a model without i0, too
+    sb.add_example("sir_example")
+    bngl = sb.read_model("sir_example")["model.bngl"]
+    assert "N      200000" in bngl
+    sb.save_model("sir_example", {"model.bngl": bngl.replace(
+        "N      200000", "N      {{POP}}")})
+    raw = (sb.MODELS / "sir_example" / "model.bngl").read_bytes()
+    with pytest.raises(sb.SandboxError, match=re.escape(sb.PLACEHOLDER_N)):
+        sb.set_population("sir_example", 5)
+    assert (sb.MODELS / "sir_example" / "model.bngl").read_bytes() == raw
+    # and Load data's Set N, though it is not SIHRS-shaped: nothing loaded
+    before = {p.name: p.read_bytes()
+              for p in (sb.MODELS / "sir_example").iterdir() if p.is_file()}
+    with pytest.raises(sb.SandboxError, match=re.escape(sb.PLACEHOLDER_N)):
+        sb.fill_data("sir_example", "Alabama", "2024-09-07", FD, asof=FD,
+                     set_pop=True)
+    assert {p.name: p.read_bytes() for p in (sb.MODELS / "sir_example")
+            .iterdir() if p.is_file()} == before
+    # the tick is not offered where N is a placeholder, and stays elsewhere
+    assert 'name="set_pop"' not in client.get("/sandbox?model=tpl").text
+    sb.save_model("sir_example", {"model.bngl": bngl})
+    sb.add_example("sihrs_example")
+    sb.from_shipped("al", "Alabama", FD)
+    for n in ("sir_example", "sihrs_example", "al"):
+        assert 'name="set_pop"' in client.get(f"/sandbox?model={n}").text, n

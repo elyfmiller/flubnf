@@ -98,6 +98,16 @@ SHIPPED = "shipped:sihrs"
 SHIPPED_DATASET = "shipped:sihrs-dataset"
 SHIPPED_ORIGINS = (SHIPPED, SHIPPED_DATASET)
 SEED_RULE = "runs.derive_seed(location, forecast_date, 0), as the console's replicate 0"
+#: model.json's origin of a model started as the Oracle SIHRS template
+TEMPLATE_START = "template:sihrs"
+#: the template start's opening comment: its first sentence is the gallery's
+#: and the library's note (_first_comment); it names no location and no
+#: placeholder (a {{POP}} in a comment would satisfy NO_STATE_TOKENS), and
+#: is the same for every start, so an unedited one has one fingerprint
+TEMPLATE_NOTE = (
+    "# The Oracle SIHRS filter's model, its per-state values kept as placeholders.\n"
+    "# A replay fills them for each location and week; the Sandbox, for the\n"
+    "# location data.exp was loaded for. Check says whether it is ready for replays.\n")
 
 
 # ------------------------------------------- refusals and small helpers
@@ -208,6 +218,8 @@ def origin_label(origin: str) -> str:
     """model.json's origin in words for the gallery."""
     if origin in (SHIPPED, SHIPPED_DATASET):
         return "the Oracle SIHRS start"
+    if origin == TEMPLATE_START:
+        return "the Oracle SIHRS template"
     kind, _, what = str(origin or "").partition(":")
     return {"skeleton": "skeleton", "example": f"example {what}",
             "copy": f"copy of {what}"}.get(kind, "")
@@ -385,12 +397,15 @@ def save_model(name: str, files: dict) -> Path:
 
 def set_population(name: str, population: int) -> None:
     """Rewrite the parameters-block line named N to a population. Refused
-    for a model without such a line, and for an SIHRS-shaped model, whose
-    i0 and ascertainment are derived from N and the data together: start
-    that from the Oracle SIHRS filter instead."""
+    for a model whose N is a placeholder (placeholder_n: every run fills
+    it), for a model without such a line, and for an SIHRS-shaped model,
+    whose i0 and ascertainment are derived from N and the data together:
+    start that from the Oracle SIHRS filter instead."""
     from app.core.sandbox_bngl import sihrs_shaped
     d = model_dir(name)
     bngl = (d / "model.bngl").read_text(encoding="utf-8", errors="replace")
+    if placeholder_n(bngl):
+        raise SandboxError(PLACEHOLDER_N)
     if sihrs_shaped(bngl):
         raise SandboxError(
             "N not changed: this model derives i0 from N and the data, so N "
@@ -407,6 +422,16 @@ def set_population(name: str, population: int) -> None:
 
 #: set_population's refusal for a model without an N line
 NO_N_LINE = "the parameters block has no line named N to set"
+#: set_population's refusal for a model whose N is a placeholder
+PLACEHOLDER_N = ("N not changed: N is {{POP}}, which every run fills with "
+                 "the population of the location data.exp was loaded for.")
+
+
+def placeholder_n(bngl: str) -> bool:
+    """Whether the parameters block writes N as a placeholder ({{POP}}),
+    which every run fills (sandbox_data.filled_bngl): Set N leaves it."""
+    from app.core.sandbox_bngl import bngl_parameter_values
+    return "{{" in str(bngl_parameter_values(bngl).get("N", ""))
 
 
 def with_population(bngl: str, pop: int) -> str | None:
@@ -480,13 +505,22 @@ def split_reason(text: str, cap: int = 200) -> tuple:
 def simulate_data(name: str, *, seed: int = 1) -> dict:
     """Rewrite a model's data.exp with counts simulated from the model at
     its written values (synthetic_exp), keeping its time rows; the data
-    sidecar goes, since the rows are no longer the archive's."""
+    sidecar goes, since the rows are no longer the archive's. A model that
+    keeps placeholders is filled first (sandbox_data.filled_bngl, refused
+    in words before anything is written) and keeps its sidecar: its
+    location still fills each run, on counts drawn with that location's
+    N, and the sidecar's digest no longer matching says the rows are not
+    the archive's (read_data_source)."""
     from app.core.sandbox_check import synthetic_exp
+    from app.core.sandbox_data import filled_bngl
     files = read_model(name)
-    text, facts = synthetic_exp(files, seed=seed, work=SANDBOX / "check")
+    bngl, fill = filled_bngl(name, files)
+    text, facts = synthetic_exp({**files, "model.bngl": bngl}, seed=seed,
+                                work=SANDBOX / "check")
     d = model_dir(name)
     (d / "data.exp").write_text(text, encoding="utf-8", newline="\n")
-    (d / SOURCE_FILE).unlink(missing_ok=True)
+    if not fill:
+        (d / SOURCE_FILE).unlink(missing_ok=True)
     return facts
 
 
@@ -501,23 +535,39 @@ def simulate_data(name: str, *, seed: int = 1) -> dict:
 
 
 def from_shipped(name: str, location: str, forecast_date: str, *,
-                 season_start: str = "", dataset: str | None = None) -> Path:
+                 season_start: str = "", dataset: str | None = None,
+                 template: bool = False) -> Path:
     """A new model: the production Oracle SIHRS filter cell for one
     jurisdiction as of forecast_date (the hub vintage of that date), or
     for one group of a stored dataset that has a population. N, rhomult
     and i0 are resolved together from the data (sihrs_fit.resolve_state);
-    data.exp keeps the calendar week offsets from season_start. Refused in
-    words, leaving nothing behind, when the vintage, location or data are
-    missing."""
+    data.exp keeps the calendar week offsets from season_start. With
+    template, the Oracle SIHRS template for replays instead: the
+    production model and priors with the per-state values kept as
+    placeholders (library.shipped_files("sihrs")) under TEMPLATE_NOTE,
+    the same data.exp and sidecar, and only the origin and season_start in
+    model.json; its name is held to the library's rules first. Refused in
+    words, leaving nothing behind, when the name, vintage, location or
+    data are wrong or missing."""
     import tempfile
     from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
     from app.core.runs import RunSpec, derive_seed, default_season_start
     check_name(name)
     if (MODELS / name).exists():
         raise SandboxError(f"a sandbox model named {name!r} already exists")
+    if template:
+        # a name Register would refuse (a shipped one, another's in other
+        # letter case) is refused now, in the library's words
+        from app.core import library
+        from app.core.problem_codes import Refusal
+        try:
+            library._check_name(name)
+        except Refusal as e:
+            raise SandboxError(str(e), code=e.code) from None
     loc = str(location or "").strip()
     if not loc:
-        raise SandboxError("choose a location for the Oracle SIHRS start")
+        raise SandboxError("choose a location for the Oracle SIHRS "
+                           + ("template" if template else "start"))
     fd = _iso_date(forecast_date, "the forecast date").isoformat()
     ss = (_iso_date(season_start, "the season start").isoformat()
           if str(season_start or "").strip() else default_season_start(fd))
@@ -573,33 +623,47 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
     spec = RunSpec(engine="pf", forecast_date=fd, locations=[loc],
                    season_start=ss, extra=extra)
     with tempfile.TemporaryDirectory() as tmp:
-        m = materialize_model(s, pf_engine.TEMPLATE, Path(tmp) / "m.bngl", sfx)
-        cell_bngl = m.read_text(encoding="utf-8").replace("begin parameters\n",
-                                          pf_engine.DEFAULTS_BLOCK, 1)
+        if not template:
+            m = materialize_model(s, pf_engine.TEMPLATE, Path(tmp) / "m.bngl",
+                                  sfx)
+            cell_bngl = m.read_text(encoding="utf-8").replace(
+                "begin parameters\n", pf_engine.DEFAULTS_BLOCK, 1)
         exp = write_exp(s, Path(tmp) / "data.exp").read_text(encoding="utf-8")
     where = f"dataset {ref['name']}, group {loc}" if ref else loc
-    files = {
-        "model.bngl": (f"# The Oracle SIHRS filter for {where} as of {fd}.\n"
-                       "# The production template with this week's data, as "
-                       "the console's filter\n# writes it (season from "
-                       f"{ss}; suffix {sfx}).\n" + cell_bngl),
-        "data.exp": exp,
-        "priors.conf": ("# The production priors of the Oracle SIHRS filter "
-                        "(app/core/engines/pf.py).\n"
-                        + pf_engine.priors_for(spec)
-                        + "pf_cumulative_observable = Hobs\n")}
+    if template:
+        # the template as a replay composes it, placeholders and suffix
+        # kept (the Sandbox fills them in memory: sandbox_data.filled_bngl)
+        kept = library.shipped_files("sihrs")
+        files = {"model.bngl": TEMPLATE_NOTE + kept["model.bngl"],
+                 "data.exp": exp, "priors.conf": kept["priors.conf"]}
+    else:
+        files = {
+            "model.bngl": (f"# The Oracle SIHRS filter for {where} as of {fd}.\n"
+                           "# The production template with this week's data, as "
+                           "the console's filter\n# writes it (season from "
+                           f"{ss}; suffix {sfx}).\n" + cell_bngl),
+            "data.exp": exp,
+            "priors.conf": ("# The production priors of the Oracle SIHRS filter "
+                            "(app/core/engines/pf.py).\n"
+                            + pf_engine.priors_for(spec)
+                            + "pf_cumulative_observable = Hobs\n")}
     seed = derive_seed(loc, pf_engine.seed_date_for(spec), 0)
     # each row's week: the one Saturday in its week after season_start
     ss_d = _iso_date(ss, "the season start")
     dates = [_first_saturday((ss_d + dt.timedelta(days=7 * int(t))).isoformat())
              for t in s.times]
     d = save_model(name, files)
-    info = {"origin": origin, "created_utc": _stamp(), "location": loc,
-            "forecast_date": fd, "season_start": ss, "suffix": sfx,
-            "seed": int(seed), "seed_rule": SEED_RULE,
-            "population": int(s.population), "digests": digests(files)}
-    if ref:
-        info["dataset"] = ref
+    if template:
+        # season_start anchors a later Load data (week_origin)
+        info = {"origin": TEMPLATE_START, "created_utc": _stamp(),
+                "season_start": ss}
+    else:
+        info = {"origin": origin, "created_utc": _stamp(), "location": loc,
+                "forecast_date": fd, "season_start": ss, "suffix": sfx,
+                "seed": int(seed), "seed_rule": SEED_RULE,
+                "population": int(s.population), "digests": digests(files)}
+        if ref:
+            info["dataset"] = ref
     _write_info(name, info)
     times = [int(t) for t in s.times]
     src = {"location": loc, "start": dates[0], "end": dates[-1],
@@ -976,7 +1040,10 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     that does not generate is refused before the engine is asked for
     anything, with BNG2.pl's own words. Run settings
     the engine would refuse late (a jitter outside 0 to 1, a negative
-    seed) are refused here, before anything is written.
+    seed) are refused here, before anything is written. A model that keeps
+    placeholders runs filled for the location its data was loaded for
+    (sandbox_data.filled_bngl: refused in words, before any folder is
+    made, when they cannot be filled); its files keep them.
     """
     if not 0 < float(jitter) < 1:
         raise SandboxError(f"jitter {float(jitter):g} is not between 0 and 1 "
@@ -985,7 +1052,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
         raise SandboxError(f"seed {int(seed)} is negative: use 0 or more")
     from app.core.sandbox_bngl import (engine_settings, read_exp, simulate_suffix,
                                        split_priors)
-    from app.core.sandbox_data import read_data_source
+    from app.core.sandbox_data import filled_bngl, read_data_source
     preflight()
     files = read_model(name)
     sfx = simulate_suffix(files["model.bngl"])
@@ -1017,6 +1084,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     if forecast_weeks < 0:
         raise SandboxError(f"priors.conf sets pf_forecast_intervals = "
                            f"{forecast_weeks}, which is negative")
+    bngl, fill = filled_bngl(name, files)
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     workroot = (runs_root or RUNS) / f"{stamp}_{name}"
     n = 1
@@ -1026,7 +1094,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     cell = workroot / f"{name}_r0"
     cell.mkdir(parents=True)
     try:
-        (cell / "m.bngl").write_text(files["model.bngl"].replace("\r\n", "\n"),
+        (cell / "m.bngl").write_text(bngl.replace("\r\n", "\n"),
                                      encoding="utf-8", newline="\n")
         (cell / f"{sfx}.exp").write_text(files["data.exp"].replace("\r\n", "\n"),
                                          encoding="utf-8", newline="\n")
@@ -1077,6 +1145,8 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             "digests": digests(files),
             "origin": str(info.get("origin", "")),
             "status": "prepared"}
+    if fill:
+        meta["placeholders"] = fill             # how this run filled them
     if shipped["shipped"]:
         meta["shipped"] = {k: info.get(k) for k in
                            ("location", "forecast_date", "season_start",
@@ -1434,7 +1504,7 @@ _MOVED = {
         "DEFAULT_WEEKS", "default_range", "_check_range", "_window",
         "series_for", "dataset_choices", "UploadRefused", "display_name",
         "ingest_upload", "dataset_series", "week_origin", "calendar_offsets",
-        "fill_data", "hub_population", "read_data_source"),
+        "fill_data", "hub_population", "read_data_source", "filled_bngl"),
     "sandbox_export": (
         "RUN_SETTINGS", "_run_meta", "run_files", "diff_runs", "_zip",
         "model_zip", "_relative_conf", "run_zip", "ORACLE_FILE", "ORACLE_DIR",

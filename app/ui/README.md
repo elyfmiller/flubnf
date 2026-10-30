@@ -114,8 +114,8 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/methods` | `routes/methods.py` | `methods_page` | `methods.html` | nav |
 | **Sandbox** | | | | | |
 | GET | `/sandbox` (`?model=`, `?run=`, `?dataset=`, `?compare=`) | `routes/sandbox.py` | `sandbox_page` | `sandbox.html` (gallery, or one model's workbench) | nav |
-| POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>\|shipped:sihrs\|shipped:dataset:<id>`), `/sandbox/add-example` (alias) | `routes/sandbox.py` | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
-| POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/delete` | `routes/sandbox.py` | `sandbox_save`, `sandbox_model_run`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form |
+| POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>\|shipped:sihrs\|shipped:dataset:<id>\|template:sihrs`), `/sandbox/add-example` (alias) | `routes/sandbox.py` | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
+| POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/register` (save, then register for replays; the exact name only), `/delete` | `routes/sandbox.py` | `sandbox_save`, `sandbox_model_run`, `sandbox_register`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form (Register: Check's Ready for replays line, `static/sandbox.js`) |
 | POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `routes/sandbox.py` | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
 | POST | `/sandbox/run` (alias) | `routes/sandbox.py` | `sandbox_run` | redirect | scripts |
 | POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` | `routes/sandbox.py` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect | results card; the guard modal |

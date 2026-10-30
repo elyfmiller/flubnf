@@ -39,6 +39,7 @@
  "NO_SUFFIX": "problem",
  "ONE_ROW": "warning",
  "OUTSIDE_MODEL": "problem",
+ "PLACEHOLDERS_UNFILLED": "problem",
  "PRIORS_LINE": "problem",
  "PRIOR_BOUNDS": "problem",
  "PRIOR_MALFORMED": "problem",

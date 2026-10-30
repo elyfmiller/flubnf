@@ -34,7 +34,7 @@ def _free_name(p: str) -> str:
     return (p[:-6] if p.lower().endswith("__free") else p) + "__FREE"
 
 
-def check(files: dict, *, work: Path | None = None) -> dict:
+def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
     """What can be known about a model without the engine: fatal problems
     (a run would fail), warnings (it may run but likely not as meant) and
     facts. Network generation runs through BNG2.pl in `work` (a scratch
@@ -47,7 +47,10 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     facts["machine"] says beforehand which of them this computer fails.
     "codes" holds a finding (app/core/problem_codes.py) per string, in
     their order: the problems, the warnings, then facts["machine"] when
-    it is not ''."""
+    it is not ''.
+    name: the Sandbox model whose data.source.json fills a model that
+    keeps placeholders (sandbox_data.filled_bngl); only such a model's
+    report has facts["placeholders"] and "replays"."""
     from app.core import contactmap
     problems, warnings = [], []
     # each string's code, in step with problems and warnings
@@ -107,11 +110,11 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     for line in priors:
         k = line.split("=", 1)[0].strip()
         if k.endswith("_var"):
-            name = _check_prior(line, set(params), problems, pcodes)
+            prior = _check_prior(line, set(params), problems, pcodes)
             # a line too short to read still names its parameter: one
             # problem for it, not a second "has no prior line"
             toks = line.partition("=")[2].split()
-            named.add(name or (toks[0] if toks else ""))
+            named.add(prior or (toks[0] if toks else ""))
     facts["priors"] = sorted(n for n in named if n)
     # the engine pairs them both ways and refuses a run that does not
     # (an unreadable priors.conf is its own problem, not one per parameter)
@@ -181,6 +184,20 @@ def check(files: dict, *, work: Path | None = None) -> dict:
             and not pf_engine.sampling_interval_line()):
         warning("ONE_ROW", "one data row: this engine needs two or more "
                 "(it does not accept pf_sampling_interval)")
+    # a model that keeps placeholders: BNG2.pl reads it filled as a run
+    # would be (or with the sample values, when it cannot be), never the
+    # placeholders themselves; the rules above read the text as written
+    fill, net_files = {}, files
+    if "{{" in bngl:
+        from app.core.sandbox_data import filled_bngl
+        try:                       # data.exp unreadable: its own problem above
+            text, fill = filled_bngl(name, files, sample=times is None)
+        except SandboxError as e:
+            problem(e.code or "PLACEHOLDERS_UNFILLED", str(e))
+            text, fill = filled_bngl(name, files, sample=True)
+        if fill:
+            net_files = {**files, "model.bngl": text}
+            facts["placeholders"] = fill
     # each "not checked" is a machine problem the notice names, never the
     # model's: BNG2.pl cannot read any model here yet
     if not pf_engine.perl_available():
@@ -196,8 +213,8 @@ def check(files: dict, *, work: Path | None = None) -> dict:
             Path(work).mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=str(work) if work else None) as tmp:
             try:
-                net = contactmap.parse_net(
-                    contactmap.network_from_bngl(bngl, Path(tmp)))
+                net = contactmap.parse_net(contactmap.network_from_bngl(
+                    str(net_files.get("model.bngl", "")), Path(tmp)))
                 facts["species"] = len(net["species"])
                 facts["reactions"] = len(net["reactions"])
                 facts["network"] = "generates"
@@ -223,22 +240,45 @@ def check(files: dict, *, work: Path | None = None) -> dict:
         # the model at its written values beside the data: a scale that
         # is off tenfold is the commonest reason a first fit collapses
         if facts["network"] == "generates" and cum in outputs and times:
-            try:
-                ex = expected_counts(files, times=times, work=work)
-                observed = [r[1] for r in read_exp(str(files["data.exp"]))["rows"]]
-                fact, warn = _scale_note(ex["expected"], observed)
-                facts["at_start"] = fact
-                if warn:
-                    warning("SCALE_OFF", warn)
-            except (SandboxError, ValueError, KeyError) as e:
-                # nothing to compare: say why, so the row is not just gone
-                facts["at_start"] = f"not compared: {str(e).strip()[:300]}"
+            if fill.get("from") == "sample":
+                # sample values say nothing of this data's scale (no false
+                # SCALE_OFF): say why, so the row is not just gone
+                facts["at_start"] = ("not compared: the placeholders hold "
+                                     "sample values")
+            else:
+                try:
+                    ex = expected_counts(net_files, times=times, work=work)
+                    observed = [r[1] for r in
+                                read_exp(str(files["data.exp"]))["rows"]]
+                    fact, warn = _scale_note(ex["expected"], observed)
+                    facts["at_start"] = fact
+                    if warn:
+                        warning("SCALE_OFF", warn)
+                except (SandboxError, ValueError, KeyError) as e:
+                    # nothing to compare: say why, so the row is not just gone
+                    facts["at_start"] = f"not compared: {str(e).strip()[:300]}"
     codes = ([finding(c, t) for c, t in zip(pcodes, problems)]
              + [finding(c, t) for c, t in zip(wcodes, warnings)])
     if facts["machine"]:
         codes.append(finding("MACHINE", facts["machine"]))
-    return {"ok": not problems, "problems": problems, "warnings": warnings,
-            "facts": facts, "codes": codes}
+    out = {"ok": not problems, "problems": problems, "warnings": warnings,
+           "facts": facts, "codes": codes}
+    if fill:
+        out["replays"] = _replays(files, out, name)
+    return out
+
+
+def _replays(files: dict, checked: dict, name: str) -> dict:
+    """Ready for replays (library.readiness) of a model that keeps
+    placeholders, from this Check; a failure of the verdict itself is its
+    one finding, never the loss of Check's own report."""
+    try:
+        from app.core import library
+        return library.readiness(files, checked, name)
+    except Exception as e:
+        said = f"the Ready for replays check failed: {e}"[:1500]
+        return {"ready": False, "findings": [finding("CHECK_FAILED", said)],
+                "registered": None}
 
 
 # ------------------------------------------- the model at its written values
