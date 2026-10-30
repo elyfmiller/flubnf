@@ -397,6 +397,12 @@ def parse_conf(text: str) -> list[tuple[str, str]]:
     return out
 
 
+#: what str.splitlines ends a line at and BNG2.pl (Perl, by \n) does not:
+#: PyBNF reads the model through splitlines and writes what it read back
+#: out for BNG2.pl, so a comment could end at one for PyBNF and leave the
+#: rest of its line a statement (the library's LINE_BREAK_NOT_ALLOWED set,
+#: plus a lone \r)
+_BREAKS = re.compile("[\x0b\x0c\x1c\x1d\x1e\x85  ]|\r(?!\n)")
 _BLOCK = re.compile(r"^\s*(begin|end)\s+([A-Za-z_]+(?:\s+[A-Za-z_]+)?)\b",
                     re.IGNORECASE)
 
@@ -572,9 +578,20 @@ def translate_cell(cell: dict) -> Path:
     # relative names (the Sandbox writes them) are the cell's own files
     model_src = model_src if model_src.is_absolute() else d / model_src
     data_src = data_src if data_src.is_absolute() else d / data_src
+    # as written (newline=""): universal newlines would turn a lone \r
+    # into the very line break this refuses
+    with open(model_src, encoding="utf-8", newline="") as f:
+        model = f.read()
+    b = _BREAKS.search(model)
+    if b:
+        raise Untranslatable(
+            f"{model_src.name} line {model.count(chr(10), 0, b.start()) + 1}"
+            f": {b.group()!r} is a line break to PyBNF, which reads the model "
+            "too, and not to BNG2.pl, so the two would read different lines; "
+            "write a newline or a space instead")
     w = d / LWF_DIR
     w.mkdir(exist_ok=True)
-    model = strip_actions(model_src.read_text(encoding="utf-8"))
+    model = strip_actions(model.replace("\r\n", "\n"))
     (w / MODEL_NAME).write_text(model, newline="\n", encoding="utf-8")
     vals, rec = lwf_rows(data_src.read_text(encoding="utf-8"))
     sfx = data_src.stem

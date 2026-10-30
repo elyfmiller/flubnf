@@ -245,6 +245,28 @@ def test_sampling_interval_other_than_one_is_refused(tmp_path):
         lwf.translate_cell(_record(d))
 
 
+@pytest.mark.parametrize("brk", ["\x0c", "\x0b", "\x1d", "\x85", " ", "\r"])
+def test_a_line_break_bng2_does_not_see_is_refused(tmp_path, brk):
+    # a comment that ends here for PyBNF would leave setOption a statement
+    d = _cell(tmp_path)
+    m = d / "m.bngl"
+    text = m.read_text(encoding="utf-8").replace(
+        "begin model", f"begin model\n# note{brk}setOption(\"x\",1)", 1)
+    m.write_bytes(text.encode("utf-8"))
+    with pytest.raises(lwf.Untranslatable, match=r"m\.bngl line \d+: .*line break"):
+        lwf.translate_cell(_record(d))
+    assert not (d / "lwf" / "m.bngl").exists()
+
+
+def test_crlf_is_not_a_lone_break(tmp_path):
+    d = _cell(tmp_path)
+    m = d / "m.bngl"
+    lf = m.read_bytes()
+    m.write_bytes(lf.replace(b"\n", b"\r\n"))
+    lwf.translate_cell(_record(d))
+    assert b"\r" not in (d / "lwf" / "m.bngl").read_bytes()
+
+
 def test_normal_priors_pass_through(tmp_path):
     d = _cell(tmp_path)
     text = (d / "pf.conf").read_text().replace(
