@@ -7,7 +7,9 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 ## Now
 
 - 2026-10-29: the student workspace, designed with Ely (decisions under
-  Decided); nothing is built yet, and building starts when Ely says.
+  Decided). It is built one step at a time, in the order of the steps
+  below, starting with the file formats, and under the rule in UI-KIT.md
+  "Before adding a control".
   Students try beta variants and other configurations of SIHRS, later
   RSV and COVID-19 models, from the Sandbox through to replays, for
   people and scripts alike:
@@ -371,6 +373,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): minimalism. The console is already close to too much
+  to take in, the shipped models' settings most of all, so the student
+  workspace adds as few choices as it can. An experiment asks for a
+  model, a season, a size (smoke, pilot, full) and the Oracle step on or
+  off; the sizes are presets, never separate particle, replicate,
+  location or week fields. New work goes into the tabs that exist, and
+  nothing is added to the shipped models' forms. Each step's review
+  counts what it adds. The rules: UI-KIT.md, "Before adding a control".
 - 2026-10-29 (Ely): the student workspace build changes the Engine
   lane's files directly where the design needs it (`pf.py`, `retro.py`,
   `sandbox.py` and their tests), instead of waiting on the Engine lane.

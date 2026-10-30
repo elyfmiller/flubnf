@@ -27,6 +27,27 @@ The target is at most one short visible line of prose per card, and usually none
 
 When text moves, every fact, number and rule in it moves word for word: a tip can hold rich text (a call block), so nothing the text said is lost. Ids, names, `data-*` hooks, form field names and anything a script or a test reads stay as they are. The tests read the templates as text: search `app/tests` and `tests` for a sentence before changing it, and change a test only where it pins wording you deliberately changed.
 
+## Before adding a control
+
+Ely, 2026-10-29: the console is already close to too much to take in,
+and the shipped models' settings most of all. A tool that can change
+everything is hard to steer, so every new choice has to earn its place.
+
+- **Presets, not settings.** Offer a few named choices that set many
+  values together, such as an experiment's size (smoke, pilot, full),
+  rather than a field for each value.
+- **Existing places first.** New work goes into the tabs that exist, as
+  one button where one will do. A new tab needs Ely's yes.
+- **Nothing added to the shipped models' forms.** A change may hide or
+  remove a setting there, with Ely's yes, but never adds one.
+- **Defaults carry the rest.** A file format has as few required fields
+  as it can, and leaves a value out when it is the default.
+- **The commands mirror the pages.** A `flubnf` command takes no setting
+  that its page lacks (output formats such as `--json` aside).
+- **Count what a change adds.** Every change lists the controls, fields,
+  tabs and options it adds, with the reason for each, and looks for one
+  to take away.
+
 ## Components
 
 Each macro whose explainer can be rich text (links, bold, line breaks) takes it as a call block, as `tip` always has:
