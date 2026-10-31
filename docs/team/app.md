@@ -6,6 +6,59 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-31: student workspace step 5, the runner on the students' Mac
+  Studio, on `dev`
+  ([cbe89c6](https://github.com/elyfmiller/flubnf/commit/cbe89c6)).
+  `flubnf runner`, started by hand in a Terminal of the lab account from
+  the main install, works the queue of the students' experiments
+  (`~/Students/<name>/sandbox/experiments/<id>/` holding `QUEUED`) first
+  in, first out, one at a time, each in a child process that reads and
+  writes only that student's folder; it holds the queue while the
+  install is not a clean `main`, the engine is missing or a
+  Retrospective replay runs. Folders are checked before every job, week
+  and Storage delete; estimates of time and disk; 20 GB kept free;
+  limits by size on time, memory and folder size, the job's processes
+  killed at the first; a stopped or restarted runner queues its job
+  again first; stored weeks kept lean (forecasting samples dropped once
+  the sidecar is checked against them, `samples.dropped.json` marking
+  it). In a student's console there Start and Resume queue and the page
+  shows the place; the main console's Storage lists every student's
+  experiments outside the total, with Delete. Replay bundles now carry
+  each week's `oracle.json`, and an import keeps those weeks' quantiles
+  current, so an imported replay is the shipped side with the Oracle
+  step on or off (before, an imported sidecar always read as stale, so
+  Oracle-on experiments found no imported reference). Engine-lane files
+  changed, as Ely approved: `retro_store.py` (a lean week read from its
+  sidecar; a tree with no marker reads exactly as before) and one line
+  of `retro.py`; `pf.py`, `sandbox.py` and `reclaim.py` unchanged. Ely's
+  answers: a separate runner, a Terminal start with nothing installed,
+  `~/Students`, bundles carrying `oracle.json`. Defaults taken, for Ely
+  to change: the install check holds the queue off a clean `main`; first
+  in, first out with no cap per student; an interrupted week refitted
+  from its start; no Engine-lane hardening of the week runner; lean
+  weeks on the runner only; no Stop for Ely beyond Storage's Delete; the
+  main console's own experiment Start refuses while the runner replays
+  (its weekly run and replays do not); no cap on restart requeues.
+  Accepted limit: a folder swapped for a link while a week fits is
+  caught at the next week, and the runner's own drop and writes check
+  first, but the engine's record write and the segment's scoring still
+  go through the swapped path; on one shared account a student can write
+  another's folder anyway. Tested: the full suite with only the 22
+  failures this Mac already had; Ely's six retro roots read the same
+  through the old and new readers and were not written; on spare
+  consoles with a temporary `~/Students`, a real runner worked three
+  real smokes of 2024-25 from two students against a bundle exported and
+  imported with the new code: Oracle step on 1.272 against the shipped
+  1.219 and off 1.710 against 1.656 (step 4's figures), a stop mid-week
+  queued again first, a 25 s test limit killed and Resume refitted,
+  every week lean (688 KB and 56 KB folders), Storage's Delete and two
+  crafted deletes refused, and phone width. For Ely before students use
+  it: merge to `main`; on the Mac Studio, export each season's replay
+  again and import it; start `flubnf runner` once (its folder is what
+  makes a student's console queue). The Mac Studio's RAM is still
+  unknown (memory limits cap at half of it). Step 6 (commands with
+  `--json`, a guide, CONTRIBUTING, a PR template and the fork-PR check)
+  waits for Ely's go.
 - 2026-10-30 (later): student workspace step 4, experiments and the
   compare page, on `dev`
   ([a1ea679](https://github.com/elyfmiller/flubnf/commit/a1ea679)). The
@@ -41,8 +94,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   and `sihrs-natg` too; a summary is rescored on view when stale (about
   weekly in season); with the Oracle step on, US is compared only with a
   shipped US of the same kind, which no stored season has yet, so it
-  reads n/a. Step 5 (the runner, queue and estimates on the Mac Studio)
-  waits for Ely's go.
+  reads n/a.
 - 2026-10-30: student workspace step 3, the Sandbox side, on `dev`
   ([ed75622](https://github.com/elyfmiller/flubnf/commit/ed75622)). New
   model gains one start, "Oracle SIHRS template, for replays", in the
