@@ -375,6 +375,11 @@ the new console works, the `-old` folders can go in the Recycle Bin.
 
 ## Notes
 
+The lab is testing a second way to get the engine, from public PyBNF, with
+no file to save at all ([ENGINE.md](ENGINE.md#the-public-engine-opt-in)).
+Until the lab tells you otherwise, use the engine file as above: it is the
+engine the weekly forecasts are made with.
+
 The engine you were sent is a **snapshot**, so it does not update itself
 from GitHub. When the engine changes you are sent a newer file: save it in
 Downloads, delete the old `pybnf-pf-….tar.gz` from Downloads so there is

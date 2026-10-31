@@ -167,6 +167,20 @@ def run_zip(run_id: str) -> bytes:
                 (f"{run_id}/priors.conf", files["priors.conf"])]
     pf_out = cell / "out" / "Results" / "PF"
     runs = pf_out / "Runs"
+    # the public engine's run (FLUBNF_ENGINE=public): its lwf.conf and
+    # Results/LWF tables, the forecast and predicted counts only when small
+    from app.core.engines import lwf
+    lwf_out = lwf.results_dir({"dir": str(cell)})
+    if (cell / lwf.LWF_DIR / lwf.CONF_NAME).is_file():
+        entries.append((f"{run_id}/{lwf.CONF_NAME}",
+                        (cell / lwf.LWF_DIR / lwf.CONF_NAME).read_bytes()))
+    for name in ("parameters.txt", "weight_ess.txt", "summary.txt"):
+        if (lwf_out / name).is_file():
+            entries.append((f"{run_id}/{name}", (lwf_out / name).read_bytes()))
+    for name in ("forecasts.txt", "predicted_counts.txt"):
+        p = lwf_out / name
+        if p.is_file() and p.stat().st_size <= _sb.TRAJ_ZIP_MAX:
+            entries.append((f"{run_id}/{name}", p.read_bytes()))
     for p in sorted(runs.glob("params_*.txt")) if runs.is_dir() else []:
         entries.append((f"{run_id}/{p.name}", p.read_bytes()))
     if (pf_out / "ess_0.txt").is_file():

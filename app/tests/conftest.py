@@ -114,6 +114,18 @@ def _app_state_untouched():
 
 
 @pytest.fixture(autouse=True)
+def _private_engine_unless_asked(monkeypatch):
+    """Every test sees the default engine (private) whatever the shell
+    exports; the public engine's tests set FLUBNF_ENGINE themselves."""
+    from app.core.engines import lwf
+    for var in ("FLUBNF_ENGINE", "FLUBNF_PY_ENGINE_PUBLIC", "FLUBNF_ENGINE_LOCK"):
+        monkeypatch.delenv(var, raising=False)
+    lwf._CHECK.clear()
+    lwf._BUILD.clear()
+    lwf._PENDING.clear()
+
+
+@pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
 

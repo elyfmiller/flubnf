@@ -158,6 +158,15 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 - The fork is private: a machine needs GitHub access to it, or the lab's
   `pybnf-pf-2fdadee0.tar.gz` archive. Without the engine only Groundhog runs.
 - A retrospective resumes only on the engine build it was fitted with.
+- The public engine is an opt-in second route until the cutover: public
+  PyBNF at the merge commit 8410f794 (`job_type = lwf`) with bngsim 0.15.1
+  on Python 3.12, from `engine-requirements.txt` by hash, in a venv of its
+  own; `FLUBNF_ENGINE=public` selects it, private is the default
+  ([ENGINE.md](ENGINE.md#the-public-engine-opt-in)). Every round runs on
+  the private engine until the team lead's cutover: acceptance on the lab
+  Mac from 2026-11-05 to about 2026-11-19, a cutover on a Thursday, the
+  earliest 2026-11-19, with the private engine kept as the fallback for two
+  rounds.
 
 ### Naming and the public PyBNF port (agreed 2026-09-30)
 
@@ -171,27 +180,30 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
   Once IBIS exists, do not say "particle filter" unqualified.
 - Production SIHRS fits five parameters (Reff, eps1, phi1, mult, r); notes
   listing seven (with eps2, phi2) are stale.
-- The port is on a local, unpushed branch `feat/particle-filter` of the team
-  lead's PyBNF fork.
+- The port is merged: lanl/PyBNF#985, merge commit 8410f794 on public
+  `main` (2026-10-15). There is no PyBNF release with it yet, so the public
+  route installs a wheel built from that commit.
 
-What does not change now: production keeps its own engine (the pin above,
-installed non-editable, Python 3.10 on the lab Mac) and the console keeps
-writing `pf_*` keys. Rename nothing in FluBNF (model ids, the `pf` key, the
-conf writer, the engine pin) until the team lead starts the migration.
+What does not change before the cutover: production keeps its own engine
+(the pin above) and the console keeps its `pf.*` knob and ledger names, on
+either route: the public route maps them in the conf writer (2026-10-15).
+Rename nothing in FluBNF (model ids, the `pf` key, the knobs) to `lwf_*`.
 
-What the migration will need later:
-- Python 3.12 or newer and bngsim 0.15 or newer (rebuild the engine venv).
-- Conf writer: `pf_*` keys become `lwf_*`; edition-2 confs (`experiment:` and
+The migration (plan v2, 2026-10-15, [team/engine.md](team/engine.md)):
+- Python 3.12 and bngsim 0.15.1, both held all season; a separate venv.
+- Conf writer, public route only: `lwf_*` keys in the conf; edition-2
+  confs (`experiment:` and
   `noise_model <obs> = neg_bin, dispersion = fit r, location = mean,
   cumulative` in place of `objfunc = neg_bin_dynamic` and
   `pf_cumulative_observable`); `pf_seed` becomes `random_seed`;
   `pf_start_time` and `pf_sampling_interval` are retired (gaps need explicit
   NaN rows); `wall_time_fit` exists, off by default.
-- Output readers: check `params_*.txt`, `traj_noise_*`, `ess_*.txt`; names
-  and layout may change.
-- Results will not be byte-identical (new random-number source and
-  likelihood path): show statistical equivalence against the production
-  record on matched cells before switching.
+- Output readers, public route: `Results/LWF/forecasts.txt`,
+  `predicted_counts.txt`, `parameters.txt`, `weight_ess.txt`.
+- Results are not byte-identical (another random-number source): the
+  engine lane's replay found the same forecast draws given the same random
+  inputs, and no score difference with its own (in-house, retrospective);
+  acceptance repeats the comparison through the console before switching.
 
 Engine findings to respect:
 - Choosing the jitter automatically by one-week-ahead predictive score was

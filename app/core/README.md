@@ -6,7 +6,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `engines/pf.py` | SHIPPED | the Oracle SIHRS filter: writes `pf.conf`, runs PyBNF `fit_type=pf` in the engine venv, sharded; engine preflight; a model named by reference (`spec.extra["model"]`: a shipped name, or a library version through `library.resolve` and `replay_conf`) | `retro`, `sandbox`, server, `flubnf/cli.py`, `flubnf/doctor.py` |
+| `engines/pf.py` | SHIPPED | the Oracle SIHRS filter: writes `pf.conf`, runs PyBNF `fit_type=pf` in the engine venv, sharded; engine preflight; a model named by reference (`spec.extra["model"]`: a shipped name, or a library version through `library.resolve` and `replay_conf`). `FLUBNF_ENGINE=public` (opt-in until the cutover) runs public PyBNF's `job_type = lwf` from its own venv instead, with the console's `pf.*` names mapped in the conf writer ([docs/ENGINE.md](../../docs/ENGINE.md#the-public-engine-opt-in)) | `retro`, `sandbox`, server, `flubnf/cli.py`, `flubnf/doctor.py` |
 | `engines/analogue.py` | SHIPPED | the Groundhog: `flubnf.analogue` with the committed FluSurv-NET bank spliced in (`SHIPPED_AUX`) | `retro`, `groundhog`, server |
 
 ## Storage and replay

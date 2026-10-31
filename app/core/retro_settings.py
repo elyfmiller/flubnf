@@ -86,6 +86,14 @@ def engine_build_change(prior_settings, engine: str = "pf",
     had = (prior_settings or {}).get("engine_build") \
         if isinstance(prior_settings, dict) else None
     if not isinstance(had, dict):
+        # a record from before builds were recorded was fitted by the
+        # private engine: it resumes as before there, never on the public one
+        if prior_settings:
+            now = _eb.engine_build() if build is None else build
+            if (now or {}).get("engine") == "public":
+                return ("were fitted before engine builds were recorded, by "
+                        "the private engine; this machine's engine is "
+                        f"{_eb.label(now) or 'the public engine'}")
         return None
     return _eb.change(had, _eb.engine_build() if build is None else build)
 

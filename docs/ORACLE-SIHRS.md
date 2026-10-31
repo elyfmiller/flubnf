@@ -514,7 +514,12 @@ reference cells, saved clouds load both ways, and the extra
 pf keys it drops (`pf_shrink`, `pf_forecast_jitter`, `pf_binom_neff_cap`,
 `pf_mean_scale_column`) are never written by the production conf (only by
 research, two-strain and reporting-model runs). Lab machines stay on
-2fdadee0; bngsim 0.16 is not adopted until measured against 0.15.1.
+2fdadee0; bngsim 0.16 is not adopted until measured against 0.15.1. The
+same Liu-West filter is in public PyBNF as `job_type = lwf` (merge commit
+8410f794): with bngsim 0.15.1 on Python 3.12 it installs beside the private
+engine, in a venv of its own, as an opt-in route (docs/ENGINE.md, "The
+public engine"). Production moves to it only at the team lead's cutover,
+after an acceptance run; until then every round runs on 2fdadee0.
 
 ## 6b. Spread narrowing: the research knob `oracle.narrow`
 

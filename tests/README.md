@@ -11,7 +11,7 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways, and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 
@@ -21,9 +21,10 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; the recorded sums in `test_experiment_summary.py`; `tests/test_sihrs_fit.py` |
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py`; the recorded sums in `test_experiment_summary.py` (the shipped 2024-25 replay) |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
-| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
+| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_engine_public.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
 | `ruff` | the app/ui lint case in `app/tests/test_ui_layout.py` |
+| `FLUBNF_PUBLIC_REAL` (the `public-engine-install` CI job's wheel, lock and certificate) | `tests/test_public_engine_real.py`, the public engine's real install |
 
 `tests/test_reinstall_script.py` fails when run as root (`reinstall.sh` refuses root).
 
@@ -31,7 +32,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 
 | Subject | Files (`test_*.py`) |
 |---|---|
-| Launchers and setup scripts | `engine_bundle`, `launcher_update`, `mac_app_bundle`, `reinstall_script`, `first_run_sparse_hub`, `windows_controlled_folder_access`, `window_backend` |
+| Launchers and setup scripts | `engine_bundle`, `engine_public`, `launcher_update`, `mac_app_bundle`, `reinstall_script`, `first_run_sparse_hub`, `windows_controlled_folder_access`, `window_backend` |
 | SIHRS templates and fit inputs | `min_template`, `sihrs_fit` |
 | Analogue and donor paths | `analogue`, `donor_paths`, `epiweek53` |
 | Oracle SIHRS | `oracle`, `oracle_bank`, `oracle_mix` |

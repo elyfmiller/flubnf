@@ -344,7 +344,8 @@ def _has_report(rid: str | None) -> bool:
 ENGINE_NAME = "Particle-filter engine"
 _CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
                 "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
-                "FLUBNF_PYBNF": ENGINE_NAME}
+                "FLUBNF_PYBNF": ENGINE_NAME,
+                "FLUBNF_PY_ENGINE_PUBLIC": ENGINE_NAME}
 _VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
@@ -359,6 +360,9 @@ _ROW_WORDS = {
     "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
                         "bngsim",
     "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
+    "FLUBNF_PY_ENGINE_PUBLIC": "The public engine's own Python, with "
+                               "lanl/PyBNF and bngsim from "
+                               "engine-requirements.txt",
 }
 
 

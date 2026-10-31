@@ -395,7 +395,7 @@
   {% set fix %}To add {{ "the FluSight data and BioNetGen" if need_hub and need_bng else ("the FluSight data" if need_hub else "BioNetGen") }}, {{ hub_setup_hint() }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix-data", live="") }}
   {% endif %}
-  {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names %}
+  {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names or "FLUBNF_PY_ENGINE_PUBLIC" in missing_names %}
   {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
   {% elif "perl" in missing_names %}
@@ -424,7 +424,7 @@
  {% set ebv = engine_build_view() %}
  {# the engine absent, by the check (its files) or by the probe (both
     parts): one value, as the badge counts it #}
- {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF"]) | list %}
+ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
   {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
   {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}

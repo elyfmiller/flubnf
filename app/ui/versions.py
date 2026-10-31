@@ -120,11 +120,18 @@ def _component_versions() -> dict:
             pass
     out["pybnf"] = out["bngsim"] = "not installed"
     try:
-        from flubnf.settings import PY_ENGINE, PYBNF
-        if Path(PY_ENGINE).exists():
-            r = subprocess.run(
-                [str(PY_ENGINE), "-c", _VERSION_PROBE % (str(PYBNF),)],
-                capture_output=True, text=True, timeout=15)
+        from flubnf.settings import PY_ENGINE, PYBNF, engine_public
+        if engine_public():
+            # the public engine's venv, installed by pip: no checkout on
+            # sys.path, nothing from the environment (-I)
+            from flubnf.settings import py_engine_public
+            py, cmd = py_engine_public(), ["-I", "-c", _VERSION_PROBE.replace(
+                "sys.path.insert(0, %r)\n", "")]
+        else:
+            py, cmd = PY_ENGINE, ["-c", _VERSION_PROBE % (str(PYBNF),)]
+        if Path(py).exists():
+            r = subprocess.run([str(py), *cmd], capture_output=True,
+                               text=True, timeout=15)
             out.update(json.loads(r.stdout.strip() or "{}"))
     except Exception:
         pass

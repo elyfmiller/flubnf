@@ -107,7 +107,24 @@ else
 fi
 
 say "engine venv (pybnf + bngsim)"
-if [ -x "$ENGINE_VENV/bin/python" ] \
+# The public engine's record (setup_engine.sh --public; docs/ENGINE.md) is
+# kept through the rewrite of .flubnf.env below, and says which engine to
+# report on: FLUBNF_ENGINE from this shell first, else the record, else
+# private.
+KEPT="$(grep -E '(^|[[:space:]])(FLUBNF_ENGINE|FLUBNF_PY_ENGINE_PUBLIC)=' "$HERE/.flubnf.env" 2>/dev/null)"
+ROUTE="${FLUBNF_ENGINE:-$( [ -f "$HERE/.flubnf.env" ] && . "$HERE/.flubnf.env" >/dev/null 2>&1; printf '%s' "${FLUBNF_ENGINE:-}" )}"
+PUBPY="${FLUBNF_PY_ENGINE_PUBLIC:-$( [ -f "$HERE/.flubnf.env" ] && . "$HERE/.flubnf.env" >/dev/null 2>&1; printf '%s' "${FLUBNF_PY_ENGINE_PUBLIC:-}" )}"
+PUBPY="${PUBPY:-$HOME/.venvs/flubnf-public/bin/python}"
+if [ "$ROUTE" = public ]; then
+  if [ -x "$PUBPY" ] && "$PUBPY" "$HERE/scripts/engine_lock.py" check >/dev/null 2>&1; then
+    ok "public engine venv ready: ${PUBPY%/bin/python}"
+  else
+    warn "this copy is set to the public engine (FLUBNF_ENGINE=public), and its"
+    warn "venv is not ready. ./setup_engine.sh installs it from"
+    warn "engine-requirements.txt, with no GitHub account; FluBNF.command runs"
+    warn "it next."
+  fi
+elif [ -x "$ENGINE_VENV/bin/python" ] \
    && "$ENGINE_VENV/bin/python" -c "import pybnf, bngsim" 2>/dev/null; then
   ok "engine venv ready: $ENGINE_VENV"
 else
@@ -139,7 +156,8 @@ say "environment"
 ENVF="$HERE/.flubnf.env"
 { echo "export FLUBNF_HUB=\"$HUB\""
   echo "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\""
-  echo "export FLUBNF_PYBNF=\"$PYBNF\""; } > "$ENVF"
+  echo "export FLUBNF_PYBNF=\"$PYBNF\""
+  [ -z "$KEPT" ] || printf '%s\n' "$KEPT"; } > "$ENVF"
 ok "wrote $ENVF  (source it, or add to your shell profile)"
 
 say "doctor"

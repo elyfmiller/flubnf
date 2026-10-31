@@ -33,10 +33,12 @@ from app.ui.versions import RUNNING_SHA, VERSIONS
 # === Forecast pipeline: param harvest, sleep guard, weekly report, _run_all ===
 def _harvest_params(workroot: Path) -> dict:
     """Per-location posterior medians of the fitted PF parameters, pooled
-    across replicates (params_*.txt under each cell's out/Results/PF/Runs),
-    stored as results.json 'params'. Unreadable cells are skipped."""
+    across replicates (params_*.txt under each cell's out/Results/PF/Runs,
+    or the public engine's Results/LWF/parameters.txt), stored as
+    results.json 'params'. Unreadable cells are skipped."""
     import json as _json
     import numpy as _np
+    from app.core.engines import lwf as _lwf
     try:
         cells = _json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     except Exception:
@@ -45,6 +47,16 @@ def _harvest_params(workroot: Path) -> dict:
     for c in cells:
         try:
             loc = c["location"]
+            table = _lwf.parameter_table(c)
+            if table is not None:
+                names, arr = table
+                for j, name in enumerate(names):
+                    col = arr[:, j]
+                    col = col[_np.isfinite(col)]
+                    if col.size:
+                        pooled.setdefault(loc, {}).setdefault(
+                            name.removesuffix("__FREE"), []).append(col)
+                continue
             runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
             for pfile in sorted(runs.glob("params_*.txt")):
                 with open(pfile, encoding="utf-8") as fh:
@@ -455,8 +467,12 @@ def _pf_engine_state() -> str:
 
     Installed-ness is defined once, in app.core.engines.pf.engine_available.
     """
-    from flubnf.settings import PY_ENGINE, PYBNF
+    from flubnf.settings import PY_ENGINE, PYBNF, engine_public
     from app.core.engines import pf as pf_engine
+    if engine_public():
+        # FLUBNF_ENGINE=public: its venv alone (a run's preflight checks it
+        # against the lock); the private venv and fork are not needed
+        return "ready" if pf_engine.engine_available() else "absent"
     if not (PY_ENGINE.exists() and PYBNF.exists()):
         return "absent"
     return "ready" if pf_engine.engine_available() else "broken"
