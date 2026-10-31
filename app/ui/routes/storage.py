@@ -32,7 +32,11 @@ router = APIRouter()
 # The sealed records and the hub clone are never deletable (no control, and
 # refused again on POST); running/paused trees are refused server-side.
 # Every destructive POST requires a confirmation naming exactly what the
-# user saw (name or count); a stale confirmation deletes nothing.
+# user saw (name or count); a stale confirmation deletes nothing. On the
+# runner computer's main console (the students' Mac Studio) the panel also
+# lists the students' experiments, outside the total, each deletable when
+# the runner is not replaying it (app/core/runner.py, imported inside the
+# functions).
 
 @ttlcache.ttl_cache(ttl_s=60.0)
 def _tree_size(path: str) -> int:
@@ -93,6 +97,35 @@ _CATEGORIES = (("workroots", "Run workroots"),
                ("datasets", "Dataset uploads and replays"))
 
 
+def _students_here() -> bool:
+    """Whether this is the runner computer's main console: the computer
+    has a runner (~/Students/.runner) and this console's Sandbox is not
+    in ~/Students (a student's folder, or a clone there the runner does
+    not take, such as one named jane.doe). Only here does Storage list
+    the students' experiments, and delete one. One failed stat off the
+    runner."""
+    from app.core import runner
+    from app.core import sandbox as sb
+    return (runner.state_dir().is_dir()
+            and not runner._in_students(sb.SANDBOX))
+
+
+def _student_experiments() -> dict:
+    """The Student experiments section: runner.storage's rows (sized
+    through _tree_size's cache) and its runner line, each row with the
+    badge its student's card shows (routes/sandbox._experiment_badge)."""
+    from app.core import runner
+    from app.ui.routes.sandbox import _experiment_badge, _runner_job
+    su = runner.storage(size=lambda p: _tree_size(str(p)))
+    state = runner.read_state()
+    for r in su["rows"]:
+        held = ("runner" if _runner_job(state, r["folder"]) == r["id"]
+                else False)
+        r["badge"] = _experiment_badge(r["status"], held, r["queued"],
+                                       r["refused"])
+    return su
+
+
 def _spec_of(spec) -> dict:
     """A ledger spec (JSON text or dict) as a dict; {} when unreadable."""
     import json as _json
@@ -136,7 +169,9 @@ def _storage_inventory() -> dict:
     controls). total_bytes/total_h sum the managed categories only, each
     byte once: a dataset adds its own folder (the upload and its replays),
     its runs being counted as workroots. "cats" splits that total by
-    category (the page's composition bar and legend)."""
+    category (the page's composition bar and legend). "students" holds
+    the students' experiments on the runner computer's main console
+    (_students_here), outside the total; None everywhere else."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
@@ -244,6 +279,7 @@ def _storage_inventory() -> dict:
             cats.append({"key": key, "label": label, "bytes": b,
                          "size_h": retro.human_bytes(b)})
     inv["cats"] = cats
+    inv["students"] = _student_experiments() if _students_here() else None
     return inv
 
 
@@ -383,6 +419,26 @@ def _storage_target(kind: str, ident: str):
             return None, _busy_why(kind, ident)
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
+    elif kind == "experiment" and _students_here():
+        # <name>/<id>: a / belongs to neither a folder's name nor an id
+        from app.core import experiments as X
+        from app.core import runner
+        from app.core.problem_codes import Refusal
+        name, _sep, eid = (ident or "").partition("/")
+        if name not in runner.folders() or not X._ID_RE.fullmatch(eid):
+            return None, "Unrecognized student experiment."
+        try:
+            runner.check(name, eid)
+        except Refusal as e:
+            return None, f"{e.findings[0]['text']}."
+        row = next((r for r in runner.storage(size=lambda q: 0)["rows"]
+                    if r["ident"] == ident), None)
+        if row is None:
+            return None, "Nothing is on disk under that name."
+        if row["busy"]:
+            return None, row["why"]
+        base = runner.folder(name) / "experiments"
+        p = base / eid
     else:
         return None, "Unrecognized storage kind."
     # Containment by construction (separator-free identifiers). Not resolved
@@ -422,7 +478,8 @@ def storage_delete(request: Request, kind: str = Form(""),
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
-            "report-archive": "report archive"}.get(kind, "entry")
+            "report-archive": "report archive",
+            "experiment": "student experiment"}.get(kind, "entry")
     tail = ("Its ledger row remains as the run's record."
             if kind == "workroot" else "")
     _flash(f"Deleted the {noun} {ident}: {size_h} freed.", "ok", detail=tail)

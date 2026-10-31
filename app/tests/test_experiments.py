@@ -2,8 +2,10 @@
 the derived id, the fingerprint, the size presets and their week rules,
 the shipped replay an experiment is compared with, the plan, the replay
 itself (run_week faked, and once the real prepare on
-test_prepare_golden.py's hub), run and its summary at every segment end,
-preflight, status, find, the list, delete and the season offered.
+test_prepare_golden.py's hub) and the call after every week, run and its
+summary at every segment end, preflight, status and the queue flag, find
+(in root() or another experiments folder), the list, delete, the season
+offered, and stale kept to the retro root it is given.
 
 The calendar is the literal 2024-25 one and the shipped replays are
 synthetic trees: the suite reads no hub (the truth a run scores against
@@ -793,6 +795,41 @@ def test_a_cancelled_start_fits_nothing(season, truth, monkeypatch):
     assert [c["asof"] for c in calls] == SMOKE_WEEKS[:1]
 
 
+def test_after_week_is_called_after_every_week(season, truth, monkeypatch):
+    seen = []
+    calls = _weeks_run(monkeypatch, _sidecar)
+    X.run({"model": "sihrs", "season": "2024-25"}, retro_root=season,
+          after_week=seen.append)
+    assert [c["asof"] for c in calls] == seen == SMOKE_WEEKS
+    # a resume skips the stored weeks, and each is still passed to it
+    seen.clear()
+    calls = _weeks_run(monkeypatch)
+    X.replay({"model": "sihrs", "season": "2024-25"}, retro_root=season,
+             after_week=seen.append)
+    assert calls == [] and seen == SMOKE_WEEKS
+    # a week that fails is passed to it too
+
+    def fails(root, season, asof, *a, **k):
+        raise RuntimeError("no fit")
+    monkeypatch.setattr(retro, "run_week", fails)
+    seen.clear()
+    X.replay({"model": "sihrs", "season": "2024-25", "oracle": False},
+             retro_root=season, after_week=seen.append)
+    assert seen == SMOKE_WEEKS
+    # none given: run_season is called as step 4 called it
+    given = {}
+    real = retro.run_season
+
+    def run_season(*a, **k):
+        given.update(k)
+        return real(*a, **k)
+    monkeypatch.setattr(retro, "run_season", run_season)
+    _weeks_run(monkeypatch)
+    X.run({"model": "sihrs", "season": "2024-25", "size": "pilot"},
+          retro_root=season)
+    assert given["progress"] is None
+
+
 def test_a_model_changed_mid_season_is_a_failure_of_the_later_weeks(
         season, truth, monkeypatch):
     from app.tests.test_library import _by_hand
@@ -988,9 +1025,32 @@ def test_status_counts_weeks_fits_and_eta(sandbox_root):
     # no record yet
     assert X.status(X.root() / "none") == {
         "status": "", "error": "", "stop_reason": "", "weeks_total": 0,
-        "weeks_done": 0, "complete": False, "week": None, "fits_done": 0,
-        "fits_total": 0, "elapsed_s": 0.0, "eta_s": None,
+        "weeks_done": 0, "complete": False, "queued": False, "week": None,
+        "fits_done": 0, "fits_total": 0, "elapsed_s": 0.0, "eta_s": None,
         "started_utc": None, "finished_utc": None}
+
+
+def test_status_says_queued_while_the_flag_stands(sandbox_root):
+    folder = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    assert X.status(folder)["queued"] is False
+    (folder / X.QUEUED).write_bytes(b"")
+    st = X.status(folder)
+    assert (st["queued"], st["status"]) == (True, "done")
+    # a record under way is the runner's: claimed, no longer waiting
+    meta = retro.read_meta(folder)
+    retro.write_meta(folder, {**meta, "status": "running",
+                              "heartbeat_utc": time.time(),
+                              "pid": os.getpid()})
+    assert X.status(folder)["queued"] is False
+    # queued before any record
+    fresh = _folder({"model": "sihrs", "season": "2024-25", "size": "pilot"})
+    (fresh / X.QUEUED).write_bytes(b"")
+    st = X.status(fresh)
+    assert (st["queued"], st["status"]) == (True, "")
+    # a folder in the flag's place is no flag
+    (fresh / X.QUEUED).unlink()
+    (fresh / X.QUEUED).mkdir()
+    assert X.status(fresh)["queued"] is False
 
 
 # ------------------------------------------- find, the list and delete
@@ -1042,6 +1102,26 @@ def test_find_and_the_list_read_only_valid_folders(sandbox_root):
         assert X.find(eid) is None, eid
 
 
+def test_find_looks_in_another_experiments_folder(sandbox_root, tmp_path):
+    import shutil
+    a = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    under = tmp_path / "Students" / "alice" / "sandbox" / "experiments"
+    b = under / a.name
+    shutil.copytree(a, b)
+    assert X.find(a.name) == X.find(a.name, under=X.root()) == a
+    assert X.find(a.name, under=under) == b
+    assert X.find(a.name, under=tmp_path / "none") is None
+    # the same tests as in root()
+    (under / "no-settings").mkdir()
+    wrong = under / "sihrs_2024-25_full"
+    wrong.mkdir()
+    L.write_json(wrong / X.SETTINGS, {"model": "sihrs", "season": "2024-25"})
+    for eid in ("no-settings", wrong.name, "../alice", "a/b", "", ".x",
+                a.name.upper(), "x" * 300, None):
+        assert X.find(eid, under=under) is None, eid
+    assert not (tmp_path / "none").exists()
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"),
                     reason="no named pipes here (and links need rights)")
 def test_a_pipe_or_a_link_is_never_an_experiment(sandbox_root, tmp_path):
@@ -1062,7 +1142,8 @@ def test_a_pipe_or_a_link_is_never_an_experiment(sandbox_root, tmp_path):
 
     def go():
         out["ids"] = [r["id"] for r in X.list_experiments()]
-        out["found"] = [X.find(pipe.name), X.find(link.name)]
+        out["found"] = [X.find(pipe.name), X.find(link.name),
+                        X.find(link.name, under=X.root())]
         for eid in (pipe.name, link.name):
             try:
                 X.delete(eid)
@@ -1072,7 +1153,7 @@ def test_a_pipe_or_a_link_is_never_an_experiment(sandbox_root, tmp_path):
     t.start()
     t.join(10)
     assert not t.is_alive(), "a pipe for experiment.json hung the read"
-    assert out == {"ids": [a.name], "found": [None, None], "refused": [
+    assert out == {"ids": [a.name], "found": [None, None, None], "refused": [
         f"no experiment is named '{pipe.name}'",
         f"no experiment is named '{link.name}'"]}
     assert (elsewhere / X.SETTINGS).is_file() and link.is_symlink()
@@ -1124,6 +1205,44 @@ def test_the_reference_by_start_time(tmp_path):
     # a run record whose settings are not an object is passed by
     retro.write_meta(live, {"started_utc": 1_790_200_000.0, "settings": "pf"})
     assert X.reference(rr, "2024-25", True, SMOKE_WEEKS)["root"] == old
+
+
+def test_stale_keeps_the_shipped_replay_inside_the_retro_root(
+        sandbox_root, tmp_path, monkeypatch):
+    from app.tests.test_experiment_summary import (WEEKS, _age, _experiment,
+                                                   _hub, _q, _shipped_root)
+    _hub(tmp_path, monkeypatch)
+    rr = tmp_path / "retro"
+    _shipped_root(rr, null={w: _q(12.0) for w in WEEKS})
+    folder = _experiment({w: _q(10.0) for w in WEEKS})
+    _age(folder, rr)
+    X.score(folder, retro_root=rr)
+    assert X.stale(folder) == X.stale(folder, retro_root=rr) == ""
+    assert X.stale(folder, retro_root=str(rr)) == ""
+    moved = "the shipped replay it was compared with moved"
+    assert X.stale(folder, retro_root=tmp_path / "elsewhere") == moved
+    # a summary naming a root through "..", or outside the retro root: it
+    # reads as moved, and nothing under it is read
+    summary = folder / X.SUMMARY
+    obj = json.loads(summary.read_text(encoding="utf-8"))
+    read = []
+    real_meta, real_newest = X._meta, X._newest
+    monkeypatch.setattr(X, "_meta", lambda f: read.append(Path(f))
+                        or real_meta(f))
+    monkeypatch.setattr(X, "_newest", lambda f: read.append(Path(f))
+                        or real_newest(f))
+    for bad in (str(rr / "x" / ".." / "2024-25"), str(rr / ".."),
+                str(tmp_path / "2024-25"), "../../retro/2024-25", str(rr)):
+        L.write_json(summary, {**obj, "shipped": {**obj["shipped"],
+                                                  "root": bad}})
+        read.clear()
+        assert X.stale(folder, retro_root=rr) == moved, bad
+        assert set(read) == {folder}, bad
+    # without the retro root, as step 4 read it
+    L.write_json(summary, {**obj, "shipped": {**obj["shipped"],
+                                              "root": str(tmp_path / "x")}})
+    read.clear()
+    assert X.stale(folder) == moved and tmp_path / "x" in read
 
 
 def test_default_season_is_the_newest_live_shipped_replay(tmp_path,

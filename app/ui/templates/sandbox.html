@@ -108,7 +108,9 @@
   {# one model replayed over one season at a preset size, compared with
      the shipped replay (routes/sandbox.py, experiments): the four
      choices, Start, and the experiments here, each opening its page.
-     sandbox.js sets the Oracle step from the chosen model #}
+     sandbox.js sets the Oracle step from the chosen model. In a
+     student's folder on the runner computer Start queues (exp.queues),
+     so it carries no guard #}
   <div class="card">{{ tips.heading("Experiments", "sb-exp") }}
    {% if exp and vintages and locations %}
    <form method="post" action="/sandbox/experiments">
@@ -128,7 +130,7 @@
      <span><label for="sbexp-oracle">Oracle step</label>
       <select id="sbexp-oracle" name="oracle"><option value="on"{% if exp.pick.oracle %} selected{% endif %}>on</option><option value="off"{% if not exp.pick.oracle %} selected{% endif %}>off</option></select></span>
     </div>
-    <div class="row"><button class="gold" data-guard="sandbox-run">Start</button></div>
+    <div class="row"><button class="gold"{% if not exp.queues %} data-guard="sandbox-run"{% endif %}>Start</button></div>
    </form>
    {% elif exp %}<p class="hint">Experiments replay the FluSight hub's seasons: update data on the Data tab first.</p>{% endif %}
    {% if exp and exp.rows %}<div class="sbscroll"><table class="kv"><thead><tr><th>experiment</th><th>status</th><th>relWIS</th></tr></thead><tbody>

@@ -1,8 +1,14 @@
 """Export and import of a replayed season (app/core/replay_bundle).
 
   * a bundle round-trips: the imported archived root holds byte-identical
-    run record, scores, quantiles and samples, and nothing from the
-    playback cache or a report;
+    run record, scores, quantiles, each week's oracle.json and samples,
+    and nothing from the playback cache, a report or the donor bank; an
+    imported replay is then the shipped side of an experiment with the
+    Oracle step on or off (a week carrying oracle.json keeps its current
+    quantiles current; a stale one is not carried), and a bundle without
+    oracle.json imports as before;
+  * a second export offers the earlier bundle only when it carries the
+    same files;
   * the manifest pins every member's sha256 and size; a tampered member, a
     path outside the bundle, a missing or unlisted member, a foreign
     format and a malformed season are each refused with one sentence;
@@ -16,6 +22,7 @@
 import hashlib
 import io
 import json
+import os
 import shutil
 import sys
 import zipfile
@@ -28,8 +35,10 @@ from typer.testing import CliRunner
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                             # noqa: E402
+from app.core import experiments as X                        # noqa: E402
 from app.core import replay_bundle as rb                     # noqa: E402
 from app.core import retro                                   # noqa: E402
+from app.core import retro_store as RS                       # noqa: E402
 from app.ui import server as srv                             # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
@@ -250,6 +259,150 @@ def test_imported_label_reads_from_the_marker(tmp_path):
     (root / rb.IMPORTED_MARK).write_text(json.dumps(
         {"from": "lab-mac", "imported_at": "2098-03-01T10:00:00Z"}))
     assert rb.imported_label(root) == "imported from lab-mac on 2098-03-01"
+
+
+# ---------------------------------------------------------- oracle.json
+
+
+def _oracle_json(root: Path, asof: str, value: float) -> Path:
+    """A week's oracle.json as the Oracle step writes it, the Liu-West
+    filter's own quantiles in it."""
+    p = root / "weeks" / asof / RS.ORACLE_NAME
+    p.write_text(json.dumps({"applied": True, "quantiles": {
+        "levels": [0.5], "null": {"Ohio": {"0": {"unrounded": [value]}}}}}),
+        encoding="utf-8", newline="\n")
+    return p
+
+
+def test_a_bundle_carries_each_weeks_oracle_json(tmp_path):
+    rr = tmp_path / "retro"; rr.mkdir()
+    root = _season_tree(rr, SEASON)
+    for i, w in enumerate((W1, W2)):
+        _oracle_json(root, w, 3.0 + i)
+    bank = root / "weeks" / W1 / "oracle_bank"
+    bank.mkdir()
+    (bank / "donors.json").write_text("{}", encoding="utf-8", newline="\n")
+    assert rb.bundle_files(root) == [
+        "run_meta.json", "scores.json",
+        f"weeks/{W1}/oracle.json", f"weeks/{W1}/samples.json",
+        f"weeks/{W2}/oracle.json", f"weeks/{W2}/samples.json"]
+    r = rb.import_bundle(_export(tmp_path, rr), tmp_path / "other")
+    got = _files(r.root)
+    got.pop(rb.IMPORTED_MARK)
+    src = _files(root)
+    assert got == {f: src[f] for f in rb.bundle_files(root)}
+    assert not (r.root / "weeks" / W1 / "oracle_bank").exists()
+    for w in (W1, W2):
+        filtered = RS.filter_quantiles(root / "weeks" / w)
+        assert filtered and RS.filter_quantiles(r.root / "weeks" / w) == \
+            filtered
+
+
+def test_an_imported_replay_is_the_reference_with_the_step_on_or_off(
+        tmp_path):
+    from test_experiments import SMOKE_WEEKS, _replay
+    rr = tmp_path / "retro"
+    _replay(rr / "2024-25", weeks=SMOKE_WEEKS)
+    p = rb.export_season(rr / "2024-25", "2024-25", tmp_path / "out")
+    r = rb.import_bundle(p, tmp_path / "other")
+    ref = X.reference(tmp_path / "other", "2024-25", False, SMOKE_WEEKS)
+    assert (ref["root"], ref["member"]) == (r.root, RS.FILTER_MEMBER)
+    # the step on reads the quantiles, which landed before the samples
+    # and were made current: the Oracle SIHRS, as at the source
+    ref = X.reference(tmp_path / "other", "2024-25", True, SMOKE_WEEKS)
+    assert (ref["root"], ref["member"]) == (r.root, "pf")
+    for w in SMOKE_WEEKS:
+        assert (RS.read_week_quantiles(r.root / "weeks" / w)
+                == RS.read_week_quantiles(rr / "2024-25" / "weeks" / w))
+    # a bundle without oracle.json, as one exported before: none either
+    # way, its quantiles left older than its samples as they always were
+    retro.delete_tree(rr / "2024-25")
+    _replay(rr / "2024-25", weeks=SMOKE_WEEKS, filter_=False)
+    p = rb.export_season(rr / "2024-25", "2024-25", tmp_path / "out2")
+    r = rb.import_bundle(p, tmp_path / "third")
+    for oracle in (False, True):
+        assert X.reference(tmp_path / "third", "2024-25", oracle,
+                           SMOKE_WEEKS) is None
+    assert all(RS.read_week_quantiles(r.root / "weeks" / w) is None
+               for w in SMOKE_WEEKS)
+
+
+def test_a_stale_sidecar_is_not_carried(tmp_path):
+    from test_experiments import SMOKE_WEEKS, _replay
+    root = _replay(tmp_path / "retro" / "2024-25", weeks=SMOKE_WEEKS)
+    old, new = (root / "weeks" / w for w in SMOKE_WEEKS)
+    t = (old / RS.SAMPLES_JSON).stat().st_mtime - 60
+    os.utime(old / RS.QUANTILES_NAME, (t, t))      # its samples rewritten
+    assert RS.read_week_quantiles(old) is None
+    files = rb.bundle_files(root)
+    assert f"weeks/{old.name}/{RS.QUANTILES_NAME}" not in files
+    assert f"weeks/{new.name}/{RS.QUANTILES_NAME}" in files
+    assert f"weeks/{old.name}/{RS.ORACLE_NAME}" in files
+    p = rb.export_season(root, "2024-25", tmp_path / "out")
+    r = rb.import_bundle(p, tmp_path / "other")
+    assert not (r.root / "weeks" / old.name / RS.QUANTILES_NAME).exists()
+    assert RS.read_week_quantiles(r.root / "weeks" / new.name) is not None
+
+
+def test_a_bundle_without_oracle_json_imports_as_before(tmp_path):
+    rr = tmp_path / "retro"; rr.mkdir()
+    root = _season_tree(rr, SEASON)
+    for w in (W1, W2):
+        _oracle_json(root, w, 3.0)
+    p = _export(tmp_path, rr)
+
+    def older(n, d):
+        """The bundle as FluBNF exported it before it carried oracle.json."""
+        if n.endswith("/" + RS.ORACLE_NAME):
+            return None
+        if n == rb.MANIFEST:
+            m = json.loads(d)
+            m["files"] = {f: e for f, e in m["files"].items()
+                          if not f.endswith("/" + RS.ORACLE_NAME)}
+            m["total_bytes"] = sum(e["bytes"] for e in m["files"].values())
+            return n, json.dumps(m).encode()
+        return n, d
+    old = _rezip(p, tmp_path / "old.zip", older)
+    r = rb.import_bundle(old, tmp_path / "other")
+    assert r.weeks == [W1, W2]
+    got = _files(r.root)
+    got.pop(rb.IMPORTED_MARK)
+    src = _files(root)
+    assert got == {f: src[f] for f in ("run_meta.json", "scores.json",
+                                       f"weeks/{W1}/samples.json",
+                                       f"weeks/{W2}/samples.json")}
+
+
+def test_a_bundle_is_offered_again_only_with_the_same_files(tmp_path):
+    rr = tmp_path / "retro"; rr.mkdir()
+    root = _season_tree(rr, SEASON)
+    first = _export(tmp_path, rr)
+    assert _export(tmp_path, rr) == first
+    # oracle.json older than the bundle, which lacks it: a new bundle
+    t = first.stat().st_mtime - 100
+    for w in (W1, W2):
+        os.utime(_oracle_json(root, w, 3.0), (t, t))
+    second = _export(tmp_path, rr)
+    assert second != first and first.is_file()
+    assert f"weeks/{W1}/oracle.json" in rb.inspect_bundle(second)["files"]
+    assert _export(tmp_path, rr) == second
+
+
+@pytest.mark.skipif(os.name == "nt", reason="links need rights on Windows")
+def test_a_linked_oracle_json_is_not_carried(tmp_path):
+    rr = tmp_path / "retro"; rr.mkdir()
+    root = _season_tree(rr, SEASON)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    real = _oracle_json(root, W2, 3.0)
+    os.replace(real, elsewhere / RS.ORACLE_NAME)
+    os.symlink(elsewhere / RS.ORACLE_NAME, real)
+    _oracle_json(root, W1, 4.0)
+    files = rb.bundle_files(root)
+    assert f"weeks/{W1}/oracle.json" in files
+    assert f"weeks/{W2}/oracle.json" not in files
+    r = rb.import_bundle(_export(tmp_path, rr), tmp_path / "other")
+    assert not os.path.lexists(r.root / "weeks" / W2 / RS.ORACLE_NAME)
 
 
 # ---------------------------------------------------------------- the UI

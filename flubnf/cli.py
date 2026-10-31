@@ -10,7 +10,8 @@ Sections, in file order:
   3. ports: candidates, reuse flags, pick/bind
   4. macOS window: activation retries, app naming, zoom API, watchdog,
      WebView2 probe
-  5. the `app` and `window` commands and _exit_now
+  5. the `app` and `window` commands and _exit_now; `runner` (the
+     student experiment queue, app/core/runner.py)
   6. the mounted groups: cli_doctor (doctor, knobs), cli_retro (retro,
      groundhog), cli_verify (oracle, site), cli_bank, cli_datasets
 
@@ -37,7 +38,8 @@ from typer.core import TyperGroup
 HELP_PANELS = {
     "Console": ("app", "window", "doctor", "engine-update", "knobs",
                 "dataset"),
-    "Replay & verification": ("retro", "groundhog", "oracle", "site"),
+    "Replay & verification": ("retro", "groundhog", "oracle", "site",
+                              "runner"),
     "Donor banks": ("bank",),
 }
 
@@ -1334,6 +1336,14 @@ def _exit_now(*cleanups) -> None:
         except Exception:
             pass
     os._exit(0)
+
+
+@app.command("runner")
+def runner_serve():
+    """Work the student experiment queue on this computer, one job at a
+    time, until stopped (the students' Mac Studio)."""
+    from app.core import runner
+    raise typer.Exit(runner.serve())
 
 
 # ---------------------------------------------------------------------------

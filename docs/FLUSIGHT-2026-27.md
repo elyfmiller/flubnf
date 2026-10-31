@@ -149,6 +149,8 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 - `flubnf knobs ...`: settings; changed settings without an override write
   `<model_id>-modified` files, which are not hub names.
 - `flubnf retro <season>` / `flubnf groundhog retro all --aux flusurv`: replays.
+- `flubnf runner`: the student experiment queue, on the students' Mac Studio
+  only (docs/SANDBOX.md section 7).
 - There is no CLI for the weekly run or the submission; use the console.
 
 ### Engine

@@ -25,10 +25,10 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `routes/shell.py` | no tab: the endpoints `base.html` itself uses (versions poller, favicon, busy guard) | support modules |
 | `routes/home.py` | Home: the outlook and its cache, cold-start readiness (`home.html`) | support modules |
 | `routes/data.py` | Data: the TTL-cached vintage readers, `_data_context` (also `datasets_ui.py`'s), hub pull, freshness (`data.html`) | support modules |
-| `routes/storage.py` | Storage: the disk inventory, the ledger, delete, clear and reclaim (`runs.html`) | support modules |
+| `routes/storage.py` | Storage: the disk inventory, the ledger, delete, clear and reclaim (`runs.html`); on the runner computer's main console only, the students' experiments by folder, outside the total (`app/core/runner.py`) | support modules |
 | `routes/forecast.py` | Forecast: POST `/run` and the builders of its spec, stop, the progress and series APIs, the run pages (`forecast.html`, `run.html`) | support modules, `routes/data.py`, `routes/output.py` |
 | `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt, and the page's reload check (`output_stamp`) (`output.html`) | support modules |
-| `routes/sandbox.py` | Sandbox (`sandbox.html`) and its experiments (`sandbox_experiment.html`: start, the compare page and its JSON, delete, and the scoring job each folder runs), with the sandbox engine guard (middleware) and the Storage panel's sandbox line (`sandbox_storage`) | support modules, `routes/data.py` |
+| `routes/sandbox.py` | Sandbox (`sandbox.html`) and its experiments (`sandbox_experiment.html`: start, the compare page and its JSON, delete, and the scoring job each folder runs; in a student's folder on the runner computer Start queues for `app/core/runner.py` and the page shows the queue), with the sandbox engine guard (middleware) and the Storage panel's sandbox line (`sandbox_storage`) | support modules, `routes/data.py` |
 | `routes/models.py` | Models (`model.html`) | support modules |
 | `routes/methods.py` | Methods (`methods.html`) | support modules |
 | `routes/retro.py` | Retrospective: the index and its APIs, the run controls and the season worker (`_retro_bg`), the season page with its playback, map swap and report APIs (`retro.html`, `retro_season.html`) | support modules |
@@ -103,7 +103,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/storage`, `/runs` | `routes/storage.py` | `runs_page` | `runs.html` | nav |
 | GET | `/api/storage/reclaim` | `routes/storage.py` | `api_storage_reclaim` | | `runs.html` fetch |
 | POST | `/storage/reclaim` | `routes/storage.py` | `storage_reclaim` | | `runs.html` `#reclaim-form` |
-| POST | `/storage/delete` | `routes/storage.py` | `storage_delete` | | `runs.html` forms |
+| POST | `/storage/delete` (`kind=experiment`, `ident=<name>/<id>`: a student experiment, on the runner computer's main console only) | `routes/storage.py` | `storage_delete` | | `runs.html` forms |
 | POST | `/storage/clear-workroots` | `routes/storage.py` | `storage_clear_workroots` | | `runs.html` `#clear-workroots` |
 | POST | `/storage/datasets/{id}/delete` | `datasets_ui.py` | `storage_delete` (the dataset, its replays and its runs' workroots; the name confirms) | redirect | `runs.html` Your datasets forms |
 | POST | `/runs/clear` | `routes/storage.py` | `runs_clear` | | `runs.html` `#clear-ledger` |
@@ -118,15 +118,15 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/register` (save, then register for replays; the exact name only), `/delete` | `routes/sandbox.py` | `sandbox_save`, `sandbox_model_run`, `sandbox_register`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form (Register: Check's Ready for replays line, `static/sandbox.js`) |
 | POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `routes/sandbox.py` | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
 | POST | `/sandbox/run` (alias) | `routes/sandbox.py` | `sandbox_run` | redirect | scripts |
-| POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` (`experiment=`: an experiment's Stop) | `routes/sandbox.py` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect (`experiment=` with `Accept: application/json`: JSON) | results card; the guard modal; `sandbox_experiment.html` |
+| POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` (`experiment=`: an experiment's Stop; in a student's folder on the runner computer it takes a queued one out of the queue) | `routes/sandbox.py` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect (`experiment=` with `Accept: application/json`: JSON) | results card; the guard modal; `sandbox_experiment.html` |
 | POST | `/sandbox/runs/{run_id}/oracle` (the Oracle step on an unedited Oracle SIHRS start; sandbox only) | `routes/sandbox.py` | `sandbox_run_oracle` | redirect | results card |
 | GET | `/sandbox/models/{name}/download`, `/sandbox/runs/{run_id}/download` (localhost Host only) | `routes/sandbox.py` | `sandbox_model_download`, `sandbox_run_download` | zip | workbench |
 | POST | `/api/sandbox/models/{name}/check` | `routes/sandbox.py` | `api_sandbox_check` | JSON | `static/sandbox.js` |
 | GET | `/api/sandbox/models/{name}/contactmap`, `/network` | `routes/sandbox.py` | `api_sandbox_contactmap`, `api_sandbox_network` | | `sandbox_views.html` (drawn by `static/model-views.js`; cached by the model text) |
 | GET | `/api/sandbox/runs/{run_id}` | `routes/sandbox.py` | `api_sandbox_run` | | `static/sandbox.js` poll |
-| POST | `/sandbox/experiments` (`model`, `season`, `size`, `oracle`: the four choices, no other field) | `routes/sandbox.py` | `sandbox_experiment_start` | redirect, or JSON with `Accept: application/json` | `sandbox.html` Experiments card; Resume on `sandbox_experiment.html` |
+| POST | `/sandbox/experiments` (`model`, `season`, `size`, `oracle`: the four choices, no other field; in a student's folder on the runner computer it queues, and the JSON adds `queued`) | `routes/sandbox.py` | `sandbox_experiment_start` | redirect, or JSON with `Accept: application/json` | `sandbox.html` Experiments card; Resume on `sandbox_experiment.html` |
 | GET | `/sandbox/experiments/{eid}` | `routes/sandbox.py` | `sandbox_experiment_page` | `sandbox_experiment.html` | the Experiments card's list |
-| GET | `/api/sandbox/experiments/{eid}` | `routes/sandbox.py` | `api_sandbox_experiment` | | `static/sandbox.js` poll; scripts |
+| GET | `/api/sandbox/experiments/{eid}` (`queued`: its place in the runner's queue, or null) | `routes/sandbox.py` | `api_sandbox_experiment` | | `static/sandbox.js` poll; scripts |
 | POST | `/sandbox/experiments/{eid}/delete` (`confirm=<eid>`) | `routes/sandbox.py` | `sandbox_experiment_delete` | redirect, or JSON | `sandbox_experiment.html` |
 | **Shell** (no tab: the endpoints `base.html` itself uses) | | | | | |
 | GET | `/api/versions` | `routes/shell.py` | `api_versions` | | `base.html` versions poller |
