@@ -1,0 +1,132 @@
+{% extends "base.html" %}{% block title %}FluBNF · Experiment {{ id }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/sandbox.css"><script defer src="/static/sandbox.js"></script>{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
+{# One experiment (routes/sandbox.py _experiment_view): its four choices,
+   its replay while it runs (the weeks, the line, Stop; sandbox.js polls
+   /api/sandbox/experiments/<id>), its state and Resume, then its scores
+   against the shipped replay. Every figure is read from summary.json
+   through experiments.figures: the page only formats them. #}
+{% set SCORES_TIP = "relWIS: this model's summed WIS over the FluSight baseline's on the same cells; below 1 beats the baseline. Log relWIS: the same on log(x + 1) counts, so small states weigh more. Coverage: the share of cells whose truth fell inside each central interval; a calibrated forecast sits near 50, 80 and 95%. vs shipped: this model's summed WIS over the shipped replay's on the same cells; below 1 beats it. Only cells both sides scored are compared, and US stays apart from the pooled figures." %}
+{% set s, st = settings, status %}
+{% set d, W = st.weeks_done, st.weeks_total %}
+{# a time as a summary records it (2026-11-04T15:22:05Z), read as UTC #}
+{% macro utc(iso) %}{{ (iso or "") | replace("T", " ") | replace("Z", "") }}{% endmacro %}
+{# a ratio of sums: below 1 beats what it is over, said by an icon too #}
+{% macro ratio(v, beats="beats the baseline", loses="does not beat the baseline") -%}
+{%- if v is none %}n/a{% else %}<span class="relwis {{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f" | format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", beats if v < 1 else loses) }}{% endif -%}
+{%- endmacro %}
+{% macro cov(c, band) -%}
+{%- set v = c[band] if c else none %}{% set cs = cov_state(v, band) %}<td class="num{% if cs %} cov-{{ cs }}{% endif %}">{{ cov_text(v) }}</td>
+{%- endmacro %}
+{% macro side(name, f) -%}
+<tr><th scope="row">{{ name }}</th><td class="num">{{ ratio(f.rel) }}</td><td class="num">{{ ratio(f.log_rel) }}</td>{% for b in ("50", "80", "95") %}{{ cov(f.cov, b) }}{% endfor %}</tr>
+{%- endmacro %}
+{# the headline's three rows: this model, the shipped replay, and the one
+   over the other #}
+{% macro three(g, model, shipped_name) -%}
+{{ side(model, g.model) }}
+{%- if g.shipped %}
+{{ side("Shipped: " ~ shipped_name, g.shipped) }}
+<tr><th scope="row">{{ model }} vs shipped</th><td class="num">{{ ratio(g.vs_shipped.wis, "beats the shipped replay", "does not beat the shipped replay") }}</td><td class="num">{{ ratio(g.vs_shipped.log_wis, "beats the shipped replay", "does not beat the shipped replay") }}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+{%- endif %}
+{%- endmacro %}
+{# a group's relWIS and 95% coverage, as the season page's per-state table #}
+{% macro cells(f) -%}
+{%- set v = f.rel if f else none -%}
+<td class="num{% if v is not none and v >= 1 %} bad{% endif %}">{{ "%.3f" | format(v) if v is not none else "n/a" }}{% if v is not none and v >= 1 %}{{ tips.icon("warning", "does not beat the baseline") }}{% endif %}</td>{{ cov(f.cov if f else none, "95") }}
+{%- endmacro %}
+{% macro groups(head, rows, model, shipped_name) -%}
+<div class="sbscroll"><table class="compact"><thead><tr><th rowspan="2" scope="col">{{ head }}</th><th colspan="2" scope="colgroup">{{ model }}</th>{% if shipped_name %}<th colspan="2" scope="colgroup">Shipped: {{ shipped_name }}</th>{% endif %}</tr>
+<tr><th class="num">relWIS</th><th class="num">95%</th>{% if shipped_name %}<th class="num">relWIS</th><th class="num">95%</th>{% endif %}</tr></thead><tbody>
+{%- for k, g in rows %}<tr><td>{{ k }}</td>{{ cells(g.model if g else none) }}{% if shipped_name %}{{ cells(g.shipped if g else none) }}{% endif %}</tr>{% endfor %}
+</tbody></table></div>
+{%- endmacro %}
+{# Resume (Start before any run record): the same four choices, so the
+   same folder #}
+{% macro again(label) -%}
+<form method="post" action="/sandbox/experiments">{% for k in ("model", "season", "size") %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}<input type="hidden" name="oracle" value="{{ 'on' if s.oracle else 'off' }}"><button class="gold" data-guard="sandbox-run">{{ label }}</button></form>
+{%- endmacro %}
+<div id="sbx" data-id="{{ id }}" data-poll="{{ 1 if live or scoring.pending else 0 }}" data-status="{{ st.status }}">
+<nav class="sb-crumb" aria-label="Breadcrumb"><a href="/sandbox">Sandbox</a> /</nav>
+{{ tips.heading("Experiment " ~ id, "sbx-title", level=1, cls="sb-pagehead", after=tips.badge(badge[0], badge[1])) }}
+{% if record %}
+{{ tips.meta([s.model ~ " · " ~ record.short, s.season,
+              s.size ~ ": " ~ record.locations ~ " locations, " ~ record.weeks ~ (" week, " if record.weeks == 1 else " weeks, ") ~ record.replicates ~ (" replicate" if record.replicates == 1 else " replicates"),
+              "Oracle step " ~ ("on" if s.oracle else "off")]) }}
+{% else %}
+{{ tips.meta([s.model, s.season, s.size, "Oracle step " ~ ("on" if s.oracle else "off")]) }}
+{% endif %}
+
+{% if live %}
+<div class="card">
+ <h2>Running</h2>
+ {{ tips.progress("Weeks", d, W or 1, text=d ~ " of " ~ W ~ " weeks", id="sbx-weeks") }}
+ <p class="runstat" id="sbx-line" aria-live="polite">{{ line }}</p>
+ <form method="post" action="/sandbox/stop"><input type="hidden" name="experiment" value="{{ id }}"><button class="quiet">Stop</button></form>
+</div>
+{% else %}
+{# at most one state alert, with Resume (or Start) as its action #}
+{% if st.status == "stopped" %}{{ tips.alert("warn", st.stop_reason or "Finished weeks and fits are kept; Resume goes on from them.", title="Stopped after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
+{% elif st.status == "interrupted" %}{{ tips.alert("warn", "The console closed while it replayed. Finished weeks are kept; Resume goes on from them.", title="Interrupted after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
+{% elif st.status == "done" and not st.complete %}{{ tips.alert("warn", "The others failed (see the failed fits below); Resume tries them again.", title="Done, with " ~ d ~ " of " ~ W ~ " weeks stored.", id="sbx-state", action=again("Resume")) }}
+{% elif st.status == "error" %}{{ tips.alert("error", st.error.rstrip(".") ~ ". Resume tries them again once that is fixed.", title="Every week failed.", id="sbx-state", action=again("Resume")) }}
+{% elif not st.status %}{{ tips.alert("info", "", title="Not started yet.", id="sbx-state", action=again("Start")) }}
+{% endif %}
+{% endif %}
+{% if scoring.pending %}{{ tips.alert("info", "Scoring: " ~ scoring.why ~ "…", id="sbx-scoring") }}
+{% elif scoring.error %}{{ tips.alert("error", "Not scored: " ~ scoring.error, id="sbx-scoring") }}
+{% elif problem %}{{ tips.alert("warn", problem, id="sbx-scoring") }}
+{% elif not d and not live %}{{ tips.empty("No week stored yet", "clock", compact=True, id="sbx-none") }}
+{% endif %}
+
+{% if summary %}
+{% set sh = summary.shipped %}
+{% set member = ("Oracle SIHRS" if sh.member == "pf" else "Liu-West filter alone") if sh else "" %}
+{% if not sh %}{{ tips.alert("info", "No shipped replay of " ~ s.season ~ " here holds " ~ ("the Oracle SIHRS" if s.oracle else "the Liu-West filter alone") ~ " on the shipped settings, so these figures are this model's against the FluSight baseline only.", title="Nothing to compare with.", id="sbx-noref") }}{% endif %}
+{% set ran = summary.ran or {} %}
+{% set c = summary.cells or {} %}
+<div class="card">{{ tips.heading("Against the shipped replay" if sh else "Scores", "sbx-scores", SCORES_TIP, tip_label="the scores") }}
+ {% if figures.overall %}
+ <div class="sbscroll"><table class="compact">
+  <thead><tr><th></th><th class="num">relWIS</th><th class="num">log relWIS</th><th class="num">50%</th><th class="num">80%</th><th class="num">95%</th></tr></thead>
+  <tbody>{{ three(figures.overall, s.model, member) }}</tbody>
+  {% if figures.us %}<tbody><tr><th colspan="6" scope="rowgroup">US national</th></tr>{{ three(figures.us, s.model, member) }}</tbody>{% endif %}
+ </table></div>
+ {% endif %}
+ <p class="hint">{% if sh %}{{ c.compared }} cells compared{% if c.shipped_only or c.model_only %}; left out: {{ c.shipped_only }} only the shipped replay scored, {{ c.model_only }} only this model scored{% endif %}.{% if ran.replicates != sh.replicates %} This model ran {{ ran.replicates }} replicate{{ "" if ran.replicates == 1 else "s" }}, the shipped replay {{ sh.replicates }}.{% endif %}{% else %}{{ c.compared }} cells scored.{% endif %}</p>
+ {% if words.us_na %}<p class="hint">US national: not compared. The shipped replay's US forecast for these weeks is not of the same kind as this one's: it was stored before addendum A3 (2026-10-01).</p>{% endif %}
+ {% call tips.fold("By location (" ~ figures.by_location | length ~ ")", id="sbx-loc") %}{{ groups("Location", figures.by_location, s.model, member) }}{% endcall %}
+ {% call tips.fold("By week (" ~ figures.by_week | length ~ ")", id="sbx-week") %}{{ groups("As of", figures.by_week, s.model, member) }}{% endcall %}
+ {% call tips.fold("By horizon (" ~ figures.by_horizon | length ~ ")", id="sbx-hz") %}{{ groups("Horizon", figures.by_horizon, s.model, member) }}{% endcall %}
+ {% set fails = summary.failures or [] %}
+ {% if fails %}{% set nf = ran.failed_fits or 0 %}
+ {% call tips.fold(nf ~ (" fit had" if nf == 1 else " fits had") ~ " no forecast", id="sbx-fail") %}
+ <div class="sbscroll"><table class="compact"><thead><tr><th>week</th><th>location</th><th class="num">replicate</th><th>what happened</th></tr></thead><tbody>
+  {% for e in fails %}<tr><td>{{ e.week }}</td><td>{{ e.location if e.location is defined else "the whole week" }}</td><td class="num">{{ e.replicate if e.replicate is defined else "" }}</td><td>{{ e.text }}</td></tr>{% endfor %}
+ </tbody></table></div>
+ {% endcall %}
+ {% endif %}
+ {% call tips.fold("What ran", id="sbx-ran") %}
+ {% set locs, wks, sc = ran.locations or [], ran.weeks or [], summary.scored or {} %}
+ {% call tips.stats("uk-stats--kv", label="What ran") %}
+  {{ tips.stat("Experiment", (summary.experiment or "")[:8]) }}
+  {{ tips.stat("Locations", (locs | length ~ ": " ~ locs | join(", ")) if locs and locs | length <= 10 else locs | length) }}
+  {{ tips.stat("Weeks", (wks | length ~ ", " ~ wks[0] ~ " to " ~ wks[-1]) if wks else 0) }}
+  {{ tips.stat("Fits", ran.replicates ~ (" replicate" if ran.replicates == 1 else " replicates") ~ " of " ~ "{:,}".format(ran.particles or 0) ~ " particles a location-week" ~ (("; " ~ ran.failed_fits ~ " had no forecast") if ran.failed_fits else "")) }}
+  {{ tips.stat("Time", (ran.seconds | hms) ~ " active, " ~ ((utc(ran.started_utc) ~ " to " ~ utc(ran.finished_utc)) if ran.finished_utc else ("from " ~ utc(ran.started_utc))) ~ " UTC") }}
+  {{ tips.stat("Disk", words.disk) }}
+  {{ tips.stat("Builds", "engine " ~ (words.engine or "not recorded") ~ " · FluBNF " ~ (ran.flubnf_build or "not recorded")) }}
+  {{ tips.stat("Compared with", ("the shipped replay of " ~ s.season ~ " started " ~ utc(sh.started_utc) ~ " UTC (" ~ sh.root ~ "): " ~ ("the Oracle SIHRS" if sh.member == "pf" else "the Liu-West filter alone") ~ ", " ~ sh.replicates ~ " replicates of " ~ "{:,}".format(sh.particles or 0) ~ " particles") if sh else "nothing: no shipped replay here") }}
+  {{ tips.stat("Scored", utc(sc.utc) ~ " UTC against " ~ ("settled truth (" ~ (sc.truth_sha256 or "")[:8] ~ ")" if sc.truth == "settled" else "the newest archived vintage, " ~ (sc.truth or "")[8:] ~ ": its final weeks may be provisional (" ~ (sc.truth_sha256 or "")[:8] ~ ")") ~ ", cell rule version " ~ sc.scores_v) }}
+ {% endcall %}
+ {% endcall %}
+</div>
+{% endif %}
+
+{% if folder and not live and not scoring.pending %}
+<div class="row">
+ <form method="post" action="/sandbox/experiments/{{ id }}/delete"><input type="hidden" name="ident" value="{{ id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet sb-danger" data-sb-delete="experiment {{ id }}">Delete experiment</button></form>
+</div>
+{% endif %}
+</div>
+{% endblock %}

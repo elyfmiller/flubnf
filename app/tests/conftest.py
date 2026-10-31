@@ -208,11 +208,19 @@ def shipped_vintages(monkeypatch):
 @pytest.fixture(autouse=True)
 def _sandbox_released():
     """The sandbox's engine claim is module state that /run and /retro/run
-    refuse on; no test may leak a live sandbox fit into another."""
+    refuse on; no test may leak a live sandbox fit or experiment into
+    another, nor an experiment's scoring job or refused form."""
     from app.ui import state as ui_state
-    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+    from app.ui.routes import sandbox as ui_sandbox
+
+    def release():
+        ui_state._sandbox_status.update(running=None, claim=None,
+                                        cancel=False, experiment=None)
+        ui_sandbox._experiment_scores.clear()
+        ui_sandbox._experiment_refused_form.clear()
+    release()
     yield
-    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+    release()
 
 
 @pytest.fixture

@@ -873,6 +873,32 @@ def test_a_fifo_in_the_sandbox_folder_never_hangs_register(box):
     assert out == {"codes": ["FILE_UNREADABLE"]}
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_list_models_never_waits_on_a_fifo(box):
+    """The Sandbox page lists every version (list_models): a pipe in
+    place of a version's model.bngl or model.json is a changed version
+    with no note, never a wait for a writer."""
+    for name, f in (("beta", "model.bngl"), ("gamma", "model.json")):
+        _sandbox_model(name, _good())
+        L.register(name)
+        p = L.root() / name / "1" / f
+        p.unlink()
+        os.mkfifo(p)
+    out = {}
+
+    def go():
+        out["rows"] = {r["ref"]: r for r in L.list_models()}
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(5)
+    assert not t.is_alive(), "a pipe hung list_models"
+    beta, gamma = out["rows"]["beta@1"], out["rows"]["gamma@1"]
+    assert (beta["intact"], beta["note"]) == (False, "")
+    assert beta["short"] == SIHRS_FP[:8]          # model.json still read
+    assert (gamma["intact"], gamma["note"], gamma["fingerprint"]) == (
+        False, "", "")
+
+
 @pytest.mark.skipif(os.name == "nt" or getattr(os, "geteuid", int)() == 0,
                     reason="a folder's permissions do not shut this user out")
 def test_a_version_this_user_cannot_open_reads_as_changed(box):

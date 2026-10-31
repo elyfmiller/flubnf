@@ -45,7 +45,7 @@ def test_busy_idle_shape():
     r = client.get("/api/busy")
     assert r.status_code == 200
     assert r.json() == {"console_run": None, "retro": {}, "phase": "",
-                        "sandbox": None}
+                        "sandbox": None, "experiment": None}
 
 
 def test_busy_reports_console_run_and_phase():

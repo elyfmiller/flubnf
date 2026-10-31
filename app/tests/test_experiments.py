@@ -1,15 +1,21 @@
 """The experiment file (app/core/experiments.py): its fields and defaults,
 the derived id, the fingerprint, the size presets and their week rules,
-the shipped replay an experiment is compared with, the plan, and the
-replay itself (run_week faked, and once the real prepare on
-test_prepare_golden.py's hub).
+the shipped replay an experiment is compared with, the plan, the replay
+itself (run_week faked, and once the real prepare on
+test_prepare_golden.py's hub), run and its summary at every segment end,
+preflight, status, find, the list, delete and the season offered.
 
 The calendar is the literal 2024-25 one and the shipped replays are
-synthetic trees: the suite reads no hub.
+synthetic trees: the suite reads no hub (the truth a run scores against
+is test_experiment_summary.py's synthetic one).
 """
 import dataclasses
 import json
+import os
+import subprocess
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -649,3 +655,491 @@ def test_a_library_experiment_prepares_its_model(season, monkeypatch,
         week = retro.read_week_samples(folder, asof)
         assert {"pf", "analogue"} <= set(week)
         assert set(week["pf"]) == set(week["analogue"]) == set(locs)
+
+
+# ------------------------------------------------- run and the summary
+
+
+def _sidecar(root: Path, asof: str) -> None:
+    """The fake week's quantile sidecar, after its samples as
+    write_week_samples writes it: a pf for every pilot state."""
+    from app.tests.test_experiment_summary import _q
+    RS.write_week_quantiles(Path(root) / "weeks" / asof,
+                            {"pf": _q(10.0, list(X.PILOT_LOCATIONS))})
+
+
+@pytest.fixture
+def truth(season, tmp_path, monkeypatch):
+    """The season's truth on a synthetic hub, the baseline faked
+    (test_experiment_summary._hub): a run's summary can be scored."""
+    from app.tests.test_experiment_summary import _hub
+    return _hub(tmp_path, monkeypatch, weeks=VINTAGES)
+
+
+def _summary(eid: str) -> dict:
+    return X.read_summary(X.root() / eid / X.SUMMARY)
+
+
+def test_run_writes_the_summary_at_every_segment_end(season, truth,
+                                                     monkeypatch):
+    from app.core import engine_build as EB
+    _weeks_run(monkeypatch, _sidecar)
+    got = X.run({"model": "sihrs", "season": "2024-25"}, retro_root=season,
+                flubnf_build="53f1acf")
+    assert got["id"] == "sihrs_2024-25_smoke_oracle"
+    done = _summary(got["id"])
+    assert done["complete"] is True and done["ran"]["weeks"] == SMOKE_WEEKS
+    assert done["ran"]["flubnf_build"] == "53f1acf"
+    assert done["cells"]["compared"] == 2 * 2 * 4 and done["shipped"] is None
+
+    # a stop after the first week: scored, and the stop still raised
+    def stop(root, asof):
+        _sidecar(root, asof)
+        retro.request_stop(root)
+    _weeks_run(monkeypatch, stop)
+    with pytest.raises(retro.SeasonStopped):
+        X.run({"model": "sihrs", "season": "2024-25", "oracle": False},
+              retro_root=season)
+    stopped = _summary("sihrs_2024-25_smoke")
+    assert stopped["complete"] is False
+    assert sorted(stopped["by_week"]) == SMOKE_WEEKS[:1]
+
+    # the engine changed during the replay: scored, and still raised
+    builds = [{"branch": "main", "commit": "aaaaaaaa", "dirty": False,
+               "source": "git", "path": ""}]
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(builds[-1]))
+
+    def moved(root, asof):
+        _sidecar(root, asof)
+        builds.append({**builds[0], "commit": "bbbbbbbb"})
+    _weeks_run(monkeypatch, moved)
+    with pytest.raises(retro.EngineBuildChanged):
+        X.run({"model": "sihrs", "season": "2024-25", "size": "pilot"},
+              retro_root=season)
+    changed = _summary("sihrs_2024-25_pilot_oracle")
+    assert changed["complete"] is False
+    assert changed["ran"]["engine_build"] == EB.record(builds[0])
+    # a plan refused: nothing written
+    _refused("MODEL_NOT_FOUND", X.run, {"model": "beta@9",
+                                        "season": "2024-25"},
+             retro_root=season)
+    assert not (X.root() / "beta-v9_2024-25_smoke").exists()
+
+
+def test_run_never_hides_the_replays_outcome(season, monkeypatch, capsys):
+    def no_baseline(folder, **kw):
+        raise RuntimeError("no FluSight-baseline here")
+    monkeypatch.setattr(X, "score", no_baseline)
+    calls = _weeks_run(monkeypatch)
+    got = X.run({"model": "sihrs", "season": "2024-25"}, retro_root=season)
+    assert got["weeks"] == SMOKE_WEEKS and len(calls) == 2
+    assert ("experiments: sihrs_2024-25_smoke_oracle not scored: no "
+            "FluSight-baseline here") in capsys.readouterr().err
+    _weeks_run(monkeypatch, lambda root, asof: retro.request_stop(root))
+    with pytest.raises(retro.SeasonStopped):
+        X.run({"model": "sihrs", "season": "2024-25", "oracle": False},
+              retro_root=season)
+    assert "sihrs_2024-25_smoke not scored" in capsys.readouterr().err
+
+    # an interrupt is not scored: the next view's stale() names it
+    def interrupt(root, asof):
+        raise KeyboardInterrupt
+    _weeks_run(monkeypatch, interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        X.run({"model": "sihrs", "season": "2024-25", "size": "pilot"},
+              retro_root=season)
+    assert "not scored" not in capsys.readouterr().err
+
+
+def test_a_call_refused_before_its_record_scores_nothing(season, truth,
+                                                         monkeypatch):
+    s = {"model": "sihrs", "season": "2024-25"}
+    p = X.plan(s, retro_root=season)
+    folder = X.root() / p["id"]
+    # another experiment's finished record, met only by run_season (the
+    # plan was made before it was written)
+    retro.write_meta(folder, {"status": "done", "finished_utc": 1.0e9,
+                              "settings": {"experiment": "0" * 64}})
+    wd = folder / "weeks" / SMOKE_WEEKS[0]
+    wd.mkdir(parents=True)
+    (wd / RS.SAMPLES_JSON).write_text("{}", encoding="utf-8", newline="\n")
+    _sidecar(folder, SMOKE_WEEKS[0])
+    monkeypatch.setattr(X, "plan", lambda settings, retro_root: p)
+    calls = _weeks_run(monkeypatch)
+    before = X.finished_mark(folder)
+    with pytest.raises(retro.ResumeMismatch):
+        X.run(s, retro_root=season)
+    assert calls == [] and not (folder / X.SUMMARY).exists()
+    assert X.finished_mark(folder) == before == 1.0e9
+    assert X.segment_ended(folder, before) is False
+    assert X.segment_ended(X.root() / "none", None) is False
+
+
+def test_a_cancelled_start_fits_nothing(season, truth, monkeypatch):
+    calls = _weeks_run(monkeypatch)
+    with pytest.raises(retro.SeasonStopped):
+        X.run({"model": "sihrs", "season": "2024-25"}, retro_root=season,
+              cancelled=lambda: True)
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    assert calls == []
+    assert X.status(folder)["status"] == "stopped"
+    assert not (folder / X.SUMMARY).exists()
+    # asked after the first week: the second is never fitted
+    asked = []
+    calls = _weeks_run(monkeypatch, lambda root, asof: asked.append(asof))
+    with pytest.raises(retro.SeasonStopped):
+        X.replay({"model": "sihrs", "season": "2024-25", "oracle": False},
+                 retro_root=season, cancelled=lambda: bool(asked))
+    assert [c["asof"] for c in calls] == SMOKE_WEEKS[:1]
+
+
+def test_a_model_changed_mid_season_is_a_failure_of_the_later_weeks(
+        season, truth, monkeypatch):
+    from app.tests.test_library import _by_hand
+    import shutil
+    ref = _register("beta")
+    other = {f: L.replay_text(f, t)
+             for f, t in L.shipped_files("sihrs").items()}
+    other["model.bngl"] = other["model.bngl"].replace("# FluBNF SIHRS",
+                                                      "# My SIHRS")
+
+    def rewrite(root, asof):
+        _sidecar(root, asof)
+        if asof == SMOKE_WEEKS[0]:
+            shutil.rmtree(L.root() / "beta" / "1")
+            _by_hand("beta", other)
+    _weeks_run(monkeypatch, rewrite)
+    X.run({"model": ref, "season": "2024-25"}, retro_root=season)
+    new = L.resolve(ref)["fingerprint"]
+    got = _summary("beta-v1_2024-25_smoke")
+    assert got["complete"] is False
+    assert got["ran"]["failed_fits"] == 2
+    assert got["failures"] == [{
+        "week": SMOKE_WEEKS[1],
+        "text": f"{ref} is {new[:8]} now, and this experiment started with "
+                f"{SIHRS_FP[:8]}: {SMOKE_WEEKS[1]} is not fitted"}]
+    assert sorted(got["by_week"]) == SMOKE_WEEKS[:1]
+
+
+# ------------------------------------------------------------ preflight
+
+
+def _tree(root: Path) -> dict:
+    """Every path under a folder: (size, mtime_ns)."""
+    return {str(p): (p.stat().st_size, p.stat().st_mtime_ns)
+            for p in sorted(Path(root).rglob("*"))}
+
+
+def test_preflight_refuses_before_anything_is_written(season, monkeypatch,
+                                                      tmp_path):
+    from app.core import engine_build as EB
+    from flubnf import bank
+    s = {"model": "sihrs", "season": "2024-25"}
+    before = _tree(tmp_path)
+    p = X.preflight(s, retro_root=season)
+    assert (p["id"], p["experiment"]) == ("sihrs_2024-25_smoke_oracle",
+                                          SMOKE_FP)
+    assert (p["weeks"], p["resume"], p["weeks_done"], p["complete"]) == (
+        SMOKE_WEEKS, False, 0, False)
+    _refused("MODEL_NOT_FOUND", X.preflight,
+             {"model": "beta@9", "season": "2024-25"}, retro_root=season)
+    real = bank.read
+
+    def no_bank(stream):
+        raise FileNotFoundError(f"no {stream} bank")
+    monkeypatch.setattr(bank, "read", no_bank)
+    assert "no flusurv bank" in _refused("MACHINE", X.preflight, s,
+                                         retro_root=season)
+    monkeypatch.setattr(bank, "read", real)
+    assert _tree(tmp_path) == before
+    # weeks stored by one engine build, a resume on another
+    build = {"branch": "main", "commit": "aaaaaaaa", "dirty": False,
+             "source": "git", "path": ""}
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(build))
+    _weeks_run(monkeypatch, lambda root, asof: retro.request_stop(root))
+    with pytest.raises(retro.SeasonStopped):
+        X.replay(s, retro_root=season)
+    p = X.preflight(s, retro_root=season)
+    assert (p["resume"], p["weeks_done"], p["complete"]) == (True, 1, False)
+    build["commit"] = "bbbbbbbb"
+    before = _tree(tmp_path)
+    said = _refused("MACHINE", X.preflight, s, retro_root=season)
+    assert said.startswith("sihrs_2024-25_smoke_oracle has weeks that were "
+                           "fitted by engine")
+    assert "resuming would mix two engine builds" in said
+    assert _tree(tmp_path) == before
+    build["commit"] = "aaaaaaaa"
+    _weeks_run(monkeypatch)
+    X.replay(s, retro_root=season)
+    p = X.preflight(s, retro_root=season)
+    assert (p["resume"], p["weeks_done"], p["complete"]) == (True, 2, True)
+
+
+def test_a_resume_names_the_replay_its_summary_was_compared_with(
+        season, truth, monkeypatch):
+    s = {"model": "sihrs", "season": "2024-25"}
+    _replay(season / "2024-25", weeks=SMOKE_WEEKS)
+
+    def stop(root, asof):
+        _sidecar(root, asof)
+        retro.request_stop(root)
+    _weeks_run(monkeypatch, stop)
+    with pytest.raises(retro.SeasonStopped):
+        X.run(s, retro_root=season)
+    first = _summary("sihrs_2024-25_smoke_oracle")["shipped"]
+    assert first["started_utc"] == "2026-09-21T14:13:20Z"
+    # that replay archived, and a new one started on the shipped settings
+    archived = retro.archive_run(season, "2024-25")
+    _replay(season / "2024-25", weeks=SMOKE_WEEKS, started=1_790_400_000.0)
+    p = X.preflight(s, retro_root=season)
+    assert p["resume"] is True
+    assert (p["reference"]["root"], p["reference"]["started_utc"]) == (
+        archived, first["started_utc"])
+    _weeks_run(monkeypatch, _sidecar)
+    X.run(s, retro_root=season)
+    kept = _summary("sihrs_2024-25_smoke_oracle")["shipped"]
+    assert (kept["root"], kept["started_utc"]) == (str(archived),
+                                                   first["started_utc"])
+    # once it is gone, the season's reference now (as score falls back)
+    retro.delete_tree(archived)
+    p = X.preflight(s, retro_root=season)
+    assert (p["reference"]["root"], p["reference"]["started_utc"]) == (
+        season / "2024-25", "2026-09-26T05:20:00Z")
+
+
+@pytest.mark.parametrize("record", ["text", [1, 2], {}, "not JSON", None])
+def test_plan_refuses_a_damaged_run_record(season, record):
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    if record is None:                     # weeks without a record
+        wd = folder / "weeks" / SMOKE_WEEKS[0]
+        wd.mkdir(parents=True)
+        (wd / RS.SAMPLES_JSON).write_text("{}", encoding="utf-8", newline="\n")
+    elif record == "not JSON":
+        folder.mkdir(parents=True)
+        retro.meta_path(folder).write_text("{", encoding="utf-8",
+                                           newline="\n")
+    else:
+        retro.write_meta(folder, {"settings": record})
+    said = _refused("EXPERIMENT_CHANGED", X.plan,
+                    {"model": "sihrs", "season": "2024-25"},
+                    retro_root=season)
+    assert "a run record FluBNF cannot read as an experiment's" in said
+
+
+# --------------------------------------------------------------- status
+
+
+def test_status_counts_weeks_fits_and_eta(sandbox_root):
+    folder = X.root() / "sihrs_2024-25_pilot_oracle"
+    weeks = PILOT_WEEKS[:3]
+    now = time.time()
+    meta = {"status": "running", "pid": os.getpid(), "heartbeat_utc": now,
+            "started_utc": now - 300.0, "segment_start_utc": now - 100.0,
+            "elapsed_s": 200.0, "finished_utc": None,
+            "settings": {"weeks": weeks, "locations": ["California",
+                                                       "Vermont"],
+                         "replicates": 2}}
+    retro.write_meta(folder, meta)
+    wd = folder / "weeks" / weeks[0]
+    wd.mkdir(parents=True)
+    (wd / RS.SAMPLES_JSON).write_text("{}", encoding="utf-8", newline="\n")
+    wd = folder / "weeks" / weeks[1]
+    for key, st in (("California_r0", "ok"), ("California_r1", "ok"),
+                    ("Vermont_r0", "FAIL: x")):
+        retro.mark_cell_done(wd, key, st)
+    st = X.status(folder)
+    assert {k: st[k] for k in ("status", "error", "stop_reason",
+                               "weeks_total", "weeks_done", "complete",
+                               "week", "fits_done", "fits_total", "eta_s",
+                               "started_utc", "finished_utc")} == {
+        "status": "running", "error": "", "stop_reason": "",
+        "weeks_total": 3, "weeks_done": 1, "complete": False,
+        "week": weeks[1], "fits_done": 3, "fits_total": 4, "eta_s": None,
+        "started_utc": X._utc(now - 300.0), "finished_utc": None}
+    assert 290 <= st["elapsed_s"] <= 400
+    # once a week is timed: the mean week times the weeks left
+    meta["week_seconds"] = {weeks[0]: 100.0}
+    retro.write_meta(folder, meta)
+    assert X.status(folder)["eta_s"] == 100.0 * (3 - 1 - 3 / 4)
+    retro.mark_cell_done(wd, "Extra_r9", "ok")          # never above the total
+    st = X.status(folder)
+    assert (st["fits_done"], st["eta_s"]) == (4, 100.0)
+    # STOP written while it runs
+    retro.request_stop(folder)
+    assert X.status(folder)["status"] == "stopping"
+    retro.clear_flags(folder)
+    # interrupted: a heartbeat gone quiet, or the worker's process ended
+    retro.write_meta(folder, {**meta, "heartbeat_utc": now - 10_000.0})
+    st = X.status(folder)
+    assert (st["status"], st["week"], st["fits_done"], st["eta_s"]) == (
+        "interrupted", None, 0, None)
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    retro.write_meta(folder, {**meta, "pid": gone.pid})
+    assert X.status(folder)["status"] == "interrupted"
+    # every week failed
+    retro.write_meta(folder, {**meta, "status": "error: all 4 PF fits "
+                              "failed (first: x); the week is not stored",
+                              "finished_utc": now})
+    st = X.status(folder)
+    assert (st["status"], st["error"]) == (
+        "error", "all 4 PF fits failed (first: x); the week is not stored")
+    assert st["finished_utc"] == X._utc(now)
+    # no record yet
+    assert X.status(X.root() / "none") == {
+        "status": "", "error": "", "stop_reason": "", "weeks_total": 0,
+        "weeks_done": 0, "complete": False, "week": None, "fits_done": 0,
+        "fits_total": 0, "elapsed_s": 0.0, "eta_s": None,
+        "started_utc": None, "finished_utc": None}
+
+
+# ------------------------------------------- find, the list and delete
+
+
+def _folder(settings: dict, started: float | None = None) -> Path:
+    """An experiment's folder as replay leaves it: experiment.json and,
+    once started, a finished run record."""
+    folder = X.root() / X.experiment_id(settings)
+    folder.mkdir(parents=True)
+    L.write_json(folder / X.SETTINGS, json.loads(X.settings_text(settings)))
+    if started is not None:
+        retro.write_meta(folder, {"status": "done", "started_utc": started,
+                                  "finished_utc": started + 60.0,
+                                  "settings": {}})
+    return folder
+
+
+def test_find_and_the_list_read_only_valid_folders(sandbox_root):
+    assert X.list_experiments() == [] and not X.root().exists()
+    assert X.find("sihrs_2024-25_smoke_oracle") is None
+    assert not X.root().exists()
+    a = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    b = _folder({"model": "sihrs", "season": "2024-25", "size": "pilot"},
+                1_790_100_000.0)
+    c = _folder({"model": "beta2@3", "season": "2024-25"})   # never started
+    os.utime(c / X.SETTINGS, (1_790_050_000.0, 1_790_050_000.0))
+    (X.root() / "no-settings").mkdir()
+    wrong = X.root() / "sihrs_2024-25_full"                  # not its id
+    wrong.mkdir()
+    L.write_json(wrong / X.SETTINGS, {"model": "sihrs", "season": "2024-25"})
+    bad = X.root() / "beta2-v3_2023-24_smoke"
+    bad.mkdir()
+    (bad / X.SETTINGS).write_text("{", encoding="utf-8", newline="\n")
+    rows = X.list_experiments()
+    assert [r["id"] for r in rows] == [b.name, c.name, a.name]
+    assert rows[0]["settings"] == X.read(b / X.SETTINGS)
+    assert rows[0]["status"]["status"] == "done"
+    assert rows[1]["status"]["status"] == ""
+    assert all(r["summary"] is None for r in rows)
+    X.write_summary(a, {"complete": True})
+    assert X.list_experiments()[2]["summary"] == {"complete": True,
+                                                  "format_version": 1}
+    (a / X.SUMMARY).write_text("{", encoding="utf-8", newline="\n")
+    assert X.list_experiments()[2]["summary"] is None
+    assert X.find(a.name) == a and X.find(c.name) == c
+    for eid in ("no-settings", wrong.name, bad.name, "../x", "a/b", "",
+                ".hidden", a.name.upper(), "x" * 202, None):
+        assert X.find(eid) is None, eid
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"),
+                    reason="no named pipes here (and links need rights)")
+def test_a_pipe_or_a_link_is_never_an_experiment(sandbox_root, tmp_path):
+    """A pipe where experiment.json should be would wait for a writer on
+    every read, and a linked folder points out of the root: find, the
+    list and delete pass both by."""
+    a = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    pipe = X.root() / "beta2-v3_2024-25_smoke"
+    pipe.mkdir()
+    os.mkfifo(pipe / X.SETTINGS)
+    elsewhere = tmp_path / "elsewhere" / "beta2-v3_2023-24_smoke"
+    elsewhere.mkdir(parents=True)
+    L.write_json(elsewhere / X.SETTINGS, {"model": "beta2@3",
+                                          "season": "2023-24"})
+    link = X.root() / elsewhere.name
+    os.symlink(elsewhere, link)
+    out = {}
+
+    def go():
+        out["ids"] = [r["id"] for r in X.list_experiments()]
+        out["found"] = [X.find(pipe.name), X.find(link.name)]
+        for eid in (pipe.name, link.name):
+            try:
+                X.delete(eid)
+            except sb.SandboxError as e:
+                out.setdefault("refused", []).append(str(e))
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(10)
+    assert not t.is_alive(), "a pipe for experiment.json hung the read"
+    assert out == {"ids": [a.name], "found": [None, None], "refused": [
+        f"no experiment is named '{pipe.name}'",
+        f"no experiment is named '{link.name}'"]}
+    assert (elsewhere / X.SETTINGS).is_file() and link.is_symlink()
+
+
+def test_delete_stays_inside_the_root_and_refuses_a_live_one(sandbox_root):
+    a = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    b = _folder({"model": "sihrs", "season": "2024-25", "size": "pilot"},
+                1_790_100_000.0)
+    wd = a / "weeks" / SMOKE_WEEKS[0]
+    wd.mkdir(parents=True)
+    (wd / RS.SAMPLES_JSON).write_text("x" * 1000, encoding="utf-8",
+                                      newline="\n")
+    sb.MODELS.mkdir(parents=True)
+    (sb.MODELS / "keep.txt").write_text("kept\n", encoding="utf-8",
+                                        newline="\n")
+    for eid, live, words in (("../x", "", "no experiment is named"),
+                             (a.name, a.name, "is replaying; stop it first")):
+        with pytest.raises(sb.SandboxError, match=words):
+            X.delete(eid, live=live)
+    # its files say a replay is under way: another process runs it
+    retro.write_meta(b, {"status": "running", "heartbeat_utc": time.time(),
+                         "pid": os.getpid(), "settings": {}})
+    with pytest.raises(sb.SandboxError, match="another process"):
+        X.delete(b.name)
+    size = retro.dir_size(a)
+    assert X.delete(a.name, live=b.name) == size > 1000
+    assert not a.exists() and b.is_dir() and X.root().is_dir()
+    assert (sb.MODELS / "keep.txt").is_file()
+    with pytest.raises(sb.SandboxError, match="no experiment is named"):
+        X.delete(a.name)
+
+
+# --------------------------------------- the reference and the season
+
+
+def test_the_reference_by_start_time(tmp_path):
+    rr = tmp_path / "retro"
+    live = _replay(rr / "2024-25", started=1_790_200_000.0)
+    old = _replay(rr / "2024-25__archived_20260101T000000Z")
+    assert X.reference(rr, "2024-25", True, SMOKE_WEEKS)["root"] == live
+    got = X.reference(rr, "2024-25", True, SMOKE_WEEKS,
+                      started_utc=X._utc(1_790_000_000.0))
+    assert (got["root"], got["started_utc"]) == (old, X._utc(1_790_000_000.0))
+    assert X.reference(rr, "2024-25", True, SMOKE_WEEKS,
+                       started_utc=X._utc(1_790_200_000.0))["root"] == live
+    assert X.reference(rr, "2024-25", True, SMOKE_WEEKS,
+                       started_utc="2020-01-01T00:00:00Z") is None
+    # a run record whose settings are not an object is passed by
+    retro.write_meta(live, {"started_utc": 1_790_200_000.0, "settings": "pf"})
+    assert X.reference(rr, "2024-25", True, SMOKE_WEEKS)["root"] == old
+
+
+def test_default_season_is_the_newest_live_shipped_replay(tmp_path,
+                                                          monkeypatch):
+    rr = tmp_path / "retro"
+    monkeypatch.setattr(retro, "available_seasons",
+                        lambda: ["2023-24", "2024-25", "2025-26"])
+    assert X.default_season(rr) == "2025-26"          # no replay: the newest
+    _replay(rr / "2025-26", engine="analogue", season="2025-26")
+    _replay(rr / "2025-26__archived_20260101T000000Z", season="2025-26")
+    _replay(rr / "2024-25")
+    assert X.default_season(rr) == "2024-25"
+    retro.write_meta(rr / "2024-25", {"settings": {
+        **SHIPPED, "knobs": {"pf.jitter": 0.2}}})
+    assert X.default_season(rr) == "2025-26"
+    _replay(rr / "2023-24", season="2023-24")
+    assert X.default_season(rr) == "2023-24"
+    monkeypatch.setattr(retro, "available_seasons", lambda: [])
+    assert X.default_season(rr) is None
