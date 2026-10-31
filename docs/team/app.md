@@ -6,6 +6,43 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-10-30 (later): student workspace step 4, experiments and the
+  compare page, on `dev`
+  ([a1ea679](https://github.com/elyfmiller/flubnf/commit/a1ea679)). The
+  Sandbox gallery gains one Experiments card: the four choices (a
+  shipped model or a registered `name@n`; season; smoke, pilot or full;
+  the Oracle step, on by default for `sihrs` only), Start, and the list
+  of experiments with each one's relWIS beside the shipped replay's. No
+  new tab. An experiment runs on this computer under the Sandbox's
+  claim, so the weekly run, shipped and dataset replays and Sandbox fits
+  refuse while it runs and it refuses while they do; Stop is
+  `/sandbox/stop` with `experiment=`, and Resume is Start with the same
+  choices. `experiments.score` writes `summary.json` as step 1 laid it
+  out (both sides rescored against one truth, the shipped replay read
+  through read-only readers only, sums over the cells both scored, US
+  like for like), at every segment end and again on a view when the
+  truth, the stored weeks or the shipped replay moved. The compare page
+  (`/sandbox/experiments/<id>`) reads `summary.json` only: relWIS, log
+  relWIS and coverage for the model, the shipped replay and the model
+  against it, by location, week and horizon, failed fits, and what ran;
+  Start, the page's JSON, Stop and Delete answer JSON when asked. No new
+  problem code, CSS rule or Jinja global, and no Engine-lane file
+  changed. Tested: the full suite with only the 22 failures this Mac
+  already had; the workbench, the Retrospective and the weekly run's
+  refusals byte for byte as before; Ely's retro tree unchanged by every
+  read. In the browser on a spare console, two real smoke runs of
+  2024-25 (about 50 s each): the unedited template, Oracle step off,
+  relWIS 1.710 against the shipped Liu-West filter alone's 1.656 on the
+  same 16 cells (1 replicate against 3), and `sihrs`, Oracle step on,
+  1.272 against 1.219; Stop, Delete, the JSON answers and phone width.
+  Defaults taken, for Ely to change: a full experiment is offered on
+  this computer before step 5 (it holds the engine for hours, so a
+  Monday run must stop it first); the model list offers `sihrs-2strain`
+  and `sihrs-natg` too; a summary is rescored on view when stale (about
+  weekly in season); with the Oracle step on, US is compared only with a
+  shipped US of the same kind, which no stored season has yet, so it
+  reads n/a. Step 5 (the runner, queue and estimates on the Mac Studio)
+  waits for Ely's go.
 - 2026-10-30: student workspace step 3, the Sandbox side, on `dev`
   ([ed75622](https://github.com/elyfmiller/flubnf/commit/ed75622)). New
   model gains one start, "Oracle SIHRS template, for replays", in the
@@ -34,8 +71,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   change: the template from the hub only (the core takes a dataset group
   too); registered versions listed nowhere until step 4's experiment
   form; Register saves unsaved editor text first, as Save and run does;
-  no location means a run or Simulate is refused in words. Step 4
-  (experiments and the compare page) waits for Ely's go.
+  no location means a run or Simulate is refused in words.
 - 2026-10-29 (later still): student workspace step 2, the engine side,
   on `dev`
   ([0abd3e8](https://github.com/elyfmiller/flubnf/commit/0abd3e8),
