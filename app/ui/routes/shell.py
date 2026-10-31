@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request, Response
 
 from app.ui import retro_seasons, state
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
-from app.ui.shared import _sandbox_live
+from app.ui.shared import _experiment_live, _sandbox_live
 from app.ui.state import _status
 from app.ui.versions import VERSIONS, versions_resolved
 
@@ -42,8 +42,9 @@ def api_busy():
     label (null when idle); retro: {season: status} for running, stopping
     or paused seasons (paused still holds the engine); phase: the console
     phase (the Update-data guard fires only on 'materializing'/'preparing',
-    which read hub files). Seasons come from claims AND on-disk records, so
-    a live replay never reads idle."""
+    which read hub files); sandbox: the live fit; experiment: the live
+    experiment's id. Seasons come from claims AND on-disk records, so a
+    live replay never reads idle."""
     running = _status.get("running")
     live = {}
     for s in retro_seasons._known_seasons():
@@ -56,6 +57,7 @@ def api_busy():
         "retro": live,
         "phase": _status.get("phase", "") or "",
         "sandbox": _sandbox_live() or None,
+        "experiment": _experiment_live() or None,
     }
 
 

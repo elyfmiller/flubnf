@@ -167,3 +167,55 @@ with** draws another run's band dashed over this one, sets the parameter
 tables side by side, and lists every change between the two. **Download
 run** is a zip of the inputs, the engine's outputs and `summary.csv` (the
 weekly quantiles); **Download model** zips the three files to share.
+
+## 7. Experiments
+
+An experiment replays one model over one season of the FluSight hub at
+a preset size, and compares it with the shipped replay of that season on
+the cells both scored. The **Experiments** card on the Sandbox page
+holds its four choices:
+
+| Choice | What it is |
+|---|---|
+| Model | a shipped model (`sihrs`, `sihrs-2strain`, `sihrs-natg`) or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked |
+| Season | the seasons here, newest first; picked first, the newest with a shipped replay here to compare with |
+| Size | smoke: 2 locations, 2 weeks (minutes); pilot: 10 locations, every other week (under an hour); full: every location and week, as shipped (hours) |
+| Oracle step | on for `sihrs`, off for any other model, unless you change it |
+
+The four choices name the experiment and its folder,
+`sandbox/experiments/<name>[-v<n>]_<season>_<size>[_oracle]/`
+(`beta2-v1_2024-25_pilot`). **Start** takes the engine: while an
+experiment replays, the weekly forecast, a Retrospective replay, a
+dataset replay and a Sandbox fit are each refused until it ends (stop it
+first), and an experiment is refused while any of them runs. A start that cannot go ahead says **Not started** and why,
+each finding with its code (`MACHINE` when this computer is busy or has
+no particle-filter engine).
+
+**Stop**, on the experiment's page, finishes the fits in flight; the
+weeks finished are kept. **Resume** is Start with the same four choices:
+the same folder, the stored weeks skipped, the failed ones tried again.
+A complete experiment fits nothing more. **Delete** removes its folder;
+the registered model stays in the library.
+
+The page, `/sandbox/experiments/<id>`, shows the weeks stored while it
+replays, the week under way and about how long is left. When the replay
+stops or ends, `summary.json` is scored, off the engine: both sides
+against one truth and one FluSight baseline, as sums over the
+cells both scored (never ratios). The scores give relWIS, log relWIS and
+the 50, 80 and 95% coverage of this model and of the shipped replay (the
+Oracle SIHRS with the step on, the Liu-West filter alone with it off),
+and this model's summed WIS over the shipped replay's. US stays apart
+from the pooled figures and is compared only when both US forecasts are
+of the same kind. Folds give the figures by location, by week and by
+horizon, the fits that had no forecast, and what ran. A page view scores
+again when the truth moved, weeks were stored, or the shipped replay
+compared with moved.
+
+For scripts: `POST /sandbox/experiments` with `Accept: application/json`
+answers in JSON (`ok`, `id`, `url`, `started`, `resumed`, `complete`,
+`text`, `codes`, `plan`); `GET /api/sandbox/experiments/<id>` gives the
+status, the scoring, `summary.json` as stored and its figures;
+`POST /sandbox/stop` with `experiment=<id>`, and
+`POST /sandbox/experiments/<id>/delete` with `confirm=<id>`, answer
+`ok`, `id` and `text`. The start takes the four fields and no other: a
+field the page lacks is refused (`FIELD_UNKNOWN`).

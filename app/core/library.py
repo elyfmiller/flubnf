@@ -751,7 +751,9 @@ def resolve(ref: str) -> dict:
 def list_models() -> list[dict]:
     """Every model a replay can name: the shipped ones first, then the
     library's names (ignoring case) with their versions ascending. A
-    version whose files no longer match reads intact False."""
+    version whose files no longer match reads intact False. A version's
+    model.bngl (its note) and model.json are read only when each is a
+    regular file: a pipe in its place would hang the Sandbox page."""
     rows = []
     for n in SHIPPED_NAMES:
         r = resolve(n)
@@ -766,12 +768,16 @@ def list_models() -> list[dict]:
             try:
                 manifest, intact = _verified(n, v)[0], True
             except Refusal:
-                manifest, intact = _read_json(d / MANIFEST), False
+                intact = False
+                manifest = (_read_json(d / MANIFEST)
+                            if os.path.isfile(d / MANIFEST) else {})
+            bngl = d / "model.bngl"
             fp = str(manifest.get("fingerprint") or "")
             rows.append({"ref": f"{n}@{v}", "name": n, "version": v,
                          "fingerprint": fp, "short": short(fp),
                          "registered_utc": manifest.get("registered_utc"),
-                         "note": sb._first_comment(d / "model.bngl"),
+                         "note": (sb._first_comment(bngl)
+                                  if os.path.isfile(bngl) else ""),
                          "origin": manifest.get("origin"), "intact": intact,
                          "shipped": False})
     return rows

@@ -67,5 +67,8 @@ _WARM_DONE = __import__("threading").Event()
 
 #: running: the live fit's run id; claim: the model whose run is being
 #: prepared (the engine is booked from the claim on); cancel: Stop pressed
-#: during preparation. Every change happens under _engine_lock.
-_sandbox_status: dict = {"running": None, "claim": None, "cancel": False}
+#: during preparation; experiment: the live experiment's claim {id,
+#: settings, cancel}; Stop sets cancel. Every change happens under
+#: _engine_lock.
+_sandbox_status: dict = {"running": None, "claim": None, "cancel": False,
+                         "experiment": None}

@@ -447,9 +447,19 @@ def _sandbox_live() -> str:
     return ""
 
 
+def _experiment_live() -> str:
+    """The live experiment's id ("" when none)."""
+    claim = _sandbox_status.get("experiment")
+    return str(claim["id"]) if claim else ""
+
+
 def _sandbox_live_reason() -> str:
-    """Why the sandbox holds the engine ("" when it does not). Read under
+    """Why the sandbox holds the engine ("" when it does not): an
+    experiment replaying, a fit, or a fit being prepared. Read under
     _engine_lock by /run and /retro/run as well as by the sandbox itself."""
+    eid = _experiment_live()
+    if eid:
+        return f"experiment {eid} is replaying"
     if _sandbox_status.get("running"):
         return f"sandbox run {_sandbox_status['running']} is still fitting"
     if _sandbox_status.get("claim"):

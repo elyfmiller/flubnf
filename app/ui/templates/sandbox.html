@@ -105,6 +105,37 @@
    </tr>{% endfor %}</tbody></table>
    {% else %}{{ tips.empty("No models yet", "folder", id="sb-nomodels") }}{% endif %}
   </div>
+  {# one model replayed over one season at a preset size, compared with
+     the shipped replay (routes/sandbox.py, experiments): the four
+     choices, Start, and the experiments here, each opening its page.
+     sandbox.js sets the Oracle step from the chosen model #}
+  <div class="card">{{ tips.heading("Experiments", "sb-exp") }}
+   {% if exp and vintages and locations %}
+   <form method="post" action="/sandbox/experiments">
+    <div class="sb-shiprow">
+     <span><label for="sbexp-model">Model</label>
+      <select id="sbexp-model" name="model">
+       <optgroup label="Shipped">{% for m in exp.models if m.shipped %}<option value="{{ m.ref }}" data-oracle="{{ 1 if m.oracle else 0 }}"{% if m.ref == exp.pick.model %} selected{% endif %}>{{ m.ref }}</option>{% endfor %}</optgroup>
+       {% if exp.models | rejectattr("shipped") | list %}<optgroup label="Registered">{% for m in exp.models if not m.shipped %}<option value="{{ m.ref }}" data-oracle="0"{% if not m.intact %} disabled{% endif %}{% if m.ref == exp.pick.model %} selected{% endif %}>{{ m.ref }} · {{ m.short if m.intact else "changed since Register" }}</option>{% endfor %}</optgroup>{% endif %}
+      </select></span>
+     <span><label for="sbexp-season">Season</label>
+      <select id="sbexp-season" name="season">{% for s in exp.seasons %}<option{% if s == exp.pick.season %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></span>
+     <span><label for="sbexp-size">Size</label>
+      <select id="sbexp-size" name="size">
+       <option value="smoke"{% if exp.pick.size == "smoke" %} selected{% endif %}>smoke: 2 locations, 2 weeks (minutes)</option>
+       <option value="pilot"{% if exp.pick.size == "pilot" %} selected{% endif %}>pilot: 10 locations, every other week (under an hour)</option>
+       <option value="full"{% if exp.pick.size == "full" %} selected{% endif %}>full: every location and week, as shipped (hours)</option></select></span>
+     <span><label for="sbexp-oracle">Oracle step</label>
+      <select id="sbexp-oracle" name="oracle"><option value="on"{% if exp.pick.oracle %} selected{% endif %}>on</option><option value="off"{% if not exp.pick.oracle %} selected{% endif %}>off</option></select></span>
+    </div>
+    <div class="row"><button class="gold" data-guard="sandbox-run">Start</button></div>
+   </form>
+   {% elif exp %}<p class="hint">Experiments replay the FluSight hub's seasons: update data on the Data tab first.</p>{% endif %}
+   {% if exp and exp.rows %}<div class="sbscroll"><table class="kv"><thead><tr><th>experiment</th><th>status</th><th>relWIS</th></tr></thead><tbody>
+    {% for r in exp.rows %}<tr><td><a href="/sandbox/experiments/{{ r.id }}">{{ r.id }}</a></td><td>{{ tips.badge(r.badge[0], r.badge[1]) }}</td>
+     <td>{% if r.fig and r.fig.model.rel is not none %}<span class="relwis {{ 'ok' if r.fig.model.rel < 1 else 'bad' }}">{{ "%.3f"|format(r.fig.model.rel) }}</span>{% if r.fig.shipped and r.fig.shipped.rel is not none %} (shipped {{ "%.3f"|format(r.fig.shipped.rel) }}){% endif %}{% endif %}</td></tr>{% endfor %}
+   </tbody></table></div>{% endif %}
+  </div>
  </div>
 </div>
 {% else %}

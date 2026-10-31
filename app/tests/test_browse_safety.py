@@ -6,8 +6,9 @@ writes are derived artifacts no running worker reads, each written
 beside-then-os.replace: stale report.html rebuilds (/output/report,
 /runs/{id}/report and their /download twins; a running workroot is
 invisible until results.json lands, which follows report.html),
-/retro/{season} rescoring of scores.json, playback_cache/ payloads, and the
-season report file. TTL caches memoize read-only scans and create nothing.
+/retro/{season} rescoring of scores.json, playback_cache/ payloads, the
+season report file, and an experiment's summary.json (and its own
+sidecars). TTL caches memoize read-only scans and create nothing.
 """
 import json
 import os
@@ -50,11 +51,12 @@ RUNNING_SEASON = "2098-99"
 PAUSED_SEASON = "2097-98"
 
 #: how to fill each GET route's path parameters; a NEW parameter name fails
-#: the walk on purpose, so the new route gets covered (ds_id and stamp are
-#: well-formed but name no stored dataset replay)
+#: the walk on purpose, so the new route gets covered (ds_id, stamp and
+#: eid are well-formed but name no stored dataset replay or experiment)
 PATH_PARAMS = {"run_id": "20981231T000000-abc123", "name": "pf",
                "season": RUNNING_SEASON, "asof": "2098-11-07",
-               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z"}
+               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z",
+               "eid": "sihrs_2098-99_smoke_oracle"}
 
 #: the console's route table (captured at 029c028, see test_ui_layout.py)
 GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"

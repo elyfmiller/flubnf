@@ -493,16 +493,18 @@
   }catch(e){}},0);});
  // run-interference guards: a data-guard control checks /api/busy on
  // click; only a genuine conflict raises the modal. Kinds and conflicts:
- //   console-run: starting a console run while a retrospective or a
- //                sandbox fit is running
+ //   console-run: starting a console run while a retrospective, an
+ //                experiment or a sandbox fit is running
  //   retro-run:   starting a retrospective while a console run, another
- //                retrospective or a sandbox fit runs
- //   sandbox-run: starting a sandbox fit while any of those runs
+ //                retrospective, an experiment or a sandbox fit runs
+ //   sandbox-run: starting a sandbox fit or an experiment while any of
+ //                those runs
  //   data-pull:   Update data while a fit is in its preparation phase
  //                (phase contains "materializing" or "preparing"; a pull
  //                during pure fitting is safe and passes through)
  // Each conflict's hint says what stopping that run costs: a replay keeps
- // its weeks, a console run starts over, a sandbox fit gives no results.
+ // its weeks, a console run starts over, an experiment keeps its weeks,
+ // a sandbox fit gives no results.
  (function(){
   var back=document.getElementById('guard-modal'),
       msg=document.getElementById('guard-msg'),
@@ -544,6 +546,12 @@
       hint:'A console run stopped now restarts from scratch.',
       done:function(x){return !x.console_run;}}:null;
   }
+  function experimentConflict(b){
+    return b.experiment?{label:'experiment ('+b.experiment+')',
+      stop:'/sandbox/stop',
+      hint:'An experiment stopped now keeps its finished weeks; Resume on its page goes on from them.',
+      done:function(x){return !x.experiment;}}:null;
+  }
   function sandboxConflict(b){
     return b.sandbox?{label:'sandbox fit ('+b.sandbox+')',
       stop:'/sandbox/stop',
@@ -551,11 +559,14 @@
       done:function(x){return !x.sandbox;}}:null;
   }
   function conflictFor(kind,b){
-    if(kind==='console-run') return retroConflict(b)||sandboxConflict(b);
+    if(kind==='console-run')
+      return retroConflict(b)||experimentConflict(b)||sandboxConflict(b);
     if(kind==='retro-run')
-      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
+      return consoleConflict(b)||retroConflict(b)||experimentConflict(b)
+        ||sandboxConflict(b);
     if(kind==='sandbox-run')
-      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
+      return consoleConflict(b)||retroConflict(b)||experimentConflict(b)
+        ||sandboxConflict(b);
     if(kind==='data-pull'&&/materializing|preparing/i.test(b.phase||''))
       return consoleConflict(b);
     return null;
