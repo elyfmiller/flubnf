@@ -1,7 +1,7 @@
 """SANDBOX: experiments, one model replayed over one season at a preset
 size and compared with the shipped replay: the formats, the plan, the
-replay itself and its scoring (replay, run and score; the queue comes in
-step 5).
+replay itself and its scoring (replay, run and score; the runner's queue,
+app/core/runner.py, calls these).
 
   sandbox/experiments/<id>/
     experiment.json   the settings people write: model (name@version or a
@@ -17,6 +17,8 @@ step 5).
                       the replay's own files: the folder is its root
                       (retro.run_season over the plan's weeks, frozen in
                       run_meta.json at the first start)
+    QUEUED            on the runner only: empty, the experiment waits in
+                      its queue (its mtime the time queued)
 
 The id is derived, never typed: <name>[-v<n>]_<season>_<size>[_oracle],
 so the same settings give the same folder and running again resumes.
@@ -42,8 +44,13 @@ replay moved). Findings and refusals carry the codes of
 app/core/problem_codes.py.
 
 Student folders are read with care: a file is read only when it is a
-regular file (a pipe in its place would wait for a writer), and a folder
-is an experiment's only when its experiment.json derives its name (find).
+regular file (a pipe in its place would wait for a writer), a folder is
+an experiment's only when its experiment.json derives its name (find),
+and a frozen week is read only when it is a date (_weeks).
+
+On the runner each stored week is made lean (drop_samples): its
+forecasting samples dropped once its quantile sidecar equals what they
+give, which is all score reads of the model side (LEAN_KEEP).
 """
 from __future__ import annotations
 
@@ -51,6 +58,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import time
 from dataclasses import dataclass
@@ -62,10 +70,14 @@ import pandas as pd
 
 from app.core import library
 from app.core import sandbox as sb
+from app.core.engines.pf import PREPARE_FAILURES_NAME
 from app.core.problem_codes import Refusal, finding
+from app.core.retro_store import DROPPED_NAME, ORACLE_NAME, QUANTILES_NAME
 
 SETTINGS = "experiment.json"
 SUMMARY = "summary.json"
+#: the runner's queue flag in an experiment's folder (app/core/runner.py)
+QUEUED = "QUEUED"
 SUMMARY_VERSION = 1
 FIELDS = ("model", "season", "size", "oracle")
 REQUIRED = ("model", "season")
@@ -78,6 +90,9 @@ _SEASON_RE = re.compile(r"[0-9]{4}-[0-9]{2}")
 #: a folder name an id can be (find): no separator, no dot, so a name
 #: posted to a page never leaves root()
 _ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,200}")
+#: a frozen week as run_season records it: a vintage's date, so a week
+#: read from a run record never names a folder outside weeks/ (_weeks)
+_WEEK_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 #: California is large and Vermont small (no admissions some weeks), so a
 #: scale or zero-handling slip shows at once; both are pilot states
@@ -293,6 +308,16 @@ def _meta(folder: Path) -> dict:
     return retro.read_meta(folder)
 
 
+def _weeks(st: Mapping) -> list[str]:
+    """A run record's frozen weeks (settings.weeks) that are dates: a
+    hand-edited record naming "../.." leads no reader or writer out of the
+    folder. [] when it records none."""
+    weeks = st.get("weeks") if isinstance(st, Mapping) else None
+    if not isinstance(weeks, list):
+        return []
+    return [w for w in weeks if isinstance(w, str) and _WEEK_RE.fullmatch(w)]
+
+
 def _shipped(meta: Mapping) -> bool:
     """A run record of the shipped replay: SHIPPED_SETTINGS held, no knobs,
     its settings an object."""
@@ -378,7 +403,7 @@ def plan(settings: Mapping, *, retro_root: Path) -> dict:
     folder = root() / eid
     st = _meta(folder).get("settings")
     recorded = (retro.meta_path(folder).exists()
-                or bool(retro.season_sample_files(folder)))
+                or bool(retro.season_week_files(folder)))
     if recorded and (not isinstance(st, dict) or st.get("experiment") != fp):
         had = st.get("experiment") if isinstance(st, dict) else None
         raise Refusal(finding(
@@ -416,7 +441,8 @@ def plan(settings: Mapping, *, retro_root: Path) -> dict:
 
 
 def replay(settings: Path | Mapping, *, retro_root: Path,
-           cancelled: Callable[[], bool] | None = None) -> dict:
+           cancelled: Callable[[], bool] | None = None,
+           after_week: Callable[[str], None] | None = None) -> dict:
     """Replay an experiment into its folder, root()/<id>: the settings read
     and the plan worked out (Refusal for any problem, before anything is
     written), the Groundhog's bank read and checked, experiment.json
@@ -430,7 +456,10 @@ def replay(settings: Path | Mapping, *, retro_root: Path,
     request_pause) work as for any replay, and a stop raises
     retro.SeasonStopped; so does cancelled() answering true before a week
     not yet stored (a stop asked before run_season cleared the flags).
-    Returns the plan, its weeks those recorded. run() adds the summary."""
+    after_week(asof) is called after every week, stored, skipped or failed
+    (run_season's progress; the runner makes each stored week lean there),
+    and None calls nothing. Returns the plan, its weeks those recorded.
+    run() adds the summary."""
     from app.core import retro
     from app.core.runs import oracle_label
     s = read(settings)
@@ -446,7 +475,8 @@ def replay(settings: Path | Mapping, *, retro_root: Path,
                                "experiment": p["experiment"],
                                "oracle": ("applied" if p["oracle"] else
                                           oracle_label({"oracle": "none"}))},
-                     week_extra=week_extra, weeks=p["weeks"])
+                     week_extra=week_extra, weeks=p["weeks"],
+                     progress=after_week)
     return {**p, "weeks": retro.read_meta(folder)["settings"]["weeks"]}
 
 
@@ -501,8 +531,7 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
         raise Refusal(finding("MACHINE", str(e)[:300])) from None
     st = _meta(root() / p["id"]).get("settings")
     st = st if isinstance(st, dict) else {}
-    weeks = st["weeks"] if isinstance(st.get("weeks"), list) else p["weeks"]
-    weeks = [w for w in weeks if isinstance(w, str)]
+    weeks = _weeks(st) if isinstance(st.get("weeks"), list) else p["weeks"]
     done = [w for w in weeks if retro.week_done(root() / p["id"], w)]
     if done:
         change = retro.engine_build_change(st, "pf")
@@ -539,12 +568,13 @@ def segment_ended(folder: Path, before) -> bool:
     from app.core import retro
     now = finished_mark(folder)
     return (now is not None and now != before
-            and bool(retro.season_sample_files(folder)))
+            and bool(retro.season_week_files(folder)))
 
 
 def run(settings: Path | Mapping, *, retro_root: Path,
         flubnf_build: str | None = None,
-        cancelled: Callable[[], bool] | None = None) -> dict:
+        cancelled: Callable[[], bool] | None = None,
+        after_week: Callable[[str], None] | None = None) -> dict:
     """replay(), then summary.json scored whenever the segment ended, on
     every way out (finished, stopped, the engine changed, every week
     failed): the queue's runner and the command call this. A scoring
@@ -555,7 +585,8 @@ def run(settings: Path | Mapping, *, retro_root: Path,
     folder = root() / experiment_id(s)
     before = finished_mark(folder)
     try:
-        out = replay(s, retro_root=retro_root, cancelled=cancelled)
+        out = replay(s, retro_root=retro_root, cancelled=cancelled,
+                     after_week=after_week)
     except Exception:
         _score_if_ended(folder, before, retro_root, flubnf_build)
         raise
@@ -888,7 +919,7 @@ def score(folder: Path, *, retro_root: Path,
             "EXPERIMENT_UNREADABLE",
             f"{eid} has no run record of an experiment to score"))
     prev = _previous(folder)
-    weeks = [w for w in st.get("weeks") or () if isinstance(w, str)]
+    weeks = _weeks(st)
     locations = [str(l) for l in st.get("locations") or ()]
     replicates = int(st.get("replicates") or 0)
     # hashed before it is read: a file replaced between the two leaves the
@@ -995,11 +1026,12 @@ def figures(group: Mapping | None) -> dict | None:
 
 
 def _newest(root: Path) -> float:
-    """The newest stored samples file's mtime under a replay root (float
-    seconds, which retro.newest_samples_mtime truncates); 0.0 with none."""
-    from app.core.retro_store import season_sample_files
+    """The newest stored week's mtime under a replay root, its samples
+    file's or, for a week stored lean, its sidecar's (float seconds, which
+    retro.newest_samples_mtime truncates); 0.0 with none."""
+    from app.core.retro_store import season_week_files
     best = 0.0
-    for p in season_sample_files(root):
+    for p in season_week_files(root):
         try:
             best = max(best, p.stat().st_mtime)
         except OSError:
@@ -1017,7 +1049,7 @@ def _repo_path(p: Path) -> str:
         return str(p.absolute())
 
 
-def stale(folder: Path) -> str:
+def stale(folder: Path, *, retro_root: Path | None = None) -> str:
     """Why the folder's summary.json no longer holds, in words; "" when it
     does, or when there is nothing to score again: a replay under way (the
     files say so, whichever process runs it), no week stored, or a summary
@@ -1025,8 +1057,10 @@ def stale(folder: Path) -> str:
     scored yet, unreadable, a segment ended after it was scored, weeks
     stored since, another scoring rule, the truth data changed (when
     there is truth to read), and the shipped replay compared with moved
-    or stored weeks since. Stat calls, one small run record and one hash
-    cached by stat."""
+    or stored weeks since. With retro_root, the shipped replay the
+    summary names must be a child of it, by name and with no "..": any
+    other reads as moved, and nothing under it is read. Stat calls, one
+    small run record and one hash cached by stat."""
     from app.core import retro
     folder = Path(folder)
     meta = _meta(folder)
@@ -1035,7 +1069,7 @@ def stale(folder: Path) -> str:
             return ""
     except (TypeError, ValueError):
         pass                              # a damaged record runs nothing
-    if not retro.season_sample_files(folder):
+    if not retro.season_week_files(folder):
         return ""
     path = folder / SUMMARY
     if not os.path.isfile(path):
@@ -1070,11 +1104,121 @@ def stale(folder: Path) -> str:
     if isinstance(shipped, dict) and isinstance(shipped.get("root"), str):
         ref = Path(shipped["root"])
         ref = ref if ref.is_absolute() else sb.REPO / ref
+        # lexical, not resolved: an archived root may be a link
+        if retro_root is not None and (
+                ".." in ref.parts
+                or ref.parent != Path(os.path.abspath(retro_root))):
+            return "the shipped replay it was compared with moved"
         if _utc(_meta(ref).get("started_utc")) != shipped.get("started_utc"):
             return "the shipped replay it was compared with moved"
         if _newest(ref) > mtime:
             return "the shipped replay stored weeks since"
     return ""
+
+
+# ------------------------------------------------- lean storage (the runner)
+
+#: what a week stored lean keeps (drop_samples): the quantile sidecar
+#: score reads the model side from, oracle.json (the US step test and the
+#: Liu-West filter's quantiles), the donor bank (provenance, as
+#: reclaim.WEEK_KEEP keeps it), the fit markers and prepare failures
+#: _failures counts (retro.CELL_DONE_DIRNAME, pf.PREPARE_FAILURES_NAME),
+#: and the marker itself
+LEAN_KEEP = (QUANTILES_NAME, ORACLE_NAME, "oracle_bank", "cells_done",
+             PREPARE_FAILURES_NAME, DROPPED_NAME)
+
+
+def _real_dir(p: Path) -> bool:
+    """A folder itself, not a link to one (lstat)."""
+    try:
+        return stat.S_ISDIR(os.lstat(p).st_mode)
+    except OSError:
+        return False
+
+
+def drop_samples(folder: Path, asof: str) -> int:
+    """Store one week of an experiment lean, on the runner only: its
+    forecasting samples dropped once its quantile sidecar is checked
+    against them, and every entry but LEAN_KEEP pruned. The bytes freed.
+
+    0, with nothing touched, unless the folder is an experiment's (find;
+    a run record naming an experiment), asof one of its frozen weeks,
+    weeks/ and the week real folders (lstat), the week outside every
+    protected tree (reclaim.is_protected), and the folder not replayed by
+    another process: this process's own replay drops its weeks as it
+    goes. A shipped, archived or imported root holds no experiment.json,
+    so no marker is ever written there. A week stored lean already has
+    only its leftovers pruned.
+
+    The sidecar must hold pf and equal what the draws give
+    (retro_store.member_quantiles) exactly, pf and analogue, and pf_filter
+    whenever the draws give it; otherwise nothing is written, for a
+    sidecar is never rebuilt here. The marker (retro_store.DROPPED_NAME:
+    the samples' bytes and the time) is written before the samples are
+    unlinked, so a kill between the two leaves a week that reads as
+    before, and the next drop finishes it. Never raises."""
+    from app.core import reclaim, retro
+    from app.core import retro_store as RS
+    folder, freed = Path(folder), 0
+    try:
+        if find(folder.name, under=folder.parent) != folder:
+            return 0
+        meta = _meta(folder)
+        st = meta.get("settings")
+        if (not isinstance(st, dict) or not st.get("experiment")
+                or not isinstance(asof, str) or asof not in _weeks(st)):
+            return 0
+        wd = RS._week_dir(folder, asof)
+        if (not _real_dir(folder / "weeks") or not _real_dir(wd)
+                or reclaim.is_protected(wd)):
+            return 0
+        try:
+            active = retro.effective_status(meta) in retro.ACTIVE_STATUSES
+        except (TypeError, ValueError):
+            active = True                 # a damaged record: left alone
+        if active and meta.get("pid") != os.getpid():
+            return 0
+        if not RS._lean(wd):
+            sp = RS.samples_file(wd)
+            if sp is None:
+                return 0
+            mq = RS.read_week_quantiles(wd)
+            if mq is None or "pf" not in mq:
+                return 0
+            want = RS.member_quantiles(RS.read_samples(sp), wd)
+            if (mq["pf"] != want.get("pf")
+                    or mq.get("analogue") != want.get("analogue")
+                    or (RS.FILTER_MEMBER in want
+                        and mq.get(RS.FILTER_MEMBER)
+                        != want[RS.FILTER_MEMBER])):
+                return 0
+            samples = [wd / n for n in (RS.SAMPLES_JSON, RS.SAMPLES_GZ)
+                       if (wd / n).is_file()]
+            size = sum(p.stat().st_size for p in samples)
+            tmp = wd / (DROPPED_NAME + ".tmp")
+            tmp.unlink(missing_ok=True)   # a drop killed before its replace
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                         | getattr(os, "O_NOFOLLOW", 0), 0o644)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps({"bytes": size, "utc": _utc(time.time())},
+                                   sort_keys=True))
+            os.replace(tmp, wd / DROPPED_NAME)
+            for p in samples:
+                p.unlink()
+            freed += size
+        for p in sorted(wd.iterdir()):
+            if p.name in LEAN_KEEP:
+                continue
+            if p.is_symlink() or not p.is_dir():
+                n = os.lstat(p).st_size
+                p.unlink()
+            else:
+                n = retro.dir_size(p)
+                retro.delete_tree(p)
+            freed += n
+    except Exception:
+        pass                              # what was freed so far stays freed
+    return freed
 
 
 # -------------------------------------------------------------- the folders
@@ -1085,8 +1229,10 @@ def status(folder: Path) -> dict:
     folders (never summary.json): {"status" (retro.effective_status, ""
     with no record, "stopping" for a running record with STOP written,
     "error" with its text in "error"), "error", "stop_reason",
-    "weeks_total", "weeks_done", "complete", "week" (the first frozen week
-    not stored, while under way, else None), "fits_done", "fits_total"
+    "weeks_total", "weeks_done", "complete", "queued" (QUEUED a regular
+    file and the record not under way: it waits in the runner's queue),
+    "week" (the first frozen week not stored, while under way, else
+    None), "fits_done", "fits_total"
     (that week's), "elapsed_s", "eta_s" (the mean week times the weeks
     left, once a week is timed and while under way, else None),
     "started_utc", "finished_utc"}."""
@@ -1106,10 +1252,14 @@ def status(folder: Path) -> dict:
         error = error.strip()
     if state == "running" and retro.stop_path(folder).exists():
         state = "stopping"
-    weeks = st.get("weeks") if isinstance(st.get("weeks"), list) else []
-    weeks = [w for w in weeks if isinstance(w, str)]
+    weeks = _weeks(st)
     done = [w for w in weeks if retro.week_done(folder, w)]
     active = state in retro.ACTIVE_STATUSES
+    try:
+        queued = (not active
+                  and stat.S_ISREG(os.lstat(folder / QUEUED).st_mode))
+    except OSError:
+        queued = False
     week = next((w for w in weeks if w not in done), None) if active else None
     total = fits = 0
     if week:
@@ -1126,21 +1276,23 @@ def status(folder: Path) -> dict:
             "stop_reason": str(meta.get("stop_reason") or ""),
             "weeks_total": len(weeks), "weeks_done": len(done),
             "complete": bool(weeks) and len(done) == len(weeks),
+            "queued": queued,
             "week": week, "fits_done": fits, "fits_total": total,
             "elapsed_s": round(float(t["elapsed_s"]), 1), "eta_s": eta,
             "started_utc": _utc(meta.get("started_utc")),
             "finished_utc": _utc(meta.get("finished_utc"))}
 
 
-def find(eid: str) -> Path | None:
+def find(eid: str, *, under: Path | None = None) -> Path | None:
     """The folder of the experiment named eid, or None: eid a folder name
-    an id can be, root()/eid a folder (not a link), and its
+    an id can be, <under>/eid a folder (not a link), and its
     experiment.json a regular file that reads and derives eid (where
-    folders ignore case, Beta-v1_... is not beta-v1_...). Creates
-    nothing."""
+    folders ignore case, Beta-v1_... is not beta-v1_...). `under` is the
+    experiments folder to look in, root() when None (the runner names a
+    student's). Creates nothing."""
     if not isinstance(eid, str) or not _ID_RE.fullmatch(eid):
         return None
-    folder = root() / eid
+    folder = (root() if under is None else Path(under)) / eid
     if folder.is_symlink() or not folder.is_dir():
         return None
     if not os.path.isfile(folder / SETTINGS):

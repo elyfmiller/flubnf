@@ -219,3 +219,60 @@ status, the scoring, `summary.json` as stored and its figures;
 `POST /sandbox/experiments/<id>/delete` with `confirm=<id>`, answer
 `ok`, `id` and `text`. The start takes the four fields and no other: a
 field the page lacks is refused (`FIELD_UNKNOWN`).
+
+### On the students' Mac Studio
+
+Each student's clone sits at `~/Students/<name>` there, and its
+`sandbox/` folder is that student's. In that console **Start** and
+**Resume** queue the experiment instead of running it: the same four
+choices, and a notice saying **Queued**, its place in line, about how
+long it runs (a first estimate until an experiment of that size has
+finished on that computer), the disk it needs and keeps, and the shipped
+replay it will be compared with. Nothing runs in the student's console.
+
+**The runner.** `flubnf runner`, which Ely starts from the main install
+in a Terminal of the lab account, works the queue. Its first start makes
+`~/Students/.runner`, the folder that tells the students' consoles to
+queue (until then a student's Start runs on that computer as it would
+anywhere), so Ely starts it once before the students use their clones.
+It works the queue first in, first out, one experiment at a time, each
+in a fresh process that reads and writes only that student's folder. It
+holds the queue, and says why, while its install is not a clean `main`,
+the particle-filter engine is missing, or a Retrospective replay runs on
+that computer (a Sandbox fit does not hold it). It checks the folder
+before every week, so a link, a pipe or an unexpected file stops the job
+with its reason. A week interrupted by a stop or a limit is fitted again
+from its start. The runner alone scores the summary there, against the
+shipped replays of its own install: Ely exports each season's replay
+again (a bundle now carries each week's `oracle.json`) and imports it on
+the Mac Studio, so that experiments there have their reference with the
+Oracle step on or off.
+
+**Lean weeks.** Once a week is stored and its quantiles are checked to
+equal what its forecasting samples give, the samples are dropped; a
+failed week is removed whole. A full experiment keeps about 75 MB rather
+than about 1.6 GB, and its page reads as before.
+
+**The floor and the limits.** FluBNF keeps 20 GB free on that disk: an
+experiment that would leave less is not queued, waits when it is next,
+and is stopped if the disk falls below it while it runs. Each size has a
+limit on time, memory and folder size: smoke 30 minutes, 4 GB and
+512 MB; pilot 2 hours, 16 GB and 1 GB; full 16 hours, 32 GB and 10 GB,
+the memory at most half the computer's. At a limit the runner stops the
+experiment, keeps its finished weeks and says why on its page; Resume
+queues it again.
+
+**Where the queue shows.** The experiment's row and page show its badge
+(`queued · 2nd in line`, `queued · runner not running`, or `refused by
+the runner`), and while it waits the page's card reads **Queued** with
+one line (`Queued · 2nd in line · starts in about 1:05:00 · runs about
+10:32 · needs about 173.8 MB of disk`) and **Stop**, which takes it out
+of the queue. A student sees only their own experiments. On that
+computer's main console, Storage lists every student's experiments by
+folder, outside the total; Delete removes one, and takes a queued one
+out of the queue. That console's own experiment Start waits while the
+runner replays. For scripts, the start's JSON there has `started: false`,
+the `plan` when it queues, and `queued`, which
+`GET /api/sandbox/experiments/<id>` adds too: its place, the wait, about
+how long it runs, the disk it needs and keeps, why it waits, and whether
+the runner is running (null while it replays).

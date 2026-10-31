@@ -5,7 +5,10 @@
    its replay while it runs (the weeks, the line, Stop; sandbox.js polls
    /api/sandbox/experiments/<id>), its state and Resume, then its scores
    against the shipped replay. Every figure is read from summary.json
-   through experiments.figures: the page only formats them. #}
+   through experiments.figures: the page only formats them. In a
+   student's folder on the runner computer (queues) Start and Resume
+   queue, so they carry no guard, the card reads Queued while it waits,
+   and an interrupted replay says the runner's reason when it gave one. #}
 {% set SCORES_TIP = "relWIS: this model's summed WIS over the FluSight baseline's on the same cells; below 1 beats the baseline. Log relWIS: the same on log(x + 1) counts, so small states weigh more. Coverage: the share of cells whose truth fell inside each central interval; a calibrated forecast sits near 50, 80 and 95%. vs shipped: this model's summed WIS over the shipped replay's on the same cells; below 1 beats it. Only cells both sides scored are compared, and US stays apart from the pooled figures." %}
 {% set s, st = settings, status %}
 {% set d, W = st.weeks_done, st.weeks_total %}
@@ -44,7 +47,7 @@
 {# Resume (Start before any run record): the same four choices, so the
    same folder #}
 {% macro again(label) -%}
-<form method="post" action="/sandbox/experiments">{% for k in ("model", "season", "size") %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}<input type="hidden" name="oracle" value="{{ 'on' if s.oracle else 'off' }}"><button class="gold" data-guard="sandbox-run">{{ label }}</button></form>
+<form method="post" action="/sandbox/experiments">{% for k in ("model", "season", "size") %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}<input type="hidden" name="oracle" value="{{ 'on' if s.oracle else 'off' }}"><button class="gold"{% if not queues %} data-guard="sandbox-run"{% endif %}>{{ label }}</button></form>
 {%- endmacro %}
 <div id="sbx" data-id="{{ id }}" data-poll="{{ 1 if live or scoring.pending else 0 }}" data-status="{{ st.status }}">
 <nav class="sb-crumb" aria-label="Breadcrumb"><a href="/sandbox">Sandbox</a> /</nav>
@@ -59,15 +62,17 @@
 
 {% if live %}
 <div class="card">
- <h2>Running</h2>
- {{ tips.progress("Weeks", d, W or 1, text=d ~ " of " ~ W ~ " weeks", id="sbx-weeks") }}
+ <h2>{{ "Queued" if queued else "Running" }}</h2>
+ {# a queued experiment that never ran has no weeks frozen yet: no bar #}
+ {% if W or not queued %}{{ tips.progress("Weeks", d, W or 1, text=d ~ " of " ~ W ~ " weeks", id="sbx-weeks") }}{% endif %}
  <p class="runstat" id="sbx-line" aria-live="polite">{{ line }}</p>
  <form method="post" action="/sandbox/stop"><input type="hidden" name="experiment" value="{{ id }}"><button class="quiet">Stop</button></form>
 </div>
 {% else %}
 {# at most one state alert, with Resume (or Start) as its action #}
-{% if st.status == "stopped" %}{{ tips.alert("warn", st.stop_reason or "Finished weeks and fits are kept; Resume goes on from them.", title="Stopped after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
-{% elif st.status == "interrupted" %}{{ tips.alert("warn", "The console closed while it replayed. Finished weeks are kept; Resume goes on from them.", title="Interrupted after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
+{% if refused %}{{ tips.alert("warn", "The runner did not run it: " ~ refused ~ ".", id="sbx-state", action=again("Resume" if d else "Start")) }}
+{% elif st.status == "stopped" %}{{ tips.alert("warn", st.stop_reason or "Finished weeks and fits are kept; Resume goes on from them.", title="Stopped after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
+{% elif st.status == "interrupted" %}{{ tips.alert("warn", (st.stop_reason if queues else "") or "The console closed while it replayed. Finished weeks are kept; Resume goes on from them.", title="Interrupted after " ~ d ~ " of " ~ W ~ " weeks.", id="sbx-state", action=again("Resume")) }}
 {% elif st.status == "done" and not st.complete %}{{ tips.alert("warn", "The others failed (see the failed fits below); Resume tries them again.", title="Done, with " ~ d ~ " of " ~ W ~ " weeks stored.", id="sbx-state", action=again("Resume")) }}
 {% elif st.status == "error" %}{{ tips.alert("error", st.error.rstrip(".") ~ ". Resume tries them again once that is fixed.", title="Every week failed.", id="sbx-state", action=again("Resume")) }}
 {% elif not st.status %}{{ tips.alert("info", "", title="Not started yet.", id="sbx-state", action=again("Start")) }}

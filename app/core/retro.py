@@ -65,7 +65,8 @@ from app.core.retro_store import (  # noqa: F401
     FILTER_MEMBER, QUANTILES_NAME, filter_quantiles, SAMPLES_GZ, SAMPLES_JSON, _week_dir, compress_samples_file,
     member_quantiles, read_samples, read_week_quantiles, read_week_samples,
     samples_file, season_sample_files, week_done, week_member_quantiles,
-    week_samples_path, write_week_quantiles, write_week_samples)
+    week_samples_path, write_week_quantiles, write_week_samples,
+    DROPPED_NAME, season_week_files, week_dropped)
 # settings, presets and the resume rules moved to app/core/retro_settings.py
 from app.core.retro_settings import (  # noqa: F401
     ENGINE_LABELS, ENGINES, FLOOR_APPLIED, FLOOR_FROM_RESUME,
@@ -298,7 +299,8 @@ def timing(meta: dict, now: float | None = None) -> dict:
 
 
 def _weeks_on_disk(root: Path) -> int:
-    return len(season_sample_files(root))
+    # a week stored lean counts: a resume keeps its refusals and its count
+    return len(season_week_files(root))
 
 
 def _fold(meta: dict, now: float) -> dict:

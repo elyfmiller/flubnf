@@ -33,10 +33,14 @@ bundle, `<season>-FluBNF-replay-<stamp>.flubnf-replay.zip`, under
 `app/state/exports/` and downloads it. The bundle holds `manifest.json`
 plus the run record, `scores.json` and every completed week's quantiles
 and samples; the playback cache and the report stay behind, since the
-importing machine rebuilds them. The manifest records the season, the
-export stamp, the weeks, when and from which machine it was exported, the
-FluBNF build, and a sha256 and size per file. A 26-week season of all 52
-jurisdictions is about 10 MB.
+importing machine rebuilds them. Each week's `oracle.json` travels too
+(the Oracle step's record, with the Liu-West filter's own quantiles), and
+that week's quantiles stay current on import, so an imported replay can
+be the shipped side of a Sandbox experiment with the Oracle step on or
+off; a bundle exported before it did imports as before.
+The manifest records the season, the export stamp, the weeks, when and
+from which machine it was exported, the FluBNF build, and a sha256 and
+size per file. A 26-week season of all 52 jurisdictions is about 10 MB.
 
 **Import a replay** on the Retrospective tab (Settings card) takes the
 file, or its path when it is already on this machine. The import lands as a

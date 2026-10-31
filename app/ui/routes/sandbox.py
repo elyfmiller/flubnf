@@ -11,7 +11,8 @@ editor; the page (GET /sandbox); models (new, save, delete, check,
 register); data.exp (fill, simulate, upload); runs (start, stop); the
 diagram API and the run poll; downloads; the Oracle step; experiments
 (start, the compare page and its JSON, delete; app/core/experiments.py
-does the work); the Storage line.
+does the work, and in a student's folder on the runner computer Start
+queues for app/core/runner.py); the Storage line.
 """
 from __future__ import annotations
 
@@ -840,7 +841,29 @@ def sandbox_stop(request: Request, experiment: str = Form("")):
     and STOP in its folder, which the replay polls between fits). An
     experiment's page posts experiment=<id>: that experiment alone is
     stopped, never a fit; its Stop says what it did (JSON when asked), and
-    also reaches a folder another process replays."""
+    also reaches a folder another process replays. In a student's folder
+    on the runner computer the runner has it: a queued one is taken out
+    of the queue, a replaying one is stopped (runner.stop)."""
+    name = _student() if experiment else None
+    if name:
+        from app.core import experiments as X
+        from app.core import runner
+        said = runner.stop(name, experiment)
+        to = (f"/sandbox/experiments/{experiment}" if X.find(experiment)
+              else "/sandbox")
+        if said == "dequeued":
+            text = (f"Took {experiment} out of the queue; nothing was "
+                    "fitted.")
+        elif said == "stopping":
+            text = (f"Stopping {experiment} after the fits in flight; "
+                    "finished weeks are kept.")
+        else:
+            return _experiment_answer(
+                _wants_json(request), ok=False, eid=experiment, kind="warn",
+                to=to, text=f"Nothing to stop: {experiment} is not "
+                "replaying.")
+        return _experiment_answer(_wants_json(request), ok=True,
+                                  eid=experiment, to=to, text=text)
     with _engine_lock:
         running = None if experiment else _sandbox_status.get("running")
         if (not experiment and not running
@@ -1040,8 +1063,11 @@ def sandbox_run_oracle(run_id: str, w: str = Form("")):
 # card starts one, its page shows it running, then its summary.json. It
 # holds the engine through _sandbox_status["experiment"], so every guard
 # that reads _sandbox_live_reason refuses while it replays; Stop is
-# /sandbox/stop's. Its imports stay inside the functions: the core
-# modules load pandas, which the server's import must not.
+# /sandbox/stop's. In a student's folder on the runner computer (the
+# students' Mac Studio) Start and Resume queue instead: the runner
+# replays and scores there, the page shows the queue (runner.json), and
+# Stop takes a job out of it. Its imports stay inside the functions: the
+# core modules load pandas, which the server's import must not.
 
 #: one scoring job per experiment: the segment end's, or a view's when
 #: experiments.stale() names a reason; registered under _engine_lock with
@@ -1053,6 +1079,26 @@ _SCORE_GRACE_S = 1.5
 
 #: the Experiments form a refusal sends back (one-shot, read by the gallery)
 _experiment_refused_form: dict = {}
+
+
+def _student() -> str | None:
+    """The student's name when this console's Sandbox is a student's
+    folder on the runner computer (its experiments queue for the runner);
+    None everywhere else, at one failed stat."""
+    from app.core import runner
+    return runner.folder_of(sandbox_mod.SANDBOX)
+
+
+def _runner_job(state: dict, name: str) -> str:
+    """The id of the experiment a running runner replays in this
+    student's folder, from runner.json's job (written before its child
+    starts, so it names the job from its first moment); "" for none, a
+    tidy, or a runner that is not running."""
+    job = state.get("job") if state.get("alive") else None
+    if (isinstance(job, dict) and job.get("kind") == "run"
+            and job.get("folder") == name):
+        return str(job.get("id") or "")
+    return ""
 
 
 async def _experiment_form(request: Request) -> dict:
@@ -1103,28 +1149,39 @@ def _experiment_answer(as_json: bool, *, ok: bool, eid, text: str,
 def _experiment_start(raw: dict, as_json: bool):
     """Start (or resume) the experiment the four choices name: the
     settings read (nothing claimed or written on a refusal); one whose
-    every week is stored answered as complete; the engine claimed under
-    _engine_lock, refused (MACHINE) while any other run holds it or with
-    no particle-filter engine here; the preflight (the plan, the bank,
-    the engine build at a resume) outside the lock; a Stop meanwhile
-    answered as a start that never began; then the replay on a
-    background thread (_experiment_go), as the Sandbox starts a fit. A
-    refusal goes back to the experiment's page when it has one, else to
-    the gallery, whose form comes back as posted."""
+    every week is stored answered as complete; in a student's folder on
+    the runner computer, queued for the runner (_experiment_queue) and
+    nothing claimed here; else the engine claimed under _engine_lock,
+    refused (MACHINE) while any other run holds it, this computer's
+    runner replays, or there is no particle-filter engine here; the
+    preflight (the plan, the bank, the engine build at a resume) outside
+    the lock; a Stop meanwhile answered as a start that never began; then
+    the replay on a background thread (_experiment_go), as the Sandbox
+    starts a fit. A refusal ("Not started", or "Not queued") goes back to
+    the experiment's page when it has one, else to the gallery, whose
+    form comes back as posted."""
     from app.core import experiments as X
+    from app.core import runner
     from app.core.problem_codes import Refusal, finding
     eid = None
 
-    def refused(found):
+    def refused(found, prefix="Not started"):
         found = ([f for f in found if f["tier"] != "warning"]
                  + [f for f in found if f["tier"] == "warning"])
         said = [f"{f['text']} ({f['code']})" for f in found]
+        if prefix == "Not queued":
+            # the runner's floor: its detail is a second MACHINE finding,
+            # a sentence of its own, said as it is
+            said[1:] = [f["text"] if f["code"] == found[0]["code"]
+                        == "MACHINE" else w
+                        for f, w in zip(found[1:], said[1:])]
         to = (f"/sandbox/experiments/{eid}" if eid and X.find(eid)
               else "/sandbox")
         if as_json:
+            extra = {"queued": None} if prefix == "Not queued" else {}
             return _experiment_answer(
-                True, ok=False, eid=eid, text=f"Not started: {said[0]}.",
-                codes=found, url=None, started=False)
+                True, ok=False, eid=eid, text=f"{prefix}: {said[0]}.",
+                codes=found, url=None, started=False, **extra)
         if to == "/sandbox":
             def posted(k, default=""):
                 return raw.get(k) if isinstance(raw.get(k), str) else default
@@ -1135,7 +1192,7 @@ def _experiment_start(raw: dict, as_json: bool):
                 "oracle": (oracle if isinstance(oracle, bool)
                            else posted("model") in X.ORACLE_ON_BY_DEFAULT)}
         # the problems first, each with its code; the rest in the "?"
-        _not_done("Not started", sandbox_mod.SandboxError(
+        _not_done(prefix, sandbox_mod.SandboxError(
             "\n".join([said[0] + "."] + said[1:])))
         return RedirectResponse(to, status_code=303)
 
@@ -1154,15 +1211,24 @@ def _experiment_start(raw: dict, as_json: bool):
     folder = X.find(eid)
     if folder is not None and X.status(folder)["complete"]:
         return complete()
+    if _student():
+        try:
+            return _experiment_queue(s, eid, as_json)
+        except Refusal as e:
+            return refused(e.findings, "Not queued")
+        except Exception as e:                  # the computer, not the model
+            return refused([finding("MACHINE", str(e)[:300])], "Not queued")
     with _engine_lock:
-        why = _sandbox_busy_reason()
+        why, one = _sandbox_busy_reason(), "run"
+        if not why:
+            why, one = runner.busy_words(), "replay"
         engine = "" if why else pipeline._pf_engine_state()
         claim = None
         if not why and engine == "ready":
             claim = {"id": eid, "settings": s, "cancel": False}
             _sandbox_status["experiment"] = claim
     if why:
-        return refused([finding("MACHINE", f"{why}: one run at a time")])
+        return refused([finding("MACHINE", f"{why}: one {one} at a time")])
     if claim is None:
         return refused([finding(
             "MACHINE", "an experiment needs the particle-filter engine, "
@@ -1228,6 +1294,27 @@ def _experiment_start(raw: dict, as_json: bool):
         kind="ok" if ref is not None else "warn", detail=" ".join(notes),
         codes=p["findings"], url=page, started=True, resumed=p["resume"],
         complete=False, plan=plan)
+
+
+def _experiment_queue(s: dict, eid: str, as_json: bool):
+    """Start or Resume in a student's folder on the runner computer: the
+    experiment queued for the runner (runner.enqueue writes its
+    experiment.json and QUEUED once every check passes; nothing is
+    claimed or run here), answered in the runner's words with its detail
+    in the "?": queued, already queued, replaying or complete. JSON:
+    Start's keys with started false (the plan when it was queued now),
+    plus "queued" as the experiment's JSON gives it (runner.position's:
+    null while it replays). A refusal raises, for _experiment_start to
+    say "Not queued"."""
+    from app.core import runner
+    q = runner.enqueue(s)
+    page = f"/sandbox/experiments/{eid}"
+    plan = {"plan": q["plan"]} if q.get("plan") else {}
+    return _experiment_answer(
+        as_json, ok=True, eid=eid, text=q["text"], kind=q["kind"],
+        detail=q["detail"], to=page, codes=q["findings"], url=page,
+        started=False, resumed=False, complete=q["state"] == "complete",
+        queued=runner.position(_student(), eid), **plan)
 
 
 @router.post("/sandbox/experiments")
@@ -1321,8 +1408,13 @@ def _experiment_scoring(eid: str) -> dict | None:
     """A view's scoring: the job running for this experiment, else a new
     one (flubnf_build None: the build that ran is kept) when
     experiments.stale() names a reason and no claim here names eid; None
-    when there is nothing to score. stale() is read before the lock."""
+    when there is nothing to score, and always in a student's folder on
+    the runner computer, where the runner alone scores (against its own
+    shipped replays, which this console's retro root does not hold).
+    stale() is read before the lock."""
     from app.core import experiments as X
+    if _student():
+        return None
     job = _experiment_scores.get(eid)
     if job and not job["done"].is_set():
         return job
@@ -1341,14 +1433,36 @@ def _experiment_scoring(eid: str) -> dict | None:
     return job
 
 
-def _experiment_line(st: dict, claimed: bool) -> str:
-    """The running card's one line: starting, stopping, paused, or the
-    week under way, its fits, the time so far and, once a week is timed,
-    about how long is left; "" otherwise."""
-    from app.core import retro
+def _experiment_line(st: dict, claimed, queue: dict | None = None) -> str:
+    """The running card's one line: queued for the runner (`queue`,
+    runner.position's: its place, when it starts, about how long it runs,
+    the disk it needs, and why it waits), starting (on the runner when
+    `claimed` is "runner": runner.json's job names it), stopping, paused,
+    or the week under way, its fits, the time so far and, once a week is
+    timed, about how long is left; "" otherwise."""
+    from app.core import retro, runner
     state = st["status"]
+    if queue is not None:
+        parts = ["Queued", f"{runner._ordinal(queue['position'])} in line"]
+        if not queue["runner"]:
+            parts.append("the runner is not running")
+        elif queue["wait_s"] >= 60:
+            parts.append("starts in " + sandbox_mod.eta_words(
+                queue["wait_s"], queue["wait_s"]))
+        else:
+            parts.append("starts within a minute")
+        if queue["seconds"] > 0:
+            parts.append("runs " + sandbox_mod.eta_words(queue["seconds"],
+                                                         queue["seconds"]))
+        if queue["peak_bytes"] > 0:
+            parts.append("needs about "
+                         f"{retro.human_bytes(queue['peak_bytes'])} of disk")
+        if queue["why"]:
+            parts.append(queue["why"])
+        return " · ".join(parts)
     if claimed and state not in retro.ACTIVE_STATUSES:
-        return "Starting…"
+        return ("Starting on the runner…" if claimed == "runner"
+                else "Starting…")
     so_far = f"{sandbox_mod.clock(st['elapsed_s'])} so far"
     if state == "stopping":
         return f"Stopping after the fits in flight · {so_far}"
@@ -1363,16 +1477,26 @@ def _experiment_line(st: dict, claimed: bool) -> str:
     return line
 
 
-def _experiment_badge(st: dict, claimed: bool) -> tuple:
-    """(state, words) of an experiment's badge: starting, running,
-    stopping, paused, stopped or interrupted (with the weeks stored when
-    not every one is), done, error, or not started."""
-    from app.core import retro
+def _experiment_badge(st: dict, claimed, queue: dict | None = None,
+                      refused: str = "") -> tuple:
+    """(state, words) of an experiment's badge: queued (its place in line,
+    or that the runner is not running), starting, refused by the runner
+    (runner.refusal's words given), running, stopping, paused, stopped or
+    interrupted (with the weeks stored when not every one is), done,
+    error, or not started."""
+    from app.core import retro, runner
     state = st["status"]
     part = ("" if st["complete"]
             else f" · {st['weeks_done']} of {st['weeks_total']} weeks")
+    if queue is not None:
+        if not queue["runner"]:
+            return ("warn", "queued · runner not running")
+        return ("pending",
+                f"queued · {runner._ordinal(queue['position'])} in line")
     if claimed and state not in retro.ACTIVE_STATUSES:
         return ("pending", "starting")
+    if refused:
+        return ("warn", "refused by the runner")
     if state in ("running", "stopping"):
         return ("pending", state)
     if state == "paused":
@@ -1392,9 +1516,11 @@ def _experiment_gallery() -> dict:
     refused form as posted, one-shot; else the newest intact registered
     version, the season with a shipped replay to compare with, smoke and
     the model's Oracle default), and a row per experiment: its badge and
-    its figures as last scored (never checked for staleness here)."""
+    its figures as last scored (never checked for staleness here). In a
+    student's folder on the runner computer each badge also reads the
+    queue (runner.json, read once), and "queues" is true: Start queues."""
     from app.core import experiments as X
-    from app.core import library, retro
+    from app.core import library, retro, runner
     models = [{**m, "oracle": m["ref"] in X.ORACLE_ON_BY_DEFAULT}
               for m in library.list_models()]
     pick = _experiment_refused_form.pop("form", None)
@@ -1410,13 +1536,23 @@ def _experiment_gallery() -> dict:
                 "size": X.DEFAULT_SIZE,
                 "oracle": ref in X.ORACLE_ON_BY_DEFAULT}
     live = _experiment_live()
-    rows = [{"id": r["id"],
-             "badge": _experiment_badge(r["status"], r["id"] == live),
-             "fig": X.figures((r["summary"] or {}).get("overall"))}
-            for r in X.list_experiments()]
+    name = _student()
+    state = runner.read_state() if name else {}
+    on_runner = _runner_job(state, name) if name else ""
+    rows = []
+    for r in X.list_experiments():
+        queue = refused = None
+        if name:
+            queue = runner.position(name, r["id"], state=state)
+            refused = runner.refusal(name, r["id"], state=state)
+        claimed = "runner" if on_runner == r["id"] else r["id"] == live
+        rows.append({"id": r["id"],
+                     "badge": _experiment_badge(r["status"], claimed, queue,
+                                                refused or ""),
+                     "fig": X.figures((r["summary"] or {}).get("overall"))})
     return {"models": models,
             "seasons": sorted(retro.available_seasons(), reverse=True),
-            "pick": pick, "rows": rows}
+            "pick": pick, "rows": rows, "queues": bool(name)}
 
 
 def _experiment_view(eid: str) -> dict | None:
@@ -1426,11 +1562,21 @@ def _experiment_view(eid: str) -> dict | None:
     stands (status, with the claim over it: the line and the badge); its
     scoring (a view's rescore when stale() names a reason, waited for up
     to _SCORE_GRACE_S); and summary.json as read, every figure through
-    experiments.figures."""
+    experiments.figures. In a student's folder on the runner computer it
+    also reads the queue (runner.json): its place while QUEUED stands
+    ("queue", runner.position's), the runner's job naming it while it
+    starts, and what the runner said when it would not run it
+    ("refused"); a queued experiment, and the runner's job, are live, so
+    the page polls on."""
     from app.core import experiments as X
-    from app.core import library, retro
+    from app.core import library, retro, runner
     from app.core.problem_codes import Refusal
     from app.core.us_national import is_us
+    name = _student()
+    state = runner.read_state() if name else {}
+    queue = runner.position(name, eid, state=state) if name else None
+    refused = runner.refusal(name, eid, state=state) if name else ""
+    on_runner = bool(name) and _runner_job(state, name) == eid
     folder = X.find(eid)
     with _engine_lock:
         claim = _sandbox_status.get("experiment")
@@ -1443,7 +1589,8 @@ def _experiment_view(eid: str) -> dict | None:
     except Refusal:
         return None                             # changed since find
     st = X.status(X.root() / eid)
-    live = claimed or st["status"] in retro.ACTIVE_STATUSES
+    live = (claimed or on_runner or queue is not None
+            or st["status"] in retro.ACTIVE_STATUSES)
     job = _experiment_scoring(eid) if folder is not None else None
     if job is not None:
         job["done"].wait(_SCORE_GRACE_S)
@@ -1506,12 +1653,15 @@ def _experiment_view(eid: str) -> dict | None:
                       "replicates": int(rs.get("replicates") or 0)}
         except (TypeError, ValueError):
             record = None
+    held = "runner" if on_runner else claimed
     return {"id": eid, "settings": settings, "folder": folder is not None,
             "claimed": claimed, "live": live, "status": st,
-            "line": _experiment_line(st, claimed),
-            "badge": _experiment_badge(st, claimed), "scoring": scoring,
-            "summary": summary, "figures": figs, "problem": problem,
-            "words": words, "record": record}
+            "line": _experiment_line(st, held, queue),
+            "badge": _experiment_badge(st, held, queue, refused),
+            "scoring": scoring, "summary": summary, "figures": figs,
+            "problem": problem, "words": words, "record": record,
+            "queued": queue is not None, "queue": queue, "refused": refused,
+            "queues": bool(name)}
 
 
 @router.get("/sandbox/experiments/{eid}", response_class=HTMLResponse)
@@ -1531,9 +1681,11 @@ def sandbox_experiment_page(request: Request, eid: str):
 @router.get("/api/sandbox/experiments/{eid}")
 def api_sandbox_experiment(eid: str):
     """One experiment as JSON (its page's poll, and agents): its choices,
-    live and claimed, status with the page's line, scoring, summary.json
-    as read and its overall and US figures; 404 when unknown. A stale
-    summary is rescored here as on the page."""
+    live and claimed, where it stands in the runner's queue ("queued":
+    runner.position's, null when it is not queued), status with the
+    page's line, scoring, summary.json as read and its overall and US
+    figures; 404 when unknown. A stale summary is rescored here as on the
+    page."""
     view = _experiment_view(eid)
     if view is None:
         return JSONResponse({"error": f"no experiment is named '{eid}'"},
@@ -1541,7 +1693,7 @@ def api_sandbox_experiment(eid: str):
     figs = view["figures"]
     return _json_finite({
         "id": eid, "settings": view["settings"], "live": view["live"],
-        "claimed": view["claimed"],
+        "claimed": view["claimed"], "queued": view["queue"],
         "status": {**view["status"], "line": view["line"]},
         "scoring": view["scoring"], "summary": view["summary"],
         "figures": (None if figs is None
@@ -1553,9 +1705,10 @@ def api_sandbox_experiment(eid: str):
 def sandbox_experiment_delete(request: Request, eid: str,
                               confirm: str = Form("")):
     """Delete an experiment's folder (the library keeps the model); never
-    while it replays or is being scored. The confirmation names it."""
+    while it replays, is the runner's job, or is being scored (a queued
+    one leaves the queue with its folder). The confirmation names it."""
     from app.core import experiments as X
-    from app.core import retro
+    from app.core import retro, runner
     as_json = _wants_json(request)
     back = f"/sandbox/experiments/{eid}"
     if confirm != eid:
@@ -1571,7 +1724,10 @@ def sandbox_experiment_delete(request: Request, eid: str,
             if job and not job["done"].is_set():
                 raise sandbox_mod.SandboxError(
                     f"{eid} is being scored; delete it once that is done")
-            n = X.delete(eid, live=_experiment_live())
+            name = _student()
+            live = _experiment_live() or (
+                _runner_job(runner.read_state(), name) if name else "")
+            n = X.delete(eid, live=live)
             _experiment_scores.pop(eid, None)
     except Exception as e:
         if as_json:

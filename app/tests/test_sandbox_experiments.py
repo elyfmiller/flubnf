@@ -6,11 +6,23 @@ then scored off the engine as the folder's one job, and a worker that
 fails saying so and letting go; each refusal with its code; the claim
 refusing every other run; Stop, Resume and a complete experiment; the
 compare page read from summary.json only, in the words of each state; its
-JSON; Delete; and the guard modal's words.
+JSON; Delete; and the guard modal's words. In a student's folder on the
+runner computer: Start queues (no claim, no thread, no guard), Stop takes
+it out of the queue, the badge, the line and the Queued card read the
+queue, the page never rescores, and the runner's refusal is said; the
+runner computer's own console waits while the runner replays.
 
 The replay's weeks, the engine and the hub are faked as
 test_experiments.py and test_experiment_summary.py fake them: no PyBNF,
 no BNG2.pl, no hub clone. Every thread a start begins is joined.
+
+golden/experiment_pages.json holds the gallery and three experiment
+pages as a console off the runner renders them, from fixed fixtures. It
+was captured from origin/dev 24ac926, before the runner's branches came
+to the routes and templates; regenerate only for a deliberate change to
+those pages, and review its diff:
+
+    python app/tests/test_sandbox_experiments.py --write-golden
 """
 import json
 import os
@@ -24,6 +36,39 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+#: the default role's pages (the golden test's)
+GOLDEN = Path(__file__).resolve().parent / "golden" / "experiment_pages.json"
+
+if __name__ == "__main__":
+    # the golden regeneration: pytest renders the pages with the suite's
+    # fixtures (conftest keeps the state and the hub out of the checkout),
+    # and this file's own imports happen only in that run
+    import tempfile
+
+    import pytest
+    if sys.argv[1:] != ["--write-golden"]:
+        sys.exit(__doc__)
+    with tempfile.TemporaryDirectory(prefix="flubnf-golden-") as _d:
+        pytest.main(["-q", "-p", "no:cacheprovider", f"--basetemp={_d}/t",
+                     f"{__file__}::test_the_default_role_pages_are_as_on_"
+                     "24ac926"])
+    _pages = getattr(sys.modules.get("test_sandbox_experiments"), "PAGES",
+                     None)
+    if not _pages:
+        sys.exit("The pages were not rendered: see pytest's words above.")
+    GOLDEN.parent.mkdir(exist_ok=True)
+    GOLDEN.write_text(json.dumps({
+        "_about": ("the gallery and three experiment pages (<main> only) "
+                   "as a console off the runner renders them from "
+                   "test_sandbox_experiments.py's fixed fixtures; captured "
+                   "at origin/dev 24ac926, before the runner's branches. "
+                   "Regenerate only for a deliberate change: python "
+                   "app/tests/test_sandbox_experiments.py --write-golden"),
+        "pages": _pages}, indent=1, sort_keys=True) + "\n",
+        encoding="utf-8", newline="\n")
+    print(f"wrote {GOLDEN}")
+    sys.exit(0)
+
 import pytest                                            # noqa: E402
 from fastapi.testclient import TestClient                # noqa: E402
 
@@ -31,7 +76,9 @@ from app.core import experiments as X                    # noqa: E402
 from app.core import library as L                        # noqa: E402
 from app.core import retro                               # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
+from app.core import runner                              # noqa: E402
 from app.core import scoring                             # noqa: E402
+from app.core.engines import pf                          # noqa: E402
 from app.ui import pipeline as ui_pipeline               # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons     # noqa: E402
 from app.ui import server as srv                         # noqa: E402
@@ -41,10 +88,13 @@ from app.ui import versions as ui_versions               # noqa: E402
 from app.ui.routes import sandbox as ui_sandbox          # noqa: E402
 from flubnf.vintages import sha256_of                    # noqa: E402
 from test_experiment_summary import (S1, _age, _experiment, _q,  # noqa: E402
-                                     _shipped_root, _snapshot)
-from test_experiments import (SMOKE_WEEKS, _register, _replay,  # noqa: E402
+                                     _shipped_root, _snapshot, _store)
+from test_experiments import (SMOKE_FP, SMOKE_WEEKS, _register,  # noqa: E402
+                              _replay,
                               _sidecar, _weeks_run, season, truth)  # noqa: F401
 from test_fewer_marks import marks                       # noqa: E402
+from test_runner_folders import student, students        # noqa: E402,F401
+from test_runner_queue import state as runner_state      # noqa: E402
 
 client = TestClient(srv.app)
 FORM = {"model": "sihrs", "season": "2024-25"}
@@ -1308,3 +1358,515 @@ def test_one_question_mark_on_the_page(world, truth, monkeypatch):
     # the page's own content (the season fixture's BNG2.pl fake answers
     # git too, so base.html's banner says an update was pulled)
     assert marks(html.split('<div id="sbx"', 1)[1]) == ["tip-sbx-scores"]
+
+
+# ------------------------------------- the default role, as on 24ac926
+
+#: the pages the golden test rendered (read by its --write-golden)
+PAGES: dict = {}
+
+
+def _golden_world(monkeypatch) -> dict:
+    """The default role's fixed world, nothing in it a time or a path
+    of this run: one registered model (its working copy gone, so no file
+    time shows), a shipped replay of 2024-25 to compare with, and three
+    experiments at fixed times: BETA done and scored (a hand-written
+    summary), the shipped smoke stopped after one of its two weeks, and a
+    pilot never started. {page name: its URL}."""
+    from app.ui.templating import templates
+    monkeypatch.setitem(templates.env.globals, "restart_needed",
+                        lambda: False)
+    monkeypatch.setattr(sb, "_stamp", lambda: "2026-10-30T12:00:02Z")
+    _register("beta")
+    shutil.rmtree(sb.MODELS / "beta")
+    _shipped_root(world_root(), null={w: _q(12.0) for w in SMOKE_WEEKS})
+    beta = _experiment({w: _q(10.0) for w in SMOKE_WEEKS})
+    retro.write_meta(beta, {**retro.read_meta(beta), "started_utc": S1 + 300,
+                            "finished_utc": S1 + 400})
+    X.write_summary(beta, {
+        "complete": True, "id": BETA, "experiment": "e" * 64,
+        "model": "beta2@3", "model_fingerprint": "m" * 64,
+        "season": "2024-25", "size": "smoke", "oracle": False,
+        "ran": {"locations": ["Alaska", "Texas", "Vermont"],
+                "weeks": SMOKE_WEEKS, "replicates": 1, "particles": 10_000,
+                "failed_fits": 1, "seconds": 3725.0,
+                "started_utc": "2026-11-04T14:59:51Z",
+                "finished_utc": "2026-11-04T16:01:56Z",
+                "disk_bytes": 3_481_920, "engine_build": {},
+                "flubnf_build": "53f1acf"},
+        "shipped": {"member": "pf_filter", "root": "app/state/retro/2024-25",
+                    "started_utc": "2026-09-23T19:58:19Z", "replicates": 3,
+                    "particles": 10_000, "engine_build": {}},
+        "scored": {"utc": "2026-11-04T16:02:05Z", "truth": "settled",
+                   "truth_sha256": "a" * 64, "scores_v": 2},
+        "cells": {"compared": 100, "model_only": 0, "shipped_only": 4},
+        "overall": _sums(75.0, 18.0),
+        "by_location": {"Alaska": _sums(30.0, 6.0, n=40),
+                        "Texas": _sums(25.0, 6.0, n=40),
+                        "Vermont": _sums(20.0, 6.0, n=20)},
+        "by_week": {SMOKE_WEEKS[0]: _sums(40.0, 9.0, n=50),
+                    SMOKE_WEEKS[1]: _sums(35.0, 9.0, n=50)},
+        "by_horizon": {str(h): _sums(18.75, 4.5, n=25) for h in range(4)},
+        "us": None,
+        "failures": [{"week": SMOKE_WEEKS[1], "location": "Texas",
+                      "replicate": 0, "text": "the fit stopped"}]})
+    smoke = X.root() / SMOKE
+    smoke.mkdir(parents=True)
+    L.write_json(smoke / X.SETTINGS, json.loads(X.settings_text(FORM)))
+    retro.write_meta(smoke, {
+        "status": "stopped", "started_utc": S1 + 200,
+        "finished_utc": S1 + 250, "elapsed_s": 50.0,
+        "settings": {"experiment": "f" * 64, "model_fingerprint": "s" * 64,
+                     "model": "sihrs", "weeks": SMOKE_WEEKS,
+                     "locations": ["California", "Vermont"],
+                     "replicates": 1, "particles": 10_000}})
+    _store(smoke, SMOKE_WEEKS[0], {"pf": _q(10.0)})
+    pilot = {"model": "sihrs-natg", "season": "2024-25", "size": "pilot"}
+    idle = X.root() / X.experiment_id(pilot)
+    idle.mkdir()
+    L.write_json(idle / X.SETTINGS, json.loads(X.settings_text(pilot)))
+    os.utime(idle / X.SETTINGS, (S1, S1))
+    monkeypatch.setattr(X, "stale", lambda folder, **k: "")
+    _no_scoring(monkeypatch)
+    return {"gallery": "/sandbox",
+            "compare": f"/sandbox/experiments/{BETA}",
+            "stopped": PAGE,
+            "not_started": f"/sandbox/experiments/{idle.name}"}
+
+
+def _main(html: str) -> str:
+    """A page's <main>: what the routes and the page's own template draw
+    (base.html's head, menus and footer around it are not theirs)."""
+    return re.search(r'<main id="main".*?</main>', html, re.S).group(0)
+
+
+def test_the_default_role_pages_are_as_on_24ac926(world, truth, tmp_path,
+                                                  monkeypatch):
+    urls = _golden_world(monkeypatch)
+    pages = {}
+    for name, url in urls.items():
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code == 200, (url, r.status_code)
+        pages[name] = _main(r.text)
+        assert str(tmp_path) not in pages[name], name
+    PAGES.update(pages)
+    want = json.loads(GOLDEN.read_text(encoding="utf-8"))["pages"]
+    assert sorted(pages) == sorted(want)
+    for name in want:
+        assert pages[name] == want[name], name
+    # not vacuous: each page is the one meant
+    assert 'id="h-sb-exp"' in pages["gallery"]
+    assert pages["gallery"].count('<a href="/sandbox/experiments/') == 3
+    assert '<span class="relwis ok">0.750</span>' in pages["compare"]
+    assert 'id="sbx-fail"' in pages["compare"]
+    assert "Stopped after 1 of 2 weeks." in pages["stopped"]
+    assert 'data-guard="sandbox-run">Resume</button>' in pages["stopped"]
+    assert "Not started yet." in pages["not_started"]
+
+
+# ---------------------------- in a student's folder on the runner computer
+
+GiB = runner.GiB
+#: a pid no process has (above every pid_max)
+DEAD = 2_147_483_646
+#: a refusal the runner records at dispatch
+LINKED = (f"experiments/{SMOKE}/weeks/2024-12-28 is a link, and the runner "
+          "follows no link in a student folder (MACHINE)")
+
+
+@pytest.fixture
+def alice(world, students, monkeypatch) -> Path:
+    """This console is alice's on the runner computer (the students' Mac
+    Studio): its Sandbox her folder under STUDENTS, the runner running
+    with the world's replay roots as its retro root, room on the disk,
+    and the Mac Studio's shard width. Her Sandbox folder."""
+    top = student(students, "alice")
+    monkeypatch.setattr(sb, "SANDBOX", top)
+    monkeypatch.setattr(sb, "MODELS", top / "models")
+    monkeypatch.setattr(sb, "RUNS", top / "runs")
+    monkeypatch.setattr(runner, "_free", lambda: 500 * GiB)
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 16)
+    runner_state(students, retro_root=str(world_root()))
+    return top
+
+
+def _no_console_run(monkeypatch) -> None:
+    """This console replays, preflights and claims the engine never."""
+    def never(*a, **k):
+        raise AssertionError("this console ran the experiment")
+    for name in ("replay", "run", "preflight"):
+        monkeypatch.setattr(X, name, never)
+    monkeypatch.setattr(ui_pipeline, "_pf_engine_state", never)
+
+
+def _detail() -> str:
+    return ui_state._status.get("flash_detail") or ""
+
+
+def _line(html: str) -> str:
+    return re.search(r'<p class="runstat" id="sbx-line" aria-live="polite">'
+                     r"([^<]*)</p>", html).group(1)
+
+
+def _title_badge(html: str) -> tuple:
+    head = html.split('id="h-sbx-title"', 1)[1].split("</div>", 1)[0]
+    return (re.search(r'data-state="(\w+)"', head).group(1),
+            re.search(r'<span class="uk-badge-t">([^<]*)</span>', head
+                      ).group(1))
+
+
+def test_in_a_runner_folder_start_queues_and_claims_nothing(alice,
+                                                            monkeypatch):
+    _replay(world_root() / "2024-25", weeks=SMOKE_WEEKS)
+    _no_console_run(monkeypatch)
+    # Start carries no guard: the modal would offer to stop her own fit
+    form = _form(client.get("/sandbox").text)
+    assert form.count("<button") == 1 and "data-guard" not in form
+    assert '<button class="gold">Start</button>' in form
+    r = _start()
+    assert r.headers["location"] == PAGE
+    est = runner.estimate(FORM, weeks=SMOKE_WEEKS)
+    runs = sb.eta_words(est["seconds"], est["seconds"])
+    peak, keep = (retro.human_bytes(est[k])
+                  for k in ("peak_bytes", "keep_bytes"))
+    assert _flash() == f"Queued {SMOKE}: 1st in line on the runner."
+    assert ui_state._status.get("flash_kind") == "ok"
+    assert _detail() == (
+        f"It runs {runs} once it starts (a first estimate: no smoke has "
+        "finished on this computer yet). It starts within a minute. While it "
+        f"runs it needs about {peak} of disk and keeps about {keep}. "
+        "Compared with the shipped replay of 2024-25 (the Oracle SIHRS) on "
+        "the cells both score. FluBNF keeps 20.0 GB free on this disk; "
+        "500.0 GB is free now.")
+    # the settings and the flag, nothing else; no claim, no thread
+    f = alice / "experiments" / SMOKE
+    assert sorted(p.name for p in f.iterdir()) == [X.QUEUED, X.SETTINGS]
+    assert _claim() is None and not [t for t in threading.enumerate()
+                                     if t.name.startswith("experiment-")]
+    assert client.get("/api/busy").json()["experiment"] is None
+    # the page: live (it polls on), the Queued card, the line, Stop
+    html = client.get(PAGE).text
+    assert 'data-poll="1"' in html and "<h2>Queued</h2>" in html
+    line = (f"Queued · 1st in line · starts within a minute · runs {runs} · "
+            f"needs about {peak} of disk")
+    assert _line(html) == line
+    assert _title_badge(html) == ("pending", "queued · 1st in line")
+    assert ('<input type="hidden" name="experiment" value="' + SMOKE
+            + '"><button class="quiet">Stop</button>') in html
+    assert "Delete experiment" not in html and 'id="sbx-state"' not in html
+    api = client.get(f"/api/sandbox/experiments/{SMOKE}").json()
+    assert (api["live"], api["claimed"], api["status"]["line"]) == (
+        True, False, line)
+    assert api["queued"] == {
+        "position": 1, "wait_s": 0.0, "seconds": est["seconds"],
+        "measured": False, "peak_bytes": est["peak_bytes"],
+        "keep_bytes": est["keep_bytes"], "why": "", "runner": True}
+    assert api["status"]["queued"] is True
+    row = client.get("/sandbox").text.split(f'href="{PAGE}"', 1)[1]
+    assert '<span class="uk-badge-t">queued · 1st in line</span>' in row.split(
+        "</tr>", 1)[0]
+    # JSON: Start's keys, started false, and where it stands: "queued" as
+    # the experiment's JSON gives it
+    got = client.post("/sandbox/experiments", data=FORM, headers=JSON).json()
+    assert set(got) == {"ok", "id", "url", "started", "resumed", "complete",
+                        "text", "codes", "queued"}
+    assert (got["ok"], got["id"], got["url"], got["started"],
+            got["complete"], got["codes"]) == (True, SMOKE, PAGE, False,
+                                               False, [])
+    assert got["text"] == f"{SMOKE} is already queued: 1st in line."
+    assert got["queued"] == api["queued"]
+    off = "sihrs_2024-25_smoke"
+    got = client.post("/sandbox/experiments", data={**FORM, "oracle": "off"},
+                      headers=JSON).json()
+    assert set(got) == {"ok", "id", "url", "started", "resumed", "complete",
+                        "text", "codes", "queued", "plan"}
+    assert (got["ok"], got["id"], got["started"]) == (True, off, False)
+    est = runner.estimate({**FORM, "oracle": False}, weeks=SMOKE_WEEKS)
+    assert got["queued"] == {
+        "position": 1, "wait_s": 0.0, "seconds": est["seconds"],
+        "measured": False, "peak_bytes": est["peak_bytes"],
+        "keep_bytes": est["keep_bytes"], "why": "", "runner": True}
+    plan = got["plan"]
+    assert set(plan) == {"model", "model_fingerprint", "experiment", "season",
+                         "size", "oracle", "locations", "weeks", "replicates",
+                         "particles", "reference"}
+    assert (plan["model"], plan["season"], plan["size"], plan["oracle"],
+            plan["weeks"]) == ("sihrs", "2024-25", "smoke", False,
+                               SMOKE_WEEKS)
+    assert plan["reference"]["member"] == "pf_filter"
+    assert (alice / "experiments" / off / X.QUEUED).is_file()
+    assert _flash() == "" and _claim() is None
+
+
+def _stopped(top: Path) -> Path:
+    """The smoke in a Sandbox folder, stopped after its first week."""
+    f = top / "experiments" / SMOKE
+    f.mkdir(parents=True, exist_ok=True)
+    L.write_json(f / X.SETTINGS, json.loads(X.settings_text(FORM)))
+    retro.write_meta(f, {"status": "stopped", "started_utc": S1,
+                         "settings": {"experiment": SMOKE_FP,
+                                      "weeks": SMOKE_WEEKS}})
+    _store(f, SMOKE_WEEKS[0], {"pf": _q(10.0)})
+    return f
+
+
+def test_in_a_runner_folder_resume_queues_without_the_guard(alice,
+                                                            monkeypatch):
+    _replay(world_root() / "2024-25", weeks=SMOKE_WEEKS)
+    _no_console_run(monkeypatch)
+    f = _stopped(alice)
+    html = client.get(PAGE).text
+    alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
+    assert "Stopped after 1 of 2 weeks." in alert
+    assert '<button class="gold">Resume</button>' in alert
+    assert "data-guard" not in _main(html)
+    _start()
+    assert _flash() == f"Queued {SMOKE}: 1st in line on the runner."
+    assert (f / X.QUEUED).is_file() and _claim() is None
+    # the estimate counts the week left only
+    est = runner.estimate(FORM, weeks=SMOKE_WEEKS, done=SMOKE_WEEKS[:1])
+    assert est["weeks"] == 1
+    assert _detail().startswith(
+        f"It runs {sb.eta_words(est['seconds'], est['seconds'])} once it "
+        "starts")
+
+
+def test_in_a_runner_folder_stop_dequeues_or_stops(alice):
+    f = alice / "experiments" / SMOKE
+    _start()
+    _no_flash()
+    r = client.post("/sandbox/stop", data={"experiment": SMOKE},
+                    follow_redirects=False)
+    assert r.headers["location"] == PAGE
+    assert _flash() == f"Took {SMOKE} out of the queue; nothing was fitted."
+    assert ui_state._status.get("flash_kind") == "ok"
+    assert not (f / X.QUEUED).exists() and (f / X.SETTINGS).is_file()
+    got = client.post("/sandbox/stop", data={"experiment": SMOKE},
+                      headers=JSON).json()
+    assert got == {"ok": False, "id": SMOKE,
+                   "text": f"Nothing to stop: {SMOKE} is not replaying."}
+    # replaying on the runner (its record under way in another process)
+    now = time.time()
+    retro.write_meta(f, {"status": "running", "pid": os.getpid(),
+                         "heartbeat_utc": now, "segment_start_utc": now,
+                         "settings": {"experiment": "e" * 64,
+                                      "weeks": SMOKE_WEEKS}})
+    got = client.post("/sandbox/stop", data={"experiment": SMOKE},
+                      headers=JSON).json()
+    assert got == {"ok": True, "id": SMOKE,
+                   "text": f"Stopping {SMOKE} after the fits in flight; "
+                   "finished weeks are kept."}
+    assert retro.stop_path(f).exists() and _claim() is None
+    # an id with no folder: nothing written anywhere
+    r = client.post("/sandbox/stop", data={"experiment": "x_2024-25_smoke"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/sandbox"
+    assert not (alice / "experiments" / "x_2024-25_smoke").exists()
+
+
+def test_the_queue_line_and_badge():
+    line, badge = ui_sandbox._experiment_line, ui_sandbox._experiment_badge
+    q = {"position": 2, "wait_s": 3900.0, "seconds": 632.0,
+         "measured": False, "peak_bytes": 182_200_000,
+         "keep_bytes": 9_960_000, "why": "", "runner": True}
+    said = ("Queued · 2nd in line · starts in about 1:05:00 · runs about "
+            "10:32 · needs about 173.8 MB of disk")
+    assert line(_st(""), False, q) == said
+    assert badge(_st(""), False, q) == ("pending", "queued · 2nd in line")
+    why = ("waiting: a replay is running on this computer (the shipped "
+           "replay of 2024-25)")
+    assert line(_st("stopped"), False, {**q, "why": why}) == said + " · " + why
+    assert line(_st(""), False, {**q, "position": 1, "wait_s": 20.0}) == (
+        "Queued · 1st in line · starts within a minute · runs about 10:32 · "
+        "needs about 173.8 MB of disk")
+    # an estimate not worked out leaves its parts out
+    assert line(_st(""), False, {**q, "seconds": 0.0, "peak_bytes": 0}) == (
+        "Queued · 2nd in line · starts in about 1:05:00")
+    down = {**q, "runner": False}
+    assert line(_st(""), False, down) == (
+        "Queued · 2nd in line · the runner is not running · runs about "
+        "10:32 · needs about 173.8 MB of disk")
+    assert badge(_st("stopped"), False, down) == (
+        "warn", "queued · runner not running")
+    # the runner's job, its record not under way yet
+    for state in ("", "stopped"):
+        assert line(_st(state), "runner") == "Starting on the runner…"
+        assert badge(_st(state), "runner") == ("pending", "starting")
+    running = _st("running", week="2024-12-14", fits_done=4, fits_total=10)
+    assert line(running, "runner") == "2024-12-14: 4 of 10 fits · 21:50 so far"
+    assert badge(running, "runner") == ("pending", "running")
+    # refused by the runner, over the state it was left in
+    for state in ("", "stopped", "done"):
+        assert badge(_st(state), False, None, LINKED) == (
+            "warn", "refused by the runner")
+    assert badge(_st("stopped"), False, None, "") == (
+        "warn", "stopped · 2 of 5 weeks")
+
+
+def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
+                                                      truth, monkeypatch):
+    _no_console_run(monkeypatch)
+    rr = str(world_root())
+    f = alice / "experiments" / SMOKE
+    f.mkdir()
+    L.write_json(f / X.SETTINGS, json.loads(X.settings_text(FORM)))
+    old = time.time() - 60
+    os.utime(f / X.SETTINGS, (old, old))
+    # starting: the runner's job names it, QUEUED claimed, no record yet
+    job = {"kind": "run", "folder": "alice", "id": SMOKE, "size": "smoke",
+           "pid": os.getpid(), "started_utc": runner._utc(time.time()),
+           "keep_bytes": 0}
+    runner_state(students, retro_root=rr, job=job)
+    html = client.get(PAGE).text
+    assert 'data-poll="1"' in html and "<h2>Running</h2>" in html
+    assert _line(html) == "Starting on the runner…"
+    assert _title_badge(html) == ("pending", "starting")
+    assert "Delete experiment" not in html
+    got = client.post(f"{PAGE}/delete", data={"confirm": SMOKE},
+                      headers=JSON).json()
+    assert got == {"ok": False, "id": SMOKE, "codes": [],
+                   "text": f"Not deleted: {SMOKE} is replaying; stop it "
+                   "first"}
+    assert f.is_dir()
+    # a runner that is not running names no job: the page is idle
+    runner_state(students, retro_root=rr, job=job, pid=DEAD)
+    html = client.get(PAGE).text
+    assert 'data-poll="0"' in html and 'id="sbx-line"' not in html
+    assert _title_badge(html) == ("neutral", "not started")
+    alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
+    assert "Not started yet." in alert
+    assert '<button class="gold">Start</button>' in alert
+    # refused at dispatch: said, with Start (Resume once a week is stored)
+    runner_state(students, retro_root=rr, recent=[{
+        "folder": "alice", "id": SMOKE, "size": "smoke", "kind": "run",
+        "utc": runner._utc(old + 30), "outcome": "refused", "text": LINKED,
+        "seconds": 0.0, "weeks": 0}])
+    html = client.get(PAGE).text
+    assert 'data-poll="0"' in html
+    assert _title_badge(html) == ("warn", "refused by the runner")
+    alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
+    assert html.count('id="sbx-state"') == 1
+    assert 'class="uk-alert uk-alert--warn"' in html.split(
+        'id="sbx-state"', 1)[0].rsplit("<div", 1)[1]
+    assert f"The runner did not run it: {LINKED}." in alert
+    assert '<button class="gold">Start</button>' in alert
+    row = client.get("/sandbox").text.split(f'href="{PAGE}"', 1)[1]
+    assert ('<span class="uk-badge-t">refused by the runner</span>'
+            in row.split("</tr>", 1)[0])
+    retro.write_meta(f, {"status": "stopped", "started_utc": old,
+                         "settings": {"experiment": SMOKE_FP,
+                                      "weeks": SMOKE_WEEKS}})
+    _store(f, SMOKE_WEEKS[0], {"pf": _q(10.0)})
+    os.utime(f / X.SETTINGS, (old, old))
+    alert = client.get(PAGE).text.split('id="sbx-state"', 1)[1].split(
+        "</div>", 1)[0]
+    assert f"The runner did not run it: {LINKED}." in alert
+    assert '<button class="gold">Resume</button>' in alert
+    # queued again (its settings written anew): the refusal is behind it
+    _start()
+    html = client.get(PAGE).text
+    assert "The runner did not run it" not in html
+    assert _title_badge(html) == ("pending", "queued · 1st in line")
+    # an interrupted replay says the runner's reason when it gave one
+    os.unlink(f / X.QUEUED)
+    retro.write_meta(f, {"status": "running", "pid": DEAD,
+                         "heartbeat_utc": 1.0, "started_utc": old,
+                         "stop_reason": "The runner stopped while it "
+                         "replayed; it was queued again.",
+                         "settings": {"experiment": SMOKE_FP,
+                                      "weeks": SMOKE_WEEKS}})
+    alert = client.get(PAGE).text.split('id="sbx-state"', 1)[1].split(
+        "</div>", 1)[0]
+    assert ("<strong>Interrupted after 1 of 2 weeks.</strong> The runner "
+            "stopped while it replayed; it was queued again.") in alert
+
+
+def test_in_a_runner_folder_nothing_is_scored_on_view(alice, truth,
+                                                      monkeypatch):
+    folder = _hand_written(monkeypatch, truth)
+    truth.write_text(truth.read_text(encoding="utf-8") + "\n",
+                     encoding="utf-8", newline="\n")
+    # off the runner, a view would score it again
+    assert X.stale(folder) == "the truth data changed"
+
+    def never(*a, **k):
+        raise AssertionError("scored on view")
+    monkeypatch.setattr(X, "score", never)
+    before = (folder / X.SUMMARY).read_bytes()
+    url = f"/sandbox/experiments/{BETA}"
+    html = client.get(url).text
+    api = client.get(f"/api/sandbox/experiments/{BETA}").json()
+    client.get("/sandbox")
+    assert ui_sandbox._experiment_scores == {}
+    assert api["scoring"] == {"pending": False, "why": "", "error": ""}
+    assert (api["live"], api["queued"]) == (False, None)
+    assert 'data-poll="0"' in html and 'id="sbx-scoring"' not in html
+    assert (folder / X.SUMMARY).read_bytes() == before
+    assert not [t for t in threading.enumerate()
+                if t.name.startswith("experiment-")]
+
+
+def test_in_a_runner_folder_a_refusal_is_not_queued(alice, monkeypatch):
+    _no_console_run(monkeypatch)
+    # the floor: the detail is the runner's sentence, with no code
+    monkeypatch.setattr(runner, "_free", lambda: 20 * GiB)
+    r = _start()
+    assert r.headers["location"] == "/sandbox"
+    est = runner.estimate(FORM, weeks=SMOKE_WEEKS)
+    left = retro.human_bytes(20 * GiB - est["peak_bytes"])
+    words = (f"{SMOKE} needs about {retro.human_bytes(est['peak_bytes'])} of "
+             f"disk while it runs, which would leave {left} free; FluBNF "
+             "keeps 20.0 GB free on this disk")
+    assert _flash() == f"Not queued: {words} (MACHINE)."
+    assert ui_state._status.get("flash_kind") == "warn"
+    assert _detail() == ("The experiments queued ahead of it keep 0 B. "
+                         "Delete experiments you no longer need, or ask Ely "
+                         "to free space.")
+    assert not (alice / "experiments" / SMOKE).exists()
+    got = client.post("/sandbox/experiments", data=FORM, headers=JSON).json()
+    assert (got["ok"], got["id"], got["url"], got["started"],
+            got["queued"]) == (False, SMOKE, None, False, None)
+    assert got["text"] == f"Not queued: {words} (MACHINE)."
+    assert [c["code"] for c in got["codes"]] == ["MACHINE", "MACHINE"]
+    # the model's refusal, its code said; the form comes back as posted
+    monkeypatch.setattr(runner, "_free", lambda: 500 * GiB)
+    _no_flash()
+    _start(model="beta@9", size="pilot")
+    assert _flash().startswith("Not queued: ")
+    assert _flash().endswith("(MODEL_NOT_FOUND).")
+    html = client.get("/sandbox").text
+    assert [t for a, t in _options(html, "sbexp-size") if "selected" in a] == [
+        "pilot: 10 locations, every other week (under an hour)"]
+    assert sorted(p.name for p in (alice / "experiments").iterdir()) == []
+    assert _claim() is None
+
+
+def test_the_runner_computers_own_console_waits_for_the_runner(
+        world, students, monkeypatch):
+    _replay(world_root() / "2024-25", weeks=SMOKE_WEEKS)
+    job = {"kind": "run", "folder": "alice", "id": "beta2-v3_2024-25_pilot",
+           "size": "pilot", "pid": 4242, "keep_bytes": 0}
+    runner_state(students, job=job)
+    said = ("the runner on this computer is replaying alice's "
+            "beta2-v3_2024-25_pilot: one replay at a time")
+    got = client.post("/sandbox/experiments", data=FORM, headers=JSON).json()
+    assert got == {"ok": False, "id": SMOKE, "url": None, "started": False,
+                   "text": f"Not started: {said} (MACHINE).",
+                   "codes": [{"code": "MACHINE", "tier": "machine",
+                              "text": said}]}
+    assert _claim() is None and not (X.root() / SMOKE).exists()
+    # its own pages are step 4's: Start holds the guard
+    assert ('<button class="gold" data-guard="sandbox-run">Start</button>'
+            in client.get("/sandbox").text)
+    # a tidy holds nothing, nor does a runner that is not running
+    runner_state(students, job={**job, "kind": "tidy"})
+    assert runner.busy_words() == ""
+    runner_state(students, job=job, pid=DEAD)
+    calls = _weeks_run(monkeypatch, _sidecar)
+    r = _start()
+    assert r.headers["location"] == PAGE
+    _join()
+    assert [c["asof"] for c in calls] == SMOKE_WEEKS
+    assert X.status(X.root() / SMOKE)["status"] == "done"
+    assert _flash().startswith(f"Started {SMOKE}: ")
+    ui_state._status.pop("flash", None)         # no notice left for the next

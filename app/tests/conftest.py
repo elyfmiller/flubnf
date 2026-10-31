@@ -20,6 +20,9 @@
     a real clone opts in through FLUBNF_TEST_HUB.
   * the checkout's top folder: the session ends by checking no test left a
     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
+  * runner.STUDENTS -> a missing tmp folder: every test sees a computer
+    without a runner, a suite run inside a student's clone on the Mac
+    Studio included (its ~/Students/.runner would turn the queue on).
 """
 import atexit
 import os
@@ -116,6 +119,14 @@ def _app_state_untouched():
 @pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
+
+
+@pytest.fixture(autouse=True)
+def _students_in_tmp(tmp_path, monkeypatch):
+    """No runner here: runner.STUDENTS is a folder that never exists. The
+    runner's tests make their own under tmp_path."""
+    from app.core import runner
+    monkeypatch.setattr(runner, "STUDENTS", tmp_path / "no-students")
 
 
 @pytest.fixture(scope="session")

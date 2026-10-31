@@ -6,9 +6,16 @@ samples.json.gz are indistinguishable downstream. New weeks are gzipped
 caches keyed on it stay valid. The quantile sidecar (QUANTILES_NAME) rides
 beside the draws for playback, the report and the scorer.
 
-Sections: paths (SAMPLES_JSON, _week_dir, samples_file, season_sample_files)
-| draws (read_samples, read_week_samples, write_week_samples) | quantile
-sidecar (member_quantiles, filter_quantiles, write/read_week_quantiles,
+A week of an experiment replayed on the runner may be stored lean: its
+forecasting samples dropped once its sidecar was checked against them
+(experiments.drop_samples), with the marker DROPPED_NAME beside the
+sidecar. The readers below count such a week as stored and read its
+sidecar alone; a tree with no marker reads exactly as before.
+
+Sections: paths (SAMPLES_JSON, _week_dir, samples_file, week_dropped,
+season_sample_files, season_week_files) | draws (read_samples,
+read_week_samples, write_week_samples) | quantile sidecar
+(member_quantiles, filter_quantiles, write/read_week_quantiles,
 week_member_quantiles) | migration (compress_samples_file) | week_done.
 """
 from __future__ import annotations
@@ -40,6 +47,9 @@ QUANTILES_NAME = "quantiles.json"
 FILTER_MEMBER = "pf_filter"
 #: the Oracle step's provenance file (app/core/oracle.PROVENANCE_NAME)
 ORACLE_NAME = "oracle.json"
+#: the marker of a week stored lean (experiments.drop_samples): the bytes
+#: of the samples dropped and when, {"bytes": n, "utc": "...Z"}
+DROPPED_NAME = "samples.dropped.json"
 
 
 def samples_file(wd: Path) -> Path | None:
@@ -56,6 +66,21 @@ def week_samples_path(root: Path, asof: str) -> Path | None:
     return samples_file(_week_dir(root, asof))
 
 
+def week_dropped(wd: Path) -> bool:
+    """A week stored lean: its forecasting samples dropped once its quantile
+    sidecar was checked against them (experiments.drop_samples); the marker
+    and the sidecar both regular files."""
+    wd = Path(wd)
+    return (wd / DROPPED_NAME).is_file() and (wd / QUANTILES_NAME).is_file()
+
+
+def _lean(wd: Path) -> bool:
+    """A week read from its sidecar alone: the marker without samples. The
+    samples win over the marker (a drop killed between its two writes
+    leaves a week that reads as before)."""
+    return samples_file(wd) is None and week_dropped(wd)
+
+
 def season_sample_files(root: Path) -> list:
     """One stored samples file per completed week, ascending by week name --
     the successor of every `weeks/*/samples.json` glob, form-blind."""
@@ -66,6 +91,26 @@ def season_sample_files(root: Path) -> list:
     try:
         for wd in sorted(weeks.iterdir()):
             p = samples_file(wd)
+            if p is not None:
+                out.append(p)
+    except OSError:
+        return []
+    return out
+
+
+def season_week_files(root: Path) -> list:
+    """One file per stored week, ascending: its samples file, or the sidecar
+    of a week stored lean. season_sample_files is unchanged (its callers
+    parse draws)."""
+    weeks = Path(root) / "weeks"
+    if not weeks.is_dir():
+        return []
+    out = []
+    try:
+        for wd in sorted(weeks.iterdir()):
+            p = samples_file(wd)
+            if p is None and week_dropped(wd):
+                p = wd / QUANTILES_NAME
             if p is not None:
                 out.append(p)
     except OSError:
@@ -200,11 +245,18 @@ def write_week_quantiles(wd: Path, mq: dict) -> Path:
 
 def read_week_quantiles(wd: Path) -> dict | None:
     """The sidecar as member_quantiles would have returned it, or None when
-    it is absent, unreadable, or older than the samples it describes."""
+    it is absent, unreadable, or older than the samples it describes. A
+    week stored lean has no samples to be older than: its sidecar is read
+    whatever its mtime."""
     wd = Path(wd)
     fp = wd / QUANTILES_NAME
     sp = samples_file(wd)
-    if not fp.is_file() or sp is None or fp.stat().st_mtime < sp.stat().st_mtime:
+    if not fp.is_file():
+        return None
+    if sp is None:
+        if not week_dropped(wd):
+            return None
+    elif fp.stat().st_mtime < sp.stat().st_mtime:
         return None
     try:
         raw = json.loads(fp.read_text(encoding="utf-8"))
@@ -220,14 +272,21 @@ def read_week_quantiles(wd: Path) -> dict | None:
 def week_member_quantiles(root: Path, asof: str) -> dict:
     """The members' quantiles for one stored week: the sidecar when it is
     current, else computed from the samples (and the week's oracle.json)
-    and written for next time."""
+    and written for next time. A week stored lean is its sidecar as it
+    is, never rebuilt and never rewritten: FileNotFoundError when the
+    sidecar cannot be read."""
     wd = _week_dir(root, asof)
     mq = read_week_quantiles(wd)
     # a sidecar written before the Liu-West filter was scored lacks it:
-    # rebuilt once when the week's oracle.json carries it
+    # rebuilt once when the week's oracle.json carries it (a lean week's
+    # never is; _lean is asked last, so a current sidecar costs no stat)
     if mq is not None and (FILTER_MEMBER in mq or "pf" not in mq
-                           or not filter_quantiles(wd)):
+                           or _lean(wd) or not filter_quantiles(wd)):
         return mq
+    if _lean(wd):
+        raise FileNotFoundError(f"{asof}: its forecasting samples were "
+                                "dropped and its quantiles file cannot be "
+                                "read")
     mq = member_quantiles(read_week_samples(root, asof), wd)
     try:
         write_week_quantiles(wd, mq)
@@ -255,4 +314,7 @@ def compress_samples_file(fp: Path) -> Path:
 
 
 def week_done(root: Path, asof: str) -> bool:
-    return week_samples_path(root, asof) is not None
+    """A stored week: its samples file, or the marker of a week stored lean
+    (week_dropped)."""
+    return (week_samples_path(root, asof) is not None
+            or week_dropped(_week_dir(root, asof)))
