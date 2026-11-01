@@ -242,6 +242,8 @@ def test_text_and_boundaries_hold_aa_in_every_theme_and_mode():
         # word (large text) 3:1
         assert _cr("#FFFFFF", r["navy"]) >= 4.5 and _cr("#C6CFEE", r["navy"]) >= 4.5
         assert _cr(r["gold-bright"], r["navy"]) >= 3.0, name
+        # its chips' small bold labels, 4.5:1 (G18, UI-08)
+        assert _cr(r["hero-chip-ink"], r["navy"]) >= 4.5, name
         seen += 1
     assert seen == 32
 

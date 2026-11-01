@@ -47,6 +47,9 @@ def archive(tmp_path, monkeypatch):
         ("2098-01-03", "US", "US", 1600),
     ])
     monkeypatch.setattr(data_mod, "ARCHIVE", tmp_path)
+    # the archive's clone is there (the page says so when it is not)
+    monkeypatch.setattr(data_mod, "HUB", tmp_path)
+    (tmp_path / "auxiliary-data").mkdir(exist_ok=True)
     ui_shared._invalidate_scans()
     yield tmp_path
     ui_shared._invalidate_scans()      # answers for this root must not outlive it

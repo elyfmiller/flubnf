@@ -13,7 +13,11 @@
   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
   {{ tips.heading("FluSight hub", "hub") }}
   {% set data_through = "Data through: the hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values." %}
-  {% if not live_week and not n_vintages %}
+  {# no clone: nothing on this page fetches one (Update data pulls an
+     existing clone), so the line names the setup step that does #}
+  {% if hub_missing %}
+  {{ tips.alert("warn", "No FluSight data: " ~ hub_missing ~ ". To fetch it, " ~ hub_setup_hint() ~ ".", id="hub-missing", live="") }}
+  {% elif not live_week and not n_vintages %}
   {% call tips.empty("No data yet", "download", id="hub-empty") %}Update data downloads it. {{ data_through }}{% endcall %}
   {% endif %}
   {% call tips.stats("dt-hubstats", label="FluSight hub") %}
@@ -32,11 +36,12 @@
    {% endif %}
    {# the clone against origin: a badge for the state, the check's own
       words in the "?" beside it (the script below fills both) #}
-   {% set pc, pw = freshness.pill() if freshness else ("", "not checked") %}
+   {% set pc, pw = freshness.pill() if freshness else (("bad", "missing") if hub_missing else ("", "not checked")) %}
    {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
+   {% set hub_detail = freshness.detail if freshness else hub_missing %}
    {# the badge and its "?" held together (uk-badge-pair), so a wrapping
       line never splits them; #hub-detail stays the span the script shows #}
-   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not (freshness and freshness.detail) %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", freshness.detail if freshness else "") }}</span></span>{% endset %}
+   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not hub_detail %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", hub_detail) }}</span></span>{% endset %}
    {{ tips.stat("Hub clone", clone, id="hub-clone") }}
    {# the hub's baseline and official ensemble, which runs are scored
       against (an older sparse clone may lack them; Update data adds

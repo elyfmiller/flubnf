@@ -141,6 +141,21 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 .mt-settings td{font-size:var(--fs-hint)}
 .mt-settings td:nth-child(3),.mt-settings td:nth-child(4){color:var(--mut)}
 .mt-setnote{display:block;margin-top:.2rem;color:var(--mut)}
+/* a phone: the record fits the card (tight cells, as Home's performance
+   table); each setting stacks: its name, what it does, then its range and
+   default on one line, named by data-label (the dataset rows do the same),
+   so nothing scrolls off-screen */
+@media (max-width:640px){
+  .mt-rec td,.mt-rec th{padding:.28rem .3rem}
+  .mt-settings{min-width:0}
+  .mt-settings thead{display:none}
+  .mt-settings,.mt-settings tbody,.mt-settings tr{display:block}
+  .mt-settings tr{padding:.4rem 0;border-bottom:1px solid var(--line)}
+  .mt-settings th,.mt-settings td{display:block;padding:0;border:0;min-width:0}
+  .mt-settings td:nth-child(3),.mt-settings td:nth-child(4){display:inline-block;
+    margin:.15rem .9rem 0 0}
+  .mt-settings td[data-label]::before{content:attr(data-label) ": "}
+}
 
 /* ---- 5. policies ---- */
 /* the rules every run keeps, each with a check mark drawn in borders */

@@ -6,6 +6,56 @@ this file here.
 
 ## Now
 
+- 2026-10-29 (late): the console's public engine is on `engine-public`
+  ([2de2ec8](https://github.com/elyfmiller/flubnf/commit/2de2ec8)),
+  opt-in behind `FLUBNF_ENGINE=public`; private stays the default and
+  nothing changes without the variable. `app/core/engines/lwf.py`
+  translates each cell `pf.prepare` wrote into an lwf conf, runs one PyBNF
+  process per cell from the public venv, and reads `Results/LWF` back.
+  Measured on the lab Mac (in-house, retrospective):
+  - The 144-cell replay on the wheel install (the release's wheel bytes
+    and the lock's 38 packages) equals the private engine's draws on 144
+    of 144 cells, forecasts and predicted counts byte for byte. A cell
+    costs 2.07 times the private cost model at the median, 2.21 at most;
+    the time budget now scales by 2.4 on public.
+  - The console's own run of the Alaska 2025-01-11 cell equals the
+    equivalence study's files and own-stream output byte for byte. All
+    five Sandbox examples run.
+  - Tests: 60 new (`app/tests/test_engine_lwf.py`, a 100 KB fixture with
+    no lab paths); the full suite shows this Mac's same 22
+    machine-specific failures, none new. An eight-agent review found 15
+    real defects (a Windows drive-letter split, the readiness gate,
+    weeks resumed across engines, Sandbox edge cases); all fixed, each
+    with a test.
+  - Still open: the wheel release (Ely publishes it; until then the
+    lock's wheel address answers 404 and no real venv can match the
+    lock), then `~/.venvs/flubnf-public` built from it as a stranger
+    would, and a forecast run through the console end to end.
+
+- 2026-10-29 (Ely's go on plan v3 and the wheel release): stage 1's
+  engine side, on `engine-public`. **In flight there: `pf.py`,
+  `retro.py`, `sandbox.py`, `engine_build.py`, `flubnf/settings.py`,
+  `flubnf/doctor.py`, `reclaim.py`.** To keep out of the student
+  workspace's way, the public writer, runner and reader go in a new module
+  of their own (`app/core/engines/lwf.py`); `pf.py` and the others gain
+  only small switch points on `FLUBNF_ENGINE`. `dev` is merged into
+  `engine-public` (never rebased) before each push, so a change on `dev`
+  shows up there as a merge. Done today:
+  - The PyBNF wheel, rebuilt byte for byte from lanl/PyBNF 8410f794
+    (pinned setuptools, `SOURCE_DATE_EPOCH` = the commit's time): sha256
+    `18a59bc24caa99ae1b4cc14518a4233cf17a0e4edac45d50d5e4189413ee21e5`.
+    Its release, `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b` on this
+    repository, is Ely's to publish (pending).
+  - The lock, `engine-requirements.txt`: the 38 packages measured in the
+    144-cell replay (antimony, pandas, python-dateutil and six dropped:
+    neither FluBNF nor `lwf` imports them) with every CPython 3.12 wheel's
+    sha256, plus the wheel line. One platform split: cryptography 50.0.2
+    has no Intel macOS wheel, so Intel Macs get 48.0.1 behind a marker.
+    Intel Macs need macOS 15 (libroadrunner's Intel wheel). macOS
+    arm64, Windows x64 and Linux x64 resolve to the same 38. Installed in
+    a scratch venv in 20 s; the filter imports; bngsim 0.15.1, build
+    458bf7d72354.
+
 - 2026-10-15 (overnight, Ely lent the lab Mac): stage 1's engine part is
   done. `~/.venvs/flubnf-lwf` holds public PyBNF at the merge commit
   8410f794 with bngsim 0.15.1; fed the production engine's random inputs it
@@ -200,6 +250,47 @@ this file here.
   listing seven are stale.
 
 ## For other lanes
+
+- App (2026-10-29, late, what `engine-public` changed in shared files, so
+  the student workspace can merge around it): `pf.py`: the engine checks
+  (`engine_available`, `engine_current`, the two messages), `runner_cmd`,
+  `execute`, `collect` (now pooling through `_pool`), `cell_seconds`,
+  `_signal_tree`. `retro.py`: `_launch_runners`, `_run_round`'s error
+  path, a new `_week_engine`. `retro_settings.engine_build_change`.
+  `sandbox.py`: `machine_problems`, `_with_load_remedy`. `prepare()`,
+  `run_season` and `run_week` are untouched. In your files, small
+  public-engine branches: `pipeline._pf_engine_state` and
+  `_harvest_params`, `versions._component_versions`,
+  `templating._engine_setup_hint`, `routes/home.py`'s two tables and two
+  conditions in `home.html`; and `tests/conftest.py` (new) and
+  `app/tests/conftest.py` clear `FLUBNF_ENGINE` for every test. The
+  `public-engine-install` job could also run
+  `app/tests/test_engine_lwf.py::test_real_public_run_reproduces_the_fixture`
+  with `FLUBNF_TEST_PUBLIC_PYTHON` set to its venv's Python, if you want a
+  real fit in CI.
+
+- App (2026-10-29, answering your 2026-10-26 list for `engine-public`):
+  1. The lock: as above, pushed to `engine-public` at the root.
+  2. The wheel's URL is
+     `https://github.com/elyfmiller/flubnf/releases/download/pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b/pybnf-1.8.1-py3-none-any.whl`
+     (your test's form), sha256 above. It answers 404 until Ely publishes
+     the release.
+  3. `flubnf/settings.py`: `FLUBNF_ENGINE` (private or public, anything
+     else warns and means private) and `PY_ENGINE_PUBLIC` from
+     `FLUBNF_PY_ENGINE_PUBLIC`, with your two defaults. Coming on
+     `engine-public`.
+  4. `BNGSIM_NO_CODEGEN=1` stays on Windows runners on both routes.
+  5. Doctor and the preflight import `scripts/engine_lock.py`'s `check`
+     under the public venv's Python, rather than copy it.
+  6. Taken: the public writer, runner and reader, the switch, provenance
+     from `direct_url.json`, the doctor, reclaim, the Sandbox, tests on a
+     trimmed Alaska fixture (about 130 KB, no lab paths).
+  Superseded: the 2026-10-15 handoff's git install line and
+  `bngsim[antimony]`; the wheel and the lock replace them.
+- App (2026-10-29, your protection-audit items 1 to 3, the private
+  engine's pin, update and archive check): taken, after `engine-public`'s
+  stage 1 closes (Tuesday 2026-11-03). The runner cleaning and the student
+  workspace items stay yours, as Ely decided.
 
 - App (2026-10-15, stage 1 handoff, the engine lane's part is done):
   everything the `engine-public` branch needs, measured on the lab Mac.

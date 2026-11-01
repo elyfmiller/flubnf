@@ -50,11 +50,13 @@ HEADERS = {
         "tagline": ("The latest count scaled by past seasons' growth at this "
                     "calendar week"),
         "facts": [("Donors", "NHSN admissions and FluSurv-NET, equal weight"),
-                  ("Matched on", "calendar week, within two epiweeks")],
+                  ("Matched on", "calendar week, within two epiweeks"),
+                  ("Favoured", "own and similar-sized weeks")],
         "blurb": ("The empirical model: it pools the weeks of earlier "
                   "seasons within two epiweeks of the forecast date across "
                   "jurisdictions, with the jurisdiction's own past weeks "
-                  "carrying half of the weight, and scales the latest value "
+                  "carrying half of the weight and weeks sized like its "
+                  "latest count the most, and scales the latest value "
                   "by the quantiles of their growth to each horizon, with no "
                   "epidemic mechanism. Donors are NHSN admissions (2021-22 "
                   "excluded: the archive holds only its growth phase) and a "
@@ -91,7 +93,8 @@ def _record(name: str) -> dict:
         facts = [("Cells", ot.cells(both["cells"])),
                  ("Seasons", "2024-25 and 2025-26")]
         lines = [
-            (f"relWIS vs the FluSight baseline (below 1 beats it): "
+            (f"relWIS vs the FluSight baseline (below 1 beats it), under "
+             f"the earlier cell rule: "
              f"{fmt(both['oracle'])} against the plain filter's "
              f"{fmt(both['filter'])} on the same {ot.cells(both['cells'])} "
              f"cells of 2024-25 and 2025-26."),
@@ -103,38 +106,39 @@ def _record(name: str) -> dict:
                 fmt(three["oracle"]), fmt(three["filter"]))]
         return _bars({"bars": bars, "facts": facts, "lines": lines})
     if name == "analogue":
-        # the shipped own-state weighting against the pooled form it
-        # replaced on 2026-10-15, on the same cells under FluSight's cell
-        # rule (README, Measured record). The bare-analogue comparison
-        # (0.666 against 0.771 on 15,340 cells) is the pooled form's under
-        # the earlier rule: Methods keeps it, labelled so
-        seasons = [("2023-24", 0.702), ("2024-25", 0.651),
-                   ("2025-26", 0.653)]
-        three, pooled_form, cells = 0.660, 0.670, "17,116"
+        # the shipped size-matched donors against the form they replaced on
+        # 2026-10-23, on the same cells under FluSight's cell rule (README,
+        # Measured record). The bare-analogue comparison (0.666 against
+        # 0.771 on 15,340 cells) is the pooled form's under the earlier
+        # rule: Methods keeps it, labelled so
+        seasons = [("2023-24", 0.680), ("2024-25", 0.627),
+                   ("2025-26", 0.645)]
+        three, replaced, pooled_form, cells = 0.642, 0.660, 0.670, "17,116"
         return _bars({
             "bars": [("Groundhog", three, True),
-                     ("Without own-state weighting", pooled_form, False)],
+                     ("Without size-matched donors", replaced, False)],
             "facts": [(s, fmt(v), _rule(v)) for s, v in seasons]
                      + [("Cells", cells)],
             "lines": [
                 (f"Three-season relWIS vs the FluSight baseline on {cells} "
                  f"cells, FluSight's cell rule: {fmt(seasons[0][1])}, "
                  f"{fmt(seasons[1][1])} and {fmt(seasons[2][1])}; "
-                 f"{fmt(three)} over the three seasons ({fmt(pooled_form)} "
-                 f"for the pooled form submitted 2026-10-10 and "
-                 f"2026-10-17).")]})
+                 f"{fmt(three)} over the three seasons ({fmt(replaced)} "
+                 f"without size-matched donors, submitted 2026-10-24; "
+                 f"{fmt(pooled_form)} for the pooled form submitted "
+                 f"2026-10-10 and 2026-10-17).")]})
     two, blend = 0.719, 0.704
     # both scores beat the baseline (two checks), so the badge says how far
     # this one fell behind the blend it was tested in, from the two values
     return _bars({
         "bars": [("Two-strain SIHRS", two, True),
-                 ("Two-member blend", blend, False)],
+                 ("Blend it was tested in", blend, False)],
         "facts": [],
         "behind": {"text": f"{fmt(two - blend)} behind the blend"},
         "lines": [
-            (f"It scored worse on the full grid (relWIS {fmt(two)} against "
-             f"{fmt(blend)} for the two-member blend it was tested in), so "
-             f"it is kept for research runs only.")]})
+            (f"It scored worse than the blend it was tested in, in the "
+             f"August 2026 evaluation (relWIS {fmt(two)} against "
+             f"{fmt(blend)}), so it is kept for research runs only.")]})
 
 
 def _rule(v: float) -> str:
@@ -226,6 +230,8 @@ def model_page(request: Request, name: str):
         "fanq_json": _script_json(fanq), "has_fans": bool(fanq),
         "overlay_json": _script_json(overlay),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
+        # the weeks each member set aside: the fan starts before them
+        "run_aside_json": _script_json(shared._run_aside(rid)),
         "bngl_src": bngl_src, "bngl_file": bngl_file,
         "bngl_lines": len(bngl_src.splitlines()),
         "form": form, "status": _status,

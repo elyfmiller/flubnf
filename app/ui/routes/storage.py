@@ -21,7 +21,7 @@ from app.ui.retro_prep import _results_jobs
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
                                   _season_status, _valid_season)
 from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
-                           _scan_archive_dates)
+                           _run_label, _scan_archive_dates)
 from app.ui.state import _status
 from app.ui.templating import templates
 
@@ -32,7 +32,11 @@ router = APIRouter()
 # The sealed records and the hub clone are never deletable (no control, and
 # refused again on POST); running/paused trees are refused server-side.
 # Every destructive POST requires a confirmation naming exactly what the
-# user saw (name or count); a stale confirmation deletes nothing.
+# user saw (name or count); a stale confirmation deletes nothing. On the
+# runner computer's main console (the students' Mac Studio) the panel also
+# lists the students' experiments, outside the total, each deletable when
+# the runner is not replaying it (app/core/runner.py, imported inside the
+# functions).
 
 @ttlcache.ttl_cache(ttl_s=60.0)
 def _tree_size(path: str) -> int:
@@ -93,6 +97,35 @@ _CATEGORIES = (("workroots", "Run workroots"),
                ("datasets", "Dataset uploads and replays"))
 
 
+def _students_here() -> bool:
+    """Whether this is the runner computer's main console: the computer
+    has a runner (~/Students/.runner) and this console's Sandbox is not
+    in ~/Students (a student's folder, or a clone there the runner does
+    not take, such as one named jane.doe). Only here does Storage list
+    the students' experiments, and delete one. One failed stat off the
+    runner."""
+    from app.core import runner
+    from app.core import sandbox as sb
+    return (runner.state_dir().is_dir()
+            and not runner._in_students(sb.SANDBOX))
+
+
+def _student_experiments() -> dict:
+    """The Student experiments section: runner.storage's rows (sized
+    through _tree_size's cache) and its runner line, each row with the
+    badge its student's card shows (routes/sandbox._experiment_badge)."""
+    from app.core import runner
+    from app.ui.routes.sandbox import _experiment_badge, _runner_job
+    su = runner.storage(size=lambda p: _tree_size(str(p)))
+    state = runner.read_state()
+    for r in su["rows"]:
+        held = ("runner" if _runner_job(state, r["folder"]) == r["id"]
+                else False)
+        r["badge"] = _experiment_badge(r["status"], held, r["queued"],
+                                       r["refused"])
+    return su
+
+
 def _spec_of(spec) -> dict:
     """A ledger spec (JSON text or dict) as a dict; {} when unreadable."""
     import json as _json
@@ -120,10 +153,11 @@ def _round_label(spec, fallback: str) -> str:
 
 def _ledger_parts(run_id: str, spec) -> list:
     """A ledger row's label in its parts, each kept whole on a narrow
-    screen: ["as of 2026-10-03", "run 10-05 14:31"] (the run's local start,
-    from its id); just the run's time when the spec names no date."""
+    screen: ["as of 2026-10-03", "run 10-05 14:31:07"] (the run's local
+    start, from its id, as every run label reads it); just the run's time
+    when the spec names no date."""
     asof = str(_spec_of(spec).get("forecast_date") or "").strip()
-    when = (f"run {run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+    when = (f"run {_run_label(run_id, '', tag=False)}"
             if _runs.is_run_id(run_id) else run_id)
     return ([f"as of {asof}"] if asof else []) + [when]
 
@@ -135,7 +169,9 @@ def _storage_inventory() -> dict:
     controls). total_bytes/total_h sum the managed categories only, each
     byte once: a dataset adds its own folder (the upload and its replays),
     its runs being counted as workroots. "cats" splits that total by
-    category (the page's composition bar and legend)."""
+    category (the page's composition bar and legend). "students" holds
+    the students' experiments on the runner computer's main console
+    (_students_here), outside the total; None everywhere else."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
@@ -168,7 +204,10 @@ def _storage_inventory() -> dict:
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
                 "label": _round_label(row.get("spec"), disp["what"]),
-                "status": st, "when": disp["when"],
+                # the run's time as the ledger row and every label read it
+                "status": st,
+                "when": (_run_label(p.name, "", tag=False)
+                         if _runs.is_run_id(p.name) else disp["when"]),
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
@@ -214,6 +253,8 @@ def _storage_inventory() -> dict:
         inv["total_bytes"] += size
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size), "bytes": size,
+            # its round, as the workroot rows above name it
+            "label": _round_label({"forecast_date": d}, d),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
             "busy": console_busy, "why": _busy_why("report-archive", d)})
@@ -238,6 +279,7 @@ def _storage_inventory() -> dict:
             cats.append({"key": key, "label": label, "bytes": b,
                          "size_h": retro.human_bytes(b)})
     inv["cats"] = cats
+    inv["students"] = _student_experiments() if _students_here() else None
     return inv
 
 
@@ -281,6 +323,7 @@ def runs_page(request: Request):
     alias (old reports and bookmarks link it)."""
     from app.core.runs import APP_STATE, is_research
     from app.core import retro
+    from app.ui.routes.output import _files_deleted
     ledger = Ledger()
     rows = ledger.rows(LEDGER_ROWS)
     for r in rows:
@@ -293,7 +336,8 @@ def runs_page(request: Request):
         r["research"] = is_research(r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         # the outcome as facts the page draws as chips and badges
-        r["facts"] = _outcome_items(r.get("outcome", ""))
+        r["facts"] = _outcome_items(r.get("outcome", ""),
+                                    deleted=_files_deleted(r["run_id"]))
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
@@ -375,6 +419,26 @@ def _storage_target(kind: str, ident: str):
             return None, _busy_why(kind, ident)
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
+    elif kind == "experiment" and _students_here():
+        # <name>/<id>: a / belongs to neither a folder's name nor an id
+        from app.core import experiments as X
+        from app.core import runner
+        from app.core.problem_codes import Refusal
+        name, _sep, eid = (ident or "").partition("/")
+        if name not in runner.folders() or not X._ID_RE.fullmatch(eid):
+            return None, "Unrecognized student experiment."
+        try:
+            runner.check(name, eid)
+        except Refusal as e:
+            return None, f"{e.findings[0]['text']}."
+        row = next((r for r in runner.storage(size=lambda q: 0)["rows"]
+                    if r["ident"] == ident), None)
+        if row is None:
+            return None, "Nothing is on disk under that name."
+        if row["busy"]:
+            return None, row["why"]
+        base = runner.folder(name) / "experiments"
+        p = base / eid
     else:
         return None, "Unrecognized storage kind."
     # Containment by construction (separator-free identifiers). Not resolved
@@ -414,7 +478,8 @@ def storage_delete(request: Request, kind: str = Form(""),
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
-            "report-archive": "report archive"}.get(kind, "entry")
+            "report-archive": "report archive",
+            "experiment": "student experiment"}.get(kind, "entry")
     tail = ("Its ledger row remains as the run's record."
             if kind == "workroot" else "")
     _flash(f"Deleted the {noun} {ident}: {size_h} freed.", "ok", detail=tail)

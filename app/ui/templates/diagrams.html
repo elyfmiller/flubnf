@@ -216,7 +216,7 @@
  a forecast fan formed by scaling the last observed value by quantiles of the
  growth ratios recorded at the same calendar weeks in prior seasons, pooled
  across states with the state's own past weeks carrying half of the
- weight.</desc>
+ weight and weeks sized like its newest count the most.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -260,10 +260,11 @@
        stroke-dasharray="5 4" fill="none"/>
  <text x="430" y="48" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">forecast date</text>
- <!-- forecast fan: the anchor scaled by donor growth-ratio quantiles -->
- <polygon points="430,140 545,96 545,190" fill="var(--gold-bright)"
+ <!-- forecast fan: the anchor scaled by donor growth-ratio quantiles,
+      over the four weeks forecast (745/52 units a week) -->
+ <polygon points="430,140 487,96 487,190" fill="var(--gold-bright)"
           fill-opacity=".22"/>
- <path d="M430,140 C470,132 510,140 545,150" fill="none"
+ <path d="M430,140 C450,132 470,140 487,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
  {# key in the clear zone, well right of the fan's wedge; long entries
     wrap (one line clipped at A+) #}
@@ -427,8 +428,9 @@
 {%- set blend_note %}the growth blend: each path's growth over forecast
   week <i>k</i> is the geometric mean of the filter's rate at the origin
   <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
-{%- set few %}A week with too few donors (30 paths per stream) leaves
- the filter unchanged.{% endset %}
+{%- set few %}A week where neither stream supplies 30 donor paths leaves
+ the filter unchanged; where only one does, that stream supplies every
+ donor.{% endset %}
 {%- set rate %}<i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
   <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;){% endset %}
 {%- set rate_note %}new infections per infected per week: the log
@@ -453,7 +455,7 @@
    ("<i>m</i><sub>0</sub>, <i>m</i><sub>1</sub>", "medians of the filter's samples at the origin and one week ahead", "admissions per week", "derived"),
    ("<i>W</i>", "the donor's week: a Saturday of a strictly earlier season within two epiweeks of <i>T</i>'s, any jurisdiction", "date", "data"),
    ("<i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;)", "donor <i>d</i>'s <i>G</i> at the midpoint of week <i>W</i> + <i>k</i>, from smoothed log counts of its series: NHSN admissions, or FluSurv-NET rates shrunk to the admissions scale", "per week", "data"),
-   ("&#189;", "the blend weight, set a priori", "0.5", "fixed"),
+   ("&#189;", "the registered blend weight, set a priori", "0.5", "fixed"),
    ("<i>&#947;</i>", "the compartment model's removal rate, 7/3.2", "2.19 per week", "fixed"),
    ("<i>x</i><sub><i>i,h</i></sub>", "the filter's forecast sample path <i>i</i> at week <i>h</i>", "admissions per week", "derived"),
    ("<i>d</i><sub><i>i</i></sub>", "the one donor path drawn for sample path <i>i</i>, by a seeded uniform draw", "index", "index"),
@@ -462,7 +464,7 @@
 </div>
 {%- endmacro %}
 
-{# ---- what the analogue MEASURES: one growth ratio per donor season and
+{# ---- what the analogue MEASURES: one growth ratio per donor week and
    horizon (admissions h weeks after the matched week over admissions at
    it), pooled on a ratio axis whose quantiles scale the fan. Illustrative
    values. Defines an arrow marker, so the uid matters. The donor curves
@@ -473,7 +475,7 @@
 
 {% macro analogue_ratios(uid='r') -%}
 <svg viewBox="0 30 560 222" role="img"
-     aria-label="Each donor season contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
+     aria-label="Each donor week contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Three prior-season curves crossing the matched calendar week. On each,
  a marked segment runs from that week to h weeks later, and the ratio of the
@@ -484,7 +486,7 @@
 
  <!-- ---------- left: the measurement ---------- -->
  <text x="195" y="48" text-anchor="middle" class="svgt-md" font-weight="600"
-       fill="currentColor">one ratio per donor season</text>
+       fill="currentColor">one ratio per donor week</text>
  <g stroke="currentColor" stroke-width="1.3" fill="none">
   <path d="M46,224 H322"/>
  </g>
@@ -573,7 +575,7 @@
 
 {% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30, kit=false) -%}
 {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
-<svg viewBox="0 0 560 232" role="img"
+<div class="figscroll" tabindex="0" role="region" aria-label="{{ 'Two-strain seasonal harmonic' if two else 'Seasonal harmonic' }} (scrolls)"><svg class="dg-harm" viewBox="0 0 560 232" role="img"
      aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
      style="width:100%;max-width:560px;display:block;margin:.4rem auto 0;color:inherit">
  <desc>{% if two %}Two phase-shifted copies of the same seasonal harmonic,
@@ -660,7 +662,7 @@
        dy="3">1</tspan><tspan dy="-3"> &#183; peak week
        ({{ season_week_name(phi) }})</tspan></text>
  {% endif %}
-</svg>
+</svg></div>
 {# the caption: plain, or with the kit a badge that carries the values
    (the figure's own labels name the peak week) #}
 {% set caption %}{% if two %}Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
@@ -731,7 +733,7 @@
   <i>&#946;</i><sub>0,s</sub> exp(&#8239;<i>&#949;</i><sub>1</sub>
   cos(&#8239;2&#960;(<i>t</i> &#8722;
   <i>&#966;</i><sub>s</sub>)&#8202;/&#8202;52&#8239;)&#8239;),
-  <i>s</i> &#8712; {A, B}{% endset %}
+  <span class="nw"><i>s</i> &#8712; {A, B}</span>{% endset %}
 {%- set forcing_note %}one harmonic form shared by both circuits; each strain
   fits its own <i>R</i><sub>eff</sub> and phase{% endset %}
 {%- set adm %}admissions<sub>w</sub> &#8764;
@@ -742,7 +744,7 @@
   accumulated across the reporting week, from the one accumulator that sums
   both circuits{% endset %}
 {%- set typed %}typed positives: <i>k</i><sub>A</sub> &#8764;
-  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;){% endset %}
+  <span class="nw">Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>{% endset %}
 {%- set typed_note %}the second likelihood channel: the admissions channel
   sees only the ascertained total, so typed specimens fit the A/B
   share{% endset %}
@@ -783,7 +785,7 @@
    ("<i>&#964;</i>", "a quantile level, one of FluSight's 23", "0.01 to 0.99", "fixed"),
    ("<i>y</i><sub>last</sub>", "the last observed admissions value, as archived on the forecast date", "admissions per week", "data"),
    ("<i>Q</i><sub><i>&#964;</i></sub>", "the weighted empirical <i>&#964;</i> quantile of the pooled ratios", "ratio", "derived"),
-   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction (the forecast jurisdiction's own carrying half of the weight), strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, pooled across sites, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
+   ("growth ratios", "admissions <i>h</i> weeks after a donor week over admissions at it: every jurisdiction (the forecast jurisdiction's own carrying half of the weight, weeks sized like its newest count the most), strictly earlier seasons, within two epiweeks of the forecast's; the FluSurv-NET bank's, pooled across sites, shrunk to the admissions scale, at equal weight; fewer than 30 donors gives no forecast", "ratio", "data")]) }}
 </div>
 {%- endmacro %}
 

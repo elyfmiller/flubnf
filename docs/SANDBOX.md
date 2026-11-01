@@ -33,6 +33,7 @@ New model, Start from:
 | Kinetics example | A to B, not an epidemic | any count that is the increment of something |
 | Blank skeleton | one conversion, three fitted values | writing from scratch |
 | Oracle SIHRS filter | the production model, priors and data for one jurisdiction and week | comparing with production (the hub location start needs the hub: Update data on the Data tab first) |
+| Oracle SIHRS template, for replays | the production model and priors with the per-state values kept as placeholders (`{{POP}}`, `{{I0FRAC}}`, ...), and one hub location's data as of a week | a variant of the production model to register and replay |
 
 Every example's `data.exp` was simulated from the model itself at the
 values written in its `model.bngl`, with negative-binomial noise, and its
@@ -89,6 +90,18 @@ runs the model once at its written values and sets its weekly counts
 beside the data: if the two differ tenfold, N, the starting state or the
 reporting scale is off, and the fit will start far from the data. No
 problems means the model can run, not that it fits.
+
+A model that keeps placeholders (the Oracle SIHRS template's `{{POP}}`,
+`{{I0FRAC}}`, ...) is filled for the Sandbox, never in its files. Check,
+Save and run and Simulate data use the population of the location
+data.exp was last loaded for and the starting infected fraction pinned
+from its counts, as a replay does for each location and week; the
+diagrams use sample values. Load a location first. Set N is not offered.
+Check then says whether it is **Ready for replays**, each finding with
+its code, and offers **Register**: it saves the editor text and freezes
+model.bngl and priors.conf as the next version of the name (`beta2@1`);
+identical files name the version that holds them, and any edit, a
+comment too, is a new one.
 
 **Save and run** fits the saved files. The full fit (10,000 particles,
 the production setting) gives the estimates, in seconds to minutes; with
@@ -154,3 +167,105 @@ with** draws another run's band dashed over this one, sets the parameter
 tables side by side, and lists every change between the two. **Download
 run** is a zip of the inputs, the engine's outputs and `summary.csv` (the
 weekly quantiles); **Download model** zips the three files to share.
+
+## 7. Experiments
+
+An experiment replays one model over one season of the FluSight hub at
+a preset size, and compares it with the shipped replay of that season on
+the cells both scored. The **Experiments** card on the Sandbox page
+holds its four choices:
+
+| Choice | What it is |
+|---|---|
+| Model | a shipped model (`sihrs`, `sihrs-2strain`, `sihrs-natg`) or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked |
+| Season | the seasons here, newest first; picked first, the newest with a shipped replay here to compare with |
+| Size | smoke: 2 locations, 2 weeks (minutes); pilot: 10 locations, every other week (under an hour); full: every location and week, as shipped (hours) |
+| Oracle step | on for `sihrs`, off for any other model, unless you change it |
+
+The four choices name the experiment and its folder,
+`sandbox/experiments/<name>[-v<n>]_<season>_<size>[_oracle]/`
+(`beta2-v1_2024-25_pilot`). **Start** takes the engine: while an
+experiment replays, the weekly forecast, a Retrospective replay, a
+dataset replay and a Sandbox fit are each refused until it ends (stop it
+first), and an experiment is refused while any of them runs. A start that cannot go ahead says **Not started** and why,
+each finding with its code (`MACHINE` when this computer is busy or has
+no particle-filter engine).
+
+**Stop**, on the experiment's page, finishes the fits in flight; the
+weeks finished are kept. **Resume** is Start with the same four choices:
+the same folder, the stored weeks skipped, the failed ones tried again.
+A complete experiment fits nothing more. **Delete** removes its folder;
+the registered model stays in the library.
+
+The page, `/sandbox/experiments/<id>`, shows the weeks stored while it
+replays, the week under way and about how long is left. When the replay
+stops or ends, `summary.json` is scored, off the engine: both sides
+against one truth and one FluSight baseline, as sums over the
+cells both scored (never ratios). The scores give relWIS, log relWIS and
+the 50, 80 and 95% coverage of this model and of the shipped replay (the
+Oracle SIHRS with the step on, the Liu-West filter alone with it off),
+and this model's summed WIS over the shipped replay's. US stays apart
+from the pooled figures and is compared only when both US forecasts are
+of the same kind. Folds give the figures by location, by week and by
+horizon, the fits that had no forecast, and what ran. A page view scores
+again when the truth moved, weeks were stored, or the shipped replay
+compared with moved.
+
+For scripts: each action here is a `flubnf model` or `flubnf experiment`
+command with `--json` ([CONTRIBUTING.md](CONTRIBUTING.md), section 2),
+and its route answers the same JSON with `Accept: application/json`.
+The start takes the four fields and no other: a field the page lacks is
+refused (`FIELD_UNKNOWN`).
+
+### On the students' Mac Studio
+
+Each student's clone sits at `~/Students/<name>` there, and its
+`sandbox/` folder is that student's. In that console **Start** and
+**Resume** queue the experiment instead of running it: the same four
+choices, and a notice saying **Queued**, its place in line, about how
+long it runs (a first estimate until an experiment of that size has
+finished on that computer), the disk it needs and keeps, and the shipped
+replay it will be compared with. Nothing runs in the student's console.
+
+**The runner.** `flubnf runner`, which Ely starts from the main install
+in a Terminal of the lab account, works the queue. Its first start makes
+`~/Students/.runner`, the folder that tells the students' consoles to
+queue (until then a student's Start runs on that computer as it would
+anywhere), so Ely starts it once before the students use their clones.
+It works the queue first in, first out, one experiment at a time, each
+in a fresh process that reads and writes only that student's folder. It
+holds the queue, and says why, while its install is not a clean `main`,
+the particle-filter engine is missing, or a Retrospective replay runs on
+that computer (a Sandbox fit does not hold it). It checks the folder
+before every week, so a link, a pipe or an unexpected file stops the job
+with its reason. A week interrupted by a stop or a limit is fitted again
+from its start. The runner alone scores the summary there, against the
+shipped replays of its own install: Ely exports each season's replay
+again (a bundle now carries each week's `oracle.json`) and imports it on
+the Mac Studio, so that experiments there have their reference with the
+Oracle step on or off.
+
+**Lean weeks.** Once a week is stored and its quantiles are checked to
+equal what its forecasting samples give, the samples are dropped; a
+failed week is removed whole. A full experiment keeps about 75 MB rather
+than about 1.6 GB, and its page reads as before.
+
+**The floor and the limits.** FluBNF keeps 20 GB free on that disk: an
+experiment that would leave less is not queued, waits when it is next,
+and is stopped if the disk falls below it while it runs. Each size has a
+limit on time, memory and folder size: smoke 30 minutes, 4 GB and
+512 MB; pilot 2 hours, 16 GB and 1 GB; full 16 hours, 32 GB and 10 GB,
+the memory at most half the computer's. At a limit the runner stops the
+experiment, keeps its finished weeks and says why on its page; Resume
+queues it again.
+
+**Where the queue shows.** The experiment's row and page show its badge
+(`queued · 2nd in line`, `queued · runner not running`, or `refused by
+the runner`), and while it waits the page's card reads **Queued** with
+one line (`Queued · 2nd in line · starts in about 1:05:00 · runs about
+10:32 · needs about 173.8 MB of disk`) and **Stop**, which takes it out
+of the queue. A student sees only their own experiments. On that
+computer's main console, Storage lists every student's experiments by
+folder, outside the total; Delete removes one, and takes a queued one
+out of the queue. That console's own experiment Start waits while the
+runner replays.

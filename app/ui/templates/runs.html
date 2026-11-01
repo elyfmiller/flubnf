@@ -272,9 +272,10 @@
  {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
  {% for w in storage.workroots %}
  {# label from the run's ledger row, linked to its run page (the id is
-    secondary); no row = an unrecorded run, time parsed from the id #}
+    secondary); no row = an unrecorded run, time parsed from the id, whose
+    page still shows its report and files #}
  <div class="st-row" data-wid="{{ w.id }}">
-  <span class="st-title"><strong>{% if w.recorded %}<a href="/runs/{{ w.id }}">{{ w.label }}</a>{% else %}{{ w.label }}{% endif %}</strong>
+  <span class="st-title"><strong><a href="/runs/{{ w.id }}">{{ w.label }}</a></strong>
    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
    {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
    {%- if w.busy %} {{ tips.badge("pending", "running now") }}
@@ -334,7 +335,7 @@
  {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
  {% for f in storage.report_archives %}
  <div class="st-row">
-  <span class="st-title"><strong>Weekly report and submissions · {{ f.id }}</strong></span>
+  <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
   {{ tips.meta([rlink]) }}{% endif %}
   <span class="st-size">{{ f.size_h }}</span>
@@ -387,6 +388,24 @@
   <span class="st-act"><a class="btn quiet st-del" href="/sandbox">Open Sandbox</a></span>
   {{ tips.meta([sbx.models ~ " model" ~ ("" if sbx.models == 1 else "s"), sbx.runs ~ " run" ~ ("" if sbx.runs == 1 else "s")]) }}
  </div>
+ </section>
+ {% endif %}{% if storage.students %}{% set su = storage.students %}
+ {# the runner computer's main console only (routes/storage.py
+    _students_here): each student's experiments, by folder, outside the
+    total; Delete is Ely's way to take a queued one out of the queue.
+    Elsewhere this block writes not a byte #}
+ <section class="st-sec" aria-labelledby="h-st-stu">
+ {{ tips.heading("Student experiments", "st-stu", "Each student's experiments on this computer, by folder (~/Students/<name>/sandbox), replayed by the runner one at a time. A week's forecasting samples are dropped once its quantiles are checked against them. Deleting one removes its folder and takes it out of the queue; its model stays in the student's library. Not in the total above: these folders belong to the students' clones.", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="student experiments") }}
+ {% if su.down %}{{ tips.alert("warn", su.why, title="The runner is not running.", id="st-stu-down") }}{% else %}{{ tips.meta(su.runner) }}{% endif %}
+ {% for e in su.rows %}
+ <div class="st-row">
+  <span class="st-title"><strong>{{ e.ident }}</strong> {{ tips.badge(e.badge[0], e.badge[1]) }}</span>
+  {% if e.parts %}{{ tips.meta(e.parts) }}{% endif %}
+  <span class="st-size">{{ e.size_h }}</span>
+  {% if e.busy %}{{ busy_act("st-stu-" ~ loop.index, e.why, "the student experiment " ~ e.ident) }}
+  {% else %}{{ del_form("/storage/delete", "experiment", e.ident, "the student experiment " ~ e.ident, e.size_h, "Its model stays in " ~ e.folder ~ "'s library.") }}{% endif %}
+ </div>
+ {% endfor %}
  </section>
  {% endif %}
 </details>

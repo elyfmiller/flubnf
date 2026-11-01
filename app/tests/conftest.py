@@ -20,6 +20,9 @@
     a real clone opts in through FLUBNF_TEST_HUB.
   * the checkout's top folder: the session ends by checking no test left a
     file there (a fake BNG2.pl once wrote m.net beside pyproject.toml).
+  * runner.STUDENTS -> a missing tmp folder: every test sees a computer
+    without a runner, a suite run inside a student's clone on the Mac
+    Studio included (its ~/Students/.runner would turn the queue on).
 """
 import atexit
 import os
@@ -92,6 +95,12 @@ def _top_files() -> set:
 _STATE_BEFORE, _TOP_BEFORE = _state_listing(), _top_files()
 
 
+from app.core import data as _core_data  # noqa: E402
+
+#: app.core.data.hub_missing before the autouse fake below replaces it
+_REAL_HUB_MISSING = _core_data.hub_missing
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
     """The whole suite leaves the working tree's app/state as it found it,
@@ -110,6 +119,14 @@ def _app_state_untouched():
 @pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
+
+
+@pytest.fixture(autouse=True)
+def _students_in_tmp(tmp_path, monkeypatch):
+    """No runner here: runner.STUDENTS is a folder that never exists. The
+    runner's tests make their own under tmp_path."""
+    from app.core import runner
+    monkeypatch.setattr(runner, "STUDENTS", tmp_path / "no-students")
 
 
 @pytest.fixture(scope="session")
@@ -161,6 +178,25 @@ def _shipped_vintages_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(core_data, "SHIPPED", tmp_path / "no-shipped")
 
 
+@pytest.fixture(autouse=True)
+def _hub_present_for_the_fakes(monkeypatch):
+    """The suite fakes the hub's data layer (vintages, truth, locations)
+    and the runs themselves, so the console's one test of the clone's
+    presence (app.core.data.hub_missing, which refuses a run and words the
+    Data and Forecast tabs) answers "present" too; the missing folder the
+    suite points FLUBNF_HUB at would otherwise refuse every faked run.
+    Opt in to the real test with the `hub_check_real` fixture."""
+    from app.core import data as core_data
+    monkeypatch.setattr(core_data, "hub_missing", lambda data=True: "")
+
+
+@pytest.fixture
+def hub_check_real(monkeypatch):
+    """The real test of the clone's presence (see the autouse fixture)."""
+    from app.core import data as core_data
+    monkeypatch.setattr(core_data, "hub_missing", _REAL_HUB_MISSING)
+
+
 @pytest.fixture
 def pf_engine_ready(monkeypatch):
     """A machine with the particle-filter engine, as the console's up-front
@@ -183,11 +219,19 @@ def shipped_vintages(monkeypatch):
 @pytest.fixture(autouse=True)
 def _sandbox_released():
     """The sandbox's engine claim is module state that /run and /retro/run
-    refuse on; no test may leak a live sandbox fit into another."""
+    refuse on; no test may leak a live sandbox fit or experiment into
+    another, nor an experiment's scoring job or refused form."""
     from app.ui import state as ui_state
-    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+    from app.ui.routes import sandbox as ui_sandbox
+
+    def release():
+        ui_state._sandbox_status.update(running=None, claim=None,
+                                        cancel=False, experiment=None)
+        ui_sandbox._experiment_scores.clear()
+        ui_sandbox._experiment_refused_form.clear()
+    release()
     yield
-    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+    release()
 
 
 @pytest.fixture
@@ -222,4 +266,7 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
     ui_state._status["running"] = None
     ui_state._status.pop("flash", None)
+    # a refused New model form waits for the next page (one-shot)
+    from app.ui.routes import sandbox as ui_sandbox
+    ui_sandbox._sandbox_new_refused.clear()
     return root
