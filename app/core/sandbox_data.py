@@ -1,17 +1,21 @@
 """data.exp from elsewhere: the hub archive (one location, settled or as
 a vintage knew it), a stored custom dataset (app/core/datasets.py) or an
 upload, always in calendar weeks, with the data.source.json sidecar that
-records where the rows came from. app/core/sandbox.py is the facade;
-every name here imports from it too. The hub modules are imported inside
-the functions so the sandbox imports on a machine without a hub.
+records where the rows came from; and a model's placeholders filled from
+that location for the Sandbox (filled_bngl). app/core/sandbox.py is the
+facade; every name here imports from it too. The hub modules are
+imported inside the functions so the sandbox imports on a machine
+without a hub.
 """
 from __future__ import annotations
 
 import csv
 import datetime as dt
 import json
+import math
 import re
 import time
+from typing import Mapping
 
 from app.core import sandbox as _sb  # MODELS and locations: patched there
 from app.core.sandbox import (
@@ -28,7 +32,7 @@ from app.core.sandbox import (
     read_info,
     set_population,
 )
-from app.core.sandbox_bngl import sihrs_shaped
+from app.core.sandbox_bngl import read_exp, sihrs_shaped
 
 DEFAULT_WEEKS = 20
 
@@ -238,7 +242,7 @@ def fill_data(name: str, location_name: str, start: str, end: str,
     d = model_dir(name)
     if set_pop:
         bngl = (d / "model.bngl").read_text(encoding="utf-8", errors="replace")
-        if sihrs_shaped(bngl):
+        if sihrs_shaped(bngl) or _sb.placeholder_n(bngl):
             set_population(name, 1)              # raises its refusal
         if _sb.with_population(bngl, 1) is None:
             raise SandboxError(f"{_sb.NO_N_LINE}, so nothing was loaded: "
@@ -325,3 +329,120 @@ def read_data_source(name: str) -> dict | None:
         return info
     except Exception:
         return None
+
+
+# ------------------------------------------- the placeholders, filled here
+# A model that keeps the replay placeholders ({{POP}}, {{I0FRAC}}, ...:
+# what a replay fills for each location and week) is filled in memory for
+# every Sandbox reader, from the location its data was loaded for; its
+# files are never rewritten.
+
+#: the five constants a replay writes into every location's model, as
+#: materialize_model writes them (library.SAMPLE_TOKENS holds them)
+_CONSTANTS = ("{{S0FRAC}}", "{{GAMMA}}", "{{RHO}}", "{{GAMMAH}}",
+              "{{OMEGA}}")
+
+
+def _unfilled(text: str) -> SandboxError:
+    return SandboxError(text, code="PLACEHOLDERS_UNFILLED")
+
+
+def filled_bngl(name: str, files: Mapping[str, str], *,
+                sample: bool = False) -> tuple[str, dict]:
+    """files["model.bngl"] with its placeholders filled for a Sandbox
+    reader (Check, Save and run, Simulate data, the diagrams), and how:
+    {} for a model that keeps none (the text as given, nothing read, the
+    library not imported). sample=True puts library.SAMPLE_TOKENS in
+    every placeholder, reads nothing and never refuses: {"from":
+    "sample"}. Otherwise {{POP}} is the population of the location
+    data.source.json names (whether or not data.exp was edited since: the
+    location it was loaded for), {{I0FRAC}} the data pin of data.exp's
+    counts (sihrs_fit.pin_from, the rule a replay applies to each location
+    and week), and the other five materialize_model's constants as it
+    writes them (library.SAMPLE_TOKENS): {"from": "data", "location",
+    "population", "i0"}. Replaced over the whole text, as
+    materialize_model does; the suffix is never rewritten and no file is
+    written. SandboxError(code="PLACEHOLDERS_UNFILLED") in words when it
+    cannot fill."""
+    text = str(files.get("model.bngl", ""))
+    if "{{" not in text:
+        return text, {}
+    from app.core import library         # it loads pandas: only here
+    used = library.tokens(text)
+    if not used:
+        return text, {}                  # stray braces only: Check says so
+    if sample:
+        for t in sorted(used & set(library.SAMPLE_TOKENS)):
+            text = text.replace(t, library.SAMPLE_TOKENS[t])
+        return text, {"from": "sample"}
+    other = sorted(used - set(library.TOKENS))
+    if other:
+        raise _unfilled(
+            f"model.bngl uses {', '.join(other)}, which the Sandbox does not "
+            f"fill: it fills {', '.join(library.TOKENS[:-1])} and "
+            f"{library.TOKENS[-1]}")
+    vals = {t: library.SAMPLE_TOKENS[t] for t in _CONSTANTS}
+    loc, pop, i0 = "", None, None
+    if used & set(library.STATE_TOKENS):
+        src = {}
+        p = _sb.MODELS / str(name) / SOURCE_FILE
+        # a regular file only: a pipe in its place would wait for a writer
+        if _sb.NAME_RE.fullmatch(str(name)) and p.is_file():
+            try:
+                src = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError, RecursionError):  # nested too deep
+                src = {}
+        src = src if isinstance(src, dict) else {}
+        loc = str(src.get("location") or "")
+        if not loc:
+            raise _unfilled(
+                "the placeholders in model.bngl are filled for the location "
+                "data.exp was loaded for, and none is known: load a "
+                "location's counts under Load data (the hub, or a dataset or "
+                "CSV with a population column)")
+        pop = src.get("population")
+        try:                             # true is not a population of 1
+            pop = 0 if isinstance(pop, bool) else int(float(pop or 0))
+        except (TypeError, ValueError, OverflowError):
+            pop = 0
+        if pop <= 0:
+            pop = hub_population(loc) if "dataset" not in src else None
+        if not pop:
+            raise _unfilled(
+                f"no population is known for {loc}, which the placeholders "
+                "need: load it from the hub, or from a dataset or CSV with a "
+                "population column")
+        vals["{{POP}}"] = str(int(pop))
+        if "{{I0FRAC}}" in used:
+            if src.get("kind") == "rate":
+                ds = src.get("dataset")
+                ds = ds.get("name", "") if isinstance(ds, dict) else ""
+                raise _unfilled(
+                    "{{I0FRAC}} is pinned from counts, and data.exp holds "
+                    f"rates ({ds}): load counts under Load data")
+            try:
+                rows = read_exp(str(files.get("data.exp", "")))["rows"]
+            except ValueError as e:      # SandboxError is one
+                raise _unfilled(
+                    "data.exp cannot be read, so {{I0FRAC}} cannot be pinned "
+                    f"from it: {e}") from None
+            # a negative value is a missing week (read_exp)
+            obs = [v for _, v, *_ in rows if math.isfinite(v) and v >= 0]
+            if not obs or sum(obs) <= 0:
+                raise _unfilled(
+                    "data.exp holds no admissions yet, so {{I0FRAC}} cannot "
+                    "be pinned from it")
+            import numpy as np
+            from flubnf.sihrs_fit import pin_from
+            from flubnf.sihrs_priors import (ATTACK_RATE_RANGE,
+                                             SEED_DENOMINATOR, gamma_per_week)
+            # resolve_state's own call
+            i0 = float(pin_from(obs, int(pop),
+                                float(np.mean(ATTACK_RATE_RANGE)), None,
+                                gamma_per_week(), SEED_DENOMINATOR)[1])
+            vals["{{I0FRAC}}"] = f"{i0:.8e}"
+    for t in sorted(used):
+        text = text.replace(t, vals[t])
+    return text, {"from": "data", "location": loc,
+                  "population": int(pop) if pop else None,
+                  "i0": i0 if i0 else None}

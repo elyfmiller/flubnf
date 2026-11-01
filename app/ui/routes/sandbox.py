@@ -7,27 +7,34 @@ registers as the sandbox_storage Jinja global). app/core/sandbox.py does
 the work. An APIRouter server.py includes.
 
 Sections: the engine guard and busy reason; redirects and the posted
-editor; the page (GET /sandbox); models (new, save, delete, check);
-data.exp (fill, simulate, upload); runs (start, stop); the diagram API
-and the run poll; downloads; the Oracle step; the Storage line.
+editor; the page (GET /sandbox); models (new, save, delete, check,
+register); data.exp (fill, simulate, upload); runs (start, stop); the
+diagram API and the run poll; downloads; the Oracle step; experiments
+(start, the compare page and its JSON, delete; app/core/experiments.py
+does the work, and in a student's folder on the runner computer Start
+queues for app/core/runner.py); the Storage line.
 """
 from __future__ import annotations
 
 import math
 import re
 import threading
+import time
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse)
 
 from app.core import sandbox as sandbox_mod
 from app.ui import pipeline, retro_seasons
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
-from app.ui.shared import (_LOCAL_HOSTNAMES, _authority_hostname, _flash,
+from app.ui.routes.data import _wants_json
+from app.ui.shared import (_LOCAL_HOSTNAMES, _authority_hostname,
+                           _experiment_live, _flash, _invalidate_scans,
                            _sandbox_live, _sandbox_live_reason)
 from app.ui.state import _engine_lock, _sandbox_status, _status
 from app.ui.templating import _script_json, templates
+from app.ui.versions import RUNNING_SHA
 
 router = APIRouter()
 
@@ -178,6 +185,13 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             cmp, diff = None, None
     examples = sandbox_mod.list_examples()
     taken = {m["name"] for m in models}
+    # the gallery's Experiments card: its choices and the experiments here
+    exp = None
+    if not editing:
+        try:
+            exp = _experiment_gallery()
+        except Exception as e:
+            _flash(f"Experiments could not be listed: {e}", "error")
     ctx = {"active": "Sandbox", "models": models, "last": last,
            # the simplest example first: a first visit starts from it
            "examples": sorted((e for e in examples
@@ -186,7 +200,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "templates": [e for e in examples if e.endswith("_template")],
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
            "example_names": {e: _free_name(e, taken)
-                             for e in examples + ["skeleton"]},
+                             for e in examples + ["skeleton", "variant"]},
            "copy_names": {m: _free_name(m + "_copy", taken) for m in taken},
            # a refused New model form comes back as it was posted (SB-09)
            "new_form": _sandbox_new_refused.pop("form", {}),
@@ -201,7 +215,8 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            # the Oracle SIHRS start (the gallery's New model form)
            "vintages": sandbox_mod.vintages(),
            "locations": sandbox_mod.locations(),
-           "datasets": sandbox_mod.dataset_choices()}
+           "datasets": sandbox_mod.dataset_choices(),
+           "exp": exp}
     if res:
         ctx["oracle"] = sandbox_mod.read_oracle(res["run_id"])
         ctx["oracle_gate"] = sandbox_mod.oracle_gate(res["run_id"])
@@ -253,6 +268,9 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "vintages": sandbox_mod.vintages(),
             "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
             "data_source": sandbox_mod.read_data_source(name),
+            # N written as a placeholder: every run fills it, so Load data
+            # offers no Set N
+            "n_placeholder": sandbox_mod.placeholder_n(editing["model.bngl"]),
             # your own data: stored datasets, and an upload's refusal
             "datasets": sandbox_mod.dataset_choices(),
             "pick_dataset": dataset,
@@ -311,10 +329,12 @@ def sandbox_new(request: Request, name: str = Form(...),
                 forecast_date: str = Form(""), season_start: str = Form(""),
                 group: str = Form(""), as_of: str = Form("")):
     """A new model: the skeleton (fits as written), a copy of a shipped
-    example (example:<name>) or of a sandbox model (copy:<name>), or the
+    example (example:<name>) or of a sandbox model (copy:<name>), the
     Oracle SIHRS filter as production builds it for one hub location and
     forecast date (shipped:sihrs) or one group of a stored dataset with a
-    population (shipped:dataset:<id>, as of as_of)."""
+    population (shipped:dataset:<id>, as of as_of), or the Oracle SIHRS
+    template for replays, its placeholders kept, with one hub location's
+    data as of forecast_date (template:sihrs)."""
     # a space reads as part of a name; the folder takes _ for it
     name = re.sub(r"\s+", "_", (name or "").strip())
     kind, _, what = (start or "skeleton").partition(":")
@@ -330,6 +350,11 @@ def sandbox_new(request: Request, name: str = Form(...),
                                      dataset=what.split(":", 1)[1])
             _flash(f"{name}: the Oracle SIHRS filter for {group.strip()} "
                    f"as of {as_of.strip()}.", "ok")
+        elif kind == "template" and what == "sihrs":
+            sandbox_mod.from_shipped(name, location, forecast_date,
+                                     season_start=season_start, template=True)
+            _flash(f"{name}: the Oracle SIHRS template, with data for "
+                   f"{location.strip()} as of {forecast_date.strip()}.", "ok")
         elif kind == "example":
             sandbox_mod.add_example(what, as_name=name)
             _flash(f"{name} copied from the example {what}.", "ok")
@@ -403,14 +428,16 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                       data_exp: str = Form(""), priors_conf: str = Form("")):
     """Check the posted editor text (each field falling back to the saved
     file) without the engine: JSON problems, warnings, facts and their
-    codes (app/core/problem_codes.py)."""
+    codes (app/core/problem_codes.py), and, for a model that keeps
+    placeholders, whether it is ready for replays."""
     try:
         files = sandbox_mod.read_model(name)
         for f, v in (("model.bngl", model_bngl), ("data.exp", data_exp),
                      ("priors.conf", priors_conf)):
             if (v or "").strip():
                 files[f] = v.replace("\r\n", "\n")
-        return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check")
+        return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check",
+                                 name=name)
     except Exception as e:
         from app.core.problem_codes import finding
         said = str(e)[:1500]
@@ -418,6 +445,58 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                              "warnings": [], "facts": {},
                              "codes": [finding("CHECK_FAILED", said)]},
                             status_code=200)
+
+
+#: one Register at a time in this console: a double click registers once
+#: (library.register takes no lock; test_library.py pins two processes
+#: getting distinct versions)
+_sandbox_register_lock = threading.Lock()
+
+
+@router.post("/sandbox/models/{name}/register")
+def sandbox_register(name: str, model_bngl: str = Form(""),
+                     data_exp: str = Form(""), priors_conf: str = Form("")):
+    """Register for replays: the posted editor fields are saved first (as
+    Save and run's), then the saved model.bngl and priors.conf are frozen
+    as the library's next version of this name (library.register), or
+    named as the version that already holds them. Refused in words, each
+    finding with its code. A name that is not exactly a Sandbox model's
+    saves nothing. Redirects to the model."""
+    from app.core import library
+    from app.core.problem_codes import Refusal
+    models = sandbox_mod.MODELS
+    # the exact name before anything is saved: where folders ignore case,
+    # BETA would save into beta's folder
+    if not (models.is_dir() and name in {p.name for p in models.iterdir()}):
+        _flash(f"Not registered: no Sandbox model is named {name!r} "
+               "(letter case counts).", "warn")
+        return _sandbox_redirect()
+    with _sandbox_register_lock:
+        try:
+            if _sandbox_save_posted(name, model_bngl, data_exp, priors_conf):
+                _flash(f"Saved {name}.", "ok")
+        except Exception as e:
+            _not_done("Not saved, not registered", e)
+            return _sandbox_redirect(name)
+        try:
+            r = library.register(name)
+        except Refusal as e:
+            # the problems first, each with its code; the rest in the "?"
+            found = ([f for f in e.findings if f["tier"] == "problem"]
+                     + [f for f in e.findings if f["tier"] != "problem"])
+            _not_done("Not registered", sandbox_mod.SandboxError(
+                "\n".join(f"{f['text']} ({f['code']})" for f in found)))
+            return _sandbox_redirect(name)
+        except Exception as e:                    # the computer, not the model
+            _not_done("Not registered", e)
+            return _sandbox_redirect(name)
+    s = library.short(r["fingerprint"])
+    notes = "; ".join(f"{f['text']} ({f['code']})" for f in r["findings"])
+    _flash(f"Registered {r['ref']} ({s})." if r["new"] else
+           f"{r['ref']} already holds these files ({s}); nothing new was "
+           "registered.", "ok",
+           detail=f"Worth a look: {notes}" if notes else "")
+    return _sandbox_redirect(name)
 
 
 # ------------------------------------------------------------ data.exp
@@ -754,19 +833,72 @@ def sandbox_run_stop(run_id: str):
 
 
 @router.post("/sandbox/stop")
-def sandbox_stop():
+def sandbox_stop(request: Request, experiment: str = Form("")):
     """Stop whatever the sandbox has on the engine (the guard modal's
-    Stop): the live fit, or a run still being prepared."""
+    Stop, posted with no body): the live fit, a run still being prepared,
+    or the live experiment (its claim's cancel, checked before every week,
+    and STOP in its folder, which the replay polls between fits). An
+    experiment's page posts experiment=<id>: that experiment alone is
+    stopped, never a fit; its Stop says what it did (JSON when asked), and
+    also reaches a folder another process replays. In a student's folder
+    on the runner computer the runner has it: a queued one is taken out
+    of the queue, a replaying one is stopped (runner.stop)."""
+    name = _student() if experiment else None
+    if name:
+        from app.core import experiments as X
+        from app.core import runner
+        said = runner.stop(name, experiment)
+        to = (f"/sandbox/experiments/{experiment}" if X.find(experiment)
+              else "/sandbox")
+        if said == "dequeued":
+            text = (f"Took {experiment} out of the queue; nothing was "
+                    "fitted.")
+        elif said == "stopping":
+            text = (f"Stopping {experiment} after the fits in flight; "
+                    "finished weeks are kept.")
+        else:
+            return _experiment_answer(
+                _wants_json(request), ok=False, eid=experiment, kind="warn",
+                to=to, text=f"Nothing to stop: {experiment} is not "
+                "replaying.")
+        return _experiment_answer(_wants_json(request), ok=True,
+                                  eid=experiment, to=to, text=text)
     with _engine_lock:
-        running = _sandbox_status.get("running")
-        if not running and _sandbox_status.get("claim"):
+        running = None if experiment else _sandbox_status.get("running")
+        if (not experiment and not running
+                and _sandbox_status.get("claim")):
             _sandbox_status["cancel"] = True
+        claim = _sandbox_status.get("experiment")
+        eid = experiment or (claim or {}).get("id") or ""
+        ours = bool(claim) and claim["id"] == eid
+        if ours:
+            claim["cancel"] = True
     if running:
         try:
             sandbox_mod.stop(sandbox_mod.run_dir(running))
         except Exception:
             pass
-    return _sandbox_redirect()
+    asked, folder = ours, None
+    if eid:
+        from app.core import experiments as X
+        from app.core import retro
+        folder = X.find(eid)
+        if folder is not None and (ours or X.status(folder)["status"]
+                                   in retro.ACTIVE_STATUSES):
+            retro.request_stop(folder)      # never creates a folder
+            asked = True
+    if not experiment:
+        return _sandbox_redirect()
+    to = (f"/sandbox/experiments/{eid}" if folder is not None or ours
+          else "/sandbox")
+    if asked:
+        return _experiment_answer(
+            _wants_json(request), ok=True, eid=eid, to=to,
+            text=f"Stopping {eid} after the fits in flight; finished weeks "
+            "are kept.")
+    return _experiment_answer(_wants_json(request), ok=False, eid=eid,
+                              text=f"Nothing to stop: {eid} is not "
+                              "replaying.", kind="warn", to=to)
 
 
 # ------------------------------------- the diagram API and the run poll
@@ -778,7 +910,9 @@ def api_sandbox_contactmap(name: str):
     visualize action draws on a copy of the model (no engine, no run).
     "sites": any molecule with components, the only models whose contact
     map and network say more than the flow. BNG2.pl's words come back as
-    "error" beside the flow. Cached by the model text until it changes."""
+    "error" beside the flow. Cached by the model text until it changes. A
+    model that keeps placeholders is drawn with the sample values in them
+    (sandbox_data.filled_bngl; no value reaches a drawing)."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
@@ -794,7 +928,8 @@ def api_sandbox_contactmap(name: str):
         flow = None
     try:
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        cm = contactmap.parse(contactmap.graphml_from_bngl(bngl, work))
+        cm = contactmap.parse(contactmap.graphml_from_bngl(
+            sandbox_mod.filled_bngl(name, files, sample=True)[0], work))
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500], "flow": flow}, status_code=200)
     out = {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
@@ -808,7 +943,8 @@ def api_sandbox_contactmap(name: str):
 def api_sandbox_network(name: str):
     """BNG2.pl's generated reaction network as inline SVG (generate-only
     copy, no run); too large -> counts and a note. "graph" always returned.
-    Cached by the model text until it changes."""
+    Cached by the model text until it changes; a model that keeps
+    placeholders is generated with the sample values in them."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
@@ -817,7 +953,8 @@ def api_sandbox_network(name: str):
         if hit is not None:
             return hit
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        net = contactmap.parse_net(contactmap.network_from_bngl(bngl, work))
+        net = contactmap.parse_net(contactmap.network_from_bngl(
+            sandbox_mod.filled_bngl(name, files, sample=True)[0], work))
         drawing = contactmap.svg_network(net)
         out = {"svg": drawing if drawing.startswith("<svg") else "",
                "species": len(net["species"]), "reactions": len(net["reactions"]),
@@ -917,6 +1054,579 @@ def sandbox_run_oracle(run_id: str, w: str = Form("")):
     except Exception as e:
         _not_done("Oracle step not applied", e)
     return _sandbox_redirect(model, run_id if model else "")
+
+
+# --------------------------------------------------------- experiments
+# One model replayed over one season at a preset size and compared with
+# the shipped replay (app/core/experiments.py): the gallery's Experiments
+# card starts one, its page shows it running, then its summary.json. It
+# holds the engine through _sandbox_status["experiment"], so every guard
+# that reads _sandbox_live_reason refuses while it replays; Stop is
+# /sandbox/stop's. In a student's folder on the runner computer (the
+# students' Mac Studio) Start and Resume queue instead: the runner
+# replays and scores there, the page shows the queue (runner.json), and
+# Stop takes a job out of it. Its imports stay inside the functions: the
+# core modules load pandas, which the server's import must not.
+
+#: one scoring job per experiment: the segment end's, or a view's when
+#: experiments.stale() names a reason; registered under _engine_lock with
+#: the claim, so a Start and a scoring never write one folder at once
+_experiment_scores: dict = {}
+#: a view waits this long for its scoring job, as the season page waits
+#: for its finalize (routes/retro.py _RESULTS_GRACE_S)
+_SCORE_GRACE_S = 1.5
+
+#: the Experiments form a refusal sends back (one-shot, read by the gallery)
+_experiment_refused_form: dict = {}
+
+
+def _student() -> str | None:
+    """The student's name when this console's Sandbox is a student's
+    folder on the runner computer (its experiments queue for the runner);
+    None everywhere else, at one failed stat."""
+    from app.core import runner
+    return runner.folder_of(sandbox_mod.SANDBOX)
+
+
+def _runner_job(state: dict, name: str) -> str:
+    """runner.job_of: the id of the experiment a running runner replays
+    in this student's folder, "" for none."""
+    from app.core import runner
+    return runner.job_of(state, name)
+
+
+async def _experiment_form(request: Request) -> dict:
+    """Every posted field, its value stripped; a blank one is left out, so
+    it takes its default. The Oracle step's on or off reads as true or
+    false (any other word passes as text). A field sent twice is a list
+    and a file None: experiments.validate refuses each in words
+    (FIELD_TYPE), and a field the page lacks (particles=200) with
+    FIELD_UNKNOWN, where Form() parameters would drop it unseen."""
+    try:
+        form = await request.form()
+    except Exception:
+        return {}
+    words = {"on": True, "true": True, "1": True,
+             "off": False, "false": False, "0": False}
+    sent: dict = {}
+    for k, v in form.multi_items():
+        sent.setdefault(k, []).append(v.strip() if isinstance(v, str)
+                                      else None)
+    out = {}
+    for k, vs in sent.items():
+        if len(vs) > 1:
+            out[k] = vs
+        elif vs[0] is None:
+            out[k] = None
+        elif vs[0]:
+            out[k] = (words.get(vs[0].lower(), vs[0]) if k == "oracle"
+                      else vs[0])
+    return out
+
+
+def _experiment_answer(as_json: bool, *, ok: bool, eid, text: str,
+                       kind: str = "ok", detail: str = "",
+                       to: str = "/sandbox", codes=None, **extra):
+    """An experiment action's answer: JSON when asked ({"ok", "id",
+    "text"}, "codes" when given, and `extra`), never a flash (it would
+    wait for the next page); else the notice, its detail in the "?", and
+    a 303 to `to`."""
+    if as_json:
+        body = {"ok": ok, "id": eid, **extra, "text": text}
+        if codes is not None:
+            body["codes"] = list(codes)
+        return JSONResponse(_json_finite(body))
+    _flash(text, kind, detail=detail)
+    return RedirectResponse(to, status_code=303)
+
+
+def _experiment_start(raw: dict, as_json: bool):
+    """Start (or resume) the experiment the four choices name: the
+    settings read (nothing claimed or written on a refusal); one whose
+    every week is stored answered as complete; in a student's folder on
+    the runner computer, queued for the runner (_experiment_queue) and
+    nothing claimed here; else the engine claimed under _engine_lock,
+    refused (MACHINE) while any other run holds it, this computer's
+    runner replays, or there is no particle-filter engine here; the
+    preflight (the plan, the bank, the engine build at a resume) outside
+    the lock; a Stop meanwhile answered as a start that never began; then
+    the replay on a background thread (_experiment_go), as the Sandbox
+    starts a fit. A refusal ("Not started", or "Not queued") goes back to
+    the experiment's page when it has one, else to the gallery, whose
+    form comes back as posted."""
+    from app.core import experiments as X
+    from app.core import runner
+    from app.core.problem_codes import Refusal, finding
+    eid = None
+
+    def refused(found, prefix="Not started"):
+        found = ([f for f in found if f["tier"] != "warning"]
+                 + [f for f in found if f["tier"] == "warning"])
+        said = [f"{f['text']} ({f['code']})" for f in found]
+        if prefix == "Not queued":
+            # the runner's floor: its detail is a second MACHINE finding,
+            # a sentence of its own, said as it is
+            said[1:] = [f["text"] if f["code"] == found[0]["code"]
+                        == "MACHINE" else w
+                        for f, w in zip(found[1:], said[1:])]
+        to = (f"/sandbox/experiments/{eid}" if eid and X.find(eid)
+              else "/sandbox")
+        if as_json:
+            extra = {"queued": None} if prefix == "Not queued" else {}
+            return _experiment_answer(
+                True, ok=False, eid=eid, text=f"{prefix}: {said[0]}.",
+                codes=found, url=None, started=False, **extra)
+        if to == "/sandbox":
+            def posted(k, default=""):
+                return raw.get(k) if isinstance(raw.get(k), str) else default
+            oracle = raw.get("oracle")
+            _experiment_refused_form["form"] = {
+                "model": posted("model"), "season": posted("season"),
+                "size": posted("size", X.DEFAULT_SIZE),
+                "oracle": (oracle if isinstance(oracle, bool)
+                           else posted("model") in X.ORACLE_ON_BY_DEFAULT)}
+        # the problems first, each with its code; the rest in the "?"
+        _not_done(prefix, sandbox_mod.SandboxError(
+            "\n".join([said[0] + "."] + said[1:])))
+        return RedirectResponse(to, status_code=303)
+
+    try:
+        s = X.read(raw)
+        eid = X.experiment_id(s)
+    except Refusal as e:
+        return refused(e.findings)
+    page = f"/sandbox/experiments/{eid}"
+
+    def complete():
+        return _experiment_answer(
+            as_json, ok=True, eid=eid, kind="info", to=page, codes=[],
+            text=f"{eid} is complete: every week is stored, nothing to fit.",
+            url=page, started=False, resumed=False, complete=True)
+    folder = X.find(eid)
+    if folder is not None and X.status(folder)["complete"]:
+        return complete()
+    if _student():
+        try:
+            return _experiment_queue(s, eid, as_json)
+        except Refusal as e:
+            return refused(e.findings, "Not queued")
+        except Exception as e:                  # the computer, not the model
+            return refused([finding("MACHINE", str(e)[:300])], "Not queued")
+    with _engine_lock:
+        why, one = _sandbox_busy_reason(), "run"
+        if not why:
+            why, one = runner.busy_words(), "replay"
+        engine = "" if why else pipeline._pf_engine_state()
+        claim = None
+        if not why and engine == "ready":
+            claim = {"id": eid, "settings": s, "cancel": False}
+            _sandbox_status["experiment"] = claim
+    if why:
+        return refused([finding("MACHINE", f"{why}: one {one} at a time")])
+    if claim is None:
+        return refused([finding(
+            "MACHINE", "an experiment needs the particle-filter engine, "
+            + pipeline._pf_engine_missing(engine))])
+
+    def release():
+        with _engine_lock:
+            if _sandbox_status.get("experiment") is claim:
+                _sandbox_status["experiment"] = None
+    try:
+        p = X.preflight(s, retro_root=retro_seasons.RETRO_ROOT)
+    except Refusal as e:
+        release()
+        return refused(e.findings)
+    except Exception as e:                      # the computer, not the model
+        release()
+        return refused([finding("MACHINE", str(e)[:300])])
+    if p["complete"]:
+        release()
+        return complete()
+    # Stop pressed during the preflight: nothing started, nothing fitted
+    with _engine_lock:
+        cancelled = bool(claim.get("cancel"))
+        if cancelled and _sandbox_status.get("experiment") is claim:
+            _sandbox_status["experiment"] = None
+    if cancelled:
+        return _experiment_answer(
+            as_json, ok=False, eid=eid, kind="warn", codes=[],
+            text=f"{eid} was stopped before it started.",
+            to=page if X.find(eid) else "/sandbox", url=None, started=False)
+    threading.Thread(target=_experiment_go, args=(eid, s, claim),
+                     daemon=True, name=f"experiment-{eid}").start()
+    a = X.started(p)
+    return _experiment_answer(
+        as_json, ok=True, eid=eid, text=a["text"], to=page, kind=a["kind"],
+        detail=a["detail"], codes=p["findings"], url=page, started=True,
+        resumed=p["resume"], complete=False, plan=a["plan"])
+
+
+def _experiment_queue(s: dict, eid: str, as_json: bool):
+    """Start or Resume in a student's folder on the runner computer: the
+    experiment queued for the runner (runner.enqueue writes its
+    experiment.json and QUEUED once every check passes; nothing is
+    claimed or run here), answered in the runner's words with its detail
+    in the "?": queued, already queued, replaying or complete. JSON:
+    Start's keys with started false (the plan when it was queued now),
+    plus "queued" as the experiment's JSON gives it (runner.position's:
+    null while it replays). A refusal raises, for _experiment_start to
+    say "Not queued"."""
+    from app.core import runner
+    q = runner.enqueue(s)
+    page = f"/sandbox/experiments/{eid}"
+    plan = {"plan": q["plan"]} if q.get("plan") else {}
+    return _experiment_answer(
+        as_json, ok=True, eid=eid, text=q["text"], kind=q["kind"],
+        detail=q["detail"], to=page, codes=q["findings"], url=page,
+        started=False, resumed=False, complete=q["state"] == "complete",
+        queued=runner.position(_student(), eid), **plan)
+
+
+@router.post("/sandbox/experiments")
+def sandbox_experiment_start(request: Request,
+                             raw: dict = Depends(_experiment_form)):
+    """Start or resume an experiment: model, season, and optionally size
+    and oracle (on or off), the four choices the gallery's Experiments
+    card offers, and nothing else. A 303 to its page, or JSON with
+    Accept: application/json (always 200, as Check answers)."""
+    return _experiment_start(raw, _wants_json(request))
+
+
+def _experiment_go(eid: str, settings: dict, claim: dict) -> None:
+    """One experiment segment on this console: the sleep guard held, a
+    pending scoring of the folder waited for, the replay run, the claim
+    released the moment it returns, then summary.json scored off the
+    engine as the folder's one job."""
+    from app.core import experiments as X
+    from app.core import retro
+    from app.core.problem_codes import Refusal
+    folder = X.root() / eid
+    guard = pipeline._sleep_guard()     # a full replay must outlive the lid
+    before = X.finished_mark(folder)
+    job = None
+    try:
+        pending = _experiment_scores.get(eid)
+        if pending and not pending["done"].is_set():
+            pending["done"].wait()      # a rescore of this folder ends first
+
+        def cancelled():
+            return bool(claim.get("cancel"))
+        if not cancelled():
+            X.replay(settings, retro_root=retro_seasons.RETRO_ROOT,
+                     cancelled=cancelled)
+    except (retro.SeasonStopped, retro.EngineBuildChanged):
+        pass                            # the run record says stopped
+    except retro.ResumeMismatch as e:   # and its other kinds
+        _flash(f"{eid} was not resumed: "
+               f"{sandbox_mod.split_reason(str(e))[0]}", "warn",
+               detail="Delete the experiment on its page to replay it here.")
+    except Refusal as e:                # the model changed since preflight
+        f = e.findings[0]
+        _flash(f"{eid} did not run: {f['text']} ({f['code']}).", "warn")
+    except Exception as e:
+        _flash(f"{eid} did not run: {str(e)[:200]}", "error")
+    finally:
+        if folder.is_dir():
+            retro.clear_flags(folder)   # a leftover STOP would stop the next
+        if guard is not None:
+            try:
+                guard.terminate()
+            except Exception:
+                pass
+        with _engine_lock:
+            if X.segment_ended(folder, before):
+                job = _score_job(eid, "the segment ended", RUNNING_SHA)
+            if _sandbox_status.get("experiment") is claim:
+                _sandbox_status["experiment"] = None
+        _invalidate_scans()
+        if job:
+            job["thread"].start()
+
+
+def _score_job(eid: str, why: str, build: str | None) -> dict:
+    """A new scoring job ({"why", "error", "done", "t0", "thread"}),
+    registered, its thread not yet started. The caller holds _engine_lock
+    and starts job["thread"] after releasing it. The thread runs
+    experiments.score(root()/eid, retro_root=RETRO_ROOT,
+    flubnf_build=build), keeps str(e)[:300] of any failure, invalidates
+    the cached scans and sets done."""
+    from app.core import experiments as X
+    job = {"why": why, "error": "", "done": threading.Event(),
+           "t0": time.time()}
+
+    def _go():
+        try:
+            X.score(X.root() / eid, retro_root=retro_seasons.RETRO_ROOT,
+                    flubnf_build=build)
+        except Exception as e:
+            job["error"] = str(e)[:300]
+        finally:
+            _invalidate_scans()
+            job["done"].set()
+    job["thread"] = threading.Thread(target=_go, daemon=True,
+                                     name=f"experiment-score-{eid}")
+    _experiment_scores[eid] = job
+    return job
+
+
+def _experiment_scoring(eid: str) -> dict | None:
+    """A view's scoring: the job running for this experiment, else a new
+    one (flubnf_build None: the build that ran is kept) when
+    experiments.stale() names a reason and no claim here names eid; None
+    when there is nothing to score, and always in a student's folder on
+    the runner computer, where the runner alone scores (against its own
+    shipped replays, which this console's retro root does not hold).
+    stale() is read before the lock."""
+    from app.core import experiments as X
+    if _student():
+        return None
+    job = _experiment_scores.get(eid)
+    if job and not job["done"].is_set():
+        return job
+    folder = X.find(eid)
+    why = X.stale(folder) if folder is not None else ""
+    if not why:
+        return None
+    with _engine_lock:
+        job = _experiment_scores.get(eid)
+        if job and not job["done"].is_set():
+            return job
+        if _experiment_live() == eid:
+            return None
+        job = _score_job(eid, why, None)
+    job["thread"].start()
+    return job
+
+
+def _experiment_line(st: dict, claimed, queue: dict | None = None) -> str:
+    """experiments.line: the running card's one line ("" for none)."""
+    from app.core import experiments as X
+    return X.line(st, claimed, queue)
+
+
+def _experiment_badge(st: dict, claimed, queue: dict | None = None,
+                      refused: str = "") -> tuple:
+    """experiments.badge: (state, words) of an experiment's badge."""
+    from app.core import experiments as X
+    return X.badge(st, claimed, queue, refused)
+
+
+def _experiment_gallery() -> dict:
+    """The Experiments card: the models a replay can name (each with its
+    Oracle step default), the seasons newest first, the form's choices (a
+    refused form as posted, one-shot; else the newest intact registered
+    version, the season with a shipped replay to compare with, smoke and
+    the model's Oracle default), and a row per experiment: its badge and
+    its figures as last scored (never checked for staleness here). In a
+    student's folder on the runner computer each badge also reads the
+    queue (runner.json, read once), and "queues" is true: Start queues."""
+    from app.core import experiments as X
+    from app.core import library, retro, runner
+    models = [{**m, "oracle": m["ref"] in X.ORACLE_ON_BY_DEFAULT}
+              for m in library.list_models()]
+    pick = _experiment_refused_form.pop("form", None)
+    if not pick:
+        # the newest registration; of two in one second, the later listed
+        mine = [m for m in reversed(models)
+                if not m["shipped"] and m["intact"]]
+        newest = max(mine, key=lambda m: str(m["registered_utc"] or ""),
+                     default=None)
+        ref = newest["ref"] if newest else "sihrs"
+        pick = {"model": ref,
+                "season": X.default_season(retro_seasons.RETRO_ROOT),
+                "size": X.DEFAULT_SIZE,
+                "oracle": ref in X.ORACLE_ON_BY_DEFAULT}
+    live = _experiment_live()
+    name = _student()
+    state = runner.read_state() if name else {}
+    on_runner = _runner_job(state, name) if name else ""
+    rows = []
+    for r in X.list_experiments():
+        queue = refused = None
+        if name:
+            queue = runner.position(name, r["id"], state=state)
+            refused = runner.refusal(name, r["id"], state=state)
+        claimed = "runner" if on_runner == r["id"] else r["id"] == live
+        rows.append({"id": r["id"],
+                     "badge": _experiment_badge(r["status"], claimed, queue,
+                                                refused or ""),
+                     "fig": X.figures((r["summary"] or {}).get("overall"))})
+    return {"models": models,
+            "seasons": sorted(retro.available_seasons(), reverse=True),
+            "pick": pick, "rows": rows, "queues": bool(name)}
+
+
+def _experiment_view(eid: str) -> dict | None:
+    """What an experiment's page and its JSON show, or None when eid names
+    no experiment: its folder (find), or this console's claim alone while
+    the preflight runs (no folder yet); its four choices; where its replay
+    stands (status, with the claim over it: the line and the badge); its
+    scoring (a view's rescore when stale() names a reason, waited for up
+    to _SCORE_GRACE_S); and summary.json as read, every figure through
+    experiments.figures. In a student's folder on the runner computer it
+    also reads the queue (runner.json): its place while QUEUED stands
+    ("queue", runner.position's), the runner's job naming it while it
+    starts, and what the runner said when it would not run it
+    ("refused"); a queued experiment, and the runner's job, are live, so
+    the page polls on."""
+    from app.core import experiments as X
+    from app.core import library, retro, runner
+    from app.core.problem_codes import Refusal
+    from app.core.us_national import is_us
+    name = _student()
+    state = runner.read_state() if name else {}
+    queue = runner.position(name, eid, state=state) if name else None
+    refused = runner.refusal(name, eid, state=state) if name else ""
+    on_runner = bool(name) and _runner_job(state, name) == eid
+    folder = X.find(eid)
+    with _engine_lock:
+        claim = _sandbox_status.get("experiment")
+    claimed = bool(claim) and claim["id"] == eid
+    if folder is None and not claimed:
+        return None
+    try:
+        settings = (X.read(folder / X.SETTINGS) if folder is not None
+                    else dict(claim["settings"]))
+    except Refusal:
+        return None                             # changed since find
+    st = X.status(X.root() / eid)
+    live = (claimed or on_runner or queue is not None
+            or st["status"] in retro.ACTIVE_STATUSES)
+    job = _experiment_scoring(eid) if folder is not None else None
+    if job is not None:
+        job["done"].wait(_SCORE_GRACE_S)
+    pending = job is not None and not job["done"].is_set()
+    scoring = {"pending": pending, "why": job["why"] if pending else "",
+               "error": "" if pending or job is None else job["error"]}
+    summary, problem = (X.summary_or_problem(folder) if folder is not None
+                        else (None, ""))
+    figs = words = None
+    if summary is not None:
+        def groups(key):
+            g = summary.get(key)
+            return [(k, X.figures(v)) for k, v in g.items()] if isinstance(
+                g, dict) else []
+        figs = {"overall": X.figures(summary.get("overall")),
+                "us": X.figures(summary.get("us")),
+                "by_location": groups("by_location"),
+                "by_week": groups("by_week"),
+                "by_horizon": groups("by_horizon")}
+        ran = summary.get("ran") if isinstance(summary.get("ran"),
+                                               dict) else {}
+        try:
+            disk = retro.human_bytes(int(ran.get("disk_bytes") or 0))
+        except (TypeError, ValueError):
+            disk = ""
+        # US planned and a shipped side, yet no US compared: not like for
+        # like (us_national.us_step_week), said in a line under the table
+        words = {"disk": disk,
+                 "engine": retro._build_label(ran.get("engine_build")),
+                 "us_na": (isinstance(summary.get("shipped"), dict)
+                           and summary.get("us") is None
+                           and any(is_us(x) for x in
+                                   ran.get("locations") or ()))}
+    meta = X._meta(X.root() / eid)
+    rs = meta.get("settings") if isinstance(meta.get("settings"),
+                                            dict) else {}
+    record = None
+    if rs.get("experiment"):
+        try:
+            record = {"short": library.short(str(rs.get("model_fingerprint")
+                                                 or "")),
+                      "locations": len(rs.get("locations") or ()),
+                      "weeks": len(rs.get("weeks") or ()),
+                      "replicates": int(rs.get("replicates") or 0)}
+        except (TypeError, ValueError):
+            record = None
+    held = "runner" if on_runner else claimed
+    return {"id": eid, "settings": settings, "folder": folder is not None,
+            "claimed": claimed, "live": live, "status": st,
+            "line": _experiment_line(st, held, queue),
+            "badge": _experiment_badge(st, held, queue, refused),
+            "scoring": scoring, "summary": summary, "figures": figs,
+            "problem": problem, "words": words, "record": record,
+            "queued": queue is not None, "queue": queue, "refused": refused,
+            "queues": bool(name)}
+
+
+@router.get("/sandbox/experiments/{eid}", response_class=HTMLResponse)
+def sandbox_experiment_page(request: Request, eid: str):
+    """One experiment: its choices, its replay while it runs (the weeks,
+    the line, Stop), its state and Resume, and its scores against the
+    shipped replay, read from summary.json only (rescored first when
+    stale() names a reason); Delete when it is idle."""
+    view = _experiment_view(eid)
+    if view is None:
+        _flash(f"Not opened: no experiment is named '{eid}'.", "warn")
+        return RedirectResponse("/sandbox", status_code=303)
+    return templates.TemplateResponse(request, "sandbox_experiment.html",
+                                      {"active": "Sandbox", **view})
+
+
+@router.get("/api/sandbox/experiments/{eid}")
+def api_sandbox_experiment(eid: str):
+    """One experiment as JSON (its page's poll, and agents): its choices,
+    live and claimed, where it stands in the runner's queue ("queued":
+    runner.position's, null when it is not queued), status with the
+    page's line, scoring, summary.json as read and its overall and US
+    figures; 404 when unknown. A stale summary is rescored here as on the
+    page."""
+    view = _experiment_view(eid)
+    if view is None:
+        return JSONResponse({"error": f"no experiment is named '{eid}'"},
+                            status_code=404)
+    figs = view["figures"]
+    return _json_finite({
+        "id": eid, "settings": view["settings"], "live": view["live"],
+        "claimed": view["claimed"], "queued": view["queue"],
+        "status": {**view["status"], "line": view["line"]},
+        "scoring": view["scoring"], "summary": view["summary"],
+        "figures": (None if figs is None
+                    else {"overall": figs["overall"], "us": figs["us"]}),
+        "problem": view["problem"]})
+
+
+@router.post("/sandbox/experiments/{eid}/delete")
+def sandbox_experiment_delete(request: Request, eid: str,
+                              confirm: str = Form("")):
+    """Delete an experiment's folder (the library keeps the model); never
+    while it replays, is the runner's job, or is being scored (a queued
+    one leaves the queue with its folder). The confirmation names it."""
+    from app.core import experiments as X
+    from app.core import retro, runner
+    as_json = _wants_json(request)
+    back = f"/sandbox/experiments/{eid}"
+    if confirm != eid:
+        return _experiment_answer(
+            as_json, ok=False, eid=eid, kind="warn", codes=[],
+            text="Not deleted: the confirmation did not name the experiment.",
+            to=back if X.find(eid) else "/sandbox")
+    try:
+        # under the lock, as a season tree is discarded: no Start or
+        # scoring can claim the folder meanwhile
+        with _engine_lock:
+            job = _experiment_scores.get(eid)
+            if job and not job["done"].is_set():
+                raise sandbox_mod.SandboxError(
+                    f"{eid} is being scored; delete it once that is done")
+            name = _student()
+            live = _experiment_live() or (
+                _runner_job(runner.read_state(), name) if name else "")
+            n = X.delete(eid, live=live)
+            _experiment_scores.pop(eid, None)
+    except Exception as e:
+        if as_json:
+            return _experiment_answer(
+                True, ok=False, eid=eid, codes=[],
+                text=f"Not deleted: {sandbox_mod.split_reason(str(e))[0]}")
+        _not_done("Not deleted", e)
+        return RedirectResponse(back if X.find(eid) else "/sandbox",
+                                status_code=303)
+    _invalidate_scans()
+    return _experiment_answer(
+        as_json, ok=True, eid=eid, to="/sandbox", freed=n,
+        text=f"Deleted {eid}; {retro.human_bytes(n)} freed.")
 
 
 # ---------------------------------------------------- the Storage line

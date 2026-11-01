@@ -3,10 +3,15 @@ bundle"), so a retrospective's playback and numbers can be viewed in the
 console on another device.
 
 A bundle holds manifest.json plus the season root's run_meta.json,
-scores.json and, per completed week, weeks/<asof>/quantiles.json and the
-stored samples file. The playback cache and the season report are left
-out: both are rebuilt from the samples and the hub's truth on the
-importing machine. An import lands as a read-only archived entry of the
+scores.json and, per completed week, weeks/<asof>/quantiles.json (when
+it is current), oracle.json (the Oracle step's record, with the
+Liu-West filter's own quantiles) and the stored samples file. A week
+that carries oracle.json keeps its quantiles current on import, so an
+imported replay is the shipped side of an experiment with the step on
+or off. The playback cache, the
+season report and the Oracle step's donor bank are left out: the first
+two are rebuilt from the samples and the hub's truth on the importing
+machine. An import lands as a read-only archived entry of the
 season, <retro_root>/<season>__archived_<export stamp>, with an
 imported.json marker, so the archive listing, the season page
 (?archive=<stamp>), the report builder and the delete routes all work
@@ -83,8 +88,11 @@ def bundle_name(season: str, stamp: str) -> str:
 def bundle_files(root: Path) -> list:
     """The relative paths a bundle carries from a season root: the run
     record and scores when present, then each completed week's quantiles
-    and samples. Never the playback cache or a report."""
+    (only when current: not older than the samples), oracle.json (a
+    regular file, never a link) and samples. Never the playback cache, a
+    report or the donor bank."""
     from app.core import retro
+    from app.core.retro_store import ORACLE_NAME
     root = Path(root)
     out = []
     for name in (retro.META_NAME, "scores.json"):
@@ -93,8 +101,11 @@ def bundle_files(root: Path) -> list:
     for sp in retro.season_sample_files(root):
         wd = sp.parent
         q = wd / retro.QUANTILES_NAME
-        if q.is_file():
+        if q.is_file() and q.stat().st_mtime >= sp.stat().st_mtime:
             out.append(str(PurePosixPath("weeks", wd.name, q.name)))
+        o = wd / ORACLE_NAME
+        if o.is_file() and not o.is_symlink():
+            out.append(str(PurePosixPath("weeks", wd.name, o.name)))
         out.append(str(PurePosixPath("weeks", wd.name, sp.name)))
     return out
 
@@ -106,9 +117,12 @@ def _newest_input(root: Path, files: list) -> float:
         return 0.0
 
 
-def _reusable(out_dir: Path, season: str, source: str, newest: float):
-    """An earlier bundle of this root that is newer than every input, so a
-    second export offers the same file (and stamp) rather than a twin."""
+def _reusable(out_dir: Path, season: str, source: str, newest: float,
+              files: list):
+    """An earlier bundle of this root that is newer than every input and
+    carries the same files, so a second export offers the same file (and
+    stamp) rather than a twin; one exported before bundles carried
+    oracle.json is not offered for a root whose weeks hold it."""
     try:
         cands = sorted(out_dir.glob(f"{season}-FluBNF-replay-*{SUFFIX}"),
                        reverse=True)
@@ -121,7 +135,8 @@ def _reusable(out_dir: Path, season: str, source: str, newest: float):
             m = inspect_bundle(p)
         except (OSError, BundleError):
             continue
-        if m.get("season") == season and m.get("source") == source:
+        if (m.get("season") == season and m.get("source") == source
+                and set(m.get("files") or {}) == set(files)):
             return p
     return None
 
@@ -141,7 +156,7 @@ def export_season(root: Path, season: str, out_dir: Path,
         raise BundleError(f"{season}: no completed weeks to export.")
     source = stamp or "live"
     newest = _newest_input(root, files)
-    prior = _reusable(out_dir, season, source, newest)
+    prior = _reusable(out_dir, season, source, newest, files)
     if prior is not None:
         return prior
     export_stamp = retro.utc_stamp()
@@ -326,8 +341,15 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
     of the same bundle ("already imported as <stamp>") unless `replace`.
     Every member is verified against the manifest while extracting; the
-    tree appears under its final name only once complete."""
+    tree appears under its final name only once complete. A week whose
+    oracle.json travelled was exported with its quantiles only when
+    current, so they are made newer than the samples extracted after
+    them; a bundle without oracle.json lands as it always did (its
+    quantiles older than its samples, rebuilt where they are read), each
+    such week's quantiles set older outright rather than left to the
+    order of extraction, which a coarse clock (Windows') stamps alike."""
     from app.core import retro
+    from app.core.retro_store import ORACLE_NAME, samples_file
     path, retro_root = Path(path), Path(retro_root)
     m = inspect_bundle(path)
     season, stamp = m["season"], m["stamp"]
@@ -348,6 +370,20 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
             for f in order:
                 _extract_member(z, f, tmp / f, files[f]["sha256"],
                                 files[f]["bytes"], path.name)
+        for f in files:
+            parts = f.split("/")
+            if not (len(parts) == 3 and parts[0] == "weeks"
+                    and parts[2] == retro.QUANTILES_NAME):
+                continue
+            if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
+                os.utime(tmp / f)
+                continue
+            # 2 s before the samples: older on every file system, FAT's
+            # 2 s steps included
+            sp = samples_file(tmp / "weeks" / parts[1])
+            if sp is not None:
+                t = sp.stat().st_mtime_ns - 2_000_000_000
+                os.utime(tmp / f, ns=(t, t))
         marker = {"from": str(m.get("exported_by") or ""),
                   "exported_at": str(m.get("exported_at") or ""),
                   "imported_at": _utc_iso(), "imported_by": hostname(),

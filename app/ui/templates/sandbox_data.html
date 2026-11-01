@@ -72,7 +72,7 @@
   {# why Load is off (the range and the source disagree): sandbox.js #}
   <div class="sb-fwhy" id="sbfill-why" aria-live="polite"></div>
   <div class="sb-pane-foot">
-   <span class="sbsetpop"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N to the population</label></span>
+   {# no Set N where N is a placeholder: every run fills it #}{% if not n_placeholder %}<span class="sbsetpop"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N to the population</label></span>{% endif %}
    {% set _load %}formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post" formnovalidate id="sbfill-load"{% endset %}
    {{- tips.reason_button("Load into data.exp", "sbfill-load-why", "", off=False, attrs=_load, label="why Load is off") }}
   </div>
