@@ -429,6 +429,29 @@ _BLOCK = re.compile(r"^\s*(begin|end)\s+([A-Za-z_]+(?:\s+[A-Za-z_]+)?)\b",
                     re.IGNORECASE)
 
 
+def model_refusal(model: str, name: str = "the model") -> str | None:
+    """Why the public engine refuses this model text, naming the first line
+    at fault, or None. Read the file as written (newline=""): universal
+    newlines would turn a lone \r into the very line break this refuses.
+    The cell's own check (translate_cell) and anything that wants to say so
+    before a run, such as the Sandbox's Check, share this."""
+    b = _BREAKS.search(model)
+    if b:
+        return (f"{name} line {model.count(chr(10), 0, b.start()) + 1}: "
+                f"{b.group()!r} is a line break to PyBNF, which reads the "
+                "model too, and not to BNG2.pl, so the two would read "
+                "different lines; write a newline or a space instead")
+    for n, ln in enumerate(model.split("\n"), 1):
+        if _TIME.search(ln.split("#", 1)[0]):      # code only, not comments
+            return (f"{name} line {n}: time() would run a week out of phase "
+                    "on the public engine, which starts its clock at 0 with "
+                    "data week t at time t + 1 (the private engine starts at "
+                    "-1); keep the clock in a counter species, as FluBNF's "
+                    "templates do (counter() 0, 0 -> counter() 1, Molecules "
+                    "t counter()), which starts with the run on both engines")
+    return None
+
+
 def strip_actions(model: str) -> str:
     """The model without its actions: lwf integrates the model itself and
     refuses a simulate action. Removed: a begin/end actions block (any
@@ -604,22 +627,9 @@ def translate_cell(cell: dict) -> Path:
     # into the very line break this refuses
     with open(model_src, encoding="utf-8", newline="") as f:
         model = f.read()
-    b = _BREAKS.search(model)
-    if b:
-        raise Untranslatable(
-            f"{model_src.name} line {model.count(chr(10), 0, b.start()) + 1}"
-            f": {b.group()!r} is a line break to PyBNF, which reads the model "
-            "too, and not to BNG2.pl, so the two would read different lines; "
-            "write a newline or a space instead")
-    for n, ln in enumerate(model.split("\n"), 1):
-        if _TIME.search(ln.split("#", 1)[0]):
-            raise Untranslatable(
-                f"{model_src.name} line {n}: time() would run a week out of "
-                "phase on the public engine, which starts its clock at 0 "
-                "with data week t at time t + 1 (the private engine starts "
-                "at -1); keep the clock in a counter species, as FluBNF's "
-                "templates do (counter() 0, 0 -> counter() 1, Molecules t "
-                "counter()), which starts with the run on both engines")
+    why = model_refusal(model, model_src.name)
+    if why:
+        raise Untranslatable(why)
     w = d / LWF_DIR
     w.mkdir(exist_ok=True)
     model = strip_actions(model.replace("\r\n", "\n"))
