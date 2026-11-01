@@ -153,6 +153,7 @@ def lock_check(force: bool = False) -> tuple[bool, str]:
     hit = _CHECK.get("key") == key and time.time() - _CHECK.get("at", 0) < CHECK_TTL_S
     if hit and not force:
         return _CHECK["result"]
+    keep = True
     if not py.is_file():
         res = (False, f"there is no Python at {py}")
     else:
@@ -163,16 +164,23 @@ def lock_check(force: bool = False) -> tuple[bool, str]:
                 capture_output=True, text=True, encoding="utf-8",
                 errors="replace", timeout=CHECK_TIMEOUT_S, check=False,
                 stdin=subprocess.DEVNULL, env=_clean_env(),
-                **_no_window())
+                **_probe_kwargs())
             said = (r.stdout + "\n" + r.stderr).strip()
             line = next((ln.strip(" !+") for ln in said.splitlines()
                          if ln.strip()), "") or f"exit code {r.returncode}"
             res = (r.returncode == 0, line)
+            if r.returncode < 0:
+                # stopped by a signal, not an answer about the venv: said,
+                # and asked again next time
+                keep = False
+                why = f"the check was stopped by signal {-r.returncode}"
+                res = (False, f"{why}; run it again")
         except subprocess.TimeoutExpired:
             res = (False, f"the check did not finish within {CHECK_TIMEOUT_S:g} s")
         except OSError as e:
             res = (False, f"{type(e).__name__}: {e}")
-    _CHECK.update(key=key, at=time.time(), result=res)
+    if keep:
+        _CHECK.update(key=key, at=time.time(), result=res)
     return res
 
 
@@ -216,10 +224,13 @@ def engine_stale_message(platform: str | None = None) -> str:
             f"{_setup_step(platform)}.")
 
 
-def _no_window() -> dict:
+def _probe_kwargs() -> dict:
+    """A probe of the venv: no window on Windows; on POSIX its own session,
+    so a terminal's Ctrl-C (a foreground start's Stop) cannot kill a check
+    in flight and leave its failure standing for the engine's."""
     if sys.platform == "win32":
         return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
-    return {}
+    return {"start_new_session": True}
 
 
 def _clean_env(env: dict | None = None) -> dict:
@@ -304,6 +315,7 @@ def public_build() -> dict:
     out = {"branch": "", "commit": "", "dirty": False, "source": "unknown",
            "path": str(py), "engine": "public"}
     info: dict = {}
+    keep = True
     if not py.is_file():
         info = {"error": f"there is no Python at {py}"}
     else:
@@ -313,8 +325,13 @@ def public_build() -> dict:
                                encoding="utf-8", errors="replace",
                                timeout=CHECK_TIMEOUT_S, env=_clean_env(),
                                check=False,
-                               stdin=subprocess.DEVNULL, **_no_window())
-            info = json.loads((r.stdout or "").strip().splitlines()[-1])
+                               stdin=subprocess.DEVNULL, **_probe_kwargs())
+            if r.returncode < 0:                 # a signal, as in lock_check
+                keep = False
+                info = {"error": f"stopped by signal {-r.returncode}"}
+            else:
+                info = json.loads(
+                    (r.stdout or "").strip().splitlines()[-1])
         except Exception as e:  # noqa: BLE001
             info = {"error": f"{type(e).__name__}: {e}"}
     if info.get("error"):
@@ -336,7 +353,8 @@ def public_build() -> dict:
     if info.get("bngsim"):
         out["bngsim"] = info["bngsim"]
         out["bngsim_build"] = info.get("bngsim_build", "")
-    _BUILD.update(key=key, at=time.time(), build=out)
+    if keep:
+        _BUILD.update(key=key, at=time.time(), build=out)
     return dict(out)
 
 
@@ -403,6 +421,10 @@ def parse_conf(text: str) -> list[tuple[str, str]]:
 #: rest of its line a statement (the library's LINE_BREAK_NOT_ALLOWED set,
 #: plus a lone \r)
 _BREAKS = re.compile("[\x0b\x0c\x1c\x1d\x1e\x85  ]|\r(?!\n)")
+#: BNGL's clock, which the two engines start a week apart: the private
+#: engine at pf_start_time = -1 (data week t at time t), lwf at 0 (data
+#: week t at time t + 1); a counter species starts with the run on both
+_TIME = re.compile(r"\btime\s*\(\s*\)")
 _BLOCK = re.compile(r"^\s*(begin|end)\s+([A-Za-z_]+(?:\s+[A-Za-z_]+)?)\b",
                     re.IGNORECASE)
 
@@ -589,6 +611,15 @@ def translate_cell(cell: dict) -> Path:
             f": {b.group()!r} is a line break to PyBNF, which reads the model "
             "too, and not to BNG2.pl, so the two would read different lines; "
             "write a newline or a space instead")
+    for n, ln in enumerate(model.split("\n"), 1):
+        if _TIME.search(ln.split("#", 1)[0]):
+            raise Untranslatable(
+                f"{model_src.name} line {n}: time() would run a week out of "
+                "phase on the public engine, which starts its clock at 0 "
+                "with data week t at time t + 1 (the private engine starts "
+                "at -1); keep the clock in a counter species, as FluBNF's "
+                "templates do (counter() 0, 0 -> counter() 1, Molecules t "
+                "counter()), which starts with the run on both engines")
     w = d / LWF_DIR
     w.mkdir(exist_ok=True)
     model = strip_actions(model.replace("\r\n", "\n"))
