@@ -345,9 +345,11 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     oracle.json travelled was exported with its quantiles only when
     current, so they are made newer than the samples extracted after
     them; a bundle without oracle.json lands as it always did (its
-    quantiles older than its samples, rebuilt where they are read)."""
+    quantiles older than its samples, rebuilt where they are read), each
+    such week's quantiles set older outright rather than left to the
+    order of extraction, which a coarse clock (Windows') stamps alike."""
     from app.core import retro
-    from app.core.retro_store import ORACLE_NAME
+    from app.core.retro_store import ORACLE_NAME, samples_file
     path, retro_root = Path(path), Path(retro_root)
     m = inspect_bundle(path)
     season, stamp = m["season"], m["stamp"]
@@ -370,10 +372,18 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                                 files[f]["bytes"], path.name)
         for f in files:
             parts = f.split("/")
-            if (len(parts) == 3 and parts[0] == "weeks"
-                    and parts[2] == retro.QUANTILES_NAME
-                    and f"weeks/{parts[1]}/{ORACLE_NAME}" in files):
+            if not (len(parts) == 3 and parts[0] == "weeks"
+                    and parts[2] == retro.QUANTILES_NAME):
+                continue
+            if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
                 os.utime(tmp / f)
+                continue
+            # 2 s before the samples: older on every file system, FAT's
+            # 2 s steps included
+            sp = samples_file(tmp / "weeks" / parts[1])
+            if sp is not None:
+                t = sp.stat().st_mtime_ns - 2_000_000_000
+                os.utime(tmp / f, ns=(t, t))
         marker = {"from": str(m.get("exported_by") or ""),
                   "exported_at": str(m.get("exported_at") or ""),
                   "imported_at": _utc_iso(), "imported_by": hostname(),
