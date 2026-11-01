@@ -6,6 +6,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-01 (later): CI's test-windows jobs had failed one test since
+  step 5 (cbe89c6), on Python 3.11 and 3.12, Linux green:
+  `test_an_imported_replay_is_the_reference_with_the_step_on_or_off`. A
+  week of a replay bundle imported without `oracle.json` kept its
+  quantiles older than its samples only by the order of extraction, and
+  Windows can stamp two quick writes alike, so there an old bundle's
+  sidecar read as current and could be an experiment's shipped side.
+  Fixed on `dev`
+  ([66f4c2a](https://github.com/elyfmiller/flubnf/commit/66f4c2a)):
+  `import_bundle` sets such a week's quantiles 2 s before its samples
+  outright; macOS and Linux read as before. Tested: a new test running
+  the import on one clock tick (it fails without the fix, and if the
+  reader's strictly older became older or equal); three read-only
+  reviews and a verifier, which found nothing in the fix; the full suite
+  with only the 22 failures this Mac already had. Not fixed: an old
+  bundle a Windows console imported before this still reads as current
+  until it is imported again with replace. Step 6's own tests passed on
+  Windows and Linux CI (c4a4f99). A `dev` to `main` pull request needs
+  the Windows jobs green on this commit first.
 - 2026-11-01: student workspace step 6, commands, a guide and the fork
   check, on `dev`
   ([c4a4f99](https://github.com/elyfmiller/flubnf/commit/c4a4f99)).
