@@ -6,8 +6,12 @@ writes are derived artifacts no running worker reads, each written
 beside-then-os.replace: stale report.html rebuilds (/output/report,
 /runs/{id}/report and their /download twins; a running workroot is
 invisible until results.json lands, which follows report.html),
-/retro/{season} rescoring of scores.json, playback_cache/ payloads, and the
-season report file. TTL caches memoize read-only scans and create nothing.
+/retro/{season} rescoring of scores.json, playback_cache/ payloads, the
+season report file, and an experiment's summary.json (and its own
+sidecars). TTL caches memoize read-only scans and create nothing. On the
+runner computer the walk writes nothing in the students' folders or the
+runner's own, whether this is its main console or a student's (whose
+experiments only the runner scores).
 """
 import json
 import os
@@ -50,11 +54,12 @@ RUNNING_SEASON = "2098-99"
 PAUSED_SEASON = "2097-98"
 
 #: how to fill each GET route's path parameters; a NEW parameter name fails
-#: the walk on purpose, so the new route gets covered (ds_id and stamp are
-#: well-formed but name no stored dataset replay)
+#: the walk on purpose, so the new route gets covered (ds_id, stamp and
+#: eid are well-formed but name no stored dataset replay or experiment)
 PATH_PARAMS = {"run_id": "20981231T000000-abc123", "name": "pf",
                "season": RUNNING_SEASON, "asof": "2098-11-07",
-               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z"}
+               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z",
+               "eid": "sihrs_2098-99_smoke_oracle"}
 
 #: the console's route table (captured at 029c028, see test_ui_layout.py)
 GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"
@@ -157,6 +162,22 @@ def _golden_get_count():
     rows = json.loads(GOLDEN_ROUTES.read_text(encoding="utf-8"))["routes"]
     return sum(1 for methods, _path, _name, kind, _group in rows
                if kind == "APIRoute" and "GET" in methods.split(","))
+
+
+def _walk() -> list:
+    """GET every route, its path parameters filled; the paths walked."""
+    walked = []
+    for path in _get_routes():
+        unknown = [p for p in re.findall(r"\{(\w+)\}", path)
+                   if p not in PATH_PARAMS]
+        assert not unknown, (f"route {path} declares parameter(s) {unknown} "
+                             "not in PATH_PARAMS; add them so the "
+                             "browse-safety walk keeps covering it")
+        url = re.sub(r"\{(\w+)\}", lambda m: PATH_PARAMS[m.group(1)], path)
+        r = client.get(url)
+        assert r.status_code < 500, (url, r.status_code)
+        walked.append(path)
+    return walked
 
 
 def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
@@ -366,3 +387,104 @@ def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
     assert json.loads((root / "scores.json").read_text())
     assert not (root / "scores.json.tmp").exists()
     assert any(d.endswith("scores.json") for d in replaced)
+
+
+# ------------------------------------------------ the runner computer
+
+def _students_world(tmp_path, monkeypatch) -> Path:
+    """The students' Mac Studio: STUDENTS with the runner's folder and a
+    running runner (bob's smoke its job), alice's folder holding the
+    walk's experiment id queued again, a week stored and its summary
+    stale (another scoring rule), and a stopped smoke with one week
+    stored, bob's the runner's job. STUDENTS, resolved."""
+    from app.core import experiments as X
+    from app.core import runner
+    from test_runner_folders import experiment, stored, student
+    s = Path(os.path.realpath(tmp_path)) / "Students"
+    (s / runner.STATE_NAME).mkdir(parents=True)
+    monkeypatch.setattr(runner, "STUDENTS", s)
+    alice, bob = student(s, "alice"), student(s, "bob")
+    walked = experiment(alice, {"model": "sihrs", "season": "2098-99"},
+                        queued=True)
+    assert walked.name == PATH_PARAMS["eid"]
+    X.write_summary(walked, {
+        "complete": False, "id": walked.name, "experiment": "e" * 64,
+        "model": "sihrs", "season": "2098-99", "size": "smoke",
+        "oracle": True, "shipped": None, "us": None, "failures": [],
+        "ran": {"locations": [], "weeks": [], "replicates": 1,
+                "particles": 10_000, "failed_fits": 0, "seconds": 1.0,
+                "started_utc": "2098-01-01T00:00:00Z",
+                "finished_utc": "2098-01-01T00:00:01Z", "disk_bytes": 0,
+                "engine_build": {}, "flubnf_build": "24ac926"},
+        "scored": {"utc": "2098-01-01T00:00:02Z", "truth": "settled",
+                   "truth_sha256": "a" * 64, "scores_v": -1},
+        "cells": {"compared": 0, "model_only": 0, "shipped_only": 0},
+        "overall": None, "by_location": {}, "by_week": {},
+        "by_horizon": {}})
+    old = time.time() - 600
+    os.utime(walked / X.SUMMARY, (old, old))
+    stored(walked, "2098-11-07")
+    # a view of it off the runner would score it again
+    assert X.stale(walked) == "weeks were stored since it was scored"
+    smoke = experiment(alice, {"model": "sihrs", "season": "2024-25"},
+                       weeks=["2024-12-28", "2025-01-11"],
+                       meta={"status": "stopped"})
+    stored(smoke, "2024-12-28")
+    job = experiment(bob, {"model": "sihrs", "season": "2024-25"},
+                     weeks=["2024-12-28", "2025-01-11"],
+                     meta={"status": "running", "pid": os.getpid(),
+                           "heartbeat_utc": time.time()})
+    now = time.time()
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+    (s / runner.STATE_NAME / runner.STATE_FILE).write_text(json.dumps({
+        "format_version": 1, "pid": os.getpid(), "build": "24ac926",
+        "started_utc": stamp, "heartbeat_utc": stamp,
+        "retro_root": str(tmp_path / "retro"), "waiting_why": "",
+        "job": {"kind": "run", "folder": "bob", "id": job.name,
+                "size": "smoke", "pid": os.getpid(), "started_utc": stamp,
+                "keep_bytes": 0},
+        "waiting": [], "recent": []}), encoding="utf-8", newline="\n")
+    return s
+
+
+def _tree(root: Path) -> dict:
+    """Every path under a tree, links not followed: its bytes (None for a
+    folder) and mtime."""
+    out = {}
+    for dirpath, dirs, files in os.walk(root):
+        for n in dirs + files:
+            p = Path(dirpath) / n
+            st = os.lstat(p)
+            out[p.relative_to(root).as_posix()] = (
+                None if n in dirs else p.read_bytes(), st.st_mtime_ns)
+    return out
+
+
+@pytest.mark.parametrize("role", ["main console", "student console"])
+def test_the_walk_writes_nothing_in_the_students_folders(tmp_path,
+                                                         monkeypatch, role):
+    from app.core import runner
+    from app.core import sandbox as sb
+    _live_world(tmp_path, monkeypatch)
+    students = _students_world(tmp_path, monkeypatch)
+    if role == "student console":
+        top = students / "alice" / "sandbox"
+        monkeypatch.setattr(sb, "SANDBOX", top)
+        monkeypatch.setattr(sb, "MODELS", top / "models")
+        monkeypatch.setattr(sb, "RUNS", top / "runs")
+        assert runner.folder_of(sb.SANDBOX) == "alice"
+    else:
+        assert runner.folder_of(sb.SANDBOX) is None
+    before = _tree(students)
+    walked = _walk()
+    assert len(walked) == _golden_get_count()
+    assert _tree(students) == before
+    # the pages the runner adds to were among those walked
+    page = client.get(f"/sandbox/experiments/{PATH_PARAMS['eid']}")
+    storage = client.get("/storage").text
+    if role == "student console":
+        assert page.status_code == 200 and 'data-poll="1"' in page.text
+        assert "h-st-stu" not in storage
+    else:
+        assert 'id="h-st-stu"' in storage
+    assert _tree(students) == before

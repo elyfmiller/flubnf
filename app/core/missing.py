@@ -288,6 +288,20 @@ def line(flags) -> str:
             f"unreported ({', '.join(rules)}): " + ", ".join(bits))
 
 
+def aside_weeks(outcome) -> dict:
+    """{member: {location: [weeks]}}: the weeks each member treated as
+    unreported (unreported_flags of a run's outcome), for the charts that
+    start a fan where the member started and mark those weeks."""
+    out: dict = {}
+    o = outcome if isinstance(outcome, Mapping) else {}
+    for m, rows in unreported_flags(o.get("data_flags")).items():
+        for r in rows:
+            if r.get("location") and r.get("week"):
+                out.setdefault(m, {}).setdefault(
+                    str(r["location"]), []).append(str(r["week"])[:10])
+    return out
+
+
 def unreported_flags(flags) -> dict:
     """A run record's flags without the zero-anchor and left-out rows
     (those name a forecast made or a state left out, not a week treated as

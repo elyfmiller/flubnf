@@ -65,7 +65,8 @@ def test_the_record_sentences_ride_the_record_toggletip():
     both = ot.RECORD["both"]
     wanted = {
         "/models": (
-            ("relWIS vs the FluSight baseline (below 1 beats it): "
+            ("relWIS vs the FluSight baseline (below 1 beats it), under "
+             "the earlier cell rule: "
              f"{ot.fmt(both['oracle'])} against the plain filter's "
              f"{ot.fmt(both['filter'])} on the same "
              f"{ot.cells(both['cells'])} cells of 2024-25 and 2025-26."),
@@ -74,13 +75,14 @@ def test_the_record_sentences_ride_the_record_toggletip():
              "Methods</a>).")),
         "/model/analogue": (
             ("Three-season relWIS vs the FluSight baseline on "
-             "17,116 cells, FluSight's cell rule: 0.702, 0.651 and "
-             "0.653; 0.660 over the three seasons (0.670 for the pooled "
-             "form submitted 2026-10-10 and 2026-10-17)."),),
+             "17,116 cells, FluSight's cell rule: 0.680, 0.627 and "
+             "0.645; 0.642 over the three seasons (0.660 without "
+             "size-matched donors, submitted 2026-10-24; 0.670 for the "
+             "pooled form submitted 2026-10-10 and 2026-10-17)."),),
         "/model/pf2s": (
-            ("It scored worse on the full grid (relWIS 0.719 "
-             "against 0.704 for the two-member blend it was "
-             "tested in), so it is kept for research runs only."),),
+            ("It scored worse than the blend it was tested in, in the "
+             "August 2026 evaluation (relWIS 0.719 against 0.704), so it "
+             "is kept for research runs only."),),
     }
     for path, needles in wanted.items():
         t = client.get(path).text
@@ -95,7 +97,7 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert 'aria-label="beats the baseline"' in client.get("/models").text
     gh = client.get("/model/analogue").text
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
-                     r'0\.702</span>', gh)
+                     r'0\.680</span>', gh)
     pf2s = client.get("/model/pf2s").text
     # both bars beat the baseline (two checks): the badge says how far the
     # two-strain fell behind the blend, from the two values; the Record
@@ -104,7 +106,7 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
     assert 'id="tip-md-behind"' not in pf2s
     rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])
-    assert "relWIS 0.719 against 0.704 for the two-member blend" in rec
+    assert "the blend it was tested in, in the August 2026 evaluation" in rec
 
 
 # ------------------------------------------------- equations: kit and plain
@@ -125,7 +127,7 @@ def test_model_pages_name_each_equation_and_show_its_note():
         assert f'<span class="uk-name">{name}</span>' in t, name
     assert 'id="tip-dg-' not in t
     notes = " ".join(_notes(t))
-    assert "A week with too few donors (30 paths per stream)" in notes
+    assert "A week where neither stream supplies 30 donor paths" in notes
     assert "the fixed removal rate 7/3.2" in notes
     assert "keeping the filter's spread and adding the donors'" in notes
     # the chips show both parameter rows; the Variables fold's source
@@ -185,7 +187,7 @@ def test_a_run_without_this_model_names_itself_in_the_tip(monkeypatch):
     t = client.get("/models").text
     assert "No forecasts from this model yet" in t
     # the run is the newest real-time one, and named so (G06, MO-06)
-    assert ("The latest real-time run (2098-11-14 · 11-14 09:31) has none "
+    assert ("The latest real-time run (2098-11-14 · 11-14 09:31:00) has none "
             "from this model.") in t
 
 

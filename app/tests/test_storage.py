@@ -11,9 +11,18 @@ The rules under test:
     never deletable, render no delete controls, and a crafted request
     (including a symlink into a protected tree) is refused;
   * deleting a workroot whose ledger row remains leaves an honest dangling
-    row (a dash for disk use, never an error).
+    row (a dash for disk use, never an error);
+  * on the runner computer's main console (the students' Mac Studio) the
+    panel lists the students' experiments by folder, outside the total,
+    each deleted with its confirmation (a queued one leaves the queue),
+    never while the runner has it, never by an ident that leaves its
+    folder or through a link; a student's console (any clone in
+    ~/Students) and a laptop see the page as before, and a crafted delete
+    from either is refused.
 """
+import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -28,6 +37,9 @@ from app.ui.routes import storage as ui_storage      # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 from app.ui import state as ui_state                 # noqa: E402
+from test_runner_folders import (LINKS, calendar, experiment,  # noqa: E402
+                                 student, students)  # noqa: F401
+from test_runner_queue import state as runner_state  # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -169,16 +181,18 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     assert (f'<strong><a href="/runs/{rid}">Round 2098-01-10 (as of '
             '2098-01-03)</a></strong>') in row
     meta = row.split('class="uk-meta"', 1)[1]
-    assert "<span>run 2" in meta                  # the wall-clock moment
+    assert f"<span>run {rid[4:6]}-{rid[6:8]} " in meta   # the wall clock
     assert f"<code" in meta and rid in meta       # the id, small and mono
-    # an unrecorded workroot (no ledger row) says so instead of guessing
+    # an unrecorded workroot (no ledger row) says so instead of guessing,
+    # and its page still opens (ST-13)
     orphan = "20980118T093000-0aacd0"
     (state["root"] / "workroots" / orphan).mkdir()
     ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
-    assert "<strong>Unrecorded run</strong>" in row   # no run page to link
-    assert "run 2098-01-18 09:30" in row          # parsed from the id
+    assert (f'<strong><a href="/runs/{orphan}">Unrecorded run</a></strong>'
+            in row)
+    assert "run 01-18 09:30:00" in row            # parsed from the id
 
 
 def test_protected_trees_render_no_delete_controls(state):
@@ -514,3 +528,251 @@ def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
     # an empty state (icon, title, one action), not a sentence
     empty = html.split('id="st-ledger-empty"', 1)[1].split("</div></div>", 1)[0]
     assert "No runs yet" in empty and 'href="/forecast"' in empty
+
+
+# ------------------------------- the runner computer's student experiments
+
+PILOT = {"model": "sihrs", "season": "2024-25", "size": "pilot"}
+SMOKE = {"model": "sihrs", "season": "2024-25"}
+NATG = {"model": "sihrs-natg", "season": "2024-25"}
+#: a pid no process has (above every pid_max)
+DEAD = 2_147_483_646
+
+
+@pytest.fixture()
+def runner_pc(state, students, monkeypatch):
+    """The runner computer's main console (its Sandbox not a student's),
+    the runner running: alice's folder holds a queued pilot and a smoke
+    done with both weeks stored, bob's a smoke never started, and alice's
+    library one file. {"alice", "bob": Sandbox folders, "pilot", "smoke",
+    "idle": experiment folders, "students": STUDENTS}."""
+    from app.core import retro
+    from app.core import runner
+    from app.core.engines import pf
+    calendar(monkeypatch)
+    monkeypatch.setattr(runner, "_free", lambda: 412 * runner.GiB)
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 16)
+    alice, bob = student(students, "alice"), student(students, "bob")
+    smoke = experiment(alice, SMOKE, weeks=["2024-12-28", "2025-01-11"],
+                       meta={"started_utc": 1_790_000_000.0})
+    for w in ("2024-12-28", "2025-01-11"):
+        (smoke / "weeks" / w).mkdir(parents=True)
+        (smoke / "weeks" / w / retro.QUANTILES_NAME).write_text(
+            "{}", encoding="utf-8")
+        (smoke / "weeks" / w / "samples.dropped.json").write_text(
+            "{}", encoding="utf-8")
+    pilot = experiment(alice, PILOT, queued=True)
+    idle = experiment(bob, NATG)
+    (alice / "library" / "beta" / "1").mkdir(parents=True)
+    (alice / "library" / "beta" / "1" / "model.bngl").write_text(
+        "# beta\n", encoding="utf-8")
+    runner_state(students)
+    ui_shared._invalidate_scans()
+    return {"alice": alice, "bob": bob, "pilot": pilot, "smoke": smoke,
+            "idle": idle, "students": students}
+
+
+def _stu(html: str) -> str:
+    """The Student experiments section of the Storage page."""
+    return html.split('aria-labelledby="h-st-stu"', 1)[1].split(
+        "</section>", 1)[0]
+
+
+def _row(section: str, ident: str) -> str:
+    return section.split(f"<strong>{ident}</strong>", 1)[1].split(
+        "</div>", 1)[0]
+
+
+def _delete(ident: str, confirm=None):
+    ui_state._status.pop("flash", None)
+    return client.post("/storage/delete",
+                       data={"kind": "experiment", "ident": ident,
+                             "confirm": ident if confirm is None else confirm},
+                       follow_redirects=False)
+
+
+def test_the_runner_computer_lists_student_experiments_by_folder(state,
+                                                                 runner_pc):
+    from app.core import retro
+    from app.core import sandbox as sb
+    inv = ui_storage._storage_inventory()
+    rows = inv["students"]["rows"]
+    pid, sid = runner_pc["pilot"].name, runner_pc["smoke"].name
+    iid = runner_pc["idle"].name
+    # by folder, newest first within each (the pilot, never started, by
+    # its experiment.json, newer than the smoke's start)
+    assert [r["ident"] for r in rows] == [f"alice/{pid}", f"alice/{sid}",
+                                          f"bob/{iid}"]
+    assert [r["badge"] for r in rows] == [
+        ("pending", "queued · 1st in line"), ("ok", "done"),
+        ("neutral", "not started")]
+    # outside the total: the total is the managed categories' alone
+    expect = sum(retro.dir_size(state["root"] / "workroots" / rid)
+                 for rid in state["rids"].values())
+    expect += retro.dir_size(state["retro_root"] / SEASON)
+    expect += retro.dir_size(
+        state["retro_root"] / f"{SEASON}__archived_{ARCH_STAMP}")
+    expect += retro.dir_size(state["root"] / "archive" / "2098-01-03")
+    assert inv["total_bytes"] == expect
+    html = client.get("/storage").text
+    fold = html.split('id="storagefold">', 1)[1].split("</details>", 1)[0]
+    assert fold.index('id="h-st-protected"') < fold.index('id="h-st-stu"')
+    stu = _stu(fold)
+    assert ">Student experiments</h3>" in stu
+    assert '<span class="uk-badge-t">3 entries</span>' in stu
+    assert '<span class="uk-tag">not in the total</span>' in stu
+    assert ('<ul class="uk-meta"><li>The runner: idle</li><li>412.0 GB free '
+            '· FluBNF keeps 20.0 GB free</li></ul>') in stu
+    assert 'id="st-stu-down"' not in stu
+    # the queued row: when it was queued, about how long it runs, its disk
+    row = _row(stu, f"alice/{pid}")
+    mtime = os.lstat(runner_pc["pilot"] / "QUEUED").st_mtime
+    q = rows[0]["queued"]
+    for part in (time.strftime("queued %m-%d %H:%M", time.localtime(mtime)),
+                 "runs " + sb.eta_words(q["seconds"], q["seconds"]),
+                 f"needs about {retro.human_bytes(q['peak_bytes'])}"):
+        assert f"<li>{part}</li>" in row, part
+    # each row has its Delete, confirmed by its ident
+    for r in rows:
+        row = _row(stu, r["ident"])
+        assert '<input type="hidden" name="kind" value="experiment">' in row
+        assert f'<input type="hidden" name="ident" value="{r["ident"]}">' \
+            in row
+        assert "data-del-storage" in row
+        assert f"Its model stays in {r['folder']}&#39;s library." in row
+
+
+def test_a_student_experiment_is_deleted_with_its_confirmation(state,
+                                                               runner_pc):
+    from app.core import runner
+    pilot, smoke = runner_pc["pilot"], runner_pc["smoke"]
+    ident = f"alice/{pilot.name}"
+    _delete(ident, confirm="yes")
+    assert pilot.is_dir() and "not confirmed" in _flash()
+    # a queued one: deleting it takes it out of the queue
+    assert [j["id"] for j in runner.queue()] == [pilot.name]
+    _delete(ident)
+    assert not pilot.exists() and runner.queue() == []
+    assert _flash().startswith(f"Deleted the student experiment {ident}: ")
+    assert _flash().endswith(" freed.")
+    assert ui_state._status.get("flash_kind") == "ok"
+    _delete(f"alice/{smoke.name}")
+    assert not smoke.exists()
+    # the library, and every other folder, stay
+    assert (runner_pc["alice"] / "library" / "beta" / "1"
+            / "model.bngl").is_file()
+    assert runner_pc["idle"].is_dir()
+
+
+def test_a_student_experiment_is_kept_while_the_runner_has_it(state,
+                                                              runner_pc):
+    from app.core import retro
+    students, smoke = runner_pc["students"], runner_pc["smoke"]
+    ident = f"alice/{smoke.name}"
+    why = (f"{ident} is replaying on the runner; stop it from its page in "
+           "alice's console first.")
+    job = {"kind": "run", "folder": "alice", "id": smoke.name,
+           "size": "smoke", "pid": os.getpid(), "keep_bytes": 0,
+           "started_utc": "2026-11-02T10:24:02Z"}
+    runner_state(students, job=job)
+    row = _row(_stu(client.get("/storage").text), ident)
+    assert "data-del-storage" not in row and " disabled " in row
+    assert why.replace("'", "&#39;") in row
+    _delete(ident)
+    assert smoke.is_dir() and _flash() == f"Not deleted: {why}"
+    # its record under way, the runner's job another
+    runner_state(students)
+    now = time.time()
+    retro.write_meta(smoke, {**retro.read_meta(smoke), "status": "running",
+                             "pid": os.getpid(), "heartbeat_utc": now,
+                             "segment_start_utc": now})
+    _delete(ident)
+    assert smoke.is_dir() and _flash() == f"Not deleted: {why}"
+    retro.write_meta(smoke, {**retro.read_meta(smoke), "status": "done"})
+    # a tidy of it: kept until it ends
+    runner_state(students, job={**job, "kind": "tidy"})
+    _delete(ident)
+    assert smoke.is_dir() and "is tidying" in _flash()
+    # a runner that is not running holds nothing, and says so
+    runner_state(students, job=job, pid=DEAD)
+    stu = _stu(client.get("/storage").text)
+    assert ("<strong>The runner is not running.</strong> Its last heartbeat "
+            "was at ") in stu
+    assert "Queued experiments wait until it is started" in stu
+    _delete(ident)
+    assert not smoke.exists()
+
+
+def test_student_experiment_idents_never_leave_their_folder(state,
+                                                            runner_pc):
+    eid = runner_pc["smoke"].name
+    for ident in ("alice/../x", f"../alice/{eid}", f"alice:{eid}", "alice/",
+                  f"/{eid}", f"alice/{eid}/weeks", f"zed/{eid}", "alice",
+                  f"alice/../bob/{runner_pc['idle'].name}"):
+        _delete(ident)
+        assert _flash() == "Not deleted: unrecognized student experiment.", \
+            ident
+    assert runner_pc["smoke"].is_dir() and runner_pc["idle"].is_dir()
+
+
+@LINKS
+def test_a_linked_student_experiment_is_refused(state, runner_pc):
+    bob_idle = runner_pc["idle"]
+    link = runner_pc["alice"] / "experiments" / bob_idle.name
+    link.symlink_to(bob_idle, target_is_directory=True)
+    ui_shared._invalidate_scans()
+    stu = _stu(client.get("/storage").text)
+    assert f"<strong>alice/{bob_idle.name}</strong>" not in stu
+    _delete(f"alice/{bob_idle.name}")
+    assert _flash() == (f"Not deleted: experiments/{bob_idle.name} is a "
+                        "link, and the runner follows no link in a student "
+                        "folder.")
+    assert link.is_symlink() and bob_idle.is_dir()
+
+
+def test_a_student_console_and_a_laptop_see_the_page_as_before(
+        state, students, monkeypatch):
+    from app.core import runner
+    from app.core import sandbox as sb
+    # a laptop: no runner here, no section, a crafted delete refused
+    (students / runner.STATE_NAME).rmdir()
+    assert ui_storage._storage_inventory()["students"] is None
+    laptop = client.get("/storage").text
+    assert "h-st-stu" not in laptop and "Student experiments" not in laptop
+    alice = student(students, "alice")
+    eid = experiment(alice, SMOKE).name
+    _delete(f"alice/{eid}")
+    assert _flash() == "Not deleted: unrecognized storage kind."
+    # a student's console on the runner computer: as with no runner
+    (students / runner.STATE_NAME).mkdir()
+    monkeypatch.setattr(sb, "SANDBOX", alice)
+    monkeypatch.setattr(sb, "MODELS", alice / "models")
+    monkeypatch.setattr(sb, "RUNS", alice / "runs")
+    runner_state(students)
+    ui_shared._invalidate_scans()
+    assert runner.folder_of(sb.SANDBOX) == "alice"
+    assert ui_storage._storage_inventory()["students"] is None
+    there = client.get("/storage").text
+    _delete(f"alice/{eid}")
+    assert _flash() == "Not deleted: unrecognized storage kind."
+    assert (alice / "experiments" / eid).is_dir()
+    # a clone in ~/Students the runner does not take (a name folders()
+    # refuses): still a student's console, never the main one
+    jane = students / "jane.doe" / "sandbox"
+    jane.mkdir(parents=True)
+    monkeypatch.setattr(sb, "SANDBOX", jane)
+    monkeypatch.setattr(sb, "MODELS", jane / "models")
+    monkeypatch.setattr(sb, "RUNS", jane / "runs")
+    assert runner.folder_of(sb.SANDBOX) is None
+    assert ui_storage._storage_inventory()["students"] is None
+    _delete(f"alice/{eid}")
+    assert _flash() == "Not deleted: unrecognized storage kind."
+    assert (alice / "experiments" / eid).is_dir()
+    monkeypatch.setattr(sb, "SANDBOX", alice)
+    monkeypatch.setattr(sb, "MODELS", alice / "models")
+    monkeypatch.setattr(sb, "RUNS", alice / "runs")
+    os.unlink(students / runner.STATE_NAME / runner.STATE_FILE)
+    (students / runner.STATE_NAME).rmdir()
+    ui_shared._invalidate_scans()
+    assert there == client.get("/storage").text
+    assert "h-st-stu" not in there

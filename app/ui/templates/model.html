@@ -208,6 +208,8 @@
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
+ // member -> loc -> the weeks it treated as unreported (outcome data_flags)
+ const RASIDE = {{ run_aside_json | safe }};
  // raw member medians over the fan: server.py always sends {} now (the
  // retired blend's page), so the overlay loop below never runs
  const OVERLAY = {{ overlay_json | safe }};
@@ -221,7 +223,9 @@
  // (re-read per draw)
  const MCOLORS = {{ member_colors_json | safe }};
  function memberColor(m){
+   // the Groundhog per theme (--model-analogue, as the weekly report)
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
+        : m==='analogue'?(css('--model-analogue')||MCOLORS.analogue)
         : MCOLORS[m]||css('--mut');
  }
  function rgba(c,a){
@@ -257,15 +261,18 @@
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};
  }
+ let drawSeq=0;
  async function draw(){
    if(!LOCS.length) return;
    IDX=((IDX%LOCS.length)+LOCS.length)%LOCS.length;
    const loc=LOCS[IDX], qs=FANQ[loc];
+   const tok=++drawSeq;
    document.getElementById('pos').textContent=loc+' · '+(IDX+1)+'/'+LOCS.length;
    if(!SERIES[loc]){
      const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
      Object.assign(SERIES, await r.json());
    }
+   if(tok!==drawSeq) return;            // a later flip draws its own location
    const s=SERIES[loc]||{dates:[],values:[]};
    const hs=Object.keys(qs).sort();
    const FD={{ date | tojson }};
@@ -280,14 +287,20 @@
    if(ro.length){obsX=ro.map(q=>q[0]);obsY=ro.map(q=>q[1]);}
    else{s.dates.forEach((d,i)=>{if(d<=FD){obsX.push(d);obsY.push(s.values[i]);}});}
    obsX=obsX.slice(-12);obsY=obsY.slice(-12);
-   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
+   const lim=new Date(base);
+   lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
    s.dates.forEach((d,i)=>{if(d>FD&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});
-   const fx=[...(obsX.slice(-1)),...xs];
-   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
-   const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
-   const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
+   // the fan starts from the last week the member used, before any week it
+   // set aside (marked below), as on the Forecast tab
+   const aside=new Set((RASIDE[MNAME]||{})[loc]||[]);
+   let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
+   const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
+   const fx=[...ax,...xs];
+   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
+   const lo=[...ay,...hs.map(h=>qs[h]['0.1'])];
+   const hi=[...ay,...hs.map(h=>qs[h]['0.9'])];
    // the fan wears THIS page's member color
    const mc=memberColor(MNAME);
    const traces=[
@@ -296,6 +309,11 @@
     {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:rgba(mc,.2),line:{width:0},name:'10-90% interval'},
     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
    ];
+   if(aside.size){
+     const sx=obsX.filter(d=>aside.has(d)), sy=obsY.filter((v,i)=>aside.has(obsX[i]));
+     if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
+       marker:{symbol:'x-open',size:9,color:css('--mut')}});
+   }
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
    // overlay medians: legend-only lines in each member's color

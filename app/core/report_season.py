@@ -83,6 +83,14 @@ def report_path(root: Path, season: str) -> Path:
     return Path(root) / f"{season}-FluBNF-season-report.html"
 
 
+def download_name(season: str, archive: str = "") -> str:
+    """The name a season report saves under: an archived run's carries
+    its stamp, so it never lands on the live run's file (Export replay
+    names its bundles apart the same way)."""
+    return (f"{season}-FluBNF-season-report"
+            f"{'-' + archive if archive else ''}.html")
+
+
 def _newest_input(root: Path) -> float:
     """Newest mtime among the export's inputs: stored weeks, scores.json,
     settled truth, player.js, charts.js, this builder and html_page, the

@@ -416,12 +416,27 @@ def cat_bar(probs):
     return f
 
 
-def _html(fig, include_js=False, div_id=None):
+def _html(fig, include_js=False, div_id=None, lazy=False):
     # save-PNG at 2x with a meaningful filename (figures have an opaque ground)
     config = dict(PLOTLY_CONFIG)
     config["toImageButtonOptions"] = {
         "format": "png", "scale": 2,
         "filename": f"flubnf_{div_id or 'report_figure'}"}
+    if lazy:
+        # a hidden section's figure: its JSON beside an empty div, drawn by
+        # show() when the section opens (drawing every state's figures at
+        # load kept a 53-location report's buttons dead for seconds)
+        import uuid
+        import plotly.io as pio
+        gid = div_id or str(uuid.uuid4())
+        d = fig.to_plotly_json()
+        payload = ('{"data":' + pio.json.to_json_plotly(d.get("data", []))
+                   + ',"layout":' + pio.json.to_json_plotly(d.get("layout", {}))
+                   + ',"config":' + json.dumps(config) + "}").replace("</", "<\\/")
+        return (f'<div><div id="{gid}" class="plotly-graph-div" '
+                'style="height:100%; width:100%;"></div>'
+                '<script type="application/json" class="rp-figjson" '
+                f'data-for="{gid}">{payload}</script></div>')
     return fig.to_html(full_html=False,
                        include_plotlyjs=True if include_js else False,
                        div_id=div_id, config=config)
@@ -463,11 +478,12 @@ def _retint_js() -> str:
       else walk(v,MAP);
     }
   }
-  function pass(){
+  function pass(one){
     var MAP={};""" + lines + """
     var dirty=Object.keys(MAP).some(function(k){
       return MAP[k].toLowerCase()!==k.toLowerCase();});
-    var plots=document.querySelectorAll('.js-plotly-plot');
+    var plots=(one&&one.nodeType===1)?[one]
+      :document.querySelectorAll('.js-plotly-plot');
     for(var i=0;i<plots.length;i++){
       var g=plots[i];
       if(!g.data||!g.layout) continue;
@@ -483,6 +499,7 @@ def _retint_js() -> str:
   }
   pass();
   addEventListener('themechange',pass);
+  window.rpRetint=pass;
 })();
 </script>"""
 
@@ -616,6 +633,21 @@ def _ba_pair(key: str, shown: str, before: str, switch: bool = True) -> str:
             f'<div data-ba-v="b" hidden>{before}</div></div>')
 
 
+#: a hidden section's figures (_html lazy), drawn the first time it opens
+#: by show(): each JSON once, retinted and given its week ticks
+_DRAW_JS = """window.rpDraw = function(el) {
+  var js = el.querySelectorAll('script.rp-figjson');
+  for (var i = 0; i < js.length; i++) {
+    var gd = document.getElementById(js[i].getAttribute('data-for'));
+    var f = JSON.parse(js[i].textContent);
+    js[i].remove();
+    if (!gd) continue;
+    Plotly.newPlot(gd, f.data, f.layout, f.config);
+    if (window.rpRetint) rpRetint(gd);
+    if (window.FluCharts) FluCharts.adopt(gd);
+  }
+};"""
+
 #: every switch for one location moves together: its buttons, its detail
 #: parts and (the rp-ba event) its live panels; a chart shown from hidden
 #: takes its width again
@@ -666,7 +698,7 @@ def page_header() -> str:
  """ + _theme_select() + """
  """ + _VISION_BTN + """
  <a id="appback" class="rp-btn" href="#" hidden
-  onclick="history.back();return false">&larr; back to FluBNF</a>
+  onclick="var r=document.referrer;if(r&&r.indexOf(location.origin+'/')===0&&r.split('#')[0]!==location.href.split('#')[0])location.href=r;else history.back();return false">&larr; back to FluBNF</a>
 </header>"""
 
 
@@ -1252,15 +1284,15 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
             _forecast_numbers(a + "-before", d.get("numbers_before") or {},
                               d.get("times") or [])
             if d.get("numbers_before") else "", switch=False)
-        fan_html = _ba_pair(a, _html(d['fan']),
-                            _html(d['fan_before']) if d.get("fan_before")
-                            else "")
+        fan_html = _ba_pair(a, _html(d['fan'], lazy=True),
+                            _html(d['fan_before'], lazy=True)
+                            if d.get("fan_before") else "")
         sections.append(f"""
 <section class="state" id="st-{a}" hidden aria-labelledby="h-st-{a}">
   <div class="rp-sechead">{back_btn}<h2 id="h-st-{a}">{d['name']}</h2>{_note(a, d.get('note'))}</div>
   <div class="rp-detail">
     <div class="card">{fan_head}{fan_html}</div>
-    <div class="card">{cat_head}{_html(d['cat'])}
+    <div class="card">{cat_head}{_html(d['cat'], lazy=True)}
       <table><tr><th>Week ending</th><th class="num">Admissions</th></tr>{rows}</table></div>
   </div>
   {numbers}
@@ -1272,8 +1304,8 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national.get("fan"):
         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
                                    level=3))
-        nat_fan = _ba_pair("US", _html(national["fan"]),
-                           _html(national["fan_before"])
+        nat_fan = _ba_pair("US", _html(national["fan"], lazy=True),
+                           _html(national["fan_before"], lazy=True)
                            if national.get("fan_before") else "")
         nat_cards.append(f'<div class="card">{nat_head}{nat_fan}</div>')
         nat_num = _ba_pair(
@@ -1436,6 +1468,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 {report_grid.grid_js(grid, MEMBER_COLORS) if grid_section else ""}
 {_BA_JS}
 <script>
+{_DRAW_JS if plotly_js else ""}
 window.showState = show;
 var _ab = document.getElementById('appback');
 if (_ab && history.length > 1) {{ _ab.hidden = false; }}
@@ -1449,7 +1482,8 @@ function show(id, then) {{
   var all = document.querySelectorAll('section.state');
   for (var i = 0; i < all.length; i++) all[i].hidden = true;
   el.hidden = false;
-  if (window.Plotly) {{
+  if (window.Plotly && window.rpDraw) {{
+    rpDraw(el);
     var gs = el.querySelectorAll('.js-plotly-plot');
     for (var j = 0; j < gs.length; j++) Plotly.Plots.resize(gs[j]);
   }}

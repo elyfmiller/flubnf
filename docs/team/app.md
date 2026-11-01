@@ -6,6 +6,281 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-01 (later): CI's test-windows jobs had failed one test since
+  step 5 (cbe89c6), on Python 3.11 and 3.12, Linux green:
+  `test_an_imported_replay_is_the_reference_with_the_step_on_or_off`. A
+  week of a replay bundle imported without `oracle.json` kept its
+  quantiles older than its samples only by the order of extraction, and
+  Windows can stamp two quick writes alike, so there an old bundle's
+  sidecar read as current and could be an experiment's shipped side.
+  Fixed on `dev`
+  ([66f4c2a](https://github.com/elyfmiller/flubnf/commit/66f4c2a)):
+  `import_bundle` sets such a week's quantiles 2 s before its samples
+  outright; macOS and Linux read as before. Tested: a new test running
+  the import on one clock tick (it fails without the fix, and if the
+  reader's strictly older became older or equal); three read-only
+  reviews and a verifier, which found nothing in the fix; the full suite
+  with only the 22 failures this Mac already had. Not fixed: an old
+  bundle a Windows console imported before this still reads as current
+  until it is imported again with replace. Step 6's own tests passed on
+  Windows and Linux CI (c4a4f99). A `dev` to `main` pull request needs
+  the Windows jobs green on this commit first.
+- 2026-11-01: student workspace step 6, commands, a guide and the fork
+  check, on `dev`
+  ([c4a4f99](https://github.com/elyfmiller/flubnf/commit/c4a4f99)).
+  `flubnf model new|check|register|list`, `flubnf experiment
+  start|show|list|stop|delete` and `flubnf storage`
+  (`flubnf/cli_sandbox.py`) do what their pages do, with the pages'
+  options only and `--json` on each (the route's JSON on stdout, words
+  on stderr; exit 0 done, 1 refused, 2 usage, 3 this computer or
+  interrupted). On a laptop `experiment start` replays in the terminal:
+  refused while the clone's console is open or another replay runs; its
+  fits registered apart (`pf_runners.terminal.json`); stopped before its
+  next week if the console opens; Ctrl-C once is Stop, twice stops it
+  now, with BNG2.pl's runs and the sleep guard kept out of the
+  terminal's Ctrl-C. In a student's folder on the Mac Studio it queues.
+  Five pieces moved from `routes/sandbox.py` into core; preflight now
+  refuses a record under way in another process, the one change a
+  console shows (before, two writers fitted one folder).
+  `docs/CONTRIBUTING.md` is the guide (the commands, a clone on the Mac
+  Studio, fork and branch, `proposals/<name>/`, the pull request, what
+  the check refuses), beside a PR template; TEAM.md gains the check, the
+  proposal rerun in `~/Students/review` and the merge rule (the check's
+  latest run green at the reviewed sha). The contributor check
+  (`.github/workflows/contributor-check.yml`,
+  `.github/contributor_check.py`) runs on pull_request_target from the
+  default branch's copy, reads a fork's pull request through the API
+  with a read-only token and runs none of it. It refuses a base other
+  than `dev`, over 250 commits or 3,000 files, a credit line in a
+  commit, the title or the description, the owner's account or address
+  on a commit not on `main`, and a proposal folder that is not six plain
+  files of at most 256 KB; it flags the launchers, the installers,
+  `.github/`, the engine updater and another account; the repository's
+  own pull requests skip. Defaults taken, for Ely to change:
+  pull_request_target; advisory on `dev`; the title and description held
+  to the credit rule; another account flagged, not refused; no push from
+  the Mac Studio; one guide file (11.7 KB against the 8.5 KB estimated);
+  no content checks in CI; `.gitignore` left. Not built, each a new
+  refusal for Ely to decide: a path that differs only in letter case (or
+  a long s) from another path in the tree; a Windows device name (con,
+  aux, nul, com1, lpt1 and so on) as a proposal's name. Tested: the full
+  suite with only the 22 failures this Mac already had; every console
+  page and its JSON byte-identical to 8185567 but the new refusal; each
+  command against its route's JSON; a real smoke of 2024-25 started from
+  the terminal in a throwaway copy, relWIS 1.272 as step 4's page run;
+  the check on about 400 crafted events, and read-only on #72, #61 and
+  #63 made to look like forks. For Ely, in order: merge to `main`, where
+  the check starts to exist; before 2 December, add a repository Actions
+  policy that allows pull_request_target for
+  `.github/workflows/contributor-check.yml` only (Settings > Actions >
+  Policies), since GitHub then blocks it without one in a public
+  repository; open one test pull request from a fork someone else owns,
+  to see whether its run waits for approval, where it shows, and that
+  the API serves the fork's commits and tree; then, if wanted, make the
+  check required on `dev`. Step 7 (RSV and COVID-19) waits for Ely's go.
+- 2026-10-31: student workspace step 5, the runner on the students' Mac
+  Studio, on `dev`
+  ([cbe89c6](https://github.com/elyfmiller/flubnf/commit/cbe89c6)).
+  `flubnf runner`, started by hand in a Terminal of the lab account from
+  the main install, works the queue of the students' experiments
+  (`~/Students/<name>/sandbox/experiments/<id>/` holding `QUEUED`) first
+  in, first out, one at a time, each in a child process that reads and
+  writes only that student's folder; it holds the queue while the
+  install is not a clean `main`, the engine is missing or a
+  Retrospective replay runs. Folders are checked before every job, week
+  and Storage delete; estimates of time and disk; 20 GB kept free;
+  limits by size on time, memory and folder size, the job's processes
+  killed at the first; a stopped or restarted runner queues its job
+  again first; stored weeks kept lean (forecasting samples dropped once
+  the sidecar is checked against them, `samples.dropped.json` marking
+  it). In a student's console there Start and Resume queue and the page
+  shows the place; the main console's Storage lists every student's
+  experiments outside the total, with Delete. Replay bundles now carry
+  each week's `oracle.json`, and an import keeps those weeks' quantiles
+  current, so an imported replay is the shipped side with the Oracle
+  step on or off (before, an imported sidecar always read as stale, so
+  Oracle-on experiments found no imported reference). Engine-lane files
+  changed, as Ely approved: `retro_store.py` (a lean week read from its
+  sidecar; a tree with no marker reads exactly as before) and one line
+  of `retro.py`; `pf.py`, `sandbox.py` and `reclaim.py` unchanged. Ely's
+  answers: a separate runner, a Terminal start with nothing installed,
+  `~/Students`, bundles carrying `oracle.json`. Defaults taken, for Ely
+  to change: the install check holds the queue off a clean `main`; first
+  in, first out with no cap per student; an interrupted week refitted
+  from its start; no Engine-lane hardening of the week runner; lean
+  weeks on the runner only; no Stop for Ely beyond Storage's Delete; the
+  main console's own experiment Start refuses while the runner replays
+  (its weekly run and replays do not); no cap on restart requeues.
+  Accepted limit: a folder swapped for a link while a week fits is
+  caught at the next week, and the runner's own drop and writes check
+  first, but the engine's record write and the segment's scoring still
+  go through the swapped path; on one shared account a student can write
+  another's folder anyway. Tested: the full suite with only the 22
+  failures this Mac already had; Ely's six retro roots read the same
+  through the old and new readers and were not written; on spare
+  consoles with a temporary `~/Students`, a real runner worked three
+  real smokes of 2024-25 from two students against a bundle exported and
+  imported with the new code: Oracle step on 1.272 against the shipped
+  1.219 and off 1.710 against 1.656 (step 4's figures), a stop mid-week
+  queued again first, a 25 s test limit killed and Resume refitted,
+  every week lean (688 KB and 56 KB folders), Storage's Delete and two
+  crafted deletes refused, and phone width. For Ely before students use
+  it: merge to `main`; on the Mac Studio, export each season's replay
+  again and import it; start `flubnf runner` once (its folder is what
+  makes a student's console queue). The Mac Studio's RAM is still
+  unknown (memory limits cap at half of it).
+- 2026-10-30 (later): student workspace step 4, experiments and the
+  compare page, on `dev`
+  ([a1ea679](https://github.com/elyfmiller/flubnf/commit/a1ea679)). The
+  Sandbox gallery gains one Experiments card: the four choices (a
+  shipped model or a registered `name@n`; season; smoke, pilot or full;
+  the Oracle step, on by default for `sihrs` only), Start, and the list
+  of experiments with each one's relWIS beside the shipped replay's. No
+  new tab. An experiment runs on this computer under the Sandbox's
+  claim, so the weekly run, shipped and dataset replays and Sandbox fits
+  refuse while it runs and it refuses while they do; Stop is
+  `/sandbox/stop` with `experiment=`, and Resume is Start with the same
+  choices. `experiments.score` writes `summary.json` as step 1 laid it
+  out (both sides rescored against one truth, the shipped replay read
+  through read-only readers only, sums over the cells both scored, US
+  like for like), at every segment end and again on a view when the
+  truth, the stored weeks or the shipped replay moved. The compare page
+  (`/sandbox/experiments/<id>`) reads `summary.json` only: relWIS, log
+  relWIS and coverage for the model, the shipped replay and the model
+  against it, by location, week and horizon, failed fits, and what ran;
+  Start, the page's JSON, Stop and Delete answer JSON when asked. No new
+  problem code, CSS rule or Jinja global, and no Engine-lane file
+  changed. Tested: the full suite with only the 22 failures this Mac
+  already had; the workbench, the Retrospective and the weekly run's
+  refusals byte for byte as before; Ely's retro tree unchanged by every
+  read. In the browser on a spare console, two real smoke runs of
+  2024-25 (about 50 s each): the unedited template, Oracle step off,
+  relWIS 1.710 against the shipped Liu-West filter alone's 1.656 on the
+  same 16 cells (1 replicate against 3), and `sihrs`, Oracle step on,
+  1.272 against 1.219; Stop, Delete, the JSON answers and phone width.
+  Defaults taken, for Ely to change: a full experiment is offered on
+  this computer before step 5 (it holds the engine for hours, so a
+  Monday run must stop it first); the model list offers `sihrs-2strain`
+  and `sihrs-natg` too; a summary is rescored on view when stale (about
+  weekly in season); with the Oracle step on, US is compared only with a
+  shipped US of the same kind, which no stored season has yet, so it
+  reads n/a.
+- 2026-10-30: student workspace step 3, the Sandbox side, on `dev`
+  ([ed75622](https://github.com/elyfmiller/flubnf/commit/ed75622)). New
+  model gains one start, "Oracle SIHRS template, for replays", in the
+  Oracle SIHRS group and only with a hub; it uses the Location, Forecast
+  date and Season start fields that exist. It writes the production
+  template with its placeholders kept (`{{POP}}`, `{{I0FRAC}}` ...)
+  under a three-line note, the shipped priors, and the Oracle start's
+  data. The Sandbox fills the placeholders in memory, never in the files
+  (`sandbox_data.filled_bngl`): N is the population of the location
+  data.exp was loaded for and i0 is pinned from its counts, as a replay
+  pins it; Check, Save and run and Simulate data use it, the diagrams
+  sample values, and Set N is not offered where N is a placeholder. For
+  such a model Check says Ready for replays or Not ready, each finding
+  with its code, and which registered version the files already are;
+  Register, a button in that line only, saves the editor text and
+  freezes the next version (`beta2@1`), or names the one that holds
+  them. One new code, PLACEHOLDERS_UNFILLED. Models without placeholders
+  are unchanged: their Check JSON, runs, diagrams and pages compared
+  byte for byte with `dev` before. A version file that is not a regular
+  file now reads as MODEL_CHANGED (left over from step 2). Added: one
+  start option, one route, and the Register button inside Check's Ready
+  line; taken away: Set N on the template. Tested: the full suite with
+  only the 22 failures this Mac already had, and in the browser on a
+  spare console (create, Check, Register @1, Not ready on a `pf_jitter`
+  line, an edit, Register @2; phone width). Defaults taken, for Ely to
+  change: the template from the hub only (the core takes a dataset group
+  too); registered versions listed nowhere until step 4's experiment
+  form; Register saves unsaved editor text first, as Save and run does;
+  no location means a run or Simulate is refused in words.
+- 2026-10-29 (later still): student workspace step 2, the engine side,
+  on `dev`
+  ([0abd3e8](https://github.com/elyfmiller/flubnf/commit/0abd3e8),
+  [2f55419](https://github.com/elyfmiller/flubnf/commit/2f55419)). No
+  page, button or setting changes. `pf.prepare` reads
+  `spec.extra["model"]`: a shipped name (`sihrs`, `sihrs-2strain`,
+  `sihrs-natg`) gives today's cells for its variant; a library version's
+  verified text becomes the cell's template, and its cumulative output
+  and priors are parsed and written again (`library.replay_conf`), never
+  copied. `fit_i0`, `prior_ranges`, `iota` and `neff_cap` are refused
+  beside a library model. `retro.run_season(weeks=)` replays an
+  experiment's frozen weeks and never resumes a folder holding another
+  experiment; that refusal comes before any flag is cleared.
+  `experiments.replay` runs a plan with the shipped Groundhog beside the
+  model and the Oracle step on or off, and checks the model's
+  fingerprint before each week. Two new codes: SUFFIX_IN_MODEL, and
+  LINE_BREAK_NOT_ALLOWED (PyBNF splits lines on a form feed and the
+  like, BNG2.pl does not, so a comment could hide a statement from the
+  structure rules). The shipped cells are pinned byte for byte by
+  `test_prepare_golden.py`, committed before `pf.py` changed. On the
+  real hub (2024-12-28, California and Vermont), the shipped, 2strain
+  and natg cells are the same before and after, by `variant` or by name,
+  and a library copy of sihrs differs by one comment line in `m.bngl`.
+  Experiments now keep the Groundhog (about 1% of a filter week), which
+  reverses step 1's default. Tested: the full suite with only the 22
+  failures this Mac already had. Left for later: a library model with
+  `reporting` (step 7), and refusing a version file that is not a
+  regular file (done in step 3).
+- 2026-10-29 (later): student workspace step 1, the file formats, on
+  `dev` ([e2dba2e](https://github.com/elyfmiller/flubnf/commit/e2dba2e)).
+  No page, button or setting changes. `app/core/library.py`: the Ready
+  for replays rules, the replay normal form and fingerprint, Register
+  into `sandbox/library/<name>/<n>/`, `name@version`.
+  `app/core/experiments.py`: `experiment.json` (model, season, size,
+  oracle), the size presets, the shipped replay compared with,
+  `summary.json` as sums. `app/core/problem_codes.py`: 52 codes, pinned
+  by `app/tests/golden/problem_codes.json`; Check returns a code beside
+  each problem and warning (`SandboxError` gained `code=`). The structure
+  rules read model.bngl as BNG2.pl does, so a statement outside a block,
+  which BNG2.pl runs as Perl, is refused. Defaults taken: smoke and
+  pilot run 1 replicate against the shipped 3; with the Oracle step off
+  a shipped side exists for 2024-25 only (`quantiles.null`); experiments
+  skip the Groundhog (step 2 keeps it). Tested: the new and Sandbox
+  tests (379), and the full suite with only the 22 failures this Mac
+  already had. Step 2 (engine side) waits for Ely's go.
+- 2026-10-29: the student workspace, designed with Ely (decisions under
+  Decided). It is built one step at a time, in the order of the steps
+  below, starting with the file formats, and under the rule in UI-KIT.md
+  "Before adding a control".
+  Students try beta variants and other configurations of SIHRS, later
+  RSV and COVID-19 models, from the Sandbox through to replays, for
+  people and scripts alike:
+  - Models: a "SIHRS template" Sandbox start keeps the per-state
+    placeholders (`{{POP}}`, `{{S0FRAC}}`, `{{I0FRAC}}` ...); Check gains
+    "Ready for replays"; Register freezes a version with a fingerprint of
+    its files, and any edit is a new version.
+  - Experiments: one folder each, never the shipped season tree; three
+    sizes (smoke: 2 locations, 2 weeks; pilot: about 10 locations every
+    other week, 1 replicate; full: the shipped settings, 7.0 h for
+    2024-25 on Ely's Mac); a compare page against the shipped replay on
+    the same cells (log WIS, relative WIS, 50/80/95 coverage); one
+    `summary.json` for the page and for scripts. A shipped replay's
+    `oracle.json` already keeps the filter's own quantiles
+    (`quantiles.null`), so a variant without the Oracle step compares
+    without another replay; scoring them is new.
+  - On the runner: one queue, a time and disk estimate before a job is
+    accepted, lean storage for experiments (forecasting samples dropped
+    once a week is scored: about 1.5 GB to under 100 MB a season), the
+    Storage tab by experiment.
+  - Every page action also a `flubnf` command with `--json` output and
+    fixed exit codes; Check's problems get stable codes; one guide for
+    anyone working from a terminal. Students' work lives in untracked
+    folders only: the launchers set aside edits to tracked files.
+  - Pathogen a field on models, datasets and experiments; RSV and
+    COVID-19 come in first as snapshot datasets and run the plain filter.
+  - From the protection audit (2026-10-29), also to build:
+    - A check on pull requests from forks. It refuses co-author or
+      generated-by lines, and commits authored or committed under Ely's
+      emails. It flags changes to the launchers, the installers,
+      `.github/` and the engine updater. `proposals/<name>/` holds only a
+      fixed list of file names, with no links, executables or oversized
+      files; a name list, so the check names no tool.
+    - The runner cleans every model before it runs. A model's actions
+      block is code (BNG2.pl runs each action through Perl `eval`), so it
+      gets FluBNF's own. `priors.conf` takes keys from a fixed list only
+      (`postprocess` would run Python). The `suffix` may not name a path.
+      Each job has time, memory and disk limits.
 - 2026-10-28 (later, Ely's answer to the Open question below): a
   Submitted / Before cap switch per location
   ([0e16723](https://github.com/elyfmiller/flubnf/commit/0e16723)), to
@@ -331,6 +606,64 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-10-29 (Ely): minimalism. The console is already close to too much
+  to take in, the shipped models' settings most of all, so the student
+  workspace adds as few choices as it can. An experiment asks for a
+  model, a season, a size (smoke, pilot, full) and the Oracle step on or
+  off; the sizes are presets, never separate particle, replicate,
+  location or week fields. New work goes into the tabs that exist, and
+  nothing is added to the shipped models' forms. Each step's review
+  counts what it adds. The rules: UI-KIT.md, "Before adding a control".
+- 2026-10-29 (Ely): the student workspace build changes the Engine
+  lane's files directly where the design needs it (`pf.py`, `retro.py`,
+  `sandbox.py` and their tests), instead of waiting on the Engine lane.
+  The work lands on `dev` like any other, and the Engine lane's notes
+  are read first for anything in flight.
+- 2026-10-29 (Ely, after a protection audit): the wiki is off (never
+  used). Actions run only GitHub's own actions, which are all any branch
+  uses. `tests.yml` states a read-only token
+  ([1b83158](https://github.com/elyfmiller/flubnf/commit/1b83158)).
+  TEAM.md now holds the rules for the two machines, Ely's credentials,
+  reviewing a fork's pull request and merging it. Found: only Ely's
+  account can write here, so the risks left are ways to act as Ely.
+  These are Ely's credentials on the students' Mac Studio, the
+  students' shared cloud account connected to Ely's GitHub, and student
+  code or models run where Ely's login is. A BNGL file runs Perl when
+  BNG2.pl reads it.
+- 2026-10-29 (Ely): GitHub rules, set that day (rulesets 26160504 and
+  26160505). `main` changes only through a merged pull request whose six
+  checks are green (`test` and `test-windows` on 3.11 and 3.12,
+  `windows-own-perl`, `windows-setup-script`), with no bypass, no force
+  push and no deletion. The checks do not ask the branch to be up to
+  date, since main's merge commits are never in `dev`. Merge commits only:
+  squash and rebase are off for the repository. `dev`: no force push or
+  deletion. CI on every pull request from outside waits for Ely's
+  approval (before, only a first-time contributor's did). TEAM.md says so.
+- 2026-10-29 (Ely): the student workspace (plan under Now).
+  - Students, and agents working for them, fork, branch and open pull
+    requests against `dev`; Ely and Ely's agents review; only Ely merges.
+    Everything in the repository is human-authored: commits under the
+    contributor's own name, with no co-author trailers or generated-by
+    lines. A CI check on pull requests will refuse them, naming no tool.
+    No file in the repository is written for a particular assistant: the
+    guide is for anyone working from a terminal.
+  - A proposal is a folder, `proposals/<name>/`: the model files, the
+    experiment settings, the results summary and the student's own
+    write-up. CI checks it, and review reruns it on the lab runner, where
+    the fingerprints must match. It becomes a shipped model only through
+    Ely's lanes.
+  - Long runs go on the lab's 24-core Mac Studio, a different machine
+    from the lab Mac the Engine and Model lanes use. All the students
+    work in one shared lab account there, which has the whole disk, and
+    reach it off-site through remote sessions. One shared runner, a
+    FluBNF install on `main`, works one queue. Each student's work sits
+    in a folder of their own, and code from a fork never runs on the
+    runner. Nothing caps the disk, so the size checks are the guard: a
+    job is refused when it would leave too little free space, and the
+    storage figures are a command with JSON output as well as a page.
+  - The Oracle step is a switch on every experiment: it belongs to the
+    shipped SIHRS, and other models may try it or not. It is off by
+    default for any other model (App's proposal).
 - 2026-10-01 (Ely): the Liu-West filter's US figure is shown for seasons
   stored since addendum A3 (the step makes it the right comparison), n/a
   for seasons stored before it. The saved weekly report is named by its hub reference date, as
@@ -348,6 +681,77 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- All lanes (2026-10-29): `main` refuses a merge pushed by hand; merge a
+  `dev` to `main` pull request with `gh pr merge <n> --merge --repo
+  elyfmiller/flubnf` or the website, once all six checks are green.
+  `dev` refuses a force push. Submission: the hand-pushed merge in your
+  notes no longer works.
+- All lanes (2026-10-29): read TEAM.md's new rules on reviewing a fork's
+  pull request. Its code and models never run where Ely's GitHub login
+  is, and only Ely's merge brings its work into `dev`. Cloud sessions:
+  set the git name and email to Ely's before the first commit, merges
+  included. 490cf08 (a merge into fix/G16-weekly-report, on `dev`
+  through #70) carries the session's default identity, not Ely's. It
+  stays in history, since `dev` takes no force push.
+- Model (2026-10-29): your notes call the lab Mac "the Mac Studio"
+  (model.md:5 and about ten more). The students' machine is a different
+  Mac Studio, and the notes record Ely's `gh` login on yours. Please say
+  "lab Mac" for yours.
+- Engine (2026-10-29, from the protection audit):
+  1. The engine pin by its full commit ID, in a constant of its own for
+     `engine_update`'s compare and merge. Keep the 8-character name for
+     archive names and display (`archive_name`, `cut_engine_archive.sh`
+     and their tests). Today a fresh install takes the branch tip, and
+     PyBNF-Private has three writers besides Ely and no branch
+     protection on the Free plan.
+  2. A fresh install (the `setup_engine.sh` clone, the bundle) ends at
+     the pin by a fast-forward, not a detached checkout, so that
+     `engine_update` still sees the branch.
+  3. An engine archive in Downloads is installed with no hash check.
+     Check it against the pin's archive.
+  4. For the runner: the cleaning described under Now. PyBNF reads the
+     model's `generate_network` options and `setOption` again, so
+     cleaning only the first BNG2.pl call is not enough.
+- Engine (2026-10-29, the student workspace). Ely has decided that the
+  build changes your files directly (see Decided), so items 1 to 4 below
+  and the audit's runner cleaning will arrive on `dev` from App's build,
+  with their tests. Say in your notes if you have work in flight in
+  `pf.py`, `retro.py` or `sandbox.py`, so the two don't collide.
+  Items 1 and 2 are on `dev` (step 2, 2f55419). In `pf.py`:
+  `LIBRARY_REFUSED` and `_named_model` (new), and `prepare` (a branch
+  for a library model: its text as the cell's template, the DEFAULTS
+  splice skipped, and its cumulative output and priors in `pf.conf`). In
+  `retro.py`: `run_season` (`weeks=`, and the experiment check before
+  `clear_flags`). `run_week`, `execute` and `collect` are unchanged. A
+  library cell keeps the public engine's cell contract (one `model =`
+  line, a two-column `.exp`, the four prior kinds, no new `pf_*` key);
+  `test_pf_named_model.py` checks it. Item 1 is done in a narrow form:
+  the three templates stay in `pf.py`, and the shipped names are
+  composed from them (`library.shipped_files`), not stored as versions.
+  Item 4 is on `dev` (step 3, ed75622): in `sandbox.py`, the template
+  start (`from_shipped(template=True)`), `placeholder_n` and the
+  placeholder fill in `prepare` and `simulate_data`; in
+  `sandbox_check.py`, `check(name=)` fills them before BNG2.pl and adds
+  Ready for replays; `sandbox_data.filled_bngl` is new. Item 3 (step 5)
+  is not started. The items as first listed:
+  1. `pf.prepare` takes a registered model (template, prior block,
+     starting values) in place of TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG,
+     which become registered models themselves.
+  2. A replay into an experiment's own root, with the model's
+     fingerprint in `run_meta.json` and a resume refused when it
+     changed, as for knobs.
+  3. Lean storage for experiments: forecasting samples dropped once the
+     week's national aggregate and scores are written, if nothing reads
+     them later.
+  4. Sandbox promotion (`sandbox.py`): a Sandbox model registered.
+- Model (2026-10-29, the student workspace):
+  - What makes a fair comparison: the same cells, a pilot's 1 replicate
+    against the shipped 3, and how many seasons.
+  - Whether `oracle.json`'s `quantiles.null` can be scored as the
+    shipped filter without the step (the floor and the cap).
+  - Which beta variants to offer as starts.
+  - RSV and COVID-19 priors and season starts.
 
 - Engine (2026-10-26, for `engine-public`): what App needs to finish.
   1. `engine-requirements.txt` at the repository root on `engine-public`:

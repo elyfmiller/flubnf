@@ -343,10 +343,12 @@ def test_methods_keeps_the_facts_its_marks_held_in_folds():
                  "no coverage guarantee is claimed"):
         assert fact in how.replace("&#39;", "'"), fact
     # the weighting is the admissions pool's: the FluSurv-NET pool stays
-    # pooled (0e60501), and both now separate it from the bare analogue
+    # pooled (0e60501), and with the size-matched donors (2026-10-23) all
+    # three now separate it from the bare analogue
     bank = _fold(t, "mt-gh-bank")
     assert "pooled across sites with no own-state weight" in bank
-    assert "since 2026-10-15 the own-state weighting" in bank
+    assert ("the own-state weighting (since 2026-10-15) and the "
+            "size-matched donors (since 2026-10-23)") in " ".join(bank.split())
     assert "fresh run from August 1" in _fold(t, "mt-fresh")
     caveats = _fold(t, "mt-caveats")
     assert "frozen by a pre-registration before it was scored" in caveats
@@ -394,10 +396,10 @@ def test_methods_lists_every_model_setting_the_panel_offers():
             assert " ".join(str(Markup_escape(k.help)).split()) in text, k.key
     # a choice's default reads as its option does, and the console's
     # contents row links the card; the public site has no Forecast tab
-    assert "<td>2026091801</td>" in text
+    assert '<td data-label="Default">2026091801</td>' in text
     # the other choices read in the panel's words, the stored value beside
     assert "expected total (early season) (season_total_early)" in text
-    assert "<td>random draws (rand)</td>" in text
+    assert '<td data-label="Default">random draws (rand)</td>' in text
     assert '<a href="#settings">Model settings</a>' in t
     from app.core import site_build
     assert 'id="settings"' not in site_build.harvest_methods({})

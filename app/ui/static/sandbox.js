@@ -2,8 +2,9 @@
    files as tabs, the run
    settings presets and their time estimate, Check, the unsaved-changes
    chip, delete confirmations, the time a live fit has taken and the poll
-   until it ends, and the results plot. Plain ES5, no build step; colours
-   come from the page's tokens.
+   until it ends, and the results plot; the gallery's experiment form and
+   an experiment's page (sandbox_experiment.html) while it replays. Plain
+   ES5, no build step; colours come from the page's tokens.
    The pure helpers are exported as SandboxPage for the tests. */
 (function (root) {
   'use strict';
@@ -86,19 +87,31 @@
     var loc = $('sbnew-loc'), date = $('sbnew-date'), grp = $('sbnew-group'), asof = $('sbnew-asof');
     // the page fills in the first start's name; it is replaced as the
     // start changes until the user types one of their own
-    var suggested = nm ? nm.value : '';
+    // a form a refusal sent back keeps its name and its week (data-kept)
+    var kept = !!(nm && nm.hasAttribute('data-kept'));
+    var suggested = nm && !kept ? nm.value : '';
+    // the models already here: an Oracle start's name is never one of them
+    var taken = (start.form.getAttribute('data-taken') || '').split(' ');
+    function free(s) {
+      if (!s || taken.indexOf(s) < 0) return s;
+      for (var n = 2; ; n++) {
+        // the suffix fits inside the 64-character name
+        var t = s.slice(0, 64 - String(n).length - 1) + '_' + n;
+        if (taken.indexOf(t) < 0) return t;
+      }
+    }
     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
     function name() {
       if (!nm || (nm.value && nm.value !== suggested)) return;
       var v = start.value, s = '', o = start.options[start.selectedIndex];
-      if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
-      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
+      if (v === 'shipped:sihrs' && loc && date) s = free(suggestName(loc.value, date.value));
+      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = free(suggestName(grp.value, asof ? asof.value : ''));
       else if (o && o.getAttribute('data-name')) s = o.getAttribute('data-name');
       nm.value = suggested = s;
     }
 
     function show() {
-      var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
+      var v = start.value, hub = v === 'shipped:sihrs' || v === 'template:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
       // what the chosen start is: its note in the "i" beside the list,
       // hidden for a start without one (the Oracle start shows its fields)
@@ -134,7 +147,7 @@
     function lastWeek() {
       var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
       if (!o || !asof) return;
-      asof.value = o.getAttribute('data-last') || asof.value;
+      if (!(kept && asof.value)) asof.value = o.getAttribute('data-last') || asof.value;
       asof.min = o.getAttribute('data-first') || '';
       asof.max = o.getAttribute('data-last') || '';
       asofCheck();
@@ -160,6 +173,7 @@
     [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
     if (grp) grp.addEventListener('change', function () { lastWeek(); name(); });
     show();
+    kept = false;
   }
 
   // ---- the three files as tabs: without this script they stack, each
@@ -248,6 +262,19 @@
     });
     document.addEventListener('click', function (e) {
       menus.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
+    });
+    // a menu hangs from its button's right edge; in a narrow window at a
+    // large text size that reaches past the screen's left, so it is moved
+    // back inside (a phone's menus open from the left: sandbox.css)
+    menus.forEach(function (d) {
+      d.addEventListener('toggle', function () {
+        var m = d.querySelector('.sbmenu');
+        if (!m) return;
+        m.style.right = '';
+        if (!d.open) return;
+        var left = m.getBoundingClientRect().left;
+        if (left < 8) m.style.right = (left - 8) + 'px';
+      });
     });
   }
 
@@ -383,7 +410,23 @@
         var rep = $('sb-checked');
         if (rep && rep.firstChild) rep.classList.add('sb-stale');
       });
-      form.addEventListener('submit', function () { dirty = false; });
+      // a CSV over the upload limit is refused here, before the page
+      // leaves: the server reads none of a body that size, so the editor's
+      // unsaved text would go with it
+      var csv = $('sbfill-csv');
+      form.addEventListener('submit', function (e) {
+        var b = e.submitter, f = csv && csv.files && csv.files[0];
+        var max = csv ? parseInt(csv.getAttribute('data-max-bytes'), 10) : 0;
+        if (b && /\/upload-data$/.test(b.getAttribute('formaction') || '') && f && max && f.size > max) {
+          e.preventDefault();
+          csv.setCustomValidity('This file is larger than the ' + Math.round(max / 1048576) +
+                                ' MB limit; choose a smaller one.');
+          csv.reportValidity();
+          return;
+        }
+        dirty = false;
+      });
+      if (csv) csv.addEventListener('change', function () { csv.setCustomValidity(''); });
       addEventListener('beforeunload', function (e) {
         if (!dirty) return;
         e.preventDefault();
@@ -468,8 +511,37 @@
                                 f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length && probs.length) html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
+            // a model that keeps placeholders: what Register would say of
+            // these files, each finding with its code; one already listed
+            // above is counted, not repeated
+            var rp = d.replays;
+            if (rp) {
+              var seen = probs.concat(warns, f.machine ? [f.machine] : []);
+              var found = rp.findings || [];
+              var bad = found.filter(function (x) { return x.tier === 'problem'; });
+              var rest = found.filter(function (x) { return x.tier !== 'problem'; });
+              var listed = bad.concat(rest).filter(function (x) { return seen.indexOf(x.text) < 0; })
+                .map(function (x) { return x.text + ' (' + x.code + ')'; });
+              if (bad.length) {
+                html += alertHtml('warn', 'Not ready for replays:', (bad.length === 1 ? '1 thing'
+                  : bad.length + ' things') + ' to fix before Register.') + listHtml(listed);
+              } else {
+                var reg = rp.registered;
+                html += alertHtml(rest.length ? 'warn' : 'ok', 'Ready for replays:',
+                  (reg ? 'these files are ' + reg.ref + ' (' + reg.short + ').'
+                       : 'Register freezes these files as a new version.')
+                  + (rest.length ? ' ' + (rest.length === 1 ? '1 note.' : rest.length + ' notes.') : ''))
+                  + listHtml(listed)
+                  + (reg ? '' : '<div class="row"><button formaction="/sandbox/models/'
+                     + encodeURIComponent(form.getAttribute('data-model'))
+                     + '/register" formnovalidate>Register</button></div>');
+              }
+            }
             if (f.suffix) rows.push(['Simulate suffix', f.suffix, '']);
             if (f.rows) rows.push(['Data rows', f.rows, '']);
+            var pl = f.placeholders;
+            if (pl && pl.location) rows.push(['Placeholders filled for', pl.location,
+              'population ' + Number(pl.population).toLocaleString('en-US')]);
             if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '']);
             if (f.network) rows.push(['Network', f.network, f.species != null
               ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '']);
@@ -530,6 +602,41 @@
               root.FluBNFUI.setBadge(chip.querySelector('.uk-badge'), 'warn',
                                      'unsaved changes (the run ended: save, then reload)');
             }
+          }).catch(function () {});
+      }, 5000);
+    }
+
+    // ---- the experiment form: the Oracle step is set from the chosen
+    // model (on for sihrs, off for any other) whenever the model changes
+    var xm = $('sbexp-model'), xo = $('sbexp-oracle');
+    if (xm && xo) xm.addEventListener('change', function () {
+      var o = xm.options[xm.selectedIndex];
+      if (o) xo.value = o.getAttribute('data-oracle') === '1' ? 'on' : 'off';
+    });
+
+    // ---- an experiment's page while it replays or is scored: the weeks
+    // bar and the line are set from its JSON every 5 s, and the page reloads
+    // once it is neither (or is gone: the 404's {error}), or once its status
+    // is not the one the page was drawn with (starting, running, stopping:
+    // the badge says it)
+    var sbx = $('sbx');
+    if (sbx && sbx.getAttribute('data-poll') === '1') {
+      var xtimer = setInterval(function () {
+        fetch('/api/sandbox/experiments/' + encodeURIComponent(sbx.getAttribute('data-id')))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d || !d.status || (!d.live && !(d.scoring && d.scoring.pending))
+                || d.status.status !== sbx.getAttribute('data-status')) {
+              clearInterval(xtimer);
+              location.reload();
+              return;
+            }
+            var bar = $('sbx-weeks'), xl = $('sbx-line'), st = d.status;
+            if (bar && root.FluBNFUI) {
+              root.FluBNFUI.setProgress(bar, st.weeks_done, st.weeks_total || 1,
+                                        st.weeks_done + ' of ' + st.weeks_total + ' weeks');
+            }
+            if (xl) xl.textContent = st.line;
           }).catch(function () {});
       }, 5000);
     }
