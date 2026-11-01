@@ -6,6 +6,19 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-01 (latest): Ely merged
+  [#77](https://github.com/elyfmiller/flubnf/pull/77), `dev` to `main`
+  (merge commit 9d4520d): the student workspace, steps 1 to 6 with the
+  Windows bundle fix, the bug-hunt fixes V01 and G11 to G20, the
+  dashboard scorer and the lanes' notes. `main`'s tree equals `dev`'s
+  8b89b3f, and GitHub lists the contributor check's workflow as active.
+  Still Ely's, in order: before 2 December, the repository Actions
+  policy that allows pull_request_target for
+  `.github/workflows/contributor-check.yml` only (none exists yet); one
+  test pull request from a fork someone else owns; then, if wanted, the
+  check required on `dev`. And step 5 on the Mac Studio: export each
+  season's replay again and import it, then start `flubnf runner` once.
+  Step 7 (RSV and COVID-19) waits for Ely's go.
 - 2026-11-01 (later): CI's test-windows jobs had failed one test since
   step 5 (cbe89c6), on Python 3.11 and 3.12, Linux green:
   `test_an_imported_replay_is_the_reference_with_the_step_on_or_off`. A
