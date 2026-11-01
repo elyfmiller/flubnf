@@ -16,7 +16,6 @@ queues for app/core/runner.py); the Storage line.
 """
 from __future__ import annotations
 
-import json
 import math
 import re
 import threading
@@ -1090,15 +1089,10 @@ def _student() -> str | None:
 
 
 def _runner_job(state: dict, name: str) -> str:
-    """The id of the experiment a running runner replays in this
-    student's folder, from runner.json's job (written before its child
-    starts, so it names the job from its first moment); "" for none, a
-    tidy, or a runner that is not running."""
-    job = state.get("job") if state.get("alive") else None
-    if (isinstance(job, dict) and job.get("kind") == "run"
-            and job.get("folder") == name):
-        return str(job.get("id") or "")
-    return ""
+    """runner.job_of: the id of the experiment a running runner replays
+    in this student's folder, "" for none."""
+    from app.core import runner
+    return runner.job_of(state, name)
 
 
 async def _experiment_form(request: Request) -> dict:
@@ -1261,39 +1255,11 @@ def _experiment_start(raw: dict, as_json: bool):
             to=page if X.find(eid) else "/sandbox", url=None, started=False)
     threading.Thread(target=_experiment_go, args=(eid, s, claim),
                      daemon=True, name=f"experiment-{eid}").start()
-    ref, weeks, done = p["reference"], len(p["weeks"]), p["weeks_done"]
-    if p["resume"]:
-        text = f"Resumed {eid}: {done} of {weeks} weeks were stored already."
-    else:
-        text = (f"Started {eid}: {weeks} weeks of {p['season']}, "
-                f"{len(p['locations'])} locations.")
-    notes = []
-    if ref is not None:
-        notes.append(f"Compared with the shipped replay of {p['season']} ("
-                     + ("the Oracle SIHRS" if ref["member"] == "pf"
-                        else "the Liu-West filter alone")
-                     + ") on the cells both score.")
-    else:
-        # nothing to compare with leads; a resume's count goes to the "?"
-        if p["resume"]:
-            notes.append(f"{done} of {weeks} weeks were stored already.")
-        text = (f"{'Resumed' if p['resume'] else 'Started'} {eid}; nothing "
-                "to compare it with.")
-    for f in p["findings"]:
-        said = f"{f['text']} ({f['code']})"
-        notes.append(said if f["code"] == "NO_REFERENCE"
-                     else f"Worth a look: {said}")
-    plan = {k: p[k] for k in ("model", "model_fingerprint", "experiment",
-                              "season", "size", "oracle", "locations",
-                              "weeks", "replicates", "particles")}
-    plan["reference"] = None if ref is None else {
-        "member": ref["member"], "root": X._repo_path(ref["root"]),
-        "started_utc": ref["started_utc"]}
+    a = X.started(p)
     return _experiment_answer(
-        as_json, ok=True, eid=eid, text=text, to=page,
-        kind="ok" if ref is not None else "warn", detail=" ".join(notes),
-        codes=p["findings"], url=page, started=True, resumed=p["resume"],
-        complete=False, plan=plan)
+        as_json, ok=True, eid=eid, text=a["text"], to=page, kind=a["kind"],
+        detail=a["detail"], codes=p["findings"], url=page, started=True,
+        resumed=p["resume"], complete=False, plan=a["plan"])
 
 
 def _experiment_queue(s: dict, eid: str, as_json: bool):
@@ -1434,80 +1400,16 @@ def _experiment_scoring(eid: str) -> dict | None:
 
 
 def _experiment_line(st: dict, claimed, queue: dict | None = None) -> str:
-    """The running card's one line: queued for the runner (`queue`,
-    runner.position's: its place, when it starts, about how long it runs,
-    the disk it needs, and why it waits), starting (on the runner when
-    `claimed` is "runner": runner.json's job names it), stopping, paused,
-    or the week under way, its fits, the time so far and, once a week is
-    timed, about how long is left; "" otherwise."""
-    from app.core import retro, runner
-    state = st["status"]
-    if queue is not None:
-        parts = ["Queued", f"{runner._ordinal(queue['position'])} in line"]
-        if not queue["runner"]:
-            parts.append("the runner is not running")
-        elif queue["wait_s"] >= 60:
-            parts.append("starts in " + sandbox_mod.eta_words(
-                queue["wait_s"], queue["wait_s"]))
-        else:
-            parts.append("starts within a minute")
-        if queue["seconds"] > 0:
-            parts.append("runs " + sandbox_mod.eta_words(queue["seconds"],
-                                                         queue["seconds"]))
-        if queue["peak_bytes"] > 0:
-            parts.append("needs about "
-                         f"{retro.human_bytes(queue['peak_bytes'])} of disk")
-        if queue["why"]:
-            parts.append(queue["why"])
-        return " · ".join(parts)
-    if claimed and state not in retro.ACTIVE_STATUSES:
-        return ("Starting on the runner…" if claimed == "runner"
-                else "Starting…")
-    so_far = f"{sandbox_mod.clock(st['elapsed_s'])} so far"
-    if state == "stopping":
-        return f"Stopping after the fits in flight · {so_far}"
-    if state == "paused":
-        return f"Paused · {so_far}"
-    if state != "running":
-        return ""
-    line = (f"{st['week']}: {st['fits_done']} of {st['fits_total']} fits · "
-            f"{so_far}" if st["week"] else so_far)
-    if st["eta_s"] is not None:
-        line += f" · about {sandbox_mod.clock(st['eta_s'])} left"
-    return line
+    """experiments.line: the running card's one line ("" for none)."""
+    from app.core import experiments as X
+    return X.line(st, claimed, queue)
 
 
 def _experiment_badge(st: dict, claimed, queue: dict | None = None,
                       refused: str = "") -> tuple:
-    """(state, words) of an experiment's badge: queued (its place in line,
-    or that the runner is not running), starting, refused by the runner
-    (runner.refusal's words given), running, stopping, paused, stopped or
-    interrupted (with the weeks stored when not every one is), done,
-    error, or not started."""
-    from app.core import retro, runner
-    state = st["status"]
-    part = ("" if st["complete"]
-            else f" · {st['weeks_done']} of {st['weeks_total']} weeks")
-    if queue is not None:
-        if not queue["runner"]:
-            return ("warn", "queued · runner not running")
-        return ("pending",
-                f"queued · {runner._ordinal(queue['position'])} in line")
-    if claimed and state not in retro.ACTIVE_STATUSES:
-        return ("pending", "starting")
-    if refused:
-        return ("warn", "refused by the runner")
-    if state in ("running", "stopping"):
-        return ("pending", state)
-    if state == "paused":
-        return ("warn", "paused")
-    if state in ("stopped", "interrupted"):
-        return ("warn", state + part)
-    if state == "done":
-        return ("ok", "done") if st["complete"] else ("warn", "done" + part)
-    if state == "error":
-        return ("error", "error")
-    return ("neutral", state or "not started")
+    """experiments.badge: (state, words) of an experiment's badge."""
+    from app.core import experiments as X
+    return X.badge(st, claimed, queue, refused)
 
 
 def _experiment_gallery() -> dict:
@@ -1597,24 +1499,8 @@ def _experiment_view(eid: str) -> dict | None:
     pending = job is not None and not job["done"].is_set()
     scoring = {"pending": pending, "why": job["why"] if pending else "",
                "error": "" if pending or job is None else job["error"]}
-    summary, problem = None, ""
-    path = X.root() / eid / X.SUMMARY
-    if folder is not None and path.is_file():
-        try:
-            summary = X.read_summary(path)
-        except Refusal:                         # FORMAT_UNKNOWN
-            try:
-                v = json.loads(path.read_text(encoding="utf-8")).get(
-                    "format_version")
-            except (OSError, ValueError, AttributeError, RecursionError):
-                v = None
-            problem = (f"summary.json was written by a newer FluBNF "
-                       f"(format_version {v}); this one reads "
-                       f"{X.SUMMARY_VERSION} only."
-                       if type(v) is int and v > X.SUMMARY_VERSION
-                       else "summary.json cannot be read")
-        except (OSError, ValueError, RecursionError):
-            problem = "summary.json cannot be read"
+    summary, problem = (X.summary_or_problem(folder) if folder is not None
+                        else (None, ""))
     figs = words = None
     if summary is not None:
         def groups(key):

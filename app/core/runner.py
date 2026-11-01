@@ -1042,6 +1042,18 @@ def busy_words() -> str:
             f"{job.get('id')}")
 
 
+def job_of(state: dict, name: str) -> str:
+    """The id of the experiment a running runner replays in this
+    student's folder, from runner.json's job (written before its child
+    starts, so it names the job from its first moment); "" for none, a
+    tidy, or a runner that is not running."""
+    job = state.get("job") if state.get("alive") else None
+    if (isinstance(job, dict) and job.get("kind") == "run"
+            and job.get("folder") == name):
+        return str(job.get("id") or "")
+    return ""
+
+
 def _local_time(epoch, fmt: str) -> str:
     try:
         return time.strftime(fmt, time.localtime(float(epoch)))
@@ -1564,13 +1576,16 @@ def _refused(sv: dict, job: Mapping, said: str) -> None:
 
 def _caffeinate(pid: int):
     """macOS: `caffeinate -i -w <pid>` keeps the computer awake while the
-    child lives (pipeline._sleep_guard's pattern); None elsewhere."""
+    child lives (pipeline._sleep_guard's pattern); None elsewhere. In a
+    session of its own, so a Ctrl-C in the terminal it was started from
+    (a terminal experiment's first, its Stop) does not end it."""
     if sys.platform != "darwin":
         return None
     try:
         return subprocess.Popen(["caffeinate", "-i", "-w", str(pid)],
                                 stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True)
     except Exception:
         return None
 

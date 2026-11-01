@@ -6,6 +6,10 @@ directly, so this repository is where they leave context for one another.
 This page says who works on what, where to look before starting, and how to
 hand work across.
 
+Students, and anyone working for them, follow [CONTRIBUTING.md](CONTRIBUTING.md):
+this page and [team/](team/) are the maintainers' working notes, not
+instructions for contributors.
+
 ## Start of every task
 
 1. `git fetch origin` and read, on `origin/dev`:
@@ -117,9 +121,57 @@ paste, or has a lane that can push commit it.
   `gh pr diff <number> --repo elyfmiller/flubnf`. No lane merges,
   cherry-picks or copies a fork's work into `dev`: only Ely's merge of
   the pull request brings it in. No auto-fix or monitoring on a fork's
-  pull request.
+  pull request. The contributor check reads a fork's pull request as data
+  and runs none of it, without waiting for approval (a public repository
+  needs a repository Actions policy that allows `pull_request_target` for
+  its workflow file only, Settings > Actions > Policies; while GitHub
+  blocks it there is no run, which counts as not green): read it before
+  approving the tests
+  (`gh run list --repo elyfmiller/flubnf --workflow contributor-check.yml`,
+  then `gh run view <id> --log --repo elyfmiller/flubnf`). Its errors are
+  refusals and its warnings flags; its first line names the head sha it
+  read. Review in words: a suggested change committed on the website, or
+  Update branch, puts Ely's name or a co-author line on the contributor's
+  commits, which the check refuses.
+  - A proposal (`proposals/<name>/`, [CONTRIBUTING.md](CONTRIBUTING.md)
+    section 6) is rerun on the students' Mac Studio, in the lab account,
+    in the review clone `~/Students/review`: installed once as a
+    student's clone is (`FLUBNF_DIR="$HOME/Students/review"`), a student
+    folder the runner works, and kept on main, so only main's code runs.
+    The pull request is read as data and never checked out:
+
+        cd ~/Students/review && git pull -q --ff-only origin main
+        git fetch -q https://github.com/elyfmiller/flubnf pull/<n>/head
+        git rev-parse FETCH_HEAD                         # must print the reviewed sha
+        S=<reviewed sha>; P=proposals/<name>
+        git cat-file blob $S:$P/experiment.json          # model <name>@<v>, season, size, oracle
+        .venv/bin/flubnf experiment delete <id> --yes    # only if an earlier rerun left it
+        L=sandbox/library/<name>/<v>; rm -rf $L; mkdir -p $L
+        for f in model.bngl priors.conf model.json; do git cat-file blob $S:$P/$f > $L/$f; done
+        git cat-file blob $S:$P/summary.json > /tmp/pr<n>-summary.json
+        .venv/bin/flubnf experiment start <name>@<v> <season> [--size <size>] [--oracle|--no-oracle] --json > /tmp/pr<n>-queued.json
+        .venv/bin/python -I -c 'import json,sys; q=json.load(open(sys.argv[1]))["plan"]; s=json.load(open(sys.argv[2])); print("same" if all(q[k]==s[k] for k in ("model_fingerprint","experiment")) else "DIFFERENT: stop it (.venv/bin/flubnf experiment stop <id>) and say so on the pull request")' /tmp/pr<n>-queued.json /tmp/pr<n>-summary.json
+
+    Give `--size` and `--oracle` or `--no-oracle` only for keys that
+    `experiment.json` holds; a key left out takes its default. A start
+    that answers without a `plan` (an earlier rerun still queued, or
+    complete) makes the last line fail on `plan`: stop and delete that
+    rerun first.
+    `library.resolve` re-hashes the copied version and refuses any changed
+    byte, text not in normal form, or a `model.bngl` with its own actions
+    (`MODEL_CHANGED`), so no fork action runs. The queue's plan carries
+    both fingerprints, which must equal the proposal's before the hours of
+    fitting. When the run is done,
+    `.venv/bin/flubnf experiment show <id> --json` gives the rerun's
+    figures: they are the record. They can agree with the student's only
+    when `scored.truth_sha256`, `ran.engine_build` and
+    `shipped.started_utc` agree. Never Check, Register or start a fork's
+    model anywhere else.
 - Ely merges a fork's pull request at the commit that was reviewed, with
-  Ely's own subject line, after reading who authored its commits:
+  Ely's own subject line, after reading who authored its commits, and with
+  the contributor check's latest run at the reviewed sha green (an edit to
+  the title or the description runs it again at the same sha); no run for
+  that sha counts as not green:
 
       gh pr view <number> --repo elyfmiller/flubnf --json headRefOid,commits --jq '.headRefOid, (.commits[] | .oid[0:8] + " " + ([.authors[] | .name + " <" + .email + ">"] | join(", ")))'
       gh pr merge <number> --merge --match-head-commit <reviewed sha> --subject "<subject>" --repo elyfmiller/flubnf
