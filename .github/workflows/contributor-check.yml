@@ -1,0 +1,29 @@
+name: contributor check
+# A fork's pull request, read as data through GitHub's API with a read-only
+# token: its commits, its title and description, and its files
+# (.github/contributor_check.py; docs/CONTRIBUTING.md section 7).
+# pull_request_target runs this file and the script as they are on the
+# default branch, never a pull request's copy, so a pull request cannot
+# change the check that reads it. Never check out, install or run a pull
+# request's code here, and never put its text in a run line.
+# A public repository needs a repository Actions policy that allows
+# pull_request_target for this file only (Settings > Actions > Policies).
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  contributor-check:
+    # this repository's own branches (dev to main, every lane's) skip: success
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # the default branch's tree (no ref), with no token left in it
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      # the runner image's own python3, isolated, standard library only
+      - run: python3 -I .github/contributor_check.py
+        env: {GITHUB_TOKEN: "${{ github.token }}"}

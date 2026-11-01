@@ -117,6 +117,11 @@ CODES: dict[str, tuple[str, str]] = {
     "LINE_BREAK_NOT_ALLOWED": ("problem", "a line break other than a "
                                "newline up to end model: PyBNF reads a "
                                "line there and BNG2.pl does not"),
+    # the Sandbox's placeholder fill (sandbox_data.filled_bngl)
+    "PLACEHOLDERS_UNFILLED": ("problem", "model.bngl keeps a placeholder "
+                              "the Sandbox cannot fill from data.exp: no "
+                              "location or population, rates, no "
+                              "admissions, or one it does not fill"),
 }
 
 

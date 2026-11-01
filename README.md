@@ -89,7 +89,9 @@ its own folder, with a code editor, a check that needs no engine, a
 contact map and reaction network drawn from the model, and data loaded
 from the hub archive (by jurisdiction and week range) or from a CSV of
 your own. Examples and a template for a new pathogen ship with it; a
-student guide is in [docs/SANDBOX.md](docs/SANDBOX.md).
+student guide is in [docs/SANDBOX.md](docs/SANDBOX.md), and working from a
+terminal through to a pull request in
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 The Data, Forecast and Retrospective tabs also take weekly data of your
 own (a CSV of date, group and value, population optional; a file of one
@@ -233,6 +235,7 @@ product, is [docs/archive/RELEASE-1.0.md](docs/archive/RELEASE-1.0.md).
 | `docs/` | install, engine, Windows, models, banks, site, archive | [docs/README.md](docs/README.md) |
 | `tests/`, `app/tests/` | the two pytest suites | [tests/README.md](tests/README.md) |
 | `model-metadata/` | the hubverse model cards | [model-metadata/README.md](model-metadata/README.md) |
+| `proposals/` | model variants students propose, one folder of six files each | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
 
 `app/state/` (ledger and retrospectives), `sandbox/` and `site/` are
 generated locally and ignored by git. Every `FLUBNF_*` environment

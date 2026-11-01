@@ -2,8 +2,9 @@
    files as tabs, the run
    settings presets and their time estimate, Check, the unsaved-changes
    chip, delete confirmations, the time a live fit has taken and the poll
-   until it ends, and the results plot. Plain ES5, no build step; colours
-   come from the page's tokens.
+   until it ends, and the results plot; the gallery's experiment form and
+   an experiment's page (sandbox_experiment.html) while it replays. Plain
+   ES5, no build step; colours come from the page's tokens.
    The pure helpers are exported as SandboxPage for the tests. */
 (function (root) {
   'use strict';
@@ -110,7 +111,7 @@
     }
 
     function show() {
-      var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
+      var v = start.value, hub = v === 'shipped:sihrs' || v === 'template:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
       // what the chosen start is: its note in the "i" beside the list,
       // hidden for a start without one (the Oracle start shows its fields)
@@ -510,8 +511,37 @@
                                 f.machine_tip ? ['sb-ck-machine', f.machine_tip] : null);
             }
             if (warns.length && probs.length) html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
+            // a model that keeps placeholders: what Register would say of
+            // these files, each finding with its code; one already listed
+            // above is counted, not repeated
+            var rp = d.replays;
+            if (rp) {
+              var seen = probs.concat(warns, f.machine ? [f.machine] : []);
+              var found = rp.findings || [];
+              var bad = found.filter(function (x) { return x.tier === 'problem'; });
+              var rest = found.filter(function (x) { return x.tier !== 'problem'; });
+              var listed = bad.concat(rest).filter(function (x) { return seen.indexOf(x.text) < 0; })
+                .map(function (x) { return x.text + ' (' + x.code + ')'; });
+              if (bad.length) {
+                html += alertHtml('warn', 'Not ready for replays:', (bad.length === 1 ? '1 thing'
+                  : bad.length + ' things') + ' to fix before Register.') + listHtml(listed);
+              } else {
+                var reg = rp.registered;
+                html += alertHtml(rest.length ? 'warn' : 'ok', 'Ready for replays:',
+                  (reg ? 'these files are ' + reg.ref + ' (' + reg.short + ').'
+                       : 'Register freezes these files as a new version.')
+                  + (rest.length ? ' ' + (rest.length === 1 ? '1 note.' : rest.length + ' notes.') : ''))
+                  + listHtml(listed)
+                  + (reg ? '' : '<div class="row"><button formaction="/sandbox/models/'
+                     + encodeURIComponent(form.getAttribute('data-model'))
+                     + '/register" formnovalidate>Register</button></div>');
+              }
+            }
             if (f.suffix) rows.push(['Simulate suffix', f.suffix, '']);
             if (f.rows) rows.push(['Data rows', f.rows, '']);
+            var pl = f.placeholders;
+            if (pl && pl.location) rows.push(['Placeholders filled for', pl.location,
+              'population ' + Number(pl.population).toLocaleString('en-US')]);
             if (f.free && f.free.length) rows.push(['Fitted parameters', f.free.length, '']);
             if (f.network) rows.push(['Network', f.network, f.species != null
               ? '(' + f.species + ' species, ' + f.reactions + ' reactions)' : '']);
@@ -572,6 +602,41 @@
               root.FluBNFUI.setBadge(chip.querySelector('.uk-badge'), 'warn',
                                      'unsaved changes (the run ended: save, then reload)');
             }
+          }).catch(function () {});
+      }, 5000);
+    }
+
+    // ---- the experiment form: the Oracle step is set from the chosen
+    // model (on for sihrs, off for any other) whenever the model changes
+    var xm = $('sbexp-model'), xo = $('sbexp-oracle');
+    if (xm && xo) xm.addEventListener('change', function () {
+      var o = xm.options[xm.selectedIndex];
+      if (o) xo.value = o.getAttribute('data-oracle') === '1' ? 'on' : 'off';
+    });
+
+    // ---- an experiment's page while it replays or is scored: the weeks
+    // bar and the line are set from its JSON every 5 s, and the page reloads
+    // once it is neither (or is gone: the 404's {error}), or once its status
+    // is not the one the page was drawn with (starting, running, stopping:
+    // the badge says it)
+    var sbx = $('sbx');
+    if (sbx && sbx.getAttribute('data-poll') === '1') {
+      var xtimer = setInterval(function () {
+        fetch('/api/sandbox/experiments/' + encodeURIComponent(sbx.getAttribute('data-id')))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d || !d.status || (!d.live && !(d.scoring && d.scoring.pending))
+                || d.status.status !== sbx.getAttribute('data-status')) {
+              clearInterval(xtimer);
+              location.reload();
+              return;
+            }
+            var bar = $('sbx-weeks'), xl = $('sbx-line'), st = d.status;
+            if (bar && root.FluBNFUI) {
+              root.FluBNFUI.setProgress(bar, st.weeks_done, st.weeks_total || 1,
+                                        st.weeks_done + ' of ' + st.weeks_total + ' weeks');
+            }
+            if (xl) xl.textContent = st.line;
           }).catch(function () {});
       }, 5000);
     }

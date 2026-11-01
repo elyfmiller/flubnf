@@ -389,6 +389,24 @@
   {{ tips.meta([sbx.models ~ " model" ~ ("" if sbx.models == 1 else "s"), sbx.runs ~ " run" ~ ("" if sbx.runs == 1 else "s")]) }}
  </div>
  </section>
+ {% endif %}{% if storage.students %}{% set su = storage.students %}
+ {# the runner computer's main console only (routes/storage.py
+    _students_here): each student's experiments, by folder, outside the
+    total; Delete is Ely's way to take a queued one out of the queue.
+    Elsewhere this block writes not a byte #}
+ <section class="st-sec" aria-labelledby="h-st-stu">
+ {{ tips.heading("Student experiments", "st-stu", "Each student's experiments on this computer, by folder (~/Students/<name>/sandbox), replayed by the runner one at a time. A week's forecasting samples are dropped once its quantiles are checked against them. Deleting one removes its folder and takes it out of the queue; its model stays in the student's library. Not in the total above: these folders belong to the students' clones.", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="student experiments") }}
+ {% if su.down %}{{ tips.alert("warn", su.why, title="The runner is not running.", id="st-stu-down") }}{% else %}{{ tips.meta(su.runner) }}{% endif %}
+ {% for e in su.rows %}
+ <div class="st-row">
+  <span class="st-title"><strong>{{ e.ident }}</strong> {{ tips.badge(e.badge[0], e.badge[1]) }}</span>
+  {% if e.parts %}{{ tips.meta(e.parts) }}{% endif %}
+  <span class="st-size">{{ e.size_h }}</span>
+  {% if e.busy %}{{ busy_act("st-stu-" ~ loop.index, e.why, "the student experiment " ~ e.ident) }}
+  {% else %}{{ del_form("/storage/delete", "experiment", e.ident, "the student experiment " ~ e.ident, e.size_h, "Its model stays in " ~ e.folder ~ "'s library.") }}{% endif %}
+ </div>
+ {% endfor %}
+ </section>
  {% endif %}
 </details>
 </div>
