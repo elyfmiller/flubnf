@@ -258,6 +258,33 @@ def test_a_line_break_bng2_does_not_see_is_refused(tmp_path, brk):
     assert not (d / "lwf" / "m.bngl").exists()
 
 
+def test_a_model_reading_bngl_time_is_refused(tmp_path):
+    """time() reads the simulator's clock, which lwf starts a week after the
+    private engine does (data week t at lwf time t + 1): refused, not run a
+    week out of phase. The templates' counter species is unaffected."""
+    d = _cell(tmp_path)
+    m = d / "m.bngl"
+    m.write_text(m.read_text(encoding="utf-8").replace(
+        "cos(2*pi*(t-phi1)/52)", "cos(2*pi*(time()-phi1)/52)", 1),
+        encoding="utf-8")
+    with pytest.raises(lwf.Untranslatable,
+                       match=r"m\.bngl line \d+: time\(\) would run a week "
+                             r"out of phase.*counter species"):
+        lwf.translate_cell(_record(d))
+    assert not (d / "lwf" / "m.bngl").exists()
+
+
+def test_time_in_a_comment_or_another_name_is_not_refused(tmp_path):
+    d = _cell(tmp_path)
+    m = d / "m.bngl"
+    m.write_text(m.read_text(encoding="utf-8").replace(
+        "begin functions",
+        "begin functions\n# the clock is t, not time()\nmytime() = t", 1),
+        encoding="utf-8")
+    lwf.translate_cell(_record(d))
+    assert "mytime() = t" in (d / "lwf" / "m.bngl").read_text()
+
+
 def test_crlf_is_not_a_lone_break(tmp_path):
     d = _cell(tmp_path)
     m = d / "m.bngl"
@@ -491,6 +518,44 @@ def test_public_build_without_pybnf(public, monkeypatch):
     b = lwf.public_build()
     assert b["source"] == "unknown" and "pybnf" in b["error"]
     assert "could not be read" in eb.warning(b)
+
+
+def _probe_returns(monkeypatch, rc: int, out: str = ""):
+    """The venv probes' subprocess.run answers rc; the kwargs are kept."""
+    seen = []
+
+    def run(cmd, **kw):
+        seen.append(kw)
+        return subprocess.CompletedProcess(cmd, rc, out, "")
+    monkeypatch.setattr(lwf.subprocess, "run", run)
+    return seen
+
+
+def test_a_lock_check_stopped_by_a_signal_is_said_and_never_cached(
+        public, monkeypatch):
+    """A probe killed by a signal (a terminal's Ctrl-C reaching it) is no
+    answer about the venv: it is said as such and asked again next time,
+    not kept for CHECK_TTL_S as a stale engine."""
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", sys.executable)
+    seen = _probe_returns(monkeypatch, -2, "Traceback (most recent call last):")
+    assert lwf.lock_check() == (
+        False, "the check was stopped by signal 2; run it again")
+    assert not lwf._CHECK
+    _probe_returns(monkeypatch, 0, "pybnf matches the lock")
+    assert lwf.lock_check() == (True, "pybnf matches the lock")
+    assert lwf._CHECK                           # an answer is kept
+    if sys.platform != "win32":                 # its own session: no Ctrl-C
+        assert seen[0].get("start_new_session") is True
+
+
+def test_a_build_probe_stopped_by_a_signal_is_never_cached(public, monkeypatch):
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", sys.executable)
+    seen = _probe_returns(monkeypatch, -2)
+    b = lwf.public_build()
+    assert b["source"] == "unknown" and "signal 2" in b["error"]
+    assert not lwf._BUILD
+    if sys.platform != "win32":
+        assert seen[0].get("start_new_session") is True
 
 
 # --- the Sandbox and the run page -------------------------------------------------
