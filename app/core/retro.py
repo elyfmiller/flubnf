@@ -657,6 +657,19 @@ def _week_engine(wd: Path, engine: str) -> None:
     f.write_text(json.dumps({"engine": engine}), encoding="utf-8")
 
 
+def _kill_runners(procs: list) -> None:
+    """Never leave engine processes orphaned: on the public engine stop each
+    runner's tree (it starts PyBNF as a child), then kill what is left."""
+    if pf_engine._public():
+        pf_engine._stop_all(procs)
+    for p in procs:
+        try:
+            if p.poll() is None:
+                p.kill()
+        except Exception:
+            pass
+
+
 def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
     """One reduced-priority runner subprocess per shard (app/core/proc.py).
     Split out so tests can fake fits; returns objects with poll() and kill()."""
@@ -680,27 +693,35 @@ def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
         shards = [[c for c in s if c["key"] not in untranslated]
                   for s in shards]
         shards = [s for s in shards if s]
-    for i, shard in enumerate(shards):
-        sj = wd / f"cells_{i}.json"
-        sj.write_text(json.dumps(shard), encoding="utf-8")
-        runner = wd / f"runner_{i}.py"
-        runner.write_text(
-            lwf.runner_text(lwf.RETRO_RUNNER, pf_engine.RUNNER_COMMON,
-                            cells_json=str(sj), halt_path=str(halt),
-                            done_dir=str(done)) if public
-            else _RETRO_RUNNER.format(
-                pybnf_path=str(pf_engine.PYBNF_PF),
-                common=pf_engine.RUNNER_COMMON, cells_json=str(sj),
-                halt_path=str(halt), done_dir=str(done)), encoding="utf-8")
-        # own session/process group, as the forecast path does: this daemon
-        # thread can die without a finally, and the recorded group is what the
-        # relaunch sweeps (flubnf/cli.py)
-        procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
-                     pf_engine.runner_cmd(runner)),
-                     stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL,
-                     **pf_engine.runner_popen_kwargs(
-                         proc_mod.low_priority_popen_kwargs())))
+    try:
+        for i, shard in enumerate(shards):
+            sj = wd / f"cells_{i}.json"
+            sj.write_text(json.dumps(shard), encoding="utf-8")
+            runner = wd / f"runner_{i}.py"
+            runner.write_text(
+                lwf.runner_text(lwf.RETRO_RUNNER, pf_engine.RUNNER_COMMON,
+                                cells_json=str(sj), halt_path=str(halt),
+                                done_dir=str(done)) if public
+                else _RETRO_RUNNER.format(
+                    pybnf_path=str(pf_engine.PYBNF_PF),
+                    common=pf_engine.RUNNER_COMMON, cells_json=str(sj),
+                    halt_path=str(halt), done_dir=str(done)),
+                encoding="utf-8")
+            # own session/process group, as the forecast path does: this
+            # daemon thread can die without a finally, and the recorded
+            # group is what the relaunch sweeps (flubnf/cli.py)
+            procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
+                         pf_engine.runner_cmd(runner)),
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         **pf_engine.runner_popen_kwargs(
+                             proc_mod.low_priority_popen_kwargs())))
+    except BaseException:
+        # interrupted while starting (a second Ctrl-C): the shards already
+        # started lead their own sessions, so no Ctrl-C reaches them, and
+        # are not yet in the registry the relaunch sweeps
+        _kill_runners(procs)
+        raise
     pf_engine.record_runner_pids(procs)
     return procs
 
@@ -732,15 +753,7 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
                 raise RuntimeError("PF runners timed out")
             _sleep(FIT_POLL_S)
     except BaseException:
-        if pf_engine._public():
-            # the public runner starts PyBNF as a child: stop the tree
-            pf_engine._stop_all(procs)
-        for p in procs:               # never leave engine processes orphaned
-            try:
-                if p.poll() is None:
-                    p.kill()
-            except Exception:
-                pass
+        _kill_runners(procs)
         raise
     finally:
         # drained or killed: drop these pids from the takeover registry
@@ -1126,6 +1139,12 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 # bank the segment's seconds; no entry for an incomplete week
                 _record_partial(root, asof, elapsed_now(read_meta(root)) - e0)
                 raise
+            except EngineBuildMismatch as e:
+                # the week began on the other engine (_week_engine): stop and
+                # say why, rather than fail it and fit the rest on this one
+                why = f"stopped at {asof}: {e}"
+                _record_stop_reason(root, why)
+                raise EngineBuildChanged(f"{season}: {why}") from e
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a", encoding="utf-8").write(
                     f"{asof}: {e}\n")
