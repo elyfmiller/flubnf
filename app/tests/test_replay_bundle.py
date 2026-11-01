@@ -327,6 +327,48 @@ def test_an_imported_replay_is_the_reference_with_the_step_on_or_off(
                for w in SMOKE_WEEKS)
 
 
+def test_the_quantiles_land_on_the_right_side_of_a_coarse_clock(
+        tmp_path, monkeypatch):
+    # the import on one clock tick, as Windows' clock can stamp quick
+    # writes: every member and every "now" alike. A week without
+    # oracle.json still lands older than its samples, so a bundle exported
+    # before is nobody's reference; one with oracle.json ties its samples
+    # and reads current
+    from test_experiments import SMOKE_WEEKS, _replay
+    real, utime = rb._extract_member, os.utime
+    stamp = 1_700_000_000 * 10 ** 9
+
+    def at_one_stamp(z, name, dst, *a):
+        real(z, name, dst, *a)
+        utime(dst, ns=(stamp, stamp))
+
+    def now_at_the_stamp(path, times=None, *, ns=None, **kw):
+        if times is None and ns is None:
+            ns = (stamp, stamp)
+        utime(path, times, ns=ns, **kw)
+    for filter_, into in ((False, "old"), (True, "new")):
+        src = _replay(tmp_path / f"{into}-retro" / "2024-25",
+                      weeks=SMOKE_WEEKS, filter_=filter_)
+        p = rb.export_season(src, "2024-25", tmp_path / f"{into}-out")
+        assert any(f.endswith(RS.QUANTILES_NAME) for f in rb.bundle_files(src))
+        with monkeypatch.context() as m:
+            m.setattr(rb, "_extract_member", at_one_stamp)
+            m.setattr(os, "utime", now_at_the_stamp)
+            r = rb.import_bundle(p, tmp_path / into)
+        for w in SMOKE_WEEKS:
+            wd = r.root / "weeks" / w
+            gap = ((wd / RS.QUANTILES_NAME).stat().st_mtime_ns
+                   - RS.samples_file(wd).stat().st_mtime_ns)
+            assert gap == (0 if filter_ else -2 * 10 ** 9)
+            assert (RS.read_week_quantiles(wd) is None) is not filter_
+        refs = [X.reference(tmp_path / into, "2024-25", oracle, SMOKE_WEEKS)
+                for oracle in (False, True)]
+        if filter_:
+            assert [x["member"] for x in refs] == [RS.FILTER_MEMBER, "pf"]
+        else:
+            assert refs == [None, None]
+
+
 def test_a_stale_sidecar_is_not_carried(tmp_path):
     from test_experiments import SMOKE_WEEKS, _replay
     root = _replay(tmp_path / "retro" / "2024-25", weeks=SMOKE_WEEKS)
