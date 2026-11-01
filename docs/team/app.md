@@ -6,6 +6,59 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-01: student workspace step 6, commands, a guide and the fork
+  check, on `dev`
+  ([c4a4f99](https://github.com/elyfmiller/flubnf/commit/c4a4f99)).
+  `flubnf model new|check|register|list`, `flubnf experiment
+  start|show|list|stop|delete` and `flubnf storage`
+  (`flubnf/cli_sandbox.py`) do what their pages do, with the pages'
+  options only and `--json` on each (the route's JSON on stdout, words
+  on stderr; exit 0 done, 1 refused, 2 usage, 3 this computer or
+  interrupted). On a laptop `experiment start` replays in the terminal:
+  refused while the clone's console is open or another replay runs; its
+  fits registered apart (`pf_runners.terminal.json`); stopped before its
+  next week if the console opens; Ctrl-C once is Stop, twice stops it
+  now, with BNG2.pl's runs and the sleep guard kept out of the
+  terminal's Ctrl-C. In a student's folder on the Mac Studio it queues.
+  Five pieces moved from `routes/sandbox.py` into core; preflight now
+  refuses a record under way in another process, the one change a
+  console shows (before, two writers fitted one folder).
+  `docs/CONTRIBUTING.md` is the guide (the commands, a clone on the Mac
+  Studio, fork and branch, `proposals/<name>/`, the pull request, what
+  the check refuses), beside a PR template; TEAM.md gains the check, the
+  proposal rerun in `~/Students/review` and the merge rule (the check's
+  latest run green at the reviewed sha). The contributor check
+  (`.github/workflows/contributor-check.yml`,
+  `.github/contributor_check.py`) runs on pull_request_target from the
+  default branch's copy, reads a fork's pull request through the API
+  with a read-only token and runs none of it. It refuses a base other
+  than `dev`, over 250 commits or 3,000 files, a credit line in a
+  commit, the title or the description, the owner's account or address
+  on a commit not on `main`, and a proposal folder that is not six plain
+  files of at most 256 KB; it flags the launchers, the installers,
+  `.github/`, the engine updater and another account; the repository's
+  own pull requests skip. Defaults taken, for Ely to change:
+  pull_request_target; advisory on `dev`; the title and description held
+  to the credit rule; another account flagged, not refused; no push from
+  the Mac Studio; one guide file (11.7 KB against the 8.5 KB estimated);
+  no content checks in CI; `.gitignore` left. Not built, each a new
+  refusal for Ely to decide: a path that differs only in letter case (or
+  a long s) from another path in the tree; a Windows device name (con,
+  aux, nul, com1, lpt1 and so on) as a proposal's name. Tested: the full
+  suite with only the 22 failures this Mac already had; every console
+  page and its JSON byte-identical to 8185567 but the new refusal; each
+  command against its route's JSON; a real smoke of 2024-25 started from
+  the terminal in a throwaway copy, relWIS 1.272 as step 4's page run;
+  the check on about 400 crafted events, and read-only on #72, #61 and
+  #63 made to look like forks. For Ely, in order: merge to `main`, where
+  the check starts to exist; before 2 December, add a repository Actions
+  policy that allows pull_request_target for
+  `.github/workflows/contributor-check.yml` only (Settings > Actions >
+  Policies), since GitHub then blocks it without one in a public
+  repository; open one test pull request from a fork someone else owns,
+  to see whether its run waits for approval, where it shows, and that
+  the API serves the fork's commits and tree; then, if wanted, make the
+  check required on `dev`. Step 7 (RSV and COVID-19) waits for Ely's go.
 - 2026-10-31: student workspace step 5, the runner on the students' Mac
   Studio, on `dev`
   ([cbe89c6](https://github.com/elyfmiller/flubnf/commit/cbe89c6)).
@@ -56,9 +109,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   it: merge to `main`; on the Mac Studio, export each season's replay
   again and import it; start `flubnf runner` once (its folder is what
   makes a student's console queue). The Mac Studio's RAM is still
-  unknown (memory limits cap at half of it). Step 6 (commands with
-  `--json`, a guide, CONTRIBUTING, a PR template and the fork-PR check)
-  waits for Ely's go.
+  unknown (memory limits cap at half of it).
 - 2026-10-30 (later): student workspace step 4, experiments and the
   compare page, on `dev`
   ([a1ea679](https://github.com/elyfmiller/flubnf/commit/a1ea679)). The
