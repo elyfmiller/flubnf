@@ -211,14 +211,11 @@ horizon, the fits that had no forecast, and what ran. A page view scores
 again when the truth moved, weeks were stored, or the shipped replay
 compared with moved.
 
-For scripts: `POST /sandbox/experiments` with `Accept: application/json`
-answers in JSON (`ok`, `id`, `url`, `started`, `resumed`, `complete`,
-`text`, `codes`, `plan`); `GET /api/sandbox/experiments/<id>` gives the
-status, the scoring, `summary.json` as stored and its figures;
-`POST /sandbox/stop` with `experiment=<id>`, and
-`POST /sandbox/experiments/<id>/delete` with `confirm=<id>`, answer
-`ok`, `id` and `text`. The start takes the four fields and no other: a
-field the page lacks is refused (`FIELD_UNKNOWN`).
+For scripts: each action here is a `flubnf model` or `flubnf experiment`
+command with `--json` ([CONTRIBUTING.md](CONTRIBUTING.md), section 2),
+and its route answers the same JSON with `Accept: application/json`.
+The start takes the four fields and no other: a field the page lacks is
+refused (`FIELD_UNKNOWN`).
 
 ### On the students' Mac Studio
 
@@ -271,8 +268,4 @@ of the queue. A student sees only their own experiments. On that
 computer's main console, Storage lists every student's experiments by
 folder, outside the total; Delete removes one, and takes a queued one
 out of the queue. That console's own experiment Start waits while the
-runner replays. For scripts, the start's JSON there has `started: false`,
-the `plan` when it queues, and `queued`, which
-`GET /api/sandbox/experiments/<id>` adds too: its place, the wait, about
-how long it runs, the disk it needs and keeps, why it waits, and whether
-the runner is running (null while it replays).
+runner replays.

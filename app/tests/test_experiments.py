@@ -3,9 +3,10 @@ the derived id, the fingerprint, the size presets and their week rules,
 the shipped replay an experiment is compared with, the plan, the replay
 itself (run_week faked, and once the real prepare on
 test_prepare_golden.py's hub) and the call after every week, run and its
-summary at every segment end, preflight, status and the queue flag, find
-(in root() or another experiments folder), the list, delete, the season
-offered, and stale kept to the retro root it is given.
+summary at every segment end, preflight (a replay under way in another
+process refused), status and the queue flag, find (in root() or another
+experiments folder), the list, delete, the summary as a page shows it,
+the season offered, and stale kept to the retro root it is given.
 
 The calendar is the literal 2024-25 one and the shipped replays are
 synthetic trees: the suite reads no hub (the truth a run scores against
@@ -944,6 +945,31 @@ def test_a_resume_names_the_replay_its_summary_was_compared_with(
         season / "2024-25", "2026-09-26T05:20:00Z")
 
 
+def test_preflight_refuses_a_replay_under_way_in_another_process(
+        season, tmp_path):
+    s = {"model": "sihrs", "season": "2024-25"}
+    folder = X.root() / "sihrs_2024-25_smoke_oracle"
+    # a terminal's start or the runner's job: a fresh heartbeat, its
+    # worker another live process
+    meta = {"status": "running", "heartbeat_utc": time.time(),
+            "pid": os.getppid(), "settings": {"experiment": SMOKE_FP}}
+    retro.write_meta(folder, meta)
+    before = _tree(tmp_path)
+    assert _refused("MACHINE", X.preflight, s, retro_root=season) == (
+        "sihrs_2024-25_smoke_oracle is replaying in another process; stop "
+        "it first")
+    assert _tree(tmp_path) == before
+    # once it has stopped, or its worker is gone, a start resumes it
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    for record in ({**meta, "status": "interrupted"},
+                   {**meta, "status": "stopped"},
+                   {**meta, "pid": gone.pid}):
+        retro.write_meta(folder, record)
+        p = X.preflight(s, retro_root=season)
+        assert (p["id"], p["complete"]) == (folder.name, False), record
+
+
 @pytest.mark.parametrize("record", ["text", [1, 2], {}, "not JSON", None])
 def test_plan_refuses_a_damaged_run_record(season, record):
     folder = X.root() / "sihrs_2024-25_smoke_oracle"
@@ -1185,6 +1211,23 @@ def test_delete_stays_inside_the_root_and_refuses_a_live_one(sandbox_root):
     assert (sb.MODELS / "keep.txt").is_file()
     with pytest.raises(sb.SandboxError, match="no experiment is named"):
         X.delete(a.name)
+
+
+def test_summary_or_problem_reads_the_summary_or_says_why_not(sandbox_root):
+    folder = _folder({"model": "sihrs", "season": "2024-25"}, 1_790_000_000.0)
+    assert X.summary_or_problem(folder) == (None, "")         # none yet
+    path = X.write_summary(folder, {"id": folder.name, "n": 3})
+    assert X.summary_or_problem(folder) == (
+        {"id": folder.name, "n": 3, "format_version": 1}, "")
+    L.write_json(path, {"id": folder.name, "format_version": 2})
+    assert X.summary_or_problem(folder) == (
+        None, "summary.json was written by a newer FluBNF (format_version "
+        "2); this one reads 1 only.")
+    for text in ("{", "[]", '{"format_version": "1"}',
+                 '{"format_version": true}', '{"format_version": 0}'):
+        path.write_text(text, encoding="utf-8", newline="\n")
+        assert X.summary_or_problem(folder) == (
+            None, "summary.json cannot be read"), text
 
 
 # --------------------------------------- the reference and the season

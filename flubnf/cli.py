@@ -6,14 +6,16 @@ carries every command.
 Sections, in file order:
   1. help panels, root app and options, _trace
   2. takeover: entry markers, ancestor walk, pid cmdline/liveness probes
-     (POSIX and Windows), PF runner sweep, pidfile
+     (POSIX and Windows), PF runner sweep, pidfile, console probe
+     (_console_open)
   3. ports: candidates, reuse flags, pick/bind
   4. macOS window: activation retries, app naming, zoom API, watchdog,
      WebView2 probe
   5. the `app` and `window` commands and _exit_now; `runner` (the
      student experiment queue, app/core/runner.py)
   6. the mounted groups: cli_doctor (doctor, knobs), cli_retro (retro,
-     groundhog), cli_verify (oracle, site), cli_bank, cli_datasets
+     groundhog), cli_verify (oracle, site), cli_bank, cli_datasets,
+     cli_sandbox (model, experiment, storage)
 
 Heavy imports (pandas, scipy, uvicorn) stay inside the commands so that
 `flubnf app` opens its window without loading them
@@ -37,9 +39,9 @@ from typer.core import TyperGroup
 #: otherwise, so a new command cannot silently land in the wrong panel).
 HELP_PANELS = {
     "Console": ("app", "window", "doctor", "engine-update", "knobs",
-                "dataset"),
+                "dataset", "model", "storage"),
     "Replay & verification": ("retro", "groundhog", "oracle", "site",
-                              "runner"),
+                              "experiment", "runner"),
     "Donor banks": ("bank",),
 }
 
@@ -611,6 +613,25 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
     if runner_pids is not None:
         _sweep_runner_groups(runner_pids, wait=wait)
     return signalled
+
+
+def _console_open(pidfile: Optional[Path] = None) -> bool:
+    """Whether this clone's console is open: the pidfile (APP_PID_FILE,
+    read at call time) names a live process, neither this one nor an
+    ancestor, whose command line is a console entry (APP_ENTRY_MARKERS):
+    the takeover's test, with nothing signalled. A terminal's experiment
+    start asks it (flubnf/cli_sandbox.py). Never raises."""
+    import os
+    try:
+        pidfile = pidfile if pidfile is not None else APP_PID_FILE
+        pid = int(pidfile.read_text().strip())
+        if pid <= 0 or pid == os.getpid() or not _pid_alive(pid):
+            return False
+        if not _cmdline_has_marker(_pid_cmdline(pid), APP_ENTRY_MARKERS):
+            return False
+        return pid not in _ancestor_pids()
+    except Exception:
+        return False
 
 
 def _write_pidfile(pidfile: Optional[Path] = None):
@@ -1374,6 +1395,7 @@ from .cli_retro import (  # noqa: F401
     retro_export_cmd,
     retro_import_cmd,
 )
+from .cli_sandbox import experiment_app, model_app, storage_cmd  # noqa: F401
 from .cli_verify import (  # noqa: F401
     oracle_app,
     oracle_backfill_cmd,
@@ -1391,6 +1413,9 @@ app.add_typer(bank_app, name="bank")
 app.add_typer(oracle_app, name="oracle")
 app.add_typer(site_app, name="site")
 app.add_typer(dataset_app, name="dataset")
+app.add_typer(model_app, name="model")
+app.add_typer(experiment_app, name="experiment")
+app.command("storage")(storage_cmd)
 
 
 if __name__ == "__main__":

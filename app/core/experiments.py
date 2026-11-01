@@ -518,11 +518,19 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     list when the folder records one), "resume" (a week is stored),
     "weeks_done" and "complete", its "reference" the shipped replay the
     folder's summary was compared with when that replay is still here (as
-    score keeps it). MACHINE when the Groundhog's bank cannot be read or
+    score keeps it). MACHINE when the folder's run record says a replay
+    of it is under way in another process (a console refuses its own
+    first, by its claim), when the Groundhog's bank cannot be read or
     checked, and at a resume when this machine's engine build is not the
     one the stored weeks were fitted by. Writes nothing."""
     from app.core import retro
     p = plan(settings, retro_root=retro_root)
+    # one writer per folder: a second run_season would clear the first's
+    # STOP and PAUSE (a dead worker's record reads interrupted, not active)
+    if status(root() / p["id"])["status"] in retro.ACTIVE_STATUSES:
+        raise Refusal(finding(
+            "MACHINE", f"{p['id']} is replaying in another process; stop "
+            "it first"))
     try:
         _week_extra(p)                           # reads and checks the bank
     except Refusal:
@@ -554,6 +562,46 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
             "complete": bool(weeks) and len(done) == len(weeks)}
 
 
+def started(p: Mapping) -> dict:
+    """Start's answer for a preflight p about to run (not complete):
+    {"text" (started or resumed, or that there is nothing to compare it
+    with), "detail" (the notes: the shipped replay compared with, and
+    each finding with its code), "kind" ("ok" with a shipped replay to
+    compare with, else "warn"), "plan" (the plan as Start's JSON gives
+    it)}."""
+    eid = p["id"]
+    ref, weeks, done = p["reference"], len(p["weeks"]), p["weeks_done"]
+    if p["resume"]:
+        text = f"Resumed {eid}: {done} of {weeks} weeks were stored already."
+    else:
+        text = (f"Started {eid}: {weeks} weeks of {p['season']}, "
+                f"{len(p['locations'])} locations.")
+    notes = []
+    if ref is not None:
+        notes.append(f"Compared with the shipped replay of {p['season']} ("
+                     + ("the Oracle SIHRS" if ref["member"] == "pf"
+                        else "the Liu-West filter alone")
+                     + ") on the cells both score.")
+    else:
+        # nothing to compare with leads; a resume's count goes to the "?"
+        if p["resume"]:
+            notes.append(f"{done} of {weeks} weeks were stored already.")
+        text = (f"{'Resumed' if p['resume'] else 'Started'} {eid}; nothing "
+                "to compare it with.")
+    for f in p["findings"]:
+        said = f"{f['text']} ({f['code']})"
+        notes.append(said if f["code"] == "NO_REFERENCE"
+                     else f"Worth a look: {said}")
+    plan = {k: p[k] for k in ("model", "model_fingerprint", "experiment",
+                              "season", "size", "oracle", "locations",
+                              "weeks", "replicates", "particles")}
+    plan["reference"] = None if ref is None else {
+        "member": ref["member"], "root": _repo_path(ref["root"]),
+        "started_utc": ref["started_utc"]}
+    return {"text": text, "detail": " ".join(notes),
+            "kind": "ok" if ref is not None else "warn", "plan": plan}
+
+
 def finished_mark(folder: Path):
     """The run record's finished_utc, or None (no record, or a segment
     under way): a segment has ended when it changes."""
@@ -577,7 +625,7 @@ def run(settings: Path | Mapping, *, retro_root: Path,
         after_week: Callable[[str], None] | None = None) -> dict:
     """replay(), then summary.json scored whenever the segment ended, on
     every way out (finished, stopped, the engine changed, every week
-    failed): the queue's runner and the command call this. A scoring
+    failed): the queue's runner and flubnf experiment call this. A scoring
     failure goes to stderr and never hides the replay's outcome; an
     interrupt is not scored (stale() names it on the next view). Returns
     what replay returns, and raises what it raises."""
@@ -708,6 +756,32 @@ def read_summary(path: Path) -> dict:
             "FORMAT_UNKNOWN", f"{path} is format_version {got!r}; this "
             f"FluBNF reads {SUMMARY_VERSION} only", file=SUMMARY))
     return obj
+
+
+def summary_or_problem(folder: Path) -> tuple[dict | None, str]:
+    """An experiment's summary.json as its page shows it: (the summary as
+    read, "") when it reads; (None, the words) when a newer FluBNF wrote
+    it (its format_version said) or it cannot be read; (None, "") with
+    none."""
+    summary, problem = None, ""
+    path = Path(folder) / SUMMARY
+    if path.is_file():
+        try:
+            summary = read_summary(path)
+        except Refusal:                         # FORMAT_UNKNOWN
+            try:
+                v = json.loads(path.read_text(encoding="utf-8")).get(
+                    "format_version")
+            except (OSError, ValueError, AttributeError, RecursionError):
+                v = None
+            problem = (f"summary.json was written by a newer FluBNF "
+                       f"(format_version {v}); this one reads "
+                       f"{SUMMARY_VERSION} only."
+                       if type(v) is int and v > SUMMARY_VERSION
+                       else "summary.json cannot be read")
+        except (OSError, ValueError, RecursionError):
+            problem = "summary.json cannot be read"
+    return summary, problem
 
 
 # ------------------------------------------------------------- the scoring
@@ -1281,6 +1355,83 @@ def status(folder: Path) -> dict:
             "elapsed_s": round(float(t["elapsed_s"]), 1), "eta_s": eta,
             "started_utc": _utc(meta.get("started_utc")),
             "finished_utc": _utc(meta.get("finished_utc"))}
+
+
+def line(st: dict, claimed=False, queue: dict | None = None) -> str:
+    """The running card's one line: queued for the runner (`queue`,
+    runner.position's: its place, when it starts, about how long it runs,
+    the disk it needs, and why it waits), starting (on the runner when
+    `claimed` is "runner": runner.json's job names it), stopping, paused,
+    or the week under way, its fits, the time so far and, once a week is
+    timed, about how long is left; "" otherwise."""
+    from app.core import retro, runner
+    state = st["status"]
+    if queue is not None:
+        parts = ["Queued", f"{runner._ordinal(queue['position'])} in line"]
+        if not queue["runner"]:
+            parts.append("the runner is not running")
+        elif queue["wait_s"] >= 60:
+            parts.append("starts in " + sb.eta_words(queue["wait_s"],
+                                                     queue["wait_s"]))
+        else:
+            parts.append("starts within a minute")
+        if queue["seconds"] > 0:
+            parts.append("runs " + sb.eta_words(queue["seconds"],
+                                                queue["seconds"]))
+        if queue["peak_bytes"] > 0:
+            parts.append("needs about "
+                         f"{retro.human_bytes(queue['peak_bytes'])} of disk")
+        if queue["why"]:
+            parts.append(queue["why"])
+        return " · ".join(parts)
+    if claimed and state not in retro.ACTIVE_STATUSES:
+        return ("Starting on the runner…" if claimed == "runner"
+                else "Starting…")
+    so_far = f"{sb.clock(st['elapsed_s'])} so far"
+    if state == "stopping":
+        return f"Stopping after the fits in flight · {so_far}"
+    if state == "paused":
+        return f"Paused · {so_far}"
+    if state != "running":
+        return ""
+    line = (f"{st['week']}: {st['fits_done']} of {st['fits_total']} fits · "
+            f"{so_far}" if st["week"] else so_far)
+    if st["eta_s"] is not None:
+        line += f" · about {sb.clock(st['eta_s'])} left"
+    return line
+
+
+def badge(st: dict, claimed=False, queue: dict | None = None,
+          refused: str = "") -> tuple[str, str]:
+    """(state, words) of an experiment's badge: queued (its place in line,
+    or that the runner is not running), starting, refused by the runner
+    (runner.refusal's words given), running, stopping, paused, stopped or
+    interrupted (with the weeks stored when not every one is), done,
+    error, or not started."""
+    from app.core import retro, runner
+    state = st["status"]
+    part = ("" if st["complete"]
+            else f" · {st['weeks_done']} of {st['weeks_total']} weeks")
+    if queue is not None:
+        if not queue["runner"]:
+            return ("warn", "queued · runner not running")
+        return ("pending",
+                f"queued · {runner._ordinal(queue['position'])} in line")
+    if claimed and state not in retro.ACTIVE_STATUSES:
+        return ("pending", "starting")
+    if refused:
+        return ("warn", "refused by the runner")
+    if state in ("running", "stopping"):
+        return ("pending", state)
+    if state == "paused":
+        return ("warn", "paused")
+    if state in ("stopped", "interrupted"):
+        return ("warn", state + part)
+    if state == "done":
+        return ("ok", "done") if st["complete"] else ("warn", "done" + part)
+    if state == "error":
+        return ("error", "error")
+    return ("neutral", state or "not started")
 
 
 def find(eid: str, *, under: Path | None = None) -> Path | None:

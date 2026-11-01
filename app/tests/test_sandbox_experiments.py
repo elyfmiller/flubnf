@@ -641,6 +641,30 @@ def test_each_refusal_carries_its_code_and_leaves_no_claim(world,
     assert _snapshot(X.root()) == before and _claim() is None
 
 
+def test_a_start_of_a_replay_under_way_in_another_process_is_refused(
+        world, monkeypatch):
+    calls = _weeks_run(monkeypatch)
+    # a terminal's start of the same experiment: its record under way, its
+    # worker another live process
+    folder = X.root() / SMOKE
+    retro.write_meta(folder, {"status": "running",
+                              "heartbeat_utc": time.time(),
+                              "pid": os.getppid(),
+                              "settings": {"experiment": SMOKE_FP}})
+    before = _snapshot(X.root())
+    said = _refused("MACHINE")
+    assert said == (f"Not started: {SMOKE} is replaying in another process; "
+                    "stop it first (MACHINE).")
+    got = client.post("/sandbox/experiments", data=FORM, headers=JSON).json()
+    assert got == {"ok": False, "id": SMOKE, "url": None, "started": False,
+                   "text": said, "codes": [{
+                       "code": "MACHINE", "tier": "machine",
+                       "text": f"{SMOKE} is replaying in another process; "
+                               "stop it first"}]}
+    assert _claim() is None and calls == []
+    assert _snapshot(X.root()) == before
+
+
 def test_an_experiment_holds_the_engine_against_every_other_run(
         world, monkeypatch, tmp_path):
     import app.core.runs as runs_mod
