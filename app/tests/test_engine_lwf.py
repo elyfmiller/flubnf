@@ -285,6 +285,19 @@ def test_time_in_a_comment_or_another_name_is_not_refused(tmp_path):
     assert "mytime() = t" in (d / "lwf" / "m.bngl").read_text()
 
 
+def test_the_model_checks_are_one_function_others_can_call(tmp_path):
+    """model_refusal is what translate_cell raises, for the Sandbox's Check
+    to say before a run; a model the public engine runs gives None."""
+    d = _cell(tmp_path)
+    text = (d / "m.bngl").read_text(encoding="utf-8")
+    assert lwf.model_refusal(text, "m.bngl") is None
+    clock = text.replace("(t-phi1)", "(time()-phi1)", 1)
+    line = clock[:clock.index("time()")].count("\n") + 1
+    assert lwf.model_refusal(clock, "m.bngl").startswith(
+        f"m.bngl line {line}: time() would run a week out of phase")
+    assert "line break" in lwf.model_refusal(text.replace("\n", "\f", 1))
+
+
 def test_crlf_is_not_a_lone_break(tmp_path):
     d = _cell(tmp_path)
     m = d / "m.bngl"
