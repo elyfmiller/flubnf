@@ -6,6 +6,45 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-01 (public engine): at Ely's go, `dev` merged into
+  `engine-public` twice (84297b9, 52e10a6, merges only) and the student
+  workspace checked on the public route by four read-only traces; their
+  23 findings, with Ely's "Yes, build them" to the defaults, became
+  three sets of fixes. The engine lane's, on `engine-public` (8b67523,
+  40a76b7, 62fac2c): a week begun on the other engine stops the season
+  with its reason; an interrupted launch stops the shards it started;
+  lwf refuses a model that reads `time()` (a week out of phase there)
+  and gives `model_refusal` for Check; the venv probes take their own
+  session and never cache a signal. Batch A on `dev`, both engines
+  ([9eec15f](https://github.com/elyfmiller/flubnf/commit/9eec15f)): an
+  engine older than the console holds the runner's queue and refuses a
+  start in its own words; a complete experiment reads complete after an
+  engine change; `flubnf runner` stops on SIGHUP (its Terminal closing)
+  unless under nohup, and a line it cannot print no longer aborts the
+  stop; the bundle manifest's engine build; three order-dependent tests.
+  Batch B on `engine-public`
+  ([352f93f](https://github.com/elyfmiller/flubnf/commit/352f93f)): the
+  runner and terminal start see the public engine; an install's recorded
+  FLUBNF_ENGINE (`.flubnf.env`, or `.flubnf.env.cmd`) refuses a runner
+  or terminal start from a shell on the other engine, and the runner
+  names its engine; time limits scale by PUBLIC_COST_RATIO; the kill
+  reaches the shard runners' groups; preflight refuses a week begun on
+  the other engine and a two-strain model on public; Check and the
+  doctor follow the public engine; a cross-engine comparison is said; CI
+  checks the private engine's Windows pins again and fits one real cell
+  on the public engine on macOS; the contributor check flags
+  `scripts/make_test_lock.py`. Each set's full suite showed only this
+  Mac's 22 failures. Ely's to settle: Check files the public engine's
+  model refusals under KEY_UNKNOWN (no existing code fits; a new one is
+  permanent). Follow-ups: a public runner queues a two-strain experiment
+  and refuses it only at its turn; a student console prices its estimate
+  with its own engine, not the runner's; a runner whose install changes
+  engine mid-run stops at its next re-exec, saying why; most of this
+  Mac's 22 failures are the installed engine leaking into the tests (a
+  conftest fix). Still waiting on the wheel's release (Ely runs it on
+  the lab Mac): a stranger's install, one forecast through the console,
+  Windows, the shadow Wednesday (11-18) and the cutover. Step 7 (RSV and
+  COVID-19) waits for Ely's go.
 - 2026-11-01 (latest): Ely merged
   [#77](https://github.com/elyfmiller/flubnf/pull/77), `dev` to `main`
   (merge commit 9d4520d): the student workspace, steps 1 to 6 with the
