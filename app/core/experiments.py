@@ -521,9 +521,14 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     score keeps it). MACHINE when the folder's run record says a replay
     of it is under way in another process (a console refuses its own
     first, by its claim), when the Groundhog's bank cannot be read or
-    checked, and at a resume when this machine's engine build is not the
-    one the stored weeks were fitted by. Writes nothing."""
+    checked, at a resume when this machine's engine build is not the one
+    the stored weeks were fitted by, and when the engine here is older
+    than this console (pf.prepare would refuse every week; with no engine
+    at all the callers say so in their own words), but never for the
+    engine once every week is stored: nothing is left to fit. Writes
+    nothing."""
     from app.core import retro
+    from app.core.engines import pf as pf_engine
     p = plan(settings, retro_root=retro_root)
     # one writer per folder: a second run_season would clear the first's
     # STOP and PAUSE (a dead worker's record reads interrupted, not active)
@@ -541,7 +546,8 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     st = st if isinstance(st, dict) else {}
     weeks = _weeks(st) if isinstance(st.get("weeks"), list) else p["weeks"]
     done = [w for w in weeks if retro.week_done(root() / p["id"], w)]
-    if done:
+    complete = bool(weeks) and len(done) == len(weeks)
+    if done and not complete:
         change = retro.engine_build_change(st, "pf")
         if change:
             raise Refusal(finding(
@@ -549,6 +555,9 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
                 "would mix two engine builds. Switch the engine back to "
                 "resume it, or delete the experiment to replay it on this "
                 "one."))
+    if (not complete and pf_engine.engine_available()
+            and not pf_engine.engine_current()):
+        raise Refusal(finding("MACHINE", pf_engine.engine_stale_message()))
     ref = p["reference"]
     try:
         was = _previous(root() / p["id"]).get("shipped")
@@ -558,8 +567,7 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
         ref = reference(retro_root, p["season"], p["oracle"], weeks,
                         started_utc=was["started_utc"]) or ref
     return {**p, "reference": ref, "weeks": weeks, "resume": bool(done),
-            "weeks_done": len(done),
-            "complete": bool(weeks) and len(done) == len(weeks)}
+            "weeks_done": len(done), "complete": complete}
 
 
 def started(p: Mapping) -> dict:
