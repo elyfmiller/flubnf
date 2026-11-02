@@ -17,7 +17,8 @@ Refused (an ::error:: line each, exit 1):
 - a proposals/<name>/ folder that is not six plain files of at most 256 KB.
 
 Flagged (a ::warning:: line each; the check stays green on flags alone):
-- a change to the launchers, the installers, .github/ or the engine updater;
+- a change to the launchers, the installers, CI (.github/ and
+  scripts/make_test_lock.py) or the engine updater;
 - a commit linked to another GitHub account than the opener's.
 
 No line of the pull request's own text is printed: only the rules' words,
@@ -57,7 +58,8 @@ FLAGGED = (   # (group, what it is, paths); a trailing / is a folder; matched ig
     ("the installers", "run on every computer that installs FluBNF",
      ("install.sh", "reinstall.sh", "setup.sh", "setup_engine.sh", "setup.ps1",
       "pyproject.toml", ".githooks/", ".gitattributes")),
-    ("CI and this check", "run on GitHub for every pull request", (".github/",)),
+    ("CI and this check", "run on GitHub for every pull request",
+     (".github/", "scripts/make_test_lock.py")),
     ("the engine updater", "run on every computer that installs FluBNF",
      ("app/core/engine_update.py", "app/core/engine_build.py", "flubnf/cli_doctor.py",
       "scripts/cut_engine_archive.sh", "scripts/engine_lock.py", "engine-requirements.txt")),

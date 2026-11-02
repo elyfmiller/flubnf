@@ -94,6 +94,15 @@ cell costs about 1.6 to 2.1 times as long on the public engine. The
 measurements and the acceptance plan are in [team/engine.md](team/engine.md).
 The output of either engine is a forecasting sample, not a posterior.
 
+The two-strain model, `sihrs-2strain`, runs on the private engine only:
+the public engine has no counterpart for its typed-positives channel, so an
+experiment of it is refused there before it starts. A model that calls
+BNGL's clock, `time()`, is the private engine's only too: the public engine
+starts its clock at 0 where the private one starts at -1, so the model would
+run a week out of phase there, and each of its cells is refused; the
+Sandbox's Check warns of it under the public engine. A counter species, as
+in FluBNF's templates, keeps the clock on both engines.
+
 The rest of this page is the private route.
 
 ## The shortest route: one small file, no account

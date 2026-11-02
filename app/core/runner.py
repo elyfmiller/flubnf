@@ -22,14 +22,16 @@ before.
 
 A student's console queues (enqueue), dequeues or stops (stop), and
 reads where its jobs stand (position, refusal, read_state); it reads no
-other student's folder. The supervisor (serve) takes the queue first in,
-first out; holds it while the install is not a clean main, the engine is
-missing or out of date, or a replay runs elsewhere on this computer;
-keeps FREE_FLOOR free on the disk; kills a job at its limits (LIMITS);
-and tidies idle folders (their unfinished weeks removed, their weeks
-made lean, their summaries scored again). The child (job_main) refits an
-unfinished week from its start, checks the folder before every week
-(check), and makes each stored week lean (experiments.drop_samples).
+other student's folder. The supervisor (serve) runs the engine its
+install records (it refuses to start from a Terminal that runs the
+other); takes the queue first in, first out; holds it while the install
+is not a clean main, the engine is missing or out of date, or a replay
+runs elsewhere on this computer; keeps FREE_FLOOR free on the disk;
+kills a job at its limits (LIMITS); and tidies idle folders (their
+unfinished weeks removed, their weeks made lean, their summaries scored
+again). The child (job_main) refits an unfinished week from its start,
+checks the folder before every week (check), and makes each stored week
+lean (experiments.drop_samples).
 
 A job names its folder by (name, id) only, never by a path, and nothing
 in a student folder is trusted: check refuses a link, a pipe, a hard
@@ -112,9 +114,11 @@ class Limits:
 
 
 #: by size: smoke 24x, pilot 11x and full 4x their first estimate at
-#: width 16 in time, and 15x, 5.9x and 3.8x their peak on disk; the
-#: memory has never been measured (every job records its peaks). A tidy
-#: runs under the pilot's.
+#: width 16 in time on either engine (limits scales the time by
+#: pf.PUBLIC_COST_RATIO on the public one, as pf.cell_seconds scales the
+#: estimate), and 15x, 5.9x and 3.8x their peak on disk; the memory has
+#: never been measured (every job records its peaks). A tidy runs under
+#: the pilot's.
 LIMITS = {"smoke": Limits(30 * 60, 4 * GiB, 512 * MiB),
           "pilot": Limits(2 * 3600, 16 * GiB, 1 * GiB),
           "full": Limits(16 * 3600, 32 * GiB, 10 * GiB)}
@@ -579,9 +583,14 @@ def _writable_record(folder: Path) -> bool:
 
 
 def limits(size: str) -> Limits:
-    """The size's LIMITS, its memory capped at half this computer's RAM
-    (os.sysconf SC_PHYS_PAGES * SC_PAGE_SIZE, where it can be read)."""
+    """The size's LIMITS, its time times pf.PUBLIC_COST_RATIO on the
+    public engine (whose fits take that much longer) and its memory
+    capped at half this computer's RAM (os.sysconf SC_PHYS_PAGES *
+    SC_PAGE_SIZE, where it can be read)."""
+    from app.core.engines import pf
     lim = LIMITS[size]
+    if pf._public():
+        lim = replace(lim, seconds=lim.seconds * pf.PUBLIC_COST_RATIO)
     try:
         ram = int(os.sysconf("SC_PHYS_PAGES")) * int(os.sysconf("SC_PAGE_SIZE"))
     except (AttributeError, ValueError, TypeError, OSError):
@@ -1076,8 +1085,10 @@ def _local_time(epoch, fmt: str) -> str:
 
 def storage(size: Callable[[Path], int] | None = None) -> dict:
     """The Storage tab's Student experiments, on the runner computer's main
-    console: {"rows", "runner" (its line's parts), "down" (not running),
-    "why" (the words then)}; no rows, no parts without a runner here.
+    console: {"rows", "runner" (its line's parts, the first naming the
+    runner's engine), "down" (not running), "why" (the words then: the
+    start, which reads the install's engine record first when it has
+    one)}; no rows, no parts without a runner here.
 
     Rows go by student folder in name order, newest first within each
     (a folder whose settings or run record cannot be read safely is left
@@ -1094,6 +1105,7 @@ def storage(size: Callable[[Path], int] | None = None) -> dict:
     from app.core import experiments as X
     from app.core import retro
     from app.core import sandbox as sb
+    from flubnf.settings import ENGINES
     measure = size or retro.dir_size
     state = read_state()
     alive = bool(state.get("alive"))
@@ -1143,15 +1155,18 @@ def storage(size: Callable[[Path], int] | None = None) -> dict:
         rows.sort(key=lambda r: r[0], reverse=True)
         out["rows"] += [r for _key, r in rows]
     now_job = state.get("job") if isinstance(state.get("job"), Mapping) else None
+    # the engine its runner.json names (none from an older runner)
+    head = (f"The runner (the {state['engine']} engine)"
+            if state.get("engine") in ENGINES else "The runner")
     if now_job:
-        out["runner"].append(
-            f"The runner: {'tidying' if now_job.get('kind') == 'tidy' else 'replaying'} "
-            f"{now_job.get('folder')}/{now_job.get('id')} since "
-            f"{_local_time(_epoch(now_job.get('started_utc')), '%H:%M')}")
+        doing = "tidying" if now_job.get("kind") == "tidy" else "replaying"
+        since = _local_time(_epoch(now_job.get("started_utc")), "%H:%M")
+        out["runner"].append(f"{head}: {doing} {now_job.get('folder')}/"
+                             f"{now_job.get('id')} since {since}")
     elif state.get("waiting_why"):
-        out["runner"].append(f"The runner: waiting: {state['waiting_why']}")
+        out["runner"].append(f"{head}: waiting: {state['waiting_why']}")
     else:
-        out["runner"].append("The runner: idle")
+        out["runner"].append(f"{head}: idle")
     if state.get("waiting"):
         out["runner"].append(f"{len(state['waiting'])} waiting")
     out["runner"].append(f"{_h(_free())} free · FluBNF keeps "
@@ -1159,10 +1174,13 @@ def storage(size: Callable[[Path], int] | None = None) -> dict:
     if not alive:
         last = _local_time(_epoch(state.get("heartbeat_utc")), "%m-%d %H:%M")
         out["down"] = True
+        run = Path(sb.REPO) / ".venv" / "bin" / "flubnf"
+        if _recorded_engine() is not None:
+            # the record read first, or the start is refused
+            run = f"cd {sb.REPO} && . ./{ENV_FILE} && .venv/bin/flubnf"
         out["why"] = ((f"Its last heartbeat was at {last}. " if last else "")
                       + "Queued experiments wait until it is started: in a "
-                      "Terminal of this account, run "
-                      f"{Path(sb.REPO) / '.venv' / 'bin' / 'flubnf'} runner.")
+                      f"Terminal of this account, run {run} runner.")
     return out
 
 
@@ -1225,9 +1243,12 @@ def _install_problem() -> str:
 
 def _engine_ready() -> bool:
     """The particle-filter engine is installed here (the console's test,
-    pipeline._pf_engine_state, which lives in app.ui)."""
-    from flubnf.settings import PY_ENGINE, PYBNF
+    pipeline._pf_engine_state, which lives in app.ui): on the public
+    engine its venv alone, the private venv and fork not needed."""
+    from flubnf.settings import PY_ENGINE, PYBNF, engine_public
     from app.core.engines import pf
+    if engine_public():
+        return pf.engine_available()
     return PY_ENGINE.exists() and PYBNF.exists() and pf.engine_available()
 
 
@@ -1244,6 +1265,78 @@ def _engine_why() -> str:
     except Exception:
         pass
     return "the particle-filter engine is not installed on the runner"
+
+
+#: where an install records its engine for the launchers, which read the
+#: file on every open: setup_engine.sh --public's (FluBNF.command sources
+#: it) and, on Windows, setup.ps1's (FluBNF.bat calls it); the line that
+#: sets FLUBNF_ENGINE in each, `export FLUBNF_ENGINE=public` and
+#: `set "FLUBNF_ENGINE=public"` (cmd's names have no case)
+ENV_FILE, ENV_FILE_WIN = ".flubnf.env", ".flubnf.env.cmd"
+_ENGINE_LINE = re.compile(r"\s*(?:export\s+)?FLUBNF_ENGINE=(.*)")
+_ENGINE_LINE_WIN = re.compile(r'\s*set\s+"?FLUBNF_ENGINE=(.*?)"?\s*',
+                              re.IGNORECASE)
+
+
+def _sh_value(value: str) -> str:
+    """What sh assigns from the text after `FLUBNF_ENGINE=`: a quoted
+    value whole, else up to a blank or a ; (a comment after it dropped)."""
+    if value[:1] in ("'", '"'):
+        end = value.find(value[0], 1)
+        if end > 0:
+            return value[1:end]
+    return re.split(r"[\s;]", value, maxsplit=1)[0].strip("\"'")
+
+
+def _recorded_engine() -> str | None:
+    """The engine this install (sb.REPO) records: the last FLUBNF_ENGINE
+    its ENV_FILE sets (ENV_FILE_WIN on Windows), read as
+    settings.engine_choice reads one (unknown means private); None when
+    it sets none, or the file is not a regular file (FluBNF.command's
+    `[ -f ]` skips one) or cannot be read."""
+    from app.core import sandbox as sb
+    from flubnf import settings
+    win = settings._windows()
+    line = _ENGINE_LINE_WIN if win else _ENGINE_LINE
+    f = Path(sb.REPO) / (ENV_FILE_WIN if win else ENV_FILE)
+    if not os.path.isfile(f):             # never a pipe's endless wait
+        return None
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    value = None
+    for ln in text.splitlines():
+        m = line.fullmatch(ln)
+        if m:
+            value = m.group(1)
+    if value is None:
+        return None
+    if win:                               # cmd's quotes are the pattern's
+        words = value.split()
+        v = words[0].strip("\"'") if words else ""
+    else:
+        v = _sh_value(value)
+    v = v.strip().lower()
+    return v if v in settings.ENGINES else "private"
+
+
+def _engine_record_problem() -> str:
+    """Why this process may not replay here, "" when it may: its install
+    records an engine (_recorded_engine) and this process's environment
+    runs the other (settings.engine_choice), as a Terminal that never
+    read the record does."""
+    from flubnf import settings
+    rec, ours = _recorded_engine(), settings.engine_choice()
+    if rec is None or rec == ours:
+        return ""
+    if settings._windows():
+        name, step = ENV_FILE_WIN, f"call {ENV_FILE_WIN}"
+    else:
+        name, step = ENV_FILE, f". ./{ENV_FILE}"
+    return (f"this install records FLUBNF_ENGINE={rec} ({name}) but this "
+            f"Terminal runs the {ours} engine: run `{step}` in the clone "
+            "first")
 
 
 def _ps(columns: str) -> list[str]:
@@ -1300,25 +1393,49 @@ def _signal(pid: int, sig) -> None:
         pass                              # gone, or not ours to signal
 
 
+def _pgid(pid: int) -> int | None:
+    """A process's group, None when it is gone (or off POSIX)."""
+    try:
+        return os.getpgid(int(pid))
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _killpg(pgid: int, sig) -> None:
+    try:
+        os.killpg(int(pgid), sig)
+    except (AttributeError, OSError, ValueError):
+        pass                              # gone, or not ours to signal
+
+
 def _registry() -> Path:
     return state_dir() / REGISTRY_FILE
 
 
 def _kill_tree(proc) -> None:
     """Kill a job child's whole tree: its descendants read first (a dead
-    parent's children are reparented), SIGTERM to the child and each of
-    them (as pf._signal_tree signals), the job's registry swept (each
-    recorded fit's group, SIGKILL after KILL_WAIT_S), then SIGKILL to
-    whatever outlived KILL_WAIT_S."""
+    parent's children are reparented), and the groups the child (_spawn
+    starts it in a session of its own) and they lead; SIGTERM to the
+    child, each of them, then each of those groups (as pf._signal_tree
+    signals: a public shard runner leads its group and starts a process
+    per cell in it, one the read may have missed); the job's registry
+    swept (each recorded fit's group, SIGKILL after KILL_WAIT_S); then
+    SIGKILL to whatever outlived KILL_WAIT_S, and to those groups. Never
+    this runner's own group."""
     from flubnf import cli
     kill = getattr(signal, "SIGKILL", signal.SIGTERM)
     kids = _descendants(proc.pid)
+    own = os.getpgrp() if hasattr(os, "getpgrp") else None
+    groups = [p for p in (proc.pid, *kids)
+              if p > 1 and p != own and _pgid(p) == p]
     try:
         proc.terminate()
     except Exception:
         pass
     for pid in kids:
         _signal(pid, signal.SIGTERM)
+    for pgid in groups:
+        _killpg(pgid, signal.SIGTERM)
     cli._sweep_runner_groups(_registry(), wait=KILL_WAIT_S)
     try:
         proc.wait(KILL_WAIT_S)
@@ -1332,6 +1449,8 @@ def _kill_tree(proc) -> None:
     for pid in kids:
         if cli._pid_alive(pid):
             _signal(pid, kill)
+    for pgid in groups:
+        _killpg(pgid, kill)               # a group that is gone refuses it
 
 
 class _Orphan:
@@ -1421,7 +1540,8 @@ def _start_problem() -> str:
     if not posix:
         return ("the runner needs flock and killpg, which this computer "
                 "lacks; it runs on the students' Mac.")
-    return ""
+    why = _engine_record_problem()
+    return f"{why}." if why else ""
 
 
 def _lock() -> int | None:
@@ -1459,10 +1579,12 @@ def _supervisor() -> dict:
 def _write_state(sv: dict) -> None:
     """runner.json, atomically (beside, then replaced; whatever stood at
     the tmp path removed first, so a link there is never written
-    through): the heartbeat now. A failed write is said on stdout and
-    never stops the supervisor."""
+    through): the heartbeat now, and the engine this runner runs. A
+    failed write is said on stdout and never stops the supervisor."""
+    from flubnf.settings import engine_choice
     obj = {"format_version": STATE_VERSION, "pid": sv["pid"],
-           "build": sv["build"], "started_utc": sv["started_utc"],
+           "build": sv["build"], "engine": engine_choice(),
+           "started_utc": sv["started_utc"],
            "heartbeat_utc": _utc(_now()), "retro_root": sv["retro_root"],
            "waiting_why": sv["waiting_why"], "job": sv["job"],
            "waiting": sv["waiting"], "recent": sv["recent"][:RECENT_MAX]}
@@ -2093,12 +2215,15 @@ def serve() -> int:
     left ignored under nohup); the exit code.
 
     Refused (1, in words on stderr) from a student's clone, with
-    STUDENTS missing, without flock or killpg (Windows), and while
-    another runner holds runner.lock. Otherwise it recovers what a runner
-    that died left, then polls every POLL_S (_dispatch). A stop kills the
-    running job's tree and queues it again first, writes runner.json and
-    exits 0."""
+    STUDENTS missing, without flock or killpg (Windows), from a Terminal
+    whose engine is not the one the install records
+    (_engine_record_problem: the job child inherits this environment),
+    and while another runner holds runner.lock. Otherwise it says its
+    build and engine, recovers what a runner that died left, then polls
+    every POLL_S (_dispatch). A stop kills the running job's tree and
+    queues it again first, writes runner.json and exits 0."""
     global _stopping
+    from flubnf.settings import engine_choice
     why = _start_problem()
     if why:
         print(f"Not started: {why}", file=sys.stderr, flush=True)
@@ -2123,8 +2248,8 @@ def serve() -> int:
         pass                              # not the main thread
     try:
         sv = _supervisor()
-        _say(f"runner {sv['pid']} on build {sv['build'] or 'unknown'}: "
-             f"{_students()}")
+        _say(f"runner {sv['pid']} on build {sv['build'] or 'unknown'} "
+             f"(the {engine_choice()} engine): {_students()}")
         try:
             _recover(sv)
         except Exception:                 # said; the queue is worked anyway
