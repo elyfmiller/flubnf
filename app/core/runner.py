@@ -24,12 +24,12 @@ A student's console queues (enqueue), dequeues or stops (stop), and
 reads where its jobs stand (position, refusal, read_state); it reads no
 other student's folder. The supervisor (serve) takes the queue first in,
 first out; holds it while the install is not a clean main, the engine is
-missing or a replay runs elsewhere on this computer; keeps FREE_FLOOR
-free on the disk; kills a job at its limits (LIMITS); and tidies idle
-folders (their unfinished weeks removed, their weeks made lean, their
-summaries scored again). The child (job_main) refits an unfinished week
-from its start, checks the folder before every week (check), and makes
-each stored week lean (experiments.drop_samples).
+missing or out of date, or a replay runs elsewhere on this computer;
+keeps FREE_FLOOR free on the disk; kills a job at its limits (LIMITS);
+and tidies idle folders (their unfinished weeks removed, their weeks
+made lean, their summaries scored again). The child (job_main) refits an
+unfinished week from its start, checks the folder before every week
+(check), and makes each stored week lean (experiments.drop_samples).
 
 A job names its folder by (name, id) only, never by a path, and nothing
 in a student folder is trusted: check refuses a link, a pipe, a hard
@@ -147,13 +147,13 @@ def _now() -> float:
     return time.time()
 
 
-#: set by SIGTERM or SIGINT while serve works the queue
+#: set by SIGTERM, SIGINT or SIGHUP while serve works the queue
 _stopping = False
 
 
 def _on_signal(signum, frame) -> None:
-    """serve's SIGTERM and SIGINT: stop at the next watch or poll (a flag
-    only: a handler that took a lock could wait on itself)."""
+    """serve's SIGTERM, SIGINT and SIGHUP: stop at the next watch or poll
+    (a flag only: a handler that took a lock could wait on itself)."""
     global _stopping
     _stopping = True
 
@@ -194,8 +194,21 @@ def _num(v) -> float:
 
 
 def _say(text: str) -> None:
-    """One line on the supervisor's stdout, one per event."""
-    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}", flush=True)
+    """One line on the supervisor's stdout, one per event; lost, not
+    raised, once that is gone (its Terminal closed, a pipe's reader
+    ended), so a stop still kills the job and queues it again."""
+    try:
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}", flush=True)
+    except OSError:
+        pass
+
+
+def _say_trace() -> None:
+    """The exception being handled, after _say's line; lost as _say's."""
+    try:
+        traceback.print_exc(file=sys.stdout)
+    except OSError:
+        pass
 
 
 def _shown(x) -> str:
@@ -1218,6 +1231,21 @@ def _engine_ready() -> bool:
     return PY_ENGINE.exists() and PYBNF.exists() and pf.engine_available()
 
 
+def _engine_why() -> str:
+    """Why the engine here cannot fit a week, else "": not installed (a
+    probe that raises counts as that, so the poll still writes
+    runner.json), or older than this console (pf.prepare refuses every
+    week of either, so the queue waits instead of draining into
+    errors)."""
+    from app.core.engines import pf
+    try:
+        if _engine_ready():
+            return "" if pf.engine_current() else pf.engine_stale_message()
+    except Exception:
+        pass
+    return "the particle-filter engine is not installed on the runner"
+
+
 def _ps(columns: str) -> list[str]:
     """`ps -Ao <columns>`'s lines; [] when ps cannot be read. A command
     line that is not UTF-8 is read with its bad bytes replaced, so one
@@ -1517,19 +1545,17 @@ def _dispatch(sv: dict) -> None:
     """One poll while no job runs: runner.json written with the waiting
     and their estimates; a new HEAD re-executed; the queue held, with
     waiting_why, while the install is not a clean main, the engine is
-    missing or a replay runs elsewhere; else the waiting taken in order,
-    each checked (a refusal takes it out of the queue, in recent) and
-    held for disk on its own (free − peak must keep FREE_FLOOR, so a
-    smaller job can pass a full that does not fit), the first that
-    passes run to its end. With nothing held and nothing run, one idle
-    folder tidied (a tidy is a child too: a held queue starts none)."""
+    missing or out of date (_engine_why) or a replay runs elsewhere; else
+    the waiting taken in order, each checked (a refusal takes it out of
+    the queue, in recent) and held for disk on its own (free − peak must
+    keep FREE_FLOOR, so a smaller job can pass a full that does not fit),
+    the first that passes run to its end. With nothing held and nothing
+    run, one idle folder tidied (a tidy is a child too: a held queue
+    starts none)."""
     from app.core.problem_codes import Refusal
     sv["waiting"] = _waiting(sv)
     _reexec(sv)
-    why = (_install_problem()
-           or ("" if _engine_ready() else
-               "the particle-filter engine is not installed on the runner")
-           or _replay_elsewhere())
+    why = _install_problem() or _engine_why() or _replay_elsewhere()
     if why != sv["waiting_why"] and why:
         _say(f"waiting: {why}")
     sv["waiting_why"] = why
@@ -2063,7 +2089,8 @@ def _tidy(sv: dict) -> None:
 
 def serve() -> int:
     """`flubnf runner`: work this computer's student experiment queue, one
-    job at a time, until SIGTERM or SIGINT; the exit code.
+    job at a time, until SIGTERM, SIGINT or SIGHUP (its Terminal closing;
+    left ignored under nohup); the exit code.
 
     Refused (1, in words on stderr) from a student's clone, with
     STUDENTS missing, without flock or killpg (Windows), and while
@@ -2085,8 +2112,12 @@ def serve() -> int:
         return 1
     _stopping = False
     previous = {}
+    sigs = [signal.SIGTERM, signal.SIGINT]
+    hup = getattr(signal, "SIGHUP", None)         # no SIGHUP on Windows
+    if hup is not None and signal.getsignal(hup) is not signal.SIG_IGN:
+        sigs.append(hup)                          # nohup's is left alone
     try:
-        for sig in (signal.SIGTERM, signal.SIGINT):
+        for sig in sigs:
             previous[sig] = signal.signal(sig, _on_signal)
     except ValueError:
         pass                              # not the main thread
@@ -2098,7 +2129,7 @@ def serve() -> int:
             _recover(sv)
         except Exception:                 # said; the queue is worked anyway
             _say("the job a runner left not recovered:")
-            traceback.print_exc(file=sys.stdout)
+            _say_trace()
         while not _stopping:
             try:
                 _dispatch(sv)
@@ -2106,7 +2137,7 @@ def serve() -> int:
                 # one poll that fails (an unreadable folder, a full disk)
                 # is said, and the next tries again
                 _say("a poll failed:")
-                traceback.print_exc(file=sys.stdout)
+                _say_trace()
             if not _stopping:
                 _sleep(POLL_S)
         sv["waiting"] = _waiting(sv)

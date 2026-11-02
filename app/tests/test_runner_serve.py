@@ -3,13 +3,14 @@ one runner per computer; jobs only from a clean main; the job child
 isolated (-I, its own session, no PYTHON*, caffeinate, runner.json's job
 written first); the heartbeat and the waiting move while a job runs; a
 Stop from its page is said; the queue held for replays, never for fits
-(a command line that is not UTF-8 hides none); a job the disk cannot
-hold waits while a smaller one runs; the time, memory, folder and
-free-space limits kill the job's tree and record why (SIGKILL for what
-outlives SIGTERM); a crashed child is recorded, not requeued; a restart
-or SIGTERM (^C too, or one that ended the child as well) queues the job
-again first unless STOP stands; the supervisor's writes never open a
-pipe, a hard link or a link a student or anyone left; a new HEAD
+(a command line that is not UTF-8 hides none), and for an engine older
+than the console; a job the disk cannot hold waits while a smaller one
+runs; the time, memory, folder and free-space limits kill the job's
+tree and record why (SIGKILL for what outlives SIGTERM); a crashed child
+is recorded, not requeued; a restart or SIGTERM (^C too, its Terminal
+closing unless under nohup, or one that ended the child as well) queues
+the job again first unless STOP stands; the supervisor's writes never
+open a pipe, a hard link or a link a student or anyone left; a new HEAD
 re-executes between jobs only; refusals at dispatch and from the child
 leave the queue with their words; PAUSE is cleared; recent records
 seconds, k and the peaks; tidy runs only where a folder needs it and
@@ -20,6 +21,7 @@ No process is started: subprocess.Popen, ps, git, the disk, the clock,
 the signals, the sweep and os.execv are faked. A fake child does on
 its start and at each poll what the test says (writes its run record,
 ends with a code)."""
+import errno
 import json
 import os
 import re
@@ -43,6 +45,7 @@ from app.core import runs                                # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 from flubnf import cli                                   # noqa: E402
+from test_experiments import _stale_fork                 # noqa: E402
 from test_runner_folders import (SMOKE, W0, W1, calendar,  # noqa: E402,F401
                                  experiment, stored, student, students)
 from test_runner_queue import _running, state            # noqa: E402
@@ -367,6 +370,42 @@ def test_waits_for_replays_not_fits(world, tmp_path):
     retro.write_meta(world.bob / "experiments" / "beta-v1_2024-25_smoke",
                      {**m, "pid": PID0 - 1})
     waits("")
+
+
+def test_an_engine_older_than_the_console_holds_the_queue(world,
+                                                          monkeypatch,
+                                                          tmp_path):
+    # pf.prepare would refuse every week: the queue waits in its words,
+    # and nothing is started or refused
+    f = _job(world.alice)
+    world.act = ends
+    sv = runner._supervisor()
+    current, stale = pf.PYBNF_PF, _stale_fork(tmp_path)
+    monkeypatch.setattr(pf, "PYBNF_PF", stale)
+    runner._dispatch(sv)
+    words = pf.engine_stale_message()
+    assert "does not accept pf_particles" in words
+    r = runner.read_state()
+    assert r["waiting_why"] == words
+    assert world.children == [] and (f / X.QUEUED).is_file()
+    assert r["recent"] == [] and runner.refusal("alice", EID) == ""
+    assert runner.position("alice", EID)["why"] == f"waiting: {words}"
+    # a probe that raises (a parser that is not UTF-8), or not installed
+    # at all: the words as before, and runner.json still written
+    gone = "the particle-filter engine is not installed on the runner"
+    (stale / "pybnf" / "parse.py").write_bytes(b"\xff\xfe")
+    runner._dispatch(sv)
+    assert runner.read_state()["waiting_why"] == gone
+    monkeypatch.setattr(runner, "_engine_ready", lambda: False)
+    runner._dispatch(sv)
+    assert runner.read_state()["waiting_why"] == gone
+    assert world.children == [] and (f / X.QUEUED).is_file()
+    # brought up to date: the job runs
+    monkeypatch.setattr(runner, "_engine_ready", lambda: True)
+    monkeypatch.setattr(pf, "PYBNF_PF", current)
+    runner._dispatch(sv)
+    assert len(world.children) == 1
+    assert runner.read_state()["waiting_why"] == ""
 
 
 def test_a_job_the_disk_cannot_hold_waits_and_a_smaller_one_runs(world):
@@ -729,6 +768,54 @@ def test_sigterm_kills_and_requeues_at_the_front(world, monkeypatch):
     fd = runner._lock()                         # released at the exit
     assert fd is not None
     os.close(fd)
+
+
+class HungUp:
+    """stdout once its Terminal has closed: the tty refuses every write
+    (EIO)."""
+
+    def write(self, text):
+        raise OSError(errno.EIO, os.strerror(errno.EIO))
+
+    def flush(self):
+        raise OSError(errno.EIO, os.strerror(errno.EIO))
+
+
+@POSIX
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="no SIGHUP here")
+def test_the_terminal_closing_stops_it_and_nohup_is_left_alone(world,
+                                                               monkeypatch):
+    monkeypatch.setattr(runner, "_stopping", False)
+    f = _job(world.alice)
+    world.start = claims
+    hup, seen, out = signal.getsignal(signal.SIGHUP), [], sys.stdout
+
+    def act(child):
+        seen.append(signal.getsignal(signal.SIGHUP))
+        if callable(seen[-1]):
+            seen[-1](signal.SIGHUP, None)        # the Terminal closing,
+            sys.stdout = HungUp()                # and its tty with it
+        else:                                    # under nohup: a SIGTERM
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+    world.act = act
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+        assert runner.serve() == 0               # its words lost, not its stop
+        sys.stdout = out
+        assert seen[-1] is runner._on_signal
+        assert signal.getsignal(signal.SIGHUP) is signal.SIG_DFL
+        assert world.children[-1].signals == ["TERM"]
+        assert os.lstat(f / X.QUEUED).st_mtime == 0     # queued again
+        r = runner.read_state()
+        assert r["job"] is None and r["recent"][0]["outcome"] == "stopped"
+        # under nohup: ignored before, so ignored throughout
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        assert runner.serve() == 0
+        assert seen[-1] is signal.SIG_IGN
+        assert signal.getsignal(signal.SIGHUP) is signal.SIG_IGN
+    finally:
+        sys.stdout = out
+        signal.signal(signal.SIGHUP, hup)
 
 
 def test_a_new_head_reexecs_between_jobs_only(world):
