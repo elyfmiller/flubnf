@@ -359,6 +359,9 @@ def test_both_runners_start_with_syntax_warnings_ignored(tmp_path,
             p.wait(20)
     finally:
         pf.unrecord_runner_pids(procs)
+    # the runner's command only: the engine-build probes (git, the venv's
+    # python) start through the same Popen when their caches are cold
+    made = [c for c in made if any(x.endswith("runner_0.py") for x in c)]
     assert len(made) == 1
     i = made[0].index(sys.executable)
     assert made[0][i:i + 3] == [sys.executable, "-W", "ignore::SyntaxWarning"]

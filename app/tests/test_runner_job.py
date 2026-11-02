@@ -382,6 +382,18 @@ def test_refusals_exit_3_and_errors_exit_1(job, monkeypatch, capsys):
     assert runner.job_main(job.argv()) == 0
     assert capsys.readouterr().out.strip().splitlines()[-1] == "complete"
     assert calls == []
+    # and so on another engine build: nothing is left to fit
+    from app.core import engine_build as EB
+    m = retro.read_meta(g)
+    retro.write_meta(g, {**m, "settings": {**m["settings"], "engine_build": {
+        "branch": "main", "commit": "aaaaaaaa", "dirty": False,
+        "source": "git"}}})
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: {
+        "branch": "main", "commit": "bbbbbbbb", "dirty": False,
+        "source": "git", "path": ""})
+    assert runner.job_main(job.argv()) == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "complete"
+    assert calls == []
     # anything else exits 1, its traceback in the log; flags cleared
     retro.delete_tree(g)
     g = _queued(job.alice)
