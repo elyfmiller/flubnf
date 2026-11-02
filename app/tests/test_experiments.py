@@ -1007,7 +1007,7 @@ def test_preflight_refuses_a_week_begun_on_the_other_engine(
         f"week 2024-12-28 of {eid} began on the private engine, and "
         "resuming it on the public one would pool fits from two engines in "
         "one week: switch this install to the private engine "
-        "(./setup_engine.sh --private) to finish it, or delete the "
+        f"({X._switch_step('private')}) to finish it, or delete the "
         "experiment to replay it on this one")
     assert _tree(tmp_path) == before
     # on the engine it began on, it resumes
@@ -1017,9 +1017,11 @@ def test_preflight_refuses_a_week_begun_on_the_other_engine(
     # and the other way round
     (wd / retro.WEEK_ENGINE_NAME).write_text(json.dumps({"engine": "public"}),
                                              encoding="utf-8")
-    assert "(./setup_engine.sh --public) to finish it" in _refused(
+    assert f"({X._switch_step('public')}) to finish it" in _refused(
         "MACHINE", X.preflight, s, retro_root=season)
-    # the launcher's step on Windows: a set variable is overruled there
+    # each platform's launcher step: a set variable is overruled there
+    assert X._switch_step("public") in ("./setup_engine.sh --public",
+                                        "setup.ps1 -Engine public")
     from flubnf import settings
     monkeypatch.setattr(settings, "_windows", lambda: True)
     assert "(setup.ps1 -Engine public) to finish it" in _refused(
@@ -1040,7 +1042,7 @@ def test_the_two_strain_model_is_refused_up_front_on_the_public_engine(
         f"pf_binom_neff_cap ({lwf._NO_COUNTERPART['pf_binom_neff_cap']}), "
         "which has no counterpart in the public engine, so every cell "
         "would be refused. Switch this install to the private engine "
-        "(./setup_engine.sh --private) to run it.")
+        f"({X._switch_step('private')}) to run it.")
     assert _tree(tmp_path) == before                    # no cell prepared
     # the one-strain model starts there
     p = X.preflight({"model": "sihrs", "season": "2024-25"},
