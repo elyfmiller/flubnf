@@ -16,6 +16,7 @@ from app.core.engines import pf as pf_engine
 from app.core.problem_codes import finding
 from app.core.sandbox import DEFAULT_HEADER, SandboxError, _fmt
 from app.core.sandbox_bngl import (
+    RETIRED_KEYS,
     _check_prior,
     _number,
     _prior_start_warnings,
@@ -63,6 +64,11 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
     def warning(code: str, text: str) -> None:
         warnings.append(text)
         wcodes.append(code)
+
+    def unknown(key: str) -> None:
+        warning("KEY_UNKNOWN", f"{key} is not a setting the installed "
+                "engine knows (check the spelling), so a run would stop on "
+                "it")
 
     facts = {"suffix": "", "free": [], "priors": [], "rows": 0,
              "columns": [], "cumulative": "", "species": None,
@@ -172,13 +178,34 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
         warning("KEY_RETIRED", "pf_observable_mode is retired: the filter "
                 "always fits the weekly increment, and runs drop this line, "
                 "so it can be deleted")
-    if pf_engine.engine_available():
+    if pf_engine._public():
+        # the public engine's own tables (engines/lwf.py), read without
+        # its venv: its runners refuse a cell whose pf.conf holds a key
+        # with no counterpart there or one it neither maps nor reads (the
+        # engine keys priors.conf sets included), and a model it cannot
+        # run (lwf.model_refusal)
+        from app.core.engines import lwf
+        for k in [ln.split("=", 1)[0].strip() for ln in priors] + list(keys):
+            if not k.startswith("pf_") or k in RETIRED_KEYS:
+                continue
+            if k in lwf._NO_COUNTERPART:
+                warning("KEY_UNKNOWN", f"{k} ({lwf._NO_COUNTERPART[k]}) has "
+                        "no counterpart in the public engine, so a run "
+                        "would stop on it")
+            elif k not in lwf._MAPPED and k not in lwf._READ:
+                unknown(k)
+        # as a run reads the model (sandbox.read_model's universal
+        # newlines, library._lf for a replay): a lone \r never reaches it
+        why = lwf.model_refusal(bngl.replace("\r\n", "\n").replace("\r", "\n"),
+                                "model.bngl")
+        if why:
+            warning("KEY_UNKNOWN", f"{why}; the public engine refuses such "
+                    "a model, so a run would stop on it")
+    elif pf_engine.engine_available():
         for line in priors:
             k = line.split("=", 1)[0].strip()
             if k.startswith("pf_") and not pf_engine.engine_accepts_pf_key(k):
-                warning("KEY_UNKNOWN", f"{k} is not a setting the installed "
-                        "engine knows (check the spelling), so a run would "
-                        "stop on it")
+                unknown(k)
     if (times is not None and len(times) == 1
             and "pf_sampling_interval" not in keys
             and not pf_engine.sampling_interval_line()):

@@ -4,7 +4,8 @@ spec's figures at widths 16 and 8; k is then the median of this
 computer's last ten jobs of that size (other sizes, refusals and jobs
 that fitted no week left out) and the words say so; the disk kept and
 at the peak by size and Oracle step; the queued notice's words, exactly;
-and the limits, presets capped at half the memory."""
+and the limits, presets capped at half the memory, their time scaled
+on the public engine as its estimates are."""
 import os
 import sys
 from pathlib import Path
@@ -205,3 +206,33 @@ def test_limits_are_presets_capped_at_half_the_memory(monkeypatch):
     assert runner.limits("full") == runner.LIMITS["full"]
     with pytest.raises(KeyError):
         runner.limits("huge")
+
+
+def test_the_time_limits_scale_with_the_public_engine(monkeypatch):
+    # its fits take pf.PUBLIC_COST_RATIO as long (pf.cell_seconds): the
+    # time limits too, so each keeps its margin over the first estimate;
+    # the memory and the folder are the private engine's
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 16)
+    monkeypatch.setattr(os, "sysconf", lambda name: {
+        "SC_PHYS_PAGES": 2**28, "SC_PAGE_SIZE": 4096}[name], raising=False)
+
+    def margins():
+        return {size: runner.limits(size).seconds / runner.estimate(
+            {**SMOKE, "size": size}, weeks=WEEKS[size])["seconds"]
+            for size in WEEKS}
+    private = {size: runner.limits(size) for size in runner.LIMITS}
+    assert private == runner.LIMITS
+    before = margins()
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    public = {size: runner.limits(size) for size in runner.LIMITS}
+    assert public["full"].seconds == 16 * 3600 * pf.PUBLIC_COST_RATIO
+    for size, lim in public.items():
+        assert lim.seconds == (runner.LIMITS[size].seconds
+                               * pf.PUBLIC_COST_RATIO)
+        assert (lim.memory, lim.disk) == (private[size].memory,
+                                          private[size].disk)
+    after = margins()
+    assert {s: round(m) for s, m in before.items()} == {
+        "smoke": 24, "pilot": 11, "full": 4}
+    for size in WEEKS:
+        assert after[size] == pytest.approx(before[size], rel=0.02)

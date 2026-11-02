@@ -11,7 +11,7 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways, and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways, and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`), then on macOS fits one cell in it through FluBNF's own run path (`app/tests/test_engine_lwf.py`, `FLUBNF_TEST_PUBLIC_PYTHON`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 

@@ -272,7 +272,12 @@ def _check_numpy2_pybnf() -> CheckResult:
     # first on sys.path, else a pybnf this venv happens to carry. pybnf is
     # an engine-venv package, so neither being present means the engine is
     # absent (WARN; the console runs Groundhog-only), not a broken install.
-    from flubnf.settings import PYBNF
+    # On the public engine the fork is not used, as _check_pf_engine says.
+    from flubnf.settings import PYBNF, engine_public
+    if engine_public():
+        return CheckResult("pybnf NumPy 2.0 patch", Status.OK,
+                           "not used: FLUBNF_ENGINE=public runs lanl/PyBNF's "
+                           "job_type = lwf")
     alg_path = Path(PYBNF) / "pybnf" / "algorithms.py"
     if not alg_path.is_file():
         try:

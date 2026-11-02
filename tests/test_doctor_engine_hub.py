@@ -110,6 +110,28 @@ def test_numpy2_check_reads_the_engine_fork(engine, monkeypatch):
     assert "np.Inf" in res.detail
 
 
+def test_numpy2_check_leaves_the_fork_alone_on_the_public_engine(
+        engine, tmp_path, monkeypatch):
+    _no_pybnf_in_console(monkeypatch)
+    (engine.fork / "pybnf" / "algorithms.py").write_text("x = np.Inf\n")
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    for fork in (engine.fork, tmp_path / "no-fork"):    # unpatched, absent
+        monkeypatch.setattr(settings, "PYBNF", fork)
+        res = doctor._check_numpy2_pybnf()
+        assert res.status is doctor.Status.OK, res
+        assert res.detail == ("not used: FLUBNF_ENGINE=public runs "
+                              "lanl/PyBNF's job_type = lwf")
+        assert res.detail == doctor._check_pf_engine().detail
+    # the private engine's check is as before
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setattr(settings, "PYBNF", tmp_path / "no-fork")
+    assert doctor._check_numpy2_pybnf().status is doctor.Status.WARN
+    import numpy as np
+    if int(np.__version__.split(".")[0]) >= 2:
+        monkeypatch.setattr(settings, "PYBNF", engine.fork)
+        assert doctor._check_numpy2_pybnf().status is doctor.Status.FAIL
+
+
 def _hub(tmp_path, *dirs):
     hub = tmp_path / "FluSight-forecast-hub"
     hub.mkdir()

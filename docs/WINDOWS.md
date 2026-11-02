@@ -926,7 +926,9 @@ standard `setup.sh` instructions inside the Linux environment.
   real BNG2.pl under that Perl, and bngsim through a fit's calls with code
   generation off and no compiler on PATH
   (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget or a
-  real fit, and only `public-engine-install` builds a real engine venv.
+  real fit on Windows, and only `public-engine-install` builds a real
+  engine venv; on macOS it also fits one cell in that venv through
+  FluBNF's own run path (`app/tests/test_engine_lwf.py`).
   `public-engine-install`, on Windows and on macOS, installs the public
   engine for real: `FluBNF.bat`'s public block in cmd.exe (on macOS,
   `setup_engine.sh --public`), real pip and PyPI, a venv under a folder

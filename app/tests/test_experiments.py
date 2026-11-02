@@ -974,6 +974,105 @@ def test_a_complete_experiment_reads_complete_on_another_engine(
     assert _tree(tmp_path) == before
 
 
+def _on(monkeypatch, tmp_path, engine: str) -> None:
+    """FLUBNF_ENGINE naming engine, the public one's venv a Python that is
+    not there: nothing is probed, and preflight's engine check passes."""
+    from app.core.engines import lwf
+    monkeypatch.setenv("FLUBNF_ENGINE", engine)
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC",
+                       str(tmp_path / "nopy" / "python"))
+    monkeypatch.setattr(lwf, "_CHECK", {})
+    monkeypatch.setattr(lwf, "_BUILD", {})
+
+
+def test_preflight_refuses_a_week_begun_on_the_other_engine(
+        season, monkeypatch, tmp_path):
+    s = {"model": "sihrs", "season": "2024-25"}
+    eid = "sihrs_2024-25_smoke_oracle"
+    folder = X.root() / eid
+    # stopped in its first week on the private engine, no week stored
+    retro.write_meta(folder, {"status": "stopped", "settings": {
+        "experiment": SMOKE_FP, "weeks": SMOKE_WEEKS}})
+    wd = RS._week_dir(folder, SMOKE_WEEKS[0])
+    retro._week_engine(wd, "private")       # as the runners record it
+    # no fit finished there yet, or only failed ones (run_week tries them
+    # again): either engine may take the week
+    _on(monkeypatch, tmp_path, "public")
+    assert X.preflight(s, retro_root=season)["weeks_done"] == 0
+    retro.mark_cell_done(wd, "Vermont_r0", "FAIL: boom")
+    assert X.preflight(s, retro_root=season)["weeks_done"] == 0
+    retro.mark_cell_done(wd, "California_r0")
+    before = _tree(tmp_path)
+    assert _refused("MACHINE", X.preflight, s, retro_root=season) == (
+        f"week 2024-12-28 of {eid} began on the private engine, and "
+        "resuming it on the public one would pool fits from two engines in "
+        "one week: switch this install to the private engine "
+        "(./setup_engine.sh --private) to finish it, or delete the "
+        "experiment to replay it on this one")
+    assert _tree(tmp_path) == before
+    # on the engine it began on, it resumes
+    _on(monkeypatch, tmp_path, "private")
+    p = X.preflight(s, retro_root=season)
+    assert (p["resume"], p["weeks_done"], p["complete"]) == (False, 0, False)
+    # and the other way round
+    (wd / retro.WEEK_ENGINE_NAME).write_text(json.dumps({"engine": "public"}),
+                                             encoding="utf-8")
+    assert "(./setup_engine.sh --public) to finish it" in _refused(
+        "MACHINE", X.preflight, s, retro_root=season)
+    # the launcher's step on Windows: a set variable is overruled there
+    from flubnf import settings
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    assert "(setup.ps1 -Engine public) to finish it" in _refused(
+        "MACHINE", X.preflight, s, retro_root=season)
+
+
+def test_the_two_strain_model_is_refused_up_front_on_the_public_engine(
+        season, monkeypatch, tmp_path):
+    from app.core.engines import lwf
+    s = {"model": "sihrs-2strain", "season": "2024-25"}
+    p = X.preflight(s, retro_root=season)
+    assert (p["id"], p["complete"]) == ("sihrs-2strain_2024-25_smoke", False)
+    _on(monkeypatch, tmp_path, "public")
+    before = _tree(tmp_path)
+    said = _refused("MACHINE", X.preflight, s, retro_root=season)
+    assert said == (
+        "sihrs-2strain runs on the private engine only: its cells set "
+        f"pf_binom_neff_cap ({lwf._NO_COUNTERPART['pf_binom_neff_cap']}), "
+        "which has no counterpart in the public engine, so every cell "
+        "would be refused. Switch this install to the private engine "
+        "(./setup_engine.sh --private) to run it.")
+    assert _tree(tmp_path) == before                    # no cell prepared
+    # the one-strain model starts there
+    p = X.preflight({"model": "sihrs", "season": "2024-25"},
+                    retro_root=season)
+    assert p["complete"] is False
+
+
+def test_start_says_when_the_shipped_replay_ran_on_the_other_engine(
+        season, monkeypatch, tmp_path):
+    s = {"model": "sihrs", "season": "2024-25"}
+    _replay(season / "2024-25", weeks=SMOKE_WEEKS)   # no engine: private
+    compared = ("Compared with the shipped replay of 2024-25 (the Oracle "
+                "SIHRS) on the cells both score.")
+    a = X.started(X.preflight(s, retro_root=season))
+    assert (a["detail"], a["kind"]) == (compared, "ok")
+    _on(monkeypatch, tmp_path, "public")
+    a = X.started(X.preflight(s, retro_root=season))
+    assert (a["detail"], a["kind"]) == (
+        compared + " Compared across engines: this experiment runs on the "
+        "public engine, the shipped replay ran on the private one.", "ok")
+    # a shipped replay made on the public engine
+    retro.write_meta(season / "2024-25", {
+        "started_utc": 1_790_000_000.0, "settings": {
+            **SHIPPED, "engine_build": {"engine": "public",
+                                        "commit": "8410f794"}}})
+    assert X.started(X.preflight(s, retro_root=season))["detail"] == compared
+    _on(monkeypatch, tmp_path, "private")
+    assert X.started(X.preflight(s, retro_root=season))["detail"] == (
+        compared + " Compared across engines: this experiment runs on the "
+        "private engine, the shipped replay ran on the public one.")
+
+
 def test_a_resume_names_the_replay_its_summary_was_compared_with(
         season, truth, monkeypatch):
     s = {"model": "sihrs", "season": "2024-25"}
