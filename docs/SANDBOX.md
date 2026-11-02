@@ -228,22 +228,24 @@ finished on that computer), the disk it needs and keeps, and the shipped
 replay it will be compared with. Nothing runs in the student's console.
 
 **The runner.** `flubnf runner`, which Ely starts from the main install
-in a Terminal of the lab account, works the queue. Its first start makes
-`~/Students/.runner`, the folder that tells the students' consoles to
-queue (until then a student's Start runs on that computer as it would
-anywhere), so Ely starts it once before the students use their clones.
-It works the queue first in, first out, one experiment at a time, each
-in a fresh process that reads and writes only that student's folder. It
-holds the queue, and says why, while its install is not a clean `main`,
-the particle-filter engine is missing, or a Retrospective replay runs on
-that computer (a Sandbox fit does not hold it). It checks the folder
-before every week, so a link, a pipe or an unexpected file stops the job
-with its reason. A week interrupted by a stop or a limit is fitted again
-from its start. The runner alone scores the summary there, against the
-shipped replays of its own install: Ely exports each season's replay
-again (a bundle now carries each week's `oracle.json`) and imports it on
-the Mac Studio, so that experiments there have their reference with the
-Oracle step on or off.
+in a Terminal of the lab account, works the queue; closing that Terminal
+stops it as Ctrl-C does, and started under `nohup` it keeps going. Its
+first start makes `~/Students/.runner`, the folder that tells the
+students' consoles to queue (until then a student's Start runs on that
+computer as it would anywhere), so Ely starts it once before the
+students use their clones. It works the queue first in, first out, one
+experiment at a time, each in a fresh process that reads and writes only
+that student's folder. It holds the queue, and says why, while its
+install is not a clean `main`, the particle-filter engine is missing or
+out of date, or a Retrospective replay runs on that computer (a Sandbox
+fit does not hold it). It checks the folder before every week, so a
+link, a pipe or an unexpected file stops the job with its reason. A week
+interrupted by a stop or a limit is fitted again from its start. The
+runner alone scores the summary there, against the shipped replays of
+its own install: Ely exports each season's replay again (a bundle now
+carries each week's `oracle.json`) and imports it on the Mac Studio, so
+that experiments there have their reference with the Oracle step on or
+off.
 
 **Lean weeks.** Once a week is stored and its quantiles are checked to
 equal what its forecasting samples give, the samples are dropped; a

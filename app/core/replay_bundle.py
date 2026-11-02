@@ -167,6 +167,10 @@ def export_season(root: Path, season: str, out_dir: Path,
         out = out_dir / bundle_name(season, f"{export_stamp}-{n}")
     export_stamp = out.name[len(f"{season}-FluBNF-replay-"):-len(SUFFIX)]
     meta = retro.read_meta(root)
+    # the engine build as run_season records it (settings.engine_build);
+    # "build", the key read here before, as a fallback
+    st = meta.get("settings") if isinstance(meta, dict) else None
+    st = st if isinstance(st, dict) else {}
     weeks = sorted({f.split("/")[1] for f in files if f.startswith("weeks/")})
     entries, total = {}, 0
     for f in files:
@@ -178,8 +182,8 @@ def export_season(root: Path, season: str, out_dir: Path,
                 "source": source, "stamp": export_stamp,
                 "weeks": weeks, "exported_at": _utc_iso(),
                 "exported_by": hostname(), "flubnf_build": build or "",
-                "engine_build": ((meta.get("settings") or {}).get("build")
-                                 if isinstance(meta, dict) else None) or {},
+                "engine_build": (st.get("engine_build") or st.get("build")
+                                 or {}),
                 "files": entries, "total_bytes": total}
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".part")

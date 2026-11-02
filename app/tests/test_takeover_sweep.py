@@ -37,6 +37,16 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def _written(pidfile: Path) -> bool:
+    """The child's pid is in the file: the open() that creates it leaves
+    it empty until the write, so under load a read can find ''."""
+    try:
+        int(pidfile.read_text())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _spawn_group(tmp_path, marked=True):
     """A process leading its own group, with one child in that group. The
     marker rides in argv so the recorded runner script matches (or, for
@@ -50,7 +60,7 @@ def _spawn_group(tmp_path, marked=True):
     argv = [sys.executable, "-c", code] + ([MARKER] if marked else [])
     p = subprocess.Popen(argv, start_new_session=True)
     deadline = time.time() + 10
-    while time.time() < deadline and not pidfile.is_file():
+    while time.time() < deadline and not _written(pidfile):
         time.sleep(0.05)
     child = int(pidfile.read_text())
     return p, child
