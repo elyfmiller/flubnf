@@ -6,6 +6,12 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (23:27 UTC): ROUND 2026-11-07 MERGED: #3995 is in cdcepi
+  main (seen at 23:27 UTC, main 6d17ab8 contains cec8608). The files on
+  main are byte-identical to the checked pair: GroundHogCGR 52
+  locations (0de90710...), OracleSIHRS 51 (9402fb92...). The 01:00 UTC
+  member table still runs; with the round merged, a flagged location
+  would need a new hub pull request before 03:00 UTC, which waits on Ely.
 - 2026-11-04 (22:11 UTC): ROUND 2026-11-07, VALIDATION PASSED ON THE
   RECOMMIT (Ely: both commits on #3995 green; not yet merged by the hub
   admin). Before that, checked here: #3995's merge with cdcepi main
