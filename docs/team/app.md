@@ -6,6 +6,11 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-04 (later): Ely merged #78 (`dev` to `main`, merge e982d09):
+  the Update data fix and the experiment and runner fixes (9eec15f) are
+  on `main`, whose tree equals `dev`'s d3101e1, CI green on it. Ely's hub
+  clone got this week's data by the fix's steps run by hand; the console
+  runs the fix once FluBNF is reopened.
 - 2026-11-04 (round day): Update data failed on Ely's laptop, twice at
   its 300 s limit, then at once on the `.git/index.lock` the first kill
   left (Ely deleted it by hand). The hub clone is a partial clone: the
