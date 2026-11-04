@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (19:44 UTC): ROUND 2026-11-07, HUB PULL REQUEST #3995 OPENED
+  BY ELY (cdcepi/FluSight-forecast-hub#3995, from
+  elyfmiller:FluBNF_submission, head 10589b5). GitHub's test merge
+  (3747e66, on cdcepi main 42725dd) adds only our two files. This
+  session cannot read the hub's checks or comments (the GitHub API and
+  pages for cdcepi are closed to it, and attaching the repository was
+  refused); it watches the pull request by git (a head change, the merge
+  ref, the merge into main), and the hub's "Hub Submission Validation
+  (R)" result comes from Ely or the merge.
 - 2026-11-04 (19:25 UTC): ROUND 2026-11-07 COMMITTED TO THE FORK AT 10x
   (Ely's choice; Decided). FluBNF_submission on elyfmiller's fork:
   commit 10589b5 "NAU_PyBNF forecast 2026-11-07 (EW44): upper tail
