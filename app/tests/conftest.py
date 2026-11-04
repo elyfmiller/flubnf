@@ -23,6 +23,9 @@
   * runner.STUDENTS -> a missing tmp folder: every test sees a computer
     without a runner, a suite run inside a student's clone on the Mac
     Studio included (its ~/Students/.runner would turn the queue on).
+  * runner._recorded_engine -> none: the checkout's own .flubnf.env (a
+    clone set up with --public) would refuse every runner and terminal
+    start; its tests read a tmp clone's.
 """
 import atexit
 import os
@@ -117,6 +120,18 @@ def _app_state_untouched():
 
 
 @pytest.fixture(autouse=True)
+def _private_engine_unless_asked(monkeypatch):
+    """Every test sees the default engine (private) whatever the shell
+    exports; the public engine's tests set FLUBNF_ENGINE themselves."""
+    from app.core.engines import lwf
+    for var in ("FLUBNF_ENGINE", "FLUBNF_PY_ENGINE_PUBLIC", "FLUBNF_ENGINE_LOCK"):
+        monkeypatch.delenv(var, raising=False)
+    lwf._CHECK.clear()
+    lwf._BUILD.clear()
+    lwf._PENDING.clear()
+
+
+@pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
 
@@ -127,6 +142,14 @@ def _students_in_tmp(tmp_path, monkeypatch):
     runner's tests make their own under tmp_path."""
     from app.core import runner
     monkeypatch.setattr(runner, "STUDENTS", tmp_path / "no-students")
+
+
+@pytest.fixture(autouse=True)
+def _no_engine_record(monkeypatch):
+    """The checkout records no engine (runner._recorded_engine), whatever
+    its .flubnf.env says; the record's tests put the real one back."""
+    from app.core import runner
+    monkeypatch.setattr(runner, "_recorded_engine", lambda: None)
 
 
 @pytest.fixture(scope="session")

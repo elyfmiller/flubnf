@@ -23,7 +23,9 @@
 # local work move with it.
 #
 # RELINK. Then every path that named an old place is rewritten: .flubnf.env,
-# the clone's .venv and app/state, and the engine venv. The old places come
+# the clone's .venv and app/state, and the engine venv. The public engine's
+# venv (~/.venvs/flubnf-public, docs/ENGINE.md) is not among them: it is
+# installed from wheels and names no clone, hub or checkout. The old places come
 # from what was recorded, not from the move: the venv's activate script
 # names the folder the venv was made in, and a hub or PyBNF path in
 # .flubnf.env that is gone but has a namesake in ~/GitHub moved there. So

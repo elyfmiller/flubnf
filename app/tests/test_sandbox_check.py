@@ -233,6 +233,79 @@ def test_the_route_checks_the_posted_text_not_the_saved_file(box):
     assert not (box / "contactmap").exists()
 
 
+def _public(monkeypatch, tmp_path):
+    """FLUBNF_ENGINE=public, its venv a Python that is not there."""
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC",
+                       str(tmp_path / "nopy" / "python"))
+
+
+def _unknown(r) -> list:
+    return [f["text"] for f in r["codes"] if f["code"] == "KEY_UNKNOWN"]
+
+
+def test_on_the_public_engine_its_own_tables_judge_the_keys(box, monkeypatch,
+                                                            tmp_path):
+    from app.core.engines import lwf
+    files = _files()
+    files["priors.conf"] += ("pf_shrink = 1\npf_frobnicate = 2\n"
+                             "pf_binom_neff_cap = 300\npf_jitter = 0.2\n"
+                             "pf_observable_mode = integrated\n")
+    spelling = ("{} is not a setting the installed engine knows (check the "
+                "spelling), so a run would stop on it")
+    # the private engine: the fork's parser, as before (the stub lists
+    # neither key; the engine keys priors.conf sets are not asked)
+    assert _unknown(sb.check(files)) == [spelling.format("pf_shrink"),
+                                         spelling.format("pf_frobnicate")]
+    _public(monkeypatch, tmp_path)
+    r = sb.check(files)
+    assert r["ok"], r["problems"]
+    lost = ("{} ({}) has no counterpart in the public engine, so a run "
+            "would stop on it")
+    assert _unknown(r) == [
+        lost.format("pf_shrink", lwf._NO_COUNTERPART["pf_shrink"]),
+        spelling.format("pf_frobnicate"),
+        lost.format("pf_binom_neff_cap",
+                    lwf._NO_COUNTERPART["pf_binom_neff_cap"])]
+    assert "pf_jitter" not in " ".join(r["warnings"])    # lwf_jitter there
+    assert "pf_observable_mode is retired" in " ".join(r["warnings"])
+
+
+def test_on_the_public_engine_a_model_it_cannot_run_is_named(box, monkeypatch,
+                                                            tmp_path):
+    from app.core.engines import lwf
+    line = "Tobs() = scale__FREE*T_Cum   # the tally at the reporting scale"
+    files = _files()
+    n = files["model.bngl"].split("\n").index(line) + 1
+    clock = dict(files, **{"model.bngl": files["model.bngl"].replace(
+        line, "Tobs() = scale__FREE*T_Cum*(1 + 0*time())")})
+    noted = dict(files, **{"model.bngl": files["model.bngl"].replace(
+        line, line + ", not time()")})
+    # the private engine: nothing new
+    for f in (files, clock, noted):
+        assert sb.check(f)["warnings"] == []
+    _public(monkeypatch, tmp_path)
+    assert sb.check(files)["warnings"] == []
+    r = sb.check(clock)
+    assert r["ok"], r["problems"]
+    why = lwf.model_refusal(clock["model.bngl"], "model.bngl")
+    assert why.startswith(f"model.bngl line {n}: time() would run a week")
+    assert _unknown(r) == [f"{why}; the public engine refuses such a model, "
+                           "so a run would stop on it"]
+    assert sb.check(noted)["warnings"] == []        # in a comment only
+    # a line break PyBNF reads and BNG2.pl does not
+    fed = dict(files, **{"model.bngl": files["model.bngl"].replace(
+        line, line.replace("   #", "\x0c#"))})
+    assert _unknown(sb.check(fed)) == [
+        lwf.model_refusal(fed["model.bngl"], "model.bngl")
+        + "; the public engine refuses such a model, so a run would stop "
+        "on it"]
+    # a lone \r in posted text: every run reads it as a newline
+    cr = dict(files, **{"model.bngl": files["model.bngl"].replace(
+        line, line.replace("   #", "\r#"))})
+    assert _unknown(sb.check(cr)) == []
+
+
 def test_a_retired_key_says_so(box):
     files = _files()
     files["priors.conf"] += "pf_observable_mode = integrated\n"

@@ -300,8 +300,12 @@ def test_every_open_reaches_the_perl_check():
     assert after[:2] == ["if defined ENGINEOK call :perlblock",
                          "if defined ENGINEOK goto :startconsole"], after
     calls = [i for i, ln in enumerate(LINES) if ln == "call :perlblock"]
-    # the ENGINEOK call is under `if defined`; these are the other four
-    assert len(calls) == 4, calls
+    # the ENGINEOK call is under `if defined`; these are the other four,
+    # and the public engine's, first thing on its route
+    assert len(calls) == 5, calls
+    assert LINES[calls[-1] - 1:calls[-1] + 1] == [
+        "rem either route.", "call :perlblock"], calls
+    assert _code(LINES[_label_at("publicengine") + 1:])[0] == "call :perlblock"
     nothing = BAT[BAT.index("echo   PF engine not installed"):
                   BAT.index("\r\n:engineinstall\r\n")]
     assert nothing.index("call :perlblock") < nothing.index("goto :startconsole")
@@ -526,7 +530,10 @@ def test_the_retry_text_promises_only_what_happens():
     assert "setup.ps1, starts it again" not in BAT
     assert "Run setup.ps1 to see why" not in BAT
     assert 'set "ATTEMPT=%CD%\\.venv\\engine-attempt.txt"' in LINES
-    failed = _after_label(BAT, "enginefailed", "goto :")
+    failed = _after_label(BAT, "enginefailed", "goto :startconsole")
+    # the public route leaves first: it keeps no record (:publicengine)
+    assert _code(failed.splitlines())[0] == \
+        "if defined PUBLICROUTE goto :publicfailed"
     assert "the next open tries again" in " ".join(
         ln.replace("echo", "").strip() for ln in failed.split("\r\n"))
     skipped = _after_label(BAT, "engineskipped", "\r\n:startconsole")
@@ -908,6 +915,201 @@ def test_a_failed_probe_names_a_missing_visual_cpp_runtime():
     runtime = _after_label(BAT, "enginevcruntime", "goto :")
     assert "https://aka.ms/vc14/vc_redist.x64.exe" in runtime
     assert "Visual C++ Redistributable for x64" in " ".join(runtime.split())
+
+
+# ----------------------------------------- the public engine (FLUBNF_ENGINE)
+def _public_block() -> list[str]:
+    """:publicengine to the next block, :failvenv: the public route's own
+    lines, after the console's start, which nothing runs into."""
+    return LINES[_label_at("publicengine"):_label_at("failvenv")]
+
+
+def _public_gate() -> str:
+    head = 'if defined PUBLICROUTE set "ENGINEGATE='
+    line = next(ln for ln in LINES if ln.startswith(head))
+    assert line.endswith('"'), line
+    return line[len(head):-1]
+
+
+def test_the_engine_switch_is_private_unless_it_says_public():
+    """FLUBNF_ENGINE picks the route, private by default; a value that is
+    neither is said, and the private engine runs. The branch comes after
+    the private checkout's update, which runs on either route (the
+    fallback stays current), and after the private venv's name is cleaned,
+    so the public route can refuse it."""
+    order = [LINES.index(ln) for ln in (
+        ":engineupdated",
+        'set "ENGINEPY=%ENGINEVENV%\\Scripts\\python.exe"',
+        'set "ENGINEROUTE=private"',
+        'if defined FLUBNF_ENGINE set "ENGINEROUTE=%FLUBNF_ENGINE%"',
+        'set "ENGINEROUTE=%ENGINEROUTE:"=%"',
+        'if /I "%ENGINEROUTE%"=="public" goto :publicengine',
+        'if not exist "%ENGINEPY%" goto :engineabsent')]
+    assert order == sorted(order), order
+    other = LINES[order[5] + 1]
+    assert other.startswith('if /I not "%ENGINEROUTE%"=="private" echo ')
+    assert "the private engine" in other
+    assert sum("goto :publicengine" in ln for ln in _code(LINES)) == 1
+    # nothing falls into the public block: the line above it ends the console
+    above = _code(LINES[:_label_at("publicengine")])
+    assert above[-1] == "exit /b %STATUS%", above[-1]
+
+
+def test_the_public_venv_is_never_a_private_one():
+    """Its own venv, %LOCALAPPDATA%\\FluBNF\\venv-public, or
+    FLUBNF_PUBLIC_VENV cleaned as FLUBNF_ENGINE_VENV is; refused, before
+    anything is made, when it names one of the private engine's venvs."""
+    block = _public_block()
+    order = [block.index(ln) for ln in (
+        'set "PUBLICVENV=%FLUBNF_PUBLIC_VENV%"',
+        'if not defined PUBLICVENV set "PUBLICVENV=%LOCALAPPDATA%\\FluBNF\\venv-public"',
+        'set "PUBLICVENV=%PUBLICVENV:"=%"',
+        'if "%PUBLICVENV:~-1%"=="\\" set "PUBLICVENV=%PUBLICVENV:~0,-1%"',
+        'if /I "%PUBLICVENV%"=="%USERPROFILE%\\.venvs\\flubnf" goto :publicvenvtaken',
+        'if /I "%PUBLICVENV%"=="%USERPROFILE%\\.venvs\\flubnf-engine" goto :publicvenvtaken',
+        'if /I "%PUBLICVENV%"=="%ENGINEVENV%" goto :publicvenvtaken',
+        'set "ENGINEVENV=%PUBLICVENV%"',
+        "goto :enginevenv")]
+    assert order == sorted(order), order
+    taken = " ".join(_after_label("\r\n".join(block), "publicvenvtaken",
+                                  "goto :").split())
+    assert "Clear FLUBNF_PUBLIC_VENV" in taken and "venv-public" in taken
+    # the private venv's default is set once, by the private block
+    sets = [ln for ln in _code(LINES) if "set \"ENGINEVENV=" in ln]
+    assert sets == ['set "ENGINEVENV=%FLUBNF_ENGINE_VENV%"',
+                    'if not defined ENGINEVENV set "ENGINEVENV=%USERPROFILE%\\.venvs\\flubnf-engine"',
+                    'set "ENGINEVENV=%ENGINEVENV:"=%"',
+                    'if "%ENGINEVENV:~-1%"=="\\" set "ENGINEVENV=%ENGINEVENV:~0,-1%"',
+                    'set "ENGINEVENV=%PUBLICVENV%"'], sets
+    conda = [ln for ln in _code(LINES) if 'set "CONDAENV=' in ln]
+    assert conda == [
+        'set "CONDAENV=%USERPROFILE%\\.venvs\\flubnf-engine-py312"',
+        'if defined PUBLICROUTE set "CONDAENV=%LOCALAPPDATA%\\FluBNF\\python312-public"']
+
+
+def test_the_lock_is_read_only_through_engine_lock_py():
+    """The wheel's address and sha256 are in engine-requirements.txt and
+    nowhere in the launcher. The lock is checked with the console's own
+    Python before a venv is made or pip runs, and a public venv counts as
+    installed only when engine_lock.py check passes."""
+    block = _public_block()
+    code = _code(block)
+    assert 'if not defined ENGINELOCK set "ENGINELOCK=%~dp0engine-requirements.txt"' in code
+    assert code.index('set "ENGINELOCK=%FLUBNF_ENGINE_LOCK%"') \
+        < code.index('if not defined ENGINELOCK set "ENGINELOCK=%~dp0engine-requirements.txt"')
+    tool = '"%~dp0scripts\\engine_lock.py"'
+    uses = [ln for ln in code if "%ENGINELOCK%" in ln and not ln.startswith(
+        ("set ", "echo "))]
+    for ln in uses:
+        assert (f'{tool} check "%ENGINELOCK%"' in ln
+                or f'{tool} wheel "%ENGINELOCK%"' in ln
+                or ln.endswith(' -r "%ENGINELOCK%"')), ln
+    for word in ("github.com", ".whl", "sha256", "pybnf @", "8410f794"):
+        assert not [ln for ln in code if word in ln], word
+    wheel = code.index('".venv\\Scripts\\python.exe" ' + tool
+                       + ' wheel "%ENGINELOCK%" <nul >nul')
+    assert code[wheel + 1] == 'if not "%ERRORLEVEL%"=="0" goto :publicnolock'
+    assert wheel < code.index('set "PUBLICROUTE=1"') < code.index("goto :enginevenv")
+    ready = code.index(f'"%PUBLICPY%" {tool} check "%ENGINELOCK%" <nul >nul 2>&1')
+    assert code[ready + 1:ready + 3] == [
+        'set "PUBLICCODE=%ERRORLEVEL%"', 'if "%PUBLICCODE%"=="0" goto :publicready']
+    assert ready < wheel
+    nolock = " ".join(_after_label("\r\n".join(block), "publicnolock",
+                                   "goto :").split())
+    assert "setup.ps1 -Engine private" in nolock
+
+
+def test_the_public_install_is_hash_checked_and_its_python_is_3_12():
+    """pip installs the lock alone, every file checked against its sha256
+    and nothing built; the venv is made and gated by the private engine's
+    own code, with a gate that takes x64 3.12 only and a search that skips
+    py -3.11, after the same five-second look at the package index."""
+    block = _public_block()
+    pips = [ln for ln in _code(block) if " -m pip install " in ln]
+    assert pips == ['"%ENGINEPY%" -m pip install --disable-pip-version-check '
+                    "--require-hashes --only-binary :all: %PUBLICFORCED% "
+                    '-r "%ENGINELOCK%"'], pips
+    # a stale venv loses pybnf first (pip keeps one of the same version);
+    # every package again only when the check still fails, once
+    code = _code(block)
+    assert ('if defined PUBLICSTALE "%ENGINEPY%" -m pip uninstall -y -q '
+            '--disable-pip-version-check pybnf <nul') in code
+    assert "if defined PUBLICSTALE if not defined PUBLICFORCED goto :publicforce" in code
+    force = _code(_after_label("\r\n".join(block), "publicforce").splitlines())
+    assert force[1:3] == ['set "PUBLICFORCED=--force-reinstall"', "goto :publicpip"], force
+    check = _code(_after_label("\r\n".join(block), "publiccheck").splitlines())
+    assert check[0] == ('"%ENGINEPY%" "%~dp0scripts\\engine_lock.py" check '
+                        '"%ENGINELOCK%" <nul')
+    assert check[1] == 'if "%ERRORLEVEL%"=="0" goto :publicready'
+    gate = _public_gate()
+    assert "v[:2] == (3,12)" in gate and "'win-amd64'" in gate
+    for version, platform, code in [((3, 12, 10), "win-amd64", 0),
+                                    ((3, 11, 9), "win-amd64", 2),
+                                    ((3, 14, 0), "win-amd64", 2),
+                                    ((3, 12, 10), "win-arm64", 3)]:
+        swap = (f"import sys, sysconfig; sys.version_info = {version!r}; "
+                f"sysconfig.get_platform = lambda: {platform!r}; "
+                "exec(sys.argv.pop(1))")
+        out = subprocess.run([sys.executable, "-c", swap, gate, "py -3.12"],
+                             capture_output=True, text=True, timeout=60,
+                             check=False)
+        assert out.returncode == code, (version, platform, out)
+    venv = _engine_venv_lines()
+    assert venv.index('set "ENGINEGATE=' + _gate() + '"') \
+        < venv.index('if defined PUBLICROUTE set "ENGINEGATE=' + gate + '"') \
+        < venv.index('"%ENGINEPY%" -c "%ENGINEGATE%" "the engine venv" <nul 2>nul')
+    skip = venv.index("if defined PUBLICROUTE goto :enginevenvpython")
+    assert venv[skip - 1].endswith("echo     py -3.12: not installed")
+    assert venv[skip + 1].startswith("py -3.11 ")
+    index = _code(_after_label(BAT, "engineindex").splitlines())
+    assert index[0] == "if defined PUBLICROUTE goto :publicdeps"
+    assert _label_at("enginedeps") < _label_at("engineindex")
+
+
+def test_the_public_route_keeps_no_attempt_record_and_always_starts_the_console():
+    """Its failures are quick or a dropped network, and a record kept the
+    private route's machines off the engine: none here. Every way out of
+    the block goes to the console; nothing waits for a key."""
+    failed = _code(_after_label(BAT, "enginefailed", "goto :startconsole").splitlines())
+    assert failed[0] == "if defined PUBLICROUTE goto :publicfailed"
+    assert failed.index('echo "%ENGINEFP%">"%ATTEMPT%"') > 0
+    block = _public_block()
+    text = "\r\n".join(block)
+    assert "ATTEMPT" not in text and "engine-attempt" not in text
+    assert "pause" not in text and "exit /b" not in text
+    for label in ("publicnolock", "publicvenvtaken", "publicfailed",
+                  "publicready"):
+        assert _code(_after_label(text, label, "\r\n:").splitlines())[-1] \
+            == "goto :startconsole", label
+    own = {ln[1:] for ln in block if ln.startswith(":")}
+    shared = {"startconsole", "enginevenv", "enginevcruntime", "eof",
+              "perlblock"}
+    for ln in _code(block):
+        for target in re.findall(r"(?:goto|call) :(\w+)", ln):
+            assert target in own | shared, ln
+
+
+def test_a_verified_public_engine_is_recorded_and_the_switch_never_is():
+    """FLUBNF_PY_ENGINE_PUBLIC is written back as :recordengine writes the
+    private engine's, and also when nothing was recorded. FLUBNF_ENGINE is
+    written by setup.ps1 -Engine alone, in .flubnf.env.cmd: never by the
+    launcher, and never for the account, where it would switch every copy."""
+    ready = _code(_after_label("\r\n".join(_public_block()), "publicready",
+                               "goto :").splitlines())
+    assert ready == ['set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%"',
+                     "call :recordpublic"]
+    sub = _code(_after_label("\r\n".join(_public_block()), "recordpublic")
+                .splitlines())
+    assert sub[0] == 'if /I "%PUBLICREC%"=="%PUBLICPY%" goto :eof'
+    assert ('if exist ".flubnf.env.cmd" echo set '
+            '"FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%">>".flubnf.env.cmd"') in sub
+    assert 'setx FLUBNF_PY_ENGINE_PUBLIC "%PUBLICPY%" >nul 2>&1' in sub
+    assert sub[-1] == "goto :eof"
+    assert LINES.index('set "PUBLICREC=%FLUBNF_PY_ENGINE_PUBLIC%"') \
+        < LINES.index('set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%"')
+    for ln in _code(LINES):
+        assert "setx FLUBNF_ENGINE " not in ln, ln
+        assert 'set "FLUBNF_ENGINE=' not in ln, ln
 
 
 # ---------------------------------------------------- run with cmd.exe (Windows)
@@ -2014,7 +2216,7 @@ def _run_engine_venv(pc: SimpleNamespace, **env) -> subprocess.CompletedProcess:
         "ATTEMPT": str(pc.folder / ".venv" / "engine-attempt.txt"),
         "PROCESSOR_ARCHITECTURE": "AMD64", "PROCESSOR_ARCHITEW6432": None,
         "CONDA_EXE": None, "CONDA_SUBDIR": None, "FLUBNF_ENGINE_VENV": None,
-        **env}
+        "FLUBNF_ENGINE": None, **env}
     r = _cmd(pc.folder.parent / "engine-venv.bat", _engine_venv_slice(),
              pc.folder, **settings)
     assert "REACHED-" in r.stdout, _said(r)
@@ -2365,3 +2567,105 @@ def test_windows_a_missing_visual_cpp_runtime_is_named(tmp_path, runtime):
     assert "REACHED-FAILED" in out, _said(r)
     assert ("https://aka.ms/vc14/vc_redist.x64.exe" in out) == (not runtime), _said(r)
     assert (f'ren "{venv}" "flubnf-engine-old"' in out) == runtime, _said(r)
+
+
+# ------------------------------- the public engine run with cmd.exe (Windows)
+SAMPLE_LOCK = """\
+bngsim[antimony]==0.15.1 \\
+    --hash=sha256:{a}
+pybnf @ https://github.com/elyfmiller/flubnf/releases/download/pybnf-x/pybnf-1.8.1-py3-none-any.whl \\
+    --hash=sha256:{b}
+""".format(a="1" * 64, b="2" * 64)
+
+
+def _route_slice() -> str:
+    """The engine switch, from the private venv's name to the private
+    route's first test; the labels it ends at say which route."""
+    start = BAT.index('\r\nset "ENGINEROUTE=private"\r\n') + 2
+    end = BAT.index("\r\nrem Installed? Cheap file tests first") + 2
+    return ("@echo off\nsetlocal\n" + BAT[start:end]
+            + "echo REACHED-PRIVATE\nexit /b 0\n"
+            + ":publicengine\necho REACHED-PUBLIC\nexit /b 0\n")
+
+
+@windows_only
+@pytest.mark.parametrize("value, route", [
+    (None, "PRIVATE"), ("private", "PRIVATE"), ("public", "PUBLIC"),
+    ("Public", "PUBLIC"), ("pubic", "PRIVATE")])
+def test_windows_the_engine_switch_picks_the_route(tmp_path, value, route):
+    r = _cmd(tmp_path / "route.bat", _route_slice(), tmp_path,
+             FLUBNF_ENGINE=value)
+    assert f"REACHED-{route}" in r.stdout, _said(r)
+    assert ("neither private nor public" in r.stdout) == (value == "pubic"), _said(r)
+
+
+def _public_pc(tmp_path: Path, lock: bool) -> SimpleNamespace:
+    """A FluBNF folder with engine_lock.py and a console venv whose
+    python.exe runs it with this Python; the lock if asked for."""
+    pc = SimpleNamespace(folder=tmp_path / "flubnf", home=tmp_path / "home")
+    (pc.folder / "scripts").mkdir(parents=True)
+    pc.home.mkdir()
+    shutil.copy(REPO / "scripts" / "engine_lock.py", pc.folder / "scripts")
+    _exe(pc.folder / ".venv" / "Scripts", "python",
+         "import runpy, sys\nsys.argv = sys.argv[1:]\n"
+         "runpy.run_path(sys.argv[0], run_name='__main__')\n")
+    if lock:
+        (pc.folder / "engine-requirements.txt").write_text(SAMPLE_LOCK, encoding="ascii")
+    return pc
+
+
+def _run_public(pc: SimpleNamespace, **env) -> subprocess.CompletedProcess:
+    """:publicengine to :failvenv, run as FluBNF.bat runs it (from its own
+    folder); the shared labels it reaches stand in for the rest."""
+    start = BAT.index("\r\n:publicengine\r\n") + 2
+    end = BAT.index("\r\n:failvenv\r\n") + 2
+    text = ("@echo off\nsetlocal\ngoto :publicengine\n" + BAT[start:end]
+            + ":perlblock\ngoto :eof\n"
+            + ":startconsole\necho REACHED-CONSOLE\nexit /b 0\n"
+            + ":enginevenv\necho REACHED-VENV [%ENGINEVENV%] [%ENGINEPY%]"
+            + " [%PUBLICROUTE%] [%PUBLICSTALE%]\nexit /b 0\n"
+            + ":enginevcruntime\necho REACHED-VCRT\nexit /b 0\n")
+    settings = {"USERPROFILE": str(pc.home),
+                "LOCALAPPDATA": str(pc.home / "AppData" / "Local"),
+                "ENGINEVENV": str(pc.home / ".venvs" / "flubnf-engine"),
+                "FLUBNF_PUBLIC_VENV": None, "FLUBNF_ENGINE_LOCK": None,
+                "FLUBNF_PY_ENGINE_PUBLIC": None, **env}
+    r = _cmd(pc.folder / "public.bat", text, pc.folder, **settings)
+    for crash in ("syntax of the command", "was unexpected",
+                  "cannot find the batch label"):
+        assert crash not in r.stdout + r.stderr, _said(r)
+    return r
+
+
+@windows_only
+def test_windows_a_missing_lock_costs_one_line_and_starts_the_console(tmp_path):
+    pc = _public_pc(tmp_path, lock=False)
+
+    r = _run_public(pc)
+
+    out = r.stdout + r.stderr
+    assert "REACHED-CONSOLE" in r.stdout and "REACHED-VENV" not in r.stdout, _said(r)
+    assert "lock file is not here" in out, _said(r)
+    assert "setup.ps1 -Engine private" in " ".join(r.stdout.split()), _said(r)
+
+
+@windows_only
+def test_windows_with_a_lock_the_public_venv_is_made_by_the_shared_code(tmp_path):
+    pc = _public_pc(tmp_path, lock=True)
+    venv = pc.home / "AppData" / "Local" / "FluBNF" / "venv-public"
+
+    r = _run_public(pc)
+
+    assert (f"REACHED-VENV [{venv}] [{venv}\\Scripts\\python.exe] [1] []"
+            in r.stdout), _said(r)
+
+
+@windows_only
+@pytest.mark.parametrize("leaf", ["flubnf", "flubnf-engine"])
+def test_windows_a_private_venv_is_never_the_public_one(tmp_path, leaf):
+    pc = _public_pc(tmp_path, lock=True)
+
+    r = _run_public(pc, FLUBNF_PUBLIC_VENV=str(pc.home / ".venvs" / leaf) + "\\")
+
+    assert "REACHED-CONSOLE" in r.stdout and "REACHED-VENV" not in r.stdout, _said(r)
+    assert "a venv of the private" in r.stdout, _said(r)

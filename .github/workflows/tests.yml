@@ -64,12 +64,36 @@ jobs:
         env: {FLUBNF_BNG_REAL: "1", FLUBNF_HUB: /nonexistent}
         run: pytest app/tests/test_real_bng.py -ra -o addopts=""
 
+      # The public engine's lock, engine-requirements.txt, read through
+      # scripts/engine_lock.py as the installers read it, fetched as Windows
+      # wheels for Python 3.12 and checked against the lock's hashes: a pin
+      # that loses its win_amd64 wheel, or a hash that does not match, fails
+      # here, not on a student's PC. The PyBNF wheel's line is left out (pure
+      # Python, on a release page; the installers' check covers it). pip
+      # reads environment markers on this runner, so a Windows-only
+      # dependency missing from the lock is not caught here. Until the engine
+      # lane posts the lock there is nothing to check, and the step says so.
+      - name: the engine's pins have Windows wheels
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          if [ ! -f engine-requirements.txt ]; then
+            echo "::notice::engine-requirements.txt is not on this branch yet: no engine pins to check"
+            exit 0
+          fi
+          python scripts/engine_lock.py deps engine-requirements.txt > "$RUNNER_TEMP/engine-pins.txt"
+          cat "$RUNNER_TEMP/engine-pins.txt"
+          pip download --disable-pip-version-check --dest "$RUNNER_TEMP/win-wheels" \
+            --platform win_amd64 --only-binary=:all: --python-version 3.12 \
+            --require-hashes -r "$RUNNER_TEMP/engine-pins.txt"
+
       # The engine's packages as FluBNF.bat installs them (its :enginedeps
       # line, read here so the two cannot drift), fetched as Windows wheels
       # for the engine venv's Python: a pin that loses its win_amd64 wheel
       # fails here, not on a student's PC. pip reads environment markers on
       # this runner, so a Windows-only dependency is not fetched.
-      - name: the engine's pins have Windows wheels
+      # The private engine's, every Windows student's default: this step
+      # goes when the private route retires.
+      - name: the private engine's pins have Windows wheels
         if: ${{ !cancelled() && matrix.python-version == '3.12' }}
         run: |
           python - FluBNF.bat > "$RUNNER_TEMP/engine-pins.txt" <<'EOF'
@@ -278,8 +302,9 @@ jobs:
   # stand-in programs (tests/test_windows_launcher.py: update, engine file,
   # :sync, moved .venv, the Perl offer, the engine venv), and the real
   # BNG2.pl under Strawberry Perl and awkward folder names
-  # (app/tests/test_real_bng.py). A real winget, a real engine venv build and
-  # a real fit run in no job.
+  # (app/tests/test_real_bng.py). A real winget runs in no job, and a real
+  # fit on Windows in none: public-engine-install builds the public
+  # engine's venv on Windows and macOS, and fits a cell in it on macOS only.
   windows-setup-script:
     name: "windows-setup-script"
     runs-on: windows-latest
@@ -666,3 +691,80 @@ jobs:
           }
           Write-Host "run 5: an existing checkout under Documents is reused where it stands"
           exit 0
+
+  # The public engine's real install, ahead of the engine lane's lock: the
+  # PyBNF wheel built here from lanl/PyBNF at the pinned commit, and a lock
+  # written for it (scripts/make_test_lock.py), resolved on macOS as the lab
+  # Mac's will be. The install jobs then run the public route for real.
+  public-engine-wheel:
+    name: "public-engine-wheel"
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - name: the PyBNF wheel, its lock, a localhost certificate, lesson 50
+        run: |
+          set -e
+          SRC="$RUNNER_TEMP/pybnf-src" PUB="$RUNNER_TEMP/public-engine"
+          git clone -q --filter=blob:none https://github.com/lanl/PyBNF "$SRC"
+          git -C "$SRC" checkout -q 8410f794e3fa4817572fd07fceb043ddec39d77b
+          python -m pip wheel -q --no-deps -w "$RUNNER_TEMP/dist" "$SRC"
+          python scripts/make_test_lock.py "$RUNNER_TEMP"/dist/pybnf-*.whl "$PUB"
+          cp -R "$SRC/examples/tutorial/50_liu_west_filter" "$PUB/lesson50"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=localhost" \
+            -keyout "$PUB/key.pem" -out "$PUB/cert.pem" 2>/dev/null
+          ls -lR "$PUB/wheels"
+      - uses: actions/upload-artifact@v4
+        with: {name: public-engine, path: "${{ runner.temp }}/public-engine", retention-days: 1}
+
+  public-engine-install:
+    name: "public-engine-install"
+    needs: public-engine-wheel
+    runs-on: ${{ matrix.os }}
+    env: {PYTHONUTF8: "1"}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: {os: [windows-latest, macos-latest]}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - uses: actions/download-artifact@v4
+        with: {name: public-engine, path: "${{ runner.temp }}/public-engine"}
+      - run: pip install pytest bionetgen
+      - name: FluBNF.bat / setup_engine.sh install it (tests/test_public_engine_real.py)
+        shell: bash
+        env: {FLUBNF_PUBLIC_REAL: "${{ runner.temp }}/public-engine"}
+        run: pytest tests/test_public_engine_real.py -ra -s -o addopts="" --noconftest -p no:cacheprovider
+
+      # FluBNF's own run path on the real public engine, on macOS: FluBNF
+      # installed as the test jobs install it, then the fixture's Alaska
+      # cell fitted through pf.execute in the venv the step above made (the
+      # one venv-public under pytest's temporary folder), with BNG2.pl from
+      # pip's bionetgen under the runner's perl. A skip fails the step: the
+      # point is a real run.
+      - name: FluBNF runs a cell on the public engine (app/tests/test_engine_lwf.py)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          pip install -e ".[app,dev]"
+          root=$(python -c "import tempfile; print(tempfile.gettempdir())")
+          py=$(find "$root"/pytest-of-*/ -path "*/venv-public/bin/python" -print -quit || true)
+          if [ -z "$py" ]; then
+            echo "::error::no venv-public under $root/pytest-of-*, where the step above makes it"
+            exit 1
+          fi
+          echo "the public venv's Python: $py"
+          # found, not imported: bionetgen's import needs distutils, which
+          # Python 3.12 lacks without setuptools
+          bng=$(python -c "import importlib.util, pathlib; print(pathlib.Path(importlib.util.find_spec('bionetgen').submodule_search_locations[0]) / 'bng-mac' / 'BNG2.pl')")
+          FLUBNF_TEST_PUBLIC_PYTHON="$py" FLUBNF_BNG="$bng" \
+            pytest app/tests/test_engine_lwf.py -k real_public_run -ra -o addopts="" |
+            tee "$RUNNER_TEMP/real-run.out"
+          if grep -q "^SKIPPED" "$RUNNER_TEMP/real-run.out"; then
+            echo "::error::the real run was skipped (its reason is above), so no cell was fitted"
+            exit 1
+          fi

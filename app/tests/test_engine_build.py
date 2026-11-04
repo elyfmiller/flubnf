@@ -528,6 +528,37 @@ def test_an_engine_changed_mid_season_stops_it_before_the_next_week(
     assert meta["status"] == "done"
 
 
+def test_a_week_begun_on_the_other_engine_stops_the_season(
+        repo, tmp_path, monkeypatch):
+    """A season stopped inside its first week on one engine and resumed on
+    the other: no week finished, so the season's build check passes, and the
+    week's own record refuses (_week_engine). That stops the season with the
+    reason; it used to fail the week and fit the rest on the new engine."""
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.setattr(fs, "PYBNF", repo)
+    root = tmp_path / SEASON
+    wd = retro._week_dir(root, W1)
+    retro._week_engine(wd, "public")          # W1 began on public, one fit done
+    retro.mark_cell_done(wd, "Ohio_r0", "ok")
+    ran = []
+
+    def fake_week(root, season, asof, *a, **k):
+        ran.append(asof)
+        # what _launch_runners does before dispatching on this engine
+        retro._week_engine(retro._week_dir(root, asof), "private")
+        (retro._week_dir(root, asof) / retro.SAMPLES_JSON).write_text("{}")
+    monkeypatch.setattr(retro, "run_week", fake_week)
+    with pytest.raises(retro.EngineBuildChanged,
+                       match="began on the public engine"):
+        retro.run_season(root, SEASON, ["Ohio"], width=1)
+    meta = retro.read_meta(root)
+    assert ran == [W1]                        # W2 was never fitted
+    assert meta["status"] == "stopped"
+    assert meta["stop_reason"].startswith(f"stopped at {W1}: ")
+    assert not (root / "failures.log").exists()
+    assert not retro.week_done(root, W1)
+
+
 def test_a_season_with_no_recorded_build_resumes_as_before(
         repo, tmp_path, monkeypatch):
     _fake_pf_season(monkeypatch)

@@ -175,19 +175,36 @@ def retro_cmd(
         kx = {"settings": {"knobs": _K.jsonable(nd)},
               "drop_same_day": bool(nd.get("run.drop_same_day", False))}
         print(f"  model settings: {_K.label(nd)}")
+    stored, failed = [], []
+
+    def _progress(asof):
+        # run_season reports every week, a refused or failed one included:
+        # say which, from what the store holds
+        if retro.week_done(r, asof):
+            stored.append(asof)
+            print(f"  {asof} done", flush=True)
+        else:
+            failed.append(asof)
+            print(f"  {asof} FAILED (the reason is in failures.log)",
+                  flush=True)
     try:
-        done = retro.run_season(r, season, names, replicates=replicates,
-                                particles=particles,
-                                width=width, week_extra=week_extra,
-                                progress=lambda a: print(f"  {a} done",
-                                                         flush=True), **kx)
+        retro.run_season(r, season, names, replicates=replicates,
+                         particles=particles,
+                         width=width, week_extra=week_extra,
+                         progress=_progress, **kx)
     except retro.EngineBuildChanged as e:
         typer.echo(f"stopped: {e}", err=True)
         raise typer.Exit(2)
     except retro.ResumeMismatch as e:
         typer.echo(f"refused: {e}", err=True)
         raise typer.Exit(2)
-    print(f"{season}: {len(done)} weeks complete -> {r}")
+    if failed:
+        typer.echo(f"{season}: {len(stored)} of {len(stored) + len(failed)} "
+                   f"weeks stored; {len(failed)} failed (first {failed[0]}), "
+                   f"the reasons in {r / 'failures.log'}. Run the same "
+                   "command again to retry them.", err=True)
+        raise typer.Exit(1)
+    print(f"{season}: {len(stored)} weeks complete -> {r}")
 
 
 def _retro_root_default() -> Path:

@@ -7,7 +7,9 @@ exit code; a start's refusals in their order, its foreground run (the
 fits registered apart, the sleep guard, the flags cleared, a line after
 every week), its outcomes, its signal handlers called directly, the
 console opening during the run, and its queueing in a student's folder
-on the runner computer; and the console probe (cli._console_open).
+on the runner computer; the engine a start needs read as the console
+reads it, and a terminal without the engine its clone records refused;
+and the console probe (cli._console_open).
 
 Nothing here fits, runs BNG2.pl, reads a hub, starts a console or sends
 a signal: experiments.preflight and run are faked where a start would
@@ -56,6 +58,9 @@ from test_sandbox_shipped import FD, hub                 # noqa: E402,F401
 
 REPO = Path(__file__).resolve().parents[2]
 CLI = CliRunner()
+#: the real probes the `here` fixture and conftest replace
+_ENGINE_READY = runner._engine_ready
+_RECORDED_ENGINE = runner._recorded_engine
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -470,6 +475,64 @@ def test_a_start_on_an_engine_older_than_the_console_is_refused(
                        "(MACHINE).", "codes": [finding("MACHINE", words)]}
     assert here.calls == ["console", "busy", "sweep", "elsewhere", "engine"]
     assert not (X.root() / SMOKE).exists() and not here.guards
+
+
+def test_a_start_on_the_public_engine_needs_its_venv_alone(here, tmp_path,
+                                                           monkeypatch):
+    # the real _engine_ready (the console's test): the private venv and
+    # fork missing, the public venv there
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_engine_ready", _ENGINE_READY)
+    gone = tmp_path / "no-private"
+    monkeypatch.setattr(settings, "PY_ENGINE", gone / "bin" / "python")
+    monkeypatch.setattr(settings, "PYBNF", gone / "fork")
+    monkeypatch.setattr(pf, "PYBNF_PF", gone / "fork")
+    py = tmp_path / "public" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text("")
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(py))
+    monkeypatch.setattr(pf, "engine_current", lambda: True)  # no venv probe
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert CS._local_refusal(SMOKE) is None
+    assert here.calls == ["console", "busy", "sweep", "elsewhere"]
+    # the private engine, which this computer lacks, is refused there
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    assert CS._local_refusal(SMOKE) == finding(
+        "MACHINE", "an experiment needs the particle-filter engine, which is "
+        "not ready on this computer (flubnf doctor says why)")
+
+
+def test_a_start_from_a_terminal_without_the_clones_engine_is_refused(
+        here, tmp_path, monkeypatch):
+    # the clone records public (setup_engine.sh --public) and this
+    # terminal never read it: refused with this computer's refusals,
+    # before the engine is probed, and nothing written
+    from flubnf import settings
+    _no_run(monkeypatch)
+    monkeypatch.setattr(runner, "_recorded_engine", _RECORDED_ENGINE)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    monkeypatch.setattr(sb, "REPO", clone)
+    monkeypatch.setattr(pf, "engine_current", lambda: True)  # no venv probe
+    words = ("this install records FLUBNF_ENGINE=public (.flubnf.env) but "
+             "this Terminal runs the private engine: run `. ./.flubnf.env` "
+             "in the clone first")
+    (clone / ".flubnf.env").write_text("export FLUBNF_ENGINE=public\n",
+                                       encoding="utf-8")
+    r = _cmd("experiment", "start", "sihrs", "2024-25", "--json")
+    assert r.exit_code == 3, r.stderr
+    assert _doc(r) == {"ok": False, "id": SMOKE, "url": None,
+                       "started": False, "text": f"Not started: {words} "
+                       "(MACHINE).", "codes": [finding("MACHINE", words)]}
+    assert here.calls == ["console", "busy", "sweep", "elsewhere"]
+    assert not (X.root() / SMOKE).exists() and not here.guards
+    # the terminal that read it, and a clone that records none, pass
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert CS._local_refusal(SMOKE) is None
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    (clone / ".flubnf.env").unlink()
+    assert CS._local_refusal(SMOKE) is None
 
 
 def test_start_refuses_the_settings_and_answers_complete(here, monkeypatch):

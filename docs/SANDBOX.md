@@ -228,8 +228,10 @@ finished on that computer), the disk it needs and keeps, and the shipped
 replay it will be compared with. Nothing runs in the student's console.
 
 **The runner.** `flubnf runner`, which Ely starts from the main install
-in a Terminal of the lab account, works the queue; closing that Terminal
-stops it as Ctrl-C does, and started under `nohup` it keeps going. Its
+in a Terminal of the lab account, works the queue with the engine that
+install records, and refuses to start from a Terminal that does not
+export it; closing that Terminal stops it as Ctrl-C does, and started
+under `nohup` it keeps going. Its
 first start makes `~/Students/.runner`, the folder that tells the
 students' consoles to queue (until then a student's Start runs on that
 computer as it would anywhere), so Ely starts it once before the
@@ -257,9 +259,10 @@ experiment that would leave less is not queued, waits when it is next,
 and is stopped if the disk falls below it while it runs. Each size has a
 limit on time, memory and folder size: smoke 30 minutes, 4 GB and
 512 MB; pilot 2 hours, 16 GB and 1 GB; full 16 hours, 32 GB and 10 GB,
-the memory at most half the computer's. At a limit the runner stops the
-experiment, keeps its finished weeks and says why on its page; Resume
-queues it again.
+the memory at most half the computer's; on the public engine each time
+is 2.4 times as long, as its estimates are. At a limit the runner stops
+the experiment, keeps its finished weeks and says why on its page;
+Resume queues it again.
 
 **Where the queue shows.** The experiment's row and page show its badge
 (`queued · 2nd in line`, `queued · runner not running`, or `refused by

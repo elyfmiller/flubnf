@@ -1190,6 +1190,36 @@ def test_the_page_words(world, truth, monkeypatch):
     assert 'id="sbx-none"' in html and "No week stored yet" in html
 
 
+def test_the_page_says_a_comparison_across_engines(world, truth,
+                                                   monkeypatch):
+    url = f"/sandbox/experiments/{BETA}"
+    folder = _hand_written(monkeypatch, truth)
+    monkeypatch.setattr(X, "stale", lambda folder, **k: "")
+    _no_scoring(monkeypatch)
+    raw = json.loads((folder / X.SUMMARY).read_text(encoding="utf-8"))
+    ran, shipped = raw["ran"], raw["shipped"]
+    public = {"branch": "lanl/PyBNF", "commit": "8410f794", "dirty": False,
+              "source": "wheel", "engine": "public"}
+    said = ("Compared across engines: this experiment ran on the {} engine, "
+            "the shipped replay on the {} one.")
+    # both on the private engine (no engine recorded): nothing more
+    assert "across engines" not in client.get(url).text
+    _hand_written_again(folder, ran={**ran, "engine_build": public})
+    html = client.get(url).text
+    # one line, under the comparison's own
+    assert ("the shipped replay 3.</p>\n <p class=\"hint\">"
+            + said.format("public", "private") + "</p>") in html
+    assert html.count("across engines") == 1
+    _hand_written_again(folder, ran=ran,
+                        shipped={**shipped, "engine_build": public})
+    assert said.format("private", "public") in client.get(url).text
+    _hand_written_again(folder, ran={**ran, "engine_build": public})
+    assert "across engines" not in client.get(url).text
+    # nothing compared, nothing to say
+    _hand_written_again(folder, shipped=None)
+    assert "across engines" not in client.get(url).text
+
+
 def test_the_page_opens_while_the_claim_has_no_folder_yet(world):
     ui_state._sandbox_status["experiment"] = {
         "id": SMOKE, "settings": X.read(FORM), "cancel": False}

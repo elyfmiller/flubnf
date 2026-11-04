@@ -112,11 +112,31 @@ def _engine_venv_hint(platform: str | None = None) -> str:
             "then re-run doctor.")
 
 
+def _check_public_venv() -> "CheckResult":
+    """FLUBNF_ENGINE=public: whether its venv holds what
+    engine-requirements.txt names, checked as the fit preflight checks it
+    (scripts/engine_lock.py check, in that venv's Python)."""
+    from app.core.engines import lwf
+    name = "public engine venv"
+    if not lwf.engine_available():
+        return CheckResult(name, Status.WARN, f"{lwf.python()} missing",
+                           lwf.engine_missing_message())
+    ok, line = lwf.lock_check(force=True)
+    if not ok:
+        return CheckResult(name, Status.FAIL, line,
+                           f"To bring it up to {lwf.LOCK_NAME}, "
+                           f"{lwf._setup_step()}, then re-run doctor.")
+    return CheckResult(name, Status.OK, line)
+
+
 def _check_engine_venv() -> "CheckResult":
     """Whether the engine venv can import what a fit needs, probed exactly
     as the console probes it: the engine python, the fork on sys.path,
-    `import bngsim; from pybnf.pf import ParticleFilter`."""
-    from flubnf.settings import PY_ENGINE, PYBNF
+    `import bngsim; from pybnf.pf import ParticleFilter`. The public
+    engine's venv under FLUBNF_ENGINE=public."""
+    from flubnf.settings import PY_ENGINE, PYBNF, engine_public
+    if engine_public():
+        return _check_public_venv()
     if not Path(PY_ENGINE).exists():
         return CheckResult("engine venv", Status.WARN,
                            f"{PY_ENGINE} missing (set FLUBNF_PY_ENGINE)",
@@ -143,7 +163,11 @@ def _check_pf_engine() -> "CheckResult":
     Not by importing pybnf: stock PyBNF imports fine and cannot filter.
     """
     from app.core.engines import pf as _pf
-    from flubnf.settings import PYBNF
+    from flubnf.settings import PYBNF, engine_public
+    if engine_public():
+        return CheckResult("PyBNF fork (fit_type=pf)", Status.OK,
+                           "not used: FLUBNF_ENGINE=public runs lanl/PyBNF's "
+                           "job_type = lwf")
     if not _pf.engine_available():
         # no checkout at all: the engine is simply not installed (WARN);
         # a checkout without pf.py is a broken install (FAIL)
@@ -170,6 +194,14 @@ def _check_engine_build() -> "CheckResult":
     from app.core import engine_build as _eb
     b = _eb.engine_build()
     name = "PyBNF engine build"
+    if b.get("engine") == "public":
+        if _eb.is_production(b):
+            return CheckResult(name, Status.OK,
+                               f"{_eb.label(b)}, the pinned public build "
+                               "(read from pip's record of its wheel)")
+        return CheckResult(name, Status.WARN,
+                           _eb.warning(b) or "the public engine's build is "
+                           "not the pinned one", _eb.fix(b))
     where = b.get("path") or "the engine folder"
     if b.get("source") == "unreadable":
         return CheckResult(name, Status.WARN, _eb.warning(b), _eb.fix(b))
@@ -240,7 +272,12 @@ def _check_numpy2_pybnf() -> CheckResult:
     # first on sys.path, else a pybnf this venv happens to carry. pybnf is
     # an engine-venv package, so neither being present means the engine is
     # absent (WARN; the console runs Groundhog-only), not a broken install.
-    from flubnf.settings import PYBNF
+    # On the public engine the fork is not used, as _check_pf_engine says.
+    from flubnf.settings import PYBNF, engine_public
+    if engine_public():
+        return CheckResult("pybnf NumPy 2.0 patch", Status.OK,
+                           "not used: FLUBNF_ENGINE=public runs lanl/PyBNF's "
+                           "job_type = lwf")
     alg_path = Path(PYBNF) / "pybnf" / "algorithms.py"
     if not alg_path.is_file():
         try:

@@ -10,6 +10,10 @@ configures the system by exporting a handful of variables (or editing a
     FLUBNF_BNG        path to BioNetGen's BNG2.pl
     FLUBNF_PY_ENGINE  python of the engine venv (pybnf + bngsim installed)
     FLUBNF_PYBNF      checkout of the PyBNF fork providing fit_type=pf
+    FLUBNF_ENGINE     which engine runs the fits: private (the default, the
+                      fork above) or public (lanl/PyBNF's job_type = lwf)
+    FLUBNF_PY_ENGINE_PUBLIC  python of the public engine's venv, kept apart
+                      from the private one (engine-requirements.txt)
 
 Defaults are conventional locations (~/GitHub on POSIX; see _checkout),
 so a conventionally laid-out machine needs none.
@@ -155,6 +159,47 @@ def _engine_python_candidates(windows: bool | None = None) -> tuple:
 
 
 PY_ENGINE = _path("FLUBNF_PY_ENGINE", *_engine_python_candidates())
+
+
+#: The two engines FLUBNF_ENGINE may name; anything else means private.
+ENGINES = ("private", "public")
+
+
+def engine_choice() -> str:
+    """Which engine runs the fits: FLUBNF_ENGINE, read on every call so a
+    test or a launcher's export takes effect without a reload. private, the
+    default, is the PyBNF fork (fit_type = pf); public is lanl/PyBNF's
+    job_type = lwf from the venv engine-requirements.txt pins. An unknown
+    value means private: the launchers warn about it and do the same."""
+    v = os.environ.get("FLUBNF_ENGINE", "").strip().lower()
+    return v if v in ENGINES else "private"
+
+
+def engine_public() -> bool:
+    """Whether FLUBNF_ENGINE asks for the public engine."""
+    return engine_choice() == "public"
+
+
+def _public_python_candidates(windows: bool | None = None) -> tuple:
+    """Where the public engine's Python is looked for when
+    FLUBNF_PY_ENGINE_PUBLIC is unset: setup_engine.sh --public's
+    ~/.venvs/flubnf-public, FluBNF.bat's %LOCALAPPDATA%\\FluBNF\\venv-public.
+    Never a private engine's venv: the two need different numpy, dask and
+    Python. `windows` is injectable for tests."""
+    if not (_windows() if windows is None else windows):
+        return ("~/.venvs/flubnf-public/bin/python",)
+    local = os.environ.get("LOCALAPPDATA")
+    base = Path(local) if local else _home() / "AppData" / "Local"
+    return (str(base / "FluBNF" / "venv-public" / "Scripts" / "python.exe"),)
+
+
+def py_engine_public() -> Path:
+    """The public engine venv's Python, FLUBNF_PY_ENGINE_PUBLIC first; read
+    on every call, as engine_choice is."""
+    return _path("FLUBNF_PY_ENGINE_PUBLIC", *_public_python_candidates())
+
+
+PY_ENGINE_PUBLIC = py_engine_public()
 
 
 def _holds_engine(p: Path) -> bool:
@@ -519,13 +564,21 @@ def check(verbose: bool = True) -> list:
     if passed:
         perl_why = (f"a Windows Perl, FluBNF's own or Strawberry Perl (runs "
                     f"BNG2.pl at run preparation): {passed[0]} is not one")
+    if engine_public():
+        # the public engine is one venv; it needs no fork checkout
+        engine_rows = (("FLUBNF_PY_ENGINE_PUBLIC", py_engine_public(),
+                        "public engine venv python (lanl/PyBNF lwf + bngsim,"
+                        " from engine-requirements.txt)"),)
+    else:
+        engine_rows = (
+            ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
+            ("FLUBNF_PYBNF", PYBNF / "pybnf" / "pf.py", pybnf_why))
     missing = []
     for name, p, why in (
         ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),
         ("FLUBNF_BNG", Path(BNG), "BioNetGen BNG2.pl (network generation)"),
         ("perl", Path(perl or "perl"), perl_why),
-        ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
-        ("FLUBNF_PYBNF", PYBNF / "pybnf" / "pf.py", pybnf_why),
+        *engine_rows,
     ):
         if not p.exists():
             missing.append((name, str(p), why))

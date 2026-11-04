@@ -634,29 +634,94 @@ def _prepare_week(root: Path, asof: str, spec, manifest: dict) -> list:
     return cells
 
 
+#: in the week folder, beside cells_done/ (never in it: every file there is
+#: a cell's marker): which engine the week's fits began on
+WEEK_ENGINE_NAME = "engine.json"
+
+
+def _week_engine(wd: Path, engine: str) -> None:
+    """Record the engine a week's fits run on, or refuse to go on when the
+    week's finished fits ran on the other one."""
+    f = Path(wd) / WEEK_ENGINE_NAME
+    try:
+        had = json.loads(f.read_text(encoding="utf-8")).get("engine")
+    except (OSError, ValueError, AttributeError):
+        had = None
+    if had and had != engine and cells_done(wd):
+        raise EngineBuildMismatch(
+            f"the week at {wd} began on the {had} engine and FLUBNF_ENGINE "
+            f"now names the {engine} one. Resuming would pool fits from two "
+            "engines in one week. Switch the engine back, or archive or "
+            "discard the existing results to replay it on this one.")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"engine": engine}), encoding="utf-8")
+
+
+def _kill_runners(procs: list) -> None:
+    """Never leave engine processes orphaned: on the public engine stop each
+    runner's tree (it starts PyBNF as a child), then kill what is left."""
+    if pf_engine._public():
+        pf_engine._stop_all(procs)
+    for p in procs:
+        try:
+            if p.poll() is None:
+                p.kill()
+        except Exception:
+            pass
+
+
 def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
     """One reduced-priority runner subprocess per shard (app/core/proc.py).
     Split out so tests can fake fits; returns objects with poll() and kill()."""
     procs = []
     done = _cell_done_dir(wd)
     done.mkdir(parents=True, exist_ok=True)   # the runners write into it
-    for i, shard in enumerate(shards):
-        sj = wd / f"cells_{i}.json"
-        sj.write_text(json.dumps(shard), encoding="utf-8")
-        runner = wd / f"runner_{i}.py"
-        runner.write_text(_RETRO_RUNNER.format(
-            pybnf_path=str(pf_engine.PYBNF_PF),
-            common=pf_engine.RUNNER_COMMON, cells_json=str(sj),
-            halt_path=str(halt), done_dir=str(done)), encoding="utf-8")
-        # own session/process group, as the forecast path does: this daemon
-        # thread can die without a finally, and the recorded group is what the
-        # relaunch sweeps (flubnf/cli.py)
-        procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
-                     pf_engine.runner_cmd(runner)),
-                     stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL,
-                     **pf_engine.runner_popen_kwargs(
-                         proc_mod.low_priority_popen_kwargs())))
+    public = pf_engine._public()
+    # the engine this week's fits run on, kept beside its markers: a week
+    # stopped on one engine is never finished on the other (its cells would
+    # be pooled as one week); the season's build record cannot see that
+    # when no week had finished yet
+    _week_engine(wd, "public" if public else "private")
+    if public:
+        # FLUBNF_ENGINE=public: the cells' lwf files, from what prepare
+        # wrote; a cell the public engine cannot run is marked failed with
+        # its reason, as a failed fit is, and not dispatched
+        from app.core.engines import lwf
+        untranslated = lwf.translate_cells([c for s in shards for c in s])
+        for key, status in untranslated.items():
+            mark_cell_done(wd, key, status)
+        shards = [[c for c in s if c["key"] not in untranslated]
+                  for s in shards]
+        shards = [s for s in shards if s]
+    try:
+        for i, shard in enumerate(shards):
+            sj = wd / f"cells_{i}.json"
+            sj.write_text(json.dumps(shard), encoding="utf-8")
+            runner = wd / f"runner_{i}.py"
+            runner.write_text(
+                lwf.runner_text(lwf.RETRO_RUNNER, pf_engine.RUNNER_COMMON,
+                                cells_json=str(sj), halt_path=str(halt),
+                                done_dir=str(done)) if public
+                else _RETRO_RUNNER.format(
+                    pybnf_path=str(pf_engine.PYBNF_PF),
+                    common=pf_engine.RUNNER_COMMON, cells_json=str(sj),
+                    halt_path=str(halt), done_dir=str(done)),
+                encoding="utf-8")
+            # own session/process group, as the forecast path does: this
+            # daemon thread can die without a finally, and the recorded
+            # group is what the relaunch sweeps (flubnf/cli.py)
+            procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
+                         pf_engine.runner_cmd(runner)),
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         **pf_engine.runner_popen_kwargs(
+                             proc_mod.low_priority_popen_kwargs())))
+    except BaseException:
+        # interrupted while starting (a second Ctrl-C): the shards already
+        # started lead their own sessions, so no Ctrl-C reaches them, and
+        # are not yet in the registry the relaunch sweeps
+        _kill_runners(procs)
+        raise
     pf_engine.record_runner_pids(procs)
     return procs
 
@@ -688,12 +753,7 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
                 raise RuntimeError("PF runners timed out")
             _sleep(FIT_POLL_S)
     except BaseException:
-        for p in procs:               # never leave engine processes orphaned
-            try:
-                if p.poll() is None:
-                    p.kill()
-            except Exception:
-                pass
+        _kill_runners(procs)
         raise
     finally:
         # drained or killed: drop these pids from the takeover registry
@@ -1079,6 +1139,12 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 # bank the segment's seconds; no entry for an incomplete week
                 _record_partial(root, asof, elapsed_now(read_meta(root)) - e0)
                 raise
+            except EngineBuildMismatch as e:
+                # the week began on the other engine (_week_engine): stop and
+                # say why, rather than fail it and fit the rest on this one
+                why = f"stopped at {asof}: {e}"
+                _record_stop_reason(root, why)
+                raise EngineBuildChanged(f"{season}: {why}") from e
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a", encoding="utf-8").write(
                     f"{asof}: {e}\n")
