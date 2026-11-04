@@ -6,6 +6,14 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (22:11 UTC): ROUND 2026-11-07, VALIDATION PASSED ON THE
+  RECOMMIT (Ely: both commits on #3995 green; not yet merged by the hub
+  admin). Before that, checked here: #3995's merge with cdcepi main
+  (bd63a14 over 487bc2a) adds exactly our two files, byte-identical to
+  the checked pair, and the Python hub check is GREEN on both against
+  main's tasks.json. The hub's own check results stay unreadable from
+  this session (403). Next: the member table at 01:00 UTC; the git watch
+  records the merge.
 - 2026-11-04 (21:47 UTC): ROUND 2026-11-07, THE GROUNDHOG'S HAWAII LEFT
   OUT (Ely) AND RECOMMITTED (cec8608 on FluBNF_submission; #3995 now
   heads there). Hawaii peaked at 86 (week ending 10-17), then 67 and 54;
