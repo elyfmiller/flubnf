@@ -6,6 +6,39 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (19:20 UTC): ROUND 2026-11-07 AGAINST EPYMORPH (the only
+  other member in at 19:17 UTC, cdcepi/FluSight-forecast-hub#3981);
+  THE GROUNDHOG'S DELAWARE; ELY ON THE TWO-SIDED CAP.
+  - Ely (2026-11-04): the cap should act in both directions, above and
+    below the median, above all in the middle of the exponential rise;
+    the work comes later (Open). Ely is moving the agents' runs to the
+    Windows machine, since other lab members need the Mac Studio.
+  - Widths at 10x are in epymorph's range: the h3 97.5% over the last
+    week, typical state, Oracle 7.3x, Groundhog 7.5x, epymorph 7.5x (h0
+    1.9x, 2.1x, 2.9x); the 2.5% over the last week at h3 0.39, 0.46,
+    0.29. At 15x our h3 top is 10.9x and 11.2x, about 1.45x epymorph's.
+    Our bands are narrower than epymorph's about our own medians (h3 95%
+    width over the median 2.64 and 2.28 against 4.05) because our medians
+    are higher.
+  - Medians agree at h0 and h1 (ours over epymorph's, typical state:
+    Oracle 0.93 and 1.05, Groundhog 0.87 and 1.11; our median inside
+    epymorph's 50% band in 39 to 45 of 52 states) and part at h2 and h3
+    (Oracle 1.26 and 1.62, Groundhog 1.45 and 1.95; at h3 more than 1.5x
+    apart in 34 and 39 states). US medians h0 to h3: epymorph 11,119,
+    12,009, 12,754, 12,824; Oracle 10,783, 14,198, 19,021, 25,408;
+    Groundhog 9,619, 13,709, 19,003, 26,293. The split is the shape:
+    median growth per step, typical state, epymorph 1.32, 1.13, 1.07,
+    1.03 (a plateau), the Oracle 1.27, 1.30, 1.30, 1.31 (the rise
+    continued), the Groundhog 1.14, 1.43, 1.37, 1.42. Epymorph also ran
+    low at long horizons last week (round 10-31, h3 0.72x the other four
+    members' median, 0.81x the ensemble's). Last week's h0 medians all
+    sat under the truth (10-31 over the h0 median, typical state:
+    epymorph 1.08, ensemble 1.14, Oracle 1.21, Groundhog 1.33); the
+    Groundhog's first step is again the lowest (1.14x the last week).
+  - The Groundhog's Delaware is the only state whose median stalls at h3
+    (56, 108, 141, 142) after strong early growth; Delaware jumped 3.7x
+    in its last week, and its donor weeks after such a jump flatten.
+    Epymorph's Delaware h3 median is about 63, the Oracle's 225.
 - 2026-11-04 (19:11 UTC): ROUND 2026-11-07, THE 15x PAIR CHECKED; THE
   POST-PROCESSING CHAIN CHECKED FOR THE "CUT" LOWER BANDS (Ely: the bottom
   quantiles look cut off rather than shrunk like the top; is the inverse
@@ -3564,6 +3597,13 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-04 (Ely): the tail cap on both halves (the shrink's exponent
+  applied below the median as well as above, or a separate lower-half
+  exponent), so the cap acts in both directions in the middle of the
+  rise. Later work: the code is a third output.tail_mode value in
+  flubnf/tailcap.py with its tests (Submission can branch it for Ely's
+  merge), screened by the Model lane on the stored replays first (For
+  other lanes, 2026-11-04).
 - 2026-10-30: the upper-tail limit back to 15x (shrink) from round
   2026-11-07 (run Wednesday 2026-11-04), Ely's proposal for the higher
   growth; it waits on Ely and the PI, since 10x was their joint choice.
