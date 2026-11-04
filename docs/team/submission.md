@@ -6,6 +6,26 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (19:55 UTC): ROUND 2026-11-07, VALIDATION PASSED (Ely: the
+  hub's checks are green on #3995); THE SUBMITTED FILES REVIEWED FOR
+  PLAUSIBILITY. The files at the pull request's head (10589b5) are
+  byte-identical to the checked ones. As a whole they are plausible: the
+  Oracle's medians continue the observed rise (implied weekly growth to
+  h3 1.30, typical state, against 1.25 observed over the last three
+  weeks; US 10,783 to 25,408, the sum of its state medians 23,240 at h3),
+  the Groundhog's a little faster (1.34; US 9,619 to 26,293); the last
+  week sits inside every h0 95% band; no h3 top above 12.8x the last
+  week. The Groundhog lifts slowly growing states to the national pace
+  (forecast growth more than 1.15x the observed rate in 14 states), and
+  three of them stand out: Hawaii (weeks 78, 86, 67, 54, falling; medians
+  58, 80, 104, 141; epymorph 61 to 36; last week 2.04x the members), Montana
+  (27 last; medians 30 to 97; the Oracle 43, epymorph 24) and Alaska (12
+  last; 14 to 36; the Oracle 14, epymorph 12). The Oracle runs below the
+  Groundhog in the old-pin and small states (h3 Alaska 0.39x, Washington
+  0.42x, Montana 0.44x, Maine 0.45x). The member table, once three other
+  members are in, decides under the rule; a flagged location means a
+  recommit to FluBNF_submission, which updates #3995 and reruns the
+  validation.
 - 2026-11-04 (19:44 UTC): ROUND 2026-11-07, HUB PULL REQUEST #3995 OPENED
   BY ELY (cdcepi/FluSight-forecast-hub#3995, from
   elyfmiller:FluBNF_submission, head 10589b5). GitHub's test merge
