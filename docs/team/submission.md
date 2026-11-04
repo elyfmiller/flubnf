@@ -6,6 +6,63 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (19:11 UTC): ROUND 2026-11-07, THE 15x PAIR CHECKED; THE
+  POST-PROCESSING CHAIN CHECKED FOR THE "CUT" LOWER BANDS (Ely: the bottom
+  quantiles look cut off rather than shrunk like the top; is the inverse
+  of the cap applied, and is the post-calibration step sound?).
+  - The 15x pair (same run settings, tail cap 15): both files 53
+    locations, GREEN on app.core.hubcheck, gate PASS (h3 15.0x typical
+    and at most), no red flag (h3 97.5% over the last week: Oracle 10.9x
+    typical, widest Rhode Island 16.1x; Groundhog 11.4x, widest Alaska
+    17.2x); US h3 Oracle 5,030-25,408-98,000, Groundhog
+    4,469-26,293-98,000. Flat or higher: the Oracle fails in Hawaii only,
+    as at 10x. Delaware at 15x: the Oracle 16 to 102 at h0 (median 77)
+    and 18 to 345 at h3 (225), the Groundhog 11 to 109 and 17 to 345; no
+    location's upper half is squeezed flat; the h0 band leans upward
+    again (upper half over lower half, typical state: Oracle 1.42 against
+    0.93 at 10x, Groundhog 2.20 against 1.27). Widths against the NAU
+    members (h3 97.5% over the last week, typical state): ours 7.4x and
+    7.6x at 10x, 10.9x and 11.4x at 15x; epymorph today 7.6x; last week's
+    members 6.8x (FourCAT) to 10.0x (epymorph), Copycat 17.6x. Member
+    table: only epymorph in at 19:09 UTC.
+  - The chain, step by step. (1) The tail cap acts above the median only
+    and no inverse is applied below it: between Ely's 10x and 15x files
+    every median and every level below the median is identical (212 of
+    212 blocks, both models). (2) The narrowing (oracle.narrow 0.7, the
+    Oracle only) is symmetric on the log scale, q' = m (q/m)^0.7 for every
+    level, so it lifts the lower edge rather than cutting it: undone on
+    Delaware's Oracle, the 2.5% is about 8 at h0 and 6 at h3 against 16
+    and 18 submitted. (3) The output floor (app/core/floor.py) adds
+    Poisson(0.35) noise to the samples; it shows only near zero (the
+    Oracle's 1% is 0 in 26 blocks of 9 small jurisdictions). The steps do
+    what they are documented to do.
+  - What looks cut is the forecasting sample's own lower edge: the 2.5%
+    stays flat or falls across the horizons while the median climbs (the
+    Oracle in 45 of 53 locations, e.g. Alabama 124, 120, 111, 99 under
+    medians 223 to 558; the Groundhog in 36, e.g. Colorado 43, 43, 44, 43
+    under 110 to 303). The Liu-West filter's sample keeps trajectories
+    at the pre-rise level, and the Groundhog's donors include seasons
+    that stalled; with the top shaped by the cap and the bottom left as
+    the model drew it, the fan's lower edge reads as a straight cut. The
+    same lower-half width is the 2026-10-28 handoff to the Model lane.
+  - The shrink mirrored onto the lower half (each location's cap exponent
+    applied to every level, both halves; a post hoc check on our
+    as-submitted rounds 10-10, 10-17 and 10-24, truth through 10-31, the
+    hub's target data in the oracle-output form): states relative WIS,
+    Oracle 15x 0.670 one-sided against 0.656 mirrored, 10x 0.646 against
+    0.620; log scale 0.627 against 0.598 and 0.633 against 0.589;
+    Groundhog 15x 0.669 against 0.650, 10x 0.631 against 0.597, log 0.557
+    against 0.542 and 0.561 against 0.534. The mirror trades 0.9 to 1.7
+    of spread for 0.3 to 0.9 more above truth per state forecast. Three
+    October rounds, files that predate the narrowing: a lead for the
+    Model lane's replay screen (For other lanes), not a change for this
+    round.
+  - Staged (recommendation, Ely decides between the pairs): at 15x, the
+    Oracle without Hawaii (52 locations; the upload minus 92 rows byte
+    for byte, sha256 e43ccf23...) and the Groundhog as uploaded
+    (fc45b8d6...); at 10x, the pair staged at 18:54 UTC (the Oracle
+    without Hawaii and Delaware). Both stagings GREEN, gate PASS, no red
+    flag, flat or higher everywhere.
 - 2026-11-04 (18:54 UTC): ROUND 2026-11-07, THE 10x PAIR CHECKED (Ely's
   run: app build 9d4520d, seed season_total_early, weight 0.25,
   narrowing 0.7, tail cap 10 shrink; data through 2026-10-31). Both
@@ -2919,6 +2976,24 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-04 (19:11 UTC), Submission to Model: SCREEN THE TAIL SHRINK
+  MIRRORED ONTO THE LOWER HALF, AND THE CAP'S LAGGING LEVEL. (1) The
+  location-wide shrink (output.tail_mode shrink) narrows only the upper
+  half; in a rising week it leaves the band leaning downward (round
+  2026-11-07 at 10x: the h0 width below the median over the width above,
+  typical state, Oracle 0.49 before the cap and 1.09 after, Groundhog 0.32
+  and 0.79). Applying each location's exponent to both halves, q' = m
+  (q/m)^k (a location-specific narrowing that keeps the forecast's shape),
+  scored better on this season's three scored rounds at both caps (under
+  Now, 2026-11-04; Oracle states 0.646 to 0.620 at 10x, log 0.633 to
+  0.589). Please screen it on the stored replays, reporting the
+  corrected-seed weeks apart (as in the 2026-10-30 handoff), against the
+  one-sided shrink and against a lower narrowing. (2) The cap's level is
+  the mean of the last three weeks, which lags a jump: Delaware's last
+  week was 48 against a mean of 23, so the 10x limit (230) sat at the
+  Oracle's own h3 median (225) and the shrink removed its whole upper half
+  at every horizon. A level that follows a jump (the last week, or the
+  larger of the two) belongs in the same screen.
 - 2026-10-30 (20:30 UTC), Submission to Model (Ely's handoff): THE
   FULL-SEASON CAP SCREENS ARE MOSTLY OLD-PIN WEEKS, AND THE SEED SWITCH IS
   NOW URGENT. The split is under Now (2026-10-30): in the replayed seasons
