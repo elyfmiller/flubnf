@@ -9,9 +9,10 @@
     oracle.json imports as before;
   * a second export offers the earlier bundle only when it carries the
     same files;
-  * the manifest pins every member's sha256 and size; a tampered member, a
-    path outside the bundle, a missing or unlisted member, a foreign
-    format and a malformed season are each refused with one sentence;
+  * the manifest pins every member's sha256 and size and names the run's
+    engine build; a tampered member, a path outside the bundle, a missing
+    or unlisted member, a foreign format and a malformed season are each
+    refused with one sentence;
   * an import lands as a read-only archived entry named for the export
     stamp, never in the live root; importing the same bundle twice is
     refused unless replaced;
@@ -54,6 +55,10 @@ client = TestClient(srv.app)
 def _isolated(tmp_path, monkeypatch):
     status_before = dict(ui_state._status)
     retro_before = dict(ui_retro_seasons._retro_status)
+    # a flash an earlier test file left (a register's) would lead the
+    # import's own: each test starts with none
+    ui_state._status.pop("flash", None)
+    ui_state._status.pop("flash_detail", None)
     # the exports folder (bundles, uploads) lives under this test's state
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     yield
@@ -139,6 +144,19 @@ def test_the_manifest_pins_sha256_and_size_per_file(tmp_path):
         assert ent["bytes"] == len(data)
     assert m["total_bytes"] == sum(e["bytes"] for e in m["files"].values())
     assert rb.inspect_bundle(p)["bundle_bytes"] == p.stat().st_size
+    assert m["engine_build"] == {}              # the record names none
+
+
+def test_the_manifest_names_the_runs_engine_build(tmp_path):
+    rr = tmp_path / "retro"; rr.mkdir()
+    root = _season_tree(rr, SEASON)
+    # as run_season records it
+    build = {"branch": "feature/particle-filter", "commit": "2fdadee0",
+             "dirty": False, "source": "git"}
+    meta = retro.read_meta(root)
+    retro.write_meta(root, {**meta, "settings": {"engine_build": build}})
+    with zipfile.ZipFile(_export(tmp_path, rr)) as z:
+        assert json.loads(z.read(rb.MANIFEST))["engine_build"] == build
 
 
 def test_a_second_export_of_an_unchanged_root_reuses_the_bundle(tmp_path):

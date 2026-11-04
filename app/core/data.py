@@ -14,8 +14,13 @@ Constitutional rules enforced here (the lab archive's docs/APP_DESIGN.md):
 """
 from __future__ import annotations
 
+import atexit
+import os
 import re
+import signal
 import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -405,9 +410,19 @@ class Freshness:
         return "warn", "not checked"
 
 
+#: git's refusal when another command holds one of its locks; its last line
+#: ("remove the file manually to continue") names no file
+_LOCKED_RE = re.compile(r"Unable to create '([^']*\.lock)': File exists")
+
+
 def _git_last_line(r) -> str:
     """git's verdict in one line: the last non-empty stderr line (a fatal
-    error comes after any warnings), else stdout's, else the exit code."""
+    error comes after any warnings), else stdout's, else the exit code; a
+    held index lock in words, with the file to delete."""
+    m = _LOCKED_RE.search(r.stderr or "")
+    if m:
+        return (f"the hub clone is locked by {m.group(1)}: if no git command "
+                "is running on it, delete that file and try again")
     for text in (r.stderr, r.stdout):
         lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
         if lines:
@@ -534,10 +549,157 @@ def _hub_not_own_repo():
     return None
 
 
+#: how long a timed-out git command's processes have to end on SIGTERM
+#: (git removes its lock files then) before SIGKILL
+KILL_GRACE_S = 5
+#: the process groups of the _run commands under way, stopped at exit
+_LIVE: set = set()
+
+
+def _run(cmd, timeout):
+    """subprocess.run(cmd, capture_output=True, text=True, timeout=...) in
+    a process group of its own (POSIX), so a timeout stops all of it: a
+    partial clone's fast-forward fetches its missing files through git's
+    own children (fetch, remote-https, index-pack), which killing git alone
+    leaves running. SIGTERM to the group first, then SIGKILL after
+    KILL_GRACE_S; taskkill /T on Windows. Raises TimeoutExpired as run()
+    does, with .killed True when the command had to be killed (so git did
+    not remove its own locks). A console that exits mid-command ends the
+    group too (its own session no longer hears the terminal's Ctrl-C)."""
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, start_new_session=os.name == "posix")
+    _LIVE.add(p.pid)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        e.killed = _stop_group(p)
+        raise
+    finally:
+        _LIVE.discard(p.pid)
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
+def _stop_group(p) -> bool:
+    """End a timed-out _run command and everything it started, and reap
+    it: True when it took SIGKILL (taskkill /F on Windows), False when it
+    ended on SIGTERM."""
+    killed = True
+    if os.name == "posix":
+        try:
+            os.killpg(p.pid, signal.SIGTERM)
+            end = time.monotonic() + KILL_GRACE_S
+            while time.monotonic() < end:
+                p.poll()                    # a zombie leader keeps the group
+                os.killpg(p.pid, 0)         # raises once the group is gone
+                time.sleep(0.1)
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            killed = False                  # the group is gone
+    else:
+        try:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)],
+                           capture_output=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        p.kill()
+        p.communicate(timeout=KILL_GRACE_S)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return killed
+
+
+@atexit.register
+def _stop_live() -> None:
+    """At exit, SIGTERM to the groups of the _run commands under way."""
+    for pid in list(_LIVE):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except (OSError, AttributeError):
+            pass
+
+
+#: the locks a git command in the hub clone takes (.git/<name>)
+_LOCKS = ("index.lock", "info/sparse-checkout.lock")
+
+
 def _git(args, timeout=60):
-    """One git command in the hub clone, output captured."""
-    return subprocess.run(["git", "-C", str(HUB)] + list(args),
-                          capture_output=True, text=True, timeout=timeout)
+    """One git command in the hub clone, output captured (_run). When a
+    timed-out command had to be killed, the locks it left are removed:
+    nothing holds them, and every later update would fail on them. A lock
+    there before the command, or after git ended on SIGTERM (git removes
+    its own then), is another command's and stays."""
+    locks = [HUB / ".git" / n for n in _LOCKS]
+    held = [l.exists() for l in locks]
+    try:
+        return _run(["git", "-C", str(HUB)] + list(args), timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        if getattr(e, "killed", False):
+            for lock, was in zip(locks, held):
+                if not was:
+                    try:
+                        lock.unlink()
+                    except OSError:
+                        pass
+        raise
+
+
+#: hub files FluBNF never reads that a sparse hub clone leaves out: the
+#: hubverse time series is 93 MB (November 2026) and grows every week, and
+#: a partial clone's fast-forward fetches it from GitHub as it goes, at
+#: some tens of kB/s, past any timeout
+HUB_SKIPPED = ("target-data/time-series.csv",)
+
+
+def _git_version() -> tuple:
+    """git's version as (major, minor), (0, 0) when unreadable."""
+    m = re.search(r"(\d+)\.(\d+)", _git(["--version"]).stdout or "")
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+
+def _skip_unread_files() -> Optional[str]:
+    """Leave HUB_SKIPPED out of a sparse hub clone that checks them out
+    (the index says so: git ls-files -t, no file read). A cone-mode clone
+    becomes non-cone, keeping its own patterns (.git/info/sparse-checkout,
+    which cone mode writes in non-cone form) plus one exclusion per file:
+    cone mode cannot leave out one file. That needs git 2.35's
+    `set --no-cone`; an older git keeps the clone as it is. A non-cone
+    clone gets the exclusions added. The files go from disk at once, and no
+    fast-forward fetches them again. A note when the clone changed, None
+    otherwise (a full clone is never touched)."""
+    sc = _git(["config", "--get", "core.sparseCheckout"])
+    if (sc.stdout or "").strip().lower() != "true":
+        return None
+    hit = []
+    for f in HUB_SKIPPED:
+        tag = (_git(["ls-files", "-t", "--", f]).stdout or "")[:1]
+        if tag and tag != "S":             # tracked and not skipped
+            hit.append(f)
+    if not hit:
+        return None
+    out = [f"!/{f}" for f in hit]
+    cone = _git(["config", "--get", "core.sparseCheckoutCone"])
+    if (cone.stdout or "").strip().lower() == "true":
+        if _git_version() < (2, 35):
+            return None
+        where = (_git(["rev-parse", "--git-path", "info/sparse-checkout"])
+                 .stdout or "").strip()
+        try:
+            text = (HUB / where).read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return None
+        kept = [l for l in text.splitlines() if l.strip()
+                and not l.startswith("#")]
+        if not kept:
+            return None
+        r = _git(["sparse-checkout", "set", "--no-cone"] + kept + out,
+                 timeout=300)
+    else:
+        r = _git(["sparse-checkout", "add"] + out, timeout=300)
+    if r.returncode != 0:
+        return None
+    return ("hub clone repaired to leave out " + ", ".join(hit)
+            + ", which FluBNF does not read")
 
 
 #: the fetch setting a clone needs for origin/main to track origin. A
@@ -547,7 +709,24 @@ def _git(args, timeout=60):
 GOOD_REFSPEC = "+refs/heads/main:refs/remotes/origin/main"
 
 
+#: one update of the hub clone at a time: a second (another tab, a reload)
+#: would meet the first one's locks
+_PULLING = threading.Lock()
+
+
 def pull_hub() -> tuple:
+    """Explicit update of the hub checkout (the button's second step), one
+    at a time: _pull_hub."""
+    if not _PULLING.acquire(blocking=False):
+        return False, ("another update of the hub clone is running; try "
+                       "again when it ends")
+    try:
+        return _pull_hub()
+    finally:
+        _PULLING.release()
+
+
+def _pull_hub() -> tuple:
     """Explicit update of the hub checkout (the button's second step).
 
     Fetches origin's main, fast-forwards to it, and makes the files on disk
@@ -578,10 +757,17 @@ def pull_hub() -> tuple:
             _git(["config", "--unset-all", "remote.origin.fetch"])
             _git(["config", "--add", "remote.origin.fetch", GOOD_REFSPEC])
             notes.append("hub clone's fetch setting repaired")
+        # before the fetch: a fast-forward then never fetches them
+        skipped = _skip_unread_files()
+        if skipped:
+            notes.append(skipped)
         f = _git(["fetch", "origin", "main"], timeout=300)
         if f.returncode != 0:
             return False, _git_last_line(f)
-        m = _git(["merge", "--ff-only", "FETCH_HEAD"], timeout=300)
+        # --no-stat: the closing diffstat reads every changed file of the
+        # whole hub, which a partial clone fetches one by one
+        m = _git(["merge", "--ff-only", "--no-stat", "FETCH_HEAD"],
+                 timeout=300)
         if m.returncode != 0:
             return False, _git_last_line(m)
         verdict = _git_last_line(m)
@@ -594,7 +780,15 @@ def pull_hub() -> tuple:
             if (sc.stdout or "").strip().lower() == "true":
                 _git(["sparse-checkout", "reapply"], timeout=300)
             notes.append("hub files restored to match the clone")
-    except (OSError, subprocess.TimeoutExpired) as e:
-        # no clone, no git, or a hung network: a failure, said as one
+    except subprocess.TimeoutExpired as e:
+        # a hung or slow network: _git stopped the command and its locks
+        sub, s = e.cmd[3], int(e.timeout)
+        took = f"{s // 60} minutes" if s >= 120 else f"{s} seconds"
+        why = (" (GitHub sent the hub's files too slowly)"
+               if sub in ("fetch", "merge", "checkout", "sparse-checkout")
+               else "")
+        return False, f"git {sub} was stopped after {took}{why}; try again"
+    except OSError as e:
+        # no clone or no git: a failure, said as one
         return False, f"{type(e).__name__}: {e}"
     return True, " · ".join([verdict] + notes)

@@ -4,9 +4,11 @@ the shipped replay an experiment is compared with, the plan, the replay
 itself (run_week faked, and once the real prepare on
 test_prepare_golden.py's hub) and the call after every week, run and its
 summary at every segment end, preflight (a replay under way in another
-process refused), status and the queue flag, find (in root() or another
-experiments folder), the list, delete, the summary as a page shows it,
-the season offered, and stale kept to the retro root it is given.
+process and an engine older than the console refused, a complete
+experiment never refused for its engine), status and the queue flag,
+find (in root() or another experiments folder), the list, delete, the
+summary as a page shows it, the season offered, and stale kept to the
+retro root it is given.
 
 The calendar is the literal 2024-25 one and the shipped replays are
 synthetic trees: the suite reads no hub (the truth a run scores against
@@ -911,6 +913,65 @@ def test_preflight_refuses_before_anything_is_written(season, monkeypatch,
     X.replay(s, retro_root=season)
     p = X.preflight(s, retro_root=season)
     assert (p["resume"], p["weeks_done"], p["complete"]) == (True, 2, True)
+
+
+def _stale_fork(tmp_path) -> Path:
+    """An engine older than this console: pybnf/pf.py there, and a parser
+    that accepts none of the keys the console writes."""
+    root = tmp_path / "fork_stale"
+    (root / "pybnf").mkdir(parents=True)
+    (root / "pybnf" / "pf.py").write_text("# stub\n")
+    (root / "pybnf" / "parse.py").write_text("numkeys_int = []\n")
+    return root
+
+
+def test_preflight_refuses_an_engine_older_than_the_console(season,
+                                                            monkeypatch,
+                                                            tmp_path):
+    from app.core.engines import pf
+    s = {"model": "sihrs", "season": "2024-25"}
+    monkeypatch.setattr(pf, "PYBNF_PF", _stale_fork(tmp_path))
+    before = _tree(tmp_path)
+    said = _refused("MACHINE", X.preflight, s, retro_root=season)
+    assert said == pf.engine_stale_message()
+    assert "does not accept pf_particles" in said
+    assert _tree(tmp_path) == before
+    # no engine at all: left to the callers, which say so in their words
+    monkeypatch.setattr(pf, "PYBNF_PF", tmp_path / "no-fork")
+    p = X.preflight(s, retro_root=season)
+    assert (p["resume"], p["weeks_done"], p["complete"]) == (False, 0, False)
+    assert _tree(tmp_path) == before
+
+
+def test_a_complete_experiment_reads_complete_on_another_engine(
+        season, monkeypatch, tmp_path):
+    from app.core import engine_build as EB
+    from app.core.engines import pf
+    s = {"model": "sihrs", "season": "2024-25"}
+    build = {"branch": "main", "commit": "aaaaaaaa", "dirty": False,
+             "source": "git", "path": ""}
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(build))
+    _weeks_run(monkeypatch, lambda root, asof: retro.request_stop(root))
+    with pytest.raises(retro.SeasonStopped):
+        X.replay(s, retro_root=season)
+    # one week of two stored: a resume on another build is still refused
+    build["commit"] = "bbbbbbbb"
+    assert "resuming would mix two engine builds" in _refused(
+        "MACHINE", X.preflight, s, retro_root=season)
+    build["commit"] = "aaaaaaaa"
+    _weeks_run(monkeypatch)
+    X.replay(s, retro_root=season)
+    # every week stored: nothing is left to fit, so neither another build
+    # nor an engine older than the console refuses it
+    build["commit"] = "bbbbbbbb"
+    stale = _stale_fork(tmp_path)
+    before = _tree(tmp_path)
+    for fork in (pf.PYBNF_PF, stale):
+        monkeypatch.setattr(pf, "PYBNF_PF", fork)
+        p = X.preflight(s, retro_root=season)
+        assert (p["resume"], p["weeks_done"], p["complete"]) == (True, 2,
+                                                                 True)
+    assert _tree(tmp_path) == before
 
 
 def test_a_resume_names_the_replay_its_summary_was_compared_with(
