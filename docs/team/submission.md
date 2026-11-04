@@ -6,6 +6,23 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (19:25 UTC): ROUND 2026-11-07 COMMITTED TO THE FORK AT 10x
+  (Ely's choice; Decided). FluBNF_submission on elyfmiller's fork:
+  commit 10589b5 "NAU_PyBNF forecast 2026-11-07 (EW44): upper tail
+  shrunk to 10x for both models (Oracle without Delaware and Hawaii)",
+  authored as Ely, on top of b71aadb (last week's fork sync, already in
+  cdcepi main); pushed without force. The Oracle file is Ely's 10x upload
+  minus Delaware and Hawaii (51 locations, sha256 9402fb92...), the
+  Groundhog file Ely's 10x upload (53, c82858ea...); both on the fork
+  byte-identical to the checked ones. Against cdcepi main 42725dd the
+  branch merges cleanly and adds only those two files. The fork clone is
+  back at /home/user/flusight-forecast-hub (shallow, sparse). Ely opens
+  the hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  The member table runs once three other members are in (a watcher; the
+  6 PM Arizona check-in at 01:00 UTC runs it regardless); a location it
+  flags would mean a recommit, Ely decides. The deadline is 8 PM Arizona
+  time (03:00 UTC).
 - 2026-11-04 (19:20 UTC): ROUND 2026-11-07 AGAINST EPYMORPH (the only
   other member in at 19:17 UTC, cdcepi/FluSight-forecast-hub#3981);
   THE GROUNDHOG'S DELAWARE; ELY ON THE TWO-SIDED CAP.
@@ -2895,6 +2912,11 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-04 (Ely): round 2026-11-07 goes out with the upper-tail shrink
+  at 10x for both models (Ely ran 10x and 15x and compared). The Oracle
+  file leaves out Hawaii (flat or higher) and Delaware (the 10x shrink
+  left it no upper half); the Groundhog file keeps all 53. The member
+  table is rerun once three other members are in.
 - 2026-10-30 (Ely): this lane stays on top of forecast plausibility and
   our standing every week, to optimize as far as we can. Beating the
   baseline, our goal, is met; the ensemble's level is the harder target.
