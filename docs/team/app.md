@@ -6,6 +6,34 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-04 (round day): Update data failed on Ely's laptop, twice at
+  its 300 s limit, then at once on the `.git/index.lock` the first kill
+  left (Ely deleted it by hand). The hub clone is a partial clone: the
+  fast-forward fetched this week's `target-data/time-series.csv` (93 MB)
+  from GitHub at some tens of kB/s (measured: 616 KB in 2 s, 17.6 MB in
+  80 s, 4.5 MB of the 93 in 150 s; GitHub's raw cache served the
+  branch's copy in 7 s, but not after the next hub commit, cold for over
+  a minute), and the merge's closing diffstat then fetched every changed
+  file of the whole hub one by one. Fixed on `dev`
+  ([c75eec8](https://github.com/elyfmiller/flubnf/commit/c75eec8)): a
+  sparse hub clone leaves out `time-series.csv`, which FluBNF does not
+  read (a cone clone becomes the same files in non-cone patterns plus
+  that exclusion, on the first Update data; `oracle-output.csv`, which
+  `scripts/dashboard_score.py` reads, stays); the merge runs with
+  `--no-stat`; each git command in the hub runs in its own process
+  group, so a timeout ends git's fetch processes too and, when it had to
+  be killed, removes the locks it left; the page says a timeout and a
+  held lock in words. Tested: on a fresh copy of the real hub clone,
+  Update data reached the hub's newest commit in 52 s and 66 s, then 1
+  s, no lock, no process left; new tests on real git (the cone
+  conversion, a timed-out command's grandchild and locks); a read-only
+  review, its findings fixed (a lock removed only after a kill and only
+  if it was not there before, one update at a time, git older than 2.35
+  left alone, the cone's own patterns kept, the console's exit ends a
+  command under way); the full suite with only the 22 failures this Mac
+  already had. Not changed: a new install's first hub clone (`setup.sh`,
+  `setup.ps1`) still checks the file out, slowly. Ely asked for a pull
+  request: `dev` to `main` follows.
 - 2026-11-01 (public engine): at Ely's go, `dev` merged into
   `engine-public` twice (84297b9, 52e10a6, merges only) and the student
   workspace checked on the public route by four read-only traces; their
