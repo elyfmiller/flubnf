@@ -7,8 +7,18 @@ the working tree ("fatal: Cannot fast-forward your working tree"). The
 console showed the transcript's first 200 characters (the warning, not
 the fatal line) and then "up to date with origin", because the refs were
 equal while last week's file sat on disk.
+
+The November 2026 case: the hub clone is a partial clone, so the
+fast-forward fetched each file it wrote from GitHub as it went, this
+week's target-data/time-series.csv (93 MB) at some tens of kB/s, and its
+closing diffstat then fetched every changed file of the whole hub. The
+merge hit its timeout, the kill left .git/index.lock, which failed every
+later update, and git's own fetch processes kept running.
 """
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -66,6 +76,7 @@ def hub(tmp_path, monkeypatch):
 def _fake(monkeypatch, hub, **answers):
     g = FakeGit(hub, **answers)
     monkeypatch.setattr(data.subprocess, "run", g)
+    monkeypatch.setattr(data, "_run", g)            # _git's commands
     return g
 
 
@@ -83,7 +94,7 @@ def test_a_warning_only_fetch_is_a_success(hub, monkeypatch):
     # fetch then fast-forward merge, never `git pull`
     assert "pull" not in g.subs()
     assert g.subs().index("fetch") < g.subs().index("merge")
-    assert ["merge", "--ff-only", "FETCH_HEAD"] in g.calls
+    assert ["merge", "--ff-only", "--no-stat", "FETCH_HEAD"] in g.calls
 
 
 def test_a_fatal_fast_forward_is_reported_by_its_last_line(hub, monkeypatch):
@@ -149,6 +160,184 @@ def test_a_stale_working_tree_is_restored_to_head(hub, monkeypatch):
     g = _fake(monkeypatch, hub, merge=_R(0, "Already up to date.\n"))
     assert data.pull_hub() == (True, "Already up to date.")
     assert "checkout" not in g.subs()
+
+
+def test_a_timed_out_step_is_said_in_words(hub, monkeypatch):
+    def merge(a):
+        raise subprocess.TimeoutExpired(a, 300)
+    _fake(monkeypatch, hub, merge=merge)
+    assert data.pull_hub() == (
+        False, "git merge was stopped after 5 minutes (GitHub sent the "
+               "hub's files too slowly); try again")
+
+    def config(a):
+        raise subprocess.TimeoutExpired(a, 60)
+    _fake(monkeypatch, hub, config=config)
+    assert data.pull_hub() == (
+        False, "git config was stopped after 60 seconds; try again")
+
+
+def test_one_update_at_a_time(hub, monkeypatch):
+    g = _fake(monkeypatch, hub)
+    assert data._PULLING.acquire(blocking=False)
+    try:
+        assert data.pull_hub() == (
+            False, "another update of the hub clone is running; try again "
+                   "when it ends")
+        assert g.calls == []
+    finally:
+        data._PULLING.release()
+
+
+def test_a_locked_clone_names_the_lock_to_delete(hub, monkeypatch):
+    lock = str(hub / ".git" / "index.lock")
+    _fake(monkeypatch, hub, merge=_R(128, "", (
+        f"fatal: Unable to create '{lock}': File exists.\n\n"
+        "Another git process seems to be running in this repository, e.g.\n"
+        "an editor opened by 'git commit'. Please make sure all processes\n"
+        "are terminated then try again. If it still fails, a git process\n"
+        "may have crashed in this repository earlier:\n"
+        "remove the file manually to continue.\n")))
+    assert data.pull_hub() == (
+        False, f"the hub clone is locked by {lock}: if no git command is "
+               "running on it, delete that file and try again")
+
+
+def test_the_unread_files_are_left_out_before_the_fetch(hub, monkeypatch):
+    g = _fake(monkeypatch, hub, merge=_R(0, "Fast-forward\n"))
+    seen = []
+    monkeypatch.setattr(data, "_skip_unread_files", lambda: seen.append(
+        list(g.subs())) or "hub clone repaired to leave out x")
+    assert data.pull_hub() == (True, "Fast-forward · hub clone repaired to "
+                                     "leave out x")
+    assert seen and "fetch" not in seen[0] and "fetch" in g.subs()
+
+
+def _sparse_hub(tmp_path, *dirs, cone=True):
+    """A clone of a hub-shaped repository, sparse on dirs."""
+    src, hub = tmp_path / "src", tmp_path / "hub"
+    files = ("README.md", "target-data/time-series.csv",
+             "target-data/target-hospital-admissions.csv",
+             "model-output/README.md", "model-output/FluSight-baseline/a.csv",
+             "model-output/other-team/b.csv", "src/x.R", "b c/z.csv")
+    for f in files:
+        (src / f).parent.mkdir(parents=True, exist_ok=True)
+        (src / f).write_text(f + "\n")
+    for a in (["init", "-q"], ["add", "."],
+              ["-c", "user.name=t", "-c", "user.email=t@example.com",
+               "commit", "-q", "-m", "a"]):
+        subprocess.run(["git", "-C", str(src), *a], check=True)
+    subprocess.run(["git", "clone", "-q", "--sparse", str(src), str(hub)],
+                   check=True)
+    subprocess.run(["git", "-C", str(hub), "sparse-checkout", "set",
+                    "--cone" if cone else "--no-cone", *dirs], check=True)
+    return hub
+
+
+def _on_disk(hub) -> set:
+    return {p.relative_to(hub).as_posix() for p in hub.rglob("*")
+            if p.is_file() and ".git" not in p.relative_to(hub).parts}
+
+
+def test_a_cone_clone_keeps_its_files_but_the_unread_one(tmp_path,
+                                                         monkeypatch):
+    hub = _sparse_hub(tmp_path, "target-data", "model-output/FluSight-baseline",
+                      "src", "b c")
+    monkeypatch.setattr(data, "HUB", hub)
+    before = _on_disk(hub)
+    assert {"target-data/time-series.csv", "b c/z.csv"} <= before
+    assert data._skip_unread_files() == (
+        "hub clone repaired to leave out target-data/time-series.csv, which "
+        "FluBNF does not read")
+    # the same files as the cone gave, less the one
+    assert _on_disk(hub) == before - {"target-data/time-series.csv"}
+    # and it holds: a second call has nothing to do, a reapply keeps it out
+    assert data._skip_unread_files() is None
+    subprocess.run(["git", "-C", str(hub), "sparse-checkout", "reapply"],
+                   check=True)
+    assert "target-data/time-series.csv" not in _on_disk(hub)
+
+
+def test_a_clone_that_never_had_the_file_is_left_alone(tmp_path, monkeypatch):
+    hub = _sparse_hub(tmp_path, "src")
+    monkeypatch.setattr(data, "HUB", hub)
+    assert data._skip_unread_files() is None
+    cone = subprocess.run(["git", "-C", str(hub), "config", "--get",
+                           "core.sparseCheckoutCone"], capture_output=True,
+                          text=True).stdout.strip()
+    assert cone == "true"
+
+
+def test_a_non_cone_clone_gets_the_exclusion_added(tmp_path, monkeypatch):
+    hub = _sparse_hub(tmp_path, "/*", "!/*/", "/target-data/", cone=False)
+    monkeypatch.setattr(data, "HUB", hub)
+    assert "target-data/time-series.csv" in _on_disk(hub)
+    assert data._skip_unread_files() is not None
+    assert _on_disk(hub) == {"README.md",
+                             "target-data/target-hospital-admissions.csv"}
+    assert data._skip_unread_files() is None
+
+
+def test_a_full_clone_is_never_made_sparse(tmp_path, monkeypatch):
+    src = _sparse_hub(tmp_path, "src").parent / "src"
+    full = tmp_path / "full"
+    subprocess.run(["git", "clone", "-q", str(src), str(full)], check=True)
+    monkeypatch.setattr(data, "HUB", full)
+    assert data._skip_unread_files() is None
+    assert (full / "target-data" / "time-series.csv").is_file()
+
+
+def _gone(pid: int) -> bool:
+    end = time.monotonic() + 5
+    while time.monotonic() < end:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    os.kill(pid, 9)
+    return False
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX")
+def test_a_killed_command_ends_whole_and_its_locks_go(tmp_path, monkeypatch):
+    hub = tmp_path / "hub"
+    subprocess.run(["git", "init", "-q", str(hub)], check=True)
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "KILL_GRACE_S", 1)
+    pidfile = tmp_path / "grandchild.pid"
+    # deaf to SIGTERM, so it takes SIGKILL, which git cannot clean up
+    # after: takes the index lock and leaves a grandchild running, as the
+    # merge's fetch of missing files does
+    hang = (f"!trap '' TERM; touch .git/index.lock; sleep 60 & "
+            f"echo $! > '{pidfile}'; wait")
+    with pytest.raises(subprocess.TimeoutExpired) as e:
+        data._git(["-c", f"alias.hang={hang}", "hang"], timeout=2)
+    assert e.value.killed is True
+    assert not (hub / ".git" / "index.lock").exists()
+    assert _gone(int(pidfile.read_text())), "the grandchild outlived it"
+    assert data._LIVE == set()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX")
+def test_a_lock_not_left_by_a_killed_command_stays(tmp_path, monkeypatch):
+    hub = tmp_path / "hub"
+    subprocess.run(["git", "init", "-q", str(hub)], check=True)
+    monkeypatch.setattr(data, "HUB", hub)
+    # ended by SIGTERM: git itself removes its locks then, so a lock still
+    # there is another command's
+    with pytest.raises(subprocess.TimeoutExpired) as e:
+        data._git(["-c", "alias.nap=!touch .git/index.lock; sleep 30",
+                   "nap"], timeout=1)
+    assert e.value.killed is False
+    assert (hub / ".git" / "index.lock").exists()
+    # and one there before the command is never this command's
+    monkeypatch.setattr(data, "KILL_GRACE_S", 1)
+    with pytest.raises(subprocess.TimeoutExpired) as e:
+        data._git(["-c", "alias.deaf=!trap '' TERM; sleep 30", "deaf"],
+                  timeout=1)
+    assert e.value.killed is True
+    assert (hub / ".git" / "index.lock").exists()
 
 
 # ------------------------------------------------------- check_freshness

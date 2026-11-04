@@ -44,7 +44,7 @@ from flubnf import cli                                   # noqa: E402
 from flubnf import cli_sandbox as CS                     # noqa: E402
 from test_experiment_summary import _q, _store           # noqa: E402
 from test_experiments import (SMOKE_FP, SMOKE_WEEKS,     # noqa: E402,F401
-                              _replay, season, truth)
+                              _replay, _stale_fork, season, truth)
 from test_runner_folders import (experiment, student,    # noqa: E402,F401
                                  students)
 from test_runner_queue import state as runner_state      # noqa: E402
@@ -450,6 +450,26 @@ def test_start_refuses_this_computer_in_order_and_writes_nothing(
             "ready on this computer (flubnf doctor says why)",
             ["console", "busy", "sweep", "elsewhere", "engine"])
     assert not here.guards
+
+
+def test_a_start_on_an_engine_older_than_the_console_is_refused(
+        here, monkeypatch, tmp_path):
+    # ready, but pf.prepare would refuse every week: said with this
+    # computer's refusals, before the plan is read, in the engine's words
+    _no_run(monkeypatch)
+
+    def never(*a, **k):
+        raise AssertionError("the plan was read")
+    monkeypatch.setattr(X, "preflight", never)
+    monkeypatch.setattr(pf, "PYBNF_PF", _stale_fork(tmp_path))
+    words = pf.engine_stale_message()
+    r = _cmd("experiment", "start", "sihrs", "2024-25", "--json")
+    assert r.exit_code == 3, r.stderr
+    assert _doc(r) == {"ok": False, "id": SMOKE, "url": None,
+                       "started": False, "text": f"Not started: {words} "
+                       "(MACHINE).", "codes": [finding("MACHINE", words)]}
+    assert here.calls == ["console", "busy", "sweep", "elsewhere", "engine"]
+    assert not (X.root() / SMOKE).exists() and not here.guards
 
 
 def test_start_refuses_the_settings_and_answers_complete(here, monkeypatch):

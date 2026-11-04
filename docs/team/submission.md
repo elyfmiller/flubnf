@@ -6,6 +6,74 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (16:59 UTC): ROUND 2026-11-07 PREPARATION: THE NEW WEEK, THE
+  SEED STAGES, 10x AGAINST 15x ON THIS SEASON'S SCORED WEEKS (Ely runs
+  both today and compares; the choice stays with Ely and the PI); THE
+  ROUND TOOLS REBUILT.
+  - The data (cdcepi main d3586ac, merged 16:56 UTC; through 2026-10-31):
+    US 8,245, 1.30x the week before (6,331; that week revised up 5.4%
+    from 6,006); states median 1.39x (10th-90th 0.99-1.91); the 10-24
+    week revised up a median 3.7% across states (0.81-2.80). The newest
+    week fell 20% or more in New Mexico (50 to 37), Oklahoma (69 to 52)
+    and Rhode Island (16 to 9). No location is missing the week.
+  - The seed stage (resolve_state, season_total_early, on this vintage):
+    AK, CA, HI, PR and WA are on the old to_date pin. CA and WA crossed a
+    quarter of their expected totals this week, so their Oracle forecasts
+    flatten from this round (the flat-or-higher check will show it). Next:
+    UT 24%, FL 22%, LA 19%, NV 17%, TX 15%, MT 15%, PA 15%. The script
+    reproduces the 10-24 list recorded on 2026-10-30.
+  - 10x against 15x on this season's weeks. The shrink applied after the
+    fact (main's flubnf/tailcap.py, at each round's own data vintage) to
+    our uncapped as-submitted files of rounds 10-10, 10-17 and 10-24,
+    scored with every team's files on the truth through 2026-10-31 (the
+    hub's target data in the oracle-output form, since the hub's oracle
+    output was not yet updated; the same construction reproduces the
+    hub's oracle output on the 10-24 vintage, 8,550 of 8,550 cells).
+    Relative WIS, states, no cap / 15x / 10x: Oracle 0.769 / 0.670 /
+    0.646, Groundhog 0.767 / 0.669 / 0.631; log scale Oracle 0.649 /
+    0.627 / 0.633, Groundhog 0.572 / 0.557 / 0.561; national Oracle 0.533
+    / 0.473 / 0.443. On the truth through 10-24 the same rounds read
+    Oracle states 0.800 / 0.709 / 0.678, 10x ahead on every scale; one
+    week of growth narrowed the lead and gave 15x the log scale. Oracle
+    states per forecast: spread 17.85 / 13.91 / 12.02, below truth 7.21
+    / 7.99 / 8.98. With round 10-31's real files added (Ely's 15x at
+    93314fb1 and 10x at d68fcfca on the fork, the Oracle on its 48
+    submitted locations), four rounds: Oracle states 0.670 (15x) against
+    0.652 (10x), Groundhog 0.677 against 0.643; log scale Oracle 0.629
+    against 0.638, Groundhog 0.571 against 0.578. Round 10-31 alone (h0,
+    the 1.39x week): Oracle states mean WIS 21.19 at 15x against 21.76 at
+    10x (below truth 9.83 against 11.76; 95% coverage 0.94 against 0.87),
+    Groundhog 21.18 against 20.86; log WIS lower at 15x for both; US
+    lower at 10x for both. Caveats: the 10-10 to 10-24 files predate the
+    narrowing (0.7) and the weight 0.25, so they start wider than today's
+    runs, and the scored forecasts are mostly short horizons. Reading:
+    as growth picks up, truth lands in the upper half and the tighter
+    cap pays back its width in under-prediction; 10x still leads on the
+    natural scale, 15x on the log scale and in the newest week.
+  - The round tools, lost to the 10-30 restart, rebuilt in the Submission
+    scratchpad and checked on round 10-31. tools/spencer_report.py: red
+    flags (the h3 97.5% over the last reported week above 30x, where that
+    week is at least 10), the member table (h3 median over the median of
+    the six other members' h3 medians; apart outside 1/1.5 to 1.5; at
+    least three others in the location), flat or higher, and what to
+    leave out. It reproduces the recorded 10-31 member table exactly
+    (Oracle 1.01x, 6 of 48; Groundhog 1.01x, 5 of 53; INFLAenza 6%, ABERT
+    11%, epymorph 34%, Copycat 68%, FourCAT 85%) and no member red flag
+    (over the three-week mean instead, Copycat would show three).
+    tools/members_tonight.sh collects the members' files from cdcepi main
+    and open hub pull requests; tools/round_plaus.py (structure, h0
+    against the last week, US h3) reproduces the recorded 10-31 figures;
+    tools/compare_caps.py puts two runs side by side with the members'
+    widths, and scores them once truth is in.
+  - Two gaps this round. The R validator could not be rebuilt here (the
+    binary download was refused in this session); the file check is
+    app.core.hubcheck (the hubValidations checks in Python, against cdcepi
+    main's tasks.json; GREEN on both 10-31 files and on epymorph's), and
+    the hub runs its own R validation on the pull request. The hub fork
+    clone was also lost: to commit, the fork is added to the session
+    again, or Ely commits the checked files.
+  - The dashboard: unchanged since 2026-10-29 (60ad25d). The weekly
+    standing check runs once it updates.
 - 2026-10-30 (21:46 UTC): PULL REQUEST #76 MERGED BY ELY INTO dev (merge
   commit 44f5224): scripts/dashboard_score.py and its tests are on dev, the
   weekly standing check from here on. GitHub's tests were green on the

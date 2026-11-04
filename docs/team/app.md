@@ -6,6 +6,86 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-04 (round day): Update data failed on Ely's laptop, twice at
+  its 300 s limit, then at once on the `.git/index.lock` the first kill
+  left (Ely deleted it by hand). The hub clone is a partial clone: the
+  fast-forward fetched this week's `target-data/time-series.csv` (93 MB)
+  from GitHub at some tens of kB/s (measured: 616 KB in 2 s, 17.6 MB in
+  80 s, 4.5 MB of the 93 in 150 s; GitHub's raw cache served the
+  branch's copy in 7 s, but not after the next hub commit, cold for over
+  a minute), and the merge's closing diffstat then fetched every changed
+  file of the whole hub one by one. Fixed on `dev`
+  ([c75eec8](https://github.com/elyfmiller/flubnf/commit/c75eec8)): a
+  sparse hub clone leaves out `time-series.csv`, which FluBNF does not
+  read (a cone clone becomes the same files in non-cone patterns plus
+  that exclusion, on the first Update data; `oracle-output.csv`, which
+  `scripts/dashboard_score.py` reads, stays); the merge runs with
+  `--no-stat`; each git command in the hub runs in its own process
+  group, so a timeout ends git's fetch processes too and, when it had to
+  be killed, removes the locks it left; the page says a timeout and a
+  held lock in words. Tested: on a fresh copy of the real hub clone,
+  Update data reached the hub's newest commit in 52 s and 66 s, then 1
+  s, no lock, no process left; new tests on real git (the cone
+  conversion, a timed-out command's grandchild and locks); a read-only
+  review, its findings fixed (a lock removed only after a kill and only
+  if it was not there before, one update at a time, git older than 2.35
+  left alone, the cone's own patterns kept, the console's exit ends a
+  command under way); the full suite with only the 22 failures this Mac
+  already had. Not changed: a new install's first hub clone (`setup.sh`,
+  `setup.ps1`) still checks the file out, slowly. Ely asked for a pull
+  request: `dev` to `main` follows.
+- 2026-11-01 (public engine): at Ely's go, `dev` merged into
+  `engine-public` twice (84297b9, 52e10a6, merges only) and the student
+  workspace checked on the public route by four read-only traces; their
+  23 findings, with Ely's "Yes, build them" to the defaults, became
+  three sets of fixes. The engine lane's, on `engine-public` (8b67523,
+  40a76b7, 62fac2c): a week begun on the other engine stops the season
+  with its reason; an interrupted launch stops the shards it started;
+  lwf refuses a model that reads `time()` (a week out of phase there)
+  and gives `model_refusal` for Check; the venv probes take their own
+  session and never cache a signal. Batch A on `dev`, both engines
+  ([9eec15f](https://github.com/elyfmiller/flubnf/commit/9eec15f)): an
+  engine older than the console holds the runner's queue and refuses a
+  start in its own words; a complete experiment reads complete after an
+  engine change; `flubnf runner` stops on SIGHUP (its Terminal closing)
+  unless under nohup, and a line it cannot print no longer aborts the
+  stop; the bundle manifest's engine build; three order-dependent tests.
+  Batch B on `engine-public`
+  ([352f93f](https://github.com/elyfmiller/flubnf/commit/352f93f)): the
+  runner and terminal start see the public engine; an install's recorded
+  FLUBNF_ENGINE (`.flubnf.env`, or `.flubnf.env.cmd`) refuses a runner
+  or terminal start from a shell on the other engine, and the runner
+  names its engine; time limits scale by PUBLIC_COST_RATIO; the kill
+  reaches the shard runners' groups; preflight refuses a week begun on
+  the other engine and a two-strain model on public; Check and the
+  doctor follow the public engine; a cross-engine comparison is said; CI
+  checks the private engine's Windows pins again and fits one real cell
+  on the public engine on macOS; the contributor check flags
+  `scripts/make_test_lock.py`. Each set's full suite showed only this
+  Mac's 22 failures. Ely's to settle: Check files the public engine's
+  model refusals under KEY_UNKNOWN (no existing code fits; a new one is
+  permanent). Follow-ups: a public runner queues a two-strain experiment
+  and refuses it only at its turn; a student console prices its estimate
+  with its own engine, not the runner's; a runner whose install changes
+  engine mid-run stops at its next re-exec, saying why; most of this
+  Mac's 22 failures are the installed engine leaking into the tests (a
+  conftest fix). Still waiting on the wheel's release (Ely runs it on
+  the lab Mac): a stranger's install, one forecast through the console,
+  Windows, the shadow Wednesday (11-18) and the cutover. Step 7 (RSV and
+  COVID-19) waits for Ely's go.
+- 2026-11-01 (latest): Ely merged
+  [#77](https://github.com/elyfmiller/flubnf/pull/77), `dev` to `main`
+  (merge commit 9d4520d): the student workspace, steps 1 to 6 with the
+  Windows bundle fix, the bug-hunt fixes V01 and G11 to G20, the
+  dashboard scorer and the lanes' notes. `main`'s tree equals `dev`'s
+  8b89b3f, and GitHub lists the contributor check's workflow as active.
+  Still Ely's, in order: before 2 December, the repository Actions
+  policy that allows pull_request_target for
+  `.github/workflows/contributor-check.yml` only (none exists yet); one
+  test pull request from a fork someone else owns; then, if wanted, the
+  check required on `dev`. And step 5 on the Mac Studio: export each
+  season's replay again and import it, then start `flubnf runner` once.
+  Step 7 (RSV and COVID-19) waits for Ely's go.
 - 2026-11-01 (later): CI's test-windows jobs had failed one test since
   step 5 (cbe89c6), on Python 3.11 and 3.12, Linux green:
   `test_an_imported_replay_is_the_reference_with_the_step_on_or_off`. A
