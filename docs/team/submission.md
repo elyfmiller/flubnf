@@ -6,6 +6,54 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (18:54 UTC): ROUND 2026-11-07, THE 10x PAIR CHECKED (Ely's
+  run: app build 9d4520d, seed season_total_early, weight 0.25,
+  narrowing 0.7, tail cap 10 shrink; data through 2026-10-31). Both
+  files: 53 locations, horizons 0-3, 212 monotone whole-number blocks;
+  GREEN on app.core.hubcheck against cdcepi main's tasks.json; gate PASS
+  (h3 10.0x typical and at most); no red flag (h3 97.5% over the last
+  week: Oracle 7.4x typical, widest Oregon 11.1x; Groundhog 7.6x, widest
+  Hawaii 12.8x). Oracle h0 medians 1.27x the last week (10th-90th
+  1.06-1.43), Groundhog 1.15x (1.08-1.23); the last week inside the h0
+  95% band everywhere; US h3 Oracle 5,030-25,408-65,333, Groundhog
+  4,469-26,293-65,333. Flat or higher: the Oracle fails in Hawaii
+  (medians 44, 47, 51, 57 against a last week of 54; on the old pin),
+  the Groundhog passes everywhere; CA and WA (on the old pin from this
+  week) pass, with the Oracle's h3 medians at 2.07x and 1.80x the last
+  week against about 2.85x elsewhere. The member table: only epymorph
+  in at 18:51 UTC (cdcepi/FluSight-forecast-hub#3981).
+  - Ely: the quantiles below the median look off in places like
+    Delaware. Delaware's last week jumped from 13 to 48, 2.09x the
+    three-week mean (23) that sets the cap, so the 10x limit is 230. The
+    Oracle's h3 median before the cap is 225 (95% 18 to 1,334); the
+    shrink takes the exponent its worst horizon needs (0.01) to every
+    horizon, so the Oracle's Delaware band has no upper half left (h0:
+    2.5% 16, median 77, 97.5% 78). The Groundhog's Delaware (exponent
+    0.29) keeps its upper half; its lower half is lumpy (25% to 50%
+    levels 51 to 56, then 11 at 2.5%) and its lowest levels fall from h1
+    to h2.
+  - Beyond Delaware: the 10x shrink acts in nearly every state this
+    week, because growth (the last week 1.30x the three-week mean,
+    typical state) carries the h3 medians toward a limit set on the
+    lagging level. Exponent by location (1 = untouched; from the
+    report's before-cap 95% bounds): median 0.54 for both models; under
+    0.5 in 22 Oracle and 17 Groundhog states. The lower half is never
+    touched, so the h0 band turns lopsided downward: the width below the
+    median over the width above, typical state, Oracle 0.49 before the
+    cap and 1.09 after, Groundhog 0.32 and 0.79; the Oracle's h0 lower
+    half is the wider one in 29 of 52 states. On the WIS spread term,
+    states: Oracle 17.3 below the median and 15.9 above, Groundhog 18.6
+    and 16.3; last week the ensemble was 8.8 below and 11.6 above.
+    Estimated at 15x from the same before-cap bounds: median exponent
+    0.74 Oracle and 0.79 Groundhog, under 0.5 in 3 and 0 states, lower
+    over upper 0.71 and 0.46; Delaware's Oracle exponent 0.24.
+  - Staged (recommendation, Ely decides): the Oracle file without Hawaii
+    (flat or higher) and Delaware (no upper half), 51 locations, the
+    upload minus those 184 rows byte for byte (sha256 9402fb92...);
+    the Groundhog file as uploaded (c82858ea...). Both GREEN, gate PASS,
+    no red flag, flat or higher everywhere. The member table runs again
+    once three other members are in; the deadline is 8 PM Arizona time
+    (03:00 UTC).
 - 2026-11-04 (16:59 UTC): ROUND 2026-11-07 PREPARATION: THE NEW WEEK, THE
   SEED STAGES, 10x AGAINST 15x ON THIS SEASON'S SCORED WEEKS (Ely runs
   both today and compares; the choice stays with Ely and the PI); THE
