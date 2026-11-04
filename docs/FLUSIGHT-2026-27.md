@@ -112,7 +112,8 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    menu entry on Windows). It updates itself and the engine on open; the
    console is at http://127.0.0.1:8710.
 2. Data tab: "check for new data", then "Update data" (fast-forwards the hub
-   clone). Hub clone: `~/GitHub/FluSight-forecast-hub` (Mac/Linux) or
+   clone, and leaves out `target-data/time-series.csv`, which FluBNF does not
+   read and a sparse clone fetches too slowly). Hub clone: `~/GitHub/FluSight-forecast-hub` (Mac/Linux) or
    `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub` (Windows); override with
    `FLUBNF_HUB`. Wednesday's preliminary NHSN release is the one that counts.
 3. Forecast tab: the date defaults to the newest Saturday in the data (the
