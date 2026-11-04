@@ -3684,6 +3684,13 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-04 (Ely): the compute agents move to Ely's Windows machine
+  (dedicated CPU and GPU) over the next few days, since the lab needs the
+  Mac Studio. Set up there: the tail cap on both halves (entry below) and
+  longer runs. This lane's round checks (Spencer's report, the member
+  table, plausibility, the hub check, the cap comparisons and post-hoc
+  scoring) still live only in a session scratchpad; they should move
+  into scripts/ on a branch for Ely's merge before the move.
 - 2026-11-04 (Ely): the tail cap on both halves (the shrink's exponent
   applied below the median as well as above, or a separate lower-half
   exponent), so the cap acts in both directions in the middle of the
