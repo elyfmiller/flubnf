@@ -6,6 +6,25 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-04 (21:47 UTC): ROUND 2026-11-07, THE GROUNDHOG'S HAWAII LEFT
+  OUT (Ely) AND RECOMMITTED (cec8608 on FluBNF_submission; #3995 now
+  heads there). Hawaii peaked at 86 (week ending 10-17), then 67 and 54;
+  each newest week has since been revised up by about 4, so 54 likely
+  ends near 58, still falling (two falling weeks, not three as told to
+  Ely earlier). The Groundhog's medians 58, 80, 104, 141 (h3 95% 20-690)
+  against the Oracle's left-out 44, 47, 51, 57 and epymorph's 61, 52, 44,
+  36. Since the peak the Groundhog has called a rise in Hawaii every
+  round and run about 1.3-2.3x high (round 10-17: 88 for the week that
+  came in at 67, 123 for the one at 54; 10-24: 90 for 67, 109 for 54;
+  10-31: 66 for 54), though the observed weeks stayed inside its wide 95%
+  bands. The new Groundhog file is the submitted one minus Hawaii's 92
+  rows (52 locations, sha256 0de90710...); the Oracle file is unchanged
+  (9402fb92...). Checks on the pair: hub check GREEN for both, gate PASS,
+  no red flags (the Groundhog's widest is now 11.7x, Alaska), flat or
+  higher everywhere; the member table still waits (only epymorph in at
+  21:25 UTC). round-2026-11-07/in holds the new pair for the 01:00 UTC
+  member table; the git watch on #3995 restarted on cec8608 (a container
+  restart had stopped it). Neither model forecasts Hawaii this round.
 - 2026-11-04 (19:55 UTC): ROUND 2026-11-07, VALIDATION PASSED (Ely: the
   hub's checks are green on #3995); THE SUBMITTED FILES REVIEWED FOR
   PLAUSIBILITY. The files at the pull request's head (10589b5) are
@@ -2941,6 +2960,9 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-04 (Ely): the Groundhog file for round 2026-11-07 also leaves
+  out Hawaii (past its early peak while the Groundhog's medians kept
+  rising), so neither model forecasts Hawaii this round.
 - 2026-11-04 (Ely): round 2026-11-07 goes out with the upper-tail shrink
   at 10x for both models (Ely ran 10x and 15x and compared). The Oracle
   file leaves out Hawaii (flat or higher) and Delaware (the 10x shrink
