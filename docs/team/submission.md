@@ -6,6 +6,27 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-05 (01:02 UTC): ROUND 2026-11-07 MEMBER TABLE (all five other
+  members in, from cdcepi main), run on the merged pair. No red flags
+  (Copycat the widest member, typical 17.5x); flat or higher everywhere.
+  The rule flags 21 locations. Oracle (typical 1.10x the others), 8 of
+  51, all near the line: DC 0.61, Maine 0.61, Vermont 0.65, New Jersey
+  1.58, South Dakota 1.60, Idaho 1.62, Alabama 1.63, Puerto Rico 1.64.
+  Groundhog (typical 1.28x), 13 of 52: Nevada 1.53, California 1.55,
+  Wisconsin 1.59, Idaho 1.59, New York 1.61, Connecticut 1.63, Oregon
+  1.70, Puerto Rico 1.78, Montana 1.90, Maine 1.95, Delaware 2.00,
+  Washington 2.30, Alaska 2.40. The others' median is pulled low this
+  week: implied weekly growth to h3 (typical state) FourCAT 1.11 and
+  epymorph 1.14 against INFLAenza 1.22, the Oracle 1.30, ABERT 1.32, the
+  Groundhog 1.34, Copycat 1.42; observed 1.25. Several flags sit with
+  the data (South Dakota observed 1.79/week, Delaware 1.75, Idaho 1.54,
+  New Jersey 1.53). Three do not: Alaska (observed 0.97/week; Groundhog
+  12 to 36), Montana (1.01; 27 to 97) and Washington (1.12; 179 to 766,
+  the Oracle 323). The round is merged, so any change needs a new hub
+  pull request from FluBNF_submission before 03:00 UTC; Ely decides.
+  Staged, hub check GREEN: stage_rule (Oracle 43, Groundhog 39) and
+  stage_c (the Groundhog without Alaska, Montana and Washington, 49; the
+  Oracle unchanged).
 - 2026-11-04 (23:27 UTC): ROUND 2026-11-07 MERGED: #3995 is in cdcepi
   main (seen at 23:27 UTC, main 6d17ab8 contains cec8608). The files on
   main are byte-identical to the checked pair: GroundHogCGR 52
