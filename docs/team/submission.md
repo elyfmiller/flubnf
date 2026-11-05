@@ -6,6 +6,34 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-05 (02:37 UTC): ROUND 2026-11-07 STANDS AS MERGED (Ely: too
+  late to drop; more rigorous checking from next week). FOR THE NEXT
+  ROUND (2026-11-14, run Wednesday 2026-11-11) AND FUTURE AGENTS OF THIS
+  LANE, what happened and what to do differently:
+  - Timeline (UTC): files to the fork 19:25 Wed; #3995 opened 19:44; the
+    state-by-state plausibility review only at 19:55, after the pull
+    request; the Groundhog's Hawaii dropped and recommitted about 21:45;
+    merged before 23:27; the other members' files: only epymorph at
+    21:25 Wed, all five on cdcepi main by 01:01 Thu. So the member table
+    could only run after the merge, when any change needs a new hub pull
+    request that Ely must open.
+  - What slipped through: Groundhog rises in states whose data are flat
+    or falling. Hawaii (dropped), Alaska (observed 0.97/week; 12 to 36
+    at h3), Montana (1.01; 27 to 97), Washington (1.12; 179 to 766, the
+    Oracle 323). All four showed in this lane's review and again in the
+    member table.
+  - Next round, before anything goes to the fork: (1) the state-by-state
+    review on both models: each model's implied weekly growth to h3
+    against the observed growth over the last 3 weeks, the two models'
+    h3 medians against each other (1.5x), and any rise where the data
+    are flat or falling; (2) the member table on whatever members are
+    in (epymorph usually first), with last week's member files as a
+    guide, rerun as the rest arrive; (3) the list goes to Ely with the
+    files, so locations are dropped before the pull request, not after.
+  - Read the member table with each member's growth beside it: this
+    week the others' median was pulled low by two near-plateau members
+    (implied weekly growth FourCAT 1.11, epymorph 1.14; observed 1.25),
+    so 21 locations flagged, many in line with the data. See Open.
 - 2026-11-05 (01:02 UTC): ROUND 2026-11-07 MEMBER TABLE (all five other
   members in, from cdcepi main), run on the merged pair. No red flags
   (Copycat the widest member, typical 17.5x); flat or higher everywhere.
@@ -2995,6 +3023,12 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-05 (Ely): round 2026-11-07 stands as merged (Groundhog 52
+  locations without Hawaii, Oracle 51 without Hawaii and Delaware). The
+  member table, which could only run at 01:00 UTC Thursday after the
+  merge, flagged 21 locations; none are dropped, as it was too late.
+  From round 2026-11-14 on, forecasts are checked more rigorously before
+  submission (Now, 2026-11-05).
 - 2026-11-04 (Ely): the Groundhog file for round 2026-11-07 also leaves
   out Hawaii (past its early peak while the Groundhog's medians kept
   rising), so neither model forecasts Hawaii this round.
@@ -3117,6 +3151,13 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-05, Submission to Model: THE GROUNDHOG LIFTS FLAT SMALL STATES.
+  On round 2026-11-07 the Groundhog forecast steep rises where the data
+  are flat or falling: Hawaii (54 after a peak of 86; medians to 141 at
+  h3), Alaska (12; to 36), Montana (27; to 97), Washington (179; to
+  766). Since Hawaii's peak it ran about 1.3-2.3x high there every
+  round. Worth a look at why these states follow the national pace
+  (old to_date pin, donors, or the growth prior) before the next run.
 - 2026-11-04 (19:11 UTC), Submission to Model: SCREEN THE TAIL SHRINK
   MIRRORED ONTO THE LOWER HALF, AND THE CAP'S LAGGING LEVEL. (1) The
   location-wide shrink (output.tail_mode shrink) narrows only the upper
@@ -3705,6 +3746,12 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-05: the member table's reference when some members plateau.
+  The 1.5x rule compares our h3 median with the median of the other six
+  members; on 2026-11-07 two of them (FourCAT, epymorph) forecast near-
+  plateaus, the median sat low, and 21 of our locations were flagged,
+  many in line with the observed growth. Keep the rule as is, or read
+  it beside each member's growth (or the observed growth)? Ely decides.
 - 2026-11-04 (Ely): the compute agents move to Ely's Windows machine
   (dedicated CPU and GPU) over the next few days, since the lab needs the
   Mac Studio. Set up there: the tail cap on both halves (entry below) and
