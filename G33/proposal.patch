@@ -1,0 +1,143 @@
+diff --git a/app/tests/test_models_polish.py b/app/tests/test_models_polish.py
+new file mode 100644
+index 00000000..ed22580b
+--- /dev/null
++++ b/app/tests/test_models_polish.py
+@@ -0,0 +1,51 @@
++"""The model pages' marks, scripts and figure labels (bug hunt
++2026-10-25, G33).
++
++  * A run without this model says so in plain text under the empty
++    state, with no "?" (MO-12).
++  * The chart library loads only where a fan is drawn, and deferred
++    (MO-16).
++  * The seasonal-forcing figure labels its dashed lines in the axis's own
++    units, e to the plus and minus epsilon-1 around 1.0 (HM-17).
++"""
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from test_models_tab import _run, client, no_runs        # noqa: E402,F401
++
++PAIR = '<script src="/static/plotly.min.js"{}></script><script src="/static/charts.js"{}></script>'
++
++
++def test_a_run_without_this_model_says_so_without_a_mark(monkeypatch):
++    _run(monkeypatch, ["analogue"])
++    t = client.get("/models").text
++    fc = t.split('class="card md-fc"', 1)[1].split('<div id="mfan">', 1)[1]
++    fc = fc.split("</div>\n  </div>", 1)[0]
++    assert 'class="tipbtn"' not in fc and 'class="uk-tt-btn"' not in fc
++    assert ('<p class="hint md-nofc-why">The latest real-time run (2098-11-14 '
++            '· 11-14 09:31:00) has none from this model.</p>') in fc
++
++
++def test_the_chart_library_loads_only_for_a_fan_and_deferred(monkeypatch,
++                                                              no_runs):
++    for path in ("/models", "/model/analogue", "/model/pf2s"):
++        assert "plotly.min.js" not in client.get(path).text, path
++    _run(monkeypatch, ["pf", "analogue"])
++    t = client.get("/model/analogue").text
++    assert PAIR.format(" defer", " defer") in t
++    # the first draw waits for the deferred scripts
++    assert ("if(document.readyState==='loading')addEventListener("
++            "'DOMContentLoaded',()=>draw());") in t
++    assert "plotly.min.js" not in client.get("/model/pf2s").text
++
++
++def test_the_forcing_figures_lines_read_in_the_axis_units():
++    t = client.get("/").text
++    fig = t.split('class="dg-harm"', 1)[1].split("</svg>", 1)[0]
++    assert "&#946;(t) / &#946;" in fig or "β(t) / β" in fig
++    assert "&#183;&#8202;e" not in fig and "· e" not in fig
++    assert '>1.0</text>' in fig
++    assert fig.count('<text x="68" y="33">e<tspan') == 1
++    assert fig.count('<text x="68" y="164">e<tspan') == 1
+diff --git a/app/tests/test_week_ticks.py b/app/tests/test_week_ticks.py
+index 1347ab43..85c62006 100644
+--- a/app/tests/test_week_ticks.py
++++ b/app/tests/test_week_ticks.py
+@@ -154,8 +154,10 @@ DATE_PAGES = ("forecast.html", "data.html", "model.html",
+ def test_every_console_chart_draws_through_the_helper():
+     for name in DATE_PAGES:
+         t = (TEMPLATES / name).read_text()
+-        assert ('<script src="/static/plotly.min.js"></script>'
+-                '<script src="/static/charts.js"></script>') in t, name
++        # the model page loads them deferred, and only with a fan (G33)
++        assert any(f'<script src="/static/plotly.min.js"{d}></script>'
++                   f'<script src="/static/charts.js"{d}></script>' in t
++                   for d in ("", " defer")), name
+     for p in list(TEMPLATES.glob("*.html")) + [STATIC / "sandbox.js"]:
+         t = p.read_text()
+         # no chart bypasses the helper (Plotly.Plots.resize and relayout
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index a8abf931..8c04a873 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -599,8 +599,7 @@
+  <path d="M62,{{ g.y_one }} H540" stroke="var(--mut)" stroke-width="1.2"
+        stroke-dasharray="2 5" fill="none"/>
+  <text x="536" y="{{ (g.y_one - 5) | round(1) }}" text-anchor="end"
+-       class="svgt-sm" fill="var(--mut)">1.0 (&#946;<tspan class="svgt-sub"
+-       dy="3">0</tspan><tspan dy="-3">)</tspan></text>
++       class="svgt-sm" fill="var(--mut)">1.0</text>
+  <!-- axes and month ticks (quarterly month starts, via harmonic_fig) -->
+  <g stroke="currentColor" stroke-width="1.4" fill="none">
+   <path d="M62,170 H540"/>
+@@ -614,13 +613,12 @@
+  <text x="22" y="95" text-anchor="middle" class="svgt-sm" fill="currentColor"
+        transform="rotate(-90 22 95)">&#946;(t) / &#946;<tspan
+        class="svgt-sub" dy="3">0</tspan></text>
+- <!-- amplitude extremes, in the pockets the curves keep clear -->
++ <!-- amplitude extremes, in the pockets the curves keep clear: on the
++      beta(t) / beta-0 axis, e to the plus and minus epsilon-1 -->
+  <g class="svgt-sm" fill="currentColor">
+-  <text x="68" y="33">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
++  <text x="68" y="33">e<tspan class="svgt-sub"
+    dy="-7">+&#949;&#8321;</tspan></text>
+-  <text x="68" y="164">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
++  <text x="68" y="164">e<tspan class="svgt-sub"
+    dy="-7">&#8722;&#949;&#8321;</tspan></text>
+  </g>
+  {% if two %}
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index c0006db7..dcc3e1f5 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -1,6 +1,8 @@
+ {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
+ {% block title %}FluBNF · {{ title }}{% endblock %}
+-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
++{# the chart library only where a fan is drawn, deferred: a page with no
++   forecasts (the research view, a run without this model) loads none #}
++{% block head %}{% if has_fans %}<script src="/static/plotly.min.js" defer></script><script src="/static/charts.js" defer></script>{% endif %}
+ <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
+ {% block content %}
+ {# a keyboard user reaches the run form without walking the diagrams and
+@@ -198,8 +200,9 @@
+    {% endcall %}
+    {% endif %}
+    <div id="mfan">{% if not has_fans %}
+-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
+-    {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
++    {{- tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}
++    {#- why, as plain text under it: no "?" for one sentence #}
++    {%- if rid %}<p class="hint md-nofc-why">The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.</p>{% endif %}
+    {%- endif %}</div>
+   </div>
+  </div>
+@@ -329,7 +332,9 @@
+      toImageButtonOptions:{format:'png',scale:2,
+        filename:('flubnf_'+MNAME+'_'+loc+'_'+FD).replace(/[^\w-]+/g,'_')}});
+  }
+- draw();
++ // the chart scripts load deferred: the first draw waits for them
++ if(document.readyState==='loading')addEventListener('DOMContentLoaded',()=>draw());
++ else draw();
+  addEventListener('themechange',()=>draw());
+  addEventListener('fontsizechange',()=>draw());
+ </script>
