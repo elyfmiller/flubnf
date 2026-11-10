@@ -1,4 +1,5 @@
-"""The retrospective season registry, its live progress and the ETA.
+"""The retrospective season registry, its live progress and the ETA, and
+what a replay costs before Start.
 
 The retro roots (RETRO_ROOT, this app's own replays, and the read-only
 sealed records RETRO_RESEAL and RETRO_SEAL) and the in-memory season claims
@@ -7,10 +8,19 @@ progress functions read them bare, at call time, because tests repoint the
 roots. Every other module reads the roots, _known_seasons, _season_root,
 _weeks_done, _retro_progress and _archive_entries as retro_seasons.X, so a
 patch of the name here reaches them. The replay itself is app/core/retro.py.
+
+Before Start, the Settings form prices the Oracle preset with the engine's
+cost model (app/core/estimates.py; static/estimate.js and
+retro_progress.js FluBNFRetroCost in the page): _own_cost_ratio (this
+computer's recorded replays against the model) and _cost_words. While a
+replay runs, _week_in_flight counts the fits of the week in flight, and
+_seeded_eta prices the weeks left before any week has been timed.
 """
 from __future__ import annotations
 
+import os
 import re
+import statistics
 import time
 from pathlib import Path
 
@@ -190,6 +200,8 @@ def _archive_progress(root: Path, season: str) -> dict:
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": t.get("mean_s"), "eta_s": None,
             "eta_lo_s": None, "eta_hi_s": None, "eta_basis": None,
+            "week_asof": None, "week_fits_done": None,
+            "week_fits_total": None,
             "slowest_week": t.get("slowest_week"),
             "slowest_s": t.get("slowest_s"),
             "started_utc": t.get("started_utc"),
@@ -405,9 +417,236 @@ def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
     return est[0], est[1], est[2], basis
 
 
+# === Retrospective: the week in flight, a first estimate, the cost ===
+# All from the engine's cost model (app/core/estimates.py), the figure the
+# Forecast and Sandbox forms use: a fit costs pf.cell_seconds, a week
+# ceil(fits / width) waves of one fit each. The model times the fits alone
+# (prepare, the Oracle step and the Groundhog are left out), so the span
+# runs from it to this computer's own pace.
+
+#: a week folder's name (its as-of date)
+_ASOF_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+#: cells.json path -> (mtime_ns, size, cells): a week's fit count, read
+#: once per version of the file (a full grid's is about 56 KB)
+_CELLS_N: dict = {}
+_CELLS_N_MAX = 16
+
+
+def _oracle_settings(meta) -> dict:
+    """The run record's settings when the replay runs the Oracle preset
+    (the Liu-West filter's fits beside the Groundhog), else {}."""
+    from app.core.retro_settings import pf_ran
+    s = (meta or {}).get("settings")
+    if not isinstance(s, dict) or not s or not pf_ran(s.get("engine")):
+        return {}
+    return s
+
+
+def _fits_of(s: dict) -> tuple:
+    """(fits a week, particles, width) a run record's settings ask for:
+    locations x Independent Runs; (0, 0, 0) when unreadable."""
+    try:
+        return (len(s.get("locations") or ()) * int(s.get("replicates") or 0),
+                int(s.get("particles") or 0), int(s.get("width") or 0))
+    except (TypeError, ValueError):
+        return 0, 0, 0
+
+
+def _cells_total(cj: Path) -> int:
+    """How many fits a prepared week holds (its cells.json's length),
+    cached per version of the file; 0 while the week is being prepared
+    (no file yet, or one half written)."""
+    import json
+    try:
+        st = os.stat(cj)
+    except OSError:
+        return 0
+    key = str(cj)
+    hit = _CELLS_N.get(key)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    try:
+        cells = json.loads(Path(cj).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    n = len(cells) if isinstance(cells, list) else 0
+    if len(_CELLS_N) >= _CELLS_N_MAX:
+        _CELLS_N.clear()
+    _CELLS_N[key] = (st.st_mtime_ns, st.st_size, n)
+    return n
+
+
+def _week_in_flight(root: Path) -> tuple | None:
+    """(as-of, fits attempted, fits in the week) of the week a live Oracle
+    replay is fitting: of the week folders not stored yet
+    (retro.week_done), the one touched last (its fit markers, or its own
+    entries while it is prepared), if touched since the newest stored week.
+    A week that failed keeps its folder unstored, so it counts only once
+    the replay is back on it. Fits attempted are the cell markers, failed
+    fits included (retro.cells_done); both counts are 0 until the week's
+    cells.json is written. None between weeks."""
+    from app.core import retro
+    root = Path(root)
+    try:
+        entries = [p for p in (root / "weeks").iterdir()
+                   if _ASOF_RE.fullmatch(p.name)]
+    except OSError:
+        return None
+    since, best = 0.0, None
+    for wd in entries:
+        try:
+            if retro.week_done(root, wd.name):
+                sf = retro.samples_file(wd)
+                if sf is not None:
+                    since = max(since, sf.stat().st_mtime)
+                continue
+            if not wd.is_dir():
+                continue
+            touched = wd.stat().st_mtime
+            marks = wd / retro.CELL_DONE_DIRNAME
+            if marks.is_dir():
+                touched = max(touched, marks.stat().st_mtime)
+        except OSError:
+            continue
+        if best is None or touched > best[0]:
+            best = (touched, wd)
+    if best is None or best[0] < since:
+        return None
+    wd = best[1]
+    total = _cells_total(wd / "cells.json")
+    fits = min(len(retro.cells_done(wd)), total) if total else 0
+    return wd.name, fits, total
+
+
+@ttlcache.ttl_cache()
+def _scan_cost_ratio(retro_root: Path) -> tuple:
+    """(ratio, weeks): the median of this computer's timed Oracle replay
+    weeks over the cost model's figure for each (at the week's recorded
+    locations, Independent Runs, particles and width, on the engine that
+    fitted it), from the run records of the live and archived trees under
+    retro_root; imported replays ran elsewhere and are left out. (None, 0)
+    with none timed."""
+    from app.core import estimates, retro
+    from app.core.engine_build import engine_of
+    from app.core.replay_bundle import imported_label
+    ratios = []
+    try:
+        trees = sorted(Path(retro_root).iterdir())
+    except OSError:
+        return None, 0
+    for root in trees:
+        season = root.name.split(retro.ARCHIVE_SEP, 1)[0]
+        if not _valid_season(season) or not root.is_dir():
+            continue
+        if root.name != season and imported_label(root):
+            continue
+        meta = retro.read_meta(root)
+        s = _oracle_settings(meta)
+        fits, particles, width = _fits_of(s)
+        if fits <= 0 or width <= 0:
+            continue
+        start = retro.season_bounds(season)[0]
+        builds = meta.get("week_engine_builds")
+        builds = builds if isinstance(builds, dict) else {}
+        ws = meta.get("week_seconds")
+        for asof, sec in (ws.items() if isinstance(ws, dict) else ()):
+            try:
+                sec = float(sec)
+                n = estimates.n_obs_for(asof, start)
+            except (TypeError, ValueError):
+                continue
+            model = estimates.run_seconds(
+                [n], fits, particles, width,
+                engine_of(builds.get(asof) or s.get("engine_build")))
+            if sec > 0 and model > 0:
+                ratios.append(sec / model)
+    if not ratios:
+        return None, 0
+    return round(statistics.median(ratios), 3), len(ratios)
+
+
+def _own_cost_ratio() -> tuple:
+    """(ratio, weeks) of this computer's own replays (_scan_cost_ratio over
+    RETRO_ROOT, read at call time): the pace a cost "here" rests on."""
+    return _scan_cost_ratio(RETRO_ROOT)
+
+
+def _seeded_eta(meta: dict, season: str, root: Path,
+                week: tuple | None) -> tuple | None:
+    """A first estimate for a running Oracle replay before any week has
+    been timed: the cost model over the weeks not stored yet, at the
+    recorded locations, Independent Runs, particles and width, less the
+    fits already attempted in the week in flight (`week`,
+    _week_in_flight's). Spread as estimates.span spreads it: this
+    computer's recorded ratio at both ends, else ETA_FIRST_SPAN times the
+    model, centred on the ratio or runner.K_FIRST (measured on a replay).
+    (lo_s, mid_s, hi_s, basis) or None."""
+    from app.core import estimates, retro
+    from app.core.runner import K_FIRST
+    s = _oracle_settings(meta)
+    fits, particles, width = _fits_of(s)
+    if fits <= 0 or width <= 0:
+        return None
+    weeks = s.get("weeks")
+    if not isinstance(weeks, list):
+        weeks = retro.season_vintages(season)
+    start = retro.season_bounds(season)[0]
+    secs = 0.0
+    for w in weeks:
+        if retro.week_done(root, w):
+            continue
+        f = fits
+        if week and week[0] == w and week[2]:
+            f = max(0, week[2] - week[1])
+        try:
+            n = estimates.n_obs_for(w, start)
+        except ValueError:
+            return None
+        secs += estimates.run_seconds([n], f, particles, width)
+    if secs <= 0:
+        return None
+    ratio, _n = _own_cost_ratio()
+    lo, hi = estimates.span(secs, ratio)
+    basis = ("first estimate from the engine's cost model"
+             + (" and this computer's earlier replays" if ratio else ""))
+    return lo, secs * (ratio or K_FIRST), hi, basis
+
+
+def _cost_words(weeks, start: str, fits: int, particles: int, width: int,
+                ratio: float | None = None, left: int = 0) -> str:
+    """The Oracle preset's cost before Start, as the Settings form's option
+    says it after "Oracle SIHRS + Groundhog": estimates.human of the span
+    over `weeks` (as-of dates of a season starting `start`) at `fits` a
+    week (locations x Independent Runs), `particles` and `width`; " here"
+    when the span rests on this computer's recorded `ratio`; ", N weeks
+    left" when only the `left` weeks a resume runs are priced. "" for no
+    figure (no weeks, no fits). retro_progress.js FluBNFRetroCost.words is
+    this rule in the page."""
+    from app.core import estimates
+    if not weeks or fits <= 0:
+        return ""
+    try:
+        ns = [estimates.n_obs_for(w, start) for w in weeks]
+    except ValueError:
+        return ""
+    lo, hi = estimates.span(
+        estimates.run_seconds(ns, fits, particles, width), ratio)
+    words = estimates.human(lo, hi)
+    if not words:
+        return ""
+    if ratio:
+        words += " here"
+    if left:
+        words += f", {left} week{'' if left == 1 else 's'} left"
+    return words
+
+
 def _retro_progress(season: str) -> dict:
     """Live progress and timing for one season, as the retro pages poll it.
-    The ETA range (_season_eta) is null unless running and computable."""
+    The ETA range (_season_eta, else _seeded_eta before a week is timed)
+    is null unless running and computable. week_asof, week_fits_done and
+    week_fits_total (_week_in_flight) describe the week an active Oracle
+    replay is fitting; null otherwise."""
     from app.core import retro
     status = _season_status(season)
     meta = _season_meta(season)
@@ -422,9 +661,14 @@ def _retro_progress(season: str) -> dict:
     added = ([v for v in vints if not retro.week_done(root, v)]
              if status == "done" and done else [])
     mean_s = t.get("mean_s")
+    # the Oracle preset's week in flight: its fits (a Groundhog-only week
+    # has none)
+    week = (_week_in_flight(root)
+            if status in _RETRO_ACTIVE and _oracle_settings(meta) else None)
     eta_lo = eta_s = eta_hi = eta_basis = None
     if status == "running" and total and done < total:
-        est = _season_eta(meta, season, root, t)
+        est = (_season_eta(meta, season, root, t)
+               or _seeded_eta(meta, season, root, week))
         if est:
             eta_lo, eta_s, eta_hi, eta_basis = est
     return {"season": season, "status": status, "done": done,
@@ -435,6 +679,9 @@ def _retro_progress(season: str) -> dict:
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": mean_s, "eta_s": eta_s,
             "eta_lo_s": eta_lo, "eta_hi_s": eta_hi, "eta_basis": eta_basis,
+            "week_asof": week[0] if week else None,
+            "week_fits_done": week[1] if week else None,
+            "week_fits_total": week[2] if week else None,
             "slowest_week": t.get("slowest_week"),
             "slowest_s": t.get("slowest_s"),
             "started_utc": t.get("started_utc"),

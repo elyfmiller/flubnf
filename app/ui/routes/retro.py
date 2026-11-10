@@ -89,6 +89,87 @@ def _retro_national_name() -> str:
     return _from_locations_table(pick, usn.US_FIPS)
 
 
+def _panel6_label() -> str:
+    """The panel scope's option: its states' abbreviations, sorted for
+    reading (the run itself keeps PANEL6's order)."""
+    from app.core.retro_settings import PANEL6
+
+    def pick(locs):
+        hit = sorted(locs.abbreviation[locs.location_name.isin(PANEL6)])
+        return hit if len(hit) == len(PANEL6) else None
+    abbrs = _from_locations_table(pick, None)
+    return "6-state panel" + (f" ({', '.join(abbrs)})" if abbrs else "")
+
+
+def _whole(text, default: int) -> int:
+    """A form field as the cost line reads it (retro_progress.js
+    FluBNFRetroCost): digits are their number, anything else (blank
+    included) is `default`."""
+    import re
+    t = str(text if text is not None else "").strip()
+    return int(t) if re.fullmatch(r"[0-9]+", t) else default
+
+
+def _form_costs(seasons: list, form: dict, state_names: list,
+                knob_panel: dict) -> dict:
+    """What the Settings form needs to price the Oracle preset (F53):
+    estimates.page_params for static/estimate.js; per season its start,
+    its weeks and, when the live tree holds part of an Oracle replay, the
+    weeks a resume would run ("left"); this computer's recorded ratio; the
+    option's words for the form as first shown (the page's script
+    recomputes them on every change, by the same rule); and the panel's
+    size, which the script counts for it."""
+    from app.core import estimates
+    from app.core import retro as _retro
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    from app.core.retro_settings import PANEL6
+    ratio, _n = retro_seasons._own_cost_ratio()
+    costs = {}
+    for s in seasons:
+        name = s["name"]
+        weeks = list(_retro.season_vintages(name))
+        live, left = _live_root(name), None
+        if (weeks and retro_seasons._weeks_done(live)
+                and retro_seasons._oracle_settings(_retro.read_meta(live))):
+            rest = [w for w in weeks if not _retro.week_done(live, w)]
+            if 0 < len(rest) < len(weeks):
+                left = rest
+        costs[name] = {"start": _retro.season_bounds(name)[0],
+                       "weeks": weeks, "left": left}
+    # the form as the page first shows it (retro.html)
+    names = [s["name"] for s in seasons]
+    season = form.get("season") if form.get("season") in names else (
+        names[0] if names else "")
+    scope = form.get("locations")
+    if scope == "all":
+        n = len(state_names)
+    elif scope == "custom":
+        picked = set(form.get("custom_locations") or ())
+        n = sum(1 for l in state_names if l in picked)
+    else:
+        n = len(PANEL6)
+    if n and str(form.get("national", "1")) != "0":
+        n += 1
+    rows = {r["key"]: r for g in (knob_panel or {}).get("groups", ())
+            for r in g.get("rows", ())}
+
+    def knob(key, fallback):
+        r = rows.get(key) or {}
+        return _whole(r.get("value"), _whole(r.get("default"), fallback))
+    width = max(1, min(_whole(form.get("width"), DEFAULT_SHARD_WIDTH),
+                       SHARD_WIDTH_CAP))
+    c = costs.get(season) or {}
+    weeks = c.get("left") or c.get("weeks") or []
+    fits = n * knob("pf.replicates", RunSpec.replicates)
+    words = retro_seasons._cost_words(
+        weeks, c.get("start", ""), fits,
+        knob("pf.particles", RunSpec.particles), width, ratio,
+        len(c["left"]) if c.get("left") else 0)
+    return {"est": estimates.page_params(DEFAULT_SHARD_WIDTH),
+            "rt_costs": costs, "rt_ratio": ratio, "pf_cost": words,
+            "panel6_n": len(PANEL6)}
+
+
 @router.get("/retro", response_class=HTMLResponse)
 def retro_index(request: Request, dataset: str = "", tab: str = ""):
     """Two tabs (retro.html): the FluSight hub's seasons, or "Your data"
@@ -173,15 +254,26 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     # the form as last posted; its panel opens once after its own refusal
     form = dict(_last_retro_form)
     _last_retro_form.pop("ms_refused", None)
+    state_names = _retro_state_names()
+    knob_panel = _knob_panel("retro", form)
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
                                        "own_tab": False, "seasons": seasons,
-                                       "state_names": _retro_state_names(),
+                                       "state_names": state_names,
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
                                        "form": form,
-                                       "knob_panel": _knob_panel("retro",
-                                                                 form),
+                                       "knob_panel": knob_panel,
+                                       "panel6_label": _panel6_label(),
+                                       # the Oracle preset's cost (F53)
+                                       **_form_costs(seasons, form,
+                                                     state_names, knob_panel),
+                                       # nothing replayed, running, kept or
+                                       # imported here yet (F46)
+                                       "no_replays": not any(
+                                           s["done"] > 0 or s["active"]
+                                           or s["status"] or s["archives"]
+                                           for s in seasons),
                                        # a half-installed engine cannot
                                        # run the Oracle preset either
                                        "engine_ok": pipeline._pf_engine_state()
@@ -589,8 +681,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     "Not started: no locations checked for the custom scope.",
                     "Check at least one state and try again.")
         else:
-            names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
-                     "Vermont", "California"]
+            # in PANEL6's order: the run record and every week's manifest
+            # keep it
+            from app.core.retro_settings import PANEL6
+            names = list(PANEL6)
         # US rides on every scope unless states only (with_us is idempotent)
         fit_national = str(national).strip().lower() not in ("0", "false",
                                                              "no", "off", "")

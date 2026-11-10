@@ -4,9 +4,10 @@ mismatches refuse to pool completed weeks with new ones). Split out of
 app/core/retro.py, which re-exports every name.
 
 Sections: engine presets (ENGINES, ENGINE_LABELS, engine_label, pf_ran) |
-output-floor record values (FLOOR_*) | resume rules (ResumeMismatch family,
-engine_build_change, location_scope_change) | the settings list
-(SCOPE_LABELS, settings_summary, season_knobs) | resume_form_fields.
+the 6-state panel (PANEL6) | output-floor record values (FLOOR_*) | resume
+rules (ResumeMismatch family, engine_build_change, location_scope_change) |
+the settings list (SCOPE_LABELS, settings_summary, season_knobs) |
+resume_form_fields.
 """
 from __future__ import annotations
 
@@ -35,6 +36,15 @@ def pf_ran(engine) -> bool:
     particle or replicate count describes the replay. A record without an
     engine predates the preset and ran the filter."""
     return str(engine or "pf") != "analogue"
+
+
+#: the retro form's "panel6" scope, in the order the form has always posted
+#: it. The order is written to the run record and to every week's manifest,
+#: and a resumed week whose manifest differs is refitted from scratch, so it
+#: is never reordered (the form's option sorts the abbreviations for
+#: display only)
+PANEL6 = ("Alaska", "New York", "Wyoming", "Pennsylvania", "Vermont",
+          "California")
 
 
 #: settings.output_floor in a season's run record: every week was stored

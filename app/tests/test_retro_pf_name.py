@@ -181,7 +181,15 @@ def test_the_replay_form_names_the_oracle_sihrs(world, pf_engine_ready):
     """The run form's full preset is the Oracle SIHRS beside the Groundhog;
     its value is still the member's internal key."""
     t = _text(client.get("/retro").text)
-    assert '<option value="pf">Oracle SIHRS + Groundhog (hours)</option>' in t
+    # its cost from the engine's cost model (test_retro_estimates.py), in
+    # place of a fixed "(hours)": the newest season, the panel with US
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH
+    cost = ui_retro_seasons._cost_words([W1, W2], "2098-08-01", 7 * 3,
+                                        10_000, DEFAULT_SHARD_WIDTH)
+    assert cost.startswith("about ")
+    assert ('<option value="pf" data-base="Oracle SIHRS + Groundhog">'
+            f"Oracle SIHRS + Groundhog ({cost})</option>") in t
+    assert "(hours)" not in t
     assert "Particle filter with the Groundhog" not in t
     # the options name the cost and the members, so the label needs no "?"
     assert '<option value="analogue">Groundhog only (minutes)</option>' in t
