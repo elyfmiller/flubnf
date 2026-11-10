@@ -699,10 +699,14 @@ def _not_found(request: Request):
 
 @router.get("/output/download")
 def output_download(request: Request, path: str):
-    """Download a submission CSV. The file must be inside app state, and a
-    submission/ file must sit under a registered hub model's directory (the
-    listings' rule, enforced here for hand-edited URLs)."""
+    """Download a submission CSV. The file must be inside app state, a CSV
+    in a model's folder under submission/ or a dataset run's export/ (the
+    files the console links; never the ledger, the form memory or a run's
+    results), and a submission/ file must sit under a registered hub
+    model's directory (the listings' rule, enforced here for hand-edited
+    URLs)."""
     from fastapi.responses import FileResponse
+    from app.core.custom_run import EXPORT_DIR
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
     try:
@@ -710,6 +714,9 @@ def output_download(request: Request, path: str):
     except (OSError, ValueError):       # a NUL byte or an unusable name
         return _not_found(request)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
+        return _not_found(request)
+    if p.suffix.lower() != ".csv" \
+            or p.parent.parent.name not in ("submission", EXPORT_DIR):
         return _not_found(request)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)

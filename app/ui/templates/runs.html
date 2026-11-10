@@ -287,7 +287,8 @@
   {% set wid %}<code>{{ w.id }}</code>{% endset %}{% set _ = items.append(wid) %}
   {{ tips.meta(items) }}
   <span class="st-size">{{ w.size_h }}</span>
-  {% if w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
+  {% if w.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+  {% elif w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
   {% else %}{{ del_form("/storage/delete", "workroot", w.id, "workroot " ~ w.id ~ " (" ~ w.label ~ ")", w.size_h, "The run's ledger row is kept and will show a dash for disk use.") }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
