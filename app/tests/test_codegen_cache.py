@@ -380,3 +380,148 @@ def test_reclaim_keeps_the_cache_while_an_engine_job_runs(state, live_runner):
     client.post("/storage/reclaim", data={"confirm": d["confirm"]},
                 follow_redirects=False)
     assert reclaim.codegen_cache_bytes() == b
+
+
+# ------------------------------- the engine lock: a run or a Sandbox fit
+# Storage's Delete and Reclaim read this console's engine claims (a console
+# run, a replay, a Sandbox fit, its preparation, an experiment) and clear
+# only under _engine_lock, so a run or fit claimed meanwhile keeps the cache.
+
+_DELETE = {"kind": "engine-cache", "ident": "bngsim-codegen",
+           "confirm": "bngsim-codegen"}
+
+_SANDBOX_CLAIMS = (
+    ({"running": "sbx-20981010T101010"},
+     "sandbox run sbx-20981010T101010 is still fitting"),
+    ({"claim": "sihrs"}, "a sandbox run of sihrs is being prepared"),
+    ({"experiment": {"id": "exp-7", "settings": {}, "cancel": False}},
+     "experiment exp-7 is replaying"),
+)
+
+
+def _reset_flash() -> None:
+    ui_state._status.update({"flash": "", "flash_detail": ""})
+
+
+@pytest.mark.parametrize("claim,words", _SANDBOX_CLAIMS)
+def test_storage_and_reclaim_refuse_while_a_sandbox_fit_holds_the_engine(
+        state, claim, words):
+    b = _fill(state["cache"])
+    d = client.get("/api/storage/reclaim").json()    # the report, while idle
+    assert d["total"] == b
+    ui_state._sandbox_status.update(claim)
+    kept = (f"the engine cache is kept while the engine runs ({words}); it "
+            "can be cleared once the engine is idle.")
+    # Storage: the row says why, its Delete is off, a crafted Delete refused
+    row = ui_storage()["engine_cache"]
+    assert row["busy"] and row["why"] == kept[:1].upper() + kept[1:]
+    assert 'id="st-ec-1" disabled' in client.get("/storage").text
+    client.post("/storage/delete", data=_DELETE, follow_redirects=False)
+    assert _flash() == f"Not deleted: {kept}"
+    assert reclaim.codegen_cache_bytes() == b
+    # Reclaim: no longer offered, and the click the report invited refused
+    # in the same words, not "Nothing to reclaim"
+    _reset_flash()
+    d2 = client.get("/api/storage/reclaim").json()
+    assert not [c for c in d2["categories"]
+                if c.get("key") == "engine-cache"]
+    client.post("/storage/reclaim", data={"confirm": d["confirm"]},
+                follow_redirects=False)
+    assert _flash() == f"Not reclaimed: {kept}"
+    assert reclaim.codegen_cache_bytes() == b
+
+
+def test_reclaim_says_the_cache_was_kept_beside_what_it_freed(state):
+    """A reclaim that frees something else while a Sandbox fit holds the
+    engine says the cache was kept, and why."""
+    b = _fill(state["cache"])
+    # a completed run with a fit tree to prune (reclaim.workroot_complete)
+    wr = state["root"] / "workroots" / "20981010T101010-abcdef"
+    (wr / "US_r0").mkdir(parents=True)
+    (wr / "US_r0" / "Simulations.txt").write_text("x" * 2048)
+    (wr / "results.json").write_text("{}")
+    ui_state._sandbox_status["running"] = "sbx-20981010T101010"
+    d = client.get("/api/storage/reclaim").json()
+    assert not [c for c in d["categories"]
+                if c.get("key") == "engine-cache"]
+    client.post("/storage/reclaim", data={"confirm": d["confirm"]},
+                follow_redirects=False)
+    assert reclaim.codegen_cache_bytes() == b
+    assert not (wr / "US_r0").exists()                   # the fit tree went
+    assert _flash().startswith("Reclaimed ")
+    detail = ui_state._status.get("flash_detail", "")
+    assert ("The engine cache is kept while the engine runs (sandbox run "
+            "sbx-20981010T101010 is still fitting)") in detail
+
+
+def _blocked_on_the_engine_lock(post) -> None:
+    """Hold _engine_lock while `post` runs in a thread: it must wait for
+    the lock (the clear asks under it); a console run is claimed meanwhile,
+    then the lock released."""
+    import threading
+    t = threading.Thread(target=post)
+    with ui_state._engine_lock:
+        t.start()
+        t.join(timeout=1.5)
+        assert t.is_alive(), "the clear did not wait for the engine lock"
+        ui_state._status["running"] = "starting"     # /run's claim
+    t.join(timeout=60)
+    assert not t.is_alive()
+
+
+def test_a_run_claimed_while_storage_waits_for_the_engine_lock_keeps_it(
+        state):
+    b = _fill(state["cache"])
+    _blocked_on_the_engine_lock(lambda: client.post(
+        "/storage/delete", data=_DELETE, follow_redirects=False))
+    assert reclaim.codegen_cache_bytes() == b
+    assert _flash() == ("Not deleted: the engine cache is kept while the "
+                        "engine runs (a console run is in progress); it can "
+                        "be cleared once the engine is idle.")
+
+
+def test_a_run_claimed_while_reclaim_waits_for_the_engine_lock_keeps_it(
+        state):
+    b = _fill(state["cache"])
+    d = client.get("/api/storage/reclaim").json()
+    assert d["total"] == b
+    _blocked_on_the_engine_lock(lambda: client.post(
+        "/storage/reclaim", data={"confirm": d["confirm"]},
+        follow_redirects=False))
+    assert reclaim.codegen_cache_bytes() == b
+    said = _flash() + " " + ui_state._status.get("flash_detail", "")
+    assert ("he engine cache is kept while the engine runs (a console run "
+            "is in progress)") in said
+
+
+# --------------------------------- listed as rebuildable, never as a run
+
+def test_storage_lists_the_cache_as_rebuilt_as_needed_never_as_a_run(state):
+    """The cache is its own section, tagged rebuilt as needed: never a
+    workroot, season, archive, dataset or ledger row, never in the total or
+    its categories, and its name nowhere else on the page."""
+    b = _fill(state["cache"])
+    wr = state["root"] / "workroots" / "20981010T101010-abcdef"
+    wr.mkdir(parents=True)
+    (wr / "forecast.csv").write_text("x" * 100)
+    ui_shared._invalidate_scans()
+    inv = ui_storage()
+    listed = [r.get("id") for k in ("workroots", "retro", "retro_archives",
+                                    "report_archives", "datasets")
+              for r in inv[k]]
+    assert listed == ["20981010T101010-abcdef"]
+    assert [c["key"] for c in inv["cats"]] == ["workroots"]
+    assert inv["total_bytes"] == 100 and inv["engine_cache"]["bytes"] == b
+    html = client.get("/storage").text
+    sec = html.split('id="h-st-ec"', 1)[1].split("</section>", 1)[0]
+    assert '<span class="uk-tag">rebuilt as needed</span>' in sec
+    assert '<span class="uk-tag">not in the total</span>' in sec
+    assert html.count("bngsim-codegen") == sec.count("bngsim-codegen") > 0
+    wr_sec = html.split('id="h-st-wr"', 1)[1].split("</section>", 1)[0]
+    assert "Compiled models" not in wr_sec and "Engine cache" not in wr_sec
+    # Reclaim: the cache is a category of its own, never a week or a run
+    d = client.get("/api/storage/reclaim").json()
+    assert [c["label"] for c in d["categories"]
+            if c.get("key") == "engine-cache"] == [
+                "Engine cache (compiled models)"]
+    assert d["confirm"].split("/")[:2] == ["0", "0"]

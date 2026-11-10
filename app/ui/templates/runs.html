@@ -403,10 +403,12 @@
  {% endif %}
  {% if storage.engine_cache %}{% set ec = storage.engine_cache %}
  {# bngsim's compiled models (routes/storage.py _engine_cache_row), in the
-    state folder, outside the total: a cache, not a record. Its Delete
-    clears it; off while an engine job runs, here or in another process #}
+    state folder, outside the total: a cache, not a record, so its own
+    section, tagged rebuilt as needed, never among the runs or results
+    above. Its Delete clears it; off while an engine job runs, here or in
+    another process #}
  <section class="st-sec" aria-labelledby="h-st-ec">
- {{ tips.heading("Engine cache", "st-ec", level=3, after=tips.tag("not in the total"), cls="st-h") }}
+ {{ tips.heading("Engine cache", "st-ec", level=3, after=tips.tag("not in the total") ~ " " ~ tips.tag("rebuilt as needed"), cls="st-h") }}
  <div class="st-row">
   <span class="st-title"><strong>Compiled models</strong>
    {%- if ec.busy %} {{ tips.badge("pending", "engine running") }}{% endif %}</span>

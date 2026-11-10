@@ -798,9 +798,16 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     plan = _reclaim_survey()
     counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
     if plan["total_est"] <= 0 and plan["compress_files"] == 0:
-        _flash("Nothing to reclaim.", "warn",
-               detail="No completed week or run carries intermediates, and "
-               "every stored week is already compressed.")
+        nothing = ("No completed week or run carries intermediates, and "
+                   "every stored week is already compressed.")
+        if plan["cache_why"]:
+            # the cache alone, and an engine job holds it: said, as
+            # Storage's Delete says it
+            why = _busy_why("engine-cache", plan["cache_why"])
+            _flash(f"Not reclaimed: {why[:1].lower()}{why[1:]}", "warn",
+                   detail=nothing)
+        else:
+            _flash("Nothing to reclaim.", "warn", detail=nothing)
         return _back(request, "/storage")
     if confirm != counts:
         _flash("Not reclaimed: the storage panel changed since the report.",
@@ -835,8 +842,15 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
                     f"{'' if out['compress_files'] == 1 else 's'} in place")
     if cache["bytes"]:
         bits.append(f"{hb(cache['bytes'])} by clearing the engine cache")
-    kept = (f"The engine cache was kept: {cache['refused']}. "
-            if cache["refused"] else "")
+    # kept because an engine job holds it, at the survey or under the
+    # lock: said in Storage's words; any other refusal as it came
+    held = plan["cache_why"] or (cache["refused"] if cache["busy"] else "")
+    if held:
+        kept = _busy_why("engine-cache", held) + " "
+    elif cache["refused"]:
+        kept = f"The engine cache was kept: {cache['refused']}. "
+    else:
+        kept = ""
     _flash(f"Reclaimed {hb(out['total'] + cache['bytes'])}.", "ok",
            detail=("; ".join(bits) + ". " if bits else "") + kept
            + "Every stored week, score, report and submission file is "
