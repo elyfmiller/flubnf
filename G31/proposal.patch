@@ -1,0 +1,715 @@
+diff --git a/app/core/contactmap.py b/app/core/contactmap.py
+index 194c5808..8b41540e 100644
+--- a/app/core/contactmap.py
++++ b/app/core/contactmap.py
+@@ -698,6 +698,9 @@ def rule_flow(bngl_text: str) -> dict | None:
+                           "rule": name}
+                          for k, (left, right, rate, name) in enumerate(rules)]}
+     graph = network_graph(net)
++    # the rules in the saved model (a reversible one once), for the
++    # drawing's caption: a rule that moves nothing draws no arrow
++    graph["rules"] = len({name.removesuffix(" (reverse)") for *_, name in rules})
+     for nd in graph["nodes"]:
+         if nd["kind"] == "species":
+             nd["text"] = nd["label"]
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 820878b6..a266c07b 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -274,6 +274,9 @@ def add_example(name: str, as_name: str | None = None) -> Path:
+     dst.mkdir(parents=True)
+     for f in REQUIRED:
+         shutil.copy2(src / f, dst / f)
++        # the model is new now: the gallery's "changed" is its creation,
++        # not the example's ship date (copy2 keeps that mtime)
++        (dst / f).touch()
+     _write_info(target, {"origin": f"example:{name}", "created_utc": _stamp()})
+     return dst
+ 
+@@ -941,7 +944,10 @@ def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
+     out = []
+     engine = pf_engine.engine_available()
+     if not engine:
+-        out.append(pf_engine.engine_missing_message())
++        # the headline a student reads first; the engine's own sentence and
++        # the remedy follow it (split_reason puts them in the tip)
++        out.append("The fitting engine is not installed. "
++                   + pf_engine.engine_missing_message())
+     elif not pf_engine.engine_current():
+         out.append(pf_engine.engine_stale_message())
+     # the engine's Python only once the engine is unpacked: installing the
+diff --git a/app/core/sandbox_export.py b/app/core/sandbox_export.py
+index 6c18b687..0342616b 100644
+--- a/app/core/sandbox_export.py
++++ b/app/core/sandbox_export.py
+@@ -44,6 +44,22 @@ TRAJ_ZIP_MAX = 2 * 1024 * 1024
+ #: settings a comparison lists when they differ
+ RUN_SETTINGS = ("particles", "jitter", "forecast_weeks", "seed", "cumulative",
+                 "suffix", "obs_col", "n_obs")
++#: the run settings as What changed names them
++SETTING_LABELS = {"particles": "Particles", "jitter": "Jitter",
++                  "forecast_weeks": "Forecast weeks", "seed": "Seed",
++                  "cumulative": "Observable", "suffix": "Data file",
++                  "obs_col": "Observed column", "n_obs": "Data rows"}
++
++
++def _setting_text(v) -> str:
++    """A setting's value as the page writes numbers: 10,000; '' for none."""
++    if v is None or v == "":
++        return ""
++    if isinstance(v, bool):
++        return "on" if v else "off"
++    if isinstance(v, int):
++        return f"{v:,}"
++    return str(v)
+ 
+ 
+ def _run_meta(run_id: str) -> tuple:
+@@ -89,8 +105,9 @@ def diff_runs(a: str, b: str, max_lines: int = 400) -> dict:
+             lines = lines[:max_lines] + [f"... {len(lines) - max_lines} more lines"]
+         files.append({"name": f, "diff": "\n".join(lines),
+                       "same": fa[f] == fb[f]})
+-    settings = [{"key": k, "a": ma.get(k), "b": mb.get(k)} for k in RUN_SETTINGS
+-                if ma.get(k) != mb.get(k)]
++    settings = [{"key": k, "label": SETTING_LABELS.get(k, k),
++                 "a": _setting_text(ma.get(k)), "b": _setting_text(mb.get(k))}
++                for k in RUN_SETTINGS if ma.get(k) != mb.get(k)]
+     out = {"a": a, "b": b, "files": files, "settings": settings}
+ 
+     def src(m):
+@@ -148,6 +165,10 @@ def _conf_form(cell: Path) -> str:
+         return str(cell)
+ 
+ 
++#: how much of each pf_runner_*.err the run zip carries (its tail)
++ERR_ZIP_MAX = 64 * 1024
++
++
+ def run_zip(run_id: str) -> bytes:
+     """A run as a zip under <run_id>/: meta.json, pf.conf (paths made
+     relative), the three files, the engine's parameter sample and ESS
+@@ -184,6 +205,14 @@ def run_zip(run_id: str) -> bytes:
+             entries.append((f"{run_id}/{p.name}", p.read_bytes()))
+     if (d / ORACLE_FILE).is_file():
+         entries.append((f"{run_id}/{ORACLE_FILE}", (d / ORACLE_FILE).read_bytes()))
++    # the runner's messages the page shows (Engine messages), their tail
++    for p in sorted(d.glob("pf_runner_*.err")):
++        try:
++            txt = p.read_bytes()
++        except OSError:
++            continue
++        if txt.strip():
++            entries.append((f"{run_id}/{p.name}", txt[-ERR_ZIP_MAX:]))
+     return _zip(entries)
+ 
+ 
+diff --git a/app/tests/test_sandbox_audit.py b/app/tests/test_sandbox_audit.py
+index 43152bc7..843e46d4 100644
+--- a/app/tests/test_sandbox_audit.py
++++ b/app/tests/test_sandbox_audit.py
+@@ -118,10 +118,16 @@ def test_a_preflight_refusal_flashes_its_reason_and_its_remedy(box, monkeypatch,
+         monkeypatch.setattr(pf_engine, "PY310", Path("/nonexistent/bin/python"))
+     _post("/sandbox/run", {"model": "kinetics_example"})
+     msg, detail = _flash()
+-    assert msg.startswith("Not started: ") and notice in msg
+-    # the remedy is shown: in the tip, or on the line when the whole
+-    # reason is short (FluBNF.bat's remedy on Windows is)
+-    assert remedy in msg + detail, (msg, detail)
++    # the page's own alert under Save carries the reason and its remedy
++    # (in the tip, or on the line when the whole reason is short), so the
++    # notice is one pointer to it, not the same words twice
++    assert msg == ("Not started: this computer cannot fit yet. The notice "
++                   "under Save says what to do.")
++    assert notice not in msg and not detail
++    import html as _html
++    page = client.get("/sandbox?model=kinetics_example").text
++    alert = _html.unescape(page.split('id="sb-machine"', 1)[1][:4000])
++    assert notice in alert and remedy in alert, (notice, remedy)
+     assert _no_runs()                                       # nothing made
+ 
+ 
+diff --git a/app/tests/test_sandbox_data.py b/app/tests/test_sandbox_data.py
+index 44e2c90b..1524dd9a 100644
+--- a/app/tests/test_sandbox_data.py
++++ b/app/tests/test_sandbox_data.py
+@@ -181,7 +181,7 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
+     html = client.get("/sandbox?model=mine").text
+     assert ("data.exp filled: 3 weeks of Alabama, 2024-10-05 to "
+             "2024-10-26.") in html
+-    assert "Source: settled truth. 1 missing weeks dropped." in html
++    assert "Source: settled truth. 1 missing week dropped." in html
+     assert source_facts(html) == ["Alabama", "2024-10-05 to 2024-10-26",
+                                   "settled truth", "3 weeks, 1 dropped missing"]
+     assert "0 8\n1 10\n3 14.5" in html                    # the editor holds it
+@@ -193,7 +193,7 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
+     assert r.status_code == 303
+     html = client.get("/sandbox?model=mine").text
+     assert "3 weeks of Alabama" in html
+-    assert "Source: vintage of 2024-11-09. 1 missing weeks dropped." in html
++    assert "Source: vintage of 2024-11-09. 1 missing week dropped." in html
+     assert source_facts(html)[2:] == ["vintage of 2024-11-09", "3 weeks, 1 dropped missing"]
+     assert 'value="2024-11-09" selected' in html
+     # a refused fill flashes the reason and leaves the file alone
+diff --git a/app/tests/test_sandbox_export.py b/app/tests/test_sandbox_export.py
+index 356bd3b2..c25b9346 100644
+--- a/app/tests/test_sandbox_export.py
++++ b/app/tests/test_sandbox_export.py
+@@ -83,7 +83,8 @@ def test_diff_runs_names_the_changed_prior_line_and_settings(two_runs):
+     assert not by["priors.conf"]["same"]
+     assert f"-{two_runs['line']}" in by["priors.conf"]["diff"]
+     assert f"+{two_runs['edited']}" in by["priors.conf"]["diff"]
+-    assert d["settings"] == [{"key": "seed", "a": 1, "b": 2}]
++    # each changed setting with its label and its values as the page writes them
++    assert d["settings"] == [{"key": "seed", "label": "Seed", "a": "1", "b": "2"}]
+     # a run without its own priors.conf falls back to pf.conf's prior lines
+     (sb.RUNS / two_runs["a"] / "kinetics_example_r0" / "priors.conf").unlink()
+     assert two_runs["line"].split("=")[0].strip() in \
+diff --git a/app/tests/test_sandbox_guard.py b/app/tests/test_sandbox_guard.py
+index 5ed3a9ec..52ca6f06 100644
+--- a/app/tests/test_sandbox_guard.py
++++ b/app/tests/test_sandbox_guard.py
+@@ -100,7 +100,9 @@ def test_prepare_refuses_without_perl_or_engine_in_production_words(box, monkeyp
+     monkeypatch.setattr(pf_engine, "engine_available", lambda: False)
+     with pytest.raises(sb.SandboxError) as e:
+         sb.prepare("kinetics_example")
+-    assert str(e.value) == pf_engine.engine_missing_message()
++    # the plain headline first, the engine's own words after it
++    assert str(e.value) == ("The fitting engine is not installed. "
++                            + pf_engine.engine_missing_message())
+     monkeypatch.setattr(pf_engine, "engine_available", lambda: True)
+     monkeypatch.setattr(pf_engine, "engine_current", lambda: False)
+     with pytest.raises(sb.SandboxError) as e:
+diff --git a/app/tests/test_sandbox_machine.py b/app/tests/test_sandbox_machine.py
+index 94d20003..ddae7d45 100644
+--- a/app/tests/test_sandbox_machine.py
++++ b/app/tests/test_sandbox_machine.py
+@@ -427,8 +427,9 @@ def test_perl_and_the_engine_both_missing_are_both_named(sandbox_root,
+     monkeypatch.setattr(pf, "engine_available", lambda: False)
+     msg = sb.machine_problem()
+     notice, tip = sb.split_reason(msg)
+-    assert notice.startswith(f"The PyBNF fork at {pf.PYBNF_PF} does not "
+-                             "provide fit_type = pf")
++    assert notice == "The fitting engine is not installed."
++    assert tip.startswith(f"The PyBNF fork at {pf.PYBNF_PF} does not "
++                          "provide fit_type = pf")
+     assert "1 more thing to fix after that: (2) Perl was not found" in tip
+     r = sb.check({n: (EXAMPLE / n).read_text() for n in sb.REQUIRED})
+     assert r["facts"]["machine"] == notice
+diff --git a/app/tests/test_sandbox_oracle.py b/app/tests/test_sandbox_oracle.py
+index 7952acf9..b4604754 100644
+--- a/app/tests/test_sandbox_oracle.py
++++ b/app/tests/test_sandbox_oracle.py
+@@ -164,7 +164,9 @@ def test_the_route_and_the_card(finished):
+     assert "w = 0.3" in ui_state._status.get("flash", "")
+     html = client.get(f"/sandbox?model=ohio&run={run}").text
+     assert "Oracle SIHRS: median (50%, 95%)" in html and "2098-01-11" in html
+-    assert '<span class="uk-stat-u">(production 0.5)</span>' in html
++    # the input above holds w; the stats name the donors in words
++    assert 'id="sb-ostate"' in html and ">Donors<" in html
++    assert ">both<" not in html and "(production 0.5)</span>" not in html
+     ui_state._status.pop("flash", None)
+     client.post(f"/sandbox/runs/{run}/oracle", data={"w": "x"},
+                 follow_redirects=False)
+diff --git a/app/tests/test_sandbox_polish.py b/app/tests/test_sandbox_polish.py
+new file mode 100644
+index 00000000..5ea29df6
+--- /dev/null
++++ b/app/tests/test_sandbox_polish.py
+@@ -0,0 +1,223 @@
++"""Sandbox polish (bug hunt 2026-10-25, G31): the diagram captions count
++the model's rules and the network's reactions; an action saves only the
++files that changed, and never the one it writes itself; the engine-missing
++reason is said once, in plain words; a run with no plot keeps one divider;
++What changed reads in words with formatted numbers; a dataset-based start
++gets no Oracle step card and the state is said in words; the engine's own
++plumbing keys are not shown; the Load-off reason is said once; count words
++go singular; the run zip carries the engine's messages; a model made from
++an example is changed now; the diagram's labels follow the text size and
++never shrink below a pixel each."""
++import json
++import os
++import sys
++import time
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import contactmap                            # noqa: E402
++from app.core import sandbox as sb                         # noqa: E402
++from app.core import sandbox_export as sbx                 # noqa: E402
++from app.core.engines import pf as pf_engine               # noqa: E402
++from app.ui import server as srv                           # noqa: E402
++from app.ui import state as ui_state                       # noqa: E402
++from app.ui.routes import sandbox as ui_sandbox            # noqa: E402
++
++client = TestClient(srv.app)
++UI = Path(__file__).resolve().parents[1] / "ui"
++VIEWS_T = (UI / "templates" / "sandbox_views.html").read_text(encoding="utf-8")
++SANDBOX_T = (UI / "templates" / "sandbox.html").read_text(encoding="utf-8")
++SANDBOX_JS = (UI / "static" / "sandbox.js").read_text(encoding="utf-8")
++VIEWS_JS = (UI / "static" / "model-views.js").read_text(encoding="utf-8")
++VIEWS_CSS = (UI / "static" / "model-views.css").read_text(encoding="utf-8")
++SANDBOX_CSS = (UI / "static" / "tabs" / "sandbox.css").read_text(encoding="utf-8")
++
++SITES = """begin model
++begin molecule types
++L(r)
++R(l,p~0~1)
++Tally()
++end molecule types
++begin reaction rules
++L(r) + R(l) -> L(r!1).R(l!1) + Tally()  k1
++R(p~0) -> R(p~1)  k2
++A() <-> B()  kf, kr
++end reaction rules
++end model
++"""
++
++
++@pytest.fixture()
++def box(sandbox_root):
++    before = dict(ui_state._status)
++    ui_state._status.pop("flash", None)
++    ui_state._status.pop("flash_detail", None)
++    yield sandbox_root
++    ui_state._status.clear()
++    ui_state._status.update(before)
++
++
++def _flash():
++    return (ui_state._status.get("flash") or "",
++            ui_state._status.get("flash_detail") or "")
++
++
++# ------------------------------------------------------------------- SB-07
++
++def test_the_captions_count_the_models_rules_and_the_networks_reactions():
++    # a state change draws no arrow; a reversible rule is one rule
++    flow = contactmap.rule_flow(SITES)
++    assert flow["rules"] == 3
++    drawn = {e["rule"].removesuffix(" (reverse)") for e in flow["edges"]}
++    assert drawn == {"1", "3"}                 # the state change drew none
++    # the Model view reads the count; the Reaction network view the API's
++    assert "var m = g.rules !== undefined ? g.rules : Object.keys(rules).length;" in VIEWS_T
++    assert "nv.idle = d.species + (d.species === 1 ? ' species, ' : ' species, ') + d.reactions" in VIEWS_T
++
++
++# ------------------------------------------------------------------- SB-18
++
++def test_an_action_saves_only_what_changed_and_never_the_file_it_writes(box):
++    sb.add_example("sir_example", as_name="mine")
++    files = sb.read_model("mine")
++    before = {f: (sb.MODELS / "mine" / f).stat().st_mtime_ns for f in sb.REQUIRED}
++    time.sleep(0.02)
++    saved = ui_sandbox._sandbox_save_posted("mine", files["model.bngl"],
++                                            files["data.exp"], files["priors.conf"])
++    assert saved == []
++    assert {f: (sb.MODELS / "mine" / f).stat().st_mtime_ns for f in sb.REQUIRED} == before
++    # a Windows browser's line ends are no change either
++    assert ui_sandbox._sandbox_save_posted(
++        "mine", files["model.bngl"].replace("\n", "\r\n"), "", "") == []
++    saved = ui_sandbox._sandbox_save_posted("mine", files["model.bngl"] + "# x\n",
++                                            files["data.exp"] + "9 9\n",
++                                            files["priors.conf"],
++                                            replaced=("data.exp",))
++    assert saved == ["model.bngl"]
++    assert (sb.MODELS / "mine" / "data.exp").read_text() == files["data.exp"]
++    assert (sb.MODELS / "mine" / "model.bngl").read_text().endswith("# x\n")
++    # the fill, simulate and upload routes write data.exp themselves
++    src = Path(ui_sandbox.__file__).read_text(encoding="utf-8")
++    assert src.count('replaced=("data.exp",)') == 2          # fill, simulate
++    assert src.count('str(form.get("priors_conf") or ""),\n            ("data.exp",))') == 1
++
++
++# ------------------------------------------------------------------- SB-19
++
++def test_the_engine_missing_reason_leads_with_plain_words(box, monkeypatch):
++    monkeypatch.setattr(pf_engine, "engine_available", lambda: False)
++    notice, tip = sb.split_reason(sb.machine_problem())
++    assert notice == "The fitting engine is not installed."
++    assert tip.startswith(pf_engine.engine_missing_message()[:40])
++
++
++# ------------------------------------------------------------------- SB-20
++
++def test_a_run_with_no_plot_keeps_one_divider():
++    assert ".sb-rsum + .sb-rsec{border-top:0;padding-top:0}" in SANDBOX_CSS
++
++
++# ------------------------------------------------------------------- SB-21
++
++def test_what_changed_reads_in_words_with_formatted_numbers():
++    assert sbx.SETTING_LABELS["n_obs"] == "Data rows"
++    assert sbx.SETTING_LABELS["particles"] == "Particles"
++    assert sbx._setting_text(10000) == "10,000"
++    assert sbx._setting_text(0.15) == "0.15" and sbx._setting_text(None) == ""
++    assert sbx._setting_text(True) == "on"
++    assert "<td>{{ s.label }}</td>" in SANDBOX_T
++    assert 'da.location or "as written"' in SANDBOX_T and '"typed"' not in SANDBOX_T
++
++
++# ------------------------------------------------------------------- SB-22
++
++def test_a_dataset_start_gets_no_oracle_card_and_the_donors_read_in_words():
++    assert "{% if (oracle or (shipped and shipped.shipped)) and not dataset_start %}" in SANDBOX_T
++    assert '"both": "both streams", "flusurv_only": "FluSurv-NET only"' in SANDBOX_T
++    assert 'tips.stat("Donors", DONORS.get(oracle.state, oracle.state), id="sb-ostate")' in SANDBOX_T
++    assert 'tips.stat("w",' not in SANDBOX_T
++    assert '"dataset_start": shipped["info"].get("origin") == sandbox_mod.SHIPPED_DATASET' in (
++        Path(ui_sandbox.__file__).read_text(encoding="utf-8"))
++
++
++# ------------------------------------------------------------------- SB-23
++
++def test_the_engine_keys_fold_leaves_out_the_plumbing(box):
++    sb.add_example("sir_example", as_name="mine")
++    html = client.get("/sandbox?model=mine").text
++    fold = html.split('id="sb-keys"', 1)[1].split("</details>", 1)[0]
++    for key in ("fit_type", "population_size", "max_iterations"):
++        assert f"<code>{key}</code>" not in fold
++    assert "<code>objfunc</code>" in fold and "<code>pf_bounds</code>" in fold
++
++
++# ------------------------------------------------------------------- SB-24
++
++def test_the_load_off_reason_is_said_once():
++    assert "root.FluBNFUI.setReason(load, null);\n      load.disabled = !!r;" in SANDBOX_JS
++    assert "setReason(load, r || null)" not in SANDBOX_JS
++    assert "alertHtml('warn', 'Load is off:', r, null)" in SANDBOX_JS
++
++
++# ------------------------------------------------------------------- SB-25
++
++def test_count_words_go_singular(box):
++    assert ui_sandbox._weeks(1) == "1 week" and ui_sandbox._weeks(3) == "3 weeks"
++    assert ui_sandbox._weeks(1, "missing week") == "1 missing week"
++    ui_sandbox._sandbox_fill_flash({"asof": "settled", "location": "one", "rows": 1,
++                                    "dropped": 1, "start": "2026-10-17",
++                                    "end": "2026-10-17", "one_series": True})
++    msg, detail = _flash()
++    assert msg == "data.exp filled: 1 week of one (one series), 2026-10-17 to 2026-10-17."
++    assert detail == "Source: settled truth. 1 missing week dropped."
++
++
++# ------------------------------------------------------------------- SB-26
++
++def test_the_run_zip_carries_the_engines_messages(box):
++    import io
++    import zipfile
++    sb.add_example("sir_example", as_name="mine")
++    d = sb.RUNS / "20980101-000000_mine"
++    cell = d / "mine_r0"
++    cell.mkdir(parents=True)
++    for f, g in (("model.bngl", "m.bngl"), ("data.exp", "data.exp"),
++                 ("priors.conf", "priors.conf")):
++        (cell / g).write_text((sb.MODELS / "mine" / f).read_text())
++    (d / "meta.json").write_text(json.dumps({
++        "model": "mine", "status": "failed", "particles": 100, "jitter": 0.15,
++        "forecast_weeks": 4, "seed": 0, "suffix": "data", "obs_col": "Cobs",
++        "n_obs": 3, "time": [0, 1, 2], "observed": [1, 2, 3], "error": "boom"}))
++    (d / "pf_runner_0.err").write_text("x" * (sbx.ERR_ZIP_MAX + 10) + "\nthe end\n")
++    (d / "pf_runner_1.err").write_text("   \n")           # blank: left out
++    z = zipfile.ZipFile(io.BytesIO(sbx.run_zip(d.name)))
++    names = {n.split("/", 1)[1] for n in z.namelist()}
++    assert "pf_runner_0.err" in names and "pf_runner_1.err" not in names
++    tail = z.read(f"{d.name}/pf_runner_0.err")
++    assert len(tail) == sbx.ERR_ZIP_MAX and tail.endswith(b"the end\n")
++
++
++# ------------------------------------------------------------------- UI-16
++
++def test_a_model_made_from_an_example_is_changed_now(box):
++    shipped = (sb.EXAMPLES / "sir_example" / "model.bngl").stat().st_mtime
++    t0 = time.time() - 1
++    sb.add_example("sir_example", as_name="mine")
++    for f in sb.REQUIRED:
++        m = (sb.MODELS / "mine" / f).stat().st_mtime
++        assert m >= t0 and m >= shipped
++    assert sb.read_info("mine")["origin"] == "example:sir_example"
++
++
++# ------------------------------------------------------------------- UI-19
++
++def test_the_diagram_never_shrinks_its_labels_and_follows_the_text_size():
++    assert ("var rf = parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;"
++            in VIEWS_JS)
++    assert "this.svg.style.minWidth = Math.round(w * rf) + 'px';" in VIEWS_JS
++    assert ".mv{position:relative;overflow-x:auto}" in VIEWS_CSS
++    assert "max-width:none" in VIEWS_CSS.split(".mv svg.mv-svg{", 1)[1].split("}", 1)[0]
+diff --git a/app/ui/routes/sandbox.py b/app/ui/routes/sandbox.py
+index bc481721..9f13bf13 100644
+--- a/app/ui/routes/sandbox.py
++++ b/app/ui/routes/sandbox.py
+@@ -99,18 +99,31 @@ def _sandbox_redirect(model: str = "", run: str = "") -> RedirectResponse:
+ 
+ 
+ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
+-                         priors_conf: str) -> list:
++                         priors_conf: str, replaced: tuple = ()) -> list:
+     """Save the editor fields that were posted non-empty (a script or an
+-    alias posting none blanks nothing); the names of the files saved."""
++    alias posting none blanks nothing) and differ from the file on disk,
++    so an unchanged file keeps its time and is not named as saved; the
++    names of the files saved. `replaced`: files the action writes itself
++    (Load data's data.exp), never saved first."""
++    try:
++        on_disk = sandbox_mod.read_model(name)
++    except Exception:
++        on_disk = {}
+     files = {f: v for f, v in (("model.bngl", model_bngl),
+                                ("data.exp", data_exp),
+                                ("priors.conf", priors_conf))
+-             if (v or "").strip()}
++             if (v or "").strip() and f not in replaced
++             and v.replace("\r\n", "\n") != on_disk.get(f)}
+     if files:
+         sandbox_mod.save_model(name, files)
+     return sorted(files)
+ 
+ 
++def _weeks(n: int, what: str = "week") -> str:
++    """'1 week', '3 weeks'."""
++    return f"{n} {what}{'' if n == 1 else 's'}"
++
++
+ # ------------------------------------------------------ the page (GET)
+ 
+ #: the start the New model form offers first
+@@ -251,6 +264,8 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
+         n_obs = len(times or [])
+         ctx.update({
+             "shipped": shipped,
++            # a start from a dataset: the Oracle step never applies to it
++            "dataset_start": shipped["info"].get("origin") == sandbox_mod.SHIPPED_DATASET,
+             "info": sandbox_mod.read_info(name),
+             "origin": next((m["origin"] for m in models if m["name"] == name), ""),
+             "settings": settings, "form": form,
+@@ -513,11 +528,11 @@ def _sandbox_fill_flash(info: dict) -> None:
+     one = " (one series)" if info.get("one_series") else ""
+     # the weeks loaded, not the range asked for
+     wk = info.get("dates") or [info["start"], info["end"]]
+-    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
++    msg = (f"data.exp filled: {_weeks(info['rows'])} of {info['location']}"
+            f"{one}, {wk[0]} to {wk[-1]}.")
+     detail = f"Source: {what}."
+     if info["dropped"]:
+-        detail += f" {info['dropped']} missing weeks dropped."
++        detail += f" {_weeks(info['dropped'], 'missing week')} dropped."
+     if info.get("population_set"):
+         detail += f" N set to {info['population_set']:,}."
+     rate = info.get("kind") == "rate"
+@@ -544,7 +559,9 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
+     pop = bool(set_pop)
+     src = (source or "settled").strip()
+     try:
+-        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
++        # the fill writes data.exp itself: the other two, when edited
++        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf,
++                                     replaced=("data.exp",))
+         if saved:
+             _flash(f"Saved {', '.join(saved)} first.", "ok")
+         if src.startswith("dataset:"):
+@@ -573,7 +590,8 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
+     fit can be seen to recover values that are known. The editor's text
+     is saved first."""
+     try:
+-        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
++        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf,
++                                     replaced=("data.exp",))
+         if saved:
+             _flash(f"Saved {', '.join(saved)} first.", "ok")
+         s = int(sim_seed) if str(sim_seed).strip().isdigit() else 1
+@@ -581,7 +599,7 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
+         noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
+                  else "Poisson noise")
+         # what a fit on them should find is the Simulate button's tip
+-        _flash(f"data.exp filled with {f['rows']} simulated weeks of "
++        _flash(f"data.exp filled with {_weeks(f['rows'], 'simulated week')} of "
+                f"{f['column']}.", "ok",
+                detail=f"Drawn from the model at the values written in "
+                f"model.bngl, with {noise}.")
+@@ -670,9 +688,11 @@ async def sandbox_upload_data(request: Request, name: str):
+         _flash(f"Could not read the upload: {e}", "error")
+         return _sandbox_redirect(name if sandbox_mod.NAME_RE.match(name) else "")
+     try:
++        # the upload writes data.exp itself: the other two, when edited
+         saved = await run_in_threadpool(
+             _sandbox_save_posted, name, str(form.get("model_bngl") or ""),
+-            str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""))
++            str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""),
++            ("data.exp",))
+         if saved:
+             _flash(f"Saved {', '.join(saved)} first.", "ok")
+     except Exception as e:
+@@ -734,7 +754,14 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
+     except Exception as e:
+         with _engine_lock:
+             _sandbox_status.update(claim=None, cancel=False)
+-        _not_done("Not started", e)
++        # the page already says why this computer cannot fit (its alert
++        # under Save): one pointer, not the same words twice
++        if (isinstance(e, sandbox_mod.SandboxError)
++                and str(e) == sandbox_mod.machine_problem()):
++            _flash("Not started: this computer cannot fit yet. The notice "
++                   "under Save says what to do.", "warn")
++        else:
++            _not_done("Not started", e)
+         return _sandbox_redirect(name)
+     run_id = workroot.name
+     with _engine_lock:
+diff --git a/app/ui/static/model-views.css b/app/ui/static/model-views.css
+index dd743ae4..24adbb00 100644
+--- a/app/ui/static/model-views.css
++++ b/app/ui/static/model-views.css
+@@ -9,8 +9,8 @@
+    mv-comp, mv-state, mv-bond for the contact map; mv-hi and mv-dim for
+    what the pointer picks out. */
+ 
+-.mv{position:relative}
+-.mv svg.mv-svg{display:block;width:100%;max-width:100%;height:min(420px,70vw);
++.mv{position:relative;overflow-x:auto}
++.mv svg.mv-svg{display:block;width:100%;max-width:none;height:min(420px,70vw);
+   font-family:"DM Sans",system-ui,sans-serif;font-size:12px;
+   cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;
+   background:var(--card)}
+diff --git a/app/ui/static/model-views.js b/app/ui/static/model-views.js
+index 55d47756..b4ca86d1 100644
+--- a/app/ui/static/model-views.js
++++ b/app/ui/static/model-views.js
+@@ -114,6 +114,13 @@
+     var self = this;
+     this.el = html('div', 'mv');
+     this.svg = el('svg', {'class': 'mv-svg', preserveAspectRatio: 'xMidYMid meet', role: 'img'}, this.el);
++    // the labels are drawn in user units, so the drawing is never shown
++    // below one unit per pixel, scaled by the text-size setting (the root
++    // font over 16 px); a narrow card scrolls sideways instead
++    var rf = parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
++    this.rf = rf;
++    this.svg.style.minWidth = Math.round(w * rf) + 'px';
++    if (rf !== 1) this.svg.style.height = Math.round(h * rf) + 'px';
+     this.home = {x: 0, y: 0, w: w, h: h};
+     this.vb = {x: 0, y: 0, w: w, h: h};
+     this.tools = html('div', 'mv-tools', this.el);
+@@ -406,7 +413,7 @@
+     // a small model gets a shorter drawing; a phone a shorter one too
+     var H = n0 <= 3 ? Math.min(280, tall()) : tall();
+     var v = new View(box, W, H), svg = v.svg;
+-    svg.style.height = H + 'px';
++    svg.style.height = Math.round(H * v.rf) + 'px';
+     var nodes = graph.nodes || [], edges = graph.edges || [], infs = graph.influences || [];
+     var defs = el('defs', {}, svg), gInf, gEdges, gHits, gLabels, gNodes;
+     var pos = arrange(graph, W, H), home = {}, size = {}, N = {}, E = {}, I = [], pairs = {};
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index 00761f61..cbda5ed9 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -376,8 +376,9 @@
+     function rangeCheck() {
+       if (!d0 || !d1 || !load) return;
+       var r = rangeReason();
+-      if (root.FluBNFUI) root.FluBNFUI.setReason(load, r || null);
+-      else load.disabled = !!r;
++      // the alert says why once; the button is off with no "?" of its own
++      if (root.FluBNFUI) root.FluBNFUI.setReason(load, null);
++      load.disabled = !!r;
+       if (why) why.innerHTML = r ? alertHtml('warn', 'Load is off:', r, null) : '';
+     }
+     if (src) {
+diff --git a/app/ui/static/tabs/sandbox.css b/app/ui/static/tabs/sandbox.css
+index d5f63ed4..785677d8 100644
+--- a/app/ui/static/tabs/sandbox.css
++++ b/app/ui/static/tabs/sandbox.css
+@@ -140,6 +140,8 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
+ .sb-settings{margin:0}
+ .sb-sample{margin:.1rem 0 .2rem}
+ .sb-rsec{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--line)}
++/* a run with no plot or table: the summary's rule is the one divider */
++.sb-rsum + .sb-rsec{border-top:0;padding-top:0}
+ .sb-rsec > .uk-heading{margin-bottom:.3rem}
+ .sb-cmprow{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;margin:0}
+ .sb-cmprow > label{margin:0;white-space:nowrap}
+diff --git a/app/ui/templates/sandbox.html b/app/ui/templates/sandbox.html
+index 0183b8a5..0dbfef38 100644
+--- a/app/ui/templates/sandbox.html
++++ b/app/ui/templates/sandbox.html
+@@ -256,7 +256,9 @@
+      {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", for_="sb-conf-in") }}
+      <textarea name="priors_conf" id="sb-conf-in" rows="8" spellcheck="false" aria-label="Priors and engine settings (priors.conf)" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
+      {# each key's "from" says whether a priors.conf line set it #}
+-     {% set keys = settings | rejectattr(2, "equalto", "run settings") | list %}
++     {# the engine's own plumbing (fit_type, the optimizer's population and
++        iterations) is written as the run needs it and is nobody's setting #}
++     {% set keys = settings | rejectattr(2, "equalto", "run settings") | rejectattr(0, "in", ["fit_type", "population_size", "max_iterations"]) | list %}
+      {% call tips.fold("Engine keys the sandbox writes for you", id="sb-keys", cls="sb-keys") %}
+       <div class="sbscroll"><table class="kv sbkeys"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
+        {% for k, v, src in keys %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
+@@ -417,17 +419,20 @@
+   {% set since %}<span class="sb-since">from {{ diff.a }}</span>{% endset %}
+   <div class="card sbdiff">{{ tips.heading("What changed", "sb-diff", after=since) }}
+    {% if diff.settings or diff.data_source %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
+-    {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}
+-    {% if diff.data_source %}{% set da, db = diff.data_source.a, diff.data_source.b %}<tr><td>data</td><td>{{ da.location or "typed" }} {{ da.asof or "" }}</td><td>{{ db.location or "typed" }} {{ db.asof or "" }}</td></tr>{% endif %}
++    {% for s in diff.settings %}<tr><td>{{ s.label }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}
++    {# data with no source sidecar is the file as written (the example's, or typed) #}
++    {% if diff.data_source %}{% set da, db = diff.data_source.a, diff.data_source.b %}<tr><td>Data</td><td>{{ da.location or "as written" }} {{ da.asof or "" }}</td><td>{{ db.location or "as written" }} {{ db.asof or "" }}</td></tr>{% endif %}
+    </tbody></table>{% endif %}
+    {% set same = diff.files | selectattr("same") | list %}
+    {% if same %}<ul class="sb-files" aria-label="Unchanged files">{% for f in same %}<li><code>{{ f.name }}</code> {{ tips.badge("neutral", "unchanged") }}</li>{% endfor %}</ul>{% endif %}
+    {% for f in diff.files if not f.same %}{% call tips.fold(f.name, open=True, cls="sb-filediff", after=tips.badge("warn", "changed")) %}<pre class="sbdiffpre">{{ f.diff }}</pre>{% endcall %}{% endfor %}
+   </div>
+   {% endif %}
+-  {% if oracle or (shipped and shipped.shipped) %}
++  {% if (oracle or (shipped and shipped.shipped)) and not dataset_start %}
+   {# the badge says the result stays in the run's folder; the label names
+-     the production weight; what the step blends is Methods' Oracle card #}
++     the production weight; what the step blends is Methods' Oracle card.
++     A start from a dataset never takes the step (it reads the hub's
++     vintage and donor bank), so it gets no card #}
+   {% set oracle_more %}<a href="/methods#oracle">Methods</a>{% endset %}
+   <div class="card sboracle">{{ tips.heading("Oracle step", "sb-oracle",
+                                              after=tips.badge("neutral", "not a submission", icon_name="lock"),
+@@ -442,8 +447,9 @@
+    {% call tips.stats("uk-stats--row sb-ostats", label="Oracle step") %}
+     {{ tips.stat("Location", oracle.location) }}
+     {{ tips.stat("As of", oracle.forecast_date) }}
+-    {{ tips.stat("w", oracle.w, ("(production " ~ oracle.w_production ~ ")") if oracle.w != oracle.w_production else "") }}
+-    {% if oracle.state %}{{ tips.stat("State", oracle.state, tiptext=oracle.reason, id="sb-ostate") }}{% endif %}
++    {# which donor streams qualified that week (oracle_mix.mixture_state), in words #}
++    {% set DONORS = {"both": "both streams", "flusurv_only": "FluSurv-NET only", "admissions_only": "admissions only", "identity": "none qualified"} %}
++    {% if oracle.state %}{{ tips.stat("Donors", DONORS.get(oracle.state, oracle.state), id="sb-ostate") }}{% endif %}
+    {% endcall %}
+    <div class="sbscroll"><table class="kv sboracle-t"><thead><tr><th>week ending</th><th>plain filter: median (50%, 95%)</th><th>Oracle SIHRS: median (50%, 95%)</th></tr></thead><tbody>
+     {% macro qcell(q) %}{% if q %}{{ "%.1f" | format(q[2]) }} ({{ "%.1f" | format(q[1]) }} to {{ "%.1f" | format(q[3]) }}; {{ "%.1f" | format(q[0]) }} to {{ "%.1f" | format(q[4]) }}){% else %}no finite sample{% endif %}{% endmacro %}
+diff --git a/app/ui/templates/sandbox_views.html b/app/ui/templates/sandbox_views.html
+index 0ebc5ea3..9da413b6 100644
+--- a/app/ui/templates/sandbox_views.html
++++ b/app/ui/templates/sandbox_views.html
+@@ -106,8 +106,10 @@
+       if (MV && g && g.edges.length) {
+         var c = unclocked(g), v = MV.network(box, c.graph), rules = {}, n = 0;
+         g.nodes.forEach(function (nd) { if (nd.kind === 'species') n++; });
++        // the saved model's rules (the API counts them; a rule that moves
++        // nothing draws no arrow), else the rules the arrows carry
+         g.edges.forEach(function (e) { rules[e.rule] = 1; });
+-        var m = Object.keys(rules).length;
++        var m = g.rules !== undefined ? g.rules : Object.keys(rules).length;
+         v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules')
+           + ' in the saved model';
+         v.say();
+@@ -123,7 +125,12 @@
+       if (MV && g) return MV.contactmap(box, g).el;
+       return d.svg ? markup(d.svg) : note('No binding sites');
+     }
+-    if (MV && g && g.nodes.length && g.nodes.length <= LIMIT) return MV.network(box, g).el;
++    if (MV && g && g.nodes.length && g.nodes.length <= LIMIT) {
++      // the network's own counts (several reactions share one rule)
++      var nv = MV.network(box, g);
++      if (d.reactions !== undefined) { nv.idle = d.species + (d.species === 1 ? ' species, ' : ' species, ') + d.reactions + (d.reactions === 1 ? ' reaction' : ' reactions'); nv.say(); }
++      return nv.el;
++    }
+     if (g && g.nodes.length > LIMIT) return note(d.species + ' species and ' + d.reactions + ' reactions: too many to draw');
+     if (d.svg) return markup(d.svg);
+     return note(d.note || 'No reaction network');
