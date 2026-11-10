@@ -40,7 +40,7 @@
  {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
  <div class="di-row di-state" data-issue="{{ r.issue }}">
   <div class="di-head"><span class="di-rec uk-c-ok"{% if sel != r.rec %} hidden{% endif %}>{{ tips.icon("check", "recommended") }}</span><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }} {{ tips.icon_tip("di-why-" ~ r.fips, "why " ~ r.name ~ " is flagged", "info", r.why, state="muted") }}</span></div>
-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}" aria-describedby="tip-di-why-{{ r.fips }}">
+  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}"{% if r.rules %} data-rules="{{ r.rules|join(' ') }}"{% endif %} aria-describedby="tip-di-why-{{ r.fips }}">
    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
   </select>
  </div>
@@ -52,10 +52,38 @@
     // the "recommended" check shows while the select holds the rule's choice
     function mark(s) {
       var b = s.parentNode.querySelector('.di-rec');
-      if (b) b.hidden = s.value !== s.dataset.rec;
+      if (b) b.hidden = s.value !== (s.dataset.ruled ? 'set_aside' : s.dataset.rec);
     }
     var sels = box.querySelectorAll('select[name^="gap."]');
     sels.forEach(function (s) { s.addEventListener('change', function () { mark(s); }); });
+    // Model settings' "Newest weeks reading 0" or "Collapsed newest week"
+    // at "counted as unreported" moves both models back a week for the
+    // states it covers (data-rules): only "Both from" and "Leave out"
+    // still apply there, so the rest are hidden while it is on
+    var form = box.closest('form');
+    function follow() {
+      box.querySelectorAll('select[data-rules]').forEach(function (s) {
+        var on = s.dataset.rules.split(' ').some(function (k) {
+          var el = form && form.querySelector('[name="knob.' + k + '"]');
+          return !!el && !el.disabled && el.value === 'missing';
+        });
+        Array.prototype.forEach.call(s.options, function (o) {
+          o.hidden = o.disabled = on && o.value !== 'set_aside' && o.value !== 'omit';
+        });
+        if (on && s.options[s.selectedIndex].disabled) s.value = 'set_aside';
+        if (on) s.dataset.ruled = '1'; else delete s.dataset.ruled;
+        mark(s);
+      });
+    }
+    // the panel follows the box in the page: read it once it is there
+    follow();
+    document.addEventListener('DOMContentLoaded', follow);
+    if (form) {
+      form.addEventListener('change', function (e) {
+        if (e.target && /^knob\.data\./.test(e.target.name || '')) follow();
+      });
+      form.addEventListener('ms-reset', follow);
+    }
     // "All zero states:": set each zero state's select that offers the
     // choice (a state with 3 or more weeks of 0 has no extend or blend)
     var all = document.getElementById('di-all');
@@ -64,7 +92,7 @@
       var v = all.value;
       if (!v) return;
       box.querySelectorAll('select[data-issue=zero]').forEach(function (s) {
-        var has = Array.prototype.some.call(s.options, function (o) { return o.value === v; });
+        var has = Array.prototype.some.call(s.options, function (o) { return o.value === v && !o.disabled; });
         if (has) { s.value = v; mark(s); }
       });
     });

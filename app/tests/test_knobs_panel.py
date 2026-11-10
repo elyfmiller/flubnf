@@ -258,7 +258,7 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
                               "knob.oracle.w": "0.25", "replicates": "4",
                               "submit_modified": "1"},      # no reason
                 follow_redirects=False)
-    assert "needs a reason" in ui_state._status.get("flash", "")
+    assert "needs a reason" in str(ui_state._last_form.get("ms_refused"))
     html = client.get("/forecast").text
     f = _panel_form(html)
     got = dict(f.fields)
