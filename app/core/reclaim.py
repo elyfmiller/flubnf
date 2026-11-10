@@ -305,8 +305,9 @@ def compress_tree(root: Path) -> dict:
 # fit compiling or loading a library while its folder goes could fail or
 # fall back to bngsim's interpreted right-hand side, so the cache is cleared
 # only while no engine job runs: the console's own claims (the caller's
-# `busy`), and no live runner in any runner registry, the terminal's and the
-# students' runner's included (engine_runners_live). The folder is first
+# `busy`), and no live runner in any runner registry, the terminal's, the
+# students' runner's and the cache's own holders included
+# (engine_runners_live). The folder is first
 # renamed aside, one atomic step under the caller's lock, so a fit that
 # starts meanwhile compiles into a fresh folder and never meets a
 # half-deleted one; the folder set aside is deleted after.
@@ -339,6 +340,16 @@ def codegen_cache_entries() -> list:
     return out
 
 
+def codegen_cache_link() -> Path | None:
+    """Where the cache folder leads when it is a link (the cache moved to
+    another disk by hand), else None. Storage lists it; nothing here
+    clears it: a cache someone linked elsewhere is theirs."""
+    d = codegen_cache_dir()
+    if not d.is_symlink():
+        return None
+    return Path(os.path.realpath(d))
+
+
 def codegen_cache_bytes() -> int:
     """Bytes the cache holds (its folder and any set aside); 0 with none."""
     return sum(_size(p) for p in codegen_cache_entries())
@@ -348,12 +359,16 @@ def runner_registries() -> list:
     """Every registry an engine runner of this install is recorded in: the
     console's (pf.RUNNER_PIDS_FILE: the forecast path, replays, the
     Sandbox), a terminal replay's (flubnf/cli_sandbox.py), and the
-    students' runner's (app/core/runner.py), read at call time."""
+    students' runner's (app/core/runner.py), read at call time; and the
+    cache's own holders (pf.codegen_holders_file), in the state folder,
+    where every one of those records its runners too, so a console of
+    another checkout on the same FLUBNF_STATE_DIR is seen as well."""
     from app.core import runner
     from app.core.engines import pf
     from flubnf.cli_sandbox import _terminal_registry
     return [Path(pf.RUNNER_PIDS_FILE), Path(_terminal_registry()),
-            runner.state_dir() / runner.REGISTRY_FILE]
+            runner.state_dir() / runner.REGISTRY_FILE,
+            pf.codegen_holders_file()]
 
 
 def engine_runners_live(registries=None) -> int:

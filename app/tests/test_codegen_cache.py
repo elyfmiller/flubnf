@@ -135,8 +135,11 @@ def test_every_runner_gets_the_state_folders_cache(state, monkeypatch,
     assert kw["env"][VAR] == str(state["cache"])
     assert kw["env"]["BNGPATH"] == "y"
     assert VAR not in given
-    # nothing is made until bngsim compiles
-    assert not state["cache"].exists()
+    # made (and written to) where bngsim compiles; on Windows it compiles
+    # nothing (BNGSIM_NO_CODEGEN), so nothing is made there
+    assert state["cache"].is_dir() == (os_name == "posix")
+    if os_name == "posix":
+        assert not any(state["cache"].iterdir())    # its write test left none
 
 
 @pytest.mark.parametrize("os_name", ["posix", "nt"])

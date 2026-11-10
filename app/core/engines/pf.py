@@ -24,7 +24,9 @@ Sections, in file order:
                   dataset_tag, _cell_files, _netgen_added, _copy_added,
                   _drop_copies, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
-                  codegen_cache_dir, runner_popen_kwargs, record_runner_pids,
+                  codegen_cache_dir, codegen_cache_problem,
+                  codegen_cache_warning, codegen_holders_file,
+                  runner_popen_kwargs, record_runner_pids,
                   shard_cells, cell_seconds, budget_seconds, _stop_all,
                   TIMING_NAME, _write_timing, execute
   collect         _cell_statuses, _record_collect_failure, _save_cloud,
@@ -45,7 +47,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 # --- constants: templates, defaults, fitted-variable boxes ------------------
@@ -1517,12 +1522,27 @@ _CREATE_NEW_PROCESS_GROUP = 0x00000200
 #: Launched-runner registry ({pid: {pgid, runner}}), beside app.pid. A
 #: takeover kills the server without the supervisors' finally blocks, so the
 #: next launch sweeps orphaned runners from here (flubnf/cli.py::
-#: _sweep_runner_groups reads this format and must agree with it).
+#: _sweep_runner_groups reads this format and must agree with it). It stays
+#: with this checkout's app.pid, not in the state folder: a launch sweeps
+#: every runner it lists, so one registry shared by two checkouts on one
+#: FLUBNF_STATE_DIR would let one console's launch end the other's live
+#: fits. Which runners use the state folder's cache is codegen_holders_file.
 RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
 
 #: where bngsim keeps the right-hand sides it compiles (bngsim/_codegen.py
 #: reads it once, at import)
 CODEGEN_CACHE_ENV = "BNGSIM_CODEGEN_CACHE_DIR"
+#: any non-empty value turns bngsim's code generation off ("0" included)
+NO_CODEGEN_ENV = "BNGSIM_NO_CODEGEN"
+#: bngsim's own cache folder, used when CODEGEN_CACHE_ENV is unset or blank;
+#: named in words only: FluBNF never sizes, clears or moves it
+BNGSIM_OWN_CACHE = "~/.cache/bngsim/codegen"
+#: the runners' cache folder could not be written at a launch: {"folder",
+#: "why", "utc"}, in the state folder, removed by the next launch that can
+#: write it (_note_codegen_problem); Storage says it (codegen_cache_warning)
+CODEGEN_PROBLEM_NAME = "engine-cache-problem.json"
+#: the runners using the state folder's cache, beside it (codegen_holders_file)
+CODEGEN_HOLDERS_NAME = "runners.json"
 
 
 def codegen_cache_dir() -> Path:
@@ -1539,6 +1559,92 @@ def codegen_cache_dir() -> Path:
     return Path(os.path.abspath(runs.APP_STATE)) / "engine-cache" / "bngsim-codegen"
 
 
+def codegen_holders_file() -> Path:
+    """Every engine runner launched with the state folder's cache, whichever
+    checkout or process launched it: <state folder>/engine-cache/runners.json,
+    RUNNER_PIDS_FILE's form, written beside every runner registry by
+    record_runner_pids. Two checkouts on one FLUBNF_STATE_DIR share it, so
+    reclaim sees the other's runners before it clears the cache they
+    compile into. Never swept: a launch sweeps only its own registry."""
+    return codegen_cache_dir().parent / CODEGEN_HOLDERS_NAME
+
+
+def codegen_cache_problem(folder: Path | None = None) -> str:
+    """Why the runners' cache folder (codegen_cache_dir by default) cannot
+    be written, "" when it can. The folder is made with its parents, then a
+    file is written in it and removed: a folder of another account, a
+    read-only one, a full disk or a link to nowhere each answer here in
+    their own words. Left to bngsim, each would turn every fit to its
+    interpreted right-hand side (about 1e-12 from the compiled one) with no
+    word."""
+    d = Path(folder) if folder is not None else codegen_cache_dir()
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        fd, probe = tempfile.mkstemp(prefix=".flubnf-write-test-", dir=str(d))
+        try:
+            os.write(fd, b"0")
+        finally:
+            os.close(fd)
+            os.unlink(probe)
+    except OSError as e:
+        return f"{type(e).__name__}: {e.strerror or e}"
+    return ""
+
+
+def codegen_problem_words(folder, why: str) -> str:
+    """The plain sentence for a cache folder the runners could not write."""
+    return (f"FluBNF could not write the engine cache folder {folder} "
+            f"({why}), so the engine keeps its compiled models in bngsim's "
+            f"own folder, {BNGSIM_OWN_CACHE}, which Storage does not list or "
+            "clear. Make the folder writable, or free space on its disk, and "
+            "the next fit uses it again.")
+
+
+def _codegen_problem_file() -> Path:
+    from app.core import runs
+    return Path(os.path.abspath(runs.APP_STATE)) / CODEGEN_PROBLEM_NAME
+
+
+def _note_codegen_problem(folder: Path, why: str) -> None:
+    """Keep the runners' word on their cache folder for Storage (`why`; ""
+    drops it): CODEGEN_PROBLEM_NAME in the state folder, written when it
+    changes, and said then on this process's error output, the console's
+    own window. Never fatal."""
+    f = _codegen_problem_file()
+    try:
+        if not why:
+            if f.is_file():
+                f.unlink()
+            return
+        try:
+            old = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = {}
+        if (isinstance(old, dict) and old.get("folder") == str(folder)
+                and old.get("why") == why):
+            return                                # said already
+        _write_registry(f, {"folder": str(folder), "why": why,
+                            "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime())})
+        print(codegen_problem_words(folder, why), file=sys.stderr,
+              flush=True)
+    except Exception:
+        pass
+
+
+def codegen_cache_warning() -> str:
+    """What Storage says when a runner's launch could not write the cache
+    folder (the word _note_codegen_problem kept), "" otherwise."""
+    try:
+        rec = json.loads(_codegen_problem_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(rec, dict) or not rec.get("why"):
+        return ""
+    return codegen_problem_words(rec.get("folder") or codegen_cache_dir(),
+                                 str(rec["why"]))
+
+
 def runner_popen_kwargs(base: dict | None = None,
                         _os_name: str | None = None,
                         env: dict | None = None) -> dict:
@@ -1551,7 +1657,11 @@ def runner_popen_kwargs(base: dict | None = None,
     since the engine runs a bare `perl` and BNG2.pl itself (retro's runners
     come through here too); else of this process's. On every platform it
     points bngsim's compiled-model cache at codegen_cache_dir(), unless
-    BNGSIM_CODEGEN_CACHE_DIR already holds a folder. On Windows it also
+    BNGSIM_CODEGEN_CACHE_DIR already holds a folder. While bngsim compiles
+    (BNGSIM_NO_CODEGEN empty), that folder is made and written to first
+    (codegen_cache_problem); one that cannot be written leaves the runner
+    to bngsim's own folder, and the reason is kept for Storage and said on
+    this process's error output (_note_codegen_problem). On Windows it also
     turns bngsim's code generation off (BNGSIM_NO_CODEGEN=1, unless already
     set). `_os_name` is injectable for tests."""
     kw = dict(base or {})
@@ -1577,9 +1687,19 @@ def runner_popen_kwargs(base: dict | None = None,
         # code generation off, "0" included.
         env.setdefault("BNGSIM_NO_CODEGEN", "1")
     # bngsim reads a blank value as unset (its ~/.cache), so a blank one is
-    # filled too; a folder someone chose stays theirs
+    # filled too; a folder someone chose stays theirs. Ours must take a
+    # write while bngsim compiles: one that cannot would turn every fit to
+    # the interpreted right-hand side with no word, so the runner keeps
+    # bngsim's own folder (compiled, as before the cache moved) and the
+    # reason is said instead.
     if not str(env.get(CODEGEN_CACHE_ENV) or "").strip():
-        env[CODEGEN_CACHE_ENV] = str(codegen_cache_dir())
+        d = codegen_cache_dir()
+        why = "" if env.get(NO_CODEGEN_ENV) else codegen_cache_problem(d)
+        if why:
+            env.pop(CODEGEN_CACHE_ENV, None)
+        else:
+            env[CODEGEN_CACHE_ENV] = str(d)
+        _note_codegen_problem(d, why)
     kw["env"] = env
     return kw
 
@@ -1590,20 +1710,128 @@ def _write_registry(path: Path, reg: dict) -> None:
     replace_file(tmp, path)
 
 
+#: one registry read-and-rewrite at a time in this process (_registry_lock)
+_REGISTRY_LOCK = threading.Lock()
+#: how long an update waits for another process's (each holds it for
+#: milliseconds), before it goes ahead unlocked
+REGISTRY_LOCK_WAIT_S = 5.0
+
+
+def _lock_file(fd: int, wait: float) -> bool:
+    """An exclusive advisory lock on an open file, waiting up to `wait`
+    seconds: flock on POSIX, msvcrt.locking on Windows. False when it could
+    not be had (or this system has neither)."""
+    try:
+        import fcntl
+
+        def take():
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except ImportError:
+        try:
+            import msvcrt
+        except ImportError:
+            return False
+
+        def take():
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            take()
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
+
+
+def _unlock_file(fd: int) -> None:
+    try:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except ImportError:
+        try:
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except (ImportError, OSError):
+            pass
+    except OSError:
+        pass
+
+
+@contextmanager
+def _registry_lock(path: Path):
+    """One runner registry held while it is read and written back, so two
+    updates never interleave and lose one: this process's threads through
+    _REGISTRY_LOCK, other processes (a second console, a terminal replay,
+    the students' runner, another checkout) through an advisory lock on
+    <registry>.lock beside it, which the system drops if its holder dies.
+    A lock file that cannot be opened, or a wait past REGISTRY_LOCK_WAIT_S,
+    goes ahead unlocked: recording a runner never fails or holds a run."""
+    with _REGISTRY_LOCK:
+        try:
+            fd = os.open(str(path) + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        except OSError:
+            fd = None
+        held = fd is not None and _lock_file(fd, REGISTRY_LOCK_WAIT_S)
+        try:
+            yield
+        finally:
+            if fd is not None:
+                if held:
+                    _unlock_file(fd)
+                os.close(fd)
+
+
+def _update_registry(path: Path, change, create: bool = True) -> None:
+    """Read one registry, change(reg) it and write it back, all under its
+    lock. With create=False a registry that is missing or unreadable is
+    left as it is."""
+    path = Path(path)
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with _registry_lock(path):
+        try:
+            reg = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            if not create:
+                return
+            reg = {}
+        if not isinstance(reg, dict):
+            if not create:
+                return
+            reg = {}
+        change(reg)
+        _write_registry(path, reg)
+
+
+def _drop_dead(reg: dict) -> None:
+    """Remove entries whose process is gone: a holder left by a run killed
+    before it unrecorded (a takeover, a closed window)."""
+    try:
+        from flubnf.cli import _pid_alive
+    except Exception:
+        return
+    for pid_s in list(reg):
+        try:
+            alive = _pid_alive(int(pid_s))
+        except (TypeError, ValueError):
+            alive = False
+        if not alive:
+            reg.pop(pid_s, None)
+
+
 def record_runner_pids(procs, path: Path | None = None) -> None:
     """Add runners to the takeover registry: pid, pgid (== pid on POSIX,
     None on Windows) and the runner script, which the sweep matches against
     the live command line so a recycled pid is never signalled. Merged with
-    concurrent runs' entries. Never fatal."""
+    concurrent runs' entries, under the registry's lock (_registry_lock).
+    And the same entries to the cache's holders (codegen_holders_file),
+    whose dead entries go first. Never fatal."""
+    entries = {}
     try:
-        path = Path(path) if path else RUNNER_PIDS_FILE
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            reg = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            reg = {}
-        if not isinstance(reg, dict):
-            reg = {}
         for p in procs:
             pid = getattr(p, "pid", None)
             if not pid:
@@ -1616,26 +1844,41 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
                                if str(a).endswith(".py")), "")
             except Exception:
                 pass
-            reg[str(pid)] = {"pgid": pid if os.name == "posix" else None,
-                             "runner": runner}
-        _write_registry(path, reg)
+            entries[str(pid)] = {"pgid": pid if os.name == "posix" else None,
+                                 "runner": runner}
+    except Exception:
+        return
+    try:
+        _update_registry(Path(path) if path else RUNNER_PIDS_FILE,
+                         lambda reg: reg.update(entries))
     except Exception:
         pass
+    if entries:
+        try:
+            _update_registry(codegen_holders_file(),
+                             lambda reg: (_drop_dead(reg),
+                                          reg.update(entries)))
+        except Exception:
+            pass
 
 
 def unrecord_runner_pids(procs, path: Path | None = None) -> None:
-    """Drop finished runners from the registry (their pids may be recycled);
-    other runs' entries stay. Never fatal."""
+    """Drop finished runners from the registry and from the cache's holders
+    (their pids may be recycled); other runs' entries stay. Never fatal."""
     try:
-        path = Path(path) if path else RUNNER_PIDS_FILE
-        reg = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(reg, dict):
-            return
-        for p in procs:
-            reg.pop(str(getattr(p, "pid", "")), None)
-        _write_registry(path, reg)
+        pids = [str(getattr(p, "pid", "")) for p in procs]
     except Exception:
-        pass
+        return
+
+    def drop(reg):
+        for pid in pids:
+            reg.pop(pid, None)
+    for reg_path in ((Path(path) if path else RUNNER_PIDS_FILE),
+                     codegen_holders_file()):
+        try:
+            _update_registry(reg_path, drop, create=False)
+        except Exception:
+            pass
 
 
 def shard_width(width: int | None = None) -> int:

@@ -188,16 +188,45 @@ def _engine_cache_row() -> dict | None:
     """The engine cache's row (bngsim's compiled models, in the state
     folder: reclaim.codegen_cache_dir): its size, and while an engine job
     runs here or in another process, busy with why. None when there is
-    none on disk. Listed outside the total: a cache, not a record."""
+    none on disk. Listed outside the total: a cache, not a record.
+    "protected" when the folder lies in a protected tree (no Delete, and
+    Reclaim leaves it out); "linked", the folder a linked cache leads to,
+    sized there and never cleared here; "old", bngsim's own folder
+    (pf.BNGSIM_OWN_CACHE, where the engine kept them before they moved to
+    the state folder) when it is still on disk: FluBNF leaves it where it
+    is, since other programs may share it, and the row says so."""
     from app.core import reclaim, retro
+    from app.core.engines import pf
     entries = reclaim.codegen_cache_entries()
-    if not entries:
+    link = reclaim.codegen_cache_link()
+    if not entries and link is None:
         return None
+    d = reclaim.codegen_cache_dir()
     size = sum(_tree_size(str(p)) for p in entries)
-    why = reclaim.codegen_cache_refusal(_engine_busy_reason())
-    return {"id": reclaim.codegen_cache_dir().name, "bytes": size,
+    if link is not None and link.is_dir():
+        size += _tree_size(str(link))
+    protected = _storage_protected(d)
+    why = ("" if protected or not entries
+           else reclaim.codegen_cache_refusal(_engine_busy_reason()))
+    try:
+        old = Path(pf.BNGSIM_OWN_CACHE).expanduser().is_dir()
+    except (OSError, RuntimeError):
+        old = False
+    return {"id": d.name, "bytes": size,
             "size_h": retro.human_bytes(size), "busy": bool(why),
-            "why": _busy_why("engine-cache", why) if why else ""}
+            "why": _busy_why("engine-cache", why) if why else "",
+            "protected": protected,
+            "linked": str(link) if link is not None else "",
+            "old": pf.BNGSIM_OWN_CACHE if old else ""}
+
+
+def _engine_cache_clearable() -> bool:
+    """Whether Storage's Delete and Reclaim may offer the cache at all:
+    something of it on disk (a link is never followed) outside every
+    protected tree. Busy is asked apart, since it passes."""
+    from app.core import reclaim
+    return bool(reclaim.codegen_cache_entries()) and not _storage_protected(
+        reclaim.codegen_cache_dir())
 
 
 # the panel's counted categories, in page order: (key, label)
@@ -285,7 +314,9 @@ def _storage_inventory() -> dict:
     the students' experiments on the runner computer's main console
     (_students_here), outside the total; None everywhere else.
     "engine_cache" is the engine's compiled-model cache (_engine_cache_row),
-    outside the total too; None when there is none."""
+    outside the total too; None when there is none. "engine_cache_warning"
+    is what the runners said when they could not write its folder
+    (pf.codegen_cache_warning), "" otherwise."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
@@ -404,6 +435,8 @@ def _storage_inventory() -> dict:
     inv["cats"] = cats
     inv["students"] = _student_experiments() if _students_here() else None
     inv["engine_cache"] = _engine_cache_row()
+    from app.core.engines import pf
+    inv["engine_cache_warning"] = pf.codegen_cache_warning()
     return inv
 
 
@@ -573,6 +606,9 @@ def _storage_target(kind: str, ident: str):
             return None, "Unrecognized storage entry."
         if not reclaim.codegen_cache_entries():
             return None, "Nothing is on disk under that name."
+        if _storage_protected(p):
+            return None, ("That folder is protected; the console never "
+                          "deletes it.")
         why = reclaim.codegen_cache_refusal(_engine_busy_reason())
         if why:
             return None, _busy_why(kind, why)
@@ -724,8 +760,9 @@ def _reclaim_skips() -> tuple:
 def _reclaim_survey() -> dict:
     """reclaim.survey's plan, plus the engine cache: cache_bytes (in
     total_est) when it may be cleared now, else cache_why, why it is kept.
-    The cache stays out of the confirmation token: clearing more or less
-    of it loses nothing."""
+    A protected cache is left out, as protected seasons are. The cache
+    stays out of the confirmation token: clearing more or less of it loses
+    nothing."""
     from app.core import reclaim
     from app.core.runs import APP_STATE
     skip_seasons, skip_workroots = _reclaim_skips()
@@ -733,7 +770,7 @@ def _reclaim_survey() -> dict:
                           skip_seasons=skip_seasons,
                           skip_workroots=skip_workroots)
     plan["cache_bytes"], plan["cache_why"] = 0, ""
-    if reclaim.codegen_cache_entries():
+    if _engine_cache_clearable():
         why = reclaim.codegen_cache_refusal(_engine_busy_reason())
         if why:
             plan["cache_why"] = why
