@@ -42,9 +42,9 @@ The manifest records the season, the export stamp, the weeks, when and
 from which machine it was exported, the FluBNF build, and a sha256 and
 size per file. A 26-week season of all 52 jurisdictions is about 10 MB.
 
-**Import a replay** on the Retrospective tab (Settings card) takes the
-file, or its path when it is already on this machine. The import lands as a
-read-only archived entry of its season,
+**Import a replay** on the Retrospective tab (its own card under
+Settings) takes the file, or its path when it is already on this
+machine. The import lands as a read-only archived entry of its season,
 `<season>__archived_<export stamp>/`, with an `imported.json` marker, and is
 labelled "imported from <host> on <date>" wherever archived runs are listed.
 It never touches the live season tree, so a replay running here is

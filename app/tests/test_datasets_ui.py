@@ -427,7 +427,10 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
     loc = r.headers["location"]
     assert loc.startswith(f"/retro/dataset/{ds.id}/")
     page = client.get(loc).text
-    assert "Final data, not vintage-true: 2023-10-07 to 2024-02-24" in page
+    # the badge's word and the weeks; the why in the Scores "?" (G28)
+    assert 'uk-badge-t">final data<' in page and "2023-10-07 to 2024-02-24" \
+        in page
+    assert "each week was cut from the final series" in page
     assert "in-house persistence baseline" in page and ">done<" in page
     assert "FluSight baseline" not in page
     # listed in its own card, not among the season cards

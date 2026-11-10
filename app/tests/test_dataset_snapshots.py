@@ -362,7 +362,10 @@ def test_replay_this_stores_one_vintage_true_dataset():
     (ds,) = D.list_datasets()
     assert r.headers["location"] == f"/retro?dataset={ds.id}#main"
     page = client.get(r.headers["location"]).text
-    assert "Vintage-true: each week sees its as_of snapshot." in page
+    # the badge's word; what it means in the replays' one "?" (G28)
+    assert 'uk-badge-t">vintage-true<' in page
+    assert "Vintage-true: each replayed week sees the as_of snapshot that " \
+        "held it." in page
     assert ("8 snapshots, as_of <span class=\"nw\">2023-11-04</span> to "
             "<span class=\"nw\">2023-12-23</span>.") in page
     first = page.split('id="dsr-first"')[1].split("</select>")[0]
