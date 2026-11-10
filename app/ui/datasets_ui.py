@@ -304,10 +304,12 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
                   if count and not ready else "")
         if k is None:
             # a horizon the file's own seasons give nothing: no figure
-            nothing = no_more_seasons(donors["counts"],
-                                      donors.get("open", 0),
-                                      donors.get("open_new", False),
-                                      donors.get("one_season", 0))
+            several = len(s.get("groups") or ()) > 1
+            nothing = no_more_seasons(
+                donors["counts"], donors.get("open", 0),
+                donors.get("open_new", False), donors.get("one_season", 0),
+                group=donors.get("one_group") if several else None,
+                unspoken=donors.get("unspoken", 0))
             out["groundhog_fix"] = (f"{nothing} {pf_fix}." if pf_fix
                                     else nothing)
         else:
@@ -319,7 +321,8 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
 
 
 def no_more_seasons(counts, open_groups: int = 0,
-                    open_new: bool = False, one_season: int = 0) -> str:
+                    open_new: bool = False, one_season: int = 0, *,
+                    group: str | None = None, unspoken: int = 0) -> str:
     """The check's words for a horizon at 0 donor weeks although earlier
     seasons in the file hold the weeks it reads (checks.groundhog_donors
     gives no "seasons" figure then). Where every group's seasons show it
@@ -331,8 +334,21 @@ def no_more_seasons(counts, open_groups: int = 0,
     (review of #93 at d5a7eb16, findings 1 and 2). Where every group's
     seasons show it but `one_season` groups' through one season only: the
     same, one season being too few to say more would not help (at
-    42db2a82, finding 2)."""
-    z = sum(1 for c in counts if not c)
+    42db2a82, finding 2). One such group in a file of several is named
+    (`group`); a file of one group, a single series with no group column
+    say, names none (review of #93 at ac51731d, finding 4).
+
+    `unspoken` of the horizons at 0 have no earlier season with a case
+    holding the weeks they read (weeks not reported, or after the newest
+    week): they are not counted with the others, which the file's seasons
+    do speak for, and a sentence of their own says more seasons may there
+    (at ac51731d, finding 3: two unreported horizons were counted in
+    "would not help there")."""
+    z = sum(1 for c in counts if not c) - unspoken
+    tail = ("" if not unspoken else
+            f" At {unspoken} more horizon{'' if unspoken == 1 else 's'} "
+            "there is none either, but the earlier seasons in the file "
+            "show nothing either way there, and more seasons may.")
     if open_groups or one_season:
         if open_groups:
             who = ("the group" if open_groups == 1
@@ -341,22 +357,25 @@ def no_more_seasons(counts, open_groups: int = 0,
                    if open_new else
                    f"but more seasons of {who} whose seasons show nothing "
                    "either way may.")
+        elif one_season == 1:
+            but = ((f"but for group '{group}' only one season says so, "
+                    if group is not None else
+                    "but only one season says so, ")
+                   + "and more seasons may.")
         else:
-            but = ("but only one season of the group says so, and more "
-                   "seasons may." if one_season == 1 else
-                   f"but for {one_season} groups only one season says so, "
+            but = (f"but for {one_season} groups only one season says so, "
                    "and more seasons may.")
         if z == len(counts):
             return ("No earlier season in the file has a week like it at "
                     f"any horizon, {but}")
         return (f"At {z} horizon{'' if z == 1 else 's'} the earlier "
-                f"seasons in the file give no week like it, {but}")
+                f"seasons in the file give no week like it, {but}{tail}")
     if z == len(counts):
         return ("No earlier season in the file has a week like it at any "
                 "horizon, so more seasons like these would not help.")
     return (f"At {z} horizon{'' if z == 1 else 's'} no earlier season in "
             "the file has a week like it, so more seasons like these would "
-            "not help there.")
+            f"not help there.{tail}")
 
 
 @router.post("/data/datasets/check")

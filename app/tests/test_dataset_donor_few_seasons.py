@@ -20,10 +20,28 @@ checks._seasons_heard, datasets_ui.no_more_seasons).
 
 The rule for groups that disagree (test_dataset_donor_mixed_groups) is as
 it was.
+
+Review of #93 at ac51731d (finding 4, and the independent check's on the
+figure; section 4 below):
+
+  * A season with cases whose window reads 0 did not speak when it was
+    the only one: one series with zeros at MMWR weeks 21 to 39, ending at
+    week 32, starting in June 2023, said "about 6 more earlier seasons",
+    where seasons like it never give a week like it. The June start cuts
+    the season before to its summer of zeros, which says nothing;
+    started in May, that season has cases and the file said "would not
+    help". Such a season now speaks like any season with a case: one
+    gives neither a figure nor "would not help", two say "would not
+    help". The June and May starts still differ, and both are true of
+    their files. Two seasons reading 0 throughout still say nothing.
+  * The one-season sentence said "of the group" in a single series, which
+    has no group column, and named no group in a file of several. It now
+    names none in a file of one group and the group in a file of several.
 """
 from __future__ import annotations
 
-from datetime import date
+import html as H
+from datetime import date, timedelta
 
 import pytest
 
@@ -139,11 +157,13 @@ def test_2_one_season_says_neither_figure_nor_would_not_help():
     assert got["seasons"] is None
     assert got["one_season"] == 1 and not got["open"]
     html = check(finding_2(), kind="rate")
+    # one series, no group column: no group to name (it said "of the
+    # group" before the review of #93 at ac51731d)
     assert notice(html).endswith(
         "At 1 horizon the earlier seasons in the file give no week like "
-        "it, but only one season of the group says so, and more seasons "
-        "may.")
+        "it, but only one season says so, and more seasons may.")
     assert "would not help" not in html and "Give about" not in html
+    assert "group" not in notice(html)
 
 
 def test_2_two_such_seasons_still_say_it():
@@ -159,8 +179,14 @@ def test_2_two_such_seasons_still_say_it():
 def test_2_the_words_for_one_season():
     assert DU.no_more_seasons((3, 2, 1, 0), 0, False, 1) == (
         "At 1 horizon the earlier seasons in the file give no week like "
-        "it, but only one season of the group says so, and more seasons "
+        "it, but only one season says so, and more seasons may.")
+    assert DU.no_more_seasons((3, 2, 1, 0), 0, False, 1, group="B") == (
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but for group 'B' only one season says so, and more seasons "
         "may.")
+    assert DU.no_more_seasons((0, 0, 0, 0), 0, False, 1) == (
+        "No earlier season in the file has a week like it at any horizon, "
+        "but only one season says so, and more seasons may.")
     assert DU.no_more_seasons((3, 2, 0, 0), 0, False, 4) == (
         "At 2 horizons the earlier seasons in the file give no week like "
         "it, but for 4 groups only one season says so, and more seasons "
@@ -169,6 +195,48 @@ def test_2_the_words_for_one_season():
     assert DU.no_more_seasons((3, 2, 1, 0), 2, True, 1) == (
         "At 1 horizon the earlier seasons in the file give no week like "
         "it, but earlier seasons of the 2 groups without any may.")
+
+
+def _saturdays(start: date, end: date):
+    d = start + timedelta(days=(5 - start.weekday()) % 7)
+    while d <= end:
+        yield d
+        d += timedelta(days=7)
+
+
+def _live(i: int) -> int:
+    return 10 + (i * 7) % 40
+
+
+def two_groups_one_season() -> bytes:
+    """Groups A and B, 0 at MMWR weeks 21 to 39, ending 2025-05-10 (week
+    19): A from August 2022 (two earlier seasons), B from August 2023
+    (one). Each season's weeks 4 after the window read 0."""
+    lines = ["week_ending,group,cases"]
+    for i, d in enumerate(_saturdays(date(2022, 8, 1), date(2025, 5, 10))):
+        e, s = AN.epiweek(d), AN.season_of(d)
+        summer = 20 < e < 40
+        lines.append(f"{d},A,{0 if summer else _live(i)}")
+        if s >= 2023:
+            lines.append(f"{d},B,{0 if summer else _live(i + 3)}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def test_2_in_a_file_of_several_groups_the_one_is_named():
+    """A shows horizon 4 gets nothing through two seasons, B through one:
+    the sentence says which group (review of #93 at ac51731d, finding
+    4), where "the group" named none."""
+    raw = two_groups_one_season()
+    rep = D.validate(raw)
+    assert rep.summary["groups"] == ["A", "B"]
+    got = CK.groundhog_donors(rep)
+    assert got["counts"] == (9, 6, 3, 0)
+    assert got["seasons"] is None and not got["open"]
+    assert got["one_season"] == 1 and got["one_group"] == "B"
+    assert H.unescape(notice(check(raw, kind="rate"))).endswith(
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but for group 'B' only one season says so, and more seasons "
+        "may.")
 
 
 # ------------------- 3. the figure divides by the seasons with a case
@@ -214,3 +282,141 @@ def test_3_a_real_season_with_a_quiet_window_still_counts():
     assert donors(quiet_window())["seasons"] == 10
     assert counts_of(quiet_window(more=10)) == (30, 30, 30, 30)
     assert counts_of(quiet_window(more=4))[0] < 30
+
+
+# ------------ 4. a season with cases whose window reads 0 speaks alone too
+
+#: the independent check's files end at MMWR week 32 of season 2024-25,
+#: in the summer of zeros: the window is weeks 30 to 34
+END_4 = date(2024, 8, 10)
+#: the summer of zeros
+SUMMER = set(range(21, 40))
+
+
+def summer_start(start: date, end: date = END_4) -> bytes:
+    """One series from `start` to `end`: 0 at MMWR weeks 21 to 39, cases
+    otherwise."""
+    lines = ["week_ending,cases"]
+    for i, d in enumerate(_saturdays(start, end)):
+        lines.append(f"{d},{0 if AN.epiweek(d) in SUMMER else _live(i)}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def _window_and_cased(raw: bytes):
+    """The earlier seasons' weeks of the donor window with their values,
+    and the (group, season)s with a case (checks._cased)."""
+    bank = CK._newest(D.validate(raw).records)
+    S, E = AN.season_of(END_4), AN.epiweek(END_4)
+    window = {(g, d): v for (g, d), v in bank.items()
+              if AN.season_of(d) < S
+              and AN.calendar_distance(AN.epiweek(d), E)
+              <= AN.DEFAULT_BANDWIDTH}
+    return window, CK._cased(bank)
+
+
+def test_4_counts_as_the_check_says():
+    assert AN.epiweek(END_4) == 32 and AN.season_of(END_4) == 2024
+    for start in (date(2023, 6, 3), date(2023, 8, 5), date(2023, 5, 6)):
+        assert counts_of(summer_start(start)) == (0, 0, 0, 0), start
+
+
+def test_4_seasons_like_the_june_start_never_reach_a_figure():
+    """Every June start from 2017 to 2023 counts 0 at every horizon, and
+    so does an August start with seven earlier seasons: "about 6 more
+    earlier seasons" was false of such a file."""
+    for year in range(2017, 2024):
+        assert counts_of(summer_start(date(year, 6, 3))) == (0, 0, 0, 0)
+    assert counts_of(summer_start(date(2017, 8, 5))) == (0, 0, 0, 0)
+
+
+@pytest.mark.parametrize("start", [date(2023, 6, 3), date(2023, 8, 5)],
+                         ids=["june", "august"])
+def test_4_one_season_with_cases_says_more_seasons_may_no_figure(start):
+    """June: the season before is in the file as its summer of zeros
+    only, so it says nothing, and one season with cases is left. August:
+    the file starts with that one season. Either way neither a figure
+    nor "would not help"."""
+    raw = summer_start(start)
+    got = donors(raw)
+    assert got["counts"] == (0, 0, 0, 0)
+    assert got["seasons"] is None
+    assert got["one_season"] == 1 and not got["open"]
+    assert got["unspoken"] == 0
+    html = check(raw, kind="rate")
+    assert notice(html) == (
+        "Too little history for the Groundhog: at the newest week it finds "
+        "0 weeks like it in earlier seasons and needs 30, so it will not "
+        "forecast this data on its own. No earlier season in the file has "
+        "a week like it at any horizon, but only one season says so, and "
+        "more seasons may.")
+    assert "Give about" not in html and "would not help" not in html
+    # counts without a population: the Liu-West filter is still offered
+    assert notice(check(raw)).endswith(
+        "but only one season says so, and more seasons may. Add a "
+        "population column so the Liu-West filter can fit it.")
+
+
+def test_4_may_start_says_would_not_help_also_true_of_its_two_seasons():
+    """Started in May, the season before has cases (weeks 18 to 20): two
+    seasons with cases give every horizon nothing, so more seasons like
+    these would not help, as before."""
+    raw = summer_start(date(2023, 5, 6))
+    got = donors(raw)
+    assert got["seasons"] is None
+    assert not got["one_season"] and not got["open"]
+    assert notice(check(raw, kind="rate")).endswith(
+        "No earlier season in the file has a week like it at any horizon, "
+        "so more seasons like these would not help.")
+
+
+def test_4_june_and_may_starts_differ_and_both_are_true():
+    """The two files read the same weeks of the window, all 0; they differ
+    only in whether the season before has a case. The June start's
+    season before is its summer of zeros, which says nothing, so one
+    season speaks ("more seasons may"); the May start's has cases in
+    May, so two do ("would not help"). Not a bug: each sentence is true
+    of its own file."""
+    june, may = summer_start(date(2023, 6, 3)), summer_start(date(2023, 5, 6))
+    (wj, cj), (wm, cm) = _window_and_cased(june), _window_and_cased(may)
+    assert wj == wm and set(wj.values()) == {0.0} and len(wj) == 6
+    assert cj == {("series", 2023)}
+    assert cm == {("series", 2022), ("series", 2023)}
+    assert "more seasons may" in check(june, kind="rate")
+    assert "would not help" in check(may, kind="rate")
+
+
+def test_4_two_seasons_reading_0_throughout_still_say_nothing():
+    """Beside the cases above: the same newest week, two earlier seasons
+    reading 0 throughout and cases in the newest. They are no seasons
+    with a case, so they say nothing, and the figure stays (review of #93
+    at 42db2a82, finding 1)."""
+    lines = ["week_ending,cases"]
+    for i, d in enumerate(_saturdays(date(2022, 8, 6), END_4)):
+        lines.append(f"{d},{_live(i) if AN.season_of(d) == 2024 else 0}")
+    raw = ("\n".join(lines) + "\n").encode()
+    assert counts_of(raw) == (0, 0, 0, 0)
+    got = donors(raw)
+    assert got["seasons"] == 6
+    assert not got["one_season"] and not got["open"]
+    assert notice(check(raw, kind="rate")).endswith(
+        "Give about 6 more earlier seasons of data.")
+
+
+def test_4_a_group_whose_one_season_has_a_quiet_window_is_named():
+    """Two groups at the same newest week: A from August 2022 (two
+    seasons with cases), B from August 2023 (one). B's season speaks too:
+    it is no group "whose seasons show nothing either way", it shows it
+    through one season, and the sentence names it."""
+    a = summer_start(date(2022, 8, 6)).decode().splitlines()[1:]
+    b = summer_start(date(2023, 8, 5)).decode().splitlines()[1:]
+    lines = ["week_ending,group,cases"]
+    lines += [ln.replace(",", ",A,") for ln in a]
+    lines += [ln.replace(",", ",B,") for ln in b]
+    raw = ("\n".join(lines) + "\n").encode()
+    got = donors(raw)
+    assert got["counts"] == (0, 0, 0, 0) and got["seasons"] is None
+    assert not got["open"]
+    assert got["one_season"] == 1 and got["one_group"] == "B"
+    assert H.unescape(notice(check(raw, kind="rate"))).endswith(
+        "No earlier season in the file has a week like it at any horizon, "
+        "but for group 'B' only one season says so, and more seasons may.")
