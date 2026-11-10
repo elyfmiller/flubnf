@@ -30,6 +30,19 @@ index a31a6d29..eaa46c9a 100644
  
  
  def harvest_methods(versions: dict) -> str:
+diff --git a/app/tests/test_a11y_modes.py b/app/tests/test_a11y_modes.py
+index 43581148..62c6eb1b 100644
+--- a/app/tests/test_a11y_modes.py
++++ b/app/tests/test_a11y_modes.py
+@@ -418,7 +418,7 @@ def test_first_paint_honors_the_os_contrast_preference():
+     # no stored choice: prefers-contrast: more enables it before first paint
+     assert "matchMedia('(prefers-contrast: more)').matches" in BASE_T
+     assert "setAttribute('data-contrast','high')" in BASE_T
+-    assert "localStorage.getItem('vision')==='cvd'" in BASE_T
++    assert "get('vision')==='cvd'" in BASE_T          # a guarded read
+ 
+ 
+ # --------------------------------------------- the map follows the mode
 diff --git a/app/tests/test_cross_page_polish.py b/app/tests/test_cross_page_polish.py
 new file mode 100644
 index 00000000..0ba4cf3d
@@ -180,6 +193,19 @@ index d2866381..d9e7f281 100644
      assert "US national is always fitted" not in page
      assert f'name="dataset" value="{ds.id}"' in page
      assert f'<option value="{ds.forecast_dates()[-1]}">' in page
+diff --git a/app/tests/test_display_themes.py b/app/tests/test_display_themes.py
+index 3f29fd3d..fd75f840 100644
+--- a/app/tests/test_display_themes.py
++++ b/app/tests/test_display_themes.py
+@@ -380,7 +380,7 @@ def test_the_text_size_is_a_labelled_slider_from_80_to_160():
+     boot = BASE_T.split("<script>", 1)[1].split("</script>", 1)[0]
+     assert "var old={s:87.5,m:100,l:115}" in boot
+     assert "if(!(p>=80&&p<=160))p=100;" in boot
+-    assert "if(old[f])localStorage.setItem('fontsize',String(p));" in boot
++    assert "if(old[f])put('fontsize',String(p));" in boot   # a guarded write
+     assert "de.style.fontSize=p+'%';" in boot
+     # the control clamps, speaks its value and fires fontsizechange once
+     # the slider rests
 diff --git a/app/tests/test_fewer_marks.py b/app/tests/test_fewer_marks.py
 index dac68d8d..b59ddb1f 100644
 --- a/app/tests/test_fewer_marks.py
@@ -282,6 +308,22 @@ index 82685465..132084d1 100644
      assert re.search(r'id="ck-us" name="locations" value="US \(national\)"'
                       r'\s+checked\s*>', html)
      assert "<b>US (national)</b>" in html
+diff --git a/app/tests/test_hub_setup.py b/app/tests/test_hub_setup.py
+index 3aa78365..779b471e 100644
+--- a/app/tests/test_hub_setup.py
++++ b/app/tests/test_hub_setup.py
+@@ -142,8 +142,9 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
+     html = _home(ENGINE_GONE,
+                  dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
+     assert ">1 not installed<" in html
+-    assert html.split('id="tip-hm-missing"', 1)[1].split(">", 1)[1] \
+-        .split("</span>", 1)[0].strip() == ENGINE
++    # the badge counts; the list below names the component (no "?" on
++    # the badge, G35)
++    assert 'id="tip-hm-missing"' not in html
+     rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
+     assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
+     assert "fit_type=pf" not in rows and "venv" not in rows
 diff --git a/app/tests/test_pages.py b/app/tests/test_pages.py
 index 057fa736..d04b6062 100644
 --- a/app/tests/test_pages.py
@@ -343,6 +385,49 @@ index 057fa736..d04b6062 100644
      # the Groundhog's growth-ratio quantile replaced the blend's mean
      assert "growth\n   ratios at matched calendar weeks" in t
      assert "mean<sub>m</sub>" not in t
+diff --git a/app/tests/test_relwis_conventions.py b/app/tests/test_relwis_conventions.py
+index c4b5aaec..4fc7dd1d 100644
+--- a/app/tests/test_relwis_conventions.py
++++ b/app/tests/test_relwis_conventions.py
+@@ -594,9 +594,9 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
+             == relwis.PUBLISHED_CONVENTION_NOTE)
+     src = (ui / "templates" / "methods.html").read_text()
+     assert "{{ relwis_convention_note }}" in src
+-    # Home's record names it in its "i", which links Methods for the note
++    # Home's record names it in its one line, which links Methods for the note
+     home = (ui / "templates" / "home.html").read_text()
+-    perf = home.split('"hm-perf"', 1)[1].split("{% endcall %}", 1)[0]
++    perf = home.split('"hm-perf"', 1)[1].split("</p>", 1)[0]
+     assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
+     # builders outside the template environment use the same constant (the
+     # season report renders the season page, inside it)
+@@ -618,10 +618,10 @@ def test_the_index_labels_the_convention_beside_every_score():
+                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
+                                 "elapsed_s": None, "rel": 0.9,
+                                 "size_h": "1 MB"}]}])
+-    # the page's one "?" names the convention for every score on it, the
++    # the page's lead line names the convention for every score on it, the
+     # season's headline and the archived rows alike (bug hunt G28, RE-18:
+-    # each row's own "?" was clutter)
+-    page_tip = html.split('id="tip-rt-page"', 1)[1].split("</span></span>")[0]
++    # each row's own "?" was clutter; G35: the lead, not a "?")
++    page_tip = html.split('class="hint rt-lead"', 1)[1].split("</p>")[0]
+     assert "relWIS: the summed WIS over the FluSight baseline's (a ratio of " \
+         "sums)" in page_tip
+     card = html.split('data-season="2098-99"', 1)[1]
+diff --git a/app/tests/test_season_palette.py b/app/tests/test_season_palette.py
+index 60bdba69..b86d504b 100644
+--- a/app/tests/test_season_palette.py
++++ b/app/tests/test_season_palette.py
+@@ -199,7 +199,7 @@ def test_fresh_profile_renders_normal_palettes():
+     choice; bare :root holds the normal season and map-category scales."""
+     html = client.get("/").text
+     assert 'data-vision="cvd"' not in html.split("<script>")[0]
+-    assert "localStorage.getItem('vision')==='cvd'" in BASE_T
++    assert "get('vision')==='cvd'" in BASE_T          # a guarded read
+     # no OS media query enables cvd (there is no such preference signal)
+     boot = BASE_T.split("</script>", 1)[0]
+     assert "vision" in boot
 diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
 index b2a5b546..1135f143 100644
 --- a/app/ui/routes/forecast.py
@@ -484,10 +569,10 @@ index 82016284..af50a0f1 100644
       <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
         {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
 diff --git a/app/ui/templates/home.html b/app/ui/templates/home.html
-index 759a647b..72a90479 100644
+index 759a647b..8aed6717 100644
 --- a/app/ui/templates/home.html
 +++ b/app/ui/templates/home.html
-@@ -127,33 +127,13 @@
+@@ -127,33 +127,14 @@
     diagram (read-once reference) sits one scroll below #}
  <div class="grid2 homeperf">
   <div class="card hm-perf">
@@ -521,14 +606,15 @@ index 759a647b..72a90479 100644
 +  {{ tips.heading("Measured performance", "hm-perf", after=tips.tag("relWIS")) }}
 + {# one line says how to read the figures; each column's cells and the
 +    plain filter's record are on Methods (Measured performance) #}
-+ <p class="hint hm-perf-how">relWIS against the FluSight baseline, a ratio
-+ of sums; below 1.000 beats it. Each column is scored on its own cells
-+ (placement among teams withdrawn): <a href="/methods#performance">Methods</a>
-+ has them and the plain filter's record.</p>
++ <p class="hint hm-perf-how">relWIS against the FluSight baseline (ratio of sums);
++ below 1.000 beats it. Each column is scored on its own cells (placement
++ among teams withdrawn): <a href="/methods#performance">Methods</a> has
++ them, the plain filter's record and the <a href="/methods#policies">scoring
++ details</a>.</p>
    {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
       means; its "three" row is the pooled cell) beside the Groundhog and the
       FluSight Ensemble. The table's markup stays as it is: site_build.
-@@ -207,23 +187,15 @@
+@@ -207,23 +188,15 @@
  </div>
  
  <div class="card hm-how">
@@ -561,7 +647,7 @@ index 759a647b..72a90479 100644
   {# labels audited to fit their boxes at A+ (115%); aria-label, not a
      title element (its tooltip pops over the drawing) #}
   <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
-@@ -287,23 +259,26 @@
+@@ -287,23 +260,26 @@
   </svg>
   </div>
   {# the three equations behind the pipeline: seasonal forcing, the Oracle
@@ -590,7 +676,7 @@ index 759a647b..72a90479 100644
   </div>
  </div>
  
-@@ -376,7 +351,7 @@
+@@ -376,7 +352,7 @@
      script below then counts); a badge from values still resolving said
      "All components installed" beside "resolving…" #}
   {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
@@ -599,7 +685,7 @@ index 759a647b..72a90479 100644
   {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
   {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
   {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
-@@ -405,12 +380,13 @@
+@@ -405,12 +381,13 @@
    {% endif %}
    {# each missing component by name, in plain words (routes/home.py
       _setup_rows: the engine's parts are one row); what it is and the
@@ -630,7 +716,7 @@ index 59ab7d8d..7b857038 100644
    {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
   {% endcall %}
 diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
-index 1f62dc0c..f1633036 100644
+index 1f62dc0c..24f7cd40 100644
 --- a/app/ui/templates/retro.html
 +++ b/app/ui/templates/retro.html
 @@ -16,8 +16,9 @@
@@ -640,7 +726,7 @@ index 1f62dc0c..f1633036 100644
 -{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1") %}<span class="ncline">Replays a past season week by week on the data each Saturday had, then scores against settled truth.</span><span class="ncline">relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span><span class="ncline">Resume, or Run, continues a stopped or interrupted replay from its last completed week with the recorded settings. Archived runs, set aside when a fresh replay started or imported from another machine, open as the live season does.</span>{% endcall %}{% endif %}
 -{# the data source as two tabs, as on Forecast: the FluSight hub's
 +{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}
-+{% if not own_tab %}<p class="hint rt-lead">Replays a past season week by week on the data each Saturday had, then scores against settled truth. relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</p>
++{% if not own_tab %}<p class="hint rt-lead">Replays a past season week by week on the data each Saturday had, then scores against settled truth. relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it. Resume continues a stopped replay from its last completed week with the recorded settings.</p>
 +{% endif %}{# the data source as two tabs, as on Forecast: the FluSight hub's
     seasons, or your own datasets (_dataset_replay.html); plain links, so
     Back, bookmarks and no-script work #}
