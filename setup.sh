@@ -9,9 +9,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # How to run this again, as the user can type it. The one-line install
 # (install.sh) runs this in its folder while the user's shell stays where it
 # was, and says so (FLUBNF_SETUP_FROM=install): there the way back is the
-# install line, which also goes on to the engine.
+# install line, which also goes on to the engine. The one-line reinstall
+# (reinstall.sh) does the same (FLUBNF_SETUP_FROM=reinstall), but its line is
+# no way back: pasted again it sets this new copy aside as well, or finds it
+# current and does nothing. So the command names this folder.
 if [ "${FLUBNF_SETUP_FROM:-}" = install ]; then
   again="paste the install line again"; Again="Paste the install line again"
+elif [ "${FLUBNF_SETUP_FROM:-}" = reinstall ]; then
+  again="run cd \"$HERE\" && ./setup.sh again"; Again="Run cd \"$HERE\" && ./setup.sh again"
 else
   again="run ./setup.sh again"; Again="Run ./setup.sh again"
 fi
