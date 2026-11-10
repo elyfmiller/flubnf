@@ -8,8 +8,8 @@
      1. hero: the lead's facts as chips
      2. outlook: the map bar (model, coverage, report link), the stage and
         its empty or preparing card
-     3. measured performance: table headings
-     4. start here: the secondary action
+     3. measured performance: its row on a first run
+     4. start here: the secondary actions
      5. component cards: role and links
      6. setup: missing components */
 
@@ -51,6 +51,12 @@ a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
 .hm-over-card > .uk-empty{margin:0}
 /* the preparing card's busy bar, under its title */
 .hm-prep-bar{width:12rem;max-width:100%;margin:.1rem auto 0}
+
+/* ---- 3. measured performance ---- */
+/* a first run puts Start here above the map (home.html start_here): the
+   record then takes its row, not two columns with one empty (nau.css
+   .grid2.homeperf) */
+.homeperf > .hm-perf:only-child{grid-column:1 / -1}
 
 /* ---- 4. start here ---- */
 .hm-start-more{margin-top:1.1rem;padding-top:.85rem;

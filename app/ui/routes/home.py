@@ -437,6 +437,9 @@ def home(request: Request):
     from flubnf.settings import check as _check
     from app.ui.routes.output import _reference_date
     missing = _check(verbose=False)
+    # a first run (no forecast to map, and not the cold paint): Start here
+    # comes first, its steps saying where this computer stands
+    first = not pending and not ob["outlook_date"]
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
@@ -465,7 +468,36 @@ def home(request: Request):
         # private engine when the default is missing and that one is
         # installed here
         "engine_words": _engine_words(),
-        "engine_fallback": _engine_fallback()})
+        "engine_fallback": _engine_fallback(),
+        # Start here on a first run: the Data step's caption and the
+        # Forecast step's (home.html start_here)
+        "start_newest": _start_newest() if first else "",
+        "start_pf_state": _start_pf_state() if first else ""})
+
+
+def _start_newest() -> str:
+    """The newest week the hub data holds (data.newest_week), for the
+    first-run Data step's "through <week>"; "" without a hub clone (a run
+    is then refused, whatever week the shipped snapshots hold) or when it
+    cannot be read. It imports pandas: never on the cold paint, which
+    exists to avoid that import."""
+    try:
+        if state.data_mod.hub_missing():
+            return ""
+        return state.data_mod.newest_week() or ""
+    except Exception:
+        return ""
+
+
+def _start_pf_state() -> str:
+    """The particle-filter engine in one word (pipeline._pf_engine_state:
+    absent, broken or ready), for the first-run Forecast step; "" when it
+    cannot be read."""
+    try:
+        from app.ui import pipeline
+        return pipeline._pf_engine_state()
+    except Exception:
+        return ""
 
 
 def _engine_words() -> str:
