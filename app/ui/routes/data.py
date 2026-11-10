@@ -134,6 +134,8 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     # no clone at all: the card says so and what fetches it (nothing on
     # this page can; Update data pulls an existing clone)
     ctx["hub_missing"] = state.data_mod.hub_missing()
+    # no folder at all: a pull is refused (_pull), so it is never primary
+    ctx["hub_absent"] = bool(state.data_mod.hub_missing(data=False))
     # the newest week's reporting, from the file a real-time run reads
     ctx["newest_report"] = _newest_report()
     # the hub models runs are compared against (an older sparse clone may
@@ -493,12 +495,15 @@ def freshness(request: Request):
     if _wants_json(request):
         cls, words = f.pill()
         # "behind": Update data is the page's primary (a clone behind
-        # origin, or one lacking the comparator folders a pull adds)
+        # origin, or one lacking the comparator folders a pull adds),
+        # never with no hub folder, where a pull is refused
         missing = [k for k, ok in state.data_mod.comparators().items()
                    if not ok]
+        behind = ((_clone_behind(f) or bool(missing))
+                  and not state.data_mod.hub_missing(data=False))
         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
                              "words": words, "detail": f.detail,
-                             "behind": _clone_behind(f) or bool(missing)})
+                             "behind": behind})
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
 

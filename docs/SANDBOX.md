@@ -7,6 +7,9 @@ submission. This page takes a new student from nothing to a fitted model
 of their own; the page itself carries the short version under **How the
 Sandbox works**.
 
+The Sandbox stays in the checkout's `sandbox/` folder: FLUBNF_STATE_DIR,
+which moves the console's state folder, does not move it.
+
 **What it needs.** A fit uses the particle filter engine, so the engine
 must be installed (the first open of FluBNF installs it, and says "public
 engine ready"), and
@@ -77,11 +80,12 @@ per week (a period of d days is the rate 7/d).
 in weeks and the count for the week ending then. A missing week is a gap in the
 time column, never a renumbered row.
 
-**priors.conf** has one line per fitted parameter:
-`uniform_var = Reff__FREE 0.8 3.0` draws evenly between the numbers,
-`loguniform_var = mult__FREE 0.2 5.0` evenly on a log scale (for a value
-that could be 0.2 or 5). `pf_cumulative_observable = Hobs` names the
-output whose weekly increment is the count. Keep each range to values you
+**priors.conf** has one line per fitted parameter,
+`uniform_var = name low high`: `uniform_var = Reff__FREE 0.8 3.0` draws
+evenly between the numbers, `loguniform_var = mult__FREE 0.2 5.0` evenly
+on a log scale (for a value that could be 0.2 or 5). A `pf_` line sets an
+engine key: `pf_cumulative_observable = Hobs` names the output whose
+weekly increment is the count. Keep each range to values you
 find plausible: particles drawn where the data rule them out are wasted.
 
 ## 3. Check, then run

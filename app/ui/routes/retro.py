@@ -19,6 +19,7 @@ APIs (retro_results, api_retro_playback, api_retro_mapswap, _season_report)
 from __future__ import annotations
 
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
@@ -435,21 +436,36 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         _flash(f"Not deleted: {what} is in a protected folder, which the "
                "console never deletes.", "warn")
         return _back(request, "/retro")
-    # its week maps may still be written (a results page opened it): a
-    # delete meanwhile could fail half way
-    if not retro_prep._stop_warm(p):
-        _flash(f"Not deleted: the week maps of {what} are still being "
-               "prepared.", "warn", detail="Try again in a minute.")
-        return _back(request, "/retro")
-    weeks = retro.run_summary(p)["weeks"]
-    size_h = retro.human_bytes(retro.dir_size(p))
-    try:
-        retro.delete_tree(p)
-    except Exception as e:
-        _flash(f"Could not delete the archived {season} run: "
-               f"{type(e).__name__}: {str(e)[:160]}.", "error",
-               detail="Nothing else changed.")
-        return _back(request, "/retro")
+    # its results may still be written (a results page opened it): a
+    # delete meanwhile could fail half way. Marked first, so no results
+    # page starts a finalize on it from here on (retro_prep._removing)
+    with retro_prep._removing(p) as busy:
+        if busy == retro_prep._ALREADY_REMOVING:
+            # a second delete at once, or an import replacing the run:
+            # the first goes on and says so
+            _flash(f"Not deleted: {what} is {busy}.", "warn",
+                   detail="Nothing else changed.")
+            return _back(request, "/retro")
+        if busy:
+            _flash(f"Not deleted: the {busy} of {what} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/retro")
+        # its week maps may still be written (a results page opened it):
+        # a delete meanwhile could fail half way. Under the mark, so no
+        # finalize starts a new warm once this one is stopped
+        if not retro_prep._stop_warm(p):
+            _flash(f"Not deleted: the week maps of {what} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/retro")
+        weeks = retro.run_summary(p)["weeks"]
+        size_h = retro.human_bytes(retro.dir_size(p))
+        try:
+            retro.delete_tree(p)
+        except Exception as e:
+            _flash(f"Could not delete the archived {season} run: "
+                   f"{type(e).__name__}: {str(e)[:160]}.", "error",
+                   detail="Nothing else changed.")
+            return _back(request, "/retro")
     _flash(f"Deleted {what}: {weeks} week"
            f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
            detail=f"The live {season} season was not touched.")
@@ -687,7 +703,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         return _refused("Not started: unrecognized season name.")
     # busy checks, the archive/discard move and the claim all run under
     # _engine_lock (the move is part of claiming the tree); the worker does not
-    with _engine_lock:
+    with _engine_lock, ExitStack() as held:
         if _season_status(season) in _RETRO_ACTIVE:
             return _refused(
                 f"Not started: {season} is already replaying (status: "
@@ -792,6 +808,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         width = max(1, min(width, 16))
         # start-over handling only AFTER all validation
         live = _live_root(season)
+        # Storage's Delete of this season part way through (another tab):
+        # a Resume would be claimed and its worker start on the tree being
+        # removed, a start over would delete it a second time. Asked
+        # before the tree is read or claimed
+        with retro_prep._results_lock:
+            removing = retro_prep._being_removed(live)
+        if removing:
+            return _refused(
+                f"Not started: the {season} results are being deleted.",
+                "Nothing was started. Start the replay again once the "
+                "delete is done.")
         existing = retro_seasons._weeks_done(live)
         legacy_resume = False
         from app.core import missing as _missing
@@ -879,11 +906,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 f"Not started: discarding {season} was not confirmed.",
                 "Nothing was deleted.")
-        if mode == "discard" and existing:
+        if mode in ("discard", "archive") and existing:
             # Storage's one barrier (sealed records, the hub clone,
-            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed
+            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed:
+            # an archive would move the season out from under it
             from app.ui.routes.storage import _storage_protected
             if _storage_protected(live):
+                if mode == "archive":
+                    return _refused(
+                        f"Not started: the {season} results are in a "
+                        "protected folder, which the console never moves.",
+                        "Nothing was moved.")
                 return _refused(
                     f"Not started: the {season} results are in a protected "
                     "folder, which the console never deletes.",
@@ -898,10 +931,32 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 "newest week reads 0.",
                 "Set Groundhog when the newest week reads 0: abstain, "
                 "level, extend or blend.")
+        # a delete or a move: the tree is marked first, so no results page
+        # starts a finalize on it until the claim below (retro_prep.
+        # _removing; leaving `held` lifts the mark)
+        busy = (held.enter_context(retro_prep._removing(live))
+                if mode in ("discard", "archive") and existing else "")
+        if busy == retro_prep._ALREADY_REMOVING:
+            # another delete or move holds the season (the look above
+            # refuses it first; this answer is never put into the
+            # sentence below)
+            return _refused(
+                f"Not started: the {season} results are being deleted.",
+                "Nothing was started. Start the replay again once the "
+                "delete is done.")
+        if busy:
+            # its results: a delete or a move while they are written could
+            # fail half way
+            return _refused(
+                f"Not started: the {season} {busy} are still being "
+                "prepared.", "Nothing was "
+                + ("deleted" if mode == "discard" else "archived")
+                + ". Try again in a minute.")
         if mode in ("discard", "archive") and existing and \
                 not retro_prep._stop_warm(live):
             # the week maps written after a replay finished: a delete or
-            # a move while one is written could fail half way
+            # a move while one is written could fail half way (under the
+            # mark, so no finalize starts a new warm once this one stops)
             return _refused(
                 f"Not started: the {season} week maps are still being "
                 "prepared.", "Nothing was "
@@ -995,9 +1050,13 @@ def _import_replay_file(src: Path, replace: bool, name: str = ""):
     which the refusals say (never the server's copy)."""
     from app.core import replay_bundle
     try:
+        # a Replace deletes the archived run it replaces: marked, so no
+        # results page starts a finalize on it meanwhile, and refused while
+        # one runs on it (retro_prep._removing)
         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
                                         replace=replace, build=RUNNING_SHA,
-                                        name=name)
+                                        name=name,
+                                        removing=retro_prep._removing)
     except replay_bundle.BundleError as e:
         return (f"Not imported: {e}", "warn", ""), "/retro"
     except OSError as e:
@@ -1044,7 +1103,11 @@ async def retro_import(request: Request):
         # the client's file name is never used as a path
         d = _exports_dir()
         d.mkdir(parents=True, exist_ok=True)
-        tmp = d / f"incoming-{os.getpid()}-{int(time.time() * 1000)}.zip"
+        # pid, clock and a random part: two uploads in one millisecond
+        # never share a file
+        import secrets
+        tmp = d / (f"incoming-{os.getpid()}-{int(time.time() * 1000)}-"
+                   f"{secrets.token_hex(4)}.zip")
         try:
             with open(tmp, "wb") as out:
                 seen = 0
@@ -1144,6 +1207,9 @@ def retro_results(request: Request, season: str, week: str = "",
         return _refused(
             "Unrecognized archived run identifier.")
     root, _is_seal = retro_seasons._season_root(season, archive)
+    if retro_prep._being_removed(root):
+        # a delete or a move has it: its files are going
+        return _refused(f"{season}: {retro_prep._REMOVING_WHY}.")
     # an archived entry imported from another machine says so in place of
     # the archived-run banner (app/core/replay_bundle)
     from app.core import replay_bundle
@@ -1176,6 +1242,9 @@ def retro_results(request: Request, season: str, week: str = "",
                      or _results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
+        if job.get("refused"):
+            # a delete began since the check above: no job was started
+            return _refused(f"{season}: {job['error']}.")
         job["done"].wait(_RESULTS_GRACE_S)
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {

@@ -52,6 +52,7 @@ from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
 from app.ui.dataset_upload import (TOO_MANY_FILES, _LONE, _capped_form,
                                    _files_of, _form_columns, _kind_field,
                                    _lone_snapshot, _message_view,
+                                   _read_before, _stored_before,
                                    _too_many_message, _whole_dates,
                                    check_status, check_view, render_check)
 from app.ui import state as ui_state
@@ -471,6 +472,7 @@ async def upload(request: Request):
         return _render_data(request, upload={
             **back, "chk": _message_view("Say whether the values are counts "
                                          "or rates.")}, _code=400)
+    t0 = time.time()
     try:
         for f in fs:
             f.file.seek(0)
@@ -506,8 +508,12 @@ async def upload(request: Request):
     counts = (f"{ng} group{'s' if ng != 1 else ''}, "
               f"{nw} week{'s' if nw != 1 else ''}.")
     # the same bytes under a name with the same id (its letters dropped
-    # by the id's slug) open the dataset already stored: said, by its name
-    again = bool(name) and ds.name != name[:80]
+    # by the id's slug), or under its own, open the dataset already
+    # stored: said, by its name, with any national row read otherwise now
+    before = _stored_before(ds, t0)
+    again = before or (bool(name) and ds.name != name[:80])
+    if before and (moved := _read_before(ds)):
+        warn.append(moved)
     done = (f"This file is already stored as {ds.name}: {counts}" if again
             else f"Stored the dataset {ds.name}: {counts}")
     snaps = ""

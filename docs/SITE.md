@@ -112,10 +112,12 @@ predates it, so a site built from them prints the particle filter alone,
 and the live fan is named the same way from the run's recorded step. The
 Groundhog column is named for the form its trees replayed
 (`site_build.gh_label`, from each run record's `groundhog_local_pools`):
-"Groundhog" only when every published season ran the shipped own-state
-weighting (since 2026-10-15), otherwise "Groundhog (pooled form)", or
-"Groundhog (two forms)" when the seasons differ, with a note under the
-season table.
+"Groundhog" only when every published season ran the shipped form,
+own-state weighting with size-matched donors (since 2026-10-23).
+Otherwise it is "Groundhog (pooled form)" when every season ran the pooled
+form, "Groundhog (own-state form)" when every season ran the own-state
+form of 2026-10-15 to 2026-10-23, or "Groundhog (mixed forms)" when the
+seasons differ, with a note under the season table.
 
 **Placements are not published.** Ranking against the whole FluSight field
 means scoring every submitting team on identical cells, around 1.6 GB of hub

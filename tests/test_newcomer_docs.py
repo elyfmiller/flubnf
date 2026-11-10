@@ -231,8 +231,15 @@ def test_the_numbers_and_rules_are_the_codes():
 
     geo = _flat(_row_text("Another geography"))
     assert tuple(D.NATIONAL_NAMES) == ("US", "USA", "UNITED STATES",
-                                       "US (NATIONAL)", "NATIONAL")
-    assert "US, USA, United States, US (national) or National" in geo
+                                       "US (NATIONAL)", "NATIONAL", "OVERALL")
+    assert ("US, USA, United States, US (national), National, or Overall "
+            "beside other groups") in geo
+    # Overall only beside other groups: alone it is an ordinary series
+    from app.core.datasets import checks as DC
+    assert tuple(DC.BESIDE_ONLY) == ("OVERALL",)
+    assert D.national_of(["Overall", "North"]) == "Overall"
+    assert D.national_of(["Overall"]) is None
+    assert "alone in its file, Overall is an ordinary group" in geo
     assert not D.is_national_name("England")
 
     cal = _flat(_row_text("Another season calendar"))

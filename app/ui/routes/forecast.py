@@ -41,7 +41,8 @@ router = APIRouter()
 #                       GROUNDHOG_RUN_WORDS, run_words, _run_estimate),
 #                       forecast_page
 #   Data issues box     US_CHOICE, _source_sha, _data_issues_context,
-#                       _data_choices, _location_list, _official_overlay
+#                       _data_choices, _location_list, _official_overlay,
+#                       _fan_zero_rules
 #   console controls    run_stop
 #   run pages           run_page, _no_run_report, run_report,
 #                       run_report_download, run_rerun
@@ -626,6 +627,36 @@ def _official_overlay(fc_date: str, locs: list) -> dict:
         return out
     except Exception:
         return {}
+
+
+def _fan_zero_rules(outcome) -> dict:
+    """{member: {location: rule}}: the zero-anchor rule ("extend", "level",
+    "blend", "abstain") each state of a run took for a newest week of 0,
+    from its ledger outcome's data_flags (the rows missing.aside_weeks
+    leaves out). The fan script's RZERO (forecast.html, the hub's Forecast
+    tab and a dataset's): only these three fields reach the page, not the
+    outcome record; {} for an unreadable one."""
+    import json as _json
+    from app.core import missing as _missing
+    pre = _missing.ZERO_ANCHOR_NOTE + " "
+    try:
+        o = _json.loads(outcome) if isinstance(outcome, str) else outcome
+        flags = (o or {}).get("data_flags") or {}
+        out: dict = {}
+        for m, rows in flags.items():
+            for r in rows or ():
+                if not isinstance(r, dict):
+                    continue
+                rule = str(r.get("rule") or "")
+                if r.get("location") and rule.startswith(pre):
+                    out.setdefault(str(m), {})[str(r["location"])] = \
+                        rule[len(pre):]
+        return out
+    except Exception:
+        return {}
+
+
+templates.env.globals["fan_zero_rules"] = _fan_zero_rules
 
 
 # === Console controls: /run/stop (the rest: routes/shell.py, data.py) ===

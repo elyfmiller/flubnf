@@ -13,8 +13,8 @@
        itself: a fresh clone has no host yet and must still open. -->
   <key>CFBundleExecutable</key><string>flubnf-launch</string>
   <key>CFBundleIconFile</key><string>FluBNF</string>
-  <key>CFBundleShortVersionString</key><string>1.1.0</string>
-  <key>CFBundleVersion</key><string>1.1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.2.0</string>
+  <key>CFBundleVersion</key><string>1.2.0</string>
   <!-- python.org 3.12 supports macOS 10.13 and later; asking for more would
        stop the app opening where the Terminal launch works. -->
   <key>LSMinimumSystemVersion</key><string>10.13</string>

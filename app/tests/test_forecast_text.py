@@ -222,7 +222,8 @@ def test_the_date_rule_and_the_gap_refusal_say_what_happens(tmp_path,
     started = _capture(monkeypatch, tmp_path)
     # a holiday: one Saturday skipped
     _hub(tmp_path / "hub", [W1, W2, W3], [W1, W3], monkeypatch)
-    ui_state._status["running"] = None
+    # no unread notice from an earlier test may join this one
+    ui_state._status.update(running=None, flash=None, flash_detail=None)
     client.post("/run", data={"forecast_date": W2, "mode": "vintage",
                               "locations": ["Ohio"], "engine": "analogue"},
                 follow_redirects=False)

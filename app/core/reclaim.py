@@ -88,7 +88,9 @@ def inside_any(p: Path, roots) -> bool:
     the folder itself (os.stat identity over the path and its parents), so
     another spelling of one folder matches: upper case or /users/ for
     /Users/ on a case-insensitive volume. Unresolvable paths count as
-    inside."""
+    inside. An inode of 0 (a volume that reports no file identity, as
+    some Windows network shares do) is no identity: such a folder is
+    matched by name only, else every folder there would match."""
     try:
         rp = Path(p).resolve()
     except (OSError, RuntimeError):
@@ -105,7 +107,8 @@ def inside_any(p: Path, roots) -> bool:
             st = os.stat(r)
         except OSError:
             continue                     # absent: no folder to match
-        ids.add((st.st_dev, st.st_ino))
+        if st.st_ino:
+            ids.add((st.st_dev, st.st_ino))
     if not ids:
         return False
     for q in (rp, *rp.parents):
@@ -113,7 +116,7 @@ def inside_any(p: Path, roots) -> bool:
             st = os.stat(q)
         except OSError:
             continue                     # not on disk (yet): its parents are
-        if (st.st_dev, st.st_ino) in ids:
+        if st.st_ino and (st.st_dev, st.st_ino) in ids:
             return True
     return False
 

@@ -72,10 +72,11 @@ FluBNF submits two models to FluSight, each under its own hub identity
   After the fit, the Oracle step blends the filter's forecast growth with
   donor growth from past seasons at the same calendar week: each forecast
   sample path draws one donor growth path from an earlier season (within
-  two epiweeks, any jurisdiction) and grows at the geometric mean, half
-  and half, of the filter's growth and the donor's, propagated in closed
-  form from the filter's own state. The donors come from the Groundhog's
-  own donor bank: NHSN admissions growth and FluSurv-NET
+  two epiweeks, any jurisdiction) and grows at the weighted geometric mean
+  of the filter's growth and the donor's, at weight one quarter on the
+  filter's growth from the 2026-10-17 round (one half before), propagated
+  in closed form from the filter's own state. The donors come from the
+  Groundhog's own donor bank: NHSN admissions growth and FluSurv-NET
   hospitalization-rate growth, half and half
   ([docs/ORACLE-SIHRS.md](docs/ORACLE-SIHRS.md)).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
@@ -110,7 +111,10 @@ series needs no group column), kept apart
 from the FluSight hub and never submitted. The columns may be named date
 (or week, week_ending, target_end_date), group (or target_group,
 location, region, jurisdiction) and value (or count, cases, admissions,
-observation); other columns, except as_of, are ignored. Comma, semicolon
+observation); other columns, except as_of, are ignored. A group named
+Overall, as in the template, or US is the national row: scored beside the
+other groups, not pooled with them. Renamed, or alone in its file, Overall
+is an ordinary group. Comma, semicolon
 or tab separated; UTF-8, UTF-16 or Windows-1252; dates as YYYY-MM-DD,
 M/D/YYYY or M/D/YY on one weekday, moved to the Saturday that ends each
 week. For a true retrospective,
