@@ -1,0 +1,562 @@
+diff --git a/app/core/knobs.py b/app/core/knobs.py
+index 307a73bb..71bdf6ab 100644
+--- a/app/core/knobs.py
++++ b/app/core/knobs.py
+@@ -150,10 +150,25 @@ class Knob:
+         if self.kind == "date":
+             return f"before the forecast date, within {SEASON_START_WINDOW_DAYS} days"
+         if self.kind == "range":
+-            return "lo < hi (the engine's rule)"
++            # the engine's rule (engines/pf.py priors_for): a log-uniform
++            # prior cannot start at 0
++            if _prior_kind(self.key) == "loguniform_var":
++                return "0 < low < high (log-uniform)"
++            return "0 \u2264 low < high"
+         return f"{_fmt(self.lo)} to {_fmt(self.hi)}"
+ 
+ 
++def _prior_kind(key: str) -> str:
++    """The distribution of a prior-range knob ("uniform_var" or
++    "loguniform_var"), read from the engine's template block."""
++    short = key.rsplit(".", 1)[-1]
++    for line in PF.VARS_1S.splitlines():
++        kind, _, rest = line.partition("=")
++        if rest.split() and rest.split()[0] == f"{short}__FREE":
++            return kind.strip()
++    return ""
++
++
+ # --- engine validators ---------------------------------------------------------
+ 
+ def _check_prior(name: str):
+@@ -213,15 +228,10 @@ REGISTRY: tuple = (
+          "Sets the reporting rate and first infections from the admissions to date "
+          "or the expected total.",
+          choices=SP.SEED_DENOMINATORS,
+-         note=("It pins rho*mult and i0. "
+-               "season_total: the expected total is the median per-capita "
+-               "total of the completed past seasons in the vintage, floored "
+-               "at the to-date count; i0 shrinks by expected/to-date and the "
+-               "model's implied depletion grows with the season instead of "
+-               "sitting at the attack rate from the first week. "
+-               "season_total_early: the same until "
+-               f"{SP.EARLY_FRACTION:.0%} of the expected total is in, the "
+-               "shipped rule after (the brake near the peak).")),
++         note=("The expected total is the median per-capita total of the "
++               "completed past seasons in the vintage, never below the "
++               "admissions so far; the early form uses it only until "
++               f"{SP.EARLY_FRACTION:.0%} of it is in, then the shipped rule.")),
+     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
+          default_season_start, "app.core.runs:default_season_start",
+          "First week the filter fits; August 1 of the forecast's season.",
+@@ -251,16 +261,10 @@ REGISTRY: tuple = (
+          OR.K_PRODUCTION, "flubnf.oracle:K_PRODUCTION",
+          "Exponent on each value's log-distance from the median: 1 is the member's own spread, 0.7 narrower.",
+          lo=0.1, hi=1.0,
+-         note=("Applied after the Oracle step to the submitted seed's samples, "
+-               "x' = m (x / m)^k about each horizon's median: the median is "
+-               "untouched and a value ten times it becomes 10^k times it. "
+-               "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
+-               "(docs/team/submission.md, 2026-10-16), on the stage-rule "
+-               "member at weight 0.25 (9,152 cells): k = 0.7 took pooled "
+-               "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
+-               "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
+-               "the run records k and the unnarrowed quantiles beside the "
+-               "narrowed ones; no card phrase until the default changes.")),
++         note=("Applied after the Oracle step, about each horizon's median: "
++               "the median is untouched and a value ten times it becomes ten "
++               "to the power k times it. Research, screened on stored replay "
++               "weeks; the run records the unnarrowed quantiles too.")),
+     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
+          "float", MX.W_AUX, "flubnf.oracle_mix:W_AUX",
+          "Chance a path draws a FluSurv-NET donor when both streams qualify.",
+@@ -322,24 +326,18 @@ REGISTRY: tuple = (
+          "Weight share of the jurisdiction's own past weeks in the admissions "
+          "pool; 0 drops it.",
+          lo=0.0, hi=1.0,
+-         note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
+-               "against 0.670 pooled on three replayed seasons, "
+-               "leave-one-season-out; 0.75 scored 0.658 with lower "
+-               "coverage. The FluSurv-NET pool stays pooled."),
++         note=("Chosen by a pre-registered screen over three replayed "
++               "seasons; the FluSurv-NET pool stays pooled."),
+          card=(GROUNDHOG_CARD, {0.5: "own past weeks carry half"})),
+     Knob("groundhog.kernel_sd", "Size-matched donor kernel", GH_ONLY,
+          "groundhog", "method", "float", AN.SHIPPED_KERNEL_SD,
+          "flubnf.analogue:SHIPPED_KERNEL_SD",
+          "Log-count width of the weight on donor weeks sized like the newest; 0 is off.",
+          lo=0.0, hi=5.0,
+-         note=("Pre-registered screen of 2026-10-17 (width 1 chosen by "
+-               "leave-one-season-out over 0.5 and 1): 0.642 against 0.660 "
+-               "on three replayed seasons, coverage unchanged; with its "
+-               "effective-donor guard (30) it scored again on 2026-10-22 "
+-               "under every upper-tail cap, about 0.017 better. It keeps a "
+-               "donor week based on one or two admissions from setting a "
+-               "large jurisdiction's tail (the Ohio band of 2026-10-24). "
+-               "0 is the form of 2026-10-15 to 2026-10-23."),
++         note=("Donor weeks sized like the newest week weigh the most, so a "
++               "week built on one or two admissions cannot set a large "
++               "jurisdiction's tail; chosen by a pre-registered screen over "
++               "three replayed seasons."),
+          card=(GROUNDHOG_CARD, {1.0: "similar-sized weeks carry the most weight"})),
+     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
+          "method", "int", AN.DEFAULT_BANDWIDTH,
+@@ -362,72 +360,49 @@ REGISTRY: tuple = (
+          TC.CAP_PRODUCTION, "flubnf.tailcap:CAP_PRODUCTION",
+          "Quantiles above the median clipped at this many times the recent level; 0 is no cap.",
+          lo=0.0, hi=100.0,
+-         note=("Applied to both members' hub rows at the output stage, after "
+-               "the Oracle step, the narrowing and the floor: in each "
+-               "(location, horizon) block the levels above 0.5 are clipped at "
+-               "n times the mean of the last three reported weeks, never below "
+-               "the block's median; the median and the lower quantiles are "
+-               "untouched. Spencer Fox's red-flag rule (2026-10-21) reads the "
+-               "97.5% quantile at horizon 3 against the recent level. Screened "
+-               "post hoc on the stored replays (docs/team/submission.md, "
+-               "2026-10-22): 15-20x left both members' pooled relWIS and "
+-               "coverage within a thousandth and removed every horizon-3 cell "
+-               "above 30x. Research; the run records n and the cells it "
+-               "touched; no card phrase until the default changes.")),
++         note=("Applied to both models' rows at the output stage, after the "
++               "Oracle step, the narrowing and the floor: in each location "
++               "and horizon the quantiles above the median are clipped at "
++               "this many times the mean of the last three reported weeks, "
++               "never below the median. Research; the run records the cells "
++               "it touched.")),
+     Knob("output.tail_mode", "Upper-tail form", BOTH, "output", "method",
+          "choice", TC.MODE_PRODUCTION, "flubnf.tailcap:MODE_PRODUCTION",
+          "clip: levels above the median clipped at the limit; shrink: the location-wide exponent form.",
+          choices=TC.MODES,
+-         note=("shrink (Ely, 2026-10-22): the exponent the worst horizon needs "
+-               "to bring its 97.5% quantile to the limit is applied to every "
+-               "horizon of the location above the median, so the band keeps "
+-               "its fan across the weeks and only the worst horizon touches "
+-               "the limit. Replays: the clip scores a little better over "
+-               "whole seasons, the shrink better in September-October weeks. "
+-               "Takes effect only with output.tail_cap above 0.")),
++         note=("Shrink applies the exponent the worst horizon needs to reach "
++               "the limit to every horizon of the location above the median, "
++               "so the band keeps its fan across the weeks. Only with an "
++               "Upper-tail cap above 0.")),
+     Knob("output.tail_hist", "Historical ceiling", BOTH, "output", "method",
+          "float", TC.HIST_PRODUCTION, "flubnf.tailcap:HIST_PRODUCTION",
+          "Upper quantiles clipped, per horizon, at this quantile of past growth over the recent level; 0 off.",
+          lo=0.0, hi=1.0,
+-         note=("Spencer Fox's bound read on our data (2026-10-25): for each "
+-               "horizon h, the growth y[W+h+1] over the recent level at W, "
+-               "over every jurisdiction's weeks within two epiweeks of the "
+-               "forecast date in strictly earlier seasons with a recent "
+-               "level of at least 10, from the run's own truth vintage. The "
+-               "knob is the quantile of that history used as the ceiling: 1 "
+-               "the maximum (only growth history never produced is removed), "
+-               "0.975 its 97.5th percentile. Applied as a clip before the "
+-               "n-cap (output.tail_cap), so the two compose: the ceiling "
+-               "deletes the impossible, the cap or the shrink shapes the "
+-               "rest. Screened post hoc on the Oracle's 44 stage-rule weeks "
+-               "(docs/team/submission.md, 2026-10-25): the maximum alone was "
+-               "the best arm (-0.007 relWIS against the clip at 15x, "
+-               "coverage 0.91) and with the shrink at 15x on top beat the "
+-               "shrink alone by 1%; the 97.5th percentile was too tight "
+-               "(coverage 0.86). Research; the run records the ratios and "
+-               "the cells it touched.")),
++         note=("For each horizon, past growth over the recent level is read "
++               "from every jurisdiction's weeks within two epiweeks of the "
++               "forecast date in earlier seasons (recent level 10 or more); "
++               "the upper quantiles are clipped at this quantile of that "
++               "history, before the Upper-tail cap. Research; the run "
++               "records the cells it touched.")),
+     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
+     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
+          "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
+          "Optional; the hub never scores it. Adds the week before the "
+          "reference date.",
+          note=("Oracle SIHRS: its own draws for that week. Groundhog: only "
+-               "where it did not see that week (weeks to drop, or the "
+-               "same-day week treated as unreported); its forecast starts "
+-               "from that week's count, so otherwise it has no spread to "
+-               "give and writes none. Adds rows only: the files keep the "
++               "where it did not see that week, since its forecast starts "
++               "from that week's count. Adds rows only: the files keep the "
+                "hub names.")),
+     Knob("output.rate_change_pmf", "Rate-change rows", BOTH, "output",
+          "optional", "bool", SB.RATE_CHANGE_PMF,
+          "app.core.submit:RATE_CHANGE_PMF",
+          "Optional; not in the hub's WIS ranking. Adds the five trend "
+          "probabilities.",
+-         note=("The hub's 'wk flu hosp rate change' target, horizons 0 to 3: "
+-               "large decrease to large increase from the week before the "
+-               "reference date, by the hub's rate and 10-admission rules. "
+-               "From each model's own draws or quantiles; the Groundhog "
+-               "writes none for a state whose starting week it did not "
+-               "see. Adds rows only: the files keep the hub names.")),
++         note=("The hub's rate-change target, horizons 0 to 3: large decrease "
++               "to large increase from the week before the reference date, by "
++               "the hub's rules. From each model's own draws or quantiles; the "
++               "Groundhog writes none for a state whose starting week it did "
++               "not see. Adds rows only: the files keep the hub names.")),
+ )
+ 
+ BY_KEY: dict = {k.key: k for k in REGISTRY}
+diff --git a/app/core/site_build.py b/app/core/site_build.py
+index a31a6d29..1ff5f32e 100644
+--- a/app/core/site_build.py
++++ b/app/core/site_build.py
+@@ -782,7 +782,7 @@ def harvest_placement() -> dict:
+ #: the Measured-performance card duplicates the site's own scores: dropped
+ #: from the harvested Methods
+ _PERF_CARD = re.compile(
+-    r'<div class="card"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
++    r'<div class="card" id="performance"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
+     re.S)
+ 
+ 
+diff --git a/app/tests/test_methods_polish.py b/app/tests/test_methods_polish.py
+new file mode 100644
+index 00000000..695957a4
+--- /dev/null
++++ b/app/tests/test_methods_polish.py
+@@ -0,0 +1,147 @@
++"""Methods polish (methods.html, tabs/methods.css, knobs.py, diagrams.html).
++
++  * a contents-bar jump lands the section title under the bar: the bar's
++    height is measured again after the print button joins it and whenever
++    it changes, and the Performance chip's target is its card;
++  * the chip marked current is the last section whose top has passed the
++    bar, and the last one once the page is scrolled to its end;
++  * a prior range's rule is stated per distribution (0 ≤ low < high, or
++    0 < low < high for the log-uniform priors);
++  * each setting's note on Methods is a plain sentence or two: no file
++    paths, dates, names or raw keys;
++  * the two Policies folds' bodies continue from their titles;
++  * printing breaks inside a card (a card taller than a page no longer
++    pushes a blank page) but never inside a figure, table or fold;
++  * every table scroller can be reached by keyboard and is named, as the
++    figure scrollers are.
++"""
++import re
++import sys
++from pathlib import Path
++
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import knobs as K                        # noqa: E402
++from app.core import site_build                        # noqa: E402
++from app.ui.server import app as srv                   # noqa: E402
++
++client = TestClient(srv)
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++
++
++def _methods() -> str:
++    return client.get("/methods").text
++
++
++# ------------------------------------------------- ME-04: jumps land in view
++
++def test_the_bar_is_measured_after_the_print_button_and_when_it_changes():
++    html = _methods()
++    js = html.split("bar.appendChild(pb);", 1)[1]
++    assert js.index("barH();") < js.index("addEventListener('beforeprint'")
++    assert "if ('ResizeObserver' in window) new ResizeObserver(barH).observe(bar);" in js
++    # the Performance chip's target is its card, as the other chips' are
++    assert '<div class="card" id="performance"><h2>Measured performance</h2>' in html
++    assert '<span id="performance"></span>' not in html
++
++
++def test_the_site_harvest_still_drops_the_performance_card():
++    site = site_build.harvest_methods({k: "x" for k in ("pybnf", "bngsim",
++                                                        "bionetgen", "fastapi",
++                                                        "plotly")})
++    assert "Measured performance" not in site
++    assert 'id="performance"' not in site
++
++
++# ----------------------------------------- ME-05: the chip that reads current
++
++def test_the_current_chip_is_the_last_section_passed_and_the_last_at_the_end():
++    html = _methods()
++    js = html.split("function spy()", 1)[1].split("var ticking", 1)[0]
++    assert "if (secs[i].el.getBoundingClientRect().top <= band + 1) cur = secs[i];" in js
++    assert "if (innerHeight + pageYOffset >= de.scrollHeight - 2) cur = secs[secs.length - 1];" in js
++    assert "addEventListener('scroll', onScroll, {passive: true});" in html
++    assert "seen[" not in html
++
++
++# --------------------------------------------- ME-13: the prior range's rule
++
++def test_a_prior_ranges_rule_is_stated_per_distribution():
++    assert K.BY_KEY["pf.prior.mult"].range_text() == "0 < low < high (log-uniform)"
++    assert K.BY_KEY["pf.prior.r"].range_text() == "0 < low < high (log-uniform)"
++    assert K.BY_KEY["pf.prior.Reff"].range_text() == "0 ≤ low < high"
++    assert K.BY_KEY["pf.prior.eps1"].range_text() == "0 ≤ low < high"
++    html = _methods()
++    row = html.split('id="set-pf-prior-mult"', 1)[1].split("</tr>", 1)[0]
++    assert '<td data-label="Range">0 &lt; low &lt; high (log-uniform)</td>' in row
++    row = html.split('id="set-pf-prior-Reff"', 1)[1].split("</tr>", 1)[0]
++    assert '<td data-label="Range">0 ≤ low &lt; high</td>' in row
++    assert "the engine's rule" not in html
++
++
++# ------------------------------------------------ ME-16: the notes are plain
++
++def test_the_settings_notes_are_short_and_plain():
++    for k in K.REGISTRY:
++        for text in (k.help, k.note):
++            if not text:
++                continue
++            assert len(text.split()) <= 60, (k.key, text)
++            for jargon in ("docs/", ".md", "Spencer", "rule 3", "rho*mult",
++                           "i0", "season_total", "output.tail_cap",
++                           "no card phrase", "(Ely", "2026-", "relWIS from"):
++                assert jargon not in text, (k.key, jargon)
++    # what the sealed record ran stays
++    assert "the sealed record ran 0.30" in K.BY_KEY["pf.jitter"].note
++
++
++# ------------------------------------------- ME-18: the fold bodies continue
++
++def test_the_policies_folds_do_not_repeat_their_titles():
++    html = _methods()
++    for fid, start in (("mt-newest", "<p>It is the forecaster's decision, per state"),
++                       ("mt-sealcaveats", "<p>Seven of 76 sealed weeks' vintages")):
++        body = html.split(f'id="{fid}"', 1)[1].split("</details>", 1)[0]
++        body = body.split('<div class="uk-fold-body">', 1)[1].strip()
++        assert body.startswith(start), (fid, body[:80])
++
++
++# ---------------------------------------------- ME-21: printing breaks inside
++
++def test_printing_breaks_inside_a_card_but_not_a_figure_or_table():
++    css = (STATIC / "tabs" / "methods.css").read_text()
++    printed = css.split("@media print{", 1)[1].split("\n}\n", 1)[0]
++    assert ".mt-doc .card{break-inside:avoid" not in printed
++    assert ".mt-doc .card{box-shadow:none;border-color:var(--line)}" in printed
++    assert (".mt-doc .figscroll,.mt-doc figure,.mt-doc .uk-stats,.mt-doc tr"
++            "{break-inside:avoid;page-break-inside:avoid}") in printed
++    assert ".mt-doc thead{display:table-header-group}" in printed
++    assert ".mt-doc .card h2,.mt-doc .card h3,.mt-doc summary{break-after:avoid" in printed
++
++
++# ------------------------------------------ ME-22: the table scrollers reach
++
++def test_every_table_scroller_can_be_reached_and_is_named():
++    html = _methods()
++    assert '<div style="overflow-x:auto">' not in html
++    wrappers = re.findall(r'<div class="(mt-scroll|mt-setscroll|eqvars-scroll)"([^>]*)>', html)
++    assert len(wrappers) >= 8, len(wrappers)
++    for cls, attrs in wrappers:
++        assert 'tabindex="0"' in attrs and 'role="region"' in attrs, (cls, attrs)
++        assert re.search(r'aria-label="[^"]+ \(scrolls\)"', attrs), (cls, attrs)
++    for label in ("Measured record (scrolls)", "Measured performance (scrolls)",
++                  "Components (scrolls)", "Variables (scrolls)",
++                  "Fixed settings (scrolls)"):
++        assert f'aria-label="{label}"' in html, label
++    # each settings group's table is named after the group
++    groups = html.count('<details class="uk-fold mt-fold" id="mt-set-')
++    assert groups >= 4
++    assert len(re.findall(r'aria-label="[^"]+ settings \(scrolls\)"', html)) == groups
++    css = (STATIC / "tabs" / "methods.css").read_text()
++    assert ".mt-scroll{overflow-x:auto}" in css
++    assert ".mt-scroll:focus-visible,.mt-setscroll:focus-visible,.eqvars-scroll:focus-visible{" in css
++    # the model pages share the variables table
++    assert 'class="eqvars-scroll" tabindex="0" role="region" aria-label="Variables (scrolls)"' \
++        in client.get("/models").text
+diff --git a/app/ui/static/tabs/methods.css b/app/ui/static/tabs/methods.css
+index 747cacd1..d8e06737 100644
+--- a/app/ui/static/tabs/methods.css
++++ b/app/ui/static/tabs/methods.css
+@@ -128,6 +128,10 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
+ /* the Model settings reference: one table per panel group, scrolling
+    inside itself when narrow; a setting's longer note under its line */
+ .mt-setscroll{overflow-x:auto;margin:.1rem 0 .6rem}
++.mt-scroll{overflow-x:auto}
++/* a table that scrolls sideways can be reached by keyboard (tabindex) */
++.mt-scroll:focus-visible,.mt-setscroll:focus-visible,.eqvars-scroll:focus-visible{
++  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
+ /* one set of column widths for every group's table, so they line up */
+ .mt-settings{width:100%;min-width:38rem;table-layout:fixed}
+ .mt-settings thead th:nth-child(1){width:22%}
+@@ -171,17 +175,21 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
+ /* ---- 6. print (Print / Save as PDF): the document alone, on white. The
+    page script opens every fold and sets the light theme before printing
+    and restores both after; here the chrome goes (header, contents row,
+-   "?" and "i" buttons, copy-link buttons, the build line) and a card never
+-   splits across pages ---- */
++   "?" and "i" buttons, copy-link buttons, the build line); a card, a fold
++   or a long table may split across pages (one taller than a page would
++   otherwise push a blank page before it), but a figure, a row of facts
++   or a table row never does, a split table repeats its header, and a
++   title stays with what follows it ---- */
+ @media print{
+   html{color-scheme:light}
+   body{background:var(--card)}
+   header.nav,.mt-tocbar,a.skip,footer.buildline,.tipbtn,.uk-tt-btn,
+   button.mt-anchor,.mt-said,.uk-heading-aside,#flash,#restart{display:none!important}
+   main{padding:0;max-width:none}
+-  .mt-doc .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none;
+-    border-color:var(--line)}
+-  .mt-doc .card h2{break-after:avoid;page-break-after:avoid}
++  .mt-doc .card{box-shadow:none;border-color:var(--line)}
++  .mt-doc .card h2,.mt-doc .card h3,.mt-doc summary{break-after:avoid;page-break-after:avoid}
++  .mt-doc .figscroll,.mt-doc figure,.mt-doc .uk-stats,.mt-doc tr{break-inside:avoid;page-break-inside:avoid}
++  .mt-doc thead{display:table-header-group}
+   .figscroll{overflow:visible;background:none}
+   .figscroll > svg{min-width:0}
+   a{color:inherit;text-decoration:underline}
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index a8abf931..1041f190 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -44,7 +44,7 @@
+ {% macro _vars(kit, id, rows) -%}
+ {% set count %}{% if kit %}{{ tips.tag(rows | length ~ " symbols") }}{% endif %}{% endset %}
+ {% call tips.fold("Variables", id=id, cls="eqvars", after=count) %}
+-<div class="eqvars-scroll"><table class="eqvars-t">
++<div class="eqvars-scroll" tabindex="0" role="region" aria-label="Variables (scrolls)"><table class="eqvars-t">
+  <thead><tr><th scope="col">Symbol</th><th scope="col">Meaning</th><th scope="col">Units, range</th><th scope="col">Source</th></tr></thead>
+  <tbody>
+  {%- for sym, meaning, units, src in rows %}
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index 59ab7d8d..0c8cef1f 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -22,7 +22,7 @@
+   addEventListener('fontsizechange', barH);
+   // ---- scrollspy: the section in view marks its chip aria-current
+   var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+-  var secs = [], seen = {};
++  var secs = [];
+   links.forEach(function (a) {
+     var t = document.getElementById(a.getAttribute('href').slice(1));
+     if (!t) return;
+@@ -41,13 +41,31 @@
+         toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
+     }
+   }
++  // the current section: the last one whose top has passed the band under
++  // the bar, and the last one of all once the page is scrolled to its end
++  // (the last card can never reach the band)
++  function spy() {
++    if (!secs.length) return;
++    var band = bar.offsetHeight + 8, cur = secs[0], i;
++    for (i = 0; i < secs.length; i++)
++      if (secs[i].el.getBoundingClientRect().top <= band + 1) cur = secs[i];
++    if (innerHeight + pageYOffset >= de.scrollHeight - 2) cur = secs[secs.length - 1];
++    mark(cur.a);
++  }
++  var ticking = false;
++  function onScroll() {
++    if (ticking) return;
++    ticking = true;
++    requestAnimationFrame(function () { ticking = false; spy(); });
++  }
+   if ('IntersectionObserver' in window && secs.length) {
+-    var io = new IntersectionObserver(function (es) {
+-      es.forEach(function (e) { seen[secs.map(function (s) { return s.el; }).indexOf(e.target)] = e.isIntersecting; });
+-      for (var i = 0; i < secs.length; i++) if (seen[i]) { mark(secs[i].a); return; }
+-    }, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
++    // a section entering or leaving the view re-reads the position too
++    var io = new IntersectionObserver(onScroll, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
+     secs.forEach(function (s) { io.observe(s.el); });
+   }
++  addEventListener('scroll', onScroll, {passive: true});
++  addEventListener('resize', onScroll);
++  spy();
+   // ---- copy a link to each section, beside its title
+   function said(btn, text) {
+     var s = btn.parentNode.querySelector('.mt-said');
+@@ -85,6 +103,10 @@
+   pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
+   pb.addEventListener('click', function () { window.print(); });
+   bar.appendChild(pb);
++  // the button can wrap the chips onto a second row: measure again, and
++  // whenever the bar's height changes (fonts, text size, a narrow window)
++  barH();
++  if ('ResizeObserver' in window) new ResizeObserver(barH).observe(bar);
+   // (once per print: a second beforeprint before afterprint keeps the
+   // first one's record of what to restore)
+   var closed = [], theme = null, printing = false;
+@@ -305,7 +327,7 @@
+   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
+  </div>
+  {# a season label never splits at its hyphen (non-breaking hyphens) #}
+- <div style="overflow-x:auto"><table class="mt-rec">
++ <div class="mt-scroll" tabindex="0" role="region" aria-label="Measured record (scrolls)"><table class="mt-rec">
+   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
+   {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
+                          ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
+@@ -420,7 +442,7 @@
+  {% for g in settings_ref %}
+  {% call tips.fold(g.title, id="mt-set-" ~ g.id, cls="mt-fold", after=tips.tag(g.rows | length ~ (" setting" if g.rows | length == 1 else " settings"))) %}
+  <p class="hint">{{ g.cost }}</p>
+- <div class="mt-setscroll"><table class="mt-settings">
++ <div class="mt-setscroll" tabindex="0" role="region" aria-label="{{ g.title }} settings (scrolls)"><table class="mt-settings">
+   <thead><tr><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Range</th><th scope="col">Default</th></tr></thead>
+   <tbody>
+   {%- for r in g.rows %}
+@@ -435,7 +457,7 @@
+  {% if settings_fixed %}
+  {% call tips.fold("Fixed by the model definition", id="mt-set-fixed", cls="mt-fold", after=tips.tag(settings_fixed | length ~ " settings")) %}
+  <p class="hint">Not settable: each value and why the model fixes it.</p>
+- <div class="mt-setscroll"><table class="mt-settings">
++ <div class="mt-setscroll" tabindex="0" role="region" aria-label="Fixed settings (scrolls)"><table class="mt-settings">
+   <thead><tr><th scope="col">Setting</th><th scope="col">Why it is fixed</th><th scope="col">Value</th></tr></thead>
+   <tbody>
+   {%- for l in settings_fixed %}
+@@ -450,10 +472,11 @@
+ {% endif %}
+ 
+ {# The site harvest drops this card (site_build._PERF_CARD): it must open
+-   exactly as below, with no class or id of its own, and be followed
+-   directly by a <div class="card". Kit icons are fine here, as the public
+-   site never shows it #}
+-<div class="card"><h2>Measured performance</h2><span id="performance"></span>
++   exactly as below, with no class of its own and only this id (the
++   contents chip's target, so a jump lands on the card's top edge), and be
++   followed directly by a <div class="card". Kit icons are fine here, as
++   the public site never shows it #}
++<div class="card" id="performance"><h2>Measured performance</h2>
+  <div class="mt-bar">
+   <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums</span>
+   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
+@@ -475,7 +498,7 @@
+     (the shipped member); the particle filter alone, its component before
+     the step, is an ablation in the Cells fold under the table #}
+  {% set rec = oracle_text.RECORD %}
+- <div style="overflow-x:auto"><table>
++ <div class="mt-scroll" tabindex="0" role="region" aria-label="Measured performance (scrolls)"><table>
+   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
+   <tr><td>Oracle SIHRS</td>
+    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
+@@ -512,7 +535,7 @@
+ 
+ <div class="card" id="stack">
+  <div class="uk-heading"><h2>Under the hood</h2></div>
+- <div style="overflow-x:auto"><table class="mt-stack">
++ <div class="mt-scroll" tabindex="0" role="region" aria-label="Components (scrolls)"><table class="mt-stack">
+   <tr><th>Component</th><th>Role</th><th>Version</th></tr>
+   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
+       <td>Fitting suite</td>
+@@ -612,8 +635,7 @@
+  that cannot be rerun from it (docs/archive/RELEASE-1.0.md).</p>
+  {% endcall %}
+  {% call tips.fold("A newest week that reads 0, collapses, or was not reported", id="mt-newest", cls="mt-fold") %}
+- <p>A newest week that reads 0, collapses, or was not reported
+- is the forecaster's decision, per state, made in Data issues on the
++ <p>It is the forecaster's decision, per state, made in Data issues on the
+  Forecast tab and recorded with the run: what the Groundhog forecasts from
+  when the week reads 0 (abstain, level, extend or blend), or setting the
+  newest one or two weeks aside for both models, or leaving the state out.
+@@ -638,8 +660,8 @@
+  </ul>
+  {% endcall %}
+  {% call tips.fold("Two measured caveats", id="mt-sealcaveats", cls="mt-fold") %}
+- <p>Two measured caveats (docs/archive/RELEASE-1.0.md): seven
+- of 76 sealed weeks' vintages differ from what was public at the deadline,
++ <p>Seven of 76 sealed weeks' vintages differ from what was public at the
++ deadline,
+  and sealed scores use unrounded forecasts (a third-decimal difference).</p>
+  {% endcall %}
+  </div>
