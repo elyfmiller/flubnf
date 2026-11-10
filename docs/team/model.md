@@ -1269,6 +1269,13 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Decided
 
+- 2026-11-10 (Ely, D5, adopted from the reviewer's answers; relayed by
+  App): the shipped replays are remade on the public engine, on the PC,
+  not before the side-by-side comparison of 2026-11-18. They go into a
+  separate folder, and their scores are compared with the shipped
+  replays'. The shipped replays are replaced only once Ely has seen the
+  differences. The private-engine replays stay as the record of what was
+  run.
 - 2026-11-09 (Ely, on the move to the Windows PC):
   - This lane takes the Groundhog's requests.
   - The Submission-Wednesday window does not apply to the Windows PC: the
