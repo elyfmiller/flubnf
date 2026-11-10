@@ -1,5 +1,5 @@
 diff --git a/app/core/knobs.py b/app/core/knobs.py
-index 307a73bb..71bdf6ab 100644
+index 307a73bb..206a9cda 100644
 --- a/app/core/knobs.py
 +++ b/app/core/knobs.py
 @@ -150,10 +150,25 @@ class Knob:
@@ -49,7 +49,7 @@ index 307a73bb..71bdf6ab 100644
      Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
           default_season_start, "app.core.runs:default_season_start",
           "First week the filter fits; August 1 of the forecast's season.",
-@@ -251,16 +261,10 @@ REGISTRY: tuple = (
+@@ -251,16 +261,11 @@ REGISTRY: tuple = (
           OR.K_PRODUCTION, "flubnf.oracle:K_PRODUCTION",
           "Exponent on each value's log-distance from the median: 1 is the member's own spread, 0.7 narrower.",
           lo=0.1, hi=1.0,
@@ -65,12 +65,13 @@ index 307a73bb..71bdf6ab 100644
 -               "narrowed ones; no card phrase until the default changes.")),
 +         note=("Applied after the Oracle step, about each horizon's median: "
 +               "the median is untouched and a value ten times it becomes ten "
-+               "to the power k times it. Research, screened on stored replay "
-+               "weeks; the run records the unnarrowed quantiles too.")),
++               "to the power k times it. Research, screened on the stage-rule "
++               "member at weight 0.25 over stored replay weeks; the run "
++               "records the unnarrowed quantiles too.")),
      Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
           "float", MX.W_AUX, "flubnf.oracle_mix:W_AUX",
           "Chance a path draws a FluSurv-NET donor when both streams qualify.",
-@@ -322,24 +326,18 @@ REGISTRY: tuple = (
+@@ -322,24 +327,18 @@ REGISTRY: tuple = (
           "Weight share of the jurisdiction's own past weeks in the admissions "
           "pool; 0 drops it.",
           lo=0.0, hi=1.0,
@@ -101,7 +102,7 @@ index 307a73bb..71bdf6ab 100644
           card=(GROUNDHOG_CARD, {1.0: "similar-sized weeks carry the most weight"})),
      Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
           "method", "int", AN.DEFAULT_BANDWIDTH,
-@@ -362,72 +360,49 @@ REGISTRY: tuple = (
+@@ -362,72 +361,49 @@ REGISTRY: tuple = (
           TC.CAP_PRODUCTION, "flubnf.tailcap:CAP_PRODUCTION",
           "Quantiles above the median clipped at this many times the recent level; 0 is no cap.",
           lo=0.0, hi=100.0,
@@ -210,6 +211,19 @@ index a31a6d29..1ff5f32e 100644
      re.S)
  
  
+diff --git a/app/tests/test_forecast_text.py b/app/tests/test_forecast_text.py
+index 0de663ea..28c71fd2 100644
+--- a/app/tests/test_forecast_text.py
++++ b/app/tests/test_forecast_text.py
+@@ -158,7 +158,7 @@ def test_the_panel_lists_only_what_a_student_can_set():
+     fixed = mt.split('id="mt-set-fixed"')[1].split("</details>")[0]
+     assert all(lk.key in fixed for lk in K.LOCKED)
+     assert "Liu-West kernel scale h; the sealed record ran 0.30." in mt
+-    assert "It pins rho*mult and i0." in mt
++    assert "the early form uses it only until" in mt
+ 
+ 
+ # ---------------------------------------------- FC-29: the rule as it is
 diff --git a/app/tests/test_methods_polish.py b/app/tests/test_methods_polish.py
 new file mode 100644
 index 00000000..695957a4
@@ -363,6 +377,33 @@ index 00000000..695957a4
 +    # the model pages share the variables table
 +    assert 'class="eqvars-scroll" tabindex="0" role="region" aria-label="Variables (scrolls)"' \
 +        in client.get("/models").text
+diff --git a/app/tests/test_oracle_card_words.py b/app/tests/test_oracle_card_words.py
+index 518c4f39..2813d39a 100644
+--- a/app/tests/test_oracle_card_words.py
++++ b/app/tests/test_oracle_card_words.py
+@@ -47,8 +47,7 @@ def test_the_donor_floor_is_neither_stream_not_each():
+ 
+ def test_the_narrowing_note_names_the_member_its_screen_used():
+     note = K.BY_KEY["oracle.narrow"].note
+-    assert ("on the stage-rule member at weight 0.25 (9,152 cells): k = 0.7 "
+-            "took pooled relWIS from 0.720 to 0.671") in note
++    assert "screened on the stage-rule member at weight 0.25" in note
+ 
+ 
+ def test_the_oracle_steps_cost_line_promises_no_refit_on_the_forecast_tab():
+diff --git a/app/tests/test_oracle_text.py b/app/tests/test_oracle_text.py
+index 85c50f9a..b79d7d4e 100644
+--- a/app/tests/test_oracle_text.py
++++ b/app/tests/test_oracle_text.py
+@@ -179,7 +179,7 @@ def test_methods_carries_the_oracle_step_card():
+     # the three-season table's mechanistic row is the shipped member; the
+     # filter alone is its ablation, in the row's "?"
+     assert "Particle filter alone (the Oracle SIHRS before its step)" not in t
+-    perf = t[t.index('<span id="performance">'):]
++    perf = t[t.index('<div class="card" id="performance">'):]
+     perf = perf[:perf.index('id="stack"')]
+     assert "<td>Oracle SIHRS" in perf
+     for s in ("2023-24", "2024-25", "2025-26"):
 diff --git a/app/ui/static/tabs/methods.css b/app/ui/static/tabs/methods.css
 index 747cacd1..d8e06737 100644
 --- a/app/ui/static/tabs/methods.css

@@ -44,7 +44,7 @@ How: the dev server and one from the prototype, Chromium at 1280, 700 and 390 px
 - Tests: `test_every_table_scroller_can_be_reached_and_is_named`.
 
 ## Checks
-- New `app/tests/test_methods_polish.py` (8 tests). Methods, console QoL, site build, knobs, panel, refusals, marks, pages, layout, phone tables, models, harmonic, data view and week ticks: 320 passed, 21 skipped. ruff (the gate) clean. Full suite: running.
+- New `app/tests/test_methods_polish.py` (8 tests). Methods, console QoL, site build, knobs, panel, refusals, marks, pages, layout, phone tables, models, harmonic, data view and week ticks: 320 passed, 21 skipped. ruff (the gate) clean. Full suite: 4635 passed, 215 skipped, 3 failed on pins of the old text, since moved: test_forecast_text's "It pins rho*mult and i0." (G30's own pin of a note ME-16 names as jargon), test_oracle_card_words' pin of the narrowing screen's figures (the note keeps the member its screen used, "the stage-rule member at weight 0.25", in plain words), and test_oracle_text's `<span id="performance">` marker (now the card).
 - Output: no run path (knobs' help and note text, templates, CSS). Invariance check: no.
 - Windows: text only.
 
