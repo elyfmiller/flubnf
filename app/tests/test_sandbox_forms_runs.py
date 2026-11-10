@@ -7,6 +7,8 @@ start fits one season, and the one-run-at-a-time refusals claim no engine
 a Groundhog-only run does not use. Hub-free and engine-free
 (conftest.sandbox_root)."""
 import json
+import shutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -58,6 +60,49 @@ def test_an_upload_over_the_limit_is_refused_before_the_editor_text_goes(box):
     page = client.get("/sandbox?model=kinetics_example").text
     assert ("nothing was read past it or stored, and unsaved edits in the "
             "editor were not saved.") in page
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="no node")
+def test_after_a_size_refusal_save_and_run_still_submits(tmp_path):
+    """SB-02's refusal sets a custom validity on the CSV field; Save and
+    run is the one button without formnovalidate, so the message must be
+    cleared on the next click or that button submits nothing until the
+    page reloads. The page's own lines run here on stand-in elements."""
+    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
+    start = js.index("var csv = $('sbfill-csv');")
+    end = js.index("}, true);", start) + len("}, true);")
+    harness = """
+var L = {form: {}, csv: {}};
+function on(o, k) { return function (t, f, cap) { (L[k][t] = L[k][t] || []).push(f); }; }
+var msg = '';
+var csv = {files: [{size: 50}], getAttribute: function () { return '10'; },
+           setCustomValidity: function (m) { msg = m; }, reportValidity: function () {},
+           addEventListener: on(null, 'csv')};
+var form = {addEventListener: on(null, 'form')};
+function $(id) { return id === 'sbfill-csv' ? csv : null; }
+var dirty = true, out = [];
+function button(action) {
+  return {getAttribute: function () { return action; },
+          closest: function () { return this; }};
+}
+function submit(b) {
+  var ev = {submitter: b, prevented: false, preventDefault: function () { this.prevented = true; }};
+  L.form.submit.forEach(function (f) { f(ev); });
+  return ev.prevented;
+}
+function click(b) { L.form.click.forEach(function (f) { f({target: b}); }); }
+BLOCK
+var upload = button('/sandbox/models/m/upload-data'), run = button(null);
+out.push(submit(upload), msg !== '');     // refused, message set
+click(run);                                // the next click clears it
+out.push(msg === '', submit(run));         // and Save and run goes
+console.log(JSON.stringify(out));
+""".replace("BLOCK", js[start:end].replace("var csv = $('sbfill-csv');", ""))
+    f = tmp_path / "h.js"
+    f.write_text(harness, encoding="utf-8")
+    got = subprocess.run([shutil.which("node"), str(f)], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert json.loads(got) == [True, True, True, False]
 
 
 # ------------------------------------------- SB-03: the weeks loaded, no future

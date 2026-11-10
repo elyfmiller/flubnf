@@ -507,9 +507,14 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core import retro
     from app.core.retro import available_seasons
     _invalidate_scans()
+    # every field the panel shows, its older names included (forms.
+    # _knob_panel reads particles, replicates and drop_same_day), so a
+    # refusal never resets a choice the next Run would then replay
     _remember_retro_form(season=season, locations=locations,
                          custom_locations=list(custom_locations),
                          national=national, width=width, engine=engine,
+                         particles=particles, replicates=replicates,
+                         drop_same_day=drop_same_day,
                          knob_fields=knob_fields, knobs=knobs)
     if not _valid_season(season):
         return _refused("Not started: unrecognized season name.")

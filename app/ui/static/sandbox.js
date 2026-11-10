@@ -427,6 +427,14 @@
         dirty = false;
       });
       if (csv) csv.addEventListener('change', function () { csv.setCustomValidity(''); });
+      // the size refusal's message must not outlive its own button: a click
+      // on any button clears it before the browser validates (Save and run
+      // has no formnovalidate), and the handler above sets it again only
+      // for another upload of the same file
+      if (csv) form.addEventListener('click', function (e) {
+        var t = e.target;
+        if (t && t.closest && t.closest('button, input[type=submit]')) csv.setCustomValidity('');
+      }, true);
       addEventListener('beforeunload', function (e) {
         if (!dirty) return;
         e.preventDefault();
