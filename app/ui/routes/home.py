@@ -230,6 +230,32 @@ def _us_words(card: dict | None) -> str:
     return f"{top.replace('_', ' ')} {float(probs[top]):.0%}"
 
 
+def _gray_words(card_sets: list, scope: set | None,
+                gaps: set | None) -> str:
+    """The legend's words for the plain gray, as the hovers word the states
+    that wear it under any model the toggle shows: "no data" while the
+    run's scope is unknown; else "not in this run" for a state outside the
+    scope, "no forecast" for one inside it that a model made no forecast
+    for (a reporting gap wears the hatch, not this gray), or both."""
+    if scope is None:
+        return "no data"
+    from app.core import usmap
+    outside = inside = False
+    for fips in usmap.state_paths():
+        for cards in card_sets:
+            card = cards.get(fips, {})
+            # svg_map's own test for the hatch (usmap._state_view)
+            if card.get("probs") or usmap._is_gap(fips, card, scope, gaps):
+                continue
+            if fips in scope:
+                inside = True
+            else:
+                outside = True
+    if inside and outside:
+        return "not in this run or no forecast"
+    return "no forecast" if inside else "not in this run"
+
+
 @ttlcache.ttl_cache(ttl_s=300.0)
 def _outlook_block_cached(rid: str | None, mtime: float,
                           has_report: bool = False) -> dict:
@@ -276,15 +302,15 @@ def _outlook_block_cached(rid: str | None, mtime: float,
         gaps = outlook_src.get("gap_fips") if outlook_src else None
         gaps = set(gaps) if gaps is not None else None
         why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
-        map_svg = (f"<div class='{MAP_BOX}'>"
-                   + ("<script>window.MAP_LINK='/output/report';</script>"
-                      if has_report else "")
-                   + svg_map(cards,
-                             clickable=with_data if has_report else set(),
-                             scope_fips=scope, gap_fips=gaps,
-                             reasons=why.get(outlook_src.get("model")))
-                   + map_legend("not in this run" if scope is not None
-                                else "no data") + "</div>")
+        map_head = (f"<div class='{MAP_BOX}'>"
+                    + ("<script>window.MAP_LINK='/output/report';</script>"
+                       if has_report else "")
+                    + svg_map(cards,
+                              clickable=with_data if has_report else set(),
+                              scope_fips=scope, gap_fips=gaps,
+                              reasons=why.get(outlook_src.get("model"))))
+        # the gray's words cover every model the toggle can show
+        gray_sets = [cards]
         # toggle from the v3 bundle's per-model cards, else the approximate
         # sets; fewer than two models -> label only, never a dead control
         try:
@@ -310,8 +336,11 @@ def _outlook_block_cached(rid: str | None, mtime: float,
                     group_id="outlook-model", btn_class="quiet",
                     active_class="gold", wrap_class="uk-seg",
                     short_labels=report_v2.MODEL_SHORT)
+                gray_sets += [by_model[m] for m in order]
         except Exception:
             outlook_toggle = ""
+        map_svg = (map_head + map_legend(_gray_words(gray_sets, scope, gaps))
+                   + "</div>")
     except Exception:
         pass
     return {"map_svg": map_svg, "outlook_date": outlook_date,
