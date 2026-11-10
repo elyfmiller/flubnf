@@ -54,10 +54,12 @@
    quantiles it stored.{% endcall %}{% endif %}
   </div>
   {% endif %}
-  {# the rest of the map reads "not in this run" in its legend; the
-     national forecast has no shape, so it is a fact here. With a model
-     toggle the line is there when any model it shows has a national
-     forecast, and reads "no forecast" for one that has none #}
+  {# the rest of the map is the legend's gray: "no data", "not in this
+     run", "no forecast" or "not in this run or no forecast", as the
+     hovers say (routes/home._gray_words); the national forecast has no
+     shape, so it is a fact here. With a model toggle the line is there
+     when any model it shows has a national forecast, and reads "no
+     forecast" for one that has none #}
   {% set us_map = (outlook_us_by_model or {}) if (outlook_toggle and outlook_us_by_model is defined) else {} %}
   {% set us_any = outlook_us or (us_map.values() | select | list) %}
   {% call tips.stats("uk-stats--row hm-mapstats") %}
