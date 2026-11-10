@@ -60,7 +60,7 @@ FluBNF submits two models to FluSight, each under its own hub identity
   epidemics per jurisdiction, refitted every week from the season's start
   on that week's data. The filter runs in public PyBNF (lanl/PyBNF at
   8410f794, `job_type = lwf`) with bngsim integrating the model in
-  process; a jurisdiction season fits in under a minute.
+  process; a jurisdiction season fits in about a minute.
   After the fit, the Oracle step blends the filter's forecast growth with
   donor growth from past seasons at the same calendar week: each forecast
   sample path draws one donor growth path from an earlier season (within
@@ -139,7 +139,9 @@ before the planned acceptance run; the evidence for it is in-house and
 retrospective ([docs/ENGINE.md](docs/ENGINE.md#the-public-engine-the-default)).
 The lab's private PyBNF fork stays installed as the fallback for two
 rounds: `./setup_engine.sh --private` (on Windows, `setup.ps1 -Engine
-private`) switches a copy to it. The student walkthrough is
+private`, run as
+[docs/ENGINE.md](docs/ENGINE.md#choosing-the-engine) gives it) switches a
+copy to it. The student walkthrough is
 [docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
 
 On macOS and Linux, a machine whose copy is stale or broken reinstalls from

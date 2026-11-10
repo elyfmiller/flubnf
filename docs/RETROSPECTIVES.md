@@ -34,7 +34,9 @@ would pool fits from two engines in one season, or in one week. The
 refusal names the engine the season began on and the step that switches
 back. For a season begun on the private engine, that is
 `./setup_engine.sh --private` in the FluBNF folder, or, on Windows,
-`setup.ps1 -Engine private`, then open FluBNF.bat again.
+`powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine
+private` in the FluBNF folder (in Command Prompt or PowerShell), then open
+FluBNF.bat again.
 
 For each such season, choose one:
 

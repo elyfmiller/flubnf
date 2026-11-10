@@ -258,7 +258,10 @@ fit does not hold it). The runner starts itself again after each update
 of the install, between jobs. When the update changes the engine the
 install runs, it stops there instead and says why, so jobs begun on the
 other engine are not refused one by one; started again by hand, it goes
-on with the new engine. It checks the folder before every week, so a
+on with the new engine. Every job runs on the engine the runner started
+with, which the runner hands to it: switching the install to the other
+engine while the runner runs changes no job's engine until the runner
+starts again. It checks the folder before every week, so a
 link, a pipe or an unexpected file stops the job with its reason. A week
 interrupted by a stop or a limit is fitted again from its start. The
 runner alone scores the summary there, against the shipped replays of

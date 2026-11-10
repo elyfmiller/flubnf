@@ -102,7 +102,7 @@ on both.
 macOS (in the Terminal window the install runs in):
 
 ```
-== public PyBNF (the Liu-West filter, job_type = lwf) ==
+== public PyBNF (the Liu-West filter, job_type = lwf), the default ==
 ...
 == verify ==
   + public engine ready: pybnf 1.8.1 from pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1
@@ -177,9 +177,11 @@ If it still says that, the install needs, once:
 
 On macOS, double-click **`SetupEngine.command`** in the FluBNF folder. It
 does only the engine step and names the actual cause. When a Mac cannot
-run the engine at all (no Python 3.12, an Intel Mac below macOS 15),
-FluBNF says so and stops trying the install on every open, until FluBNF's
-engine files or the Mac's system change.
+run the engine at all (no Python 3.12 and no Anaconda to make one, an
+Intel Mac below macOS 15), FluBNF says so and stops trying the install on
+every open, until FluBNF's engine files or the Mac's system change. When
+Anaconda is there but could not make a Python 3.12, that is usually the
+network, and the next open tries again.
 
 On Windows, read the `FluBNF.bat` window: the lines above
 `The public engine did not install` name the cause and what to do. Every
@@ -215,8 +217,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine private
 On macOS the line installs it from the file there and then; on Windows,
 open FluBNF again, which installs it from the file. When FluBNF already
 says the private engine is installed here, the same line switches to it in
-seconds, with no file. `./setup_engine.sh --public` (on Windows,
-`setup.ps1 -Engine public`) goes back to the default.
+seconds, with no file and no network. Either way the line records the
+choice first, so it holds even when the rest cannot finish (no network,
+say). `./setup_engine.sh --public` (on Windows, the same `powershell` line
+with `-Engine public`) goes back to the default.
 
 **It tried to log in to GitHub and asked for a password.**
 This happens only on the private engine. It means it did not find the

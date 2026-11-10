@@ -61,10 +61,13 @@ What gets installed, and how:
 * The network once: the PyBNF wheel comes from github.com, and the other
   packages from pypi.org.
 
-The launchers (`FluBNF.command`, `FluBNF.app`, `SetupEngine.command`,
-`FluBNF.bat`) check the public engine on every open, and install it when
-it is missing or no longer matches the lock. On macOS and Linux,
-`./setup_engine.sh --public` does the same install by hand.
+On a copy that runs the public engine (every copy not switched to the
+private one), the launchers (`FluBNF.command`, `FluBNF.app`,
+`SetupEngine.command`, `FluBNF.bat`) check it on every open, and install
+it when it is missing or no longer matches the lock. A copy switched to
+the private engine checks that one instead, and leaves the public engine
+as it is. On macOS and Linux, `./setup_engine.sh --public` does the same
+install by hand.
 
 Which one is installed: the lock is the reference. From the FluBNF folder,
 
@@ -114,10 +117,23 @@ folder:
 
 then open `FluBNF.bat` again. Either one records `FLUBNF_ENGINE=private`
 for this copy of FluBNF alone (in `.flubnf.env`, or in `.flubnf.env.cmd`
-on Windows). When the private engine is already installed and works,
-`./setup_engine.sh --private` records the choice and stops: a few seconds,
-no download, no network. Otherwise it installs the private engine as the
-rest of this page says.
+on Windows), first, before it installs or fetches anything, so a run that
+stops early (no network, say) still switches the copy. When the private
+engine is already installed and works, that is all either one does: a few
+seconds, no download, no network.
+
+* On macOS and Linux, `./setup_engine.sh --private` tries the engine
+  environment and checkout this copy records first, then the default
+  ones, and records the pair that works. When a different engine archive
+  is waiting for an unpacked private engine (below), it installs that in
+  its place instead of stopping. Otherwise it installs the private engine
+  as the rest of this page says.
+* On Windows, `setup.ps1 -Engine private` tries the engine environment and
+  folder `FluBNF.bat` would run, and stops there only on a copy whose
+  console environment (`.venv`) is already made. Otherwise it goes on
+  with the whole setup, which takes minutes and the network, and the next
+  open of `FluBNF.bat` installs the private engine
+  ([WINDOWS.md](WINDOWS.md#the-private-engine-the-fallback)).
 
 `./setup_engine.sh --public` and `setup.ps1 -Engine public` record
 `FLUBNF_ENGINE=public`: the default again. `./setup_engine.sh` or
@@ -125,13 +141,25 @@ rest of this page says.
 
 A `FLUBNF_ENGINE` that is neither `private` nor `public` runs the public
 engine: the launchers say so in one line, and `flubnf doctor` shows a
-warning. The installers (`setup_engine.sh`, `install.sh`, `reinstall.sh`)
-refuse such a value and install nothing.
+warning. The installers (`setup_engine.sh` with no option, `install.sh`,
+`reinstall.sh`) refuse such a value and install nothing; `setup.sh` and
+`setup.ps1` say so in one line and go on with the public engine.
 
 The record also reaches the `flubnf` commands started from a plain
 Terminal (`flubnf app`, `retro`, `doctor`, `experiment`, `runner`): they
-read it when the shell does not set `FLUBNF_ENGINE`. A value the shell
-sets wins over the record, for that shell.
+read it when the shell does not set `FLUBNF_ENGINE`. When the shell does
+set it:
+
+* `flubnf app`, `retro`, `doctor` and `experiment` follow the shell's
+  value, for that shell; `flubnf doctor` warns when it names the other
+  engine than the record.
+* `flubnf runner` refuses to start when the shell's value names the other
+  engine than the record, and says how to fix it: read the record into
+  that Terminal first (`. ./.flubnf.env` in the FluBNF folder; on
+  Windows, `call .flubnf.env.cmd`).
+* The launchers (`FluBNF.command`, `FluBNF.app`, `FluBNF.bat`) follow the
+  record over the shell. `setup_engine.sh` with no option, and
+  `SetupEngine.command`, take the shell's value first.
 
 Nothing switches engines by itself. When the public engine cannot install
 (no network, no Python 3.12, an Intel Mac below macOS 15), the console
@@ -146,6 +174,10 @@ A new machine starts on the default with the plain install line:
 A machine that must start on the fallback adds the variable:
 
     curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | FLUBNF_ENGINE=private bash
+
+Pasted again on a copy that records the private engine, the plain line
+keeps it and says so; `| FLUBNF_ENGINE=public bash` chooses the default
+again.
 
 `reinstall.sh` takes `FLUBNF_ENGINE=private` the same way, and then needs
 the lab's engine file. Without it, it needs no engine file and leaves the
@@ -356,16 +388,21 @@ Prompt and PowerShell:
     git -C "<engine folder>" pull
 
 A private archive install is replaced by saving `pybnf-pf-2fdadee0.tar.gz`
-in Downloads, then, on macOS, running `./setup_engine.sh --private` or
-double clicking `SetupEngine.command` on a copy that records the private
-engine, and on Windows, opening `FluBNF.bat` again, which replaces the copy
-it unpacked into `%LOCALAPPDATA%\FluBNF\PyBNF-Private` with the newer
-archive (the old copy is renamed, never deleted).
+in Downloads, then, on macOS and Linux, running `./setup_engine.sh
+--private` (on macOS, double clicking `SetupEngine.command` on a copy that
+records the private engine does the same). It installs an archive whose
+version stamp differs from the unpacked copy's, and which is newer than
+it, in that copy's place, even when the copy on disk works. On Windows,
+opening `FluBNF.bat` again replaces the copy it unpacked into
+`%LOCALAPPDATA%\FluBNF\PyBNF-Private` with the newer archive. Either way
+the old copy is renamed, never deleted.
 
 A retrospective season resumes only on the engine and the build its weeks
 were fitted by. A season begun on the private engine is refused on the
 public one, and the other way round. The refusal names the step that
 switches back (for a private season, `./setup_engine.sh --private`, or
 `setup.ps1 -Engine private`). Switch back to finish it there, or archive or discard it to
-replay it on this one. Seasons from before builds were recorded resume as
-before.
+replay it on this one. A season from before builds were recorded was
+fitted by the private engine: it resumes there as before, and is refused
+on the public one. A season whose build could not be read when it began
+records its engine alone, and resumes only on that engine.
