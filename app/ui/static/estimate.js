@@ -15,7 +15,9 @@
      var sp = E.span(s, ratio, p.first);            // ratio null: none yet
      line.textContent = E.human(sp[0], sp[1]);      // "" : show nothing
 
-   fits is locations x Independent Runs a week. The 1x end of a span is
+   fits is locations x Independent Runs a week, priced at the width but
+   never above p.mostWidth (data-est-most-width: this computer's default
+   width, estimates.priced_width). The 1x end of a span is
    the cost model alone (no prepare, Oracle step or Groundhog), so a page
    shows the span, never its low end alone. Zero fits (the Groundhog
    alone) read "", never "under a minute".
@@ -28,6 +30,9 @@
   // the human text's switch to hours (retro_progress.js etaText's rule),
   // and the high end below which it reads "under a minute"
   var HOURS_FROM_S = 5400, MINUTE_S = 60;
+  // estimates.TOO_MANY_HOURS: from this many hours human() says nothing
+  // (toFixed would write "1e+21")
+  var TOO_MANY_HOURS = 1e21;
 
   // Python's int(): toward zero
   function toInt(x) {
@@ -42,7 +47,7 @@
     function get(name) { return el.getAttribute("data-est-" + name); }
     var names = ["intercept", "per-week", "forecast-weeks",
                  "reference-particles", "public-ratio", "first-span",
-                 "engine", "width"];
+                 "engine", "width", "most-width"];
     for (var i = 0; i < names.length; i++) {
       if (get(names[i]) === null || get(names[i]) === undefined) return null;
     }
@@ -55,7 +60,8 @@
       publicRatio: parseFloat(get("public-ratio")),
       first: [parseFloat(first[0]), parseFloat(first[1])],
       engine: get("engine") === "public" ? "public" : "private",
-      width: Math.max(1, parseInt(get("width"), 10) || 1)
+      width: Math.max(1, parseInt(get("width"), 10) || 1),
+      mostWidth: Math.max(1, parseInt(get("most-width"), 10) || 1)
     };
     var nums = [p.intercept, p.perWeek, p.forecastWeeks, p.refParticles,
                 p.publicRatio, p.first[0], p.first[1]];
@@ -78,11 +84,13 @@
   }
 
   // estimates.run_seconds: over the weeks (each its own n_obs),
-  // ceil(fits / width) waves of fitSeconds, added one by one. `width`
-  // null: p.width (the page's).
+  // ceil(fits / w) waves of fitSeconds, added one by one. w is `width`
+  // (null: p.width, the page's), never above p.mostWidth
+  // (estimates.priced_width).
   function seconds(weeksNObs, fits, particles, width, p, engine) {
     var w = width === null || width === undefined ? p.width
                                                   : Math.max(1, toInt(width));
+    w = Math.min(w, p.mostWidth);
     var waves = Math.ceil(Math.max(0, toInt(fits || 0)) / w);
     var total = 0;
     for (var i = 0; i < (weeksNObs || []).length; i++) {
@@ -150,10 +158,12 @@
 
   // estimates.human: etaText's rule after "about" (the unit is the high
   // end's; hours with one decimal from 90 min up; minutes never below 1);
-  // "under a minute" below 60 s at the high end; "" for no estimate
+  // "under a minute" below 60 s at the high end; "" for no estimate (and
+  // for TOO_MANY_HOURS or more)
   function human(lo, hi) {
     if (typeof lo !== "number" || typeof hi !== "number") return "";
     if (!isFinite(lo) || !isFinite(hi) || !(hi > 0)) return "";
+    if (hi / 3600 >= TOO_MANY_HOURS) return "";
     if (hi < MINUTE_S) return "under a minute";
     var hours = hi >= HOURS_FROM_S;
     function fmt(s) {

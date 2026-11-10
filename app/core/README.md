@@ -31,7 +31,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `reclaim.py` | PRODUCTION | storage-reclaim policy | server Storage tab, `retro` |
 | `ensemble.py` | PRODUCTION | samples to the 23 quantiles (blends nothing, despite the name) | `retro`, `playback`, server |
 | `proc.py` | PRODUCTION | reduced-priority subprocess helpers | `engines/pf.py`, retro runners |
-| `estimates.py` | PRODUCTION | how long a run takes before it starts: the engine's cost model (`pf.cell_seconds`) over the weeks, ⌈fits/width⌉ waves a week, as a span (`sandbox.ETA_FIRST_SPAN` times the model before this computer has a ratio; its 1x end leaves out prepare, the Oracle step and the Groundhog) and in words; `page_params` gives a form's `data-est-*` attributes, which `static/estimate.js` reads to recompute in the browser | server Forecast, Retrospective and own-data Replay forms |
+| `estimates.py` | PRODUCTION | how long a run takes before it starts: the engine's cost model (`pf.cell_seconds`) over the weeks, ⌈fits/width⌉ waves a week (the width never above this computer's default, `pf.DEFAULT_SHARD_WIDTH`: `priced_width`), as a span (`sandbox.ETA_FIRST_SPAN` times the model before this computer has a ratio; its 1x end leaves out prepare, the Oracle step and the Groundhog) and in words (nothing for a figure too large to say); `page_params` gives a form's `data-est-*` attributes, which `static/estimate.js` reads to recompute in the browser | server Forecast, Retrospective and own-data Replay forms |
 | `ttlcache.py` | PRODUCTION | short TTL cache for repeated filesystem scans | server |
 
 ## Scoring

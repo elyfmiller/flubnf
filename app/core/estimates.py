@@ -4,10 +4,10 @@ static/estimate.js).
 
 One estimate for every run form, so no page writes its own. A run fits
 `fits` cells a week (locations x Independent Runs), dealt across `width`
-runners that run at once, so a week costs ceil(fits / width) waves of one
-cell each:
+runners that run at once, so a week costs ceil(fits / w) waves of one
+cell each, w being the width priced (below):
 
-    seconds = sum over the weeks of ceil(fits / width) * pf.cell_seconds
+    seconds = sum over the weeks of ceil(fits / w) * pf.cell_seconds
 
 pf.cell_seconds is the engine's cost model (fitted on the production
 machine, linear in particles, PUBLIC_COST_RATIO times it on the public
@@ -31,8 +31,14 @@ does not price, so human() says nothing for zero seconds rather than
 
 Width. The Forecast form runs at pf.shard_width() (FLUBNF_PF_WIDTH, else
 pf.DEFAULT_SHARD_WIDTH): page_params(None) gives it. The Retrospective
-form runs at its own width field: pass it. runner._week_cost uses
-pf.DEFAULT_SHARD_WIDTH.
+form runs at its own width field: pass it. A run is priced at that width
+but never above pf.DEFAULT_SHARD_WIDTH (priced_width): this computer's
+cores less the SHARD_CORES_RESERVED left for the console and the browser,
+at most SHARD_WIDTH_CAP. More runners than that share the cores, and the
+gain is near-linear only to about 8 runners and flat by 16
+(pf.default_shard_width), so a wider run is not priced as faster.
+runner._week_cost prices every run at pf.DEFAULT_SHARD_WIDTH, so the two
+agree at any width from it up.
 
 Weeks observed. n_obs_for counts the weeks from the season's start to the
 anchor, as runner._week_n does: an upper bound, since prepare drops
@@ -62,12 +68,16 @@ HOURS_FROM_S = 5400
 #: below this many seconds at the high end, the human text is "under a
 #: minute"
 MINUTE_S = 60
+#: from this many hours at the high end the human text says nothing: no
+#: run is that long, and JavaScript's toFixed writes such a figure as
+#: "1e+21" (a posted form can carry any number; review 3 of #93, finding 3)
+TOO_MANY_HOURS = 1e21
 
 #: the data-* attributes page_params() gives, in order
 PARAM_NAMES = ("data-est-intercept", "data-est-per-week",
                "data-est-forecast-weeks", "data-est-reference-particles",
                "data-est-public-ratio", "data-est-first-span",
-               "data-est-engine", "data-est-width")
+               "data-est-engine", "data-est-width", "data-est-most-width")
 
 
 def _first_span() -> tuple:
@@ -87,14 +97,29 @@ def fit_seconds(n_obs: int, particles: int | None,
                             "particles": int(particles or 0)}, engine)
 
 
+def most_width() -> int:
+    """The most runners a run is priced at: pf.DEFAULT_SHARD_WIDTH, read
+    when asked, never below 1."""
+    return max(1, int(pf.DEFAULT_SHARD_WIDTH))
+
+
+def priced_width(width: int | None = None) -> int:
+    """The width a run is priced at: pf.shard_width(width) (None is
+    FLUBNF_PF_WIDTH, else pf.DEFAULT_SHARD_WIDTH; never below 1), never
+    above most_width(). A run wider than this computer's default shares
+    its cores, so it is priced at the default, as runner._week_cost prices
+    every run."""
+    return min(pf.shard_width(width), most_width())
+
+
 def run_seconds(weeks_n_obs: Iterable[int], fits_per_week: int,
                 particles: int | None, width: int | None = None,
                 engine: str | None = None) -> float:
     """Predicted seconds for a run: over the weeks (each its own n_obs),
-    ceil(fits_per_week / width) waves of fit_seconds. `width` None is
-    pf.shard_width() (FLUBNF_PF_WIDTH, else pf.DEFAULT_SHARD_WIDTH); never
-    below 1. The weeks are added one by one, as estimate.js adds them."""
-    w = pf.shard_width(width)
+    ceil(fits_per_week / w) waves of fit_seconds, w being
+    priced_width(width): the run's width, never above this computer's
+    default. The weeks are added one by one, as estimate.js adds them."""
+    w = priced_width(width)
     waves = -(-max(0, int(fits_per_week or 0)) // w)
     total = 0.0
     for n in weeks_n_obs:
@@ -153,12 +178,14 @@ def human(lo: float, hi: float) -> str:
     up, else whole minutes, never below 1; one figure when both ends read
     alike. "about 10 to 20 min", "about 1.5 to 6.0 h", "about 3 min";
     "under a minute" when 0 < hi < MINUTE_S; "" for no estimate (hi not
-    above 0, or not finite)."""
+    above 0, not finite, or TOO_MANY_HOURS or more)."""
     try:
         lo, hi = float(lo), float(hi)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return ""
     if not (math.isfinite(lo) and math.isfinite(hi)) or not hi > 0:
+        return ""
+    if hi / 3600 >= TOO_MANY_HOURS:
         return ""
     if hi < MINUTE_S:
         return "under a minute"
@@ -179,10 +206,11 @@ def page_params(width: int | None = None,
     """The data-est-* attributes a form carries for estimate.js, as
     {attribute: text}: the cost model's constants, PUBLIC_COST_RATIO,
     ETA_FIRST_SPAN, the engine ("public" or "private"; by default the one
-    this process runs) and the width (pf.shard_width(width): the Forecast
-    form passes None, the Retrospective form its own width field). Floats
-    are written with repr, so JavaScript reads back the same numbers. A
-    fresh dict each call."""
+    this process runs), the width (pf.shard_width(width): the Forecast
+    form passes None, the Retrospective form its own width field) and the
+    most runners a run is priced at (most_width). Floats are written with
+    repr, so JavaScript reads back the same numbers. A fresh dict each
+    call."""
     if engine is None:
         engine = "public" if pf._public() else "private"
     else:
@@ -195,5 +223,6 @@ def page_params(width: int | None = None,
               repr(float(pf.PUBLIC_COST_RATIO)),
               f"{float(lo)!r} {float(hi)!r}",
               engine,
-              str(pf.shard_width(width)))
+              str(pf.shard_width(width)),
+              str(most_width()))
     return dict(zip(PARAM_NAMES, values))

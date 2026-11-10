@@ -44,7 +44,10 @@ needs_js = pytest.mark.skipif(
 @pytest.fixture
 def today(monkeypatch):
     """The cost model's constants as reviewed (2026-11-09), so the pinned
-    figures hold after a refit."""
+    figures hold after a refit, and a default width of 16, so a figure
+    pinned at a width up to 16 is priced at that width on any computer
+    (estimates.priced_width)."""
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 16)
     monkeypatch.setattr(pf, "COST_INTERCEPT_S", 1.194)
     monkeypatch.setattr(pf, "COST_PER_WEEK_S", 0.6365)
     monkeypatch.setattr(pf, "COST_FORECAST_WEEKS", 4)
@@ -144,13 +147,17 @@ def test_week_cost_agrees_with_runner(season, engine):
 
 @pytest.mark.parametrize("width", [1, 2, 3, 7, 8, 16, 159, 400])
 def test_run_seconds_is_the_slowest_shard(width, engine):
-    """For cells sharing one n_obs, ceil(fits / width) waves is the
-    sharded run's own prediction (its slowest shard)."""
+    """For cells sharing one n_obs, ceil(fits / w) waves is the sharded
+    run's own prediction (its slowest shard) at w, the width priced: the
+    run's width, never above pf.DEFAULT_SHARD_WIDTH (priced_width;
+    test_estimates_width.py)."""
+    w = min(width, pf.DEFAULT_SHARD_WIDTH)
+    assert E.priced_width(width) == w
     for n, fits, particles in ((14, 159, 10_000), (40, 21, 10_000),
                                (3, 5, 2_000)):
         cells = [{"n_obs": n, "particles": particles}] * fits
         assert E.run_seconds([n], fits, particles, width) == pytest.approx(
-            pf.expected_seconds(pf.shard_cells(cells, width)), rel=1e-12)
+            pf.expected_seconds(pf.shard_cells(cells, w)), rel=1e-12)
 
 
 def test_fit_seconds_is_cell_seconds(engine):
@@ -258,7 +265,8 @@ def test_page_params(today, engine, monkeypatch):
                  "data-est-public-ratio": "2.4",
                  "data-est-first-span": "1.0 4.0",
                  "data-est-engine": engine,
-                 "data-est-width": str(pf.DEFAULT_SHARD_WIDTH)}
+                 "data-est-width": str(pf.DEFAULT_SHARD_WIDTH),
+                 "data-est-most-width": str(pf.DEFAULT_SHARD_WIDTH)}
     other = "private" if engine == "public" else "public"
     assert E.page_params(engine=other)["data-est-engine"] == other
     # a fresh dict each call: a caller's change does not reach the next

@@ -571,7 +571,11 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
     bw_kw.update(src_kw)                     # empty on the hub path
     # the pooled form's donor ratios, one bank scan per selection for the
     # whole run instead of one per location and horizon (the local form
-    # keeps its own on `local`); same forecasts, built and dropped per run
+    # keeps its own on `local`); same forecasts, built and dropped per run.
+    # A memo hit is matched on the bank object, not on what it holds, so
+    # nothing in a run changes `bank` (or a splice pool's) in place once
+    # built (flubnf/analogue._memoised;
+    # tests/test_calendar_and_memo_contracts.py)
     memo: dict = {}
     extra = getattr(spec, "extra", None)
     for loc in spec.locations:

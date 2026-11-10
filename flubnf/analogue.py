@@ -75,13 +75,53 @@ _STD_NORMAL = NormalDist()
 
 
 # epiweek and season_of run once per bank cell on every donor scan, so both
-# are cached on the date (a bank holds a few hundred distinct dates). They
-# are pure functions of it, a datetime (a pandas Timestamp included) never
-# equals a date, and lru_cache is thread-safe and hands out ints.
-@functools.lru_cache(maxsize=8192)
-def epiweek(d: date) -> int:
+# are cached on their argument (a bank holds a few hundred distinct dates),
+# for dates and naive stamps only: two of those that compare equal fall on
+# the same calendar day, and a datetime (a pandas Timestamp included) never
+# equals a date. Two time-zone-aware stamps for one instant in different
+# zones compare equal yet can fall on different days, so an aware stamp
+# never enters a cache (_naive raises for it, and lru_cache keeps no
+# exception), and it, or anything that cannot be hashed, is answered by the
+# rule itself, as before the cache: the same answer or the same refusal.
+# An aware stamp never equals a naive one, so it never finds a cached
+# answer either. lru_cache is thread-safe and hands out ints; cache_info
+# and cache_clear are the caches'.
+class _Aware(Exception):
+    """A time-zone-aware stamp, kept out of the calendar caches."""
+
+
+def _naive(rule):
+    """`rule` for a date or a naive stamp; _Aware for an aware stamp."""
+    def naive(d):
+        if getattr(d, "tzinfo", None) is not None:
+            raise _Aware
+        return rule(d)
+    return naive
+
+
+def _cached_calendar(rule, name: str):
+    """`rule`, cached on the argument for dates and naive stamps (see
+    above), as the module's `name`: the rule's docstring, __wrapped__ the
+    rule, and the cache's cache_info and cache_clear."""
+    cached = functools.lru_cache(maxsize=8192)(_naive(rule))
+
+    def calendar(d):
+        try:
+            return cached(d)
+        except (_Aware, TypeError):
+            pass                  # aware, unhashable, or the rule refused it
+        return rule(d)
+    functools.update_wrapper(calendar, rule)
+    calendar.__name__ = calendar.__qualname__ = name
+    calendar.cache_info = cached.cache_info
+    calendar.cache_clear = cached.cache_clear
+    return calendar
+
+
+def _epiweek(d: date) -> int:
     """CDC MMWR week number. Weeks end Saturday; week 1 ends on the first
-    Saturday whose week contains >= 4 January days."""
+    Saturday whose week contains >= 4 January days. A datetime's week is
+    its own calendar day's, in its own time zone."""
     y = d.year
     for yy in (y + 1, y, y - 1):
         j = date(yy, 1, 1)
@@ -93,12 +133,16 @@ def epiweek(d: date) -> int:
     return -1
 
 
-# Cached on the date alone: SEASON_BOUNDARY_MONTH must never be reassigned
-# at runtime (a per-dataset boundary must become an argument of this function).
-@functools.lru_cache(maxsize=8192)
-def season_of(d: date) -> int:
-    """Influenza season label: Aug-Jul, named by the starting year."""
+# season_of is cached on the date alone: SEASON_BOUNDARY_MONTH must never be
+# reassigned at runtime (a per-dataset boundary must become an argument).
+def _season_of(d: date) -> int:
+    """Influenza season label: Aug-Jul, named by the starting year. A
+    datetime's season is its own calendar day's, in its own time zone."""
     return d.year if d.month >= SEASON_BOUNDARY_MONTH else d.year - 1
+
+
+epiweek = _cached_calendar(_epiweek, "epiweek")
+season_of = _cached_calendar(_season_of, "season_of")
 
 
 def calendar_distance(a: int, b: int, period: int = 52) -> int:
@@ -664,7 +708,8 @@ class LocalPooling:
     #: epiweek, season, horizon and bandwidth; the research bank; and the
     #: admissions pool's donor ratios (_memoised). One LocalPooling per run
     #: (app/core/engines/analogue.local_args); a bank must not be changed
-    #: in place while a LocalPooling that has read it is still in use
+    #: in place while a LocalPooling that has read it is still in use (its
+    #: hits are matched on the bank object, not on what it holds)
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
@@ -754,7 +799,17 @@ def _memoised(memo: dict, key: tuple, bank: Mapping[tuple, float], scan):
     (as _research_bank), so a reused id never returns another bank's ratios.
     The arrays handed out are read-only, so no caller can change what the
     next location reads. `memo` lives for one run and is not shared between
-    runs or threads."""
+    runs or threads.
+
+    A hit is matched on the bank object, not on what it holds: a bank
+    changed in place (a cell added, removed or revised) while a memo that
+    has read it is kept returns the first scan's ratios. Reading the bank
+    to notice would cost the scan the memo saves, so the rule is the
+    caller's: never change a bank in place under a kept memo; build a new
+    one, or start a new memo. The engine builds its banks once per run and
+    never changes them (app/core/engines/analogue._walk;
+    tests/test_calendar_and_memo_contracts.py checks every bank a run's
+    memos read, before and after)."""
     hit = memo.get(key)
     if hit is not None and hit[0] is bank:
         return hit[1]
@@ -1016,7 +1071,10 @@ def forecast(anchor: float, as_of: date, horizon: int,
     `memo`: a dict the caller keeps for one run (app/core/engines/analogue
     _walk), so the pooled form scans the bank once per selection rather
     than once per location (_memoised); None scans on every call. The
-    local form keeps its own on `local`. Neither changes a forecast.
+    local form keeps its own on `local`. Neither changes a forecast, so
+    long as no bank (`bank`, or a pool's in `splice`) is changed in place
+    while the memo or the LocalPooling that read it is kept: a hit is
+    matched on the bank object, not on what it holds (_memoised).
     """
     if local is not None:
         return _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth,

@@ -854,13 +854,18 @@ def dataset_tag(loc: str) -> str:
 
 def _cell_files(d: Path) -> dict | None:
     """{name: bytes} of every entry in cell folder d, before its BNG2.pl
-    check; None when one is not a plain file. Two replicates of a
-    location write the same model and data, so these match."""
+    check; None when one is not a plain file, or when the folder or a file
+    in it cannot be read (an OSError: BNG2.pl then runs, as it always did
+    before the copy). Two replicates of a location write the same model
+    and data, so these match."""
     out = {}
-    for p in d.iterdir():
-        if p.is_symlink() or not p.is_file():
-            return None
-        out[p.name] = p.read_bytes()
+    try:
+        for p in d.iterdir():
+            if p.is_symlink() or not p.is_file():
+                return None
+            out[p.name] = p.read_bytes()
+    except OSError:
+        return None
     return out
 
 
@@ -875,6 +880,44 @@ def _netgen_added(d: Path, before: dict | None) -> tuple | None:
     if any(after.get(n) != b for n, b in before.items()):
         return None
     return before, sorted(set(after) - set(before)), d
+
+
+#: the suffix of a copy on its way into a later replicate's folder
+_COPY_PART = ".netgen-part"
+
+
+def _copy_added(r0: tuple, d: Path) -> bool:
+    """Copy what BNG2.pl added to replicate 0's folder (r0, _netgen_added's)
+    into the later replicate's folder d. True when every file arrived
+    whole. On any OSError (a file held open by a virus scanner, a full
+    disk, replicate 0's folder gone) False, with every copy made here
+    removed again as far as it can be, so the caller runs BNG2.pl in d,
+    as it always did before the copy.
+
+    m.net goes last, through a temporary name and one rename, so d holds an
+    m.net only when every copy is whole: a BNG2.pl that then fails is still
+    seen to fail (prepare's check is that m.net exists)."""
+    names = sorted(r0[1], key=lambda n: n == "m.net")     # m.net last
+    made = []
+    try:
+        for name in names:
+            if name == "m.net":
+                part = d / (name + _COPY_PART)
+                made.append(part)
+                shutil.copy2(r0[2] / name, part)
+                made.append(d / name)
+                os.replace(part, d / name)
+            else:
+                made.append(d / name)
+                shutil.copy2(r0[2] / name, d / name)
+        return True
+    except OSError:
+        for p in made:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        return False
 
 
 def prepare(spec, workroot: Path) -> list:
@@ -1228,13 +1271,11 @@ def prepare(spec, workroot: Path) -> list:
             # BNG2.pl runs for replicate 0. A later replicate whose files
             # equal replicate 0's, byte for byte, gets copies of the files
             # BNG2.pl added there: the same bytes it would write again.
-            # Any difference runs BNG2.pl, as for replicate 0.
+            # Any difference runs BNG2.pl, as for replicate 0, and so does
+            # an OSError while reading or copying (_cell_files, _copy_added).
             mine = _cell_files(d)
             reused = (rep > 0 and r0 is not None and mine is not None
-                      and mine == r0[0])
-            if reused:
-                for name in r0[1]:
-                    shutil.copy2(r0[2] / name, d / name)
+                      and mine == r0[0] and _copy_added(r0, d))
             if not (reused and (d / "m.net").is_file()):
                 # Windows only until the conf decision for production:
                 # bng_env (BNGPATH pinned) and the ANSI read. The bare perl
