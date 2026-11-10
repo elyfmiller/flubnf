@@ -16,14 +16,15 @@ contributors.
 - A model comes in as one folder, `proposals/<name>/` (section 6). Review runs
   it again on the lab's runner, where its fingerprints must match yours; it
   becomes a shipped model only through Ely's own work.
-- Changes to the launchers, the installers, `.github/` or the engine updater
-  are flagged and read line by line. Any other change, a doc fix say, comes
+- Changes to the launchers, the installers, CI (`.github/` and
+  `scripts/make_test_lock.py`) or the engine updater are flagged and read
+  line by line. Any other change, a doc fix say, comes
   the same way, with the reason in the description.
 
 ## 1. A clone of your own
 
 **On your computer**, install FluBNF as
-[INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) says, Steps 1 to 3. The
+[INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) says, Steps 1 to 2. The
 commands on this page are that clone's own `flubnf`:
 `~/GitHub/flubnf/.venv/bin/flubnf` on macOS,
 `"%LOCALAPPDATA%\FluBNF\flubnf\.venv\Scripts\flubnf"` on Windows, in
@@ -245,8 +246,9 @@ refuses, each error saying what to do:
   with what is wrong.
 
 It flags, as a warning that leaves it green, a change to the launchers,
-the installers, `.github/` or the engine updater, and a commit linked to
-another GitHub account than yours (the website's `web-flow` may commit).
+the installers, CI (`.github/` and `scripts/make_test_lock.py`) or the
+engine updater, and a commit linked to another GitHub account than yours
+(the website's `web-flow` may commit).
 
 To fix a commit: `git commit --amend` (`--reset-author` takes your name
 and address), or `git rebase -i` for an older one, then
@@ -254,5 +256,8 @@ and address), or `git rebase -i` for an older one, then
 every push, and when the title, the description or the base changes.
 
 The tests wait for Ely's approval. Review reruns the proposal on the Mac
-Studio, where its fingerprints must equal your `summary.json`'s. Only Ely
+Studio, where its fingerprints must equal your `summary.json`'s. Its
+scores equal yours only when both runs used the same engine and build:
+the public and the private engine draw their random numbers differently.
+`ran.engine_build` in `summary.json` names the build yours used. Only Ely
 merges.

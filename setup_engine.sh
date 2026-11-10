@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-# Tier-B engine setup: PyBNF fork (fit_type=pf) + bngsim. Lab-member edition.
+# Tier-B engine setup, two routes (FLUBNF_ENGINE; docs/ENGINE.md):
+#   public, the default: public PyBNF's Liu-West filter (job_type = lwf) +
+#     bngsim, from engine-requirements.txt, in a venv of its own;
+#   private, the fallback: the lab's PyBNF fork (fit_type=pf) + bngsim,
+#     lab-member edition.
+#   ./setup_engine.sh            the route FLUBNF_ENGINE names (shell, else .flubnf.env), else public
+#   ./setup_engine.sh --public   the public engine, recorded in .flubnf.env
+#   ./setup_engine.sh --private  the private engine (the fallback), recorded in .flubnf.env
+# Exit codes: 0 ready; 1 not ready (running it again may fix it: every
+# network, pip or conda failure); 2 an unknown option or FLUBNF_ENGINE
+# value; 3 this machine cannot run the public engine (no Python 3.12 and no
+# conda to make one, or a platform the lock has no wheels for).
 set -u
 say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
@@ -24,9 +35,21 @@ else
   done
   [ -n "$PYBNF" ] || PYBNF="$HOME/GitHub/PyBNF-Private"
 fi
-BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+ENVF="$HERE/.flubnf.env"
+
+# .flubnf.env is rewritten, never skipped (a stale entry must not outlive a
+# verified setup): every line that sets a name in $1 (a|b) goes, then the
+# lines given are appended. Whole names only: FLUBNF_PY_ENGINE must not take
+# FLUBNF_PY_ENGINE_PUBLIC with it.
+record_env() {
+  _names="$1"; shift
+  _tmpf="$ENVF.tmp.$$"
+  grep -v -E "(^|[[:space:]])($_names)=" "$ENVF" 2>/dev/null > "$_tmpf" || true
+  for _l in "$@"; do printf '%s\n' "$_l" >> "$_tmpf"; done
+  mv "$_tmpf" "$ENVF"
+}
 
 # Offline engine files. The fork is private, so cloning it is the one install
 # step that needs a GitHub account; a file needs none. Either a git bundle
@@ -137,42 +160,390 @@ case "${1:-}" in
     exit 0 ;;
 esac
 
-# The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
-# at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
-PY=""
-for c in python3.12 python3.11 python3; do
-  cand=$(command -v "$c" 2>/dev/null) || continue
-  "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
-    && { PY="$cand"; break; }
-done
-if [ -z "$PY" ]; then
-  for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
-              /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
-              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
-              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
-    [ -x "$cand" ] && { PY="$cand"; break; }
+# Which engine. An option is also a choice to keep: --public or --private
+# records it in .flubnf.env, and the launchers then read it. With no
+# option: FLUBNF_ENGINE from this shell, else the record (read in a subshell,
+# so the rest of .flubnf.env changes nothing here), else public, the
+# default. Quotes, surrounding spaces and case do not count; any other value
+# stops here, because this is about to install something.
+RECORD_ROUTE=""
+case "${1:-}" in
+  --public)  ROUTE=public;  RECORD_ROUTE=1 ;;
+  --private) ROUTE=private; RECORD_ROUTE=1 ;;
+  "")
+    RAW="${FLUBNF_ENGINE:-}"
+    [ -n "$RAW" ] \
+      || RAW="$( [ -f "$ENVF" ] && . "$ENVF" >/dev/null 2>&1; printf '%s' "${FLUBNF_ENGINE:-}" )"
+    case "$(printf '%s' "$RAW" | tr -d '"' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" in
+      private) ROUTE=private ;;
+      ""|public) ROUTE=public ;;
+      *) warn "FLUBNF_ENGINE is \"$RAW\"; it must be private or public (./setup_engine.sh --public or --private sets it)"
+         exit 2 ;;
+    esac ;;
+  *) warn "unknown option: $1 (setup_engine.sh takes --public, --private or nothing)"
+     exit 2 ;;
+esac
+
+# The private engine this copy recorded (FLUBNF_PY_ENGINE and FLUBNF_PYBNF in
+# .flubnf.env), read in a subshell as the route is, so this shell's values
+# do not stand in for the record's.
+_rec="$( unset FLUBNF_PY_ENGINE FLUBNF_PYBNF
+         [ -f "$ENVF" ] && . "$ENVF" >/dev/null 2>&1
+         printf '%s\n%s\n' "${FLUBNF_PY_ENGINE:-}" "${FLUBNF_PYBNF:-}" )"
+REC_PY="$(printf '%s\n' "$_rec" | sed -n 1p)"
+REC_PYBNF="$(printf '%s\n' "$_rec" | sed -n 2p)"
+
+# The private engine is there to switch to: a venv's Python and a fork with
+# the particle filter, this shell's, the recorded or the default. Said after
+# the public route's failures.
+private_engine_ready() {
+  { [ -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ] && [ -f "$PYBNF/pybnf/pf.py" ]; } \
+    || { [ -x "${REC_PY:-/nonexistent}" ] && [ -f "${REC_PYBNF:-$PYBNF}/pybnf/pf.py" ]; } \
+    || { [ -x "$ENGINE_VENV/bin/python" ] && [ -f "$PYBNF/pybnf/pf.py" ]; }
+}
+fallback_line() {
+  private_engine_ready || return 0
+  warn "The private engine is installed here: ./setup_engine.sh --private switches this copy to it (the fallback)."
+}
+
+# ===== the public engine (the default) =====
+# Public PyBNF (lanl/PyBNF 8410f794, the merged Liu-West filter, job_type =
+# lwf) with bngsim 0.15.1 on Python 3.12, in a venv of its own: never the
+# private engine's (~/.venvs/flubnf-engine, the fallback) or the lab Mac's
+# older one (~/.venvs/flubnf), which stay installed. Every package
+# comes from one lock, engine-requirements.txt, by hash (--require-hashes) and
+# as a wheel (--only-binary :all:); the PyBNF wheel's URL and sha256 are its
+# own line there, read by scripts/engine_lock.py. No pin lives anywhere else.
+PUBLIC_VENV="${FLUBNF_PUBLIC_VENV:-$HOME/.venvs/flubnf-public}"
+PUBLIC_VENV="${PUBLIC_VENV%/}"
+LOCK="${FLUBNF_ENGINE_LOCK:-$HERE/engine-requirements.txt}"
+
+# Exactly 3.12, the Python the lock is resolved for (public PyBNF needs 3.12
+# or newer, and the lock's wheels are 3.12's). Prints its path. Returns 3
+# when there is none and no conda to make one (running this again cannot
+# fix that), and 1 when conda is there and could not make one: conda
+# downloads it, so that is usually the network, and the next run tries
+# again.
+find_python312() {
+  _is312='import sys; assert sys.version_info[:2] == (3, 12)'
+  for c in python3.12 python3; do
+    _cand=$(command -v "$c" 2>/dev/null) || continue
+    "$_cand" -c "$_is312" 2>/dev/null && { printf '%s\n' "$_cand"; return 0; }
   done
-fi
-if [ -z "$PY" ]; then
-  CONDA=$(command -v conda 2>/dev/null)
-  [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
-                              "$HOME/miniconda3/bin/conda"; do
-    [ -x "$c" ] && { CONDA="$c"; break; }
+  for _cand in /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
+               /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12 \
+               /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
+               "$HOME/miniconda3/bin/python3.12" \
+               "$HOME/.venvs/flubnf-public-py312/bin/python3.12"; do
+    [ -x "$_cand" ] && "$_cand" -c "$_is312" 2>/dev/null \
+      && { printf '%s\n' "$_cand"; return 0; }
   done
-  if [ -n "$CONDA" ]; then
-    echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
-    "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
-      && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
+  _conda=$(command -v conda 2>/dev/null)
+  [ -z "$_conda" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
+                               "$HOME/miniconda3/bin/conda"; do
+    [ -x "$c" ] && { _conda="$c"; break; }
+  done
+  [ -n "$_conda" ] || return 3
+  # Its own base, beside the venv: never the private route's flubnf-engine-py312.
+  echo "  no Python 3.12 found; asking conda for one (a few minutes)" >&2
+  "$_conda" create -y -p "$HOME/.venvs/flubnf-public-py312" python=3.12 >/dev/null \
+    || return 1
+  printf '%s\n' "$HOME/.venvs/flubnf-public-py312/bin/python3"
+}
+
+# A failure that running this again cannot fix: the reason, the private
+# engine when it is there to switch to, and exit 3. FluBNF.command stamps
+# exit 3, so the Dock does not hand over to Terminal on every click.
+cannot_run_here() {
+  for _l in "$@"; do warn "$_l"; done
+  fallback_line
+  exit 3
+}
+
+# Platforms the lock has no wheels for: macOS below 15 on Intel (its
+# libroadrunner), and Linux on anything but x86_64. Checked before any venv
+# is made.
+check_platform() {
+  _os="$(uname -s 2>/dev/null)"
+  _arch="$(uname -m 2>/dev/null)"
+  case "$_os" in
+    Darwin)
+      [ "$_arch" = x86_64 ] || return 0
+      _ver="$(sw_vers -productVersion 2>/dev/null)"
+      _major="${_ver%%.*}"
+      case "$_major" in ""|*[!0-9]*) return 0 ;; esac
+      [ "$_major" -ge 15 ] \
+        || cannot_run_here "this Mac runs macOS $_ver on Intel; the public engine's libroadrunner needs macOS 15 there." ;;
+    Linux)
+      [ "$_arch" = x86_64 ] \
+        || cannot_run_here "the public engine's lock has Linux wheels for x86_64 only." ;;
+  esac
+  return 0
+}
+
+# A file's sha256, the hash alone: shasum (macOS, and Linux with perl),
+# else sha256sum. FluBNF.command reads the lock's the same way.
+sha256_of() { { shasum -a 256 "$1" 2>/dev/null || sha256sum "$1" 2>/dev/null; } | cut -c1-64; }
+
+# The venv's Python, and the lock's hash stamped into the venv: FluBNF.command
+# compares the stamp with the lock on every open and reinstalls when they
+# differ, without loading the engine. The route only when asked (--public).
+record_public() {
+  sha256_of "$LOCK" > "$PUBLIC_VENV/flubnf-lock.sha256"
+  if [ -n "$RECORD_ROUTE" ]; then
+    record_env 'FLUBNF_PY_ENGINE_PUBLIC|FLUBNF_ENGINE' \
+      "export FLUBNF_PY_ENGINE_PUBLIC=\"$PUBLIC_VENV/bin/python\"" \
+      "export FLUBNF_ENGINE=public"
+  else
+    record_env 'FLUBNF_PY_ENGINE_PUBLIC' \
+      "export FLUBNF_PY_ENGINE_PUBLIC=\"$PUBLIC_VENV/bin/python\""
   fi
-fi
-if [ -z "$PY" ]; then
-  warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
-  warn "for newer Pythons) and none was found or creatable. Install 3.12"
-  warn "(python.org, Homebrew, or conda) and re-run."
-  exit 1
+  ok "environment recorded in $ENVF"
+}
+
+public_route() {
+  say "public PyBNF (the Liu-West filter, job_type = lwf), the default"
+  case "$PUBLIC_VENV" in
+    "$HOME/.venvs/flubnf"|"$HOME/.venvs/flubnf-engine"|"${ENGINE_VENV%/}")
+      warn "FLUBNF_PUBLIC_VENV names $PUBLIC_VENV, which is the private engine's."
+      warn "The public engine gets a venv of its own: unset FLUBNF_PUBLIC_VENV (the"
+      warn "default is ~/.venvs/flubnf-public) and run this again."
+      exit 1 ;;
+  esac
+  check_platform
+  # The lock first, read by whatever Python is at hand: without it there is
+  # nothing to install, and finding that out costs no venv.
+  _lockpy="$HERE/.venv/bin/python"
+  [ -x "$_lockpy" ] || _lockpy="$(command -v python3 2>/dev/null)"
+  if [ -z "$_lockpy" ]; then
+    warn "no Python to read the lock with: run ./setup.sh first"
+    exit 1
+  fi
+  if ! _wheel="$("$_lockpy" "$HERE/scripts/engine_lock.py" wheel "$LOCK")"; then
+    warn "so the public engine cannot install yet."
+    warn "The private engine, if installed, is not affected (./setup_engine.sh --private switches to it)."
+    exit 1
+  fi
+  ENGINE_WHEEL_URL="$(printf '%s\n' "$_wheel" | sed -n 1p)"
+  ENGINE_WHEEL_SHA256="$(printf '%s\n' "$_wheel" | sed -n 2p)"
+  ok "lock: $LOCK"
+  ok "PyBNF wheel: $ENGINE_WHEEL_URL"
+  ok "its sha256: $ENGINE_WHEEL_SHA256"
+
+  say "public engine venv: $PUBLIC_VENV"
+  _stale=""
+  if [ -e "$PUBLIC_VENV" ] && [ ! -f "$PUBLIC_VENV/pyvenv.cfg" ] \
+     && [ -n "$(ls -A "$PUBLIC_VENV" 2>/dev/null)" ]; then
+    warn "$PUBLIC_VENV exists and is not a venv, so nothing was touched. Move it"
+    warn "aside, or point FLUBNF_PUBLIC_VENV somewhere else, and run this again."
+    exit 1
+  fi
+  if [ -x "$PUBLIC_VENV/bin/python" ]; then
+    if ! "$PUBLIC_VENV/bin/python" -c 'import sys; assert sys.version_info[:2] == (3, 12)' 2>/dev/null; then
+      # pyvenv.cfg was checked above: only a venv is ever removed here.
+      warn "its Python is not 3.12, or no longer starts: making it again"
+      rm -rf "$PUBLIC_VENV"
+    elif "$PUBLIC_VENV/bin/python" "$HERE/scripts/engine_lock.py" check "$LOCK" 2>/dev/null; then
+      record_public
+      return 0
+    else
+      # It holds something other than the lock names: an older lock's wheel,
+      # or a damaged package.
+      _stale=1
+    fi
+  fi
+  # A Python 3.12 to make it from, looked for only now: a venv that is
+  # ready needs none.
+  if [ ! -x "$PUBLIC_VENV/bin/python" ]; then
+    PY312="$(find_python312)"
+    _py312_rc=$?
+    case "$_py312_rc" in
+      0) ;;
+      3) cannot_run_here "the public engine needs Python 3.12, and none was found or creatable." \
+           "Install 3.12 (python.org, Homebrew or conda) and run this again." ;;
+      *) # never exit 3: FluBNF.command would stamp a dropped connection as
+         # a machine that cannot run the public engine
+         warn "conda could not make a Python 3.12 (its error is above). conda downloads"
+         warn "it, so this is usually the network: run this again with the network up."
+         warn "Or install 3.12 (python.org, Homebrew or conda) and run this again."
+         exit 1 ;;
+    esac
+    ok "$("$PY312" -V 2>&1) at $PY312"
+    if ! "$PY312" -m venv "$PUBLIC_VENV"; then
+      warn "Python could not make the venv (its error is above)"
+      exit 1
+    fi
+  fi
+
+  say "public engine packages (the lock: by hash, wheels only)"
+  # pip keeps an installed pybnf of the lock's version whatever wheel it came
+  # from, so on a venv that fails the check pybnf goes first; pip then puts
+  # back the lock's wheel and moves any other package whose pin moved. Every
+  # package again (--force-reinstall, minutes) only when that is not enough.
+  # pip's own output shows: minutes of a window that does not change invite
+  # closing it.
+  pip_lock() {
+    "$PUBLIC_VENV/bin/python" -m pip install --disable-pip-version-check \
+      --require-hashes --only-binary :all: "$@" -r "$LOCK" && return 0
+    warn "pip could not install the lock (its error is above). A dropped"
+    warn "connection: run this again, pip reuses what it already downloaded."
+    warn "An HTTP 404 on the PyBNF wheel: that release is not published yet."
+    warn "Hashes that do not match: a changed or damaged download; tell Ely."
+    exit 1
+  }
+  if [ -n "$_stale" ]; then
+    "$PUBLIC_VENV/bin/python" -m pip uninstall -y -q --disable-pip-version-check pybnf
+  fi
+  pip_lock
+  if [ -n "$_stale" ] \
+     && ! "$PUBLIC_VENV/bin/python" "$HERE/scripts/engine_lock.py" check "$LOCK" >/dev/null 2>&1; then
+    warn "still not what the lock names: installing every package again"
+    pip_lock --force-reinstall
+  fi
+
+  say "verify"
+  if ! "$PUBLIC_VENV/bin/python" "$HERE/scripts/engine_lock.py" check "$LOCK"; then
+    warn "the public engine is NOT ready (see the reason above)"
+    exit 1
+  fi
+  record_public
+}
+
+if [ "$ROUTE" = public ]; then
+  public_route
+  exit 0
 fi
 
-say "PyBNF fork (feature/particle-filter)"
+# ===== the private engine (the fallback) =====
+# The lab's PyBNF fork (fit_type=pf), installed where it is needed and run
+# only where FLUBNF_ENGINE=private is set or recorded.
+
+# The import every generated runner does (checkout first on sys.path). It
+# gates the record at the end, and the switch below. $1 and $2: a venv's
+# Python and a checkout, by default this run's.
+verify_private() {
+  "${1:-$ENGINE_VENV/bin/python}" - "${2:-$PYBNF}" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import bngsim, pybnf
+from pybnf.pf import ParticleFilter  # the point of the whole exercise
+print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
+PYEOF
+}
+
+# The first line of an unpacked copy's version stamp, if it has one.
+copy_stamp() {
+  for _v in "$1/VERSION" "$1/.git_archival.txt"; do
+    [ -f "$_v" ] && { head -1 "$_v" 2>/dev/null; return 0; }
+  done
+  return 0
+}
+
+# The engine archive that replaces the unpacked copy in $1 ("save the file,
+# open the app"): the one the search picks (FLUBNF_PYBNF_BUNDLE, else the
+# newest in the usual folders), when its stamp DIFFERS from the copy's and
+# the file is newer than the copy's VERSION: an old download must never
+# downgrade. Prints the archive, then its stamp; nothing (and 1) when none
+# does. A git checkout is never replaced. The --private switch and the
+# replacement below both ask this, so the switch never skips a replacement.
+replacing_archive() {
+  [ -d "$1/.git" ] && return 1
+  [ -f "$1/pybnf/pf.py" ] && [ -f "$1/setup.py" ] || return 1
+  _ra_arc="$(find_engine_bundle 2>/dev/null)"
+  case "$_ra_arc" in *.tar.gz) ;; *) return 1 ;; esac
+  _ra_new="$(archive_version_stamp "$_ra_arc")"
+  [ -n "$_ra_new" ] && [ "$_ra_new" != "$(copy_stamp "$1")" ] || return 1
+  [ ! -f "$1/VERSION" ] || [ "$_ra_arc" -nt "$1/VERSION" ] || return 1
+  printf '%s\n%s\n' "$_ra_arc" "$_ra_new"
+}
+
+if [ -n "$RECORD_ROUTE" ]; then
+  # --private: the choice is recorded first, so a failed install is retried
+  # as private on the next open instead of quietly becoming public.
+  say "the private engine (the fallback)"
+  record_env 'FLUBNF_ENGINE' 'export FLUBNF_ENGINE=private'
+  ok "FLUBNF_ENGINE=private recorded in $ENVF"
+  # Already installed and working: switch, and stop. No pip and no
+  # network, so this works offline in seconds. The venv and checkout this
+  # copy recorded are tried first, so the fallback runs in the environment
+  # that made its earlier rounds (a FLUBNF_ENGINE_VENV or FLUBNF_PYBNF set
+  # in this shell names its own, and a recorded folder with no engine in it,
+  # as setup.sh can record, gives way to the search); then the defaults.
+  _py1="$REC_PY"
+  [ -z "${FLUBNF_ENGINE_VENV:-}" ] && [ -n "$_py1" ] || _py1="$ENGINE_VENV/bin/python"
+  _pf1="$REC_PYBNF"
+  [ -z "${FLUBNF_PYBNF:-}" ] && [ -f "$_pf1/pybnf/pf.py" ] || _pf1="$PYBNF"
+  _swpy=""
+  _swpf=""
+  for _try in 1 2; do
+    if [ "$_try" = 1 ]; then
+      _p="$_py1"; _c="$_pf1"
+    else
+      _p="$ENGINE_VENV/bin/python"; _c="$PYBNF"
+      [ "$_p" = "$_py1" ] && [ "$_c" = "$_pf1" ] && break
+    fi
+    if [ -x "$_p" ] && [ -f "$_c/pybnf/pf.py" ] && verify_private "$_p" "$_c" 2>/dev/null; then
+      _swpy="$_p"; _swpf="$_c"; break
+    fi
+  done
+  if [ -z "$_swpy" ]; then
+    ok "not installed yet, or it does not load: installing it"
+  elif [ -n "$(replacing_archive "$_swpf")" ]; then
+    # A different engine archive is offered for this copy: the install
+    # below puts it in place of the one on disk, in this venv.
+    case "$_swpy" in */bin/python) ENGINE_VENV="${_swpy%/bin/python}" ;; esac
+    PYBNF="$_swpf"
+    ok "the private engine loads, and a different engine archive is here for it: installing that"
+  else
+    record_env 'FLUBNF_PY_ENGINE|FLUBNF_PYBNF' \
+      "export FLUBNF_PY_ENGINE=\"$_swpy\"" \
+      "export FLUBNF_PYBNF=\"$_swpf\""
+    ok "venv: $_swpy"
+    ok "checkout: $_swpf"
+    ok "the private engine is installed and works: this copy runs it now (the fallback). ./setup_engine.sh --public goes back to the default."
+    exit 0
+  fi
+fi
+
+# The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
+# at cp312 (newer Pythons build numpy from source and fail). Else conda makes
+# a 3.12. Only to make the venv: one already there needs none.
+PY=""
+if [ ! -x "$ENGINE_VENV/bin/python" ]; then
+  for c in python3.12 python3.11 python3; do
+    cand=$(command -v "$c" 2>/dev/null) || continue
+    "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
+      && { PY="$cand"; break; }
+  done
+  if [ -z "$PY" ]; then
+    for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
+                /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
+                /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
+                /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
+      [ -x "$cand" ] && { PY="$cand"; break; }
+    done
+  fi
+  if [ -z "$PY" ]; then
+    CONDA=$(command -v conda 2>/dev/null)
+    [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
+                                "$HOME/miniconda3/bin/conda"; do
+      [ -x "$c" ] && { CONDA="$c"; break; }
+    done
+    if [ -n "$CONDA" ]; then
+      echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
+      "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
+        && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
+    fi
+  fi
+  if [ -z "$PY" ]; then
+    warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
+    warn "for newer Pythons) and none was found or creatable. Install 3.12"
+    warn "(python.org, Homebrew, or conda) and re-run."
+    exit 1
+  fi
+fi
+
+say "PyBNF fork (feature/particle-filter), the private engine (the fallback)"
 if [ -d "$PYBNF/.git" ]; then
   # An existing checkout needs NO remote auth -- use what is on disk.
   ok "checkout present: $PYBNF"
@@ -193,10 +564,7 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
   # --no-deps` and needs only an importable package. It has no git identity,
   # so print its stamp: 'which build' is the first question when forecasts differ.
   ok "unpacked copy present (no git): $PYBNF"
-  PFVER=""
-  for v in "$PYBNF/VERSION" "$PYBNF/.git_archival.txt"; do
-    [ -f "$v" ] && { PFVER="$(head -1 "$v" 2>/dev/null)"; break; }
-  done
+  PFVER="$(copy_stamp "$PYBNF")"
   if [ -n "$PFVER" ]; then
     ok "version stamp: $PFVER"
   else
@@ -204,17 +572,13 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
     warn "answer. Whoever cut the archive should include one. Harmless for a"
     warn "single machine, awkward the moment two people compare forecasts."
   fi
-  # A newer archive saved since replaces this copy ("save the file, open the
-  # app"), but only if its stamp DIFFERS and the file is newer than the
-  # installed VERSION: an old download must never downgrade. The old copy is
-  # moved aside, never deleted, and put back if the install fails.
-  _arc="$(find_engine_bundle 2>/dev/null)"
-  _newver=""
-  case "$_arc" in
-    *.tar.gz) _newver="$(archive_version_stamp "$_arc")" ;;
-  esac
-  if [ -n "$_newver" ] && [ "$_newver" != "$PFVER" ] \
-     && { [ ! -f "$PYBNF/VERSION" ] || [ "$_arc" -nt "$PYBNF/VERSION" ]; }; then
+  # A newer archive saved since replaces this copy (replacing_archive says
+  # which). The old copy is moved aside, never deleted, and put back if the
+  # install fails.
+  _repl="$(replacing_archive "$PYBNF")"
+  _arc="$(printf '%s\n' "$_repl" | sed -n 1p)"
+  _newver="$(printf '%s\n' "$_repl" | sed -n 2p)"
+  if [ -n "$_newver" ]; then
     say "a different engine archive has arrived since this copy was installed"
     ok "on disk:  ${PFVER:-(no stamp)}"
     ok "archive:  $_newver"
@@ -363,12 +727,12 @@ if ! have_pybnf; then
       if [ -n "${FLUBNF_PYBNF:-}" ]; then
         warn "You reached this message because FLUBNF_PYBNF points somewhere"
         warn "else ($PYBNF). Re-run without it:"
-        warn "  unset FLUBNF_PYBNF; ./setup_engine.sh   (or double-click SetupEngine.command)"
+        warn "  unset FLUBNF_PYBNF; ./setup_engine.sh --private   (or double-click SetupEngine.command)"
       else
         warn "This script looks at PyBNF-pf and PyBNF-Private under"
         warn "~/GitHub and ~/Documents/GitHub only; the launchers look wider. Point it"
         warn "straight at the one above and it is done:"
-        warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh"
+        warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh --private"
         warn "  (or double-click SetupEngine.command, which searches them all)"
       fi
     fi
@@ -376,7 +740,7 @@ if ! have_pybnf; then
       warn "found a PyBNF checkout the automatic search does NOT cover:"
       printf '     %s\n' $STRAY
       warn "point setup at it directly and you are done:"
-      warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh"
+      warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh --private"
     fi
     [ -z "$INPATH$STRAY" ] && ok "no PyBNF checkout anywhere under your home directory"
     say "how to fix it"
@@ -451,7 +815,7 @@ if [ "${FLUBNF_ENGINE_CHECKOUT_ONLY:-0}" = "1" ]; then
   exit 0
 fi
 
-say "engine venv"
+say "private engine venv (the fallback)"
 [ -d "$ENGINE_VENV" ] || $PY -m venv "$ENGINE_VENV"
 # The runtime set the PF path imports, installed explicitly so the fork can go
 # in with --no-deps (its msgpack==0.6.2 pin has no modern wheels; its nose and
@@ -465,13 +829,17 @@ say "bngsim"
 if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
   ok "bngsim already importable"
 else
-  # Wheel first, source build as fallback. Pinned to 0.15.1: measured
-  # bit-identical (ODE, filter, WIS) to the unreleased build behind every
-  # published number; 0.13.0, the version that build reported, is not.
-  if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1" 2>/dev/null; then
-    warn "no PyPI/wheel match -- building from source (needs a C++ toolchain;"
-    warn "on macOS: xcode-select --install). This takes ~10 minutes."
-    "$ENGINE_VENV/bin/pip" install "git+$BNGSIM_REMOTE" || { warn "bngsim build failed"; exit 1; }
+  # Pinned to 0.15.1: measured bit-identical (ODE, filter, WIS) to the
+  # unreleased build behind every published number; 0.13.0, the version that
+  # build reported, is not. From PyPI or not at all: the source build from the
+  # head of elyfmiller/bngsim that used to follow here was unpinned, so it
+  # could install a bngsim no published number was made with.
+  if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1"; then
+    warn "pip could not install bngsim 0.15.1 into $ENGINE_VENV (its error is"
+    warn "above), so the engine is NOT ready. No other bngsim is tried: with"
+    warn "the network up, run this again; if it fails the same way, send Ely"
+    warn "this window. The console still runs, analogue forecasts only."
+    exit 1
   fi
   ok "bngsim installed: $("$ENGINE_VENV/bin/python" -c 'import bngsim; print(bngsim.__version__)')"
 fi
@@ -485,26 +853,12 @@ say "PyBNF install"
   || warn "editable install failed -- harmless if the verify below passes"
 
 say "verify"
-# Import as every generated runner does (checkout first on sys.path). Failure
-# aborts BEFORE the environment is recorded.
-if ! "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
-import sys
-sys.path.insert(0, sys.argv[1])
-import bngsim, pybnf
-from pybnf.pf import ParticleFilter  # the point of the whole exercise
-print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
-PYEOF
-then
+# Failure aborts BEFORE the environment is recorded.
+if ! verify_private; then
   warn "verification failed -- the engine is NOT ready (see the error above)"
   exit 1
 fi
-ENVF="$HERE/.flubnf.env"
-# Rewrite, don't skip: a stale entry must not outlive a verified setup.
-TMPF="$ENVF.tmp.$$"
-grep -v -e FLUBNF_PY_ENGINE -e FLUBNF_PYBNF "$ENVF" 2>/dev/null > "$TMPF" || true
-{
-  echo "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\""
-  echo "export FLUBNF_PYBNF=\"$PYBNF\""
-} >> "$TMPF"
-mv "$TMPF" "$ENVF"
+record_env 'FLUBNF_PY_ENGINE|FLUBNF_PYBNF' \
+  "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\"" \
+  "export FLUBNF_PYBNF=\"$PYBNF\""
 ok "environment recorded in $ENVF"

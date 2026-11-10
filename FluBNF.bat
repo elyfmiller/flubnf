@@ -328,10 +328,16 @@ if exist ".flubnf.env.cmd" call ".flubnf.env.cmd"
 
 :launch
 rem ===== the particle filter engine =========================================
-rem Twin of FluBNF.command's engine block. The fork is private, so this never
-rem blocks the launch or asks an unbounded question, and never probes
-rem github.com (setup.ps1 does, once, with a diagnosis). It installs from an
-rem offline file saved where students save files: a git bundle
+rem Twin of FluBNF.command's engine block. Two engines (docs\ENGINE.md).
+rem Public PyBNF is the default: :publicengine, below the console's start,
+rem installs it from engine-requirements.txt, and it needs no file. The
+rem lab's PyBNF fork is the fallback, installed only when this copy is set
+rem to it: FLUBNF_ENGINE=private, which setup.ps1 -Engine private records.
+rem Its checkout is found and kept current on either route. Neither install
+rem blocks the launch or asks an unbounded question. The fork is private,
+rem so its install never probes github.com (setup.ps1 does, once, with a
+rem diagnosis). It installs from an offline file saved where students save
+rem files: a git bundle
 rem (git bundle create pybnf.bundle feature/particle-filter) or the
 rem pybnf-pf-<sha>.tar.gz from scripts/cut_engine_archive.sh.
 rem Checkout order mirrors setup.ps1's Resolve-PyBnf and flubnf\settings.py
@@ -392,6 +398,34 @@ rem that closed this window.
 set "ENGINEVENV=%ENGINEVENV:"=%"
 if "%ENGINEVENV:~-1%"=="\" set "ENGINEVENV=%ENGINEVENV:~0,-1%"
 set "ENGINEPY=%ENGINEVENV%\Scripts\python.exe"
+rem Kept for the public route's failure lines, which say whether the
+rem private engine is ready here: :publicengine reuses ENGINEPY for its venv.
+set "PRIVATEPY=%ENGINEPY%"
+rem Set by :publicengine alone, which sends the public install through the
+rem private engine's venv code: one left in the shell would send the
+rem private install into the public engine's 3.12-only gate and its pip.
+set "PUBLICROUTE="
+rem Which engine: FLUBNF_ENGINE (docs\ENGINE.md), from .flubnf.env.cmd
+rem (called above) or the account. Public is the default: no value, or
+rem public, goes to :publicengine (below the console's start), public PyBNF
+rem in a venv of its own. Only private, which setup.ps1 -Engine private
+rem records, stays in the rest of this block: the fork, the fallback. Any
+rem other value is said, and public it is. The private checkout was brought
+rem up to date above on either route: it stays installed as the fallback. A
+rem stray quote is dropped, as above, and the spaces around the word, as
+rem settings.py and setup.ps1 drop them: cmd keeps the space in
+rem `set FLUBNF_ENGINE=private && FluBNF.bat`, and the console started here
+rem read that as private while this took the public route. A value with a
+rem space inside it is left as it is (it names no engine); one that is only
+rem spaces is empty, so public, with nothing to say.
+set "ENGINEROUTE=public"
+if defined FLUBNF_ENGINE set "ENGINEROUTE=%FLUBNF_ENGINE%"
+set "ENGINEROUTE=%ENGINEROUTE:"=%"
+if not defined ENGINEROUTE set "ENGINEROUTE=public"
+for /f "tokens=1*" %%A in ("%ENGINEROUTE%") do if not "%%A"=="" if "%%B"=="" set "ENGINEROUTE=%%A"
+if "%ENGINEROUTE: =%"=="" set "ENGINEROUTE=public"
+if /I not "%ENGINEROUTE%"=="private" if /I not "%ENGINEROUTE%"=="public" echo   FLUBNF_ENGINE is "%ENGINEROUTE%", which is neither private nor public: the public engine, the default, it is.
+if /I not "%ENGINEROUTE%"=="private" goto :publicengine
 
 rem Installed? Cheap file tests first, then setup.ps1's import probe, which
 rem loads pybnf off the checkout as runners do (the editable install can fail).
@@ -566,6 +600,9 @@ echo   (pybnf-pf-XXXX.tar.gz or pybnf.bundle), save it in your Downloads
 echo   folder, and open this again. That is the whole step.
 echo   Otherwise run setup.ps1, which explains how to reach the private fork.
 call :enginelookedin "%~dp0."
+echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 rem Perl all the same: the Sandbox's Check runs BNG2.pl with no engine.
 call :perlblock
 goto :startconsole
@@ -613,6 +650,12 @@ rem for another processor. Any other code means the program did not start:
 rem 9009 not found, 103 a venv whose base Python is gone, a negative number
 rem for a crash, which `if errorlevel 1` read as success.
 set "ENGINEGATE=import sys, sysconfig; v = sys.version_info; p = sysconfig.get_platform(); ok = v[:2] in ((3,11),(3,12)); x = p == 'win-amd64'; print('    ' + sys.argv[1] + ': Python ' + '.'.join(map(str, v[:3])) + ' (' + p + ')' + ('' if ok and x else ', not the x64 build the engine needs' if ok else ', the engine needs 3.12 or 3.11')); raise SystemExit(0 if ok and x else 3 if ok else 2)"
+rem The public engine comes through here too, with PUBLICROUTE set and
+rem ENGINEVENV its own venv (:publicengine): public PyBNF is pinned for 3.12
+rem alone, so its gate takes 3.12 and its search skips py -3.11.
+set "ENGINEPYS=3.12 or 3.11"
+if defined PUBLICROUTE set "ENGINEPYS=3.12"
+if defined PUBLICROUTE set "ENGINEGATE=import sys, sysconfig; v = sys.version_info; p = sysconfig.get_platform(); ok = v[:2] == (3,12); x = p == 'win-amd64'; print('    ' + sys.argv[1] + ': Python ' + '.'.join(map(str, v[:3])) + ' (' + p + ')' + ('' if ok and x else ', not the x64 build the engine needs' if ok else ', the public engine needs 3.12')); raise SystemExit(0 if ok and x else 3 if ok else 2)"
 if not exist "%ENGINEPY%" goto :enginevenvmake
 "%ENGINEPY%" -c "%ENGINEGATE%" "the engine venv" <nul 2>nul
 set "GATE=%ERRORLEVEL%"
@@ -641,9 +684,11 @@ goto :enginefailed
 :enginevenvmake
 rem The chosen Python is a program and its argument, kept apart: a path is
 rem quoted where it is used, and a profile name may hold & or brackets.
-echo   looking for a Python for the engine, 64-bit (x64) 3.12 or 3.11:
+echo   looking for a Python for the engine, 64-bit (x64) %ENGINEPYS%:
 set "MAKEEXE="
 set "MAKEARG="
+rem A new venv: nothing in it for the public route's pip to replace.
+set "PUBLICSTALE="
 where py >nul 2>&1
 if errorlevel 1 goto :enginevenvnopy
 py -3.12 -c "%ENGINEGATE%" "py -3.12" <nul 2>nul
@@ -652,6 +697,7 @@ if "%GATE%"=="0" set "MAKEEXE=py"
 if "%GATE%"=="0" set "MAKEARG=-3.12"
 if defined MAKEEXE goto :enginevenvcreate
 if not "%GATE%"=="2" if not "%GATE%"=="3" echo     py -3.12: not installed
+if defined PUBLICROUTE goto :enginevenvpython
 py -3.11 -c "%ENGINEGATE%" "py -3.11" <nul 2>nul
 set "GATE=%ERRORLEVEL%"
 if "%GATE%"=="0" set "MAKEEXE=py"
@@ -691,6 +737,7 @@ rem fails, its own words are the cause. It reads from nul: a question of
 rem conda's (Anaconda's Terms of Service) ends unanswered instead of
 rem waiting for someone who is not there.
 set "CONDAENV=%USERPROFILE%\.venvs\flubnf-engine-py312"
+if defined PUBLICROUTE set "CONDAENV=%LOCALAPPDATA%\FluBNF\python312-public"
 echo   asking conda for a 64-bit (x64) Python 3.12, one time, a few minutes
 setlocal
 set "CONDA_SUBDIR=win-64"
@@ -714,7 +761,7 @@ rem for a script to run. On an ARM laptop, Anaconda: its installer is x64,
 rem the conda route above asks for x64, and Windows runs both under
 rem emulation, while py install there may pick the ARM64 build.
 echo   No Python on this PC can run the engine: it needs 64-bit (x64) Python
-echo   3.12 or 3.11.
+echo   %ENGINEPYS%.
 set "ARMPC="
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ARMPC=1"
 if /i "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "ARMPC=1"
@@ -771,6 +818,7 @@ echo   the engine needs it once, for its packages. Open FluBNF again on
 echo   another network: home Wi-Fi, or a phone's hotspot.
 goto :enginefailed
 :engineindex
+if defined PUBLICROUTE goto :publicdeps
 rem Without -q pip shows what it fetches: minutes of a window that did not
 rem change invited closing it. Not upgraded first: the pip a venv comes with
 rem installs every wheel here.
@@ -857,9 +905,14 @@ echo   lab for pybnf-pf-XXXX.tar.gz, which needs no git; then open this again.
 goto :enginefailed
 
 :enginefailed
+rem The public route has its own words, and no record (:publicengine).
+if defined PUBLICROUTE goto :publicfailed
 echo   Engine setup did not finish (see above). The console still runs,
 echo   analogue forecasts only. With the engine file still in your Downloads
 echo   folder, or the engine folder still in place, the next open tries again.
+echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 rem Quoted on write, %%~L on read: a path may hold & or a trailing digit.
 echo "%ENGINEFP%">"%ATTEMPT%"
 goto :startconsole
@@ -871,6 +924,9 @@ echo   pybnf.bundle) in your Downloads folder and open this again; it tries
 echo   again by itself. Analogue forecasts work meanwhile. That attempt is
 echo   recorded in "%ATTEMPT%"
 call :enginelookedin "%~dp0."
+echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 call :perlblock
 
 :startconsole
@@ -902,6 +958,181 @@ echo FluBNF exited with an error (code %STATUS%). Press any key to close.
 pause >nul
 exit /b %STATUS%
 
+rem ===== the public engine, the default =====================================
+rem Twin of setup_engine.sh --public, reached from the engine block above
+rem unless this copy is set to the private engine (FLUBNF_ENGINE=private):
+rem with no FLUBNF_ENGINE, with public, or with a value that names no
+rem engine. A copy that recorded nothing and had only the private engine
+rem installs this one on its first open after the update. Public PyBNF,
+rem lanl/PyBNF at the commit with the Liu-West filter, goes in as one wheel,
+rem with bngsim and every other package pinned by hash in
+rem engine-requirements.txt, into a venv of its own: never
+rem ~\.venvs\flubnf or ~\.venvs\flubnf-engine, where the private engine
+rem stays installed as the fallback. The lock is read only through
+rem scripts\engine_lock.py, so the wheel's address and sha256 are written in
+rem the lock and nowhere here. The venv is made and gated by the private
+rem engine's own code (:enginevenv, with PUBLICROUTE set). No failed-attempt
+rem record: each failure is quick (the lock, the five-second look at the
+rem package index) or a dropped network, and a record would keep this PC off
+rem the engine after one bad open: the window is already open, a PC with no
+rem Python takes seconds to say so, and pip's failures are the network's.
+rem Every open tries again, and every way out starts the console. Nothing
+rem here falls back to the private engine by itself: a season's engine must
+rem never depend on whether an install worked on that open. The failure
+rem lines name setup.ps1 -Engine private, the one step that switches.
+:publicengine
+rem Perl first, while whoever opened this is watching: BNG2.pl needs it on
+rem either route.
+call :perlblock
+rem The private engine, the fallback, counts as ready when its venv's
+rem python and the checkout's pf.py are there. :publicnolock and
+rem :publicfailed read this to name the switch; nothing here takes it.
+rem PRIVATEFORK, the checkout's pf.py alone, tells a fork here with no venv
+rem (the private route installs it from the folder, no file needed) from
+rem nothing here at all (it needs the lab's engine file).
+set "PRIVATEREADY="
+if exist "%PRIVATEPY%" if exist "%PYBNFDIR%\pybnf\pf.py" set "PRIVATEREADY=1"
+set "PRIVATEFORK="
+if exist "%PYBNFDIR%\pybnf\pf.py" set "PRIVATEFORK=1"
+set "ENGINELOCK=%FLUBNF_ENGINE_LOCK%"
+if not defined ENGINELOCK set "ENGINELOCK=%~dp0engine-requirements.txt"
+set "ENGINELOCK=%ENGINELOCK:"=%"
+set "PUBLICVENV=%FLUBNF_PUBLIC_VENV%"
+if not defined PUBLICVENV set "PUBLICVENV=%LOCALAPPDATA%\FluBNF\venv-public"
+rem Cleaned as ENGINEVENV is, for the same reasons.
+set "PUBLICVENV=%PUBLICVENV:"=%"
+if "%PUBLICVENV:~-1%"=="\" set "PUBLICVENV=%PUBLICVENV:~0,-1%"
+rem Never one of the private engine's venvs: the two defaults, or the one
+rem this PC uses (FLUBNF_ENGINE_VENV).
+if /I "%PUBLICVENV%"=="%USERPROFILE%\.venvs\flubnf" goto :publicvenvtaken
+if /I "%PUBLICVENV%"=="%USERPROFILE%\.venvs\flubnf-engine" goto :publicvenvtaken
+if /I "%PUBLICVENV%"=="%ENGINEVENV%" goto :publicvenvtaken
+set "PUBLICPY=%PUBLICVENV%\Scripts\python.exe"
+set "PUBLICREC=%FLUBNF_PY_ENGINE_PUBLIC%"
+rem Quotes dropped, as ENGINEVENV's are: a value set by hand with them and
+rem a space in its path made the IF in :recordpublic a syntax error that
+rem closed this window after the engine verified, on every open.
+if defined PUBLICREC set "PUBLICREC=%PUBLICREC:"=%"
+rem Installed, and the lock's? engine_lock.py check: the Liu-West filter
+rem imports, bngsim is the version the lock pins, and pybnf came from the
+rem lock's wheel. A venv that is there but fails it (a new lock, a damaged
+rem install) is stale: :publicdeps puts back what the lock names.
+set "PUBLICSTALE="
+if not exist "%PUBLICPY%" goto :publiclock
+"%PUBLICPY%" "%~dp0scripts\engine_lock.py" check "%ENGINELOCK%" <nul >nul 2>&1
+set "PUBLICCODE=%ERRORLEVEL%"
+if "%PUBLICCODE%"=="0" goto :publicready
+rem 1 is the venv's own answer; 2 is the lock's, said again below.
+if "%PUBLICCODE%"=="1" echo   the public engine in "%PUBLICVENV%" does not match its lock file, or does not load: installing it again
+set "PUBLICSTALE=1"
+:publiclock
+rem The lock first, through the console's own Python: a lock that is not
+rem here yet, or has no usable wheel line, costs one line (engine_lock.py
+rem says which) and no venv or pip.
+".venv\Scripts\python.exe" "%~dp0scripts\engine_lock.py" wheel "%ENGINELOCK%" <nul >nul
+if not "%ERRORLEVEL%"=="0" goto :publicnolock
+echo.
+echo Installing the public engine (public PyBNF, with the Liu-West filter).
+echo One time, a few minutes.
+set "PUBLICROUTE=1"
+set "ENGINEVENV=%PUBLICVENV%"
+set "ENGINEPY=%PUBLICPY%"
+goto :enginevenv
+
+:publicdeps
+rem From :engineindex: the venv passed its gate and the package index
+rem answered. --require-hashes checks every file against the lock's sha256,
+rem the PyBNF wheel's too; --only-binary :all: builds nothing here. Without
+rem -q, as for the private engine: the window shows what it fetches.
+rem pip keeps an installed pybnf of the lock's version whatever wheel it
+rem came from, so a stale venv loses pybnf first; pip then puts back the
+rem lock's wheel and moves any other package whose pin moved. Every package
+rem again (--force-reinstall, minutes) only when that is not enough.
+echo   downloading the public engine's packages and installing them, usually
+echo   2 to 5 minutes; leave this window open
+if defined PUBLICSTALE "%ENGINEPY%" -m pip uninstall -y -q --disable-pip-version-check pybnf <nul
+set "PUBLICFORCED="
+:publicpip
+"%ENGINEPY%" -m pip install --disable-pip-version-check --require-hashes --only-binary :all: %PUBLICFORCED% -r "%ENGINELOCK%"
+if "%ERRORLEVEL%"=="0" goto :publiccheck
+echo   pip could not install the public engine's packages; its error is
+echo   above. A hash that does not match means a changed or damaged
+echo   download: tell the lab. If the connection dropped, open FluBNF again:
+echo   pip reuses what it already downloaded. A network that blocks GitHub's
+echo   downloads stops it too (the PyBNF wheel comes from GitHub): open
+echo   FluBNF again on another network, such as home Wi-Fi or a phone's
+echo   hotspot.
+goto :publicfailed
+:publiccheck
+"%ENGINEPY%" "%~dp0scripts\engine_lock.py" check "%ENGINELOCK%" <nul
+if "%ERRORLEVEL%"=="0" goto :publicready
+if defined PUBLICSTALE if not defined PUBLICFORCED goto :publicforce
+echo   The public engine's packages are installed, but the check above
+echo   failed.
+rem A compiled module that does not load may want the Visual C++ runtime,
+rem as libroadrunner's does: keyed on the file, as :engineprobefailed is.
+if not exist "%SystemRoot%\System32\msvcp140.dll" goto :enginevcruntime
+for %%V in ("%ENGINEVENV%") do set "VENVLEAF=%%~nxV"
+echo   For a fresh install, rename its venv, then open FluBNF again:
+echo       ren "%ENGINEVENV%" "%VENVLEAF%-old"
+echo   If it happens again, send the lines above to the lab.
+goto :publicfailed
+
+:publicforce
+echo   still not what the lock names: installing every package again
+set "PUBLICFORCED=--force-reinstall"
+goto :publicpip
+
+:publicready
+set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%"
+call :recordpublic
+goto :startconsole
+
+:publicnolock
+rem The switch is said for the state the private engine is in here, then as
+rem the full command: setup.ps1 typed by itself opens in an editor from
+rem Command Prompt, and PowerShell wants .\ and refuses it under the
+rem default execution policy. The form is the one the docs give.
+echo   The public engine, the default, cannot be installed: its lock file cannot be used yet (the reason is above). The console starts without it.
+if defined PRIVATEREADY echo   The private engine is installed on this PC: to run it instead (the fallback), run setup.ps1 -Engine private, then open FluBNF again.
+if not defined PRIVATEREADY if defined PRIVATEFORK echo   The private engine, the fallback, is on this PC but not installed yet: run setup.ps1 -Engine private, then open FluBNF again, which installs it from the engine folder here (no file needed).
+if not defined PRIVATEFORK echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+echo   To switch, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine private
+goto :startconsole
+
+:publicvenvtaken
+echo   FLUBNF_PUBLIC_VENV names "%PUBLICVENV%", a venv of the private
+echo   engine, which the public engine never shares. Clear FLUBNF_PUBLIC_VENV
+echo   (the public engine's own default is
+echo   "%LOCALAPPDATA%\FluBNF\venv-public"), then open FluBNF again. The
+echo   console starts without the public engine.
+goto :startconsole
+
+:publicfailed
+echo   The public engine did not install (see above). The console starts without it, and the next open tries again.
+if defined PRIVATEREADY echo   The private engine is installed on this PC: to run it instead (the fallback), run setup.ps1 -Engine private, then open FluBNF again.
+if not defined PRIVATEREADY if defined PRIVATEFORK echo   The private engine, the fallback, is on this PC but not installed yet: run setup.ps1 -Engine private, then open FluBNF again, which installs it from the engine folder here (no file needed).
+if not defined PRIVATEFORK echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+echo   To switch, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine private
+goto :startconsole
+
+:recordpublic
+rem A verified public engine is written down for flubnf doctor, the CLI and
+rem new windows, as :recordengine does for the private one, and also when
+rem nothing was recorded: where settings.py looks by default is not this
+rem launcher's to assume. FLUBNF_ENGINE itself is never written here, not
+rem even for the default: setup.ps1 -Engine is its only writer, in
+rem .flubnf.env.cmd alone, so it never switches every copy of FluBNF on the
+rem account.
+if /I "%PUBLICREC%"=="%PUBLICPY%" goto :eof
+if exist ".flubnf.env.cmd" echo rem FluBNF.bat verified the public engine below; a later set wins.>>".flubnf.env.cmd"
+if exist ".flubnf.env.cmd" echo set "FLUBNF_PY_ENGINE_PUBLIC=%PUBLICPY%">>".flubnf.env.cmd"
+setx FLUBNF_PY_ENGINE_PUBLIC "%PUBLICPY%" >nul 2>&1
+echo   recorded for flubnf doctor and new windows: FLUBNF_PY_ENGINE_PUBLIC="%PUBLICPY%"
+goto :eof
+
 :failvenv
 echo.
 echo Could not create the Python virtual environment in .venv
@@ -912,9 +1143,10 @@ if exist "%SETUPLOG%" (
 echo.
 echo Usual causes: no Python found. Install Anaconda (anaconda.com/download,
 echo defaults are fine - this launcher finds it with nothing added to PATH),
-echo or Python 3.11 or newer - get it from
+echo or 64-bit (x64) Python 3.12 - get it from
 echo https://www.python.org/downloads/ and tick "Add python.exe to PATH" -
-echo or a policy on this machine blocks writing into this folder.
+echo or a policy on this machine blocks writing into this folder. 3.11 runs
+echo the console, but the engine needs 3.12.
 echo Anaconda installed in a folder this launcher does not know? Open
 echo Anaconda Prompt from the Start menu and run FluBNF.bat from there.
 echo Press any key to close.
@@ -923,8 +1155,10 @@ exit /b 1
 
 :fail
 echo.
-echo Setup hit a problem (see above). If Python is missing, install 3.11 or
-echo newer from https://www.python.org/downloads/ and tick "Add to PATH".
+echo Setup hit a problem (see above). If Python is missing, install
+echo Anaconda (anaconda.com/download) or 64-bit (x64) Python 3.12 from
+echo https://www.python.org/downloads/ and tick "Add to PATH". 3.11 runs the
+echo console, but the engine needs 3.12.
 echo Press any key to close.
 pause >nul
 exit /b 1

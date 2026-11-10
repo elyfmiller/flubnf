@@ -750,10 +750,14 @@ def test_a_copy_reinstall_set_aside_never_starts(tmp_path):
 
 # ------------------------------- FluBNF.command: headless and Terminal runs
 
-def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True):
+def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True,
+                  record="private"):
     """A clone for the real FluBNF.command (no .git: the update is skipped),
     its console a stand-in that records each run (the engine update the
-    launcher runs first is recorded apart, in "engine-update")."""
+    launcher runs first is recorded apart, in "engine-update"). It records
+    `record` as its engine (setup_engine.sh --private's line), the private
+    engine these tests' stand-ins are; None records none (the default, the
+    public engine). `engine`: the private engine's venv is ready."""
     repo = tmp_path / "clone"
     rec = tmp_path / "rec"
     rec.mkdir(parents=True)
@@ -767,9 +771,13 @@ def _command_repo(tmp_path, *, venv=True, stamp=True, engine=True):
                 f'echo "direct $*" >> "{rec}/console"\nexit 0\n')
         if stamp:
             shutil.copy(repo / "pyproject.toml", repo / ".venv" / ".pyproject.stamp")
+    lines = []
     if engine:
-        (repo / ".flubnf.env").write_text(
-            f'export FLUBNF_PY_ENGINE="{shutil.which("true")}"\n')
+        lines.append(f'export FLUBNF_PY_ENGINE="{shutil.which("true")}"\n')
+    if record:
+        lines.append(f"export FLUBNF_ENGINE={record}\n")
+    if lines:
+        (repo / ".flubnf.env").write_text("".join(lines))
     return repo, rec
 
 
@@ -866,6 +874,36 @@ def test_the_terminal_launch_opens_the_app_through_launchservices(tmp_path):
     assert _read(rec, "boot-default") == ["FluBNF.app quit before the console started"]
     assert _read(rec, "console") is None          # nothing ran as a child
     assert _read(rec, "build") == ["built"]
+    # the engine this open chose reaches the console (a record still wins:
+    # flubnf-launch sources it after)
+    i = args.index("FLUBNF_ENGINE=private")
+    assert args[i - 1] == "--env", args
+
+
+@posix_only
+@pytest.mark.parametrize("prepare", [False, True])
+def test_a_copy_that_records_no_engine_runs_the_public_engine(tmp_path, prepare):
+    """The default: no record, no public venv. The public branch is
+    checked (here its lock cannot be read yet), the private engine's
+    install is not this copy's business, nothing hands over to Terminal,
+    and the console starts on the public engine."""
+    repo, rec = _command_repo(tmp_path, engine=False, record=None)
+    path = _as_os(tmp_path, repo, rec)
+    _script(repo / "setup_engine.sh",
+            f'echo "$* engine=$FLUBNF_ENGINE" >> "{rec}/setup"\nexit 0\n')
+    env = {"PATH": path}
+    if prepare:
+        env["FLUBNF_PREPARE_ONLY"] = "1"
+    r = _command(repo, **env)
+    said = r.stdout + r.stderr
+    assert r.returncode == 0, said
+    assert ("· the public engine cannot install yet (the reason is above). "
+            "The console starts without it.") in r.stdout
+    assert "PF engine" not in r.stdout and "handing over" not in r.stdout
+    assert _read(rec, "setup") is None
+    if not prepare:
+        args = _read(rec, "open")
+        assert "FLUBNF_ENGINE=public" in args, args
 
 
 @posix_only
@@ -992,7 +1030,8 @@ def _documents_setup(tmp_path):
     (repo / ".flubnf.env").write_text(
         f'export FLUBNF_HUB="{gh}/FluSight-forecast-hub"\n'
         f'export FLUBNF_PY_ENGINE="{engine}/bin/python"\n'
-        f'export FLUBNF_PYBNF="{gh}/PyBNF-pf"\n')
+        f'export FLUBNF_PYBNF="{gh}/PyBNF-pf"\n'
+        "export FLUBNF_ENGINE=private\n")
     _script(repo / ".venv" / "bin" / "tool", f"#!{old}/.venv/bin/python\n")
     # as Python 3.12's venv writes it: where the venv was made
     (repo / ".venv" / "bin" / "activate").write_text(
@@ -1653,7 +1692,9 @@ def test_a_dock_launch_end_to_end_never_blocks_the_update(tmp_path):
         "                        os.environ.get('FLUBNF_HOST_FALLBACK')]) + '\\n')\n")
     console.chmod(0o755)
     shutil.copy(clone / "pyproject.toml", clone / ".venv" / ".pyproject.stamp")
-    (clone / ".flubnf.env").write_text(f'export FLUBNF_PY_ENGINE="{shutil.which("true")}"\n')
+    (clone / ".flubnf.env").write_text(
+        f'export FLUBNF_PY_ENGINE="{shutil.which("true")}"\n'
+        "export FLUBNF_ENGINE=private\n")
 
     def origin_moves(n):
         """A commit that edits files inside the bundle, the ones a build

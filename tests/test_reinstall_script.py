@@ -120,11 +120,18 @@ def _run(home: Path, origin: Path, *, no_install: bool = True,
         # machines
         "FLUBNF_REINSTALL_IGNORE_RUNNING": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        # the archive route (the private engine, the fallback) unless a
+        # test names another; the default route needs no archive
+        "FLUBNF_ENGINE": "private",
         **GIT_ENV,
     })
     if no_install:
         env["FLUBNF_REINSTALL_NO_INSTALL"] = "1"
-    env.update({k: str(v) for k, v in env_extra.items()})
+    for k, v in env_extra.items():              # None: not set at all
+        if v is None:
+            env.pop(k, None)
+        else:
+            env[k] = str(v)
     return subprocess.run([BASH, str(SCRIPT)], env=env, text=True,
                           capture_output=True, timeout=180)
 
@@ -282,6 +289,37 @@ def test_the_whole_file_is_parsed_before_any_of_it_runs():
 
 @posix_only
 @not_root
+def test_the_default_route_needs_no_engine_file(tmp_path):
+    """FLUBNF_ENGINE unset: the public engine, the default, which installs
+    from the lock; no archive is looked for, and the private engine's
+    folders stay where they are."""
+    origin, _ = _bare_origin(tmp_path)
+    home = _home_with_old_install(tmp_path)
+    out = _run(home, origin, FLUBNF_ENGINE=None)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "no engine file found" not in out.stdout
+    assert "installed from engine-requirements.txt" in out.stdout
+    assert any(p.name.startswith("flubnf-old-")
+               for p in (home / "Documents/GitHub").iterdir())
+    assert (home / ".venvs/flubnf-engine").is_dir()
+    assert (home / "Documents/GitHub/PyBNF-Private").is_dir()
+
+
+@posix_only
+@not_root
+def test_an_unknown_route_changes_nothing(tmp_path):
+    origin, _ = _bare_origin(tmp_path)
+    home = _home_with_old_install(tmp_path)
+    out = _run(home, origin, FLUBNF_ENGINE="pubic")
+    assert out.returncode == 2, out.stdout + out.stderr
+    assert 'FLUBNF_ENGINE is "pubic"' in out.stdout
+    assert "Nothing on this machine was changed" in out.stdout
+    assert (home / "Documents/GitHub/flubnf").is_dir()
+    assert not list((home / "Documents/GitHub").glob("flubnf-old-*"))
+
+
+@posix_only
+@not_root
 def test_no_engine_file_means_nothing_is_touched(tmp_path):
     """The archive is checked before anything is renamed."""
     origin, _ = _bare_origin(tmp_path)
@@ -417,7 +455,8 @@ def _current_install(tmp_path: Path, origin: Path, stamp: str = "feature/particl
     (pybnf / "VERSION").write_text(f"{stamp}\ncut 2026-09-23 from origin\n")
     (dest / ".flubnf.env").write_text(
         f'export FLUBNF_PY_ENGINE="{home}/.venvs/flubnf-engine/bin/python"\n'
-        f'export FLUBNF_PYBNF="{pybnf}"\n')
+        f'export FLUBNF_PYBNF="{pybnf}"\n'
+        "export FLUBNF_ENGINE=private\n")      # setup_engine.sh --private
     _engine_archive(home / "Downloads/pybnf-pf-2fdadee0.tar.gz")
     return home
 

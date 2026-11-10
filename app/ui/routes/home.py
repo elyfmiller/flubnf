@@ -344,7 +344,8 @@ def _has_report(rid: str | None) -> bool:
 ENGINE_NAME = "Particle-filter engine"
 _CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
                 "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
-                "FLUBNF_PYBNF": ENGINE_NAME}
+                "FLUBNF_PYBNF": ENGINE_NAME,
+                "FLUBNF_PY_ENGINE_PUBLIC": ENGINE_NAME}
 _VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
@@ -359,6 +360,9 @@ _ROW_WORDS = {
     "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
                         "bngsim",
     "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
+    "FLUBNF_PY_ENGINE_PUBLIC": "The public engine's own Python, with "
+                               "lanl/PyBNF and bngsim from "
+                               "engine-requirements.txt",
 }
 
 
@@ -456,7 +460,31 @@ def home(request: Request):
         # launch): the page recounts when the probe lands
         "setup_pending": any(v == VERSION_PENDING
                              for v in VERSIONS.values()),
-        "engine_name": ENGINE_NAME})
+        "engine_name": ENGINE_NAME,
+        # the engine this copy runs, in words, and the switch to the
+        # private engine when the default is missing and that one is
+        # installed here
+        "engine_words": _engine_words(),
+        "engine_fallback": _engine_fallback()})
+
+
+def _engine_words() -> str:
+    """The engine this copy runs, in words (engine_build.engine_words);
+    "" when it cannot be said."""
+    try:
+        from app.core.engine_build import engine_words
+        return engine_words()
+    except Exception:
+        return ""
+
+
+def _engine_fallback():
+    """templating._engine_fallback_hint, or "" when it cannot be read."""
+    try:
+        from app.ui.templating import _engine_fallback_hint
+        return _engine_fallback_hint()
+    except Exception:
+        return ""
 
 
 def _engine_known() -> bool:

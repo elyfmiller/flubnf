@@ -1,0 +1,8 @@
+Liu–West filter (job_type = lwf), one independent run, 10000 particles, random_seed 1736257424.
+This is a forecasting sample of a model whose free parameters drift by the Liu–West kernel at each row, not the posterior of fixed parameters. For the fixed-parameter posterior, use an MCMC job type such as am.
+Rows assimilated: 24 of 24 (t = 1 to 24).
+The kernel moves Reff__FREE at h = 0.15, eps1__FREE at h = 0.15, phi1__FREE at h = 0.15, mult__FREE at h = 0.15, r__FREE at h = 0.15.
+Weight ESS: 7106.0 after the last row, minimum 684.5; resampled at 13 of 24 rows.
+Particles failed: 0; zero-increment particles: 0 (summed over rows).
+Log evidence of the drifting-parameter model: -68.1925.
+Forecast: 4 interval(s), to t = 28.

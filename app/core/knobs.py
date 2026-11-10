@@ -473,7 +473,11 @@ LOCKED: tuple = (
            "The SIHRS compartment model the card describes."),
     Locked("pf.engine_keys", "neg_bin_dynamic, reflect, start -1, Hobs",
            "app.core.engines.pf:prepare",
-           "Objective, bounds and start time pinned to the records' conventions."),
+           "Objective, bounds and start time pinned to the records' "
+           "conventions. On the public engine, the default, these are "
+           "written to lwf.conf as noise_model neg_bin, lwf_* and "
+           "random_seed; a seed repeats a fit exactly only on the same "
+           "engine."),
     Locked("pf.starting_values", "DEFAULTS_BLOCK", "app.core.engines.pf:DEFAULTS_BLOCK",
            "Inert under initialization=rand."),
     Locked("pooling", "all jurisdictions, own weeks at half weight, size-matched",

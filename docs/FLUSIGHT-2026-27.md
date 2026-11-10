@@ -84,7 +84,7 @@ two-per-target limit for the admissions target.
 
 | Model id | Key | Method |
 |---|---|---|
-| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in a private PyBNF fork, whose output is a forecasting sample (not an exact posterior), then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
+| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in public PyBNF (lanl/PyBNF at 8410f794, `job_type = lwf`) since the switch to the public engine ([CUTOVER-ROUND]; before it, in the lab's private PyBNF fork at 2fdadee0, kept as the fallback), whose output is a forecasting sample, then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
 | `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions with the jurisdiction's own past weeks carrying half of the weight (since 2026-10-15; [DONOR-BANKS.md](DONOR-BANKS.md)), with a FluSurv-NET donor bank pooled across sites; no fitting, no engine needed |
 
 Recorded pooled relative WIS (ratio of sums vs FluSight-baseline, replays of
@@ -94,7 +94,8 @@ pooled form submitted 2026-10-10 and 2026-10-17 scores 0.670 on the same
 cells). The two are on different cells and are not read across (README,
 Measured record). These are the pre-registration screens' figures; in-app
 replays on build 2132f15 gave the Oracle SIHRS 0.767 / 0.702 / 0.782 by
-season (see [team/model.md](team/model.md)).
+season (see [team/model.md](team/model.md)). Every Oracle SIHRS figure here
+was made on the private engine, before the switch to the public engine.
 The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### What FluBNF produces
@@ -109,8 +110,10 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 ## Weekly routine (Sunday to Wednesday)
 
 1. Open FluBNF (FluBNF.command / FluBNF.app on Mac, FluBNF.bat or the Start
-   menu entry on Windows). It updates itself and the engine on open; the
-   console is at http://127.0.0.1:8710.
+   menu entry on Windows). It updates itself on open, and checks the engine:
+   the public engine against its lock, or, on a copy switched to the
+   fallback, the private checkout against its pin. The console is at
+   http://127.0.0.1:8710.
 2. Data tab: "check for new data", then "Update data" (fast-forwards the hub
    clone, and leaves out `target-data/time-series.csv`, which FluBNF does not
    read and a sparse clone fetches too slowly). Hub clone: `~/GitHub/FluSight-forecast-hub` (Mac/Linux) or
@@ -146,7 +149,9 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 ### Useful commands
 
 - `flubnf doctor`: environment and engine check.
-- `flubnf engine-update`: move a clean engine checkout to the production build.
+- `flubnf engine-update`: move a clean private engine checkout (the
+  fallback) to its pinned build, 2fdadee0. The public engine changes
+  only when its lock does.
 - `flubnf knobs ...`: settings; changed settings without an override write
   `<model_id>-modified` files, which are not hub names.
 - `flubnf retro <season>` / `flubnf groundhog retro all --aux flusurv`: replays.
@@ -156,11 +161,42 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### Engine
 
-- Production build: `feature/particle-filter` at `2fdadee0` (bngsim 0.15.1),
-  pinned in `app/core/engine_build.py`. A different build only warns.
-- The fork is private: a machine needs GitHub access to it, or the lab's
-  `pybnf-pf-2fdadee0.tar.gz` archive. Without the engine only Groundhog runs.
-- A retrospective resumes only on the engine build it was fitted with.
+- Since the switch to the public engine ([CUTOVER-ROUND]), the rounds run
+  on public PyBNF: lanl/PyBNF at the merge commit 8410f794
+  (`job_type = lwf`) with bngsim 0.15.1 on Python 3.12, from
+  `engine-requirements.txt` by hash, in a venv of its own. It needs no
+  GitHub access and no lab file; the first open installs it
+  ([ENGINE.md](ENGINE.md#the-public-engine-the-default)). Without the
+  engine only Groundhog runs.
+- The switch is Ely's decision of 2026-11-09, made before stage 2 ran:
+  there was no full-grid comparison through the console, no shadow
+  Wednesday, no install by someone outside the lab, and no fit on native
+  Windows. The evidence is in-house and retrospective: fed the private
+  engine's random inputs, the public engine gives the same forecast draws
+  on 144 of 144 cells; with its own random streams, the total WIS ratio is
+  1.0013 (95% 0.986 to 1.016).
+- A cell takes 2.07 times as long at the median, 2.21 at most, and the
+  time budgets are 2.4 times as long. On the lab Mac a weekly grid of 5
+  to 14 minutes becomes about 10 to 30; the laptops are not measured.
+- The fallback, for two rounds after the switch: the private fork,
+  `feature/particle-filter` at `2fdadee0` (bngsim 0.15.1), pinned in
+  `app/core/engine_build.py`. It stays installed where it was. A different
+  build of either engine only warns.
+- To run a Wednesday on the fallback: in the FluBNF folder,
+  `./setup_engine.sh --private` (on Windows, `setup.ps1 -Engine private`,
+  typed as [ENGINE.md](ENGINE.md#choosing-the-engine) gives it), then
+  reopen FluBNF. Either one records the choice before anything else. With
+  the private engine installed and loading, that is all it does: seconds,
+  no network (on Windows, once the console's `.venv` is made). Otherwise
+  the install follows (on Windows, a whole setup run, then the engine on
+  the next open), which needs the network. The run records the 2fdadee0
+  build.
+  `./setup_engine.sh --public` (on Windows, `setup.ps1 -Engine public`)
+  returns to the default. Switch before the round starts, never halfway
+  through it.
+- A retrospective resumes only on the engine and build it was fitted with:
+  a season begun on the private engine is refused on the public one, and
+  the refusal names the switch back.
 
 ### Naming and the public PyBNF port (agreed 2026-09-30)
 
@@ -174,27 +210,34 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
   Once IBIS exists, do not say "particle filter" unqualified.
 - Production SIHRS fits five parameters (Reff, eps1, phi1, mult, r); notes
   listing seven (with eps2, phi2) are stale.
-- The port is on a local, unpushed branch `feat/particle-filter` of the team
-  lead's PyBNF fork.
+- The port is merged: lanl/PyBNF#985, merge commit 8410f794 on public
+  `main` (2026-10-15). There is no PyBNF release with it yet, so the public
+  route installs a wheel built from that commit.
 
-What does not change now: production keeps its own engine (the pin above,
-installed non-editable, Python 3.10 on the lab Mac) and the console keeps
-writing `pf_*` keys. Rename nothing in FluBNF (model ids, the `pf` key, the
-conf writer, the engine pin) until the team lead starts the migration.
+What does not change at the switch (decision 4, 2026-10-15): the console
+keeps its `pf.*` knob and ledger names on both engines; the public engine's
+conf writer maps them. Rename nothing in FluBNF (model ids, the `pf` key,
+the knobs) to `lwf_*`.
 
-What the migration will need later:
-- Python 3.12 or newer and bngsim 0.15 or newer (rebuild the engine venv).
-- Conf writer: `pf_*` keys become `lwf_*`; edition-2 confs (`experiment:` and
+The migration followed plan v2 (2026-10-15,
+[team/engine.md](team/engine.md)):
+- Python 3.12 and bngsim 0.15.1, both held all season; a separate venv.
+- Conf writer, public engine only: `lwf_*` keys in the conf; edition-2
+  confs (`experiment:` and
   `noise_model <obs> = neg_bin, dispersion = fit r, location = mean,
   cumulative` in place of `objfunc = neg_bin_dynamic` and
   `pf_cumulative_observable`); `pf_seed` becomes `random_seed`;
   `pf_start_time` and `pf_sampling_interval` are retired (gaps need explicit
   NaN rows); `wall_time_fit` exists, off by default.
-- Output readers: check `params_*.txt`, `traj_noise_*`, `ess_*.txt`; names
-  and layout may change.
-- Results will not be byte-identical (new random-number source and
-  likelihood path): show statistical equivalence against the production
-  record on matched cells before switching.
+- Output readers, public engine: `Results/LWF/forecasts.txt`,
+  `predicted_counts.txt`, `parameters.txt`, `weight_ess.txt`.
+- Results are not byte-identical (another random-number source): the
+  engine lane's replay found the same forecast draws given the same random
+  inputs, and no score difference with its own (in-house, retrospective).
+- The plan had stage 2 repeat that comparison through the console, on the
+  full grid, with a shadow Wednesday, before any switch. Stage 2 did not
+  run: the switch came first, by Ely's decision of 2026-11-09. No
+  acceptance result exists.
 
 Engine findings to respect:
 - Choosing the jitter automatically by one-week-ahead predictive score was
@@ -257,10 +300,15 @@ Decided by Ely on 2026-09-30 and 2026-10-01 (see
   [ORACLE-SIHRS.md](ORACLE-SIHRS.md) section 5c and
   [team/model.md](team/model.md).
 
+Decided by Ely on 2026-11-09: the public engine is the default, and the
+private engine is the fallback for two rounds. The last round on the
+private engine is [CUTOVER-ROUND]; the first on the public engine is
+[CUTOVER-ROUND] (docs/MODEL-PROVENANCE.md, section 9).
+
 Still open:
 
 - Keep the Liu-West naming consistent in anything written for the team;
-  leave the code's `pf` names alone until the port lands. The Oracle SIHRS
+  the code's `pf` names stay, on both engines (decision 4). The Oracle SIHRS
   card on `dev` names the Liu-West filter (b41fc92); the hub's copy changes
   with the submission lane's cards pull request.
 - Windows laptops: the launcher fixes (engine updates on open, the Start

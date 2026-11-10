@@ -101,6 +101,37 @@ def test_the_run_form_shows_its_choices_again_after_a_refusal(tmp_path,
     assert 'open data-refused' not in _run_form()
 
 
+def test_a_refusal_keeps_the_particles_replicates_and_same_day_week(
+        tmp_path, monkeypatch):
+    """RE-13 for the older field names: the panel reads particles,
+    replicates and drop_same_day from the remembered form, so the route
+    must keep them, or the next Run replays at the defaults."""
+    import re
+    _roots(tmp_path, monkeypatch)
+    client.post("/retro/run", data={
+        "season": OTHER, "locations": "custom", "engine": "pf",
+        "particles": "2000", "replicates": "5", "drop_same_day": "1",
+        "knob.groundhog.zero_anchor": "blend"}, follow_redirects=False)
+    # refused either way: no locations checked, or, on a machine without
+    # the engine (CI), the Oracle preset's engine check comes first
+    assert "Not started" in ui_state._status["flash"]
+    form = _run_form()
+
+    def value(name):
+        m = re.search(r'<(?:input|select)[^>]*name="' + re.escape(name)
+                      + r'"[^>]*>', form)
+        assert m, name
+        tag = m.group(0)
+        if tag.startswith("<select"):
+            sel = form[m.end():].split("</select>", 1)[0]
+            return re.search(r'<option value="([^"]*)" selected', sel)[1]
+        return re.search(r'value="([^"]*)"', tag)[1]
+    # the panel posts these three under their older names (knobs.FIELD_OF)
+    assert value("particles") == "2000"
+    assert value("replicates") == "5"
+    assert value("drop_same_day") == "1"
+
+
 # ------------------------------------------ RE-24 and RE-25: a replay page
 
 def test_a_stopped_replay_leads_back_and_says_how_far_it_got():

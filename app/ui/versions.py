@@ -4,8 +4,11 @@ RUNNING_SHA is the commit this process runs (git rev-parse at import).
 VERSIONS starts as the last launch's snapshot (or pending markers) and is
 only ever updated in place, by _warm_versions on the startup warm thread;
 the templates, /api/versions, site_build and the ledger all hold that one
-dict. ENGINE_BUILD (the engine's branch and commit) is cached the same
-way. _engine_versions_for_ledger records the engine versions on a run.
+dict. ENGINE_BUILD (the engine's build: the public engine's wheel, or the
+private fork's branch and commit) is cached the same way. The snapshot
+names the engine it was made under, and a launch under the other engine
+discards it. _engine_versions_for_ledger records the engine versions on a
+run.
 """
 from __future__ import annotations
 
@@ -120,11 +123,18 @@ def _component_versions() -> dict:
             pass
     out["pybnf"] = out["bngsim"] = "not installed"
     try:
-        from flubnf.settings import PY_ENGINE, PYBNF
-        if Path(PY_ENGINE).exists():
-            r = subprocess.run(
-                [str(PY_ENGINE), "-c", _VERSION_PROBE % (str(PYBNF),)],
-                capture_output=True, text=True, timeout=15)
+        from flubnf.settings import PY_ENGINE, PYBNF, engine_public
+        if engine_public():
+            # the public engine's venv, installed by pip: no checkout on
+            # sys.path, nothing from the environment (-I)
+            from flubnf.settings import py_engine_public
+            py, cmd = py_engine_public(), ["-I", "-c", _VERSION_PROBE.replace(
+                "sys.path.insert(0, %r)\n", "")]
+        else:
+            py, cmd = PY_ENGINE, ["-c", _VERSION_PROBE % (str(PYBNF),)]
+        if Path(py).exists():
+            r = subprocess.run([str(py), *cmd], capture_output=True,
+                               text=True, timeout=15)
             out.update(json.loads(r.stdout.strip() or "{}"))
     except Exception:
         pass
@@ -147,35 +157,64 @@ _VERSION_KEYS = ("fastapi", "jinja2", "plotly", "pandas", "numpy",
                  "bionetgen", "perl", "pybnf", "bngsim")
 
 
+def _engine_now() -> str | None:
+    """The engine this process runs (settings.engine_choice), or None when
+    it cannot be read."""
+    try:
+        from flubnf.settings import engine_choice
+        return engine_choice()
+    except Exception:
+        return None
+
+
+def _snapshot_engine(snap: dict) -> str:
+    """The engine a snapshot was made under: its "engine", else its build's
+    (a snapshot from before the engine was stored names "public" only in
+    a public build; any other ran the private engine)."""
+    e = snap.get("engine")
+    if e in ("public", "private"):
+        return e
+    b = snap.get("engine_build")
+    return ("public" if isinstance(b, dict) and b.get("engine") == "public"
+            else "private")
+
+
+def _snapshot() -> dict:
+    """The last launch's snapshot, or {} without one. A snapshot made under
+    the other engine is discarded: its engine versions and build are that
+    engine's, and the warm probe fills in this one's."""
+    import json as _json
+    try:
+        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(snap, dict):
+        return {}
+    now = _engine_now()
+    if now is not None and _snapshot_engine(snap) != now:
+        return {}
+    return snap
+
+
 def _versions_initial() -> dict:
     """VERSIONS at import: the persisted snapshot, else pending markers. The
     warm probe updates this dict IN PLACE (templates hold the reference)."""
-    import json as _json
     out = {k: VERSION_PENDING for k in _VERSION_KEYS}
-    try:
-        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text(encoding="utf-8"))
-        if isinstance(snap, dict):
-            out.update({k: str(v) for k, v in snap.items()
-                        if k in _VERSION_KEYS})
-    except Exception:
-        pass
+    out.update({k: str(v) for k, v in _snapshot().items()
+                if k in _VERSION_KEYS})
     return out
 
 
 VERSIONS = _versions_initial()
 
 
-# === Engine build (branch and commit of the PyBNF fork) ===
+# === Engine build (the public engine's wheel, or the private fork's
+# branch and commit) ===
 def _build_initial() -> dict:
     """ENGINE_BUILD at import: the persisted snapshot's, else {} (unknown
     until the warm thread resolves it)."""
-    import json as _json
-    try:
-        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text(encoding="utf-8"))
-        b = snap.get("engine_build") if isinstance(snap, dict) else None
-        return dict(b) if isinstance(b, dict) else {}
-    except Exception:
-        return {}
+    b = _snapshot().get("engine_build")
+    return dict(b) if isinstance(b, dict) else {}
 
 
 #: app.core.engine_build.engine_build() of this machine, cached like
@@ -196,7 +235,9 @@ def refresh_engine_build() -> dict:
 
 
 def engine_build_view() -> dict:
-    """What pages show: {label, warning, fix, production, known}."""
+    """What pages show: {label, warning, fix, production, known, commit,
+    engine}; engine is the build's ("public" or "private",
+    engine_build.engine_of)."""
     from app.core import engine_build as _eb
     from app.core import engine_update as _eu
     b = dict(ENGINE_BUILD)
@@ -206,7 +247,8 @@ def engine_build_view() -> dict:
         fix = " ".join(x for x in (_eu.last_note(b), fix) if x)
     return {"label": _eb.label(b), "warning": _eb.warning(b),
             "fix": fix, "production": _eb.is_production(b),
-            "known": _eb.known(b)}
+            "known": _eb.known(b), "commit": str(b.get("commit") or ""),
+            "engine": _eb.engine_of(b)}
 
 
 def versions_resolved() -> bool:
@@ -233,16 +275,20 @@ def _engine_versions_for_ledger(engines: str) -> dict:
 
 def _warm_versions() -> None:
     """The real probe, off the first-paint path: resolve, update VERSIONS in
-    place, persist the snapshot for the next launch. Never raises."""
+    place, persist the snapshot for the next launch, with the engine it was
+    made under (a launch under the other engine discards it). Never
+    raises."""
     import json as _json
     try:
+        engine = _engine_now()
         VERSIONS.update(_component_versions())
         refresh_engine_build()
         _VERSIONS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
         tmp = _VERSIONS_SNAPSHOT.with_suffix(".json.tmp")
-        tmp.write_text(_json.dumps(dict(VERSIONS,
-                                        engine_build=dict(ENGINE_BUILD))),
-                       encoding="utf-8")
+        snap = dict(VERSIONS, engine_build=dict(ENGINE_BUILD))
+        if engine:
+            snap["engine"] = engine
+        tmp.write_text(_json.dumps(snap), encoding="utf-8")
         _os.replace(tmp, _VERSIONS_SNAPSHOT)
     except Exception:
         pass

@@ -61,6 +61,8 @@ def _run(script: Path, home: Path, *, dest: Path | None = None,
         "GIT_TERMINAL_PROMPT": "0",
         "FLUBNF_PYBNF_REMOTE": NOWHERE,
         "FLUBNF_ENGINE_CHECKOUT_ONLY": "1",
+        # the archive and the fork are the private engine's (the fallback)
+        "FLUBNF_ENGINE": "private",
         # the fallback probes github.com once; bound it so a machine with no
         # route out does not stall for minutes
         "GIT_CONFIG_COUNT": "2",

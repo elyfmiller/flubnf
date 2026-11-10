@@ -674,3 +674,34 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
         ui_state._status.clear()
         ui_state._status.update(status_before)
         ui_shared._invalidate_scans()
+
+
+@pytest.mark.parametrize("engine", ["public", "private"])
+def test_the_two_strain_member_runs_on_the_private_engine_only(
+        console, monkeypatch, tmp_path, engine):
+    """members=3 on the public engine, the default: the one-strain filter
+    runs and the two-strain member is skipped with its reason (it has no
+    counterpart there), as pf_skipped records the filter's own."""
+    import app.core.engines.pf as pf_engine
+    srv, raw = console
+    prepared = []
+    monkeypatch.setattr(pf_engine, "prepare",
+                        lambda spec, w: prepared.append(Path(w).name) or [])
+    monkeypatch.setattr(pf_engine, "engine_current", lambda: True)
+    py = tmp_path / "public-python"
+    py.write_text("")
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(py))
+    monkeypatch.setenv("FLUBNF_ENGINE", engine)
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   replicates=1, extra=ui_forecast._run_extra(3, "vintage"))
+    ui_pipeline._run_all(spec)
+    from app.core.runs import Ledger
+    outcome = json.loads(next(iter(Ledger().rows(5))).get("outcome") or "{}")
+    if engine == "public":
+        assert outcome["pf2s_skipped"] == (
+            "the two-strain member runs on the private engine only "
+            "(FLUBNF_ENGINE=private)")
+        assert "pf2s_cells" not in outcome and prepared and "pf2s" not in prepared
+    else:
+        assert "pf2s_skipped" not in outcome
+        assert "pf2s" in prepared and "pf2s_cells" in outcome

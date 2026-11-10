@@ -369,6 +369,42 @@ def test_both_runners_start_with_syntax_warnings_ignored(tmp_path,
     assert [p.returncode for p in procs] == [0]
 
 
+def test_a_launch_interrupted_part_way_kills_the_runners_it_started(
+        tmp_path, monkeypatch):
+    """A second Ctrl-C while retro is still starting its shards: the runners
+    already started lead their own sessions (no Ctrl-C reaches them) and are
+    not yet in the registry, so the launch itself must stop them."""
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+
+    class Runner:
+        killed = False
+
+        def poll(self):
+            return -9 if self.killed else None
+
+        def kill(self):
+            self.killed = True
+
+    started = []
+
+    def popen(cmd, *a, **k):
+        if started:
+            raise KeyboardInterrupt
+        started.append(Runner())
+        return started[0]
+    monkeypatch.setattr(retro.subprocess, "Popen", popen)
+    recorded = []
+    monkeypatch.setattr(pf, "record_runner_pids", recorded.append)
+    wd = tmp_path / "wk"
+    wd.mkdir()
+    with pytest.raises(KeyboardInterrupt):
+        retro._launch_runners(wd, [[{"key": "c0", "dir": str(wd)}],
+                                   [{"key": "c1", "dir": str(wd)}]],
+                              wd / "HALT")
+    assert len(started) == 1 and started[0].killed
+    assert recorded == []
+
+
 # ------------------------------------------------------ the retro runner
 
 def test_the_retro_runner_marks_an_engine_exit_and_goes_on(tmp_path,
