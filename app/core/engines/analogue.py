@@ -569,6 +569,10 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
         "groundhog.bandwidth")
     bw_kw = {} if bw is None else {"bandwidth": int(bw)}
     bw_kw.update(src_kw)                     # empty on the hub path
+    # the pooled form's donor ratios, one bank scan per selection for the
+    # whole run instead of one per location and horizon (the local form
+    # keeps its own on `local`); same forecasts, built and dropped per run
+    memo: dict = {}
     extra = getattr(spec, "extra", None)
     for loc in spec.locations:
         # this location's rules: the run-wide ones, plus its own choice
@@ -638,7 +642,7 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None,
             # default donor pool = the registered exclusions; never restated
             return AN.forecast(anchor, window_ref, h + lag, bank, QL,
                                completeness=c, widen_log_sd=sig,
-                               splice=splice, **bw_kw, **local_kw)
+                               splice=splice, memo=memo, **bw_kw, **local_kw)
         yield loc, anchor, anchor_date, lag, forecast
 
 

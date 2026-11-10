@@ -33,6 +33,7 @@ Two traps, both paid for:
 """
 from __future__ import annotations
 
+import functools
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -73,6 +74,11 @@ SEASON_BOUNDARY_MONTH = 8
 _STD_NORMAL = NormalDist()
 
 
+# epiweek and season_of run once per bank cell on every donor scan, so both
+# are cached on the date (a bank holds a few hundred distinct dates). They
+# are pure functions of it, a datetime (a pandas Timestamp included) never
+# equals a date, and lru_cache is thread-safe and hands out ints.
+@functools.lru_cache(maxsize=8192)
 def epiweek(d: date) -> int:
     """CDC MMWR week number. Weeks end Saturday; week 1 ends on the first
     Saturday whose week contains >= 4 January days."""
@@ -87,6 +93,9 @@ def epiweek(d: date) -> int:
     return -1
 
 
+# Cached on the date alone: SEASON_BOUNDARY_MONTH must never be reassigned
+# at runtime (a per-dataset boundary must become an argument of this function).
+@functools.lru_cache(maxsize=8192)
 def season_of(d: date) -> int:
     """Influenza season label: Aug-Jul, named by the starting year."""
     return d.year if d.month >= SEASON_BOUNDARY_MONTH else d.year - 1
@@ -651,8 +660,11 @@ class LocalPooling:
     winsor_q: float = 0.0
     repair_spikes: bool = False
     exclude_weeks: tuple = ()
-    #: per-run memo of own-site auxiliary ratios, keyed by pool, location,
-    #: epiweek, season, horizon and bandwidth
+    #: per-run memo: own-site auxiliary ratios, keyed by pool, location,
+    #: epiweek, season, horizon and bandwidth; the research bank; and the
+    #: admissions pool's donor ratios (_memoised). One LocalPooling per run
+    #: (app/core/engines/analogue.local_args); a bank must not be changed
+    #: in place while a LocalPooling that has read it is still in use
     _memo: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
@@ -729,6 +741,28 @@ def bank_without_weeks(bank: Mapping[tuple, float], windows) -> dict:
     wins = [(_as_date(a), _as_date(b)) for a, b in windows]
     return {k: v for k, v in bank.items()
             if not any(a <= _as_date(k[1]) <= b for a, b in wins)}
+
+
+def _memoised(memo: dict, key: tuple, bank: Mapping[tuple, float], scan):
+    """`scan()` once per key: one donor scan per distinct selection.
+
+    The admissions pool's donor ratios depend on the bank, the as-of's
+    epiweek and season, the horizon, the bandwidth and the exclusions, never
+    on the location, so a run scans the bank once per selection instead of
+    once per location and horizon. `key` starts with id(bank); the entry
+    holds the bank itself and a hit counts only when it is the same object
+    (as _research_bank), so a reused id never returns another bank's ratios.
+    The arrays handed out are read-only, so no caller can change what the
+    next location reads. `memo` lives for one run and is not shared between
+    runs or threads."""
+    hit = memo.get(key)
+    if hit is not None and hit[0] is bank:
+        return hit[1]
+    out = scan()
+    for a in (out if isinstance(out, tuple) else (out,)):
+        a.setflags(write=False)
+    memo[key] = (bank, out)
+    return out
 
 
 def _research_bank(bank: Mapping[tuple, float], local: "LocalPooling"):
@@ -877,9 +911,13 @@ def _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth, *,
     ew, se = epiweek(as_of), season_of(as_of)
     target_anchor = float(anchor)                 # the newest count itself
     bank = _research_bank(bank, local)
-    r, locs, v0 = keyed_ratios(bank, ew, se, horizon, bandwidth,
-                               exclude_seasons=exclude_seasons,
-                               with_anchor=True)
+    # resolved once, so the memo key and the scan read the same set (a
+    # one-shot iterator would be used up by the key and reach the scan empty)
+    drop = resolve_donor_exclusions(exclude_seasons)
+    r, locs, v0 = _memoised(
+        local._memo, ("primary", id(bank), ew, se, horizon, bandwidth, drop),
+        bank, lambda: keyed_ratios(bank, ew, se, horizon, bandwidth,
+                                   exclude_seasons=drop, with_anchor=True))
     if local.anchor_floor > 0:
         # RESEARCH: drop small-count donors; under MIN_DONORS keep them all
         keep = v0 >= float(local.anchor_floor)
@@ -965,7 +1003,7 @@ def forecast(anchor: float, as_of: date, horizon: int,
              exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
              splice: Optional["DonorSplice"] = None,
              local: Optional["LocalPooling"] = None,
-             location=None) -> Optional[dict]:
+             location=None, memo: Optional[dict] = None) -> Optional[dict]:
     """One analogue predictive distribution. `bank` maps (location, date)->value.
 
     `completeness` / `widen_log_sd` pass to analogue_quantiles;
@@ -974,6 +1012,11 @@ def forecast(anchor: float, as_of: date, horizon: int,
     `local` (LocalPooling) weights `location`'s own donors up, the shipped
     form (the engine passes SHIPPED_OWN_SHARE); None is the pooled form,
     the path before 2026-10-15 byte for byte.
+
+    `memo`: a dict the caller keeps for one run (app/core/engines/analogue
+    _walk), so the pooled form scans the bank once per selection rather
+    than once per location (_memoised); None scans on every call. The
+    local form keeps its own on `local`. Neither changes a forecast.
     """
     if local is not None:
         return _local_forecast(anchor, as_of, horizon, bank, levels, bandwidth,
@@ -981,8 +1024,17 @@ def forecast(anchor: float, as_of: date, horizon: int,
                                widen_log_sd=widen_log_sd,
                                exclude_seasons=exclude_seasons, splice=splice,
                                local=local, location=location)
-    r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
-                     bandwidth=bandwidth, exclude_seasons=exclude_seasons)
+    if memo is None:
+        r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
+                         bandwidth=bandwidth, exclude_seasons=exclude_seasons)
+    else:
+        ew, se = epiweek(as_of), season_of(as_of)
+        # resolved once, as in _local_forecast
+        drop = resolve_donor_exclusions(exclude_seasons)
+        r = _memoised(
+            memo, ("pooled", id(bank), ew, se, horizon, bandwidth, drop), bank,
+            lambda: donor_ratios(bank, ew, se, horizon, bandwidth=bandwidth,
+                                 exclude_seasons=drop))
     if splice is None:
         return analogue_quantiles(anchor, r, levels, completeness=completeness,
                                   widen_log_sd=widen_log_sd)
