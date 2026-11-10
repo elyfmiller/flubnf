@@ -12,8 +12,11 @@ _weekly_report_file here. An APIRouter server.py includes.
 from __future__ import annotations
 
 import hashlib
+import itertools
+import os
 import re
 import sys
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -358,12 +361,22 @@ def _date_window(ref: str, today=None, now=None) -> str:
     return _date_status(ref, today=today, now=now).get("text", "")
 
 
-#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once,
+#: path -> (mtime_ns, size, hubcheck.summary); a file is checked once,
 #: and the result kept on disk (CHECKS_FILE in the state folder) so a
-#: relaunch does not check every listed file again
+#: relaunch does not check every listed file again. One entry per file:
+#: a newer version of a file replaces its older one, a file no longer
+#: there is dropped when the results are written, and past CHECKS_MAX
+#: files the one checked longest ago goes first. Request threads share
+#: the dict: every read and change of it holds _CHECKED_LOCK, and the
+#: checks themselves run outside it.
 _CHECKED: dict = {}
 CHECKS_FILE = "hubcheck_results.json"
+CHECKS_MAX = 4096
 _CHECKS_READ: set = set()
+_CHECKED_LOCK = threading.Lock()
+#: one writer at a time, each from a snapshot taken in its turn, so an
+#: older snapshot never replaces a newer one on disk
+_KEEP_LOCK = threading.Lock()
 
 
 def _rules_digest() -> str:
@@ -384,15 +397,27 @@ def _checks_path() -> Path:
     return Path(APP_STATE) / CHECKS_FILE
 
 
+def _bound_checks() -> None:
+    """Past CHECKS_MAX files, drop the ones checked longest ago (the dict
+    keeps the order results came in). Called with _CHECKED_LOCK held."""
+    extra = len(_CHECKED) - CHECKS_MAX
+    if extra > 0:
+        for path in list(itertools.islice(_CHECKED, extra)):
+            del _CHECKED[path]
+
+
 def _read_checks() -> None:
     """The results kept on disk, once per state folder; "due" is not kept
-    (summary's window for the reference date, rebuilt here)."""
+    (summary's window for the reference date, rebuilt here). A file this
+    process has checked already keeps its own result."""
     import json
     from app.core import hubcheck
     p = _checks_path()
-    if str(p) in _CHECKS_READ:
-        return
-    _CHECKS_READ.add(str(p))
+    with _CHECKED_LOCK:
+        if str(p) in _CHECKS_READ:
+            return
+        _CHECKS_READ.add(str(p))
+    rows = []
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
         if d.get("rules") != _rules_digest():
@@ -400,9 +425,14 @@ def _read_checks() -> None:
         for path, mtime, size, s in d.get("files") or []:
             ref = s.get("reference_date") or ""
             s["due"] = hubcheck.submission_window(ref) if s.get("round") else None
-            _CHECKED.setdefault((path, int(mtime), int(size)), s)
+            rows.append((str(path), int(mtime), int(size), s))
     except Exception:
-        pass                          # unreadable: the files are checked again
+        return                        # unreadable: the files are checked again
+    with _CHECKED_LOCK:
+        for path, mtime, size, s in rows:
+            if path not in _CHECKED:
+                _CHECKED[path] = (mtime, size, s)
+        _bound_checks()
 
 
 def _keepable(s: dict) -> bool:
@@ -412,23 +442,38 @@ def _keepable(s: dict) -> bool:
 
 
 def _keep_checks() -> None:
-    """Write the results to disk (all at once, replaced whole): one entry
-    per file, its newest version."""
+    """Write the results to disk, replaced whole: one entry per file still
+    there, oldest checked first. It walks a snapshot of the dict taken
+    under its lock (another request may add to the dict meanwhile), and
+    writes through a temporary file of its own (as report_season does)."""
     import json
     p = _checks_path()
-    newest: dict = {}
-    for k, s in _CHECKED.items():
-        if _keepable(s) and (k[0] not in newest or k[1] > newest[k[0]][0][1]):
-            newest[k[0]] = (k, s)
-    rows = [[k[0], k[1], k[2], {f: v for f, v in s.items() if f != "due"}]
-            for k, s in newest.values()]
-    try:
-        tmp = p.with_name(p.name + ".tmp")
-        tmp.write_text(json.dumps({"rules": _rules_digest(), "files": rows}),
-                       encoding="utf-8")
-        tmp.replace(p)
-    except OSError:
-        pass
+    with _KEEP_LOCK:
+        with _CHECKED_LOCK:
+            snap = list(_CHECKED.items())
+        rows, gone = [], []
+        for path, (mtime, size, s) in snap:
+            if not os.path.isfile(path):
+                gone.append((path, s))
+            elif _keepable(s):
+                rows.append([path, mtime, size,
+                             {f: v for f, v in s.items() if f != "due"}])
+        if gone:
+            with _CHECKED_LOCK:
+                for path, s in gone:
+                    e = _CHECKED.get(path)
+                    if e is not None and e[2] is s:     # not checked again since
+                        del _CHECKED[path]
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            tmp.write_text(json.dumps({"rules": _rules_digest(),
+                                       "files": rows}), encoding="utf-8")
+            os.replace(tmp, p)
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _check_summary(path: str) -> dict:
@@ -440,15 +485,19 @@ def _check_summary(path: str) -> dict:
         key = (str(path), st.st_mtime_ns, st.st_size)
     except OSError:
         key = None
-    s = _CHECKED.get(key) if key else None
-    if s is None:
-        s = hubcheck.summary(path)
-        if key:
-            if len(_CHECKED) > 512:
-                _CHECKED.clear()
-            _CHECKED[key] = s
-            if _keepable(s):
-                _keep_checks()
+    if key:
+        with _CHECKED_LOCK:
+            e = _CHECKED.get(key[0])
+        if e is not None and e[:2] == key[1:]:
+            return e[2]
+    s = hubcheck.summary(path)
+    if key:
+        with _CHECKED_LOCK:
+            _CHECKED.pop(key[0], None)      # its older version; newest last
+            _CHECKED[key[0]] = (key[1], key[2], s)
+            _bound_checks()
+        if _keepable(s):
+            _keep_checks()
     return s
 
 
@@ -694,6 +743,7 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
+    import datetime as _dt
     from app.core import archive_record as _ar
     from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
@@ -722,6 +772,11 @@ def output_page(request: Request):
         win = (d.get("status") or {}).get("state") in ("due", "soon")
         for f in d["files"]:
             f["validate"] = validator_command(f["path"], window=win)
+    # the server's clock as the page goes out, to the second (rounded
+    # down): the page's countdown keeps time by it, so a browser whose
+    # clock runs ahead does not reload before a badge has changed here
+    server_now = _dt.datetime.now(_dt.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
@@ -749,7 +804,7 @@ def output_page(request: Request):
         "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
         "report_modified": report_modified,
-        "stamp": stamp})
+        "stamp": stamp, "server_now": server_now})
 
 
 @router.get("/api/output/stamp")

@@ -129,8 +129,8 @@
 <form method="post" action="/runs/clear" id="clear-ledger" class="st-foot">
  <input type="hidden" name="confirm" value="">
  <button type="button" class="quiet st-btn" id="clear-ledger-btn"
-   data-count="{{ clear_count }}">Clear {{ clear_count }} completed
-   row{{ "" if clear_count == 1 else "s" }} (files kept)</button>
+   data-count="{{ clear_count }}">Clear {{ clear_count }}
+   row{{ "" if clear_count == 1 else "s" }} not running (files kept)</button>
 </form>
 <script>
  (function(){
@@ -206,8 +206,8 @@
   {{ tips.legend(legend_items, label="Disk use by category", id="st-lg") }}
   <form method="post" action="/storage/reclaim" id="reclaim-form" class="st-reclaim">
    <input type="hidden" name="confirm" value="">
+   {# no "?": what a reclaim does is said in its confirmation #}
    <button type="button" class="quiet st-btn" id="reclaim-btn">{{ tips.icon("refresh") }} Reclaim space…</button>
-   {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
    <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim", id="st-reclaim-none") }}</span></span>
   </form>
  </div>
@@ -301,7 +301,10 @@
   <span class="st-size">{{ w.size_h }}</span>
   {% if w.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
   {% elif w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
-  {% else %}{{ del_form("/storage/delete", "workroot", w.id, ("the run " ~ w.label) if w.recorded else ("the unrecorded run " ~ w.id), w.size_h, "Its folder " ~ w.id ~ " goes, with the run's report and submission files in it. The ledger row stays and shows a dash for disk use.") }}{% endif %}
+  {# the hint names only what the folder holds (a stopped run may have
+     written no report), and a ledger row only for a recorded run #}
+  {% else %}{% set wr_hint = "Its folder " ~ w.id ~ " goes" ~ ((", with the run's " ~ w.files ~ " in it") if w.files else "") ~ "." ~ (" The ledger row stays and shows a dash for disk use." if w.recorded else "") %}
+  {{ del_form("/storage/delete", "workroot", w.id, ("the run " ~ w.label) if w.recorded else ("the unrecorded run " ~ w.id), w.size_h, wr_hint) }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
  </section>
@@ -315,7 +318,8 @@
   <span class="st-title"><strong><a href="/retro/{{ s.id }}">{{ s.id }} retrospective</a></strong>
    {%- if s.busy %} {{ tips.badge("pending", s.status) }}{% endif %}</span>
   <span class="st-size">{{ s.size_h }}</span>
-  {% if s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why, s.id ~ " season results") }}
+  {% if s.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+  {% elif s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why, s.id ~ " season results") }}
   {% else %}{{ del_form("/storage/delete", "retro-season", s.id, s.id ~ " season results", s.size_h, "Archived runs of this season and the sealed record are separate trees and are not touched.") }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No live season trees on disk", "calendar", compact=True) }}{% endfor %}
@@ -333,7 +337,8 @@
   {% set aid %}<code>{{ a.id }}</code>{% endset %}
   {{ tips.meta([("download" if a.imported else "calendar", a_when, ""), aid]) }}
   <span class="st-size">{{ a.size_h }}</span>
-  {% if a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why, a.season ~ " run " ~ a_when) }}
+  {% if a.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+  {% elif a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why, a.season ~ " run " ~ a_when) }}
   {% else %}{{ del_form("/storage/delete", "retro-archive", a.id, a.season ~ " run " ~ a_when, a.size_h, "The live " ~ a.season ~ " season is not touched.") }}{% endif %}
  </div>
  {% endfor %}
@@ -352,7 +357,8 @@
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
   {{ tips.meta([rlink]) }}{% endif %}
   <span class="st-size">{{ f.size_h }}</span>
-  {% if f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}
+  {% if f.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+  {% elif f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}
   {% else %}{{ del_form("/storage/delete", "report-archive", f.id, "archived " ~ f.id ~ " report and submissions", f.size_h, "The workroot that produced it is a separate entry above.") }}{% endif %}
  </div>
  {% endfor %}
@@ -394,7 +400,9 @@
  {% endif %}
  {% if sbx %}
  <section class="st-sec" aria-labelledby="h-st-sbx">
- {{ tips.heading("Sandbox", "st-sbx", "Kept out of the total above: the Sandbox's models and runs are deleted in the Sandbox, not here.", level=3, cls="st-h") }}
+ {# the section's note in plain sight, not a "?" #}
+ {{ tips.heading("Sandbox", "st-sbx", level=3, cls="st-h") }}
+ <p class="hint" id="st-sbx-hint">Not in the total above. Delete Sandbox models and runs in the Sandbox.</p>
  <div class="st-row">
   <span class="st-title"><strong><a href="/sandbox">Sandbox models and runs</a></strong></span>
   <span class="st-size">{{ sbx.size_h }}</span>
@@ -408,7 +416,9 @@
     total; Delete is Ely's way to take a queued one out of the queue.
     Elsewhere this block writes not a byte #}
  <section class="st-sec" aria-labelledby="h-st-stu">
- {{ tips.heading("Student experiments", "st-stu", "Each student's experiments on this computer, by folder (~/Students/<name>/sandbox), replayed by the runner one at a time. A week's forecasting samples are dropped once its quantiles are checked against them. Deleting one removes its folder and takes it out of the queue; its model stays in the student's library. Not in the total above: these folders belong to the students' clones.", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="student experiments") }}
+ {{ tips.heading("Student experiments", "st-stu", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h") }}
+ {# the section's note in plain sight, not a "?" #}
+ <p class="hint" id="st-stu-hint">Each student's experiments, by folder (~/Students/&lt;name&gt;/sandbox); the runner replays them one at a time. A week's forecasting samples are dropped once its quantiles are checked. Delete removes an experiment's folder and takes it out of the queue; its model stays in the student's library. Not in the total: the folders belong to the students' clones.</p>
  {% if su.down %}{{ tips.alert("warn", su.why, title="The runner is not running.", id="st-stu-down") }}{% else %}{{ tips.meta(su.runner) }}{% endif %}
  {% for e in su.rows %}
  <div class="st-row">
