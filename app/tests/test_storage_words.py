@@ -42,19 +42,21 @@ def test_sections_carry_no_marks_and_busy_rows_say_why_once(state):
 
 
 def test_archived_runs_read_in_this_computers_time(monkeypatch):
-    import os
+    import re
     import time
-    monkeypatch.setenv("TZ", "America/Phoenix")
-    if hasattr(time, "tzset"):
-        time.tzset()
-        try:
-            assert ui_storage._local_when("20261025T191800Z") == \
-                "2026-10-25 12:18"
-        finally:
-            monkeypatch.delenv("TZ")
-            time.tzset()
     assert ui_storage._local_when("odd") == "odd"
-    assert os.environ.get("TZ") != "America/Phoenix"
+    # the workroot rows' form, in this computer's own zone
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+                        ui_storage._local_when("20261025T191800Z"))
+    if not hasattr(time, "tzset"):
+        return                      # Windows: no zone can be set from here
+    monkeypatch.setenv("TZ", "America/Phoenix")
+    time.tzset()
+    try:
+        assert ui_storage._local_when("20261025T191800Z") == "2026-10-25 12:18"
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
 
 
 def test_bulk_controls_say_not_running_and_list_no_statuses():
