@@ -53,9 +53,11 @@ def test_the_check_says_when_the_data_are_too_short_for_the_groundhog(
     j = check(short_bytes())
     assert j["ok"]
     html = " ".join(j["html"].split())
-    # the notice, then its fix (shown in the check; P4, F54)
+    # the notice, then its fix (shown in the check; P4, F54); two groups,
+    # so a donor week counts once in each (review 3, finding 14)
     assert ("Too little history for the Groundhog: at the newest week it "
-            "finds 20 weeks like it in earlier seasons and needs 30, so it "
+            "finds 20 group-weeks like it in earlier seasons and needs 30, "
+            "so it "
             "will not forecast this data on its own. Add a population "
             "column and set up the engine so the Liu-West filter can fit "
             "it, or give about 1 more earlier season of data.") in html

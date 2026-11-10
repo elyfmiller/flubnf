@@ -61,8 +61,9 @@
 {% if chk.preview %}{% set pv = chk.preview %}
 <div class="dspreview dt-panel">
  {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
- {# the data are too short for the Groundhog to forecast on its own, and
-    what would fix it (datasets_ui.model_view: shown, never stored) #}
+ {# the data are too short for the Groundhog to forecast every horizon,
+    and what would fix it, both by the newest week's scarcest horizon
+    (datasets_ui.model_view: shown, never stored) #}
  {% if chk.groundhog %}{{ tips.alert("warn", chk.groundhog ~ (" " ~ chk.groundhog_fix if chk.groundhog_fix else ""), id=fid ~ "-gh", live="") }}{% endif %}
  {# what the file holds, one labelled value each #}
  {% call tips.stats("uk-stats--row dt-facts", label="What the file holds") %}

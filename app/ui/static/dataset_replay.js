@@ -15,7 +15,9 @@
                       Independent Runs fits a week, the panel's
                       particles, shown as the span; the Groundhog alone
                       "under a minute" up to the form's data-gh-quick
-                      (weeks x groups x data cells), else nothing.
+                      (weeks x groups x data cells), else nothing. An
+                      Independent Runs or particles field the server
+                      would refuse (intOf) says nothing either.
 
    datasets_ui.donor_line and replay_estimate render both for the default
    range so the form reads right without script, by the same rules
@@ -78,11 +80,23 @@
             def: el.getAttribute("data-default") || "", el: el};
   }
 
-  // a whole number from the field, else from its default, else `fallback`
+  // a whole number as the server reads the field (app/core/knobs.py:
+  // commas and underscores dropped, then a plain integer within the
+  // field's min and max); blank is its default, else `fallback`; null for
+  // anything the server would refuse ("1e4", "2.5", "0"), so the line
+  // times no replay that will not start
   function intOf(k, fallback) {
-    var v = parseInt(k.value, 10);
-    if (!isFinite(v)) v = parseInt(k.def, 10);
-    return isFinite(v) && v > 0 ? v : fallback;
+    var t = k.value.replace(/[,_]/g, "");
+    if (t === "") {
+      var d = parseInt(k.def, 10);
+      return isFinite(d) && d > 0 ? d : fallback;
+    }
+    if (!/^[+-]?[0-9]+$/.test(t)) return null;
+    var v = parseInt(t, 10);
+    var lo = k.el ? parseFloat(k.el.getAttribute("min")) : NaN;
+    var hi = k.el ? parseFloat(k.el.getAttribute("max")) : NaN;
+    if ((isFinite(lo) && v < lo) || (isFinite(hi) && v > hi)) return null;
+    return v;
   }
 
   function init(form) {
@@ -142,13 +156,16 @@
         }
       }
       if (est && estText) {
-        var text = estimate(E, p, {
-          weeks: weeks, groups: nGroups(),
-          engine: engine ? engine.value : "analogue",
-          replicates: intOf(knob(form, "pf.replicates"), 3),
-          particles: intOf(knob(form, "pf.particles"), 10000),
-          seasonStart: knob(form, "run.season_start").value,
-          cells: cells, quick: quick});
+        var eng = engine ? engine.value : "analogue";
+        var reps = intOf(knob(form, "pf.replicates"), 3);
+        var parts = intOf(knob(form, "pf.particles"), 10000);
+        // the filter's fields matter only when it runs
+        var text = eng === "all" && (reps === null || parts === null) ? ""
+          : estimate(E, p, {
+            weeks: weeks, groups: nGroups(), engine: eng,
+            replicates: reps, particles: parts,
+            seasonStart: knob(form, "run.season_start").value,
+            cells: cells, quick: quick});
         est.hidden = !text;
         if (text) estText.textContent = text;
       }
@@ -166,6 +183,7 @@
     weeksIn: weeksIn,
     donorBadge: donorBadge,
     estimate: estimate,
+    intOf: intOf,
     init: init
   };
   root.FluBNFDatasetReplay = FluBNFDatasetReplay;

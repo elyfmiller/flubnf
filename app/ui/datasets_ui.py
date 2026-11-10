@@ -222,16 +222,51 @@ def _render_data(request, _code: int = 200, **extra):
 FILTER = "Liu-West filter"
 
 
+def donor_unit(groups: int) -> str:
+    """What a donor count counts, in words: the Groundhog's 30 are of
+    group and week pairs, so with several groups a week counts once in
+    each ("group-weeks"); one group's are plain weeks."""
+    return "weeks" if groups <= 1 else "group-weeks"
+
+
+def groundhog_notice(donors: dict, groups: int) -> str:
+    """The check's Groundhog notice (shown, never stored) from the newest
+    week's donor weeks (checks.groundhog_donors), '' when every horizon
+    has enough. It quotes the counts the badge and the fix go by: the
+    fewest, and the most when the horizons differ. Several groups count
+    one per group and week, so the words say group-weeks."""
+    from app.core.datasets.checks import TOO_LITTLE_HISTORY
+    counts, need = donors["counts"], donors["need"]
+    lo, hi, k = min(counts), max(counts), donors["enough"]
+    if lo >= need:
+        return ""
+    unit = donor_unit(groups)
+    found = (f"{lo} {unit}" if lo == hi else
+             f"{lo} to {hi} {unit}")
+    by = "" if lo == hi else ", depending on the horizon,"
+    if not k:
+        return (f"{TOO_LITTLE_HISTORY}: at the newest week it finds {found} "
+                f"like it in earlier seasons{by} and needs {need}, so it "
+                "will not forecast this data on its own.")
+    return (f"{TOO_LITTLE_HISTORY} at some horizons: at the newest week it "
+            f"finds {found} like it in earlier seasons{by} and needs {need} "
+            f"at each, so it will forecast {k} of its {len(counts)} "
+            "horizons on its own.")
+
+
 def model_view(rep, chk: dict, kind: str = "") -> dict:
     """What a check's preview says of each model on a valid file: one
-    badge apiece ("models": [(name, state, word)]) and, after the
-    Groundhog's too-little-history notice, how to fix it
-    ("groundhog_fix"): about N more earlier seasons (checks.
-    groundhog_shortfall, at the scarcest horizon of the newest week), or,
-    for counts without a population, a population column (and the engine
-    when it is not ready) so the Liu-West filter can fit it. Shown in the
-    check only: the notice dataset_checks stores is unchanged."""
-    from app.core.datasets.checks import groundhog_shortfall
+    badge apiece ("models": [(name, state, word)]), the Groundhog's
+    notice ("groundhog", groundhog_notice) and how to fix it
+    ("groundhog_fix"): about N more earlier seasons, or, for counts
+    without a population, a population column (and the engine when it is
+    not ready) so the Liu-West filter can fit it. The Groundhog's badge,
+    notice and fix go by one count, its donor weeks at the newest week's
+    scarcest horizon (checks.groundhog_donors), as the Forecast tab's line
+    does (donor_weeks): "ready" only when every horizon has enough, "some
+    horizons only" when some do. Shown in the check only: the notice
+    dataset_checks stores (horizon 1) is unchanged."""
+    from app.core.datasets.checks import groundhog_donors
     s = rep.summary or {}
     count = (kind or s.get("inferred_kind")) == "count"
     pop = bool(s.get("has_population"))
@@ -240,13 +275,22 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
           ("warn", "needs a population" + ("" if ready else " and the engine"))
           if not pop else
           ("warn", "needs the engine") if not ready else ("ok", "ready"))
-    out = {"models": [(GROUNDHOG, "warn", "too little history")
-                      if chk.get("groundhog") else (GROUNDHOG, "ok", "ready"),
-                      (FILTER, *pf)],
+    donors = groundhog_donors(rep)
+    if donors is None:          # not a valid file of two weeks: as stored
+        gh = (("warn", "too little history") if chk.get("groundhog")
+              else ("ok", "ready"))
+        return {"models": [(GROUNDHOG, *gh), (FILTER, *pf)],
+                "groundhog_fix": ""}
+    short = donors["n"] < donors["need"]
+    gh = (("ok", "ready") if not short else
+          ("warn", "some horizons only") if donors["enough"] else
+          ("warn", "too little history"))
+    out = {"models": [(GROUNDHOG, *gh), (FILTER, *pf)],
+           "groundhog": groundhog_notice(
+               donors, len(s.get("groups") or ())),
            "groundhog_fix": ""}
-    short = groundhog_shortfall(rep) if chk.get("groundhog") else None
     if short:
-        k = short["seasons"]
+        k = donors["seasons"]
         more = f"about {k} more earlier season{'' if k == 1 else 's'} of data"
         out["groundhog_fix"] = (
             f"Add a population column{'' if ready else ' and set up the engine'}"
@@ -504,10 +548,13 @@ DONOR_CACHE = 8
 def donor_weeks(ds) -> dict:
     """{forecast week (ISO): the fewest donor weeks the Groundhog finds at
     any of its four horizons}, for every forecast week of `ds`, at the
-    shipped donor window (checks.donor_counts; it forecasts a week only
-    when every horizon has MIN_DONORS). Counted on the final data: a
-    vintage-true dataset's earlier snapshots may hold fewer weeks, so a
-    week there can count more than its replay finds."""
+    shipped donor window (checks.donor_counts; it forecasts each horizon
+    that has MIN_DONORS and skips the rest, so a week under it at its
+    fewest is not forecast in full). One count per group and week
+    (donor_unit). Counted on the final data: a vintage-true dataset's
+    earlier snapshots may hold fewer weeks, so a week there can count more
+    than its replay finds. The upload check's badge goes by the same
+    fewest count (model_view)."""
     return _donor_entry(ds)["weeks"]
 
 
@@ -648,8 +695,10 @@ def forecast_page(request: Request, ds):
     from app.core.runs import spec_settings
     view = _dataset_view(ds)
     # each week's Groundhog donor weeks, for the page's warning on a week
-    # too thin to forecast (the Forecast tab renders it)
-    view.update(donor_weeks=donor_weeks(ds), donor_need=donor_need())
+    # too thin to forecast (the Forecast tab renders it), and what they
+    # count with several groups (donor_unit)
+    view.update(donor_weeks=donor_weeks(ds), donor_need=donor_need(),
+                donor_unit=donor_unit(len(ds.groups)))
     dates = ds.forecast_dates()
     newest = dates[-1] if dates else ""
     form = dict(_LAST.get(ds.id) or {

@@ -314,3 +314,105 @@ def test_the_script_times_a_replay_as_the_server_does(tmp_path, engine,
     assert re.fullmatch(r"about [\d.]+ to [\d.]+ (h|min)", want[2])
     assert re.fullmatch(r"about [\d.]+ to [\d.]+ (h|min)", want[4])
     assert want[3] == "under a minute"           # 2 small fits
+
+
+# ---------------------------- the page's script on the form as served (init)
+
+#: the two lines as shown ("" while hidden), and a field's change as the
+#: browser sends it (the event bubbles to the form)
+SERVED = """
+var fm = document.getElementById("dsr-form");
+function badge() {
+  var l = document.getElementById("dsr-donor-line");
+  return l.hidden ? "" : document.getElementById("dsr-donors")
+    .querySelector(".uk-badge-t").textContent;
+}
+function time() {
+  var e = document.getElementById("dsr-est");
+  return e.hidden ? "" : e.querySelector(".uk-meta li > span:last-child")
+    .textContent;
+}
+function set(sel, v, ev) {
+  var el = fm.querySelector(sel);
+  el.value = v;
+  el.fire(ev || "change");
+}
+function both() { return [badge(), time()]; }
+"""
+
+
+@needs_js
+def test_init_drives_both_lines_on_the_form_as_served(tmp_path, monkeypatch):
+    """dataset_replay.js init() on the Retrospective tab's own-data form as
+    the server renders it (review 3 of #93, finding 13): it finds the
+    range, the groups, the model and the panel's fields by its own
+    selectors, and both lines then read as the server's rules give them,
+    at first and after each change. A field the server would refuse
+    ("1e4", "2.5", "0" Independent Runs, particles out of range) gives no
+    time rather than a guess; a blank one is its default."""
+    import served_dom as SD
+    from app.ui import pipeline
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
+    # one runner, so each group and Independent Run shows in the figure on
+    # any computer
+    monkeypatch.setenv("FLUBNF_PF_WIDTH", "1")
+    ds = stored(TEMPLATE.read_bytes(), "Kids")
+    html = client.get(f"/retro?dataset={ds.id}").text
+    form = replay_form(ds)
+    dates = ds.forecast_dates()
+    counts, groups = DU.donor_weeks(ds), list(ds.groups)
+    w0, w1 = DU.replay_window(dates)
+    served_badge = re.search(r'id="dsr-donors"[^>]*>.*?<span class='
+                             r'"uk-badge-t">([^<]*)</span>', form).group(1)
+    assert '<option value="all" >' in form or '<option value="all">' in form
+    a, b = dates[-12], dates[-3]
+    got = SD.run(tmp_path, html, [EST_JS, REPLAY_JS], SERVED + """
+      var out = [both()];
+      set('[name="first"]', %(a)s); set('[name="last"]', %(b)s);
+      out.push(both());
+      set('[name="engine"]', "all"); out.push(both());
+      set('[data-knob="pf.replicates"]', "5", "input");
+      set('[data-knob="pf.particles"]', "2,000", "input"); out.push(both());
+      var g = fm.querySelector('[name="groups"]');
+      g.options[0].selected = false; g.fire("change"); out.push(both());
+      set('[data-knob="run.season_start"]', %(ss)s); out.push(both());
+      set('[data-knob="pf.replicates"]', "1e4", "input"); out.push(both());
+      set('[data-knob="pf.replicates"]', "2.5", "input"); out.push(both());
+      set('[data-knob="pf.replicates"]', "0", "input"); out.push(both());
+      set('[data-knob="pf.replicates"]', "", "input"); out.push(both());
+      set('[data-knob="pf.particles"]', "999", "input"); out.push(both());
+      set('[name="engine"]', "analogue"); out.push(both());
+      set('[data-knob="groundhog.bandwidth"]', "6", "input"); out.push(both());
+      return out;""" % {"a": json.dumps(a), "b": json.dumps(b),
+                        "ss": json.dumps(f"{a[:4]}-08-03")})
+    rng = [w for w in dates if a <= w <= b]
+    first = [w for w in dates if w0 <= w <= w1]
+    n = len(groups)
+
+    def line(weeks):
+        return DU.donor_line(weeks, counts, 30)[1]
+
+    def est(weeks, groups, engine, **kw):
+        return DU.replay_estimate(weeks, groups, engine,
+                                  cells=len(ds.truth()), **kw)
+    ss = f"{a[:4]}-08-03"
+    want = [
+        [line(first), est(first, n, "analogue")],
+        [line(rng), est(rng, n, "analogue")],
+        [line(rng), est(rng, n, "all")],
+        [line(rng), est(rng, n, "all", replicates=5, particles=2000)],
+        [line(rng), est(rng, n - 1, "all", replicates=5, particles=2000)],
+        [line(rng), est(rng, n - 1, "all", replicates=5, particles=2000,
+                        season_start=ss)],
+        [line(rng), ""], [line(rng), ""], [line(rng), ""],
+        [line(rng), est(rng, n - 1, "all", particles=2000,
+                        season_start=ss)],
+        [line(rng), ""],
+        [line(rng), est(rng, n - 1, "analogue")],
+        ["", est(rng, n - 1, "analogue")],
+    ]
+    assert got == want
+    assert got[0] == [served_badge, "under a minute"]
+    # each change the page shows is seen
+    times = [t for _, t in got[2:6]] + [got[9][1]]
+    assert len(set(times)) == len(times) and all(times)

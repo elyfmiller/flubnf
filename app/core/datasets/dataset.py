@@ -42,9 +42,12 @@ from .store import (
 # 200-group replay spend most of its time re-reading one file. Each file is
 # now parsed once into a per-group index, shared by every Dataset object
 # and thread, and keyed on the file itself (path, size, mtime, inode,
-# device): a snapshot written again (ingest writes atomically, so a new
+# device, and the time of its last change, which a hand-set mtime moves
+# on POSIX): a snapshot written again (ingest writes atomically, so a new
 # inode) is a new key and is read afresh. Entries are read-only; series()
-# builds new lists from them. Bounded in files and in rows held.
+# builds new lists from them. Bounded in files and in rows held. A file
+# edited by hand to lack a column reads as it did before the index
+# (_missing): weeks() needs only the dates.
 
 #: at most this many parsed snapshot files are kept (least recently used
 #: first out)
@@ -59,19 +62,33 @@ _SNAPS: "OrderedDict[tuple, tuple]" = OrderedDict()
 
 
 def _snap_key(path: str, st: os.stat_result) -> tuple:
-    return (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev)
+    # st_ctime_ns: a rewrite in place with the size, mtime and inode put
+    # back still moves it (POSIX; on Windows it is the creation time)
+    return (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev,
+            st.st_ctime_ns)
+
+
+#: the columns weeks() and series() read
+SNAPSHOT_COLUMNS = ("date", "location_name", "value")
 
 
 def _parse_snapshot(fh) -> tuple:
-    """(rows read, {group name: (dates, values)}, dates): each group's rows
-    with a value, in file order, as the strings the file holds, and every
-    date of every row (a blank value's too). series() applies the as-of
-    cut and float() to these exactly as it once did to the rows, so a view
-    is the same one a fresh read gives."""
+    """(rows read, {group name: (dates, values)}, dates, columns missing):
+    each group's rows with a value, in file order, as the strings the file
+    holds, every date of every row (a blank value's too), and which of
+    SNAPSHOT_COLUMNS the header lacks. series() applies the as-of cut and
+    float() to these exactly as it once did to the rows, so a view is the
+    same one a fresh read gives. A missing column reads as None here;
+    _missing raises where the per-row read raised."""
     by: dict = {}
     seen_dates: dict = {}
     n = 0
-    for r in csv.DictReader(fh):
+    reader = csv.DictReader(fh)
+    missing = frozenset(c for c in SNAPSHOT_COLUMNS
+                        if c not in (reader.fieldnames or ()))
+    rows = reader if not missing else (
+        {**dict.fromkeys(missing), **r} for r in reader)
+    for r in rows:
         n += 1
         name = r["location_name"]
         v = r["value"]
@@ -86,19 +103,41 @@ def _parse_snapshot(fh) -> tuple:
         g[1].append(v)
     return (n, MappingProxyType({k: (tuple(ds), tuple(vs))
                                  for k, (ds, vs) in by.items()}),
-            frozenset(seen_dates))
+            frozenset(seen_dates), missing)
 
 
-def _snapshot(path) -> tuple:
-    """(index, dates) of one snapshot CSV, parsed once per file version
-    (see above). Raises as open() would for a missing file."""
+def _missing(entry: tuple, name=None, *, weeks: bool = False) -> None:
+    """Raise KeyError where the per-row read raised on a file without one
+    of SNAPSHOT_COLUMNS (only a file edited by hand: the store writes all
+    three), and nowhere else. weeks() read only the date of every row;
+    series() read a row's group, then for its own group's rows the value,
+    then for those with a value the date."""
+    n, index, _, missing = entry
+    if not missing or not n:
+        return
+    if weeks:
+        if "date" in missing:
+            raise KeyError("date")
+        return
+    if "location_name" in missing:
+        raise KeyError("location_name")
+    if name in index:            # a row of this group (with a value, when
+        for c in ("value", "date"):          # the file has the column)
+            if c in missing:
+                raise KeyError(c)
+
+
+def _entry(path) -> tuple:
+    """The cache entry of one snapshot CSV, parsed once per file version
+    (see above): (rows read, index, dates, columns missing). Raises as
+    open() would for a missing file."""
     path = os.path.abspath(path)
     key = _snap_key(path, os.stat(path))
     with _SNAP_LOCK:
         hit = _SNAPS.get(key)
         if hit is not None:
             _SNAPS.move_to_end(key)
-            return hit[1:]
+            return hit
     with open(path, newline="", encoding="utf-8") as fh:
         # keyed on the file this handle read, not on the earlier stat
         key = _snap_key(path, os.fstat(fh.fileno()))
@@ -112,13 +151,13 @@ def _snapshot(path) -> tuple:
         while len(_SNAPS) > 1 and (len(_SNAPS) > SNAPSHOT_CACHE_FILES
                                    or held > SNAPSHOT_CACHE_ROWS):
             held -= _SNAPS.popitem(last=False)[1][0]
-    return entry[1:]
+    return entry
 
 
 def snapshot_index(path) -> MappingProxyType:
     """The read-only per-group index of one snapshot CSV: group name ->
     (dates, values), the rows with a value in file order, as strings."""
-    return _snapshot(path)[0]
+    return _entry(path)[1]
 
 
 def clear_snapshot_cache() -> None:
@@ -254,7 +293,9 @@ class Dataset:
         afresh each week does not read the file again for it."""
         weeks = self.__dict__.get("_weeks_cache")
         if weeks is None:
-            weeks = tuple(sorted(_snapshot(self.final_path)[1]))
+            entry = _entry(self.final_path)
+            _missing(entry, weeks=True)
+            weeks = tuple(sorted(entry[2]))
             self.__dict__["_weeks_cache"] = weeks
         return list(weeks)
 
@@ -293,7 +334,9 @@ class Dataset:
         (snapshot_index), not once per group: a replay asks for every
         group at every week."""
         path = self.final_path if as_of is None else self.truth_path(as_of)
-        dates, values = snapshot_index(path).get(name, ((), ()))
+        entry = _entry(path)
+        _missing(entry, name)
+        dates, values = entry[1].get(name, ((), ()))
         cut = None if as_of is None else str(as_of)
         out = sorted((d, float(v)) for d, v in zip(dates, values)
                      if cut is None or d <= cut)

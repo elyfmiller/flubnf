@@ -11,8 +11,9 @@
   _check_structure  duplicates, gaps and weeks after their as_of
 
 and, over a whole dataset, dataset_checks; donor_counts (the Groundhog's
-donor weeks at every week, in one pass) and groundhog_shortfall (what the
-newest week lacks), which the console's forms show and nothing stores.
+donor weeks at every week, in one pass), groundhog_donors (the newest
+week's, horizon by horizon) and groundhog_shortfall (what the newest week
+lacks), which the console's forms show and nothing stores.
 """
 from __future__ import annotations
 
@@ -1022,14 +1023,35 @@ def donor_counts(bank, weeks, *, bandwidth=None,
     return out
 
 
-def groundhog_shortfall(rep: Report):
-    """At the newest week of a checked file, what the Groundhog lacks, or
-    None when every horizon has MIN_DONORS donor weeks (or the file did not
-    read): {"n": the fewest donor weeks at any horizon, "need":
-    MIN_DONORS, "seasons": about how many more earlier seasons of every
-    group would give the rest}. One group gives 2 x bandwidth + 1 donor
-    weeks per earlier season at the shipped window. The stored notice
-    (dataset_checks) is not changed by it."""
+def window_weeks_a_season(epiweek: int, bandwidth=None) -> int:
+    """How many weeks of one ordinary earlier season (MMWR weeks 1 to 52)
+    fall within the donor window of `epiweek`, for one group: 2 x
+    bandwidth + 1, but one fewer around a week 53, which most seasons do
+    not have (flubnf.analogue.calendar_distance puts it between 52 and
+    1)."""
+    from flubnf import analogue as AN
+    bw = AN.DEFAULT_BANDWIDTH if bandwidth is None else int(bandwidth)
+    return sum(1 for e in range(1, 53)
+               if AN.calendar_distance(e, int(epiweek)) <= bw)
+
+
+def groundhog_donors(rep: Report):
+    """The Groundhog's donor weeks at the newest week of a checked file,
+    one count per horizon (donor_counts on the final data, at the shipped
+    donor window), or None when the file did not read or holds under two
+    weeks: {"counts": (one per horizon), "n": the fewest, "need":
+    MIN_DONORS, "enough": how many horizons reach it, "seasons": about
+    how many more earlier seasons of every group would bring the fewest
+    to it (0 when it is there)}. A count is one per group and week. It
+    forecasts each horizon that reaches MIN_DONORS and skips the others,
+    so the fewest says whether it forecasts all four. The stored notice
+    (dataset_checks, horizon 1) is not changed by it.
+
+    "seasons" takes what an earlier season gave the fewest horizon in
+    this file: its count over the earlier seasons holding a week of the
+    window (a horizon that reaches into weeks reading 0 gains less from
+    each). With none to go by, an ordinary season of every group
+    (window_weeks_a_season: four weeks around a week 53, else five)."""
     import math
 
     from flubnf import analogue as AN
@@ -1040,9 +1062,29 @@ def groundhog_shortfall(rep: Report):
     if not bank:
         return None
     last = max(d for _, d in bank)
-    n = min(donor_counts(bank, [last])[last])
-    if n >= AN.MIN_DONORS:
+    counts = tuple(donor_counts(bank, [last])[last])
+    n, need = min(counts), AN.MIN_DONORS
+    S, E = AN.season_of(last), AN.epiweek(last)
+    seasons = {AN.season_of(d) for d in {d for _, d in bank}
+               if AN.season_of(d) < S
+               and AN.calendar_distance(AN.epiweek(d), E)
+               <= AN.DEFAULT_BANDWIDTH}
+    per = (n / len(seasons) if n and seasons else
+           window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
+    return {"counts": counts, "n": n, "need": need,
+            "enough": sum(1 for c in counts if c >= need),
+            "seasons": math.ceil((need - n) / per) if n < need else 0}
+
+
+def groundhog_shortfall(rep: Report):
+    """At the newest week of a checked file, what the Groundhog lacks, or
+    None when every horizon has MIN_DONORS donor weeks (or the file did not
+    read): {"n": the fewest donor weeks at any horizon, "need":
+    MIN_DONORS, "seasons": about how many more earlier seasons of every
+    group would give the rest} (groundhog_donors, which says how the
+    seasons are worked out). The stored notice (dataset_checks) is not
+    changed by it."""
+    d = groundhog_donors(rep)
+    if d is None or d["n"] >= d["need"]:
         return None
-    per = (2 * AN.DEFAULT_BANDWIDTH + 1) * max(1, len(s.get("groups") or ()))
-    return {"n": n, "need": AN.MIN_DONORS,
-            "seasons": math.ceil((AN.MIN_DONORS - n) / per)}
+    return {"n": d["n"], "need": d["need"], "seasons": d["seasons"]}
