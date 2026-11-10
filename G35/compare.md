@@ -12,3 +12,12 @@
 | UI-14 | Home's two longest panels gone; Methods' replay cut to two lines; Forecast and the season page left (G30's recent rewrite; report_season.py's note) | Home's two gone; Methods left to G34; the season page and Forecast left | A's for Methods (G34 does not touch that panel, so it stays 446 characters otherwise). Otherwise the same. |
 
 Vote: combine: A's UI-12; B's UI-15 with A's archive_record.py sentence; for UI-13 and UI-14, A's patch with B's record line (placement withdrawn kept on Home, test_pages' pin kept) in place of A's.
+
+## After B's compare
+B's run of A's patch found three pins it leaves behind, each B's to take: test_site_smoke (the Methods tile's words, which B's tile restores and B's `_LOCS_TILE` removal follows), test_resume_rerun (A's "i" changed "the recorded settings" to "its": the sentence goes back as written) and test_season_palette (the first-paint script's vision read, B's pin move).
+
+Where the votes differ:
+- Retrospective: both clear the "?"s and the glyph mix and keep the two pinned sentences verbatim (with "the recorded settings" restored), so criteria 1 to 3 tie. A's keeps the title's explanation in an "i", as Output's and a season page's are, and puts no new lines at the top of the page; B's makes it a visible lead of about 45 words plus an Import hint line and a longer alert. Criterion 5: A's.
+- Setup rows: the hunt's expectation is "at most one 'i' ... with few '?'"; both bring Home's four Setup "?" to one or none. B's prints each missing component's path in a muted line (about 25 words each); A's keeps that in the row's one "?". Criterion 5: A's.
+
+Vote (final): combine: A's patch as the base, with B's Methods tile and the `_LOCS_TILE` removal, B's record line (placement among teams withdrawn kept on Home, test_pages' pin kept), B's test_season_palette pin move, Resume's sentence as written (test_resume_rerun unchanged), and B's test_cross_page_polish tests merged into test_cross_page.py. Not taken: B's Retrospective lead lines and the Setup rows in words.
