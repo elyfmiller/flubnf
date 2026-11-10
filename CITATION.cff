@@ -2,8 +2,8 @@ cff-version: 1.2.0
 title: FluBNF
 message: If you use this software, please cite it as below.
 type: software
-version: 1.1.0
-date-released: '2026-09-08'
+version: 1.2.0
+date-released: '2026-11-11'
 authors:
   - family-names: Miller
     given-names: Ely F.
@@ -31,15 +31,26 @@ abstract: >-
   Groundhog is empirical: the last observed count scaled by the empirical
   quantiles of growth ratios seen at the same epiweek in strictly earlier
   seasons, pooled across jurisdictions with the jurisdiction's own past
-  weeks carrying half of the weight, with a committed FluSurv-NET donor
-  bank spliced in; nothing is fitted. In vintage-true retrospective replays
-  of the 2023-24, 2024-25 and 2025-26 seasons, scored as weighted interval
-  score relative to the CDC FluSight-baseline (ratio of WIS sums on shared
-  cells), the Groundhog pools at 0.660 on 17,116 cells under FluSight's cell
-  rule, and the Oracle SIHRS at 0.738 against the plain filter's 0.819 on
-  15,300 cells under the earlier rule (truth and median above 0). All
+  weeks carrying half of the weight and donor weeks whose count is near
+  the jurisdiction's newest weighted most (size-matched donors), with a
+  committed FluSurv-NET donor bank spliced in; nothing is fitted. In
+  vintage-true retrospective replays of the 2023-24, 2024-25 and 2025-26
+  seasons, scored as weighted interval score relative to the CDC
+  FluSight-baseline (ratio of WIS sums on shared cells), the Groundhog's
+  shipped form, own-state weighting with size-matched donors, pools at
+  0.642 (0.680, 0.627 and 0.645 by season) on 17,116 cells under
+  FluSight's cell rule. The Oracle SIHRS pools at 0.738 against the plain
+  filter's 0.819 on 15,300 cells under the earlier rule (truth and median
+  above 0). All
   scores are self-computed from the hub's archived vintage data and
   baseline files, and are retrospective replays rather than real-time
   submissions. The 1.0 and 1.1 releases shipped a
   different product, an equal-weight ensemble; their record is in
   docs/archive/RELEASE-1.0.md.
+references:
+  - type: software
+    title: PyBNF
+    authors:
+      - name: Los Alamos National Laboratory
+    repository-code: https://github.com/lanl/PyBNF
+    commit: 8410f794e3fa4817572fd07fceb043ddec39d77b

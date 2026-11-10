@@ -283,7 +283,9 @@ WITHOUT the FluSurv-NET donors (the grid ran no auxiliary preset; its
 figures are the retired bare analogue's 0.756 and 0.618 on the console's
 Methods page), not the Groundhog, whose own record is its separate
 replay (the pooled form's 0.653 and 0.651 under the earlier cell rule;
-the shipped own-state form's in README, Measured record). The filter's
+the shipped form's, own-state weighting with size-matched donors, 0.627
+and 0.645 under FluSight's cell rule and 0.642 over the three seasons,
+in README, Measured record). The filter's
 scored cells are a subset of the analogue's, so the record definition
 and the common set coincide for the mechanistic member (the screen's
 9,279 common cells on active2; its 15,300 native cells include
