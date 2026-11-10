@@ -217,7 +217,8 @@ def test_the_run_zip_carries_the_engines_messages(sandbox_root):
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example", particles=100, seed=1)
     _finish(w)
-    (w / "pf_runner_0.err").write_text("x" * 10 + "WARNING: ESS fell\n")
+    # bytes, as the engine writes them (text mode would add \r on Windows)
+    (w / "pf_runner_0.err").write_bytes(b"x" * 10 + b"WARNING: ESS fell\n")
     z = zipfile.ZipFile(io.BytesIO(sb.run_zip(w.name)))
     assert z.read(f"{w.name}/pf_runner_0.err").endswith(b"WARNING: ESS fell\n")
     from app.core import sandbox_export as SX
