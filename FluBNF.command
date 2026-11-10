@@ -163,45 +163,73 @@ if [ ! -x .venv/bin/flubnf ]; then
 fi
 
 [ -f .flubnf.env ] && . ./.flubnf.env
-# Which engine this copy runs: FLUBNF_ENGINE, as the shell or .flubnf.env
-# (setup_engine.sh --public) sets it; private unless it says public.
-ROUTE="${FLUBNF_ENGINE:-private}"
-case "$ROUTE" in
-  private|public) ;;
-  *) echo "· FLUBNF_ENGINE is \"$ROUTE\"; it must be private or public, so the"
-     echo "  private engine, the default, is checked"
-     ROUTE=private ;;
+# Which engine this copy runs: public, the default, unless FLUBNF_ENGINE says
+# private (the shell's, or the record in .flubnf.env, sourced above, which
+# wins; setup_engine.sh --public or --private writes it). Quotes, surrounding
+# spaces and case do not count; any other value runs the default, and says so.
+RAW="$(printf '%s' "${FLUBNF_ENGINE:-}" | tr -d '"' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+case "$RAW" in
+  private) ROUTE=private ;;
+  ""|public) ROUTE=public ;;
+  *) echo "· FLUBNF_ENGINE is \"$FLUBNF_ENGINE\", which is neither private nor public: the public engine, the default, is checked"
+     ROUTE=public ;;
 esac
+# A file's sha256, the hash alone: shasum (macOS, and Linux with perl), else
+# sha256sum. setup_engine.sh stamps the lock's the same way.
+sha256_of() { { shasum -a 256 "$1" 2>/dev/null || sha256sum "$1" 2>/dev/null; } | cut -c1-64; }
+# After a public engine failure: the switch, when the private engine is here.
+private_fallback() {
+  [ -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ] && [ -f "${FLUBNF_PYBNF:-/nonexistent}/pybnf/pf.py" ] \
+    && echo "  The private engine is installed here: ./setup_engine.sh --private switches this copy to it (the fallback)."
+}
 if [ "$ROUTE" = public ]; then
-  # The public engine (opt-in until the cutover; docs/ENGINE.md). Ready when
-  # its venv's Python is there and holds the lock as it is now: setup_engine.sh
-  # stamps the lock's hash into the venv, so this costs no engine import. No
-  # failed-attempt stamp: its failures are quick (the lock is read before any
-  # venv is made), and one would keep a machine off the engine after a dropped
-  # network. The private engine is left as it is, installed as the fallback.
+  # The public engine, the default (docs/ENGINE.md). Ready when its venv's
+  # Python is there and holds the lock as it is now: setup_engine.sh stamps
+  # the lock's hash into the venv, so this costs no engine import. The route
+  # is passed to setup_engine.sh, never recorded here. A failure that trying
+  # again cannot fix (its exit 3: no Python 3.12, a platform the lock has no
+  # wheels for) is stamped, keyed on the script, the lock, the machine and
+  # its system version, so the Dock does not hand over to Terminal on every
+  # click. Network and pip failures (exit 1) are not stamped: the next open
+  # tries again. The private engine is left as it is, the fallback.
   PUBPY="${FLUBNF_PY_ENGINE_PUBLIC:-$HOME/.venvs/flubnf-public/bin/python}"
-  LOCKSUM="$(shasum -a 256 < "${FLUBNF_ENGINE_LOCK:-engine-requirements.txt}" 2>/dev/null | cut -c1-64)"
+  LOCKSUM="$(sha256_of "${FLUBNF_ENGINE_LOCK:-engine-requirements.txt}")"
+  PUBATTEMPT=".venv/.public-engine-attempt"
+  PUBFP="$(sha256_of setup_engine.sh | cut -c1-16):$LOCKSUM:$(uname -sm 2>/dev/null):$(sw_vers -productVersion 2>/dev/null)"
+  CANNOT="· this machine cannot run the public engine (the reason is above, or double-click SetupEngine.command to see it); FluBNF tries again when the lock, the script or this Mac's system changes."
   if [ -x "$PUBPY" ] && [ -n "$LOCKSUM" ] \
      && [ "$(cat "${PUBPY%/bin/python}/flubnf-lock.sha256" 2>/dev/null)" = "$LOCKSUM" ]; then
     :
   elif ! .venv/bin/python scripts/engine_lock.py wheel >/dev/null; then
-    echo "· the public engine cannot install yet (reason above). The console"
-    echo "  starts without it; FLUBNF_ENGINE=private, or no FLUBNF_ENGINE at all,"
-    echo "  is the private engine"
+    echo "· the public engine cannot install yet (the reason is above). The console starts without it."
+    private_fallback
+  elif [ "$(cat "$PUBATTEMPT" 2>/dev/null)" = "$PUBFP" ]; then
+    echo "$CANNOT"
+    private_fallback
   else
     needs_terminal "public engine install"
     echo "· the public engine is not installed, or its lock changed: setting it"
     echo "  up now (a few minutes)"
-    if ./setup_engine.sh; then
-      [ -f .flubnf.env ] && . ./.flubnf.env
-      echo "· public engine ready"
-    else
-      echo "· public engine setup did not finish (see above). The console still"
-      echo "  starts, and the next open tries again"
-    fi
+    PUBRC=0
+    FLUBNF_ENGINE=public ./setup_engine.sh || PUBRC=$?
+    case "$PUBRC" in
+      0)
+        rm -f "$PUBATTEMPT"
+        [ -f .flubnf.env ] && . ./.flubnf.env
+        echo "· public engine ready" ;;
+      3)
+        echo "$PUBFP" > "$PUBATTEMPT"
+        echo "$CANNOT"
+        private_fallback ;;
+      *)
+        echo "· public engine setup did not finish (see above). The console still starts, and the next open tries again."
+        private_fallback ;;
+    esac
   fi
 elif [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
-  # PF engine missing: install it now (one time). Failure never blocks the
+  # The private engine (the fallback; ROUTE=private only) is missing: install
+  # it now (one time). The route is passed to setup_engine.sh explicitly, so
+  # its default cannot reach this copy. Failure never blocks the
   # launch (analogue only). A checkout OR an unpacked archive (no .git) counts,
   # the same test as setup_engine.sh.
   CHECKOUT=""
@@ -235,11 +263,12 @@ elif [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
     echo "  it in your Downloads folder, and open this again; it installs itself."
     echo "  Or double-click SetupEngine.command to try now and see what it finds."
     echo "  Analogue forecasts work in the meantime."
+    echo "  This copy is set to the private engine (the fallback); ./setup_engine.sh --public goes back to the default, which needs no file."
   else
     needs_terminal "PF engine install"
     echo "· PF engine not installed yet, setting it up now (one time, a few minutes)"
     [ -n "$BUNDLE" ] && echo "  using the offline bundle $BUNDLE (no GitHub account needed)"
-    if FLUBNF_PYBNF="$CHECKOUT" ./setup_engine.sh; then
+    if FLUBNF_ENGINE=private FLUBNF_PYBNF="$CHECKOUT" ./setup_engine.sh; then
       rm -f "$ATTEMPT"
       [ -f .flubnf.env ] && . ./.flubnf.env
       echo "· PF engine ready"
@@ -250,15 +279,17 @@ elif [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
       echo "  folder the next open tries again by itself; to try right now without"
       echo "  waiting, double-click SetupEngine.command. The shortcut past the"
       echo "  whole GitHub question is pybnf-pf-<sha>.tar.gz in Downloads."
+      echo "  This copy is set to the private engine (the fallback); ./setup_engine.sh --public goes back to the default, which needs no file."
     fi
   fi
 fi
 
-# Stay current, engine too: FluBNF updates itself above, and this brings a
-# clean engine checkout on the production branch up to the production build
-# (fast-forward only; another branch, local edits or newer commits are left
-# and the reason printed). Twin of FluBNF.bat's; FLUBNF_UPDATE=off skips both.
-# The console's build warning repeats the reason.
+# Stay current, engine too: FluBNF updates itself above, and this keeps the
+# private engine's checkout (the fallback) at its pin, on either route: a
+# clean checkout on the production branch is brought up to the production
+# build (fast-forward only; another branch, local edits or newer commits are
+# left and the reason printed). Twin of FluBNF.bat's; FLUBNF_UPDATE=off skips
+# both. The console's build warning repeats the reason.
 if [ "${FLUBNF_UPDATE:-}" != "off" ] && [ -x .venv/bin/flubnf ] \
    && command -v git >/dev/null 2>&1; then
   .venv/bin/flubnf engine-update --quiet || true
@@ -324,7 +355,10 @@ if [ -n "$HOST" ]; then
     forget_reopen
     run_here
   else
-    OUT=(--env "FLUBNF_BOOT_STATUS=$BOOT")
+    # The engine travels too, so a choice made only in this shell reaches
+    # the console; a record in .flubnf.env still wins (flubnf-launch sources
+    # it after).
+    OUT=(--env "FLUBNF_BOOT_STATUS=$BOOT" --env "FLUBNF_ENGINE=$ROUTE")
     TTY_NOW="$(tty 2>/dev/null)" || TTY_NOW=""
     case "$TTY_NOW" in /dev/*) OUT+=(--stdout "$TTY_NOW" --stderr "$TTY_NOW") ;; esac
     trap 'STOPPED=1; [ -f app/state/app.pid ] && kill -TERM "$(cat app/state/app.pid)" 2>/dev/null' INT

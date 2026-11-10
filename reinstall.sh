@@ -8,28 +8,34 @@
 # archive wins newest-by-mtime, an old console holds port 8710). This fixes
 # them in order and prints each step.
 #
+# The engine is the public one, the default: installed from
+# engine-requirements.txt (setup_engine.sh --public), with no engine file.
+# The private engine, its venv and its files are left where they are,
+# installed as the fallback.
+#
 # Checks first, nothing changes until they pass: git/curl/tar/pgrep, Python
-# 3.11/3.12 or conda, no console running and port 8710 free, GitHub reachable,
-# a VALID engine archive where setup looks, no developer setup. Then the old
-# install is SET ASIDE, never deleted (renamed -old-<stamp>; old launchers
-# chmod -x; other engine files moved to Downloads/old-engine-files), and:
-# clone, setup.sh, setup_engine.sh with the chosen archive, open the console.
-# If no new console exists when it stops, the old copies are put back.
+# 3.12 or conda, no console running and port 8710 free, GitHub reachable, no
+# developer setup. Then the old FluBNF folder is SET ASIDE, never deleted
+# (renamed -old-<stamp>; old launchers chmod -x), and: clone, setup.sh,
+# setup_engine.sh --public, open the console. If no new console exists when
+# it stops, the old copies are put back.
+#
+# FLUBNF_ENGINE=private is the legacy route, the private engine (the
+# fallback). It needs the lab's engine archive: Python 3.11/3.12 or conda,
+# and a VALID engine archive where setup looks, are checked first; the old
+# engine is set aside as well, other engine files are moved to
+# Downloads/old-engine-files, and setup_engine.sh --private installs the
+# chosen archive.
 #
 # Refuses a machine already current, a checkout with uncommitted work, or a
 # shell exporting FluBNF settings; FLUBNF_REINSTALL_FORCE=1 overrides all three.
-#
-# FLUBNF_ENGINE=public (opt-in until the cutover) installs the public engine
-# instead, from engine-requirements.txt (setup_engine.sh --public): no engine
-# file is needed, and the private engine, its venv and its files are left
-# where they are, installed as the fallback.
 #
 # KNOBS, all optional:
 #   FLUBNF_DIR                   where the clone goes (default ~/GitHub/flubnf, or
 #                                an older setup's ~/Documents/GitHub/flubnf, which
 #                                FluBNF.command then moves to ~/GitHub)
-#   FLUBNF_ENGINE_VENV           where the engine venv goes (default ~/.venvs/flubnf-engine)
-#   FLUBNF_ENGINE=public         the public engine instead (see above)
+#   FLUBNF_ENGINE_VENV           where the private engine venv goes (default ~/.venvs/flubnf-engine)
+#   FLUBNF_ENGINE=private        the legacy route, which needs the archive (see above)
 #   FLUBNF_REPO                  clone URL (default the public GitHub repository)
 #   FLUBNF_REINSTALL_YES=1       do not wait for Return before changing anything
 #   FLUBNF_REINSTALL_FORCE=1     reinstall even when the machine is already current
@@ -41,6 +47,11 @@ set -u
 say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
+# An engine name as the launchers read it: no double quotes, no surrounding
+# spaces, lowercase.
+norm_route() {
+  printf '%s' "$1" | tr -d '"' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
 
 DEST="${FLUBNF_DIR:-$HOME/GitHub/flubnf}"
 if [ -z "${FLUBNF_DIR:-}" ] && [ ! -e "$DEST" ] && [ -e "$HOME/Documents/GitHub/flubnf" ]; then
@@ -50,7 +61,11 @@ DEST="${DEST%/}"   # a trailing slash would put the rename target inside DEST
 REPO="${FLUBNF_REPO:-https://github.com/elyfmiller/flubnf}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 ENGINE_VENV="${ENGINE_VENV%/}"
-ROUTE="${FLUBNF_ENGINE:-private}"
+# Which engine: public unless FLUBNF_ENGINE says private. Quotes, surrounding
+# spaces and case do not count; any other value is refused in the checks.
+ROUTE_RAW="${FLUBNF_ENGINE:-}"
+ROUTE="$(norm_route "$ROUTE_RAW")"
+[ -n "$ROUTE" ] || ROUTE=public
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PARENT="$(dirname "$DEST")"
 KEEP="$HOME/Downloads/old-engine-files"
@@ -142,26 +157,45 @@ if [ -n "$STRAY" ] && [ -z "${FLUBNF_REINSTALL_FORCE:-}" ]; then
        "install. Open a new Terminal window without them, or run with FLUBNF_REINSTALL_FORCE=1."
 fi
 case "$ROUTE" in
-  private) ;;
-  public) ok "the public engine (FLUBNF_ENGINE=public): installed from engine-requirements.txt" ;;
-  *) stop "FLUBNF_ENGINE is \"$ROUTE\"; it must be private or public." ;;
+  public) ok "the public engine, the default: installed from engine-requirements.txt" ;;
+  private) ok "the private engine (FLUBNF_ENGINE=private), the legacy route: installed from the lab's engine file" ;;
+  *) warn "FLUBNF_ENGINE is \"$ROUTE_RAW\"; it must be private or public (or unset, for the public engine, the default)."
+     echo
+     echo "Nothing on this machine was changed."
+     exit 2 ;;
 esac
 
-# Engine needs 3.11/3.12 (numpy<2 wheels); same candidates as setup_engine.sh,
-# checked before anything moves, then put first on PATH so setup.sh probes the
-# same interpreter.
+# The public engine needs exactly 3.12 (its lock's wheels are 3.12's), the
+# private one 3.11 or 3.12 (its numpy<2 wheels); the same candidates as
+# setup_engine.sh, checked before anything moves, then put first on PATH so
+# setup.sh probes the same interpreter. conda is only found here: the setup
+# scripts ask it for a Python, later.
+if [ "$ROUTE" = public ]; then
+  WANT='3.12'
+  PYCHECK='import sys; assert sys.version_info[:2] == (3, 12)'
+  NAMES=(python3.12 python3)
+  PLACES=(/opt/homebrew/bin/python3.12 /usr/local/bin/python3.12
+          /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12
+          /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12"
+          "$HOME/miniconda3/bin/python3.12"
+          "$HOME/.venvs/flubnf-public-py312/bin/python3.12")
+else
+  WANT='3.11/3.12'
+  PYCHECK='import sys; assert sys.version_info[:2] in ((3,11),(3,12))'
+  NAMES=(python3.12 python3.11 python3)
+  PLACES=(/opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12"
+          /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12
+          /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11
+          /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12)
+fi
 PY=""
-for c in python3.12 python3.11 python3; do
+for c in "${NAMES[@]}"; do
   cand=$(command -v "$c" 2>/dev/null) || continue
-  "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
-    && { PY="$cand"; break; }
+  "$cand" -c "$PYCHECK" 2>/dev/null && { PY="$cand"; break; }
 done
 if [ -z "$PY" ]; then
-  for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
-              /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
-              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
-              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
-    [ -x "$cand" ] && { PY="$cand"; break; }
+  for cand in "${PLACES[@]}"; do
+    [ -x "$cand" ] && "$cand" -c "$PYCHECK" 2>/dev/null && { PY="$cand"; break; }
   done
 fi
 if [ -n "$PY" ]; then
@@ -174,7 +208,7 @@ else
     [ -x "$c" ] && { CONDA="$c"; break; }
   done
   if [ -n "$CONDA" ]; then
-    ok "no Python 3.11/3.12 on PATH; conda at $CONDA will make one"
+    ok "no Python $WANT on PATH; conda at $CONDA will make one"
   else
     stop "Python 3.12 is not installed. Install Anaconda (anaconda.com/download, defaults" \
          "are fine) or Python 3.12 from python.org/downloads (not 3.13 or 3.14), open a" \
@@ -262,24 +296,31 @@ if [ "$ROUTE" = private ]; then
   fi
 fi
 
-# Already current (latest main, clean, console imports, this archive's engine
-# imports)? Then pasting the line twice must not set it aside.
+# Already current (latest main, clean, console imports, the engine asked for
+# is the one it runs and it imports)? Then pasting the line twice must not
+# set it aside.
 if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -d "$DEST/.git" ] && [ -x "$DEST/.venv/bin/flubnf" ]; then
   LOCAL_SHA="$(git -C "$DEST" rev-parse HEAD 2>/dev/null)"
   CLEAN="$([ -z "$(git -C "$DEST" status --porcelain --untracked-files=no 2>/dev/null)" ] && echo 1)"
   CONSOLE_OK="$("$DEST/.venv/bin/python" -c 'import flubnf' 2>/dev/null && echo 1)"
   ENGINE_OK="$(
     [ -f "$DEST/.flubnf.env" ] || exit 0
+    # Its own record only: this shell's FLUBNF_ENGINE is the route asked for.
+    unset FLUBNF_ENGINE
+    # shellcheck disable=SC1091
+    . "$DEST/.flubnf.env"
+    HAD="$(norm_route "${FLUBNF_ENGINE:-}")"
     if [ "$ROUTE" = public ]; then
-      # set to public in its own record, and its venv holds the lock
-      grep -qE '^export FLUBNF_ENGINE="?public"?$' "$DEST/.flubnf.env" || exit 0
-      PUBPY="$(. "$DEST/.flubnf.env"; printf '%s' "${FLUBNF_PY_ENGINE_PUBLIC:-$HOME/.venvs/flubnf-public/bin/python}")"
+      # no engine recorded (the default) or public, and its venv holds the
+      # lock. (No case here: bash 3.2 misreads its ")" inside "$(".)
+      [ -z "$HAD" ] || [ "$HAD" = public ] || exit 0
+      PUBPY="${FLUBNF_PY_ENGINE_PUBLIC:-$HOME/.venvs/flubnf-public/bin/python}"
       [ -x "$PUBPY" ] || exit 0
       "$PUBPY" "$DEST/scripts/engine_lock.py" check "$DEST/engine-requirements.txt" >/dev/null 2>&1 && echo 1
       exit 0
     fi
-    # shellcheck disable=SC1091
-    . "$DEST/.flubnf.env"
+    # set to the private engine in its own record, and this archive's engine imports
+    [ "$HAD" = private ] || exit 0
     [ -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ] || exit 0
     [ "$INSTALLED_STAMP" = "$STAMP_NEW" ] || exit 0
     "$FLUBNF_PY_ENGINE" -c 'import bngsim; from pybnf.pf import ParticleFilter' 2>/dev/null && echo 1
@@ -317,8 +358,13 @@ for d in "${CANDIDATES[@]}"; do
 done
 
 echo
-echo "About to install FluBNF fresh into $DEST. Anything already there (the"
-echo "FluBNF folder, the engine, old engine files) is set aside: renamed, not deleted."
+if [ "$ROUTE" = public ]; then
+  echo "About to install FluBNF fresh into $DEST. The FluBNF folder already there"
+  echo "is set aside: renamed, not deleted. The private engine and its files stay."
+else
+  echo "About to install FluBNF fresh into $DEST. Anything already there (the"
+  echo "FluBNF folder, the engine, old engine files) is set aside: renamed, not deleted."
+fi
 if [ -z "${FLUBNF_REINSTALL_YES:-}" ]; then
   # No terminal: nobody can answer, so stop rather than proceed.
   { : < /dev/tty; } 2>/dev/null \
@@ -392,18 +438,19 @@ git clone "$REPO" "$DEST" || stop "the clone failed (no internet?). Connect and 
 DONE=1
 
 say "installing the engine"
-# The archive the checks chose is the one installed, whatever else the
-# newest-by-mtime search in setup_engine.sh would find.
+# The option records the route in .flubnf.env, so the launchers read it.
 if [ "$ROUTE" = public ]; then
-  # --public records the route in .flubnf.env, so the launchers follow it.
   ( cd "$DEST" && ./setup_engine.sh --public ) || {
     warn "the public engine did not install (see above). The console still runs without"
     warn "it; double-click $DEST/SetupEngine.command to try again, or send Ely this window."
   }
 else
-  ( cd "$DEST" && FLUBNF_PYBNF_BUNDLE="$ARCHIVE" ./setup_engine.sh ) || {
-    warn "the engine did not install (see above). The console still runs without it;"
-    warn "double-click $DEST/SetupEngine.command to try again, or send Ely this window."
+  # The legacy route. The archive the checks chose is the one installed,
+  # whatever else the newest-by-mtime search in setup_engine.sh would find.
+  ( cd "$DEST" && FLUBNF_PYBNF_BUNDLE="$ARCHIVE" ./setup_engine.sh --private ) || {
+    warn "the private engine (the legacy route) did not install (see above). The console"
+    warn "still runs without it; double-click $DEST/SetupEngine.command to try again, or"
+    warn "send Ely this window."
   }
 fi
 
@@ -426,13 +473,16 @@ INSTALLED_STAMP="$(
   . "$DEST/.flubnf.env"
   [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && head -1 "$FLUBNF_PYBNF/VERSION"
 )"
-[ -n "$INSTALLED_STAMP" ] && ok "engine version stamp: $INSTALLED_STAMP"
+[ -n "$INSTALLED_STAMP" ] && ok "private engine (the legacy route) version stamp: $INSTALLED_STAMP"
 echo
 if [ "$ROUTE" = public ]; then
   echo "Once the new console works, the -old-$STAMP folder can go in the Trash."
 else
+  echo "This copy is set to the private engine (FLUBNF_ENGINE=private), the legacy route."
   echo "Once the new console works, the -old-$STAMP folders and $KEEP"
   echo "(your old engine .tar.gz files) can go in the Trash."
+  echo "./setup_engine.sh --public in $DEST goes back to the public engine, the"
+  echo "default, which needs no engine file."
 fi
 if [ ${#SET_ASIDE[@]} -gt 0 ]; then
   echo "If FluBNF sits in your Dock, remove that icon and drag $DEST/FluBNF.app"

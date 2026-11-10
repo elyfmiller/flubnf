@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Tier-B engine setup, two routes (FLUBNF_ENGINE; docs/ENGINE.md):
-#   private, the default: the PyBNF fork (fit_type=pf) + bngsim, lab-member
-#     edition;
-#   public, opt-in until Ely's cutover: public PyBNF's Liu-West filter
-#     (job_type = lwf) + bngsim, from engine-requirements.txt, in a venv of
-#     its own.
-#   ./setup_engine.sh            the route FLUBNF_ENGINE names, else private
-#   ./setup_engine.sh --public   the public route, recorded in .flubnf.env
-#   ./setup_engine.sh --private  the private route, and that record dropped
+#   public, the default: public PyBNF's Liu-West filter (job_type = lwf) +
+#     bngsim, from engine-requirements.txt, in a venv of its own;
+#   private, the fallback: the lab's PyBNF fork (fit_type=pf) + bngsim,
+#     lab-member edition.
+#   ./setup_engine.sh            the route FLUBNF_ENGINE names (shell, else .flubnf.env), else public
+#   ./setup_engine.sh --public   the public engine, recorded in .flubnf.env
+#   ./setup_engine.sh --private  the private engine (the fallback), recorded in .flubnf.env
+# Exit codes: 0 ready; 1 not ready (running it again may fix it); 2 an
+# unknown option or FLUBNF_ENGINE value; 3 this machine cannot run the
+# public engine (no Python 3.12, or a platform the lock has no wheels for).
 set -u
 say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
@@ -157,28 +159,45 @@ case "${1:-}" in
     exit 0 ;;
 esac
 
-# Which engine. An option is also a choice to keep: --public records it in
-# .flubnf.env (the launchers then follow it), --private drops that record.
-ROUTE="${FLUBNF_ENGINE:-private}"
+# Which engine. An option is also a choice to keep: --public or --private
+# records it in .flubnf.env, and the launchers then read it. With no
+# option: FLUBNF_ENGINE from this shell, else the record (read in a subshell,
+# so the rest of .flubnf.env changes nothing here), else public, the
+# default. Quotes, surrounding spaces and case do not count; any other value
+# stops here, because this is about to install something.
 RECORD_ROUTE=""
 case "${1:-}" in
   --public)  ROUTE=public;  RECORD_ROUTE=1 ;;
   --private) ROUTE=private; RECORD_ROUTE=1 ;;
-  "") ;;
+  "")
+    RAW="${FLUBNF_ENGINE:-}"
+    [ -n "$RAW" ] \
+      || RAW="$( [ -f "$ENVF" ] && . "$ENVF" >/dev/null 2>&1; printf '%s' "${FLUBNF_ENGINE:-}" )"
+    case "$(printf '%s' "$RAW" | tr -d '"' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" in
+      private) ROUTE=private ;;
+      ""|public) ROUTE=public ;;
+      *) warn "FLUBNF_ENGINE is \"$RAW\"; it must be private or public (./setup_engine.sh --public or --private sets it)"
+         exit 2 ;;
+    esac ;;
   *) warn "unknown option: $1 (setup_engine.sh takes --public, --private or nothing)"
      exit 2 ;;
 esac
-case "$ROUTE" in
-  private|public) ;;
-  *) warn "FLUBNF_ENGINE is \"$ROUTE\"; it must be private or public"
-     exit 2 ;;
-esac
 
-# ===== the public engine (opt-in until Ely's cutover) =======================
+# The private engine is there to switch to: its venv's Python and a fork
+# with the particle filter. Said after the public route's failures.
+private_engine_ready() {
+  [ -x "${FLUBNF_PY_ENGINE:-$ENGINE_VENV/bin/python}" ] && [ -f "$PYBNF/pybnf/pf.py" ]
+}
+fallback_line() {
+  private_engine_ready || return 0
+  warn "The private engine is installed here: ./setup_engine.sh --private switches this copy to it (the fallback)."
+}
+
+# ===== the public engine (the default) =====
 # Public PyBNF (lanl/PyBNF 8410f794, the merged Liu-West filter, job_type =
 # lwf) with bngsim 0.15.1 on Python 3.12, in a venv of its own: never the
-# private engine's (~/.venvs/flubnf-engine) or the lab Mac's fallback
-# (~/.venvs/flubnf), which stay installed through the season. Every package
+# private engine's (~/.venvs/flubnf-engine, the fallback) or the lab Mac's
+# older one (~/.venvs/flubnf), which stay installed. Every package
 # comes from one lock, engine-requirements.txt, by hash (--require-hashes) and
 # as a wheel (--only-binary :all:); the PyBNF wheel's URL and sha256 are its
 # own line there, read by scripts/engine_lock.py. No pin lives anywhere else.
@@ -214,11 +233,45 @@ find_python312() {
     && printf '%s\n' "$HOME/.venvs/flubnf-public-py312/bin/python3"
 }
 
+# A failure that running this again cannot fix: the reason, the private
+# engine when it is there to switch to, and exit 3. FluBNF.command stamps
+# exit 3, so the Dock does not hand over to Terminal on every click.
+cannot_run_here() {
+  for _l in "$@"; do warn "$_l"; done
+  fallback_line
+  exit 3
+}
+
+# Platforms the lock has no wheels for: macOS below 15 on Intel (its
+# libroadrunner), and Linux on anything but x86_64. Checked before any venv
+# is made.
+check_platform() {
+  _os="$(uname -s 2>/dev/null)"
+  _arch="$(uname -m 2>/dev/null)"
+  case "$_os" in
+    Darwin)
+      [ "$_arch" = x86_64 ] || return 0
+      _ver="$(sw_vers -productVersion 2>/dev/null)"
+      _major="${_ver%%.*}"
+      case "$_major" in ""|*[!0-9]*) return 0 ;; esac
+      [ "$_major" -ge 15 ] \
+        || cannot_run_here "this Mac runs macOS $_ver on Intel; the public engine's libroadrunner needs macOS 15 there." ;;
+    Linux)
+      [ "$_arch" = x86_64 ] \
+        || cannot_run_here "the public engine's lock has Linux wheels for x86_64 only." ;;
+  esac
+  return 0
+}
+
+# A file's sha256, the hash alone: shasum (macOS, and Linux with perl),
+# else sha256sum. FluBNF.command reads the lock's the same way.
+sha256_of() { { shasum -a 256 "$1" 2>/dev/null || sha256sum "$1" 2>/dev/null; } | cut -c1-64; }
+
 # The venv's Python, and the lock's hash stamped into the venv: FluBNF.command
 # compares the stamp with the lock on every open and reinstalls when they
 # differ, without loading the engine. The route only when asked (--public).
 record_public() {
-  shasum -a 256 < "$LOCK" | cut -c1-64 > "$PUBLIC_VENV/flubnf-lock.sha256"
+  sha256_of "$LOCK" > "$PUBLIC_VENV/flubnf-lock.sha256"
   if [ -n "$RECORD_ROUTE" ]; then
     record_env 'FLUBNF_PY_ENGINE_PUBLIC|FLUBNF_ENGINE' \
       "export FLUBNF_PY_ENGINE_PUBLIC=\"$PUBLIC_VENV/bin/python\"" \
@@ -228,13 +281,10 @@ record_public() {
       "export FLUBNF_PY_ENGINE_PUBLIC=\"$PUBLIC_VENV/bin/python\""
   fi
   ok "environment recorded in $ENVF"
-  if [ -z "$RECORD_ROUTE" ] && [ "${FLUBNF_ENGINE:-}" != public ]; then
-    ok "the console uses it once FLUBNF_ENGINE=public (./setup_engine.sh --public records that)"
-  fi
 }
 
 public_route() {
-  say "public PyBNF (the Liu-West filter, job_type = lwf)"
+  say "public PyBNF (the Liu-West filter, job_type = lwf), the default"
   case "$PUBLIC_VENV" in
     "$HOME/.venvs/flubnf"|"$HOME/.venvs/flubnf-engine"|"${ENGINE_VENV%/}")
       warn "FLUBNF_PUBLIC_VENV names $PUBLIC_VENV, which is the private engine's."
@@ -242,6 +292,7 @@ public_route() {
       warn "default is ~/.venvs/flubnf-public) and run this again."
       exit 1 ;;
   esac
+  check_platform
   # The lock first, read by whatever Python is at hand: without it there is
   # nothing to install, and finding that out costs no venv.
   _lockpy="$HERE/.venv/bin/python"
@@ -251,8 +302,8 @@ public_route() {
     exit 1
   fi
   if ! _wheel="$("$_lockpy" "$HERE/scripts/engine_lock.py" wheel "$LOCK")"; then
-    warn "so the public engine cannot install yet. The private engine, the"
-    warn "default, is not affected."
+    warn "so the public engine cannot install yet."
+    warn "The private engine, if installed, is not affected (./setup_engine.sh --private switches to it)."
     exit 1
   fi
   ENGINE_WHEEL_URL="$(printf '%s\n' "$_wheel" | sed -n 1p)"
@@ -287,9 +338,8 @@ public_route() {
   # ready needs none.
   if [ ! -x "$PUBLIC_VENV/bin/python" ]; then
     if ! PY312="$(find_python312)"; then
-      warn "the public engine needs Python 3.12, and none was found or creatable."
-      warn "Install 3.12 (python.org, Homebrew or conda) and run this again."
-      exit 1
+      cannot_run_here "the public engine needs Python 3.12, and none was found or creatable." \
+        "Install 3.12 (python.org, Homebrew or conda) and run this again."
     fi
     ok "$("$PY312" -V 2>&1) at $PY312"
     if ! "$PY312" -m venv "$PUBLIC_VENV"; then
@@ -337,7 +387,40 @@ if [ "$ROUTE" = public ]; then
   exit 0
 fi
 
-# ===== the private engine (the default) =====================================
+# ===== the private engine (the fallback) =====
+# The lab's PyBNF fork (fit_type=pf), installed where it is needed and run
+# only where FLUBNF_ENGINE=private is set or recorded.
+
+# The import every generated runner does (checkout first on sys.path). It
+# gates the record at the end, and the switch below.
+verify_private() {
+  "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import bngsim, pybnf
+from pybnf.pf import ParticleFilter  # the point of the whole exercise
+print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
+PYEOF
+}
+
+if [ -n "$RECORD_ROUTE" ]; then
+  # --private: the choice is recorded first, so a failed install is retried
+  # as private on the next open instead of quietly becoming public.
+  say "the private engine (the fallback)"
+  record_env 'FLUBNF_ENGINE' 'export FLUBNF_ENGINE=private'
+  ok "FLUBNF_ENGINE=private recorded in $ENVF"
+  # Already installed and working: switch, and stop. No pip and no
+  # network, so this works offline in seconds.
+  if [ -x "$ENGINE_VENV/bin/python" ] && verify_private 2>/dev/null; then
+    record_env 'FLUBNF_PY_ENGINE|FLUBNF_PYBNF' \
+      "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\"" \
+      "export FLUBNF_PYBNF=\"$PYBNF\""
+    ok "the private engine is installed and works: this copy runs it now (the fallback). ./setup_engine.sh --public goes back to the default."
+    exit 0
+  fi
+  ok "not installed yet, or it does not load: installing it"
+fi
+
 # The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
 # at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
 PY=""
@@ -373,7 +456,7 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
-say "PyBNF fork (feature/particle-filter)"
+say "PyBNF fork (feature/particle-filter), the private engine (the fallback)"
 if [ -d "$PYBNF/.git" ]; then
   # An existing checkout needs NO remote auth -- use what is on disk.
   ok "checkout present: $PYBNF"
@@ -564,12 +647,12 @@ if ! have_pybnf; then
       if [ -n "${FLUBNF_PYBNF:-}" ]; then
         warn "You reached this message because FLUBNF_PYBNF points somewhere"
         warn "else ($PYBNF). Re-run without it:"
-        warn "  unset FLUBNF_PYBNF; ./setup_engine.sh   (or double-click SetupEngine.command)"
+        warn "  unset FLUBNF_PYBNF; ./setup_engine.sh --private   (or double-click SetupEngine.command)"
       else
         warn "This script looks at PyBNF-pf and PyBNF-Private under"
         warn "~/GitHub and ~/Documents/GitHub only; the launchers look wider. Point it"
         warn "straight at the one above and it is done:"
-        warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh"
+        warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh --private"
         warn "  (or double-click SetupEngine.command, which searches them all)"
       fi
     fi
@@ -577,7 +660,7 @@ if ! have_pybnf; then
       warn "found a PyBNF checkout the automatic search does NOT cover:"
       printf '     %s\n' $STRAY
       warn "point setup at it directly and you are done:"
-      warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh"
+      warn "  FLUBNF_PYBNF=<that directory> ./setup_engine.sh --private"
     fi
     [ -z "$INPATH$STRAY" ] && ok "no PyBNF checkout anywhere under your home directory"
     say "how to fix it"
@@ -652,7 +735,7 @@ if [ "${FLUBNF_ENGINE_CHECKOUT_ONLY:-0}" = "1" ]; then
   exit 0
 fi
 
-say "engine venv"
+say "private engine venv (the fallback)"
 [ -d "$ENGINE_VENV" ] || $PY -m venv "$ENGINE_VENV"
 # The runtime set the PF path imports, installed explicitly so the fork can go
 # in with --no-deps (its msgpack==0.6.2 pin has no modern wheels; its nose and
@@ -690,22 +773,12 @@ say "PyBNF install"
   || warn "editable install failed -- harmless if the verify below passes"
 
 say "verify"
-# Import as every generated runner does (checkout first on sys.path). Failure
-# aborts BEFORE the environment is recorded.
-if ! "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
-import sys
-sys.path.insert(0, sys.argv[1])
-import bngsim, pybnf
-from pybnf.pf import ParticleFilter  # the point of the whole exercise
-print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
-PYEOF
-then
+# Failure aborts BEFORE the environment is recorded.
+if ! verify_private; then
   warn "verification failed -- the engine is NOT ready (see the error above)"
   exit 1
 fi
 record_env 'FLUBNF_PY_ENGINE|FLUBNF_PYBNF' \
   "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\"" \
   "export FLUBNF_PYBNF=\"$PYBNF\""
-# --private: back to the default route
-[ -z "$RECORD_ROUTE" ] || record_env 'FLUBNF_ENGINE'
 ok "environment recorded in $ENVF"
