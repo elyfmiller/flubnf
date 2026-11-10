@@ -53,7 +53,10 @@
     // states it covers (data-rules): only "Both from" and "Leave out"
     // still apply there, so the rest are hidden while it is on
     var form = box.closest('form');
-    function follow() {
+    // e: the event that asks for it; none, or DOMContentLoaded, as the
+    // page loads, before anyone changes a thing
+    function follow(e) {
+      var rendered = !e || e.type === 'DOMContentLoaded';
       box.querySelectorAll('select[data-rules]').forEach(function (s) {
         var on = s.dataset.rules.split(' ').some(function (k) {
           var el = form && form.querySelector('[name="knob.' + k + '"]');
@@ -76,6 +79,15 @@
             s.value = to.value;
           }
         }
+        // a page shown again after a run or a refusal keeps the last
+        // form's "Both from", which the rule may have moved there: the
+        // state's own choice, the recommendation, comes back when the
+        // setting goes off, as it does for a move made on this page
+        if (rendered && on && s.dataset.before === undefined &&
+            s.value === 'set_aside' && s.dataset.rec &&
+            s.dataset.rec !== 'set_aside') {
+          s.dataset.before = s.dataset.rec;
+        }
         if (!on && s.dataset.before !== undefined) {
           s.value = s.dataset.before;
           delete s.dataset.before;
@@ -89,7 +101,7 @@
     document.addEventListener('DOMContentLoaded', follow);
     if (form) {
       form.addEventListener('change', function (e) {
-        if (e.target && /^knob\.data\./.test(e.target.name || '')) follow();
+        if (e.target && /^knob\.data\./.test(e.target.name || '')) follow(e);
       });
       form.addEventListener('ms-reset', follow);
     }
