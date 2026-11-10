@@ -1,0 +1,176 @@
+diff --git a/app/tests/test_models_polish.py b/app/tests/test_models_polish.py
+new file mode 100644
+index 00000000..95f63442
+--- /dev/null
++++ b/app/tests/test_models_polish.py
+@@ -0,0 +1,76 @@
++"""Models and diagrams polish (model.html, diagrams.html).
++
++  * the empty Forecasts card says which run has none as one muted line,
++    never a "?": the page keeps one mark, the record's "i", with or
++    without a run;
++  * the chart library is loaded only when there is a fan to draw, and
++    deferred; the research view never loads it;
++  * the seasonal-forcing figure's reference lines are in the axis's units
++    (beta over beta-0): 1.0, e to the plus and minus epsilon-1.
++"""
++import sys
++from pathlib import Path
++
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.ui import shared as ui_shared                # noqa: E402
++from app.ui.server import app as srv                  # noqa: E402
++from app.tests.test_fewer_marks import marks          # noqa: E402
++from app.tests.test_models_tab import _run            # noqa: E402
++
++client = TestClient(srv)
++PLOTLY = '<script defer src="/static/plotly.min.js"></script>'
++CHARTS = '<script defer src="/static/charts.js"></script>'
++
++
++def test_the_empty_forecasts_card_says_which_run_in_one_muted_line(monkeypatch):
++    _run(monkeypatch, ["analogue"])
++    page = client.get("/models").text
++    card = page.split('id="mfan"', 1)[1].split("</div>\n", 1)[0]
++    assert "tip-md-nofc" not in page and "tipbtn" not in card
++    assert ('<div class="uk-empty-action"><span class="hint md-nofc-why">'
++            'The latest real-time run (2098-11-14 · 11-14 09:31:00) has '
++            'none from this model.</span></div>') in card
++    # the page keeps the record's "i" alone, as it does with no run
++    assert set(marks(page)) == {"tt-md-rec"}
++    monkeypatch.setattr(ui_shared, "_latest_results",
++                        lambda **kw: (None, None))
++    page = client.get("/models").text
++    assert "md-nofc-why" not in page and set(marks(page)) == {"tt-md-rec"}
++
++
++def test_the_chart_library_loads_deferred_and_only_for_a_fan(monkeypatch):
++    _run(monkeypatch, ["analogue"])
++    page = client.get("/model/analogue").text
++    head = page.split("</head>", 1)[0]
++    assert PLOTLY in head and CHARTS in head
++    assert '<script src="/static/plotly.min.js">' not in page
++    # the first draw waits for the deferred library
++    assert "addEventListener('DOMContentLoaded',()=>draw());" in page
++    assert "\n draw();" not in page
++    # the model the run has no fan for, and the research view: no library
++    for path in ("/models", "/model/pf2s"):
++        page = client.get(path).text
++        assert "plotly.min.js" not in page and "charts.js" not in page, path
++    monkeypatch.setattr(ui_shared, "_latest_results",
++                        lambda **kw: (None, None))
++    assert "plotly.min.js" not in client.get("/model/analogue").text
++
++
++def test_the_forcing_figures_reference_lines_are_in_the_axis_units():
++    page = client.get("/").text
++    fig = page.split('class="dg-harm"', 1)[1].split("</svg>", 1)[0]
++    assert "&#946;(t) / &#946;" in fig                 # the axis
++    assert 'fill="var(--mut)">1.0</text>' in fig
++    assert ('<text x="68" y="33">e<tspan class="svgt-sub" dy="-7">'
++            '+&#949;&#8321;</tspan></text>') in fig
++    assert ('<text x="68" y="164">e<tspan class="svgt-sub" dy="-7">'
++            '&#8722;&#949;&#8321;</tspan></text>') in fig
++    assert "&#183;&#8202;e" not in fig                 # no beta-0 times e
++    # Methods and the Models tab draw the same macro
++    for path in ("/methods", "/models", "/model/pf2s"):
++        t = client.get(path).text
++        assert "&#183;&#8202;e" not in t, path
++        assert 'fill="var(--mut)">1.0</text>' in t, path
+diff --git a/app/tests/test_theme_and_harmonic.py b/app/tests/test_theme_and_harmonic.py
+index 50c42660..7a3cf11d 100644
+--- a/app/tests/test_theme_and_harmonic.py
++++ b/app/tests/test_theme_and_harmonic.py
+@@ -85,7 +85,10 @@ def test_harmonic_figure_carries_the_design_conventions():
+     assert "peak week" in html                      # phi-1 marked and named
+     assert "(early Jan)" in html                    # and placed on the calendar
+     assert html.count("&#949;&#8321;") == 2         # both amplitude extremes
+-    assert "1.0 (&#946;" in html                    # the beta0 reference
++    # the reference lines in the axis's units (beta over beta-0): 1.0 and
++    # exp of plus and minus epsilon-1, never beta-0 times them
++    assert 'fill="var(--mut)">1.0</text>' in html
++    assert "&#183;&#8202;e</tspan>" not in html and "1.0 (&#946;" not in html
+     # the caption owns the figure's honesty note
+     assert "Values shown are illustrative" in html
+     assert "illustrative" in html
+diff --git a/app/ui/static/tabs/models.css b/app/ui/static/tabs/models.css
+index 4d160e7e..cf469df1 100644
+--- a/app/ui/static/tabs/models.css
++++ b/app/ui/static/tabs/models.css
+@@ -129,3 +129,5 @@ code.md-code{padding:0;background:transparent;color:inherit;
+ .md-research .uk-affix > input{flex-basis:9ch;min-width:9ch}
+ .md-quick .uk-alert,.md-research .uk-alert{margin:.2rem 0 .5rem}
+ .md-runfacts{margin:.1rem 0 .5rem}
++/* the empty Forecasts card: which run has none, under the title */
++.md-nofc-why{display:block;text-align:center}
+diff --git a/app/ui/templates/diagrams.html b/app/ui/templates/diagrams.html
+index a8abf931..dd43984b 100644
+--- a/app/ui/templates/diagrams.html
++++ b/app/ui/templates/diagrams.html
+@@ -599,8 +599,7 @@
+  <path d="M62,{{ g.y_one }} H540" stroke="var(--mut)" stroke-width="1.2"
+        stroke-dasharray="2 5" fill="none"/>
+  <text x="536" y="{{ (g.y_one - 5) | round(1) }}" text-anchor="end"
+-       class="svgt-sm" fill="var(--mut)">1.0 (&#946;<tspan class="svgt-sub"
+-       dy="3">0</tspan><tspan dy="-3">)</tspan></text>
++       class="svgt-sm" fill="var(--mut)">1.0</text>
+  <!-- axes and month ticks (quarterly month starts, via harmonic_fig) -->
+  <g stroke="currentColor" stroke-width="1.4" fill="none">
+   <path d="M62,170 H540"/>
+@@ -614,14 +613,11 @@
+  <text x="22" y="95" text-anchor="middle" class="svgt-sm" fill="currentColor"
+        transform="rotate(-90 22 95)">&#946;(t) / &#946;<tspan
+        class="svgt-sub" dy="3">0</tspan></text>
+- <!-- amplitude extremes, in the pockets the curves keep clear -->
++ <!-- amplitude extremes, in the pockets the curves keep clear; in the
++      axis's own units (beta over beta-0), as the 1.0 line is -->
+  <g class="svgt-sm" fill="currentColor">
+-  <text x="68" y="33">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+-   dy="-7">+&#949;&#8321;</tspan></text>
+-  <text x="68" y="164">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+-   dy="-7">&#8722;&#949;&#8321;</tspan></text>
++  <text x="68" y="33">e<tspan class="svgt-sub" dy="-7">+&#949;&#8321;</tspan></text>
++  <text x="68" y="164">e<tspan class="svgt-sub" dy="-7">&#8722;&#949;&#8321;</tspan></text>
+  </g>
+  {% if two %}
+  <!-- the two circuits: one harmonic form, per-strain peak timing -->
+diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
+index c0006db7..fb61b752 100644
+--- a/app/ui/templates/model.html
++++ b/app/ui/templates/model.html
+@@ -1,6 +1,8 @@
+ {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
+ {% block title %}FluBNF · {{ title }}{% endblock %}
+-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
++{# the chart library (4.8 MB) only when there is a fan to draw, and
++   deferred, so the page paints first; the research view never has one #}
++{% block head %}{% if has_fans %}<script defer src="/static/plotly.min.js"></script><script defer src="/static/charts.js"></script>{% endif %}
+ <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
+ {% block content %}
+ {# a keyboard user reaches the run form without walking the diagrams and
+@@ -198,7 +200,9 @@
+    {% endcall %}
+    {% endif %}
+    <div id="mfan">{% if not has_fans %}
+-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
++    {#- which run has none: one muted line, not a "?" (the page keeps
++        one mark, the record's "i") #}
++    {%- if rid %}{% set why %}<span class="hint md-nofc-why">The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.</span>{% endset %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc", action=why) }}
+     {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
+    {%- endif %}</div>
+   </div>
+@@ -329,7 +333,8 @@
+      toImageButtonOptions:{format:'png',scale:2,
+        filename:('flubnf_'+MNAME+'_'+loc+'_'+FD).replace(/[^\w-]+/g,'_')}});
+  }
+- draw();
++ // the chart library is deferred: the first draw waits for it
++ addEventListener('DOMContentLoaded',()=>draw());
+  addEventListener('themechange',()=>draw());
+  addEventListener('fontsizechange',()=>draw());
+ </script>
