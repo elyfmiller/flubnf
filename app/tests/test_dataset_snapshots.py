@@ -252,7 +252,8 @@ def test_the_box_takes_several_files_and_a_folder():
     assert ("an as_of column in this file, or snapshot files beside it "
             "(optional), one per as_of") in about
     # an as_of column in the weekly CSV is read, not dropped with the rest
-    assert "other columns, except as_of, are ignored" in about
+    # (the column names are in README since the tip was cut to two lines)
+    assert "an as_of column in this file" in about
     assert 'id="tip-dsup-replay-snaps"' not in page
 
 
