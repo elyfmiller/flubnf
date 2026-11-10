@@ -3190,6 +3190,12 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-10, Submission to App (answering your third message, on the
+  narrowing and the cap): drafted under Open as B and C, each marked
+  apart from the engine change (A, now in the Model lane's wording),
+  all three tested against the card tests. The shrink also belongs on
+  the GroundHogCGR card, noted there for Ely. On the branch
+  assited_dev/bold-sagan-kfw8gg; nothing pushed to dev.
 - 2026-11-10, Submission to App (answering your message of 2026-11-10 on
   the public engine): (1) the card clause is drafted under Open, with
   the test run and two findings for Ely: the hub's card is still 1.2
@@ -3793,36 +3799,54 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
-- 2026-11-10 (App lane's request; Ely approves): THE ORACLE SIHRS CARD'S
-  ENGINE CLAUSE for the first round on the public engine (2026-11-14,
-  run 2026-11-11). methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml
-  line 50) says the Liu-West filter runs "(a particle filter, in a PyBNF
-  fork on bngsim)". Draft replacement, that clause only:
-  "(a particle filter, run from the 2026-11-14 round in public PyBNF, lanl/PyBNF's lwf job at commit 8410f794, with bngsim integrating the model; before it, in a PyBNF fork on bngsim)"
-  It matches README.md ("public PyBNF (lanl/PyBNF at 8410f794, job_type =
-  lwf) with bngsim integrating the model") and
-  app/core/engines/lwf.py (PUBLIC_ENGINE_COMMIT 8410f794...). Dated like
-  the card's other changes ("from the 2026-10-17 round; before it ...").
-  A shorter, undated form if preferred: "(a particle filter, in public
-  PyBNF, lanl/PyBNF's lwf job at commit 8410f794, with bngsim integrating
-  the model)". Checked: app/core/oracle_text.py pins only the donor-bank
-  sentence (BANK_TEXT["card"]), and app/tests/test_model_metadata.py
-  needs "particle filter", ASCII and the hub schema; with the draft in
-  the card, test_model_metadata.py and test_oracle_text.py pass (17
-  passed, 2 skipped for want of a hub clone, as on dev's card). No code
-  change is needed. Two things for Ely before it goes out:
+- 2026-11-10 (App lane's requests; Ely approves in the hub pull
+  request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
+  CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
+  50, card 1.4). Take or leave each on its own; the rest of the card
+  stays as it is.
+  A. THE ENGINE (the change this round). Replace "(a particle filter, in
+  a PyBNF fork on bngsim)" with the Model lane's wording, kept for
+  consistency:
+  "(a particle filter, in public PyBNF (lanl/PyBNF at 8410f794, job type lwf) from the 2026-11-14 round, and in the lab's private PyBNF fork on bngsim before it)"
+  On the public engine bngsim still integrates the model (README.md:
+  "with bngsim integrating the model in process"); if the card should
+  say so, add "with bngsim" after "job type lwf". It matches
+  app/core/engines/lwf.py (PUBLIC_ENGINE_COMMIT 8410f794...).
+  B. THE NARROWING (submitted since round 2026-10-24, oracle.narrow 0.7;
+  app/core/oracle.py narrows the submitted samples after the Oracle
+  step, flubnf.oracle.narrow). After the sentence "Uncertainty: the
+  quantiles are empirical quantiles of the blended samples, carrying the
+  filter's spread and the donors'.", add:
+  "From the 2026-10-24 round the blended samples are narrowed about each horizon's median on the log scale (each sample's log-distance from the median is scaled by 0.7), so the median is unchanged."
+  C. THE UPPER-TAIL SHRINK (submitted since round 2026-10-31, at 10x
+  both rounds, output.tail_mode shrink; flubnf/tailcap.py, the recent
+  level the mean of the last 3 reported weeks). After B, add:
+  "From the 2026-10-31 round, where a jurisdiction's 97.5% quantile exceeds a limit (a factor, set each round and recorded with the run, times the mean of its last three reported weeks; 10 in the 2026-10-31 and 2026-11-07 rounds), its quantiles above the median are shrunk toward the median on the log scale by one exponent, the one its worst horizon needs to reach the limit, at every horizon; the median and lower quantiles are unchanged."
+  Checked: with A, B and C in the card, app/tests/test_model_metadata.py
+  and app/tests/test_oracle_text.py pass (17 passed, 2 skipped for want
+  of a hub clone, as on dev's card): ASCII, the hub schema, "particle
+  filter", the donor-bank sentence verbatim. No code change is needed.
+  For Ely, before it goes out:
   (a) THE HUB'S CARD IS STILL 1.2. cdcepi main carries model_version 1.2:
   "blended 50/50" in methods, the weight one half throughout, and the
   pre-registration hash, the self-scored record and the "frozen-
-  specification replication" sentence that 1.3 removed (Ely, 2026-10-07).
-  Cards 1.3 and 1.4 sit on the fork branches NAU_PyBNF-OracleSIHRS-1.3
-  and -1.4, and no hub pull request carries either. Since the
-  2026-10-17 round the submitted weight is one quarter, so the hub card
-  describes the weight wrongly. The engine clause would go with 1.4.
+  specification replication" sentence that 1.3 removed (Ely,
+  2026-10-07). Cards 1.3 and 1.4 sit on the fork branches
+  NAU_PyBNF-OracleSIHRS-1.3 and -1.4, and no hub pull request carries
+  either. Since round 2026-10-17 the submitted weight is one quarter,
+  so the hub card describes the weight wrongly. A, B and C would go
+  with 1.4, as 1.5 if Ely wants a new version.
   (b) THE ORDER. The hub's cards are byte copies of the repository's
-  (Decided 2026-09-30): the clause lands in model-metadata/ first, which
-  means dev, frozen until #101 merges, and then the fork. Whether the
-  engine clause takes a new model_version (1.5) is Ely's call.
+  (Decided 2026-09-30): the clauses land in model-metadata/ first, which
+  means dev, frozen until #101 merges, and then the fork.
+  (c) THE GROUNDHOG. The shrink acts on both members, and the
+  GroundHogCGR card (1.3) does not mention it either; clause C fits it
+  as written. The output floor (app/core/floor.py) is on neither card;
+  not drafted here.
+  (d) THE DEFAULTS. flubnf/tailcap.py calls a capped run "a modified run
+  with an override reason, as for the narrowing, until a card sentence
+  changes the default": B and C describe what is submitted; whether the
+  code defaults (narrow 1, cap 0) change with them is Ely's call.
 - 2026-11-05: the member table's reference when some members plateau.
   The 1.5x rule compares our h3 median with the median of the other six
   members; on 2026-11-07 two of them (FourCAT, epymorph) forecast near-
