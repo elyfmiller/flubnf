@@ -186,8 +186,8 @@ holds its four choices:
 
 | Choice | What it is |
 |---|---|
-| Model | a shipped model, each saying what it is (`sihrs · the Oracle SIHRS, as shipped`, `sihrs-2strain · influenza A and B (research)`, `sihrs-natg · with a national-growth factor (research)`), or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked. `sihrs-2strain` runs on the private engine only: on the public engine it is listed as `private engine only` and cannot be picked |
-| Season | the seasons here, newest first, each saying whether a shipped replay of it is here to compare with (`shipped replay here` or `nothing to compare with`); picked first, the newest with one |
+| Model | a shipped model, each saying what it is (`sihrs · the Oracle SIHRS, as shipped`, `sihrs-2strain · influenza A and B (research)`, `sihrs-natg · with a national-growth factor (research)`), or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked. `sihrs-2strain` runs on the private engine only: on the public engine it is listed as `private engine only` and cannot be picked, unless an experiment of it is already complete (Start then opens its page) |
+| Season | the seasons here, newest first, each saying whether a shipped replay of it is here to compare with: `shipped replay here` (every size, with the Oracle step on or off), `part of a shipped replay here` (only some of them), or `nothing to compare with`. Picked first: the newest season whose own replay here is the shipped one (an archived replay does not count), else the newest |
 | Size | smoke: 2 locations, 2 weeks; pilot: 10 locations, every other week; full: every location and week, as shipped. Each says about how long it takes for the picked season (`about 14 to 56 min`), from the engine's cost model, as the Forecast and Retrospective forms say it; `here` when it rests on this computer's earlier replays, and in a student's folder on the runner computer, `on the runner` |
 | Oracle step | on for `sihrs`, off (the Liu-West filter alone) for any other model, unless you change it |
 
@@ -199,7 +199,8 @@ dataset replay and a Sandbox fit are each refused until it ends (stop it
 first), and an experiment is refused while any of them runs. A start that cannot go ahead says **Not started** and why,
 each finding with its code (`MACHINE` when this computer is busy or has
 no particle-filter engine). Without the engine, the Sandbox page says so
-at the top before you start, and Start is off.
+at the top before you start, and Start is off, except for an
+experiment that is already complete: Start then opens its page.
 
 **Stop**, on the experiment's page, finishes the fits in flight; the
 weeks finished are kept. **Resume** is Start with the same four choices:

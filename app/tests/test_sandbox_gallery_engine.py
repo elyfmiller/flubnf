@@ -43,8 +43,8 @@ from app.ui import state as ui_state                     # noqa: E402
 from app.ui import versions as ui_versions               # noqa: E402
 
 import served_dom as SD                                  # noqa: E402
-from test_experiments import (SMOKE_WEEKS, _on, _replay,  # noqa: E402,F401
-                              season, truth)
+from test_experiments import (SMOKE_WEEKS, VINTAGES, _on,  # noqa: E402,F401
+                              _replay, season, truth)
 from test_fewer_marks import marks                       # noqa: E402
 from test_runner_folders import students                 # noqa: E402,F401
 from test_runner_queue import state as runner_state      # noqa: E402
@@ -267,18 +267,38 @@ def test_on_the_public_engine_the_two_strain_model_cannot_be_picked(
 
 # --------------------------------------------------- F59: the seasons
 
+def calendars(monkeypatch, *seasons) -> dict:
+    """test_experiments.season's 2024-25 calendar moved to each of
+    `seasons` by whole years of weeks (each week keeps its parity), so a
+    plan of any of them has weeks: {season: its smoke weeks}."""
+    from datetime import date, timedelta
+
+    from app.core import runner
+
+    def moved(s):
+        shift = timedelta(weeks=52 * (int(s[:4]) - 2024))
+        return [(date.fromisoformat(v) + shift).isoformat() for v in VINTAGES]
+    monkeypatch.setattr(retro, "season_vintages",
+                        lambda s: moved(s) if s in seasons else [])
+    return {s: runner._plan_weeks({"season": s, "size": "smoke"})
+            for s in seasons}
+
+
 @needs_js
 def test_each_season_says_whether_a_shipped_replay_is_here(
         world, tmp_path, monkeypatch):
     monkeypatch.setattr(retro, "available_seasons",
                         lambda: ["2022-23", "2023-24", "2024-25"])
+    smoke = calendars(monkeypatch, "2022-23", "2023-24", "2024-25")
+    assert smoke["2024-25"] == SMOKE_WEEKS
     root = world_root()
     # 2024-25: the shipped replay, live; 2023-24: only an archived (or
     # imported: the same <season>__archived_<stamp> root) one;
     # 2022-23: the Groundhog alone, which is not the shipped replay
     _replay(root / "2024-25", weeks=SMOKE_WEEKS)
-    _replay(root / "2023-24__archived_20260101T000000Z", weeks=SMOKE_WEEKS)
-    _replay(root / "2022-23", engine="analogue")
+    _replay(root / "2023-24__archived_20260101T000000Z",
+            weeks=smoke["2023-24"])
+    _replay(root / "2022-23", engine="analogue", weeks=smoke["2022-23"])
     _html, got = _gallery(tmp_path)
     seasons = got["selects"]["sbexp-season"]
     assert [(o["value"], o["text"]) for o in seasons] == [
@@ -286,12 +306,15 @@ def test_each_season_says_whether_a_shipped_replay_is_here(
         ("2023-24", "2023-24 · shipped replay here"),
         ("2022-23", "2022-23 · nothing to compare with")]
     assert got["data"]["season"] == "2024-25"
-    # the newest with one is picked, archived or not
+    # the words never move the pick: experiments.default_season's, the
+    # newest live root with the shipped replay, else the newest season
+    # (origin/dev's), so an untouched Start posts what it posted there
     shutil.rmtree(root / "2024-25")
     _html, got = _gallery(tmp_path)
-    assert [o["text"] for o in got["selects"]["sbexp-season"]][0] == (
-        "2024-25 · nothing to compare with")
-    assert got["data"]["season"] == "2023-24"
+    assert [o["text"] for o in got["selects"]["sbexp-season"]][:2] == [
+        "2024-25 · nothing to compare with",
+        "2023-24 · shipped replay here"]
+    assert got["data"]["season"] == "2024-25" == X.default_season(root)
 
 
 @needs_js
@@ -332,17 +355,20 @@ def test_in_a_runner_folder_the_seasons_are_the_runners(
         alice, students, tmp_path, monkeypatch):
     monkeypatch.setattr(retro, "available_seasons",
                         lambda: ["2023-24", "2024-25"])
+    smoke = calendars(monkeypatch, "2023-24", "2024-25")
     # the runner's retro root holds 2023-24's shipped replay; this
     # console's own holds 2024-25's, which the runner does not see
     theirs = tmp_path / "runner-retro"
-    _replay(theirs / "2023-24", weeks=SMOKE_WEEKS)
+    _replay(theirs / "2023-24", weeks=smoke["2023-24"])
     _replay(world_root() / "2024-25", weeks=SMOKE_WEEKS)
     runner_state(students, retro_root=str(theirs))
     _html, got = _gallery(tmp_path)
     assert [o["text"] for o in got["selects"]["sbexp-season"]] == [
         "2024-25 · nothing to compare with",
         "2023-24 · shipped replay here"]
-    assert got["data"]["season"] == "2023-24"
+    # the words are the runner's; the pick is still origin/dev's
+    # (experiments.default_season of this console's own roots)
+    assert got["data"]["season"] == "2024-25"
     # a runner.json that names no retro root: nothing said
     runner_state(students)
     _html, got = _gallery(tmp_path)

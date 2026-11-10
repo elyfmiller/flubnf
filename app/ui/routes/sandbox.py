@@ -296,21 +296,27 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
 
 
 def _gallery_machine() -> tuple:
-    """The gallery's "This computer cannot fit yet" notice, (notice, tip):
-    the model page's own (machine_problem, split by split_reason), shown
-    only while an experiment's Start would be refused for want of the
-    engine. So ("", "") in a student's folder on the runner computer,
-    where Start queues and needs no engine here (asked first: nothing
-    else is read there), and ("", "") with the engine ready. When
-    machine_problem names nothing (the engine's pieces disagree), the
-    experiment's own refusal says why."""
+    """The gallery's "This computer cannot fit yet" notice, (notice, tip),
+    shown only while an experiment's Start would be refused for want of
+    the engine: the model page's first reason (sandbox.
+    engine_missing_reason), or, when the engine's pieces disagree (it is
+    there, and the state is not ready), the experiment's own refusal
+    words (pipeline._pf_engine_missing). Both look at files only. Never
+    machine_problem, the model page's whole look: it makes the runs
+    folder and runs BNG2.pl's self-test, and opening the gallery makes
+    no folder and starts no process. ("", "") in a student's folder on
+    the runner computer, where Start queues and needs no engine here
+    (asked first: nothing else is read there), and with the engine
+    ready."""
+    from app.core.engines import pf
     if _student():
         return "", ""
     engine = pipeline._pf_engine_state()
     if engine == "ready":
         return "", ""
-    said = sandbox_mod.machine_problem()
-    if not said:
+    if not pf.engine_available():
+        said = sandbox_mod.engine_missing_reason()
+    else:
         said = ("An experiment needs the fitting engine, "
                 + pipeline._pf_engine_missing(engine) + ".")
     return sandbox_mod.split_reason(said)
@@ -1513,30 +1519,53 @@ SHIPPED_EXPERIMENT_WORDS = {
     "sihrs-natg": "with a national-growth factor (research)",
 }
 #: a season's words after its name on the card: whether a shipped replay
-#: of it is here to compare an experiment with
-SEASON_SHIPPED, SEASON_NONE = "shipped replay here", "nothing to compare with"
+#: of it is here to compare an experiment with, for every choice of size
+#: and Oracle step, for some, or for none (_season_note)
+SEASON_SHIPPED, SEASON_PART, SEASON_NONE = (
+    "shipped replay here", "part of a shipped replay here",
+    "nothing to compare with")
+
+
+def _season_note(retro_root, season: str) -> str:
+    """One season's words, by the comparison's own test
+    (experiments.reference: a shipped replay's run record and its
+    forecasts in a planned week): SEASON_SHIPPED when an experiment of
+    every size, with the Oracle step on and off, has one to compare with
+    (tested over the smallest plan's weeks, which every larger plan
+    holds); SEASON_NONE when none has (no plan has weeks, or no week of
+    the largest holds them); SEASON_PART when only some would (a shipped
+    replay of part of the season, or one without the Liu-West filter's
+    own forecasts or the Oracle step's). "" when the trees cannot be
+    read: the card then claims nothing."""
+    from app.core import experiments as X
+    from app.core import runner
+    try:
+        plans = [w for w in (runner._plan_weeks({"season": season,
+                                                 "size": size})
+                             for size in X.SIZES) if w]
+        if not plans:
+            return SEASON_NONE
+
+        def compares(weeks) -> list:
+            return [X.reference(retro_root, season, oracle, weeks)
+                    is not None for oracle in (True, False)]
+        if all(compares(min(plans, key=len))):
+            return SEASON_SHIPPED
+        return SEASON_PART if any(compares(max(plans, key=len))) \
+            else SEASON_NONE
+    except Exception:
+        return ""
 
 
 def _season_notes(retro_root, seasons) -> dict:
-    """{season: SEASON_SHIPPED or SEASON_NONE}: whether any of the season's
-    replay roots under `retro_root` (the live one, then the archived and
-    imported ones) holds a run record of the shipped replay, by
-    experiments.reference's test (experiments._shipped). {} when
-    `retro_root` is None (not known): the card then says nothing."""
-    from app.core import experiments as X
-    from app.core import retro
+    """{season: its words (_season_note)} for the replay roots under
+    `retro_root` (the live one, then the archived and imported ones, as
+    experiments.reference reads them). {} when `retro_root` is None (not
+    known): the card then says nothing. Words only: the season the form
+    picks is experiments.default_season's."""
     if retro_root is None:
         return {}
-    out = {}
-    for s in seasons:
-        roots = retro.list_archive_dirs(retro_root, s)
-        live = Path(retro_root) / s
-        if live.is_dir():
-            roots.insert(0, live)
-        out[s] = (SEASON_SHIPPED
-                  if any(X._shipped(retro.read_meta(r)) for r in roots)
-                  else SEASON_NONE)
-    return out
+    return {s: _season_note(retro_root, s) for s in seasons}
 
 
 def _size_words(season, size: str, engine: str | None, ratio,
@@ -1575,22 +1604,54 @@ def _size_words(season, size: str, engine: str | None, ratio,
     return words + (where if words and where and ratio else "")
 
 
+def _choice_key(model: str, season: str, size: str, oracle: bool) -> str:
+    """The Experiments form's four values as one string, "model|season|
+    size|on" (or off): how the card names a choice it can tell apart."""
+    return f"{model}|{season}|{size}|{'on' if oracle else 'off'}"
+
+
+def _complete_choices(models: list, experiments: list) -> list:
+    """The form's choices whose Start the server answers "is complete"
+    (_experiment_start asks that first, before the engine or the model):
+    each listed model's choice that derives a complete experiment's id
+    (experiments.experiment_id, as the server derives it), as _choice_key
+    strings."""
+    from app.core import experiments as X
+    out = []
+    for r in experiments:
+        if not (r.get("status") or {}).get("complete"):
+            continue
+        st = r["settings"]
+        for m in models:
+            try:
+                same = X.experiment_id({**st, "model": m["ref"]}) == r["id"]
+            except Exception:
+                same = False
+            if same:
+                out.append(_choice_key(m["ref"], st["season"], st["size"],
+                                       st["oracle"]))
+    return out
+
+
 def _experiment_gallery() -> dict:
     """The Experiments card: the models a replay can name (each with its
-    Oracle step default, its words, and why it cannot be picked: the
-    two-strain model off the private engine), the seasons newest first
-    (each with whether a shipped replay is here to compare with), the
-    time each size takes, the form's choices (a refused form as posted,
-    one-shot; else the newest intact registered version, the newest
-    season with a shipped replay to compare with, smoke and the model's
-    Oracle default; a pick that cannot be made falls back to sihrs and
-    its Oracle default), and a row per experiment: its badge and its
-    figures as last scored (never checked for staleness here). In a
-    student's folder on the runner computer each badge also reads the
-    queue (runner.json, read once), "queues" is true (Start queues), and
-    the engine, the shipped replays and the pace are the runner's
-    (runner.json's engine, retro_root and recent: none said when it
-    names none)."""
+    Oracle step default, its words, and why it cannot be replayed here:
+    the two-strain model off the private engine, which cannot be picked
+    unless an experiment of it is complete), the seasons newest first
+    (each with whether a shipped replay is here to compare with:
+    _season_notes), the time each size takes, the form's choices (a
+    refused form as posted, one-shot; else the newest intact registered
+    version, experiments.default_season (the same pick as before the
+    seasons said anything), smoke and the model's Oracle default; a pick
+    that cannot be made falls back to sihrs and its Oracle default), the
+    choices that are complete experiments ("complete", _complete_choices:
+    Start stays on for them without the engine, as the server answers
+    them first), and a row per experiment: its badge and its figures as
+    last scored (never checked for staleness here). In a student's folder
+    on the runner computer each badge also reads the queue (runner.json,
+    read once), "queues" is true (Start queues), and the engine, the
+    shipped replays and the pace are the runner's (runner.json's engine,
+    retro_root and recent: none said when it names none)."""
     from app.core import experiments as X
     from app.core import library, retro, runner
     from app.core.engines import pf
@@ -1605,6 +1666,7 @@ def _experiment_gallery() -> dict:
     else:
         engine = "public" if pf._public() else "private"
         root = retro_seasons.RETRO_ROOT
+    experiments = X.list_experiments()
     models = []
     for m in library.list_models():
         off = ""
@@ -1619,6 +1681,11 @@ def _experiment_gallery() -> dict:
                        "words": (SHIPPED_EXPERIMENT_WORDS.get(m["ref"], "")
                                  if m["shipped"] else ""),
                        "off": off})
+    complete = _complete_choices(models, experiments)
+    for m in models:
+        # a complete experiment of it is still answered (and opened)
+        m["closed"] = bool(m["off"]) and not any(
+            k.startswith(m["ref"] + "|") for k in complete)
     seasons = sorted(retro.available_seasons(), reverse=True)
     notes = _season_notes(root, seasons)
     pick = _experiment_refused_form.pop("form", None)
@@ -1630,13 +1697,10 @@ def _experiment_gallery() -> dict:
                      default=None)
         ref = newest["ref"] if newest else "sihrs"
         pick = {"model": ref,
-                "season": (next((s for s in seasons
-                                 if notes.get(s) == SEASON_SHIPPED), None)
-                           or X.default_season(root or
-                                               retro_seasons.RETRO_ROOT)),
+                "season": X.default_season(retro_seasons.RETRO_ROOT),
                 "size": X.DEFAULT_SIZE,
                 "oracle": ref in X.ORACLE_ON_BY_DEFAULT}
-    if any(m["off"] and m["ref"] == pick["model"] for m in models):
+    if any(m["closed"] and m["ref"] == pick["model"] for m in models):
         pick = {**pick, "model": "sihrs",
                 "oracle": "sihrs" in X.ORACLE_ON_BY_DEFAULT}
     # the time each size takes: this computer's pace when recorded (the
@@ -1656,7 +1720,7 @@ def _experiment_gallery() -> dict:
     live = _experiment_live()
     on_runner = _runner_job(state, name) if name else ""
     rows = []
-    for r in X.list_experiments():
+    for r in experiments:
         queue = refused = None
         if name:
             queue = runner.position(name, r["id"], state=state)
@@ -1668,6 +1732,10 @@ def _experiment_gallery() -> dict:
                      "fig": X.figures((r["summary"] or {}).get("overall"))})
     return {"models": models, "seasons": seasons, "season_notes": notes,
             "sizes": sizes, "pick": pick, "rows": rows,
+            "complete": complete,
+            "pick_complete": _choice_key(
+                pick["model"], pick["season"], pick["size"],
+                bool(pick["oracle"])) in complete,
             "queues": bool(name)}
 
 
