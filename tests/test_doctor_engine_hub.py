@@ -123,9 +123,12 @@ def test_numpy2_check_leaves_the_fork_alone_on_the_public_engine(
                               "lanl/PyBNF's job_type = lwf")
         row = doctor._check_pf_engine()
         assert row.status is doctor.Status.OK, row
+        # the switch is the platform's own: ./setup_engine.sh --private,
+        # or setup.ps1 -Engine private on Windows
+        from app.core import engine_build
+        step = engine_build.switch_step("private", short=True)
         said = (f"installed at {fork}" if fork == engine.fork else
-                "not installed (needed only after ./setup_engine.sh "
-                "--private)")
+                f"not installed (needed only after {step})")
         assert row.detail == ("the private engine (the fallback), not used "
                               f"here: {said}")
     # the private engine's check is as before
