@@ -42,18 +42,26 @@ fi
 cd "$DEST" && FLUBNF_SETUP_FROM=install ./setup.sh
 # FluBNF.app and FluBNF.command are macOS's. Elsewhere the console starts from
 # its venv, and opens in the browser when there is no GTK or Qt for a window.
+# The venv's scripts folder is the one setup.sh used: bin, or Scripts in a
+# venv a Windows Python made (Git Bash).
 if [ "$(uname -s)" = Darwin ]; then
   LAUNCH="open \"$DEST/FluBNF.app\"   (or double-click FluBNF.command)"
 else
-  LAUNCH="\"$DEST/.venv/bin/flubnf\" app"
+  VB=bin
+  if [ ! -d "$DEST/.venv/bin" ] && [ -d "$DEST/.venv/Scripts" ]; then VB=Scripts; fi
+  LAUNCH="\"$DEST/.venv/$VB/flubnf\" app"
 fi
+# The user's shell is not in $DEST (piped install), so a step that runs a
+# script there names the folder, on a line of its own.
+IN_DEST="cd \"$DEST\" &&"
 if [ "$ROUTE" = private ]; then
   # Recorded in .flubnf.env (--private), so the launchers read it.
   PRIVATE_OK=""
   if ./setup_engine.sh --private; then
     PRIVATE_OK=1
   else
-    echo "The private engine did not install (see above); the console still runs, and FluBNF.command tries again with the engine file in Downloads."
+    echo "The private engine did not install (see above); the console still runs, and FluBNF.command tries again with the engine file in Downloads. To try again now:"
+    echo "  $IN_DEST ./setup_engine.sh --private"
   fi
   echo
   echo "Done. Launch with:  $LAUNCH"
@@ -61,8 +69,10 @@ if [ "$ROUTE" = private ]; then
   if [ -n "$PRIVATE_OK" ]; then
     echo "This copy runs the private engine (the fallback). Installed from an"
     echo "engine file, it is replaced by a newer one (pybnf-pf-XXXX.tar.gz) saved"
-    echo "in your Downloads folder the next time ./setup_engine.sh --private runs."
-    echo "./setup_engine.sh --public goes back to the public engine, the default."
+    echo "in your Downloads folder the next time this runs:"
+    echo "  $IN_DEST ./setup_engine.sh --private"
+    echo "To go back to the public engine, the default:"
+    echo "  $IN_DEST ./setup_engine.sh --public"
     exit 0
   fi
   echo "That console runs the analogue member. The particle filter member needs"
@@ -74,6 +84,7 @@ if [ "$ROUTE" = private ]; then
 fi
 # Recorded in .flubnf.env (--public), so the launchers read it.
 ./setup_engine.sh --public \
-  || echo "The public engine did not install (see above); the console still runs. ./setup_engine.sh tries again (on a Mac, the next open of FluBNF does it)."
+  || { echo "The public engine did not install (see above); the console still runs. On a Mac, the next open of FluBNF tries again. To try again now:"
+       echo "  $IN_DEST ./setup_engine.sh --public"; }
 echo
 echo "Done. Launch with:  $LAUNCH"

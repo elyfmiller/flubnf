@@ -10,7 +10,10 @@ it again in words the user can type.
 - The apt hint is for a missing venv module or ensurepip only; a full disk
   gets "once the problem above is fixed", not a package to install.
 - A venv in the Windows layout (Scripts/, as setup.ps1 and a Windows
-  Python under Git Bash make it) is used where it is.
+  Python under Git Bash make it) is used where it is. Its stand-ins carry
+  Windows' own names, python.exe, pip.exe and flubnf.exe, and no
+  extension-less ones (review 3 of #93, re-check R6): setup.sh names the
+  .exe itself, so the test does not lean on Git Bash finding it.
 - After the one-line install (install.sh), the user's shell is not in the
   install folder: setup.sh says to paste the install line again.
 - A sparse hub clone that holds auxiliary-data/ but not its archive is
@@ -46,7 +49,8 @@ ENSUREPIP = ("The virtual environment was not created successfully because "
 DISK_FULL = "[Errno 28] No space left on device: 'lib'"
 
 # python3.12 as setup.sh uses it. -m venv does as {ctl}/venv says: "ok" and
-# "win" make a working venv (bin/, or Scripts/ as a Windows Python does);
+# "win" make a working venv (bin/, or Scripts/ with python.exe and pip.exe,
+# as a Windows Python does);
 # "pipless" makes the folder and fails as Ubuntu does; "full" makes part of
 # the folder and fails as on a full disk.
 PYTHON = r"""#!/bin/sh
@@ -60,10 +64,10 @@ case "$1" in
         mode="$(cat "{ctl}/venv")"
         case "$mode" in
           ok|win)
-            d=bin; [ "$mode" = win ] && d=Scripts
+            d=bin; x=""; [ "$mode" = win ] && { d=Scripts; x=.exe; }
             mkdir -p "$3/$d"
-            cp "{ctl}/venv-python" "$3/$d/python"
-            cp "{ctl}/venv-pip" "$3/$d/pip"
+            cp "{ctl}/venv-python" "$3/$d/python$x"
+            cp "{ctl}/venv-pip" "$3/$d/pip$x"
             exit 0 ;;
           full)
             mkdir -p "$3/bin"
@@ -89,7 +93,7 @@ exit 0
 """
 
 # the venv's pip: logs each install as `<its folder>: <args>`; the package
-# install makes the console beside it
+# install makes the console beside it (flubnf.exe in Scripts/, as on Windows)
 VENV_PIP = r"""#!/bin/sh
 here="$(basename "$(dirname "$0")")"
 echo "$here: $*" >> "{ctl}/pip.log"
@@ -97,8 +101,9 @@ case "$*" in
   *" -e "*)
     rc="$(cat "{ctl}/pip-rc")"
     if [ "$rc" = 0 ]; then
-      printf '#!/bin/sh\nexit 0\n' > "$(dirname "$0")/flubnf"
-      chmod +x "$(dirname "$0")/flubnf"
+      x=""; [ "$here" = Scripts ] && x=.exe
+      printf '#!/bin/sh\nexit 0\n' > "$(dirname "$0")/flubnf$x"
+      chmod +x "$(dirname "$0")/flubnf$x"
     fi
     exit "$rc" ;;
   *" bionetgen") exit "$(cat "{ctl}/bng-rc")" ;;
@@ -107,6 +112,17 @@ exit 0
 """
 
 CONSOLE = "#!/bin/sh\n# the console: it runs\nexit 0\n"
+
+#: what a Windows venv's programs end in: Scripts/ holds python.exe,
+#: pip.exe and flubnf.exe, never a file named python (re-check R6)
+WIN_EXE = ".exe"
+
+
+def _windows_names_only(scripts: Path) -> bool:
+    """Scripts/ as a Windows venv has it: the .exe names, none without."""
+    names = {p.name for p in scripts.iterdir()}
+    return ({"python.exe", "flubnf.exe"} <= names
+            and not names & {"python", "pip", "flubnf"})
 
 
 def _exe(path: Path, text: str) -> Path:
@@ -148,13 +164,15 @@ class Setup:
 
     def venv(self, layout: str = "bin", *, python: str = NOPIP_PYTHON,
              pip: bool = False, console: bool = True) -> Path:
-        """A .venv made beforehand, as uv or setup.ps1 would leave it."""
+        """A .venv made beforehand, as uv or setup.ps1 would leave it: in
+        Scripts/, Windows' names (python.exe, pip.exe, flubnf.exe) only."""
         d = self.repo / ".venv" / layout
-        _exe(d / "python", python)
+        x = WIN_EXE if layout == "Scripts" else ""
+        _exe(d / f"python{x}", python)
         if pip:
-            shutil.copy(self.ctl / "venv-pip", d / "pip")
+            shutil.copy(self.ctl / "venv-pip", d / f"pip{x}")
         if console:
-            _exe(d / "flubnf", CONSOLE)
+            _exe(d / f"flubnf{x}", CONSOLE)
         (self.repo / ".venv" / "pyvenv.cfg").write_text("home = /nowhere\n")
         return d
 
@@ -165,6 +183,7 @@ class Setup:
                     "FLUBNF_HUB": str(self.hub),
                     "FLUBNF_NO_DATA": "1", "GIT_TERMINAL_PROMPT": "0",
                     "GIT_CONFIG_NOSYSTEM": "1",
+                    "GIT_CEILING_DIRECTORIES": str(self.tmp),
                     "PATH": f"{self.bin}{os.pathsep}"
                             f"{path or os.environ['PATH']}"})
         env.update(extra)
@@ -301,7 +320,8 @@ def test_a_windows_layout_venv_is_used_where_it_is(tmp_path):
     assert s.broken() == []
     assert not (s.repo / ".venv" / "bin").exists()
     assert [c.split(":")[0] for c in s.pip_calls] == ["Scripts", "Scripts"]
-    assert (scripts / "flubnf").is_file()
+    assert (scripts / "flubnf.exe").is_file()
+    assert _windows_names_only(scripts)
     assert "you are ready: .venv/Scripts/flubnf app" in out.stdout
 
 
@@ -311,7 +331,10 @@ def test_a_venv_made_in_the_windows_layout_is_used(tmp_path):
     s.set(venv="win")
     out = s.run()
     assert out.returncode == 0, _said(out)
-    assert (s.repo / ".venv" / "Scripts" / "flubnf").is_file()
+    scripts = s.repo / ".venv" / "Scripts"
+    assert (scripts / "flubnf.exe").is_file()
+    assert _windows_names_only(scripts)
+    assert s.broken() == []
     assert "flubnf installed editable" in out.stdout
     assert "you are ready: .venv/Scripts/flubnf app" in out.stdout
 
@@ -371,6 +394,12 @@ def test_install_sh_tells_setup_sh_where_it_came_from(tmp_path):
 
 
 # --- the hub's archive ----------------------------------------------------
+#: the test's own folder (sparse_hub sets it): git never looks above it
+#: for a repository, so a command that misses the scratch clone fails
+#: instead of reaching a checkout around the test folders
+_CEILING: list = []
+
+
 def _git(*args, cwd=None):
     out = subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@t",
@@ -378,7 +407,8 @@ def _git(*args, cwd=None):
          *args], cwd=cwd, capture_output=True, text=True, timeout=60,
         env={**{k: v for k, v in os.environ.items()
                 if not k.startswith("GIT_")},
-             "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"})
+             "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
+             "GIT_CEILING_DIRECTORIES": _CEILING[-1]})
     assert out.returncode == 0, (args, out.stdout, out.stderr)
     return out
 
@@ -389,6 +419,7 @@ def sparse_hub(tmp_path):
     (locations.csv and one other folder) but not target-data-archive/."""
     if shutil.which("git") is None:
         pytest.skip("no git")
+    _CEILING[:] = [str(tmp_path)]
     up = tmp_path / "upstream"
     for rel in ("auxiliary-data/locations.csv",
                 "auxiliary-data/other/x.csv",
@@ -435,7 +466,9 @@ def test_doctors_hint_carries_a_step_that_widens_the_clone(sparse_hub, monkeypat
     res = doctor._check_hub("win32")
     assert res.status is doctor.Status.FAIL
     assert "Run setup.ps1:" in res.hint and "FLUBNF_HUB" in res.hint
-    m = re.search(r"Or run (git -C .+? sparse-checkout add [a-z -]+),", res.hint)
-    assert m, res.hint
+    # the exact command, alone on its line: nothing a paste could carry along
+    cmd = f'git -C "{sparse_hub}" sparse-checkout add auxiliary-data target-data'
+    m = re.search(r"^ *(git -C .*)$", res.hint, re.M)
+    assert m and m.group(1) == cmd, res.hint
     _git(*shlex.split(m.group(1))[1:])
     assert doctor._check_hub("win32").status is doctor.Status.OK

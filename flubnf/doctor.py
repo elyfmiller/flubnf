@@ -302,14 +302,32 @@ def _check_hub(platform: str | None = None) -> CheckResult:
             f"{step} Or set FLUBNF_HUB to an existing clone.")
     missing = [d for d in HUB_DATA_DIRS if not (hub / d).is_dir()]
     if missing:
-        # git's own step as well: it widens a sparse clone on any system,
-        # whatever the setup script there looks for
+        lacks = f"{hub} lacks {', '.join(missing)}"
+        if (hub / ".git").exists():
+            # git's own step as well: it widens a sparse clone on any
+            # system, whatever the setup script there looks for. Alone on
+            # the last line: a pasted "target-data," names another folder.
+            return CheckResult(
+                "FluSight hub", Status.FAIL, lacks,
+                f"{step} Or set FLUBNF_HUB to an existing clone. Or widen "
+                "this clone with git:\n"
+                f"    git -C \"{hub}\" sparse-checkout add auxiliary-data "
+                "target-data")
+        # Not a clone: git -C would walk up to any repository around it.
+        # setup.sh clones into an empty folder; setup.ps1 into none.
+        try:
+            empty = not any(hub.iterdir())
+        except OSError:
+            empty = False
+        if (platform or sys.platform) == "win32" or not empty:
+            return CheckResult(
+                "FluSight hub", Status.FAIL, lacks,
+                "The folder is there but is not a git clone, so setup "
+                "cannot fetch the data into it. Move or rename it first. "
+                f"{step} Or set FLUBNF_HUB to an existing clone.")
         return CheckResult(
-            "FluSight hub", Status.FAIL,
-            f"{hub} lacks {', '.join(missing)}",
-            f"{step} Or run git -C \"{hub}\" sparse-checkout add "
-            "auxiliary-data target-data, or set FLUBNF_HUB to an existing "
-            "clone.")
+            "FluSight hub", Status.FAIL, lacks,
+            f"{step} Or set FLUBNF_HUB to an existing clone.")
     comparators = [d for d in HUB_DIRS if d.startswith("model-output/")
                    and not (hub / d).is_dir()]
     if comparators:

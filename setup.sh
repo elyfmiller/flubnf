@@ -68,9 +68,19 @@ venv_bin() {
     printf '%s' bin
   fi
 }
-runs_pip() { "$VENV/$VB/python" -m pip --version >/dev/null 2>&1; }
+# One of the venv's programs by its file: a Windows venv holds python.exe,
+# pip.exe and flubnf.exe only, so the .exe is named when it is there (Git
+# Bash would find it without the suffix; this does not rely on that).
+vexe() {
+  if [ -f "$VENV/$VB/$1.exe" ]; then
+    printf '%s' "$VENV/$VB/$1.exe"
+  else
+    printf '%s' "$VENV/$VB/$1"
+  fi
+}
+runs_pip() { "$(vexe python)" -m pip --version >/dev/null 2>&1; }
 runs_console() {
-  [ -x "$VENV/$VB/flubnf" ] && "$VENV/$VB/flubnf" --help >/dev/null 2>&1
+  [ -x "$(vexe flubnf)" ] && "$(vexe flubnf)" --help >/dev/null 2>&1
 }
 VB="$(venv_bin)"
 NOPIP=""
@@ -91,7 +101,7 @@ if [ -d "$VENV" ] && ! runs_pip; then
       warn "the venv in .venv runs neither pip nor the console: it is kept as $(basename "$BROKEN") and made again"
     else
       warn "the venv in .venv runs neither pip nor the console, and it could not be moved aside."
-      warn "Move or delete $VENV, then $again."
+      warn "Move or delete \"$VENV\" and then $again."
       exit 1
     fi
   fi
@@ -131,17 +141,17 @@ if [ ! -d "$VENV" ]; then
   fi
   VB="$(venv_bin)"
 fi
-VPY="$VENV/$VB/python"
+VPY="$(vexe python)"
 # pip's own script when the venv has it, else pip as a module (a venv given
 # pip by hand with ensurepip has pip3 but no pip).
-if [ -x "$VENV/$VB/pip" ]; then PIP=("$VENV/$VB/pip"); else PIP=("$VPY" -m pip); fi
+if [ -x "$(vexe pip)" ]; then PIP=("$(vexe pip)"); else PIP=("$VPY" -m pip); fi
 if [ -n "$NOPIP" ]; then
   warn "the venv in .venv has no pip (a venv made by uv, say), so FluBNF's"
   warn "packages and BioNetGen were not updated. The console runs with what is"
   warn "installed. For setup to update them: \"$VPY\" -m ensurepip, then $again."
 elif "${PIP[@]}" install -q -e "$HERE[app,dev]"; then
   ok "flubnf installed editable"
-elif [ -x "$VENV/$VB/flubnf" ]; then
+elif [ -x "$(vexe flubnf)" ]; then
   # an earlier install is there: an offline re-run keeps it
   warn "FluBNF's packages did not update (see above; offline?). The console"
   warn "runs with what is installed."
@@ -207,6 +217,13 @@ if [ -d "$HUB/.git" ]; then
   fi
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
+elif [ ! -e "$HUB/.git" ] && [ -e "$HUB" ] \
+     && { [ ! -d "$HUB" ] || [ -n "$(ls -A "$HUB" 2>/dev/null)" ]; }; then
+  # Something there that is not a clone: git clone would fail on it, and
+  # git -C would reach any repository around it.
+  warn "\"$HUB\" is there but is not a git clone, so no data was fetched"
+  warn "into it. Move or rename it (or set FLUBNF_HUB to an existing clone),"
+  warn "then $again."
 else
   # Sparse: only the directories the app reads (~10x smaller than the full hub).
   echo "  fetching FluSight data (sparse, ~150 MB)…"
@@ -279,7 +296,7 @@ ok "wrote $ENVF  (source it, or add to your shell profile)"
 say "doctor"
 # shellcheck disable=SC1090
 . "$ENVF"
-if [ ! -x "$VENV/$VB/flubnf" ]; then
+if [ ! -x "$(vexe flubnf)" ]; then
   warn "the console is not installed: .venv/$VB/flubnf is missing. $Again."
   exit 1
 fi
