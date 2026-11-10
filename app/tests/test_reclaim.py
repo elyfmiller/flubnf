@@ -637,8 +637,10 @@ def test_another_spelling_of_a_protected_root_still_protects(tmp_path,
     other_first = first.lower() if first != first.lower() else first.upper()
     variants = [" " + exact, exact + " "]
     if insensitive:
+        # the path's own anchor ("/" here, "C:\\" on Windows), so the
+        # variant keeps its drive and names the same folder
         variants += [folded,
-                     os.path.join(os.sep, other_first, *arm.parts[2:])]
+                     os.path.join(arm.anchor, other_first, *arm.parts[2:])]
     for spelling in variants:
         monkeypatch.setenv("FLUBNF_PROTECT_ROOTS",
                            os.pathsep.join(["/nonexistent/other", spelling]))
