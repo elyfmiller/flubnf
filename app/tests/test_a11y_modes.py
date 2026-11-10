@@ -406,8 +406,10 @@ def test_a11y_controls_sit_with_the_theme_picker_and_state_checked():
 def test_modes_persist_and_dispatch_themechange():
     # persisted like the theme; an explicit 'normal' stops the OS preference
     # re-enabling contrast
-    assert "localStorage.setItem('contrast',on?'normal':'high')" in BASE_T
-    assert "localStorage.setItem('vision',v?'normal':'cvd')" in BASE_T
+    # (guarded: with storage blocked the switch still turns and reads on)
+    assert ("try{localStorage.setItem('contrast',on?'normal':'high');}"
+            "catch(e){}") in BASE_T
+    assert "try{localStorage.setItem('vision',v?'normal':'cvd');}catch(e){}" in BASE_T
     # each press dispatches themechange so Plotly and the player recolor
     a11y = BASE_T.split("// accessibility modes:", 1)[1] \
                  .split("// text-size control:", 1)[0]
@@ -418,7 +420,8 @@ def test_first_paint_honors_the_os_contrast_preference():
     # no stored choice: prefers-contrast: more enables it before first paint
     assert "matchMedia('(prefers-contrast: more)').matches" in BASE_T
     assert "setAttribute('data-contrast','high')" in BASE_T
-    assert "localStorage.getItem('vision')==='cvd'" in BASE_T
+    assert "v=localStorage.getItem('vision')" in BASE_T
+    assert "if(v==='cvd')de.setAttribute('data-vision','cvd');" in BASE_T
 
 
 # --------------------------------------------- the map follows the mode

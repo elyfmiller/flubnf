@@ -79,13 +79,16 @@ def test_an_example_can_be_added_twice_under_new_names(box):
     assert 'value="copy:a"' in html and 'value="copy:b"' in html
 
 
-def test_the_gallery_shows_each_models_note_origin_and_last_run(box):
+def test_the_gallery_shows_each_models_origin_and_last_run(box):
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example")
     html = client.get("/sandbox").text
-    # the note in the name's "i", the last run a status badge linking to it
-    assert "A model that is not an epidemic: first-order conversion A -&gt; B." in html
-    assert 'aria-label="About kinetics_example"' in html
+    # the last run a status badge linking to it; the model's note is the
+    # first comment its model.bngl opens with, not an "i" on the row (the
+    # page's one "i" is Start from's: bug hunt G35, UI-13)
+    assert 'aria-label="About kinetics_example"' not in html
+    assert "A model that is not an epidemic: first-order conversion A -&gt; B." not in \
+        html.split('class="kv sbmodels"', 1)[1]
     # the origin by the example's display name, as Start from lists it
     assert "<td>Kinetics example</td>" in html
     link = html[html.index(f'href="/sandbox?run={w.name}&amp;model=kinetics_example">'):]

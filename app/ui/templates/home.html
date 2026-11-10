@@ -1,15 +1,16 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
 {% block head %}<link rel="stylesheet" href="/static/tabs/home.css">{% endblock %}
 {% block content %}
-{# the page reads as headings, values and controls; the few explanations
-   it needs sit in an "i": how to read the map, the record and the
-   pipeline (docs/UI-KIT.md) #}
+{# the page reads as headings, values and controls; its one "i" is how
+   to read the map (docs/UI-KIT.md). The record's unit is a line under its
+   table; the pipeline is its drawing, the models in full are Methods' #}
 <div class="hero hm-hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>Weekly probabilistic forecasts of influenza hospital admissions.</p>
- {# the rest of the old lead as facts; the full sentence is How it works' "i" #}
+ {# the rest of the old lead as facts; the full sentence is the workflow
+    drawing's description #}
  <ul class="hm-facts" aria-label="At a glance">
-  <li><b>52</b> US jurisdictions</li>
+  <li><b>52</b> jurisdictions plus US national</li>
   <li><b>CDC FluSight</b> format</li>
   <li><b>Oracle SIHRS</b> mechanistic, fitted each week</li>
   <li><b>Groundhog</b> empirical calendar model</li>
@@ -182,41 +183,22 @@
    diagram (read-once reference) sits one scroll below #}
 <div class="grid2 homeperf">
  <div class="card hm-perf">
-  {% call tips.heading("Measured performance", "hm-perf", rich=True, after=tips.tag("relWIS"),
-                       tip_label="the measured performance") %}
-   <span class="uk-tt-line">relWIS vs the FluSight baseline, ratio of sums;
-   below 1.000 beats it.</span>
-   <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
-   {{ oracle_text.cells(oracle_text.RECORD.three.cells) }} and the FluSight
-   Ensemble on 15,460 (placement among teams withdrawn) under the earlier
-   cell rule, the shipped Groundhog on 17,116 under FluSight's (the form
-   it replaced: 0.660).</span>
-   <span class="uk-tt-line">Oracle SIHRS: the stored forecasts with the
-   Oracle step and its donor bank applied, a
-   frozen-specification replication (<a href="/methods#oracle">Methods</a>), on
-   {{ oracle_text.cells(oracle_text.RECORD["2023-24"].cells) }},
-   {{ oracle_text.cells(oracle_text.RECORD["2024-25"].cells) }} and
-   {{ oracle_text.cells(oracle_text.RECORD["2025-26"].cells) }} cells. The
-   plain filter on the same cells:
-   {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }},
-   {{ oracle_text.fmt(oracle_text.RECORD["2024-25"].filter) }} and
-   {{ oracle_text.fmt(oracle_text.RECORD["2025-26"].filter) }};
-   {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} pooled.</span>
-   <span class="uk-tt-line">2024-25 and 2025-26 together:
-   {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
-   filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on
-   {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells.</span>
-   <span class="uk-tt-line">The scoring details are in
-   <a href="/methods#policies">Methods</a>.</span>
-  {% endcall %}
+  {{ tips.heading("Measured performance", "hm-perf", after=tips.tag("relWIS")) }}
+  {# one line says how to read the figures; each column's cells and the
+     plain filter's record are on Methods (Measured performance) #}
+  <p class="hint hm-perf-how">relWIS against the FluSight baseline (ratio of sums);
+  below 1.000 beats it. Each column is scored on its own cells (placement
+  among teams withdrawn): <a href="/methods#performance">Methods</a> has
+  them, the plain filter's record and the <a href="/methods#policies">scoring
+  details</a>.</p>
   {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
      means; its "three" row is the pooled cell) beside the Groundhog and the
      FluSight Ensemble. The table's markup stays as it is: site_build.
      harvest_placement reads the first class="perf" table of this SOURCE,
      its first "num rel" cell per season row, so the Oracle figures are
      literals here, held equal to oracle_text.fmt(RECORD) by
-     app/tests/test_pages.py. The plain filter's figures are its ablation,
-     in the card's "i" #}
+     app/tests/test_pages.py. Each column's cells and the plain filter's
+     figures are Methods' (the line under the heading links them) #}
   {# at larger text the table outgrows a phone's card: it scrolls with
      the figures' cue (nau.css .figscroll) #}
   <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
@@ -253,23 +235,7 @@
 </div>
 
 <div class="card hm-how">
- {% call tips.heading("How it works", "hm-how", rich=True, tip_label="how it works") %}
-  <span class="uk-tt-line">Weekly probabilistic forecasts of influenza
-  hospital admissions for all 52 US jurisdictions in the CDC FluSight
-  format, from two models: the Oracle SIHRS, a mechanistic model fitted each
-  week, and the Groundhog, an empirical calendar model.</span>
-  <span class="uk-tt-line">One weekly data pull feeds the Oracle SIHRS (the
-  particle-filter fit, its forecast growth then blended with donor growth
-  from past seasons at the same calendar week) and the Groundhog; each
-  model's quantiles are written as its own FluSight CSV, nothing is blended
-  between the two, and the weekly report shows both.</span>
-  <span class="uk-tt-line">Seasonal forcing: the curve the filter bends each week.</span>
-  <span class="uk-tt-line">The Oracle step: each forecast path grows at the
-  geometric mean of the filter's growth and one past season's at the same
-  calendar week.</span>
-  <span class="uk-tt-line">The Groundhog: the last value scaled by past
-  seasons' growth at the same calendar week.</span>
- {% endcall %}
+ {{ tips.heading("How it works", "hm-how") }}
  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
     title element (its tooltip pops over the drawing) #}
  <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
@@ -333,8 +299,8 @@
  </svg>
  </div>
  {# the three equations behind the pipeline: seasonal forcing, the Oracle
-    growth blend, the Groundhog quantile; each named, the readings in How
-    it works' "i" (Home has no Variables fold) #}
+    growth blend, the Groundhog quantile; each named, read in full in
+    Methods (Home has no Variables fold) #}
  <div class="eqpanel">
   <p class="uk-figline"><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
@@ -422,7 +388,7 @@
     script below then counts); a badge from values still resolving said
     "All components installed" beside "resolving…" #}
  {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
- {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
+ {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", id="hm-missing") %}
  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
  {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
  {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
@@ -460,8 +426,14 @@
    {% endfor %}
   </ul>
  {% endif %}
- {# the engine build when it is not production (the fix in its tip) #}
- {% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}
+ {# the engine absent, by the check (its files) or by the probe (both
+    parts): one value, as the badge counts it #}
+ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
+ {# the engine build when it is not production (the fix in its tip); not
+    the public engine's unreadable build while the engine is missing: the
+    lines above already say so, and how to add it #}
+ {% set ebv = engine_build_view() %}
+ {% if not (engine_absent and ebv.engine == "public" and not ebv.known) %}{% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}{% endif %}
  {# the engine this copy runs, in words (engine_build.engine_words):
     the public engine, the default, or the private one, the
     fallback, which this copy records #}
@@ -473,10 +445,6 @@
     is named by its build (branch and commit) once known; its
     self-reported version until then. data-vkey spans are base.html's
     version poll targets #}
- {% set ebv = engine_build_view() %}
- {# the engine absent, by the check (its files) or by the probe (both
-    parts): one value, as the badge counts it #}
- {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
   {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
   {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
@@ -497,9 +465,10 @@
   {% endfor %}
  {% endcall %}
  {# a version that was still resolving at paint lands through base.html's
-    poll: once none is, the badge is drawn again with its "?" naming what
-    is missing (the components check() reported, plus each value now
-    reading "not installed", each once), as a fresh load draws it #}
+    poll: once none is, the badge is drawn again counting what is missing
+    (the components check() reported, plus each value now reading "not
+    installed", each once), as a fresh load draws it; the list and the
+    values name them #}
  <script>
  (function () {
    var box = document.querySelector('.hm-versions');
@@ -528,8 +497,7 @@
      if (!slot || !window.FluBNFUI) return;
      if (names.length) {
        var word = names.length + ' not installed';
-       slot.innerHTML = '<span class="uk-badge-pair">' + FluBNFUI.badge('warn', word)
-         + FluBNFUI.tip('hm-missing', word, names.join(', ')) + '</span>';
+       slot.innerHTML = FluBNFUI.badge('warn', word);
      } else slot.innerHTML = FluBNFUI.badge('ok', 'All components installed');
    }
    new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});

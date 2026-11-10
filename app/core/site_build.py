@@ -782,7 +782,7 @@ def harvest_placement() -> dict:
 #: the Measured-performance card duplicates the site's own scores: dropped
 #: from the harvested Methods
 _PERF_CARD = re.compile(
-    r'<div class="card"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
+    r'<div class="card" id="performance"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
     re.S)
 
 
@@ -848,13 +848,6 @@ def engines_missing(versions: dict) -> list:
 #: only with `active`)
 _STACK_TABLE = re.compile(r'(<table class="mt-stack">)(.*?)(</table>)', re.S)
 _STACK_CELL = re.compile(r"<t([dh])\b[^>]*>.*?</t\1>", re.S)
-#: the Purpose tile's location count: the forecast covers the national
-#: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
-_LOCS_TILE = re.compile(
-    r'(id="mt-locs">)all 52(</span>\s*<span class="uk-stat-u">)'
-    r"US jurisdictions(</span>)")
-
-
 def _drop_version_column(html: str) -> str:
     """Drop the stack table's last (Version) column (the sealed record's
     bngsim pin is the engine fold's, not a Version cell's)."""
@@ -875,12 +868,9 @@ def _drop_version_column(html: str) -> str:
 def site_methods(html: str) -> str:
     """The rendered Methods made fit for a public page: no Version column
     (the builder's install: "(not installed)", local paths such as
-    /usr/bin/perl) and the location count the forecast really covers."""
-    html = _drop_version_column(html)
-    html = _LOCS_TILE.sub(
-        r"\g<1>53\g<2>locations: 52 jurisdictions plus the national total"
-        r"\g<3>", html)
-    return html
+    /usr/bin/perl). The location count is the page's own (53: the 52
+    jurisdictions plus the national total)."""
+    return _drop_version_column(html)
 
 
 def harvest_methods(versions: dict) -> str:

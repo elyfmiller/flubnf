@@ -594,10 +594,12 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
             == relwis.PUBLISHED_CONVENTION_NOTE)
     src = (ui / "templates" / "methods.html").read_text()
     assert "{{ relwis_convention_note }}" in src
-    # Home's record names it in its "i", which links Methods for the note
+    # Home's record names it in the line under its heading, which links
+    # Methods for the note
     home = (ui / "templates" / "home.html").read_text()
-    perf = home.split('"hm-perf"', 1)[1].split("{% endcall %}", 1)[0]
-    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
+    perf = home.split('"hm-perf"', 1)[1].split('class="perf"', 1)[0]
+    unit = perf.split('<p class="hint hm-perf-how">', 1)[1].split("</p>", 1)[0]
+    assert "ratio of sums" in unit and 'href="/methods#policies"' in unit
     # builders outside the template environment use the same constant (the
     # season report renders the season page, inside it)
     for mod in ("site_page.py",):
@@ -618,10 +620,10 @@ def test_the_index_labels_the_convention_beside_every_score():
                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
                                 "elapsed_s": None, "rel": 0.9,
                                 "size_h": "1 MB"}]}])
-    # the page's one "?" names the convention for every score on it, the
+    # the page's one "i" names the convention for every score on it, the
     # season's headline and the archived rows alike (bug hunt G28, RE-18:
     # each row's own "?" was clutter)
-    page_tip = html.split('id="tip-rt-page"', 1)[1].split("</span></span>")[0]
+    page_tip = html.split('id="tt-rt-page"', 1)[1].split("</span></span>")[0]
     assert "relWIS: the summed WIS over the FluSight baseline's (a ratio of " \
         "sums)" in page_tip
     card = html.split('data-season="2098-99"', 1)[1]

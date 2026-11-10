@@ -380,7 +380,8 @@ def test_the_text_size_is_a_labelled_slider_from_80_to_160():
     boot = BASE_T.split("<script>", 1)[1].split("</script>", 1)[0]
     assert "var old={s:87.5,m:100,l:115}" in boot
     assert "if(!(p>=80&&p<=160))p=100;" in boot
-    assert "if(old[f])localStorage.setItem('fontsize',String(p));" in boot
+    assert ("if(old[f])try{localStorage.setItem('fontsize',String(p));}"
+            "catch(e){}") in boot
     assert "de.style.fontSize=p+'%';" in boot
     # the control clamps, speaks its value and fires fontsizechange once
     # the slider rests

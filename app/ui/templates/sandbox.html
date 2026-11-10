@@ -101,8 +101,9 @@
    {% if models %}
    <table class="kv sbmodels"><thead><tr><th>model</th><th>from</th><th>last run</th><th>changed</th></tr></thead><tbody>
    {% for m in models %}<tr>
+    {# a model's first comment opens its model.bngl, so the row carries no
+       tip of its own #}
     <td><span class="sb-name"><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>
-     {%- if m.note %}{{ tips.icon_tip("sb-note-" ~ loop.index, m.name, "info", m.note, state="muted") }}{% endif %}
      {%- if not m.complete %} {{ tips.badge("warn", "incomplete", "missing " ~ (m.missing | join(", ")), id="sb-miss-" ~ loop.index) }}{% endif %}</span></td>
     {# an example's origin by its display name, as the Start from list names it #}
     {% set ns = namespace(o=m.origin) %}{% for e in (templates or []) + (examples or []) %}{% if ns.o == "example " ~ e %}{% set ns.o = exname(e) %}{% endif %}{% endfor %}
@@ -213,7 +214,7 @@
  <div class="sbhead-menus">
  <details class="sbmanage sbhelp">
   <summary>How it works</summary>
-  <div class="sbmenu sbhelpmenu sb-howmenu">{% with how_id = "sb-howm", how_vertical = true %}{% include "sandbox_help.html" %}{% endwith %}</div>
+  <div class="sbmenu sbhelpmenu sb-howmenu">{% with how_id = "sb-howm", how_vertical = true, how_run = true %}{% include "sandbox_help.html" %}{% endwith %}</div>
  </details>
  <details class="sbmanage">
   <summary>Manage</summary>
@@ -310,14 +311,10 @@
     <div id="sb-checked" aria-live="polite"></div>
    </div>
    <div class="card sb-runcard">
-    {# the card's one explainer, in its legend: what Jitter and Seed do.
-       The presets name what each count is for (How it works says it
-       too). The group's name is the legend's words alone #}
-    <fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend"><span id="sb-run-name">Run settings</span>
-     {%- call tips.toggletip("sb-run", "the run settings") %}
-     <span class="uk-tt-line"><b>Jitter:</b> how far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 in production, 0.2 to 0.3 for a fit that collapses.</span>
-     <span class="uk-tt-line"><b>Seed:</b> the same seed and files repeat a fit exactly; another seed shows how much it varies by chance.</span>
-     {%- endcall %}</legend>
+    {# what Jitter and Seed do is How it works' Save and run step (the
+       page's one "i" is the files'); the presets name what each count is
+       for. The group's name is the legend's words alone #}
+    <fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend"><span id="sb-run-name">Run settings</span></legend>
      <div class="sbrun-grid">
       <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", for_="sb-preset") }}
        <span class="sb-partsrow"><span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">

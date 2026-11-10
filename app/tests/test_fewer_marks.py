@@ -78,7 +78,7 @@ def marks(html: str) -> list:
 
 #: page -> (the marks it keeps, prefixes of marks a passing state adds)
 KEEP = {
-    "/": ({"tt-hm-map", "tt-hm-perf", "tt-hm-how"},
+    "/": ({"tt-hm-map"},
           ("tip-hm-miss", "tip-home-pin", "tip-eb-", "tip-hm-approx")),
     "/data": ({"tip-archive", "tip-dsup-data-about"},
               ("tip-hub-empty", "tip-hub-detail", "tip-newest-gaps",
@@ -86,7 +86,7 @@ KEEP = {
     "/output": ({"tt-out-files"},
                 ("tip-out-live-", "tip-out-lchk-", "tip-out-notice",
                  "tip-out-own")),
-    "/retro": ({"tip-rt-page", "tip-rt-import-h"},
+    "/retro": ({"tt-rt-page"},
                ("tip-rt-engine-off", "tip-rt-run-why", "tip-rt-st-")),
     "/storage": (set(), ("tip-st-int-", "tip-st-cap")),
     "/models": ({"tt-md-rec"}, ()),
@@ -95,7 +95,7 @@ KEEP = {
     "/methods": ({"tt-mt-replay"}, ()),
     "/sandbox": ({"tip-sbnew-about-t"},
                  ("tip-sb-season", "tip-sb-fdate", "tip-sb-asof",
-                  "tip-sb-note-", "tip-sb-miss-", "tip-sb-machine")),
+                  "tip-sb-miss-", "tip-sb-machine")),
 }
 
 
@@ -104,6 +104,14 @@ def test_each_page_keeps_only_the_marks_that_explain_something():
         seen = marks(client.get(path).text)
         rest = {m for m in seen if not m.startswith(passing)}
         assert rest == keep, (path, sorted(rest))
+
+
+def test_every_page_holds_one_i_and_the_forecast_tab_two():
+    """At most one "i" a page as served: the Forecast tab's Settings card
+    and its Model settings panel are the two it keeps."""
+    for path in list(KEEP) + ["/forecast", "/output", "/storage"]:
+        tts = [m for m in marks(client.get(path).text) if m.startswith("tt-")]
+        assert len(tts) <= (2 if path == "/forecast" else 1), (path, tts)
 
 
 def test_the_display_menu_has_no_visible_question_marks():
@@ -129,34 +137,36 @@ def _home(**kw):
     return ENV.get_template("home.html").render(**ctx)
 
 
-def test_home_how_it_works_reads_the_three_equations():
-    """Home has no Variables fold: the three equations' readings are How
-    it works' "i", and the chips beside them carry no "?"."""
+def test_home_how_it_works_is_its_drawing_and_three_named_equations():
+    """How it works carries no "i": the drawing says the pipeline (its
+    description the full sentence), each equation is named, and the
+    chips beside them carry no "?"; Methods reads them in full."""
     html = _home()
-    how = html.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
-    for reading in ("Seasonal forcing: the curve the filter bends each",
-                    "The Oracle step: each forecast path grows at the",
-                    "The Groundhog: the last value scaled by past"):
-        assert reading in " ".join(how.split()), reading
+    assert 'id="tt-hm-how"' not in html
+    assert "<desc>One weekly data pull feeds the Oracle SIHRS" in html
     for chip in ("hm-eq-forcing", "hm-eq-oracle", "hm-eq-groundhog"):
         assert f'id="tip-{chip}"' not in html, chip
+    for name in ("Seasonal forcing", "The Oracle step", "The Groundhog"):
+        assert f">{name}<" in html, name
 
 
-def test_home_record_is_the_cards_one_i():
-    """The Oracle SIHRS column's record joins the card's "i"; the column
-    header is plain text."""
+def test_home_record_is_read_from_one_line():
+    """The record has no "i": one line under its heading says how to read
+    it, and each column's cells and the plain filter's figures are
+    Methods'. The column header is plain text."""
     html = _home()
-    assert 'id="tt-home-oracle"' not in html
+    assert 'id="tt-hm-perf"' not in html and 'id="tt-home-oracle"' not in html
     assert '<th class="num">Oracle SIHRS</th>' in html
-    perf = " ".join(html.split('id="tt-hm-perf"', 1)[1]
-                    .split("</span></span>", 1)[0].split())
-    assert "frozen-specification replication" in perf
-    assert "2024-25 and 2025-26 together:" in perf
-    # the figures and their cells only; the cell rule and the convention's
-    # comparison with the dashboard are Methods' Scoring details
-    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
-    assert "third decimal" not in perf and "CDC FluSight dashboard" not in perf
-    assert len(re.sub(r"<[^>]+>", " ", perf).split()) < 115
+    card = html.split('class="card hm-perf"', 1)[1].split('class="card hm-start"', 1)[0]
+    unit = " ".join(card.split('<p class="hint hm-perf-how">', 1)[1]
+                    .split("</p>", 1)[0].split())
+    assert unit == ('relWIS against the FluSight baseline (ratio of sums); '
+                    'below 1.000 beats it. Each column is scored on its own '
+                    'cells (placement among teams withdrawn): '
+                    '<a href="/methods#performance">Methods</a> has them, the '
+                    "plain filter's record and the "
+                    '<a href="/methods#policies">scoring details</a>.')
+    assert "frozen-specification replication" not in card
 
 
 def test_home_says_the_bngsim_pin_only_when_the_build_differs():
@@ -256,6 +266,21 @@ def test_a_plain_fact_with_a_reason_says_it_in_its_chip():
 
 # ---------------------------------- Sandbox: each start says what it is
 
+def test_the_model_list_carries_no_note_marks(sandbox_root):
+    """A model's first comment opens its model.bngl; the list's rows
+    carry no "i" of their own, so the list keeps the one beside Start
+    from."""
+    from app.core import sandbox as sb
+    sb.add_example("sir_example")
+    sb.add_example("kinetics_example")
+    html = client.get("/sandbox").text
+    assert "sir_example" in html and "kinetics_example" in html
+    assert 'id="tip-sb-note-' not in html
+    assert [m for m in marks(html) if not m.startswith(
+        ("tip-sb-season", "tip-sb-fdate", "tip-sb-asof", "tip-sb-miss-"))] == [
+        "tip-sbnew-about-t"]
+
+
 def test_every_start_carries_its_own_note():
     """The "i" beside Start from explains the chosen start, whatever it
     is, so it never needs the "?" that explained them all."""
@@ -272,40 +297,40 @@ def test_every_start_carries_its_own_note():
 
 # ------------- the Sandbox workbench: one "i" a card, the rest in words
 
-def test_the_workbench_keeps_one_mark_a_card_from_a_first_visit_to_a_fit(sandbox_root):
-    """A student's path (the SIR example, Check, a quick fit) shows two
-    "i"s, one a card: the Model heading's (what the three files hold) and
-    Run settings' (what Jitter and Seed do). The file tabs, the labels,
+def test_the_workbench_keeps_one_mark_from_a_first_visit_to_a_fit(sandbox_root):
+    """A student's path (the SIR example, Check, a quick fit) shows one
+    "i", the Model heading's (what the three files hold); what Jitter and
+    Seed do is How it works' Save and run step. The file tabs, the labels,
     the fit's result and the diagram carry no "?"; their labels, badges
     and one-line reasons say it."""
     from app.core import sandbox as sb
     from test_sandbox_guide import _finish
     sb.add_example("sir_example")
     html = client.get("/sandbox?model=sir_example").text
-    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
+    assert marks(html) == ["tt-sb-files"]
     files = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
     for fact in ("<b>model.bngl:</b>", "A name ending <code>__FREE</code> is fitted",
                  "<b>data.exp:</b>", "a missing week is a gap in time",
                  "<b>priors.conf:</b>", "<code>uniform_var = name low high</code>",
                  "(<code>loguniform_var</code> on a log scale)"):
         assert fact in files, fact
-    # what Jitter and Seed do, in the Run settings legend; the group's
-    # name is the legend's words alone
-    run = html.split('id="tt-sb-run"', 1)[1].split("</span></span>", 1)[0]
-    for fact in ("<b>Jitter:</b> how far each fitted value is nudged between weeks",
-                 "the Liu-West kernel scale", "0.15 in production, 0.2 to 0.3 for a fit that collapses",
-                 "<b>Seed:</b> the same seed and files repeat a fit exactly",
-                 "another seed shows how much it varies by chance"):
+    # what Jitter and Seed do, in How it works' Save and run step (the
+    # workbench's menu only); the group's name is the legend's words alone
+    menu = html.split('aria-label="How the Sandbox works"', 1)[1].split("</ol>", 1)[0]
+    run = menu.split(">Save and run<", 1)[1].split("</li>", 1)[0]
+    for fact in ("Jitter nudges each fitted value between weeks (the Liu-West kernel scale)",
+                 "0.15 in production, 0.2 to 0.3 for a fit that collapses",
+                 "The same seed and files repeat a fit exactly"):
         assert fact in run, fact
     assert ('<fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend">'
-            '<span id="sb-run-name">Run settings</span>') in html
+            '<span id="sb-run-name">Run settings</span></legend>') in html
     # what Simulate data replaces, beside its button
     assert '<span class="sb-hint">Replaces data.exp with counts' in html
     # after a quick check: its title, its reason in sight, the full fit
     w = sb.prepare("sir_example", particles=200)
     _finish(w)
     html = client.get(f"/sandbox?model=sir_example&run={w.name}").text
-    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
+    assert marks(html) == ["tt-sb-files"]
     assert "<strong>Quick check: the model runs</strong>" in html
     assert ('<span class="sb-says">200 particles: the ranges are rough; '
             'the full fit gives the estimates.</span>') in html

@@ -14,10 +14,21 @@
 {% macro rel_item(name, v) -%}
 <span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
 {%- endmacro %}
-{# the page's title; on the FluSight hub tab its "?" is the one explainer,
-   for the season rows too (their badges and figures carry no tips of
-   their own); the Your data tab's is its replays' heading #}
-{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1") %}<span class="ncline">Replays a past season week by week on the data each Saturday had, then scores against settled truth.</span><span class="ncline">relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span><span class="ncline">Resume, or Run, continues a stopped or interrupted replay from its last completed week with the recorded settings. Archived runs, set aside when a fresh replay started or imported from another machine, open as the live season does.</span>{% endcall %}{% endif %}
+{# the page's title; on the FluSight hub tab its "i" is the one explainer
+   (as Output's and a season page's), for the season rows and the import
+   too (their badges, figures and fields carry no tips of their own); the
+   Your data tab's is its replays' heading #}
+{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1", rich=True, tip_label="the retrospective") %}
+ <span class="uk-tt-line">Replays a past season week by week on the data each
+ Saturday had, then scores against settled truth.
+ relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span>
+ <span class="uk-tt-line">Resume, or Run, continues a stopped or interrupted
+ replay from its last completed week with the recorded settings. Archived
+ and imported replays open as the live season does.</span>
+ <span class="uk-tt-line">Import a replay takes the .flubnf-replay.zip that
+ Export replay writes on a season page; an import is read only, and
+ Delete removes it.</span>
+{% endcall %}{% endif %}
 {# the data source as two tabs, as on Forecast: the FluSight hub's
    seasons, or your own datasets (_dataset_replay.html); plain links, so
    Back, bookmarks and no-script work #}
@@ -139,7 +150,7 @@
     lands as a read-only archived run of its season, never in the live
     tree. The file picker, or a path when the file is already here #}
  <div class="card rt-importcard">
-  {{ tips.heading("Import a replay", "rt-import-h", "A .flubnf-replay.zip from Export replay on a season page. Imported replays are read only: results, player and report as for an archived run, and Delete removes them.") }}
+  {{ tips.heading("Import a replay", "rt-import-h") }}
   <form method="post" action="/retro/import" enctype="multipart/form-data"
     id="rt-import">
    <label for="rt-import-file">Replay bundle</label>
