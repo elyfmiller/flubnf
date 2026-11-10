@@ -70,7 +70,15 @@
         Array.prototype.forEach.call(s.options, function (o) {
           o.hidden = o.disabled = on && o.value !== 'set_aside' && o.value !== 'omit';
         });
-        if (on && s.options[s.selectedIndex].disabled) s.value = 'set_aside';
+        // a choice the setting hides moves to "Both from", or to the first
+        // choice left when the select has no "Both from"; never to a value
+        // the select lacks, which would leave it blank
+        var cur = s.selectedIndex >= 0 ? s.options[s.selectedIndex] : null;
+        if (on && (!cur || cur.disabled)) {
+          var left = Array.prototype.filter.call(s.options, function (o) { return !o.disabled; });
+          var to = left.filter(function (o) { return o.value === 'set_aside'; })[0] || left[0];
+          if (to) s.value = to.value;
+        }
         if (on) s.dataset.ruled = '1'; else delete s.dataset.ruled;
         mark(s);
       });

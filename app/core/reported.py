@@ -441,7 +441,14 @@ RULE_LEAVES = ("set_aside", "omit")
 def covering_rules(g: Gap) -> list:
     """The run-wide settings (missing.KEYS) that, set to "missing", count
     this state's newest week as unreported, as the engines apply them
-    (missing.tail_flags); under any of them only RULE_LEAVES apply."""
+    (missing.tail_flags); under any of them only RULE_LEAVES apply.
+
+    No settings for a state with no row or a blank value for the newest
+    week: a setting may count its newest reported week as unreported too,
+    but that only moves the engines' own walk ("From ...", carry) back
+    further, so both its choices still apply."""
+    if g.unreported:
+        return []
     vals = [v for _, v in g.reported]
     return [k for k in MS.KEYS if MS.tail_flags(vals, {k: "missing"})]
 
