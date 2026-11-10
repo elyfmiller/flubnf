@@ -1,0 +1,336 @@
+diff --git a/README.md b/README.md
+index 97c88c0b..c7c3b3e3 100644
+--- a/README.md
++++ b/README.md
+@@ -96,7 +96,13 @@ terminal through to a pull request in
+ The Data, Forecast and Retrospective tabs also take weekly data of your
+ own (a CSV of date, group and value, population optional; a file of one
+ series needs no group column), kept apart
+-from the FluSight hub and never submitted. For a true retrospective,
++from the FluSight hub and never submitted. The columns may be named date
++(or week, week_ending, target_end_date), group (or target_group,
++location, region, jurisdiction) and value (or count, cases, admissions,
++observation); other columns, except as_of, are ignored. Comma, semicolon
++or tab separated; UTF-8, UTF-16 or Windows-1252; dates as YYYY-MM-DD,
++M/D/YYYY or M/D/YY on one weekday, moved to the Saturday that ends each
++week. For a true retrospective,
+ give the data as each week saw it: one CSV with an as_of column, or a
+ folder of snapshot files, one per as_of, each named by its date
+ (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column.
+diff --git a/app/core/datasets/checks.py b/app/core/datasets/checks.py
+index e12fce5f..012537b3 100644
+--- a/app/core/datasets/checks.py
++++ b/app/core/datasets/checks.py
+@@ -498,9 +498,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
+                 f"decimals or have a {sep_name} separating thousands "
+                 f"({_rows(lines)}; e.g., {cells(either)}): {t} is "
+                 f"{t.replace(',', '.')} as a rate or {t.replace(mark, '')} "
+-                "as a count. Choose whether the values are counts or rates; "
+-                f"counts are written without thousands separators "
+-                f"({t.replace(mark, '')}).", lines)
++                "as a count. Rates: choose rates. Counts: write them "
++                f"without the {sep_name}s ({t} as {t.replace(mark, '')}).",
++                lines)
+     elif either and kind == "rate":
+         t = either[0][1]
+         rep.warnings.append(
+diff --git a/app/core/datasets/reading.py b/app/core/datasets/reading.py
+index 4e27ed0e..2356aab5 100644
+--- a/app/core/datasets/reading.py
++++ b/app/core/datasets/reading.py
+@@ -90,7 +90,11 @@ def validate(source, *, kind: Optional[str] = None,
+     rep, cols, raw_rows = Report(), None, []
+     try:
+         try:
+-            enc = detect_encoding(src.head(4096))
++            head = src.head(4096)
++            if head.startswith(WORKBOOK_MAGIC):
++                raise _NotText("This looks like an Excel workbook, not a "
++                               "CSV file: save it as CSV UTF-8.")
++            enc = detect_encoding(head)
+             if enc != "utf-8":
+                 src.forget()
+             scan = _Scan()
+@@ -101,14 +105,19 @@ def validate(source, *, kind: Optional[str] = None,
+                 src.forget()
+                 rep, cols, raw_rows = _read(src, "cp1252", limits, columns,
+                                             series=series)
+-                rep.warnings.insert(0, "Not UTF-8 text: read as Windows-1252 "
+-                                    "(a spreadsheet's usual CSV).")
++                if "encoding" not in rep.codes:   # refused as not text
++                    rep.warnings.insert(0, "Not UTF-8 text: read as "
++                                        "Windows-1252 (a spreadsheet's usual "
++                                        "CSV).")
+             elif scan.bad:
+                 # a BOM says UTF-8 (an encoding problem); UTF-8 text beside
+                 # bytes that are not mixes encodings
+                 rep, cols = Report(encoding=enc), None
+                 rep.add("encoding" if enc == "utf-8-sig" else
+                         "encoding_mixed", _mixed_message(enc, scan), scan.bad)
++        except _NotText as e:
++            rep, cols = Report(), None
++            rep.add("encoding", str(e))
+         except _LimitExceeded as e:
+             rep, cols = Report(), None
+             what = str(e)
+@@ -152,6 +161,15 @@ def validate(source, *, kind: Optional[str] = None,
+     return rep
+ 
+ 
++#: a workbook's first bytes (.xlsx is a zip, .xls an OLE file): named as
++#: one, never decoded as text
++WORKBOOK_MAGIC = (b"PK\x03\x04", b"\xd0\xcf\x11\xe0")
++
++
++class _NotText(Exception):
++    """The upload is not text (a workbook): the refusal that says so."""
++
++
+ class _Scan:
+     """What the UTF-8 reading met: rows holding bytes it could not decode
+     (``bad``, with the first few lines as ``examples``) and the first row
+diff --git a/app/core/reported.py b/app/core/reported.py
+index 4eef5652..910e8c26 100644
+--- a/app/core/reported.py
++++ b/app/core/reported.py
+@@ -56,7 +56,8 @@ COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
+                   "to at least twice the reported value.")
+ #: a choice in a few words (the tip, the run page)
+ CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
+-                "blend": "blend", "set_aside": "set aside", "omit": "leave out",
++                "blend": "blend", "set_aside": "both from the week before",
++                "omit": "leave out",
+                 "keep": "keep", "carry": "carry"}
+ 
+ 
+diff --git a/app/tests/test_data_upload_words.py b/app/tests/test_data_upload_words.py
+new file mode 100644
+index 00000000..71beaeda
+--- /dev/null
++++ b/app/tests/test_data_upload_words.py
+@@ -0,0 +1,107 @@
++"""The Data tab's upload words (bug hunt 2026-10-25, G27).
++
++  * A dataset's Forecast form says "Groundhog (own data) only" once.
++  * The Data tab's newest-week tip recommends a choice by the name the
++    Forecast tab's Data issues box gives it.
++  * The Weekly CSV tip is two short lines that name every date form the
++    template uses; the column names and encodings are in README.
++  * Dotted numbers say what each Values choice needs: rates keep them,
++    counts are written without the dots.
++  * A workbook is named as one; a file refused as not text gets no
++    "read as Windows-1252" note beside the refusal.
++  * The preview buttons' tip says what Save only does.
++"""
++import re
++from pathlib import Path
++
++from app.core import datasets as D
++from app.core import reported
++from app.ui import pipeline
++from app.ui.routes import forecast as ui_forecast
++from test_datasets_ui import client, isolated, stored        # noqa: F401
++from test_newest_reported import _hub
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++# ----------------------------------------------- DA-09: "only" said once
++
++def test_the_dataset_forms_badge_says_only_once(monkeypatch):
++    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "absent")
++    ds = stored()
++    page = client.get(f"/forecast?source={ds.id}").text
++    assert ("Groundhog (own data) only: the particle-filter engine is not "
++            "installed") in page
++    assert "only only" not in page
++
++
++# ---------------------------------- DA-15: the box's name for the choice
++
++def test_the_data_tab_recommends_a_choice_by_the_boxs_name(tmp_path,
++                                                           monkeypatch):
++    _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0"})
++    said = reported.check().details()[0]
++    assert said.startswith("0 after 40, 40, 40: Ohio. Recommended: both "
++                           "from the week before")
++    assert "set aside" not in said
++    # the words of the Forecast tab's "All zero states:" select
++    assert ui_forecast._ALL_TEXT["set_aside"] == "Both from the week before"
++
++
++# --------------------------------------------- DA-16: a short note, M/D/YY
++
++def test_the_weekly_csv_tip_is_two_short_lines():
++    page = client.get("/data").text
++    tip = re.search(r'id="tip-dsup-data-about"[^>]*>(.*?)</span></span>',
++                    page, re.S).group(1)
++    lines = re.findall(r'<span class="ncline">(.*?)</span>', tip + "</span>")
++    assert len(lines) == 2 and sum(len(t) for t in lines) < 400
++    assert "YYYY-MM-DD, M/D/YYYY or M/D/YY" in lines[0]
++    # the template's own dates are one of them
++    template = (ROOT / "app/ui/static/dataset-template.csv").read_text()
++    assert re.match(r"\d{1,2}/\d{1,2}/\d{2},", template.splitlines()[1])
++    readme = (ROOT / "README.md").read_text(encoding="utf-8")
++    assert "location, region, jurisdiction" in readme
++    assert "UTF-8, UTF-16 or Windows-1252" in readme
++
++
++# ------------------------------------------ DA-17: what each choice needs
++
++def test_dotted_numbers_say_what_counts_need():
++    raw = ("date,target_group,value\n2024-01-06,A,1.234\n2024-01-13,A,2.500\n"
++           "2024-01-20,A,3.125\n2024-01-27,A,4.750\n").encode()
++    (p,) = D.validate(raw).problems
++    assert p.message.endswith("1.234 is 1.234 as a rate or 1234 as a count. "
++                              "Rates: choose rates. Counts: write them "
++                              "without the dots (1.234 as 1234).")
++    assert "Choose whether" not in p.message
++
++
++# ------------------------------------- DA-20: not a CSV, named as such
++
++def test_a_workbook_or_a_binary_file_is_named_not_decoded():
++    workbook = ("This looks like an Excel workbook, not a CSV file: save it "
++                "as CSV UTF-8.")
++    nul = ("The header holds NUL characters: the file is not text in an "
++           "encoding FluBNF reads. Save it as CSV UTF-8.")
++    for head, said in ((b"PK\x03\x04\x14\x00\x06\x00", workbook),
++                       (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", workbook),
++                       (bytes(range(256)) * 4, nul)):
++        rep = D.validate(head + bytes(range(256)) * 8)
++        assert [p.message for p in rep.problems] == [said]
++        assert rep.warnings == []                  # no encoding note
++    # UTF-16 text (NUL in every other byte) still reads
++    rep = D.validate("date,target_group,value\n2024-01-06,A,5\n"
++                     "2024-01-13,A,6\n".encode("utf-16"))
++    assert "encoding" not in rep.codes
++
++
++# ------------------------------------------ DA-21: Save only stays here
++
++def test_the_buttons_tip_says_what_save_only_does():
++    tpl = (ROOT / "app/ui/templates/_dataset_check.html").read_text(
++        encoding="utf-8")
++    assert ('"Forecast this and Replay this store the dataset, then open'
++            in tpl)
++    assert ('("; Save only stores it and stays here" if where == "data" '
++            'else "")') in tpl
+diff --git a/app/tests/test_dataset_lenient.py b/app/tests/test_dataset_lenient.py
+index e8366301..78c0e49a 100644
+--- a/app/tests/test_dataset_lenient.py
++++ b/app/tests/test_dataset_lenient.py
+@@ -645,7 +645,9 @@ def test_dots_that_may_separate_thousands_ask_for_the_kind():
+     assert ("e.g., 1.234 (2024-01-13, Berlin), 2.345 (2024-01-20, Berlin), "
+             "12.345 (2024-01-27, Berlin)") in p.message
+     assert "1.234 is 1.234 as a rate or 1234 as a count" in p.message
+-    assert "Choose whether the values are counts or rates" in p.message
++    # rates keep the dots; counts need them gone, so "counts" is no fix
++    assert ("Rates: choose rates. Counts: write them without the dots "
++            "(1.234 as 1234).") in p.message
+     assert rep.summary["inferred_kind"] is None       # nothing inferred
+     with pytest.raises(D.DatasetError):
+         D.ingest(DOT_THOUSANDS, "berlin")
+diff --git a/app/tests/test_dataset_snapshots.py b/app/tests/test_dataset_snapshots.py
+index 87667620..ff7ce4ae 100644
+--- a/app/tests/test_dataset_snapshots.py
++++ b/app/tests/test_dataset_snapshots.py
+@@ -252,7 +252,8 @@ def test_the_box_takes_several_files_and_a_folder():
+     assert ("an as_of column in this file, or snapshot files beside it "
+             "(optional), one per as_of") in about
+     # an as_of column in the weekly CSV is read, not dropped with the rest
+-    assert "other columns, except as_of, are ignored" in about
++    # (the column names are in README since the tip was cut to two lines)
++    assert "an as_of column in this file" in about
+     assert 'id="tip-dsup-replay-snaps"' not in page
+ 
+ 
+diff --git a/app/tests/test_dataset_upload_box.py b/app/tests/test_dataset_upload_box.py
+index 6fc61319..f60aa794 100644
+--- a/app/tests/test_dataset_upload_box.py
++++ b/app/tests/test_dataset_upload_box.py
+@@ -576,7 +576,7 @@ def test_numbers_that_read_two_ways_leave_the_kind_to_the_user():
+            b"2024-01-13,Berlin,1.234\n2024-01-20,Berlin,12.345\n")
+     j = check(raw).json()
+     assert not j["ok"] and j["inferred_kind"] is None
+-    assert "Choose whether the values are counts or rates" in j["html"]
++    assert "Rates: choose rates. Counts: write them without" in j["html"]
+     assert READY not in j["html"]
+     j = check(raw, kind="rate").json()
+     assert j["ok"] and fact(j["html"], "Values") == "rates"
+diff --git a/app/tests/test_newest_reported.py b/app/tests/test_newest_reported.py
+index 7145154f..cca4ce5f 100644
+--- a/app/tests/test_newest_reported.py
++++ b/app/tests/test_newest_reported.py
+@@ -138,8 +138,10 @@ def test_a_zero_is_flagged_and_worded_by_consequence(tmp_path, monkeypatch):
+     assert g.flag() == "0 after 40, 40, 40"
+     assert r.line() == f"All {len(LOCS)} reported · 1 reads 0"
+     assert r.short() == f"All {len(LOCS)} reported · 1 reads 0"
+-    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: set "
+-                              "aside (looks like a missed report).")
++    # the choice by the Forecast tab's name for it (G27, DA-15)
++    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: both "
++                              "from the week before (looks like a missed "
++                              "report).")
+     assert reported.ZERO_FACT in r.details()
+     # the setting treats it as missing: the run forecasts from the week before
+     (g,) = reported.check("missing").gaps
+@@ -182,8 +184,9 @@ def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
+     assert r.complete and not r.clean
+     assert r.line() == f"All {len(LOCS)} reported · 1 collapsed"
+     assert r.short() == f"All {len(LOCS)} reported · 1 collapsed"
+-    assert r.details()[0] == ("5 after 40: Ohio. Recommended: set aside "
+-                              "(looks like a partial report).")
++    assert r.details()[0] == ("5 after 40: Ohio. Recommended: both from "
++                              "the week before (looks like a partial "
++                              "report).")
+     assert reported.COLLAPSED_FACT in r.details()
+     # a moderate drop is not a collapse (a fifth of the week before)
+     _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "8"})
+@@ -395,4 +398,5 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
+     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
+     assert '<span class="uk-badge-t">1 reads 0</span>' in line
+     assert 'aria-label="Complete, with issues"' in page
+-    assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page
++    assert ("0 after 40, 40, 40: Ohio. Recommended: both from the week "
++            "before") in page
+diff --git a/app/ui/templates/_dataset_check.html b/app/ui/templates/_dataset_check.html
+index 1854686e..44090d32 100644
+--- a/app/ui/templates/_dataset_check.html
++++ b/app/ui/templates/_dataset_check.html
+@@ -97,7 +97,7 @@
+   <button class="{{ 'quiet' if where == 'replay' else 'gold' }}" name="next" value="forecast">Forecast this</button>
+   <button class="{{ 'gold' if where == 'replay' else 'quiet' }}" name="next" value="replay">Replay this</button>
+   {% if where == "data" %}<button class="quiet" name="next" value="data">Save only</button>{% endif %}
+-  {{ tips.tip(fid ~ "-go", "these buttons", "Each stores the dataset, then opens the Forecast tab (its newest week, every group) or the Retrospective tab's Your data (its newest flu season, October to June). Nothing runs until you start it there.") }}
++  {{ tips.tip(fid ~ "-go", "these buttons", "Forecast this and Replay this store the dataset, then open the Forecast tab (its newest week, every group) or the Retrospective tab's Your data (its newest flu season, October to June)" ~ ("; Save only stores it and stays here" if where == "data" else "") ~ ". Nothing runs until you start it there.") }}
+  </div>
+ </div>
+ {% endif %}
+diff --git a/app/ui/templates/_dataset_upload.html b/app/ui/templates/_dataset_upload.html
+index a3573405..21b1aacd 100644
+--- a/app/ui/templates/_dataset_upload.html
++++ b/app/ui/templates/_dataset_upload.html
+@@ -36,7 +36,8 @@
+  <div class="dsboxes">
+   <div class="dsbox dt-zone">
+    <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
+-    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns, except as_of, are ignored. A file with no group column is one series, named after the file: a date column and one column of counts, whatever its name. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations.</span><span class="ncline">For a true retrospective, give the data as each week saw it: an as_of column in this file, or snapshot files beside it (optional), one per as_of, named by its date (2024-10-05.csv) or holding an as_of column, with the same columns and groups; a folder gives its CSV, TSV and TXT files. Each replayed week then sees the snapshot that held it.</span><span class="ncline">Forecasts on a dataset export under non-hub names and are never submitted.</span>{% endcall %}</div>
++    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value, population optional; a file with no group column is one series. Dates as YYYY-MM-DD, M/D/YYYY or M/D/YY; up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">For a true retrospective, give the data as each week saw it: an as_of column in this file, or snapshot files beside it (optional), one per as_of, named by its date (2024-10-05.csv).</span>
++{% endcall %}</div>
+    <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
+     <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
+     {{ tips.icon("upload", cls="dt-dropicon") }}
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index f0b4fe36..52456b3d 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -276,7 +276,7 @@
+      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
+        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+    {# why the particle filter's options are off, in the badge's words #}
+-   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ " only: " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
++   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ ": " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
+    {% else %}{% set eb_ds %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+    {% if eb_ds | trim %}<p class="fc-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
+    {# off by default: the Groundhog draws growth from the data's own
