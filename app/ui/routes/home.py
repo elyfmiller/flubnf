@@ -10,6 +10,7 @@ from __future__ import annotations
 import html as _htmlmod
 import sys
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -437,9 +438,16 @@ def home(request: Request):
     from flubnf.settings import check as _check
     from app.ui.routes.output import _reference_date
     missing = _check(verbose=False)
-    # a first run (no forecast to map, and not the cold paint): Start here
-    # comes first, its steps saying where this computer stands
-    first = not pending and not ob["outlook_date"]
+    # Start here comes first, before the map, when the map has no forecast.
+    # The cold paint cannot read the outlook (the import it exists to
+    # avoid), but with no stored run the map it reloads into has none: the
+    # card takes that place there too, so the reload leaves it where it is.
+    # With a stored run it sits beside the record, as the weekly view has
+    # it; a stored run whose outlook turns out empty is the one case the
+    # reload still moves it. Its steps say where this computer stands only
+    # off the cold paint (the data read imports pandas): plain until then
+    first = rid is None if pending else not ob["outlook_date"]
+    states = first and not pending
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
@@ -469,20 +477,42 @@ def home(request: Request):
         # installed here
         "engine_words": _engine_words(),
         "engine_fallback": _engine_fallback(),
-        # Start here on a first run: the Data step's caption and the
-        # Forecast step's (home.html start_here)
-        "start_newest": _start_newest() if first else "",
-        "start_pf_state": _start_pf_state() if first else ""})
+        # Start here: its place (before the map on a first run) and, off
+        # the cold paint, its steps' states: the Data step's caption and
+        # the Forecast step's (home.html start_here)
+        "start_first": first, "start_states": states,
+        "start_newest": _start_newest() if states else "",
+        "start_pf_state": _start_pf_state() if states else ""})
+
+
+def _hub_unusable() -> str:
+    """Why the FluSight hub clone cannot feed a forecast, in plain words;
+    "" when it can. Both tests of a usable hub, so the Data step never
+    reads done where either says no: the run gate's (data.hub_missing, the
+    folder and its auxiliary-data) and doctor's (flubnf.doctor.
+    HUB_DATA_DIRS: target-data and the vintage archive, each a folder in
+    the clone). A folder that is not there at all is hub_missing's to
+    report: it answers first."""
+    why = state.data_mod.hub_missing()
+    if why:
+        return why
+    from flubnf.doctor import HUB_DATA_DIRS
+    hub = Path(state.data_mod.HUB)
+    if not hub.is_dir():
+        return ""
+    lacks = [d for d in HUB_DATA_DIRS if not (hub / d).is_dir()]
+    return f"{hub} lacks {', '.join(lacks)}" if lacks else ""
 
 
 def _start_newest() -> str:
     """The newest week the hub data holds (data.newest_week), for the
-    first-run Data step's "through <week>"; "" without a hub clone (a run
-    is then refused, whatever week the shipped snapshots hold) or when it
+    first-run Data step's "through <week>"; "" when the hub clone is not
+    usable (_hub_unusable: a run is then refused, or doctor fails it,
+    whatever week the shipped snapshots or the archive hold) or when it
     cannot be read. It imports pandas: never on the cold paint, which
     exists to avoid that import."""
     try:
-        if state.data_mod.hub_missing():
+        if _hub_unusable():
             return ""
         return state.data_mod.newest_week() or ""
     except Exception:

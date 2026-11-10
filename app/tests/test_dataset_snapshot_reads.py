@@ -194,7 +194,8 @@ def test_a_dataset_forecast_stores_the_same_bytes(tmp_path, monkeypatch):
     def run(wr):
         wr.mkdir()
         outcome, _ = CR.run(spec_for(ds, fd=fd), ds, wr)
-        return outcome, {str(p.relative_to(wr)): p.read_bytes()
+        # names with "/" on every platform (str() gives "\" on Windows)
+        return outcome, {p.relative_to(wr).as_posix(): p.read_bytes()
                          for p in sorted(wr.rglob("*")) if p.is_file()}
     o_new, f_new = run(tmp_path / "new")
     monkeypatch.setattr(DM.Dataset, "series", reference_series)
@@ -287,12 +288,15 @@ def test_a_replay_reads_each_snapshot_once(kind, tmp_path, monkeypatch):
 # ------------------------------------------------ keyed on the file itself
 
 def _rewrite(path: Path, text: str, *, atomic: bool, ns: int) -> None:
+    # bytes, as the store writes them: a text-mode write turns each "\n"
+    # into "\r\n" on Windows, and the file would change size
+    data = text.encode("utf-8")
     if atomic:
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(text, encoding="utf-8")
+        tmp.write_bytes(data)
         os.replace(tmp, path)
     else:
-        path.write_text(text, encoding="utf-8")
+        path.write_bytes(data)
     os.utime(path, ns=(ns, ns))
 
 
@@ -302,7 +306,7 @@ def test_a_snapshot_written_again_is_read_again(atomic):
     w = ds.forecast_dates()[2]
     p = ds.vintage_path(w)
     before = ds.series("Alabama", w)
-    text = p.read_text(encoding="utf-8")
+    text = p.read_bytes().decode("utf-8")        # the file's own line ends
     # the as-of week's Alabama value, changed by one, same file size
     lines = text.splitlines(keepends=True)
     i = next(i for i, ln in enumerate(lines)
