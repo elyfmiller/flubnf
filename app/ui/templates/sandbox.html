@@ -215,14 +215,13 @@
    {% if machine and machine[0] %}{{ tips.alert("warn", machine[0], title="This computer cannot fit yet:", tiptext=machine[1], id="sb-machine", tip_label="what to do") }}{% endif %}
    <div class="card sb-editor">
     <div class="sb-toolbar">
-     {# the card's one explainer: what each of the three files holds. A
-        fit of this model says itself (Save and run reads "Fitting"), so
-        engine busy names only another one #}
+     {# the card's one explainer: where the three files' formats are (the
+        Sandbox guide, docs/SANDBOX.md section 2, with examples). A fit of
+        this model says itself (Save and run reads "Fitting"), so engine
+        busy names only another one #}
      <div class="sb-toolbar-h"><h2 id="h-sb-model">Model</h2>
       {%- call tips.toggletip("sb-files", "the three files") %}
-      <span class="uk-tt-line"><b>model.bngl:</b> the model, time in weeks. A name ending <code>__FREE</code> is fitted, drawn from its line in priors.conf; the value written here is only for Check and Simulate data.</span>
-      <span class="uk-tt-line"><b>data.exp:</b> a header, then one row per week: the time and the count. On either engine the model starts a week before a first row at <code>t&nbsp;=&nbsp;0</code>; a missing week is a gap in time. Keep a clock the model reads in a counter species, as FluBNF's own models do: <code>time()</code> runs on the private engine only.</span>
-      <span class="uk-tt-line"><b>priors.conf:</b> one line per fitted value, <code>uniform_var = name low high</code> (<code>loguniform_var</code> on a log scale); <code>pf_</code> lines set engine keys, such as <code>pf_cumulative_observable</code>, the output whose weekly increment is the count.</span>
+      <span class="uk-tt-line">The formats of model.bngl, data.exp and priors.conf, with examples: <a href="https://github.com/elyfmiller/flubnf/blob/main/docs/SANDBOX.md#2-the-three-files" target="_blank" rel="noopener">The three files</a> in the Sandbox guide {{ tips.icon("external", "opens in a new tab") }}.</span>
       {%- endcall %}
       <span class="sb-status">
        <span class="sb-dirty" id="sb-dirty" hidden>{{ tips.badge("warn", "unsaved changes") }}</span>

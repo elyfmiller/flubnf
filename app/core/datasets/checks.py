@@ -64,11 +64,15 @@ NAME_MARKS = ("Mn", "Mc")
 RESERVED_NAMES = ("ALL",)
 
 #: spellings (case-insensitive) that make a group the dataset's NATIONAL row
-#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National'. It
-#: gets a minted key like every group (never the literal FIPS 'US', so it
-#: cannot pass for FluSight's series), is flagged national in meta.json and
-#: is reported beside pooled scores, never inside them. One per dataset.
-NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL")
+#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National', and
+#: 'Overall', the console's own template's word (dataset-template.csv; Ely's
+#: decision 2026-11-10), and no other aggregate word. It gets a minted key
+#: like every group (never the literal FIPS 'US', so it cannot pass for
+#: FluSight's series), is flagged national in meta.json at upload (a stored
+#: dataset keeps the flag it was stored with) and is reported beside pooled
+#: scores, never inside them. One per dataset.
+NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL",
+                  "OVERALL")
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
             "Saturday", "Sunday")
 

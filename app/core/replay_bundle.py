@@ -357,7 +357,7 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     quantiles older than its samples, rebuilt where they are read), each
     such week's quantiles set older outright rather than left to the
     order of extraction, which a coarse clock (Windows') stamps alike."""
-    from app.core import retro
+    from app.core import reclaim, retro
     from app.core.retro_store import ORACLE_NAME, samples_file
     path, retro_root = Path(path), Path(retro_root)
     name = name or path.name           # an upload's own name (inspect_bundle)
@@ -369,8 +369,9 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
             raise BundleError(f"{season} from this bundle was already "
                               f"imported as {stamp}.")
         # replacing deletes it: never a protected folder (reclaim's roots:
-        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS)
-        from app.core import reclaim
+        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS, the
+        # barrier Storage's Delete also asks), checked before anything is
+        # built
         if reclaim.is_protected(dst):
             raise BundleError(f"{season} from this bundle is imported as "
                               f"{stamp} in a protected folder, which the "
@@ -378,6 +379,12 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                               "replaced.")
     tmp = dst.with_name(dst.name + ".importing")
     if tmp.exists() or tmp.is_symlink():
+        # an earlier attempt's tree, deleted only outside a protected folder
+        if reclaim.is_protected(tmp):
+            raise BundleError(f"An earlier import of {season} left "
+                              f"{tmp.name} in a protected folder, which the "
+                              "console never deletes; nothing was "
+                              "imported.")
         retro.delete_tree(tmp)
     files = m["files"]
     # scores.json last, so it is newer than every sample it scores (the
