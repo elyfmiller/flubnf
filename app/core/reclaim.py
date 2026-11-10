@@ -23,6 +23,11 @@ pipeline does):
   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
     .prog files.
 
+CACHE (cleared only while no engine job runs; rebuilt on demand, so no
+number changes):
+  * the engine runners' bngsim compiled-model cache, <state>/engine-cache/
+    bngsim-codegen (pf.codegen_cache_dir; clear_codegen_cache).
+
 Every function refuses protected trees itself, so no caller mistake can
 reach them. An interrupted week keeps every checkpoint and resumes.
 """
@@ -290,6 +295,143 @@ def compress_tree(root: Path) -> dict:
         except OSError:
             continue              # one stuck file must not sink the sweep
     return {"saved": saved, "files": files}
+
+
+# ------------------------------------------- the engine's compiled-model cache
+# bngsim compiles each model's right-hand side once and keeps the library in
+# the state folder (pf.codegen_cache_dir; BNGSIM_CODEGEN_CACHE_DIR). Nothing
+# there is a record: the same .net compiles to the same library, so a cleared
+# cache costs the next fits their compile time and changes no number. But a
+# fit compiling or loading a library while its folder goes could fail or
+# fall back to bngsim's interpreted right-hand side, so the cache is cleared
+# only while no engine job runs: the console's own claims (the caller's
+# `busy`), and no live runner in any runner registry, the terminal's and the
+# students' runner's included (engine_runners_live). The folder is first
+# renamed aside, one atomic step under the caller's lock, so a fit that
+# starts meanwhile compiles into a fresh folder and never meets a
+# half-deleted one; the folder set aside is deleted after.
+
+#: a cache folder set aside for deletion: <name><ASIDE><pid>-<ns>, in the
+#: cache's own parent (a clear cut short leaves it for the next clear)
+CODEGEN_ASIDE = ".clearing-"
+
+
+def codegen_cache_dir() -> Path:
+    """The engine runners' compiled-model cache (pf.codegen_cache_dir)."""
+    from app.core.engines import pf
+    return pf.codegen_cache_dir()
+
+
+def codegen_cache_entries() -> list:
+    """The cache folder, when it exists, then any folder an earlier clear set
+    aside and did not finish deleting. A link is never followed: a cache
+    someone linked elsewhere is theirs."""
+    d = codegen_cache_dir()
+    out = []
+    if d.is_dir() and not d.is_symlink():
+        out.append(d)
+    try:
+        out += sorted(p for p in d.parent.iterdir()
+                      if p.name.startswith(d.name + CODEGEN_ASIDE)
+                      and p.is_dir() and not p.is_symlink())
+    except OSError:
+        pass
+    return out
+
+
+def codegen_cache_bytes() -> int:
+    """Bytes the cache holds (its folder and any set aside); 0 with none."""
+    return sum(_size(p) for p in codegen_cache_entries())
+
+
+def runner_registries() -> list:
+    """Every registry an engine runner of this install is recorded in: the
+    console's (pf.RUNNER_PIDS_FILE: the forecast path, replays, the
+    Sandbox), a terminal replay's (flubnf/cli_sandbox.py), and the
+    students' runner's (app/core/runner.py), read at call time."""
+    from app.core import runner
+    from app.core.engines import pf
+    from flubnf.cli_sandbox import _terminal_registry
+    return [Path(pf.RUNNER_PIDS_FILE), Path(_terminal_registry()),
+            runner.state_dir() / runner.REGISTRY_FILE]
+
+
+def engine_runners_live(registries=None) -> int:
+    """How many recorded engine runners are alive now, in any registry
+    (runner_registries by default): a pid counts when its live command line
+    names the runner script it was recorded with, the pairing the takeover
+    sweep uses (flubnf/cli.py), so a recycled pid does not hold the cache
+    forever. An entry recorded without its script counts while its pid
+    lives. An unreadable registry holds nothing."""
+    from flubnf.cli import _pid_cmdline
+    n = 0
+    for reg in (runner_registries() if registries is None else registries):
+        try:
+            entries = json.loads(Path(reg).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(entries, dict):
+            continue
+        for pid_s, meta in entries.items():
+            try:
+                pid = int(pid_s)
+            except (TypeError, ValueError):
+                continue
+            if pid <= 0:
+                continue
+            script = (str(meta.get("runner") or "")
+                      if isinstance(meta, dict) else "")
+            cmd = _pid_cmdline(pid)
+            if cmd and (os.path.basename(script) in cmd if script else True):
+                n += 1
+    return n
+
+
+def codegen_cache_refusal(busy: str = "", registries=None) -> str:
+    """Why the cache may not be cleared now ("" when it may): `busy`, the
+    caller's own reason (a console run, a replay, a Sandbox fit), else a
+    live engine runner of another process."""
+    if busy:
+        return busy
+    n = engine_runners_live(registries)
+    if n:
+        return (f"{n} engine runner{'' if n == 1 else 's'} "
+                f"{'is' if n == 1 else 'are'} fitting on this computer")
+    return ""
+
+
+def clear_codegen_cache(busy=None, lock=None, registries=None) -> dict:
+    """Clear the compiled-model cache unless an engine job runs. `busy` is
+    a callable giving the caller's own busy reason ("" when idle; a string
+    serves too), asked under `lock` (the console's engine lock, so no run
+    is claimed between the check and the rename). Returns {"bytes": freed,
+    "refused": why it was kept ("" when cleared), "busy": whether that was
+    an engine job}."""
+    from contextlib import nullcontext
+    import time
+    with (lock if lock is not None else nullcontext()):
+        why = codegen_cache_refusal(busy() if callable(busy) else
+                                    (busy or ""), registries)
+        if why:
+            return {"bytes": 0, "refused": why, "busy": True}
+        d = codegen_cache_dir()
+        if is_protected(d):
+            return {"bytes": 0, "busy": False,
+                    "refused": "the engine cache's folder is protected"}
+        if d.is_dir() and not d.is_symlink():
+            to = d.with_name(f"{d.name}{CODEGEN_ASIDE}{os.getpid()}"
+                             f"-{time.time_ns()}")
+            try:
+                os.rename(d, to)
+            except OSError as e:
+                return {"bytes": 0, "busy": False, "refused": (
+                    f"the engine cache's folder could not be moved aside "
+                    f"({type(e).__name__}: {e})")}
+    freed = 0
+    for p in codegen_cache_entries():
+        if p != d:                       # set aside: no fit can reach it
+            freed += _delete(p)
+    return {"bytes": freed, "refused": "", "busy": False}
 
 
 # ------------------------------------------------------------ the full plan

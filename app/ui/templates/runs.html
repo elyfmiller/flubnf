@@ -229,12 +229,15 @@
       if(!d||!d.categories||!d.categories.length){show(none);return;}
       var lines=d.categories.map(function(c){
        return c.label+': '+c.bytes_h+' ('+c.detail+')';}).join(' · ');
+      var cache=d.categories.some(function(c){return c.key==='engine-cache';});
       if(!window.FluBNFConfirm)return;
       window.FluBNFConfirm({
        title:'Reclaim an estimated '+d.total_h+'?',
        msg:'This frees '+lines+'.',
-       hint:'Only fit intermediates of completed weeks and runs are '
+       hint:'Only fit intermediates of completed weeks and runs'
+         +(cache?' and the engine cache of compiled models':'')+' are '
          +'deleted, and stored samples are compressed losslessly in place. '
+         +(cache?'The engine compiles each model again on its next fit. ':'')
          +'Every stored week, score, report, and submission file is kept '
          +'and everything still scores, plays back, and exports exactly as '
          +'before. The sealed validation record and the hub clone are '
@@ -255,7 +258,7 @@
  {# entries in use: their Delete is off with no "?" each; why, said once
     per reason (the same reason on five rows reads once) #}
  {% set st_whys = [] %}
- {% for x in storage.workroots + storage.retro + storage.retro_archives + storage.report_archives + storage.datasets + ((storage.students or {}).rows or []) %}{% if x.busy and x.why and x.why not in st_whys %}{% set _ = st_whys.append(x.why) %}{% endif %}{% endfor %}
+ {% for x in storage.workroots + storage.retro + storage.retro_archives + storage.report_archives + storage.datasets + ((storage.students or {}).rows or []) + ([storage.engine_cache] if storage.engine_cache else []) %}{% if x.busy and x.why and x.why not in st_whys %}{% set _ = st_whys.append(x.why) %}{% endif %}{% endfor %}
  {% if st_whys %}{{ tips.alert("info", st_whys | join(" "), title="In use now:", id="st-busy", live="") }}{% endif %}
  {% if not st_listed %}
  {# nothing listed: one empty state, no empty sections (the ledger's
@@ -396,6 +399,22 @@
   <span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
  </div>
  {% endfor %}
+ </section>
+ {% endif %}
+ {% if storage.engine_cache %}{% set ec = storage.engine_cache %}
+ {# bngsim's compiled models (routes/storage.py _engine_cache_row), in the
+    state folder, outside the total: a cache, not a record. Its Delete
+    clears it; off while an engine job runs, here or in another process #}
+ <section class="st-sec" aria-labelledby="h-st-ec">
+ {{ tips.heading("Engine cache", "st-ec", level=3, after=tips.tag("not in the total"), cls="st-h") }}
+ <div class="st-row">
+  <span class="st-title"><strong>Compiled models</strong>
+   {%- if ec.busy %} {{ tips.badge("pending", "engine running") }}{% endif %}</span>
+  {{ tips.meta(["The engine compiles each model once and keeps it here; cleared, it compiles them again on the next fits, and no forecast changes."]) }}
+  <span class="st-size">{{ ec.size_h }}</span>
+  {% if ec.busy %}{{ busy_act("st-ec-1", ec.why, "the engine cache") }}
+  {% else %}{{ del_form("/storage/delete", "engine-cache", ec.id, "the engine cache", ec.size_h, "The engine compiles each model again on its next fit, which takes a little longer once. No forecast, score or report changes.") }}{% endif %}
+ </div>
  </section>
  {% endif %}
  {% if sbx %}

@@ -24,9 +24,9 @@ Sections, in file order:
                   dataset_tag, _cell_files, _netgen_added, _copy_added,
                   _drop_copies, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
-                  runner_popen_kwargs, record_runner_pids, shard_cells,
-                  cell_seconds, budget_seconds, _stop_all, TIMING_NAME,
-                  _write_timing, execute
+                  codegen_cache_dir, runner_popen_kwargs, record_runner_pids,
+                  shard_cells, cell_seconds, budget_seconds, _stop_all,
+                  TIMING_NAME, _write_timing, execute
   collect         _cell_statuses, _record_collect_failure, _save_cloud,
                   _read_trajectory, collect, _pool
 
@@ -1520,6 +1520,24 @@ _CREATE_NEW_PROCESS_GROUP = 0x00000200
 #: _sweep_runner_groups reads this format and must agree with it).
 RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
 
+#: where bngsim keeps the right-hand sides it compiles (bngsim/_codegen.py
+#: reads it once, at import)
+CODEGEN_CACHE_ENV = "BNGSIM_CODEGEN_CACHE_DIR"
+
+
+def codegen_cache_dir() -> Path:
+    """The runners' bngsim compiled-model cache: <state folder>/engine-cache/
+    bngsim-codegen, the state folder being app.core.runs.APP_STATE (which
+    FLUBNF_STATE_DIR moves), read at call time. Absolute, since a public
+    engine's cell runs in its own folder. Left to bngsim, the cache sits
+    in ~/.cache/bngsim/codegen and grows without bound: a library for every
+    .net it fits, and every location-week's .net differs (its N and i0).
+    Here, Storage shows it and Reclaim clears it (app/core/reclaim.py). The
+    same .net gives the same library, so the cache decides compile time
+    only, never a number."""
+    from app.core import runs
+    return Path(os.path.abspath(runs.APP_STATE)) / "engine-cache" / "bngsim-codegen"
+
 
 def runner_popen_kwargs(base: dict | None = None,
                         _os_name: str | None = None,
@@ -1528,15 +1546,17 @@ def runner_popen_kwargs(base: dict | None = None,
     (session on POSIX): the address a takeover sweep can still signal once
     the supervisor died. The live cancel path uses _signal_tree instead.
 
-    And the runner's environment: `env` when given (the Sandbox passes
-    settings.bng_env()); else, on Windows only, bng_env(), since the engine
-    runs a bare `perl` and BNG2.pl itself (retro's runners come through
-    here too). On Windows it also turns bngsim's code generation off
-    (BNGSIM_NO_CODEGEN=1, unless already set). macOS and Linux runners
-    inherit this process's environment, as before. `_os_name` is
-    injectable for tests."""
+    And the runner's environment, always a copy: of `env` when given (the
+    Sandbox passes settings.bng_env()); else, on Windows, of bng_env(),
+    since the engine runs a bare `perl` and BNG2.pl itself (retro's runners
+    come through here too); else of this process's. On every platform it
+    points bngsim's compiled-model cache at codegen_cache_dir(), unless
+    BNGSIM_CODEGEN_CACHE_DIR already holds a folder. On Windows it also
+    turns bngsim's code generation off (BNGSIM_NO_CODEGEN=1, unless already
+    set). `_os_name` is injectable for tests."""
     kw = dict(base or {})
-    if (_os_name or os.name) == "posix":
+    nt = (_os_name or os.name) != "posix"
+    if not nt:
         kw["start_new_session"] = True
     else:
         kw["creationflags"] = (int(kw.get("creationflags", 0))
@@ -1544,6 +1564,8 @@ def runner_popen_kwargs(base: dict | None = None,
         if env is None:
             from flubnf.settings import BNG
             env = bng_env(BNG)
+    env = dict(os.environ if env is None else env)      # the caller's untouched
+    if nt:
         # bngsim compiles each model's right-hand side with a C compiler it
         # finds on PATH. A student's PC has none, and bngsim's fallback then
         # warns "No C compiler found. Install Visual Studio Build Tools",
@@ -1553,10 +1575,12 @@ def runner_popen_kwargs(base: dict | None = None,
         # cache. The interpreted right-hand side gives the same fit to about
         # 1e-12, about 15% slower on a full fit. Any non-empty value turns
         # code generation off, "0" included.
-        env = dict(os.environ if env is None else env)
         env.setdefault("BNGSIM_NO_CODEGEN", "1")
-    if env is not None:
-        kw["env"] = env
+    # bngsim reads a blank value as unset (its ~/.cache), so a blank one is
+    # filled too; a folder someone chose stays theirs
+    if not str(env.get(CODEGEN_CACHE_ENV) or "").strip():
+        env[CODEGEN_CACHE_ENV] = str(codegen_cache_dir())
+    kw["env"] = env
     return kw
 
 

@@ -413,13 +413,16 @@ def test_a_statusless_workroot_reads_every_cell_as_before(tmp_path):
 # --------------------------------------------- runner process-group plumbing
 
 def test_runner_popen_kwargs_puts_a_runner_in_its_own_group():
+    # `env` aside (every runner gets one: test_perl_bng_env, test_codegen_cache)
+    def _no_env(kw):
+        return {k: v for k, v in kw.items() if k != "env"}
     posix = pf.runner_popen_kwargs({}, _os_name="posix")
-    assert posix == {"start_new_session": True}
+    assert _no_env(posix) == {"start_new_session": True}
     nt = pf.runner_popen_kwargs({"creationflags": 0x4000}, _os_name="nt")
     assert nt["creationflags"] == 0x4000 | pf._CREATE_NEW_PROCESS_GROUP
     # the base kwargs ride along untouched
     both = pf.runner_popen_kwargs({"close_fds": True}, _os_name="posix")
-    assert both == {"close_fds": True, "start_new_session": True}
+    assert _no_env(both) == {"close_fds": True, "start_new_session": True}
 
 
 def test_record_and_unrecord_runner_pids_round_trip(tmp_path):
