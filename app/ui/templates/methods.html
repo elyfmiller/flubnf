@@ -190,6 +190,31 @@
    <p class="mt-links"><a href="#analogue">How it forecasts</a>{% if active is defined %} <a href="/model/analogue">Model tab</a>{% endif %}</p>
   </section>
  </div>
+ {# the working words other tabs use, one line each, in recorded wording.
+    Scored cell and relWIS are the Scoring card's. The last three are the
+    console's only (`active` is set): the site has no runs or settings.
+    A run's folder is named as Storage names it (Run workroots) #}
+ <div class="mt-folds">
+ {% call tips.fold("Words used here", id="mt-words", cls="mt-fold") %}
+ {% call tips.stats("uk-stats--kv") %}
+  {{ tips.stat("Liu-West filter", "The particle filter, in PyBNF, that fits the Oracle SIHRS each week.") }}
+  {{ tips.stat("Forecasting sample", "The filter's particles after the newest week. Each is a candidate epidemic whose free parameters drift by the Liu-West kernel. Their spread is the forecast's uncertainty.") }}
+  {{ tips.stat("Oracle step", "The filter's forecast growth blended with past seasons' at the same calendar week.") }}
+  {{ tips.stat("Groundhog", "The empirical model. It applies donor growth ratios to the last observed count, with no mechanism.") }}
+  {{ tips.stat("Donor", "A week from an earlier season within two epiweeks of the forecast week. The Groundhog and the Oracle step use its growth.") }}
+  {{ tips.stat("Abstain", "A model gives no forecast for a state and week. The Groundhog abstains with fewer than 30 donors, or when the newest week reads 0 and No forecast is chosen.") }}
+  {{ tips.stat("Vintage", "The data as archived on one day: exactly as the forecaster saw it then.") }}
+  {{ tips.stat("Reference date", "The data's newest week plus 7 days. It names the round; horizons count from it.") }}
+  {{ tips.stat("Horizon", "Weeks from the reference date to the week forecast. Horizons 0 to 3 are scored.") }}
+  {{ tips.stat("Jurisdiction", "One of the 50 states, DC and Puerto Rico: 52 in all. With the US national total they make 53 locations.") }}
+  {% if active is defined %}
+  {{ tips.stat("Modified settings", "A run made with any Model setting changed from its default. A hub run's files are then named <hub id>-modified, a record not for the hub, unless exported under the hub names with a reason.") }}
+  {{ tips.stat("Workroot", "A run's own folder on this computer, new for each run. Storage lists them under On disk, in Run workroots.") }}
+  {{ tips.stat("Run ledger", "The Storage tab's list of every run on this computer. Each row is a run's record, and the run can be reproduced from it.") }}
+  {% endif %}
+ {% endcall %}
+ {% endcall %}
+ </div>
 </div>
 
 <div class="card" id="sihrs">
@@ -577,7 +602,7 @@
  {{ tips.heading("Every run", "mt-every", level=3, cls="mt-h3") }}
  <ul class="mt-rules" aria-labelledby="h-mt-every">
   <li>uses the data exactly as archived on its forecast date</li>
-  <li>is seeded and reproducible from its ledger entry</li>
+  <li>is seeded and reproducible from its run record</li>
   <li>never imputes a missing week</li>
   <li>is scored by the weighted interval score against the FluSight baseline</li>
  </ul>
