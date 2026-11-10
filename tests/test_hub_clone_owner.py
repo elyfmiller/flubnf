@@ -80,7 +80,10 @@ def ceiling(tmp_path, monkeypatch):
 
 
 def _real(p: Path) -> str:
-    return str(Path(os.path.realpath(p)))
+    """The folder as git names it: its real path, with forward slashes on
+    Windows too (git says C:/Users/..., and its safe.directory takes that
+    form; a backslash in a git config file is an escape)."""
+    return Path(os.path.realpath(p)).as_posix()
 
 
 # --- doctor -----------------------------------------------------------------

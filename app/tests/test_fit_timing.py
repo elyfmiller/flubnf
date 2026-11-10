@@ -130,15 +130,36 @@ def test_api_progress_reads_the_same_with_the_seconds_beside_it(
 
 
 def test_a_stopped_grid_keeps_the_seconds_of_the_cells_it_finished(
-        engine, tmp_path):
+        engine, tmp_path, monkeypatch):
     """cell_0 asks for the stop: the runner halts before cell_1, the
-    grid ends stopped, and pf_timing.json has cell_0 alone."""
+    grid ends stopped, and pf_timing.json has cell_0 alone.
+
+    The supervisor starts looking for the STOP only once the runner has
+    written cell_0's seconds. A look in the moment between the cell's end
+    and that write stops the runner there, and a cell a stop cuts off has
+    no seconds. The first look comes right after the runners are recorded,
+    which takes about as long as a runner's start: on Windows it sometimes
+    came in that moment."""
     engine("        if os.path.basename(os.getcwd()) == 'cell_0':\n"
            "            open(os.path.join(os.path.dirname(os.getcwd()),\n"
            "                              'STOP'), 'w').close()\n")
     w = tmp_path / "wr"
     w.mkdir()
     _grid(w, 3)
+    secs = w / "pf_status_0.json.secs.prog"
+    record = pf.record_runner_pids
+
+    def record_then_wait(*a, **k):
+        record(*a, **k)
+        end = time.monotonic() + 60
+        while time.monotonic() < end:
+            try:
+                if "cell_0" in json.loads(secs.read_text()):
+                    return
+            except (OSError, ValueError):
+                pass
+            time.sleep(0.02)
+    monkeypatch.setattr(pf, "record_runner_pids", record_then_wait)
     with pytest.raises(pf.RunStopped):
         pf.execute(w, width=1)
     assert set(_timing(w)["cells"]) == {"cell_0"}
