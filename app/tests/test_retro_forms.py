@@ -93,8 +93,11 @@ def test_the_run_form_shows_its_choices_again_after_a_refusal(tmp_path,
     client.post("/retro/run", data={**fields, "locations": "panel6",
                                     "knob.groundhog.zero_anchor": "often"},
                 follow_redirects=False)
-    assert "model settings" in ui_state._status["flash"]
-    assert 'open data-refused id="model-settings"' in _run_form()
+    # the panel says it, once (FC-21): no second notice at the top
+    assert "model settings" not in (ui_state._status.get("flash") or "")
+    form = _run_form()
+    assert 'open data-refused id="model-settings"' in form
+    assert "<strong>Not started.</strong>" in form
     assert 'open data-refused' not in _run_form()
 
 

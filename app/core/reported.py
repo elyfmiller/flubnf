@@ -431,11 +431,26 @@ OPTION_TEXT = {
 CARRY_SKIP_TEXT = "Engines' own walk"
 
 
+#: a state's choices that still apply while a run-wide setting counts its
+#: newest week as unreported (covering_rules): both models then forecast
+#: from the week before, as "Both from" does, whatever else is chosen
+RULE_LEAVES = ("set_aside", "omit")
+
+
+def covering_rules(g: Gap) -> list:
+    """The run-wide settings (missing.KEYS) that, set to "missing", count
+    this state's newest week as unreported, as the engines apply them
+    (missing.tail_flags); under any of them only RULE_LEAVES apply."""
+    vals = [v for _, v in g.reported]
+    return [k for k in MS.KEYS if MS.tail_flags(vals, {k: "missing"})]
+
+
 def box_rows(report: Report) -> list:
     """One row per state for templates/_data_issues.html: {fips, name,
     issue, what, flag, hint, rec, why, reported, default, options: [(value,
-    label)], aside: [[week, value]]}. `rec` and `why` are the
-    recommendation (recommend()); `hint` is `why`. Choices a state cannot
+    label)], aside: [[week, value]], rules}. `rec` and `why` are the
+    recommendation (recommend()); `hint` is `why`; `rules` the run-wide
+    settings that cover the state (covering_rules). Choices a state cannot
     take (extend, blend and set aside for 3 or more trailing zeros) are
     left out of its options."""
     rows = []
@@ -470,5 +485,6 @@ def box_rows(report: Report) -> list:
                      "reported": [[w, v] for w, v in g.reported],
                      "default": MS.DEFAULT_CHOICE.get(g.reason, ""),
                      "options": opts,
-                     "aside": [[w, v] for w, v in g.aside]})
+                     "aside": [[w, v] for w, v in g.aside],
+                     "rules": covering_rules(g)})
     return rows

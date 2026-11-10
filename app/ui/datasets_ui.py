@@ -747,7 +747,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     try:
         kraw = knob_values(ds, knob_fields, knobs_json)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Not run: model settings: {e}.", "warn")
+        shared._flash(f"Not run: {forms._refusal_words(str(e))}", "warn")
         return RedirectResponse(here, status_code=303)
     _LAST[ds.id] ={"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
@@ -776,9 +776,9 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
-        # the panel opens on its error, the reason under its head
+        # the panel opens on its error, the reason under its head; no
+        # second notice for it
         _LAST[ds.id]["ms_refused"] = str(e) or True
-        shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)
     # built before the claim: nothing between the claim and the queued
