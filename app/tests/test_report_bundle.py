@@ -465,14 +465,11 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
     (w / "results.json").write_text(json.dumps(
         {"forecast_date": "2098-01-03", "models": {}, "observed": {}}))
     ui_shared._invalidate_scans()
-    # the date's shipped run (its archive holds it): the dated name alone
-    from app.core import archive_record as _ar
-    (tmp_path / "archive" / "2098-01-03").mkdir(parents=True)
-    _ar.write_record(tmp_path / "archive" / "2098-01-03", rid, True, True)
     r = client.get(f"/runs/{rid}/report/download")
     assert r.status_code == 200
+    # the run's id after the date, so two runs of a week never share a name
     assert r.headers["content-disposition"] == (
-        'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report.html"')
+        f'attachment; filename="2098-01-10-NAU_PyBNF-weekly-report-{rid}.html"')
     # no results.json yet: fall back to the run id, never bare report.html
     bare = "20980108T000000-bbbbbb"
     b = tmp_path / "workroots" / bare

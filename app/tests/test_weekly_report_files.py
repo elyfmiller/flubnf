@@ -2,11 +2,11 @@
 
   * A modified run's weekly report saves with its files' "-modified"; the
     date's name stays the hub reference date's otherwise (Decided
-    2026-10-01). The run Output lists as the date's shipped run (the one
-    its archive holds) saves under that name alone; every other run of
-    the date carries its run id, so two never share a name. With no
-    ledger row the folder's own record says which; /output/report/download
-    names it as the run page does.
+    2026-10-01). Every run's report carries its run id before that, so two
+    runs of a week never share a name; only Output's archived week keeps
+    the reference date's name alone (Decided 2026-11-10). With no ledger
+    row the folder's own record says which; /output/report/download names
+    it as the run page does.
   * The report's keys list only the models its panels drew.
   * "back to FluBNF" returns to the console page that opened the report,
     past any jump inside it (its onclick run under node).
@@ -75,18 +75,8 @@ def _run(root, extra=None, outcome=None) -> str:
     return rid
 
 
-def _ship(root, rid: str, date: str = "2026-10-17") -> None:
-    """Make `rid` the date's shipped run: the one its archive records."""
-    from app.core import archive_record as _ar
-    arch = root / "archive" / date
-    arch.mkdir(parents=True, exist_ok=True)
-    _ar.write_record(arch, rid, True, True)
-
-
-PLAIN = "2026-10-24-NAU_PyBNF-weekly-report.html"
-
-
 def _tagged(rid: str, suffix: str = "") -> str:
+    """A run's report name: the reference date's, then the run's id."""
     return f"2026-10-24-NAU_PyBNF-weekly-report-{rid}{suffix}.html"
 
 
@@ -104,9 +94,7 @@ def test_a_modified_runs_report_saves_with_its_files_suffix(root, monkeypatch):
     modified = _run(root, extra={"knobs": {"oracle.w": 0.25}})
     override = _run(root, extra={"knobs": {"oracle.w": 0.25},
                                  "knobs_override": "the registered weight"})
-    _ship(root, shipped)
-    assert _saved_as(f"/runs/{shipped}/report/download") == PLAIN
-    # every other run of the week carries its run id
+    assert _saved_as(f"/runs/{shipped}/report/download") == _tagged(shipped)
     assert _saved_as(f"/runs/{modified}/report/download") == \
         _tagged(modified, "-modified")
     # exported under the hub names by override: named as its files are
@@ -138,7 +126,6 @@ def test_a_modified_run_with_no_ledger_row_keeps_its_files_suffix(
     monkeypatch.setattr(O, "_report_for_serving", lambda d: None)
     ids = {"shipped": _run(root), "modified": _run(root, extra=MODIFIED),
            "override": _run(root, extra=OVERRIDE)}
-    _ship(root, ids["shipped"])
     w = {k: _as_recorded(root, rid) for k, rid in ids.items()}
     before = {k: (w[k] / "report.html").read_bytes() for k in ids}
     assert Ledger().delete_runs(list(ids.values())) == 3
@@ -146,7 +133,7 @@ def test_a_modified_run_with_no_ledger_row_keeps_its_files_suffix(
 
     def name(k):
         return _saved_as(f"/runs/{ids[k]}/report/download")
-    shipped, override = PLAIN, _tagged(ids["override"])
+    shipped, override = _tagged(ids["shipped"]), _tagged(ids["override"])
     modified = _tagged(ids["modified"], "-modified")
     # results.json's spec, as the pipeline named the files from
     assert (name("shipped"), name("modified"), name("override")) == (
@@ -171,21 +158,21 @@ def test_a_modified_run_with_no_ledger_row_keeps_its_files_suffix(
 
 
 def test_the_output_reports_download_takes_its_runs_suffix(root, monkeypatch):
-    """/output/report/download, for a date's archived report and for the
-    report Home shows, is named as the run page's download is."""
+    """/output/report/download, for the report Home shows, is named as the
+    run page's download is; a date's archived report keeps the reference
+    date's name, with its run's suffix."""
     from app.core import archive_record as _ar
     monkeypatch.setattr(O, "_report_for_serving", lambda d: None)
     shipped = "2026-10-24-NAU_PyBNF-weekly-report.html"
     modified = "2026-10-24-NAU_PyBNF-weekly-report-modified.html"
-    # the shipped rule (no date): the run Home shows, the one its date's
-    # archive holds
+    # the shipped rule (no date): the run Home shows
     rid = _run(root, extra=OVERRIDE)
     _as_recorded(root, rid)
-    _ship(root, rid)
     ui_shared._invalidate_scans()          # as a finished run does
-    assert _saved_as("/output/report/download") == shipped
+    assert _saved_as("/output/report/download") == _tagged(rid)
     # a date's archive, the run named in its archive.json
     arch = root / "archive" / "2026-10-17"
+    arch.mkdir(parents=True)
     (arch / "report.html").write_text("<p>a</p>")
     (arch / "results.json").write_text(json.dumps(
         {"forecast_date": "2026-10-17", "models": {}}))

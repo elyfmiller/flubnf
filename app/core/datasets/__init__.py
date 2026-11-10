@@ -119,6 +119,7 @@ from .checks import (
                      WEEKDAYS,
                      group_name_ok,
                      is_national_name,
+                     national_of,
                      series_name,
 )
 from .dataset import (
@@ -244,6 +245,7 @@ __all__ = [
                      "ingest",
                      "ingest_snapshots",
                      "is_national_name",
+                     "national_of",
                      "list_datasets",
                      "name_dates",
                      "number_style",

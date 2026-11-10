@@ -1034,10 +1034,11 @@ def _weekly_report_name(date: str, suffix: str = "", run_id: str = "") -> str:
     date names it by its hub reference date, as the submission CSVs are
     (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
     sorts beside the files it describes; `suffix` is its files' own
-    (_report_suffix: -modified). `run_id` is given for every run but the
-    date's shipped one (_report_tag), so two runs of a week never save
-    under one name. Anything else (a run id with no results.json yet)
-    keeps the older FluBNF-weekly-report-<x>.html."""
+    (_report_suffix: -modified). `run_id` is a run's own (_report_tag):
+    every run's report carries it, so two runs of a week never save under
+    one name; only Output's archived week keeps the reference date's name
+    alone. Anything else (a run id with no results.json yet) keeps the
+    older FluBNF-weekly-report-<x>.html."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
         ref = _reference_date(date)
         if ref:
@@ -1057,19 +1058,14 @@ def _report_run_id(dirpath: Path) -> str:
         (_ar.read_record(d) or {}).get("run_id") or "")
 
 
-def _report_tag(dirpath: Path, date: str) -> str:
-    """The run id a saved report carries: none for the run Output lists as
-    the date's shipped run (the one its archive holds), the run's own id
-    for every other run of that date. Read from the run and the date's
-    archive record, never from which other runs exist."""
-    from app.core import archive_record as _ar
-    from app.core.runs import APP_STATE
-    rid = _report_run_id(dirpath)
-    if not rid or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
-        return ""
-    shipped = str((_ar.read_record(APP_STATE / "archive" / date) or {})
-                  .get("run_id") or "")
-    return "" if rid == shipped else rid
+def _report_tag(dirpath: Path) -> str:
+    """The run id a saved report carries: a run's own, always (its
+    workroot's name), whatever other runs of the week exist or which one
+    the archive holds; none for an archived week (archive/<date>, Output's
+    Archived weeks download), which keeps the reference date's name."""
+    from app.core.runs import is_run_id
+    name = Path(dirpath).name
+    return name if is_run_id(name) else ""
 
 
 def _report_suffix(dirpath: Path) -> str:
@@ -1134,7 +1130,7 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
     downloadlog.write(route or "report download", f)
     return FileResponse(f, filename=_weekly_report_name(
                             date, _report_suffix(dirpath),
-                            _report_tag(dirpath, date)),
+                            _report_tag(dirpath)),
                         media_type="text/html",
                         content_disposition_type="attachment")
 

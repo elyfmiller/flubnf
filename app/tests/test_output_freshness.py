@@ -84,14 +84,10 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
             f"{latest[9:11]}:{latest[11:13]}:{latest[13:15]}")
     assert "as of 2098-01-10" in card
     assert f'<a href="/runs/{latest}">run {when}</a>' in card
-    # the link serves that run's report, under the dated name (it is the
-    # date's shipped run: its archive holds it)
-    from app.core import archive_record as _ar
-    (root / "archive" / "2098-01-10").mkdir(parents=True)
-    _ar.write_record(root / "archive" / "2098-01-10", latest, True, True)
+    # the link serves that run's report, under the dated name and its id
     r = client.get(f"/runs/{latest}/report/download")
     assert r.status_code == 200 and "REPORT latest" in r.text
-    assert "2098-01-17-NAU_PyBNF-weekly-report.html" in \
+    assert f"2098-01-17-NAU_PyBNF-weekly-report-{latest}.html" in \
         r.headers["content-disposition"]
     # a page left open keeps naming its own run's report
     _run(root, "2098-01-17", "newer")

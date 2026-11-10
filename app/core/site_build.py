@@ -84,11 +84,14 @@ ROOT_ORDER = (("lab run", APP_STATE / "retro"),
 def _public_root(root) -> str:
     """A season root as site.json names it: relative to the checkout
     (app/state/retro/2025-26). Under a state folder FLUBNF_STATE_DIR moved
-    elsewhere it keeps that app/state/... name, never the machine's own
-    path; a root outside both stays as it is."""
+    elsewhere (a sibling such as flubnf-state included) it keeps that
+    app/state/... name, never the machine's own path; a root outside both
+    stays as it is."""
     p = Path(root)
-    if str(p).startswith(str(REPO)):
+    try:
         return str(p.relative_to(REPO))
+    except ValueError:
+        pass
     try:
         return str(Path("app") / "state" / p.relative_to(APP_STATE))
     except ValueError:
