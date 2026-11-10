@@ -160,21 +160,40 @@ WORKBOOK_MAGIC = (b"PK\x03\x04", b"\xd0\xcf\x11\xe0")
 
 def not_text(head: bytes) -> str:
     """Why a file's first bytes are no text FluBNF reads, or '': a workbook
-    (WORKBOOK_MAGIC), or control bytes throughout in no UTF-16 or UTF-32
-    pattern (binary). Said before any reading, so neither is named by the
-    NUL characters in its "header" or read as Windows-1252."""
+    (WORKBOOK_MAGIC), or binary data (_binary). Said before any reading,
+    so neither is named by the NUL characters in its "header" or read as
+    Windows-1252."""
     if head.startswith(WORKBOOK_MAGIC):
         return ("This looks like an Excel workbook, not a CSV file: save it "
                 "as CSV UTF-8.")
-    # control bytes throughout (not tab, newline or return): binary, unless
-    # they are UTF-16's or UTF-32's padding; a stray NUL in a text cell is
-    # shown as a cell, not refused
-    control = sum(head.count(bytes([b])) for b in range(32)
-                  if b not in (9, 10, 13))
-    if control >= max(8, len(head) // 64) and detect_encoding(head) == "utf-8":
+    if _binary(head):
         return ("The file is not text: it holds binary data. Save it as CSV "
                 "UTF-8.")
     return ""
+
+
+def _binary(head: bytes) -> bool:
+    """Whether a file's first bytes are binary data, not text: control bytes
+    (not tab, newline or return) throughout, in no UTF-16 or UTF-32
+    pattern, and either over a quarter of the head (zero-filled data, a
+    database) or beside bytes that read as no text: not UTF-8, and a tenth
+    or more past ASCII (Windows-1252 text has few). Random or compressed
+    data (an image, a gzip) is about a ninth control bytes and half past
+    ASCII. A CSV with a few control bytes in its cells (vertical tabs
+    pasted from Word, a stray NUL) is text: read as before, the cells shown
+    or the column ignored."""
+    n = len(head)
+    control = sum(head.count(bytes([b])) for b in range(32)
+                  if b not in (9, 10, 13))
+    if control < max(8, n // 64) or detect_encoding(head) != "utf-8":
+        return False
+    if control * 4 > n:
+        return True
+    try:          # a character cut at the head's end does not count
+        codecs.getincrementaldecoder("utf-8")().decode(head, final=False)
+        return False
+    except UnicodeDecodeError:
+        return sum(head.count(bytes([b])) for b in range(128, 256)) * 10 >= n
 
 
 def detect_encoding(head: bytes) -> str:
