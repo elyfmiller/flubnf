@@ -302,9 +302,11 @@
  the as-of week. Second, the filter's forecast: its sample paths for the
  next four weeks, and the filter's own growth at the forecast origin.
  Third, the growth blend: each sample path draws one donor path, and its
- forward growth becomes the geometric mean, half and half, of the filter's
- growth and that donor's growth. Fourth, the Oracle SIHRS forecast, propagated from the
- filter's own state and reduced to 23 quantiles. Below the blend, the donor
+ forward growth becomes the weighted geometric mean of the filter's growth
+ and that donor's growth, half and half as registered; the rounds submitted
+ since 2026-10-17 use one quarter on the filter's growth. Fourth, the
+ Oracle SIHRS forecast, propagated from the filter's own state and reduced
+ to 23 quantiles. Below the blend, the donor
  pool feeds it: growth paths from strictly earlier seasons at this calendar
  week, within two epiweeks, half from NHSN admissions and half from
  FluSurv-NET hospitalization rates (the Groundhog's own donor bank), one
@@ -427,7 +429,9 @@
   &#8195;<span class="nw"><i>k</i> = 1..4</span>{% endset %}
 {%- set blend_note %}the growth blend: each path's growth over forecast
   week <i>k</i> is the geometric mean of the filter's rate at the origin
-  <i>T</i> and its donor's at the matching earlier-season week <i>W</i>{% endset %}
+  <i>T</i> and its donor's at the matching earlier-season week <i>W</i>;
+  the rounds submitted since 2026-10-17 use one quarter on the filter's
+  growth{% endset %}
 {%- set few %}A week where neither stream supplies 30 donor paths leaves
  the filter unchanged; where only one does, that stream supplies every
  donor.{% endset %}
@@ -742,7 +746,7 @@
   accumulated across the reporting week, from the one accumulator that sums
   both circuits{% endset %}
 {%- set typed %}typed positives: <i>k</i><sub>A</sub> &#8764;
-  <span class="nw">Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>{% endset %}
+  <span class="nw">Binomial(&#8239;<i>n</i>,</span> <span class="nw">share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>{% endset %}
 {%- set typed_note %}the second likelihood channel: the admissions channel
   sees only the ascertained total, so typed specimens fit the A/B
   share{% endset %}

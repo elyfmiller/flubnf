@@ -55,22 +55,26 @@
   </div>
   {% endif %}
   {# the rest of the map reads "not in this run" in its legend; the
-     national forecast has no shape, so it is a fact here #}
+     national forecast has no shape, so it is a fact here. With a model
+     toggle the line is there when any model it shows has a national
+     forecast, and reads "no forecast" for one that has none #}
+  {% set us_map = (outlook_us_by_model or {}) if (outlook_toggle and outlook_us_by_model is defined) else {} %}
+  {% set us_any = outlook_us or (us_map.values() | select | list) %}
   {% call tips.stats("uk-stats--row hm-mapstats") %}
    {{ tips.stat("Coverage", outlook_n ~ " of 52", "jurisdictions", id="hm-cover") }}
-   {% if outlook_us %}{% set us %}<span data-us-words>{{ outlook_us }}</span>{% endset %}
+   {% if us_any %}{% set us %}<span data-us-words>{{ outlook_us or "no forecast" }}</span>{% endset %}
    {{ tips.stat("United States", us, id="hm-us") }}{% endif %}
   {% endcall %}
-  {% if outlook_toggle and outlook_us %}
+  {% if outlook_toggle and us_any %}
   <script>
   (function () {
     // the national line follows the model toggle, as the states do
-    var W = {{ (outlook_us_by_model if outlook_us_by_model is defined else {}) | tojson }};
+    var W = {{ us_map | tojson }};
     var g = document.getElementById('outlook-model'), v = document.querySelector('[data-us-words]');
     if (!g || !v) return;
     g.addEventListener('click', function (e) {
       var b = e.target.closest ? e.target.closest('button[data-mmodel]') : null;
-      if (b && W[b.dataset.mmodel]) v.textContent = W[b.dataset.mmodel];
+      if (b) v.textContent = W[b.dataset.mmodel] || 'no forecast';
     });
   })();
   </script>
@@ -383,6 +387,9 @@
  {# the engine absent, by the check (its files) or by the probe (both
     parts): one value, as the badge counts it #}
  {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
+ {# its own Python missing (the venv): the engine cannot run whatever
+    build the checkout holds, so the versions row names it once #}
+ {% set engine_venv_absent = engine_absent | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
  {# the engine build when it is not production (the fix in its tip); not
     the public engine's unreadable build while the engine is missing: the
     lines above already say so, and how to add it #}
@@ -400,7 +407,7 @@
     self-reported version until then. data-vkey spans are base.html's
     version poll targets #}
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
-  {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
+  {% if engine_venv_absent or ((engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known) %}
   {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
   {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine", state=("" if versions.pybnf == version_pending else "warn")) }}
   {% else %}

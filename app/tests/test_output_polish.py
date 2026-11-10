@@ -125,8 +125,12 @@ Date.now=function(){return now;};
 var left={textContent:'2 days 12 h left',
   getAttribute:function(){return '2098-01-08T04:00:00Z';}};
 var badge={getAttribute:function(){return '2098-01-05T17:00:00Z';}};
+// the server's clock stamped on the page ([data-out-now]); none here, so
+// the browser's clock is the server's
+var stamps=[];
 var document={hidden:false,activeElement:null,
-  querySelectorAll:function(s){return s==='[data-out-left]'?[left]:[badge];},
+  querySelectorAll:function(s){return s==='[data-out-left]'?[left]:
+    s==='[data-out-flips]'?[badge]:s==='[data-out-now]'?stamps:[];},
   addEventListener:function(){}};
 var window={}, location={reload:function(){reloads++;}};
 var sessionStorage={getItem:function(k){return store[k]||null;},

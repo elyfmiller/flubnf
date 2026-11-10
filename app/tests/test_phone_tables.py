@@ -129,7 +129,10 @@ def test_a_long_fold_title_wraps_beside_its_chevron():
 
 def test_the_harmonic_scrolls_on_a_phone_and_set_expressions_hold_together():
     # MO-23: the harmonic's labels shrank to 8 px; "s ∈" / "{A, B}" and
-    # "Binomial( n, shareA/" / "(A+B))" broke mid-expression
+    # "Binomial( n, shareA/" / "(A+B))" broke mid-expression. The Binomial
+    # holds together in two halves with one break between them, after
+    # "n,": whole, it was wider than a phone's card at 160% text
+    # (test_s3b_methods measures each half)
     for page in ("/models", "/model/pf2s", "/"):
         html = client.get(page).text
         assert re.search(r'<div class="figscroll" tabindex="0" role="region" '
@@ -137,8 +140,9 @@ def test_the_harmonic_scrolls_on_a_phone_and_set_expressions_hold_together():
                          r'<svg class="dg-harm" viewBox="0 0 560 232"', html), page
     pf2s = client.get("/model/pf2s").text
     assert '<span class="nw"><i>s</i> &#8712; {A, B}</span>' in pf2s
-    assert ('<span class="nw">Binomial(&#8239;<i>n</i>, '
-            'share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>') in pf2s
+    assert ('<span class="nw">Binomial(&#8239;<i>n</i>,</span> '
+            '<span class="nw">share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)'
+            '&#8239;)</span>') in pf2s
     for cas in (HOME, MODEL):
         box = MAIN + ("div.card", "div.figscroll[tabindex=0][role=region]")
         assert _get(cas, box + ("svg.dg-harm",), "min-width", PHONE) == (

@@ -18,15 +18,14 @@
    too (their badges, figures and fields carry no tips of their own); the
    Your data tab's is its replays' heading #}
 {% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1", rich=True, tip_label="the retrospective") %}
- <span class="uk-tt-line">Replays a past season week by week on the data each
- Saturday had, then scores against settled truth.
+ <span class="uk-tt-line">Replays a past season week by week on each
+ Saturday's data, then scores against settled truth.
  relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span>
  <span class="uk-tt-line">Resume, or Run, continues a stopped or interrupted
- replay from its last completed week with the recorded settings. Archived
- and imported replays open as the live season does.</span>
- <span class="uk-tt-line">Import a replay takes the .flubnf-replay.zip that
- Export replay writes on a season page; an import is read only, and
- Delete removes it.</span>
+ replay from its last completed week with the recorded settings.</span>
+ <span class="uk-tt-line">Import a replay takes the .flubnf-replay.zip from
+ Export replay on a season page; it is read only, and Delete removes
+ it.</span>
 {% endcall %}{% endif %}
 {# the data source as two tabs, as on Forecast: the FluSight hub's
    seasons, or your own datasets (_dataset_replay.html); plain links, so

@@ -296,7 +296,9 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     record for that week passes through verbatim (the engines match its
     set-asides against the data) and the form's fields are ignored.
     Refuses when the data changed since the box was built and when a
-    choice is not one the state was offered."""
+    choice is not one the state was offered; a recorded choice the
+    run-wide setting now removes is dropped instead, so the setting covers
+    the state (a re-run cannot choose again)."""
     from app.core import missing as MS
     from app.core import reported as _rep
     locs = list(locs)
@@ -338,9 +340,15 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             offered = {c: t for c, t in offered.items()
                        if c in _rep.RULE_LEAVES}
         choice = gap_fields.get(g.fips)
-        if choice is None:
+        from_record = choice is None
+        if from_record:
             choice = str((prior_states.get(g.location) or {}).get("choice")
                          or "")
+        if choice and choice not in offered and ruled and from_record:
+            # a re-run's recorded choice the run-wide setting now removes:
+            # a re-run cannot choose again, so the setting covers the state
+            # as it does a state with no choice (it keeps precedence)
+            choice = ""
         if choice and choice not in offered:
             if ruled:
                 k = _knobs.BY_KEY[ruled[0]]

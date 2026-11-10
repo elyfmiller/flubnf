@@ -85,7 +85,10 @@ def test_every_location_reported(tmp_path, monkeypatch):
     r = reported.check()
     assert r.complete and r.kind == "live" and r.week == NEW
     assert r.expected == len(LOCS)
-    assert r.line() == f"All {len(LOCS)} jurisdictions reported for week {NEW}"
+    # the hub's locations, US among them: "locations", never
+    # "jurisdictions" (52 of those; bug hunt G35, UI-15, review of #97)
+    assert r.line() == f"All {len(LOCS)} locations reported for week {NEW}"
+    assert "jurisdiction" not in r.line()
     assert r.short() == f"All {len(LOCS)} reported"
 
 

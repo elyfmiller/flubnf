@@ -82,6 +82,25 @@ def test_data_says_the_clone_is_missing_and_what_fetches_it(nohub):
         "To fetch it, run ./setup.sh and relaunch the console.")
 
 
+def test_with_no_hub_data_the_comparators_row_does_not_offer_update_data(nohub):
+    # no folder: Update data is refused, so the row's hint would send the
+    # user to a button that cannot help; the alert above names the step
+    html = client.get("/data").text
+    assert 'id="hub-missing"' in html and 'id="comp-missing"' in html
+    assert "Update data adds them" not in html
+    # a clone without its data directories: the alert says the same
+    nohub.mkdir()
+    html = client.get("/data").text
+    assert 'id="hub-missing"' in html and 'id="comp-missing"' in html
+    assert "Update data adds them" not in html
+    # the clone's data there, its comparators not: Update data adds them
+    (nohub / "auxiliary-data").mkdir()
+    html = client.get("/data").text
+    assert 'id="hub-missing"' not in html
+    assert ("baseline, ensemble missing</span></span> "
+            '<span class="hint">Update data adds them.</span>') in html
+
+
 def test_forecast_says_the_clone_is_missing_and_refuses_a_run(nohub):
     html = client.get("/forecast").text
     alert = html.split('id="fc-hub-missing"', 1)[1].split("</div>", 1)[0]
@@ -101,10 +120,17 @@ def test_forecast_says_the_clone_is_missing_and_refuses_a_run(nohub):
 
 # --------------------------------------------- HM-08 and HM-11: the Setup card
 
-def _home(missing, versions, engine_known=False, platform="linux"):
+def _home(missing, versions, engine_build=None, platform="linux"):
+    """Home under this check, these versions and this engine build:
+    unknown unless given, never the build this machine's own engine
+    snapshot holds (the badge, the build line and the versions row all
+    read it)."""
+    # the startup warm pass fills VERSIONS and ENGINE_BUILD in place: it
+    # finishes first, or it may overwrite what the page is given here
+    assert ui_state._WARM_DONE.wait(60)
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(fs, "check", lambda verbose=True: missing)
-        mp.setattr(H, "_engine_known", lambda: engine_known)
+        mp.setattr(V, "ENGINE_BUILD", dict(engine_build or {}))
         mp.setattr(templating, "_platform", lambda: platform)
         for k, v in versions.items():
             mp.setitem(V.VERSIONS, k, v)
@@ -113,6 +139,9 @@ def _home(missing, versions, engine_known=False, platform="linux"):
 
 INSTALLED = {"pybnf": "1.0", "bngsim": "0.15.1", "bionetgen": "2.9",
              "perl": "5.38", "fastapi": "0.1", "plotly": "7.0"}
+#: the private engine's production build, as its checkout reads to git
+KNOWN_BUILD = {"branch": "feature/particle-filter", "commit": "2fdadee0",
+               "dirty": False, "source": "git", "path": "/p"}
 HUB_GONE = ("FLUBNF_HUB", "/x/auxiliary-data",
             "FluSight hub clone (truth vintages, locations)")
 BNG_GONE = ("FLUBNF_BNG", "/x/BNG2.pl", "BioNetGen BNG2.pl (network generation)")
@@ -157,15 +186,43 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
     assert 'id="hm-v-engine"' not in html
 
 
-def test_a_machine_without_the_engine_says_so_once_in_setup(monkeypatch):
+def test_a_known_build_without_its_python_is_one_engine_entry():
+    """The fork checkout is there (its build is known) but the engine's own
+    Python is not: the versions row names the engine once, as with no
+    engine at all, never "PyBNF <build>" beside "bngsim not installed"."""
+    venv_gone = [ENGINE_GONE[0]]
+    html = _home(venv_gone, dict(INSTALLED, pybnf="not installed",
+                                 bngsim="not installed"),
+                 engine_build=KNOWN_BUILD)
+    assert ">1 not installed<" in html
+    row = html.split('aria-label="Component versions"', 1)[1].split("</dl>", 1)[0]
+    assert 'id="hm-v-engine"' in row and f"<dt>{ENGINE}</dt>" in row
+    assert '<span data-vkey="pybnf">not installed</span>' in row
+    assert 'id="hm-v-pybnf"' not in row and 'id="home-pin"' not in row
+    assert "<dt>PyBNF</dt>" not in row and "<dt>bngsim</dt>" not in row
+    assert row.count("not installed") == 1
+    # still resolving: the one entry waits, as the badge does
+    html = _home(venv_gone, dict(INSTALLED, pybnf=V.VERSION_PENDING,
+                                 bngsim=V.VERSION_PENDING),
+                 engine_build=KNOWN_BUILD)
+    assert 'id="hm-v-engine"' in html and 'id="home-pin"' not in html
+    # the Python there too: PyBNF names the build, bngsim its version
+    html = _home([], INSTALLED, engine_build=KNOWN_BUILD)
+    row = html.split('aria-label="Component versions"', 1)[1].split("</dl>", 1)[0]
+    assert 'id="hm-v-pybnf"' in row and 'id="home-pin"' in row
+    assert "<span data-engine-label>2fdadee0 (feature/particle-filter)" in row
+    assert 'id="hm-v-engine"' not in row and "not installed" not in row
+
+
+def test_a_machine_without_the_engine_says_so_once_in_setup():
     """No engine (a student laptop): the Setup card names it once, with
     its fix and one "?" (where it was looked for); the build line that
     would repeat it is not shown."""
     from test_fewer_marks import marks
-    monkeypatch.setattr(V, "ENGINE_BUILD", {
-        "engine": "public", "error": "there is no Python at /v/bin/python"})
     html = _home(ENGINE_GONE,
-                 dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
+                 dict(INSTALLED, pybnf="not installed", bngsim="not installed"),
+                 engine_build={"engine": "public",
+                               "error": "there is no Python at /v/bin/python"})
     setup = html.split('class="card hm-setup"', 1)[1]
     assert setup.count("To add the particle-filter engine") == 1
     assert "data-engine-build" not in setup

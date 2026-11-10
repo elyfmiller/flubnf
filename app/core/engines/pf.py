@@ -388,19 +388,21 @@ def bng_failure_text(r, sep: str = "\n") -> str:
 
 def bng_said_why(said: str) -> str:
     """BNG2.pl's own account of what stopped it, from `said` (its output,
-    or bng_failure_text of the run): the ERROR line, with the "at line N"
-    that follows it as "(line N)"; else the ABORT line; else the last
+    or bng_failure_text of the run): the ERROR line, else the ABORT line,
+    each with the "at line N" that follows it as "(line N)"; else the last
     line. '' when it said nothing."""
     lines = [l.strip() for l in str(said or "").splitlines() if l.strip()]
-    for i, line in enumerate(lines):
-        if line.startswith("ERROR:"):
-            why = line[len("ERROR:"):].strip()
-            at = (re.match(r"at line (\d+)\b", lines[i + 1])
-                  if i + 1 < len(lines) else None)
-            return why + (f" (line {at.group(1)})" if at else "")
-    for line in lines:
-        if line.startswith("ABORT:"):
-            return line[len("ABORT:"):].strip()
+
+    def with_line(i: int, tag: str) -> str:
+        why = lines[i][len(tag):].strip()
+        at = (re.match(r"at line (\d+)\b", lines[i + 1])
+              if i + 1 < len(lines) else None)
+        return why + (f" (line {at.group(1)})" if at else "")
+
+    for tag in ("ERROR:", "ABORT:"):
+        for i, line in enumerate(lines):
+            if line.startswith(tag):
+                return with_line(i, tag)
     return lines[-1] if lines else ""
 
 

@@ -126,6 +126,26 @@
 {%- else %}{{ b }}{% endif %}
 {%- endmacro %}
 
+{# a notice's title as its "?" names it mid-sentence (alert, empty): the
+   first word lowered ("No run ..." reads "About no run ..."), unless the
+   title starts with one of these names, whole ("New York" is kept, "New
+   run" is lowered), or its first word has a capital after its first letter
+   (FluSight, NHSN, an id). The names: the 52 jurisdictions and US, then
+   the models, data and tools the console names. Words after the first
+   stay as written. #}
+{% set KEEP_NAMES = ["US", "Alabama", "Alaska", "Arizona", "Arkansas",
+ "California", "Colorado", "Connecticut", "Delaware", "District of Columbia",
+ "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
+ "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+ "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+ "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York",
+ "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+ "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+ "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+ "West Virginia", "Wisconsin", "Wyoming", "Puerto Rico",
+ "Groundhog", "Oracle", "SIHRS", "FluBNF", "FluSight", "Liu-West", "NHSN",
+ "FluSurv-NET", "CDC", "Delphi", "BioNetGen", "Python", "Poisson"] %}
+
 {# a line the user must act on now: one short line, the details in its tip.
    kind: error (announced as an alert), warn, info, ok (announced politely);
    live="" silences it (a line present from first paint that is not news).
@@ -139,9 +159,9 @@
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
 <div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
-{#- the "?" names the alert mid-sentence: its first word lowered unless it
-    is a name or an acronym (FluSight, US), ids and names as written #}
-{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "alert", tip_label or (t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:]), body) }}{% endif %}</span>
+{#- the "?" names the alert mid-sentence: its first word lowered unless
+    the title starts with a name (KEEP_NAMES) or an acronym #}
+{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %}{% set k = namespace(keep=w[1:] != w[1:] | lower) %}{% for n in KEEP_NAMES if not k.keep and t.startswith(n) and not (t ~ " ")[n | length].isalpha() %}{% set k.keep = true %}{% endfor %} {{ tip(id or "alert", tip_label or (t if k.keep else (t[:1] | lower) ~ t[1:]), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
 
@@ -153,7 +173,7 @@
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
 {#- named as the alert's "?" is #}
-{%- if body | trim %}{% set t = title | string %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "empty", t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:], body) }}{% endif %}</p>
+{%- if body | trim %}{% set t = title | string %}{% set w = t.split(" ", 1)[0] %}{% set k = namespace(keep=w[1:] != w[1:] | lower) %}{% for n in KEEP_NAMES if not k.keep and t.startswith(n) and not (t ~ " ")[n | length].isalpha() %}{% set k.keep = true %}{% endfor %} {{ tip(id or "empty", t if k.keep else (t[:1] | lower) ~ t[1:], body) }}{% endif %}</p>
 {%- if action %}<div class="uk-empty-action">{{ action }}</div>{% endif %}</div>
 {%- endmacro %}
 

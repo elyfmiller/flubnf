@@ -2,8 +2,9 @@
 
 The public site generator (`flubnf site build` -> site/).
 
-Reads app/state (season roots, the newest run bundle) and the hub clone and
-writes a static, offline-openable page. Nothing is typed by hand. app/state
+Reads app/state, or the folder FLUBNF_STATE_DIR names (season roots, the
+newest run bundle), and the hub clone and writes a static,
+offline-openable page. Nothing is typed by hand. app/state
 is gitignored, so the generated page IS the published evidence, reviewed as
 a diff and committed: site.json is data-only and pretty-printed so a
 rebuild's diff shows which numbers moved.
@@ -39,10 +40,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.core import horizons as hz
+#: the console's state folder (FLUBNF_STATE_DIR moves it): the season
+#: roots and run workroots are read where the console writes them
+from app.core.runs import APP_STATE
 
 APP = Path(__file__).resolve().parents[1]
 REPO = APP.parent
-APP_STATE = APP / "state"
 TEMPLATES = APP / "ui" / "templates"
 STATIC = APP / "ui" / "static"
 BNGL = REPO / "flubnf" / "templates" / "SIHRS_pop_min.bngl"

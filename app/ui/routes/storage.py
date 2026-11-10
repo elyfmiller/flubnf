@@ -59,6 +59,29 @@ def _storage_protected(p: Path) -> bool:
         p, [base for base, _ in _sealed_roots()] + [HUB])
 
 
+#: a dataset run's export folder in its workroot (custom_run.EXPORT_DIR,
+#: named here so the Storage page does not load that module's science
+#: imports; test_s3b_storage holds the two equal)
+_EXPORT_DIR = "export"
+
+
+def _workroot_files(p: Path) -> str:
+    """What a workroot's Delete takes with it beyond the working files, in
+    the delete hint's words ("report and submission files", "report",
+    "export files"); "" when it holds none (a stopped run may have written
+    neither)."""
+    have = []
+    if (p / "report.html").is_file():
+        have.append("report")
+    for sub, words in (("submission", "submission files"),
+                       (_EXPORT_DIR, "export files")):
+        if next(p.glob(f"{sub}/*/*.csv"), None) is not None:
+            have.append(words)
+    if len(have) > 2:
+        return ", ".join(have[:-1]) + " and " + have[-1]
+    return " and ".join(have)
+
+
 def _live_workroot_ids() -> set:
     """Workroot directory names a worker may be writing into right now."""
     out = set()
@@ -224,8 +247,9 @@ def _ledger_parts(run_id: str, spec) -> list:
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
     archives, report archives, your datasets (each with a busy flag and,
-    when busy, "why" it cannot be deleted), plus the protected trees (no
-    controls). total_bytes/total_h sum the managed categories only, each
+    when busy, "why" it cannot be deleted; all but a dataset with a
+    "protected" flag, whose row has no Delete), plus the protected trees
+    (no controls). total_bytes/total_h sum the managed categories only, each
     byte once: a dataset adds its own folder (the upload and its replays),
     its runs being counted as workroots. "cats" splits that total by
     category (the page's composition bar and legend). "students" holds
@@ -271,6 +295,8 @@ def _storage_inventory() -> dict:
                 "modified": _runs.is_modified(row.get("spec", "")),
                 "busy": p.name in live_ids,
                 "protected": _storage_protected(p),
+                # what its delete hint says goes with it (_workroot_files)
+                "files": _workroot_files(p),
                 "why": (_busy_why("workroot", p.name)
                         if p.name in live_ids else ""),
                 # for the dataset rows: the run's size and its dataset
@@ -287,6 +313,7 @@ def _storage_inventory() -> dict:
                     "id": p.name, "size_h": retro.human_bytes(size),
                     "bytes": size, "status": st,
                     "busy": st in _RETRO_ACTIVE,
+                    "protected": _storage_protected(p),
                     "why": (_busy_why("retro-season", p.name, st)
                             if st in _RETRO_ACTIVE else "")})
                 continue
@@ -305,6 +332,7 @@ def _storage_inventory() -> dict:
                     "imported": replay_bundle.imported_label(p),
                     "size_h": retro.human_bytes(size), "bytes": size,
                     "busy": _season_status(season) in _RETRO_ACTIVE,
+                    "protected": _storage_protected(p),
                     "why": _busy_why("retro-archive", season)})
     # held only while the run in progress can write a report archive, and
     # then only its own date's
@@ -320,6 +348,7 @@ def _storage_inventory() -> dict:
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
             "busy": run_fd is not None and run_fd in ("", d),
+            "protected": _storage_protected(arch / d),
             "why": _busy_why("report-archive", d)})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
     for d in inv["datasets"]:

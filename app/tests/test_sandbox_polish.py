@@ -11,7 +11,8 @@
     run points at it, or says the reason when the model is not here to
     open (SB-19).
   * One rule between a run's summary and the section under it (SB-20).
-  * What changed names its settings and writes 10,000 (SB-21).
+  * What changed names its settings and writes 10,000, the seed as its
+    field writes it (SB-21).
   * A dataset start has no Oracle step card; the step's donors are said
     in words and w once (SB-22).
   * The engine keys table leaves out the engine's plumbing (SB-23).
@@ -177,6 +178,23 @@ def test_what_changed_names_its_settings_and_writes_numbers(sandbox_root):
     assert '"typed"' not in tpl and '{{ da.location or "as written" }}' in tpl
     from app.core import sandbox_export as SX
     assert SX.RUN_SETTING_LABELS["n_obs"] == "weeks of data"
+
+
+def test_what_changed_writes_the_seed_as_its_field_does(sandbox_root):
+    # the seed field refuses "1,234" and the Run settings card shows the
+    # seed plain: What changed writes it the same way, counts with commas
+    sb.add_example("kinetics_example")
+    a = sb.prepare("kinetics_example", particles=10000, seed=20240907)
+    _finish(a)
+    time.sleep(1.1)
+    b = sb.prepare("kinetics_example", particles=500, seed=1234)
+    _finish(b)
+    html = client.get(f"/sandbox?model=kinetics_example&run={b.name}"
+                      f"&compare={a.name}").text
+    diff = html[html.index('class="card sbdiff"'):]
+    assert "<td>particles</td><td>10,000</td><td>500</td>" in diff
+    assert "<td>seed</td><td>20240907</td><td>1234</td>" in diff
+    assert "20,240,907" not in html and "1,234" not in html
 
 
 def test_a_dataset_start_has_no_oracle_step_card():

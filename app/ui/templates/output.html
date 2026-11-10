@@ -83,7 +83,7 @@
 {% else %}
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
-<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written. The newest date, an open or coming round and a date being written get a card; other dates one line each.</span>
+<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
 <span class="uk-tt-line">A date run more than once shows the newest complete run's files: all 53 locations first, and a run made in the round's own week before a later vintage run. Modified settings write &lt;model&gt;-modified files, not for the hub.</span>
 <span class="uk-tt-line">The hub takes files from Sunday to Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes them; you upload them yourself.</span>
 {% endset %}
@@ -176,7 +176,9 @@
 </div>
 {% endif %}
 {{ fr.copy_script() }}
-<script>
+{# data-out-now: the server's clock as it rendered the page
+   (routes/output.output_page); the countdown below keeps time by it #}
+<script{% if server_now %} data-out-now="{{ server_now }}"{% endif %}>
  // a round's close in the reader's own clock (the badge says Eastern);
  // a time the browser cannot read keeps the Eastern words
  (function(){
@@ -192,10 +194,16 @@
  // a page left open keeps a due round's time left to the minute, and
  // reloads once when a badge changes (the window opens, its last 12
  // hours, it closes: the badge and the primary Download follow). Each
- // change reloads at most once, so a clock ahead of the server's cannot
- // loop; the reload waits while a form has focus or the guard modal is open
+ // change reloads at most once, so it cannot loop; the reload waits while
+ // a form has focus or the guard modal is open. Time is the server's, the
+ // one its badges change by: the browser's clock plus the gap measured at
+ // load (data-out-now), so a browser clock ahead of the server's does not
+ // reload before the badge has changed and then never again
  (function(){
-  var lefts=document.querySelectorAll('[data-out-left]'),flips=[];
+  var lefts=document.querySelectorAll('[data-out-left]'),flips=[],
+      srv=document.querySelectorAll('[data-out-now]'),
+      gap=srv.length?Date.parse(srv[0].getAttribute('data-out-now'))-Date.now():0;
+  if(isNaN(gap))gap=0;
   document.querySelectorAll('[data-out-flips]').forEach(function(e){
    e.getAttribute('data-out-flips').split(' ').forEach(function(s){var t=Date.parse(s);if(!isNaN(t))flips.push(s);});
   });
@@ -210,7 +218,7 @@
   }
   function done(s){try{return sessionStorage.getItem('out-flip '+s)==='1';}catch(e){return false;}}
   function tick(){
-   var now=Date.now(),i,t,s;
+   var now=Date.now()+gap,i,t,s;
    for(i=0;i<lefts.length;i++){
     t=Date.parse(lefts[i].getAttribute('data-out-left'));
     s=isNaN(t)?'':left(t-now);

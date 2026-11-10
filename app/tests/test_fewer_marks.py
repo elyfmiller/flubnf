@@ -106,12 +106,33 @@ def test_each_page_keeps_only_the_marks_that_explain_something():
         assert rest == keep, (path, sorted(rest))
 
 
-def test_every_page_holds_one_i_and_the_forecast_tab_two():
-    """At most one "i" a page as served: the Forecast tab's Settings card
-    and its Model settings panel are the two it keeps."""
+def opened(html: str) -> str:
+    """The page with every fold opened, so a mark inside a closed fold
+    counts as one the reader meets on opening it."""
+    return re.sub(r"<details\b(?![^>]*\sopen(?=[\s=/>]))", "<details open",
+                  html)
+
+
+#: the two run forms: their page's (or Settings card's) "i" and the Model
+#: settings panel's, which opens below it (review of #97, UI-13)
+TWO_I = {"/forecast": ("tt-fc-settings", "tt-ms-about"),
+         "/retro": ("tt-rt-page", "tt-ms-about")}
+
+
+def test_every_page_holds_one_i_and_the_run_forms_two():
+    """At most one "i" a page, every fold opened: the Forecast tab and
+    Retrospective keep two, the first theirs and the second their Model
+    settings panel's."""
     for path in list(KEEP) + ["/forecast", "/output", "/storage"]:
-        tts = [m for m in marks(client.get(path).text) if m.startswith("tt-")]
-        assert len(tts) <= (2 if path == "/forecast" else 1), (path, tts)
+        html = client.get(path).text
+        tts = [m for m in marks(opened(html)) if m.startswith("tt-")]
+        if path in TWO_I:
+            assert tuple(tts) == TWO_I[path], (path, tts)
+            # the panel's "i" sits in a closed fold as served
+            assert [m for m in marks(html) if m.startswith("tt-")] == \
+                [TWO_I[path][0]], path
+        else:
+            assert len(tts) <= 1, (path, tts)
 
 
 def test_the_display_menu_has_no_visible_question_marks():

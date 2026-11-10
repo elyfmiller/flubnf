@@ -259,11 +259,12 @@ class Report:
 
     def line(self) -> str:
         """The Data tab's line (and the Update data message's): 'All 53
-        jurisdictions reported for week W' when clean, else short(); the
-        week is on the card above it and the names are in the tip
-        (details)."""
+        locations reported for week W' when clean (the hub's locations, US
+        included, so not "jurisdictions": there are 52 of those), else
+        short(); the week is on the card above it and the names are in the
+        tip (details)."""
         if self.clean:
-            return (f"All {self.expected} jurisdictions reported for week "
+            return (f"All {self.expected} locations reported for week "
                     f"{self.week}")
         return self.short()
 
