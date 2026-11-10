@@ -1,0 +1,949 @@
+diff --git a/app/core/retro.py b/app/core/retro.py
+index f652207f..e51eb36d 100644
+--- a/app/core/retro.py
++++ b/app/core/retro.py
+@@ -79,7 +79,8 @@ from app.core.retro_settings import (  # noqa: F401
+ from app.core.retro_archive import (  # noqa: F401
+     ARCHIVE_SEP, _STAMP_RE, _SUMMARY_CACHE, _SUMMARY_CACHE_MAX, archive_dir,
+     archive_run, archive_stamp_of, delete_tree, dir_size, human_bytes,
+-    list_archive_dirs, stamp_human, utc_human, utc_stamp, valid_stamp)
++    list_archive_dirs, stamp_human, stamp_local, utc_human, utc_stamp,
++    valid_stamp)
+ 
+ SEASON_BOUNDS = {"2023-24": ("2023-08-01", "2024-06-15"),
+                  "2024-25": ("2024-08-01", "2025-06-15"),
+diff --git a/app/core/retro_archive.py b/app/core/retro_archive.py
+index e42bd6da..23d4f0c9 100644
+--- a/app/core/retro_archive.py
++++ b/app/core/retro_archive.py
+@@ -51,6 +51,18 @@ def stamp_human(stamp: str) -> str:
+         return stamp or ""
+ 
+ 
++def stamp_local(stamp: str) -> str:
++    """'20260821T143012Z' as the computer's own clock, '2026-08-21 07:30'
++    in Arizona: the Storage tab lists an archived run beside run times,
++    which are local. An unparseable stamp is returned unchanged."""
++    try:
++        base = (stamp or "").split("-")[0]
++        t = datetime.strptime(base, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
++        return t.astimezone().strftime("%Y-%m-%d %H:%M")
++    except ValueError:
++        return stamp or ""
++
++
+ def utc_human(epoch: float | None) -> str:
+     """A run record's epoch seconds as a readable UTC moment, or ''."""
+     try:
+diff --git a/app/tests/test_storage.py b/app/tests/test_storage.py
+index 3edcba36..977f9d04 100644
+--- a/app/tests/test_storage.py
++++ b/app/tests/test_storage.py
+@@ -122,7 +122,7 @@ def test_clear_removes_completed_rows_never_the_active_one(state):
+     assert r.status_code == 303
+     left = led.rows(50)
+     assert [x["run_id"] for x in left] == [state["rids"]["running"]]
+-    assert "Cleared 3 completed ledger rows" in _flash()
++    assert "Cleared 3 ledger rows." in _flash()
+     # the confirm copy's promise holds: clearing deleted NO disk data
+     for rid in state["rids"].values():
+         assert (state["root"] / "workroots" / rid).is_dir()
+@@ -141,8 +141,8 @@ def test_clear_refuses_a_stale_count(state):
+ 
+ def test_clear_control_names_the_count_and_the_no_disk_promise(state):
+     html = client.get("/runs").text
+-    assert "Clear 3 completed\n   rows" in html or \
+-        "Clear 3 completed rows" in " ".join(html.split())
++    assert "Clear 3\n   rows" in html or \
++        "Clear 3 rows" in " ".join(html.split())
+     # the second-confirmation copy states the ledger-only scope
+     assert "does NOT delete run data on disk" in html
+     assert "window.FluBNFConfirm" in html
+@@ -163,7 +163,11 @@ def test_storage_panel_lists_everything_with_sizes(state):
+     for rid in state["rids"].values():
+         assert rid in html
+     assert SEASON in html
+-    assert "2098-02-04 10:15 UTC" in html            # the archived run
++    from app.core import retro
++    # the archived run's time on the computer's own clock, as the run
++    # times beside it (never "UTC" beside a local run time)
++    assert f"archived {retro.stamp_local(ARCH_STAMP)}" in html
++    assert "UTC" not in html.split('aria-labelledby="h-st-ra"', 1)[1].split("</section>", 1)[0]
+     assert "2098-01-03" in html                      # the report archive
+     assert "Sealed validation record" in html
+     assert "FluSight hub clone" in html
+@@ -215,10 +219,12 @@ def test_busy_rows_render_no_delete_controls(state):
+     # workroot rows are found by their data-wid attribute
+     row = html.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
+     assert "data-del-storage" not in row             # the live workroot
+-    # its Delete is disabled, and its "?" says why in the refusal's words
++    # its Delete is disabled and says why on hover in the refusal's words;
++    # the badge names the state, so the row carries no "?"
+     assert " disabled " in row and "running now" in row
+-    assert (f"The run {live} is active; its workroot cannot be deleted "
+-            "while it runs.") in row
++    assert (f'title="The run {live} is active; its workroot cannot be '
++            'deleted while it runs."') in row
++    assert "tipbtn" not in row
+     srow = html.split(f">{SEASON} retrospective</a></strong>",
+                       1)[1].split("</div>", 1)[0]
+     assert "data-del-storage" not in srow            # the replaying season
+@@ -343,7 +349,7 @@ def test_clear_all_control_names_count_and_total_size(state):
+     assert state["rids"]["running"] not in [w["id"] for w in cw]
+     html = client.get("/runs").text
+     joined = " ".join(html.split())
+-    assert "Delete all 3 completed workroots" in joined
++    assert "Delete 3 workroots" in joined
+     size_h = retro.human_bytes(sum(w["bytes"] for w in cw))
+     assert f'data-size="{size_h}"' in html
+     assert 'data-count="3"' in html
+@@ -372,7 +378,7 @@ def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
+                     / state["rids"][status]).exists()
+     assert (state["root"] / "workroots"
+             / state["rids"]["running"]).is_dir()
+-    assert "Deleted 3 completed run workroots" in _flash()
++    assert "Deleted 3 run workroots" in _flash()
+     assert "ledger row" in ui_state._status.get("flash_detail", "")
+     # every ledger row remains, the cleared ones honestly dangling
+     html = client.get("/runs").text
+@@ -410,7 +416,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
+     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
+                     follow_redirects=False)
+     assert r.status_code == 303
+-    assert "no completed run workroots" in _flash()
++    assert "no run workroots on disk apart from the active run's" in _flash()
+     # and the control disappears from the page
+     html = client.get("/runs").text
+     assert "Delete all" not in html
+@@ -525,9 +531,10 @@ def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
+     html = client.get("/runs").text
+     # no ledger fold with nothing to fold (the storage panel keeps its own)
+     assert 'id="ledgerfold"' not in html
+-    # an empty state (icon, title, one action), not a sentence
++    # an empty state (icon, title, one action), not a sentence; the runs
++    # on disk were recorded once, so the title never says "no runs yet"
+     empty = html.split('id="st-ledger-empty"', 1)[1].split("</div></div>", 1)[0]
+-    assert "No runs yet" in empty and 'href="/forecast"' in empty
++    assert "No runs recorded" in empty and 'href="/forecast"' in empty
+ 
+ 
+ # ------------------------------- the runner computer's student experiments
+diff --git a/app/tests/test_storage_datasets.py b/app/tests/test_storage_datasets.py
+index b8f5c00e..aacac77b 100644
+--- a/app/tests/test_storage_datasets.py
++++ b/app/tests/test_storage_datasets.py
+@@ -104,9 +104,10 @@ def test_the_total_counts_every_byte_once(state):
+     html = client.get("/storage").text
+     assert f'<span class="big">{inv["total_h"]}</span>' in html
+     joined = " ".join(html.split())
+-    # a dataset's runs count once: the Your datasets section says so (the
+-    # protected trees' "not in the total" tag: test_storage)
+-    assert "listed under Run workroots and counted once in the total" in joined
++    # a dataset's runs count once: its row names them as a part, and the
++    # workroot row names the dataset (the protected trees' "not in the
++    # total" tag: test_storage)
++    assert "1 run " in joined and ">Template</a>" in joined
+ 
+ 
+ def test_the_page_lists_it_with_a_name_confirmed_delete(state):
+@@ -174,8 +175,8 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
+     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
+     assert (wr / state["hub_run"]).is_dir()             # a hub run stays
+     assert f"Deleted Template: {size} freed." in ui_state._status["flash"]
+-    assert ("Its replays and 1 run workroot went with it; the runs' ledger "
+-            "rows are kept.") in ui_state._status["flash_detail"]
++    assert ("With it went its 1 replay and its 1 run workroot; the runs' "
++            "ledger rows are kept.") in ui_state._status["flash_detail"]
+     # the ledger rows stand, the run's with a dash for disk use
+     ids = {r["run_id"] for r in Ledger().rows(10)}
+     assert {state["ds_run"], state["hub_run"]} <= ids
+@@ -193,7 +194,7 @@ def test_the_data_tab_delete_frees_what_storage_counts(state):
+     assert r.status_code == 303
+     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
+     assert (wr / state["hub_run"]).is_dir()
+-    assert "its replays and 1 run workroot" in ui_state._status[
++    assert "its 1 replay and its 1 run workroot" in ui_state._status[
+         "flash_detail"].lower()
+     assert ui_state._status["flash_kind"] == "ok"
+     assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
+diff --git a/app/tests/test_storage_words.py b/app/tests/test_storage_words.py
+new file mode 100644
+index 00000000..ca5164db
+--- /dev/null
++++ b/app/tests/test_storage_words.py
+@@ -0,0 +1,316 @@
++"""The Storage tab's words, counts and marks (bug hunt 2026-10-25, G29):
++the ledger summary counts every recorded run; the disk sections carry no
++"?" and a busy row says why on hover; report archives are busy only while
++the run can write them; an archived run's time is the computer's clock;
++the bulk controls count rows and workroots without "completed"; the
++empty states follow the listings; a run's delete confirmation leads with
++its label; a deleted dataset's notice names only what went; the Protected
++heading has no tip; the ledger filter finds runs that did not finish ok
++and a run's day."""
++import sys
++import time
++from datetime import datetime, timezone
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++import app.core.runs as runs_mod                               # noqa: E402
++from app.core import retro                                     # noqa: E402
++from app.core.runs import Ledger, RunSpec                      # noqa: E402
++from app.ui import datasets_ui                                 # noqa: E402
++from app.ui import retro_seasons as ui_retro_seasons           # noqa: E402
++from app.ui import server as srv                               # noqa: E402
++from app.ui import shared as ui_shared                         # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++from app.ui.routes import storage as ui_storage                # noqa: E402
++
++client = TestClient(srv.app)
++STAMP = "20980204T101500Z"
++
++
++@pytest.fixture()
++def root(tmp_path, monkeypatch):
++    before = dict(ui_state._status)
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    from app.core import datasets as datasets_mod
++    monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", tmp_path / "noreseal")
++    import flubnf.settings as settings_mod
++    monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
++    for k in ("running", "workroot", "phase", "flash", "flash_kind",
++              "flash_detail"):
++        ui_state._status[k] = None
++    ui_shared._invalidate_scans()
++    yield tmp_path
++    ui_state._status.clear()
++    ui_state._status.update(before)
++    ui_shared._invalidate_scans()
++
++
++def _run(root, asof="2098-01-03", status="ok", engine="all", extra=None,
++         files=True) -> str:
++    """A ledger row and its workroot (a results file unless files=False)."""
++    time.sleep(1.05)                     # run ids sort by their start second
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine=engine, forecast_date=asof,
++                               locations=["Ohio"], extra=extra or {}),
++                       root / "workroots" / "pending", {})
++    if status != "running":
++        led.close_run(rid, status, {})
++    wr = root / "workroots" / rid
++    wr.mkdir(parents=True)
++    if files:
++        (wr / "results.json").write_text("{}")
++    ui_shared._invalidate_scans()
++    return rid
++
++
++def _page():
++    ui_shared._invalidate_scans()
++    return client.get("/storage").text
++
++
++def _fold(html):
++    return html.split('id="storagefold"', 1)[1].split("</details>", 1)[0]
++
++
++def _section(html, hid):
++    return html.split(f'aria-labelledby="h-{hid}"', 1)[1].split("</section>", 1)[0]
++
++
++# ------------------------------------------------------------------- ST-04
++
++def test_the_ledger_summary_counts_every_recorded_run(root, monkeypatch):
++    for _ in range(3):
++        _run(root)
++    monkeypatch.setattr(ui_storage, "LEDGER_ROWS", 1)
++    html = _page()
++    joined = " ".join(html.split())
++    assert "3 runs recorded" in joined
++    assert "1 run recorded" not in joined
++    assert "Showing the newest 1 of 3 runs." in html
++
++
++# ------------------------------------------------------------------- ST-08
++
++def test_the_disk_sections_carry_no_marks_and_a_busy_row_says_why_on_hover(root):
++    done = _run(root)
++    live = _run(root, asof="2098-01-10", status="running")
++    ui_state._status["running"] = f"all:{live}"
++    ui_state._status["workroot"] = str(root / "workroots" / live)
++    (root / "archive" / "2098-01-03").mkdir(parents=True)
++    (root / "archive" / "2098-01-03" / "report.html").write_text("r")
++    (root / "hub").mkdir()
++    fold = _fold(_page())
++    # the sections, the reclaim tools, the busy rows: not one "?"
++    assert "tipbtn" not in fold
++    for hid in ("st-wr", "st-rp", "st-protected"):
++        assert f'id="h-{hid}"' in fold
++    row = fold.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
++    assert "running now" in row and " disabled " in row
++    assert (f'title="The run {live} is active; its workroot cannot be '
++            'deleted while it runs."') in row
++    assert "data-del-storage" not in row
++    done_row = fold.split(f'data-wid="{done}"', 1)[1].split("</div>", 1)[0]
++    assert "data-del-storage" in done_row and " disabled " not in done_row
++    # one notice on the Report archives heading, each Delete off
++    sec = _section(fold, "st-rp")
++    assert sec.count("console run in progress") == 1
++    assert sec.count(" disabled ") == 1 and "tipbtn" not in sec
++
++
++def test_report_archives_are_busy_only_while_the_run_can_write_them(root):
++    (root / "archive" / "2098-01-03").mkdir(parents=True)
++    (root / "archive" / "2098-01-03" / "report.html").write_text("r")
++
++    def busy():
++        ui_shared._invalidate_scans()
++        inv = ui_storage._storage_inventory()
++        (row,) = inv["report_archives"]
++        p, why = ui_storage._storage_target("report-archive", "2098-01-03")
++        assert bool(row["busy"]) == (p is None)
++        return bool(row["busy"])
++
++    # a full run of both models writes the archive
++    full = _run(root, asof="2098-01-10", status="running")
++    ui_state._status["running"] = f"all:{full}"
++    assert busy() and ui_storage._may_archive()
++    # a Groundhog-only, a research, a modified and a vintage run never do
++    for kw in (dict(engine="analogue"),
++               dict(extra={"members": 3}),
++               dict(extra={"knobs": {"pf.replicates": 3}}),
++               dict(extra={"mode": "vintage"})):
++        rid = _run(root, asof="2098-01-10", status="running", **kw)
++        ui_state._status["running"] = f"all:{rid}"
++        assert not busy(), kw
++    # nor a dataset run or replay; a run still starting may
++    for marker in ("dataset:20980101T000000-abcdef", "dataset-replay:x"):
++        ui_state._status["running"] = marker
++        assert not busy(), marker
++    ui_state._status["running"] = "starting"
++    assert busy()
++    ui_state._status["running"] = None
++    assert not busy()
++    sec = _section(_page(), "st-rp")
++    assert "console run in progress" not in sec and "data-del-storage" in sec
++
++
++# ------------------------------------------------------------------- ST-10
++
++def test_an_archived_runs_time_is_the_computers_clock(root, monkeypatch):
++    want = (datetime.strptime(STAMP, "%Y%m%dT%H%M%SZ")
++            .replace(tzinfo=timezone.utc).astimezone()
++            .strftime("%Y-%m-%d %H:%M"))
++    assert retro.stamp_local(STAMP) == want
++    assert retro.stamp_local("junk") == "junk"
++    if hasattr(time, "tzset"):
++        monkeypatch.setenv("TZ", "America/Phoenix")
++        time.tzset()
++        try:
++            assert retro.stamp_local(STAMP) == "2098-02-04 03:15"
++            assert retro.stamp_human(STAMP) == "2098-02-04 10:15 UTC"
++        finally:
++            monkeypatch.delenv("TZ")
++            time.tzset()
++    _run(root)
++    arch = root / "retro" / f"2098-99__archived_{STAMP}"
++    (arch / "weeks").mkdir(parents=True)
++    sec = _section(_page(), "st-ra")
++    assert f"archived {retro.stamp_local(STAMP)}" in sec
++    assert "UTC" not in sec
++
++
++# ------------------------------------------------------------------- ST-11
++
++def test_the_bulk_controls_count_rows_and_workroots_without_completed(root):
++    _run(root, status="partial")
++    live = _run(root, asof="2098-01-10", status="running")
++    ui_state._status["running"] = f"all:{live}"
++    html = _page()
++    joined = " ".join(html.split())
++    assert "Delete 1 workroot (" in joined
++    btn = joined.split('id="clear-workroots-btn"', 1)[1].split("</button>", 1)[0]
++    assert "all" not in btn and "completed" not in btn
++    assert "Clear 1 row (files kept)" in joined
++    assert "statuses ok" not in html
++    assert "This removes '+n+' row'+(n==='1'?'':'s')+' from the ledger." in html
++    assert "title:'Delete every run workroot not running?'" in html
++    assert "report and submission " in html.split("clear-workroots-btn", 2)[2]
++    ui_state._status["running"] = None
++    _run(root, status="stopped")
++    joined = " ".join(_page().split())
++    assert "Delete 3 workroots (" in joined and "Clear 3 rows (files kept)" in joined
++
++
++def test_the_bulk_notices_count_without_completed(root):
++    _run(root, status="partial")
++    r = client.post("/runs/clear", data={"confirm": "1"}, follow_redirects=False)
++    assert r.status_code == 303
++    assert ui_state._status.pop("flash") == "Cleared 1 ledger row."
++    r = client.post("/runs/clear", data={"confirm": "0"}, follow_redirects=False)
++    assert ui_state._status.pop("flash") == "Nothing to clear: the ledger has no rows to remove."
++    r = client.post("/storage/clear-workroots", data={"confirm": "1"},
++                    follow_redirects=False)
++    assert ui_state._status.pop("flash").startswith("Deleted 1 run workroot: ")
++    r = client.post("/storage/clear-workroots", data={"confirm": "0"},
++                    follow_redirects=False)
++    assert ui_state._status.pop("flash") == "Nothing to delete: no run workroots on disk."
++    live = _run(root, asof="2098-01-10", status="running")
++    ui_state._status["running"] = f"all:{live}"
++    r = client.post("/storage/clear-workroots", data={"confirm": "0"},
++                    follow_redirects=False)
++    assert ui_state._status.pop("flash") == ("Nothing to delete: no run workroots "
++                                             "on disk apart from the active run's.")
++
++
++# ------------------------------------------------------------------- ST-12
++
++def test_the_empty_states_follow_the_listings(root):
++    html = _page()
++    assert "No runs yet" in html and "Nothing stored yet" in html
++    assert "No runs or replays on disk" in html
++    # a 0-byte workroot (a run stopped while starting): listed, so nothing
++    # says "nothing stored"
++    wr = root / "workroots" / "20980101T093000-abcdef"
++    wr.mkdir(parents=True)
++    (wr / "STOP").write_text("")
++    html = _page()
++    assert "Nothing stored yet" not in html
++    assert "No runs or replays on disk" not in html
++    assert '<span class="big">0 B</span>' in html
++    assert 'data-wid="20980101T093000-abcdef"' in html
++    # the ledger is empty while a run is on disk: it was cleared, or the
++    # run was never recorded; never "no runs yet"
++    assert "No runs recorded" in html and "No runs yet" not in html
++    assert 'href="/forecast"' in html.split('id="st-ledger-empty"', 1)[1][:600]
++
++
++# ------------------------------------------------------------------- ST-14
++
++def test_the_delete_confirmation_leads_with_the_runs_label(root):
++    rid = _run(root)
++    orphan = "20980118T093000-abcdef"
++    (root / "workroots" / orphan).mkdir(parents=True)
++    fold = _fold(_page())
++    row = fold.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
++    assert 'data-what="the Round 2098-01-10 (as of 2098-01-03) run"' in row
++    assert 'aria-label="Delete the Round 2098-01-10 (as of 2098-01-03) run"' in row
++    assert ('data-hint="Its report and submission files go with it; the '
++            'ledger row is kept and will show a dash for disk use. Run id '
++            f'{rid}."') in row
++    assert "workroot " + rid not in row
++    orow = fold.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
++    assert f'data-what="the unrecorded run {orphan}"' in orow
++    # the confirmation still names the entry by its id
++    assert f'<input type="hidden" name="ident" value="{rid}">' in row
++
++
++# ------------------------------------------------------------------- ST-15
++
++def test_a_deleted_datasets_notice_names_only_what_went():
++    class DS:
++        name = "My counts"
++    msg, kind, detail = datasets_ui.deleted_message(DS, 12_000, 0, 0, 0)
++    assert msg == "Deleted My counts: 11.7 KB freed." and kind == "ok"
++    assert detail == ""
++    assert datasets_ui.deleted_message(DS, 1, 1, 0, 0)[2] == (
++        "With it went its 1 run workroot; the runs' ledger rows are kept.")
++    assert datasets_ui.deleted_message(DS, 1, 0, 0, 2)[2] == (
++        "With it went its 2 replays.")
++    assert datasets_ui.deleted_message(DS, 1, 2, 0, 1)[2] == (
++        "With it went its 1 replay and its 2 run workroots; the runs' "
++        "ledger rows are kept.")
++    msg, kind, detail = datasets_ui.deleted_message(DS, 1, 1, 1, 0)
++    assert kind == "warn" and "1 run workroot could not be deleted" in msg
++    assert detail.endswith(" The rest stay under Run workroots.")
++    assert "replays" not in detail
++
++
++# ------------------------------------------------------------------- ST-16
++
++def test_the_protected_heading_has_no_tip(root):
++    (root / "hub").mkdir()
++    _run(root)
++    sec = _section(_page(), "st-protected")
++    assert "FluSight hub clone" in sec and "tipbtn" not in sec
++    assert "sealed record backs" not in sec
++    assert '<span class="uk-tag">not in the total</span>' in sec
++
++
++# ------------------------------------------------------------------- ST-17
++
++def test_the_filter_finds_runs_that_did_not_finish_ok_and_a_runs_day(root):
++    rid = _run(root, status="partial")
++    html = _page()
++    assert '<button type="button" data-lf="failed" aria-pressed="false">not ok</button>' in html
++    assert ">failed</button>" not in html
++    # partial, stopped, interrupted, failed and error rows all count
++    assert "if(kind==='failed'&&(st==='ok'||st==='running'))return false;" in html
++    row = html.split(f'<tr data-st="partial"', 1)[1].split("</tr>", 1)[0]
++    day = runs_mod.run_id_time(rid)[:10]
++    assert row.startswith(f' data-find="2098-01-03 {day} {rid[:8]} ')
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 9689aaa5..a9d813ba 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -411,7 +411,9 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
+         shared._flash(f"Not deleted: the confirmation did not name {ds.name}.",
+                       "warn")
+         return
+-    msg, kind, detail = deleted_message(ds, *delete_everything(ds))
++    from app.core import custom_retro as CX
++    replays = len(CX.list_replays(ds))
++    msg, kind, detail = deleted_message(ds, *delete_everything(ds), replays)
+     shared._flash(msg, kind, detail=detail)
+ 
+ 
+@@ -1029,12 +1031,20 @@ def delete_everything(ds) -> tuple:
+     return freed, gone, kept
+ 
+ 
+-def deleted_message(ds, freed: int, gone: int, kept: int) -> tuple:
+-    """(message, kind, detail) of a dataset delete's notice."""
++def deleted_message(ds, freed: int, gone: int, kept: int,
++                    replays: int = 0) -> tuple:
++    """(message, kind, detail) of a dataset delete's notice: the detail
++    names only what went with the upload (its replays, its runs'
++    workroots), as the Storage row's confirmation named it."""
+     from app.core import retro
+-    s = "" if gone == 1 else "s"
+-    detail = (f"Its replays and {gone} run workroot{s} went with it; the "
+-              "runs' ledger rows are kept.")
++    went = []
++    if replays:
++        went.append(f"its {replays} replay{'' if replays == 1 else 's'}")
++    if gone:
++        went.append(f"its {gone} run workroot{'' if gone == 1 else 's'}")
++    detail = ("With it went " + " and ".join(went)
++              + ("; the runs' ledger rows are kept." if gone else ".")
++              if went else "")
+     if kept:
+         return ((f"Deleted {ds.name}, but {kept} run workroot"
+                  f"{'' if kept == 1 else 's'} could not be deleted."), "warn",
+diff --git a/app/ui/routes/storage.py b/app/ui/routes/storage.py
+index 2549b930..cbdeaa0d 100644
+--- a/app/ui/routes/storage.py
++++ b/app/ui/routes/storage.py
+@@ -78,6 +78,32 @@ def _live_workroot_ids() -> set:
+     return out
+ 
+ 
++def _may_archive() -> bool:
++    """Whether the console run in progress can write a report archive: a
++    full run of both models on hub data (pipeline's archive step skips a
++    one-model, research, modified or vintage run, and a dataset run or
++    replay never reaches it). A run still starting may."""
++    from app.core.runs import is_modified, is_research
++    running = _status.get("running") or ""
++    if not running:
++        return False
++    kind, _sep, rid = running.partition(":")
++    if kind in ("dataset", "dataset-replay"):
++        return False
++    if not rid:
++        return True
++    try:
++        row = Ledger().row(rid) or {}
++    except Exception:
++        return True
++    spec = row.get("spec") or ""
++    d = _spec_of(spec)
++    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
++    return (str(d.get("engine") or "all") == "all"
++            and extra.get("mode") != "vintage"
++            and not is_research(spec) and not is_modified(spec))
++
++
+ def _busy_why(kind: str, ident: str, status: str = "") -> str:
+     """Why one storage entry cannot be deleted right now, in the words the
+     refused POST flashes; the page shows the same sentence as its disabled
+@@ -186,7 +212,8 @@ def _storage_inventory() -> dict:
+            "report_archives": [], "datasets": [], "protected": [],
+            "total_bytes": 0, "total_h": ""}
+     live_ids = _live_workroot_ids()
+-    console_busy = bool(_status.get("running"))
++    # the report archives are busy only while the run can write them
++    console_busy = _may_archive()
+     # ledger rows label each workroot; one without a row reads as unrecorded
+     try:
+         led_rows = {r["run_id"]: r for r in Ledger().rows(100_000)}
+@@ -246,7 +273,8 @@ def _storage_inventory() -> dict:
+                 from app.core import replay_bundle
+                 inv["retro_archives"].append({
+                     "id": p.name, "season": season, "stamp": stamp,
+-                    "when": retro.stamp_human(stamp),
++                    # the computer's own clock, as the run times beside it
++                    "when": retro.stamp_local(stamp),
+                     # a replay imported from another machine
+                     # ("imported from <host> on <date>"), else ""
+                     "imported": replay_bundle.imported_label(p),
+@@ -277,6 +305,9 @@ def _storage_inventory() -> dict:
+                 "label": label, "path": str(p),
+                 "size_h": retro.human_bytes(_tree_size(str(p)))})
+     inv["total_h"] = retro.human_bytes(inv["total_bytes"])
++    # the page's empty states follow the listings: a 0-byte workroot is
++    # listed, so nothing says "nothing stored"
++    inv["listed"] = any(inv[k] for k, _l in _CATEGORIES)
+     cats = []
+     for key, label in _CATEGORIES:
+         b = sum(int(r.get("own_bytes" if key == "datasets" else "bytes")
+@@ -339,6 +370,8 @@ def runs_page(request: Request):
+         r["label"] = " · ".join(r["parts"])
+         r["asof"] = str(_spec_of(r.get("spec", "")).get("forecast_date")
+                         or "")
++        # the day the run was made, for the filter's Find
++        r["day"] = _runs.run_id_time(r["run_id"])[:10]
+         r["research"] = is_research(r.get("spec", ""))
+         r["modified"] = _runs.is_modified(r.get("spec", ""))
+         # the outcome as facts the page draws as chips and badges
+@@ -373,7 +406,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
+     ledger = Ledger()
+     ids = _clearable_run_ids(ledger)
+     if not ids:
+-        _flash("Nothing to clear: the ledger has no completed rows.", "warn")
++        _flash("Nothing to clear: the ledger has no rows to remove.", "warn")
+         return _back(request, "/storage")
+     if confirm != str(len(ids)):
+         _flash("Not cleared: the ledger changed "
+@@ -382,7 +415,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
+         return _back(request, "/storage")
+     n = ledger.delete_runs(ids)
+     _invalidate_scans()
+-    _flash(f"Cleared {n} completed ledger row{'' if n == 1 else 's'}.", "ok",
++    _flash(f"Cleared {n} ledger row{'' if n == 1 else 's'}.", "ok",
+            detail="No data on disk was deleted: the runs' workroots stay "
+            "in the storage panel until deleted there.")
+     return _back(request, "/storage")
+@@ -421,7 +454,7 @@ def _storage_target(kind: str, ident: str):
+     elif kind == "report-archive":
+         if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
+             return None, "Unrecognized report archive date."
+-        if _status.get("running"):
++        if _may_archive():
+             return None, _busy_why(kind, ident)
+         p = APP_STATE / "archive" / ident
+         base = APP_STATE / "archive"
+@@ -501,8 +534,9 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
+     _invalidate_scans()
+     items = _clearable_workroots()
+     if not items:
+-        _flash("Nothing to delete: no completed run workroots on disk.",
+-               "warn")
++        _flash("Nothing to delete: no run workroots on disk"
++               + (" apart from the active run's." if _live_workroot_ids()
++                  else "."), "warn")
+         return _back(request, "/storage")
+     if confirm != str(len(items)):
+         _flash("Not deleted: the storage panel changed "
+@@ -526,7 +560,7 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
+         except Exception:
+             continue          # one stuck tree must not sink the sweep
+     _invalidate_scans()
+-    _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
++    _flash(f"Deleted {n} run workroot{'' if n == 1 else 's'}: "
+            f"{retro.human_bytes(freed)} freed.", "ok",
+            detail="Every ledger row is kept and shows a dash for disk use.")
+     return _back(request, "/storage")
+diff --git a/app/ui/templates/runs.html b/app/ui/templates/runs.html
+index e12dde6f..c815e4af 100644
+--- a/app/ui/templates/runs.html
++++ b/app/ui/templates/runs.html
+@@ -4,8 +4,8 @@
+ <h1>Storage</h1>
+ 
+ {# a storage row: the title line (name and badges), the size, the action
+-   (Delete, or a disabled Delete whose "?" says why), and a meta row of
+-   facts under the title. No <div> inside a row: tests find a row by its
++   (Delete, or a disabled Delete that says why on hover: the row's badge
++   names the state), and a meta row of facts under the title. No <div> inside a row: tests find a row by its
+    data-wid and read it up to its closing </div>. #}
+ {% macro del_form(action, kind, ident, what, size, hint, confirm="") -%}
+ <form class="st-act" method="post" action="{{ action }}">
+@@ -17,9 +17,8 @@
+    data-hint="{{ hint }}">Delete</button>
+ </form>
+ {%- endmacro %}
+-{% macro busy_act(id, why, what) -%}
+-{%- set named %}aria-label="Delete {{ what }}"{% endset -%}
+-<span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del", attrs=named, label="why " ~ what ~ " cannot be deleted now") }}</span>
++{% macro busy_act(why, what) -%}
++<span class="st-act"><button type="button" class="quiet st-del" disabled aria-label="Delete {{ what }}" title="{{ why }}">Delete</button></span>
+ {%- endmacro %}
+ {# a section's count beside its heading: the kit's neutral badge, as on
+    the other tabs; none for an empty section, whose empty state says so #}
+@@ -38,15 +37,16 @@
+    leads the page and ships open, a reader's closed state persists #}
+ <details class="ledgerfold" id="ledgerfold" open>
+  <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
+-  <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
++  <strong class="st-lcount">{{ ledger_total }} run{{ "" if ledger_total == 1 else "s" }}
+   recorded</strong>
+   <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
+   <span class="uk-sr">(</span>{{ tips.badge(ST.get(ledger[0].status, "error"), ledger[0].status) }}<span class="uk-sr">)</span></span></summary>
+ {# a filter on the rows the page holds (a script: every row shows without
+-   it): a status or kind, and a date typed in part ("10-03") #}
++   it): a status or kind ("not ok": any run that did not finish ok), and a
++   date typed in part ("10-03"): the as-of date or the run's day #}
+ <div class="st-filter" id="st-filter" hidden>
+  <div class="uk-seg" role="group" aria-label="Show runs">
+-  {% for key, word in [("all", "All"), ("ok", "ok"), ("failed", "failed"), ("running", "running"), ("research", "research"), ("modified", "modified")] %}<button type="button" data-lf="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ word }}</button>{% endfor %}
++  {% for key, word in [("all", "All"), ("ok", "ok"), ("failed", "not ok"), ("running", "running"), ("research", "research"), ("modified", "modified")] %}<button type="button" data-lf="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ word }}</button>{% endfor %}
+  </div>
+  <label class="st-find"><span class="uk-sr">Find a date</span><input type="search" id="st-find" placeholder="Find a date, e.g. 10-03" autocomplete="off"></label>
+  <span class="st-shown" id="st-shown" aria-live="polite"></span>
+@@ -67,7 +67,7 @@
+    took the hub names by override, said once in the run label's badge #}
+ {% set kf = (r.facts or []) | selectattr("text", "equalto", "modified settings") | first %}
+ {% set hub_names = kf and "hub names by override" in kf.chip %}
+- <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
++ <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.day }} {{ r.run_id[:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
+  {# research badge (the spec asked for the third member) #}
+  {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
+  {# model settings off the default ones (a knobs record in the spec) #}
+@@ -99,7 +99,7 @@
+   function fits(r){
+    var st=r.getAttribute('data-st');
+    if(kind==='ok'&&st!=='ok')return false;
+-   if(kind==='failed'&&st!=='failed'&&st!=='error')return false;
++   if(kind==='failed'&&(st==='ok'||st==='running'))return false;
+    if(kind==='running'&&st!=='running')return false;
+    if(kind==='research'&&!r.hasAttribute('data-research'))return false;
+    if(kind==='modified'&&!r.hasAttribute('data-modified'))return false;
+@@ -126,7 +126,7 @@
+ <form method="post" action="/runs/clear" id="clear-ledger" class="st-foot">
+  <input type="hidden" name="confirm" value="">
+  <button type="button" class="quiet st-btn" id="clear-ledger-btn"
+-   data-count="{{ clear_count }}">Clear {{ clear_count }} completed
++   data-count="{{ clear_count }}">Clear {{ clear_count }}
+    row{{ "" if clear_count == 1 else "s" }} (files kept)</button>
+ </form>
+ <script>
+@@ -138,8 +138,7 @@
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Clear the run ledger?',
+-    msg:'This removes '+n+' completed row'+(n==='1'?'':'s')+' (statuses ok, '
+-      +'failed, stopped, error, and interrupted) from the ledger. A row '
++    msg:'This removes '+n+' row'+(n==='1'?'':'s')+' from the ledger. A row '
+       +'whose run is still active is never removed.',
+     hint:'Clearing the ledger does NOT delete run data on disk: every '
+       +'workroot stays exactly where it is and remains listed in the '
+@@ -166,7 +165,8 @@
+ </script>
+ {% else %}
+ {{ tips.heading("Run ledger", "st-ledger") }}
+-{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
++{# runs on disk with no rows (the ledger was cleared): the title says so #}
++{{ tips.empty("No runs recorded" if storage and storage.workroots else "No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
+ {% endif %}
+ </div>
+ 
+@@ -179,14 +179,14 @@
+    persists #}
+ <details class="ledgerfold" id="storagefold">
+  <summary class="st-sum"><h2 class="stfold-h" id="h-st-disk">On disk</h2>
+-  <span class="stotal st-total">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
++  <span class="stotal st-total">{% if storage.listed %}<span class="big">{{ storage.total_h }}</span>
+   <span class="st-unit">in use</span>{% else %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
+   {%- if storage.cats %}
+   {# the total by category; the legend in the body names each one #}
+   <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
+   {%- endif %}</summary>
+ 
+- {% if storage.total_bytes %}
++ {% if storage.cats %}
+  {# the categories counted in the total, then reclaim: a dry-run report
+     first, then the shared confirmation. Deletes only fit intermediates of
+     COMPLETED weeks/runs and compresses samples losslessly; never touches
+@@ -201,8 +201,7 @@
+   <form method="post" action="/storage/reclaim" id="reclaim-form" class="st-reclaim">
+    <input type="hidden" name="confirm" value="">
+    <button type="button" class="quiet st-btn" id="reclaim-btn">{{ tips.icon("refresh") }} Reclaim space…</button>
+-   {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
+-   <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim", "No completed week or run carries intermediates and every stored week is already compressed.", id="st-reclaim-none") }}</span></span>
++   <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim") }}</span></span>
+   </form>
+  </div>
+  <div id="reclaim-fail" hidden>{{ tips.alert("error", "Nothing was changed. Try again.", title="The reclaim report failed.", id="st-reclaim-fail") }}</div>
+@@ -246,13 +245,13 @@
+  {% endif %}
+ 
+  {% set sbx = sandbox_storage() %}
+- {% if not storage.total_bytes %}
+- {# nothing counted yet: one empty state, no empty sections (the ledger's
+-    empty state below carries the one action) #}
++ {% if not storage.listed %}
++ {# nothing listed yet: one empty state, no empty sections (the ledger's
++    empty state carries the one action) #}
+  {{ tips.empty("No runs or replays on disk", "folder", id="st-empty") }}
+  {% endif %}
+ 
+- {% if storage.workroots or storage.total_bytes %}
++ {% if storage.listed %}
+  {# clear-all: the confirmation names count and size; the server excludes
+     the active run, keeps ledger rows, refuses a stale count, and the
+     protection barrier still guards the seal and hub. The button sits in
+@@ -264,12 +263,12 @@
+  {% endif %}
+  {% set wr_aside %}{% if clear_workroots.count %}<button type="button" class="quiet st-btn" id="clear-workroots-btn" form="clear-workroots"
+     data-count="{{ clear_workroots.count }}"
+-    data-size="{{ clear_workroots.size_h }}">Delete all
+-    {{ clear_workroots.count }} completed
++    data-size="{{ clear_workroots.size_h }}">Delete
++    {{ clear_workroots.count }}
+     workroot{{ "" if clear_workroots.count == 1 else "s" }}
+     ({{ clear_workroots.size_h }})</button>{% endif %}{% endset %}
+  <section class="st-sec" aria-labelledby="h-st-wr">
+- {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
++ {{ tips.heading("Run workroots", "st-wr", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
+  {% for w in storage.workroots %}
+  {# label from the run's ledger row, linked to its run page (the id is
+     secondary); no row = an unrecorded run, time parsed from the id, whose
+@@ -287,23 +286,26 @@
+   {% set wid %}<code>{{ w.id }}</code>{% endset %}{% set _ = items.append(wid) %}
+   {{ tips.meta(items) }}
+   <span class="st-size">{{ w.size_h }}</span>
++  {# the confirmation leads with the run's label; the id and what goes
++     with the folder are in its hint #}
++  {% set what = ("the " ~ w.label ~ " run") if w.recorded else ("the unrecorded run " ~ w.id) %}
+   {% if w.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+-  {% elif w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
+-  {% else %}{{ del_form("/storage/delete", "workroot", w.id, "workroot " ~ w.id ~ " (" ~ w.label ~ ")", w.size_h, "The run's ledger row is kept and will show a dash for disk use.") }}{% endif %}
++  {% elif w.busy %}{{ busy_act(w.why, what) }}
++  {% else %}{{ del_form("/storage/delete", "workroot", w.id, what, w.size_h, "Its report and submission files go with it; the ledger row is kept and will show a dash for disk use. Run id " ~ w.id ~ ".") }}{% endif %}
+  </div>
+  {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
+  </section>
+  {% endif %}
+ 
+- {% if storage.retro or storage.total_bytes %}
++ {% if storage.listed %}
+  <section class="st-sec" aria-labelledby="h-st-rs">
+- {{ tips.heading("Retrospective seasons", "st-rs", "Each season's live replay results. Deleting one leaves its archived runs and the sealed record untouched: they are separate trees.", level=3, after=count(storage.retro | length), cls="st-h") }}
++ {{ tips.heading("Retrospective seasons", "st-rs", level=3, after=count(storage.retro | length), cls="st-h") }}
+  {% for s in storage.retro %}
+  <div class="st-row">
+   <span class="st-title"><strong><a href="/retro/{{ s.id }}">{{ s.id }} retrospective</a></strong>
+    {%- if s.busy %} {{ tips.badge("pending", s.status) }}{% endif %}</span>
+   <span class="st-size">{{ s.size_h }}</span>
+-  {% if s.busy %}{{ busy_act("st-rs-" ~ loop.index, s.why, s.id ~ " season results") }}
++  {% if s.busy %}{{ busy_act(s.why, s.id ~ " season results") }}
+   {% else %}{{ del_form("/storage/delete", "retro-season", s.id, s.id ~ " season results", s.size_h, "Archived runs of this season and the sealed record are separate trees and are not touched.") }}{% endif %}
+  </div>
+  {% else %}{{ tips.empty("No live season trees on disk", "calendar", compact=True) }}{% endfor %}
+@@ -312,7 +314,7 @@
+ 
+  {% if storage.retro_archives %}
+  <section class="st-sec" aria-labelledby="h-st-ra">
+- {{ tips.heading("Archived retrospective runs", "st-ra", "Earlier replays of a season, kept when it started fresh, and replays imported from another machine.", level=3, after=count(storage.retro_archives | length), cls="st-h") }}
++ {{ tips.heading("Archived retrospective runs", "st-ra", level=3, after=count(storage.retro_archives | length), cls="st-h") }}
+  {% for a in storage.retro_archives %}
+  {% set a_when = a.imported if a.imported else ('archived ' ~ a.when) %}
+  <div class="st-row">
+@@ -321,7 +323,7 @@
+   {% set aid %}<code>{{ a.id }}</code>{% endset %}
+   {{ tips.meta([("download" if a.imported else "calendar", a_when, ""), aid]) }}
+   <span class="st-size">{{ a.size_h }}</span>
+-  {% if a.busy %}{{ busy_act("st-ra-" ~ loop.index, a.why, a.season ~ " run " ~ a_when) }}
++  {% if a.busy %}{{ busy_act(a.why, a.season ~ " run " ~ a_when) }}
+   {% else %}{{ del_form("/storage/delete", "retro-archive", a.id, a.season ~ " run " ~ a_when, a.size_h, "The live " ~ a.season ~ " season is not touched.") }}{% endif %}
+  </div>
+  {% endfor %}
+@@ -330,17 +332,17 @@
+ 
+  {% if storage.report_archives %}
+  <section class="st-sec" aria-labelledby="h-st-rp">
+- {# while a console run may write the archive, one notice on the heading;
+-    each row's Delete stays off with its reason #}
++ {# while the console run may write the archive (routes/storage
++    _may_archive), one notice on the heading; each row's Delete stays off #}
+  {% set rp_after %}{{ count(storage.report_archives | length) }}{% if storage.report_archives | selectattr("busy") | list %} {{ tips.badge("pending", "console run in progress", id="st-rp-busy") }}{% endif %}{% endset %}
+- {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
++ {{ tips.heading("Report archives", "st-rp", level=3, after=rp_after, cls="st-h") }}
+  {% for f in storage.report_archives %}
+  <div class="st-row">
+   <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
+   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
+   {{ tips.meta([rlink]) }}{% endif %}
+   <span class="st-size">{{ f.size_h }}</span>
+-  {% if f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}
++  {% if f.busy %}{{ busy_act(f.why, "archived " ~ f.id ~ " report and submissions") }}
+   {% else %}{{ del_form("/storage/delete", "report-archive", f.id, "archived " ~ f.id ~ " report and submissions", f.size_h, "The workroot that produced it is a separate entry above.") }}{% endif %}
+  </div>
+  {% endfor %}
+@@ -352,14 +354,14 @@
+     its upload, replays and runs; the delete takes all three, confirmed by
+     the dataset's name, and keeps the runs' ledger rows #}
+  <section class="st-sec" aria-labelledby="h-st-datasets">
+- {{ tips.heading("Your datasets", "st-datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.", level=3, after=count(storage.datasets | length), cls="st-h") }}
++ {{ tips.heading("Your datasets", "st-datasets", level=3, after=count(storage.datasets | length), cls="st-h") }}
+  {% for d in storage.datasets %}
+  <div class="st-row">
+   <span class="st-title"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
+    {%- if d.busy %} {{ tips.badge("pending", "in use") }}{% endif %}</span>
+   {% if d.parts %}{{ tips.meta(d.parts, label="What it holds") }}{% endif %}
+   <span class="st-size">{{ d.size_h }}</span>
+-  {% if d.busy %}{{ busy_act("st-ds-" ~ loop.index, d.why, "the dataset " ~ d.name) }}
++  {% if d.busy %}{{ busy_act(d.why, "the dataset " ~ d.name) }}
+   {% else %}{{ del_form("/storage/datasets/" ~ d.id ~ "/delete", "", d.id, "the dataset " ~ d.name, d.size_h, d.goes, confirm=d.name) }}{% endif %}
+  </div>
+  {% endfor %}
+@@ -369,7 +371,7 @@
+  {% if storage.protected %}
+  <section class="st-sec" id="st-protected" aria-labelledby="h-st-protected">
+  {# listed, never counted in the total: the tag says so where it applies #}
+- {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
++ {{ tips.heading("Protected", "st-protected", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h") }}
+  {% for p in storage.protected %}
+  {# never deletable here; the server refuses crafted requests too #}
+  <div class="st-row">
+@@ -382,7 +384,7 @@
+  {% endif %}
+  {% if sbx %}
+  <section class="st-sec" aria-labelledby="h-st-sbx">
+- {{ tips.heading("Sandbox", "st-sbx", "Kept out of the total above: the Sandbox's models and runs are deleted in the Sandbox, not here.", level=3, cls="st-h") }}
++ {{ tips.heading("Sandbox", "st-sbx", level=3, after=tips.tag("not in the total"), cls="st-h") }}
+  <div class="st-row">
+   <span class="st-title"><strong><a href="/sandbox">Sandbox models and runs</a></strong></span>
+   <span class="st-size">{{ sbx.size_h }}</span>
+@@ -396,14 +398,14 @@
+     total; Delete is Ely's way to take a queued one out of the queue.
+     Elsewhere this block writes not a byte #}
+  <section class="st-sec" aria-labelledby="h-st-stu">
+- {{ tips.heading("Student experiments", "st-stu", "Each student's experiments on this computer, by folder (~/Students/<name>/sandbox), replayed by the runner one at a time. A week's forecasting samples are dropped once its quantiles are checked against them. Deleting one removes its folder and takes it out of the queue; its model stays in the student's library. Not in the total above: these folders belong to the students' clones.", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="student experiments") }}
++ {{ tips.heading("Student experiments", "st-stu", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h") }}
+  {% if su.down %}{{ tips.alert("warn", su.why, title="The runner is not running.", id="st-stu-down") }}{% else %}{{ tips.meta(su.runner) }}{% endif %}
+  {% for e in su.rows %}
+  <div class="st-row">
+   <span class="st-title"><strong>{{ e.ident }}</strong> {{ tips.badge(e.badge[0], e.badge[1]) }}</span>
+   {% if e.parts %}{{ tips.meta(e.parts) }}{% endif %}
+   <span class="st-size">{{ e.size_h }}</span>
+-  {% if e.busy %}{{ busy_act("st-stu-" ~ loop.index, e.why, "the student experiment " ~ e.ident) }}
++  {% if e.busy %}{{ busy_act(e.why, "the student experiment " ~ e.ident) }}
+   {% else %}{{ del_form("/storage/delete", "experiment", e.ident, "the student experiment " ~ e.ident, e.size_h, "Its model stays in " ~ e.folder ~ "'s library.") }}{% endif %}
+  </div>
+  {% endfor %}
+@@ -431,10 +433,11 @@
+    var f=b.form,n=b.dataset.count,s=b.dataset.size;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+-    title:'Delete all completed run workroots?',
++    title:'Delete every run workroot not running?',
+     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
+-      +' totaling '+s+' on disk. A run that is active right now is '
+-      +'excluded, and it cannot be undone.',
++      +' totaling '+s+' on disk, with each run\'s report and submission '
++      +'files. The active run\'s workroot is excluded, and it cannot be '
++      +'undone.',
+     hint:'Every ledger row is kept and will show a dash for disk use, '
+       +'exactly as a single workroot delete leaves it. The sealed '
+       +'validation record and the hub clone are separate protected '
