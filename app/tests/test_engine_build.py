@@ -393,6 +393,12 @@ def test_a_slow_status_is_asked_again_before_it_counts_as_edited(
 # ---------------------------------------------------------------------- Home
 def _home_with(monkeypatch, path) -> str:
     monkeypatch.setattr(fs, "PYBNF", path)
+    # an engine Python that exists: Home names a missing engine venv on its
+    # own (HM-11), which on a machine with no engine (CI) would hide the
+    # build these tests are about
+    import sys as _sys
+    from pathlib import Path as _Path
+    monkeypatch.setattr(fs, "PY_ENGINE", _Path(_sys.executable))
     V.refresh_engine_build()
     return client.get("/").text
 
