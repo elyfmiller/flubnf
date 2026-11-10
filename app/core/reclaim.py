@@ -300,13 +300,19 @@ def compress_tree(root: Path) -> dict:
 def _season_entries(retro_root: Path, skip: set) -> list:
     """Season trees under the retro root (live and archived), minus skipped
     (busy) names and protected trees. Symlinked seasons are operated on
-    through the link, as every read/write path does."""
+    through the link, as every read/write path does. An import's temp tree
+    and a Replace's old run set aside (replay_bundle.is_temp_name) are not
+    season trees: a live import's samples are never compressed under it,
+    and the survey and the perform step pass over them alike."""
+    from app.core.replay_bundle import is_temp_name
     root = Path(retro_root)
     if not root.is_dir():
         return []
     out = []
     for p in sorted(root.iterdir()):
         if p.name in skip or not (p.is_dir() or p.is_symlink()):
+            continue
+        if is_temp_name(p.name):
             continue
         if not (p / "weeks").is_dir() or is_protected(p):
             continue

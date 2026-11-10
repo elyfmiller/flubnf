@@ -412,6 +412,18 @@ def _import_lock(dst: Path):
 _TEMP_RE = re.compile(r"\.importing(?:-(\d+)-[0-9a-f]+)?"
                       r"|\.replaced-(\d+)-[0-9a-f]+")
 
+#: a whole folder name that is an import's temp tree or a Replace's old
+#: tree set aside (<run><_TEMP_RE>): never a season or a run, so Storage's
+#: reclaim passes over it (is_temp_name)
+_TEMP_NAME_RE = re.compile(r".+(?:" + _TEMP_RE.pattern + r")")
+
+
+def is_temp_name(name: str) -> bool:
+    """Whether a folder name under the retro root is an import's temp tree
+    or a Replace's old tree set aside, not a season or a run."""
+    return _TEMP_NAME_RE.fullmatch(name or "") is not None
+
+
 #: a temp tree nothing has written for this long is a leftover, whatever
 #: its process (a pid can be reused)
 STALE_TEMP_S = 3600.0
