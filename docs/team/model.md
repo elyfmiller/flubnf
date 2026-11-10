@@ -76,6 +76,18 @@ until 2026-11-09 and on the Windows PC since then.
     clone installs the private engine only. G21 (#79) has landed: replays,
     season reports and `engine_update.json` now follow FLUBNF_STATE_DIR.
     The Sandbox part is left for Ely.
+  - 2026-11-10 (07:54 UTC): `engine-public` is merged into `dev` (#61,
+    def45db), and this clone is at that commit. A `dev` copy that records
+    no engine now runs the public engine; the private one runs only with
+    `FLUBNF_ENGINE=private`. `main` is unchanged, so the weekly round stays
+    on the private engine. Every replay this lane runs names
+    `FLUBNF_ENGINE`, since a season begun on one engine is refused on the
+    other. On the PC, the private engine is in (engine.md, 2026-11-09:
+    2fdadee0 at `%LOCALAPPDATA%\FluBNF\PyBNF-pf`); the public venv
+    (`%LOCALAPPDATA%\FluBNF\venv-public`) is not yet. The doctor under
+    each engine, `engine_lock.py check`, the test baseline and the
+    Groundhog record reproduction wait for it, so as not to run against
+    the Engine session's install and timings.
 
 - 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
   REPOSITORY (Ely: "make sure your results are visible to the Team agent
