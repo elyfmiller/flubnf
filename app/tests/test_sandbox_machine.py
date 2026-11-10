@@ -409,8 +409,10 @@ def test_check_keeps_a_model_failure_after_the_banner_as_the_models(
     files = {n: (EXAMPLE / n).read_text() for n in sb.REQUIRED}
     r = sb.check(files, work=tmp_path / "check")
     assert r["facts"]["network"] == "fails" and r["facts"]["machine"] == ""
+    # BNG2.pl's own reason first (the notice), its words after (SB-04)
     assert r["problems"][0].startswith("BNG2.pl could not generate the "
-                                       "network:\nABORT: Molecule Q")
+                                       "network: Molecule Q not defined\n"
+                                       "ABORT: Molecule Q")
     # the banner is kept although the tail cut it: the run reached the model
     assert pf.bng_started(r["problems"][0])
 

@@ -523,8 +523,9 @@ def _sandbox_fill_flash(info: dict) -> None:
     rate = info.get("kind") == "rate"
     if rate:
         # to act on: said on the line, the why in the tip
-        msg += " Rates: set objfunc in priors.conf."
-        detail += " The default objfunc expects counts."
+        msg += " Rates: a fit reads counts, so load counts to fit this data."
+        detail += (" The fit's likelihood, objfunc neg_bin_dynamic, is for "
+                   "weekly counts.")
     _flash(msg, "warn" if rate else "ok", detail=detail)
 
 
@@ -625,6 +626,25 @@ async def _sandbox_capped_form(request: Request, cap: int):
         max_files=1, max_fields=40, max_part_size=_SANDBOX_BODY_SLACK)
 
 
+#: the dataset store's column advice, for the Data tab's upload, which has
+#: the column mapping; the Sandbox's upload has none, so it points there
+_COLUMN_CHOICE = (
+    (re.compile(r" Choose which column holds each\.$"),
+     (" Name the columns so in the file, or upload it on the Data tab, "
+      "where the columns can be chosen.")),
+    (re.compile(r" Choose one \(e\.g\., [^)]*\), or keep only one in the "
+                r"file\.$"),
+     (" Keep only one in the file, or upload it on the Data tab, where the "
+      "column can be chosen.")))
+
+
+def _sandbox_columns_advice(problem: str) -> str:
+    """A refusal's column advice as the Sandbox can act on it."""
+    for pat, words in _COLUMN_CHOICE:
+        problem = pat.sub(words, problem)
+    return problem
+
+
 @router.post("/sandbox/models/{name}/upload-data")
 async def sandbox_upload_data(request: Request, name: str):
     """A CSV of your own (grouped date,target_group,value[,population],
@@ -667,7 +687,8 @@ async def sandbox_upload_data(request: Request, name: str):
         ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
                                      up.filename, kind, cap)
     except sandbox_mod.UploadRefused as e:
-        _sandbox_upload_report[name] = {"problems": e.problems or [str(e)]}
+        _sandbox_upload_report[name] = {"problems": [
+            _sandbox_columns_advice(p) for p in (e.problems or [str(e)])]}
         return _sandbox_redirect(name)
     finally:
         await up.close()
