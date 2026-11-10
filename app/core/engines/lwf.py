@@ -837,7 +837,11 @@ def _run_lwf(c):
 '''
 
 #: the forecast path's shard runner (cf. pf._RUNNER): the same halt check
-#: between cells and status after every cell; {lwf_cell} runs each one
+#: between cells and status after every cell; {lwf_cell} runs each one.
+#: It writes each finished cell's seconds (secs, for pf.execute's
+#: pf_timing.json) just after the cell ends, and once execute sees STOP
+#: the runner is ended where it is: a cell that finished just before the
+#: STOP, before the runner wrote its seconds, has no seconds there
 RUNNER = '''"""Auto-generated public-engine runner. Executes one shard's cells
 sequentially (job_type = lwf, one PyBNF process per cell)."""
 import json, os, shutil, sys

@@ -2171,7 +2171,11 @@ def execute(workroot: Path, timeout: float | None = None,
     override, else DEFAULT_SHARD_WIDTH); `env` is the runners'
     environment (runner_popen_kwargs says what None means). Once every
     runner is reaped, the seconds each finished cell took go to
-    pf_timing.json (_write_timing), however the grid ended.
+    pf_timing.json (_write_timing), however the grid ended. A runner
+    writes a cell's seconds just after the cell ends, and once STOP is
+    seen here the runners are ended where they are: a cell that finished
+    just before the STOP, before its runner wrote its seconds, has no
+    seconds there.
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"

@@ -165,6 +165,54 @@ def test_a_stopped_grid_keeps_the_seconds_of_the_cells_it_finished(
     assert set(_timing(w)["cells"]) == {"cell_0"}
 
 
+def _flat(text: str) -> str:
+    return " ".join(text.replace("#:", " ").split())
+
+
+def test_a_stop_can_cut_off_a_finished_cell_s_seconds_as_execute_says(
+        engine, tmp_path):
+    """Review 6 of #93, finding 8: the moment the test above steps round
+    is in the product too. Here it is held open: cell_0 finishes, its
+    runner's write of the seconds waits, and the STOP is seen in that
+    wait. The grid ends stopped and pf_timing.json has no seconds for the
+    cell that finished, as pf.execute's docstring and lwf.RUNNER's note
+    say. Nothing about the behaviour changed; the words now say it."""
+    engine("        if os.path.basename(os.getcwd()) == 'cell_0':\n"
+           "            import __main__\n"
+           "            _w = __main__._write\n"
+           "            def _slow(path, payload, tries=10):\n"
+           "                if path.endswith('.secs.prog'):\n"
+           "                    time.sleep(30)\n"
+           "                return _w(path, payload, tries)\n"
+           "            __main__._write = _slow\n"
+           "            open('finished', 'w').close()\n"
+           "            open(os.path.join(os.path.dirname(os.getcwd()),\n"
+           "                              'STOP'), 'w').close()\n")
+    w = tmp_path / "wr"
+    w.mkdir()
+    _grid(w, 2)
+    t0 = time.monotonic()
+    with pytest.raises(pf.RunStopped):
+        pf.execute(w, width=1)
+    assert time.monotonic() - t0 < 20            # the runner was ended
+    assert (w / "cell_0" / "finished").is_file()
+    assert _timing(w)["cells"] == {}
+    said = ("a cell that finished just before the STOP, before its runner "
+            "wrote its seconds, has no seconds there")
+    assert said in _flat(pf.execute.__doc__)
+    from app.core.engines import lwf
+    src = Path(lwf.__file__).read_text(encoding="utf-8")
+    note = src[:src.index("\nRUNNER = '''")]
+    note = note[note.rindex("#: the forecast path's shard runner"):]
+    assert ("a cell that finished just before the STOP, before the runner "
+            "wrote its seconds, has no seconds there") in _flat(note)
+    # the public runner keeps the same order: the cell, then its seconds
+    loop = lwf.RUNNER[lwf.RUNNER.index("for _i, c in enumerate(cells, 1):"):]
+    assert (loop.index("results[c[\"key\"]] = _run_lwf(c)")
+            < loop.index("secs[c[\"key\"]] = ")
+            < loop.index("published = _publish(_i)"))
+
+
 def test_a_timing_write_that_fails_never_fails_the_grid(engine, tmp_path,
                                                         monkeypatch):
     engine("        pass\n")
