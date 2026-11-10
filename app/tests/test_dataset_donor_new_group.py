@@ -153,11 +153,12 @@ def test_rule_one_groups_that_speak_leave_one_new_group_open():
                            CK.donor_counts(bank, [END])[END]) == set()
 
 
-def test_rule_two_groups_of_dead_seasons_leave_one_new_group_open():
+def test_rule_two_groups_of_dead_seasons_say_nothing():
     """Groups A and B each have two earlier seasons reading 0 throughout,
     then the newest with cases; group C the newest only. Every horizon
-    counts 0, and A and B have two seasons holding the weeks: C is left
-    open, with A alone beside it too."""
+    counts 0, and seasons reading 0 throughout say nothing either way
+    (review of #93 at 42db2a82, finding 1): no group speaks, so the
+    figure, with A alone beside C too."""
     rows = []
     for d in _saturdays(date(2022, 8, 1), END):
         v = 5 if AN.season_of(d) == AN.season_of(END) else 0
@@ -167,7 +168,7 @@ def test_rule_two_groups_of_dead_seasons_leave_one_new_group_open():
     window = _window(bank, END)
     counts = CK.donor_counts(bank, [END])[END]
     assert tuple(counts) == (0, 0, 0, 0)
-    assert CK._seasons_say(bank, window, counts) == {"C"}
+    assert CK._seasons_say(bank, window, counts) is None
     bank = _bank([r for r in rows if r[0] != "B"])
     assert CK._seasons_say(bank, window,
-                           CK.donor_counts(bank, [END])[END]) == {"C"}
+                           CK.donor_counts(bank, [END])[END]) is None

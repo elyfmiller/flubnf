@@ -1046,25 +1046,34 @@ def groundhog_donors(rep: Report):
     against a figure, see below), "open": how many groups with data the
     file's seasons say nothing for while they show the others' give
     nothing (0 unless so), "open_new": whether those groups have no
-    earlier season in the file at all}. A count is one per group and
-    week. It forecasts each horizon that reaches MIN_DONORS and skips the
-    others, so the fewest says whether it forecasts all four. The stored
-    notice (dataset_checks, horizon 1) is not changed by it.
+    earlier season in the file at all, "one_season": with "open" 0, how
+    many groups' seasons show it through one season only (0 unless so)}.
+    A count is one per group and week. It forecasts each horizon that
+    reaches MIN_DONORS and skips the others, so the fewest says whether
+    it forecasts all four. The stored notice (dataset_checks, horizon 1)
+    is not changed by it.
 
     "seasons" takes what an earlier season gave the fewest horizon in
     this file: its count over the earlier seasons holding a week of the
     window (a horizon that reaches into weeks reading 0 gains less from
-    each). With none to go by, an ordinary season of every group
+    each). A group's season reading 0 throughout (or nothing at all) says
+    nothing about growth and is not one of them: the figure divided by
+    it came out several times too large (review of #93 at 42db2a82,
+    finding 3). With none to go by, an ordinary season of every group
     (window_weeks_a_season: four weeks around a week 53, else five). A
     horizon at 0 although earlier seasons hold a week of the window and
     the week that horizon later, where some group's seasons show that
     more like them give it nothing (_seasons_say: a summer of zeros, say,
-    not one dead season), has nothing to go by either, and no ordinary
-    season stands for the file's: "seasons" is None, and the check gives
-    no figure (datasets_ui.model_view). Where every group with data shows
-    it ("open" 0), more seasons like these would not help; where some
+    not seasons reading 0 throughout), has nothing to go by either, and
+    no ordinary season stands for the file's: "seasons" is None, and the
+    check gives no figure (datasets_ui.model_view). Where every group
+    with data shows it through two seasons or more ("open" and
+    "one_season" 0), more seasons like these would not help; where some
     groups have no season that shows it, seasons of theirs may, and the
-    check says so instead (review of #93 at d5a7eb16, findings 1 and 2)."""
+    check says so instead (review of #93 at d5a7eb16, findings 1 and 2);
+    where every group shows it but some through one season only, one
+    season is too few to say more would not help, and the check says
+    more seasons may (at 42db2a82, finding 2)."""
     import math
 
     from flubnf import analogue as AN
@@ -1083,18 +1092,37 @@ def groundhog_donors(rep: Report):
               if AN.season_of(d) < S
               and AN.calendar_distance(AN.epiweek(d), E)
               <= AN.DEFAULT_BANDWIDTH}
-    seasons = {AN.season_of(d) for d in window}
+    cased = _cased(bank)
+    # the earlier seasons holding a week of the window with a case in
+    # them: a season reading 0 throughout gave nothing and says nothing
+    seasons = {AN.season_of(d) for g, d in bank
+               if d in window and (g, AN.season_of(d)) in cased}
     per = (n / len(seasons) if n and seasons else
            window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
     more = math.ceil((need - n) / per) if n < need else 0
-    left = _seasons_say(bank, window, counts) if not n else None
-    if left is not None:
+    heard = _seasons_heard(bank, window, counts, cased) if not n else None
+    left, one = heard if heard is not None else (None, set())
+    if heard is not None:
         more = None
     earlier = {g for g, d in bank if AN.season_of(d) < S}
     return {"counts": counts, "n": n, "need": need,
             "enough": sum(1 for c in counts if c >= need),
             "seasons": more, "open": len(left or ()),
-            "open_new": bool(left) and not (left & earlier)}
+            "open_new": bool(left) and not (left & earlier),
+            "one_season": 0 if left else len(one)}
+
+
+def _cased(bank) -> set:
+    """The (group, season)s of `bank` ({(group, date): value}) with a case:
+    a finite value above 0 in some week of that season. A group's season
+    reading 0 throughout says nothing about growth either way: it is no
+    proof that more seasons give a horizon nothing, and no measure of
+    what a season gives (review of #93 at 42db2a82, findings 1 and 3)."""
+    import math
+
+    from flubnf import analogue as AN
+    return {(g, AN.season_of(d)) for (g, d), v in bank.items()
+            if math.isfinite(v) and v > 0}
 
 
 def _seasons_say(bank, window, counts):
@@ -1102,23 +1130,47 @@ def _seasons_say(bank, window, counts):
     (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
     show that more like them leave it at 0 (a figure is given); else the
     groups with data whose seasons do not show it at such a horizon (an
-    empty set when every group's do: more seasons like these would not
-    help).
+    empty set when every group's do). _seasons_heard says how, and which
+    groups show it through one season only."""
+    heard = _seasons_heard(bank, window, counts)
+    return None if heard is None else heard[0]
+
+
+def _seasons_heard(bank, window, counts, cased=None):
+    """What the file's earlier seasons show of a horizon at 0 donor weeks
+    (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
+    show that more like them leave it at 0 (a figure is given); else
+    (left, one): the groups with data whose seasons do not show it at
+    such a horizon, and of the others those that show it through one
+    season only there. Both empty: every group's seasons show it through
+    two or more, and more seasons like these would not help. `cased`:
+    _cased(bank), worked out here when not given.
 
     A pair is a week of `window` (earlier seasons' weeks within the donor
     window) and the week h later, both in `bank` for one group: what the
     Groundhog reads for a donor week (donor_counts). At a horizon that
     counts 0, every pair gave none. That alone is no proof: one season of
     zeros does it, and real seasons would help (review of #93, re-check
-    at 099907c, finding 1). So at a horizon at 0 with pairs, a group
-    shows it when:
+    at 099907c, finding 1). A group's season reading 0 throughout (or
+    nothing) says nothing about growth either way and is left out (at
+    42db2a82, finding 1: two such seasons said "would not help"). So at
+    a horizon at 0 with pairs, a group shows it when:
 
       * a season of it holding a pair there finds donor weeks at another
         horizon, every such season of the file doing so: the window's
         weeks have cases and the weeks h later do not (R1's 36, 24, 12
         and 0). A season holding a pair that finds none at any horizon (a
-        dead season) says nothing either way and is left out; or
-      * two or more earlier seasons of it hold a pair there.
+        dead season) is no such season; or
+      * two or more earlier seasons of it with a case hold a pair there
+        (a summer of zeros, the window's weeks reading 0 in seasons with
+        cases).
+
+    One season alone does not say that more would not help (at 42db2a82,
+    finding 2: one run of zeros at weeks 4 to 8 said it, where six
+    ordinary seasons give 34, 33, 32 and 31): a group that shows it
+    through one live season only is in `one`, and the check gives
+    neither a figure (seasons like that one would not reach it) nor
+    "would not help".
 
     A group with no such season (one with the newest season only, say)
     could still gain from real seasons. No count of groups decides it: one
@@ -1135,6 +1187,8 @@ def _seasons_say(bank, window, counts):
     def later(g, d, h):
         return bank.get((g, d + timedelta(days=7 * h)))
 
+    if cased is None:
+        cased = _cased(bank)
     # the (group, season)s that find a donor week at each horizon
     finds = {h: set() for h in GROUNDHOG_HORIZONS}
     for (g, d), v0 in bank.items():
@@ -1147,7 +1201,7 @@ def _seasons_say(bank, window, counts):
                 finds[h].add((g, AN.season_of(d)))
     groups = {g for g, _ in bank}
     anywhere = set().union(*finds.values())
-    shown_any, left = False, set()
+    shown_any, left, one = False, set(), set()
     for h, c in zip(GROUNDHOG_HORIZONS, counts):
         if c:
             continue
@@ -1160,13 +1214,15 @@ def _seasons_say(bank, window, counts):
         # the dead seasons left out, a group speaks through a live one
         live = held & anywhere
         shown = {g for g, _ in live} if live <= elsewhere else set()
-        # or through two seasons holding the pair
-        per = Counter(g for g, _ in held)
-        shown |= {g for g, k in per.items() if k >= 2}
-        if shown:
+        # or through two seasons with a case holding the pair; a season
+        # reading 0 throughout is not one
+        per = Counter(g for g, s in held if (g, s) in cased)
+        two = {g for g, k in per.items() if k >= 2}
+        if shown or two:
             shown_any = True
-            left |= groups - shown
-    return left if shown_any else None
+            left |= groups - shown - two
+            one |= shown - two
+    return (left, one - left) if shown_any else None
 
 
 def groundhog_shortfall(rep: Report):

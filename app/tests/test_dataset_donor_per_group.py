@@ -19,6 +19,9 @@ weeks at another horizon. Two shapes came out wrong:
 
 Now a season that finds nothing at any horizon is left out, and every
 group with data must speak through a live season: (a) gives no figure.
+Each group of (a) speaks through one season only, too few for "would not
+help" (review of #93 at 42db2a82, finding 2): the check says more
+seasons may.
 In (b) the small group speaks and the five have no earlier season: since
 the review of #93 at d5a7eb16 (findings 1 and 2) no count of groups
 decides, so (b) gives neither its figure nor "would not help": the
@@ -116,11 +119,13 @@ def test_a_gives_no_figure():
     assert len(rep.summary["groups"]) == 2
     got = CK.groundhog_donors(rep)
     assert got["counts"] == (6, 4, 2, 0) and got["seasons"] is None
+    assert got["one_season"] == 2 and not got["open"]
     html = check(raw, kind="rate")
     assert notice(html).endswith(
-        "At 1 horizon no earlier season in the file has a week like it, so "
-        "more seasons like these would not help there.")
-    assert "about 3 more" not in html
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but for 2 groups only one season says so, and more seasons "
+        "may.")
+    assert "about 3 more" not in html and "would not help" not in html
 
 
 # ---------------------------------- (b): one small group, five new groups

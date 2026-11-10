@@ -159,10 +159,11 @@ def test_where_every_group_agrees_would_not_help_stays():
         "more seasons like these would not help there.")
 
 
-def test_each_side_of_case_1_alone_keeps_its_old_answer():
+def test_each_side_of_case_1_alone():
     """The small groups alone: each one's season finds donors at
-    horizons 1 to 3 and none at 4, so every group agrees and more seasons
-    like these would not help. The large groups alone: one season, no
+    horizons 1 to 3 and none at 4, so every group agrees, but through one
+    season each: no figure, and not "would not help" either (review of
+    #93 at 42db2a82, finding 2). The large groups alone: one season, no
     group shows anything, so the figure (an ordinary season of each)."""
     raw = case1_bytes()
     lines = raw.decode().splitlines()
@@ -170,9 +171,13 @@ def test_each_side_of_case_1_alone_keeps_its_old_answer():
     got = CK.groundhog_donors(D.validate(small))
     assert got["counts"] == (9, 6, 3, 0)          # the large add none
     assert got["seasons"] is None and not got.get("open")
-    assert notice(check(small, kind="rate")).endswith(
-        "At 1 horizon no earlier season in the file has a week like it, so "
-        "more seasons like these would not help there.")
+    assert got["one_season"] == 3
+    html = check(small, kind="rate")
+    assert notice(html).endswith(
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but for 3 groups only one season says so, and more seasons "
+        "may.")
+    assert "would not help" not in html
     large = _csv(ln for ln in lines[1:] if ",L" in ln)
     got = CK.groundhog_donors(D.validate(large))
     assert got["n"] == 0 and got["seasons"] == 3 and not got.get("open")
