@@ -53,9 +53,7 @@ def test_the_hubs_absence_is_one_tested_state(nohub):
     assert data_mod.hub_missing() == f"there is no hub folder at {nohub}"
     nohub.mkdir()
     assert data_mod.hub_missing(data=False) == ""
-    assert data_mod.hub_missing() == (
-        f"the hub folder {nohub} holds no data directories (a sparse "
-        "checkout without them)")
+    assert data_mod.hub_missing() == f"the hub folder {nohub} is empty"
     (nohub / "auxiliary-data").mkdir()
     assert data_mod.hub_missing() == ""
 

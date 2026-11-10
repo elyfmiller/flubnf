@@ -30,6 +30,7 @@ from app.core import runs as runs_mod
 from app.ui import pipeline, shared
 from app.ui import server as srv
 from app.ui import state as ui_state
+from app.ui import templating
 from app.ui import versions as V
 from app.ui.routes import home as H
 
@@ -204,11 +205,18 @@ def test_the_forecast_step_says_groundhog_only_when_the_engine_is_absent(
 
 
 @pytest.mark.parametrize("week, why", [
-    (None, "The hub folder {hub} holds no weeks of data yet."),
-    (OSError("no hub data"), "The hub data could not be read: no hub data.")])
-def test_without_data_the_data_step_is_current(empty, week, why):
+    (None, "The hub folder {hub} holds no weeks of data. Move or rename the "
+     "folder, then run ./setup.sh and relaunch the console: setup fetches "
+     "a fresh clone."),
+    (OSError("no hub data"), "The hub data could not be read: no hub data. "
+     "If it stays so, move or rename the folder, then run ./setup.sh and "
+     "relaunch the console: setup fetches a fresh clone.")])
+def test_without_data_the_data_step_is_current(empty, monkeypatch, week,
+                                               why):
     """Data is the step to take, and its caption says why (review of #93
-    at d160002b, finding 1: the reason was worked out and never shown)."""
+    at d160002b, finding 1: the reason was worked out and never shown) and
+    what to do (review of #93 at 3120298e, finding 4)."""
+    monkeypatch.setattr(templating, "_platform", lambda: "linux")
     empty.week = week
     steps = _steps(_get())
     assert [s[2:5] for s in steps] == [
@@ -227,9 +235,11 @@ def test_without_the_hub_the_data_step_is_current(empty, monkeypatch,
     monkeypatch.setattr(core_data, "newest_week", lambda: WEEK)
     for k, v in INSTALLED.items():
         monkeypatch.setitem(V.VERSIONS, k, v)
+    monkeypatch.setattr(templating, "_platform", lambda: "linux")
     p = _get()
     assert [s[2:5] for s in _steps(p)] == [
-        ("current", "step", f"There is no hub folder at {tmp_path / 'nohub'}."),
+        ("current", "step", f"There is no hub folder at {tmp_path / 'nohub'}. "
+         "To fetch the data, run ./setup.sh and relaunch the console."),
         ("todo", None, "Groundhog only on this computer"),
         ("todo", None, "")]
     assert "FluSight data" in _line(p)[1]

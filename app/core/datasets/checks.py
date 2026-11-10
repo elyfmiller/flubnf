@@ -1101,17 +1101,21 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
     help (review of #93, re-check at 099907c, finding 1). So at a horizon
     at 0 with pairs, the file shows it only when:
 
-      * every group with data has a season holding a pair there that
-        finds donor weeks at another horizon: the window's weeks have
-        cases and the weeks h later do not (R1's 36, 24, 12 and 0). A
-        season holding a pair that finds none at any horizon (a dead
-        season) says nothing either way and is left out; it no longer
-        hides what the group's live seasons show. A group with no such
-        season (one with the newest season only, say) could still gain
-        from real seasons, so one small group cannot speak for the
-        others (review of #93 at d160002b, finding 2); or
-      * two or more earlier seasons of every group with data hold a
-        pair there."""
+      * more than half the groups with data have a season holding a pair
+        there that finds donor weeks at another horizon: the window's
+        weeks have cases and the weeks h later do not (R1's 36, 24, 12
+        and 0). A season holding a pair that finds none at any horizon (a
+        dead season) says nothing either way and is left out; it no
+        longer hides what the group's live seasons show. A group with no
+        such season (one with the newest season only, say) could still
+        gain from real seasons, so the groups that speak must outnumber
+        the rest: one small group does not speak for five new ones
+        (review of #93 at d160002b, finding 2), and one new group does
+        not outweigh five whose 25 seasons give that horizon nothing,
+        which "about 1 more earlier season" would (review of #93 at
+        3120298e, finding 3); or
+      * two or more earlier seasons of more than half the groups with
+        data hold a pair there."""
     import math
 
     from flubnf import analogue as AN
@@ -1131,6 +1135,10 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
                 finds[h].add((g, AN.season_of(d)))
     groups = {g for g, _ in bank}
     anywhere = set().union(*finds.values())
+
+    def most(speaking) -> bool:
+        # the groups that show it are more than half of those with data
+        return 2 * len(speaking) > len(groups)
     for h, c in zip(GROUNDHOG_HORIZONS, counts):
         if c:
             continue
@@ -1140,13 +1148,13 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
             continue
         elsewhere = set().union(*(finds[k] for k in GROUNDHOG_HORIZONS
                                   if k != h))
-        # rule one, group by group: the dead seasons left out, every group
-        # with data speaks through a live one
+        # rule one, group by group: the dead seasons left out, more than
+        # half the groups with data speak through a live one
         live = held & anywhere
-        if live <= elsewhere and {g for g, _ in live} == groups:
+        if live <= elsewhere and most({g for g, _ in live}):
             return True
         per = Counter(g for g, _ in held)
-        if all(per[g] >= 2 for g in groups):
+        if most({g for g in groups if per[g] >= 2}):
             return True
     return False
 

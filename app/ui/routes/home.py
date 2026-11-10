@@ -520,27 +520,55 @@ def _sentence(words: str) -> str:
     return words[:1].upper() + words[1:] + ("" if words.endswith(".") else ".")
 
 
+def _hub_step(gate: str) -> str:
+    """The step that gets the hub's data, in a sentence, after the run
+    gate's reason (data.hub_state's word), as the setup scripts take each
+    state: setup fetches into an absent or an empty folder (setup.ps1
+    only where nothing is) and widens a sparse clone; it refuses a file or
+    a folder that is no clone, which data.hub_missing's words say to move
+    first. A folder the gate passes with nothing a run can read ("") gets
+    a fresh clone once moved aside: setup leaves a clone that has its
+    folders as it is."""
+    from app.ui import templating
+    setup = templating.hub_setup_text()
+    if gate == "empty" and templating._platform() == "win32":
+        return f"Delete it, then {setup}."
+    if gate == "empty":
+        return f"To fetch the data into it, {setup}."
+    if gate == "sparse":
+        return f"To add it, {setup}."
+    if gate in ("absent", "file", "folder"):
+        return f"To fetch the data, {setup}."
+    return (f"Move or rename the folder, then {setup}: setup fetches a "
+            "fresh clone.")
+
+
 def _start_data() -> tuple:
     """(week, why) for the first-run Data step. When a forecast can run
     on the hub, week is the newest week the hub's own data holds (its
     live target file or its archive), for "through <week>", and why is
     "". Otherwise week is "" and why says what stops it, in a plain
-    sentence: the run gate's own reason (data.hub_missing, the test a
-    run must pass), no locations table in the hub (a run that passes the
-    gate reads it, and fails), or no week in the hub at all.
-    data.newest_week also counts the shipped snapshots, which every copy
-    holds: a week found only there is not the hub's. A hub folder that is
-    not there at all is hub_missing's to report. It imports pandas: never
-    on the cold paint, which exists to avoid that import."""
+    sentence, then the step to take (_hub_step): the run gate's own
+    reason (data.hub_missing, the test a run must pass), no locations
+    table in the hub (a run that passes the gate reads it, and fails), or
+    no week in the hub at all. data.newest_week also counts the shipped
+    snapshots, which every copy holds: a week found only there is not the
+    hub's. A hub folder that is not there at all is hub_missing's to
+    report. It imports pandas: never on the cold paint, which exists to
+    avoid that import."""
     d = state.data_mod
     try:
         why = d.hub_missing()
         if why:
-            return "", _sentence(why)
+            try:
+                gate = d.hub_state()
+            except Exception:
+                gate = ""
+            return "", f"{_sentence(why)} {_hub_step(gate)}"
         hub = Path(d.HUB)
         if hub.is_dir() and not Path(d.LOCATIONS).is_file():
             return "", (f"The hub folder {hub} has no "
-                        "auxiliary-data/locations.csv.")
+                        f"auxiliary-data/locations.csv. {_hub_step('')}")
         week = d.newest_week()
         if week and week in d.shipped_weeks():
             live, archive = d.live_newest_week(), d.archive_vintages()
@@ -548,11 +576,17 @@ def _start_data() -> tuple:
                 week = max([w for w in (live, archive[-1] if archive
                                         else None) if w], default=None)
         if not week:
-            return "", f"The hub folder {hub} holds no weeks of data yet."
+            return "", (f"The hub folder {hub} holds no weeks of data. "
+                        f"{_hub_step('')}")
         return week, ""
     except Exception as e:
-        return "", _sentence(f"the hub data could not be read: "
-                             f"{e or type(e).__name__}")
+        why = _sentence(f"the hub data could not be read: "
+                        f"{e or type(e).__name__}")
+        try:
+            step = _hub_step("")
+        except Exception:
+            return "", why
+        return "", f"{why} If it stays so, {step[:1].lower()}{step[1:]}"
 
 
 def _start_pf_state() -> str:

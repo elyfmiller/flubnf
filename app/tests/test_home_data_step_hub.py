@@ -25,6 +25,7 @@ import pytest
 import flubnf.settings as fs
 from app.core import data as core_data
 from app.ui import state as ui_state
+from app.ui import templating
 from app.ui.routes import home as H
 
 from test_home_first_run import _get, _steps, empty  # noqa: F401
@@ -53,6 +54,7 @@ def hub(tmp_path, monkeypatch, empty, hub_check_real, shipped_vintages):
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_text(text)
         monkeypatch.setattr(ui_state, "data_mod", core_data)
+        monkeypatch.setattr(templating, "_platform", lambda: "linux")
         for mod in (core_data, fs):
             monkeypatch.setattr(mod, "HUB", path)
             monkeypatch.setattr(mod, "ARCHIVE", path / ARCHIVE)
@@ -72,6 +74,12 @@ def _vintage(week) -> tuple:
 
 
 LOC_TEXT = "location,location_name,population\nUS,US,330000000\n"
+
+#: the setup step on Linux and macOS (templating.hub_setup_text)
+SETUP = "run ./setup.sh and relaunch the console"
+#: the step for a hub folder that passes the run gate with nothing to read
+FRESH = (f"Move or rename the folder, then {SETUP}: setup fetches a fresh "
+         "clone.")
 
 
 def _data_step():
@@ -98,10 +106,11 @@ def test_a_sparse_clone_that_can_forecast_reads_done(hub):
 
 
 @pytest.mark.parametrize("files, why", [
-    (None, "There is no hub folder at {h}."),
+    (None, "There is no hub folder at {h}. To fetch the data, " + SETUP
+     + "."),
     ({"target-data": None},
-     "The hub folder {h} holds no data directories (a sparse checkout "
-     "without them)."),
+     "The hub folder {h} has no auxiliary-data folder and is not a git "
+     "clone; move or rename it first. To fetch the data, " + SETUP + "."),
 ])
 def test_where_the_run_gate_refuses_the_reason_is_its_own(hub, files, why):
     h = hub(files)
@@ -118,20 +127,17 @@ def test_hub_folders_with_no_data_are_not_done_through_a_shipped_week(hub):
     h = hub({"target-data": None, ARCHIVE: None, LOCS: LOC_TEXT})
     # the shipped snapshots still give data.newest_week a week
     assert core_data.newest_week() == _shipped_newest()
-    assert H._start_data() == (
-        "", f"The hub folder {h} holds no weeks of data yet.")
-    assert _data_step() == (
-        "current", "step", f"The hub folder {h} holds no weeks of data yet.")
+    why = f"The hub folder {h} holds no weeks of data. {FRESH}"
+    assert H._start_data() == ("", why)
+    assert _data_step() == ("current", "step", why)
 
 
 def test_a_hub_with_no_locations_table_is_not_done(hub):
     h = hub(dict([_vintage("2025-05-31"), ("target-data", None)]))
     assert core_data.hub_missing() == ""
-    assert H._start_data() == (
-        "", f"The hub folder {h} has no auxiliary-data/locations.csv.")
-    assert _data_step() == (
-        "current", "step",
-        f"The hub folder {h} has no auxiliary-data/locations.csv.")
+    why = f"The hub folder {h} has no auxiliary-data/locations.csv. {FRESH}"
+    assert H._start_data() == ("", why)
+    assert _data_step() == ("current", "step", why)
 
 
 def test_the_week_is_the_hubs_own_when_the_shipped_ones_are_newer(hub):
@@ -162,10 +168,10 @@ def test_an_unreadable_hub_says_so(hub, monkeypatch):
     def broken():
         raise OSError("disk gone")
     monkeypatch.setattr(core_data, "newest_week", broken)
-    assert H._start_data() == ("", "The hub data could not be read: "
-                                   "disk gone.")
-    assert _data_step() == ("current", "step",
-                            "The hub data could not be read: disk gone.")
+    why = ("The hub data could not be read: disk gone. If it stays so, "
+           f"{FRESH[:1].lower()}{FRESH[1:]}")
+    assert H._start_data() == ("", why)
+    assert _data_step() == ("current", "step", why)
 
 
 # ------------------------------------- the reason on the page (d160002b, 1)
