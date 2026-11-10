@@ -2,11 +2,14 @@
 
   * The diagram's captions count the model's rules and the network's
     reactions, a rule or reaction that draws no arrow too (SB-07), and its
-    labels follow the box's width and the page's text size (UI-19).
+    labels follow the box's width and the page's text size (UI-19), a
+    change of size with no reload too.
   * Load, Simulate and Upload save and name only the files that changed,
-    never data.exp, which they replace (SB-18); "1 week" (SB-25).
+    and data.exp only when they did not replace it after all (SB-18);
+    "1 week" (SB-25).
   * Without the engine, the page's notice says so in words and a refused
-    run points at it (SB-19).
+    run points at it, or says the reason when the model is not here to
+    open (SB-19).
   * One rule between a run's summary and the section under it (SB-20).
   * What changed names its settings and writes 10,000 (SB-21).
   * A dataset start has no Oracle step card; the step's donors are said
@@ -19,6 +22,8 @@
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 import zipfile
@@ -238,3 +243,162 @@ def test_a_copied_example_changed_when_it_was_copied(sandbox_root):
         assert (sb.MODELS / "mine" / f).stat().st_mtime >= before, f
     assert json.loads((sb.MODELS / "mine" / sb.MODEL_FILE).read_text())[
         "origin"] == "example:sir_example"
+
+
+# ------------------------------- S3 pass: UI-19, SB-18, SB-19 follow-ups
+
+#: stand-in elements, enough for model-views.js and the diagram card's
+#: script; the window keeps its listeners and a root font size
+_DOM = r"""
+var fontPx = 16;
+function El(tag) {
+  this.tagName = tag; this.attrs = {}; this.children = []; this.style = {};
+  this.dataset = {}; this.on = {}; this.parentNode = null; this.hidden = false;
+  this.textContent = ''; this.className = ''; this.clientWidth = 0;
+}
+El.prototype.setAttribute = function (k, v) { this.attrs[k] = String(v); };
+El.prototype.getAttribute = function (k) { return k in this.attrs ? this.attrs[k] : null; };
+El.prototype.appendChild = function (c) { c.parentNode = this; this.children.push(c); return c; };
+El.prototype.removeChild = function (c) {
+  this.children.splice(this.children.indexOf(c), 1); c.parentNode = null; return c;
+};
+Object.defineProperty(El.prototype, 'firstChild', {get: function () { return this.children[0] || null; }});
+El.prototype.addEventListener = function (t, f) { (this.on[t] = this.on[t] || []).push(f); };
+El.prototype.removeEventListener = function () {};
+El.prototype.querySelectorAll = function () { return []; };
+El.prototype.querySelector = function () { return this.mviews || (this.mviews = new El('div')); };
+var de = new El('html'), card = new El('div'), box = new El('div');
+card.dataset.model = 'mine';
+box.clientWidth = 800;
+var document = {
+  readyState: 'complete', documentElement: de,
+  getElementById: function (id) { return id === 'cmap' ? card : id === 'cmap-svg' ? box : null; },
+  createElement: function (t) { return new El(t); },
+  createElementNS: function (ns, t) { return new El(t); },
+  addEventListener: function () {}, removeEventListener: function () {}
+};
+var heard = {};
+var window = {
+  document: document, innerWidth: 1280,
+  getComputedStyle: function () { return {fontSize: fontPx + 'px'}; },
+  addEventListener: function (t, f) { (heard[t] = heard[t] || []).push(f); },
+  dispatchEvent: function (e) { (heard[e.type] || []).forEach(function (f) { f(e); }); }
+};
+function fetch() {
+  return Promise.resolve({json: function () { return Promise.resolve(DATA); }});
+}
+// the drawing in the box now: its view box against its pixel box
+function frame() {
+  var svg = box.children[0].children[0].children[0], vb = svg.getAttribute('viewBox').split(' ');
+  return {w: +vb[2], h: +vb[3], pw: box.clientWidth, ph: parseFloat(svg.style.height),
+          svg: svg};
+}
+"""
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="no node")
+def test_the_diagram_follows_the_text_size_without_a_reload(tmp_path):
+    """UI-19's own steps: the Model view is drawn at 100%, then Display
+    text size goes to 160% (base.html sends fontsizechange once the slider
+    rests). The drawing shown is built again at the new size: its view
+    box is 1/1.6 of its pixel box, with no reload. The page's own lines
+    run here on stand-in elements."""
+    bngl = (sb.EXAMPLES / "sir_example" / "model.bngl").read_text(encoding="utf-8")
+    data = {"flow": contactmap.rule_flow(bngl), "sites": False}
+    assert data["flow"]["edges"]
+    tpl = (UI / "templates" / "sandbox_views.html").read_text(encoding="utf-8")
+    page = tpl.split("<script>\n", 1)[1].split("</script>", 1)[0]
+    mv = (UI / "static" / "model-views.js").read_text(encoding="utf-8")
+    drv = tmp_path / "d.js"
+    drv.write_text(_DOM + "var DATA = " + json.dumps(data) + ";\n" + mv + "\n"
+                   + page + """
+setTimeout(function () {
+  var a = frame();
+  fontPx = 25.6;
+  window.dispatchEvent(new Event('fontsizechange'));
+  setTimeout(function () {
+    var b = frame();
+    console.log(JSON.stringify([a.w, a.h, a.pw, a.ph, b.w, b.h, b.pw, b.ph,
+                                a.svg === b.svg]));
+  }, 0);
+}, 0);
+""", encoding="utf-8")
+    out = subprocess.run([shutil.which("node"), str(drv)], capture_output=True,
+                         text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    aw, ah, apw, aph, bw, bh, bpw, bph, same = json.loads(out.stdout)
+    assert (aw, ah) == (apw, aph)                    # 100%: one unit a pixel
+    assert not same                                  # drawn again
+    assert abs(bw * 1.6 - bpw) < 1e-6 and abs(bh * 1.6 - bph) < 1e-6
+
+
+def _edited(name="mine"):
+    return {"model_bngl": "", "priors_conf": "",
+            "data_exp": sb.read_model(name)["data.exp"] + "\n"}
+
+
+def test_an_edit_to_data_exp_is_named_when_the_action_keeps_it(
+        sandbox_root, tmp_path, monkeypatch):
+    """SB-18's rule (data.exp is never said as saved, since the action
+    replaces it) holds only once data.exp has been replaced: an upload of
+    several groups, an upload with no file and a refused Load save the
+    edit and say so."""
+    from app.core import datasets as D
+    from test_sandbox_upload import GROUPED, HUBVERSE
+    monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
+    monkeypatch.setattr(sb, "locations", lambda: [])
+    monkeypatch.setattr(sb, "vintages", lambda: [])
+    sb.new_model("mine")
+    url = "/sandbox/models/mine/upload-data"
+    # several groups: stored, nothing loaded, the edit kept
+    form = _edited()
+    ui_state._status.pop("flash", None)
+    client.post(url, data=form, files={"csv": ("grouped.csv", GROUPED.encode(),
+                                               "text/csv")},
+                follow_redirects=False)
+    assert _flash().startswith("Saved data.exp first.")
+    assert "(3 groups); pick one under Load data." in _flash()
+    assert sb.read_model("mine")["data.exp"] == form["data_exp"]
+    # no file chosen
+    form = _edited()
+    ui_state._status.pop("flash", None)
+    client.post(url, data=form, files={"csv": ("", b"", "application/octet-stream")},
+                follow_redirects=False)
+    assert ui_sandbox._sandbox_upload_report["mine"]["problems"] == [
+        "Choose a CSV file to upload."]
+    assert _flash() == "Saved data.exp first."
+    assert sb.read_model("mine")["data.exp"] == form["data_exp"]
+    # a Load refused (no location here)
+    form = _edited()
+    ui_state._status.pop("flash", None)
+    client.post("/sandbox/models/mine/fill-data",
+                data={**form, "source": "settled", "location": "Nowhere"},
+                follow_redirects=False)
+    assert _flash().startswith("Saved data.exp first.  Not filled: ")
+    assert sb.read_model("mine")["data.exp"] == form["data_exp"]
+    # a one-group upload fills it: replaced, so not said
+    form = _edited()
+    ui_state._status.pop("flash", None)
+    client.post(url, data=form, files={"csv": ("hub.csv", HUBVERSE.encode(),
+                                               "text/csv")},
+                follow_redirects=False)
+    assert "Saved" not in _flash()
+    assert _flash().startswith("data.exp filled: 5 weeks of Springfield")
+
+
+def test_a_refused_run_of_a_model_not_here_says_why(sandbox_root, monkeypatch):
+    """SB-19: the notice above the editor is on the page only when the
+    model opens; for a name with no model the reason is in the notice."""
+    from app.core.engines import pf
+    monkeypatch.setattr(pf, "engine_available", lambda: False)
+    ui_state._status.pop("flash", None)
+    r = client.post("/sandbox/run", data={"model": "nosuch",
+                                          "particles": "500"},
+                    follow_redirects=False)
+    said = _flash()
+    assert said.startswith("Not started: The fitting engine is not installed.")
+    assert "notice above the editor" not in said
+    assert ui_state._status.get("flash_detail", "").startswith(
+        "The PyBNF fork at ")
+    page = client.get(r.headers["location"]).text
+    assert "The fitting engine is not installed." in page

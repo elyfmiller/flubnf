@@ -222,6 +222,50 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
     assert neb["hint"] == f"forecast from {WEEKS[-2]}"
 
 
+def test_a_state_too_old_for_both_models_is_said_to_be_skipped(
+        tmp_path, monkeypatch):
+    """FC-26: Wyoming's newest reported week is past the walk's lag, so
+    both models skip it; its Data issues row says so, and the run page
+    names no week the record does not have. Display only: what the run
+    records is unchanged."""
+    import app.core.runs as runs_mod
+    from test_data_issues import _capture_run, _post
+    gone = WEEKS[-(AE.MAX_ANCHOR_LAG + 1):]
+    _hub(tmp_path / "hub", monkeypatch, newest={"Nebraska": None},
+         drop_weeks={"Wyoming": gone})
+    rep = reported.check()
+    rows = {r["name"]: r for r in reported.box_rows(rep)}
+    wy, neb = rows["Wyoming"], rows["Nebraska"]
+    assert wy["flag"] == "not reported, skipped"
+    assert wy["options"] == [("carry", reported.CARRY_SKIP_TEXT),
+                             ("omit", "Leave out")]
+    assert neb["flag"] == "not reported"          # forecast from the week before
+    gap = {g.location: g for g in rep.gaps}["Wyoming"]
+    assert (gap.what(), gap.flag()) == ("not reported", "not reported")
+    # the Forecast tab's row
+    ui_state._last_form.clear()
+    ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
+                                "engine": "all"})
+    page = client.get("/forecast").text
+    box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
+    assert '<span class="di-flag" id="di-flag-56">not reported, skipped</span>' in box
+    assert '<span class="di-flag" id="di-flag-31">not reported</span>' in box
+    # the record a run keeps, then the run page's words for it
+    started = _capture_run(monkeypatch)
+    _post({"gap.56": "carry", "gap.31": "carry"})
+    st = started[-1].extra["data_choices"]["states"]
+    assert {k: st["Wyoming"][k] for k in ("what", "choice", "from_week")} == {
+        "what": "not reported", "choice": "carry", "from_week": ""}
+    assert reported.choice_text(st["Wyoming"]) == "skipped"
+    assert reported.choice_text(st["Nebraska"]) == f"from {WEEKS[-2][5:]}"
+    tip = runs_mod.data_issues_row({}, started[-1].extra, {})[1]
+    assert "Wyoming: not reported; skipped." in tip
+    assert "last reported week" not in tip
+    # a record from before the week was recorded keeps its general words
+    assert reported.choice_text({"choice": "carry"}) == \
+        "from the last reported week"
+
+
 def _gap(reason, values, **kw):
     weeks = WEEKS[-len(values):]
     prev = values[-2] if len(values) >= 2 else None

@@ -8,8 +8,12 @@
   * A dataset replay's page leads back to that dataset's replays.
   * A replay that stopped early says how far it got, and its empty chart
     no longer promises forecasts "yet".
+  * A resume refused over its model settings says the zero-week rule a
+    season replayed before the rule stands for (abstain), and "no choice"
+    for a request that sent none, never "the default settings".
 """
 import json
+import shutil
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -18,7 +22,7 @@ from app.core import custom_retro as CX
 from app.ui import state as ui_state
 from test_datasets_ui import client, isolated, stored        # noqa: F401
 from test_dataset_engines import grouped_bytes                # noqa: E402
-from test_retro_archive import OTHER, _roots                  # noqa: E402
+from test_retro_archive import OTHER, SEASON, _roots          # noqa: E402
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "ui" / "templates"
 JSON = {"Accept": "application/json"}
@@ -148,3 +152,83 @@ def test_a_stopped_replay_leads_back_and_says_how_far_it_got():
     assert f'<a href="/retro?dataset={ds.id}" id="rd-back">Back to the ' \
            f'replays</a>' in page
     assert "No forecasts stored yet" not in page
+
+
+# ------------- review S3 (RE-22): a season replayed before the zero rule
+
+def _replayed(rr: Path, season: str, settings: dict) -> Path:
+    """A live season tree with one completed week and its run record."""
+    from app.core import retro
+    root = rr / season
+    wd = root / "weeks" / "2097-11-01"
+    wd.mkdir(parents=True)
+    (wd / "samples.json").write_text('{"asof": "2097-11-01", "pf": {}}')
+    retro.write_meta(root, {"season": season, "status": "stopped",
+                            "settings": settings})
+    return root
+
+
+def test_a_resume_refusal_says_the_zero_rule_the_record_stands_for(
+        tmp_path, monkeypatch, pf_engine_ready):
+    """The rule has no default. A season replayed before it existed did
+    what abstain does (the code resumes it so); a request that sends no
+    rule chose none. Neither side is "the default settings"."""
+    from app.ui.routes import retro as ui_retro
+    rr = _roots(tmp_path, monkeypatch)
+    started = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: started.append(a[0]))
+    # replayed before the rule (and before the settings registry): resumed
+    # asking for level, the record's side says abstain, as compared
+    _replayed(rr, OTHER, {"season": OTHER, "engine": "analogue",
+                          "scope": "panel6", "particles": 10000,
+                          "replicates": 3})
+    ui_state._status.pop("flash", None)          # notices join until read
+    client.post("/retro/run", data={
+        "season": OTHER, "mode": "resume", "engine": "analogue",
+        "locations": "panel6", "national": "0",
+        "knob.groundhog.zero_anchor": "level"}, follow_redirects=False)
+    assert started == []
+    assert "with other model settings" in ui_state._status["flash"]
+    assert ui_state._status["flash_detail"].startswith(
+        "They were replayed with Groundhog when the newest week reads 0: "
+        "abstain (what every replay did before this setting existed); this "
+        "run asks for Groundhog when the newest week reads 0: level. "
+        "Resuming would mix two configurations in one season.")
+    # recorded with abstain and resumed with no rule chosen (another
+    # setting differs): the asked side says no choice
+    root = _replayed(rr, SEASON, {
+        "season": SEASON, "engine": "pf",
+        "knobs": {"groundhog.zero_anchor": "abstain", "oracle.w": 0.25}})
+    ui_state._status.pop("flash", None)          # notices join until read
+    client.post("/retro/run", data={
+        "season": root.name, "mode": "resume", "engine": "pf",
+        "locations": "panel6", "national": "0"}, follow_redirects=False)
+    assert started == []
+    assert ui_state._status["flash_detail"].startswith(
+        "They were replayed with Groundhog when the newest week reads 0: "
+        "abstain, Oracle blend weight 0.25 (default 0.5); this run asks "
+        "for Groundhog when the newest week reads 0: no choice. ")
+    # a rule asked for and popped to match a pre-rule record is still said
+    # as asked when another setting refuses the resume
+    shutil.rmtree(rr / OTHER)
+    _replayed(rr, OTHER, {"season": OTHER, "engine": "pf",
+                          "particles": 2000, "replicates": 3})
+    ui_state._status.pop("flash", None)          # notices join until read
+    client.post("/retro/run", data={
+        "season": OTHER, "mode": "resume", "engine": "pf",
+        "locations": "panel6", "national": "0",
+        "knob.groundhog.zero_anchor": "abstain"}, follow_redirects=False)
+    assert started == []
+    detail = ui_state._status["flash_detail"]
+    assert "this run asks for Groundhog when the newest week reads 0: " \
+           "abstain." in detail, detail
+    assert "the default settings" not in detail
+    # with no side the words are as before (the other callers' reading)
+    words = ui_retro._settings_words
+    assert words({}) == "the default settings"
+    assert words({}, side="recorded") == (
+        "Groundhog when the newest week reads 0: abstain (what every replay "
+        "did before this setting existed)")
+    assert words({}, side="asked") == (
+        "Groundhog when the newest week reads 0: no choice")

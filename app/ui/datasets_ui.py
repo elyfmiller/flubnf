@@ -1039,19 +1039,28 @@ def delete_everything(ds) -> tuple:
 def deleted_message(ds, freed: int, gone: int, kept: int,
                     replays: int = 0) -> tuple:
     """(message, kind, detail) of a dataset delete's notice; the detail
-    names only what the dataset had (its replays, its runs' workroots)."""
+    names only what the dataset had (its replays, its runs' workroots),
+    sentence by sentence, so it never starts with a space or says "the
+    rest" when nothing went."""
     from app.core import retro
     went = [f"{n} {w}{'' if n == 1 else 's'}" for n, w in
             ((replays, "replay"), (gone, "run workroot")) if n]
-    detail = f"Its {' and '.join(went)} went with it" if went else ""
-    detail += ("; the runs' ledger rows are kept." if gone else
-               "." if detail else "")
+    parts = []
+    if went:
+        parts.append(f"Its {' and '.join(went)} went with it"
+                     + ("; the runs' ledger rows are kept." if gone else "."))
     if kept:
+        # the workroots that could not be deleted: "the rest" only beside
+        # the ones that went
+        parts.append("The rest stay under Run workroots." if gone else
+                     "The run workroot stays under Run workroots."
+                     if kept == 1 else
+                     f"The {kept} run workroots stay under Run workroots.")
         return ((f"Deleted {ds.name}, but {kept} run workroot"
                  f"{'' if kept == 1 else 's'} could not be deleted."), "warn",
-                detail + " The rest stay under Run workroots.")
+                " ".join(parts))
     return (f"Deleted {ds.name}: {retro.human_bytes(freed)} freed.", "ok",
-            detail)
+            " ".join(parts))
 
 
 @router.post("/storage/datasets/{ds_id}/delete")
@@ -1219,7 +1228,9 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Not started: model settings: {e}.", "warn")
+        # the setting by the panel's label and its value in plain words,
+        # as the dataset's Forecast form says it; never the knob's key
+        shared._flash(f"Not started: {forms._refusal_words(str(e))}", "warn")
         return back
     kspec = forms._knobs.spec_fields(nd)
     k = int(kspec.pop("weeks_to_drop", 0))

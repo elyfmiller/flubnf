@@ -58,7 +58,8 @@
     const last = ob.length ? [ob[ob.length-1]] : [];
     const fx = [...last.map(p=>p[0]), ...xs];
     const pick = q => [...last.map(p=>p[1]), ...hs.map(h => qs[h][q])];
-    const mc = COLS[M] || css('--gold');
+    // the Groundhog per theme (--model-analogue, as the weekly report)
+    const mc = (M === 'analogue' && css('--model-analogue')) || COLS[M] || css('--gold');
     const fs = rootPx(), surf = css('--card');
     const traces = [
       {x: ob.map(p=>p[0]), y: ob.map(p=>p[1]), mode:'lines+markers',
@@ -79,7 +80,9 @@
       legend:{orientation:'h', x:0, xanchor:'left', y:-0.22, yanchor:'top'},
       xaxis:{gridcolor:css('--line'), automargin:true},
       yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}},
-      {responsive:true, displaylogo:false});
+      // no toolbar on a phone, where it sits on the chart's title
+      {responsive:true, displaylogo:false,
+       displayModeBar:matchMedia('(max-width: 640px)').matches?false:'hover'});
   }
   const mb = document.getElementById('dsf-models');
   models.forEach(m => {const b=document.createElement('button');

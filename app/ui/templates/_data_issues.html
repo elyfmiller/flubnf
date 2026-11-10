@@ -46,7 +46,8 @@
       if (b) b.hidden = s.value !== (s.dataset.ruled ? 'set_aside' : s.dataset.rec);
     }
     var sels = box.querySelectorAll('select[name^="gap."]');
-    sels.forEach(function (s) { s.addEventListener('change', function () { mark(s); }); });
+    // a choice made by hand stands: the one the rule moved is not put back
+    sels.forEach(function (s) { s.addEventListener('change', function () { delete s.dataset.before; mark(s); }); });
     // Model settings' "Newest weeks reading 0" or "Collapsed newest week"
     // at "counted as unreported" moves both models back a week for the
     // states it covers (data-rules): only "Both from" and "Leave out"
@@ -68,7 +69,16 @@
         if (on && (!cur || cur.disabled)) {
           var left = Array.prototype.filter.call(s.options, function (o) { return !o.disabled; });
           var to = left.filter(function (o) { return o.value === 'set_aside'; })[0] || left[0];
-          if (to) s.value = to.value;
+          if (to) {
+            // the choice it moves from (data-before) comes back when the
+            // setting goes off, Reset to defaults included
+            if (cur && s.dataset.before === undefined) s.dataset.before = cur.value;
+            s.value = to.value;
+          }
+        }
+        if (!on && s.dataset.before !== undefined) {
+          s.value = s.dataset.before;
+          delete s.dataset.before;
         }
         if (on) s.dataset.ruled = '1'; else delete s.dataset.ruled;
         mark(s);
@@ -92,7 +102,7 @@
       if (!v) return;
       box.querySelectorAll('select[data-issue=zero]').forEach(function (s) {
         var has = Array.prototype.some.call(s.options, function (o) { return o.value === v && !o.disabled; });
-        if (has) { s.value = v; mark(s); }
+        if (has) { s.value = v; delete s.dataset.before; mark(s); }
       });
     });
   })();

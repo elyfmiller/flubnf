@@ -165,6 +165,90 @@ console.log(JSON.stringify(out));
     assert json.loads(got) == ["omit", False, "omit", "set_aside"]
 
 
+@pytest.mark.skipif(not shutil.which("node"), reason="no node")
+def test_a_rule_turned_off_puts_back_the_choice_it_moved(tmp_path):
+    """FC-13: the rule moves Utah's "Level" to "Both from"; the rule off,
+    or Reset to defaults, puts "Level" back with its check, so a run then
+    records the recommendation followed. A choice made by hand under the
+    rule stands. The box's own script runs here on stand-in elements."""
+    box = _text("templates/_data_issues.html")
+    script = box.split("<script>", 1)[1].split("</script>", 1)[0]
+    harness = """
+function Sel(rules, values, value, rec) {
+  var check = {hidden: false};
+  var on = {};
+  var s = {options: values.map(function (v) {
+             return {value: v, hidden: false, disabled: false}; }),
+           dataset: {rules: rules, rec: rec, issue: 'zero'}, _v: value,
+           check: check, on: on,
+           parentNode: {querySelector: function () { return check; }},
+           addEventListener: function (t, f) { on[t] = f; }};
+  Object.defineProperty(s, 'selectedIndex', {get: function () {
+    for (var i = 0; i < s.options.length; i++)
+      if (s.options[i].value === s._v) return i;
+    return -1; }});
+  Object.defineProperty(s, 'value', {
+    get: function () { var i = s.selectedIndex; return i < 0 ? '' : s.options[i].value; },
+    set: function (v) { s._v = v; }});
+  return s;
+}
+var ALL = ['level', 'extend', 'blend', 'set_aside', 'omit'];
+var utah = Sel('data.trailing_zero', ALL, 'level', 'level');
+var ohio = Sel('data.trailing_zero', ALL, 'level', 'level');
+var sels = [utah, ohio];
+var knob = {value: 'keep', disabled: false};
+var L = {};
+var form = {
+  querySelector: function (q) {
+    return q === '[name="knob.data.trailing_zero"]' ? knob : null; },
+  addEventListener: function (t, f) { (L[t] = L[t] || []).push(f); }};
+var box = {
+  closest: function () { return form; },
+  querySelectorAll: function (q) {
+    return q === 'select[data-rules]' || q === 'select[name^="gap."]' ? sels : []; }};
+var document = {
+  getElementById: function (id) { return id === 'data-issues' ? box : null; },
+  addEventListener: function () {}};
+SCRIPT
+function setting(v) {
+  knob.value = v;
+  L.change.forEach(function (f) { f({target: {name: 'knob.data.trailing_zero'}}); });
+}
+// what a run would record: the choice, and whether it is the rule's
+// choice (set_aside under the rule, else the box's recommendation)
+function state(s) {
+  var rec = knob.value === 'missing' ? 'set_aside' : s.dataset.rec;
+  return [s.value, !s.check.hidden, s.value === rec];
+}
+var out = {};
+out.start = state(utah);
+setting('missing');
+out.on = state(utah);
+setting('keep');
+out.off = state(utah);
+setting('missing');
+knob.value = 'keep';                  // Reset to defaults, then its event
+L['ms-reset'].forEach(function (f) { f({}); });
+out.reset = state(utah);
+// by hand under the rule: Ohio to Leave out, which stands
+setting('missing');
+ohio._v = 'omit'; ohio.on.change();
+setting('keep');
+out.hand = state(ohio);
+console.log(JSON.stringify(out));
+""".replace("SCRIPT", script)
+    f = tmp_path / "before.js"
+    f.write_text(harness, encoding="utf-8")
+    got = subprocess.run([shutil.which("node"), str(f)], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert json.loads(got) == {
+        "start": ["level", True, True],
+        "on": ["set_aside", True, True],
+        "off": ["level", True, True],
+        "reset": ["level", True, True],
+        "hand": ["omit", False, False]}
+
+
 def test_the_box_follows_the_setting_in_the_page():
     box = _text("templates/_data_issues.html")
     assert ("o.hidden = o.disabled = on && o.value !== 'set_aside' && "
@@ -211,6 +295,30 @@ def test_a_model_settings_refusal_is_said_once_in_plain_words(
                                     "below the high end.")
     assert forms._refusal_words("pf.particles: '1e4' is not a valid int") \
         == "Particles: '1e4' is not a whole number."
+
+
+def test_a_typed_value_with_an_apostrophe_is_refused_in_plain_words(
+        tmp_path, monkeypatch):
+    """Python quotes a value holding an apostrophe in double quotes; the
+    panel's words still replace the engine's."""
+    import html
+    _hub(tmp_path / "hub", monkeypatch)
+    started = _capture_run(monkeypatch)
+    ui_state._status.pop("flash", None)
+    r = _post({"knob.pf.prior.Reff": "0.6' 2.5", "engine": "all"})
+    assert r.status_code == 303 and started == []
+    why = html.unescape(client.get("/forecast").text.split(
+        'id="ms-refused">')[1].split("</div>")[0])
+    assert ("""Prior range for Reff: "0.6' 2.5" is not two numbers, low """
+            "then high.") in why
+    assert "is not a valid" not in why
+    for kind, words in (("float", "is not a number"),
+                        ("int", "is not a whole number"),
+                        ("bool", "is not on or off"),
+                        ("date", "is not a date")):
+        assert forms._refusal_words(
+            f"""pf.jitter: "it's" is not a valid {kind}""") == \
+            f"""Kernel jitter: "it's" {words}."""
 
 
 def test_reset_to_defaults_hides_the_refusal():

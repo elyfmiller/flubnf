@@ -7,6 +7,8 @@ read _vintage_frame here. An APIRouter server.py includes.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -66,9 +68,26 @@ def _newest_report():
 
 
 #: the clone's state a pull just established, for the page the pull
-#: reloads (one-shot: later visits read "not checked" until a check, so
-#: no "up to date" outlives the moment it was true)
+#: reloads, with the monotonic time it was set ("at"). One-shot, and only
+#: within PULLED_TTL_S: later visits read "not checked" until a check, so
+#: no "up to date" outlives the moment it was true (a pull whose page was
+#: left before the answer must not say it on a visit hours later)
 _pulled: dict = {}
+
+#: how long a pull's "up to date" waits for the page the pull reloads
+PULLED_TTL_S = 60.0
+
+#: the clock _pulled is timed by (a test sets its own)
+_clock = time.monotonic
+
+
+def _take_pulled():
+    """The freshness a pull just established, taken once; None when there
+    is none or it is older than PULLED_TTL_S."""
+    f, at = _pulled.pop("freshness", None), _pulled.pop("at", None)
+    if f is None or at is None or not 0 <= _clock() - at <= PULLED_TTL_S:
+        return None
+    return f
 
 
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
@@ -290,12 +309,30 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
         if ds is not None and not why:
             ctx = _data_context()
             ctx.update(_dsu.data_context(ds, loc, vintage))
+            _dataset_season_vars(ctx, ds)
             return templates.TemplateResponse(request, "data.html", ctx)
         _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
     return templates.TemplateResponse(
         request, "data.html",
-        _data_context(loc, vintage, freshness=_pulled.pop("freshness", None)))
+        _data_context(loc, vintage, freshness=_take_pulled()))
+
+
+def _dataset_season_vars(ctx: dict, ds) -> None:
+    """A dataset's page: its chart's season colours from the dataset's own
+    seasons (the newest --gold, each season its own token, the same for
+    every group and snapshot), not the hub's map, which ranks the hub's
+    seasons and gave two of the dataset's seasons one colour. The hub's
+    Archive strip above is another source's seasons: it keeps its plain
+    palette, so no token stands for one season there and another in the
+    chart."""
+    try:
+        labels = [_season_label(w) for w in ds.weeks()]
+    except Exception:
+        labels = []
+    ctx["season_vars"] = _season_vars(labels)
+    for r in ctx.get("vintage_rows") or []:
+        r["var"] = ""
 
 
 # === Console controls on the Data tab: /data/pull, /freshness ===
@@ -434,8 +471,10 @@ def _pull() -> tuple:
                     f"{'s' if len(added) > 1 else ''} added")
     bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
     _flash(" · ".join(bits), "ok")
-    # the pull just matched origin: the page it reloads says so
-    _pulled["freshness"] = state.data_mod.fresh_after_pull()
+    # the pull just matched origin: the page it reloads says so, if it
+    # comes within PULLED_TTL_S
+    _pulled.update(freshness=state.data_mod.fresh_after_pull(),
+                   at=_clock())
     return True, " · ".join(bits)
 
 
