@@ -6,17 +6,26 @@
     state only "Both from" and "Leave out": the box hides the rest while
     it is on, a run refuses them in words, and the run records what was
     applied (the rule, or the state's set-aside), never a choice the rule
-    overrode.
+    overrode. A state with no row for the newest week keeps "From" and
+    "Leave out" under the rule, and a select the rule covers never goes
+    blank.
   * A Data issues select is never narrower than its words.
   * A model-settings refusal is said once, under the panel, in plain
     words; Reset to defaults hides it.
   * A cleared date asks for one; the archived-week picker follows the
     date, so the same week can be picked again.
 """
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
+
+import app.core.data as data
 from app.core import reported
 from app.ui import forms
+from app.ui import shared as ui_shared
 from app.ui import state as ui_state
 from test_data_issues import _capture_run, _isolated, _post, client  # noqa: F401
 from test_newest_reported import WEEKS, _hub
@@ -66,6 +75,94 @@ def test_a_run_wide_rule_leaves_a_covered_state_both_from_and_leave_out(
     _post({"gap.39": "level", "gap.49": "keep"})
     assert started[-1].extra["data_choices"]["states"]["Ohio"]["choice"] \
         == "level"
+
+
+def test_the_rule_leaves_a_state_with_no_newest_row_its_own_walk(
+        tmp_path, monkeypatch):
+    # Nebraska sent no row for the newest week, and its newest reported
+    # week reads 0 after 40s. The rule moves the engines' own walk back a
+    # week; "From" still applies, so the rule does not restrict the state
+    hub = _hub(tmp_path / "hub", monkeypatch, newest={"Nebraska": None})
+    live = hub / data.LIVE_TARGET
+    live.write_text(live.read_text().replace(
+        f"{WEEKS[-2]},31,Nebraska,40,", f"{WEEKS[-2]},31,Nebraska,0,"))
+    ui_shared._invalidate_scans()
+    for rule in ("keep", "missing"):
+        row = {r["name"]: r for r in reported.box_rows(
+            reported.check(rule))}["Nebraska"]
+        assert row["issue"] == "no row" and row["rules"] == []
+    page = client.get("/forecast").text
+    assert 'name="gap.31"' in page and 'data-rules="' not in page
+    started = _capture_run(monkeypatch)
+    for on in ({"knob.data.trailing_zero": "missing"}, {}):
+        ui_state._status.pop("flash", None)
+        _post({**on, "gap.31": "carry"})
+        assert not ui_state._status.get("flash")
+        st = started[-1].extra["data_choices"]["states"]["Nebraska"]
+        assert (st["choice"], st["recommended"], st["followed"]) == (
+            "carry", "carry", True)
+    assert len(started) == 2
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="no node")
+def test_a_ruled_select_keeps_a_choice_it_has(tmp_path):
+    """follow() picks only an option the select has: "Both from", else
+    the first one the rule leaves. A select without "Both from" never goes
+    blank, and the next follow() still reaches the selects after it. The
+    box's own script runs here on stand-in elements."""
+    box = _text("templates/_data_issues.html")
+    script = box.split("<script>", 1)[1].split("</script>", 1)[0]
+    harness = """
+function Sel(rules, values, value, issue) {
+  var s = {options: values.map(function (v) {
+             return {value: v, hidden: false, disabled: false}; }),
+           dataset: {rules: rules, rec: value, issue: issue}, _v: value,
+           parentNode: {querySelector: function () { return null; }},
+           addEventListener: function () {}};
+  // as a browser does: a value no option has selects nothing
+  Object.defineProperty(s, 'selectedIndex', {get: function () {
+    for (var i = 0; i < s.options.length; i++)
+      if (s.options[i].value === s._v) return i;
+    return -1; }});
+  Object.defineProperty(s, 'value', {
+    get: function () { var i = s.selectedIndex; return i < 0 ? '' : s.options[i].value; },
+    set: function (v) { s._v = v; }});
+  return s;
+}
+// a state with no newest row, given a rule as before the fix, then a zero
+// state covered by the other setting only
+var nebraska = Sel('data.trailing_zero', ['carry', 'omit'], 'carry', 'no row');
+var ohio = Sel('data.partial_week',
+               ['level', 'extend', 'blend', 'set_aside', 'omit'], 'level', 'zero');
+var sels = [nebraska, ohio];
+var knobs = {'data.trailing_zero': {value: 'missing', disabled: false},
+             'data.partial_week': {value: 'keep', disabled: false}};
+var L = {};
+var form = {
+  querySelector: function (q) { return knobs[q.split('"')[1].slice(5)] || null; },
+  addEventListener: function (t, f) { (L[t] = L[t] || []).push(f); }};
+var box = {
+  closest: function () { return form; },
+  querySelectorAll: function (q) {
+    return q === 'select[data-rules]' || q === 'select[name^="gap."]' ? sels : []; }};
+var document = {
+  getElementById: function (id) { return id === 'data-issues' ? box : null; },
+  addEventListener: function () {}};
+SCRIPT
+var out = [nebraska.value];
+knobs['data.partial_week'].value = 'missing';
+var threw = false;
+try {
+  L.change.forEach(function (f) { f({target: {name: 'knob.data.partial_week'}}); });
+} catch (e) { threw = true; }
+out.push(threw, nebraska.value, ohio.value);
+console.log(JSON.stringify(out));
+""".replace("SCRIPT", script)
+    f = tmp_path / "follow.js"
+    f.write_text(harness, encoding="utf-8")
+    got = subprocess.run([shutil.which("node"), str(f)], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert json.loads(got) == ["omit", False, "omit", "set_aside"]
 
 
 def test_the_box_follows_the_setting_in_the_page():

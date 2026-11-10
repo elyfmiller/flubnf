@@ -275,11 +275,9 @@ def _data_issues_context(rep, form) -> tuple:
     from app.core import reported as _rep
     rows = _rep.box_rows(rep)
     prior = ((form or {}).get("data_choices") or {}).get(rep.week) or {}
-    facts = " ".join(f for f, on in ((_rep.ZERO_FACT, rep.zeros),
-                                     (_rep.COLLAPSED_FACT, rep.collapsed)) if on)
     zero_opts = {v for r in rows if r["issue"] == "zero" for v, _ in r["options"]}
     all_options = [(c, _ALL_TEXT[c]) for c in MS.ZERO_CHOICES if c in zero_opts]
-    return ({"week": rep.week, "rows": rows, "prior": prior, "facts": facts,
+    return ({"week": rep.week, "rows": rows, "prior": prior,
              "all_options": all_options}, _source_sha(rep.week))
 
 
@@ -370,6 +368,10 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             entry["from_week"] = before[-1] if before else ""
         elif choice in MS.ZERO_ANCHOR_RULES:
             entry["from_week"] = rep.week
+        elif choice == "carry":
+            # the week the engines' own walk forecasts from, as the box
+            # offered it ("From 10-10"); "" when the walk found none
+            entry["from_week"] = g.from_week or ""
         states[g.location] = entry
     omitted = {l for l, st in states.items() if st["choice"] == "omit"}
     kept = [l for l in locs if l not in omitted]
@@ -628,7 +630,10 @@ def run_page(request: Request, run_id: str):
         # gets no empty table
         "models": {m: v for m, v in (res.get("models") or {}).items()
                    if v and m not in _report_v2_retired()},
-        "settings": spec_settings(spec_json, o),
+        # the Modified model settings card says how its files were named:
+        # the settings block does not say it again
+        "settings": [(k, v) for k, v in spec_settings(spec_json, o)
+                     if not (k == "files" and _runs.is_modified(spec_json))],
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
                       and not dsx),
@@ -642,6 +647,17 @@ def run_page(request: Request, run_id: str):
             res.get("forecast_date") if dsx else _sd.get("forecast_date"),
             dataset=bool(dsx)),
         "report": report})
+
+
+def _gap_weeks(earlier: str, later: str) -> int:
+    """How many weekly snapshots an archive gap skips between two archived
+    Saturdays ('2026-01-10', '2026-01-24' -> 1); 0 when unreadable."""
+    import datetime as _dt
+    try:
+        d = (_dt.date.fromisoformat(later) - _dt.date.fromisoformat(earlier)).days
+    except ValueError:
+        return 0
+    return max(d // 7 - 1, 0)
 
 
 def _median_weeks(asof, dataset: bool = False) -> tuple:
@@ -1264,12 +1280,24 @@ def run_models(request: Request,
             _flash(f"Not run: no archived data for {forecast_date}.", "warn",
                    detail="Pull the FluSight hub on the Data tab first.")
         elif earlier:
+            # the gap as wide as it is, from the snapshot before to the one
+            # after: a week or two is usually a holiday, the off-season
+            # months are not
+            later = [v for v in vs if v > forecast_date]
+            skipped = _gap_weeks(near, min(later)) if later else 0
+            if skipped:
+                gap = (f"The archive skips {skipped} week"
+                       f"{'' if skipped == 1 else 's'} after {near}"
+                       + (" (usually a holiday week)" if skipped <= 2 else "")
+                       + ".")
+            else:
+                gap = f"The archive has nothing after {near} yet."
             _flash(f"Not run: the hub archived no snapshot dated "
                    f"{forecast_date}. Nearest earlier: {near}.", "warn",
-                   detail="Such gaps are real, usually holiday weeks. The "
-                   "graphs still show a point at that date because they "
-                   "draw today's settled data. A later snapshot would leak "
-                   "a week of hindsight, so it is not offered.")
+                   detail=f"{gap} The graphs still show a point at that "
+                   "date because they draw today's settled data. A later "
+                   "snapshot would leak a week of hindsight, so it is not "
+                   "offered.")
         else:
             _flash(f"Not run: no archived data for {forecast_date}; the "
                    f"archive starts at {near}.", "warn")

@@ -44,7 +44,7 @@ from app.core import ttlcache
 #: newest weeks kept with each gap (the wording and the recorded choice)
 RECENT_WEEKS = 8
 
-REASON_TEXT = {"no row": "no row", "blank": "blank value",
+REASON_TEXT = {"no row": "not reported", "blank": "blank value",
                "zero": "reads 0", "collapsed": "collapsed"}
 #: gaps that leave the week incomplete (a value the models never saw)
 UNREPORTED = ("no row", "blank")
@@ -58,7 +58,7 @@ COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
 CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
                 "blend": "blend", "set_aside": "both from the week before",
                 "omit": "leave out",
-                "keep": "keep", "carry": "carry"}
+                "keep": "keep", "carry": "from the last reported week"}
 
 
 def _num(v: float) -> str:
@@ -122,7 +122,7 @@ class Gap:
     def what(self) -> str:
         """The gap in a few words, by consequence: 'reads 0, recent weeks
         1-4', 'reads 0 after 19, 24, 3', 'reads 0 for 5 weeks (last 2 on
-        2026-05-30)', 'reads 8 after 194', 'no row', 'blank value'."""
+        2026-05-30)', 'reads 8 after 194', 'not reported', 'blank value'."""
         if self.reason == "zero":
             n = self.zeros
             if n >= 2:
@@ -145,7 +145,7 @@ class Gap:
 
     def flag(self) -> str:
         """The gap in two or three words (the box's row): '0 after 1, 4',
-        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'no row', 'blank
+        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'not reported', 'blank
         value'."""
         if self.reason == "zero":
             n = self.zeros
@@ -432,6 +432,30 @@ OPTION_TEXT = {
 CARRY_SKIP_TEXT = "Engines' own walk"
 
 
+def choice_text(entry: Mapping) -> str:
+    """A recorded per-state choice (missing.choices_of's entry) in the
+    box's words, mid-sentence: 'both from 10-10', 'from 10-10' (the week
+    it forecasts from, when the record names it), 'level', 'kept', 'left
+    out', 'no forecast'; the key itself when unknown."""
+    c = str((entry or {}).get("choice") or "")
+    frm = str((entry or {}).get("from_week") or "")
+    if c == "set_aside" and frm:
+        return f"both from {_md(frm)}"
+    if c == "carry" and frm:
+        return f"from {_md(frm)}"
+    if c == "keep":
+        return "kept"
+    if c == "omit":
+        return "left out"
+    return CHOICE_WORDS.get(c, c)
+
+
+def reason_text(what: str) -> str:
+    """A recorded gap description ('no row', 'reads 0 after 1, 4') as the
+    box says it now: an older record's 'no row' reads 'not reported'."""
+    return REASON_TEXT["no row"] if what == "no row" else what
+
+
 #: a state's choices that still apply while a run-wide setting counts its
 #: newest week as unreported (covering_rules): both models then forecast
 #: from the week before, as "Both from" does, whatever else is chosen
@@ -441,7 +465,14 @@ RULE_LEAVES = ("set_aside", "omit")
 def covering_rules(g: Gap) -> list:
     """The run-wide settings (missing.KEYS) that, set to "missing", count
     this state's newest week as unreported, as the engines apply them
-    (missing.tail_flags); under any of them only RULE_LEAVES apply."""
+    (missing.tail_flags); under any of them only RULE_LEAVES apply.
+
+    No settings for a state with no row or a blank value for the newest
+    week: a setting may count its newest reported week as unreported too,
+    but that only moves the engines' own walk ("From ...", carry) back
+    further, so both its choices still apply."""
+    if g.unreported:
+        return []
     vals = [v for _, v in g.reported]
     return [k for k in MS.KEYS if MS.tail_flags(vals, {k: "missing"})]
 

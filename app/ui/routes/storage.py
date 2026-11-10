@@ -78,6 +78,64 @@ def _live_workroot_ids() -> set:
     return out
 
 
+def _may_archive() -> bool:
+    """Whether the console run in progress can write a report archive: a
+    full run of both models on hub data (pipeline's archive step skips a
+    one-model, research, modified or vintage run, and a dataset run or
+    replay never reaches it). A run still starting may."""
+    from app.core.runs import is_modified, is_research
+    running = _status.get("running") or ""
+    if not running:
+        return False
+    kind, _sep, rid = running.partition(":")
+    if kind in ("dataset", "dataset-replay"):
+        return False
+    if not rid:
+        return True
+    try:
+        row = Ledger().row(rid) or {}
+    except Exception:
+        return True
+    spec = row.get("spec") or ""
+    d = _spec_of(spec)
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    return (str(d.get("engine") or "all") == "all"
+            and extra.get("mode") != "vintage"
+            and not is_research(spec) and not is_modified(spec))
+
+
+def _archiving_date() -> str | None:
+    """The forecast date whose report archive the run in progress may be
+    writing: None when it can write none (_may_archive), "" when it may
+    but its date is unknown (every archive is then held)."""
+    if not _may_archive():
+        return None
+    import json
+    for w in _live_workroot_ids():
+        try:
+            spec = Ledger().row(w)["spec"]
+            spec = json.loads(spec) if isinstance(spec, str) else spec
+            return str(spec.get("forecast_date") or "")
+        except Exception:                # no row yet, or an odd one
+            continue
+    return ""
+
+
+def _local_when(stamp: str) -> str:
+    """An archive's stamp ('20261025T191800Z', UTC) in this computer's
+    time, as the workroot rows' run times read ('2026-10-25 12:18'), so
+    the two on one page compare; an unreadable stamp as stamp_human says
+    it."""
+    from datetime import datetime, timezone
+    from app.core import retro
+    try:
+        t = datetime.strptime((stamp or "").split("-")[0], "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return retro.stamp_human(stamp)
+    return t.replace(tzinfo=timezone.utc).astimezone().strftime(
+        "%Y-%m-%d %H:%M")
+
+
 def _busy_why(kind: str, ident: str, status: str = "") -> str:
     """Why one storage entry cannot be deleted right now, in the words the
     refused POST flashes; the page shows the same sentence as its disabled
@@ -186,7 +244,6 @@ def _storage_inventory() -> dict:
            "report_archives": [], "datasets": [], "protected": [],
            "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
-    console_busy = bool(_status.get("running"))
     # ledger rows label each workroot; one without a row reads as unrecorded
     try:
         led_rows = {r["run_id"]: r for r in Ledger().rows(100_000)}
@@ -246,13 +303,16 @@ def _storage_inventory() -> dict:
                 from app.core import replay_bundle
                 inv["retro_archives"].append({
                     "id": p.name, "season": season, "stamp": stamp,
-                    "when": retro.stamp_human(stamp),
+                    "when": _local_when(stamp),
                     # a replay imported from another machine
                     # ("imported from <host> on <date>"), else ""
                     "imported": replay_bundle.imported_label(p),
                     "size_h": retro.human_bytes(size), "bytes": size,
                     "busy": _season_status(season) in _RETRO_ACTIVE,
                     "why": _busy_why("retro-archive", season)})
+    # held only while the run in progress can write a report archive, and
+    # then only its own date's
+    run_fd = _archiving_date()
     arch = APP_STATE / "archive"
     for d in reversed(_scan_archive_dates(arch)):
         size = _tree_size(str(arch / d))
@@ -263,7 +323,8 @@ def _storage_inventory() -> dict:
             "label": _round_label({"forecast_date": d}, d),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
-            "busy": console_busy, "why": _busy_why("report-archive", d)})
+            "busy": run_fd is not None and run_fd in ("", d),
+            "why": _busy_why("report-archive", d)})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
     for d in inv["datasets"]:
         d["why"] = (f"{d['name']} cannot be deleted now: {d['busy']}."
@@ -373,7 +434,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
     ledger = Ledger()
     ids = _clearable_run_ids(ledger)
     if not ids:
-        _flash("Nothing to clear: the ledger has no completed rows.", "warn")
+        _flash("Nothing to clear: the ledger has no rows to remove.", "warn")
         return _back(request, "/storage")
     if confirm != str(len(ids)):
         _flash("Not cleared: the ledger changed "
@@ -382,7 +443,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
         return _back(request, "/storage")
     n = ledger.delete_runs(ids)
     _invalidate_scans()
-    _flash(f"Cleared {n} completed ledger row{'' if n == 1 else 's'}.", "ok",
+    _flash(f"Cleared {n} ledger row{'' if n == 1 else 's'}.", "ok",
            detail="No data on disk was deleted: the runs' workroots stay "
            "in the storage panel until deleted there.")
     return _back(request, "/storage")
@@ -421,7 +482,8 @@ def _storage_target(kind: str, ident: str):
     elif kind == "report-archive":
         if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
             return None, "Unrecognized report archive date."
-        if _status.get("running"):
+        held = _archiving_date()
+        if held is not None and held in ("", ident):
             return None, _busy_why(kind, ident)
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
@@ -501,8 +563,9 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     _invalidate_scans()
     items = _clearable_workroots()
     if not items:
-        _flash("Nothing to delete: no completed run workroots on disk.",
-               "warn")
+        _flash("Nothing to delete: no run workroots on disk"
+               + (" apart from the active run's." if _live_workroot_ids()
+                  else "."), "warn")
         return _back(request, "/storage")
     if confirm != str(len(items)):
         _flash("Not deleted: the storage panel changed "
@@ -526,7 +589,7 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
         except Exception:
             continue          # one stuck tree must not sink the sweep
     _invalidate_scans()
-    _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
+    _flash(f"Deleted {n} run workroot{'' if n == 1 else 's'}: "
            f"{retro.human_bytes(freed)} freed.", "ok",
            detail="Every ledger row is kept and shows a dash for disk use.")
     return _back(request, "/storage")
