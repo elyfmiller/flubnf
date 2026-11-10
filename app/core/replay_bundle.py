@@ -64,6 +64,20 @@ _CHUNK = 1024 * 1024
 _UNREADABLE = (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError,
                NotImplementedError)
 
+#: the compression methods a member may name: export_season deflates every
+#: member; stored is plain zip. Any other (bzip2, which reads deflated bytes
+#: as a raw OSError, LZMA, a byte no reader knows) only a changed table of
+#: contents gives, so it is refused as a damaged bundle before it is read
+_METHODS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+
+
+def _check_method(info: zipfile.ZipInfo, name: str) -> None:
+    """Refuse a member whose compression method no FluBNF bundle uses,
+    with the words a member that cannot be unpacked gets."""
+    if info.compress_type not in _METHODS:
+        raise BundleError(f"{name}: {info.filename} could not be unpacked; "
+                          "the bundle is damaged or altered.")
+
 
 class BundleError(ValueError):
     """A bundle that cannot be exported or imported; str() is the reason."""
@@ -268,6 +282,7 @@ def inspect_bundle(path: Path, name: str = "") -> dict:
                     raise BundleError(f"{name}: {i.filename} claims a "
                                       f"{i.file_size // max(1, i.compress_size)}x "
                                       "inflation; refused.")
+                _check_method(i, name)
             try:
                 raw = z.read(MANIFEST)
             except _UNREADABLE:
@@ -778,6 +793,9 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                 with zipfile.ZipFile(path) as z:
                     for f in order:
                         try:
+                            # asked again of the file opened here (it may
+                            # have changed since it was inspected)
+                            _check_method(z.getinfo(f), name)
                             _extract_member(z, f, tmp / f, files[f]["sha256"],
                                             files[f]["bytes"], name)
                         except _UNREADABLE:

@@ -172,11 +172,19 @@ def test_a_members_changed_directory_entry_is_refused_in_words(world, how):
     nothing written, no temp tree left."""
     member = f"weeks/{W3}/samples.json"
     bad = _changed(world["bundle"], member, how, world["tmp"] / "bad.zip")
-    rb.inspect_bundle(bad)             # the manifest itself reads
+    words = (f"mine.flubnf-replay.zip: {member} could not be unpacked; the "
+             "bundle is damaged or altered.")
+    if how == "method":
+        # a method no FluBNF bundle uses is refused from the member's
+        # entry when the bundle is inspected, in the same words
+        with pytest.raises(rb.BundleError) as e:
+            rb.inspect_bundle(bad, "mine.flubnf-replay.zip")
+        assert str(e.value) == words
+    else:
+        rb.inspect_bundle(bad)         # the manifest itself reads
     with pytest.raises(rb.BundleError) as e:
         rb.import_bundle(bad, world["rr"], name="mine.flubnf-replay.zip")
-    assert str(e.value) == (f"mine.flubnf-replay.zip: {member} could not "
-                            "be unpacked; the bundle is damaged or altered.")
+    assert str(e.value) == words
     _nothing_written(world["rr"])
 
 
