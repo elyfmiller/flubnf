@@ -1,5 +1,5 @@
 # G34 methods-polish: proposal (B)
-Base: the G30 fix branch's head 92477449 (origin/dev 7506ee23 plus G30, which rewrites four knob helps and notes and adds the "Fixed by the model definition" fold that ME-16 and ME-22 touch); the patch is `git diff 92477449...proto/G34-B`. It applies on dev once G30 merges.
+Base: origin/dev c2ad352e (#90, G30, merged: it rewrote four knob helps and notes and added the "Fixed by the model definition" fold that ME-16 and ME-22 touch); the patch is `git diff origin/dev...proto/G34-B`, rebased there.
 
 How: the dev server and one from the prototype, Chromium at 1280, 700 and 390 px: each contents chip clicked and the title's top read against the bar's bottom; the page scrolled to its end; the scrollers' attributes read; the page printed to Letter with page.pdf (which fires beforeprint) and its pages counted and rasterised.
 
@@ -49,4 +49,4 @@ How: the dev server and one from the prototype, Chromium at 1280, 700 and 390 px
 - Windows: text only.
 
 ## Patch
-G34/proposal.patch (git diff 92477449...proto/G34-B)
+G34/proposal.patch (git diff origin/dev...proto/G34-B)
