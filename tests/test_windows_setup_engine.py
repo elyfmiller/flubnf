@@ -462,9 +462,11 @@ def test_setup_keeps_the_public_lines_it_did_not_change():
     sets = re.findall(r'SetEnvironmentVariable\("FLUBNF_ENGINE", ([^,]+),', PS1)
     assert sets == ["$null"], sets
     # (its '"' is a quote in a single-quoted string, which _block's counter
-    # cannot read: the block ends at its own closing line instead)
-    start = ENV.index("\nif ($Engine) {\n")
-    clear = ENV[start:ENV.index("\n}\n", start) + 3]
+    # cannot read: the block ends at its own closing line instead). It
+    # goes with the record of -Engine, before anything is installed.
+    start = PS1.index('\nif ($Engine) {\n    Say "engine')
+    clear = PS1[start:PS1.index("\n}\n", start) + 3]
+    assert start < PS1.index('Say "python"')
     assert 'GetEnvironmentVariable("FLUBNF_ENGINE", "User")' in clear
     assert 'SetEnvironmentVariable("FLUBNF_ENGINE", $null, "User")' in clear
     # only a value that names another engine goes, read as the route is

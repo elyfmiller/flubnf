@@ -401,6 +401,10 @@ set "ENGINEPY=%ENGINEVENV%\Scripts\python.exe"
 rem Kept for the public route's failure lines, which say whether the
 rem private engine is ready here: :publicengine reuses ENGINEPY for its venv.
 set "PRIVATEPY=%ENGINEPY%"
+rem Set by :publicengine alone, which sends the public install through the
+rem private engine's venv code: one left in the shell would send the
+rem private install into the public engine's 3.12-only gate and its pip.
+set "PUBLICROUTE="
 rem Which engine: FLUBNF_ENGINE (docs\ENGINE.md), from .flubnf.env.cmd
 rem (called above) or the account. Public is the default: no value, or
 rem public, goes to :publicengine (below the console's start), public PyBNF
@@ -408,11 +412,18 @@ rem in a venv of its own. Only private, which setup.ps1 -Engine private
 rem records, stays in the rest of this block: the fork, the fallback. Any
 rem other value is said, and public it is. The private checkout was brought
 rem up to date above on either route: it stays installed as the fallback. A
-rem stray quote is dropped, as above.
+rem stray quote is dropped, as above, and the spaces around the word, as
+rem settings.py and setup.ps1 drop them: cmd keeps the space in
+rem `set FLUBNF_ENGINE=private && FluBNF.bat`, and the console started here
+rem read that as private while this took the public route. A value with a
+rem space inside it is left as it is (it names no engine); one that is only
+rem spaces is empty, so public, with nothing to say.
 set "ENGINEROUTE=public"
 if defined FLUBNF_ENGINE set "ENGINEROUTE=%FLUBNF_ENGINE%"
 set "ENGINEROUTE=%ENGINEROUTE:"=%"
 if not defined ENGINEROUTE set "ENGINEROUTE=public"
+for /f "tokens=1*" %%A in ("%ENGINEROUTE%") do if not "%%A"=="" if "%%B"=="" set "ENGINEROUTE=%%A"
+if "%ENGINEROUTE: =%"=="" set "ENGINEROUTE=public"
 if /I not "%ENGINEROUTE%"=="private" if /I not "%ENGINEROUTE%"=="public" echo   FLUBNF_ENGINE is "%ENGINEROUTE%", which is neither private nor public: the public engine, the default, it is.
 if /I not "%ENGINEROUTE%"=="private" goto :publicengine
 
@@ -590,6 +601,8 @@ echo   folder, and open this again. That is the whole step.
 echo   Otherwise run setup.ps1, which explains how to reach the private fork.
 call :enginelookedin "%~dp0."
 echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 rem Perl all the same: the Sandbox's Check runs BNG2.pl with no engine.
 call :perlblock
 goto :startconsole
@@ -898,6 +911,8 @@ echo   Engine setup did not finish (see above). The console still runs,
 echo   analogue forecasts only. With the engine file still in your Downloads
 echo   folder, or the engine folder still in place, the next open tries again.
 echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 rem Quoted on write, %%~L on read: a path may hold & or a trailing digit.
 echo "%ENGINEFP%">"%ATTEMPT%"
 goto :startconsole
@@ -910,6 +925,8 @@ echo   again by itself. Analogue forecasts work meanwhile. That attempt is
 echo   recorded in "%ATTEMPT%"
 call :enginelookedin "%~dp0."
 echo   This copy is set to the private engine (the fallback); setup.ps1 -Engine public goes back to the default, which needs no file.
+echo   To go back, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine public
 call :perlblock
 
 :startconsole
@@ -970,8 +987,13 @@ call :perlblock
 rem The private engine, the fallback, counts as ready when its venv's
 rem python and the checkout's pf.py are there. :publicnolock and
 rem :publicfailed read this to name the switch; nothing here takes it.
+rem PRIVATEFORK, the checkout's pf.py alone, tells a fork here with no venv
+rem (the private route installs it from the folder, no file needed) from
+rem nothing here at all (it needs the lab's engine file).
 set "PRIVATEREADY="
 if exist "%PRIVATEPY%" if exist "%PYBNFDIR%\pybnf\pf.py" set "PRIVATEREADY=1"
+set "PRIVATEFORK="
+if exist "%PYBNFDIR%\pybnf\pf.py" set "PRIVATEFORK=1"
 set "ENGINELOCK=%FLUBNF_ENGINE_LOCK%"
 if not defined ENGINELOCK set "ENGINELOCK=%~dp0engine-requirements.txt"
 set "ENGINELOCK=%ENGINELOCK:"=%"
@@ -987,6 +1009,10 @@ if /I "%PUBLICVENV%"=="%USERPROFILE%\.venvs\flubnf-engine" goto :publicvenvtaken
 if /I "%PUBLICVENV%"=="%ENGINEVENV%" goto :publicvenvtaken
 set "PUBLICPY=%PUBLICVENV%\Scripts\python.exe"
 set "PUBLICREC=%FLUBNF_PY_ENGINE_PUBLIC%"
+rem Quotes dropped, as ENGINEVENV's are: a value set by hand with them and
+rem a space in its path made the IF in :recordpublic a syntax error that
+rem closed this window after the engine verified, on every open.
+if defined PUBLICREC set "PUBLICREC=%PUBLICREC:"=%"
 rem Installed, and the lock's? engine_lock.py check: the Liu-West filter
 rem imports, bngsim is the version the lock pins, and pybnf came from the
 rem lock's wheel. A venv that is there but fails it (a new lock, a damaged
@@ -1063,9 +1089,16 @@ call :recordpublic
 goto :startconsole
 
 :publicnolock
+rem The switch is said for the state the private engine is in here, then as
+rem the full command: setup.ps1 typed by itself opens in an editor from
+rem Command Prompt, and PowerShell wants .\ and refuses it under the
+rem default execution policy. The form is the one the docs give.
 echo   The public engine, the default, cannot be installed: its lock file cannot be used yet (the reason is above). The console starts without it.
 if defined PRIVATEREADY echo   The private engine is installed on this PC: to run it instead (the fallback), run setup.ps1 -Engine private, then open FluBNF again.
-if not defined PRIVATEREADY echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+if not defined PRIVATEREADY if defined PRIVATEFORK echo   The private engine, the fallback, is on this PC but not installed yet: run setup.ps1 -Engine private, then open FluBNF again, which installs it from the engine folder here (no file needed).
+if not defined PRIVATEFORK echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+echo   To switch, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine private
 goto :startconsole
 
 :publicvenvtaken
@@ -1079,7 +1112,10 @@ goto :startconsole
 :publicfailed
 echo   The public engine did not install (see above). The console starts without it, and the next open tries again.
 if defined PRIVATEREADY echo   The private engine is installed on this PC: to run it instead (the fallback), run setup.ps1 -Engine private, then open FluBNF again.
-if not defined PRIVATEREADY echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+if not defined PRIVATEREADY if defined PRIVATEFORK echo   The private engine, the fallback, is on this PC but not installed yet: run setup.ps1 -Engine private, then open FluBNF again, which installs it from the engine folder here (no file needed).
+if not defined PRIVATEFORK echo   The private engine, the fallback, needs the lab's engine file: run setup.ps1 -Engine private, then open FluBNF with the file in Downloads.
+echo   To switch, type this in Command Prompt or PowerShell:
+echo     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -Engine private
 goto :startconsole
 
 :recordpublic
