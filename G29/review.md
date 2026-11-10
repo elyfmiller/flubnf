@@ -20,3 +20,6 @@ Approve.
 
 ## Re-review of 92104c3 (B)
 Approve. The push changes only `app/tests/test_storage_words.py`: the Phoenix reading is checked where a zone can be set, the form "YYYY-MM-DD HH:MM" everywhere, and the TZ-removed assertion that failed on Windows is gone. The file passes here, and with `time.tzset` deleted (as on Windows). No product code changed; my approval of 4dfe348 stands for this head.
+
+## Re-review of 06254ed (B)
+Approve. The push is the merge of origin/dev def45db into the branch, with no conflict: against dev the branch still differs in the same 7 files as before (282 insertions, 63 deletions). Storage, reclaim and marks tests pass here on the merge head.
