@@ -32,6 +32,6 @@ Also for Ely:
 
 ## The state of dev against main
 
-`dev` (73908e6c, #99 merged) carries the 35 fix pull requests and the closing notes, beside the other lanes' merges of the same days (the engine switch #61, the App lane's review fixes #84, #89, #92, and their notes). Against `origin/main`: dev has 121 commits main lacks, and main has 1127 commits dev lacks, so the two histories have diverged beyond this run; Ely merges `dev` into `main`, and this run opened no pull request into `main`.
+`dev` (73908e6c, #99 merged) carries the 35 fix pull requests and the closing notes, beside the other lanes' merges of the same days (the engine switch #61, the App lane's review fixes #84, #89, #92, and their notes). Against `main` (which last took `dev` at #78, e982d09b): dev is 121 commits ahead and 14 behind, so the next merge of `dev` into `main` is a true merge; Ely makes it, and this run opened no pull request into `main`.
 
 Both coordination branches stay on origin for Ely to delete, with the fix branches named above: a pushed delete is refused by the git proxy here.
