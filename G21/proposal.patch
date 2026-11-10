@@ -1,0 +1,498 @@
+diff --git a/app/core/engine_update.py b/app/core/engine_update.py
+index ccd6e314..088396cc 100644
+--- a/app/core/engine_update.py
++++ b/app/core/engine_update.py
+@@ -17,7 +17,7 @@ on every open (`flubnf engine-update`), and it is safe to run anywhere:
+     prompt off and a time limit, so a machine without GitHub access opens as
+     fast as before.
+ 
+-The last outcome is kept in app/state/engine_update.json, so the console's
++The last outcome is kept in the state folder's engine_update.json, so the console's
+ build warning can say why the engine was left where it is (last_note).
+ """
+ from __future__ import annotations
+@@ -30,9 +30,10 @@ import time
+ from pathlib import Path
+ 
+ from app.core import engine_build as _eb
++from app.core.runs import APP_STATE
+ 
+-#: where the last outcome is kept (app/state is gitignored)
+-STATE_FILE = Path(__file__).resolve().parents[1] / "state" / "engine_update.json"
++#: where the last outcome is kept (the state folder; FLUBNF_STATE_DIR moves it)
++STATE_FILE = APP_STATE / "engine_update.json"
+ 
+ #: a git call that reads the checkout; a fetch gets FETCH_TIMEOUT_S
+ GIT_TIMEOUT_S = 15.0
+diff --git a/app/core/reclaim.py b/app/core/reclaim.py
+index 0d111c3e..083b3970 100644
+--- a/app/core/reclaim.py
++++ b/app/core/reclaim.py
+@@ -9,10 +9,11 @@ LOAD-BEARING (never touched here):
+   * scores.json, run_meta.json, playback caches, season report HTML;
+   * a workroot's record: results.json, pf_status.json, cells.json,
+     scores_pf.json, report.html and its bundle, every submission CSV;
+-  * the sealed record (app/state/retro_seal) and the hub clone: refused
+-    wholesale by path resolution before any other rule.
++  * the sealed records (retro_seal, the production reseal) and the hub
++    clone: refused wholesale by path resolution before any other rule.
+ 
+-INTERMEDIATE (deletable once its week or run is COMPLETE):
++INTERMEDIATE (deletable once its week or run is COMPLETE; a run that
++recorded a fit failure keeps them as evidence, as the pipeline does):
+   * per-cell fit trees (<location>_r<n>/: BNGL copies, .net, .cdat/.gdat,
+     trajectories, pf_state.npz);
+   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
+@@ -23,13 +24,14 @@ reach them. An interrupted week keeps every checkpoint and resumes.
+ """
+ from __future__ import annotations
+ 
++import json
+ import os
+ import re
+ import shutil
+ from pathlib import Path
+ 
+ from app.core import retro
+-from app.core.runs import APP_STATE
++from app.core.runs import APP_STATE, sealed_root
+ 
+ #: survives a week's prune: samples (both forms), the quantile sidecar, and
+ #: the Oracle step's oracle.json and donor bank
+@@ -53,14 +55,25 @@ EST_GZ_RATIO = 3.5
+ RESEARCH_ROOTS = (APP_STATE / "retro_2s",)
+ 
+ 
++def extra_protected_roots() -> list:
++    """FLUBNF_PROTECT_ROOTS (os.pathsep-separated, read per call): the trees
++    a user names so a research arm outside app/state keeps the per-cell
++    evidence a diagnostic needs. Storage's Delete honours them too."""
++    extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
++    return [Path(x) for x in extra.split(os.pathsep) if x.strip()]
++
++
+ def _protected_roots() -> list:
+-    """The trees reclaim never touches: the sealed record, the hub clone, and
+-    FLUBNF_PROTECT_ROOTS (os.pathsep-separated, read per call) so a research
+-    arm outside app/state keeps the per-cell evidence a diagnostic needs."""
++    """The trees reclaim never touches: the sealed records (wherever they
++    live, the state folder or the checkout), the hub clone, and
++    FLUBNF_PROTECT_ROOTS."""
+     from flubnf.settings import HUB
+-    roots = [APP_STATE / "retro_seal", Path(HUB)]
+-    extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
+-    roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
++    roots = [Path(HUB)]
++    for name in ("retro_seal", "retro_reseal"):
++        for r in (sealed_root(name), APP_STATE / name):
++            if r not in roots:
++                roots.append(r)
++    roots.extend(extra_protected_roots())
+     return roots
+ 
+ 
+@@ -154,14 +167,30 @@ def workroot_complete(w: Path) -> bool:
+     return (Path(w) / "results.json").is_file()
+ 
+ 
++def workroot_failed(w: Path) -> bool:
++    """A run that recorded a fit failure: any cell not "ok" in the MERGED
++    pf_status.json, the top level's or a research run's pf2s/. The
++    pipeline keeps such a run's fit trees as evidence; so does reclaim."""
++    for scope in (Path(w), Path(w) / "pf2s"):
++        try:
++            st = json.loads((scope / "pf_status.json")
++                            .read_text(encoding="utf-8"))
++        except (OSError, ValueError):
++            continue
++        if isinstance(st, dict) and any(str(v) != "ok" for v in st.values()):
++            return True
++    return False
++
++
+ def workroot_intermediates(w: Path) -> list:
+-    """Intermediates inside a COMPLETED workroot: the per-cell fit trees,
++    """Intermediates inside a COMPLETED workroot whose run recorded no fit
++    failure: the per-cell fit trees,
+     the per-shard runner scripts and their stderr, the per-shard cell lists
+     and status files, and .prog progress files. The assembled record
+     (results, scores, the MERGED status, cells.json, report, bundle,
+     submissions) stays untouched."""
+     w = Path(w)
+-    if not workroot_complete(w) or is_protected(w):
++    if not workroot_complete(w) or workroot_failed(w) or is_protected(w):
+         return []
+     out = []
+     try:
+@@ -184,7 +213,8 @@ def workroot_intermediates(w: Path) -> list:
+ 
+ def prune_workroot(w: Path) -> int:
+     """Remove a completed workroot's fit intermediates. Returns bytes
+-    freed; 0 when the run is incomplete or protected."""
++    freed; 0 when the run is incomplete, recorded a fit failure or is
++    protected."""
+     freed = 0
+     for p in workroot_intermediates(w):
+         freed += _delete(p)
+diff --git a/app/core/runs.py b/app/core/runs.py
+index 8429f580..9afd6d0d 100644
+--- a/app/core/runs.py
++++ b/app/core/runs.py
+@@ -30,6 +30,19 @@ from typing import Optional
+ #: points it at a temp folder, so every process a test starts inherits it)
+ APP_STATE = Path(os.environ.get("FLUBNF_STATE_DIR")
+                  or Path(__file__).resolve().parents[1] / "state")
++#: the checkout's own state folder: the sealed records (retro_seal, the
++#: production reseal) ship there, so a moved state folder still finds them
++CHECKOUT_STATE = Path(__file__).resolve().parents[1] / "state"
++
++
++def sealed_root(name: str, state: Optional[Path] = None,
++                checkout: Optional[Path] = None) -> Path:
++    """Where the read-only sealed record `name` lives: under the state
++    folder, or the checkout's copy when the state folder was moved and
++    holds none (retro_seasons and reclaim read it)."""
++    p = Path(state or APP_STATE) / name
++    fallback = Path(checkout or CHECKOUT_STATE) / name
++    return fallback if not p.exists() and fallback.exists() else p
+ 
+ # Sections, in file order:
+ #   phrasing and settings rows   fmt_hms, locations_phrase, spec_settings,
+diff --git a/app/tests/test_state_dir_protect.py b/app/tests/test_state_dir_protect.py
+new file mode 100644
+index 00000000..139d8b2d
+--- /dev/null
++++ b/app/tests/test_state_dir_protect.py
+@@ -0,0 +1,176 @@
++"""The state folder and what Storage may delete or serve (G21): the retro
++roots and the engine-update file follow FLUBNF_STATE_DIR; Delete and
++Reclaim protect the same trees; a run that recorded fit failures keeps its
++trees; the download route serves the files the pages list, nothing else."""
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++import app.core.runs as runs_mod                     # noqa: E402
++from app.core import reclaim                         # noqa: E402
++from app.core.runs import Ledger, RunSpec            # noqa: E402
++from app.core.submit import hub_model_id             # noqa: E402
++from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
++from app.ui import server as srv                     # noqa: E402
++from app.ui import shared as ui_shared               # noqa: E402
++from app.ui import state as ui_state                 # noqa: E402
++from app.ui.routes import storage as ui_storage      # noqa: E402
++
++client = TestClient(srv.app)
++REPO = Path(__file__).resolve().parents[2]
++
++
++@pytest.fixture()
++def state(tmp_path, monkeypatch):
++    """A tmp state folder with one closed run and its workroot, the retro
++    roots and the hub pointed into it (as test_storage's)."""
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    from app.core import datasets as datasets_mod
++    monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "retro_seal")
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", tmp_path / "retro_reseal")
++    import flubnf.settings as settings_mod
++    monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
++    status = dict(ui_state._status)
++    ui_state._status["running"] = None
++    ui_state._status.pop("flash", None)
++    led = Ledger()
++    rid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-03"),
++                       Path("pending"), {})
++    led.close_run(rid, "ok", {})
++    (tmp_path / "workroots" / rid).mkdir(parents=True)
++    (tmp_path / "workroots" / rid / "results.json").write_text("{}")
++    ui_shared._invalidate_scans()
++    yield {"root": tmp_path, "rids": {"ok": rid}}
++    ui_state._status.clear(); ui_state._status.update(status)
++    ui_shared._invalidate_scans()
++
++
++def _flash():
++    return ui_state._status.get("flash", "")
++
++
++# ------------------------------------------------------------- WI-04, RE-28
++
++def test_the_retro_roots_and_the_engine_update_file_follow_the_state_folder(tmp_path):
++    # a replay, its season report and the engine's update note wrote into the
++    # checkout's app/state when FLUBNF_STATE_DIR pointed elsewhere
++    env = {**os.environ, "FLUBNF_STATE_DIR": str(tmp_path)}
++    out = subprocess.run([sys.executable, "-c",
++                          "from app.ui import retro_seasons as r;"
++                          "from app.core import engine_update as e;"
++                          "print(r.RETRO_ROOT); print(r.RETRO_RESEAL);"
++                          "print(r.RETRO_SEAL); print(e.STATE_FILE)"],
++                         cwd=REPO, env=env, capture_output=True, text=True,
++                         timeout=120)
++    assert out.returncode == 0, out.stderr[-2000:]
++    roots = [Path(x) for x in out.stdout.split()]
++    assert roots == [tmp_path / "retro", tmp_path / "retro_reseal",
++                     tmp_path / "retro_seal", tmp_path / "engine_update.json"]
++
++
++def test_a_sealed_record_shipped_in_the_checkout_is_found_from_a_moved_state_folder(tmp_path):
++    state_dir, checkout = tmp_path / "state", tmp_path / "checkout"
++    (checkout / "retro_seal").mkdir(parents=True)
++    # the state folder holds none: the checkout's copy
++    assert runs_mod.sealed_root("retro_seal", state_dir, checkout) \
++        == checkout / "retro_seal"
++    # neither holds one: the state folder's place, where one would go
++    assert runs_mod.sealed_root("retro_reseal", state_dir, checkout) \
++        == state_dir / "retro_reseal"
++    # the state folder's own copy wins
++    (state_dir / "retro_seal").mkdir(parents=True)
++    assert runs_mod.sealed_root("retro_seal", state_dir, checkout) \
++        == state_dir / "retro_seal"
++
++
++# -------------------------------------------------------------------- ST-06
++
++def test_storage_delete_refuses_a_protected_root_and_lists_it(state, monkeypatch):
++    rid = state["rids"]["ok"]
++    folder = state["root"] / "workroots" / rid
++    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", str(folder))
++    ui_shared._invalidate_scans()
++    # one barrier: reclaim's and Storage's agree
++    assert reclaim.is_protected(folder) and ui_storage._storage_protected(folder)
++    # listed under Protected, left out of Delete all, its own Delete off
++    html = client.get("/storage").text
++    protected = html.split('id="st-protected"', 1)[1].split("</section>", 1)[0]
++    assert f"Protected folder ({rid})" in protected
++    assert rid not in [w["id"] for w in ui_storage._clearable_workroots()]
++    row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
++    assert "data-del-storage" not in row and "protected" in row
++    # a crafted request is refused and the tree stays
++    r = client.post("/storage/delete",
++                    data={"kind": "workroot", "ident": rid, "confirm": rid},
++                    follow_redirects=False)
++    assert r.status_code == 303 and folder.is_dir()
++    assert "protected" in _flash()
++
++
++def test_reclaim_protects_the_production_reseal_as_storage_does(tmp_path, monkeypatch):
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    reseal = tmp_path / "retro_reseal"
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", reseal)
++    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "retro_seal")
++    (reseal / "2023-24" / "weeks").mkdir(parents=True)
++    (reseal / "2023-24" / "weeks" / "a_r0.json").write_text("{}")
++    season = reseal / "2023-24"
++    assert reclaim.is_protected(season) and ui_storage._storage_protected(season)
++    assert reclaim._delete(season / "weeks") == 0 and season.is_dir()
++
++
++# -------------------------------------------------------------------- ST-07
++
++def test_reclaim_keeps_the_fit_trees_of_a_run_that_recorded_failures(tmp_path):
++    w = tmp_path / "workroots" / "20261001T100000-aaaaaa"
++    (w / "Arizona_r0").mkdir(parents=True)
++    (w / "Arizona_r0" / "pf.log").write_text("x" * 100)
++    (w / "results.json").write_text("{}")
++    (w / "pf_status.json").write_text(json.dumps(
++        {"Arizona_r0": "fit failed: no particles", "Alaska_r0": "ok"}))
++    # the pipeline left them as evidence; reclaim leaves them too
++    assert reclaim.workroot_failed(w)
++    assert reclaim.workroot_intermediates(w) == []
++    plan = reclaim.survey(tmp_path / "retro", tmp_path / "workroots")
++    assert plan["workroot_ids"] == [] and plan["workroot_bytes"] == 0
++    # a clean run's trees are the intermediates they always were
++    (w / "pf_status.json").write_text(json.dumps({"Arizona_r0": "ok"}))
++    assert not reclaim.workroot_failed(w)
++    assert [p.name for p in reclaim.workroot_intermediates(w)] == ["Arizona_r0"]
++    assert reclaim.survey(tmp_path / "retro", tmp_path / "workroots")[
++        "workroot_ids"] == [w.name]
++
++
++# -------------------------------------------------------------------- OU-15
++
++def test_the_download_route_serves_only_submission_and_export_csvs(state):
++    root, rid = state["root"], state["rids"]["ok"]
++    w = root / "workroots" / rid
++    (root / "last_form.json").write_text("{}")
++    good = w / "submission" / hub_model_id("pf")
++    good.mkdir(parents=True)
++    (good / "2098-01-10-x.csv").write_text("a,b\n1,2\n")
++    export = w / "export" / "FluBNF-Groundhog"
++    export.mkdir(parents=True)
++    (export / "2098-01-10-FluBNF-Groundhog.csv").write_text("a,b\n1,2\n")
++    (root / "notes.csv").write_text("a\n")
++
++    def get(p):
++        return client.get("/output/download", params={"path": str(p)})
++    # the files the pages list
++    for p in (good / "2098-01-10-x.csv", export / "2098-01-10-FluBNF-Groundhog.csv"):
++        r = get(p)
++        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"], p
++    # the ledger, the form memory, a run's results and a stray CSV: not served
++    for p in (root / "ledger.sqlite", root / "last_form.json",
++              w / "results.json", root / "notes.csv"):
++        assert p.is_file(), p
++        r = get(p)
++        assert r.status_code == 404 and "File not found in app state" in r.text, p
+diff --git a/app/ui/retro_seasons.py b/app/ui/retro_seasons.py
+index 89409a57..036f65ce 100644
+--- a/app/ui/retro_seasons.py
++++ b/app/ui/retro_seasons.py
+@@ -15,6 +15,7 @@ import time
+ from pathlib import Path
+ 
+ from app.core import ttlcache
++from app.core.runs import APP_STATE, sealed_root
+ from app.ui.templating import _pf_name
+ 
+ 
+@@ -32,11 +33,13 @@ def _weeks_done(root: Path) -> int:
+ 
+ 
+ # === Retrospective core: roots, claims, season status ===
+-RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
++# under the state folder, as the workroots are (FLUBNF_STATE_DIR moves it)
++RETRO_ROOT = APP_STATE / "retro"
+ # The sealed full-grid records, read only: the reseal (production engine,
+-# the Home/Methods figures) first, then v1.0.0's seal (history).
+-RETRO_RESEAL = Path(__file__).resolve().parents[1] / "state" / "retro_reseal"
+-RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
++# the Home/Methods figures) first, then v1.0.0's seal (history). They
++# ship in the checkout's app/state; a moved state folder falls back to it
++RETRO_RESEAL = sealed_root("retro_reseal")
++RETRO_SEAL = sealed_root("retro_seal")
+ 
+ 
+ def _sealed_roots() -> tuple:
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 2cecdce8..fcbf394f 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -699,11 +699,15 @@ def _not_found(request: Request):
+ 
+ @router.get("/output/download")
+ def output_download(request: Request, path: str):
+-    """Download a submission CSV. The file must be inside app state, and a
+-    submission/ file must sit under a registered hub model's directory (the
+-    listings' rule, enforced here for hand-edited URLs)."""
++    """Download a submission CSV, or a dataset run's export CSV: the files
++    the pages list. The file must be inside app state, a CSV under a
++    submission/ or export/ folder (never the ledger, the form memory or a
++    run's results), and a submission/ file must sit under a registered hub
++    model's directory (the listings' rule, enforced here for hand-edited
++    URLs)."""
+     from fastapi.responses import FileResponse
+     from app.core.runs import APP_STATE
++    from app.core import custom_run as _custom
+     from app.core import datasets as _datasets
+     try:
+         p = Path(path).resolve()
+@@ -714,6 +718,9 @@ def output_download(request: Request, path: str):
+     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
+         # uploaded data is not served here (it may be private)
+         return _not_found(request)
++    if p.suffix.lower() != ".csv" or p.parent.parent.name not in (
++            "submission", _custom.EXPORT_DIR):
++        return _not_found(request)
+     # a dataset run's exports carry the upload: the global middleware
+     # (shared._same_host_guard) already serves them to localhost only
+     if p.parent.parent.name == "submission" \
+diff --git a/app/ui/routes/storage.py b/app/ui/routes/storage.py
+index 4fc646e3..73ccf92c 100644
+--- a/app/ui/routes/storage.py
++++ b/app/ui/routes/storage.py
+@@ -45,13 +45,18 @@ def _tree_size(path: str) -> int:
+ 
+ 
+ def _storage_protected(p: Path) -> bool:
+-    """True when a path lies inside a sealed record or the hub clone."""
+-    from flubnf.settings import HUB
++    """True when a path lies inside a sealed record, the hub clone or a
++    FLUBNF_PROTECT_ROOTS tree: reclaim's barrier (app/core/reclaim.py), so
++    Delete and Reclaim protect the same trees, plus the sealed roots as this
++    module resolves them (tests repoint those)."""
++    from app.core import reclaim
++    if reclaim.is_protected(p):
++        return True
+     try:
+         rp = Path(p).resolve()
+     except OSError:
+         return True                      # unresolvable: refuse, never guess
+-    for root in [base for base, _ in _sealed_roots()] + [HUB]:
++    for root in [base for base, _ in _sealed_roots()]:
+         try:
+             r = Path(root).resolve()
+             if rp == r or rp.is_relative_to(r):
+@@ -82,6 +87,10 @@ def _busy_why(kind: str, ident: str, status: str = "") -> str:
+                 "while it runs.")
+     if kind == "retro-season":
+         return f"{ident} is replaying (status: {status}); stop it first."
++    if kind == "protected":
++        return ("That tree is protected (the sealed records, the hub clone "
++                "and a folder named by FLUBNF_PROTECT_ROOTS are never "
++                "deletable from the interface).")
+     if kind == "retro-archive":
+         return (f"{ident} is replaying; stop it before deleting its archived "
+                 "runs.")
+@@ -211,9 +220,12 @@ def _storage_inventory() -> dict:
+                 "scope": disp["scope"], "recorded": disp["recorded"],
+                 "research": is_research(row.get("spec", "")),
+                 "modified": _runs.is_modified(row.get("spec", "")),
+-                "busy": p.name in live_ids,
+-                "why": (_busy_why("workroot", p.name)
+-                        if p.name in live_ids else ""),
++                # live, or inside a protected tree: Delete off, the reason
++                # the refused POST would give
++                "busy": p.name in live_ids or _storage_protected(p),
++                "why": (_busy_why("workroot", p.name) if p.name in live_ids
++                        else _busy_why("protected", p.name)
++                        if _storage_protected(p) else ""),
+                 # for the dataset rows: the run's size and its dataset
+                 "bytes": size, "dataset": _dsu.spec_dataset(row.get("spec"))})
+     if retro_seasons.RETRO_ROOT.is_dir():
+@@ -263,9 +275,13 @@ def _storage_inventory() -> dict:
+         d["why"] = (f"{d['name']} cannot be deleted now: {d['busy']}."
+                     if d.get("busy") else "")
+     inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
+-    for label, p in (("Production engine record", retro_seasons.RETRO_RESEAL),
++    from app.core import reclaim
++    for label, p in [("Production engine record", retro_seasons.RETRO_RESEAL),
+                      ("Sealed validation record", retro_seasons.RETRO_SEAL),
+-                     ("FluSight hub clone", HUB)):
++                     ("FluSight hub clone", HUB)] + [
++                         # a folder named at launch (FLUBNF_PROTECT_ROOTS)
++                         (f"Protected folder ({Path(x).name})", x)
++                         for x in reclaim.extra_protected_roots()]:
+         if Path(p).exists():
+             inv["protected"].append({
+                 "label": label, "path": str(p),
+@@ -446,9 +462,7 @@ def _storage_target(kind: str, ident: str):
+     # but _storage_protected resolves, so a link into a protected tree fails.
+     assert p.parent == Path(base), "storage target escaped its parent"
+     if _storage_protected(p):
+-        return None, ("That tree is protected (the sealed validation "
+-                      "record and the hub clone are never deletable from "
+-                      "the interface).")
++        return None, _busy_why("protected", ident)
+     if not (p.is_dir() or p.is_symlink()):
+         return None, "Nothing is on disk under that name."
+     return p, ""
+diff --git a/app/ui/templates/runs.html b/app/ui/templates/runs.html
+index 286e16de..68055de2 100644
+--- a/app/ui/templates/runs.html
++++ b/app/ui/templates/runs.html
+@@ -368,7 +368,7 @@
+  {% if storage.protected %}
+  <section class="st-sec" id="st-protected" aria-labelledby="h-st-protected">
+  {# listed, never counted in the total: the tag says so where it applies #}
+- {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
++ {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data; a protected folder was named at launch. None can be deleted here.", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
+  {% for p in storage.protected %}
+  {# never deletable here; the server refuses crafted requests too #}
+  <div class="st-row">
