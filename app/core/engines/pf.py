@@ -40,6 +40,7 @@ with FLUBNF_ENGINE=private, the fallback.
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -1605,36 +1606,59 @@ def _codegen_problem_file() -> Path:
     return Path(os.path.abspath(runs.APP_STATE)) / CODEGEN_PROBLEM_NAME
 
 
+#: the word this process last said on its error output (_note_codegen_problem):
+#: once per word, also where the state folder takes no file to remember it by
+_CODEGEN_SAID: dict = {}
+
+
 def _note_codegen_problem(folder: Path, why: str) -> None:
     """Keep the runners' word on their cache folder for Storage (`why`; ""
     drops it): CODEGEN_PROBLEM_NAME in the state folder, written when it
     changes, and said then on this process's error output, the console's
-    own window. Never fatal."""
+    own window. Said first, then written: a state folder that takes no file
+    (read-only, full) still has it said, once in this process
+    (_CODEGEN_SAID). Never fatal."""
     f = _codegen_problem_file()
-    try:
-        if not why:
+    if not why:
+        _CODEGEN_SAID.clear()
+        try:
             if f.is_file():
                 f.unlink()
-            return
+        except Exception:
+            pass
+        return
+    word = {"folder": str(folder), "why": why}
+    try:
+        old = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        old = {}
+    if (isinstance(old, dict) and old.get("folder") == word["folder"]
+            and old.get("why") == why):
+        return                                    # said and kept already
+    if _CODEGEN_SAID != word:
         try:
-            old = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            old = {}
-        if (isinstance(old, dict) and old.get("folder") == str(folder)
-                and old.get("why") == why):
-            return                                # said already
-        _write_registry(f, {"folder": str(folder), "why": why,
+            print(codegen_problem_words(folder, why), file=sys.stderr,
+                  flush=True)
+        except Exception:
+            pass
+        _CODEGEN_SAID.clear()
+        _CODEGEN_SAID.update(word)
+    try:
+        _write_registry(f, {**word,
                             "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                  time.gmtime())})
-        print(codegen_problem_words(folder, why), file=sys.stderr,
-              flush=True)
     except Exception:
         pass
 
 
 def codegen_cache_warning() -> str:
     """What Storage says when a runner's launch could not write the cache
-    folder (the word _note_codegen_problem kept), "" otherwise."""
+    folder (the word _note_codegen_problem kept), "" otherwise, and ""
+    while this process's environment names a folder of its own in
+    BNGSIM_CODEGEN_CACHE_DIR: its runners never use the cache folder then
+    (runner_popen_kwargs), so a word kept from before is not theirs."""
+    if str(os.environ.get(CODEGEN_CACHE_ENV) or "").strip():
+        return ""
     try:
         rec = json.loads(_codegen_problem_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -1657,7 +1681,8 @@ def runner_popen_kwargs(base: dict | None = None,
     since the engine runs a bare `perl` and BNG2.pl itself (retro's runners
     come through here too); else of this process's. On every platform it
     points bngsim's compiled-model cache at codegen_cache_dir(), unless
-    BNGSIM_CODEGEN_CACHE_DIR already holds a folder. While bngsim compiles
+    BNGSIM_CODEGEN_CACHE_DIR already holds a folder (then a word kept on
+    ours from an earlier launch is dropped). While bngsim compiles
     (BNGSIM_NO_CODEGEN empty), that folder is made and written to first
     (codegen_cache_problem); one that cannot be written leaves the runner
     to bngsim's own folder, and the reason is kept for Storage and said on
@@ -1692,14 +1717,18 @@ def runner_popen_kwargs(base: dict | None = None,
     # the interpreted right-hand side with no word, so the runner keeps
     # bngsim's own folder (compiled, as before the cache moved) and the
     # reason is said instead.
+    d = codegen_cache_dir()
     if not str(env.get(CODEGEN_CACHE_ENV) or "").strip():
-        d = codegen_cache_dir()
         why = "" if env.get(NO_CODEGEN_ENV) else codegen_cache_problem(d)
         if why:
             env.pop(CODEGEN_CACHE_ENV, None)
         else:
             env[CODEGEN_CACHE_ENV] = str(d)
         _note_codegen_problem(d, why)
+    else:
+        # a folder someone set: neither made nor tested, and a word kept
+        # on ours from before no longer stands (this runner never uses it)
+        _note_codegen_problem(d, "")
     kw["env"] = env
     return kw
 
@@ -1715,12 +1744,20 @@ _REGISTRY_LOCK = threading.Lock()
 #: how long an update waits for another process's (each holds it for
 #: milliseconds), before it goes ahead unlocked
 REGISTRY_LOCK_WAIT_S = 5.0
+#: what a lock another process holds is answered with: flock's EWOULDBLOCK
+#: (EAGAIN on some systems), msvcrt.locking's EACCES. Any other error is the
+#: volume refusing locks (ENOLCK or ENOTSUP on some network mounts), which
+#: no wait cures
+_LOCK_HELD_ERRNOS = frozenset({errno.EWOULDBLOCK, errno.EAGAIN,
+                               errno.EACCES})
 
 
 def _lock_file(fd: int, wait: float) -> bool:
     """An exclusive advisory lock on an open file, waiting up to `wait`
-    seconds: flock on POSIX, msvcrt.locking on Windows. False when it could
-    not be had (or this system has neither)."""
+    seconds while another process holds it: flock on POSIX, msvcrt.locking
+    on Windows. False when it could not be had in that time, at once when
+    the volume refuses locks (an error other than _LOCK_HELD_ERRNOS), or
+    when this system has neither."""
     try:
         import fcntl
 
@@ -1740,7 +1777,9 @@ def _lock_file(fd: int, wait: float) -> bool:
         try:
             take()
             return True
-        except OSError:
+        except OSError as e:
+            if e.errno not in _LOCK_HELD_ERRNOS:
+                return False                 # refused, not held: no wait
             if time.monotonic() >= deadline:
                 return False
             time.sleep(0.02)
@@ -1768,8 +1807,9 @@ def _registry_lock(path: Path):
     _REGISTRY_LOCK, other processes (a second console, a terminal replay,
     the students' runner, another checkout) through an advisory lock on
     <registry>.lock beside it, which the system drops if its holder dies.
-    A lock file that cannot be opened, or a wait past REGISTRY_LOCK_WAIT_S,
-    goes ahead unlocked: recording a runner never fails or holds a run."""
+    A lock file that cannot be opened, a volume that refuses the lock (at
+    once), or a wait past REGISTRY_LOCK_WAIT_S goes ahead unlocked:
+    recording a runner never fails or holds a run."""
     with _REGISTRY_LOCK:
         try:
             fd = os.open(str(path) + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
