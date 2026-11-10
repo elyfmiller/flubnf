@@ -141,6 +141,7 @@
       // Saturday past the data, or one the archive skipped (the nearest
       // earlier week named); else no week is on or before the day
       function noWeek(day) {
+        if (!day) return 'Pick a date.';            // the field cleared
         var d = new Date(day + 'T00:00:00Z'), newest = VS[VS.length - 1];
         if (!isNaN(d) && d.getUTCDay() === 6 && newest) {
           if (day > newest) return 'No data for ' + day + ' yet; the data ends at ' + newest + '.';
@@ -192,6 +193,9 @@
         // nothing to say: no empty line under the date
         line.hidden = !!a && (!kv || kv.hidden) && (!live || live.hidden);
         paintRound(a);
+        // the picker shows the week only while the date is that week, so
+        // the same week can be picked again after typing another date
+        if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
         // the Data issues box belongs to that week too; disabled, it

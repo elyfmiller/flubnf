@@ -157,8 +157,10 @@
 .fc-di .di-state:first-of-type{border-top:0;padding-top:0}
 .fc-di .di-row select{margin:0;font-size:var(--fs-label);
   padding:.3rem .45rem}
+/* never narrower than its words ("Both from 10-10"): beside the name when
+   both fit, else under it */
 .fc-di .di-state select{width:auto;flex:1 1 7.5rem;min-width:7.5rem;
-  max-width:15rem}
+  min-width:min-content;max-width:15rem}
 .fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
   margin-bottom:.2rem}
 .fc-di .di-all label{margin:0;white-space:nowrap}

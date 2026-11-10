@@ -181,15 +181,38 @@ def _knob_panel(scope: str, form: dict | None = None,
     why = form.get("ms_refused")
     p["open"] = bool(why)
     p["refused"] = _refusal_words(why) if isinstance(why, str) else ""
+    # the one line that says the run did not start: the panel's, under
+    # its head (the page shows no second notice for it)
+    p["refused_lead"] = "Not started." if scope == "retro" else "Not run."
     return p
+
+
+#: the registry's type words (knobs._coerce) and the particle filter's
+#: prior check (engines/pf.py priors_for), as the panel says them
+_PLAIN_REFUSALS = (
+    (re.compile(r"^('.*') is not a valid float$"), r"\1 is not a number"),
+    (re.compile(r"^('.*') is not a valid int$"), r"\1 is not a whole number"),
+    (re.compile(r"^('.*') is not a valid range$"),
+     r"\1 is not two numbers, low then high"),
+    (re.compile(r"^('.*') is not a valid bool$"), r"\1 is not on or off"),
+    (re.compile(r"^('.*') is not a valid date$"), r"\1 is not a date"),
+    (re.compile(r"^prior_ranges: \S+ \[(\S+), (\S+)\] is not a valid "
+                r"(log)?uniform_var range$"),
+     lambda m: (f"{float(m[1]):g}, {float(m[2]):g} is not a range: the low "
+                f"end must be {'above 0' if m[3] else '0 or more'} and "
+                "below the high end")))
 
 
 def _refusal_words(text: str) -> str:
     """A refusal over the model settings as the panel says it: its knob
     named by the panel's label ("Oracle blend weight: 2 is outside 0 to
-    1."), never by its key."""
+    1."), never by its key, and a value it cannot read in plain words
+    ("Kernel jitter: 'abc' is not a number.")."""
     key, sep, rest = text.strip().partition(": ")
     knob = _knobs.BY_KEY.get(key) if sep else None
+    if knob:
+        for pat, words in _PLAIN_REFUSALS:
+            rest = pat.sub(words, rest)
     text = f"{knob.label}: {rest}" if knob else text.strip()
     text = text[:1].upper() + text[1:]
     return text if text.endswith(".") else text + "."
