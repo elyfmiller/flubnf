@@ -474,6 +474,25 @@ def runs_clear(request: Request, confirm: str = Form("")):
     return _back(request, "/storage")
 
 
+def _replaying_why(kind: str, ident: str) -> str:
+    """Why a retrospective season, or an archived run of one (ident
+    <season>__archived_<stamp>), cannot be deleted while its season
+    replays, in _busy_why's words; "" otherwise and for every other kind.
+    Asked twice by a delete: with the other checks (_storage_target), then
+    again under _engine_lock once the tree is marked, the lock a Run
+    claims a season under, after refusing a marked tree: of a Resume and a
+    delete, one comes first and the other refuses."""
+    if kind == "retro-season":
+        st = _season_status(ident)
+        return _busy_why(kind, ident, st) if st in _RETRO_ACTIVE else ""
+    if kind == "retro-archive":
+        import re as _re
+        m = _re.match(r"(\d{4}-\d{2})", ident or "")
+        if m and _season_status(m.group(1)) in _RETRO_ACTIVE:
+            return _busy_why(kind, m.group(1))
+    return ""
+
+
 def _storage_target(kind: str, ident: str):
     """(path, busy_reason) for one storage delete request, after all
     validation EXCEPT the confirmation; (None, message) when refused."""
@@ -490,8 +509,9 @@ def _storage_target(kind: str, ident: str):
     elif kind == "retro-season":
         if not _valid_season(ident):
             return None, "Unrecognized season name."
-        if _season_status(ident) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, ident, _season_status(ident))
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "retro-archive":
@@ -499,9 +519,9 @@ def _storage_target(kind: str, ident: str):
         stamp = (retro.archive_stamp_of(ident, m.group(1)) if m else "")
         if not stamp:
             return None, "Unrecognized archived run identifier."
-        season = m.group(1)
-        if _season_status(season) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, season)
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "report-archive":
@@ -566,11 +586,30 @@ def storage_delete(request: Request, kind: str = Form(""),
     # after its replay or a results visit: a delete meanwhile could fail
     # half way. Marked first, so no results page starts a finalize on it
     # from here on (retro_prep._removing)
+    from contextlib import ExitStack
     from app.ui import retro_prep
-    with retro_prep._removing(p) as busy:
+    from app.ui.state import _engine_lock
+    with ExitStack() as held:
+        # marked under _engine_lock, and the season's status looked at
+        # again there: a Resume claimed since the first look is refused
+        # here, and one posted from now on finds the mark (routes/retro.py
+        # asks under the same lock). Released before the delete itself
+        with _engine_lock:
+            busy = held.enter_context(retro_prep._removing(p))
+            replaying = "" if busy else _replaying_why(kind, ident)
+        if busy == retro_prep._ALREADY_REMOVING:
+            # a second delete at once (a double click, another tab): the
+            # first goes on and says so
+            _flash(f"Not deleted: {ident} is {busy}.", "warn",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
         if busy:
             _flash(f"Not deleted: the {busy} of {ident} are still being "
                    "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/storage")
+        if replaying:
+            _flash(f"Not deleted: {replaying[:1].lower()}{replaying[1:]}",
+                   "warn")
             return _back(request, "/storage")
         size_h = retro.human_bytes(retro.dir_size(p))
         try:

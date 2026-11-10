@@ -28,8 +28,10 @@ import os
 import re
 import shutil
 import socket
+import threading
 import time
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -344,12 +346,47 @@ def _extract_member(z: zipfile.ZipFile, name: str, dst: Path,
                           f"{MANIFEST}; the bundle is damaged or altered.")
 
 
+#: one lock per destination tree (key -> [lock, holders]; under
+#: _IMPORT_LOCKS_GUARD): two imports of one bundle at once (a double
+#: click; the console's route runs in a thread pool) shared one temp tree
+#: and each deleted the other's work
+_IMPORT_LOCKS: dict = {}
+_IMPORT_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _import_lock(dst: Path):
+    """Held around one import into `dst` (by its resolved path): a second
+    import of the same bundle in this process waits for the first, then
+    finds its tree. The entry goes once no one holds or waits for it."""
+    try:
+        key = str(Path(dst).resolve())
+    except OSError:
+        key = str(Path(dst).absolute())
+    with _IMPORT_LOCKS_GUARD:
+        entry = _IMPORT_LOCKS.setdefault(key, [threading.Lock(), 0])
+        entry[1] += 1
+    try:
+        with entry[0]:
+            yield
+    finally:
+        with _IMPORT_LOCKS_GUARD:
+            entry[1] -= 1
+            if not entry[1]:
+                _IMPORT_LOCKS.pop(key, None)
+
+
 def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                   build: str = "", name: str = "",
                   removing=None) -> ImportResult:
     """Import a bundle as the read-only archived entry
     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
     of the same bundle ("already imported as <stamp>") unless `replace`.
+    Two imports into one tree at once run one after the other (a lock per
+    tree in this process), so the second, without `replace`, is refused
+    once the first is done; and the tree's name is looked at again just
+    before the rename, so a tree that appeared meanwhile is never deleted
+    without `replace`.
     Every member is verified against the manifest while extracting; the
     tree appears under its final name only once complete. A week whose
     oracle.json travelled was exported with its quantiles only when
@@ -363,15 +400,25 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     deletes the archived tree, so it is entered with the tree's path
     before anything is extracted and held until the new tree is in place
     (no finalize starts on the tree meanwhile). It yields a word ("results")
-    while a finalize still runs on the tree: refused, nothing replaced."""
-    from contextlib import nullcontext
-    from app.core import retro
-    from app.core.retro_store import ORACLE_NAME, samples_file
+    while a finalize still runs on the tree, or what is under way
+    ("already being deleted") while a delete holds it: refused, nothing
+    replaced."""
     path, retro_root = Path(path), Path(retro_root)
     name = name or path.name           # an upload's own name (inspect_bundle)
     m = inspect_bundle(path, name)
+    from app.core import retro
+    dst = retro.archive_dir(retro_root, m["season"], m["stamp"])
+    with _import_lock(dst):
+        return _import_into(path, m, dst, replace, build, name, removing)
+
+
+def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
+                 name: str, removing) -> ImportResult:
+    """import_bundle's work, under the destination's lock."""
+    from contextlib import nullcontext
+    from app.core import retro
+    from app.core.retro_store import ORACLE_NAME, samples_file
     season, stamp = m["season"], m["stamp"]
-    dst = retro.archive_dir(retro_root, season, stamp)
     if dst.exists() or dst.is_symlink():
         if not replace:
             raise BundleError(f"{season} from this bundle was already "
@@ -388,11 +435,18 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     # the new one is ready): marked whether or not it is there yet
     with (removing(dst) if replace and removing is not None
           else nullcontext("")) as busy:
-        if busy:
+        if busy == "results":
             raise BundleError(f"{season} from this bundle is imported as "
                               f"{stamp}, and its {busy} are still being "
                               "prepared; nothing was replaced. Try again "
                               "in a minute.")
+        if busy:
+            # another delete of the tree is under way (Storage's, the
+            # archived run's): two removers of one tree cannot both succeed
+            raise BundleError(f"{season} from this bundle is imported as "
+                              f"{stamp}, and that run is {busy}; nothing "
+                              "was replaced. Import it again once the "
+                              "delete is done.")
         tmp = dst.with_name(dst.name + ".importing")
         if tmp.exists() or tmp.is_symlink():
             retro.delete_tree(tmp)
@@ -432,12 +486,20 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
             sf = tmp / "scores.json"
             if sf.is_file():
                 os.utime(sf)
+            # looked at again: a tree that appeared while this one was
+            # extracted (another process's import) is deleted only by a
+            # Replace
             if dst.exists() or dst.is_symlink():
+                if not replace:
+                    raise BundleError(f"{season} from this bundle was "
+                                      f"already imported as {stamp}.")
                 retro.delete_tree(dst)
             os.rename(tmp, dst)
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
+    # read under the lock too: a Replace waiting for it would delete the
+    # scores read here
     warnings = []
     if "scores.json" not in files:
         warnings.append("the bundle carries no scores; the season page "

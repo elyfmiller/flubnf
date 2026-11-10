@@ -297,6 +297,11 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     # delete meanwhile could fail half way. Marked first, so no results
     # page starts a finalize on it from here on (retro_prep._removing)
     with retro_prep._removing(p) as busy:
+        if busy == retro_prep._ALREADY_REMOVING:
+            # a second delete at once: the first goes on and says so
+            _flash(f"Not deleted: {what} is {busy}.", "warn",
+                   detail="Nothing else changed.")
+            return _back(request, "/retro")
         if busy:
             _flash(f"Not deleted: the {busy} of {what} are still being "
                    "prepared.", "warn", detail="Try again in a minute.")
