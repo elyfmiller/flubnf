@@ -6,6 +6,71 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10: THE GATE FOR THE 2026-11-07 ROUND ON THE PUBLIC ENGINE,
+  written before any of its runs, for Ely's yes (App puts it to Ely).
+  Starting values, which Ely may change before the run, not after it.
+  Nothing below has run yet.
+  - **What is compared.** The submitted
+    `2026-11-07-NAU_PyBNF-OracleSIHRS.csv` (P0): Ely's run on the laptop,
+    app build 9d4520d, the private engine, data through 2026-10-31, and
+    the round's five override values:
+    - `pf.seed_denominator` season_total_early;
+    - `oracle.w` 0.25;
+    - `oracle.narrow` 0.7;
+    - `output.tail_cap` 10;
+    - `output.tail_mode` shrink.
+    Its 51 locations (Delaware and Hawaii were dropped by Ely) times
+    horizons 0 to 3 make 204 blocks of 23 quantiles.
+  - **Three runs on this PC**, each with the same five values, through the
+    console's run path. Each runs on a console of its own at port 8790,
+    with a temporary state folder:
+    - **P1, the private engine, the round's own seeds.** This is the
+      reproduction check. The hub's data is still through 2026-10-31,
+      and the console's reference date is the as-of date plus 7, so a
+      run today is the 11-07 round. If the hub moves first, the runs use
+      a copy pinned at that week.
+    - **P2, the private engine, a salted seed** (the seed-spread hook
+      `seed_salt` in `pf.py`'s `seed_date_for`, set from a script,
+      since the page has no seed setting). This is the noise floor: the
+      same run with independent draws.
+    - **L1, the public engine.** The same `pf_seed`s, but a different
+      engine's stream, so its draws are independent too.
+    Each run is 159 cells (53 locations, 3 replicates of 10,000
+    particles). By the lab Mac's costs and the 2.1x public ratio, the
+    three should take under an hour and a half together. Model is told
+    before they start.
+  - **The reference R.** R is P0 if P1 reproduces it, which means every
+    value within one count of the file's whole numbers. Otherwise R is
+    P1, and P1 against P0 is reported as this PC's difference from the
+    laptop.
+  - **The measures** are computed for a run A against R over the 204
+    blocks, on log(1 + value):
+    - d, per block: the mean over the 23 levels of
+      |log(1 + qA) - log(1 + qR)|;
+    - D_mean and D_90: the mean and the 90th percentile of d over the
+      blocks;
+    - C50: the share of blocks with A's median inside R's 50% interval;
+    - W95: the median over blocks of A's 95% width over R's, on counts.
+    The noise floor is P2's values of the same measures.
+  - **PASS when all five hold:**
+    1. L1 has no failed cell and no degenerate update that P1 or P2 does
+       not also have.
+    2. D_mean(L1) is at most 1.25 x D_mean(P2), or at most 0.02 (2%).
+       D_90(L1) is at most 1.5 x D_90(P2), or at most 0.05.
+    3. C50(L1) is at least C50(P2) - 0.05.
+    4. W95(L1) is between 0.90 and 1.11 times W95(P2).
+    5. No block has d(L1) above 3 times the largest d(P2): no one
+       location far off.
+
+    FAIL when any one is missed. Every measure is reported either way,
+    with the blocks behind each miss, and Delaware and Hawaii are
+    reported without being gated. A fail means falling back to
+    `FLUBNF_ENGINE=private` for 11-11, which is Ely's call with
+    Submission. A pass leaves the 11-11 round on the public engine, as
+    decided. Either way stage 2 still runs.
+  - Not before Ely's yes. The runs must end before 11-11's target-data
+    update, or use the pinned copy.
+
 - 2026-11-09 (later): the private engine, the fallback, is installed on
   Ely's Windows PC, from `dev` (before App's merge), by this lane's
   clone's FluBNF.bat (first open, `FLUBNF_SHORTCUTS=off`) in about five
