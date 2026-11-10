@@ -16,3 +16,24 @@ naming one workroot.
 Vote: combine: A's patch, with B's pf2s/ scope in the failure check (an
 unreadable status file still keeps the trees) and B's stray-CSV assertion
 in the download test.
+
+## After B's compare
+
+B's WI-04 case: with FLUBNF_STATE_DIR set, A's console "loses the sealed
+records ... (Home's and Methods' figures, Storage's Protected list, the
+seal's protection)". Checked on 8cb3f7d: no route reads the seals for
+Home's or Methods' figures (those are template literals, held to
+oracle_text.RECORD by test_pages). The readers are retro_seasons (a
+season with no lab run shows the sealed record) and Storage's Protected
+list. The site build reads `APP_STATE / "retro_seal"` (site_build.py:78)
+and reclaim `APP_STATE / ...`, with no fallback, so B's fallback would
+leave the retro pages and the site build reading different trees under a
+moved state folder: WI-04's disagreement in another place. With A's, a
+moved state folder holds everything the console reads or writes, and the
+suite never reads the checkout's real records.
+
+Vote (final): combine: A's patch, with B's pf2s/ scope in the failure
+check (an unreadable status file still keeps the trees) and B's
+stray-CSV assertion in the download test. The refusal sentence stays as
+it is (reached only by a crafted request now that the row has no
+button).
