@@ -36,7 +36,10 @@ if [ ! -d "$DEST/.git" ]; then
   echo "Cloning flubnf to $DEST…"
   git clone https://github.com/elyfmiller/flubnf "$DEST"
 fi
-cd "$DEST" && ./setup.sh
+# The user's shell stays where it was, so setup.sh's "run ./setup.sh again"
+# would not run as typed: told it came from here, it says to paste this
+# line again, which also goes on to the engine.
+cd "$DEST" && FLUBNF_SETUP_FROM=install ./setup.sh
 # FluBNF.app and FluBNF.command are macOS's. Elsewhere the console starts from
 # its venv, and opens in the browser when there is no GTK or Qt for a window.
 if [ "$(uname -s)" = Darwin ]; then

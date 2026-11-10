@@ -1,5 +1,5 @@
 """setup.sh stops when the console cannot be installed, and a re-run
-repairs a venv that cannot run pip.
+repairs a venv that runs neither pip nor the console.
 
 Ubuntu and WSL2 ship python3.12 without its venv module's pip
 (python3.12-venv is its own package). `python3.12 -m venv .venv` then makes
@@ -7,14 +7,16 @@ the folder, says ensurepip is missing and exits 1. setup.sh used to go on,
 end with "console still runs" and exit 0, and a re-run skipped the
 half-made .venv. Now:
 
-- a venv that cannot be made is exit 1, and where apt-get exists the
-  message names the package for setup.sh's own Python (python3.X-venv);
+- a venv that cannot be made is exit 1, and where apt-get exists and venv
+  says its module or ensurepip is missing, the message names the package
+  for setup.sh's own Python (python3.X-venv);
 - a failing install of FluBNF itself is exit 1, unless an earlier install
   is there (an offline re-run keeps it);
 - a failing BioNetGen install stays a warning, as in setup.ps1: the
   console runs without it;
-- a .venv whose Python cannot run pip is moved to .venv.broken-<stamp>,
-  never deleted, and made again.
+- a .venv that runs neither pip nor the console is moved to
+  .venv.broken-<stamp>, never deleted, and made again (one the console
+  runs from is kept: tests/test_setup_sh_venv_cases.py).
 
 Each run is a copy of setup.sh alone in tmp_path, with a stand-in
 python3.12 (and pip) first on PATH, FLUBNF_NO_DATA=1, and HOME and
