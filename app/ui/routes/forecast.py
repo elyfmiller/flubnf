@@ -66,6 +66,12 @@ RUN_MODELS = {"all": "Oracle SIHRS and Groundhog", "pf": "Oracle SIHRS",
 GROUNDHOG_RUN_WORDS = "about a minute"
 
 
+#: what a browser's number box holds, and so posts: its text when that is
+#: HTML's valid floating-point number, else blank (forecast_form.js
+#: boxValue)
+_HTML_FLOAT = r"-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+
+
 def _whole_field(text, default):
     """A form value as the time line reads it (static/forecast_form.js
     whole): digits are their number, anything else (blank included) is
@@ -130,11 +136,24 @@ def _run_estimate(form: dict, all_locs: list, panel, anchor: str,
             for r in g.get("rows", ())}
 
     def knob(key):
+        # as the page's script reads the box (forecast_form.js knobWhole)
+        # and the run's check reads what it posts (knobs._coerce): blank,
+        # or a text a number box cannot hold, is the default; None, so no
+        # line, for what the check refuses ("1e4", "2.5", "0"; review of
+        # #93 at d160002b, finding 5)
+        import re
         r = rows.get(key)
         if r is None:
             return None
-        return _whole_field(r.get("value"), _whole_field(r.get("default"),
-                                                         None))
+        t = str(r.get("value") if r.get("value") is not None else "")
+        if not re.fullmatch(_HTML_FLOAT, t):
+            t = ""
+        if not t:
+            return _whole_field(r.get("default"), None)
+        try:
+            return int(_knobs._coerce(_knobs.BY_KEY[key], t, None))
+        except _knobs.KnobError:
+            return None
     locs = form.get("locations") or []
     n_all = len(all_locs) + 1 if all_locs else 53
     n = n_all if "all" in locs else (

@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
-{% block head %}<link rel="stylesheet" href="/static/tabs/home.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/home.css">
+{# the Data step's reason names the hub folder: a long path breaks
+   anywhere rather than run out of the card #}
+<style>.hm-start .uk-step-meta{overflow-wrap:anywhere}</style>{% endblock %}
 {% block content %}
 {# the page reads as headings, values and controls; its one "i" is how
    to read the map (docs/UI-KIT.md). The record's unit is a line under its
@@ -36,19 +39,21 @@
 {# Start here: the weekly loop, one tab per step, each named by its link
    (never a "?": test_pages.py). With no forecast yet the card comes before
    the map, and each step says where this computer stands: the data's
-   newest week, and a Groundhog-only forecast when the engine is not
-   installed (a broken install is the Setup line's). Ely's weekly view
+   newest week, or what stops a run reading the hub (routes/home.py
+   _start_data's reason) while Data is the step to take, and a
+   Groundhog-only forecast when the engine is not installed (a broken
+   install is the Setup line's). Ely's weekly view
    keeps the map first and the steps plain. The cold paint (routes/home.py
    start_first) puts the card before the map too when no run is stored, so
    the reload leaves it there; its steps stay plain until that reload,
    which reads the data #}
-{% macro start_here(states=False, newest="", pf_state="") %}
+{% macro start_here(states=False, newest="", pf_state="", why="") %}
 <div class="card hm-start">
  <h2>Start here</h2>
  {% if states %}
  {% set steps = [{"label": "Data", "href": "/data",
                   "state": "done" if newest else "current",
-                  "meta": ("through " ~ newest) if newest else ""},
+                  "meta": ("through " ~ newest) if newest else why},
                  {"label": "Forecast", "href": "/forecast",
                   "state": "current" if newest else "todo",
                   "meta": "Groundhog only on this computer" if pf_state == "absent" else ""},
@@ -70,7 +75,8 @@
                    else (not outlook_date and not (outlook_pending is defined and outlook_pending)) %}
 {% set start_said = start_states if start_states is defined else start_top %}
 {% if start_top %}{{ start_here(start_said, start_newest if start_newest is defined else "",
-                                start_pf_state if start_pf_state is defined else "") }}{% endif %}
+                                start_pf_state if start_pf_state is defined else "",
+                                start_data_why if start_data_why is defined else "") }}{% endif %}
 
 <div class="card hm-outlook">
  {# the h2 names the payload and its date, like every other card; how to

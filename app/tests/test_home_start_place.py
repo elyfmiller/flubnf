@@ -165,7 +165,9 @@ def test_the_data_step_is_done_only_where_a_run_can_read_the_hub(
     if usable:
         assert step == ("done", None, f"through {WEEK}"), name
     else:
-        assert step == ("current", "step", ""), name
+        # the reason is the caption (review of #93 at d160002b, finding 1)
+        why = H._start_data()[1]
+        assert why and step == ("current", "step", why), name
 
 
 def test_a_clone_with_auxiliary_data_and_no_target_data_is_done(hub, empty):

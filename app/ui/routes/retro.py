@@ -110,6 +110,33 @@ def _whole(text, default: int) -> int:
     return int(t) if re.fullmatch(r"[0-9]+", t) else default
 
 
+#: what a browser's number box holds, and so posts: its text when that is
+#: HTML's valid floating-point number, else blank (retro_progress.js
+#: boxValue)
+_HTML_FLOAT = r"-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+
+
+def _runners(text, default: int):
+    """The runners box as the run's POST reads what the box posts
+    (retro_run; retro_progress.js runners): stripped, commas dropped,
+    blank is `default`, else Python's int(); None for what the POST
+    refuses ("2e0", "2.0", "1e1": not a whole number), so the option gets
+    no figure for a run that will not start. A text the box cannot hold
+    ("abc") is blank there, and so posts blank: the default (review of
+    #93 at d160002b, finding 5)."""
+    import re
+    t = str(text if text is not None else "")
+    if not re.fullmatch(_HTML_FLOAT, t):
+        t = ""
+    t = t.strip().replace(",", "")
+    if not t:
+        return default
+    try:
+        return int(t)
+    except ValueError:
+        return None
+
+
 def _form_costs(seasons: list, form: dict, state_names: list,
                 knob_panel: dict) -> dict:
     """What the Settings form needs to price the Oracle preset (F53):
@@ -170,13 +197,16 @@ def _form_costs(seasons: list, form: dict, state_names: list,
             return int(_knobs._coerce(_knobs.BY_KEY[key], t, None))
         except _knobs.KnobError:
             return None
-    width = max(1, min(_whole(form.get("width"), DEFAULT_SHARD_WIDTH),
-                       SHARD_WIDTH_CAP))
+    # the runners as the POST would start them (1 to the cap), None for a
+    # width it refuses
+    width = _runners(form.get("width"), DEFAULT_SHARD_WIDTH)
+    if width is not None:
+        width = max(1, min(width, SHARD_WIDTH_CAP))
     c = costs.get(season) or {}
     weeks = c.get("left") or c.get("weeks") or []
     reps = knob("pf.replicates", RunSpec.replicates)
     particles = knob("pf.particles", RunSpec.particles)
-    words = "" if reps is None or particles is None else (
+    words = "" if reps is None or particles is None or width is None else (
         retro_seasons._cost_words(
             weeks, c.get("start", ""), n * reps, particles, width, ratio,
             len(c["left"]) if c.get("left") else 0))

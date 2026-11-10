@@ -295,12 +295,8 @@ def _is_clone(hub: Path) -> bool:
     counts, as setup.sh counts it."""
     if not (hub / ".git").exists():
         return False
-    try:
-        r = subprocess.run(["git", "-C", str(hub), "rev-parse",
-                            "--show-toplevel"], capture_output=True,
-                           text=True, encoding="utf-8", errors="replace",
-                           timeout=15, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
+    r = _git_toplevel(hub)
+    if r is None:
         return True
     top = r.stdout.strip()
     if r.returncode != 0 or not top:
@@ -309,6 +305,52 @@ def _is_clone(hub: Path) -> bool:
         return Path(top).samefile(hub)
     except OSError:
         return False
+
+
+def _git_toplevel(hub: Path):
+    """git's answer to `git -C <hub> rev-parse --show-toplevel` (the
+    CompletedProcess), or None when git cannot be asked."""
+    try:
+        return subprocess.run(["git", "-C", str(hub), "rev-parse",
+                               "--show-toplevel"], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace",
+                              timeout=15, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _git_refuses_owner(hub: Path) -> tuple[str, str]:
+    """(git's first line, the folder git asks to mark safe) when git will
+    not read the clone at the hub folder because another account owns it
+    (git's "dubious ownership": a folder another account or an
+    administrator made, or one on some external drives), else ("", "").
+
+    git's refusal ends with its own fix, `git config --global --add
+    safe.directory <folder>`, in every language git speaks. It counts
+    only when that folder is the hub itself: a folder inside another
+    account's clone is no clone of its own."""
+    if not (hub / ".git").exists():
+        return "", ""
+    r = _git_toplevel(hub)
+    if r is None or r.returncode == 0:
+        return "", ""
+    lines = [ln.strip() for ln in (r.stderr or "").splitlines()
+             if ln.strip()]
+    safe = next((ln.split("safe.directory", 1)[1].strip() for ln in lines
+                 if ln.startswith("git config")
+                 and "safe.directory" in ln), "")
+    if len(safe) > 1 and safe[0] == safe[-1] == "'":
+        safe = safe[1:-1].replace("'\\''", "'")   # git's shell quoting
+    if not safe:
+        return "", ""
+    try:
+        if not Path(safe.removeprefix("%(prefix)/")).samefile(hub):
+            return "", ""
+    except OSError:
+        return "", ""
+    said = lines[0]
+    return (said[len("fatal: "):] if said.startswith("fatal: ") else said,
+            safe)
 
 
 def _check_hub(platform: str | None = None) -> CheckResult:
@@ -337,6 +379,20 @@ def _check_hub(platform: str | None = None) -> CheckResult:
                 "this clone with git:\n"
                 f"    git -C \"{hub}\" sparse-checkout add auxiliary-data "
                 "target-data")
+        said, safe = _git_refuses_owner(hub)
+        if said:
+            # a clone git will not read: not "not a git clone", and
+            # moving it aside is no fix. git's own step, alone on the last
+            # line, as above
+            return CheckResult(
+                "FluSight hub", Status.FAIL, lacks,
+                f"git will not read this clone ({said}): the folder is not "
+                "owned by your account, as with a folder another account "
+                "or an administrator made, or one on some external drives. "
+                "If you trust it, let git read it with the line below, "
+                f"then {step[:1].lower()}{step[1:]} Or set FLUBNF_HUB to "
+                "an existing clone.\n"
+                f"    git config --global --add safe.directory \"{safe}\"")
         # Not a clone: git -C would walk up to any repository around it.
         # setup.sh clones into an empty folder; setup.ps1 into none.
         try:

@@ -1101,9 +1101,15 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
     help (review of #93, re-check at 099907c, finding 1). So at a horizon
     at 0 with pairs, the file shows it only when:
 
-      * every group and season holding a pair there finds donor weeks at
-        another horizon: the window's weeks have cases and the weeks h
-        later do not (R1's 36, 24, 12 and 0); or
+      * every group with data has a season holding a pair there that
+        finds donor weeks at another horizon: the window's weeks have
+        cases and the weeks h later do not (R1's 36, 24, 12 and 0). A
+        season holding a pair that finds none at any horizon (a dead
+        season) says nothing either way and is left out; it no longer
+        hides what the group's live seasons show. A group with no such
+        season (one with the newest season only, say) could still gain
+        from real seasons, so one small group cannot speak for the
+        others (review of #93 at d160002b, finding 2); or
       * two or more earlier seasons of every group with data hold a
         pair there."""
     import math
@@ -1124,6 +1130,7 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
                     and math.isfinite(v1 / v0)):
                 finds[h].add((g, AN.season_of(d)))
     groups = {g for g, _ in bank}
+    anywhere = set().union(*finds.values())
     for h, c in zip(GROUNDHOG_HORIZONS, counts):
         if c:
             continue
@@ -1133,7 +1140,10 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
             continue
         elsewhere = set().union(*(finds[k] for k in GROUNDHOG_HORIZONS
                                   if k != h))
-        if held <= elsewhere:
+        # rule one, group by group: the dead seasons left out, every group
+        # with data speaks through a live one
+        live = held & anywhere
+        if live <= elsewhere and {g for g, _ in live} == groups:
             return True
         per = Counter(g for g, _ in held)
         if all(per[g] >= 2 for g in groups):

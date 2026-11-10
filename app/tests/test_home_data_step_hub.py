@@ -10,9 +10,10 @@
     hold: hub folders with no data read "current", where they read "done,
     through 2026-04-25". A hub with no locations table, which a run reads
     and fails without, is not done either.
-  * When the step is not done, Home has the reason in a plain sentence
-    (start_data_why): the run gate's words, no locations table, or no
-    week in the hub.
+  * When the step is not done, the reason in a plain sentence
+    (start_data_why) is the step's caption: the run gate's words, no
+    locations table, or no week in the hub. It was worked out and never
+    shown (review of #93 at d160002b, finding 1).
 
 The real data module reads a hub folder made to order here, with the
 committed shipped snapshots in place; only the page's run store is empty.
@@ -27,6 +28,7 @@ from app.ui import state as ui_state
 from app.ui.routes import home as H
 
 from test_home_first_run import _get, _steps, empty  # noqa: F401
+from test_outlook_toggle import _latest                # noqa: E402
 
 LIVE = "target-data/target-hospital-admissions.csv"
 ARCHIVE = "auxiliary-data/target-data-archive"
@@ -107,7 +109,7 @@ def test_where_the_run_gate_refuses_the_reason_is_its_own(hub, files, why):
     assert gate
     assert H._start_data() == ("", why.format(h=h))
     assert why.format(h=h).lower().startswith(gate.lower())
-    assert _data_step() == ("current", "step", "")
+    assert _data_step() == ("current", "step", why.format(h=h))
 
 
 # ---------------------------------------------------------- finding 7
@@ -118,7 +120,8 @@ def test_hub_folders_with_no_data_are_not_done_through_a_shipped_week(hub):
     assert core_data.newest_week() == _shipped_newest()
     assert H._start_data() == (
         "", f"The hub folder {h} holds no weeks of data yet.")
-    assert _data_step() == ("current", "step", "")
+    assert _data_step() == (
+        "current", "step", f"The hub folder {h} holds no weeks of data yet.")
 
 
 def test_a_hub_with_no_locations_table_is_not_done(hub):
@@ -126,7 +129,9 @@ def test_a_hub_with_no_locations_table_is_not_done(hub):
     assert core_data.hub_missing() == ""
     assert H._start_data() == (
         "", f"The hub folder {h} has no auxiliary-data/locations.csv.")
-    assert _data_step() == ("current", "step", "")
+    assert _data_step() == (
+        "current", "step",
+        f"The hub folder {h} has no auxiliary-data/locations.csv.")
 
 
 def test_the_week_is_the_hubs_own_when_the_shipped_ones_are_newer(hub):
@@ -159,4 +164,23 @@ def test_an_unreadable_hub_says_so(hub, monkeypatch):
     monkeypatch.setattr(core_data, "newest_week", broken)
     assert H._start_data() == ("", "The hub data could not be read: "
                                    "disk gone.")
-    assert _data_step() == ("current", "step", "")
+    assert _data_step() == ("current", "step",
+                            "The hub data could not be read: disk gone.")
+
+
+# ------------------------------------- the reason on the page (d160002b, 1)
+
+def test_the_reason_breaks_anywhere_rather_than_leave_the_card(hub):
+    """The reason names the hub folder, one long word on a phone: the
+    caption may break inside it (home.html's head)."""
+    hub({"target-data": None, ARCHIVE: None, LOCS: LOC_TEXT})
+    html = _get().html
+    assert ".hm-start .uk-step-meta{overflow-wrap:anywhere}" in html
+
+
+def test_the_plain_steps_say_no_reason(empty, tmp_path, monkeypatch):
+    """Ely's weekly view (a stored run, the map first) keeps the steps
+    plain: no state and no reason, whatever the hub holds."""
+    monkeypatch.setattr(H, "_start_data", lambda: ("", "A reason."))
+    _latest(tmp_path, monkeypatch)
+    assert [s[2:5] for s in _steps(_get())] == [("todo", None, "")] * 3

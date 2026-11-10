@@ -203,12 +203,16 @@ def test_the_forecast_step_says_groundhog_only_when_the_engine_is_absent(
     assert forecast[4] == caption
 
 
-@pytest.mark.parametrize("week", [None, OSError("no hub data")])
-def test_without_data_the_data_step_is_current(empty, week):
+@pytest.mark.parametrize("week, why", [
+    (None, "The hub folder {hub} holds no weeks of data yet."),
+    (OSError("no hub data"), "The hub data could not be read: no hub data.")])
+def test_without_data_the_data_step_is_current(empty, week, why):
+    """Data is the step to take, and its caption says why (review of #93
+    at d160002b, finding 1: the reason was worked out and never shown)."""
     empty.week = week
     steps = _steps(_get())
     assert [s[2:5] for s in steps] == [
-        ("current", "step", ""),
+        ("current", "step", why.format(hub=core_data.HUB)),
         ("todo", None, "Groundhog only on this computer"),
         ("todo", None, "")]
 
@@ -225,7 +229,7 @@ def test_without_the_hub_the_data_step_is_current(empty, monkeypatch,
         monkeypatch.setitem(V.VERSIONS, k, v)
     p = _get()
     assert [s[2:5] for s in _steps(p)] == [
-        ("current", "step", ""),
+        ("current", "step", f"There is no hub folder at {tmp_path / 'nohub'}."),
         ("todo", None, "Groundhog only on this computer"),
         ("todo", None, "")]
     assert "FluSight data" in _line(p)[1]

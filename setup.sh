@@ -198,10 +198,27 @@ missing_hub_dirs() {
 # file (a worktree or a submodule); an empty or broken .git folder is no
 # clone, and git then answers for any repository around the folder.
 # Without git to ask, a .git there counts, as before.
+# A clone git will not read because another account owns it (git's
+# "dubious ownership") is no clone to git either: hub_is_clone then sets
+# HUB_REFUSED to the folder git asks to mark safe, and HUB_SAID to git's
+# first line. git's refusal names that folder, quoted, in every language;
+# only the hub itself counts (a folder inside another account's clone is
+# no clone of its own).
+HUB_REFUSED=""; HUB_SAID=""
 hub_is_clone() {
+  HUB_REFUSED=""; HUB_SAID=""
   [ -e "$HUB/.git" ] || return 1
   command -v git >/dev/null 2>&1 || return 0
-  _top="$(git -C "$HUB" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  if ! _top="$(git -C "$HUB" rev-parse --show-toplevel 2>/dev/null)"; then
+    _why="$(git -C "$HUB" rev-parse --show-toplevel 2>&1 >/dev/null)"
+    _real="$(cd "$HUB" 2>/dev/null && pwd -P)"
+    case "$_why" in
+      *"'$_real'"*safe.directory*)
+        [ -n "$_real" ] && HUB_REFUSED="$_real" \
+          && HUB_SAID="$(printf '%s\n' "$_why" | head -n 1 | sed 's/^fatal: //')" ;;
+    esac
+    return 1
+  fi
   [ -n "$_top" ] && [ "$_top" -ef "$HUB" ]
 }
 if hub_is_clone; then
@@ -225,6 +242,15 @@ if hub_is_clone; then
       warn "whose upstream no longer has one of those directories)"
     fi
   fi
+elif [ -n "$HUB_REFUSED" ]; then
+  # A clone git will not read: moving it aside is no fix, and nothing is
+  # changed here. git's own step, alone on its line.
+  warn "git will not read the clone at \"$HUB\": the folder is not owned by"
+  warn "your account (as with a folder another account made, or one on some"
+  warn "external drives), so no data was fetched into it. git said:"
+  warn "  $HUB_SAID"
+  warn "If you trust it, let git read it with this line, then $again:"
+  warn "    git config --global --add safe.directory \"$HUB_REFUSED\""
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
 elif [ -e "$HUB" ] \
