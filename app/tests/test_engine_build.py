@@ -222,7 +222,7 @@ def test_the_engine_of_a_build_is_public_only_when_it_says_so():
 
 def test_the_engine_in_words(monkeypatch):
     assert EB.engine_words("public") == (
-        "the public engine (lanl/PyBNF's Liu–West filter), the default")
+        "the public engine (lanl/PyBNF's Liu-West filter), the default")
     assert EB.engine_words("private") == (
         "the private engine (the lab's PyBNF fork), the fallback: "
         "FLUBNF_ENGINE=private")

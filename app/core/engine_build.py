@@ -341,7 +341,7 @@ def engine_words(engine: str | None = None) -> str:
     if engine == "private":
         return ("the private engine (the lab's PyBNF fork), the fallback: "
                 "FLUBNF_ENGINE=private")
-    return "the public engine (lanl/PyBNF's Liu–West filter), the default"
+    return "the public engine (lanl/PyBNF's Liu-West filter), the default"
 
 
 def archive_step(platform: str | None = None) -> str:
