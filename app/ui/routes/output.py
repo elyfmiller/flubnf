@@ -761,9 +761,22 @@ def _reveal_command(p: Path, platform: str | None = None):
 def output_reveal(request: Request, path: str = Form("")):
     """Show the file in Finder / Explorer (a local desktop app), then back
     to the page that asked (a run page or Output); a warning there when no
-    file manager could be opened on it."""
+    file manager could be opened on it. A script caller that accepts JSON
+    (the season page's Show in folder) gets {ok, message, detail} instead
+    of the redirect, so it can show the warning itself (the redirect's page
+    would eat the flash)."""
     import subprocess
+    from fastapi.responses import JSONResponse
     from app.core.runs import APP_STATE
+    wants_json = "application/json" in request.headers.get("accept", "")
+
+    def answer(message: str = "", detail: str = ""):
+        if wants_json:
+            return JSONResponse({"ok": not message, "message": message,
+                                 "detail": detail})
+        if message:
+            shared._flash(message, "warn", detail=detail)
+        return shared._back(request, "/output")
     try:
         # no path at all (a hand-made request) is nothing to open, never the
         # working folder "" would resolve to
@@ -774,18 +787,16 @@ def output_reveal(request: Request, path: str = Form("")):
     # test would admit siblings such as app/state_defaults
     if p is None or not (p.is_relative_to(APP_STATE.resolve())
                          and p.exists()):
-        shared._flash("Nothing opened: the file is not in app state any "
-                      "more.", "warn",
-                      detail="It may have been deleted or moved; Storage "
-                             "lists what is on disk.")
-        return shared._back(request, "/output")
+        return answer("Nothing opened: the file is not in app state any "
+                      "more.",
+                      "It may have been deleted or moved; Storage lists "
+                      "what is on disk.")
     try:
         subprocess.Popen(_reveal_command(p))
     except OSError as e:
-        shared._flash("Nothing opened: no file manager could be started.",
-                      "warn", detail=f"{type(e).__name__}: {e}. The file "
-                                     f"is at {p}.")
-    return shared._back(request, "/output")
+        return answer("Nothing opened: no file manager could be started.",
+                      f"{type(e).__name__}: {e}. The file is at {p}.")
+    return answer()
 
 
 #: report path -> builder-sources mtime of a failed rebuild: retry once per

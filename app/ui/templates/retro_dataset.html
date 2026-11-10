@@ -6,13 +6,18 @@
    status, and how the weeks saw the data (vintage-true, or the final
    series: optimistic scores), the why in each tip; the range as a fact #}
 {% set vt = meta.dataset and meta.dataset.vintage_true %}
+{# a replay that ended early says how far it got #}
+{% set early = status in ('stopped', 'interrupted') and meta.total_weeks and (meta.weeks_completed or 0) < meta.total_weeks %}
 <div class="rt-title"><h1>Replay: {{ ds.name }}</h1>
  {{ tips.badge("neutral", "your data") }}
  {% if meta.knobs %}{{ tips.badge("warn", "modified settings") }}{% endif %}
- {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), status) }}</div>
+ {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), (status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks") if early else status) }}</div>
 <div class="rt-sub">
  {% call tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") %}{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}. {{ "Each week was forecast from the as_of snapshot that held it, as it stood then." if vt else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored." }} Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.{% endcall %}
- {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}</div>
+ {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}
+ {# the way back to this dataset's replays (the Retrospective tab opens
+    on the FluSight hub's seasons) #}
+ <a href="/retro?dataset={{ ds.id }}" id="rd-back">Back to the replays</a></div>
 
 {% if live %}
 <div class="card">
@@ -79,7 +84,7 @@
   {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
  </div>
  <div id="rd-plot" class="rt-plot"></div>
- <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored yet", "clock") }}</div>
+ <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored" ~ (" yet" if live else ""), "clock") }}</div>
 </div>
 
 {# the card heading names the block; its own title would repeat it #}

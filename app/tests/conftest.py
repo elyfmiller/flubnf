@@ -234,6 +234,16 @@ def _sandbox_released():
     release()
 
 
+@pytest.fixture(autouse=True)
+def _retro_form_forgotten():
+    """The Retrospective's remembered Settings form is module state: no
+    test's post may set another test's form."""
+    from app.ui.routes import retro as ui_retro
+    ui_retro._last_retro_form.clear()
+    yield
+    ui_retro._last_retro_form.clear()
+
+
 @pytest.fixture
 def sandbox_root(tmp_path, monkeypatch):
     """A sandbox rooted in tmp_path with the preflight's Perl present and
