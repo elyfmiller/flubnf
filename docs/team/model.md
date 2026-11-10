@@ -24,21 +24,22 @@ until 2026-11-09 and on the Windows PC since then.
     seal table, and the ledger's two-strain entry: "equal thirds scored
     0.7189 against the two-member 0.7039"), and the Models text of
     ef13821b (2026-08-21).
-    - 0.704 (0.7039) is the two-member blend: the single-strain particle
-      filter and the analogue, 50/50, unfitted (the 1.0 and 1.1
-      releases' submitted ensemble, since retired). 15,460 cells
-      (6,063, 4,922 and 4,475 by season); 0.847, 0.651 and 0.691 by
-      season before the exclusion. After the exclusion the same blend
-      is 0.678.
+    - 0.704 (0.7039) is the two-member blend: the single-strain SIHRS
+      fitted by the Liu-West filter, and the analogue, 50/50, unfitted
+      (the 1.0 and 1.1 releases' submitted ensemble, since retired).
+      15,460 cells (6,063, 4,922 and 4,475 by season); 0.847, 0.651 and
+      0.691 by season before the exclusion. After the exclusion the
+      same blend is 0.678.
     - 0.719 (0.7189) is not the two-strain model alone. It is the
-      equal-thirds three-member ensemble: the filter, the analogue and
-      the two-strain SIHRS at one third each, "on identical full-grid
-      cells" (ef13821b). The record does not give that cell count or
-      the by-season figures, and the three-member blend was never
-      re-scored after the exclusion.
+      equal-thirds three-member ensemble: the single-strain Liu-West
+      filter member, the analogue and the two-strain SIHRS at one third
+      each, "on identical full-grid cells" (ef13821b). The record does
+      not give that cell count or the by-season figures, and the
+      three-member blend was never re-scored after the exclusion.
     - The two-strain model's own full-grid figures are the turn gate,
-      0.953 against the single-strain filter's 0.993 on 1,248 turn
-      cells, and the plateau season 2023-24, 0.968 against 1.023. No
+      0.953 against the single-strain Liu-West filter member's 0.993 on
+      1,248 turn cells, and the plateau season 2023-24, 0.968 against
+      1.023. No
       pooled three-season figure for it alone is in the repository.
     - The per-cell results and harnesses are in the lab's private
       archive, not in this repository (RELEASE-1.0.md, "Where the
