@@ -352,15 +352,12 @@ def _season_scores(root: Path):
     """scores.json as a DataFrame, or None when absent/empty/invalid.
 
     The FULL frame, US included: pooled figures go through
-    us_national.pooled_frame, the national one through us_national.resolve."""
-    sf = root / "scores.json"
-    if not sf.is_file():
-        return None
-    try:
-        df = pd.read_json(sf)
-    except Exception:
-        return None
-    if df.empty or "model" not in df.columns:
+    us_national.pooled_frame, the national one through us_national.resolve.
+    One parse per file content, shared with the season page
+    (app.core.retro_store.scores_frame): read only, never mutated here."""
+    from app.core.retro_store import scores_frame
+    df = scores_frame(root)
+    if df is None or df.empty or "model" not in df.columns:
         return None
     return df
 

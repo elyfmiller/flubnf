@@ -137,6 +137,15 @@ def _engine_pinned_private(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_map_card_warm(monkeypatch):
+    """No season's map-card warm (retro_prep, after a results job) runs in
+    the background and outlives its test; the warm's own tests turn it
+    on themselves."""
+    from app.ui import retro_prep
+    monkeypatch.setattr(retro_prep, "_WARM_MAP_CARDS", False)
+
+
+@pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
 

@@ -1,10 +1,12 @@
 """Season results preparation for the retrospective pages.
 
 One finalize job per season root (_ensure_results_job, shared by the season
-worker and the page visits that find stale caches), the LRU caches of parsed
-scores and relWIS figures, the checks of whether a results page can render
-from caches alone, and the week map cards. Not named retro_results: that is
-the name of the GET /retro/{season} handler.
+worker and the page visits that find stale caches), the LRU cache of relWIS
+figures (the parsed scores' LRU is app.core.retro_store.scores_frame, named
+here as _SCORES_FRAMES), the checks of whether a results page can render
+from caches alone, and the week map cards, warmed for every week once a
+job is done. Not named retro_results: that is the name of the GET
+/retro/{season} handler.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import os as _os
 import threading
 import time
 from collections import OrderedDict
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.core import horizons as _hzmod
@@ -34,6 +37,40 @@ _results_lock = threading.Lock()
 #: the map-card cache's shape (v3: the Liu-West filter alone joins)
 _MAP_CARDS_V = 3
 
+#: (root, week) -> [lock, holders]: one computation of a week's map cards
+#: at a time, so the warm after a finalize, a mapswap request and the
+#: season report export wait for a week in flight instead of repeating
+#: it (each reads the week's samples file). An entry lives while held.
+_MAP_CARD_LOCKS: dict = {}
+_MAP_CARD_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _map_cards_lock(root: Path, wk: str):
+    key = (str(root), wk)
+    with _MAP_CARD_LOCKS_GUARD:
+        ent = _MAP_CARD_LOCKS.setdefault(key, [threading.Lock(), 0])
+        ent[1] += 1
+    try:
+        with ent[0]:
+            yield
+    finally:
+        with _MAP_CARD_LOCKS_GUARD:
+            ent[1] -= 1
+            if ent[1] == 0 and _MAP_CARD_LOCKS.get(key) is ent:
+                del _MAP_CARD_LOCKS[key]
+
+
+def _cached_map_cards(cf: Path, mtime: int):
+    """The cards cached in `cf` for this samples mtime, or None."""
+    try:
+        cached = _json.loads(cf.read_text(encoding="utf-8"))
+        if cached.get("mtime") == mtime and cached.get("v") == _MAP_CARDS_V:
+            return cached["cards"]
+    except Exception:
+        pass
+    return None
+
 
 def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     """{model: {fips: card}} for one stored retro week, every model it
@@ -44,10 +81,8 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     Disk-cached in playback_cache/map_cards/<wk>.json keyed by samples
     mtime. A SUBDIRECTORY because report_season._newest_input globs
     playback_cache/*.json as report inputs: cache warming must not look
-    like new data."""
-    import numpy as np
+    like new data. One computation per week at a time (_map_cards_lock)."""
     from app.core import retro
-    from app.core.categorical import CATS, probs_from_quantiles
     root = Path(root)
     sp = retro.week_samples_path(root, wk)
     if sp is None:
@@ -57,12 +92,23 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
     except OSError:
         return {}
     cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
-    try:
-        cached = _json.loads(cf.read_text(encoding="utf-8"))
-        if cached.get("mtime") == mtime and cached.get("v") == _MAP_CARDS_V:
-            return cached["cards"]
-    except Exception:
-        pass
+    hit = _cached_map_cards(cf, mtime)
+    if hit is not None:
+        return hit
+    with _map_cards_lock(root, wk):
+        # a caller that waited on the lock finds the week just written
+        hit = _cached_map_cards(cf, mtime)
+        if hit is not None:
+            return hit
+        return _compute_map_cards(root, wk, sp, mtime, cf)
+
+
+def _compute_map_cards(root: Path, wk: str, sp: Path, mtime: int,
+                       cf: Path) -> dict:
+    """_week_map_cards_by_model's computation and cache write."""
+    import numpy as np
+    from app.core import retro
+    from app.core.categorical import CATS, probs_from_quantiles
     locs = __import__("flubnf.settings",
                       fromlist=["load_locations"]).load_locations()
     n2a = dict(zip(locs.location_name, locs.abbreviation))
@@ -109,8 +155,10 @@ def _week_map_cards_by_model(root: Path, wk: str) -> dict:
         if cards:
             by_model[model] = cards
     try:
-        # write beside, then replace
-        cf.parent.mkdir(parents=True, exist_ok=True)
+        # write beside, then replace; never re-creating a season tree
+        # deleted meanwhile (no parents=True above playback_cache)
+        cf.parent.parent.mkdir(exist_ok=True)
+        cf.parent.mkdir(exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
         tmp.write_text(_json.dumps({"mtime": mtime, "v": _MAP_CARDS_V,
                                     "cards": by_model}), encoding="utf-8")
@@ -147,11 +195,102 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     return dict(by_model[order[0]]) if order else {}
 
 
+#: whether a finalize job goes on to warm every other week's map cards
+#: (_warm_map_cards) once its results are ready; a test that wants the
+#: warm turns it on and waits on the job's "warm" event
+_WARM_MAP_CARDS = True
+#: the longest pause between two warmed weeks. Each pause matches the
+#: time the week just took, up to this (one week's samples decode holds
+#: the interpreter about a second; a cached week needs no pause)
+_WARM_PAUSE_S = 0.2
+#: how long the warm waits for the season worker whose finalize this was
+#: to mark the season done (it does so just after the job); a season still
+#: replaying after that is busy, and the warm does not start
+_WARM_SETTLE_S = 10.0
+
+
+def _season_busy(season: str) -> bool:
+    """A replay of `season` holds the season: its worker's in-memory claim
+    here, or the live root's run record (another process's replay).
+    Read only: no status is corrected here."""
+    from app.core import retro
+    from app.ui import retro_seasons
+    if retro_seasons._retro_status.get(season) in retro_seasons._RETRO_ACTIVE:
+        return True
+    try:
+        meta = retro.read_meta(retro_seasons._live_root(season))
+        return (bool(meta) and retro.effective_status(meta)
+                in retro_seasons._RETRO_ACTIVE)
+    except Exception:
+        return True
+
+
+def _warm_should_stop(root: Path, season: str, job: dict) -> bool:
+    """Whether the map-card warm stops before its next week: a newer job
+    claimed the root, the season tree is gone, a forecast run or a sandbox
+    fit or experiment is active, a replay of any season holds the engine
+    here, or a replay of the season holds it."""
+    from app.ui import retro_seasons
+    if _results_jobs.get(str(root)) is not job:
+        return True
+    if not (Path(root) / "weeks").is_dir():
+        return True
+    if (state._status.get("running") or state._sandbox_status.get("running")
+            or state._sandbox_status.get("experiment")):
+        return True
+    # another season's replay is a run too (it holds the engine, as the
+    # Forecast form's busy check says): the warm leaves it the machine
+    if any(st in retro_seasons._RETRO_ACTIVE
+           for st in list(retro_seasons._retro_status.values())):
+        return True
+    return _season_busy(season)
+
+
+def _warm_settled(root: Path, season: str, job: dict) -> bool:
+    """Whether the warm may start: the season worker that ran this job (if
+    any) has released the season within _WARM_SETTLE_S, and the job is
+    still the root's."""
+    t_end = time.monotonic() + _WARM_SETTLE_S
+    while _season_busy(season):
+        if (time.monotonic() >= t_end
+                or _results_jobs.get(str(root)) is not job):
+            return False
+        time.sleep(0.25)
+    return True
+
+
+def _warm_map_cards(root: Path, season: str, job: dict) -> None:
+    """After a finalize: every stored week's map cards, newest first, so
+    playing the season never waits on a week's forecasting samples. A cached
+    week costs a stat and a small read; a failed week is left for its
+    first view, as before. Sets job["warm"] however it ends."""
+    from app.core import retro
+    try:
+        if not _warm_settled(root, season, job):
+            return
+        weeks = [p.parent.name for p in retro.season_sample_files(root)]
+        for wk in reversed(weeks):
+            if _warm_should_stop(root, season, job):
+                break
+            t = time.monotonic()
+            try:
+                _week_map_cards_by_model(root, wk)
+            except Exception:
+                pass
+            time.sleep(min(_WARM_PAUSE_S, time.monotonic() - t))
+    except Exception:
+        pass
+    finally:
+        job["warm"].set()
+
+
 def _ensure_results_job(root: Path, season: str,
                         force: bool = False) -> dict:
     """Start or join THE finalize job for this root (one per root; racing
     callers share the record, whose 'done' event fires when caches are
-    ready). `force` rescores; ignored when joining a running job."""
+    ready, and whose 'warm' event fires once the other weeks' map cards
+    are warmed after that, or the warm stopped). `force` rescores; ignored
+    when joining a running job."""
     from app.core import retro
     key = str(root)
     with _results_lock:
@@ -163,14 +302,16 @@ def _ensure_results_job(root: Path, season: str,
             job = {"phase": "sealed", "t0": time.time(),
                    "done": threading.Event(), "seconds": 0.0,
                    "season": season, "inputs": None,
+                   "warm": threading.Event(),
                    "error": "the sealed validation record is read only; "
                             "its scores stand and are never recomputed"}
             job["done"].set()
+            job["warm"].set()
             _results_jobs[key] = job
             return job
         job = {"phase": "preparing", "t0": time.time(),
                "done": threading.Event(), "error": "", "seconds": None,
-               "season": season,
+               "season": season, "warm": threading.Event(),
                "inputs": retro.newest_samples_mtime(root)}
         _results_jobs[key] = job
 
@@ -189,6 +330,10 @@ def _ensure_results_job(root: Path, season: str,
         finally:
             job["done"].set()
             _invalidate_scans()
+        if _WARM_MAP_CARDS and not job["error"]:
+            _warm_map_cards(root, season, job)
+        else:
+            job["warm"].set()
 
     threading.Thread(target=_run, daemon=True,
                      name=f"flubnf-results-{season}").start()
@@ -210,35 +355,28 @@ def _job_covered(root: Path) -> dict | None:
     return None
 
 
-#: LRU of parsed scores.json frames keyed by (path, mtime_ns, size), so a
-#: rescore invalidates by construction. ~50 MB per frame; cap 3 holds the
-#: three sealed seasons without eviction while bounding archive sweeps.
-_SCORES_FRAMES_MAX = 3
-_SCORES_FRAMES: "OrderedDict" = OrderedDict()
+#: the LRU of parsed scores.json frames lives in app/core/retro_store
+#: (scores_frame), shared with the season player. _SCORES_FRAMES and
+#: _SCORES_FRAMES_MAX here name its objects (module __getattr__ below):
+#: looked up on use, so importing this module (the server's import) loads
+#: no part of app.core.retro_store
+_SCORES_ALIASES = {"_SCORES_FRAMES": "SCORES_FRAMES",
+                   "_SCORES_FRAMES_MAX": "SCORES_FRAMES_MAX"}
+
+
+def __getattr__(name: str):
+    if name in _SCORES_ALIASES:
+        from app.core import retro_store
+        return getattr(retro_store, _SCORES_ALIASES[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _scores_df(root: Path):
     """Parsed scores.json for this root (None if missing/unparseable), one
-    parse per file content. Callers must not mutate the frame."""
-    import pandas as pd
-    sf = Path(root) / "scores.json"
-    try:
-        st = sf.stat()
-    except OSError:
-        return None
-    key = (str(sf), st.st_mtime_ns, st.st_size)
-    hit = _SCORES_FRAMES.get(key)
-    if hit is not None:
-        _SCORES_FRAMES.move_to_end(key)      # least-recently-used ordering
-        return hit
-    try:
-        df = pd.read_json(sf)
-    except Exception:
-        return None
-    _SCORES_FRAMES[key] = df
-    while len(_SCORES_FRAMES) > _SCORES_FRAMES_MAX:
-        _SCORES_FRAMES.popitem(last=False)   # evict one, never flush the lot
-    return df
+    parse per file content (retro_store.scores_frame, under its lock).
+    Callers must not mutate the frame."""
+    from app.core import retro_store
+    return retro_store.scores_frame(root)
 
 
 #: LRU of season relWIS figures keyed by scores identity, convention and (for

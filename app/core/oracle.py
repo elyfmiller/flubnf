@@ -393,8 +393,8 @@ def write_provenance(out_dir, prov: dict) -> Path:
     """oracle.json beside the week, atomically."""
     fp = Path(out_dir) / PROVENANCE_NAME
     tmp = fp.with_name(fp.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(prov, fh)
+    # json.dump's text through the C encoder (json.dumps), written once
+    tmp.write_text(json.dumps(prov), encoding="utf-8")
     os.replace(tmp, fp)
     return fp
 
@@ -426,7 +426,8 @@ def write_filter_record(workroot, asof: str, raw: dict) -> Path:
     gzipped, under FILTER_KEY). Read by the 2026-27 shadow run, not the console."""
     fp = Path(workroot) / FILTER_RECORD_NAME
     tmp = fp.with_name(fp.name + ".tmp")
+    from app.core.retro_store import write_json_text
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as fh:
-        json.dump(hz.record_to_stored({"asof": asof, FILTER_KEY: raw}), fh)
+        write_json_text(fh, hz.record_to_stored({"asof": asof, FILTER_KEY: raw}))
     os.replace(tmp, fp)
     return fp
