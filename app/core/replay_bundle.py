@@ -212,86 +212,91 @@ def _safe_member(name: str) -> bool:
                for p in parts)
 
 
-def inspect_bundle(path: Path) -> dict:
+def inspect_bundle(path: Path, name: str = "") -> dict:
     """Read and validate a bundle's manifest and table of contents (not the
     hashes; import_bundle verifies those as it extracts). Returns the
-    manifest, with "bundle_bytes" and "bundle_sha256" added."""
+    manifest, with "bundle_bytes" and "bundle_sha256" added. `name` is
+    the file as its messages call it (an upload's own name, not the
+    server's copy); the path's name by default."""
     path = Path(path)
+    name = name or path.name
+    if path.is_dir():
+        raise BundleError(f"{path} is a folder, not a bundle.")
     if not path.is_file():
-        raise BundleError(f"{path.name}: no such file.")
+        raise BundleError(f"{name}: no such file.")
     size = path.stat().st_size
     if size > BUNDLE_MAX_BYTES:
-        raise BundleError(f"{path.name} is {size // 1024 ** 2} MB; bundles "
+        raise BundleError(f"{name} is {size // 1024 ** 2} MB; bundles "
                           f"over {BUNDLE_MAX_BYTES // 1024 ** 3} GB are "
                           "refused.")
     if not zipfile.is_zipfile(path):
-        raise BundleError(f"{path.name} is not a zip file.")
+        raise BundleError(f"{name} is not a zip file.")
     try:
         with zipfile.ZipFile(path) as z:
             infos = z.infolist()
             names = [i.filename for i in infos]
             if names.count(MANIFEST) != 1:
-                raise BundleError(f"{path.name} has no {MANIFEST} at its "
+                raise BundleError(f"{name} has no {MANIFEST} at its "
                                   "top level, so it is not a replay bundle.")
             for i in infos:
                 if i.filename.endswith("/"):
                     continue                          # a directory entry
                 if not _safe_member(i.filename):
-                    raise BundleError(f"{path.name} names a path outside the "
+                    raise BundleError(f"{name} names a path outside the "
                                       f"bundle ({i.filename!r}); refused.")
                 if i.file_size > MEMBER_MAX_BYTES:
-                    raise BundleError(f"{path.name}: {i.filename} is "
+                    raise BundleError(f"{name}: {i.filename} is "
                                       f"{i.file_size // 1024 ** 2} MB; "
                                       "members over "
                                       f"{MEMBER_MAX_BYTES // 1024 ** 2} MB "
                                       "are refused.")
                 if i.compress_size and i.file_size > MAX_RATIO * i.compress_size:
-                    raise BundleError(f"{path.name}: {i.filename} claims a "
+                    raise BundleError(f"{name}: {i.filename} claims a "
                                       f"{i.file_size // max(1, i.compress_size)}x "
                                       "inflation; refused.")
             try:
                 manifest = json.loads(z.read(MANIFEST).decode("utf-8"))
             except (ValueError, UnicodeDecodeError) as e:
-                raise BundleError(f"{path.name}: {MANIFEST} is not valid "
+                raise BundleError(f"{name}: {MANIFEST} is not valid "
                                   f"JSON ({e}).") from None
     except zipfile.BadZipFile as e:
-        raise BundleError(f"{path.name} is not a readable zip file ({e}).") \
+        raise BundleError(f"{name} is not a readable zip file ({e}).") \
             from None
     if not isinstance(manifest, dict):
-        raise BundleError(f"{path.name}: {MANIFEST} is not an object.")
+        raise BundleError(f"{name}: {MANIFEST} is not an object.")
     if manifest.get("format_version") != FORMAT_VERSION:
-        raise BundleError(f"{path.name} is format {manifest.get('format_version')!r}; "
+        raise BundleError(f"{name} is format {manifest.get('format_version')!r}; "
                           f"this FluBNF reads format {FORMAT_VERSION}.")
     season = str(manifest.get("season") or "")
     if not _SEASON_RE.fullmatch(season):
-        raise BundleError(f"{path.name}: season {season!r} is not a season "
+        raise BundleError(f"{name}: season {season!r} is not a season "
                           "name (YYYY-YY).")
     from app.core import retro
     stamp = str(manifest.get("stamp") or "")
     if not retro.valid_stamp(stamp):
-        raise BundleError(f"{path.name}: export stamp {stamp!r} is malformed.")
+        raise BundleError(f"{name}: export stamp {stamp!r} is malformed.")
     files = manifest.get("files")
     if not isinstance(files, dict) or not files:
-        raise BundleError(f"{path.name}: {MANIFEST} lists no files.")
+        raise BundleError(f"{name}: {MANIFEST} lists no files.")
     members = {n for n in names if not n.endswith("/")} - {MANIFEST}
     for f, ent in files.items():
         if not _safe_member(f):
-            raise BundleError(f"{path.name}: {MANIFEST} names a path outside "
+            raise BundleError(f"{name}: {MANIFEST} names a path outside "
                               f"the bundle ({f!r}); refused.")
         if not (isinstance(ent, dict) and isinstance(ent.get("sha256"), str)
                 and len(ent["sha256"]) == 64
                 and isinstance(ent.get("bytes"), int)):
-            raise BundleError(f"{path.name}: {MANIFEST} has no sha256 and "
+            raise BundleError(f"{name}: {MANIFEST} has no sha256 and "
                               f"size for {f}.")
         if f not in members:
-            raise BundleError(f"{path.name} is missing {f}, which its "
+            raise BundleError(f"{name} is missing {f}, which its "
                               f"{MANIFEST} lists.")
     extra = sorted(members - set(files))
     if extra:
-        raise BundleError(f"{path.name} holds {extra[0]}, which its "
+        raise BundleError(f"{name} holds {extra[0]}, which its "
                           f"{MANIFEST} does not list.")
     if not any(f.startswith("weeks/") for f in files):
-        raise BundleError(f"{path.name} carries no weeks.")
+        raise BundleError(f"{name} carries no weeks.")
     manifest["weeks"] = sorted({f.split("/")[1] for f in files
                                 if f.startswith("weeks/")})
     manifest["bundle_bytes"] = size
@@ -340,7 +345,7 @@ def _extract_member(z: zipfile.ZipFile, name: str, dst: Path,
 
 
 def import_bundle(path: Path, retro_root: Path, replace: bool = False,
-                  build: str = "") -> ImportResult:
+                  build: str = "", name: str = "") -> ImportResult:
     """Import a bundle as the read-only archived entry
     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
     of the same bundle ("already imported as <stamp>") unless `replace`.
@@ -355,7 +360,8 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     from app.core import retro
     from app.core.retro_store import ORACLE_NAME, samples_file
     path, retro_root = Path(path), Path(retro_root)
-    m = inspect_bundle(path)
+    name = name or path.name           # an upload's own name (inspect_bundle)
+    m = inspect_bundle(path, name)
     season, stamp = m["season"], m["stamp"]
     dst = retro.archive_dir(retro_root, season, stamp)
     if dst.exists() or dst.is_symlink():
@@ -373,7 +379,7 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
         with zipfile.ZipFile(path) as z:
             for f in order:
                 _extract_member(z, f, tmp / f, files[f]["sha256"],
-                                files[f]["bytes"], path.name)
+                                files[f]["bytes"], name)
         for f in files:
             parts = f.split("/")
             if not (len(parts) == 3 and parts[0] == "weeks"
@@ -392,7 +398,7 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                   "exported_at": str(m.get("exported_at") or ""),
                   "imported_at": _utc_iso(), "imported_by": hostname(),
                   "bundle_sha256": m["bundle_sha256"],
-                  "bundle_name": path.name, "source": m.get("source"),
+                  "bundle_name": name, "source": m.get("source"),
                   "exported_build": str(m.get("flubnf_build") or ""),
                   "imported_build": build or ""}
         (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,

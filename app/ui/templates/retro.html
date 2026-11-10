@@ -13,9 +13,10 @@
 {% macro rel_item(name, v) -%}
 <span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
 {%- endmacro %}
-{# the page's title and its "?" on both tabs; the tip's second line is
-   the Your data tab's #}
-{{ tips.heading("Retrospective", "rt-page", "Replays a past season week by week on the data each Saturday had, then scores against settled truth. Your data replays a weekly CSV of your own the same way.", level=1, cls="rt-h1") }}
+{# the page's title; on the FluSight hub tab its "?" is the one explainer,
+   for the season rows too (their badges and figures carry no tips of
+   their own); the Your data tab's is its replays' heading #}
+{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1") %}<span class="ncline">Replays a past season week by week on the data each Saturday had, then scores against settled truth.</span><span class="ncline">relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span><span class="ncline">Resume, or Run, continues a stopped or interrupted replay from its last completed week with the recorded settings. Archived runs, set aside when a fresh replay started or imported from another machine, open as the live season does.</span>{% endcall %}{% endif %}
 {# the data source as two tabs, as on Forecast: the FluSight hub's
    seasons, or your own datasets (_dataset_replay.html); plain links, so
    Back, bookmarks and no-script work #}
@@ -157,13 +158,13 @@
    <div class="sband">
     <h2>{{ s.name }}</h2>
     {% if s.status == 'running' %}{{ tips.badge("pending", "running") }}
-    {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping", "The replay is stopping after the fits in flight; each finished fit is checkpointed.", id="rt-st-" ~ sid) }}
+    {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping") }}
     {% elif s.status == 'paused' %}{{ tips.badge("warn", "paused") }}
-    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay. Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
-    {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
+    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted") }}
+    {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped") }}
     {% elif s.status == 'done' %}{{ tips.badge("ok", "complete") }}
     {% elif s.status and s.status.startswith('error') %}{{ tips.badge("error", "error", s.status, id="rt-st-" ~ sid) }}
-    {% elif not s.total %}{{ tips.badge("neutral", "no hub weeks yet", "The FluSight hub has no weeks of this season yet; Update data on the Data tab fetches them.", id="rt-st-" ~ sid) }}
+    {% elif not s.total %}{{ tips.badge("neutral", "no hub weeks yet") }}
     {% elif not s.active and s.done == 0 %}{{ tips.badge("neutral", "not replayed") }}
     {% endif %}
     {% if s.seal %}{{ tips.badge("info", "sealed", s.seal_label, id="rt-seal-" ~ sid) }}{% endif %}
@@ -174,12 +175,12 @@
    </div>
    {% if s.active %}
    {# live replay: the console's run bar and its readout, driven by the
-      ticker; what the estimate rests on is the readout's tip (.rbasis),
+      ticker; what the estimate rests on for a screen reader (.rbasis),
       a lost connection a badge. .rcount follows the readout (hidden) #}
    <span class="rcount" hidden>{{ "%d/%d weeks"|format(s.done, s.total) }}</span>
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
    <div class="rt-readout"><p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
-    {% call tips.tip("rt-eta-" ~ sid, "the estimate") %}<span class="rbasis">{{ ("estimate from " ~ s.weeks_measured ~ " completed week" ~ ("" if s.weeks_measured == 1 else "s")) if s.weeks_measured else "estimate arrives once the first week completes" }}</span>{% endcall %}
+    <span class="rbasis uk-sr">{{ ("estimate from " ~ s.weeks_measured ~ " completed week" ~ ("" if s.weeks_measured == 1 else "s")) if s.weeks_measured else "estimate arrives once the first week completes" }}</span>
     <span class="rt-stall" hidden>{{ tips.badge("warn", "connection lost", "Connection lost. Numbers paused until the console answers again.", id="rt-stall-" ~ sid) }}</span></div>
    {% elif not s_complete and s.total and s.done > 0 %}
    {# an unfinished (or unscored) replay: how far it got #}
@@ -199,13 +200,12 @@
     {% set mname = (s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) if m else '' %}
     {% set rel_label = (mname ~ ' ') ~ 'relWIS' if mname else 'relWIS' %}
     {{ tips.stat(rel_label, "%.3f"|format(v), tip_label=rel_label,
-                 tiptext=("relWIS vs FluSight baseline, ratio of sums: below 1 beats the baseline." if loop.first else ""),
                  id="rt-rel-" ~ sid ~ "-" ~ (m or "x"), state=("ok" if v < 1 else "error"),
                  after=verdict(v)) }}
     {% endfor %}{% endif %}
     {# finished replays only (live ones tick above); a sub-second record
        predates timing and would read as a fabricated zero, so say nothing #}
-    {% if s_timed %}{% if s.mean_s %}{% call tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) %}total wall time {{ s.elapsed_s | hms }}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endcall %}{% else %}{{ tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) }}{% endif %}{% endif %}
+    {% if s_timed %}{{ tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) }}{% endif %}
    {% endcall %}
    {% endif %}
    {% endif %}
@@ -232,7 +232,6 @@
      <input type="hidden" name="confirm" value="">
      <button class="gold" data-guard="retro-run">Resume</button>
     </form>
-    {{ tips.tip("rt-resume-" ~ sid, "resume", "Resumes with the recorded settings (Run settings); an interrupted week refits only the cells that never ran.") }}
    </div>
    {% endif %}
    {% if s.active %}
@@ -252,7 +251,7 @@
    {# archived runs: complete frozen trees; results, player and report work
       as for the live season #}
    {% set n_arch = s.archives | length %}
-   {{ tips.heading(n_arch ~ " archived run" ~ ("" if n_arch == 1 else "s") ~ " kept", "rt-arch-" ~ sid, "Complete runs set aside when a fresh replay started, or imported from another machine: results, player and report work as for the live season. relWIS vs FluSight baseline, ratio of sums.", level=3, cls="rt-arch-h") }}
+   {{ tips.heading(n_arch ~ " archived run" ~ ("" if n_arch == 1 else "s") ~ " kept", level=3, cls="rt-arch-h") }}
    {% for a in s.archives %}
    <div class="archrow"{% if a.imported %} data-imported="1"{% endif %}>
     {# an imported replay is labelled for where it came from, not for the
@@ -269,7 +268,7 @@
       action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
      <input type="hidden" name="confirm" value="">
      <button type="button" class="quiet" data-del-archive
-       data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"
+       data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"{% if a.imported %} data-imported="1"{% endif %}
        data-weeks="{{ a.weeks }}" data-size="{{ a.size_h }}">Delete</button>
     </form>
    </div>
@@ -289,8 +288,11 @@
     if(!f||!window.FluBNFConfirm)return;
     window.FluBNFConfirm({
      title:'Delete this archived run?',
-     msg:'This permanently removes the archived '+d.season+' run from '
-       +d.when+': '+d.weeks+' completed week'+(d.weeks==='1'?'':'s')+', '
+     // an imported run says where it came from ("imported from vm on
+     // 2026-10-25"), an archived one when it was set aside
+     msg:'This permanently removes the '+(d.imported?d.season+' run '+d.when
+       :'archived '+d.season+' run from '+d.when)+': '+d.weeks
+       +' completed week'+(d.weeks==='1'?'':'s')+', '
        +d.size+' on disk. It cannot be undone.',
      hint:'The live '+d.season+' season is not touched.',
      okLabel:'Delete permanently',

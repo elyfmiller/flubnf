@@ -10,7 +10,7 @@
 {% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
 {% if not d %}
 <div class="card" id="dataset-replay">
- {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week and kept apart from the FluSight seasons.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
+ {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
  {{ dsup.box("replay") }}
 </div>
 {% else %}
@@ -26,7 +26,7 @@
  <div><div class="card"><h2>Settings</h2>
   {# which of your datasets; a plain GET form, like the Forecast tab's #}
   <form method="get" action="/retro" class="row srcpick">
-   <span>{{ tips.label("Dataset", "dsr-src", "A dataset replays on its own groups and weeks. Upload one here or on the Data tab.", for_="dsr-ds") }}
+   <span><label for="dsr-ds">Dataset</label>
    <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
     <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
    <button class="quiet">Use</button>
@@ -40,8 +40,8 @@
    {# what each replayed week sees, as a badge: vintage-true, or the final
       series (optimistic scores); the why in its tip #}
    <div class="lblrow rt-kind"><span class="rt-kind-l">Data</span>
-   {% if d.vintage_true %}{% call tips.badge("ok", "vintage-true", id="dsr-kind") %}Vintage-true: each week sees its as_of snapshot. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}
-   {% else %}{% call tips.badge("warn", "final data", id="dsr-kind") %}Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}{% endif %}</div>
+   {% if d.vintage_true %}{{ tips.badge("ok", "vintage-true", id="dsr-kind") }}
+   {% else %}{{ tips.badge("warn", "final data", id="dsr-kind") }}{% endif %}</div>
    {# the week range on one grid that holds at narrow widths; the newest
       flu season's weeks by default (datasets_ui.replay_window) #}
    <div class="dsr-range">
@@ -50,18 +50,17 @@
     <span><label for="dsr-last">To</label><select name="last" id="dsr-last">{% for w in d.dates %}
      <option{% if w == d.default_last %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
    </div>
-   {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
+   <label for="dsr-groups">Groups</label>
    {# as tall as its groups (2 to 6 rows): no empty box below the list #}
    <select name="groups" id="dsr-groups" multiple size="{{ [2, [6, d.groups | length] | min] | max }}">{% for g in d.groups %}
     <option selected>{{ g }}</option>{% endfor %}</select>
-   {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
+   <label for="dsr-engine">Models</label>
    <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
     <option value="{{ e }}"{% if e == "all" and not (d.pf and dr.pf_state == "ready") %} disabled{% endif %}>{{ text }}</option>{% endfor %}</select>
    {# the engine build's badge on its own line under the select #}
    {% if d.pf and dr.pf_state == "ready" %}{% set eb_ds %}{% with eb_id = "dsr", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
    {% if eb_ds | trim %}<p class="rt-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
-   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
-    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
+   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospitalizations only)</label></div>
    {# the shared Model settings panel (weeks to drop is in its fit window),
       ids prefixed dsr-; its counts-only rows follow the data's kind #}
    {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
@@ -73,7 +72,9 @@
   </form>
  </div></div>
  <div><div class="card dsr-replays">
-  {{ tips.heading("Replays of " ~ d.name, "rt-ds-about", about, tip_label="replaying your own data") }}
+  {# the tab's one explainer: what a replay does, what the data badge
+     means, the groups and the models (their labels carry no tips) #}
+  {% call tips.heading("Replays of " ~ d.name, "rt-ds-about", tip_label="replaying your own data") %}<span class="ncline">{{ about }} relWIS below 1 beats that baseline.</span><span class="ncline">{{ "Vintage-true: each replayed week sees the as_of snapshot that held it." if d.vintage_true else "Final data: with no as_of snapshots each week is cut from the final series, so later revisions leak in and the scores are optimistic." }}</span><span class="ncline">Every group by default; a national group is scored beside the others, never pooled. {{ dr.names.analogue }} is instant; the plain SIHRS particle filter needs counts with a population and the engine, and takes minutes per week.</span>{% endcall %}
   {% for r in d.replays %}
   {% set rid = loop.index %}
   <div class="archrow">
@@ -85,7 +86,7 @@
     {% if r.modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
     {% set fx = namespace(items=[("", r.kind), ("", r.done ~ "/" ~ r.total ~ " weeks")]) %}
     {% for m, v in r.rels.items() %}{% set t %}{{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}{% endset %}{% set fx.items = fx.items + [("", t)] %}{% endfor %}
-    <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}{% if r.rels %}{{ tips.tip("dsr-rel-" ~ rid, "relWIS", "relWIS vs in-house persistence baseline: below 1 beats it.") }}{% endif %}</div></div>
+    <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}</div></div>
    <a class="btn quiet" href="/retro/dataset/{{ d.id }}/{{ r.stamp }}">Results →</a>
   </div>
   {% else %}

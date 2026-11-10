@@ -724,7 +724,7 @@ def test_retro_index_offers_pause_and_stop_while_running():
     # the console's run treatment: bar, readout, estimate basis, quips
     assert 'class="runbar"' in html and 'class="rfill"' in html
     assert 'class="runstat rstat"' in html
-    assert 'class="rbasis"' in html          # the readout's "?" tip
+    assert 'class="rbasis uk-sr"' in html    # for a screen reader (G28)
     assert 'class="quip rquip"' in html
     assert 'src="/static/retro_progress.js"' in html
     assert "GUARD_BUSY" in html
@@ -751,8 +751,10 @@ def test_retro_index_reports_total_wall_time_for_a_finished_season():
                   "running": False, "paused": False, "active": False,
                   "status": "done", "elapsed_s": 3725.0, "mean_s": 124.0,
                   "weeks_measured": 30, "eta_s": None, "scored": True}])
-    assert "total wall time 1:02:05" in html
-    assert "mean 124 s per week over 30 timed" in html
+    # the total on the index; the per-week mean is the season page's (G28:
+    # the index's "?" only repeated the value)
+    assert ">1:02:05</span>" in html
+    assert "mean 124 s per week" not in html
     assert f'action="/retro/{SEASON}/stop"' not in html      # nothing to stop
 
 
