@@ -27,6 +27,17 @@ ROLE_ALIASES = {
               "admissions", "hospitalizations", "hospitalisations"),
     "population": ("population", "pop"),
 }
+#: common names outside groups give a group or a value column, read only
+#: for a role no ROLE_ALIASES header matched, and only when exactly one
+#: header is among them; a group's column must also hold text in the
+#: first rows (_map_columns), so a file that reads as one series today
+#: (a blank or numeric 'area' or 'county' beside its value) still does
+SECONDARY_ALIASES = {
+    "group": ("state", "county", "country", "province", "district", "area",
+              "site", "geography", "municipality"),
+    "value": ("deaths", "visits", "edvisits", "admits",
+              "hospitaladmissions", "incidence"),
+}
 #: the hubverse extras (their own names only)
 EXTRA_ALIASES = {"as_of": ("asof",), "target": ("target",),
                  "location_name": ("locationname",)}

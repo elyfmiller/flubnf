@@ -218,6 +218,45 @@ def _render_data(request, _code: int = 200, **extra):
 
 
 
+#: the SIHRS member on a dataset, in the check's words
+FILTER = "Liu-West filter"
+
+
+def model_view(rep, chk: dict, kind: str = "") -> dict:
+    """What a check's preview says of each model on a valid file: one
+    badge apiece ("models": [(name, state, word)]) and, after the
+    Groundhog's too-little-history notice, how to fix it
+    ("groundhog_fix"): about N more earlier seasons (checks.
+    groundhog_shortfall, at the scarcest horizon of the newest week), or,
+    for counts without a population, a population column (and the engine
+    when it is not ready) so the Liu-West filter can fit it. Shown in the
+    check only: the notice dataset_checks stores is unchanged."""
+    from app.core.datasets.checks import groundhog_shortfall
+    s = rep.summary or {}
+    count = (kind or s.get("inferred_kind")) == "count"
+    pop = bool(s.get("has_population"))
+    ready = pipeline._pf_engine_state() == "ready"
+    pf = (("neutral", "counts only") if not count else
+          ("warn", "needs a population" + ("" if ready else " and the engine"))
+          if not pop else
+          ("warn", "needs the engine") if not ready else ("ok", "ready"))
+    out = {"models": [(GROUNDHOG, "warn", "too little history")
+                      if chk.get("groundhog") else (GROUNDHOG, "ok", "ready"),
+                      (FILTER, *pf)],
+           "groundhog_fix": ""}
+    short = groundhog_shortfall(rep) if chk.get("groundhog") else None
+    if short:
+        k = short["seasons"]
+        more = f"about {k} more earlier season{'' if k == 1 else 's'} of data"
+        out["groundhog_fix"] = (
+            f"Add a population column{'' if ready else ' and set up the engine'}"
+            f" so the {FILTER} can fit it, or give {more}."
+            if count and not pop else
+            f"Set up the engine so the {FILTER} can fit it, or give {more}."
+            if count and not ready else f"Give {more}.")
+    return out
+
+
 @router.post("/data/datasets/check")
 async def check(request: Request):
     """Check one upload and store nothing: JSON with the result box's HTML
@@ -273,6 +312,8 @@ async def check(request: Request):
             except Exception:
                 pass
     chk = check_view(rep, kind=kind, columns=columns, files=len(fs))
+    if chk.get("preview"):
+        chk.update(await run_in_threadpool(model_view, rep, chk, kind))
     lone = _lone_snapshot(rep, as_snaps, len(fs))
     if lone:
         chk["notices"] = [lone] + chk["notices"]
@@ -449,6 +490,50 @@ def _dataset_view(ds) -> dict:
                        "the particle-filter engine install is incomplete")}
 
 
+#: each dataset's Groundhog donor weeks per forecast week (donor_weeks), by
+#: id and digest (a dataset's files never change under its id): counted
+#: once per console and kept in memory only, never in the dataset's folder
+_DONORS: dict = {}
+#: the datasets whose counts are kept at once
+DONOR_CACHE = 8
+
+
+def donor_weeks(ds) -> dict:
+    """{forecast week (ISO): the fewest donor weeks the Groundhog finds at
+    any of its four horizons}, for every forecast week of `ds`, at the
+    shipped donor window (checks.donor_counts; it forecasts a week only
+    when every horizon has MIN_DONORS). Counted on the final data: a
+    vintage-true dataset's earlier snapshots may hold fewer weeks, so a
+    week there can count more than its replay finds."""
+    return _donor_entry(ds)["weeks"]
+
+
+def _donor_entry(ds) -> dict:
+    """The cached {"weeks": donor_weeks, "cells": the final data's
+    values} of `ds`, counted on first use."""
+    key = (ds.id, ds.meta.get("digest"))
+    hit = _DONORS.get(key)
+    if hit is None:
+        from datetime import date
+        from app.core.datasets.checks import donor_counts
+        truth = ds.truth()
+        bank = {(g, date.fromisoformat(d)): v for (g, d), v in truth.items()}
+        weeks = [date.fromisoformat(w) for w in ds.forecast_dates()]
+        hit = {"weeks": {w.isoformat(): min(c)
+                         for w, c in donor_counts(bank, weeks).items()},
+               "cells": len(truth)}
+        while len(_DONORS) >= DONOR_CACHE:
+            _DONORS.pop(next(iter(_DONORS)), None)
+        _DONORS[key] = hit
+    return hit
+
+
+def donor_need() -> int:
+    """The donor weeks the Groundhog needs at every horizon."""
+    from flubnf import analogue as AN
+    return int(AN.MIN_DONORS)
+
+
 def _ledger_for(ds_id: str, n: int = 5) -> list:
     """The newest ledger rows of runs on this dataset."""
     out = []
@@ -559,6 +644,9 @@ def forecast_page(request: Request, ds):
     with the dataset's groups, weeks, fans and runs."""
     from app.core.runs import spec_settings
     view = _dataset_view(ds)
+    # each week's Groundhog donor weeks, for the page's warning on a week
+    # too thin to forecast (the Forecast tab renders it)
+    view.update(donor_weeks=donor_weeks(ds), donor_need=donor_need())
     dates = ds.forecast_dates()
     newest = dates[-1] if dates else ""
     form = dict(_LAST.get(ds.id) or {
@@ -1084,6 +1172,79 @@ def replay_window(dates: list) -> tuple:
     return dates[0], dates[-1]
 
 
+#: a Groundhog-only replay reads "under a minute" only up to this many
+#: weeks x groups x data cells. The 200-group review file (104,000 cells)
+#: replayed at 15.8 s a week on the lab Mac (2026-11-10), most of it the
+#: persistence baseline reading the data again for every group, so about
+#: 8e7 is a minute there; a quarter of that leaves a slower computer room.
+#: Past it the line says nothing rather than guess (the cost model prices
+#: fits only: app/core/estimates.py). static/dataset_replay.js reads it
+#: from the form.
+GROUNDHOG_QUICK = 20_000_000
+
+
+def donor_line(weeks, counts: dict, need: int) -> tuple:
+    """The Replay form's donor badge for `weeks` (ISO): (state, text), as
+    static/dataset_replay.js donorBadge words it; ('', '') with no week.
+    Informs only: Replay stays on, a week without donors ends "no
+    forecast", and the count is at the shipped donor window."""
+    if not weeks:
+        return "", ""
+    ok = sum(1 for w in weeks if counts.get(w, 0) >= need)
+    return ("ok" if ok == len(weeks) else "warn",
+            f"Groundhog donors: enough in {ok} of {len(weeks)} "
+            f"week{'' if len(weeks) == 1 else 's'}")
+
+
+def replay_estimate(weeks, groups: int, engine: str, *, replicates=None,
+                    particles=None, season_start: str = "",
+                    cells: int = 0) -> str:
+    """The time line beside Replay, as static/dataset_replay.js computes
+    it in the browser: with the filter, the cost model's span for `weeks`
+    (ISO) of `groups` x Independent Runs fits each (app/core/estimates.py:
+    the fits alone, at this console's width, 1 to 4 times the model before
+    a recorded ratio), "about 1.2 to 4.8 h"; the Groundhog alone "under a
+    minute" up to GROUNDHOG_QUICK; '' for nothing to say. Blank
+    `replicates` and `particles` are the shipped values, a blank
+    `season_start` each week's August 1."""
+    from app.core import estimates as ES
+    if not weeks:
+        return ""
+    if engine != "all":
+        return ("under a minute"
+                if len(weeks) * groups * cells <= GROUNDHOG_QUICK else "")
+    K = forms._knobs.BY_KEY
+    reps = int(replicates or K["pf.replicates"].default)
+    parts = int(particles or K["pf.particles"].default)
+    try:
+        nobs = [ES.n_obs_for(w, season_start) for w in weeks]
+    except ValueError:
+        return ""
+    lo, hi = ES.span(ES.run_seconds(nobs, groups * reps, parts))
+    return ES.human(lo, hi)
+
+
+def replay_facts(ds, dates: list, first: str, last: str) -> dict:
+    """What the Replay form's two read-only lines need: the donor weeks
+    of every forecast week (donor_weeks) and the estimate's data-est-*
+    attributes (estimates.page_params) for the page's script, and both
+    lines for the default range (all groups, the Groundhog alone, as the
+    form opens), so they read right without script."""
+    from app.core import estimates as ES
+    entry, need = _donor_entry(ds), donor_need()
+    counts, cells = entry["weeks"], entry["cells"]
+    weeks = [w for w in dates if first <= w <= last]
+    state, text = donor_line(weeks, counts, need)
+    return {"est": {**ES.page_params(None), "data-cells": str(cells),
+                    "data-gh-quick": str(GROUNDHOG_QUICK)},
+            "donors_json": templating._script_json(
+                {"need": need, "weeks": {w: counts.get(w, 0)
+                                         for w in dates}}),
+            "donor_state": state, "donor_text": text,
+            "est_text": replay_estimate(weeks, len(ds.groups), "analogue",
+                                        cells=cells)}
+
+
 def retro_context(selected: str = "") -> dict:
     """The Retrospective tab's "Your data" tab: the stored datasets (for
     its picker) and the one it shows (``selected``, else the first), with
@@ -1127,6 +1288,7 @@ def retro_context(selected: str = "") -> dict:
                 "last": dates[-1] if dates else "",
                 "default_first": w0, "default_last": w1,
                 "dates": dates, "replays": reps}
+        view.update(replay_facts(ds, dates, w0, w1))
     # the Model settings panel of the tab's form (ids prefixed dsr-),
     # following the form's own model select; the counts-only rows hide
     # for a rate dataset (the page sets its kind)

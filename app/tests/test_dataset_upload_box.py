@@ -379,7 +379,7 @@ def test_a_refused_store_without_script_lands_on_its_problems():
 
 
 def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
-    raw = b"day,area,amount\n2024-08-03,A,1\n2024-08-10,A,2\n"
+    raw = b"day,zone,amount\n2024-08-03,A,1\n2024-08-10,A,2\n"
     j = check(raw).json()
     assert j["needs_mapping"] and not j["ok"]
     html = j["html"]
@@ -390,7 +390,7 @@ def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
     assert '<select name="col_date" id="dsup-data-col-date" data-recheck>' \
         in html
     assert '<option value="#1">day</option>' in html
-    assert '<option value="#2" selected>area</option>' not in html
+    assert '<option value="#2" selected>zone</option>' not in html
     j = check(raw, col_date="#1", col_group="#2", col_value="#3").json()
     assert j["ok"] and READY in j["html"]
     # the chosen columns stay offered, preselected

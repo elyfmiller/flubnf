@@ -9,7 +9,8 @@
    one file per as_of), stored as one vintage-true dataset. Each zone has
    a title (the first's "?" says what goes in both, the second's badge
    that it is optional), and under it the one link it offers (the
-   template CSV; the folder pick). Each zone is a label
+   template CSV, with "Try the template" beside it where script can put
+   the file in the input; the folder pick). Each zone is a label
    around its native file input (visually hidden but focusable: the zone
    shows its focus and, with script, what was chosen); the folder link
    under the second is an input of its own. Name and Values appear once
@@ -45,7 +46,11 @@
     <span class="dsdrop-on" aria-hidden="true">Drop to check</span>
     <span class="dsdrop-f" data-file></span>
    </label>
-   <div class="dt-zonelinks"><a href="/static/dataset-template.csv" download="dataset-template.csv">{{ tips.icon("download") }} Template CSV</a></div>
+   {# "Try the template" checks the template CSV as if chosen, with no
+      download (static/dataset_upload.js shows it where the browser can
+      put a fetched file in the input; never a submit) #}
+   <div class="dt-zonelinks"><a href="/static/dataset-template.csv" download="dataset-template.csv">{{ tips.icon("download") }} Template CSV</a>
+    <button type="button" class="quiet" data-try-template data-src="/static/dataset-template.csv" hidden>Try the template</button></div>
   </div>
   <div class="dsbox dt-zone">
    <div class="dt-zonehead"><span class="dt-zonetitle">Snapshots</span>

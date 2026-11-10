@@ -9,6 +9,10 @@
   _check_groups     names: charset, reserved, national, collisions, one
                     name per location
   _check_structure  duplicates, gaps and weeks after their as_of
+
+and, over a whole dataset, dataset_checks; donor_counts (the Groundhog's
+donor weeks at every week, in one pass) and groundhog_shortfall (what the
+newest week lacks), which the console's forms show and nothing stores.
 """
 from __future__ import annotations
 
@@ -45,6 +49,9 @@ KINDS = ("count", "rate")
 #: the gap rule: consecutive dates within a group may differ by at most 8
 #: days (one week plus a day's slack for rounding), so no week is missing
 MAX_GAP_DAYS = 8
+#: dates on this many weekdays or more, most a day after the one before in
+#: their group, read as a daily file (the weekday problem says so: _daily)
+DAILY_MIN_WEEKDAYS = 5
 
 #: an as_of written M/D that reads both ways (03/01/2024) is read
 #: month-first only when the file proves that order, and then only when
@@ -374,6 +381,15 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             hint = (" Read day-first they would all be "
                     f"{WEEKDAYS[swapped[0].weekday()]}s, but day-first dates "
                     "are not accepted: write them as YYYY-MM-DD.")
+        elif len(wds) >= DAILY_MIN_WEEKDAYS and _daily(rows):
+            hint = (" These look like daily counts: FluBNF reads one row "
+                    "per week. Sum each week's days into one row dated the "
+                    "Saturday that ends it (Sunday to Saturday), then "
+                    "upload again." if kind != "rate" else
+                    " These look like daily values: FluBNF reads one row "
+                    "per week. Combine each week's days into one row dated "
+                    "the Saturday that ends it (Sunday to Saturday), then "
+                    "upload again.")
         rep.add("weekday", f"The dates fall on {len(wds)} different weekdays: "
                 f"{', '.join(what)} ({_rows(lines)}; e.g., {ex}). Every "
                 "date must be the same day of its week."
@@ -788,6 +804,21 @@ def _weekly(rows: list, twin=None) -> bool:
     return bool(rows)
 
 
+def _daily(rows: list) -> bool:
+    """True when most consecutive dates within a group (and snapshot) are
+    one day apart: a file of daily counts, not weeks on mixed weekdays
+    (a weekly file with a few stray weekdays steps 6, 7 or 8 days)."""
+    by = {}
+    for _, a, _, key, d, _, _ in rows:
+        by.setdefault((a, key), set()).add(d)
+    steps = Counter()
+    for ds in by.values():
+        ds = sorted(ds)
+        steps.update((b - a).days for a, b in zip(ds, ds[1:]))
+    n = sum(steps.values())
+    return n > 0 and steps[1] * 2 > n
+
+
 def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
                      raw_rows=()) -> None:
     """Duplicates, gaps (per snapshot and group), and snapshot weeks after
@@ -903,13 +934,8 @@ def dataset_checks(rep: Report) -> None:
                 "least two weeks are needed.")
         return
     from flubnf import analogue as AN
-    newest = {}
-    for a, name, _, d, v, _ in rep.records:
-        k = (name, d)
-        if v is not None and (k not in newest
-                              or (a or date.min) >= newest[k][0]):
-            newest[k] = (a or date.min, float(v))
-    bank = {k: v for k, (_, v) in newest.items() if v > 0}
+    newest = _newest(rep.records)
+    bank = {k: v for k, v in newest.items() if v > 0}
     last = max(d for _, d in newest)
     n = len(AN.donor_ratios(bank, AN.epiweek(last), AN.season_of(last), 1,
                             exclude_seasons=()))
@@ -918,3 +944,105 @@ def dataset_checks(rep: Report) -> None:
             f"{TOO_LITTLE_HISTORY}: at the newest week it finds {n} weeks like it in earlier seasons and needs "
             f"{AN.MIN_DONORS}, so it will not forecast this data on its "
             "own.")
+
+
+def _newest(records) -> dict:
+    """{(group name, week): value} from a report's records, each week's
+    newest snapshot (the final data); weeks with no value left out."""
+    newest = {}
+    for a, name, _, d, v, _ in records:
+        k = (name, d)
+        if v is not None and (k not in newest
+                              or (a or date.min) >= newest[k][0]):
+            newest[k] = (a or date.min, float(v))
+    return {k: v for k, (_, v) in newest.items()}
+
+
+# ------------------------------------------- the Groundhog's donor weeks
+
+#: the Groundhog's horizons, in its own unit: weeks after the as-of (the
+#: hub's horizons 0 to 3; app/core/engines/analogue.run)
+GROUNDHOG_HORIZONS = (1, 2, 3, 4)
+
+
+def donor_counts(bank, weeks, *, bandwidth=None,
+                 horizons=GROUNDHOG_HORIZONS) -> dict:
+    """{week: (donor weeks at each of `horizons`)} for each as-of in
+    `weeks` (dates): what len(flubnf.analogue.donor_ratios(...)) gives on
+    `bank` ({(group, date): value}) cut at that as-of, as the engine reads
+    a dataset (no week after the as-of; no donor season excluded, a
+    dataset run's default), at `bandwidth` (None: the shipped donor
+    window). The Groundhog forecasts a horizon from MIN_DONORS of them.
+
+    One pass over the bank instead of a scan per week and horizon (520
+    weeks of 200 groups: under a second, not minutes): each donor cell (a
+    finite positive value whose week h later is one too) counts once per
+    horizon under its (season, epiweek), and a week sums the earlier
+    seasons within the window. A donor whose week h later falls after the
+    as-of (a season's first weeks, whose window reaches back over the
+    season start) is taken off again, as the cut bank never holds it."""
+    import bisect
+    import math
+    from collections import defaultdict
+
+    from flubnf import analogue as AN
+    bw = AN.DEFAULT_BANDWIDTH if bandwidth is None else int(bandwidth)
+    cells = {h: defaultdict(Counter) for h in horizons}  # epiweek->season->n
+    by_day = {h: Counter() for h in horizons}            # date -> n
+    for (loc, d), v0 in bank.items():
+        if not (math.isfinite(v0) and v0 > 0):
+            continue
+        s, e = AN.season_of(d), AN.epiweek(d)
+        for h in horizons:
+            v1 = bank.get((loc, d + timedelta(days=7 * h)))
+            if v1 is None or not (math.isfinite(v1) and v1 > 0) \
+                    or not math.isfinite(v1 / v0):
+                continue
+            cells[h][e][s] += 1
+            by_day[h][d] += 1
+    days = sorted(set().union(*by_day.values()))
+    near = {}
+    out = {}
+    for t in weeks:
+        S, E = AN.season_of(t), AN.epiweek(t)
+        if E not in near:
+            near[E] = [e for e in range(1, 54)
+                       if AN.calendar_distance(e, E) <= bw]
+        per = []
+        for h in horizons:
+            n = sum(c for e in near[E] for s, c in cells[h][e].items()
+                    if s < S)
+            lo = bisect.bisect_right(days, t - timedelta(days=7 * h))
+            for d in days[lo:bisect.bisect_left(days, t)]:
+                if (AN.season_of(d) < S
+                        and AN.calendar_distance(AN.epiweek(d), E) <= bw):
+                    n -= by_day[h][d]
+            per.append(n)
+        out[t] = tuple(per)
+    return out
+
+
+def groundhog_shortfall(rep: Report):
+    """At the newest week of a checked file, what the Groundhog lacks, or
+    None when every horizon has MIN_DONORS donor weeks (or the file did not
+    read): {"n": the fewest donor weeks at any horizon, "need":
+    MIN_DONORS, "seasons": about how many more earlier seasons of every
+    group would give the rest}. One group gives 2 x bandwidth + 1 donor
+    weeks per earlier season at the shipped window. The stored notice
+    (dataset_checks) is not changed by it."""
+    import math
+
+    from flubnf import analogue as AN
+    s = rep.summary
+    if not rep.ok or not s or s.get("weeks", 0) < 2:
+        return None
+    bank = _newest(rep.records)
+    if not bank:
+        return None
+    last = max(d for _, d in bank)
+    n = min(donor_counts(bank, [last])[last])
+    if n >= AN.MIN_DONORS:
+        return None
+    per = (2 * AN.DEFAULT_BANDWIDTH + 1) * max(1, len(s.get("groups") or ()))
+    return {"n": n, "need": AN.MIN_DONORS,
+            "seasons": math.ceil((AN.MIN_DONORS - n) / per)}

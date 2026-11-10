@@ -146,7 +146,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `_dataset_upload.html` | the upload box: `_datasets_card.html`, `forecast.html`, `_dataset_replay.html`; loads `static/dataset_upload.js` |
 | `_dataset_check.html` | the upload box's result (problems, column mapping, preview): `_dataset_upload.html`, and `datasets_ui.render_check` for `/data/datasets/check` |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
-| `_dataset_replay.html` | `retro.html` (the Your data tab: the upload box, or a dataset's replay settings and its replays) |
+| `_dataset_replay.html` | `retro.html` (the Your data tab: the upload box, or a dataset's replay settings and its replays); loads `static/dataset_replay.js` |
 | `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (on the Your data tab: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
 | `_tips.html` | macros for the "?" tips, imported by most pages (`base.html` loads `static/tips.js`) |
 
@@ -159,6 +159,8 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `nau.css` | `base.html` (every page); its token blocks are embedded by `app/core/report_v2.py` and `report_season.py` |
 | `player.js` | `retro_season.html`; inlined by `report_season.py`; its name and color maps are parsed by `templating.py` and the reports |
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
+| `estimate.js` | `retro.html`, on both tabs (the Settings form's Oracle option prices the replay through `retro_progress.js` FluBNFRetroCost; the Your data tab's Replay time line through `dataset_replay.js`); the browser's copy of `app/core/estimates.py`, reading the `data-est-*` attributes `estimates.page_params()` puts on a run form |
+| `dataset_replay.js` | `_dataset_replay.html` (beside Replay: the Groundhog donor badge and the Replay time line, redone on every change of the form; `datasets_ui.donor_line` and `replay_estimate` are the same rules on the server) |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
 | `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
