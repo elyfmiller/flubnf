@@ -25,8 +25,10 @@ import gzip
 import json
 import os
 import shutil
+import sys
 import threading
 from collections import OrderedDict
+from contextlib import nullcontext
 from pathlib import Path
 
 from app.core import ensemble as ens
@@ -35,6 +37,18 @@ from app.core import horizons as hz
 
 def _week_dir(root: Path, asof: str) -> Path:
     return root / "weeks" / asof
+
+
+def writing_into(root: Path):
+    """Around a cache write into a season tree: a context that yields
+    whether the write may go ahead. The console's delete or move of a tree
+    marks it first (app/ui/retro_prep._writing_into, which answers here):
+    nothing is written into a marked tree, and no delete starts on a tree
+    while a write into it is under way. The mark lives in the console's
+    process alone, so where the console is not loaded (the command line,
+    the site build) no tree is marked and every write goes ahead."""
+    rp = sys.modules.get("app.ui.retro_prep")
+    return rp._writing_into(root) if rp is not None else nullcontext(True)
 
 SAMPLES_JSON = "samples.json"
 SAMPLES_GZ = "samples.json.gz"
@@ -289,7 +303,8 @@ def read_week_quantiles(wd: Path) -> dict | None:
 def week_member_quantiles(root: Path, asof: str) -> dict:
     """The members' quantiles for one stored week: the sidecar when it is
     current, else computed from the samples (and the week's oracle.json)
-    and written for next time. A week stored lean is its sidecar as it
+    and written for next time, unless a delete or a move holds the tree
+    (writing_into). A week stored lean is its sidecar as it
     is, never rebuilt and never rewritten: FileNotFoundError when the
     sidecar cannot be read."""
     wd = _week_dir(root, asof)
@@ -306,7 +321,9 @@ def week_member_quantiles(root: Path, asof: str) -> dict:
                                 "read")
     mq = member_quantiles(read_week_samples(root, asof), wd)
     try:
-        write_week_quantiles(wd, mq)
+        with writing_into(root) as ok:
+            if ok:
+                write_week_quantiles(wd, mq)
     except Exception:
         pass
     return mq

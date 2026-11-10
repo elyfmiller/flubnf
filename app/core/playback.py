@@ -143,11 +143,21 @@ def _cache_dir(root: Path) -> Path:
 def _write_cache(cf: Path, obj) -> None:
     """Every cache write in this file: write beside, then os.replace. Readers
     treat presence as validity, so a torn multi-MB write would be served as
-    complete; the .tmp sits beside its target to stay on one filesystem."""
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cf.with_name(cf.name + ".tmp")
-    tmp.write_text(json.dumps(obj), encoding="utf-8")
-    os.replace(tmp, cf)
+    complete; the .tmp sits beside its target to stay on one filesystem.
+
+    `cf` is <season_root>/playback_cache/<name>. Nothing is written into a
+    tree a delete or a move holds (retro_store.writing_into), and a tree
+    deleted meanwhile is not made again: the write is skipped."""
+    from app.core.retro_store import writing_into
+    root = cf.parent.parent
+    text = json.dumps(obj)
+    with writing_into(root) as ok:
+        if not ok or not root.is_dir():
+            return
+        cf.parent.mkdir(exist_ok=True)
+        tmp = cf.with_name(cf.name + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, cf)
 
 
 # ------------------------------------------------------------- member models

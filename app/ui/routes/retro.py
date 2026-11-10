@@ -1574,16 +1574,41 @@ def score_error_plain(err: str) -> str:
                  if key in (err or "")), "")
 
 
+#: what the season page's APIs answer while a delete or a move holds the
+#: run (_removal_busy): 503 with Retry-After, never the 404 of a week that
+#: is not stored. The player keeps such an answer for no week and asks
+#: again on a later visit: a refused delete leaves the run where it was,
+#: and a moved run's page asks at its own address
+_BUSY_RETRY_S = 5
+
+
+def _removal_busy(root: Path, season: str, what: str):
+    """The answer to a request that would read the tree at `root` and
+    write its caches there while a delete or a move holds the tree
+    (retro_prep._being_removed); None when none does. `what` says what
+    is not done ("week 2098-01-10 is not shown")."""
+    if not retro_prep._being_removed(root):
+        return None
+    return PlainTextResponse(
+        f"{season}: the run is being deleted or moved, so {what} while "
+        "it is.", status_code=503,
+        headers={"Retry-After": str(_BUSY_RETRY_S)})
+
+
 @router.get("/api/retro/{season}/playback/{asof}")
 def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retro week as a playback payload (member fans, settled
     truth, CDC comparators, running relWIS), cached under
-    <season_root>/playback_cache/. `archive` reads an archived run."""
+    <season_root>/playback_cache/. `archive` reads an archived run. A run
+    a delete or a move holds answers 503 (_removal_busy)."""
     from app.core import playback
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season, f"week {asof} is not shown")
+    if busy is not None:
+        return busy
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -1597,7 +1622,8 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
 def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     """One stored week's map as a swap payload (fips -> fill, opacity,
     hover) from the cached cards: the player renders the SVG once and
-    swaps fills per frame."""
+    swaps fills per frame. A run a delete or a move holds answers 503
+    (_removal_busy): its cards would be written into the tree going."""
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
@@ -1606,6 +1632,9 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season, f"its map for {asof} is not shown")
+    if busy is not None:
+        return busy
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -1617,12 +1646,17 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
 def _season_report(season: str, archive: str):
     """Build (cached by mtime) the self-contained season report (player
     plus every week's data, one HTML file); `archive` = that run's. The
-    path, or the 404 response for an unknown identifier or week."""
+    path, or the refusal: 404 for an unknown identifier or week, 503
+    while a delete or a move holds the run (_removal_busy)."""
     from app.core import playback, report_season
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season,
+                         "its season report is not built")
+    if busy is not None:
+        return busy
     try:
         return report_season.build_season_report(
             root, season, archive=archive,
@@ -1680,6 +1714,10 @@ def api_retro_report_job_start(season: str, archive: str = ""):
     root = _report_root(season, archive)
     if isinstance(root, PlainTextResponse):
         return root
+    busy = _removal_busy(root, season,
+                         "its season report is not built")
+    if busy is not None:
+        return busy
     return season_export.report_job(root, season, archive=archive,
                                     build=RUNNING_SHA, versions=VERSIONS)
 

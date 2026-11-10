@@ -159,15 +159,20 @@ def _compute_map_cards(root: Path, wk: str, sp: Path, mtime: int,
     job = getattr(_WARM_THREAD, "job", None)
     if job is not None and job.get("warm_stop"):
         return by_model
+    text = _json.dumps({"mtime": mtime, "v": _MAP_CARDS_V, "cards": by_model})
     try:
-        # write beside, then replace; never re-creating a season tree
-        # deleted meanwhile (no parents=True above playback_cache)
-        cf.parent.parent.mkdir(exist_ok=True)
-        cf.parent.mkdir(exist_ok=True)
-        tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(_json.dumps({"mtime": mtime, "v": _MAP_CARDS_V,
-                                    "cards": by_model}), encoding="utf-8")
-        _os.replace(tmp, cf)
+        # a page's request as much as the warm: nothing is written into a
+        # tree a delete or a move holds (_writing_into)
+        with _writing_into(root) as ok:
+            if ok:
+                # write beside, then replace; never re-creating a season
+                # tree deleted meanwhile (no parents=True above
+                # playback_cache)
+                cf.parent.parent.mkdir(exist_ok=True)
+                cf.parent.mkdir(exist_ok=True)
+                tmp = cf.with_name(cf.name + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                _os.replace(tmp, cf)
     except Exception:
         pass                      # an unwritable cache costs speed, not truth
     return by_model
@@ -218,7 +223,8 @@ _WARM_SETTLE_S = 10.0
 _WARM_STOP_WAIT_S = 20.0
 #: the warm's own thread knows its job (_warm_map_cards sets it), so the
 #: card write (_compute_map_cards) can check the job's stop just before
-#: writing; other callers' writes are left as they were
+#: writing; every caller's write also checks the removal mark
+#: (_writing_into)
 _WARM_THREAD = threading.local()
 
 
@@ -383,6 +389,20 @@ def _being_removed(root: Path) -> bool:
     """Whether a delete or a move of the tree at `root` is under way (no
     file system call while none is)."""
     return bool(_REMOVING) and not _tree_keys(root).isdisjoint(_REMOVING)
+
+
+@contextmanager
+def _writing_into(root: Path):
+    """Around a cache write into a season tree (a week's map cards, the
+    player's week files, a week's quantiles file, the season report; the
+    app/core writers reach it through retro_store.writing_into). Yields
+    False while a delete or a move holds the tree: the caller writes
+    nothing. A file written into a tree being removed would make the
+    delete's last step fail, with the weeks already gone. Else yields
+    True and holds the mark's lock until the write ends, so no delete
+    marks the tree and starts removing it under a file half written."""
+    with _results_lock:
+        yield not _being_removed(root)
 
 
 @contextmanager

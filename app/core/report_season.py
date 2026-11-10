@@ -271,8 +271,16 @@ def build_season_report(root: Path, season: str, archive: str = "",
     # atomic, and a temporary file per builder: two concurrent builds must
     # never interleave a garbled file
     import threading
+    from app.core.retro_store import writing_into
     tmp = out.with_suffix(f".html.{os.getpid()}.{threading.get_ident()}.tmp")
-    # LF pinned: served as text and downloaded raw, which must match on Windows
-    tmp.write_text(html, encoding="utf-8", newline="\n")
-    os.replace(tmp, out)
+    # nothing is written into a tree a delete or a move took meanwhile
+    with writing_into(root) as ok:
+        if not ok:
+            raise RuntimeError(
+                f"{season}: the run is being deleted or moved, so its season "
+                "report was not written.")
+        # LF pinned: served as text and downloaded raw, which must match on
+        # Windows
+        tmp.write_text(html, encoding="utf-8", newline="\n")
+        os.replace(tmp, out)
     return out
