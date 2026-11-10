@@ -175,7 +175,12 @@ def model_page(request: Request, name: str):
     manchor = {"pf": "oracle", "analogue": "analogue",
                "pf2s": "two-strain"}
     if name not in HEADERS:
-        return HTMLResponse("unknown model", status_code=404)
+        # a page of the console (under Models, which lists the three)
+        from app.ui.routes import output as output_routes
+        return output_routes._notice(
+            request, 404, "empty", f"No model named {name}",
+            action=("/models", "Open Models"), active="Models",
+            heading="Model")
     from app.core.archive_record import realtime_of
     rid, res = shared._latest_results()
     # a newer run of any kind (a vintage week or modified settings, as a

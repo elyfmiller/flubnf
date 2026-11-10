@@ -698,17 +698,19 @@ def _not_found(request: Request):
 
 
 @router.get("/output/download")
-def output_download(request: Request, path: str):
+def output_download(request: Request, path: str = ""):
     """Download a submission CSV. The file must be inside app state, a CSV
     in a model's folder under submission/ or a dataset run's export/ (the
     files the console links; never the ledger, the form memory or a run's
     results), and a submission/ file must sit under a registered hub
     model's directory (the listings' rule, enforced here for hand-edited
-    URLs)."""
+    URLs). No path at all is a file that is not there."""
     from fastapi.responses import FileResponse
     from app.core.custom_run import EXPORT_DIR
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
+    if not path:                        # no file named: nothing to serve
+        return _not_found(request)
     try:
         p = Path(path).resolve()
     except (OSError, ValueError):       # a NUL byte or an unusable name
@@ -756,14 +758,16 @@ def _reveal_command(p: Path, platform: str | None = None):
 
 
 @router.post("/output/reveal")
-def output_reveal(request: Request, path: str = Form(...)):
+def output_reveal(request: Request, path: str = Form("")):
     """Show the file in Finder / Explorer (a local desktop app), then back
     to the page that asked (a run page or Output); a warning there when no
     file manager could be opened on it."""
     import subprocess
     from app.core.runs import APP_STATE
     try:
-        p = Path(path).resolve()
+        # no path at all (a hand-made request) is nothing to open, never the
+        # working folder "" would resolve to
+        p = Path(path).resolve() if path else None
     except (OSError, ValueError):       # a NUL byte or an unusable name
         p = None
     # containment via is_relative_to, as in /output/download: a string-prefix
@@ -837,10 +841,16 @@ def _report_for_serving(dirpath: Path) -> str:
 
 
 def _bad_date(date: str, request: Request):
-    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
+    """The 400 for a malformed or impossible ?date= (2026-13-45); None when
+    it is a real YYYY-MM-DD."""
     import re
+    from datetime import date as _date
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        return None
+        try:
+            _date.fromisoformat(date)
+            return None
+        except ValueError:
+            pass
     return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
 
 
@@ -854,7 +864,8 @@ def output_report(request: Request, date: str = ""):
             return bad
         d = APP_STATE / "archive" / date
         if not (d / "report.html").is_file():
-            return _notice(request, 200, "empty",
+            # 404, as the same date's download answers
+            return _notice(request, 404, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
     # the shipped rule: Home's report button and its map link come here,

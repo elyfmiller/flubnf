@@ -361,6 +361,9 @@ def new_model(name: str) -> Path:
 
 def model_dir(name: str) -> Path:
     d = MODELS / check_name(name)
+    if not d.is_dir():
+        # deleted, or never there: not "missing its files"
+        raise SandboxError(f"no sandbox model named {name!r}")
     missing = [f for f in REQUIRED if not (d / f).is_file()]
     if missing:
         raise SandboxError(f"model {name!r} is missing {', '.join(missing)}")
