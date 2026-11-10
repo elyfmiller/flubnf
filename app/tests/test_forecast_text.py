@@ -17,8 +17,11 @@
     one heading.
 """
 import json
+import re
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -40,8 +43,43 @@ GH = {"analogue": "Groundhog"}
 
 # ------------------------------------------------- FC-26: one statement
 
+#: engine builds the Settings card's engine row can show: none known (CI,
+#: no mark), the public engine unread (a computer without it: "engine
+#: build unknown" and its "?") and the private production build (an ok
+#: badge, no "?")
+_PUBLIC_UNREAD = {"branch": "", "commit": "", "dirty": False,
+                  "source": "unknown", "engine": "public",
+                  "path": "/x/flubnf-public/bin/python",
+                  "error": "there is no Python at /x/flubnf-public/bin/python"}
+_PRIVATE_PROD = {"branch": "feature/particle-filter", "commit": "2fdadee0",
+                 "dirty": False, "source": "git", "path": "/x/PyBNF-pf"}
+
+
+def _engine_build_pinned(monkeypatch, build: dict) -> None:
+    """Pages render the engine build from `build`. The startup thread
+    resolves this machine's own build under the shell's engine, not the
+    suite's, and can land in the middle of a test: the template's view is
+    pinned, not the cache that thread writes. The cache is swapped only
+    while the view is worked out, so a write by that thread is never lost
+    with the test's copy."""
+    from app.ui import templating
+    from app.ui import versions as V
+    with monkeypatch.context() as m:
+        m.setattr(V, "ENGINE_BUILD", dict(build))
+        view = V.engine_build_view()
+    monkeypatch.setitem(templating.templates.env.globals,
+                        "engine_build_view", lambda: dict(view))
+
+
+@pytest.mark.parametrize("build, eb_marks", [
+    ({}, []),
+    (_PUBLIC_UNREAD, ["tip-eb-fc"]),
+    (_PRIVATE_PROD, []),
+], ids=["no-build", "public-unread", "private-production"])
 def test_with_data_issues_the_settings_card_keeps_two_marks(tmp_path,
-                                                            monkeypatch):
+                                                            monkeypatch,
+                                                            build, eb_marks):
+    _engine_build_pinned(monkeypatch, build)
     _newest_hub(tmp_path / "hub", monkeypatch,
                 newest={"Ohio": "0", "Utah": "5", "Nebraska": None})
     ui_state._last_form.clear()
@@ -51,8 +89,12 @@ def test_with_data_issues_the_settings_card_keeps_two_marks(tmp_path,
     card = page.split('class="card fc-settings"', 1)[1].split(
         'id="model-settings"', 1)[0]
     # the Settings "i" alone before the panel: no "?" on the newest-week
-    # line, no "i" on the box or its rows
-    assert card.count('class="uk-tt-btn"') == 1 and 'class="tipbtn"' not in card
+    # line, no "i" on the box or its rows; the one "?" the card may carry
+    # is the engine build's, when that build is not the production one
+    assert card.count('class="uk-tt-btn"') == 1
+    assert card.count('class="tipbtn"') == len(eb_marks)
+    assert re.findall(r'class="tipbtn"[^>]*aria-describedby="([^"]+)"',
+                      card) == eb_marks
     assert 'id="tip-newest-gaps"' not in page and "tip-di-why" not in page
     assert 'id="tt-data-issues"' not in page and 'id="di-count"' not in page
     # the line keeps its counts
