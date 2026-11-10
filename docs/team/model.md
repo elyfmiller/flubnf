@@ -13,6 +13,95 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-10 (15:42 UTC): APP'S OPEN ITEMS FOR THIS LANE (App's plan,
+  Ely's go of 2026-11-10). Written on the branch
+  `model/app-open-items-2026-11-10` while #101 (dev to main) is open.
+  - MO-20 (G12), the two-strain record on the Models tab, traced. Both
+    figures come from the full-grid ensemble gate of August 2026, on the
+    seal of 2026-08-19: 2023-24, 2024-25 and 2025-26 pooled, 52
+    jurisdictions, 3 replicates, 10,000 particles, vintage-true, before
+    the donor-pool exclusion. Sources: docs/archive/RELEASE-1.0.md (the
+    seal table, and the ledger's two-strain entry: "equal thirds scored
+    0.7189 against the two-member 0.7039"), and the Models text of
+    ef13821b (2026-08-21).
+    - 0.704 (0.7039) is the two-member blend: the single-strain particle
+      filter and the analogue, 50/50, unfitted (the 1.0 and 1.1
+      releases' submitted ensemble, since retired). 15,460 cells
+      (6,063, 4,922 and 4,475 by season); 0.847, 0.651 and 0.691 by
+      season before the exclusion. After the exclusion the same blend
+      is 0.678.
+    - 0.719 (0.7189) is not the two-strain model alone. It is the
+      equal-thirds three-member ensemble: the filter, the analogue and
+      the two-strain SIHRS at one third each, "on identical full-grid
+      cells" (ef13821b). The record does not give that cell count or
+      the by-season figures, and the three-member blend was never
+      re-scored after the exclusion.
+    - The two-strain model's own full-grid figures are the turn gate,
+      0.953 against the single-strain filter's 0.993 on 1,248 turn
+      cells, and the plateau season 2023-24, 0.968 against 1.023. No
+      pooled three-season figure for it alone is in the repository.
+    - The per-cell results and harnesses are in the lab's private
+      archive, not in this repository (RELEASE-1.0.md, "Where the
+      evidence lives"), so the cells behind 0.719 cannot be checked
+      from here. The two figures stay in the record, dated 2026-08.
+    - For App: the bar label "Two-strain SIHRS 0.719"
+      (app/ui/routes/models.py, since 96d927de of 2026-09-27) gives the
+      three-member ensemble's score as the two-strain model's own. The
+      August text was right: "the equal-weight three-member ensemble
+      scored 0.719 against 0.704 for the two-member blend". Suggested
+      bars: "Ensemble with it (equal thirds)" 0.719 and "Ensemble
+      without it (50/50)" 0.704, both "seal of 2026-08-19, three
+      seasons, before the donor-pool exclusion".
+  - HM-01: the Groundhog's figure of record is the size-matched form's
+    0.642 (pooled 0.6423; 0.680, 0.627 and 0.645 by season; 17,116
+    cells, FluSight's cell rule; `flubnf groundhog retro all --aux
+    flusurv`, hub 3a83d410). That form has shipped since 2026-10-23
+    (entry of that day below). 0.660 (0.6604) is the own-state form
+    without size weighting, shipped 2026-10-15 to 2026-10-23 and
+    submitted 2026-10-24. On dev fd76172c, Home, Models, Methods and
+    README already give 0.642 (G11, #65). Still on 0.660 or the earlier
+    form: docs/FLUSIGHT-2026-27.md line 92 and its method row
+    (line 88: no size-matched donors); CITATION.cff line 38 and its
+    method text (lines 31 to 35); docs/ORACLE-SIHRS.md line 286 ("the
+    shipped own-state form's"); docs/SITE.md lines 115 to 117 (the
+    labels).
+  - FC-13 (G26): agreed, the run-wide rule should keep precedence. It is
+    a run setting applied to both members alike, while a zero-anchor
+    choice is the Groundhog's alone. If the state's choice won, the two
+    members would anchor that state differently under a rule the run
+    says covers it. Under the rule a covered state gets "Both from the
+    week before", which for the Groundhog is the same in effect as
+    Extend: the newest positive week, with the donor ratio spanning the
+    zero weeks. Nothing shipped rests on this: data.trailing_zero ships
+    "keep", and no zero-anchor rule ships. The precedence holds as long
+    as the box offers only what applies and the record says what was
+    applied (#85, #89). A run of 3 or more zeros is not covered
+    (MAX_CARRY 2; covering_rules uses tail_flags), so it keeps its own
+    choices, which is right.
+  - FC-14: missing.py should keep the zero-anchor rows out of
+    aside_weeks. The 0 is a reported week that stays on the observed
+    line and in scoring, not a week set aside. But no zero-anchor rule
+    anchors on that 0, so the fan should not start from it:
+    - Extend: from the newest positive week and its value, as for a
+      set-aside, with the zero weeks left on the observed line.
+    - Level: anchored at the zero week's date on the mean of the newest
+      4 weeks, a value the chart does not have. Start at horizon 0, with
+      no connector.
+    - Blend and the Poisson fallbacks have no single anchor. Start at
+      horizon 0, with no connector.
+    The flag row names the rule and the week. The engine's note gives
+    the anchor only as text.
+  - Seasons part-way through on the PC: none. No `run_meta.json`, week
+    `engine.json` or Sandbox experiment exists in any of the four FluBNF
+    copies here, nor in %TEMP%: the Engine session's clone
+    (`app\state\logs` only), this lane's clone (no state),
+    `%LOCALAPPDATA%\FluBNF\flubnf` (no state) and `D:\Projects\flubnf`
+    (`main` 375f56a8 of 2026-09-29, `app\state\logs` only). No
+    `FLUBNF_STATE_DIR` is set for the account. So no resume across
+    engines can be refused here yet.
+  - Not started, waiting on Ely: remaking the shipped replays on the
+    public engine on the PC, after the 11-18 comparison.
+
 - 2026-11-10 (04:40 UTC): THE GROUNDHOG'S FLAT SMALL STATES (Submission,
   2026-11-05): NOT A DEFECT AND NOT THE PIN. THE GROUNDHOG HAS NO TREND
   TERM, SO EVERY STATE GETS THE CALENDAR'S RISE. Record:
