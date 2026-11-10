@@ -1,0 +1,435 @@
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 9f08d312..2a2966eb 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -270,3 +270,16 @@ def sandbox_root(tmp_path, monkeypatch):
+     from app.ui.routes import sandbox as ui_sandbox
+     ui_sandbox._sandbox_new_refused.clear()
+     return root
++
++
++@pytest.fixture(autouse=True)
++def _retro_form_forgotten():
++    """The Retrospective Run form's remembered choices (routes/retro
++    _remember_form) start empty for every test and are put back after, so
++    a test's POST never sets another test's form."""
++    from app.ui import retro_seasons as _rs
++    before = dict(_rs._retro_form)
++    _rs._retro_form.clear()
++    yield
++    _rs._retro_form.clear()
++    _rs._retro_form.update(before)
+diff --git a/app/tests/test_retro_forms.py b/app/tests/test_retro_forms.py
+new file mode 100644
+index 00000000..813729d2
+--- /dev/null
++++ b/app/tests/test_retro_forms.py
+@@ -0,0 +1,86 @@
++"""Retrospective forms and navigation (G23): the Run form keeps its choices
++through a refusal or a run; the season page's Show in folder gets the
++reveal's answer; a dataset replay's page leads back to its dataset and
++says how far a stopped replay got."""
++
++from app.core import custom_retro as CX
++from app.core import datasets as D
++from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
++from app.ui import state as ui_state                 # noqa: E402
++from test_dataset_replay_knobs import _replay          # noqa: E402
++from test_datasets_ui import TEMPLATE, client, isolated, stored  # noqa: E402,F401
++
++
++# -------------------------------------------------------------------- RE-13
++
++def test_the_run_form_keeps_its_choices_through_a_refusal():
++    r = client.post("/retro/run", data={
++        "season": "2023-24", "locations": "custom", "national": "0",
++        "engine": "analogue", "knob.groundhog.zero_anchor": "blend",
++        "mode": "resume", "width": "3"}, follow_redirects=False)
++    assert r.status_code == 303
++    assert "no locations checked" in ui_state._status.get("flash", "")
++    html = client.get("/retro").text
++    assert "<option selected>2023-24</option>" in html
++    assert '<option value="custom" selected>custom selection</option>' in html
++    assert 'id="retro-custom">' in html                # the list shown
++    assert '<option value="0" selected>states only</option>' in html
++    assert ('<option value="analogue" selected>Groundhog only (minutes)'
++            in html)
++    assert '<option value="blend" selected>blend:' in html
++    assert 'name="width" value="3"' in html
++    # a state ticked before the next try stays ticked
++    client.post("/retro/run", data={
++        "season": "2023-24", "locations": "custom",
++        "custom_locations": ["Vermont"], "national": "0",
++        "engine": "analogue", "knob.groundhog.zero_anchor": "blend",
++        "mode": "resume"}, follow_redirects=False)
++    html = client.get("/retro").text
++    assert 'value="Vermont" checked>' in html
++    assert ui_retro_seasons._retro_form["custom_locations"] == ["Vermont"]
++
++
++def test_a_first_open_has_the_form_at_its_defaults():
++    html = client.get("/retro").text
++    assert "selected>" not in html.split('id="rt-season"', 1)[1].split("</select>", 1)[0]
++    assert 'id="retro-custom" style="display:none"' in html
++    assert '<option value="">Choose…</option>' in html
++
++
++# ------------------------------------------------------------- RE-12, WI-05
++
++def test_the_reveal_answers_a_script_caller_in_json():
++    r = client.post("/output/reveal", data={"path": "/nowhere"},
++                    headers={"accept": "application/json"})
++    assert r.status_code == 200
++    got = r.json()
++    assert got["ok"] is False
++    assert got["message"].startswith("Nothing opened:")
++    assert "Storage lists what is on disk" in got["detail"]
++    # a form post still goes back to the page with the flash
++    r = client.post("/output/reveal", data={"path": "/nowhere"},
++                    follow_redirects=False)
++    assert r.status_code == 303
++    assert ui_state._status.get("flash", "").startswith("Nothing opened:")
++
++
++# ------------------------------------------------------------- RE-24, RE-25
++
++def test_a_replay_page_leads_back_and_says_how_far_a_stopped_one_got():
++    ds = stored(TEMPLATE.read_bytes(), "Template")
++    r, meta = _replay(ds)
++    assert meta["status"] == "done", meta.get("error")
++    url = r.headers["location"]
++    html = client.get(url).text
++    assert (f'<a class="rt-back" href="/retro?dataset={ds.id}">'
++            f"Replays of {ds.name}</a>") in html
++    assert "Progress" not in html                   # a finished replay
++    # the same replay, stopped after three weeks
++    d = CX.replay_dir(D.get(ds.id), url.rsplit("/", 1)[1])
++    CX.write_meta(d, {**CX.read_meta(d), "status": "stopped",
++                      "weeks_completed": 3})
++    html = client.get(url).text
++    total = meta["total_weeks"]
++    assert f"stopped after 3 of {total} weeks" in html
++    assert f"3 of {total} ({meta['first']} to {meta['last']})" in html
++    assert "No forecasts stored yet" not in html
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 82910e8a..7285fa0d 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -1339,8 +1339,12 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
+                             if meta.get("pf_skipped") else "not run")
+     settings = [
+         ("data", f"{ds.name} ({meta.get('replay_kind', '')})"),
+-        ("weeks", f"{meta.get('total_weeks', 0)} ({meta.get('first')} to "
+-                  f"{meta.get('last')})"),
++        # a stopped or interrupted replay: the weeks it reached of the range
++        ("weeks", (f"{meta.get('weeks_completed') or 0} of "
++                   if not live and (meta.get('weeks_completed') or 0)
++                   < (meta.get('total_weeks') or 0) else "")
++         + f"{meta.get('total_weeks', 0)} ({meta.get('first')} to "
++           f"{meta.get('last')})"),
+         ("groups", ", ".join(meta.get("groups") or [])),
+         # the donors (a replay recorded before the own-data label
+         # carries only the full label)
+diff --git a/app/ui/retro_seasons.py b/app/ui/retro_seasons.py
+index 89409a57..244f6889 100644
+--- a/app/ui/retro_seasons.py
++++ b/app/ui/retro_seasons.py
+@@ -31,6 +31,10 @@ def _weeks_done(root: Path) -> int:
+         return 0
+ 
+ 
++#: the Run form's last choices (routes/retro._remember_form): echoed by the
++#: page, so a refusal or a run never clears the form
++_retro_form: dict = {}
++
+ # === Retrospective core: roots, claims, season status ===
+ RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
+ # The sealed full-grid records, read only: the reseal (production engine,
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 2cecdce8..ebe8d1c0 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -752,9 +752,21 @@ def _reveal_command(p: Path, platform: str | None = None):
+ def output_reveal(request: Request, path: str = Form(...)):
+     """Show the file in Finder / Explorer (a local desktop app), then back
+     to the page that asked (a run page or Output); a warning there when no
+-    file manager could be opened on it."""
++    file manager could be opened on it. A script caller that accepts JSON
++    (the season page's Show in folder) gets {ok, message, detail} instead
++    of the redirect, so it can show the warning itself."""
+     import subprocess
++    from fastapi.responses import JSONResponse
+     from app.core.runs import APP_STATE
++    wants_json = "application/json" in request.headers.get("accept", "")
++
++    def answer(message: str = "", detail: str = ""):
++        if wants_json:
++            return JSONResponse({"ok": not message, "message": message,
++                                 "detail": detail})
++        if message:
++            shared._flash(message, "warn", detail=detail)
++        return shared._back(request, "/output")
+     try:
+         p = Path(path).resolve()
+     except (OSError, ValueError):       # a NUL byte or an unusable name
+@@ -763,18 +775,16 @@ def output_reveal(request: Request, path: str = Form(...)):
+     # test would admit siblings such as app/state_defaults
+     if p is None or not (p.is_relative_to(APP_STATE.resolve())
+                          and p.exists()):
+-        shared._flash("Nothing opened: the file is not in app state any "
+-                      "more.", "warn",
+-                      detail="It may have been deleted or moved; Storage "
+-                             "lists what is on disk.")
+-        return shared._back(request, "/output")
++        return answer("Nothing opened: the file is not in app state any "
++                      "more.",
++                      "It may have been deleted or moved; Storage lists "
++                      "what is on disk.")
+     try:
+         subprocess.Popen(_reveal_command(p))
+     except OSError as e:
+-        shared._flash("Nothing opened: no file manager could be started.",
+-                      "warn", detail=f"{type(e).__name__}: {e}. The file "
+-                                     f"is at {p}.")
+-    return shared._back(request, "/output")
++        return answer("Nothing opened: no file manager could be started.",
++                      f"{type(e).__name__}: {e}. The file is at {p}.")
++    return answer()
+ 
+ 
+ #: report path -> builder-sources mtime of a failed rebuild: retry once per
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f4bd85ec..2f4d7460 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -18,6 +18,7 @@ APIs (retro_results, api_retro_playback, api_retro_mapswap, _season_report)
+ """
+ from __future__ import annotations
+ 
++import json
+ import time
+ from pathlib import Path
+ 
+@@ -177,6 +178,8 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+                                        "default_width": DEFAULT_SHARD_WIDTH,
+                                        "width_cap": SHARD_WIDTH_CAP,
+                                        "knob_panel": _knob_panel("retro"),
++                                       # the Run form as last posted
++                                       "rform": _last_retro_form(),
+                                        # a half-installed engine cannot
+                                        # run the Oracle preset either
+                                        "engine_ok": pipeline._pf_engine_state()
+@@ -364,6 +367,50 @@ def _retro_bg(season: str, locations: list, width: int,
+                 pass
+ 
+ 
++#: the Run form's choices the page echoes (retro_seasons._retro_form),
++#: kept in the state folder across restarts as the Forecast tab's
++#: last_form.json is
++RETRO_FORM_NAME = "retro_form.json"
++
++
++def _retro_form_path() -> Path:
++    from app.core.runs import APP_STATE
++    return APP_STATE / RETRO_FORM_NAME
++
++
++def _remember_form(**fields) -> None:
++    """Keep the Run form's choices (every POST, before any refusal), so the
++    page shows them again; never raises (a read-only disk loses the
++    memory across restarts only)."""
++    retro_seasons._retro_form.clear()
++    retro_seasons._retro_form.update(fields)
++    try:
++        p = _retro_form_path()
++        p.parent.mkdir(parents=True, exist_ok=True)
++        p.write_text(json.dumps(fields, sort_keys=True), encoding="utf-8")
++    except OSError:
++        pass
++
++
++#: the file an EARLIER process wrote is read once (as forecast_aids
++#: restores last_form.json): what this process posted is in memory
++_retro_form_restored = {"done": False}
++
++
++def _last_retro_form() -> dict:
++    """The remembered choices ({} on a first open), from memory or, once,
++    the file an earlier process wrote."""
++    if not retro_seasons._retro_form and not _retro_form_restored["done"]:
++        _retro_form_restored["done"] = True
++        try:
++            got = json.loads(_retro_form_path().read_text(encoding="utf-8"))
++        except (OSError, ValueError):
++            got = {}
++        if isinstance(got, dict):
++            retro_seasons._retro_form.update(got)
++    return dict(retro_seasons._retro_form)
++
++
+ def _refused(msg: str, detail: str = "",
+              kind: str = "warn") -> RedirectResponse:
+     """Flash why a control request did nothing and go back to the index
+@@ -483,9 +530,16 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+       archive  move the current tree to a timestamped sibling, then run clean
+       discard  delete the current tree (confirmation required), then run clean
+     """
++    from app.core import missing as _missing
+     from app.core import retro
+     from app.core.retro import available_seasons
+     _invalidate_scans()
++    # the form as posted, before any refusal: the page shows it again
++    _remember_form(season=season, locations=locations,
++                   custom_locations=[str(x) for x in custom_locations],
++                   national=national, width=width, engine=engine,
++                   zero_anchor=str(knob_fields.get(
++                       _missing.ZERO_ANCHOR_KEY, "") or ""))
+     if not _valid_season(season):
+         return _refused("Not started: unrecognized season name.")
+     # busy checks, the archive/discard move and the claim all run under
+@@ -593,7 +647,6 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+         live = _live_root(season)
+         existing = retro_seasons._weeks_done(live)
+         legacy_resume = False
+-        from app.core import missing as _missing
+         if mode == "resume" and existing:
+             # one configuration per tree: completed weeks were built with
+             # the recorded model settings (a pre-registry record: its
+diff --git a/app/ui/static/tabs/retro.css b/app/ui/static/tabs/retro.css
+index d1303fd3..ec28e955 100644
+--- a/app/ui/static/tabs/retro.css
++++ b/app/ui/static/tabs/retro.css
+@@ -21,6 +21,8 @@
+ /* the hub tab's h1 with its "?" */
+ .rt-h1{margin:.1rem 0 .6rem}
+ /* the facts under a title: a badge and a row of values */
++/* the replay page's way back to its dataset's replays */
++a.rt-back{font-size:var(--fs-label);white-space:nowrap}
+ .rt-sub{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .9rem;
+   margin:-.3rem 0 .9rem}
+ /* a section heading outside a card, in the card headings' kicker style */
+diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
+index fd9ae761..de02d259 100644
+--- a/app/ui/templates/retro.html
++++ b/app/ui/templates/retro.html
+@@ -33,17 +33,20 @@
+  <div class="rt-forms"><div class="card rt-runcard"><h2>Settings</h2>
+   <form method="post" action="/retro/run">
+    <label for="rt-season">Season</label>
+-   <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
++   {# every control echoes the last Run (rform, routes/retro): a refusal or
++      a run never clears the form #}
++   {% set rform = rform if rform is defined else {} %}
++   <select name="season" id="rt-season">{% for s in seasons %}<option{% if rform.get("season") == s.name %} selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+    {# the options say what each choice costs and does: no "?" per label #}
+    <label for="retro-scope">Location scope</label>
+    <select name="locations" id="retro-scope">
+      <option value="panel6">6-state panel (fast)</option>
+-     <option value="all">all 52 jurisdictions</option>
+-     <option value="custom">custom selection</option></select>
+-   <div class="checklist" id="retro-custom" style="display:none">
++     <option value="all"{% if rform.get("locations") == "all" %} selected{% endif %}>all 52 jurisdictions</option>
++     <option value="custom"{% if rform.get("locations") == "custom" %} selected{% endif %}>custom selection</option></select>
++   <div class="checklist" id="retro-custom"{% if rform.get("locations") != "custom" %} style="display:none"{% endif %}>
+      {% for l in state_names %}
+      <label class="ck"><input type="checkbox" name="custom_locations"
+-       value="{{ l }}"> {{ l }}</label>
++       value="{{ l }}"{% if l in (rform.get("custom_locations") or []) %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}
+    </div>
+    {# US national fitted by default, as the Forecast form's default run
+@@ -53,26 +56,24 @@
+    <label for="rt-national">US national</label>
+    <select name="national" id="rt-national">
+      <option value="1">fit US national too (default)</option>
+-     <option value="0">states only</option></select>
++     <option value="0"{% if rform.get("national") == "0" %} selected{% endif %}>states only</option></select>
+    <label for="rt-width-in">Shard width</label>
+-   <span class="uk-affix"><input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
++   <span class="uk-affix"><input type="number" name="width" value="{{ rform.get("width") or default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
+    <label for="retro-engine">Engine preset</label>
+    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
+       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
+       published numbers anywhere #}
+    <select name="engine" id="retro-engine">
+-     <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
+-     <option value="analogue"{% if not engine_ok %} selected{% endif %}>Groundhog only (minutes)</option></select>
++     <option value="pf"{% if rform.get("engine") == "pf" %} selected{% endif %}>Oracle SIHRS + Groundhog (hours)</option>
++     <option value="analogue"{% if rform.get("engine") == "analogue" or (not rform.get("engine") and not engine_ok) %} selected{% endif %}>Groundhog only (minutes)</option></select>
+    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
+       decision with no default, asked here rather than in the panel; a
+       season replayed before the rule existed resumes as abstain #}
+    <label for="rt-zero-anchor">Groundhog when the newest week reads 0</label>
+    <select name="knob.groundhog.zero_anchor" id="rt-zero-anchor" required>
+      <option value="">Choose…</option>
+-     <option value="abstain">abstain: no Groundhog forecast for that state and week</option>
+-     <option value="level">level: anchor on the mean of the last 4 weeks</option>
+-     <option value="extend">extend: carry the last positive week over 1 or 2 zeros</option>
+-     <option value="blend">blend: level and extend averaged</option></select>
++     {% for v, words in [("abstain", "abstain: no Groundhog forecast for that state and week"), ("level", "level: anchor on the mean of the last 4 weeks"), ("extend", "extend: carry the last positive week over 1 or 2 zeros"), ("blend", "blend: level and extend averaged")] %}
++     <option value="{{ v }}"{% if rform.get("zero_anchor") == v %} selected{% endif %}>{{ words }}</option>{% endfor %}</select>
+    {# particles and replicates live in the panel, under their field names #}
+    {% include "_model_settings.html" %}
+    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
+diff --git a/app/ui/templates/retro_dataset.html b/app/ui/templates/retro_dataset.html
+index d558f974..927e67a8 100644
+--- a/app/ui/templates/retro_dataset.html
++++ b/app/ui/templates/retro_dataset.html
+@@ -11,8 +11,13 @@
+  {% if meta.knobs %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+  {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), status) }}</div>
+ <div class="rt-sub">
++ <a class="rt-back" href="/retro?dataset={{ ds.id }}">Replays of {{ ds.name }}</a>
+  {% call tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") %}{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}. {{ "Each week was forecast from the as_of snapshot that held it, as it stood then." if vt else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored." }} Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.{% endcall %}
+- {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}</div>
++ {% set facts = [] %}
++ {% if meta.first %}{% set _ = facts.append(("calendar", meta.first ~ " to " ~ meta.last, "Weeks")) %}{% endif %}
++ {# a replay that did not reach the end says how far it got #}
++ {% if not live and meta.total_weeks and (meta.weeks_completed or 0) < meta.total_weeks %}{% set _ = facts.append(("clock", status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks", "Progress")) %}{% endif %}
++ {% if facts %}{{ tips.meta(facts) }}{% endif %}</div>
+ 
+ {% if live %}
+ <div class="card">
+@@ -79,7 +84,7 @@
+   {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
+  </div>
+  <div id="rd-plot" class="rt-plot"></div>
+- <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored yet", "clock") }}</div>
++ <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored" ~ (" yet" if live else ""), "clock") }}</div>
+ </div>
+ 
+ {# the card heading names the block; its own title would repeat it #}
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 53eb2c70..b08ed6bd 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -353,10 +353,10 @@
+     var bar=document.getElementById('rs-prog-bar');
+     if(UI()&&bar)UI().setProgress(bar,value,max,text);
+   }
+-  function fail(msg){
++  function fail(msg,title){
++    title=title||'Could not prepare the file.';
+     prog.hidden=false;
+-    prog.innerHTML=UI()?UI().alert('error',msg,'Could not prepare the file.')
+-                       :'Could not prepare the file: '+msg;
++    prog.innerHTML=UI()?UI().alert('error',msg,title):title+' '+msg;
+   }
+   function done(){prog.hidden=true;prog.innerHTML='';}
+   function lock(on,btns){busy=on;btns.forEach(function(b){if(b)b.disabled=on;});}
+@@ -404,9 +404,14 @@
+     reportJob(rev,function(){done();})
+       .then(function(){return fetch(base(rev)+'/report_path'+q(rev));})
+       .then(function(r){if(!r.ok)throw new Error('report unavailable');return r.json();})
++      // the reveal answers a script caller in JSON; a refusal shows here,
++      // under the buttons, never in a flash a background redirect would eat
+       .then(function(d){return fetch('/output/reveal',{method:'POST',
++        headers:{Accept:'application/json'},
+         body:new URLSearchParams({path:d.path})});})
+-      .catch(function(err){fail(err.message);})
++      .then(function(r){return r.json();})
++      .then(function(d){if(!d.ok){var e=new Error(d.detail||'');e.title=d.message;throw e;}})
++      .catch(function(err){fail(err.message,err.title);})
+       .then(function(){lock(false,btns);});
+   });
+   // the replay bundle: built by one request (no steps to count), so the
