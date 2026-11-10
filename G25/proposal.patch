@@ -1,0 +1,403 @@
+diff --git a/app/core/contactmap.py b/app/core/contactmap.py
+index 01adb525..194c5808 100644
+--- a/app/core/contactmap.py
++++ b/app/core/contactmap.py
+@@ -127,8 +127,7 @@ def _run_bng(source: str, workdir: Path, out_name: str, timeout: int,
+              "cm.bngl"], capture_output=True, cwd=str(workdir),
+             timeout=timeout, **_pf.bng_run_kwargs(bng_env(BNG, cwd=workdir)))
+         if not out.is_file():
+-            raise ContactMapError(f"BNG2.pl could not {what}:\n"
+-                                  + _pf.bng_failure_text(r))
++            raise ContactMapError(_pf.bng_could_not(what, r))
+         return out.read_text(encoding="utf-8", errors="replace")
+ 
+ 
+diff --git a/app/core/datasets/checks.py b/app/core/datasets/checks.py
+index e12fce5f..de660038 100644
+--- a/app/core/datasets/checks.py
++++ b/app/core/datasets/checks.py
+@@ -481,8 +481,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
+         # a grouped CSV lists only reported weeks: NA is an error
+         lines = [ln for ln, _ in na]
+         rep.add("value_na", f"The '{vcol}' column is blank or NA on "
+-                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). All "
+-                "rows must have a value; delete rows for weeks not reported.",
++                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). "
++                "Every row must have a value, and a grouped file has a row "
++                "for every week; a hubverse file (date, location, value) "
++                "may hold NA for a week not reported.",
+                 lines)
+     elif na:
+         # hubverse time series carry NA for unreported weeks (FluSight's
+diff --git a/app/core/datasets/reading.py b/app/core/datasets/reading.py
+index 4e27ed0e..a01cbe9b 100644
+--- a/app/core/datasets/reading.py
++++ b/app/core/datasets/reading.py
+@@ -525,11 +525,15 @@ def _one_series(header, norm, chosen, mapped, rows):
+               if h and i not in keep and norm[i] not in extras
+               and norm[i] not in ROLE_ALIASES["population"]]
+     kinds = {i: _column_kind(rows, i) for i in others}
+-    if "text" in kinds.values():
++    # text under a value name (cases, count) is the value column with a
++    # cell that is not a number, which the checks name; under any other
++    # name it could be a group, and the file is refused as before
++    if any(k == "text" and norm[i] not in ROLE_ALIASES["value"]
++           for i, k in kinds.items()):
+         return None
+     if "value" in mapped:
+         return [chosen["value"]], []
+-    numbers = [i for i in others if kinds[i] == "number"]
++    numbers = [i for i in others if kinds[i] in ("number", "text")]
+     if not numbers:
+         return None
+     return numbers, [i for i in others if kinds[i] == "blank"]
+diff --git a/app/core/engines/pf.py b/app/core/engines/pf.py
+index d8e6ce65..7eb0d986 100644
+--- a/app/core/engines/pf.py
++++ b/app/core/engines/pf.py
+@@ -373,6 +373,35 @@ def bng_failure_text(r, sep: str = "\n") -> str:
+     return sep.join(parts) or "BNG2.pl printed nothing"
+ 
+ 
++def bng_said_why(said: str) -> str:
++    """BNG2.pl's own account of what stopped it, from `said` (its output,
++    or bng_failure_text of the run): the ERROR line, with the "at line N"
++    that follows it as "(line N)"; else the ABORT line; else the last
++    line. '' when it said nothing."""
++    lines = [l.strip() for l in str(said or "").splitlines() if l.strip()]
++    for i, line in enumerate(lines):
++        if line.startswith("ERROR:"):
++            why = line[len("ERROR:"):].strip()
++            at = (re.match(r"at line (\d+)\b", lines[i + 1])
++                  if i + 1 < len(lines) else None)
++            return why + (f" (line {at.group(1)})" if at else "")
++    for line in lines:
++        if line.startswith("ABORT:"):
++            return line[len("ABORT:"):].strip()
++    return lines[-1] if lines else ""
++
++
++def bng_could_not(what: str, r) -> str:
++    """The refusal for a BNG2.pl run that did not `what` ("generate the
++    network"): its own reason on the first line, which a notice shows,
++    then everything it said (bng_failure_text), which the notice's tip
++    holds (sandbox.split_reason)."""
++    said = bng_failure_text(r)
++    why = bng_said_why(said)
++    head = f"BNG2.pl could not {what}" + (f": {why}" if why else ".")
++    return f"{head}\n{said}"
++
++
+ def bng_started(said) -> bool:
+     """Whether a BNG2.pl run got as far as the model: its banner is in
+     `said` (its stdout, or bng_failure_text of the run). Without it Perl
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 7e816e0a..820878b6 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -1029,8 +1029,7 @@ def _netgen(cell: Path) -> None:
+         said = pf_engine.bng_failure_text(r)
+         if not pf_engine.bng_started(r.stdout):
+             raise SandboxError(pf_engine.bng_broken_message(said))
+-        raise SandboxError("BNG2.pl could not generate the network:\n"
+-                           + said)
++        raise SandboxError(pf_engine.bng_could_not("generate the network", r))
+ 
+ 
+ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
+diff --git a/app/core/sandbox_bngl.py b/app/core/sandbox_bngl.py
+index 8db7d4a9..2176818e 100644
+--- a/app/core/sandbox_bngl.py
++++ b/app/core/sandbox_bngl.py
+@@ -162,7 +162,15 @@ def read_exp(exp_text: str) -> dict:
+                                "is the header, '#' then one name per column, "
+                                "such as '# time H_weekly'",
+                                code="EXP_UNREADABLE")
+-        rows.append([float(x) for x in parts])
++        values = [float(x) for x in parts]
++        if any(math.isinf(v) for v in values):
++            # inf (or 1e400) has no total to compare and no count to fit;
++            # NaN stays a missing week, as the engine's own output writes it
++            raise SandboxError(f"data.exp row {l.strip()!r} holds an "
++                               "infinite value: every value is a count, or "
++                               "negative for a missing week",
++                               code="EXP_UNREADABLE")
++        rows.append(values)
+     if len(cols) < 2 or not rows:
+         raise SandboxError("data.exp needs a time column, one observation "
+                            "column and at least one row",
+diff --git a/app/core/sandbox_check.py b/app/core/sandbox_check.py
+index 4256f3e9..309d6dcd 100644
+--- a/app/core/sandbox_check.py
++++ b/app/core/sandbox_check.py
+@@ -4,6 +4,7 @@ app/core/sandbox.py is the facade; every name here imports from it too.
+ """
+ from __future__ import annotations
+ 
++import math
+ import re
+ import subprocess
+ import tempfile
+@@ -374,8 +375,11 @@ def _scale_note(expected: list, observed: list) -> tuple:
+     """(fact, warning or '') comparing the model at its written values
+     with the data: their ranges, and a warning when their totals differ
+     tenfold or more (N, the starting state or the scale is off)."""
+-    obs = [float(v) for v in observed if float(v) >= 0]
+-    exp_ = [max(float(v), 0.0) for v in expected]
++    # a missing week is negative; a value that is not finite (a model that
++    # blows up) has no total, so it is left out rather than divided by
++    obs = [float(v) for v in observed if math.isfinite(float(v))
++           and float(v) >= 0]
++    exp_ = [max(float(v), 0.0) for v in expected if math.isfinite(float(v))]
+     if not obs or not exp_:
+         return "", ""
+     f = lambda v: f"{v:,.0f}" if abs(v) >= 10 else f"{v:.2g}"
+diff --git a/app/core/sandbox_data.py b/app/core/sandbox_data.py
+index a7b2688b..7d3eb1b3 100644
+--- a/app/core/sandbox_data.py
++++ b/app/core/sandbox_data.py
+@@ -164,7 +164,27 @@ def ingest_upload(fileobj, filename: str, kind: str = "",
+                                limits=datasets.Limits(max_bytes=max_bytes),
+                                filename=shown)
+     except datasets.DatasetError as e:
+-        raise UploadRefused(str(e), [str(p) for p in e.problems]) from None
++        raise UploadRefused(str(e), [_said_here(p) for p in e.problems]) from None
++
++
++#: the checks' advice to choose a column (the Data tab's upload box has the
++#: column mapping; this box has none), by problem code
++_CHOOSE = re.compile(r" Choose (which column holds each|one \(e\.g\., [^)]*\)"
++                     r", or keep only one in the file)\.$")
++_HERE = {"missing_columns": " The Data tab's upload can say which column is "
++                            "which; a dataset stored there is offered here "
++                            "under Load data.",
++         "ambiguous_columns": " Keep only one in the file, or choose it on "
++                              "the Data tab's upload; a dataset stored there "
++                              "is offered here under Load data."}
++
++
++def _said_here(problem) -> str:
++    """A refusal's words for this box: the way to the Data tab in place of
++    advice to choose a column, which only its upload box can follow."""
++    text = str(problem)
++    way = _HERE.get(getattr(problem, "code", ""))
++    return _CHOOSE.sub(lambda m: way, text) if way else text
+ 
+ 
+ def dataset_series(dataset_id: str, group: str, start: str = "",
+diff --git a/app/tests/test_dataset_lenient.py b/app/tests/test_dataset_lenient.py
+index e8366301..63b548a4 100644
+--- a/app/tests/test_dataset_lenient.py
++++ b/app/tests/test_dataset_lenient.py
+@@ -798,6 +798,11 @@ def test_missing_values_quote_the_cell_its_date_and_group():
+     assert p.rows == (5, 8)
+     assert ("(rows 5, 8; e.g., (blank) (2024-08-10, B), NA (2024-08-24, A))"
+             in p.message)
++    # deleting the row was once the advice, and the gap check then refused
++    # the file (SB-27): the advice names a file that loads instead
++    assert "delete rows" not in p.message
++    assert ("a hubverse file (date, location, value) may hold NA for a week "
++            "not reported") in p.message
+     assert "row 5; e.g., row 5" not in str(rep.problems)
+     p = only(rep, "population_missing")
+     assert "(row 8; e.g., (blank) (2024-08-24, A))" in p.message
+diff --git a/app/tests/test_perl_bng_env.py b/app/tests/test_perl_bng_env.py
+index 6ca57950..01c81c93 100644
+--- a/app/tests/test_perl_bng_env.py
++++ b/app/tests/test_perl_bng_env.py
+@@ -462,6 +462,33 @@ def test_the_reinstall_remedy_reinstalls_bionetgen_alone(monkeypatch):
+         assert "-m pip install --force-reinstall --no-deps bionetgen" in msg
+ 
+ 
++def test_a_bng_refusal_puts_its_own_reason_on_the_first_line():
++    """The notice once ended in a colon with BNG2.pl's whole log behind the
++    "?", its ERROR line last (SB-04, WI-11): the ERROR line, with its line
++    number, is the first line now, and the log follows for the tip."""
++    r = types.SimpleNamespace(
++        stdout="BioNetGen version 2.9.3\nReading from file cm.bngl (level 0)\n"
++               "Read 7 parameters.\nERROR: Molecule Z() does not match any "
++               "declared molecule types\n  at line 48\n",
++        stderr="ABORT: Reaction rule list could not be read because of "
++               "errors.\n", returncode=1)
++    said = pf.bng_could_not("generate the network", r)
++    notice, tip = sb.split_reason(said)
++    assert notice == ("BNG2.pl could not generate the network: Molecule Z() "
++                      "does not match any declared molecule types (line 48)")
++    assert tip.startswith("ABORT: Reaction rule list could not be read")
++    assert pf.bng_started(said)
++    # no ERROR line: the ABORT line; nothing at all: the last line said
++    assert pf.bng_said_why("BioNetGen version 2.9.3\nABORT: Molecule Q not "
++                           "defined\n") == "Molecule Q not defined"
++    assert pf.bng_said_why("Can't open perl script\n") == \
++        "Can't open perl script"
++    assert pf.bng_said_why("") == ""
++    empty = types.SimpleNamespace(stdout="", stderr="", returncode=1)
++    assert pf.bng_could_not("draw the contact map", empty).startswith(
++        "BNG2.pl could not draw the contact map: BNG2.pl printed nothing\n")
++
++
+ def test_the_sandboxs_netgen_failure_keeps_perls_first_line(sandbox_root,
+                                                             monkeypatch):
+     """A run that dies before BioNetGen's banner is this computer's
+@@ -490,7 +517,8 @@ def test_the_sandboxs_netgen_failure_keeps_perls_first_line(sandbox_root,
+     with pytest.raises(sb.SandboxError) as e:
+         sb.prepare("kinetics_example")
+     notice, tip = sb.split_reason(str(e.value))
+-    assert notice == "BNG2.pl could not generate the network:"
++    assert notice == ("BNG2.pl could not generate the network: Molecule Q "
++                      "not defined")
+     assert tip.startswith("ABORT: Molecule Q not defined")
+ 
+ 
+diff --git a/app/tests/test_sandbox_check.py b/app/tests/test_sandbox_check.py
+index d4427748..c7992b5a 100644
+--- a/app/tests/test_sandbox_check.py
++++ b/app/tests/test_sandbox_check.py
+@@ -157,6 +157,29 @@ def test_a_row_at_or_before_the_start_time_is_named(box):
+                in w for w in sb.check(files)["warnings"])
+ 
+ 
++def test_a_value_that_is_not_finite_is_named_and_the_rest_still_reports(box):
++    # "1 inf" once reached the scale note as a total of inf and Check came
++    # back with only "float division by zero" (SB-15)
++    from app.core import sandbox_check as sc
++    for bad in ("inf", "1e400", "-inf"):
++        files = _files()
++        files["data.exp"] = f"# time T_weekly\n0 3\n1 {bad}\n2 8\n"
++        r = sb.check(files)
++        assert not r["ok"]
++        assert r["problems"] == [f"data.exp row '1 {bad}' holds an infinite "
++                                 "value: every value is a count, or negative "
++                                 "for a missing week"], bad
++        assert r["facts"]["network"] == "generates"       # the rest reported
++    # a NaN row is a missing week (test_sandbox's run with one): no refusal
++    files = _files()
++    files["data.exp"] = "# time T_weekly\n0 3\n1 nan\n2 8\n"
++    assert not any("infinite" in p for p in sb.check(files)["problems"])
++    # a model that blows up has no total either: left out, never divided by
++    fact, warn = sc._scale_note([float("inf"), 4.0], [3.0, float("nan"), 5.0])
++    assert fact.startswith("at its written values the model gives 4 to 4")
++    assert warn == ""
++
++
+ def test_a_free_parameter_without_a_prior_is_a_problem(box):
+     # the engine pairs __FREE names with prior lines both ways and refuses
+     # a run that does not, so Check must not say "the model can run"
+diff --git a/app/tests/test_sandbox_machine.py b/app/tests/test_sandbox_machine.py
+index bf62c89a..94d20003 100644
+--- a/app/tests/test_sandbox_machine.py
++++ b/app/tests/test_sandbox_machine.py
+@@ -409,8 +409,10 @@ def test_check_keeps_a_model_failure_after_the_banner_as_the_models(
+     files = {n: (EXAMPLE / n).read_text() for n in sb.REQUIRED}
+     r = sb.check(files, work=tmp_path / "check")
+     assert r["facts"]["network"] == "fails" and r["facts"]["machine"] == ""
++    # BNG2.pl's own reason first (the notice), its words after (SB-04)
+     assert r["problems"][0].startswith("BNG2.pl could not generate the "
+-                                       "network:\nABORT: Molecule Q")
++                                       "network: Molecule Q not defined\n"
++                                       "ABORT: Molecule Q")
+     # the banner is kept although the tail cut it: the run reached the model
+     assert pf.bng_started(r["problems"][0])
+ 
+diff --git a/app/tests/test_sandbox_upload.py b/app/tests/test_sandbox_upload.py
+index 1596d38f..4113afaf 100644
+--- a/app/tests/test_sandbox_upload.py
++++ b/app/tests/test_sandbox_upload.py
+@@ -195,10 +195,14 @@ def test_a_client_file_name_is_never_a_path(box, tmp_path):
+ 
+ 
+ def test_rates_load_with_a_word_about_the_objective(box):
++    # no rate objective is shipped (SB-10): the note says what the fit does
++    # with rates and how to make counts, never a setting with no value
+     rates = HUBVERSE.replace(",8\n", ",0.8\n")
+     r = _upload(rates, kind="rate")
+-    assert "Rates: set objfunc in priors.conf." in client.get(
+-        r.headers["location"]).text
++    html = client.get(r.headers["location"]).text
++    assert "Rates: the fit expects counts." in html
++    assert "multiply the rates by the population they are per" in html
++    assert "objfunc in priors.conf" not in html
+ 
+ 
+ def test_the_stored_dataset_is_offered_to_other_models(box):
+@@ -255,6 +259,30 @@ def test_two_columns_of_numbers_are_refused_inline_naming_both(box):
+     assert D.list_datasets() == [] and sb.read_model("mine")["data.exp"] == before
+ 
+ 
++def test_column_advice_here_leads_to_the_data_tab(box):
++    # this box has no column picker (SB-05): the refusal says to keep one
++    # column, or to upload on the Data tab, whose box can choose them
++    _upload("week_ending,cases,deaths\n2024-10-05,12,1\n2024-10-12,19,2\n")
++    html = client.get("/sandbox?model=mine").text
++    assert "Keep only one in the file, or choose it on the Data tab" in html
++    assert "Choose one (e.g.," not in html
++    _upload("when,where,how many\n1,2,3\n")
++    html = client.get("/sandbox?model=mine").text
++    assert "The Data tab&#39;s upload can say which column is which" in html
++    assert "Choose which column holds each" not in html
++
++
++def test_a_word_in_the_count_column_is_named_not_a_missing_group(box):
++    # a date,count file with "ten" in it once read as a file with no group
++    # column (SB-05); the word is the fault, and the refusal names it
++    _upload("date,cases\n2024-01-06,ten\n2024-01-13,12\n2024-01-20,14\n")
++    html = client.get("/sandbox?model=mine").text
++    assert "Not loaded:" in html
++    assert ("The &#39;cases&#39; column must contain numbers only: 1 value(s) "
++            "are not (row 2; e.g., ten (2024-01-06") in html
++    assert "No column for the group" not in html
++
++
+ def test_the_file_picker_says_which_files_it_takes(box):
+     html = client.get("/sandbox?model=mine").text
+     pane = html.split('id="sbfill-up"')[1].split('id="sbfill-sim"')[0]
+diff --git a/app/tests/test_sandbox_workbench.py b/app/tests/test_sandbox_workbench.py
+index f6ea0097..71206023 100644
+--- a/app/tests/test_sandbox_workbench.py
++++ b/app/tests/test_sandbox_workbench.py
+@@ -254,6 +254,10 @@ def test_sandbox_js_keeps_the_consoles_rules():
+     assert "=>" not in js and "`" not in js
+     assert not re.search(r"^\s*(const|let|class|async)\s", js, flags=re.M)
+     assert "themechange" in js and "fontsizechange" in js
++    # Check promises that the model can run only with nothing to look at:
++    # a note may say a run would stop (SB-14)
++    assert js.count("the model can run") == 1
++    assert "'No problems found:', 'the model can run.'" in js
+     html = (Path(srv.__file__).parent / "templates" / "sandbox.html").read_text()
+     assert '<script defer src="/static/sandbox.js"></script>' in html
+ 
+diff --git a/app/ui/routes/sandbox.py b/app/ui/routes/sandbox.py
+index 2681cae8..ab3babdc 100644
+--- a/app/ui/routes/sandbox.py
++++ b/app/ui/routes/sandbox.py
+@@ -523,8 +523,11 @@ def _sandbox_fill_flash(info: dict) -> None:
+     rate = info.get("kind") == "rate"
+     if rate:
+         # to act on: said on the line, the why in the tip
+-        msg += " Rates: set objfunc in priors.conf."
+-        detail += " The default objfunc expects counts."
++        msg += " Rates: the fit expects counts."
++        detail += (" The objective (neg_bin_dynamic) reads data.exp as "
++                   "weekly counts, so a rate fits only as if it were one; "
++                   "for counts, multiply the rates by the population they "
++                   "are per.")
+     _flash(msg, "warn" if rate else "ok", detail=detail)
+ 
+ 
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index 6400f570..3ade2c1b 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -496,9 +496,9 @@
+               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
+                                 'a run would fail.') + listHtml(probs);
+             } else if (warns.length) {
+-              // never green above a note: the notes are the headline
+-              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'))
+-                + listHtml(warns);
++              // never green above a note, and no promise that the model can
++              // run above one that says a run would stop: the notes are the headline
++              html += alertHtml('warn', 'Worth a look:', notes + '.') + listHtml(warns);
+             } else if (f.machine) {
+               html += alertHtml('ok', 'No problems found in the model.', '');
+             } else {
