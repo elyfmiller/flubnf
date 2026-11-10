@@ -33,6 +33,7 @@ from .parsing import (
     _Replayable,
     _week_side,
     detect_encoding,
+    not_text,
     parse_date,
     sniff_delimiter,
 )
@@ -90,7 +91,11 @@ def validate(source, *, kind: Optional[str] = None,
     rep, cols, raw_rows = Report(), None, []
     try:
         try:
-            enc = detect_encoding(src.head(4096))
+            head = src.head(4096)
+            said = not_text(head)
+            if said:                  # a workbook or binary: named as such
+                raise _NotText(said)
+            enc = detect_encoding(head)
             if enc != "utf-8":
                 src.forget()
             scan = _Scan()
@@ -101,14 +106,19 @@ def validate(source, *, kind: Optional[str] = None,
                 src.forget()
                 rep, cols, raw_rows = _read(src, "cp1252", limits, columns,
                                             series=series)
-                rep.warnings.insert(0, "Not UTF-8 text: read as Windows-1252 "
-                                    "(a spreadsheet's usual CSV).")
+                if "encoding" not in rep.codes:   # refused as not text
+                    rep.warnings.insert(0, "Not UTF-8 text: read as "
+                                        "Windows-1252 (a spreadsheet's usual "
+                                        "CSV).")
             elif scan.bad:
                 # a BOM says UTF-8 (an encoding problem); UTF-8 text beside
                 # bytes that are not mixes encodings
                 rep, cols = Report(encoding=enc), None
                 rep.add("encoding" if enc == "utf-8-sig" else
                         "encoding_mixed", _mixed_message(enc, scan), scan.bad)
+        except _NotText as e:
+            rep, cols = Report(), None
+            rep.add("encoding", str(e))
         except _LimitExceeded as e:
             rep, cols = Report(), None
             what = str(e)
@@ -150,6 +160,10 @@ def validate(source, *, kind: Optional[str] = None,
                 if w.startswith("Not UTF-8 text") else w
                 for w in rep.warnings]
     return rep
+
+
+class _NotText(Exception):
+    """The file is a workbook or binary (parsing.not_text): said as is."""
 
 
 class _Scan:

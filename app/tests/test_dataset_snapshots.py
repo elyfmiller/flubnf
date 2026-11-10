@@ -252,7 +252,8 @@ def test_the_box_takes_several_files_and_a_folder():
     assert ("an as_of column in this file, or snapshot files beside it "
             "(optional), one per as_of") in about
     # an as_of column in the weekly CSV is read, not dropped with the rest
-    assert "other columns, except as_of, are ignored" in about
+    # (the column names are in README since the tip was cut to two lines)
+    assert "an as_of column in this file" in about
     assert 'id="tip-dsup-replay-snaps"' not in page
 
 
@@ -361,7 +362,10 @@ def test_replay_this_stores_one_vintage_true_dataset():
     (ds,) = D.list_datasets()
     assert r.headers["location"] == f"/retro?dataset={ds.id}#main"
     page = client.get(r.headers["location"]).text
-    assert "Vintage-true: each week sees its as_of snapshot." in page
+    # the badge's word; what it means in the replays' one "?" (G28)
+    assert 'uk-badge-t">vintage-true<' in page
+    assert "Vintage-true: each replayed week sees the as_of snapshot that " \
+        "held it." in page
     assert ("8 snapshots, as_of <span class=\"nw\">2023-11-04</span> to "
             "<span class=\"nw\">2023-12-23</span>.") in page
     first = page.split('id="dsr-first"')[1].split("</select>")[0]

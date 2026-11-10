@@ -56,7 +56,8 @@ COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
                   "to at least twice the reported value.")
 #: a choice in a few words (the tip, the run page)
 CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
-                "blend": "blend", "set_aside": "set aside", "omit": "leave out",
+                "blend": "blend", "set_aside": "both from the week before",
+                "omit": "leave out",
                 "keep": "keep", "carry": "carry"}
 
 

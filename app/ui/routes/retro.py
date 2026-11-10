@@ -280,6 +280,11 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         return _back(request, "/retro")
     weeks = retro.run_summary(p)["weeks"]
     size_h = retro.human_bytes(retro.dir_size(p))
+    from app.core import replay_bundle
+    # an imported run by where it came from, an archived one by when
+    what = (f"the {season} run {replay_bundle.imported_label(p)}"
+            if replay_bundle.imported_label(p) else
+            f"the archived {season} run from {retro.stamp_human(stamp)}")
     try:
         retro.delete_tree(p)
     except Exception as e:
@@ -287,8 +292,7 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
                f"{type(e).__name__}: {str(e)[:160]}.", "error",
                detail="Nothing else changed.")
         return _back(request, "/retro")
-    _flash(f"Deleted the archived {season} run from "
-           f"{retro.stamp_human(stamp)}: {weeks} week"
+    _flash(f"Deleted {what}: {weeks} week"
            f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
            detail=f"The live {season} season was not touched.")
     return _back(request, "/retro")
@@ -512,9 +516,14 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core import retro
     from app.core.retro import available_seasons
     _invalidate_scans()
+    # every field the panel shows, its older names included (forms.
+    # _knob_panel reads particles, replicates and drop_same_day), so a
+    # refusal never resets a choice the next Run would then replay
     _remember_retro_form(season=season, locations=locations,
                          custom_locations=list(custom_locations),
                          national=national, width=width, engine=engine,
+                         particles=particles, replicates=replicates,
+                         drop_same_day=drop_same_day,
                          knob_fields=knob_fields, knobs=knobs)
     if not _valid_season(season):
         return _refused("Not started: unrecognized season name.")
@@ -647,9 +656,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     f"Not started: {season} has {existing} week"
                     f"{'' if existing == 1 else 's'} with other model "
                     "settings.",
-                    f"They were replayed with "
-                    f"{_knobs.label(_knobs.from_record(had))}; this run "
-                    f"asks for {_knobs.label(nd)}. Resuming would mix two "
+                    f"They were replayed with {_settings_words(had)}; "
+                    f"this run asks for {_settings_words(nd)}. Resuming "
+                    "would mix two "
                     "configurations in one season. Archive or discard the "
                     "existing results to run it.")
             # never resume a tree with the other engine preset (weeks would be
@@ -713,8 +722,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 "Not started: choose what the Groundhog does when the "
                 "newest week reads 0.",
-                "Set Newest week reading 0: abstain, level, extend or "
-                "blend.")
+                "Set Groundhog when the newest week reads 0: abstain, "
+                "level, extend or blend.")
         if mode == "discard":
             if existing:
                 try:
@@ -738,9 +747,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     f"{str(e)[:160]}.",
                     "Nothing was started; the existing results are "
                     "intact.", kind="error")
+            stamp = dst.name.partition("__archived_")[2]
             _flash(f"Archived {existing} week"
-                   f"{'' if existing == 1 else 's'} of {season} as "
-                   f"{dst.name}; starting a fresh replay.", "ok",
+                   f"{'' if existing == 1 else 's'} of {season} (set aside "
+                   f"{retro.stamp_human(stamp)}); starting a fresh replay.",
+                   "ok",
                    detail="The archive stays viewable from the season "
                    "list.")
         # claim in the request (not the task) so double submits cannot race
@@ -794,14 +805,16 @@ def _pasted_path(value) -> str:
     return s
 
 
-def _import_replay_file(src: Path, replace: bool):
+def _import_replay_file(src: Path, replace: bool, name: str = ""):
     """Import one bundle (a saved upload or a local path) into the retro
     root; (message, kind, detail) for the flash and the season page to
-    open, or a refusal and the index."""
+    open, or a refusal and the index. `name`: an upload's own file name,
+    which the refusals say (never the server's copy)."""
     from app.core import replay_bundle
     try:
         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
-                                        replace=replace, build=RUNNING_SHA)
+                                        replace=replace, build=RUNNING_SHA,
+                                        name=name)
     except replay_bundle.BundleError as e:
         return (f"Not imported: {e}", "warn", ""), "/retro"
     except OSError as e:
@@ -862,8 +875,9 @@ async def retro_import(request: Request):
                             f"the upload is larger than the {cap // 1024 ** 3}"
                             " GB limit")
                     out.write(chunk)
-            msg, target = await run_in_threadpool(_import_replay_file, tmp,
-                                                  replace)
+            msg, target = await run_in_threadpool(
+                _import_replay_file, tmp, replace,
+                Path(str(up.filename).replace("\\", "/")).name)
         except OSError as e:
             msg, target = (f"Could not import: {e}.", "error", ""), "/retro"
         except ValueError as e:
@@ -881,6 +895,27 @@ async def retro_import(request: Request):
     _invalidate_scans()
     _flash(msg[0], msg[1], detail=msg[2])
     return RedirectResponse(target, status_code=303)
+
+
+#: the Run form's label for the zero-anchor rule (retro.html), which a
+#: refusal names it by
+ZERO_ANCHOR_LABEL = "Groundhog when the newest week reads 0"
+
+
+def _settings_words(values) -> str:
+    """A replay's model settings as a refusal says them: the zero-anchor
+    rule by the Run form's label, the rest as the run page does
+    (knobs.words: labels and values, no keys or digests)."""
+    from app.core import missing as _missing
+    values = dict(values or {})
+    za = values.pop(_missing.ZERO_ANCHOR_KEY, None)
+    try:
+        rest = _knobs.words(_knobs.from_record(values))
+    except ValueError:                       # a record this build cannot read
+        rest = _knobs.label(values)
+    bits = ([f"{ZERO_ANCHOR_LABEL}: {za}"] if za else []) + (
+        [rest] if rest else [])
+    return ", ".join(bits) or "the default settings"
 
 
 def retro_engine_label(engine: str) -> str:

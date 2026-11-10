@@ -138,7 +138,8 @@ def test_stopped_season_card_offers_resume_with_recorded_settings():
     # the same guard kind as the form it shortcuts, and honest copy
     assert 'data-guard="retro-run"' in seg
     assert ">Resume</button>" in seg
-    assert "Resumes with the recorded settings" in html
+    # what Resume does is the page's one "?" (G28: its own "?" went)
+    assert "from its last completed week with the recorded settings" in html
 
 
 def test_season_without_recorded_settings_gets_no_resume_button():

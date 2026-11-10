@@ -500,9 +500,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 f"decimals or have a {sep_name} separating thousands "
                 f"({_rows(lines)}; e.g., {cells(either)}): {t} is "
                 f"{t.replace(',', '.')} as a rate or {t.replace(mark, '')} "
-                "as a count. Choose whether the values are counts or rates; "
-                f"counts are written without thousands separators "
-                f"({t.replace(mark, '')}).", lines)
+                "as a count. Rates: choose rates. Counts: write them "
+                f"without the {sep_name}s ({t} as {t.replace(mark, '')}).",
+                lines)
     elif either and kind == "rate":
         t = either[0][1]
         rep.warnings.append(

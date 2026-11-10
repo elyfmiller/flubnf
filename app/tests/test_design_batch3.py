@@ -99,10 +99,11 @@ def test_active_and_unfinished_seasons_keep_their_bars():
     live = _index(done=3, status="running", running=True, active=True,
                   rel=None)
     assert 'class="runbar"' in live
-    assert "relWIS" not in live
+    # no score on the card (the page's "?" names relWIS for every card)
+    assert "relWIS" not in live.split(f'data-season="{SEASON}"', 1)[1]
     part = _index(done=3, status="stopped", rel=0.9)
     assert 'role="progressbar"' in part       # incomplete: bar, not verdict
-    assert "relWIS" not in part
+    assert "relWIS" not in part.split(f'data-season="{SEASON}"', 1)[1]
     unscored = _index(rel=None)               # complete but never scored
     assert 'role="progressbar"' in unscored
 

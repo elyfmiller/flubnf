@@ -138,8 +138,10 @@ def test_a_zero_is_flagged_and_worded_by_consequence(tmp_path, monkeypatch):
     assert g.flag() == "0 after 40, 40, 40"
     assert r.line() == f"All {len(LOCS)} reported · 1 reads 0"
     assert r.short() == f"All {len(LOCS)} reported · 1 reads 0"
-    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: set "
-                              "aside (looks like a missed report).")
+    # the choice by the Forecast tab's name for it (G27, DA-15)
+    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: both "
+                              "from the week before (looks like a missed "
+                              "report).")
     assert reported.ZERO_FACT in r.details()
     # the setting treats it as missing: the run forecasts from the week before
     (g,) = reported.check("missing").gaps
@@ -182,8 +184,9 @@ def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
     assert r.complete and not r.clean
     assert r.line() == f"All {len(LOCS)} reported · 1 collapsed"
     assert r.short() == f"All {len(LOCS)} reported · 1 collapsed"
-    assert r.details()[0] == ("5 after 40: Ohio. Recommended: set aside "
-                              "(looks like a partial report).")
+    assert r.details()[0] == ("5 after 40: Ohio. Recommended: both from "
+                              "the week before (looks like a partial "
+                              "report).")
     assert reported.COLLAPSED_FACT in r.details()
     # a moderate drop is not a collapse (a fifth of the week before)
     _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "8"})
@@ -395,4 +398,5 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
     assert '<span class="uk-badge-t">1 reads 0</span>' in line
     assert 'aria-label="Complete, with issues"' in page
-    assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page
+    assert ("0 after 40, 40, 40: Ohio. Recommended: both from the week "
+            "before") in page

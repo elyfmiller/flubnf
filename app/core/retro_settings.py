@@ -111,8 +111,12 @@ def location_scope_change(prior_locations, locations) -> str | None:
     had, want = location_scope(prior_locations), location_scope(locations)
     if not had or had == want:
         return None
-    return (f"replayed over {len(had)} location(s); this run asks for "
-            f"{len(want)} with a different list")
+    if had - want == {"US"} and not want - had:
+        return "replayed with US; this run leaves US out"
+    if want - had == {"US"} and not had - want:
+        return "replayed without US; this run adds it"
+    return (f"replayed over {len(had)} location{'' if len(had) == 1 else 's'}"
+            f"; this run asks for {len(want)}, a different list")
 
 
 #: labels for the retro form's scopes, when a replay recorded no location list

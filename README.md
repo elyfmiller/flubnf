@@ -107,7 +107,13 @@ terminal through to a pull request in
 The Data, Forecast and Retrospective tabs also take weekly data of your
 own (a CSV of date, group and value, population optional; a file of one
 series needs no group column), kept apart
-from the FluSight hub and never submitted. For a true retrospective,
+from the FluSight hub and never submitted. The columns may be named date
+(or week, week_ending, target_end_date), group (or target_group,
+location, region, jurisdiction) and value (or count, cases, admissions,
+observation); other columns, except as_of, are ignored. Comma, semicolon
+or tab separated; UTF-8, UTF-16 or Windows-1252; dates as YYYY-MM-DD,
+M/D/YYYY or M/D/YY on one weekday, moved to the Saturday that ends each
+week. For a true retrospective,
 give the data as each week saw it: one CSV with an as_of column, or a
 folder of snapshot files, one per as_of, each named by its date
 (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column.
