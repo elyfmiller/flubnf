@@ -18,6 +18,18 @@ repositories outside this one; it pushes only this file here.
     - P2, private, seed date `2026-10-31#gate-2026-11-10-p2`: 369 s.
     - L1, public: 820 s, the same `pf_seed`s as P1. That is 2.14 times
       the private runs' mean, against `PUBLIC_COST_RATIO` 2.4.
+    - Builds, from each run's `component_versions.json`: P1 and P2 ran
+      the private engine at 2fdadee0. L1 ran the public engine at
+      8410f794, wheel sha256 18a59bc2..., as the lock says.
+    - The timings carry some load. Model ran single-core jobs at
+      below-normal priority meanwhile: its test suite for 13 minutes,
+      then the Groundhog for 17 (model.md, 0e3c2eb4).
+    - A trap Model found, which this lane's shell has too: a shell
+      opened before 2026-11-09's install still carries the old
+      `Documents\GitHub` values of `FLUBNF_HUB` and `FLUBNF_PYBNF`. Under
+      private, those name the eab31c71 fork, and doctor fails on it. The
+      gate's driver set both to the `%LOCALAPPDATA%` paths itself. A new
+      window reads the account's values.
   - **Reproduction.** P1 reproduces the submitted file exactly: 0 of its
     4,692 values differ over its 51 locations. So R is P0, and this PC's
     private engine gives the laptop's numbers to the count.
