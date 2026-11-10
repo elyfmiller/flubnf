@@ -1,0 +1,499 @@
+diff --git a/app/core/reported.py b/app/core/reported.py
+index 4eef5652..77ac6ba1 100644
+--- a/app/core/reported.py
++++ b/app/core/reported.py
+@@ -431,11 +431,26 @@ OPTION_TEXT = {
+ CARRY_SKIP_TEXT = "Engines' own walk"
+ 
+ 
++#: a state's choices that still apply while a run-wide setting counts its
++#: newest week as unreported (covering_rules): both models then forecast
++#: from the week before, as "Both from" does, whatever else is chosen
++RULE_LEAVES = ("set_aside", "omit")
++
++
++def covering_rules(g: Gap) -> list:
++    """The run-wide settings (missing.KEYS) that, set to "missing", count
++    this state's newest week as unreported, as the engines apply them
++    (missing.tail_flags); under any of them only RULE_LEAVES apply."""
++    vals = [v for _, v in g.reported]
++    return [k for k in MS.KEYS if MS.tail_flags(vals, {k: "missing"})]
++
++
+ def box_rows(report: Report) -> list:
+     """One row per state for templates/_data_issues.html: {fips, name,
+     issue, what, flag, hint, rec, why, reported, default, options: [(value,
+-    label)], aside: [[week, value]]}. `rec` and `why` are the
+-    recommendation (recommend()); `hint` is `why`. Choices a state cannot
++    label)], aside: [[week, value]], rules}. `rec` and `why` are the
++    recommendation (recommend()); `hint` is `why`; `rules` the run-wide
++    settings that cover the state (covering_rules). Choices a state cannot
+     take (extend, blend and set aside for 3 or more trailing zeros) are
+     left out of its options."""
+     rows = []
+@@ -470,5 +485,6 @@ def box_rows(report: Report) -> list:
+                      "reported": [[w, v] for w, v in g.reported],
+                      "default": MS.DEFAULT_CHOICE.get(g.reason, ""),
+                      "options": opts,
+-                     "aside": [[w, v] for w, v in g.aside]})
++                     "aside": [[w, v] for w, v in g.aside],
++                     "rules": covering_rules(g)})
+     return rows
+diff --git a/app/tests/test_forecast_modes.py b/app/tests/test_forecast_modes.py
+index 6adc25ae..1a5d6361 100644
+--- a/app/tests/test_forecast_modes.py
++++ b/app/tests/test_forecast_modes.py
+@@ -99,7 +99,9 @@ def test_run_refuses_a_season_start_that_is_not_before_the_week(
+     assert started == []
+     assert ui_state._status.get("running") is None
+     page = client.get("/forecast").text
+-    assert "run.season_start" in page and "Not run" in page
++    # said once, under the panel, in its words (G26)
++    why = page.split('id="ms-refused">')[1].split("</div>")[0]
++    assert "Season start: &#39;not-a-date&#39; is not a date." in why
+ 
+ 
+ def test_run_settings_name_the_season_start():
+diff --git a/app/tests/test_forecast_panel_fixes.py b/app/tests/test_forecast_panel_fixes.py
+new file mode 100644
+index 00000000..962e65c9
+--- /dev/null
++++ b/app/tests/test_forecast_panel_fixes.py
+@@ -0,0 +1,133 @@
++"""The Forecast tab's settings panel and Data issues box (bug hunt
++2026-10-25, G26).
++
++  * A run-wide setting that counts a state's newest week as unreported
++    ("Newest weeks reading 0" or "Collapsed newest week") leaves that
++    state only "Both from" and "Leave out": the box hides the rest while
++    it is on, a run refuses them in words, and the run records what was
++    applied (the rule, or the state's set-aside), never a choice the rule
++    overrode.
++  * A Data issues select is never narrower than its words.
++  * A model-settings refusal is said once, under the panel, in plain
++    words; Reset to defaults hides it.
++  * A cleared date asks for one; the archived-week picker follows the
++    date, so the same week can be picked again.
++"""
++from pathlib import Path
++
++from app.core import reported
++from app.ui import forms
++from app.ui import state as ui_state
++from test_data_issues import _capture_run, _isolated, _post, client  # noqa: F401
++from test_newest_reported import WEEKS, _hub
++
++UI = Path(__file__).resolve().parents[1] / "ui"
++
++
++def _text(name: str) -> str:
++    return (UI / name).read_text(encoding="utf-8")
++
++
++# ------------------------------------- FC-13: the run-wide rule and the box
++
++def test_a_run_wide_rule_leaves_a_covered_state_both_from_and_leave_out(
++        tmp_path, monkeypatch):
++    # Ohio reads 0 after 40s; Utah collapses to 5 after 40s
++    _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0", "Utah": "5"})
++    rep = reported.check()
++    rules = {r["name"]: r["rules"] for r in reported.box_rows(rep)}
++    # a zero after 40 is also a week under a fifth of 40: either setting
++    assert rules == {"Ohio": ["data.trailing_zero", "data.partial_week"],
++                     "Utah": ["data.partial_week"]}
++    page = client.get("/forecast").text
++    assert ('data-rules="data.trailing_zero data.partial_week"' in page
++            and 'data-rules="data.partial_week"' in page)
++    started = _capture_run(monkeypatch)
++    on = {"knob.data.trailing_zero": "missing"}
++    # a choice the rule overrides is refused in words
++    ui_state._status.pop("flash", None)
++    _post({**on, "gap.39": "level", "gap.49": "keep"})
++    assert started == []
++    assert ui_state._status["flash"] == (
++        "Not run: Data issues for Ohio: Level does not apply while Newest "
++        f"weeks reading 0 is set to counted as unreported; choose Both from "
++        f"{WEEKS[-2][5:]} or Leave out.")
++    # Utah is not covered by this setting: its Keep stands
++    _post({**on, "gap.39": "set_aside", "gap.49": "keep"})
++    states = started[-1].extra["data_choices"]["states"]
++    assert {l: (s["choice"], s["recommended"], s["followed"])
++            for l, s in states.items()} == {
++        "Ohio": ("set_aside", "set_aside", True),
++        "Utah": ("keep", "set_aside", False)}
++    # no answer (the box disabled): the rule covers the state, unrecorded
++    _post(on)
++    assert "Ohio" not in started[-1].extra["data_choices"]["states"]
++    # without the setting every choice is offered, as before
++    _post({"gap.39": "level", "gap.49": "keep"})
++    assert started[-1].extra["data_choices"]["states"]["Ohio"]["choice"] \
++        == "level"
++
++
++def test_the_box_follows_the_setting_in_the_page():
++    box = _text("templates/_data_issues.html")
++    assert ("o.hidden = o.disabled = on && o.value !== 'set_aside' && "
++            "o.value !== 'omit';") in box
++    assert "document.addEventListener('DOMContentLoaded', follow);" in box
++    assert "form.addEventListener('ms-reset', follow);" in box
++    assert "return o.value === v && !o.disabled;" in box
++    js = _text("static/model_settings.js")
++    assert ("box.dispatchEvent(new CustomEvent('ms-reset', {bubbles: true}));"
++            in js)
++
++
++# ------------------------------------------ FC-18: the select's own words
++
++def test_a_data_issues_select_is_never_narrower_than_its_words():
++    css = _text("static/tabs/forecast.css")
++    rule = css.split(".fc-di .di-state select{", 1)[1].split("}", 1)[0]
++    assert "min-width:min-content" in rule
++
++
++# ---------------------------- FC-21, FC-22: one refusal, plain, and reset
++
++def test_a_model_settings_refusal_is_said_once_in_plain_words(
++        tmp_path, monkeypatch):
++    _hub(tmp_path / "hub", monkeypatch)
++    started = _capture_run(monkeypatch)
++    for field, typed, said in (
++            ("knob.pf.jitter", "abc", "Kernel jitter: 'abc' is not a number."),
++            ("knob.pf.prior.Reff", "2.5, 0.6",
++             ("Prior range for Reff: 2.5, 0.6 is not a range: the low end "
++              "must be 0 or more and below the high end.")),
++            ("replicates", "0", "Replicates: 0 is outside 1 to 10.")):
++        ui_state._status.pop("flash", None)
++        r = _post({field: typed, "engine": "all"})
++        assert r.status_code == 303 and started == []
++        assert not ui_state._status.get("flash")     # no second notice
++        page = client.get("/forecast").text
++        why = page.split('id="ms-refused">')[1].split("</div>")[0]
++        assert said.replace("'", "&#39;") in why
++    assert forms._refusal_words(
++        "pf.prior.r: prior_ranges: r__FREE [0.0, 40.0] is not a valid "
++        "loguniform_var range") == ("Prior range for r: 0, 40 is not a "
++                                    "range: the low end must be above 0 and "
++                                    "below the high end.")
++    assert forms._refusal_words("pf.particles: '1e4' is not a valid int") \
++        == "Particles: '1e4' is not a whole number."
++
++
++def test_reset_to_defaults_hides_the_refusal():
++    js = _text("static/model_settings.js")
++    reset = js.split("reset.addEventListener('click'", 1)[1].split(
++        "// open or closed as the user left it", 1)[0]
++    assert "var said = box.querySelector('.fc-ms-refused');" in reset
++    assert "if (said) said.hidden = true;" in reset
++
++
++# --------------------------------- FC-23, FC-25: the date and the picker
++
++def test_a_cleared_date_asks_for_one_and_the_picker_follows_the_date():
++    page = _text("templates/forecast.html")
++    assert "if (!day) return 'Pick a forecast date.';" in page
++    assert ("if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value "
++            ": '';") in page
+diff --git a/app/tests/test_knobs_panel.py b/app/tests/test_knobs_panel.py
+index 4d5536bf..d03c2b40 100644
+--- a/app/tests/test_knobs_panel.py
++++ b/app/tests/test_knobs_panel.py
+@@ -258,7 +258,7 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
+                               "knob.oracle.w": "0.25", "replicates": "4",
+                               "submit_modified": "1"},      # no reason
+                 follow_redirects=False)
+-    assert "needs a reason" in ui_state._status.get("flash", "")
++    assert "needs a reason" in str(ui_state._last_form.get("ms_refused"))
+     html = client.get("/forecast").text
+     f = _panel_form(html)
+     got = dict(f.fields)
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index 39b2fdda..f31b77e9 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -189,7 +189,7 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+     # two different off-shipped values for one knob: refused, nothing runs
+     _post({"particles": "2000", "knob.pf.particles": "3000"})
+     assert len(started) == 3 and ui_state._status.get("running") is None
+-    assert "two values" in ui_state._status.get("flash", "")
++    assert "two values" in str(ui_state._last_form.get("ms_refused"))
+ 
+ 
+ @pytest.mark.parametrize("data,msg", [
+@@ -212,12 +212,13 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg,
+                                        pf_engine_ready):
+     started = _capture_run(monkeypatch, tmp_path)
++    ui_state._status.pop("flash", None)
+     r = _post(data)
+     assert r.status_code == 303
+     assert started == [] and ui_state._status.get("running") is None
+-    assert msg in ui_state._status.get("flash", "")
+-    assert "Not run" in ui_state._status.get("flash", "")
+-    assert ui_state._status.get("flash_kind") == "warn"
++    # said once, under the panel (forms._refusal_words): no notice above it
++    assert msg in str(ui_state._last_form.get("ms_refused"))
++    assert not ui_state._status.get("flash")
+ 
+ 
+ @pytest.mark.parametrize("field,typed,key", [
+@@ -231,12 +232,13 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
+     started = _capture_run(monkeypatch, tmp_path)
+     r = _post({field: typed})
+     assert r.status_code == 303 and started == []
+-    assert (f"Not run: model settings: {key}: '{typed}' is not a valid int."
+-            in ui_state._status["flash"])
++    assert (f"{key}: '{typed}' is not a valid int"
++            == ui_state._last_form["ms_refused"])
+     page = client.get("/forecast").text
+     assert '<details class="adv" open data-refused id="model-settings"' in page
+     why = page.split('id="ms-refused">')[1].split("</div>")[0]
+-    assert f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a valid int." in why
++    assert (f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a whole "
++            "number." in why)
+     assert f'name="{field}" id="ks-{key.replace(".", "-")}" value="{typed}"' in page
+ 
+ 
+diff --git a/app/tests/test_research_run.py b/app/tests/test_research_run.py
+index 33a4c453..0818ea0a 100644
+--- a/app/tests/test_research_run.py
++++ b/app/tests/test_research_run.py
+@@ -127,7 +127,7 @@ def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
+     # refused before the engine is claimed, never clamped
+     assert len(started) == 1
+     assert ui_state._status.get("running") is None
+-    assert "pf.particles" in ui_state._status.get("flash", "")
++    assert "pf.particles" in str(ui_state._last_form.get("ms_refused"))
+ 
+ 
+ # ----------------------------------------------------------------- the tag
+diff --git a/app/ui/forms.py b/app/ui/forms.py
+index 1eca566e..98b450f1 100644
+--- a/app/ui/forms.py
++++ b/app/ui/forms.py
+@@ -184,12 +184,32 @@ def _knob_panel(scope: str, form: dict | None = None,
+     return p
+ 
+ 
++#: the registry's type words (knobs._coerce) and the particle filter's
++#: prior check (engines/pf.py priors_for), as the panel says them
++_PLAIN_REFUSALS = (
++    (re.compile(r"^('.*') is not a valid float$"), r"\1 is not a number"),
++    (re.compile(r"^('.*') is not a valid int$"), r"\1 is not a whole number"),
++    (re.compile(r"^('.*') is not a valid range$"),
++     r"\1 is not two numbers, low then high"),
++    (re.compile(r"^('.*') is not a valid bool$"), r"\1 is not on or off"),
++    (re.compile(r"^('.*') is not a valid date$"), r"\1 is not a date"),
++    (re.compile(r"^prior_ranges: \S+ \[(\S+), (\S+)\] is not a valid "
++                r"(log)?uniform_var range$"),
++     lambda m: (f"{float(m[1]):g}, {float(m[2]):g} is not a range: the low "
++                f"end must be {'above 0' if m[3] else '0 or more'} and "
++                "below the high end")))
++
++
+ def _refusal_words(text: str) -> str:
+     """A refusal over the model settings as the panel says it: its knob
+     named by the panel's label ("Oracle blend weight: 2 is outside 0 to
+-    1."), never by its key."""
++    1."), never by its key, and a value it cannot read in plain words
++    ("Kernel jitter: 'abc' is not a number.")."""
+     key, sep, rest = text.strip().partition(": ")
+     knob = _knobs.BY_KEY.get(key) if sep else None
++    if knob:
++        for pat, words in _PLAIN_REFUSALS:
++            rest = pat.sub(words, rest)
+     text = f"{knob.label}: {rest}" if knob else text.strip()
+     text = text[:1].upper() + text[1:]
+     return text if text.endswith(".") else text + "."
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index f52a964c..41eeec14 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -319,6 +319,7 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+     prior_states = prior_states if isinstance(prior_states, dict) else {}
+     rows = {r["fips"]: r for r in _rep.box_rows(rep)}
+     knob = MS.zero_anchor_of({"knobs": nd})
++    rules = MS.rules_of({"knobs": nd})
+     states = {}
+     in_run = set(locs)
+     for g in rep.gaps:
+@@ -326,22 +327,39 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+             continue
+         r = rows[g.fips]
+         offered = dict(r["options"])
++        # a run-wide setting that counts the week as unreported moves both
++        # models back a week (missing.tail_flags) whatever else is chosen:
++        # only "Both from" and "Leave out" still apply (the box hides the
++        # rest while the setting is on)
++        ruled = [k for k in r["rules"] if k in rules]
++        if ruled:
++            offered = {c: t for c, t in offered.items()
++                       if c in _rep.RULE_LEAVES}
+         choice = gap_fields.get(g.fips)
+         if choice is None:
+             choice = str((prior_states.get(g.location) or {}).get("choice")
+                          or "")
+         if choice and choice not in offered:
++            if ruled:
++                k = _knobs.BY_KEY[ruled[0]]
++                return None, locs, (
++                    f"Data issues for {g.location}: "
++                    f"{dict(r['options']).get(choice, choice)} does not "
++                    f"apply while {k.label} is set to "
++                    f"{_knobs.choice_word(k.key, 'missing')}; choose "
++                    f"{' or '.join(offered.values())}.")
+             return None, locs, (f"Data issues for {g.location}: '{choice}' "
+                                 f"is not one of {', '.join(offered)}.")
+         if not choice:
+-            if g.reason == "zero" and knob:
++            if ruled or (g.reason == "zero" and knob):
+                 continue             # the run-wide rule covers it
+             choice = r["rec"]        # the box's preselection
++        rec = "set_aside" if ruled else r["rec"]
+         entry = {"issue": g.reason, "what": g.what(), "choice": choice,
+                  "week": rep.week,
+                  "reported": (r["aside"] if choice == "set_aside"
+                               else r["reported"]),
+-                 "recommended": r["rec"], "followed": choice == r["rec"]}
++                 "recommended": rec, "followed": choice == rec}
+         if choice == "set_aside":
+             aside = {w for w, _ in r["aside"]}
+             before = [w for w, _ in r["reported"] if w not in aside]
+@@ -1134,9 +1152,9 @@ def run_models(request: Request,
+     try:
+         kraw = _knob_raw(knob_fields, knobs)
+     except ValueError as e:                  # KnobError is a ValueError
+-        # the panel opens on its error, the reason under its head
++        # the panel opens on its error, the reason under its head: said
++        # there once, in the panel's words (forms._refusal_words)
+         _last_form["ms_refused"] = str(e) or True
+-        _flash(f"Not run: model settings: {e}.", "warn")
+         return _back(request, "/forecast")
+     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+     reason = _str_field(modified_reason).strip()
+@@ -1255,8 +1273,7 @@ def run_models(request: Request,
+                     "drop_same_day": bool(_int_field(drop_same_day))},
+             override=override, reason=reason)
+     except ValueError as e:                  # KnobError is a ValueError
+-        _last_form["ms_refused"] = str(e) or True
+-        _flash(f"Not run: model settings: {e}.", "warn")
++        _last_form["ms_refused"] = str(e) or True   # said under the panel
+         return _back(request, "/forecast")
+     kspec = _knobs.spec_fields(nd)
+     season_start = kspec.get("season_start", "")
+diff --git a/app/ui/static/model_settings.js b/app/ui/static/model_settings.js
+index e4987547..68bbbe83 100644
+--- a/app/ui/static/model_settings.js
++++ b/app/ui/static/model_settings.js
+@@ -192,6 +192,12 @@
+       if (tick) tick.checked = false;
+       if (reason) reason.value = '';
+       update();
++      // a refusal of the values just reset says nothing about these
++      var said = box.querySelector('.fc-ms-refused');
++      if (said) said.hidden = true;
++      // values set by script fire no change: tell what follows them (the
++      // Forecast tab's Data issues box)
++      box.dispatchEvent(new CustomEvent('ms-reset', {bubbles: true}));
+     });
+     // open or closed as the user left it this session; the server opens
+     // it only on the page after a refusal over its settings
+diff --git a/app/ui/static/tabs/forecast.css b/app/ui/static/tabs/forecast.css
+index bd2c5ebf..8e5fc28c 100644
+--- a/app/ui/static/tabs/forecast.css
++++ b/app/ui/static/tabs/forecast.css
+@@ -157,8 +157,10 @@
+ .fc-di .di-state:first-of-type{border-top:0;padding-top:0}
+ .fc-di .di-row select{margin:0;font-size:var(--fs-label);
+   padding:.3rem .45rem}
++/* never narrower than its words ("Both from 10-10"): beside the name when
++   both fit, else under it */
+ .fc-di .di-state select{width:auto;flex:1 1 7.5rem;min-width:7.5rem;
+-  max-width:15rem}
++  min-width:min-content;max-width:15rem}
+ .fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
+   margin-bottom:.2rem}
+ .fc-di .di-all label{margin:0;white-space:nowrap}
+diff --git a/app/ui/templates/_data_issues.html b/app/ui/templates/_data_issues.html
+index bfc119c9..6399f39d 100644
+--- a/app/ui/templates/_data_issues.html
++++ b/app/ui/templates/_data_issues.html
+@@ -40,7 +40,7 @@
+  {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
+  <div class="di-row di-state" data-issue="{{ r.issue }}">
+   <div class="di-head"><span class="di-rec uk-c-ok"{% if sel != r.rec %} hidden{% endif %}>{{ tips.icon("check", "recommended") }}</span><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }} {{ tips.icon_tip("di-why-" ~ r.fips, "why " ~ r.name ~ " is flagged", "info", r.why, state="muted") }}</span></div>
+-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}" aria-describedby="tip-di-why-{{ r.fips }}">
++  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}"{% if r.rules %} data-rules="{{ r.rules|join(' ') }}"{% endif %} aria-describedby="tip-di-why-{{ r.fips }}">
+    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
+   </select>
+  </div>
+@@ -52,10 +52,38 @@
+     // the "recommended" check shows while the select holds the rule's choice
+     function mark(s) {
+       var b = s.parentNode.querySelector('.di-rec');
+-      if (b) b.hidden = s.value !== s.dataset.rec;
++      if (b) b.hidden = s.value !== (s.dataset.ruled ? 'set_aside' : s.dataset.rec);
+     }
+     var sels = box.querySelectorAll('select[name^="gap."]');
+     sels.forEach(function (s) { s.addEventListener('change', function () { mark(s); }); });
++    // Model settings' "Newest weeks reading 0" or "Collapsed newest week"
++    // at "counted as unreported" moves both models back a week for the
++    // states it covers (data-rules): only "Both from" and "Leave out"
++    // still apply there, so the rest are hidden while it is on
++    var form = box.closest('form');
++    function follow() {
++      box.querySelectorAll('select[data-rules]').forEach(function (s) {
++        var on = s.dataset.rules.split(' ').some(function (k) {
++          var el = form && form.querySelector('[name="knob.' + k + '"]');
++          return !!el && !el.disabled && el.value === 'missing';
++        });
++        Array.prototype.forEach.call(s.options, function (o) {
++          o.hidden = o.disabled = on && o.value !== 'set_aside' && o.value !== 'omit';
++        });
++        if (on && s.options[s.selectedIndex].disabled) s.value = 'set_aside';
++        if (on) s.dataset.ruled = '1'; else delete s.dataset.ruled;
++        mark(s);
++      });
++    }
++    // the panel follows the box in the page: read it once it is there
++    follow();
++    document.addEventListener('DOMContentLoaded', follow);
++    if (form) {
++      form.addEventListener('change', function (e) {
++        if (e.target && /^knob\.data\./.test(e.target.name || '')) follow();
++      });
++      form.addEventListener('ms-reset', follow);
++    }
+     // "All zero states:": set each zero state's select that offers the
+     // choice (a state with 3 or more weeks of 0 has no extend or blend)
+     var all = document.getElementById('di-all');
+@@ -64,7 +92,7 @@
+       var v = all.value;
+       if (!v) return;
+       box.querySelectorAll('select[data-issue=zero]').forEach(function (s) {
+-        var has = Array.prototype.some.call(s.options, function (o) { return o.value === v; });
++        var has = Array.prototype.some.call(s.options, function (o) { return o.value === v && !o.disabled; });
+         if (has) { s.value = v; mark(s); }
+       });
+     });
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index f0b4fe36..d899af06 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -141,6 +141,7 @@
+       // Saturday past the data, or one the archive skipped (the nearest
+       // earlier week named); else no week is on or before the day
+       function noWeek(day) {
++        if (!day) return 'Pick a forecast date.';
+         var d = new Date(day + 'T00:00:00Z'), newest = VS[VS.length - 1];
+         if (!isNaN(d) && d.getUTCDay() === 6 && newest) {
+           if (day > newest) return 'No data for ' + day + ' yet; the data ends at ' + newest + '.';
+@@ -192,6 +193,9 @@
+         // nothing to say: no empty line under the date
+         line.hidden = !!a && (!kv || kv.hidden) && (!live || live.hidden);
+         paintRound(a);
++        // the picker shows the week only while the date is that week, so
++        // the same week can be picked again after typing another date
++        if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';
+         var nc = document.getElementById('newest-check');
+         if (nc) nc.hidden = a !== nc.dataset.week;
+         // the Data issues box belongs to that week too; disabled, it
