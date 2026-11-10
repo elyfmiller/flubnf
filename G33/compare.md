@@ -9,3 +9,5 @@ Both patches applied to def45db and run against the models, harmonic, week-ticks
 | HM-17 | e^+ε₁, e^−ε₁, 1.0. | The same markup. | Equal. B's test checks Home, Methods and both model pages; A's checks Home only. B's moves the harmonic pin. |
 
 Vote: B, finished with the one pin it misses: test_week_ticks' model.html pair accepts the deferred form (as in A's patch, `for d in ("", " defer")`). That is finishing B's patch, not combining, so B implements.
+
+Vote (final): A, with test_theme_and_harmonic's pin moved as in B's patch. B's point holds: docs/UI-KIT.md gives the empty state "at most one action that fills it", so a sentence in the action slot bends the kit's contract (criterion 4), and the readyState guard is the same behavior either way.
