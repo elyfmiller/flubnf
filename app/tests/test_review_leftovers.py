@@ -1,5 +1,8 @@
 """The bug-fix review's leftovers (2026-11-10).
 
+  * A wrapped segmented switch tucks every choice's left divider under
+    the outline at a row's start: the element rule keeps the -1px margin
+    the wrap rule gives (it is the more specific of the two).
   * Home's map comment names the legend's gray as the legend words it.
   * With no hub folder, Update data is never the Data page's primary
     action (a pull is refused then), nor does a check's answer make it so.
@@ -7,6 +10,7 @@
     protected folder in words, as the other protected-folder refusals do,
     and move or delete nothing.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +25,26 @@ from test_data_view import archive, client                     # noqa: E402,F401
 from test_state_folder_protect import state                    # noqa: E402,F401
 
 UI = Path(__file__).resolve().parents[1] / "ui"
+
+
+# ------------------------------------------- the segmented switch's divider
+
+def _rule(css: str, selector: str) -> str:
+    """The declarations of the one rule whose selector list is `selector`."""
+    m = re.search(re.escape(selector) + r"\{([^}]*)\}", css)
+    assert m, selector
+    return m.group(1)
+
+
+def test_a_wrapped_segmented_switch_tucks_each_divider_under_the_outline():
+    css = (UI / "static" / "ui-kit.css").read_text(encoding="utf-8")
+    # the wrap rule pulls each choice 1px left, under the outline ...
+    assert "margin-left:-1px" in _rule(css, ".uk-seg > *")
+    # ... and the element rule, more specific, keeps it (margin:0 there
+    # reset it, so a second row started with a double divider)
+    own = _rule(css, ".uk-seg > button,.uk-seg > a,.uk-seg > span")
+    margin = re.search(r"(?:^|;|\s)margin:([^;]*)", own).group(1).split()
+    assert margin == ["0", "0", "0", "-1px"], margin
 
 
 # ------------------------------------------------ Home's legend comment
