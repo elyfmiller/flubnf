@@ -79,11 +79,14 @@ def _live_workroot_ids() -> set:
 
 
 def _may_archive() -> bool:
-    """Whether the console run in progress can write a report archive: a
-    full run of both models on hub data (pipeline's archive step skips a
-    one-model, research, modified or vintage run, and a dataset run or
-    replay never reaches it). A run still starting may."""
-    from app.core.runs import is_modified, is_research
+    """Whether the console run in progress can write a report archive, by
+    the pipeline's own archive step (pipeline.py, step 7): it skips a
+    one-model run, a research run and a modified run whose files carry the
+    non-hub name; every other run reaches _archive_run, a vintage run and a
+    modified run exported under the hub names included. A dataset run or
+    replay never reaches it. A run still starting may."""
+    from app.core.knobs import hub_names
+    from app.core.runs import is_research
     running = _status.get("running") or ""
     if not running:
         return False
@@ -97,11 +100,11 @@ def _may_archive() -> bool:
     except Exception:
         return True
     spec = row.get("spec") or ""
-    d = _spec_of(spec)
-    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
-    return (str(d.get("engine") or "all") == "all"
-            and extra.get("mode") != "vintage"
-            and not is_research(spec) and not is_modified(spec))
+    # the step's own three skips, in its order; a vintage run is not one
+    # (_archive_run writes it when the date holds no real-time run)
+    return (not is_research(spec) and hub_names(spec)
+            and str(_spec_of(spec).get("engine") or "all")
+            not in ("analogue", "pf"))
 
 
 def _archiving_date() -> str | None:
