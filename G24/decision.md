@@ -1,0 +1,6 @@
+# G24: decision (by B)
+Decision: combined: A's DA-04 (both redirects name `#main`, where the flash is) and DA-19 (one season-colour map by label, `_season_vars`, read by the Archive strip's circles and the season chart); B's DA-05 (the hint beside the badge, `pull_first` and the check's `behind` folded, the pull's "comparators added" clause), DA-07 (the readers' optional `path`; the live entry in the hub card's words: "2026-10-24 (target-data, not archived)", the Source tile, the titles "as in target-data 2026-10-24") and DA-23 (" · as of <snapshot>" on the titles). The warning count words are the same in both.
+Implementer: B (the decider; the solutions are combined)
+Why: both votes are "combine" and agree on every part but DA-07's mechanics, where A's compare takes B's whole. Criterion 1: a redirect without a fragment keeps the posting form's `#datasets` (A's DA-04), and with an older vintage the strip and the chart rank seasons from different newest ones, so only a map by label keeps one colour per season (A's DA-19). Criterion 4: B's DA-05 adds no key to the check's JSON. Criterion 5: B's DA-07 names the live file as the hub card already does.
+Left for Ely: none
+Not reproduced: none
