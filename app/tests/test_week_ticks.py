@@ -154,8 +154,10 @@ DATE_PAGES = ("forecast.html", "data.html", "model.html",
 def test_every_console_chart_draws_through_the_helper():
     for name in DATE_PAGES:
         t = (TEMPLATES / name).read_text()
-        assert ('<script src="/static/plotly.min.js"></script>'
-                '<script src="/static/charts.js"></script>') in t, name
+        # the model page loads them deferred, and only with a fan (G33)
+        assert any(f'<script src="/static/plotly.min.js"{d}></script>'
+                   f'<script src="/static/charts.js"{d}></script>' in t
+                   for d in ("", " defer")), name
     for p in list(TEMPLATES.glob("*.html")) + [STATIC / "sandbox.js"]:
         t = p.read_text()
         # no chart bypasses the helper (Plotly.Plots.resize and relayout
