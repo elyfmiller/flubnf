@@ -1,6 +1,8 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
+{# the chart library only where a fan is drawn, deferred: a page with no
+   forecasts (the research view, a run without this model) loads none #}
+{% block head %}{% if has_fans %}<script src="/static/plotly.min.js" defer></script><script src="/static/charts.js" defer></script>{% endif %}
 <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
 {% block content %}
 {# a keyboard user reaches the run form without walking the model's
@@ -203,8 +205,9 @@
    {% endcall %}
    {% endif %}
    <div id="mfan">{% if not has_fans %}
-    {%- if rid %}{% call tips.empty("No forecasts from this model yet", "clock", id="md-nofc") %}The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.{% endcall %}
-    {%- else %}{{ tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}{% endif %}
+    {{- tips.empty("No forecasts from this model yet", "clock", id="md-nofc") }}
+    {#- why, as plain text under it: no "?" for one sentence #}
+    {%- if rid %}<p class="hint md-nofc-why">The latest {{ run_name }} ({{ date }} · {{ run_when }}) has none from this model.</p>{% endif %}
    {%- endif %}</div>
   </div>
  </div>
@@ -335,7 +338,9 @@
      toImageButtonOptions:{format:'png',scale:2,
        filename:('flubnf_'+MNAME+'_'+loc+'_'+FD).replace(/[^\w-]+/g,'_')}});
  }
- draw();
+ // the chart scripts load deferred: the first draw waits for them
+ if(document.readyState==='loading')addEventListener('DOMContentLoaded',()=>draw());
+ else draw();
  addEventListener('themechange',()=>draw());
  addEventListener('fontsizechange',()=>draw());
 </script>

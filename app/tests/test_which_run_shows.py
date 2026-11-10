@@ -234,10 +234,11 @@ def test_outputs_words_state_the_rules_it_follows(root):
     _run(root, "whole", _all53())
     html = " ".join(client.get("/output").text.split())
     assert "the newest run that finished complete" not in html
-    assert ("from the newest complete run on all 53 locations, else the "
-            "newest complete run, else the newest run that wrote one; a run "
-            "made in the round's own week comes before a later vintage "
-            "run") in html
+    # the rule in the explainer's three lines (G32, OU-10: the long form
+    # was the wall of text)
+    assert ("shows the newest complete run's files: all 53 locations first, "
+            "and a run made in the round's own week before a later vintage "
+            "run.") in html
     assert "The round open now is outlined" not in html
     # a run writing a date: the badge says so and promises nothing
     led = Ledger()

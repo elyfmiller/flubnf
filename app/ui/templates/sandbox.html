@@ -267,8 +267,10 @@
     <section class="sbfile" id="sbf-conf" data-file="conf">
      {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", for_="sb-conf-in") }}
      <textarea name="priors_conf" id="sb-conf-in" rows="8" spellcheck="false" aria-label="Priors and engine settings (priors.conf)" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
-     {# each key's "from" says whether a priors.conf line set it #}
-     {% set keys = settings | rejectattr(2, "equalto", "run settings") | list %}
+     {# each key's "from" says whether a priors.conf line set it; the
+        engine's fixed plumbing (a particle-filter fit of one pass) is
+        left out: population_size would read as the model's population #}
+     {% set keys = settings | rejectattr(2, "equalto", "run settings") | rejectattr(0, "in", ["fit_type", "population_size", "max_iterations"]) | list %}
      {% call tips.fold("Engine keys the sandbox writes for you", id="sb-keys", cls="sb-keys") %}
       <div class="sbscroll"><table class="kv sbkeys"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
        {% for k, v, src in keys %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
@@ -431,15 +433,19 @@
   {% set since %}<span class="sb-since">from {{ diff.a }}</span>{% endset %}
   <div class="card sbdiff">{{ tips.heading("What changed", "sb-diff", after=since) }}
    {% if diff.settings or diff.data_source %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
-    {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}
-    {% if diff.data_source %}{% set da, db = diff.data_source.a, diff.data_source.b %}<tr><td>data</td><td>{{ da.location or "typed" }} {{ da.asof or "" }}</td><td>{{ db.location or "typed" }} {{ db.asof or "" }}</td></tr>{% endif %}
+    {# numbers as the page writes them (10,000); data with no source
+       recorded (written in the editor, or a shipped example's) "as written" #}
+    {% macro sv(v) %}{{ "{:,}".format(v) if v is integer and v is not boolean else v }}{% endmacro %}
+    {% for s in diff.settings %}<tr><td>{{ s.label or s.key }}</td><td>{{ sv(s.a) }}</td><td>{{ sv(s.b) }}</td></tr>{% endfor %}
+    {% if diff.data_source %}{% set da, db = diff.data_source.a, diff.data_source.b %}<tr><td>data</td><td>{{ da.location or "as written" }} {{ da.asof or "" }}</td><td>{{ db.location or "as written" }} {{ db.asof or "" }}</td></tr>{% endif %}
    </tbody></table>{% endif %}
    {% set same = diff.files | selectattr("same") | list %}
    {% if same %}<ul class="sb-files" aria-label="Unchanged files">{% for f in same %}<li><code>{{ f.name }}</code> {{ tips.badge("neutral", "unchanged") }}</li>{% endfor %}</ul>{% endif %}
    {% for f in diff.files if not f.same %}{% call tips.fold(f.name, open=True, cls="sb-filediff", after=tips.badge("warn", "changed")) %}<pre class="sbdiffpre">{{ f.diff }}</pre>{% endcall %}{% endfor %}
   </div>
   {% endif %}
-  {% if oracle or (shipped and shipped.shipped) %}
+  {# a dataset start never takes the step (it reads the hub's donor bank) #}
+  {% if oracle or (shipped and shipped.shipped and not shipped.dataset) %}
   {# the badge says the result stays in the run's folder; the label names
      the production weight; what the step blends is Methods' Oracle card #}
   {% set oracle_more %}<a href="/methods#oracle">Methods</a>{% endset %}
@@ -456,8 +462,9 @@
    {% call tips.stats("uk-stats--row sb-ostats", label="Oracle step") %}
     {{ tips.stat("Location", oracle.location) }}
     {{ tips.stat("As of", oracle.forecast_date) }}
-    {{ tips.stat("w", oracle.w, ("(production " ~ oracle.w_production ~ ")") if oracle.w != oracle.w_production else "") }}
-    {% if oracle.state %}{{ tips.stat("State", oracle.state, tiptext=oracle.reason, id="sb-ostate") }}{% endif %}
+    {# the donor streams the week drew from (oracle_mix.mixture_state) #}
+    {% set ostate = {"both": "both donor banks", "flusurv_only": "FluSurv-NET donors only", "admissions_only": "admissions donors only", "identity": "no donors: the plain filter"} %}
+    {% if oracle.state %}{{ tips.stat("Donors", ostate.get(oracle.state, oracle.state), tiptext=oracle.reason, id="sb-ostate") }}{% endif %}
    {% endcall %}
    <div class="sbscroll"><table class="kv sboracle-t"><thead><tr><th>week ending</th><th>plain filter: median (50%, 95%)</th><th>Oracle SIHRS: median (50%, 95%)</th></tr></thead><tbody>
     {% macro qcell(q) %}{% if q %}{{ "%.1f" | format(q[2]) }} ({{ "%.1f" | format(q[1]) }} to {{ "%.1f" | format(q[3]) }}; {{ "%.1f" | format(q[0]) }} to {{ "%.1f" | format(q[4]) }}){% else %}no finite sample{% endif %}{% endmacro %}

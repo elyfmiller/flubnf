@@ -139,7 +139,9 @@
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
 <div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
-{%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
+{#- the "?" names the alert mid-sentence: its first word lowered unless it
+    is a name or an acronym (FluSight, US), ids and names as written #}
+{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "alert", tip_label or (t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:]), body) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
 
@@ -150,7 +152,8 @@
 {% macro empty(title, icon_name="folder", action="", tiptext="", id="", compact=False, hidden=False) -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
-{%- if body | trim %} {{ tip(id or "empty", title | lower, body) }}{% endif %}</p>
+{#- named as the alert's "?" is #}
+{%- if body | trim %}{% set t = title | string %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "empty", t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:], body) }}{% endif %}</p>
 {%- if action %}<div class="uk-empty-action">{{ action }}</div>{% endif %}</div>
 {%- endmacro %}
 

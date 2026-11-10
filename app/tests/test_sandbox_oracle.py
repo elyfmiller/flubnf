@@ -164,7 +164,11 @@ def test_the_route_and_the_card(finished):
     assert "w = 0.3" in ui_state._status.get("flash", "")
     html = client.get(f"/sandbox?model=ohio&run={run}").text
     assert "Oracle SIHRS: median (50%, 95%)" in html and "2098-01-11" in html
-    assert '<span class="uk-stat-u">(production 0.5)</span>' in html
+    # the w applied is the input's own value, under its label naming the
+    # production weight: no second "w" beside the table (G31, SB-22)
+    assert 'id="sb-w-in" name="w" type="number" step="0.05" min="0" max="1" value="0.3"' in html
+    assert "Blend weight w (production 0.5)" in html
+    assert '<span class="uk-stat-u">(production 0.5)</span>' not in html
     ui_state._status.pop("flash", None)
     client.post(f"/sandbox/runs/{run}/oracle", data={"w": "x"},
                 follow_redirects=False)

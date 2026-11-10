@@ -123,6 +123,11 @@ class SandboxError(ValueError):
         self.code = code
 
 
+class MachineProblem(SandboxError):
+    """The preflight's refusal: this computer cannot fit yet (the page's
+    own notice says why before a run is tried)."""
+
+
 def check_name(name: str) -> str:
     if not isinstance(name, str) or not NAME_RE.match(name):
         raise SandboxError(
@@ -274,6 +279,8 @@ def add_example(name: str, as_name: str | None = None) -> Path:
     dst.mkdir(parents=True)
     for f in REQUIRED:
         shutil.copy2(src / f, dst / f)
+        # the gallery's "changed" is the copy's creation, as copy_model's
+        (dst / f).touch()
     _write_info(target, {"origin": f"example:{name}", "created_utc": _stamp()})
     return dst
 
@@ -683,11 +690,14 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
 
 def shipped_state(name: str, files: dict | None = None) -> dict:
     """Whether a model is an Oracle SIHRS start and still as created:
-    {"shipped", "intact", "changed": [files edited since], "info"}. A
+    {"shipped", "intact", "changed": [files edited since], "info",
+    "dataset": started from a dataset}. A
     model without creation digests is never intact."""
     info = read_info(name)
     out = {"shipped": info.get("origin") in SHIPPED_ORIGINS, "intact": False,
-           "changed": [], "info": info}
+           "changed": [], "info": info,
+           # a dataset start: no Oracle step (it reads the hub's bank)
+           "dataset": info.get("origin") == SHIPPED_DATASET}
     if not out["shipped"]:
         return out
     dig = info.get("digests")
@@ -941,7 +951,9 @@ def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
     out = []
     engine = pf_engine.engine_available()
     if not engine:
-        out.append(pf_engine.engine_missing_message())
+        # the headline in words; the engine's own message is the tip
+        out.append("The fitting engine is not installed. "
+                   + pf_engine.engine_missing_message())
     elif pf_engine._public():
         # the lock check loads the filter and bngsim in the public venv: a
         # page waits `wait` seconds for it and says nothing while it runs
@@ -998,7 +1010,7 @@ def preflight() -> None:
     for the engine-import probe."""
     problems = machine_problems(wait=ENGINE_PROBE_RUN_WAIT_S)
     if problems:
-        raise SandboxError(_joined(problems))
+        raise MachineProblem(_joined(problems))
 
 
 def machine_problem() -> str:
@@ -1385,8 +1397,9 @@ def _view_file(name: str, kind: str) -> Path:
 
 
 #: bumped when the views' reading of a model changes (2: rule_flow reads
-#: cBNGL compartment prefixes), so a drawing cached before is redrawn
-VIEW_VERSION = 2
+#: cBNGL compartment prefixes; 3: the graphs carry their rule and reaction
+#: counts), so a drawing cached before is redrawn
+VIEW_VERSION = 3
 
 
 def _view_key(bngl: str) -> str:

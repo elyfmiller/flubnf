@@ -85,7 +85,10 @@ def test_harmonic_figure_carries_the_design_conventions():
     assert "peak week" in html                      # phi-1 marked and named
     assert "(early Jan)" in html                    # and placed on the calendar
     assert html.count("&#949;&#8321;") == 2         # both amplitude extremes
-    assert "1.0 (&#946;" in html                    # the beta0 reference
+    # the reference lines in the axis's units (beta over beta-0): 1.0 and
+    # exp of plus and minus epsilon-1, never beta-0 times them
+    assert 'fill="var(--mut)">1.0</text>' in html
+    assert "&#183;&#8202;e</tspan>" not in html and "1.0 (&#946;" not in html
     # the caption owns the figure's honesty note
     assert "Values shown are illustrative" in html
     assert "illustrative" in html
