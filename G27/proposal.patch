@@ -156,10 +156,10 @@ index e8366301..6c2b64ec 100644
      p = only(D.validate(b"date,target_group,value\n2024-01-06,A,5\n"
                          b"2024-01-13,,6\n2024-01-20,A,7\n"), "group_blank")
 diff --git a/app/tests/test_dataset_snapshots.py b/app/tests/test_dataset_snapshots.py
-index 87667620..20a29c2d 100644
+index 87667620..060dd45d 100644
 --- a/app/tests/test_dataset_snapshots.py
 +++ b/app/tests/test_dataset_snapshots.py
-@@ -249,8 +249,7 @@ def test_the_box_takes_several_files_and_a_folder():
+@@ -249,10 +249,9 @@ def test_the_box_takes_several_files_and_a_folder():
      # what goes in the snapshot box is the weekly CSV's "?", which explains
      # both boxes; the snapshot box itself says only that it is optional
      about = page.split('id="tip-dsup-replay-about">', 1)[1].split("</span></span>", 1)[0]
@@ -167,8 +167,11 @@ index 87667620..20a29c2d 100644
 -            "(optional), one per as_of") in about
 +    assert "an as_of column, or one snapshot file per as_of beside it" in about
      # an as_of column in the weekly CSV is read, not dropped with the rest
-     assert "other columns, except as_of, are ignored" in about
+-    assert "other columns, except as_of, are ignored" in about
++    assert "other columns are ignored" in about
      assert 'id="tip-dsup-replay-snaps"' not in page
+ 
+ 
 diff --git a/app/tests/test_dataset_upload_box.py b/app/tests/test_dataset_upload_box.py
 index 6fc61319..233275a3 100644
 --- a/app/tests/test_dataset_upload_box.py
@@ -260,7 +263,7 @@ index 1854686e..73344da3 100644
  </div>
  {% endif %}
 diff --git a/app/ui/templates/_dataset_upload.html b/app/ui/templates/_dataset_upload.html
-index a3573405..a8067218 100644
+index a3573405..b2ea85c5 100644
 --- a/app/ui/templates/_dataset_upload.html
 +++ b/app/ui/templates/_dataset_upload.html
 @@ -36,7 +36,7 @@
@@ -268,7 +271,7 @@ index a3573405..a8067218 100644
    <div class="dsbox dt-zone">
     <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
 -    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional.</span><span class="ncline">Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns, except as_of, are ignored. A file with no group column is one series, named after the file: a date column and one column of counts, whatever its name. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations.</span><span class="ncline">For a true retrospective, give the data as each week saw it: an as_of column in this file, or snapshot files beside it (optional), one per as_of, named by its date (2024-10-05.csv) or holding an as_of column, with the same columns and groups; a folder gives its CSV, TSV and TXT files. Each replayed week then sees the snapshot that held it.</span><span class="ncline">Forecasts on a dataset export under non-hub names and are never submitted.</span>{% endcall %}</div>
-+    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional. With no group column the file is one series, named after it.</span><span class="ncline">Dates as YYYY-MM-DD, M/D/YYYY or M/D/YY (the template's), moved to the Saturday that ends each week. CSV, TSV or TXT, up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">For a true retrospective, give each week as it was seen: an as_of column, or one snapshot file per as_of beside it. Forecasts on a dataset export under non-hub names and are never submitted.</span>{% endcall %}</div>
++    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value; population optional; other columns are ignored. With no group column the file is one series, named after it.</span><span class="ncline">Dates as YYYY-MM-DD, M/D/YYYY or M/D/YY (the template's), moved to the Saturday that ends each week. CSV, TSV or TXT, up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">For a true retrospective, give each week as it was seen: an as_of column, or one snapshot file per as_of beside it. Forecasts on a dataset export under non-hub names and are never submitted.</span>{% endcall %}</div>
     <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
      <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
      {{ tips.icon("upload", cls="dt-dropicon") }}

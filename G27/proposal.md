@@ -46,7 +46,7 @@ Reproduced on a server from the prototype's tree against the private hub copy wh
 - For Ely: none
 
 ## Checks
-- Targeted (test_dataset_lenient, test_dataset_upload_box, test_newest_reported, test_datasets_ui, test_pages, test_data_view, test_data_issues, test_sandbox_upload, test_problem_codes, test_fewer_marks, test_ui_layout, tests/test_dataset_cli): 407 passed. Full suite (FLUBNF_HUB=/nonexistent): 4219 passed, 159 skipped; the two tests/test_doctor.py failures are this container's Python and pass in CI; one pin of the old tooltip sentence (test_dataset_snapshots) updated after that run, its file passing. ruff (app/ui, app/core/datasets) clean.
+- Targeted (test_dataset_lenient, test_dataset_upload_box, test_newest_reported, test_datasets_ui, test_pages, test_data_view, test_data_issues, test_sandbox_upload, test_problem_codes, test_fewer_marks, test_ui_layout, tests/test_dataset_cli): 407 passed. Full suite (FLUBNF_HUB=/nonexistent): 4219 passed, 159 skipped; the two tests/test_doctor.py failures are this container's Python and pass in CI; one pin of the old tooltip sentence (test_dataset_snapshots) updated after that run; the tip says "other columns are ignored" again (that pin), its file passing. ruff (app/ui, app/core/datasets) clean.
 - Windows: text only; the binary test is bytes.
 
 ## Patch
