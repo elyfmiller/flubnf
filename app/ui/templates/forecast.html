@@ -894,18 +894,10 @@
  {%- set fan_rid = ((aids.fan_run or {}).run_id if (aids is defined and aids) else (fc_run if fc_run is defined else "")) or "" %}
  {%- set fan_row = ((ledger or []) | selectattr("run_id", "equalto", fan_rid) | first) if fan_rid else none %}
  // member -> loc -> the zero-anchor rule that forecast a newest week of 0
- // (the drawn run's data_flags: the rows RASIDE leaves out); null when
- // this page's ledger does not hold the drawn run
- const RZERO = (o=>{
-   if(o===null) return null;
-   const out={}, pre='zero-anchor ';
-   try{const f=JSON.parse(o||'{}').data_flags||{};
-     Object.keys(f).forEach(m=>(f[m]||[]).forEach(r=>{
-       const w=String((r&&r.rule)||'');
-       if(r.location&&w.startsWith(pre)) (out[m]=out[m]||{})[r.location]=w.slice(pre.length);}));
-   }catch(e){}
-   return out;
- })({{ ((fan_row.outcome or "") if fan_row else none) | tojson }});
+ // (the drawn run's data_flags: the rows RASIDE leaves out; those three
+ // fields only, routes/forecast.py _fan_zero_rules); null when this page's
+ // ledger does not hold the drawn run
+ const RZERO = {{ (fan_zero_rules(fan_row.outcome) if fan_row else none) | tojson }};
  // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
  // date, keyed like FANQ ({} when none were recorded: no toggle)
  const OFFQ = {{ official_json | default('{}', true) | safe }};
@@ -1127,6 +1119,10 @@
    // starts from the last week it used, where the model started
    const aside=new Set((RASIDE[FMODEL]||{})[loc]||[]);
    let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
+   // the FluSight ensemble and baseline lines start at this week, a
+   // reported 0 included: the zero-anchor move below is the Groundhog's
+   // own and does not apply to them
+   const oi=ai, ox=oi>=0?[obsX[oi]]:[], oy=oi>=0?[obsY[oi]]:[];
    // a newest week of 0 under a zero-anchor rule is a reported week, so it
    // is not set aside; but no rule starts from that 0 (FC-14). Extend
    // starts from the newest positive week, as after a set-aside week.
@@ -1160,7 +1156,7 @@
      if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
        marker:{symbol:'x-open',size:9,color:css('--mut')}});
    }
-   if(SHOWOFF) traces.push(...offTraces(loc, xs, ax, ay));
+   if(SHOWOFF) traces.push(...offTraces(loc, xs, ox, oy));
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      // dotted ink, as on every surface; hollow markers tell it from the
      // dotted grey FluSight baseline

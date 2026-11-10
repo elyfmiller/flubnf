@@ -134,15 +134,16 @@ def test_citation_quotes_the_shipped_groundhog_figure():
     assert "posterior" not in abstract.lower()
 
 
-def test_citation_release_is_not_an_ensemble_release_or_older_than_the_package():
+def test_citation_release_is_the_packages_and_not_an_ensemble_release():
     """The abstract says the 1.0 and 1.1 releases shipped a different
-    product, so this citation cannot carry their version; and it cannot
-    predate the form it quotes (shipped 2026-10-23), nor lag the package."""
+    product, so this citation cannot carry their version; it cannot
+    predate the form it quotes (shipped 2026-10-23); and it is the
+    package's own version, neither ahead of it nor behind."""
     cff = _citation()
     version = _version(cff["version"])
     assert version[:2] > (1, 1), cff["version"]
     package = tomllib.loads(_read("pyproject.toml"))["project"]["version"]
-    assert version >= _version(package), (cff["version"], package)
+    assert version == _version(package), (cff["version"], package)
     assert str(cff["date-released"]) >= "2026-10-23", cff["date-released"]
 
 

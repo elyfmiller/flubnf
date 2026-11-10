@@ -9,7 +9,9 @@
    whether the recommendation was followed. Rendered inside #fcform under
    the anchor line, only when the week has such a state; forecast.html's
    paint() hides and disables it when the chosen date leaves that week (a
-   disabled fieldset posts nothing). Styles: static/tabs/forecast.css.
+   disabled fieldset posts nothing). The script keeps what the box last
+   sent in the browser (localStorage "fc-di-sent"), for display only: it
+   is never posted. Styles: static/tabs/forecast.css.
    {% import "_data_issues.html" as di %}{{ di.box(issues, sha) }} #}
 {% import "_tips.html" as tips %}
 {% macro box(issues, sha="", hidden=False) -%}
@@ -48,6 +50,30 @@
     var sels = box.querySelectorAll('select[name^="gap."]');
     // a choice made by hand stands: the one the rule moved is not put back
     sels.forEach(function (s) { s.addEventListener('change', function () { delete s.dataset.before; mark(s); }); });
+    // Shown again after a run or a refusal, the page holds the last form's
+    // "Both from" for a state the rule covers, and the form posts the same
+    // whether the rule moved it there or it was chosen by hand. So the box
+    // keeps in this browser what it last sent: the week and data file, each
+    // select's value, and the choice the rule moved it from (data-before).
+    // A page that shows exactly that form puts back only those choices;
+    // without the record (storage blocked, another browser, another form)
+    // the recommendation stands in, as the choice the rule moved
+    var KEY = 'fc-di-sent';
+    function stamp() {
+      var sha = box.querySelectorAll('input[name="gap._sha"]')[0];
+      return ((box.dataset && box.dataset.week) || '') + '|' + (sha ? sha.value : '');
+    }
+    var kept = null;
+    try {
+      var last = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (last && last.at === stamp() && last.values && last.moved &&
+          Array.prototype.every.call(sels, function (s) { return last.values[s.name] === s.value; })) {
+        kept = last.moved;
+      }
+    } catch (e) { kept = null; }
+    function offers(s, v) {
+      return Array.prototype.some.call(s.options, function (o) { return o.value === v; });
+    }
     // Model settings' "Newest weeks reading 0" or "Collapsed newest week"
     // at "counted as unreported" moves both models back a week for the
     // states it covers (data-rules): only "Both from" and "Leave out"
@@ -80,13 +106,13 @@
           }
         }
         // a page shown again after a run or a refusal keeps the last
-        // form's "Both from", which the rule may have moved there: the
-        // state's own choice, the recommendation, comes back when the
-        // setting goes off, as it does for a move made on this page
+        // form's "Both from": the choice the rule moved it from comes back
+        // when the setting goes off, as it does for a move made on this
+        // page; a "Both from" chosen by hand stays (the record above)
         if (rendered && on && s.dataset.before === undefined &&
-            s.value === 'set_aside' && s.dataset.rec &&
-            s.dataset.rec !== 'set_aside') {
-          s.dataset.before = s.dataset.rec;
+            s.value === 'set_aside') {
+          var was = kept ? kept[s.name] : s.dataset.rec;
+          if (was && was !== 'set_aside' && offers(s, was)) s.dataset.before = was;
         }
         if (!on && s.dataset.before !== undefined) {
           s.value = s.dataset.before;
@@ -104,6 +130,17 @@
         if (e.target && /^knob\.data\./.test(e.target.name || '')) follow(e);
       });
       form.addEventListener('ms-reset', follow);
+      // the record of what this box sends; a disabled box sends nothing
+      // and the server keeps its choices, so the record stays as well
+      form.addEventListener('submit', function () {
+        if (box.disabled) return;
+        var rec = {at: stamp(), values: {}, moved: {}};
+        Array.prototype.forEach.call(sels, function (s) {
+          rec.values[s.name] = s.value;
+          if (s.dataset.before !== undefined) rec.moved[s.name] = s.dataset.before;
+        });
+        try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch (e) {}
+      });
     }
     // "All zero states:": set each zero state's select that offers the
     // choice (a state with 3 or more weeks of 0 has no extend or blend)
