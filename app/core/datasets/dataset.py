@@ -1,13 +1,19 @@
 """A stored dataset as the console and the engines read it: the Dataset
-adapter, get/resolve/from_spec, list_datasets and delete."""
+adapter, the parsed snapshot files it reads through (snapshot_index, one
+parse per file version), get/resolve/from_spec, list_datasets and
+delete."""
 from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from types import MappingProxyType
 from typing import Optional
 
 #: the package itself: ROOT, get, resolve and MAX_SNAPSHOT_FILES are
@@ -27,6 +33,99 @@ from .store import (
     _root,
     valid_id,
 )
+
+
+# ---- parsed snapshot files ---------------------------------------------
+#
+# A replay asks for every group's series at every week, and the baseline
+# scorer asks again: reading the snapshot CSV once per group made a
+# 200-group replay spend most of its time re-reading one file. Each file is
+# now parsed once into a per-group index, shared by every Dataset object
+# and thread, and keyed on the file itself (path, size, mtime, inode,
+# device): a snapshot written again (ingest writes atomically, so a new
+# inode) is a new key and is read afresh. Entries are read-only; series()
+# builds new lists from them. Bounded in files and in rows held.
+
+#: at most this many parsed snapshot files are kept (least recently used
+#: first out)
+SNAPSHOT_CACHE_FILES = 8
+#: and at most about this many rows across them (the newest file is kept
+#: whatever its size)
+SNAPSHOT_CACHE_ROWS = 2_000_000
+
+_SNAP_LOCK = threading.Lock()
+#: key -> (rows read, read-only index, every date the file holds)
+_SNAPS: "OrderedDict[tuple, tuple]" = OrderedDict()
+
+
+def _snap_key(path: str, st: os.stat_result) -> tuple:
+    return (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev)
+
+
+def _parse_snapshot(fh) -> tuple:
+    """(rows read, {group name: (dates, values)}, dates): each group's rows
+    with a value, in file order, as the strings the file holds, and every
+    date of every row (a blank value's too). series() applies the as-of
+    cut and float() to these exactly as it once did to the rows, so a view
+    is the same one a fresh read gives."""
+    by: dict = {}
+    seen_dates: dict = {}
+    n = 0
+    for r in csv.DictReader(fh):
+        n += 1
+        name = r["location_name"]
+        v = r["value"]
+        d = r["date"]
+        d = seen_dates.setdefault(d, d)          # one string per week
+        if v == "":
+            continue
+        g = by.get(name)
+        if g is None:
+            g = by[name] = ([], [])
+        g[0].append(d)
+        g[1].append(v)
+    return (n, MappingProxyType({k: (tuple(ds), tuple(vs))
+                                 for k, (ds, vs) in by.items()}),
+            frozenset(seen_dates))
+
+
+def _snapshot(path) -> tuple:
+    """(index, dates) of one snapshot CSV, parsed once per file version
+    (see above). Raises as open() would for a missing file."""
+    path = os.path.abspath(path)
+    key = _snap_key(path, os.stat(path))
+    with _SNAP_LOCK:
+        hit = _SNAPS.get(key)
+        if hit is not None:
+            _SNAPS.move_to_end(key)
+            return hit[1:]
+    with open(path, newline="", encoding="utf-8") as fh:
+        # keyed on the file this handle read, not on the earlier stat
+        key = _snap_key(path, os.fstat(fh.fileno()))
+        entry = _parse_snapshot(fh)
+    with _SNAP_LOCK:
+        for k in [k for k in _SNAPS if k[0] == path and k != key]:
+            del _SNAPS[k]                        # an older version of it
+        _SNAPS[key] = entry
+        _SNAPS.move_to_end(key)
+        held = sum(e[0] for e in _SNAPS.values())
+        while len(_SNAPS) > 1 and (len(_SNAPS) > SNAPSHOT_CACHE_FILES
+                                   or held > SNAPSHOT_CACHE_ROWS):
+            held -= _SNAPS.popitem(last=False)[1][0]
+    return entry[1:]
+
+
+def snapshot_index(path) -> MappingProxyType:
+    """The read-only per-group index of one snapshot CSV: group name ->
+    (dates, values), the rows with a value in file order, as strings."""
+    return _snapshot(path)[0]
+
+
+def clear_snapshot_cache() -> None:
+    """Forget every parsed snapshot (tests; never needed for correctness:
+    a changed file is a new key)."""
+    with _SNAP_LOCK:
+        _SNAPS.clear()
 
 
 @dataclass
@@ -149,8 +248,15 @@ class Dataset:
         return rows
 
     def weeks(self) -> list:
-        """Every distinct week (Saturday, ISO) in the final data, ascending."""
-        return sorted({r["date"] for r in self._final_rows()})
+        """Every distinct week (Saturday, ISO) in the final data, ascending
+        (a new list each call). Worked out once per Dataset object from
+        the parsed final snapshot, so an engine that resolves the dataset
+        afresh each week does not read the file again for it."""
+        weeks = self.__dict__.get("_weeks_cache")
+        if weeks is None:
+            weeks = tuple(sorted(_snapshot(self.final_path)[1]))
+            self.__dict__["_weeks_cache"] = weeks
+        return list(weeks)
 
     def forecast_dates(self) -> list:
         """The as-of weeks a forecast may anchor on: every vintage key when
@@ -183,16 +289,14 @@ class Dataset:
         """{"dates": [...], "values": [...]} for one group as it stood at
         `as_of` (the newest vintage when None), truncated at the as-of so
         final data never leaks later weeks into a view; the shape of
-        data.vintage_series."""
-        if as_of is None:
-            rows = self._final_rows()
-        else:
-            with open(self.truth_path(as_of), newline="",
-                      encoding="utf-8") as fh:
-                rows = list(csv.DictReader(fh))
-        out = sorted((r["date"], float(r["value"])) for r in rows
-                     if r["location_name"] == name and r["value"] != ""
-                     and (as_of is None or r["date"] <= str(as_of)))
+        data.vintage_series. The snapshot is parsed once per file
+        (snapshot_index), not once per group: a replay asks for every
+        group at every week."""
+        path = self.final_path if as_of is None else self.truth_path(as_of)
+        dates, values = snapshot_index(path).get(name, ((), ()))
+        cut = None if as_of is None else str(as_of)
+        out = sorted((d, float(v)) for d, v in zip(dates, values)
+                     if cut is None or d <= cut)
         return {"dates": [d for d, _ in out], "values": [v for _, v in out]}
 
     def truth(self) -> dict:
