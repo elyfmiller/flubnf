@@ -1,0 +1,328 @@
+diff --git a/app/core/datasets/checks.py b/app/core/datasets/checks.py
+index e12fce5f..fc2f1709 100644
+--- a/app/core/datasets/checks.py
++++ b/app/core/datasets/checks.py
+@@ -482,7 +482,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
+         lines = [ln for ln, _ in na]
+         rep.add("value_na", f"The '{vcol}' column is blank or NA on "
+                 f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). All "
+-                "rows must have a value; delete rows for weeks not reported.",
++                "rows must have a value.",
+                 lines)
+     elif na:
+         # hubverse time series carry NA for unreported weeks (FluSight's
+diff --git a/app/core/datasets/reading.py b/app/core/datasets/reading.py
+index 4e27ed0e..f07ad32d 100644
+--- a/app/core/datasets/reading.py
++++ b/app/core/datasets/reading.py
+@@ -526,6 +526,11 @@ def _one_series(header, norm, chosen, mapped, rows):
+               and norm[i] not in ROLE_ALIASES["population"]]
+     kinds = {i: _column_kind(rows, i) for i in others}
+     if "text" in kinds.values():
++        # the one other column, named as a value (cases, count, value):
++        # a word in it is a value that is not a number, which the checks
++        # name, not a group under an unknown name
++        if len(others) == 1 and norm[others[0]] in ROLE_ALIASES["value"]:
++            return others, []
+         return None
+     if "value" in mapped:
+         return [chosen["value"]], []
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 7e816e0a..e7c3deb1 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -458,6 +458,20 @@ def with_population(bngl: str, pop: int) -> str | None:
+     return "".join(out) if done else None
+ 
+ 
++def _bng_error_line(log: str) -> str:
++    """BNG2.pl's ERROR line in a log (with the "at line N" BNG2.pl puts
++    under it), else its ABORT line, without the prefix; '' when neither."""
++    lines = [ln.strip() for ln in str(log).splitlines()]
++    for tag in ("ERROR:", "ABORT:"):
++        for i, ln in enumerate(lines):
++            if ln.startswith(tag):
++                said = ln[len(tag):].strip()
++                at = re.match(r"at line (\d+)", lines[i + 1]) \
++                    if i + 1 < len(lines) else None
++                return f"{said} (line {at.group(1)})" if at else said
++    return ""
++
++
+ def _sentence_end(text: str) -> int | None:
+     """The index of the first sentence's closing mark: a '.', '!' or '?'
+     followed by a space and a capital, never inside parentheses or a
+@@ -493,6 +507,13 @@ def split_reason(text: str, cap: int = 200) -> tuple:
+     the remedy is never cut off."""
+     first, _, rest = str(text).strip().partition("\n")
+     first, rest = first.strip(), rest.strip()
++    # a BNG2.pl failure ("... could not simulate the model:", then its
++    # log): the log's own ERROR line, else its ABORT line, finishes the
++    # notice; the whole log stays in the tip
++    if first.endswith(":") and rest:
++        said = _bng_error_line(rest)
++        if said:
++            first = f"{first} {said}"
+     if len(first) > cap:
+         end = _sentence_end(first)
+         if end is not None and end < 2 * cap:
+diff --git a/app/core/sandbox_check.py b/app/core/sandbox_check.py
+index 4256f3e9..f292d86e 100644
+--- a/app/core/sandbox_check.py
++++ b/app/core/sandbox_check.py
+@@ -95,6 +95,14 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
+         if any(b <= a for a, b in zip(times, times[1:])):
+             problem("EXP_TIME_ORDER",
+                     "data.exp: time must increase from row to row")
++        # inf (or a number too large to hold, 1e400) is no count
++        big = next((r for r in exp["rows"]
++                    if any(np.isinf(v) for v in r)), None)
++        if big is not None:
++            problem("EXP_UNREADABLE", "data.exp has a row at t = "
++                    f"{big[0]:g} whose value is not a finite number: write "
++                    "the week's count, or a negative value for a missing "
++                    "week")
+     except SandboxError as e:
+         problem(e.code, str(e))
+     except ValueError as e:
+@@ -374,7 +382,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
+     """(fact, warning or '') comparing the model at its written values
+     with the data: their ranges, and a warning when their totals differ
+     tenfold or more (N, the starting state or the scale is off)."""
+-    obs = [float(v) for v in observed if float(v) >= 0]
++    obs = [float(v) for v in observed
++           if np.isfinite(float(v)) and float(v) >= 0]
+     exp_ = [max(float(v), 0.0) for v in expected]
+     if not obs or not exp_:
+         return "", ""
+@@ -386,6 +395,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
+     if so <= 0 or se <= 0:
+         return fact, ""
+     ratio = se / so
++    if not 0 < ratio < float("inf"):        # too far apart to say how far
++        return fact, ""
+     if ratio >= 10 or ratio <= 0.1:
+         how = (f"{ratio:,.0f} times" if ratio >= 10
+                else f"1/{1 / ratio:,.0f} of")
+diff --git a/app/tests/test_perl_bng_env.py b/app/tests/test_perl_bng_env.py
+index 6ca57950..863a1014 100644
+--- a/app/tests/test_perl_bng_env.py
++++ b/app/tests/test_perl_bng_env.py
+@@ -490,7 +490,9 @@ def test_the_sandboxs_netgen_failure_keeps_perls_first_line(sandbox_root,
+     with pytest.raises(sb.SandboxError) as e:
+         sb.prepare("kinetics_example")
+     notice, tip = sb.split_reason(str(e.value))
+-    assert notice == "BNG2.pl could not generate the network:"
++    # the notice ends with BNG2.pl's own line, not a colon (G25, SB-04)
++    assert notice == ("BNG2.pl could not generate the network: "
++                      "Molecule Q not defined")
+     assert tip.startswith("ABORT: Molecule Q not defined")
+ 
+ 
+diff --git a/app/tests/test_sandbox_messages.py b/app/tests/test_sandbox_messages.py
+new file mode 100644
+index 00000000..6f0b7c74
+--- /dev/null
++++ b/app/tests/test_sandbox_messages.py
+@@ -0,0 +1,95 @@
++"""Sandbox messages (bug hunt 2026-10-25, G25).
++
++  * A BNG2.pl failure's notice ends with BNG2.pl's own ERROR (or ABORT)
++    line, not a colon; the whole log stays in the tip, line by line.
++  * The Sandbox's upload, which has no column picker, sends a column
++    choice to the Data tab's upload, and a one-series file with a word in
++    its value column names that word.
++  * Rate data says what to do: a fit reads counts.
++  * Check's headline promises no run above a note that says a run stops.
++  * Check names a value that is not a finite number and still reports.
++  * A blank value's refusal gives no advice that leads to the gap rule.
++"""
++from pathlib import Path
++
++from app.core import sandbox as sb
++from app.core.datasets import checks
++from test_sandbox_upload import _upload, box, client         # noqa: F401
++
++STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
++LOG = ("ABORT: Reaction rule list could not be read because of errors.\n"
++       "BioNetGen version 2.9.3\nReading from file cm.bngl (level 0)\n"
++       "ERROR: Molecule Z() does not match any declared molecule types\n"
++       "  at line 48")
++
++
++# ------------------------------- SB-04 (WI-11): BNG2.pl's own words
++
++def test_a_bng2pl_failure_ends_with_its_error_line():
++    notice, tip = sb.split_reason(
++        "Not simulated: BNG2.pl could not simulate the model:\n" + LOG)
++    assert notice == ("Not simulated: BNG2.pl could not simulate the "
++                      "model: Molecule Z() does not match any declared "
++                      "molecule types (line 48)")
++    assert tip == LOG                            # the whole log, its lines
++    # with no ERROR line, the ABORT line
++    notice, _ = sb.split_reason("BNG2.pl could not generate the network:\n"
++                                "ABORT: Bad rule.\nBioNetGen version 2.9.3")
++    assert notice == "BNG2.pl could not generate the network: Bad rule."
++    # the notice's tip keeps the log's line breaks
++    assert "#tip-flash{white-space:pre-line}" in (
++        STATIC / "nau.css").read_text(encoding="utf-8")
++
++
++# ----------------------------------------- SB-05: advice it can act on
++
++def _report(r) -> str:
++    return client.get(r.headers["location"]).text
++
++
++def test_the_sandbox_upload_sends_a_column_choice_to_the_data_tab(box):
++    page = _report(_upload("date,cases,deaths\n2024-01-06,5,1\n"
++                           "2024-01-13,7,1\n2024-01-20,9,2\n",
++                           name="two.csv", kind=""))
++    assert ("Keep only one in the file, or upload it on the Data tab, "
++            "where the column can be chosen.") in page
++    assert "Choose one (e.g." not in page
++    # a word in the one value column is named, not taken for a group
++    page = _report(_upload("date,cases\n2024-01-06,5\n2024-01-13,ten\n"
++                           "2024-01-20,9\n2024-01-27,11\n",
++                           name="bad_text.csv", kind=""))
++    assert "must contain numbers only" in page and "ten" in page
++    assert "No column for the group" not in page
++
++
++# ------------------------------------- SB-14: no promise above a stop
++
++def test_checks_headline_promises_no_run_above_a_note_that_says_it_stops():
++    js = (STATIC / "sandbox.js").read_text(encoding="utf-8")
++    assert ("return c.code === 'ROW_BEFORE_START' || c.code === "
++            "'KEY_UNKNOWN';") in js
++    assert "notes + (f.machine || stops ? '.' : '; the model can run.')" \
++        in js
++
++
++# ------------------------------------ SB-15: inf is named, Check goes on
++
++def test_check_names_a_value_that_is_not_finite(sandbox_root):
++    files = dict(sb.skeleton("mine"))
++    for bad in ("inf", "1e400"):
++        files["data.exp"] = f"# time T_weekly\n1 {bad}\n2 5\n"
++        r = sb.check(files)
++        assert not r["ok"]
++        assert any("t = 1 whose value is not a finite number" in p
++                   for p in r["problems"])
++        assert not any("division by zero" in p for p in r["problems"])
++        assert r["facts"]["rows"] == 2            # the rest still reports
++
++
++# ------------------------------------ SB-27: no advice into the gap rule
++
++def test_a_blank_value_gives_no_advice_that_leads_to_the_gap_rule():
++    import inspect
++    src = inspect.getsource(checks)
++    assert "delete rows for weeks not reported" not in src
++    assert '"rows must have a value.",' in src
+diff --git a/app/tests/test_sandbox_upload.py b/app/tests/test_sandbox_upload.py
+index 1596d38f..95cc6a2d 100644
+--- a/app/tests/test_sandbox_upload.py
++++ b/app/tests/test_sandbox_upload.py
+@@ -197,8 +197,9 @@ def test_a_client_file_name_is_never_a_path(box, tmp_path):
+ def test_rates_load_with_a_word_about_the_objective(box):
+     rates = HUBVERSE.replace(",8\n", ",0.8\n")
+     r = _upload(rates, kind="rate")
+-    assert "Rates: set objfunc in priors.conf." in client.get(
+-        r.headers["location"]).text
++    # what to do, said plainly (SB-10: no objfunc for rates is named)
++    assert "Rates: a fit reads counts, so load counts to fit this data." \
++        in client.get(r.headers["location"]).text
+ 
+ 
+ def test_the_stored_dataset_is_offered_to_other_models(box):
+diff --git a/app/ui/routes/sandbox.py b/app/ui/routes/sandbox.py
+index 2681cae8..97f72513 100644
+--- a/app/ui/routes/sandbox.py
++++ b/app/ui/routes/sandbox.py
+@@ -523,8 +523,9 @@ def _sandbox_fill_flash(info: dict) -> None:
+     rate = info.get("kind") == "rate"
+     if rate:
+         # to act on: said on the line, the why in the tip
+-        msg += " Rates: set objfunc in priors.conf."
+-        detail += " The default objfunc expects counts."
++        msg += " Rates: a fit reads counts, so load counts to fit this data."
++        detail += (" The fit's likelihood, objfunc neg_bin_dynamic, is for "
++                   "weekly counts.")
+     _flash(msg, "warn" if rate else "ok", detail=detail)
+ 
+ 
+@@ -625,6 +626,25 @@ async def _sandbox_capped_form(request: Request, cap: int):
+         max_files=1, max_fields=40, max_part_size=_SANDBOX_BODY_SLACK)
+ 
+ 
++#: the dataset store's column advice, for the Data tab's upload, which has
++#: the column mapping; the Sandbox's upload has none, so it points there
++_COLUMN_CHOICE = (
++    (re.compile(r" Choose which column holds each\.$"),
++     " Name the columns so in the file, or upload it on the Data tab, "
++     "where the columns can be chosen."),
++    (re.compile(r" Choose one \(e\.g\., [^)]*\), or keep only one in the "
++                r"file\.$"),
++     " Keep only one in the file, or upload it on the Data tab, where the "
++     "column can be chosen."))
++
++
++def _sandbox_columns_advice(problem: str) -> str:
++    """A refusal's column advice as the Sandbox can act on it."""
++    for pat, words in _COLUMN_CHOICE:
++        problem = pat.sub(words, problem)
++    return problem
++
++
+ @router.post("/sandbox/models/{name}/upload-data")
+ async def sandbox_upload_data(request: Request, name: str):
+     """A CSV of your own (grouped date,target_group,value[,population],
+@@ -667,7 +687,8 @@ async def sandbox_upload_data(request: Request, name: str):
+         ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
+                                      up.filename, kind, cap)
+     except sandbox_mod.UploadRefused as e:
+-        _sandbox_upload_report[name] = {"problems": e.problems or [str(e)]}
++        _sandbox_upload_report[name] = {"problems": [
++            _sandbox_columns_advice(p) for p in (e.problems or [str(e)])]}
+         return _sandbox_redirect(name)
+     finally:
+         await up.close()
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index 9ffe924c..f3fd4ee4 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -1220,6 +1220,8 @@ button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
+ .tipbox a{color:inherit;text-decoration:underline}
+ .tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
+ .tip.dismissed .tipbox{visibility:hidden;opacity:0}
++/* a notice's detail keeps its lines (BNG2.pl's log, one line a step) */
++#tip-flash{white-space:pre-line}
+ @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
+ 
+ /* the latest-run card: settings left, results right. Tracks auto-fit at a
+diff --git a/app/ui/static/sandbox.js b/app/ui/static/sandbox.js
+index 6400f570..00761f61 100644
+--- a/app/ui/static/sandbox.js
++++ b/app/ui/static/sandbox.js
+@@ -492,12 +492,18 @@
+             var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
+             var probs = d.problems || [], warns = d.warnings || [];
+             var notes = warns.length === 1 ? '1 note' : warns.length + ' notes';
++            // a note whose words say a run stops on it (app/core/problem_codes.py):
++            // the headline then promises no run
++            var stops = (d.codes || []).some(function (c) {
++              return c.code === 'ROW_BEFORE_START' || c.code === 'KEY_UNKNOWN';
++            });
+             if (probs.length) {
+               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
+                                 'a run would fail.') + listHtml(probs);
+             } else if (warns.length) {
+-              // never green above a note: the notes are the headline
+-              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'))
++              // never green above a note: the notes are the headline, and
++              // no promise of a run above one that says a run stops
++              html += alertHtml('warn', 'Worth a look:', notes + (f.machine || stops ? '.' : '; the model can run.'))
+                 + listHtml(warns);
+             } else if (f.machine) {
+               html += alertHtml('ok', 'No problems found in the model.', '');
