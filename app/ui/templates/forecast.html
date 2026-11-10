@@ -137,8 +137,11 @@
    {% set dn_rows = {} %}{% for g in (knob_panel.groups if knob_panel else []) %}{% for r in g.rows %}{% set _ = dn_rows.update({r.key: r}) %}{% endfor %}{% endfor %}
    {% set dn_off = [] %}{% for k in ("groundhog.bandwidth", "run.weeks_to_drop") %}{% set r = dn_rows.get(k) %}{% if r and not r.later and (r.value | trim) != "" and (r.value | float(-1.5)) != (r.default | float(-2.5)) %}{% set _ = dn_off.append(k) %}{% endif %}{% endfor %}
    {% set dn_show = dn_n is not none and dn_n < dn_need and form.engine != "pf" and not dn_off %}
-   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks} | tojson }}</script>
-   {{ tips.alert("warn", ("The Groundhog has too little history for this week (" ~ dn_n ~ " of " ~ dn_need ~ " donor weeks).") if dn_show else "", id="fc-ds-donors", hidden=not dn_show) }}
+   {# what a count counts: with several groups a week counts once in each
+      (datasets_ui.donor_unit: "weeks" or "group-weeks") #}
+   {% set dn_unit = dataset.donor_unit or "weeks" %}
+   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks, "unit": dn_unit} | tojson }}</script>
+   {{ tips.alert("warn", ("The Groundhog has too little history for this week (" ~ dn_n ~ " of " ~ dn_need ~ " donor " ~ dn_unit ~ ").") if dn_show else "", id="fc-ds-donors", hidden=not dn_show) }}
    {% endif %}
    <script>
     (function () {

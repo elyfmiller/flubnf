@@ -40,6 +40,7 @@ from app.ui import pipeline, templating
 from app.ui import state as ui_state
 from app.ui.routes import forecast as FC
 
+import served_dom as SD                               # noqa: E402
 from test_data_source import _hub                      # noqa: E402
 from test_datasets_ui import (TEMPLATE, client,        # noqa: E402,F401
                               isolated, stored)
@@ -64,7 +65,10 @@ W1, W2, W3 = "2025-10-04", "2025-10-11", "2025-10-18"
 @pytest.fixture
 def today(monkeypatch):
     """The cost model's constants as reviewed (2026-11-09) and a width of
-    8, so the pinned figures hold after a refit and on any computer."""
+    8, so the pinned figures hold after a refit and on any computer (the
+    default width too: a run is never priced above it,
+    estimates.priced_width)."""
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 8)
     monkeypatch.setattr(pf, "COST_INTERCEPT_S", 1.194)
     monkeypatch.setattr(pf, "COST_PER_WEEK_S", 0.6365)
     monkeypatch.setattr(pf, "COST_FORECAST_WEEKS", 4)
@@ -487,88 +491,153 @@ def test_the_script_says_what_the_server_says(tmp_path, monkeypatch, today,
     assert want[0] != want[6]
 
 
-#: a stand-in for the page's form in the script's tests: the fields it
-#: reads, found by the selectors it uses (no DOM in jsc or node)
-FAKE_FORM = """
-function el(v, attrs, more) {
-  var o = {value: v, checked: false, disabled: false,
-           getAttribute: function (n) {
-             return attrs && attrs.hasOwnProperty(n) ? attrs[n] : null; }};
-  for (var k in (more || {})) o[k] = more[k];
-  return o;
+# The script on the page as served (review 3 of #93, finding 13): it finds
+# its form, fields and lines in the markup the server rendered, by its own
+# selectors (served_dom), and must then write what the server writes. A
+# renamed id, class or field name in either the template or the script
+# leaves a line blank or stale, and fails here. The page's inline script
+# (forecast.html paint()) puts the anchor week on the date field before
+# forecast_form.js reads it: PAINT does that, and nothing else, first.
+
+PAINT = ("var box = document.querySelector('input[name=forecast_date]');"
+         " box.setAttribute('data-anchor', ANCHOR);")
+
+#: the time line's text as shown ("" while hidden), and a field's change
+#: as the browser sends it (the event bubbles to the form; the script
+#: waits a tick)
+SAID = """
+var fm = document.getElementById("fcform");
+function said(id, sel) {
+  var el = document.getElementById(id);
+  return el.hidden ? "" : el.querySelector(sel).textContent;
 }
-function fakeForm(est, f) {
-  var q = {
-    "#model-pick": el(f.engine),
-    "#ck-all": el("all", null, {checked: f.all}),
-    "#ck-us": el("US (national)", null, {checked: f.us}),
-    "input[name=forecast_date]": el(f.date, {"data-anchor": f.anchor}),
-    '[data-knob="run.season_start"]': el(f.season, {"data-default": ""}),
-    '[data-knob="pf.replicates"]': el(f.reps, {"data-default": "3"}),
-    '[data-knob="pf.particles"]': el(f.parts, {"data-default": "10000"}),
-    '[data-knob="groundhog.bandwidth"]': el(f.bw, {"data-default": "2"}),
-    '[data-knob="run.weeks_to_drop"]': el(f.drop, {"data-default": "0"})
-  };
-  var ones = [];
-  for (var i = 0; i < f.ones; i++) ones.push(el("s" + i, null, {checked: true}));
-  return {
-    getAttribute: function (n) { return est.hasOwnProperty(n) ? est[n] : null; },
-    querySelector: function (s) { return q.hasOwnProperty(s) ? q[s] : null; },
-    querySelectorAll: function (s) {
-      return s === "input.ck-one:checked" ? ones : []; }
-  };
+function time() { return said("fc-est", ".uk-meta li > span:last-child"); }
+function donors() { return said("fc-ds-donors", ".uk-alert-text"); }
+function set(sel, v, ev) {
+  var el = fm.querySelector(sel);
+  if (typeof v === "boolean") el.checked = v; else el.value = v;
+  el.fire(ev || "change");
+  flush();
 }
-function line(attrs) {
-  return {getAttribute: function (n) {
-    return attrs.hasOwnProperty(n) ? attrs[n] : null; }};
+function anchor(a) {
+  fm.querySelector("input[name=forecast_date]").setAttribute("data-anchor", a);
+  fm.querySelector("input[name=forecast_date]").fire("change");
+  flush();
 }
 """
 
 
+def _served(tmp_path, html, anchor, body):
+    return SD.run(tmp_path, html, [EST_JS, FORM_JS], SAID + body,
+                  prelude="var ANCHOR = " + json.dumps(anchor) + "; " + PAINT)
+
+
 @needs_js
-def test_the_script_reads_the_form_it_times(tmp_path, monkeypatch, today):
-    """readRun: the model, "all" as the line's count, else the ticked
-    states and US, Independent Runs and particles (blank: their default),
-    the anchor week and Season start; readDonor: the anchor's count, the
-    Groundhog, the donor window and Weeks to drop at their defaults."""
+def test_the_served_form_drives_the_time_line(tmp_path, hub, monkeypatch):
+    """readRun on the page as served: the model, "all" as the line's
+    count, else the ticked states and US, Independent Runs and particles
+    (blank or unreadable: their default), Season start and the anchor
+    week; the line shown is the server's at first and after each change,
+    and hides with nothing to say."""
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     monkeypatch.setenv("FLUBNF_ENGINE", "public")
-    est = ES.page_params(None)
-    base = {"engine": "all", "all": True, "us": True, "ones": 0,
-            "date": "2026-11-02", "anchor": "2026-10-31", "season": "",
-            "reps": "3", "parts": "10000", "bw": "", "drop": "0"}
-    forms = [base, {**base, "all": False, "ones": 4, "us": True},
-             {**base, "all": False, "ones": 0, "us": True},
-             {**base, "reps": "", "parts": "2000"},
-             {**base, "reps": "x", "season": "2026-09-05"},
-             {**base, "engine": "analogue"},
-             {**base, "anchor": ""}]
-    lattrs = {"data-all": "53", "data-pf": "ready", "data-gh": "about a minute"}
-    got = _js(tmp_path, FAKE_FORM + "var est = " + json.dumps(est)
-              + ", fs = " + json.dumps(forms) + ", la = "
-              + json.dumps(lattrs) + ", out = [];"
-              " for (var i = 0; i < fs.length; i++)"
-              " out.push(F.runWords(E, F.readRun(fakeForm(est, fs[i]),"
-              " line(la)))); return out;")
-    want = [FC.run_words("all", 53, 3, 10_000, "2026-10-31"),
-            FC.run_words("all", 5, 3, 10_000, "2026-10-31"),
-            FC.run_words("all", 1, 3, 10_000, "2026-10-31"),
-            FC.run_words("all", 53, 3, 2_000, "2026-10-31"),
-            FC.run_words("all", 53, 3, 10_000, "2026-10-31", "2026-09-05"),
-            "Groundhog, 53 locations: about a minute", ""]
+    html = _page().text
+    served = re.search(r'<span class="uk-sr">Run time: </span><span>'
+                       r'([^<]*)</span>', html).group(1)
+    got = _served(tmp_path, html, W3, """
+      var out = [time()];
+      set("#ck-all", false); out.push(time());        // US stays ticked
+      var ones = fm.querySelectorAll("input.ck-one");
+      for (var i = 0; i < 4; i++) ones[i].checked = true;
+      set("#ck-us", false); out.push(time());
+      set("#ck-us", true); out.push(time());
+      set('[data-knob="pf.particles"]', "40000", "input"); out.push(time());
+      set('[data-knob="pf.replicates"]', "", "input"); out.push(time());
+      set('[data-knob="pf.replicates"]', "x", "input"); out.push(time());
+      set('[data-knob="pf.replicates"]', "1", "input"); out.push(time());
+      set('[data-knob="run.season_start"]', "2025-09-06"); out.push(time());
+      set("#model-pick", "analogue"); out.push(time());
+      set("#model-pick", "pf"); out.push(time());
+      set("#model-pick", "all"); anchor(""); out.push(time());
+      anchor(%s); set("#ck-all", true); out.push(time());
+      return out;""" % json.dumps(W3))
+    rw = FC.run_words
+    want = [rw("all", 53, 3, 10_000, W3), rw("all", 1, 3, 10_000, W3),
+            rw("all", 4, 3, 10_000, W3), rw("all", 5, 3, 10_000, W3),
+            rw("all", 5, 3, 40_000, W3), rw("all", 5, 3, 40_000, W3),
+            rw("all", 5, 3, 40_000, W3), rw("all", 5, 1, 40_000, W3),
+            rw("all", 5, 1, 40_000, W3, "2025-09-06"),
+            "Groundhog, 5 locations: about a minute",
+            rw("pf", 5, 1, 40_000, W3, "2025-09-06"), "",
+            rw("all", 53, 1, 40_000, W3, "2025-09-06")]
     assert got == want
-    counts = {"need": 30, "weeks": {"2026-10-31": 17, "2026-10-24": 31}}
-    dforms = [{**base, "engine": "analogue"}, {**base, "bw": "2"},
-              {**base, "bw": "4"}, {**base, "drop": "1"},
-              {**base, "engine": "pf"}, {**base, "anchor": "2026-10-24"},
-              {**base, "anchor": "2026-10-17"}, {**base, "bw": "2.0"}]
-    got = _js(tmp_path, FAKE_FORM + "var est = {}, fs = " + json.dumps(dforms)
-              + ", c = " + json.dumps(counts) + ", out = [];"
-              " for (var i = 0; i < fs.length; i++)"
-              " out.push(F.donorText(F.readDonor(fakeForm(est, fs[i]), c)));"
-              " return out;")
-    thin = ("The Groundhog has too little history for this week "
-            "(17 of 30 donor weeks).")
-    assert got == [thin, thin, "", "", "", "", "", thin]
+    assert got[0] == served and served.startswith(
+        "Oracle SIHRS and Groundhog, 53 locations: about ")
+    # each change is seen (blank and unreadable Independent Runs are
+    # the default's 3)
+    assert len(set(got)) == len(want) - 2
+
+
+@needs_js
+def test_the_served_dataset_form_drives_the_donor_line(tmp_path):
+    """readDonor on a dataset's page as served: the anchor week's count,
+    the Groundhog, the donor window and Weeks to drop at their defaults;
+    one group's donor weeks are plain weeks."""
+    ds = stored(one_series_bytes(), "Flu")
+    dates = ds.forecast_dates()
+    counts = DU.donor_weeks(ds)
+    html = _page(url=f"/forecast?source={ds.id}").text
+    shown, served = _alert(html)
+    assert shown is True
+    assert '<option value="pf"' in _form_html(html)
+    got = _served(tmp_path, html, dates[-1], """
+      var out = [donors()];
+      set('[data-knob="groundhog.bandwidth"]', "6", "input"); out.push(donors());
+      set('[data-knob="groundhog.bandwidth"]', "2", "input"); out.push(donors());
+      set('[data-knob="groundhog.bandwidth"]', "", "input"); out.push(donors());
+      set('[data-knob="run.weeks_to_drop"]', "1", "input"); out.push(donors());
+      set('[data-knob="run.weeks_to_drop"]', "0", "input"); out.push(donors());
+      set("#model-pick", "pf"); out.push(donors());
+      set("#model-pick", "analogue"); out.push(donors());
+      anchor(%s); out.push(donors());
+      anchor("1999-01-02"); out.push(donors());
+      return out;""" % json.dumps(dates[2]))
+
+    def thin(n):
+        return ("The Groundhog has too little history for this week "
+                f"({n} of 30 donor weeks).")
+    assert got == [thin(counts[dates[-1]]), "", thin(counts[dates[-1]]),
+                   thin(counts[dates[-1]]), "", thin(counts[dates[-1]]),
+                   "", thin(counts[dates[-1]]), thin(counts[dates[2]]), ""]
+    assert got[0] == served
+
+
+@needs_js
+def test_several_groups_count_group_weeks(tmp_path):
+    """Two groups: a week counts once in each, so the line says
+    group-weeks, on the page as served and from its script (review 3,
+    finding 14); the counts are the engine's own, unchanged."""
+    from test_dataset_engines import grouped_bytes
+    ds = stored(grouped_bytes(groups=("North", "South"),
+                              start=date(2023, 8, 5), end=date(2025, 11, 15),
+                              pop=False), "Two")
+    newest = ds.forecast_dates()[-1]
+    n = DU.donor_weeks(ds)[newest]
+    assert n < 30 and DU.donor_unit(len(ds.groups)) == "group-weeks"
+    html = _page(url=f"/forecast?source={ds.id}").text
+    text = ("The Groundhog has too little history for this week "
+            f"({n} of 30 donor group-weeks).")
+    assert _alert(html) == (True, text)
+    data = re.search(r'<script type="application/json" id="fc-donor-data">'
+                     r'(.*?)</script>', html).group(1)
+    assert json.loads(data) == {"need": 30, "weeks": DU.donor_weeks(ds),
+                                "unit": "group-weeks"}
+    got = _served(tmp_path, html, newest, """
+      var out = [donors()];
+      set('[data-knob="groundhog.bandwidth"]', "6", "input"); out.push(donors());
+      set('[data-knob="groundhog.bandwidth"]', "", "input"); out.push(donors());
+      return out;""")
+    assert got == [text, "", text]
 
 
 @needs_js
@@ -610,7 +679,8 @@ def test_a_thin_week_says_the_groundhog_has_too_little_history():
     # what the page's script reads: every forecast week's count
     data = re.search(r'<script type="application/json" id="fc-donor-data">'
                      r'(.*?)</script>', html).group(1)
-    assert json.loads(data) == {"need": 30, "weeks": DU.donor_weeks(ds)}
+    assert json.loads(data) == {"need": 30, "weeks": DU.donor_weeks(ds),
+                                "unit": "weeks"}
     # informs only: Run models is the plain button, no reason button, and
     # the line has no "?"
     form = _form_html(html)
@@ -684,14 +754,17 @@ def test_the_script_words_the_line_as_the_page_does(tmp_path):
             "windowDefault": True, "dropDefault": True}
     cases = [base, {**base, "count": 30}, {**base, "count": None},
              {**base, "groundhog": False}, {**base, "windowDefault": False},
-             {**base, "dropDefault": False}, {**base, "count": 0}]
+             {**base, "dropDefault": False}, {**base, "count": 0},
+             {**base, "unit": "group-weeks"}, {**base, "unit": "weeks"}]
     got = _js(tmp_path, "var cs = " + json.dumps(cases) + ", out = [];"
               " for (var i = 0; i < cs.length; i++)"
               " out.push(F.donorText(cs[i])); return out;")
-    assert got[0] == _alert(html)[1]
+    assert got[0] == _alert(html)[1] == got[8]
     assert got[1:6] == [""] * 5
     assert got[6] == ("The Groundhog has too little history for this week "
                       "(0 of 30 donor weeks).")
+    assert got[7] == ("The Groundhog has too little history for this week "
+                      f"({n} of 30 donor group-weeks).")
 
 
 def test_the_new_words_keep_the_house_rules():

@@ -16,7 +16,9 @@
    the shipped donor window: datasets_ui.donor_weeks), said while the
    Groundhog runs, the week has fewer than it needs, and the donor window
    and Weeks to drop are at their defaults (either moves what it finds).
-   It informs only: Run models stays on.
+   With several groups a week counts once in each, so the line says
+   group-weeks (the page's unit, datasets_ui.donor_unit). It informs
+   only: Run models stays on.
 
    ES5 (docs/UI-KIT.md); reads the form, posts nothing. */
 (function (root) {
@@ -94,13 +96,15 @@
   }
 
   // the donor line for one state of the form (o: what readDonor returns);
-  // "" for nothing to say
+  // "" for nothing to say. o.unit: "group-weeks" with several groups,
+  // else weeks
   function donorText(o) {
     if (!o || !o.groundhog || !o.windowDefault || !o.dropDefault) return "";
     if (typeof o.count !== "number" || !(o.need > 0) || o.count >= o.need)
       return "";
     return "The Groundhog has too little history for this week (" +
-      o.count + " of " + o.need + " donor weeks).";
+      o.count + " of " + o.need + " donor " +
+      (o.unit === "group-weeks" ? "group-weeks" : "weeks") + ").";
   }
 
   // a model setting at its default: blank, or the same number
@@ -111,9 +115,9 @@
     return v === "" || parseFloat(v) === parseFloat(el.getAttribute("data-default"));
   }
 
-  // the form as donorText reads it: the anchor week's count from the
-  // page's counts, whether the Groundhog runs, and whether the donor
-  // window and Weeks to drop are at their defaults
+  // the form as donorText reads it: the anchor week's count and the
+  // unit from the page's counts, whether the Groundhog runs, and whether
+  // the donor window and Weeks to drop are at their defaults
   function readDonor(form, counts) {
     if (!form || !counts || !counts.weeks) return null;
     var date = form.querySelector("input[name=forecast_date]");
@@ -121,6 +125,7 @@
     var model = form.querySelector("#model-pick");
     var c = a && counts.weeks.hasOwnProperty(a) ? counts.weeks[a] : null;
     return {count: typeof c === "number" ? c : null, need: counts.need,
+            unit: counts.unit === "group-weeks" ? "group-weeks" : "weeks",
             groundhog: !!model && model.value !== "pf",
             windowDefault: atDefault(form, "groundhog.bandwidth"),
             dropDefault: atDefault(form, "run.weeks_to_drop")};
