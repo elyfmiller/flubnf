@@ -1681,8 +1681,9 @@ def runner_popen_kwargs(base: dict | None = None,
     since the engine runs a bare `perl` and BNG2.pl itself (retro's runners
     come through here too); else of this process's. On every platform it
     points bngsim's compiled-model cache at codegen_cache_dir(), unless
-    BNGSIM_CODEGEN_CACHE_DIR already holds a folder (then a word kept on
-    ours from an earlier launch is dropped). While bngsim compiles
+    BNGSIM_CODEGEN_CACHE_DIR already holds a folder (then nothing is said
+    or kept for this launch, and a word kept on ours from an earlier launch
+    stays, for the launches that still use it). While bngsim compiles
     (BNGSIM_NO_CODEGEN empty), that folder is made and written to first
     (codegen_cache_problem); one that cannot be written leaves the runner
     to bngsim's own folder, and the reason is kept for Storage and said on
@@ -1725,10 +1726,12 @@ def runner_popen_kwargs(base: dict | None = None,
         else:
             env[CODEGEN_CACHE_ENV] = str(d)
         _note_codegen_problem(d, why)
-    else:
-        # a folder someone set: neither made nor tested, and a word kept
-        # on ours from before no longer stands (this runner never uses it)
-        _note_codegen_problem(d, "")
+    # else a folder someone set: neither made nor tested, and nothing said
+    # or kept for this launch. A word kept on ours stays: it is one per
+    # state folder, and the console beside it (a terminal replay exported
+    # the variable, say) still launches with ours (review of #93 at
+    # d5a7eb16, finding 4); codegen_cache_warning leaves it out where the
+    # environment names a folder of its own
     kw["env"] = env
     return kw
 

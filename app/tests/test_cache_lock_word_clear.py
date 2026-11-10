@@ -8,8 +8,10 @@
      registry: 10 s each;
   2. the cache warning is said on the error output before it is written
      to the state folder, so a state folder that takes no file still has
-     it said (once in the process); and a warning kept from before goes
-     once a folder of the user's own is set in BNGSIM_CODEGEN_CACHE_DIR;
+     it said (once in the process); and a launch whose environment names a
+     folder of its own in BNGSIM_CODEGEN_CACHE_DIR says and keeps nothing,
+     and leaves a warning kept from before for the launches that still use
+     the state folder's cache (review of #93 at d5a7eb16, finding 4);
   5. reclaim.clear_codegen_cache keeps a protected cache folder and a
      linked one by itself, not only behind the route's own refusal.
 
@@ -40,8 +42,10 @@ FLOCK = pytest.mark.skipif(fcntl is None, reason="flock is POSIX's")
 
 @pytest.fixture(autouse=True)
 def fresh_word(monkeypatch):
-    """No word said yet in this process (pf._CODEGEN_SAID)."""
-    monkeypatch.setattr(pf, "_CODEGEN_SAID", {})
+    """No word said yet in this process (pf._CODEGEN_SAID). raising=False:
+    on a tree without it, each test fails for its own reason, not here
+    (review of #93 at d5a7eb16, finding 3)."""
+    monkeypatch.setattr(pf, "_CODEGEN_SAID", {}, raising=False)
 
 
 def _runner(pid: int):
@@ -174,19 +178,58 @@ def test_a_read_only_state_folder_still_has_the_word_said(state, capsys):
         root.chmod(0o755)
 
 
-def test_a_folder_the_user_sets_drops_the_word_kept_on_ours(state, tmp_path):
+def test_a_folder_the_user_sets_leaves_the_word_kept_on_ours(
+        state, tmp_path, capsys):
+    """A runner given a folder of its own (the Sandbox passes its own
+    environment): nothing said or kept for it, and the word kept on ours
+    stays for this console's other launches, which still use ours."""
     block = _blocked(state)
     pf.runner_popen_kwargs({}, _os_name="posix", env={"PATH": "x"})
-    assert "could not write" in pf.codegen_cache_warning()
+    kept = state["root"] / pf.CODEGEN_PROBLEM_NAME
+    before = kept.read_bytes()
     assert 'id="st-ec-warn"' in client.get("/storage").text
+    capsys.readouterr()
     theirs = tmp_path / "theirs" / "codegen"
     kw = pf.runner_popen_kwargs({}, _os_name="posix",
                                 env={"PATH": "x", VAR: str(theirs)})
     assert kw["env"][VAR] == str(theirs) and not theirs.exists()
-    assert not (state["root"] / pf.CODEGEN_PROBLEM_NAME).exists()
-    assert pf.codegen_cache_warning() == ""
-    assert 'id="st-ec-warn"' not in client.get("/storage").text
+    assert capsys.readouterr().err == ""
+    assert kept.read_bytes() == before
+    assert "could not write" in pf.codegen_cache_warning()
+    assert 'id="st-ec-warn"' in client.get("/storage").text
+    # the next launch with ours, still blocked: kept, so not said again
+    pf.runner_popen_kwargs({}, _os_name="posix", env={"PATH": "x"})
+    assert capsys.readouterr().err == ""
+    assert kept.read_bytes() == before
     assert block.is_file()                    # ours neither made nor fixed
+
+
+def test_a_terminal_launch_with_its_own_folder_leaves_the_console_its_word(
+        state, tmp_path, monkeypatch, capsys):
+    """The review's case (#93 at d5a7eb16, finding 4), in one process: the
+    console's cache folder cannot be written and Storage says so; a
+    terminal replay on the same state folder, BNGSIM_CODEGEN_CACHE_DIR
+    exported, starts a runner. The word is one per state folder: it stays,
+    and the console, whose environment names no folder, still says it."""
+    block = _blocked(state)
+    pf.runner_popen_kwargs({}, _os_name="posix", env={"PATH": "x"})
+    kept = state["root"] / pf.CODEGEN_PROBLEM_NAME
+    before = kept.read_bytes()
+    assert 'id="st-ec-warn"' in client.get("/storage").text
+    capsys.readouterr()
+    # the terminal: its own environment names a folder
+    theirs = tmp_path / "theirs" / "codegen"
+    monkeypatch.setenv(VAR, str(theirs))
+    kw = pf.runner_popen_kwargs({}, _os_name="posix")
+    assert kw["env"][VAR] == str(theirs) and not theirs.exists()
+    assert capsys.readouterr().err == ""          # nothing said for it
+    assert pf.codegen_cache_warning() == ""       # nor shown where it runs
+    assert kept.read_bytes() == before            # kept as it was
+    # the console: no folder of its own, so Storage still says it
+    monkeypatch.delenv(VAR)
+    assert "could not write" in pf.codegen_cache_warning()
+    assert 'id="st-ec-warn"' in client.get("/storage").text
+    assert block.is_file()
 
 
 def test_storage_leaves_the_word_out_while_the_user_names_a_folder(
