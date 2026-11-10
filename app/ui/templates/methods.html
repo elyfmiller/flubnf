@@ -187,7 +187,7 @@
  forecast hub</a>{% endset %}
  {% call tips.stats("uk-stats--row mt-lead", label="What FluBNF forecasts") %}
   {{ tips.stat("Forecasts", "weekly influenza hospital admissions", id="mt-target") }}
-  {{ tips.stat("Locations", "all 52", "US jurisdictions", id="mt-locs") }}
+  {{ tips.stat("Locations", "53", "locations: 52 jurisdictions plus the national total", id="mt-locs") }}
   {{ tips.stat("Format", hub, id="mt-format") }}
   {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
  {% endcall %}
@@ -482,15 +482,11 @@
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
   <span class="mt-unit mt-end">Replayed weeks
   {%- call tips.toggletip("mt-replay", "the replayed weeks", title="Three seasons replayed on the data each week had") %}
-   <span class="uk-tt-line">A replay's weeks are the hub's dated truth vintages
-   inside the season.</span>
-   <span class="uk-tt-line">Eight scored weeks the hub archive skipped (three in
-   2024-25, five in 2025-26) ship with FluBNF as copies of the hub's own
-   published files (<code>data/vintages/</code>) and are replayed and scored
-   like the rest.</span>
-   <span class="uk-tt-line">Two weeks had no published data and no FluSight round
-   (as of 2024-05-04 and 2025-01-18); the player shows them as
-   placeholders.</span>
+   <span class="uk-tt-line">Eight weeks the hub archive skipped (three in
+   2024-25, five in 2025-26) ship with FluBNF, copied from the hub's own
+   files (<code>data/vintages/</code>), and are scored like the rest.</span>
+   <span class="uk-tt-line">Two weeks had no data and no FluSight round
+   (2024-05-04 and 2025-01-18); the player shows them as placeholders.</span>
   {%- endcall %}</span>
  </div>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the

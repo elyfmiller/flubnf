@@ -131,7 +131,7 @@ def keep_reason(d: Path, complete: bool, full: bool = True,
         return ("this run is not complete, so the archive kept the "
                 "earlier complete run" + (f" {held}" if held else ""))
     if not full and held_done and rec.get("full", True):
-        return ("this run covers part of the 53 jurisdictions, so the "
+        return ("this run covers part of the 53 locations, so the "
                 "archive kept the earlier run on all 53"
                 + (f" {held}" if held else ""))
     return ""

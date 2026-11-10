@@ -85,7 +85,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     except Exception as e:
         all_locs = []
         locations_error = (f"State list unavailable ({type(e).__name__}); "
-                           "runs will cover all 53 jurisdictions.")
+                           "runs will cover all 53 locations.")
     # the default run is the full hub submission: "all" is the 53, the 52
     # jurisdictions AND US national (US stays ticked with it, so a custom
     # pick starts with US in; the user unticks it to leave it out). After a
@@ -994,7 +994,7 @@ def _location_progress(workroot) -> list:
 
 def _scope_label(locs) -> str:
     """The progress label's scope: '3 states', '1 state + US',
-    'all 53 jurisdictions' (the form's "all": the 52 and US) or
+    'all 53 locations' (the form's "all": the 52 jurisdictions and US) or
     'US only'."""
     from app.core import us_national as _usn
     n = len(_usn.state_names(locs))
@@ -1002,7 +1002,7 @@ def _scope_label(locs) -> str:
     if not n:
         return "US only" if us else "0 states"
     if n == 52 and us:
-        return "all 53 jurisdictions"
+        return "all 53 locations"
     return f"{n} state{'s' if n != 1 else ''}" + (" + US" if us else "")
 
 
@@ -1325,7 +1325,7 @@ def run_models(request: Request,
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
     if not locations:
-        _flash("Not run: select a location, or all 53 jurisdictions.",
+        _flash("Not run: select a location, or all 53 locations.",
                "warn")
         return _back(request, "/forecast")
     try:

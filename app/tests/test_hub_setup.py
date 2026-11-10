@@ -141,9 +141,8 @@ def test_a_missing_hub_gets_its_action_line_first():
 def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
     html = _home(ENGINE_GONE,
                  dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
-    assert ">1 not installed<" in html
-    assert html.split('id="tip-hm-missing"', 1)[1].split(">", 1)[1] \
-        .split("</span>", 1)[0].strip() == ENGINE
+    # the badge counts; the row below names it, so the badge has no "?"
+    assert ">1 not installed<" in html and 'id="tip-hm-missing"' not in html
     rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
     assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
     assert "fit_type=pf" not in rows and "venv" not in rows
@@ -156,6 +155,21 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
     html = _home([], INSTALLED)
     assert 'id="hm-v-pybnf"' in html and 'id="home-pin"' in html
     assert 'id="hm-v-engine"' not in html
+
+
+def test_a_machine_without_the_engine_says_so_once_in_setup(monkeypatch):
+    """No engine (a student laptop): the Setup card names it once, with
+    its fix and one "?" (where it was looked for); the build line that
+    would repeat it is not shown."""
+    from test_fewer_marks import marks
+    monkeypatch.setattr(V, "ENGINE_BUILD", {
+        "engine": "public", "error": "there is no Python at /v/bin/python"})
+    html = _home(ENGINE_GONE,
+                 dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
+    setup = html.split('class="card hm-setup"', 1)[1]
+    assert setup.count("To add the particle-filter engine") == 1
+    assert "data-engine-build" not in setup
+    assert [m for m in marks(html) if m.startswith("tip-")] == ["tip-hm-miss-1"]
 
 
 def test_the_bngsim_pin_note_stays_off_beside_not_installed():
@@ -171,10 +185,12 @@ def test_a_cold_launch_says_checking_until_the_probe_lands():
     assert 'id="hm-checking"' in html and ">checking…<" in html
     assert 'id="hm-installed"' not in html and 'id="hm-missing"' not in html
     assert 'id="hm-setup-state"' in html
-    # the recount waits for every value and draws the badge with its "?"
+    # the recount waits for every value and draws the badge (the list and
+    # the values name what it counts, so it has no "?")
     script = html.split("function recount()", 1)[1].split("</script>", 1)[0]
     assert "indexOf('resolving') >= 0) return" in script
-    assert "FluBNFUI.tip('hm-missing', word, names.join(', '))" in script
+    assert "slot.innerHTML = FluBNFUI.badge('warn', word);" in script
+    assert "FluBNFUI.tip(" not in script
     assert "FluBNFUI.badge('ok', 'All components installed')" in script
 
 
