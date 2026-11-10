@@ -151,7 +151,8 @@ def test_the_default_form_ticks_all_53_with_us(monkeypatch):
     assert "<b>US (national)</b>" in html
     # the Settings "i" names the 52 and US; a custom pick's count says
     # whether US is in it ("1 + US selected")
-    assert "the 50 states, DC and Puerto Rico, and US" in html
+    assert ("<b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is "
+            "fitted and scored apart.") in html
     assert "n + (us ? ' + US' : '') + ' selected'" in TEMPLATE
     # the national box comes after the jurisdictions (the template's order)
     assert TEMPLATE.index('id="ck-us"') > TEMPLATE.index('class="ck-one"')

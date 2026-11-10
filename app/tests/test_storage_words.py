@@ -31,8 +31,11 @@ def test_the_ledger_heading_counts_every_run_recorded():
 
 def test_sections_carry_no_marks_and_busy_rows_say_why_once(state):
     html = client.get("/runs").text
+    # Reclaim, the Sandbox and the students' experiments too (review of
+    # #88, ST-08; test_s3b_storage renders all three)
     for hid in ("st-wr", "st-rs", "st-ra", "st-rp", "st-datasets",
-                "st-protected", "st-reclaim-none"):
+                "st-protected", "st-reclaim-none", "st-reclaim", "st-sbx",
+                "st-stu"):
         assert f'id="tip-{hid}"' not in html, hid
     busy = html.split('id="st-busy"', 1)[1].split("</div>", 1)[0]
     assert busy.count("is active; its workroot cannot be deleted") == 1
@@ -72,12 +75,20 @@ def test_empty_states_follow_the_listings():
 
 
 def test_a_workroot_delete_leads_with_the_runs_name(state):
-    html = client.get("/runs").text
     rid = state["rids"]["ok"]
+    # its report and a submission file: the hint names both (it names
+    # only what the folder holds, test_s3b_storage)
+    w = state["root"] / "workroots" / rid
+    (w / "report.html").write_text("<p>r</p>")
+    (w / "submission" / "FluBNF-Model").mkdir(parents=True)
+    (w / "submission" / "FluBNF-Model" / "2098-01-10-FluBNF-Model.csv"
+     ).write_text("reference_date\n")
+    html = client.get("/runs").text
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
     assert 'data-what="the run ' in row
     assert (f"Its folder {rid} goes, with the run&#39;s report and "
-            "submission files in it.") in row
+            "submission files in it. The ledger row stays and shows a dash "
+            "for disk use.") in row
 
 
 def test_a_dataset_delete_names_only_what_it_had():

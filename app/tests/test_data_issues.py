@@ -444,6 +444,53 @@ def test_a_rerun_carries_the_data_choices(tmp_path, monkeypatch):
     assert started[1].extra["data_choices"] == {**dc, "week": WEEKS[-2]}
 
 
+def test_a_rerun_lets_the_run_wide_rule_cover_a_choice_it_now_removes(
+        tmp_path, monkeypatch):
+    # FC-13 on a re-run: Ohio's recorded Level is one the run-wide setting
+    # (newest weeks reading 0 counted as unreported) no longer allows. A
+    # re-run cannot choose again, so the setting covers Ohio, as it does a
+    # state with no choice; the same choice sent by the form is refused
+    _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0"})
+    nd = {"data.trailing_zero": "missing"}
+    prior = {"week": NEW, "source_sha256": "abc",
+             "states": {"Ohio": {"issue": "zero", "choice": "level"}}}
+    dc, kept, why = ui_forecast._data_choices(NEW, NEW, "analogue",
+                                              ["Ohio", "Utah"], {}, nd, prior)
+    assert why == ""
+    assert "Ohio" not in ((dc or {}).get("states") or {})
+    assert kept == ["Ohio", "Utah"]
+    dc, kept, why = ui_forecast._data_choices(NEW, NEW, "analogue",
+                                              ["Ohio", "Utah"],
+                                              {"39": "level"}, nd, prior)
+    assert dc is None and why.startswith(
+        "Data issues for Ohio: Level does not apply while Newest weeks "
+        "reading 0 is set to counted as unreported; choose Both from ")
+    # a recorded choice the setting still allows is kept
+    keep = {**prior, "states": {"Ohio": {"choice": "omit"}}}
+    dc, kept, why = ui_forecast._data_choices(NEW, NEW, "analogue",
+                                              ["Ohio", "Utah"], {}, nd, keep)
+    assert why == "" and dc["states"]["Ohio"]["choice"] == "omit"
+    assert kept == ["Utah"]
+    # through the re-run route
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    extra = ui_forecast._run_extra(2, "realtime")
+    K.write_extra(K.from_record(nd), extra)
+    spec = RunSpec(engine="analogue", forecast_date=NEW,
+                   locations=["Ohio", "Utah"],
+                   extra={**extra, "data_choices": prior})
+    led = Ledger()
+    rid = led.open_run(spec, Path("pending"), {})
+    led.close_run(rid, "stopped", {})
+    started = _capture_run(monkeypatch)
+    ui_state._status.pop("flash", None)
+    r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
+    assert r.status_code == 303 and len(started) == 1, \
+        ui_state._status.get("flash")
+    assert "Ohio" not in MS.choices_of(started[0].extra)
+    assert started[0].locations == ["Ohio", "Utah"]
+    assert MS.rules_of(started[0].extra) == nd
+
+
 # --- the pages ------------------------------------------------------------------------
 
 def test_a_left_out_state_is_requested_and_left_out_on_the_output_page(tmp_path):
