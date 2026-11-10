@@ -24,7 +24,7 @@ contributors.
 ## 1. A clone of your own
 
 **On your computer**, install FluBNF as
-[INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) says, Steps 1 to 3. The
+[INSTALL-STUDENTS.md](INSTALL-STUDENTS.md) says, Steps 1 to 2. The
 commands on this page are that clone's own `flubnf`:
 `~/GitHub/flubnf/.venv/bin/flubnf` on macOS,
 `"%LOCALAPPDATA%\FluBNF\flubnf\.venv\Scripts\flubnf"` on Windows, in
@@ -256,5 +256,8 @@ and address), or `git rebase -i` for an older one, then
 every push, and when the title, the description or the base changes.
 
 The tests wait for Ely's approval. Review reruns the proposal on the Mac
-Studio, where its fingerprints must equal your `summary.json`'s. Only Ely
+Studio, where its fingerprints must equal your `summary.json`'s. Its
+scores equal yours only when both runs used the same engine and build:
+the public and the private engine draw their random numbers differently.
+`ran.engine_build` in `summary.json` names the build yours used. Only Ely
 merges.

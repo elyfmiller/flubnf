@@ -25,6 +25,27 @@ Retrospective tab and on the Storage tab, open as
 `/retro/<season>?archive=<stamp>` with the player and the report, and are
 deleted from either tab. They are never resumed.
 
+## Resuming across engines
+
+A season resumes only on the engine and the build its weeks were fitted
+by. Since the switch to the public engine, a season begun on the private
+engine is refused on the public one, and the other way round: resuming
+would pool fits from two engines in one season, or in one week. The
+refusal names the engine the season began on and the step that switches
+back. For a season begun on the private engine, that is
+`./setup_engine.sh --private` in the FluBNF folder, or, on Windows,
+`setup.ps1 -Engine private`, then open FluBNF.bat again.
+
+For each such season, choose one:
+
+- finish it on the engine it began on: switch, finish the season, then
+  switch back (`./setup_engine.sh --public`, or `setup.ps1 -Engine public`);
+- or archive or discard it, and replay it on this engine.
+
+Nothing chooses for you. A season recorded before builds were recorded
+resumes as before. Viewing, exporting and importing a replay need no
+engine.
+
 ## Export and import of a replay
 
 A replayed season can be viewed on another machine: the season page's

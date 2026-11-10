@@ -18,16 +18,18 @@ as it stood at the time.
 
 ## Quick start
 
-On macOS or Linux, with git and Python 3.11 or newer (3.11 or 3.12 for
-the engine):
+On macOS or Linux, with git and Python 3.11 or newer for the console (the
+engine is a Python 3.12 venv of its own):
 
     git clone https://github.com/elyfmiller/flubnf && cd flubnf
     ./setup.sh                  # .venv, BioNetGen and the sparse hub clone
     .venv/bin/flubnf app        # the console, at http://127.0.0.1:8710
     .venv/bin/flubnf doctor     # what this machine can see
 
-Without the lab's engine the console runs the Groundhog only. The macOS
-one-line installer, Windows, and the engine are under
+Without the engine (public PyBNF, which the first open of
+`FluBNF.command` installs, or `./setup_engine.sh`) the console runs the
+Groundhog only. The macOS one-line installer, Windows, and the engine are
+under
 [Install and run](#install-and-run); lab members start from
 [docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
 
@@ -56,8 +58,9 @@ FluBNF submits two models to FluSight, each under its own hub identity
   waning immunity and seasonal transmission) written in BNGL and fitted by
   a Liu-West filter (a sequential particle filter): 10,000 candidate
   epidemics per jurisdiction, refitted every week from the season's start
-  on that week's data. The filter runs in a fork of PyBNF with bngsim
-  integrating the model in process; a jurisdiction season fits in seconds.
+  on that week's data. The filter runs in public PyBNF (lanl/PyBNF at
+  8410f794, `job_type = lwf`) with bngsim integrating the model in
+  process; a jurisdiction season fits in under a minute.
   After the fit, the Oracle step blends the filter's forecast growth with
   donor growth from past seasons at the same calendar week: each forecast
   sample path draws one donor growth path from an earlier season (within
@@ -84,7 +87,7 @@ Interval coverage at the January turn is the known weakness of the
 mechanistic fit. Model definitions and parameter sources are in
 [docs/MODEL-PROVENANCE.md](docs/MODEL-PROVENANCE.md).
 
-The Sandbox tab runs the same particle filter on a model of your own, in
+The Sandbox tab runs the same Liu-West filter on a model of your own, in
 its own folder, with a code editor, a check that needs no engine, a
 contact map and reaction network drawn from the model, and data loaded
 from the hub archive (by jurisdiction and week range) or from a CSV of
@@ -105,12 +108,12 @@ import` takes the same file or folder.
 
 ## Install and run
 
-Requirements: Python 3.11 or 3.12 (the private engine pins numpy<2; the
-public one is Python 3.12); the console alone runs on newer. Also git, and about 150 MB for the sparse hub clone.
-Setup installs BioNetGen itself.
+Requirements: Python 3.11 or newer for the console; the engine is a
+Python 3.12 venv of its own, which setup finds or asks conda for. Also git,
+and about 150 MB for the sparse hub clone. Setup installs BioNetGen itself.
 
-macOS, one line (clones to `~/GitHub/flubnf`, runs setup, prints
-how to launch):
+macOS, one line (clones to `~/GitHub/flubnf`, runs setup, installs the
+engine, prints how to launch):
 
     curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | bash
 
@@ -127,21 +130,20 @@ in a clone does the same, first run setup included. Windows is
 experimental: clone outside `Documents` and double click
 [`FluBNF.bat`](FluBNF.bat); see [docs/WINDOWS.md](docs/WINDOWS.md).
 
-The particle filter engine that produces the weekly forecasts lives in a
-PyBNF fork that is not public. The console runs without it, with the
-Groundhog's forecasts only. Lab members receive a small engine archive;
-saved in Downloads, it is installed the next time the app opens. The full
-procedure, including the GitHub routes, is [docs/ENGINE.md](docs/ENGINE.md);
-the student walkthrough is
-[docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md). The same Liu-West
-filter is now in public PyBNF, and a second, opt-in route installs that
-from this repository with no account or file
-([docs/ENGINE.md](docs/ENGINE.md#the-public-engine-opt-in)); it is being
-tested, and the private engine stays the default until the switch.
+The particle filter engine is public PyBNF's Liu-West filter
+(lanl/PyBNF, `job_type = lwf`), installed from this repository's lock
+with no GitHub account and no file: the first open of FluBNF installs it,
+in a venv of its own. The console runs without it, with the Groundhog's
+forecasts only. It is the default by Ely's decision of 2026-11-09, made
+before the planned acceptance run; the evidence for it is in-house and
+retrospective ([docs/ENGINE.md](docs/ENGINE.md#the-public-engine-the-default)).
+The lab's private PyBNF fork stays installed as the fallback for two
+rounds: `./setup_engine.sh --private` (on Windows, `setup.ps1 -Engine
+private`) switches a copy to it. The student walkthrough is
+[docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
 
 On macOS and Linux, a machine whose copy is stale or broken reinstalls from
-scratch with one line, once the engine archive is saved in Downloads and
-older `pybnf-pf-*.tar.gz` downloads are deleted. Nothing is deleted, a
+scratch with one line, which needs no engine file. Nothing is deleted, a
 current machine and a checkout with uncommitted work are left alone, and
 [docs/LAUNCHERS.md](docs/LAUNCHERS.md#reinstalling-from-scratch-macos-and-linux)
 says what it moves where:
@@ -186,9 +188,9 @@ differ and are not read across.
 Without the step, the plain particle filter on the Oracle SIHRS's cells
 scores 0.840, 0.794 and 0.843 (0.819 pooled); on the 9,279 cells of
 2024-25 and 2025-26 together the Oracle SIHRS scores 0.731 against the
-plain filter's 0.813. The particle filter alone on the production
-engine's replay (reseal of 2026-09-07, 15,460 cells) scored 0.840, 0.797
-and 0.846 (0.821 pooled). Choosing the Groundhog's bank over admissions
+plain filter's 0.813. The particle filter alone on the private engine's
+replay (the production engine before the switch; reseal of 2026-09-07,
+15,460 cells) scored 0.840, 0.797 and 0.846 (0.821 pooled). Choosing the Groundhog's bank over admissions
 growth alone (0.741 on the same 9,279 cells) was the project lead's
 decision on a screen that did not resolve it; the Oracle SIHRS's record is
 a frozen-specification replication, and the 2026-27 season is the

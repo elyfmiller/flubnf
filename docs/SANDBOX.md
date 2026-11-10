@@ -1,6 +1,6 @@
 # The Sandbox: a model of your own, fitted
 
-The Sandbox tab fits a model you write with the same particle filter the
+The Sandbox tab fits a model you write with the same Liu-West filter the
 console forecasts with, in its own folder (`sandbox/`, never under version
 control). Nothing in it reaches the runs ledger, the retrospectives or a
 submission. This page takes a new student from nothing to a fitted model
@@ -8,7 +8,8 @@ of their own; the page itself carries the short version under **How the
 Sandbox works**.
 
 **What it needs.** A fit uses the particle filter engine, so the engine
-file must be installed (FluBNF says "engine ready" when it opens), and
+must be installed (the first open of FluBNF installs it, and says "public
+engine ready"), and
 Perl must be on the computer, for BioNetGen's BNG2.pl: macOS and Linux
 have it. On Windows it must be a Windows Perl (the perl in Git's Unix
 tools does not count), and FluBNF.bat installs its own when there is
@@ -57,11 +58,17 @@ per week (a period of d days is the rate 7/d).
   `I() -> I() + Hadm()  rho*gamma` (it counts each admission without
   moving anyone). A function scales it to what is reported,
   `Hobs() = mult__FREE*H_Cum`. A reporting scale never enters a rule.
-- The engine starts the model at **t = -1** (`pf_start_time`), and the
-  seed species are the population then. Number the first row of data.exp
-  0, so the seeds are the population one week before it; a first row at
-  t = 9 means the model runs ten weeks before the first count. N and the
-  starting infected set the size of the first weeks' counts.
+- The model starts one week before the data row numbered 0, and the seed
+  species are the population then. Number the first row of data.exp 0, so
+  the seeds are the population one week before it; a first row at t = 9
+  means the model runs ten weeks before the first count. N and the
+  starting infected set the size of the first weeks' counts. This holds on
+  both engines. BNGL's own clock, `time()`, does not: the public engine
+  starts it at 0 where the private one starts it at -1, so a model that
+  calls `time()` runs on the private engine only, and Check warns of it on
+  the public engine. A model that needs a clock keeps it in a counter
+  species, as the SIHRS example does (`counter() 0`, `0 -> counter() 1`,
+  `Molecules t counter()`): it starts with the run on both engines.
 - The simulate action must name a suffix (`suffix=>"seir"`); the engine
   matches the data file by it.
 
@@ -109,7 +116,8 @@ a quick check (200 particles) the ranges are rough: it shows that the
 model runs. **Jitter** is how far each fitted value is nudged between
 weeks (the Liu-West kernel scale), so the particles stay varied: 0.15 in
 production, 0.2 to 0.3 for a fit that collapses. The same **Seed** and
-files repeat a fit exactly; another seed shows how much it varies by
+files repeat a fit exactly on the same engine (the two engines draw their
+random numbers differently); another seed shows how much it varies by
 chance. A run that cannot start says **Not started** and why,
 with what to do in its "?"; a run the engine refuses shows as failed,
 with the engine's reason under Results.
@@ -177,7 +185,7 @@ holds its four choices:
 
 | Choice | What it is |
 |---|---|
-| Model | a shipped model (`sihrs`, `sihrs-2strain`, `sihrs-natg`) or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked |
+| Model | a shipped model (`sihrs`, `sihrs-2strain`, `sihrs-natg`) or a version you registered (`beta2@1`); a version whose files changed since Register is listed and cannot be picked. `sihrs-2strain` runs on the private engine only: the public engine refuses it before it starts |
 | Season | the seasons here, newest first; picked first, the newest with a shipped replay here to compare with |
 | Size | smoke: 2 locations, 2 weeks (minutes); pilot: 10 locations, every other week (under an hour); full: every location and week, as shipped (hours) |
 | Oracle step | on for `sihrs`, off for any other model, unless you change it |
@@ -194,7 +202,9 @@ no particle-filter engine).
 **Stop**, on the experiment's page, finishes the fits in flight; the
 weeks finished are kept. **Resume** is Start with the same four choices:
 the same folder, the stored weeks skipped, the failed ones tried again.
-A complete experiment fits nothing more. **Delete** removes its folder;
+It runs only on the engine and the build the experiment began on;
+otherwise it is refused, and the reason names the switch back. A complete
+experiment fits nothing more. **Delete** removes its folder;
 the registered model stays in the library.
 
 The page, `/sandbox/experiments/<id>`, shows the weeks stored while it
@@ -204,7 +214,10 @@ against one truth and one FluSight baseline, as sums over the
 cells both scored (never ratios). The scores give relWIS, log relWIS and
 the 50, 80 and 95% coverage of this model and of the shipped replay (the
 Oracle SIHRS with the step on, the Liu-West filter alone with it off),
-and this model's summed WIS over the shipped replay's. US stays apart
+and this model's summed WIS over the shipped replay's. When the two ran
+on different engines the page says so, "Compared across engines". The
+shipped replays were made on the private engine, so an experiment on the
+public engine carries that note until they are remade on it. US stays apart
 from the pooled figures and is compared only when both US forecasts are
 of the same kind. Folds give the figures by location, by week and by
 horizon, the fits that had no forecast, and what ran. A page view scores
@@ -229,8 +242,9 @@ replay it will be compared with. Nothing runs in the student's console.
 
 **The runner.** `flubnf runner`, which Ely starts from the main install
 in a Terminal of the lab account, works the queue with the engine that
-install records, and refuses to start from a Terminal that does not
-export it; closing that Terminal stops it as Ctrl-C does, and started
+install records (the public engine, the default, when it records none),
+and refuses to start from a Terminal whose `FLUBNF_ENGINE` names the
+other engine; closing that Terminal stops it as Ctrl-C does, and started
 under `nohup` it keeps going. Its
 first start makes `~/Students/.runner`, the folder that tells the
 students' consoles to queue (until then a student's Start runs on that
@@ -240,7 +254,11 @@ experiment at a time, each in a fresh process that reads and writes only
 that student's folder. It holds the queue, and says why, while its
 install is not a clean `main`, the particle-filter engine is missing or
 out of date, or a Retrospective replay runs on that computer (a Sandbox
-fit does not hold it). It checks the folder before every week, so a
+fit does not hold it). The runner starts itself again after each update
+of the install, between jobs. When the update changes the engine the
+install runs, it stops there instead and says why, so jobs begun on the
+other engine are not refused one by one; started again by hand, it goes
+on with the new engine. It checks the folder before every week, so a
 link, a pipe or an unexpected file stops the job with its reason. A week
 interrupted by a stop or a limit is fitted again from its start. The
 runner alone scores the summary there, against the shipped replays of
@@ -257,10 +275,12 @@ than about 1.6 GB, and its page reads as before.
 **The floor and the limits.** FluBNF keeps 20 GB free on that disk: an
 experiment that would leave less is not queued, waits when it is next,
 and is stopped if the disk falls below it while it runs. Each size has a
-limit on time, memory and folder size: smoke 30 minutes, 4 GB and
-512 MB; pilot 2 hours, 16 GB and 1 GB; full 16 hours, 32 GB and 10 GB,
-the memory at most half the computer's; on the public engine each time
-is 2.4 times as long, as its estimates are. At a limit the runner stops
+limit on time, memory and folder size. On the public engine, the
+default: smoke 72 minutes, 4 GB and 512 MB; pilot 4.8 hours, 16 GB and
+1 GB; full 38.4 hours, 32 GB and 10 GB. On the private engine, the
+fallback, the times are 30 minutes, 2 hours and 16 hours: the public
+engine's are 2.4 times as long, as its estimates are. The memory is at
+most half the computer's. At a limit the runner stops
 the experiment, keeps its finished weeks and says why on its page;
 Resume queues it again.
 
