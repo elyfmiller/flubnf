@@ -200,7 +200,9 @@ def test_the_panel_lists_only_what_a_student_can_set():
     fixed = mt.split('id="mt-set-fixed"')[1].split("</details>")[0]
     assert all(lk.key in fixed for lk in K.LOCKED)
     assert "Liu-West kernel scale h; the sealed record ran 0.30." in mt
-    assert "It pins rho*mult and i0." in mt
+    # what the seed denominator sets, in words (G34, ME-16: no raw keys)
+    assert ("Sets the reporting rate and first infections from the "
+            "admissions to date or the expected total.") in mt
 
 
 # ---------------------------------------------- FC-29: the rule as it is

@@ -45,10 +45,12 @@ def test_the_donor_floor_is_neither_stream_not_each():
         assert "30 paths per stream" not in t, path
 
 
-def test_the_narrowing_note_names_the_member_its_screen_used():
+def test_the_narrowing_note_quotes_no_figure_to_set_against_the_record():
+    # the screen's figures are docs/ORACLE-SIHRS.md's (6b); the note says
+    # what the knob does (G34, ME-16), so no baseline can disagree
     note = K.BY_KEY["oracle.narrow"].note
-    assert ("on the stage-rule member at weight 0.25 (9,152 cells): k = 0.7 "
-            "took pooled relWIS from 0.720 to 0.671") in note
+    assert "relWIS" not in note and "0.720" not in note
+    assert note.startswith("Research, off at 1:")
 
 
 def test_the_oracle_steps_cost_line_promises_no_refit_on_the_forecast_tab():
