@@ -1042,7 +1042,8 @@ def groundhog_donors(rep: Report):
     weeks: {"counts": (one per horizon), "n": the fewest, "need":
     MIN_DONORS, "enough": how many horizons reach it, "seasons": about
     how many more earlier seasons of every group would bring the fewest
-    to it (0 when it is there)}. A count is one per group and week. It
+    to it (0 when it is there; None when no number of seasons like the
+    file's would, see below)}. A count is one per group and week. It
     forecasts each horizon that reaches MIN_DONORS and skips the others,
     so the fewest says whether it forecasts all four. The stored notice
     (dataset_checks, horizon 1) is not changed by it.
@@ -1051,7 +1052,12 @@ def groundhog_donors(rep: Report):
     this file: its count over the earlier seasons holding a week of the
     window (a horizon that reaches into weeks reading 0 gains less from
     each). With none to go by, an ordinary season of every group
-    (window_weeks_a_season: four weeks around a week 53, else five)."""
+    (window_weeks_a_season: four weeks around a week 53, else five). A
+    horizon at 0 although an earlier season holds a week of the window
+    and the week that horizon later (_held_pairs: their values give no
+    donor, a summer of zeros, say) has nothing to go by either, and no
+    ordinary season stands for the file's: "seasons" is None, and the
+    check gives no figure (datasets_ui.model_view)."""
     import math
 
     from flubnf import analogue as AN
@@ -1065,15 +1071,32 @@ def groundhog_donors(rep: Report):
     counts = tuple(donor_counts(bank, [last])[last])
     n, need = min(counts), AN.MIN_DONORS
     S, E = AN.season_of(last), AN.epiweek(last)
-    seasons = {AN.season_of(d) for d in {d for _, d in bank}
-               if AN.season_of(d) < S
-               and AN.calendar_distance(AN.epiweek(d), E)
-               <= AN.DEFAULT_BANDWIDTH}
+    # the weeks of earlier seasons within the donor window
+    window = {d for d in {d for _, d in bank}
+              if AN.season_of(d) < S
+              and AN.calendar_distance(AN.epiweek(d), E)
+              <= AN.DEFAULT_BANDWIDTH}
+    seasons = {AN.season_of(d) for d in window}
     per = (n / len(seasons) if n and seasons else
            window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
+    more = math.ceil((need - n) / per) if n < need else 0
+    if not n and _held_pairs(bank, window,
+                             [h for h, c in zip(GROUNDHOG_HORIZONS, counts)
+                              if not c]):
+        more = None
     return {"counts": counts, "n": n, "need": need,
             "enough": sum(1 for c in counts if c >= need),
-            "seasons": math.ceil((need - n) / per) if n < need else 0}
+            "seasons": more}
+
+
+def _held_pairs(bank, window, horizons) -> bool:
+    """Whether, at any of `horizons`, `bank` holds for one group a week
+    of `window` (earlier seasons' weeks within the donor window) and the
+    week h later: a pair the Groundhog reads for a donor week
+    (donor_counts). At a horizon that counts 0, every such pair gave
+    none, so the file's own seasons give that horizon nothing."""
+    return any((g, d + timedelta(days=7 * h)) in bank
+               for g, d in bank if d in window for h in horizons)
 
 
 def groundhog_shortfall(rep: Report):
@@ -1081,9 +1104,9 @@ def groundhog_shortfall(rep: Report):
     None when every horizon has MIN_DONORS donor weeks (or the file did not
     read): {"n": the fewest donor weeks at any horizon, "need":
     MIN_DONORS, "seasons": about how many more earlier seasons of every
-    group would give the rest} (groundhog_donors, which says how the
-    seasons are worked out). The stored notice (dataset_checks) is not
-    changed by it."""
+    group would give the rest, None when seasons like the file's would
+    not} (groundhog_donors, which says how the seasons are worked out).
+    The stored notice (dataset_checks) is not changed by it."""
     d = groundhog_donors(rep)
     if d is None or d["n"] >= d["need"]:
         return None

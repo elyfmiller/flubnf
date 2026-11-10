@@ -260,9 +260,12 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
     notice ("groundhog", groundhog_notice) and how to fix it
     ("groundhog_fix"): about N more earlier seasons, or, for counts
     without a population, a population column (and the engine when it is
-    not ready) so the Liu-West filter can fit it. The Groundhog's badge,
-    notice and fix go by one count, its donor weeks at the newest week's
-    scarcest horizon (checks.groundhog_donors), as the Forecast tab's line
+    not ready) so the Liu-West filter can fit it. No N when a horizon
+    finds no week like it although the file's earlier seasons hold the
+    weeks it reads (no_more_seasons): more such seasons would not help.
+    The Groundhog's badge, notice and fix go by one count, its donor
+    weeks at the newest week's scarcest horizon
+    (checks.groundhog_donors), as the Forecast tab's line
     does (donor_weeks): "ready" only when every horizon has enough, "some
     horizons only" when some do. Shown in the check only: the notice
     dataset_checks stores (horizon 1) is unchanged."""
@@ -291,14 +294,36 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
            "groundhog_fix": ""}
     if short:
         k = donors["seasons"]
-        more = f"about {k} more earlier season{'' if k == 1 else 's'} of data"
-        out["groundhog_fix"] = (
-            f"Add a population column{'' if ready else ' and set up the engine'}"
-            f" so the {FILTER} can fit it, or give {more}."
-            if count and not pop else
-            f"Set up the engine so the {FILTER} can fit it, or give {more}."
-            if count and not ready else f"Give {more}.")
+        pf_fix = (f"Add a population column"
+                  f"{'' if ready else ' and set up the engine'}"
+                  f" so the {FILTER} can fit it" if count and not pop else
+                  f"Set up the engine so the {FILTER} can fit it"
+                  if count and not ready else "")
+        if k is None:
+            # a horizon the file's own seasons give nothing: no figure
+            nothing = no_more_seasons(donors["counts"])
+            out["groundhog_fix"] = (f"{nothing} {pf_fix}." if pf_fix
+                                    else nothing)
+        else:
+            more = (f"about {k} more earlier season{'' if k == 1 else 's'}"
+                    " of data")
+            out["groundhog_fix"] = (f"{pf_fix}, or give {more}." if pf_fix
+                                    else f"Give {more}.")
     return out
+
+
+def no_more_seasons(counts) -> str:
+    """The check's words for a horizon at 0 donor weeks although earlier
+    seasons in the file hold the weeks it reads (checks.groundhog_donors
+    gives no "seasons" figure then): more seasons like the file's give
+    that horizon nothing."""
+    z = sum(1 for c in counts if not c)
+    if z == len(counts):
+        return ("No earlier season in the file has a week like it at any "
+                "horizon, so more seasons like these would not help.")
+    return (f"At {z} horizon{'' if z == 1 else 's'} no earlier season in "
+            "the file has a week like it, so more seasons like these would "
+            "not help there.")
 
 
 @router.post("/data/datasets/check")

@@ -48,6 +48,17 @@ from .store import (
 # builds new lists from them. Bounded in files and in rows held. A file
 # edited by hand to lack a column reads as it did before the index
 # (_missing): weeks() needs only the dates.
+#
+# The store never rewrites a stored file: a dataset is built in a folder
+# beside the store and renamed into place, and the same upload again
+# returns the dataset as it is. So a file changes only by hand. A Dataset
+# object reads ONE version of its final snapshot, the first it read:
+# weeks(), truth() and series() of the final data all read that version,
+# even after a hand edit while the object is held (Dataset._final), so
+# one object's truth() and series() never disagree. get() makes a new
+# object, which reads the file as it is then (an engine resolves its own
+# each week). A versioned dataset's earlier snapshots are read as they
+# are at each call, as before.
 
 #: at most this many parsed snapshot files are kept (least recently used
 #: first out)
@@ -131,13 +142,37 @@ def _entry(path) -> tuple:
     """The cache entry of one snapshot CSV, parsed once per file version
     (see above): (rows read, index, dates, columns missing). Raises as
     open() would for a missing file."""
+    return _keyed_entry(path)[1]
+
+
+def _truth_of(entry: tuple) -> dict:
+    """Dataset.truth() from a parsed snapshot: the {(group name, date):
+    value} the per-row read gives on the same file, raising the KeyError
+    it raised on a file without one of SNAPSHOT_COLUMNS. Used only when
+    a held object's final snapshot was edited by hand after it first read
+    it (Dataset.truth)."""
+    n, index, _, missing = entry
+    if n and missing:
+        if "value" in missing:               # the first row's value
+            raise KeyError("value")
+        if index:                            # the first row with a value
+            for c in ("location_name", "date"):
+                if c in missing:
+                    raise KeyError(c)
+    return {(name, d): float(v) for name, (dates, values) in index.items()
+            for d, v in zip(dates, values)}
+
+
+def _keyed_entry(path) -> tuple:
+    """(the file version's key, _entry(path)): the version is what a
+    held Dataset pins its final snapshot to (Dataset._final)."""
     path = os.path.abspath(path)
     key = _snap_key(path, os.stat(path))
     with _SNAP_LOCK:
         hit = _SNAPS.get(key)
         if hit is not None:
             _SNAPS.move_to_end(key)
-            return hit
+            return key, hit
     with open(path, newline="", encoding="utf-8") as fh:
         # keyed on the file this handle read, not on the earlier stat
         key = _snap_key(path, os.fstat(fh.fileno()))
@@ -151,7 +186,7 @@ def _entry(path) -> tuple:
         while len(_SNAPS) > 1 and (len(_SNAPS) > SNAPSHOT_CACHE_FILES
                                    or held > SNAPSHOT_CACHE_ROWS):
             held -= _SNAPS.popitem(last=False)[1][0]
-    return entry
+    return key, entry
 
 
 def snapshot_index(path) -> MappingProxyType:
@@ -277,12 +312,31 @@ class Dataset:
         vintage-true)."""
         return self.has_as_of
 
+    def _final(self, path=None) -> tuple:
+        """(version key, parsed entry) of the final snapshot as this object
+        reads it: the version it first read (see "ONE version" at the top
+        of this module). The file is looked up at each call as before (a
+        deleted one is refused, one the cache let go is parsed again);
+        when it is no longer that version, a hand edit while the object is
+        held, the version first read is kept. `path`: final_path, when the
+        caller has it."""
+        key, entry = _keyed_entry(self.final_path if path is None else path)
+        held = self.__dict__.get("_final_held")
+        if held is None or held[0] == key:
+            held = self.__dict__["_final_held"] = (key, entry)
+        return held
+
     def _final_rows(self) -> list:
-        """The final snapshot's rows, read once per Dataset object."""
+        """The final snapshot's rows, read once per Dataset object; the
+        version they are of is kept beside them (truth() reads them only
+        when it is the one _final holds)."""
         rows = self.__dict__.get("_final_cache")
         if rows is None:
-            with open(self.final_path, newline="", encoding="utf-8") as fh:
+            p = self.final_path
+            with open(p, newline="", encoding="utf-8") as fh:
+                key = _snap_key(os.path.abspath(p), os.fstat(fh.fileno()))
                 rows = list(csv.DictReader(fh))
+            self.__dict__["_final_rows_key"] = key
             self.__dict__["_final_cache"] = rows
         return rows
 
@@ -290,10 +344,11 @@ class Dataset:
         """Every distinct week (Saturday, ISO) in the final data, ascending
         (a new list each call). Worked out once per Dataset object from
         the parsed final snapshot, so an engine that resolves the dataset
-        afresh each week does not read the file again for it."""
+        afresh each week does not read the file again for it. The version
+        series() and truth() read (_final)."""
         weeks = self.__dict__.get("_weeks_cache")
         if weeks is None:
-            entry = _entry(self.final_path)
+            entry = self._final()[1]
             _missing(entry, weeks=True)
             weeks = tuple(sorted(entry[2]))
             self.__dict__["_weeks_cache"] = weeks
@@ -332,9 +387,16 @@ class Dataset:
         final data never leaks later weeks into a view; the shape of
         data.vintage_series. The snapshot is parsed once per file
         (snapshot_index), not once per group: a replay asks for every
-        group at every week."""
-        path = self.final_path if as_of is None else self.truth_path(as_of)
-        entry = _entry(path)
+        group at every week. The final snapshot (unversioned data at any
+        as-of, or the newest vintage) is read at the version weeks() and
+        truth() read (_final)."""
+        if as_of is None:
+            path, final = self.final_path, True
+        else:
+            path = self.truth_path(as_of)
+            final = (not self.vintage_true
+                     or str(as_of) == self.meta["vintages"][-1])
+        entry = self._final(path)[1] if final else _entry(path)
         _missing(entry, name)
         dates, values = entry[1].get(name, ((), ()))
         cut = None if as_of is None else str(as_of)
@@ -344,9 +406,16 @@ class Dataset:
 
     def truth(self) -> dict:
         """{(group name, ISO date): value} from the final data: what a
-        dataset forecast is scored against."""
+        dataset forecast is scored against. The version weeks() and
+        series() read (_final): from the rows (read once per object) when
+        they are of it, else, after a hand edit while the object is held,
+        from that version's parsed snapshot (_truth_of)."""
+        key, entry = self.__dict__.get("_final_held") or self._final()
+        rows = self._final_rows()
+        if self.__dict__.get("_final_rows_key") != key:
+            return _truth_of(entry)
         return {(r["location_name"], r["date"]): float(r["value"])
-                for r in self._final_rows() if r["value"] != ""}
+                for r in rows if r["value"] != ""}
 
     def population_series(self, name: str) -> list:
         """[(date, population)] for one group from the final snapshot,
