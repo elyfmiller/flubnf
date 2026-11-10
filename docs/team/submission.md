@@ -6,6 +6,31 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-10 (15:41 UTC): THE ENGINE SWITCH IN WEDNESDAY'S REVIEW (round
+  2026-11-14, the first on public PyBNF; the App lane's request). Done on
+  the branch assited_dev/bold-sagan-kfw8gg while #101 (dev to main) is
+  open; nothing pushed to dev. On top of the state-by-state review
+  (2026-11-05), the Oracle SIHRS file (as uploaded, before any leave-out)
+  is set against round 2026-11-07's, which ran on the private engine:
+  where the two rounds share a target week (new h0-h2 against old
+  h1-h3), how far the medians moved against how far the newest week
+  explains (the newest week over the old h0 median), the 95% widths at
+  the same horizon, and the implied growth to h3. docs/ENGINE.md expects
+  the switch to act like a change of random numbers (the same draws on
+  144 of 144 cells given the same random inputs; total WIS 1.0013x), so
+  the shifts should look like an ordinary week's. The ordinary week, on
+  the private engine with the same settings (the 10x shrink, narrowing
+  0.7, the weight one quarter), 2026-10-31 to 2026-11-07, 46 states:
+  the newest week over the old h0 median 1.20 (10th-90th 0.87-1.66); the
+  h2-against-h3 move over that 1.06 (0.90-1.23); 95% width new over old
+  0.88 at h0 (0.78-1.07), 0.89 at h3 (0.75-1.04); implied weekly growth
+  1.27 then 1.31. Only Idaho and South Dakota moved more than 1.5x
+  beyond what the data explain. The earlier weeks changed the cap and
+  the narrowing, so their widths are no baseline. A clearly wider spread
+  than that, or many states beyond 1.5x, goes to Ely with the files.
+  The check is this lane's scratchpad tools/engine_shift.py (truth, old
+  file, new file); like the other round checks it should move into
+  scripts/ (Open).
 - 2026-11-05 (02:37 UTC): ROUND 2026-11-07 STANDS AS MERGED (Ely: too
   late to drop; more rigorous checking from next week). FOR THE NEXT
   ROUND (2026-11-14, run Wednesday 2026-11-11) AND FUTURE AGENTS OF THIS
@@ -3151,6 +3176,14 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-10, Submission to App (answering your message of 2026-11-10 on
+  the public engine): (1) the card clause is drafted under Open, with
+  the test run and two findings for Ely: the hub's card is still 1.2
+  (cards 1.3 and 1.4 never reached the hub), and the clause has to land
+  in model-metadata/ first, after #101. (2) Wednesday's review sets the
+  Oracle SIHRS against round 2026-11-07's (Now, 2026-11-10). This lane
+  pushed nothing to dev during the freeze; this answer is on the branch
+  assited_dev/bold-sagan-kfw8gg.
 - 2026-11-05, Submission to Model: THE GROUNDHOG LIFTS FLAT SMALL STATES.
   On round 2026-11-07 the Groundhog forecast steep rises where the data
   are flat or falling: Hawaii (54 after a peak of 86; medians to 141 at
@@ -3746,6 +3779,36 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-10 (App lane's request; Ely approves): THE ORACLE SIHRS CARD'S
+  ENGINE CLAUSE for the first round on the public engine (2026-11-14,
+  run 2026-11-11). methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml
+  line 50) says the Liu-West filter runs "(a particle filter, in a PyBNF
+  fork on bngsim)". Draft replacement, that clause only:
+  "(a particle filter, run from the 2026-11-14 round in public PyBNF, lanl/PyBNF's lwf job at commit 8410f794, with bngsim integrating the model; before it, in a PyBNF fork on bngsim)"
+  It matches README.md ("public PyBNF (lanl/PyBNF at 8410f794, job_type =
+  lwf) with bngsim integrating the model") and
+  app/core/engines/lwf.py (PUBLIC_ENGINE_COMMIT 8410f794...). Dated like
+  the card's other changes ("from the 2026-10-17 round; before it ...").
+  A shorter, undated form if preferred: "(a particle filter, in public
+  PyBNF, lanl/PyBNF's lwf job at commit 8410f794, with bngsim integrating
+  the model)". Checked: app/core/oracle_text.py pins only the donor-bank
+  sentence (BANK_TEXT["card"]), and app/tests/test_model_metadata.py
+  needs "particle filter", ASCII and the hub schema; with the draft in
+  the card, test_model_metadata.py and test_oracle_text.py pass (17
+  passed, 2 skipped for want of a hub clone, as on dev's card). No code
+  change is needed. Two things for Ely before it goes out:
+  (a) THE HUB'S CARD IS STILL 1.2. cdcepi main carries model_version 1.2:
+  "blended 50/50" in methods, the weight one half throughout, and the
+  pre-registration hash, the self-scored record and the "frozen-
+  specification replication" sentence that 1.3 removed (Ely, 2026-10-07).
+  Cards 1.3 and 1.4 sit on the fork branches NAU_PyBNF-OracleSIHRS-1.3
+  and -1.4, and no hub pull request carries either. Since the
+  2026-10-17 round the submitted weight is one quarter, so the hub card
+  describes the weight wrongly. The engine clause would go with 1.4.
+  (b) THE ORDER. The hub's cards are byte copies of the repository's
+  (Decided 2026-09-30): the clause lands in model-metadata/ first, which
+  means dev, frozen until #101 merges, and then the fork. Whether the
+  engine clause takes a new model_version (1.5) is Ely's call.
 - 2026-11-05: the member table's reference when some members plateau.
   The 1.5x rule compares our h3 median with the median of the other six
   members; on 2026-11-07 two of them (FourCAT, epymorph) forecast near-
