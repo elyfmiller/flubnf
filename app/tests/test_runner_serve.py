@@ -526,8 +526,12 @@ def test_a_reexec_onto_another_engine_stops_and_says_why(
     # the runner ran the private engine (main's runner records none, and
     # ran only it); the update made this install's default the public one.
     # Its re-execution (the same pid) stops instead of refusing every job
-    # begun on the private engine, and takes no lock.
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    # begun on the private engine, and takes no lock. The public engine is
+    # this install's by the default: nothing set, no record.
+    from flubnf import settings
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
     _job(world.alice)
     state(world.students, **recorded)
     before = (runner.state_dir() / runner.STATE_FILE).read_text()
@@ -547,7 +551,7 @@ def test_a_reexec_onto_another_engine_stops_and_says_why(
     monkeypatch.setenv("FLUBNF_ENGINE", "private")
     assert runner._engine_changed_on_reexec() == ""
     # a start by hand (another pid) goes on with the engine selected
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    monkeypatch.delenv("FLUBNF_ENGINE")
     state(world.students, pid=DEAD, **recorded)
     assert runner._engine_changed_on_reexec() == ""
     assert runner.serve() == 0
@@ -558,8 +562,13 @@ def test_the_runner_names_its_engine_and_its_child_runs_it(world,
                                                            monkeypatch,
                                                            tmp_path,
                                                            capsys):
+    # the public engine by the default (nothing set, no record): the child
+    # is given it all the same, as runner.json names it (review #3)
+    from flubnf import settings
     py = tmp_path / "public" / "bin" / "python"
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
     monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(py))
     monkeypatch.setattr(pf, "engine_current", lambda: True)  # no venv probe
     monkeypatch.setattr(runner, "_stopping", False)

@@ -20,6 +20,18 @@ from flubnf import settings
 
 
 @pytest.fixture
+def default(monkeypatch):
+    """The public engine as a default install selects it: FLUBNF_ENGINE
+    unset and no record (conftest points settings.INSTALL_ROOT at an empty
+    folder), so what follows runs past the selector by the default, never
+    by a value that names the public engine."""
+    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
+    assert settings.engine_choice() == "public"
+
+
+@pytest.fixture
 def private_installed(tmp_path, monkeypatch):
     """The private engine, the fallback, installed here (its two files)."""
     py = tmp_path / "engine" / "bin" / "python"
@@ -44,10 +56,9 @@ def _pybnf_sha(path) -> str:
 
 
 def test_the_ledger_names_the_public_build_on_the_public_engine(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, default):
     """Under public a row names the public engine's commit, never the
     private checkout's SHA (2fdadee0 on the first public round)."""
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
     monkeypatch.setattr(lwf, "public_build",
                         lambda: {"engine": "public", "commit": "8410f794"})
     led = Ledger(tmp_path / "ledger.sqlite")
@@ -91,8 +102,13 @@ def test_a_snapshot_made_under_the_other_engine_is_discarded(
     path = tmp_path / "component_versions.json"
     path.write_text(json.dumps({**snap, "pybnf": "9.9.9"}), encoding="utf-8")
     monkeypatch.setattr(V, "_VERSIONS_SNAPSHOT", path)
+    # the public engine as the default selects it (nothing set, no record)
     for engine in ("public", "private"):
-        monkeypatch.setenv("FLUBNF_ENGINE", engine)
+        if engine == "public":
+            monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+            assert settings.engine_source() == ("default", None)
+        else:
+            monkeypatch.setenv("FLUBNF_ENGINE", engine)
         initial = V._versions_initial()
         if engine == kept_on:
             assert initial["pybnf"] == "9.9.9", engine
@@ -104,8 +120,7 @@ def test_a_snapshot_made_under_the_other_engine_is_discarded(
 # --- the pages' words for a missing engine (W7) ----------------------------------
 
 def test_a_missing_public_engine_names_its_step_and_the_fallback(
-        private_installed, monkeypatch):
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+        private_installed, monkeypatch, default):
     monkeypatch.setattr(settings, "_windows", lambda: False)
     monkeypatch.setattr(lwf.sys, "platform", "darwin")
     assert ui_pipeline._pf_engine_missing("ready") == ""
@@ -133,13 +148,16 @@ def test_a_missing_private_engine_keeps_todays_words(private_installed,
 
 
 def test_the_windows_words_name_its_steps(private_installed, monkeypatch):
+    # the one case here that names the public engine explicitly
     monkeypatch.setenv("FLUBNF_ENGINE", "public")
     monkeypatch.setattr(settings, "_windows", lambda: True)
     monkeypatch.setattr(lwf.sys, "platform", "win32")
     said = ui_pipeline._pf_engine_missing("absent")
     assert "to install it, open FluBNF.bat again; it installs it;" in said
-    assert said.endswith("runs instead after setup.ps1 -Engine private, then "
-                         "open FluBNF.bat again)")
+    assert said.endswith("runs instead after powershell -NoProfile "
+                         "-ExecutionPolicy Bypass -File setup.ps1 -Engine "
+                         "private in the FluBNF folder, then open FluBNF.bat "
+                         "again)")
 
 
 # --- the engine in words (Home's Setup card) -------------------------------------
@@ -149,7 +167,10 @@ def test_home_names_the_engine_this_copy_runs(monkeypatch):
     from app.ui import server as srv
     client = TestClient(srv.app)
     for engine in ("public", "private"):
-        monkeypatch.setenv("FLUBNF_ENGINE", engine)
+        if engine == "public":                     # the default: nothing set
+            monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+        else:
+            monkeypatch.setenv("FLUBNF_ENGINE", engine)
         html = client.get("/").text
         words = EB.engine_words(engine).replace("'", "&#39;")
         assert f"This copy runs {words}." in html, engine

@@ -799,6 +799,13 @@ def results_html(outcome, spec, heading: bool = True,
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))
+    if o.get("pf2s_skipped"):
+        # a research run's two-strain member, skipped beside pf_skipped's
+        # row with its reason (pipeline: the public engine has no
+        # two-strain counterpart)
+        import html as _html_2s
+        rows.append(("Two-strain fits", "none: "
+                     + _html_2s.escape(str(o["pf2s_skipped"]))))
     arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
     if arow:
         rows.append(arow)

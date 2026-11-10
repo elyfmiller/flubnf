@@ -555,13 +555,14 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
             from app.core import engine_build as _eb
             had = _eb.engine_of(st.get("engine_build"))
             if had != _eb.engine_of(_eb.engine_build()):
-                # the engine it began on, and the step that switches back
+                # the engine it began on, and the step that switches back;
+                # a student's experiment has no archive, so the way to
+                # replay it here is the one its other refusals name
                 raise Refusal(finding(
                     "MACHINE", f"{p['id']} has weeks that {change}. Resuming "
                     "would mix two engine builds in one season. To finish it "
                     f"on the {had} engine it began on: {_eb.switch_step(had)}; "
-                    "or archive or discard the existing results to replay it "
-                    "on this one."))
+                    "or delete the experiment to replay it on this one."))
             raise Refusal(finding(
                 "MACHINE", f"{p['id']} has weeks that {change}: resuming "
                 "would mix two engine builds. Switch the engine back to "

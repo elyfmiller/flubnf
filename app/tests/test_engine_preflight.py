@@ -80,7 +80,7 @@ def test_the_remedy_names_this_machines_installer(monkeypatch, tmp_path):
             "unpacked engine.") in win
     for gone in ("setup_engine.sh", "SetupEngine.command"):
         assert gone not in win, gone
-    assert "SetupEngine.command" in pf.engine_missing_message("darwin")
+    assert "./setup_engine.sh --private" in pf.engine_missing_message("darwin")
     assert "./setup_engine.sh" in pf.engine_missing_message("linux")
 
 

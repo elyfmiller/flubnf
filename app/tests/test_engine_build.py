@@ -154,9 +154,8 @@ def test_the_warning_names_the_build_and_the_fix_names_the_path():
                    "to the private fork (a checkout cloned from a bundle), "
                    "rename the engine folder so FluBNF stops using it, then "
                    "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder "
-                   "and double-click SetupEngine.command in the FluBNF folder "
-                   "(or run ./setup_engine.sh --private there). Research runs "
-                   "may use other builds on purpose.")
+                   "and run ./setup_engine.sh --private in the FluBNF folder. "
+                   "Research runs may use other builds on purpose.")
     assert "stash" not in EB.fix(dict(OTHER, dirty=False))
 
 
@@ -166,9 +165,8 @@ def test_the_archive_step_names_this_machines_installer():
         "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and open "
         "FluBNF.bat again")
     assert EB.archive_step("darwin") == (
-        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and "
-        "double-click SetupEngine.command in the FluBNF folder (or run "
-        "./setup_engine.sh --private there)")
+        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and run "
+        "./setup_engine.sh --private in the FluBNF folder")
     assert EB.archive_step("linux") == (
         "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and run "
         "./setup_engine.sh --private in the FluBNF folder")
@@ -179,9 +177,9 @@ def test_the_private_remedies_name_the_private_route():
     no record, so every private remedy names --private (Windows: FluBNF.bat
     reads setup.ps1's record)."""
     assert EB.setup_step("win32") == "open FluBNF.bat again"
+    # (the double-click form needs a private record: test_engine_cutover_fixes)
     assert EB.setup_step("darwin") == (
-        "double-click SetupEngine.command in the FluBNF folder (or run "
-        "./setup_engine.sh --private there)")
+        "run ./setup_engine.sh --private in the FluBNF folder")
     assert EB.setup_step("linux") == (
         "run ./setup_engine.sh --private in the FluBNF folder")
 
@@ -191,10 +189,14 @@ def test_the_private_remedies_name_the_private_route():
      "./setup_engine.sh --private"),
     ("linux", "public", "./setup_engine.sh --public in the FluBNF folder",
      "./setup_engine.sh --public"),
-    ("win32", "private", "setup.ps1 -Engine private, then open FluBNF.bat "
-     "again", "setup.ps1 -Engine private"),
-    ("win32", "public", "setup.ps1 -Engine public, then open FluBNF.bat again",
-     "setup.ps1 -Engine public"),
+    # Windows: the line to type, as FluBNF.bat prints it (setup.ps1 typed
+    # alone opens in an editor, or is refused by PowerShell's policy)
+    ("win32", "private", "powershell -NoProfile -ExecutionPolicy Bypass "
+     "-File setup.ps1 -Engine private in the FluBNF folder, then open "
+     "FluBNF.bat again", "setup.ps1 -Engine private"),
+    ("win32", "public", "powershell -NoProfile -ExecutionPolicy Bypass "
+     "-File setup.ps1 -Engine public in the FluBNF folder, then open "
+     "FluBNF.bat again", "setup.ps1 -Engine public"),
 ])
 def test_the_switch_step_names_the_option_that_records_the_engine(
         platform, engine, long, short):
@@ -602,8 +604,10 @@ def test_a_week_begun_on_the_other_engine_names_the_step_back(
         "discard the existing results to replay it on this one.")
     monkeypatch.setattr(fs, "_windows", lambda: True)
     with pytest.raises(EngineBuildMismatch,
-                       match=r"engine: setup\.ps1 -Engine private, then open "
-                             r"FluBNF\.bat again; or archive"):
+                       match=r"engine: powershell -NoProfile -ExecutionPolicy "
+                             r"Bypass -File setup\.ps1 -Engine private in the "
+                             r"FluBNF folder, then open FluBNF\.bat again; or "
+                             r"archive"):
         retro._week_engine(tmp_path, "public")
 
 

@@ -16,7 +16,7 @@ from app.core.sandbox import _RAW, FULL_FIT_PARTICLES, _fmt, shown_status
 
 def results(workroot: Path, live=_RAW) -> dict:
     """What the engine wrote, read back: the outcome, a parameter table
-    (5th, 50th and 95th percentiles of the posterior sample), the ESS
+    (5th, 50th and 95th percentiles of the forecasting sample), the ESS
     record, and the trajectory summarised per week (10th, 50th, 90th
     percentiles over particles) with the observed counts beside it. With
     live=, the status reads as shown_status says."""

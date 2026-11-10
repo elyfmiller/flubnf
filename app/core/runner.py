@@ -1730,10 +1730,14 @@ def _spawn(sv: dict, job: Mapping, f: Path) -> dict:
     first, so a console's Delete sees it; then `<this python> -I -c
     JOB_ENTRY run <students> <name> <id> <size>` (tidy: `tidy <students>
     <name> <id>`) in its own session, in the runner's folder, with no
-    PYTHON* variable (the engine runners it starts run without -I), its
-    output in job.log (made anew: a link left there is removed, never
-    written through); then caffeinate. What the watch needs."""
+    PYTHON* variable (the engine runners it starts run without -I) and
+    FLUBNF_ENGINE set to this runner's engine (the one runner.json names:
+    a child reading the record itself would run another engine once
+    someone switched the install while the runner runs), its output in
+    job.log (made anew: a link left there is removed, never written
+    through); then caffeinate. What the watch needs."""
     from app.core import experiments as X
+    from flubnf.settings import engine_choice
     lim = limits(job["size"] if job["kind"] == "run" else "pilot")
     now = _now()
     est = job.get("seconds") if job["kind"] == "run" else None
@@ -1753,6 +1757,9 @@ def _spawn(sv: dict, job: Mapping, f: Path) -> dict:
     if job["kind"] == "run":
         argv.append(job["size"])
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+    # the supervisor's engine, read once at its start (environment, else
+    # the record, else public), the one _write_state puts in runner.json
+    env["FLUBNF_ENGINE"] = engine_choice()
     if os.path.lexists(state_dir() / LOG_FILE):
         os.unlink(state_dir() / LOG_FILE)
     with open(state_dir() / LOG_FILE, "x", encoding="utf-8",

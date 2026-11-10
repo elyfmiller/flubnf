@@ -232,7 +232,7 @@
   {{ tips.stat("Particles", "10,000", "per state", id="mt-particles") }}
   {{ tips.stat("Liu-West kernel", "0.15", "scale", id="mt-kernel") }}
   {{ tips.stat("Each run starts", "August 1", "", id="mt-start") }}
-  {{ tips.stat("State-season fit", "seconds", "", id="mt-speed") }}
+  {{ tips.stat("State-season fit", "about a minute", "", id="mt-speed") }}
  {% endcall %}
  {{ tips.heading("Each week", "mt-cycle", level=3, cls="mt-h3") }}
  {{ tips.stepper([
@@ -542,7 +542,7 @@
  reaction network once per state when a run is prepared; the filter then
  integrates it in process with
  <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
- so a state-season fit takes under a minute.</p>
+ so a state-season fit takes about a minute.</p>
  <p>Reproducing the sealed record needs bngsim 0.15.1 (pinned by every
  engine installer), whatever version a build reports.</p>
  {# platform-NEUTRAL: site_build publishes this page, so name all three.

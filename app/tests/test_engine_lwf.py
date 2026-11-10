@@ -30,8 +30,15 @@ BNG = "/opt/bng/BNG2.pl"
 
 @pytest.fixture
 def public(monkeypatch, tmp_path):
-    """FLUBNF_ENGINE=public with a venv Python that does not exist."""
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    """The public engine as a default install runs it: FLUBNF_ENGINE unset
+    and no record (conftest points settings.INSTALL_ROOT at an empty
+    folder), so every test here reaches the code past the selector by the
+    default, not by a value that names it. A venv Python that does not
+    exist. test_engine_choice keeps the explicit `public`."""
+    from flubnf import settings
+    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
     monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(tmp_path / "nopy" / "python"))
     lwf._CHECK.clear()
     lwf._BUILD.clear()
@@ -91,14 +98,21 @@ def default_engine(monkeypatch, tmp_path):
 @pytest.mark.parametrize("value,want", [
     (None, "public"), ("", "public"), ("private", "private"),
     ("public", "public"), (" Public ", "public"), ("lwf", "public"),
-    ("PRIVATE", "private"), ('"private"', "private")])
+    ("PRIVATE", "private"), ('"private"', "private"),
+    (" private ", "private"), ("private\t", "private"), ("pubic", "public"),
+    ("pri vate", "public"), ("private now", "public"), ("'private'", "public")])
 def test_engine_choice(default_engine, monkeypatch, value, want):
+    """The value as every reader takes it: double quotes dropped, the
+    spaces around it trimmed, case ignored; exactly private picks the
+    fallback. A word cmd and sh would not read as private (one with a space
+    inside, or in single quotes, which cmd keeps) is public, and said."""
     from flubnf import settings
     if value is not None:
         monkeypatch.setenv("FLUBNF_ENGINE", value)
     assert settings.engine_choice() == want
     assert settings.engine_public() is (want == "public")
-    assert settings.engine_value_unknown(value) is (value == "lwf")
+    assert settings.engine_value_unknown(value) is (
+        value in ("lwf", "pubic", "pri vate", "private now", "'private'"))
 
 
 def test_a_private_record_is_read_when_the_variable_is_unset(default_engine):
@@ -157,6 +171,38 @@ def test_the_windows_record(default_engine, monkeypatch):
         b'set "FLUBNF_ENGINE=private"\r\n')
     assert settings.engine_choice() == "private"
     assert settings.engine_source() == (".flubnf.env.cmd", "private")
+
+
+@pytest.mark.parametrize("record, want", [
+    # what setup.ps1 writes, and what cmd runs by hand
+    ('set "FLUBNF_ENGINE=private"', "private"),
+    ("set FLUBNF_ENGINE=private", "private"),
+    ("set FLUBNF_ENGINE=private ", "private"),
+    ('set FLUBNF_ENGINE="private"', "private"),
+    ('@ set "FLUBNF_ENGINE=Private"', "private"),
+    ('set "FLUBNF_ENGINE=private" & rem chosen by hand', "private"),
+    ("set FLUBNF_ENGINE=private& rem chosen by hand", "private"),
+    ('set "FLUBNF_ENGINE="', "public"),
+    # two lines: the last one cmd runs wins
+    ('set "FLUBNF_ENGINE=public"\r\nset FLUBNF_ENGINE=private', "private"),
+    ("set FLUBNF_ENGINE=private\r\nset \"FLUBNF_ENGINE=public\"", "public"),
+    # cmd sets the whole value, which names no engine: public, said
+    ('set "FLUBNF_ENGINE=private now"', "public"),
+    ("set FLUBNF_ENGINE='private'", "public"),
+    ("rem set FLUBNF_ENGINE=private", None),
+])
+def test_the_windows_record_reads_as_cmd_sets_it(default_engine, monkeypatch,
+                                                 record, want):
+    """The console reads .flubnf.env.cmd as FluBNF.bat does after cmd ran
+    it (quotes dropped, the spaces around one word trimmed, case ignored):
+    a value cmd sets to more than one word is no engine to the launcher, so
+    never private to the console either."""
+    from flubnf import settings
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    (default_engine / ".flubnf.env.cmd").write_bytes(
+        b"@echo off\r\n" + record.encode() + b"\r\n")
+    assert settings.recorded_engine(default_engine) == want
+    assert settings.engine_choice() == (want or "public")
 
 
 def test_the_private_engine_installed_is_two_files(monkeypatch, tmp_path):
