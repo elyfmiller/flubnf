@@ -938,6 +938,8 @@ window would still see nothing.
 
 FluBNF runs unmodified under WSL2 (Ubuntu): install WSL, then follow the
 standard `setup.sh` instructions inside the Linux environment.
+`.venv/bin/flubnf app` prints the console's address there; open it in a
+browser on Windows.
 
 ## Limitations (current)
 

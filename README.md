@@ -23,6 +23,7 @@ engine is a Python 3.12 venv of its own):
 
     git clone https://github.com/elyfmiller/flubnf && cd flubnf
     ./setup.sh                  # .venv, BioNetGen and the sparse hub clone
+    ./setup_engine.sh           # the engine: public PyBNF's Liu-West filter
     .venv/bin/flubnf app        # the console, at http://127.0.0.1:8710
     .venv/bin/flubnf doctor     # what this machine can see
 
@@ -32,6 +33,13 @@ Groundhog only. The macOS one-line installer, Windows, and the engine are
 under
 [Install and run](#install-and-run); lab members start from
 [docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
+
+For a weekly series of your own, open the Forecast tab's **Your data**
+and upload a CSV of date, group and value; the upload box's
+**Template CSV** is one that works. The Groundhog forecasts any weekly
+count or rate; the Liu-West filter needs counts and a population. What
+works for another pathogen, target or geography is in
+[docs/ADAPTING.md](docs/ADAPTING.md).
 
 ## What it forecasts, from what data
 
@@ -104,7 +112,8 @@ give the data as each week saw it: one CSV with an as_of column, or a
 folder of snapshot files, one per as_of, each named by its date
 (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column.
 Each replayed week then sees the snapshot that held it. `flubnf dataset
-import` takes the same file or folder.
+import` takes the same file or folder. What the console assumes of such
+data, and what needs code, is in [docs/ADAPTING.md](docs/ADAPTING.md).
 
 ## Install and run
 
@@ -121,10 +130,13 @@ Linux, or macOS by hand:
 
     git clone https://github.com/elyfmiller/flubnf && cd flubnf
     ./setup.sh
+    ./setup_engine.sh
     .venv/bin/flubnf app
 
 `flubnf app` serves the console at http://127.0.0.1:8710 and opens it in a
-native window, or in your browser when pywebview is unavailable. Double
+native window. It opens your browser instead when pywebview is
+unavailable, or on Linux when there is no GTK or Qt to draw the window,
+and then prints the console's address in the terminal. Double
 clicking [`FluBNF.command`](FluBNF.command) or [`FluBNF.app`](FluBNF.app/)
 in a clone does the same, first run setup included. Windows is
 experimental: clone outside `Documents` and double click
