@@ -758,6 +758,10 @@ def forecast_page(request: Request, ds):
             templating._season_colors()),
         "run_obs_json": templating._script_json(
             (res or {}).get("observed", {})),
+        # the weeks each member set aside, as the hub's page passes them:
+        # forecast.html's inline script reads RASIDE, and an empty value
+        # there is a syntax error that stops every chart script on the page
+        "run_aside_json": templating._script_json(shared._run_aside(rid)),
         "fc_date": (res or {}).get("forecast_date", ""),
         "fc_run": rid or "",
         "dataset": view, "source_choices": choices(),
