@@ -782,7 +782,7 @@ def harvest_placement() -> dict:
 #: the Measured-performance card duplicates the site's own scores: dropped
 #: from the harvested Methods
 _PERF_CARD = re.compile(
-    r'<div class="card"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
+    r'<div class="card" id="performance"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
     re.S)
 
 

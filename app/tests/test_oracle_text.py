@@ -179,7 +179,7 @@ def test_methods_carries_the_oracle_step_card():
     # the three-season table's mechanistic row is the shipped member; the
     # filter alone is its ablation, in the row's "?"
     assert "Particle filter alone (the Oracle SIHRS before its step)" not in t
-    perf = t[t.index('<span id="performance">'):]
+    perf = t[t.index('<div class="card" id="performance">'):]
     perf = perf[:perf.index('id="stack"')]
     assert "<td>Oracle SIHRS" in perf
     for s in ("2023-24", "2024-25", "2025-26"):

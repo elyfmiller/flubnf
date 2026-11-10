@@ -44,7 +44,7 @@
 {% macro _vars(kit, id, rows) -%}
 {% set count %}{% if kit %}{{ tips.tag(rows | length ~ " symbols") }}{% endif %}{% endset %}
 {% call tips.fold("Variables", id=id, cls="eqvars", after=count) %}
-<div class="eqvars-scroll"><table class="eqvars-t">
+<div class="eqvars-scroll" tabindex="0" role="region" aria-label="Variables (scrolls)"><table class="eqvars-t">
  <thead><tr><th scope="col">Symbol</th><th scope="col">Meaning</th><th scope="col">Units, range</th><th scope="col">Source</th></tr></thead>
  <tbody>
  {%- for sym, meaning, units, src in rows %}
