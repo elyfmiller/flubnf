@@ -6,6 +6,39 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (day): `dev` to `main` is merged. The night's open items
+  are now one action plan, with Ely's calls D1 to D21 (Ely took the
+  reviewer's answer on each; decisions under Decided).
+  - **#101 and #102 merged** (Ely). #102 landed on `main` directly
+    (63944a5, with parents e982d09 and fb17a455), so `dev` was
+    fast-forwarded to it.
+  - #102's ui-kit.css margin is live before the first public round. It
+    rebuilds a stored weekly report when the report is next opened, so
+    the laptop's 66 stored reports were copied first, to
+    `~/GitHub/flubnf-report-archive-2026-11-10` (outside the
+    repository; sha256 checked).
+  - **Ely's laptop:** the 09:37 open pulled 63944a5 with the old
+    launcher, so the public engine was not installed and the console
+    said it had no engine.
+    - `./setup_engine.sh` then installed it at Ely's go: PyBNF 1.8.1
+      from the wheel release, bngsim 0.15.1, in
+      `~/.venvs/flubnf-public`.
+    - `flubnf doctor`: 15 ok, 0 warn, 0 fail.
+    - The private engine stays installed as the fallback.
+  - **Who has what:**
+    - Fix session A: the decided fixes (OU-03, RE-17, UI-14, D17), and
+      `fix/report-look` (UI-03, UI-04), which waits for the 11-11
+      submission.
+    - App: `app-final` (Models' ensemble record, 0.642 in the docs,
+      CITATION.cff, the dataset fan's start, re-check fixes, the
+      launcher and race fixes), and #93 takes `dev` with its re-check
+      fixes and the contained code cache.
+    - Engine: the 2026-11-07 round on the public engine, set against the
+      submitted private files before 11-11, and SB-10.
+    - Submission: the method card's engine clause, plus the narrowing
+      and the cap, as clauses for Ely.
+    - The reviewer reads each branch before it merges.
+
 - 2026-11-10 (overnight, at Ely's go of 2026-11-09): the engine switch,
   an independent review of it and of the bug-hunt fixes, and a usability
   and compute pass.
@@ -746,6 +779,28 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-11-10 (Ely, taking the reviewer's answer):
+  - **Engine fallback:** the private engine is retired after two clean
+    public rounds, and only once the remade replays are in and seasons
+    in progress elsewhere are done. The archive file is kept.
+  - **11-18 round:** both engines run side by side and the public file
+    is submitted. What size of difference passes is written down before
+    the run.
+  - **Shipped replays:** remade on the public engine after 11-18, into a
+    separate folder, and replaced only once Ely has seen the
+    differences. The private-engine replays stay as the record.
+  - **The weekly report's look** (UI-03, UI-04): lands after the 11-11
+    submission.
+  - **Report names:** the week's shipped run keeps the plain name, and
+    every other run of that week carries its run id.
+  - **National row:** "Overall" is accepted as its spelling (only
+    "Overall").
+  - **The Sandbox** stays in the checkout. FLUBNF_STATE_DIR does not
+    move it.
+  - **The new public repository:** the same name, with the old one
+    renamed and archived, after every lane has pushed and a full mirror
+    backup is made.
+
 - 2026-10-29 (Ely): minimalism. The console is already close to too much
   to take in, the shipped models' settings most of all, so the student
   workspace adds as few choices as it can. An experiment asks for a
@@ -1141,6 +1196,10 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-11-10): the new public repository's history, either kept
+  with the co-author lines removed or a single first commit. Either way,
+  every existing clone needs a fresh clone or a one-time reset.
 
 - For Ely (2026-11-10, the bug hunt's fix run), each fixed in its group
   but for the part named, which needs Ely's call (the group's Status cell
