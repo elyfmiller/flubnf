@@ -55,7 +55,14 @@
     const ob = (F.observed[loc]||[]).slice(-12);
     const hs = Object.keys(qs).sort();
     const xs = hs.map(h => addDays(F.date, 7*(parseInt(h)+1)));
-    const last = ob.length ? [ob[ob.length-1]] : [];
+    // a newest week of 0 is a reported week, but the Groundhog forecast it
+    // under a zero-anchor rule, and no rule starts from that 0 (FC-14).
+    // This page has no ledger row to name the rule, so the Groundhog's fan
+    // from a 0 starts at the first horizon, with no line from the observed
+    // series, as the Forecast tab's does without the run's flags. The
+    // particle filter keeps its 0 (no zero-anchor rule is its own).
+    const nw = ob.length ? ob[ob.length-1] : null;
+    const last = nw && !(M === 'analogue' && !(nw[1] > 0)) ? [nw] : [];
     const fx = [...last.map(p=>p[0]), ...xs];
     const pick = q => [...last.map(p=>p[1]), ...hs.map(h => qs[h][q])];
     // the Groundhog per theme (--model-analogue, as the weekly report)
