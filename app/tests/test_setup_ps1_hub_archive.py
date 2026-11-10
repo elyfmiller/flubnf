@@ -1,14 +1,14 @@
 """setup.ps1 checks a hub clone for what doctor FAILs without.
 
 doctor FAILs a clone without auxiliary-data/target-data-archive
-(flubnf.doctor.HUB_DATA_DIRS) and names setup.ps1 as the step that widens
-it. setup.sh checks HUB_NEEDS ($HUB_DIRS plus that archive); setup.ps1 used
-to check $HubDirs only, so a Windows cone holding auxiliary-data but not its
-archive passed the check and was never widened.
+(flubnf.doctor.HUB_DIRS). setup.ps1 used to check $HubDirs only, so a
+Windows cone holding auxiliary-data but not its archive passed the check
+and was never widened, and doctor then failed it.
 
 The archive is in the CHECK only. git is given $HubDirs, unchanged: in cone
 mode `sparse-checkout add auxiliary-data` brings in the whole folder, and
-$HubDirs itself is pinned by tests/test_first_run_sparse_hub.py.
+$HubDirs itself is pinned by tests/test_first_run_sparse_hub.py (as
+setup.sh's HUB_DIRS, the same four folders).
 
 There is no PowerShell on the Macs this runs on, so setup.ps1 is read as
 text; Windows CI executes it.
@@ -93,8 +93,8 @@ def _checked_lists(src: str) -> list:
 
 def test_every_hub_check_in_setup_ps1_requires_what_doctor_fails_without():
     """A cone with auxiliary-data but not its archive must not pass: doctor
-    FAILs it and names setup.ps1, which then has to widen it."""
-    from flubnf.doctor import HUB_DATA_DIRS
+    FAILs it, so setup.ps1 has to widen it."""
+    from flubnf.doctor import HUB_DIRS as HUB_DATA_DIRS
     assert ARCHIVE in HUB_DATA_DIRS
     checks = _checked_lists(_ps1())
     # the no-git branch, the repair (before and after `add`), the full clone
@@ -107,18 +107,20 @@ def test_every_hub_check_in_setup_ps1_requires_what_doctor_fails_without():
             f"and tells the user to run setup.ps1")
 
 
-def test_setup_ps1_checks_what_setup_sh_checks():
-    """One list of folders a finished clone holds, for both scripts."""
+def test_setup_ps1_checks_what_setup_sh_clones_and_doctor_needs():
+    """One list of folders a finished clone holds: the four setup.sh gives
+    git (its HUB_DIRS, setup.ps1's $HubDirs) and what doctor FAILs
+    without."""
+    from flubnf.doctor import HUB_DIRS as HUB_DATA_DIRS
     sh = (REPO / "setup.sh").read_text(encoding="utf-8")
     dirs = re.findall(r'^HUB_DIRS="([^"]*)"$', sh, re.M)
-    needs = re.findall(r'^HUB_NEEDS="([^"]*)"$', sh, re.M)
-    assert len(dirs) == 1 and len(needs) == 1, (dirs, needs)
-    sh_needs = needs[0].replace("$HUB_DIRS", dirs[0]).split()
-    assert ARCHIVE in sh_needs
+    assert len(dirs) == 1, dirs
+    needs = sorted(set(dirs[0].split()) | set(HUB_DATA_DIRS))
+    assert ARCHIVE in needs
     for where, folders in _checked_lists(_ps1()):
-        assert sorted(folders) == sorted(sh_needs), (
-            f"setup.ps1's `{where}` checks {sorted(folders)}; setup.sh "
-            f"checks HUB_NEEDS {sorted(sh_needs)}")
+        assert sorted(folders) == needs, (
+            f"setup.ps1's `{where}` checks {sorted(folders)}; a finished "
+            f"clone holds {needs}")
 
 
 def test_git_is_only_ever_given_hub_dirs():

@@ -1017,7 +1017,7 @@ $HubDirs = @("auxiliary-data", "target-data",
              "model-output/FluSight-baseline",
              "model-output/FluSight-ensemble")
 # What must be there after it, inside them too: doctor fails a clone without
-# the vintages' archive (flubnf/doctor.py HUB_DATA_DIRS), so a cone that holds
+# the vintages' archive (flubnf/doctor.py HUB_DIRS), so a cone that holds
 # auxiliary-data but not its archive is widened as well. The check only: git
 # is given $HubDirs, and `add auxiliary-data` brings in the whole folder.
 $HubNeeds = @($HubDirs) + @("auxiliary-data/target-data-archive")
