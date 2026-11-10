@@ -929,6 +929,22 @@ Model and Submission: nothing runs on the public engine yet.
 
 ## Open
 
+- 2026-11-10, this lane's, for the 11-18 gate draft (the reviewer's
+  note, via App):
+  - B(P2) is one draw of a quantity that averages near zero, so it is a
+    poor scale for B or S.
+  - The next version reports B and S each with its standard error from
+    the 51 per-location values, and gates each on 3 standard errors or
+    the floor (0.01 for B, 0.03 for S), whichever is larger.
+  - On the 11-07 runs, measured afterwards and not part of that verdict:
+    - L1: B +0.0025 with SE 0.0038 (0.7 SE); S +0.0005 with SE 0.0035.
+    - P2: B +0.0001 with SE 0.0026; S +0.0025 with SE 0.0024.
+    So there is no sign of a shift, and the reviewer's estimate of an SE
+    near 0.003 holds.
+  - The measures script (`scripts\gate_measures.py` in
+    `%USERPROFILE%\flubnf-gate-2026-11-10`) gains these when the draft is
+    written.
+
 - 2026-11-09, for Ely, since the move to the Windows PC:
   - Decisions 3 and 7 name the lab Mac: where does the research-only
     private engine live now; who runs the public side of a shadow
