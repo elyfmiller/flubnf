@@ -89,3 +89,5 @@ From the command line:
 
 `flubnf retro <season>` still starts a replay; `export` and `import` are
 its subcommands (`--root` points either at another retro root).
+Keep a retro root on one machine: two computers that share one over a
+network can see a partial import.
