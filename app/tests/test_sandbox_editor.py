@@ -93,7 +93,9 @@ def test_the_editor_page_marks_the_three_textareas(box):
     page = client.get("/sandbox?model=sihrs_example").text
     assert '<link rel="stylesheet" href="/static/bngl-editor.css">' in page
     assert '<script defer src="/static/bngl-editor.js"></script>' in page
-    assert '<script src="/static/plotly.min.js"></script>' in page    # still there
+    # no run, so no trajectory to chart: no chart library (a run with
+    # one loads it: test_sandbox_gallery_engine.py)
+    assert "plotly.min.js" not in page and "charts.js" not in page
     tags = re.findall(r"<textarea([^>]*)>(.*?)</textarea>", page, flags=re.S)
     want = {"model_bngl": ("bngl", "18", "model.bngl"),
             "data_exp": ("exp", "8", "data.exp"),

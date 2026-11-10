@@ -51,7 +51,8 @@ def test_register_saves_the_posted_text_first_then_freezes_it(strict_bng, hub):
     files = _beta()
     posted = files["model.bngl"].replace("Reff__FREE 1.20", "Reff__FREE 1.30")
     r = _register(model_bngl=posted)
-    assert r.headers["location"] == "/sandbox?model=beta"
+    # a new version: on to the gallery's Experiments card, the next step
+    assert r.headers["location"] == "/sandbox#h-sb-exp"
     assert "Saved beta." in _flash() and "Registered beta@1 (" in _flash()
     assert ui_state._status.get("flash_kind") == "ok"
     assert sb.read_model("beta")["model.bngl"] == posted
@@ -71,9 +72,10 @@ def test_a_new_versions_notes_are_in_the_tip(strict_bng, hub):
 
 def test_the_same_files_name_their_version(strict_bng, hub):
     _beta()
-    _register()
+    assert _register().headers["location"] == "/sandbox#h-sb-exp"
     assert _flash().startswith("Registered beta@1 (")
-    _register()
+    # nothing new: back to the model
+    assert _register().headers["location"] == "/sandbox?model=beta"
     assert re.fullmatch(r"beta@1 already holds these files \([0-9a-f]{8}\); "
                         r"nothing new was registered\.", _flash()), _flash()
     assert L._versions("beta") == [1]

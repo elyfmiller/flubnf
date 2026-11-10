@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 import threading
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
@@ -208,9 +210,10 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
            "editing": editing, "busy": _sandbox_busy_reason(),
-           # why this computer cannot fit yet, said before a run is tried
+           # why this computer cannot fit yet, said before a run is tried;
+           # on the gallery only while Start cannot replay here
            "machine": (sandbox_mod.split_reason(sandbox_mod.machine_problem())
-                       if editing else ("", "")),
+                       if editing else _gallery_machine()),
            "running_id": live,
            # the Oracle SIHRS start (the gallery's New model form)
            "vintages": sandbox_mod.vintages(),
@@ -277,6 +280,45 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "upload_max": sandbox_mod.UPLOAD_MAX_BYTES,
             "upload_report": _sandbox_upload_report.pop(name, None)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
+
+
+def _gallery_machine() -> tuple:
+    """The gallery's "This computer cannot fit yet" notice, (notice, tip):
+    the model page's own (machine_problem, split by split_reason), shown
+    only while an experiment's Start would be refused for want of the
+    engine. So ("", "") in a student's folder on the runner computer,
+    where Start queues and needs no engine here (asked first: nothing
+    else is read there), and ("", "") with the engine ready. When
+    machine_problem names nothing (the engine's pieces disagree), the
+    experiment's own refusal says why."""
+    if _student():
+        return "", ""
+    engine = pipeline._pf_engine_state()
+    if engine == "ready":
+        return "", ""
+    said = sandbox_mod.machine_problem()
+    if not said:
+        said = ("An experiment needs the fitting engine, "
+                + pipeline._pf_engine_missing(engine) + ".")
+    return sandbox_mod.split_reason(said)
+
+
+def _sandbox_warm() -> None:
+    """The Sandbox's part of the console's startup warm (server.py calls
+    it last, on the warm's thread): sandbox.html compiled, and the probes
+    a first model page would wait for started (sandbox.warm_probes), so
+    that page does not wait on them. On the public engine the lock
+    check's answer lasts lwf.CHECK_TTL_S (300 s), so only a model page
+    opened within that time of launch gains. Never under pytest: the
+    suite imports the server before its fakes are set, and the probes
+    would start the real engine and BNG2.pl. Best effort, never raises."""
+    if "pytest" in sys.modules:
+        return
+    try:
+        templates.env.get_template("sandbox.html")
+    except Exception:
+        pass
+    sandbox_mod.warm_probes()
 
 
 def _sandbox_fitting(live, name: str, ratio) -> dict | None:
@@ -461,7 +503,9 @@ def sandbox_register(name: str, model_bngl: str = Form(""),
     as the library's next version of this name (library.register), or
     named as the version that already holds them. Refused in words, each
     finding with its code. A name that is not exactly a Sandbox model's
-    saves nothing. Redirects to the model."""
+    saves nothing. A new version redirects to the gallery's Experiments
+    card (#h-sb-exp), which picks the newest registration; anything else
+    to the model."""
     from app.core import library
     from app.core.problem_codes import Refusal
     models = sandbox_mod.MODELS
@@ -496,6 +540,9 @@ def sandbox_register(name: str, model_bngl: str = Form(""),
            f"{r['ref']} already holds these files ({s}); nothing new was "
            "registered.", "ok",
            detail=f"Worth a look: {notes}" if notes else "")
+    if r["new"]:
+        # the next step is an experiment of it (docs/SANDBOX.md section 7)
+        return RedirectResponse("/sandbox#h-sb-exp", status_code=303)
     return _sandbox_redirect(name)
 
 
@@ -1433,19 +1480,123 @@ def _experiment_badge(st: dict, claimed, queue: dict | None = None,
     return X.badge(st, claimed, queue, refused)
 
 
+#: the shipped models as the Experiments card says them, after the ref
+#: ("sihrs-natg · with a national-growth factor (research)"; the natg
+#: words are flubnf/templates/README.md's)
+SHIPPED_EXPERIMENT_WORDS = {
+    "sihrs": "the Oracle SIHRS, as shipped",
+    "sihrs-2strain": "influenza A and B (research)",
+    "sihrs-natg": "with a national-growth factor (research)",
+}
+#: a season's words after its name on the card: whether a shipped replay
+#: of it is here to compare an experiment with
+SEASON_SHIPPED, SEASON_NONE = "shipped replay here", "nothing to compare with"
+
+
+def _season_notes(retro_root, seasons) -> dict:
+    """{season: SEASON_SHIPPED or SEASON_NONE}: whether any of the season's
+    replay roots under `retro_root` (the live one, then the archived and
+    imported ones) holds a run record of the shipped replay, by
+    experiments.reference's test (experiments._shipped). {} when
+    `retro_root` is None (not known): the card then says nothing."""
+    from app.core import experiments as X
+    from app.core import retro
+    if retro_root is None:
+        return {}
+    out = {}
+    for s in seasons:
+        roots = retro.list_archive_dirs(retro_root, s)
+        live = Path(retro_root) / s
+        if live.is_dir():
+            roots.insert(0, live)
+        out[s] = (SEASON_SHIPPED
+                  if any(X._shipped(retro.read_meta(r)) for r in roots)
+                  else SEASON_NONE)
+    return out
+
+
+def _size_words(season, size: str, engine: str | None, ratio,
+                where: str) -> str:
+    """How long a `size` experiment of `season` takes, in the words the
+    other run forms use (estimates.human of estimates.span): the engine's
+    cost model over the weeks a plan of it would freeze (runner's
+    _plan_weeks), at the size's locations x Independent Runs and its
+    particles, at the width a replay runs at (pf.DEFAULT_SHARD_WIDTH,
+    which runner._week_cost prices too), on `engine`; spread by `ratio`
+    when one is recorded (then `where` follows the figure), else by
+    sandbox.ETA_FIRST_SPAN. The model never changes the figure: "sihrs"
+    stands in. "" for no figure: no engine named, no weeks, or a season a
+    plan refuses (a refused form's), so a bad pick never drops the card."""
+    from app.core import estimates, retro, runner
+    from app.core import experiments as X
+    from app.core.engines import pf
+    if engine is None or not season:
+        return ""
+    try:
+        s = X.read({"model": "sihrs", "season": season, "size": size})
+        weeks = runner._plan_weeks(s)
+        if not weeks:
+            return ""
+        start = retro.season_bounds(season)[0]
+        preset = X.SIZES[size]
+        n_loc = (len(X._all_locations()) if preset.locations == "all"
+                 else len(preset.locations))
+        secs = estimates.run_seconds(
+            [estimates.n_obs_for(w, start) for w in weeks],
+            n_loc * preset.replicates, preset.particles,
+            pf.DEFAULT_SHARD_WIDTH, engine)
+        words = estimates.human(*estimates.span(secs, ratio))
+    except Exception:
+        return ""
+    return words + (where if words and where and ratio else "")
+
+
 def _experiment_gallery() -> dict:
     """The Experiments card: the models a replay can name (each with its
-    Oracle step default), the seasons newest first, the form's choices (a
-    refused form as posted, one-shot; else the newest intact registered
-    version, the season with a shipped replay to compare with, smoke and
-    the model's Oracle default), and a row per experiment: its badge and
-    its figures as last scored (never checked for staleness here). In a
+    Oracle step default, its words, and why it cannot be picked: the
+    two-strain model off the private engine), the seasons newest first
+    (each with whether a shipped replay is here to compare with), the
+    time each size takes, the form's choices (a refused form as posted,
+    one-shot; else the newest intact registered version, the newest
+    season with a shipped replay to compare with, smoke and the model's
+    Oracle default; a pick that cannot be made falls back to sihrs and
+    its Oracle default), and a row per experiment: its badge and its
+    figures as last scored (never checked for staleness here). In a
     student's folder on the runner computer each badge also reads the
-    queue (runner.json, read once), and "queues" is true: Start queues."""
+    queue (runner.json, read once), "queues" is true (Start queues), and
+    the engine, the shipped replays and the pace are the runner's
+    (runner.json's engine, retro_root and recent: none said when it
+    names none)."""
     from app.core import experiments as X
     from app.core import library, retro, runner
-    models = [{**m, "oracle": m["ref"] in X.ORACLE_ON_BY_DEFAULT}
-              for m in library.list_models()]
+    from app.core.engines import pf
+    from flubnf.settings import ENGINES
+    name = _student()
+    state = runner.read_state() if name else {}
+    if name:
+        engine = (state.get("engine") if state.get("engine") in ENGINES
+                  else None)
+        rr = state.get("retro_root")
+        root = Path(rr) if isinstance(rr, str) and rr else None
+    else:
+        engine = "public" if pf._public() else "private"
+        root = retro_seasons.RETRO_ROOT
+    models = []
+    for m in library.list_models():
+        off = ""
+        try:
+            if (m["shipped"] and engine == "public"
+                    and X._two_strain(m["ref"])):
+                # experiments.preflight refuses it there after Start
+                off = "private engine only"
+        except Exception:
+            pass                        # unreadable: plan refuses it in words
+        models.append({**m, "oracle": m["ref"] in X.ORACLE_ON_BY_DEFAULT,
+                       "words": (SHIPPED_EXPERIMENT_WORDS.get(m["ref"], "")
+                                 if m["shipped"] else ""),
+                       "off": off})
+    seasons = sorted(retro.available_seasons(), reverse=True)
+    notes = _season_notes(root, seasons)
     pick = _experiment_refused_form.pop("form", None)
     if not pick:
         # the newest registration; of two in one second, the later listed
@@ -1455,12 +1606,30 @@ def _experiment_gallery() -> dict:
                      default=None)
         ref = newest["ref"] if newest else "sihrs"
         pick = {"model": ref,
-                "season": X.default_season(retro_seasons.RETRO_ROOT),
+                "season": (next((s for s in seasons
+                                 if notes.get(s) == SEASON_SHIPPED), None)
+                           or X.default_season(root or
+                                               retro_seasons.RETRO_ROOT)),
                 "size": X.DEFAULT_SIZE,
                 "oracle": ref in X.ORACLE_ON_BY_DEFAULT}
+    if any(m["off"] and m["ref"] == pick["model"] for m in models):
+        pick = {**pick, "model": "sihrs",
+                "oracle": "sihrs" in X.ORACLE_ON_BY_DEFAULT}
+    # the time each size takes: this computer's pace when recorded (the
+    # other run forms' ratio), else the runner's for its size
+    if name:
+        sizes = {}
+        for size in X.SIZES:
+            k, n = runner._k(size, state.get("recent") or ())
+            sizes[size] = _size_words(pick["season"], size, engine,
+                                      k if n else None, "")
+            if sizes[size]:
+                sizes[size] += " on the runner"
+    else:
+        ratio, _n = retro_seasons._own_cost_ratio()
+        sizes = {size: _size_words(pick["season"], size, engine, ratio,
+                                   " here") for size in X.SIZES}
     live = _experiment_live()
-    name = _student()
-    state = runner.read_state() if name else {}
     on_runner = _runner_job(state, name) if name else ""
     rows = []
     for r in X.list_experiments():
@@ -1473,9 +1642,9 @@ def _experiment_gallery() -> dict:
                      "badge": _experiment_badge(r["status"], claimed, queue,
                                                 refused or ""),
                      "fig": X.figures((r["summary"] or {}).get("overall"))})
-    return {"models": models,
-            "seasons": sorted(retro.available_seasons(), reverse=True),
-            "pick": pick, "rows": rows, "queues": bool(name)}
+    return {"models": models, "seasons": seasons, "season_notes": notes,
+            "sizes": sizes, "pick": pick, "rows": rows,
+            "queues": bool(name)}
 
 
 def _experiment_view(eid: str) -> dict | None:

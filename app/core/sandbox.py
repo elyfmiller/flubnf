@@ -1008,6 +1008,33 @@ def machine_problem() -> str:
     return _joined(machine_problems())
 
 
+def warm_probes() -> None:
+    """Start the probes a model page waits for (machine_problems), so the
+    first one after launch finds them answered: on the public engine its
+    lock check (lwf.lock_check_soon, which then holds the answer for
+    lwf.CHECK_TTL_S), on the private one the engine-import probe
+    (engine_import_problem, held for the console's life), each on its own
+    thread and never waited for here; then BNG2.pl's self-test
+    (bng_selftest, about 0.3 s, held) when BNG2.pl, a perl and a path Perl
+    can read are here. Nothing when the engine is not installed: the page
+    says so with no probe. No folder is made. Best effort: a failure says
+    nothing, and the page's own look decides. The console's startup warm
+    calls it on its thread (routes/sandbox.py _sandbox_warm)."""
+    try:
+        if not pf_engine.engine_available():
+            return
+        if pf_engine._public():
+            from app.core.engines import lwf
+            lwf.lock_check_soon(0)
+        elif Path(pf_engine.PY310).exists():
+            engine_import_problem(wait=0)
+        if (Path(BNG).is_file() and pf_engine.perl_available()
+                and pf_engine.perl_path(BNG) is not None):
+            bng_selftest()
+    except Exception:
+        pass
+
+
 #: seconds BNG2.pl may take on the model's actions at run preparation
 NETGEN_TIMEOUT_S = 300
 

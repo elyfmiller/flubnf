@@ -95,7 +95,7 @@ KEEP = {
     "/methods": ({"tt-mt-replay"}, ()),
     "/sandbox": ({"tip-sbnew-about-t"},
                  ("tip-sb-season", "tip-sb-fdate", "tip-sb-asof",
-                  "tip-sb-note-", "tip-sb-miss-")),
+                  "tip-sb-note-", "tip-sb-miss-", "tip-sb-machine")),
 }
 
 
