@@ -1,0 +1,307 @@
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 3390639e..7e816e0a 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -361,6 +361,9 @@ def new_model(name: str) -> Path:
+ 
+ def model_dir(name: str) -> Path:
+     d = MODELS / check_name(name)
++    if not d.is_dir():
++        # deleted, or never there: not "missing its files"
++        raise SandboxError(f"no sandbox model named {name!r}")
+     missing = [f for f in REQUIRED if not (d / f).is_file()]
+     if missing:
+         raise SandboxError(f"model {name!r} is missing {', '.join(missing)}")
+diff --git a/app/tests/test_error_pages.py b/app/tests/test_error_pages.py
+new file mode 100644
+index 00000000..80e37d25
+--- /dev/null
++++ b/app/tests/test_error_pages.py
+@@ -0,0 +1,97 @@
++"""Unknown pages and malformed requests (G22): every answer a student can
++reach from a link or a typed address is a page of the console with the way
++on, never bare text or JSON; impossible dates are refused; the report view
++and its download agree; a deleted Sandbox model is said to be gone."""
++import pytest
++from fastapi.testclient import TestClient
++
++import app.core.runs as runs_mod                     # noqa: E402
++from app.core import sandbox as sb                   # noqa: E402
++from app.ui import server as srv                     # noqa: E402
++from app.ui import state as ui_state                 # noqa: E402
++
++client = TestClient(srv.app)
++
++
++def _notice(r):
++    """The notice's text (routes/output._notice) and the shell's nav."""
++    assert "text/html" in r.headers["content-type"]
++    assert '<nav' in r.text or 'class="tab' in r.text
++    return r.text.split('id="out-notice"', 1)[1]
++
++
++# ------------------------------------------------------------ UI-10, WI-14
++
++def test_an_unknown_address_is_a_console_page_with_the_way_home():
++    r = client.get("/nope")
++    assert r.status_code == 404
++    body = _notice(r)
++    assert "No page at this address" in body and 'href="/"' in body
++    assert "<h1>Not found</h1>" in r.text
++    assert 'aria-current="page"' not in r.text      # no tab is this page
++    # API paths and static files keep the plain answers their callers read
++    r = client.get("/api/nope")
++    assert r.status_code == 404 and r.json() == {"detail": "Not Found"}
++    assert client.get("/static/nope.css").status_code == 404
++
++
++def test_an_unknown_model_is_a_console_page_under_models():
++    r = client.get("/model/nope")
++    assert r.status_code == 404
++    body = _notice(r)
++    assert "No model named nope" in body and 'href="/models"' in body
++    assert 'aria-current="page">Models</a>' in r.text
++
++
++def test_an_unknown_replay_or_season_report_is_a_console_page(tmp_path, monkeypatch):
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    r = client.get("/retro/dataset/nope/20260101T000000")
++    assert r.status_code == 404
++    assert "No such replay" in _notice(r) and 'href="/retro"' in r.text
++    from app.ui import retro_seasons
++    monkeypatch.setattr(retro_seasons, "RETRO_ROOT", tmp_path / "retro")
++    monkeypatch.setattr(retro_seasons, "RETRO_SEAL", tmp_path / "retro_seal")
++    monkeypatch.setattr(retro_seasons, "RETRO_RESEAL", tmp_path / "retro_reseal")
++    r = client.get("/retro/2097-98/report")
++    assert r.status_code == 404
++    assert "no completed weeks yet" in _notice(r)
++    assert 'href="/retro/2097-98"' in r.text
++    # the results page's Reveal reads the API path, which stays plain
++    r = client.get("/api/retro/2097-98/report_path")
++    assert r.status_code == 404 and "text/plain" in r.headers["content-type"]
++
++
++# -------------------------------------------------------------------- OU-16
++
++def test_malformed_output_requests_get_the_console_notice(tmp_path, monkeypatch):
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    r = client.get("/output/download")
++    assert r.status_code == 404 and "File not found in app state" in _notice(r)
++    r = client.post("/output/reveal", follow_redirects=False)
++    assert r.status_code == 303
++    assert ui_state._status.get("flash", "").startswith("Nothing opened")
++    # an impossible date is refused, not "no archived report"
++    r = client.get("/output/report?date=2026-13-45")
++    assert r.status_code == 400 and "Invalid date" in r.text
++    assert client.get("/output/report/download?date=2026-13-45").status_code == 400
++    # a missing archive: the view and its download agree
++    for url in ("/output/report?date=2097-01-03",
++                "/output/report/download?date=2097-01-03"):
++        assert client.get(url).status_code == 404, url
++
++
++# -------------------------------------------------------------------- SB-16
++
++def test_a_deleted_sandbox_model_is_said_to_be_gone(sandbox_root):
++    with pytest.raises(sb.SandboxError) as e:
++        sb.model_dir("del_me")
++    assert str(e.value) == "no sandbox model named 'del_me'"
++    r = client.get("/sandbox?model=del_me")       # the page shows the flash
++    assert r.status_code == 200
++    assert "Not opened: no sandbox model named &#39;del_me&#39;" in r.text
++    assert "is missing model.bngl" not in r.text
++    # a model whose folder lost a file still says which file
++    (sb.MODELS / "half").mkdir(parents=True)
++    (sb.MODELS / "half" / "model.bngl").write_text("begin model\nend model\n")
++    with pytest.raises(sb.SandboxError, match="is missing data.exp, priors.conf"):
++        sb.model_dir("half")
+diff --git a/app/tests/test_output_by_date.py b/app/tests/test_output_by_date.py
+index c858d64a..191320a0 100644
+--- a/app/tests/test_output_by_date.py
++++ b/app/tests/test_output_by_date.py
+@@ -330,9 +330,12 @@ def test_refusals_and_missing_reports_are_console_pages(root):
+     assert 'aria-current="page">Output</a>' in r.text
+     r = client.get("/output/report/download?date=nope")
+     assert r.status_code == 400 and 'role="alert"' in r.text
++    # a missing archive: 404 on the view as on its download (OU-16)
+     r = client.get("/output/report?date=2098-01-03")
+-    assert r.status_code == 200
++    assert r.status_code == 404
+     assert "No archived report for 2098-01-03" in r.text
++    r = client.get("/output/report/download?date=2098-01-03")
++    assert r.status_code == 404
+     r = client.get("/output/report")
+     assert r.status_code == 200 and "No report yet" in r.text
+     assert 'href="/forecast"' in r.text and "Run the models first." in r.text
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 82910e8a..2c7893bb 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -1305,7 +1305,13 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
+     ds = get_dataset(ds_id)
+     if ds is None or not CX.valid_stamp(stamp) \
+             or not CX.replay_dir(ds, stamp).is_dir():
+-        return HTMLResponse("<p>No such replay.</p>", status_code=404)
++        # a page of the console (the Retrospective tab lists the replays)
++        from app.ui.routes import output as output_routes
++        return output_routes._notice(
++            request, 404, "empty", "No such replay",
++            action=((f"/retro?dataset={ds.id}" if ds else "/retro"),
++                    "Open Retrospective"),
++            active="Retrospective", heading="Replay")
+     meta, fc, cells, cov = CX.load(CX.replay_dir(ds, stamp))
+     status = meta.get("status") or "unknown"
+     live = _REPLAY.get("stamp") == stamp
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 93b383d2..03309453 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -175,7 +175,12 @@ def model_page(request: Request, name: str):
+     manchor = {"pf": "oracle", "analogue": "analogue",
+                "pf2s": "two-strain"}
+     if name not in HEADERS:
+-        return HTMLResponse("unknown model", status_code=404)
++        # a page of the console (under Models, which lists the three)
++        from app.ui.routes import output as output_routes
++        return output_routes._notice(
++            request, 404, "empty", f"No model named {name}",
++            action=("/models", "Open Models"), active="Models",
++            heading="Model")
+     from app.core.archive_record import realtime_of
+     rid, res = shared._latest_results()
+     # a newer run of any kind (a vintage week or modified settings, as a
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 2cecdce8..af151b3f 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -698,7 +698,7 @@ def _not_found(request: Request):
+ 
+ 
+ @router.get("/output/download")
+-def output_download(request: Request, path: str):
++def output_download(request: Request, path: str = ""):
+     """Download a submission CSV. The file must be inside app state, and a
+     submission/ file must sit under a registered hub model's directory (the
+     listings' rule, enforced here for hand-edited URLs)."""
+@@ -749,14 +749,16 @@ def _reveal_command(p: Path, platform: str | None = None):
+ 
+ 
+ @router.post("/output/reveal")
+-def output_reveal(request: Request, path: str = Form(...)):
++def output_reveal(request: Request, path: str = Form("")):
+     """Show the file in Finder / Explorer (a local desktop app), then back
+     to the page that asked (a run page or Output); a warning there when no
+     file manager could be opened on it."""
+     import subprocess
+     from app.core.runs import APP_STATE
+     try:
+-        p = Path(path).resolve()
++        # no path at all (a hand-made request) is nothing to open, never the
++        # working folder "" would resolve to
++        p = Path(path).resolve() if path else None
+     except (OSError, ValueError):       # a NUL byte or an unusable name
+         p = None
+     # containment via is_relative_to, as in /output/download: a string-prefix
+@@ -830,10 +832,16 @@ def _report_for_serving(dirpath: Path) -> str:
+ 
+ 
+ def _bad_date(date: str, request: Request):
+-    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
++    """The 400 for a malformed or impossible ?date= (2026-13-45); None when
++    it is a real YYYY-MM-DD."""
+     import re
++    from datetime import date as _date
+     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+-        return None
++        try:
++            _date.fromisoformat(date)
++            return None
++        except ValueError:
++            pass
+     return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
+ 
+ 
+@@ -847,7 +855,8 @@ def output_report(request: Request, date: str = ""):
+             return bad
+         d = APP_STATE / "archive" / date
+         if not (d / "report.html").is_file():
+-            return _notice(request, 200, "empty",
++            # 404, as the same date's download answers
++            return _notice(request, 404, "empty",
+                            f"No archived report for {date}")
+         return HTMLResponse(_report_for_serving(d))
+     # the shipped rule: Home's report button and its map link come here,
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f4bd85ec..e14b5793 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -1288,13 +1288,21 @@ def _season_report(season: str, archive: str):
+ 
+ 
+ @router.get("/retro/{season}/report")
+-def retro_season_report(season: str, archive: str = ""):
++def retro_season_report(request: Request, season: str, archive: str = ""):
+     """Download the season report (_season_report), under
+-    report_season.download_name."""
++    report_season.download_name. A refusal is a page of the console (under
++    Retrospective, with the way to the season), never a bare line."""
+     from app.core import report_season
++    from app.ui.routes import output as output_routes
+     p = _season_report(season, archive)
+     if isinstance(p, PlainTextResponse):
+-        return p
++        return output_routes._notice(
++            request, p.status_code,
++            "error" if p.status_code >= 500 else "empty",
++            p.body.decode("utf-8"),
++            action=((f"/retro/{season}" if _valid_season(season) else "/retro"),
++                    "Open the season"),
++            active="Retrospective", heading="Season report")
+     return FileResponse(p, filename=report_season.download_name(season,
+                                                                 archive),
+                         media_type="text/html",
+diff --git a/app/ui/routes/shell.py b/app/ui/routes/shell.py
+index 15a12d2d..32e9eb58 100644
+--- a/app/ui/routes/shell.py
++++ b/app/ui/routes/shell.py
+@@ -81,3 +81,18 @@ async def api_perf(request: Request):
+         perflog.write("page", total, f"{path}  server {server:.0f} ms "
+                                      f"scripts {scripts:.0f} ms")
+     return Response(status_code=204)
++
++
++async def not_found_page(request: Request, exc):
++    """An unknown page (a mistyped or stale link) is a page of the console
++    with the way on (routes/output._notice), never bare JSON: the desktop
++    window has no back control. API paths and static files keep the plain
++    answer their callers read, and every other status keeps FastAPI's."""
++    from fastapi.exception_handlers import http_exception_handler
++    from app.ui.routes import output as output_routes
++    path = request.url.path
++    if exc.status_code == 404 and not path.startswith(("/api/", "/static/")):
++        return output_routes._notice(
++            request, 404, "empty", "No page at this address",
++            action=("/", "Open Home"), active="", heading="Not found")
++    return await http_exception_handler(request, exc)
+diff --git a/app/ui/server.py b/app/ui/server.py
+index d1dde31e..fad1cb93 100644
+--- a/app/ui/server.py
++++ b/app/ui/server.py
+@@ -26,6 +26,7 @@ sys.path.insert(0, str(state.REPO))
+ state._trace("import begin (fastapi + app.core next)")
+ 
+ from fastapi import FastAPI                                     # noqa: E402
++from starlette.exceptions import HTTPException as _HTTPException  # noqa: E402
+ 
+ from app.ui import perflog, shared, templating, versions        # noqa: E402
+ from app.ui.routes import data as data_routes                   # noqa: E402
+@@ -54,6 +55,9 @@ app.middleware("http")(sandbox_routes._sandbox_engine_guard)
+ app.middleware("http")(shared._no_store)
+ # outermost: the slow-request log times everything, guards included
+ app.middleware("http")(perflog.slow_request_log)
++# an unknown page is a page of the console (routes/shell.not_found_page),
++# never bare JSON
++app.add_exception_handler(_HTTPException, shell_routes.not_found_page)
+ # the tab routers. Order matters only where one path reaches two routes:
+ # storage before forecast, so POST /runs/clear precedes GET /runs/{run_id}
+ # (the first route a path matches names the Allow header of a wrong-method
