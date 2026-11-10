@@ -1,0 +1,387 @@
+diff --git a/app/tests/test_output_polish.py b/app/tests/test_output_polish.py
+new file mode 100644
+index 00000000..86dbde4f
+--- /dev/null
++++ b/app/tests/test_output_polish.py
+@@ -0,0 +1,114 @@
++"""Output's speed, words and marks (bug hunt 2026-10-25, G32).
++
++  * A file's hub checks are kept on disk, so a relaunch does not check
++    every listed file again (OU-07).
++  * The page's explainer is three lines, Your data's note one, and a
++    line's failing checks open as a card's do (OU-10).
++  * Each file's Download and Show in folder name the file (OU-13).
++  * An open round's time left stays current, and the page reloads when
++    its badge changes (OU-14).
++  * A notice's "?" names it with ids and names as written (OU-17).
++"""
++import datetime as dt
++import json
++import re
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import hubcheck                                  # noqa: E402
++from app.core.html_page import kit_macros                      # noqa: E402
++from app.ui.routes import output as O                          # noqa: E402
++from test_output_run_pages import (GH, OR, _due, _run, client,  # noqa: E402,F401
++                                   root)
++
++UI = Path(__file__).resolve().parents[1] / "ui" / "templates"
++
++
++# ------------------------------------------------- OU-07: kept on disk
++
++def test_hub_checks_are_kept_on_disk_across_a_relaunch(root, monkeypatch):
++    _run(root, "2098-01-03", [GH])
++    f = next(root.rglob("*.csv"))
++    O._CHECKED.clear()
++    O._CHECKS_READ.clear()
++    s = O._check_summary(str(f))
++    kept = json.loads((root / O.CHECKS_FILE).read_text(encoding="utf-8"))
++    assert kept["rules"] == O._rules_digest() and len(kept["files"]) == 1
++    # a relaunch: nothing in memory, the file unchanged, no check run
++    O._CHECKED.clear()
++    O._CHECKS_READ.clear()
++    calls = []
++    monkeypatch.setattr(hubcheck, "summary",
++                        lambda p: calls.append(p) or {"ok": False})
++    again = O._check_summary(str(f))
++    assert calls == [] and again["ok"] == s["ok"]
++    assert again["due"] == s["due"]
++    # other rules: the kept results are not read
++    O._CHECKED.clear()
++    O._CHECKS_READ.clear()
++    monkeypatch.setattr(O, "_rules_digest", lambda: "other")
++    O._check_summary(str(f))
++    assert calls == [str(f)]
++
++
++# ---------------------------------------------- OU-10: short, one style
++
++def test_the_explainers_are_short_and_failing_lines_open_like_cards():
++    page = (UI / "output.html").read_text(encoding="utf-8")
++    about = page.split('{% set about %}', 1)[1].split("{% endset %}", 1)[0]
++    assert about.count('<span class="uk-tt-line">') == 3
++    assert len(re.sub(r"<[^>]+>", "", about).split()) < 110
++    own = page.split('tips.heading("Your data", "out-own", "', 1)[1].split('"', 1)[0]
++    assert len(own) < 120 and "23 levels" not in own
++    # a line's failing checks: the cards' toggletip, not a tooltip
++    assert ('tips.toggletip("out-lchk-" ~ di, "the hub check problems", '
++            'title="Fails hub checks")') in page
++    assert 'tips.badge("error", "fails hub checks", id="out-lchk-" ~ di) }}' in page
++
++
++# ---------------------------------------------- OU-13: the file named
++
++def test_each_files_controls_name_it(root):
++    _run(root, "2098-01-03", [GH])
++    html = client.get("/output").text
++    name = f"2098-01-10-{GH}.csv"
++    assert f'aria-label="Download {name}"' in html
++    assert f'aria-label="Show {name} in folder"' in html
++
++
++# ---------------------------------------- OU-14: the open round, live
++
++def test_an_open_rounds_badge_changes_on_a_page_left_open(root, monkeypatch):
++    utc = dt.timezone.utc
++    due = O._date_status("2026-10-10", now=dt.datetime(2026, 10, 5, 19, tzinfo=utc))
++    # its last 12 hours (11 PM EDT is 03:00 UTC), then the close
++    assert due["flips"] == ["2026-10-07T15:00:00Z", "2026-10-08T03:00:00Z"]
++    soon = O._date_status("2026-10-10", now=dt.datetime(2026, 10, 3, 12, tzinfo=utc))
++    # the window opens at midnight Eastern on its first day (04:00 UTC)
++    assert soon["state"] == "soon" and soon["flips"] == ["2026-10-04T04:00:00Z"]
++    # a whole-day answer has no clock to flip by
++    assert O._date_status("2026-10-10", today=dt.date(2026, 10, 5))["flips"] == []
++    monkeypatch.setattr(O, "_date_status", lambda ref, today=None, now=None: {
++        **_due(ref), "flips": ["2098-01-07T16:00:00Z", "2098-01-08T04:00:00Z"]})
++    _run(root, "2098-01-03", [GH])
++    html = client.get("/output").text
++    assert ('<span data-out-left="2098-01-08T04:00:00Z">2 days 8 h left</span>'
++            in html)
++    assert 'data-out-flips="2098-01-07T16:00:00Z 2098-01-08T04:00:00Z"' in html
++    assert "setInterval(tick,60000);" in html
++    assert "sessionStorage.setItem('out-flip '+flips[i],'1')" in html
++
++
++# ------------------------------------------- OU-17: names as written
++
++def test_a_notices_tip_keeps_ids_and_names_as_written():
++    k = kit_macros()
++    html = str(k.empty("No run 20261025T184517-9a04d9 is recorded here",
++                       tiptext="Its folder is gone.", id="out-notice"))
++    assert 'aria-label="About no run 20261025T184517-9a04d9 is recorded here"' in html
++    html = str(k.alert("warn", "FluSight window closed.", tiptext="x", id="a"))
++    assert 'aria-label="About FluSight window closed"' in html
++    html = str(k.alert("info", "Not run on Ohio.", tiptext="x", id="b"))
++    assert 'aria-label="About not run on Ohio"' in html
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index b0d15a23..d26243c3 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -303,7 +303,8 @@ def _date_status(ref: str, today=None, now=None) -> dict:
+     "badge": (kit state, words)}; {} when the rules cannot be read. A due or
+     coming round also carries "deadline" (the close as ISO UTC, for the
+     page to name in the reader's own time) and "deadline_et" (the same
+-    close in Eastern words, shown until the page script runs); a due one
++    close in Eastern words, shown until the page script runs), and "flips"
++    (the instants, ISO UTC, at which its badge changes next); a due one
+     "left" (time left,
+     _time_left; "" when `today` stands in for the clock) and "urgent"
+     (under URGENT_HOURS left: the badge turns error)."""
+@@ -322,13 +323,23 @@ def _date_status(ref: str, today=None, now=None) -> dict:
+         return {}
+     kind, words = _WINDOW_BADGE[state]
+     out = {"state": state, "text": text, "left": "", "urgent": False,
+-           "deadline": "", "deadline_et": ""}
++           "deadline": "", "deadline_et": "", "flips": []}
+     if window and state in ("due", "soon"):
+         close = _deadline_utc(window[1])
+         out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
+         out["deadline_et"] = f"{window[1]:%a %Y-%m-%d}, 11 PM ET"
+-        if state == "due" and today is None:
++        if today is None:
+             clock = now or _dt.datetime.now(_dt.timezone.utc)
++            # when the badge next changes (the window opens at midnight
++            # Eastern on its first day, turns urgent, closes): a page left
++            # open reloads then (output.html)
++            opens = (_deadline_utc(window[0] - _dt.timedelta(days=1))
++                     + _dt.timedelta(hours=24 - HUB_CLOSE_HOUR))
++            urgent_at = close - _dt.timedelta(hours=URGENT_HOURS)
++            out["flips"] = [t.strftime("%Y-%m-%dT%H:%M:%SZ")
++                            for t in ((opens,) if state == "soon"
++                                      else (urgent_at, close)) if t > clock]
++        if state == "due" and today is None:
+             out["left"] = _time_left(close, clock)
+             out["urgent"] = bool(out["left"]) and (
+                 close - clock).total_seconds() < URGENT_HOURS * 3600
+@@ -347,13 +358,72 @@ def _date_window(ref: str, today=None, now=None) -> str:
+     return _date_status(ref, today=today, now=now).get("text", "")
+ 
+ 
+-#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once
++#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once,
++#: and the result kept on disk (CHECKS_FILE in the state folder) so a
++#: relaunch does not check every listed file again
+ _CHECKED: dict = {}
++CHECKS_FILE = "hubcheck_results.json"
++_CHECKS_READ: set = set()
++
++
++def _rules_digest() -> str:
++    """The checks' own version: hubcheck's code and its vendored tasks.json.
++    A result kept on disk holds only while both are the ones that made it."""
++    from app.core import hubcheck
++    h = hashlib.sha256()
++    for p in (Path(hubcheck.__file__), Path(hubcheck.VENDORED_TASKS)):
++        try:
++            h.update(p.read_bytes())
++        except OSError:
++            pass
++    return h.hexdigest()[:16]
++
++
++def _checks_path() -> Path:
++    from app.core.runs import APP_STATE
++    return Path(APP_STATE) / CHECKS_FILE
++
++
++def _read_checks() -> None:
++    """The results kept on disk, once per state folder; "due" is not kept
++    (summary's window for the reference date, rebuilt here)."""
++    import json
++    from app.core import hubcheck
++    p = _checks_path()
++    if str(p) in _CHECKS_READ:
++        return
++    _CHECKS_READ.add(str(p))
++    try:
++        d = json.loads(p.read_text(encoding="utf-8"))
++        if d.get("rules") != _rules_digest():
++            return
++        for path, mtime, size, s in d.get("files") or []:
++            ref = s.get("reference_date") or ""
++            s["due"] = hubcheck.submission_window(ref) if s.get("round") else None
++            _CHECKED.setdefault((path, int(mtime), int(size)), s)
++    except Exception:
++        pass                          # unreadable: the files are checked again
++
++
++def _keep_checks() -> None:
++    """Write the results to disk (all at once, replaced whole)."""
++    import json
++    p = _checks_path()
++    rows = [[k[0], k[1], k[2], {f: v for f, v in s.items() if f != "due"}]
++            for k, s in _CHECKED.items()]
++    try:
++        tmp = p.with_name(p.name + ".tmp")
++        tmp.write_text(json.dumps({"rules": _rules_digest(), "files": rows}),
++                       encoding="utf-8")
++        tmp.replace(p)
++    except OSError:
++        pass
+ 
+ 
+ def _check_summary(path: str) -> dict:
+-    """hubcheck.summary of one file, cached per file version."""
++    """hubcheck.summary of one file, cached per file version (on disk too)."""
+     from app.core import hubcheck
++    _read_checks()
+     try:
+         st = Path(path).stat()
+         key = (str(path), st.st_mtime_ns, st.st_size)
+@@ -366,6 +436,10 @@ def _check_summary(path: str) -> dict:
+             if len(_CHECKED) > 512:
+                 _CHECKED.clear()
+             _CHECKED[key] = s
++            # an unreadable file is a moment's state, not a result to keep
++            if not any(str(x).startswith("unreadable:")
++                       for x in s.get("problems") or ()):
++                _keep_checks()
+     return s
+ 
+ 
+diff --git a/app/ui/templates/_filerow.html b/app/ui/templates/_filerow.html
+index 7544ade1..3c64569b 100644
+--- a/app/ui/templates/_filerow.html
++++ b/app/ui/templates/_filerow.html
+@@ -49,10 +49,10 @@ their run folders.{% endcall %}</span>{% endif %}</span>
+    <div class="out-file-sub"><code class="out-fname">{{ fname(name) }}</code>{% if run %} {{ run }}{% endif %}</div>
+   </div>
+   <div class="out-acts">
+-   <a class="btn{{ ' gold' if primary }}" href="/output/download?path={{ path | urlencode }}" download="{{ name }}">{{ tips.icon("download") }} Download</a>
++   <a class="btn{{ ' gold' if primary }}" href="/output/download?path={{ path | urlencode }}" download="{{ name }}" aria-label="Download {{ name }}">{{ tips.icon("download") }} Download</a>
+    <form method="post" action="/output/reveal">
+     <input type="hidden" name="path" value="{{ path }}">
+-    <button class="quiet" type="submit">{{ tips.icon("folder") }} Show in folder</button></form>
++    <button class="quiet" type="submit" aria-label="Show {{ name }} in folder">{{ tips.icon("folder") }} Show in folder</button></form>
+    <span class="out-copies"><button class="quiet out-copy" type="button" data-copy="{{ path }}" data-copied="Path copied" aria-label="Copy path of {{ name }}" title="Copy path">{{ copy_icon() }}</button>
+    {%- if validate %}
+    <button class="quiet out-copy" type="button" data-copy="{{ validate }}" data-copied="Validator command copied" aria-label="Copy validator command for {{ name }}" title="Copy validator command">{{ term_icon() }}</button>
+diff --git a/app/ui/templates/_tips.html b/app/ui/templates/_tips.html
+index 4424b4f8..b1361fca 100644
+--- a/app/ui/templates/_tips.html
++++ b/app/ui/templates/_tips.html
+@@ -139,7 +139,9 @@
+ {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
+ {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
+ <div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
+-{%- if body | trim %} {{ tip(id or "alert", tip_label or ((title or text) | lower | trim(" .")), body) }}{% endif %}</span>
++{#- the "?" names the alert mid-sentence: its first word lowered unless it
++    is a name or an acronym (FluSight, US), ids and names as written #}
++{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "alert", tip_label or (t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:]), body) }}{% endif %}</span>
+ {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
+ {%- endmacro %}
+ 
+@@ -150,7 +152,8 @@
+ {% macro empty(title, icon_name="folder", action="", tiptext="", id="", compact=False, hidden=False) -%}
+ {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
+ <div class="uk-empty{% if compact %} uk-empty--compact{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icon_name, cls="uk-empty-icon") }}<p class="uk-empty-title">{{ title }}
+-{%- if body | trim %} {{ tip(id or "empty", title | lower, body) }}{% endif %}</p>
++{#- named as the alert's "?" is #}
++{%- if body | trim %}{% set t = title | string %}{% set w = t.split(" ", 1)[0] %} {{ tip(id or "empty", t if w[1:] != w[1:] | lower else (t[:1] | lower) ~ t[1:], body) }}{% endif %}</p>
+ {%- if action %}<div class="uk-empty-action">{{ action }}</div>{% endif %}</div>
+ {%- endmacro %}
+ 
+diff --git a/app/ui/templates/output.html b/app/ui/templates/output.html
+index 63f719e6..9dc8d258 100644
+--- a/app/ui/templates/output.html
++++ b/app/ui/templates/output.html
+@@ -13,7 +13,10 @@
+ {% if d.status %}{% set st = d.status.state %}
+ {%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
+      else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
+-<span class="out-bt">{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
++{#- the time left, which the page script keeps to the minute #}
++{%- set tail = " · " ~ d.status.left %}
++{%- if d.status.left and words.endswith(tail) %}{% set words %}{{ words[:words | length - tail | length] }} · <span data-out-left="{{ d.status.deadline }}">{{ d.status.left }}</span>{% endset %}{% endif %}
++<span class="out-bt"{% if d.status.flips %} data-out-flips="{{ d.status.flips | join(' ') }}"{% endif %}>{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
+ {%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
+ {%- endmacro %}
+ {# One forecast date as a card (routes/output.forecast_dates): its
+@@ -61,7 +64,8 @@
+  {%- for f in d.files + d.modified %}
+   <a class="btn quiet out-dl" href="/output/download?path={{ f.path | urlencode }}" download="{{ f.name }}" aria-label="Download {{ f.name }}" title="{{ f.name }}">{{ tips.icon("download") }} {{ f.model.split("-", 1)[-1] }}{% if f.modified %} (modified){% endif %}</a>
+  {%- endfor %}
+- {%- if bad %} <span class="out-bt">{% call tips.badge("error", "fails hub checks", id="out-lchk-" ~ di) %}{% for f in bad %}{{ f.name }}: {{ f.check.text }}. {% endfor %}{% endcall %}</span>{% endif %}
++ {#- failing checks as the cards say them: the badge and an "i" listing each problem (_filerow) #}
++ {%- if bad %} <span class="out-bt uk-badge-pair">{{ tips.badge("error", "fails hub checks", id="out-lchk-" ~ di) }}{% call tips.toggletip("out-lchk-" ~ di, "the hub check problems", title="Fails hub checks") %}{% for f in bad %}<span class="uk-tt-line">{{ f.name }}: {{ f.check.text }}.</span>{% endfor %}{% endcall %}</span>{% endif %}
+  </span>
+ </div>
+ {%- endmacro %}
+@@ -79,15 +83,9 @@
+ {% else %}
+ {# the page's explainer: what the files are and the rules they follow #}
+ {% set about %}<strong class="uk-tt-title">Submission files</strong>
+-<span class="uk-tt-line">Your forecasts by date, newest first, as hub-format CSV files.</span>
+-<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The newest date, a round open or coming (outlined) and a date a run is writing now each get a card; other dates take one line each, with their checks, coverage and folder on each run's page.</span>
+-<span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
+-<span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
+-<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest complete run on all 53 locations, else the newest complete run, else the newest run that wrote one; a run made in the round's own week comes before a later vintage run, and the other runs' files stay in their run folders.</span>
+-<span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub. Its weekly report still shows above when it is the newest run, badged.</span>
+-<span class="uk-tt-line">Files an earlier version wrote under retired hub names are not listed; they stay on disk and in <a href="/storage">Storage</a>.</span>
+-<span class="uk-tt-line">The copy buttons beside a file copy its path, or the command that runs it through the hub's own validator (scripts/validate_submission.R; it needs R and the hubValidations package).</span>
+-<span class="uk-tt-line">The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes the files; you upload them to the hub yourself.</span>
++<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written. The newest date, an open or coming round and a date being written get a card; other dates one line each.</span>
++<span class="uk-tt-line">A date run more than once shows the newest complete run's files, all 53 locations first; a run with modified settings writes &lt;model&gt;-modified files, a record, not for the hub.</span>
++<span class="uk-tt-line">The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes them; you upload them yourself.</span>
+ {% endset %}
+ {{ tips.heading("Output", "out-files", about, level=1, rich=True, tip_label="the submission files", cls="out-title") }}
+ {% if rid or archive_dates %}
+@@ -165,7 +163,7 @@
+ {% endif %}
+ {% if own %}
+ <div class="card out-own" id="own-data">
+- {{ tips.heading("Your data", "out-own", "Forecasts on your own datasets, newest first: hubverse-format quantile CSVs (23 levels, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own groups. They carry non-hub names (FluBNF-Groundhog, FluBNF-SIHRS-PF) and are for your own use; downloads work on this computer only, since they carry your data.",
++ {{ tips.heading("Your data", "out-own", "Forecasts on your own datasets, newest first, under non-hub names: for your own use, downloaded on this computer only.",
+                  after=tips.badge("neutral", "this computer only", icon_name="lock")) }}
+  {% for r in own %}
+  {% set runlink %}<a href="/runs/{{ r.run_id }}">run {{ r.run_when }}</a>{% endset %}
+@@ -191,6 +189,44 @@
+    els[i].textContent='closes '+s+' your time';
+   }
+  })();
++ // a page left open keeps a due round's time left to the minute, and
++ // reloads once when a badge changes (the window opens, its last 12
++ // hours, it closes: the badge and the primary Download follow). Each
++ // change reloads at most once, so a clock ahead of the server's cannot
++ // loop; the reload waits while a form has focus or the guard modal is open
++ (function(){
++  var lefts=document.querySelectorAll('[data-out-left]'),flips=[];
++  document.querySelectorAll('[data-out-flips]').forEach(function(e){
++   e.getAttribute('data-out-flips').split(' ').forEach(function(s){var t=Date.parse(s);if(!isNaN(t))flips.push(s);});
++  });
++  if(!lefts.length&&!flips.length)return;
++  function left(ms){
++   var s=Math.floor(ms/1000),d,h;
++   if(s<=0)return '';
++   d=Math.floor(s/86400);h=Math.floor(s%86400/3600);
++   if(d)return d+(d===1?' day':' days')+(h?' '+h+' h':'')+' left';
++   if(h)return h+' h left';
++   return Math.max(1,Math.floor(s%3600/60))+' min left';
++  }
++  function done(s){try{return sessionStorage.getItem('out-flip '+s)==='1';}catch(e){return false;}}
++  function tick(){
++   var now=Date.now(),i,t,s;
++   for(i=0;i<lefts.length;i++){
++    t=Date.parse(lefts[i].getAttribute('data-out-left'));
++    s=isNaN(t)?'':left(t-now);
++    if(s)lefts[i].textContent=s;
++   }
++   for(i=0;i<flips.length;i++){
++    if(Date.parse(flips[i])>now||done(flips[i]))continue;
++    if(window.GUARD_BUSY||(document.activeElement&&document.activeElement.form))return;
++    try{sessionStorage.setItem('out-flip '+flips[i],'1');}catch(e){return;}
++    location.reload();return;
++   }
++  }
++  setInterval(tick,60000);
++  addEventListener('focus',tick);
++  document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});
++ })();
+ </script>
+ {# an older server (a pull while the console runs reloads templates,
+    not routes) renders no stamp: the page then goes without the check #}
