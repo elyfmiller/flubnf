@@ -294,6 +294,7 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
         return _R(0, "", "")            # the sparse-checkout heal calls
 
     monkeypatch.setattr(data.subprocess, "run", failing_run)
+    monkeypatch.setattr(data, "_run", failing_run)
     ok, msg = data.pull_hub()
     assert ok is False
     assert "fatal: could not read from remote" in msg
@@ -306,6 +307,7 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
         return _R(0, "", "")
 
     monkeypatch.setattr(data.subprocess, "run", clean_run)
+    monkeypatch.setattr(data, "_run", clean_run)
     assert data.pull_hub() == (True, "Already up to date.")
 
 
