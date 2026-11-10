@@ -1,0 +1,372 @@
+diff --git a/app/tests/conftest.py b/app/tests/conftest.py
+index 9f08d312..96f0b994 100644
+--- a/app/tests/conftest.py
++++ b/app/tests/conftest.py
+@@ -234,6 +234,16 @@ def _sandbox_released():
+     release()
+ 
+ 
++@pytest.fixture(autouse=True)
++def _retro_form_forgotten():
++    """The Retrospective's remembered Settings form is module state: no
++    test's post may set another test's form."""
++    from app.ui.routes import retro as ui_retro
++    ui_retro._last_retro_form.clear()
++    yield
++    ui_retro._last_retro_form.clear()
++
++
+ @pytest.fixture
+ def sandbox_root(tmp_path, monkeypatch):
+     """A sandbox rooted in tmp_path with the preflight's Perl present and
+diff --git a/app/tests/test_retro_forms.py b/app/tests/test_retro_forms.py
+new file mode 100644
+index 00000000..d87fc050
+--- /dev/null
++++ b/app/tests/test_retro_forms.py
+@@ -0,0 +1,110 @@
++"""Retrospective forms and navigation (bug hunt 2026-10-25, G23).
++
++  * The season page's Show in folder says why nothing opened: the reveal
++    answers a script with its outcome, and the page shows a refusal under
++    its buttons (a form post still goes back with the warning).
++  * The Run form shows its choices again after a refusal or a run, and
++    the Model settings panel opens on its own refusal.
++  * A dataset replay's page leads back to that dataset's replays.
++  * A replay that stopped early says how far it got, and its empty chart
++    no longer promises forecasts "yet".
++"""
++import json
++import subprocess
++from datetime import date
++from pathlib import Path
++
++from app.core import custom_retro as CX
++from app.ui import state as ui_state
++from test_datasets_ui import client, isolated, stored        # noqa: F401
++from test_dataset_engines import grouped_bytes                # noqa: E402
++from test_retro_archive import OTHER, _roots                  # noqa: E402
++
++TEMPLATES = Path(__file__).resolve().parents[1] / "ui" / "templates"
++JSON = {"Accept": "application/json"}
++
++
++# ----------------------------- RE-12 (WI-05): Show in folder says why not
++
++def test_show_in_folder_answers_a_script_with_its_outcome(tmp_path,
++                                                          monkeypatch):
++    import app.core.runs as runs_mod
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    f = tmp_path / "retro" / "2098-99" / "r.html"
++    f.parent.mkdir(parents=True)
++    f.write_text("x")
++    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: None)
++    assert client.post("/output/reveal", data={"path": str(f)},
++                       headers=JSON).json() == {"ok": True}
++    assert client.post("/output/reveal", data={"path": "/etc/hosts"},
++                       headers=JSON).json() == {
++        "ok": False,
++        "why": "Nothing opened: the file is not in app state any more."}
++
++    def no_file_manager(*a, **kw):
++        raise OSError("xdg-open not found")
++    monkeypatch.setattr(subprocess, "Popen", no_file_manager)
++    got = client.post("/output/reveal", data={"path": str(f)},
++                      headers=JSON).json()
++    assert got["ok"] is False
++    assert got["why"].startswith(
++        "Nothing opened: no file manager could be started.")
++    # a form's post still goes back to its page with the warning
++    r = client.post("/output/reveal", data={"path": str(f)},
++                    follow_redirects=False)
++    assert r.status_code == 303
++    assert "no file manager" in ui_state._status["flash"]
++    # the season page asks for the outcome and says a refusal
++    js = (TEMPLATES / "retro_season.html").read_text(encoding="utf-8")
++    js = js.split("fetch('/output/reveal'", 1)[1].split(".catch(", 1)[0]
++    assert "'Accept':'application/json'" in js
++    assert "if(!d.ok)throw new Error(d.why)" in js
++
++
++# ------------------------------- RE-13: the form keeps what was chosen
++
++def _run_form() -> str:
++    return client.get("/retro").text.split(
++        'action="/retro/run"', 1)[1].split("</form>", 1)[0]
++
++
++def test_the_run_form_shows_its_choices_again_after_a_refusal(tmp_path,
++                                                              monkeypatch):
++    _roots(tmp_path, monkeypatch)
++    fields = {"season": OTHER, "locations": "custom", "national": "0",
++              "engine": "analogue", "mode": "archive",
++              "knob.groundhog.zero_anchor": "blend"}
++    client.post("/retro/run", data=fields, follow_redirects=False)
++    assert "no locations checked" in ui_state._status["flash"]
++    form = _run_form()
++    assert f"<option selected>{OTHER}</option>" in form
++    assert '<option value="custom" selected>custom selection' in form
++    assert 'id="retro-custom" style="display:none"' not in form
++    assert '<option value="0" selected>states only' in form
++    assert '<option value="analogue" selected>Groundhog only' in form
++    assert '<option value="blend" selected>blend' in form
++    # a refusal over the model settings opens their panel, once
++    client.post("/retro/run", data={**fields, "locations": "panel6",
++                                    "knob.groundhog.zero_anchor": "often"},
++                follow_redirects=False)
++    assert "model settings" in ui_state._status["flash"]
++    assert 'open data-refused id="model-settings"' in _run_form()
++    assert 'open data-refused' not in _run_form()
++
++
++# ------------------------------------------ RE-24 and RE-25: a replay page
++
++def test_a_stopped_replay_leads_back_and_says_how_far_it_got():
++    ds = stored(grouped_bytes(groups=("Pediatric", "Adult"),
++                              end=date(2023, 12, 2)), "Kids")
++    out = CX.replay_dir(ds, CX.new_stamp(ds))
++    CX.run(ds, ["2023-11-25", "2023-12-02"], ds.groups, out_dir=out)
++    meta = json.loads((out / CX.META).read_text(encoding="utf-8"))
++    meta.update(status="stopped", weeks_completed=1, total_weeks=2)
++    (out / CX.META).write_text(json.dumps(meta), encoding="utf-8")
++    page = " ".join(client.get(f"/retro/dataset/{ds.id}/{out.name}")
++                    .text.split())
++    assert "stopped after 1 of 2 weeks" in page
++    assert f'<a href="/retro?dataset={ds.id}" id="rd-back">Back to the ' \
++           f'replays</a>' in page
++    assert "No forecasts stored yet" not in page
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 11198a56..06aa6b3b 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -759,9 +759,13 @@ def _reveal_command(p: Path, platform: str | None = None):
+ def output_reveal(request: Request, path: str = Form(...)):
+     """Show the file in Finder / Explorer (a local desktop app), then back
+     to the page that asked (a run page or Output); a warning there when no
+-    file manager could be opened on it."""
++    file manager could be opened on it. A script (the season page's Show
++    in folder, which asks for JSON) gets {"ok": true} or {"ok": false,
++    "why": ...} instead, since the redirect's page would eat the warning."""
+     import subprocess
++    from fastapi.responses import JSONResponse
+     from app.core.runs import APP_STATE
++    script = "application/json" in request.headers.get("accept", "")
+     try:
+         p = Path(path).resolve()
+     except (OSError, ValueError):       # a NUL byte or an unusable name
+@@ -770,17 +774,25 @@ def output_reveal(request: Request, path: str = Form(...)):
+     # test would admit siblings such as app/state_defaults
+     if p is None or not (p.is_relative_to(APP_STATE.resolve())
+                          and p.exists()):
+-        shared._flash("Nothing opened: the file is not in app state any "
+-                      "more.", "warn",
++        why = "Nothing opened: the file is not in app state any more."
++        if script:
++            return JSONResponse({"ok": False, "why": why})
++        shared._flash(why, "warn",
+                       detail="It may have been deleted or moved; Storage "
+                              "lists what is on disk.")
+         return shared._back(request, "/output")
+     try:
+         subprocess.Popen(_reveal_command(p))
+     except OSError as e:
+-        shared._flash("Nothing opened: no file manager could be started.",
+-                      "warn", detail=f"{type(e).__name__}: {e}. The file "
+-                                     f"is at {p}.")
++        why = "Nothing opened: no file manager could be started."
++        if script:
++            return JSONResponse({"ok": False,
++                                 "why": f"{why} The file is at {p}."})
++        shared._flash(why, "warn", detail=f"{type(e).__name__}: {e}. The "
++                                         f"file is at {p}.")
++        return shared._back(request, "/output")
++    if script:
++        return JSONResponse({"ok": True})
+     return shared._back(request, "/output")
+ 
+ 
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f4bd85ec..7dcb5042 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -170,13 +170,18 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
+                         "finished_utc": prog["finished_utc"],
+                         "scored": (root / "scores.json").exists()})
+     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
++    # the form as last posted; its panel opens once after its own refusal
++    form = dict(_last_retro_form)
++    _last_retro_form.pop("ms_refused", None)
+     return templates.TemplateResponse(request, "retro.html",
+                                       {"active": "Retrospective",
+                                        "own_tab": False, "seasons": seasons,
+                                        "state_names": _retro_state_names(),
+                                        "default_width": DEFAULT_SHARD_WIDTH,
+                                        "width_cap": SHARD_WIDTH_CAP,
+-                                       "knob_panel": _knob_panel("retro"),
++                                       "form": form,
++                                       "knob_panel": _knob_panel("retro",
++                                                                 form),
+                                        # a half-installed engine cannot
+                                        # run the Oracle preset either
+                                        "engine_ok": pipeline._pf_engine_state()
+@@ -364,6 +369,22 @@ def _retro_bg(season: str, locations: list, width: int,
+                 pass
+ 
+ 
++#: the Settings form as last posted (this console session): the page shows
++#: it again, so a refusal or a run never resets every choice; "ms_refused"
++#: (one-shot) opens the Model settings panel on its own refusal
++_last_retro_form: dict = {}
++
++
++def _remember_retro_form(**fields) -> None:
++    """Keep the posted Settings form for the page (_last_retro_form)."""
++    try:
++        knob_vals = _knob_raw(fields.pop("knob_fields"), fields.pop("knobs"))
++    except ValueError:                   # refused below, with the reason
++        knob_vals = {}
++    _last_retro_form.clear()
++    _last_retro_form.update(fields, knobs=knob_vals)
++
++
+ def _refused(msg: str, detail: str = "",
+              kind: str = "warn") -> RedirectResponse:
+     """Flash why a control request did nothing and go back to the index
+@@ -486,6 +507,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+     from app.core import retro
+     from app.core.retro import available_seasons
+     _invalidate_scans()
++    _remember_retro_form(season=season, locations=locations,
++                         custom_locations=list(custom_locations),
++                         national=national, width=width, engine=engine,
++                         knob_fields=knob_fields, knobs=knobs)
+     if not _valid_season(season):
+         return _refused("Not started: unrecognized season name.")
+     # busy checks, the archive/discard move and the claim all run under
+@@ -572,6 +597,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+                         **({"drop_same_day": drop_same_day}
+                            if _str_field(drop_same_day).strip() else {})})
+         except ValueError as e:              # KnobError is a ValueError
++            _last_retro_form["ms_refused"] = str(e) or True
+             return _refused(f"Not started: model settings: {e}.")
+         particles = int(nd.get("pf.particles", RunSpec.particles))
+         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
+diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
+index fd9ae761..61003778 100644
+--- a/app/ui/templates/retro.html
++++ b/app/ui/templates/retro.html
+@@ -29,21 +29,24 @@
+ {% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
+ {# the forms beside the seasons; on a phone the seasons (the results)
+    come first (tabs/retro.css .rt-cols) #}
++{% set form = form | default({}) %}
+ <div class="cols rt-cols">
+  <div class="rt-forms"><div class="card rt-runcard"><h2>Settings</h2>
+   <form method="post" action="/retro/run">
+    <label for="rt-season">Season</label>
+-   <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
++   {# the form as last posted (routes/retro._last_retro_form), so a
++      refusal or a run never resets a choice #}
++   <select name="season" id="rt-season">{% for s in seasons %}<option{% if form.season == s.name %} selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+    {# the options say what each choice costs and does: no "?" per label #}
+    <label for="retro-scope">Location scope</label>
+    <select name="locations" id="retro-scope">
+      <option value="panel6">6-state panel (fast)</option>
+-     <option value="all">all 52 jurisdictions</option>
+-     <option value="custom">custom selection</option></select>
+-   <div class="checklist" id="retro-custom" style="display:none">
++     <option value="all"{% if form.locations == "all" %} selected{% endif %}>all 52 jurisdictions</option>
++     <option value="custom"{% if form.locations == "custom" %} selected{% endif %}>custom selection</option></select>
++   <div class="checklist" id="retro-custom"{% if form.locations != "custom" %} style="display:none"{% endif %}>
+      {% for l in state_names %}
+      <label class="ck"><input type="checkbox" name="custom_locations"
+-       value="{{ l }}"> {{ l }}</label>
++       value="{{ l }}"{% if l in (form.custom_locations or []) %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}
+    </div>
+    {# US national fitted by default, as the Forecast form's default run
+@@ -53,26 +56,27 @@
+    <label for="rt-national">US national</label>
+    <select name="national" id="rt-national">
+      <option value="1">fit US national too (default)</option>
+-     <option value="0">states only</option></select>
++     <option value="0"{% if form.national == "0" %} selected{% endif %}>states only</option></select>
+    <label for="rt-width-in">Shard width</label>
+-   <span class="uk-affix"><input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
++   <span class="uk-affix"><input type="number" name="width" value="{{ form.width or default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
+    <label for="retro-engine">Engine preset</label>
+    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
+       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
+       published numbers anywhere #}
+    <select name="engine" id="retro-engine">
+      <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
+-     <option value="analogue"{% if not engine_ok %} selected{% endif %}>Groundhog only (minutes)</option></select>
++     <option value="analogue"{% if form.engine == "analogue" or (not engine_ok and form.engine != "pf") %} selected{% endif %}>Groundhog only (minutes)</option></select>
+    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
+       decision with no default, asked here rather than in the panel; a
+       season replayed before the rule existed resumes as abstain #}
+    <label for="rt-zero-anchor">Groundhog when the newest week reads 0</label>
+    <select name="knob.groundhog.zero_anchor" id="rt-zero-anchor" required>
+      <option value="">Choose…</option>
+-     <option value="abstain">abstain: no Groundhog forecast for that state and week</option>
+-     <option value="level">level: anchor on the mean of the last 4 weeks</option>
+-     <option value="extend">extend: carry the last positive week over 1 or 2 zeros</option>
+-     <option value="blend">blend: level and extend averaged</option></select>
++     {% set za = (form.knobs or {}).get("groundhog.zero_anchor", "") %}
++     <option value="abstain"{% if za == "abstain" %} selected{% endif %}>abstain: no Groundhog forecast for that state and week</option>
++     <option value="level"{% if za == "level" %} selected{% endif %}>level: anchor on the mean of the last 4 weeks</option>
++     <option value="extend"{% if za == "extend" %} selected{% endif %}>extend: carry the last positive week over 1 or 2 zeros</option>
++     <option value="blend"{% if za == "blend" %} selected{% endif %}>blend: level and extend averaged</option></select>
+    {# particles and replicates live in the panel, under their field names #}
+    {% include "_model_settings.html" %}
+    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
+diff --git a/app/ui/templates/retro_dataset.html b/app/ui/templates/retro_dataset.html
+index d558f974..3aaaa56e 100644
+--- a/app/ui/templates/retro_dataset.html
++++ b/app/ui/templates/retro_dataset.html
+@@ -6,13 +6,18 @@
+    status, and how the weeks saw the data (vintage-true, or the final
+    series: optimistic scores), the why in each tip; the range as a fact #}
+ {% set vt = meta.dataset and meta.dataset.vintage_true %}
++{# a replay that ended early says how far it got #}
++{% set early = status in ('stopped', 'interrupted') and meta.total_weeks and (meta.weeks_completed or 0) < meta.total_weeks %}
+ <div class="rt-title"><h1>Replay: {{ ds.name }}</h1>
+  {{ tips.badge("neutral", "your data") }}
+  {% if meta.knobs %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+- {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), status) }}</div>
++ {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), (status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks") if early else status) }}</div>
+ <div class="rt-sub">
+  {% call tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") %}{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}. {{ "Each week was forecast from the as_of snapshot that held it, as it stood then." if vt else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored." }} Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.{% endcall %}
+- {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}</div>
++ {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}
++ {# the way back to this dataset's replays (the Retrospective tab opens
++    on the FluSight hub's seasons) #}
++ <a href="/retro?dataset={{ ds.id }}" id="rd-back">Back to the replays</a></div>
+ 
+ {% if live %}
+ <div class="card">
+@@ -79,7 +84,7 @@
+   {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
+  </div>
+  <div id="rd-plot" class="rt-plot"></div>
+- <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored yet", "clock") }}</div>
++ <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored" ~ (" yet" if live else ""), "clock") }}</div>
+ </div>
+ 
+ {# the card heading names the block; its own title would repeat it #}
+diff --git a/app/ui/templates/retro_season.html b/app/ui/templates/retro_season.html
+index 53eb2c70..866a1b28 100644
+--- a/app/ui/templates/retro_season.html
++++ b/app/ui/templates/retro_season.html
+@@ -405,7 +405,11 @@
+       .then(function(){return fetch(base(rev)+'/report_path'+q(rev));})
+       .then(function(r){if(!r.ok)throw new Error('report unavailable');return r.json();})
+       .then(function(d){return fetch('/output/reveal',{method:'POST',
++        headers:{'Accept':'application/json'},
+         body:new URLSearchParams({path:d.path})});})
++      // the outcome as JSON: a refusal is said under the buttons
++      .then(function(r){return r.json();})
++      .then(function(d){if(!d.ok)throw new Error(d.why);})
+       .catch(function(err){fail(err.message);})
+       .then(function(){lock(false,btns);});
+   });
