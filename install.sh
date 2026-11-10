@@ -71,6 +71,6 @@ if [ "$ROUTE" = private ]; then
 fi
 # Recorded in .flubnf.env (--public), so the launchers read it.
 ./setup_engine.sh --public \
-  || echo "The public engine did not install (see above); the console still runs, and FluBNF.command tries again on its next open."
+  || echo "The public engine did not install (see above); the console still runs. ./setup_engine.sh tries again (on a Mac, the next open of FluBNF does it)."
 echo
 echo "Done. Launch with:  $LAUNCH"
