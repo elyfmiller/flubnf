@@ -1,0 +1,6 @@
+# G29: decision (by A)
+Decision: combined: A's patch (ST-04 the ledger's total; ST-08 the section tips gone, Reclaim's, Sandbox's and Student experiments' kept, a busy row's Delete off with no "?", each distinct reason once in one notice above the sections; ST-10 `_local_when`; ST-11 "Delete the 1 / all N workroots not running", the Clear dialog with no status list; ST-12 the empty states on the listings, "No runs in the ledger"; ST-14 "Delete the run <label>?" with the folder and files in the hint; ST-15 the counted sentence; ST-16; ST-17 the filter and the run's date in Find) plus from B's: `_may_archive` joined to the own-date rule for report archives, in the page and the delete route; the bulk notices without "completed"; the filter button's word "not ok"; "the unrecorded run <id>" for a workroot with no ledger row.
+Implementer: A (the decider; the solutions are combined)
+Why: the final votes agree. Criterion 1: the archive rule is exact only with both halves (a Groundhog-only, research, modified or vintage run archives nothing; a full run only its own date) and the route must agree with the page; the notices and the button word stop calling an interrupted or stopped run "completed" or "failed"; the one notice reaches touch and keyboard readers where a title does not. Criterion 5: A's words elsewhere.
+Left for Ely: none
+Not reproduced: none
