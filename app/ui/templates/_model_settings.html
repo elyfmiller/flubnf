@@ -24,7 +24,7 @@
    none of these and render exactly as before. #}
 {# one knob's row: its label, its control and its hint (a later knob's
    off, its group named as a tag) #}
-{% macro ms_row(r, px, tips, group="") -%}{% set rid = px ~ r.id %}
+{% macro ms_row(r, px, tips) -%}{% set rid = px ~ r.id %}
   <div class="ms-row{% if r.later %} ms-later{% endif %}" data-affects="{{ r.affects }}"{% if r.only %} data-only="{{ r.only }}"{% endif %}{% if r.mark %} style="--ms-mark:'{{ r.mark }}'"{% endif %}>
    {{ tips.label(r.label, rid ~ "-tip", "", for_=rid) }}
    {% set hint = (' aria-describedby="' ~ rid ~ '-hint"') | safe if r.hint else "" %}
@@ -56,7 +56,6 @@
      step="{{ r.step }}"{% if r.later %} disabled{% endif %}>
    {% endif %}
    {% if r.hint %}<p class="ms-hint" id="{{ rid }}-hint">{{ r.hint }}</p>{% endif %}
-   {% if group %}<span class="fc-ms-soon">{{ tips.tag(group) }}</span>{% endif %}
   </div>
 {%- endmacro %}
 {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
@@ -95,13 +94,6 @@
   </fieldset>
  </details>
  {% endif %}{% endfor %}
- {# the knobs not settable yet, in one fold: each row off, its group named #}
- {% set ns = namespace(n=0) %}{% for g in kp.groups %}{% for r in g.rows if r.later %}{% set ns.n = ns.n + 1 %}{% endfor %}{% endfor %}
- {% if ns.n %}
- {% call tips.fold(ns.n ~ " coming later", id=px ~ "ms-later-fold", cls="ms-later-fold") %}
-  {% for g in kp.groups %}{% for r in g.rows if r.later %}{{ ms_row(r, px, tips, g.title) }}{% endfor %}{% endfor %}
- {% endcall %}
- {% endif %}
  {% if kp.override %}
  {# the override: shown once a value is changed; its reason once ticked
     (the reason is then required) #}
@@ -117,12 +109,6 @@
   </div>
  </div>
  {% endif %}
- {# the settings the model definition fixes: each value and its reason #}
- {% call tips.fold("Fixed by the model definition", id=px ~ "ms-locked-fold", cls="fc-ms-locked") %}
-  {% call tips.stats("uk-stats--kv fc-kv") %}
-   {% for l in kp.locked %}{% set why %}<span class="fc-lk-why">{{ l.why }}</span>{% endset %}{{ tips.stat(l.key, l.value, id=px ~ "ms-lk-" ~ loop.index, after=why) }}{% endfor %}
-  {% endcall %}
- {% endcall %}
 </details>
 <script src="/static/model_settings.js" defer></script>
 {% endif %}

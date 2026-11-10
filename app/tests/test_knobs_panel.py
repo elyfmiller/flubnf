@@ -110,8 +110,9 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
     f = _panel_form(html)
     names = {n for n, _ in f.fields} | f.disabled
     for k in K.REGISTRY:
-        if k.key in K.DECISION_KEYS:
-            continue        # asked on the form itself (the Data issues box)
+        if k.key in K.DECISION_KEYS or k.key in K.LATER:
+            continue        # asked on the form itself (the Data issues box);
+            #                 Methods lists the coming-later ones (FC-28)
         name = K.FIELD_OF.get(k.key, "knob." + k.key)
         assert name in names, k.key
         # its one-line help under the field, as the field's description,
@@ -153,24 +154,25 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
     for old in ("season_start", "weeks_to_drop", "replicates", "particles",
                 "drop_same_day"):
         assert old in names
-    # coming-later knobs are shown, disabled, and never posted
-    assert {"knob." + k for k in K.LATER} == f.disabled
-    # ... in one fold that counts them, each named by its group
-    assert f">{len(K.LATER)} coming later<" in html
-    fold = html.split('id="ms-later-fold"')[1].split("</details>")[0]
-    assert fold.count('class="ms-row ms-later"') == len(K.LATER)
+    # coming-later knobs are not in the panel, which lists only what a
+    # student can set (FC-28): Methods' settings table tags them
+    assert not f.disabled and "coming later" not in panel
+    assert not {"knob." + k for k in K.LATER} & names
     # the override and its reason (a placeholder says what to type), and
     # the reset control
     assert 'name="submit_modified"' in html and 'name="modified_reason"' in html
     assert 'placeholder="Why export under the hub names?"' in html
     assert 'id="ms-reset"' in html and "Reset to defaults" in html
     assert "/static/model_settings.js" in html
-    # the fixed list; each fixed value's reason as text under it
-    assert "Fixed by the model definition" in html
-    for key in ("horizons", "quantile_levels", "epiweek_53", "gamma"):
-        assert f"<dt>{key}</dt>" in html
+    # the fixed list is Methods' (FC-28), each value with its reason
+    assert "Fixed by the model definition" not in html
+    mt = client.get("/methods").text
+    fixed = mt.split('id="mt-set-fixed"')[1].split("</details>")[0]
     for lk in K.LOCKED:
-        assert f'<span class="fc-lk-why">{escape(lk.why)}</span>' in panel
+        assert f'<th scope="row">{lk.key}</th><td>{escape(lk.why)}</td>' in fixed
+    later = mt.split('id="settings"')[1]
+    for k in K.LATER:
+        assert f'id="set-{k.replace(".", "-")}"' in later
 
 
 def test_no_auxiliary_bank_turns_the_donor_weights_off():

@@ -252,7 +252,8 @@ def test_choices_and_the_rule_keep_the_hub_names():
     assert runs_mod.model_settings_label(spec) == ""
     pairs = dict(runs_mod.spec_settings(spec))
     # a record from before the recommendation names every state
-    assert pairs["Data issues"] == ("Utah set aside; zero-anchor rule blend for "
+    assert pairs["Data issues"] == ("Utah both from the week before; Groundhog "
+                                    "when the newest week reads 0: blend for "
                                     "the other states")
     assert "model settings" not in pairs
     assert MS.followed_line(MS.choices_of(spec.extra)) == ""
@@ -286,29 +287,30 @@ def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, mo
     page = client.get("/forecast").text
     box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
     assert f'data-week="{NEW}"' in box and "<legend>Data issues</legend>" in box
-    assert '<div class="fc-di-head"><span class="uk-badge' in box
-    assert ('<span class="uk-badge uk-badge--warn" id="di-count" data-state="warn">'
-            in box and '<span class="uk-badge-t">2 states</span>' in box)
+    # the line above counts the states; the box has no count or "i" of its
+    # own (FC-26)
+    assert 'id="di-count"' not in box and 'class="uk-tt' not in box
     md = WEEKS[-2][5:]
-    # one compact row: the "recommended" check, the name, the reason's "i",
-    # the flag, then the select
+    # one compact row: the "recommended" check, the name, the flag, then
+    # the select
     assert ('<div class="di-head"><span class="di-rec uk-c-ok">' in box
             and 'aria-label="recommended"' in box)
     assert '<label for="gap-39">Ohio</label>' in box
-    assert '<span class="di-flag">0 after 40, 40, 40 <span class="tip">' in box
+    assert '<span class="di-flag" id="di-flag-39">0 after 40, 40, 40</span>' in box
     assert 'name="gap.39" id="gap-39" data-issue="zero" data-rec="set_aside"' in box
     assert f'<option value="set_aside" selected>Both from {md}</option>' in box
     assert f'<option value="extend">Extend 40 from {md}</option>' in box
-    # the reason is the row's "i" tip, and it describes the select
-    assert ('id="tip-di-why-39">0 after 40, 40, 40 looks like a missed report</span>'
-            in box and 'aria-describedby="tip-di-why-39"' in box)
+    # the flag describes the select; no "i" per state
+    assert 'aria-describedby="di-flag-39"' in box and "tip-di-why" not in box
     assert 'name="gap.49" id="gap-49" data-issue="collapsed" data-rec="set_aside"' in box
     assert '<option value="keep">Keep 5</option>' in box
     assert "required" not in box and "Choose…" not in box   # nothing to answer
     assert 'name="gap._sha"' in box
-    # the long explanations live in the legend's tip
-    assert "Level = it anchors on the mean of the last 4 weeks" in box
-    assert "about three quarters stayed 0 once settled" in box
+    # the long explanations are Methods', which the Settings "i" links
+    assert "Level = it anchors on the mean of the last 4 weeks" not in box
+    assert '<a href="/methods#mt-newest">What each choice does</a>' in page
+    mt = client.get("/methods").text.split('id="mt-newest"')[1]
+    assert "Level, it\n  anchors on the mean of the last 4 weeks" in mt
     assert "Groundhog:" not in box                 # no long option labels
     assert "di.hidden = a !== di.dataset.week; di.disabled = di.hidden" in page
     assert 'id="di-all"' not in box                 # one zero state: no "all"
@@ -371,7 +373,8 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
         {"location": "Ohio", "week": NEW, "value": 0.0, "rule": MS.LEFT_OUT_RULE},
         {"location": "Utah", "week": NEW, "value": 5.0, "rule": MS.SET_ASIDE_RULE}]}}
     row = runs_mod.data_issues_row(o, s.extra, {"analogue": "Groundhog"})
-    assert row[1].startswith("2 states, 1 recommended, 1 changed; 1 set aside, 1 left out")
+    # ... and Results what came of them (the counts are Run settings')
+    assert row[1].startswith("1 set aside, 1 left out<")
     # the form comes back pre-filled, the badge off where the choice differs
     page = client.get("/forecast").text
     assert '<option value="omit" selected>Leave out</option>' in page
@@ -387,7 +390,7 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
     assert {l: (s["choice"], s["followed"]) for l, s in got.items()} == {
         "Ohio": ("abstain", False), "Utah": ("keep", False)}
     assert runs_mod.data_issues_label(started[1].extra) == (
-        "2 states, 0 recommended, 2 changed: Ohio abstain, Utah keep")
+        "2 states, 0 recommended, 2 changed: Ohio no forecast, Utah kept")
     _hub(tmp_path / "hub2", monkeypatch, newest={"Utah": "5"})
     _post({"gap.49": "keep"})
     assert len(started) == 3
@@ -476,7 +479,7 @@ def test_the_run_page_counts_the_zero_anchor_weeks_by_rule():
     assert runs_mod.anchor_notes_row(o, {"analogue": "Groundhog"}) is None
     flags = {"analogue": [{"location": l, "week": T, "value": 0.0,
                            "rule": "zero-anchor level"} for l in ("Utah", "Idaho")]}
-    assert MS.choices_line(flags) == "2 zero-anchor level"
+    assert MS.choices_line(flags) == "2 level"
     assert MS.line(MS.unreported_flags(flags)) == ""
     assert MS.replay_zero_anchor_count({T: flags, T_WEEKS[0]: {"analogue": []}}) == \
         "2 location-weeks (2 level)"

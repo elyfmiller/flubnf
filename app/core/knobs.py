@@ -196,12 +196,13 @@ REGISTRY: tuple = (
          card=(ORACLE_CARD, {10_000: "10,000 candidate epidemics"})),
     Knob("pf.replicates", "Replicates", PF_ONLY, "fit", "run", "int",
          RunSpec.replicates, "app.core.runs:RunSpec.replicates",
-         "Seeded filter runs per jurisdiction, pooled; fewer than 3 breaks rule 3.",
+         "Seeded filter runs per jurisdiction, pooled; per-state numbers ship with 3 or more.",
          lo=1, hi=10, unit="runs"),
     Knob("pf.jitter", "Kernel jitter", PF_ONLY, "fit", "method", "float",
          RunSpec.jitter, "app.core.runs:RunSpec.jitter",
-         "Liu-West kernel scale h; the sealed record ran 0.30.",
-         lo=0.01, hi=1.0),
+         "How far each fitted value is nudged between weeks, so the particles stay varied.",
+         lo=0.01, hi=1.0,
+         note="The Liu-West kernel scale h; the sealed record ran 0.30."),
     *(_prior_knob(n) for n in PRIOR_DEFAULTS),
     Knob("pf.initialization", "Particle initialization", PF_ONLY, "fit",
          "method", "choice", "rand", "app.core.engines.pf:initialization_for",
@@ -209,10 +210,11 @@ REGISTRY: tuple = (
          choices=("rand", "lh"), check=_check_initialization),
     Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
          "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
-         "Pins rho*mult and i0: admissions to date, the expected season "
-         f"total, or that total until {SP.EARLY_FRACTION:.0%} is in.",
+         "Sets the reporting rate and first infections from the admissions to date "
+         "or the expected total.",
          choices=SP.SEED_DENOMINATORS,
-         note=("season_total: the expected total is the median per-capita "
+         note=("It pins rho*mult and i0. "
+               "season_total: the expected total is the median per-capita "
                "total of the completed past seasons in the vintage, floored "
                "at the to-date count; i0 shrinks by expected/to-date and the "
                "model's implied depletion grows with the season instead of "
@@ -342,8 +344,8 @@ REGISTRY: tuple = (
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
-         "Donor weeks within this many epiweeks; the seal ran 2.",
-         lo=0, hi=8, unit="epiweeks",
+         "Donor weeks within this many epiweeks of the forecast week.",
+         lo=0, hi=8, unit="epiweeks", note="The sealed record ran 2.",
          card=(GROUNDHOG_CARD, {2: "within two MMWR epiweeks"})),
     Knob("groundhog.min_donors", "Groundhog minimum donors", GH_ONLY,
          "groundhog", "method", "int", AN.MIN_DONORS,
@@ -1212,7 +1214,8 @@ def panel(scope: str, values: Optional[Mapping] = None) -> dict:
     refused submission keeps what was typed). Knobs with an older field
     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
     particles), so every earlier poster still works; the rest post as
-    knob.<key>. Coming-later knobs render disabled. A row is "changed"
+    knob.<key>. Coming-later knobs are kept out of the template's groups
+    (Methods lists them, and LOCKED). A row is "changed"
     when its value is off the default (never a coming-later or optional
     one); its group opens on it. Each group's "tip" says what a change
     costs (the Methods tab's settings table reads it; the panel shows

@@ -34,10 +34,13 @@
   <span class="uk-tt-line">Forecasts export under non-hub names; never submitted.</span>
   {%- else %}
   <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from any archived week, as it stood then.</span>
-  <span class="uk-tt-line"><b>Forecast date:</b> any day anchors on the latest archived week on or before it.</span>
+  <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
   <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until the archive has it.</span>
   <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days. It names the round; horizons count from it.</span>
   <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC and Puerto Rico, and US, which is fitted and scored apart.</span>
+  {%- if data_issues %}
+  <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
+  {%- endif %}
   {%- endif %}
   {% endcall %}
   {% if dataset %}
@@ -61,11 +64,11 @@
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
-   <div class="modes">
-    <div role="tablist" aria-label="forecast mode">
-    <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
-    <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
-    </div>
+   {# a pressed-button group, as the page's other segmented controls: a
+      tab pattern would promise panels and arrow keys it has not got #}
+   <div class="modes" role="group" aria-label="Forecast mode">
+    <button type="button" class="pill mode" data-mode="realtime" aria-pressed="true">Real-time</button>
+    <button type="button" class="pill mode" data-mode="vintage" aria-pressed="false">Vintage</button>
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {{ tips.label("Forecast date", "fc-date", for_="fc-date-in") }}
@@ -105,7 +108,9 @@
    </div>
    {% endif %}
    {# the newest week's reporting, shown while the anchor is that week #}
-   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
+   {# with the Data issues box under it, the line's counts are the box's
+      head and the box's rows name each state: no "?" #}
+   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week), tip=not data_issues) }}{% endif %}
    {# the per-state choices for that week's zeros, collapses and gaps
       (app/core/reported.py box_rows; recorded with the run) #}
    {% if data_issues and not dataset %}{% import "_data_issues.html" as di %}{{ di.box(data_issues, data_issues_sha, hidden=(anchor_week != data_issues.week)) }}{% endif %}
@@ -220,7 +225,7 @@
         form.classList.toggle('mode-vintage', mode === 'vintage');
         var mf = document.getElementById('mode-field'); if (mf) mf.value = mode;
         document.querySelectorAll('.pill.mode').forEach(function (b) {
-          b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
+          b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
         });
         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
           box.value = box.dataset.default; paint(); paintSeason();

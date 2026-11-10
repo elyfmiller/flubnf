@@ -432,6 +432,19 @@
  </table></div>
  {% endcall %}
  {% endfor %}
+ {% if settings_fixed %}
+ {% call tips.fold("Fixed by the model definition", id="mt-set-fixed", cls="mt-fold", after=tips.tag(settings_fixed | length ~ " settings")) %}
+ <p class="hint">Not settable: each value and why the model fixes it.</p>
+ <div class="mt-setscroll"><table class="mt-settings">
+  <thead><tr><th scope="col">Setting</th><th scope="col">Why it is fixed</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+  {%- for l in settings_fixed %}
+   <tr><th scope="row">{{ l.key }}</th><td>{{ l.why }}</td><td data-label="Value">{{ l.value }}</td></tr>
+  {%- endfor %}
+  </tbody>
+ </table></div>
+ {% endcall %}
+ {% endif %}
  </div>
 </div>
 {% endif %}
@@ -605,6 +618,24 @@
  when the week reads 0 (abstain, level, extend or blend), or setting the
  newest one or two weeks aside for both models, or leaving the state out.
  Such a choice never marks a run modified (docs/MISSING-DATA.md).</p>
+ <p>A state is listed when its newest week reads 0, falls under a fifth of
+ a week of 20 or more (collapsed), or was not reported. Each choice applies
+ to that run only and is recorded with it.</p>
+ <ul>
+  <li><b>Reads 0:</b> No forecast, the Groundhog abstains. Level, it
+  anchors on the mean of the last 4 weeks (all 0: a Poisson floor).
+  Extend, it carries the last positive week over the 0s. Blend, the mean
+  of level and extend. For all four the Oracle SIHRS keeps the 0.</li>
+  <li><b>Both from a week:</b> both models count the newest week or two as
+  unreported and forecast from that week, every horizon still counted
+  from the forecast date. Keep: as reported. From a week (not reported):
+  the engines' own walk back to the last reported week. Leave out: the
+  state is in neither file.</li>
+  <li><b>Recommended:</b> both from the week before when a 0 or a collapse
+  follows counts of 10 or more (a missed or partial report is likely);
+  level for small counts and runs of 0; keep a collapse when the two weeks
+  before already fell by half each.</li>
+ </ul>
  {% endcall %}
  {% call tips.fold("Two measured caveats", id="mt-sealcaveats", cls="mt-fold") %}
  <p>Two measured caveats (docs/archive/RELEASE-1.0.md): seven
