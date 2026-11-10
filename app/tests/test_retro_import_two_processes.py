@@ -13,7 +13,9 @@ of its own (<dst>.importing-<pid>-<random>); the sweep on entry removes
 only leftovers (a process no longer alive, or nothing written for an
 hour), never another live call's; a temp tree is renamed into place only
 with every member at its size; and of two that reach the rename at once
-one stands and the other is refused in words.
+one stands and the other is refused in words. A leftover inside a
+protected folder is never swept (#104's rule): it stays where it is and
+the import is refused in words.
 
 Each import here runs in a python of its own (cwd the checkout, this
 checkout's code), held at a chosen point by flag files, so the overlaps
@@ -329,6 +331,34 @@ def test_an_older_builds_shared_temp_tree_goes_once_an_hour_old(world):
     rb.import_bundle(world["bundle"], world["rr"])
     assert not old.exists()
     assert _temps(world) == []
+
+
+def test_a_dead_imports_temp_tree_in_a_protected_root_is_left_in_place(
+        world, monkeypatch):
+    """#104's rule in #105's sweep: a temp tree a dead import left inside
+    a protected folder (FLUBNF_PROTECT_ROOTS here) is never deleted. It
+    stays as it was and the import is refused in words, nothing imported,
+    Replace or not; unprotected, the same import sweeps it and lands."""
+    dead = _leftover(world, f".importing-{_ended_pid()}-0a0b0c0d")
+    held = {str(p.relative_to(dead)): p.read_bytes()
+            for p in dead.rglob("*") if p.is_file()}
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", str(world["rr"]))
+    for replace in (False, True):
+        with pytest.raises(rb.BundleError) as e:
+            rb.import_bundle(world["bundle"], world["rr"], replace=replace)
+        assert str(e.value) == (
+            f"An earlier import of {SEASON} left {dead.name} in a "
+            "protected folder, which the console never deletes; nothing "
+            "was imported.")
+        assert {str(p.relative_to(dead)): p.read_bytes()
+                for p in dead.rglob("*") if p.is_file()} == held
+        assert not world["dst"].exists()
+        assert _temps(world) == [dead.name], "a temp tree was made or lost"
+    # nothing protected: the sweep removes it and the import lands whole
+    monkeypatch.delenv("FLUBNF_PROTECT_ROOTS")
+    rb.import_bundle(world["bundle"], world["rr"])
+    assert not dead.exists()
+    _no_partial_tree(world)
 
 
 def test_a_live_import_is_never_swept_by_a_second_one(world):

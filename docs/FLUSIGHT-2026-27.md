@@ -143,8 +143,10 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    how much the output stage narrows the width. On screen each panel opens
    with the whole 95% band in view (drag to zoom); the header picks the
    theme, and Hide map folds the map. Print, Save as PDF gives
-   four pages of 3 by 5 panels. The report saves as
-   `<reference_date>-NAU_PyBNF-weekly-report.html`, beside the CSVs.
+   four pages of 3 by 5 panels. A run's report saves as
+   `<reference_date>-NAU_PyBNF-weekly-report-<run id>.html`, beside the
+   CSVs; the week's archived report (Output, Archived weeks) as
+   `<reference_date>-NAU_PyBNF-weekly-report.html`.
    Then check the hub-check badge and the due / soon / closed badge.
    Files land in `app/state/archive/<forecast_date>/`. For the authoritative
    check: `Rscript scripts/validate_submission.R <file.csv> <hub_clone> --window`

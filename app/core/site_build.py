@@ -81,6 +81,23 @@ ROOT_ORDER = (("lab run", APP_STATE / "retro"),
               ("sealed record", APP_STATE / "retro_seal"))
 
 
+def _public_root(root) -> str:
+    """A season root as site.json names it: relative to the checkout
+    (app/state/retro/2025-26). Under a state folder FLUBNF_STATE_DIR moved
+    elsewhere (a sibling such as flubnf-state included) it keeps that
+    app/state/... name, never the machine's own path; a root outside both
+    stays as it is."""
+    p = Path(root)
+    try:
+        return str(p.relative_to(REPO))
+    except ValueError:
+        pass
+    try:
+        return str(Path("app") / "state" / p.relative_to(APP_STATE))
+    except ValueError:
+        return str(p)
+
+
 class BuildError(RuntimeError):
     """The build cannot produce an honest page (no seasons, no truth)."""
 
@@ -366,8 +383,7 @@ def score_season(season: str, info: dict, truth, n2f,
     return {
         "season": season,
         "origin": info["origin"],
-        "root": str(Path(info["root"]).relative_to(REPO))
-        if str(info["root"]).startswith(str(REPO)) else str(info["root"]),
+        "root": _public_root(info["root"]),
         "weeks": len(info["weeks"]),
         "first_week": info["weeks"][0] if info["weeks"] else None,
         "last_week": info["weeks"][-1] if info["weeks"] else None,

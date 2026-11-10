@@ -64,11 +64,18 @@ NAME_MARKS = ("Mn", "Mc")
 RESERVED_NAMES = ("ALL",)
 
 #: spellings (case-insensitive) that make a group the dataset's NATIONAL row
-#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National'. It
-#: gets a minted key like every group (never the literal FIPS 'US', so it
-#: cannot pass for FluSight's series), is flagged national in meta.json and
-#: is reported beside pooled scores, never inside them. One per dataset.
-NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL")
+#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National', and
+#: 'Overall', the console's own template's word (dataset-template.csv; Ely's
+#: decision 2026-11-10), and no other aggregate word. 'Overall' is the
+#: national row only beside other groups (BESIDE_ONLY): a file of that one
+#: group is an ordinary series. It gets a minted key
+#: like every group (never the literal FIPS 'US', so it cannot pass for
+#: FluSight's series), is flagged national in meta.json at upload (a stored
+#: dataset keeps the flag it was stored with) and is reported beside pooled
+#: scores, never inside them. One per dataset.
+NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL",
+                  "OVERALL")
+BESIDE_ONLY = ("OVERALL",)
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
             "Saturday", "Sunday")
 
@@ -662,6 +669,16 @@ def is_national_name(name) -> bool:
     return str(name or "").strip().upper() in NATIONAL_NAMES
 
 
+def national_of(names) -> str | None:
+    """The national row a dataset's group names hold by today's spellings
+    (as _check_groups reads them: 'Overall' only beside other groups);
+    None for none or more than one."""
+    names = list(names)
+    hits = [n for n in names if is_national_name(n) and (
+        len(names) > 1 or str(n).strip().upper() not in BESIDE_ONLY)]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _check_groups(rep: Report, raw_rows: list, cols: dict):
     """Names: charset, reserved spellings, collisions after the PF stem
     and case folding, one name per location (hubverse), and at most one
@@ -708,6 +725,10 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
     national = sorted({n for n, keys in name2keys.items()
                        if is_national_name(n)
                        or any(is_national_name(k) for k in keys)})
+    if len(name2keys) == 1:         # 'Overall' alone is an ordinary group
+        national = [n for n in national
+                    if {x.strip().upper() for x in (n, *name2keys[n])}
+                    & (set(NATIONAL_NAMES) - set(BESIDE_ONLY))]
     if len(national) > 1:
         rep.add("national_multiple", f"{len(national)} groups are spelled as "
                 f"a national row ({', '.join(repr(n) for n in national)}; "
@@ -761,7 +782,8 @@ def series_name(name) -> str:
     if not any(c.isalnum() for c in text):
         return "series"
     s = _suggest(text).rstrip()
-    if is_national_name(s) or s.upper() in RESERVED_NAMES:
+    if ((is_national_name(s) and s.upper() not in BESIDE_ONLY)
+            or s.upper() in RESERVED_NAMES):
         s += " series"
     return s
 

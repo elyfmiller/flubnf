@@ -457,16 +457,21 @@ def _remove_quietly(p: Path) -> None:
         pass
 
 
-def _sweep_stale_temps(dst: Path, now: float | None = None) -> list:
+def _sweep_stale_temps(dst: Path, now: float | None = None,
+                       kept: list | None = None) -> list:
     """Remove the temp trees earlier imports into `dst` left behind: one
     whose process is no longer alive, and any (an older build's
     <dst>.importing included) nothing has written for STALE_TEMP_S. Another
     import's tree, still being written by a live process, is never
-    touched. Returns the paths removed."""
+    touched. A leftover inside a protected folder (reclaim's roots: the
+    sealed records, the hub clone, FLUBNF_PROTECT_ROOTS) is never deleted
+    either: it is left where it is and added to `kept`, for the import to
+    refuse. Returns the paths removed."""
+    from app.core import reclaim
     prefix = dst.name + ".importing"
     try:
-        cands = [p for p in dst.parent.iterdir()
-                 if p.name.startswith(prefix)]
+        cands = sorted(p for p in dst.parent.iterdir()
+                       if p.name.startswith(prefix))
     except OSError:
         return []
     now = time.time() if now is None else now
@@ -478,6 +483,10 @@ def _sweep_stale_temps(dst: Path, now: float | None = None) -> list:
         pid = int(m.group(1)) if m.group(1) else 0
         if ((pid and not _process_alive(pid))
                 or now - _newest_mtime(p) > STALE_TEMP_S):
+            if reclaim.is_protected(p):
+                if kept is not None:
+                    kept.append(p)
+                continue
             _remove_quietly(p)
             gone.append(p)
     return gone
@@ -537,7 +546,12 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     (no finalize starts on the tree meanwhile). It yields a word ("results")
     while a finalize still runs on the tree, or what is under way
     ("already being deleted or replaced") while a delete holds it:
-    refused, nothing replaced."""
+    refused, nothing replaced.
+
+    Nothing in a protected folder (reclaim's roots) is deleted: a Replace
+    of a protected tree is refused, and a leftover temp tree the sweep
+    would remove that lies in a protected folder is left where it is and
+    the import refused, nothing imported."""
     path, retro_root = Path(path), Path(retro_root)
     name = name or path.name           # an upload's own name (inspect_bundle)
     m = inspect_bundle(path, name)
@@ -551,7 +565,7 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                  name: str, removing) -> ImportResult:
     """import_bundle's work, under the destination's lock."""
     from contextlib import nullcontext
-    from app.core import retro
+    from app.core import reclaim, retro
     from app.core.retro_store import ORACLE_NAME, samples_file
     season, stamp = m["season"], m["stamp"]
     if dst.exists() or dst.is_symlink():
@@ -559,8 +573,9 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
             raise BundleError(f"{season} from this bundle was already "
                               f"imported as {stamp}.")
         # replacing deletes it: never a protected folder (reclaim's roots:
-        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS)
-        from app.core import reclaim
+        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS, the
+        # barrier Storage's Delete also asks), checked before anything is
+        # built
         if reclaim.is_protected(dst):
             raise BundleError(f"{season} from this bundle is imported as "
                               f"{stamp} in a protected folder, which the "
@@ -584,8 +599,15 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                               "delete is done.")
         # this call's own temp tree; another process's import of the same
         # bundle has its own, and only leftovers are swept (a dead process's,
-        # or one nothing has written for an hour)
-        _sweep_stale_temps(dst)
+        # or one nothing has written for an hour). A leftover in a protected
+        # folder is never deleted: it stays, and nothing is imported
+        held = []
+        _sweep_stale_temps(dst, kept=held)
+        if held:
+            raise BundleError(f"An earlier import of {season} left "
+                              f"{held[0].name} in a protected folder, "
+                              "which the console never deletes; nothing "
+                              "was imported.")
         tmp = _temp_tree(dst)
         files = m["files"]
         # scores.json last, so it is newer than every sample it scores (the

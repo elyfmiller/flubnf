@@ -262,8 +262,8 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--line);
 """
 
 BOOT = """
-(function(){var R=document.documentElement,S=window.localStorage;
- try{['theme','contrast','vision'].forEach(function(k){
+(function(){var R=document.documentElement;
+ try{var S=window.localStorage;['theme','contrast','vision'].forEach(function(k){
    var v=S.getItem('flubnf-site-'+k); if(v)R.setAttribute('data-'+k,v);});}
  catch(e){}})();
 """
@@ -494,11 +494,17 @@ JS = r"""
   });
 
   // ---- accessibility pickers -------------------------------------------
+  // the page keeps each choice itself and saves it where storage allows,
+  // so the buttons work with site data blocked (for the visit)
   var A = document.getElementById('a11y'), R = document.documentElement;
+  var PREF = {};
+  ['theme','contrast','vision'].forEach(function(k){
+    try { PREF[k] = window.localStorage.getItem('flubnf-site-'+k); }
+    catch(e){ PREF[k] = null; }
+  });
   function applyA11y(){
     ['theme','contrast','vision'].forEach(function(k){
-      var v = null;
-      try { v = window.localStorage.getItem('flubnf-site-'+k); } catch(e){}
+      var v = PREF[k] || null;
       if (v) R.setAttribute('data-'+k, v); else R.removeAttribute('data-'+k);
       A.querySelectorAll('[data-k="'+k+'"]').forEach(function(b){
         b.setAttribute('aria-pressed', b.dataset.v===v ? 'true':'false'); });
@@ -555,10 +561,10 @@ JS = r"""
   A.addEventListener('click', function(e){
     var b = e.target.closest('button'); if(!b) return;
     var k = 'flubnf-site-'+b.dataset.k;
+    PREF[b.dataset.k] = PREF[b.dataset.k] === b.dataset.v ? null : b.dataset.v;
     try {
-      var cur = window.localStorage.getItem(k);
-      if (cur === b.dataset.v) window.localStorage.removeItem(k);
-      else window.localStorage.setItem(k, b.dataset.v);
+      if (PREF[b.dataset.k]) window.localStorage.setItem(k, PREF[b.dataset.k]);
+      else window.localStorage.removeItem(k);
     } catch(e){}
     applyA11y();
   });
