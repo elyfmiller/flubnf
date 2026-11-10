@@ -45,8 +45,10 @@
    {{ tips.stat("Hub clone", clone, id="hub-clone") }}
    {# the hub's baseline and official ensemble, which runs are scored
       against (an older sparse clone may lack them; Update data adds
-      them) #}
-   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }} <span class="hint">Update data adds them.</span>{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
+      them). With no hub data the alert above names the step that
+      fetches it (Update data is refused without a clone), so the row
+      says no more #}
+   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% if not hub_missing %} <span class="hint">Update data adds them.</span>{% endif %}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
    {{ tips.stat("Scored against", comp, id="comparators") }}
    {# did every jurisdiction report the newest week? (the file a real-time
       run reads; app/core/reported.py) #}

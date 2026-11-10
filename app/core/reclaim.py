@@ -11,7 +11,8 @@ LOAD-BEARING (never touched here):
     scores_pf.json, report.html and its bundle, every submission CSV;
   * the sealed records (app/state/retro_reseal, the production record,
     and app/state/retro_seal) and the hub clone: refused wholesale by path
-    resolution before any other rule. Storage's Delete refuses the same.
+    resolution before any other rule. Storage's Delete and Retrospective's
+    two deletes refuse the same.
 
 INTERMEDIATE (deletable once its week or run is COMPLETE; a run whose
 merged pf_status.json records a failure keeps them as evidence, as the
@@ -62,29 +63,60 @@ def _protected_roots() -> list:
     """The trees reclaim never touches: the sealed records (the production
     reseal and v1.0.0's seal), the hub clone, and FLUBNF_PROTECT_ROOTS
     (os.pathsep-separated, read per call) so a research arm outside
-    app/state keeps the per-cell evidence a diagnostic needs."""
+    app/state keeps the per-cell evidence a diagnostic needs. An entry is
+    taken with its surrounding space stripped, and as written too when
+    that differs (protects more, never less); blank entries are skipped."""
     from flubnf.settings import HUB
     roots = [APP_STATE / "retro_reseal", APP_STATE / "retro_seal", Path(HUB)]
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
-    roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
+    for x in extra.split(os.pathsep):
+        if x.strip():
+            roots.append(Path(x.strip()))
+            if x != x.strip():
+                roots.append(Path(x))
     return roots
 
 
-def is_protected(p: Path) -> bool:
-    """True when a path is inside (or is) a protected root, resolved first so
-    a symlink into one is caught. Unresolvable paths count as protected."""
+def inside_any(p: Path, roots) -> bool:
+    """True when a path is (or is inside) one of `roots`, resolved first so
+    a symlink into one is caught. By name, and, for a root that exists, by
+    the folder itself (os.stat identity over the path and its parents), so
+    another spelling of one folder matches: upper case or /users/ for
+    /Users/ on a case-insensitive volume. Unresolvable paths count as
+    inside."""
     try:
         rp = Path(p).resolve()
-    except OSError:
+    except (OSError, RuntimeError):
         return True
-    for root in _protected_roots():
+    ids = set()
+    for root in roots:
         try:
             r = Path(root).resolve()
-        except OSError:
+        except (OSError, RuntimeError):
             continue
         if rp == r or rp.is_relative_to(r):
             return True
+        try:
+            st = os.stat(r)
+        except OSError:
+            continue                     # absent: no folder to match
+        ids.add((st.st_dev, st.st_ino))
+    if not ids:
+        return False
+    for q in (rp, *rp.parents):
+        try:
+            st = os.stat(q)
+        except OSError:
+            continue                     # not on disk (yet): its parents are
+        if (st.st_dev, st.st_ino) in ids:
+            return True
     return False
+
+
+def is_protected(p: Path) -> bool:
+    """True when a path is inside (or is) a protected root (inside_any).
+    Unresolvable paths count as protected."""
+    return inside_any(p, _protected_roots())
 
 
 def _size(p: Path) -> int:

@@ -31,8 +31,11 @@ def test_the_ledger_heading_counts_every_run_recorded():
 
 def test_sections_carry_no_marks_and_busy_rows_say_why_once(state):
     html = client.get("/runs").text
+    # Reclaim, the Sandbox and the students' experiments too (review of
+    # #88, ST-08; test_s3b_storage renders all three)
     for hid in ("st-wr", "st-rs", "st-ra", "st-rp", "st-datasets",
-                "st-protected", "st-reclaim-none"):
+                "st-protected", "st-reclaim-none", "st-reclaim", "st-sbx",
+                "st-stu"):
         assert f'id="tip-{hid}"' not in html, hid
     busy = html.split('id="st-busy"', 1)[1].split("</div>", 1)[0]
     assert busy.count("is active; its workroot cannot be deleted") == 1
@@ -72,12 +75,20 @@ def test_empty_states_follow_the_listings():
 
 
 def test_a_workroot_delete_leads_with_the_runs_name(state):
-    html = client.get("/runs").text
     rid = state["rids"]["ok"]
+    # its report and a submission file: the hint names both (it names
+    # only what the folder holds, test_s3b_storage)
+    w = state["root"] / "workroots" / rid
+    (w / "report.html").write_text("<p>r</p>")
+    (w / "submission" / "FluBNF-Model").mkdir(parents=True)
+    (w / "submission" / "FluBNF-Model" / "2098-01-10-FluBNF-Model.csv"
+     ).write_text("reference_date\n")
+    html = client.get("/runs").text
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
     assert 'data-what="the run ' in row
     assert (f"Its folder {rid} goes, with the run&#39;s report and "
-            "submission files in it.") in row
+            "submission files in it. The ledger row stays and shows a dash "
+            "for disk use.") in row
 
 
 def test_a_dataset_delete_names_only_what_it_had():
@@ -89,6 +100,32 @@ def test_a_dataset_delete_names_only_what_it_had():
     assert DU.deleted_message(D, 12_500, 0, 0)[2] == ""
     assert DU.deleted_message(D, 1, 0, 0, replays=2)[2] == \
         "Its 2 replays went with it."
+
+
+def test_a_dataset_delete_that_kept_its_only_workroot_says_so():
+    """Review of #88 (S3): the dataset's one run workroot could not be
+    deleted and it had no replays: the detail was " The rest stay under
+    Run workroots.", a leading space and the rest of nothing."""
+    class D:
+        name = "My counts"
+    msg, kind, detail = DU.deleted_message(D, 2_000, 0, 1, replays=0)
+    assert kind == "warn"
+    assert msg == "Deleted My counts, but 1 run workroot could not be deleted."
+    assert detail == "The run workroot stays under Run workroots."
+    assert DU.deleted_message(D, 2_000, 0, 2)[2] == \
+        "The 2 run workroots stay under Run workroots."
+    # replays went, no workroot did: "the rest" would be of the replays
+    assert DU.deleted_message(D, 2_000, 0, 1, replays=2)[2] == (
+        "Its 2 replays went with it. The run workroot stays under Run "
+        "workroots.")
+    # some went: the rest stay, as before
+    assert DU.deleted_message(D, 2_000, 2, 1, replays=1)[2] == (
+        "Its 1 replay and 2 run workroots went with it; the runs' ledger "
+        "rows are kept. The rest stay under Run workroots.")
+    for gone, kept, replays in ((0, 1, 0), (0, 3, 0), (0, 1, 1), (1, 1, 0),
+                                (0, 0, 0), (2, 0, 3)):
+        detail = DU.deleted_message(D, 1, gone, kept, replays=replays)[2]
+        assert detail == detail.strip() and "  " not in detail
 
 
 def test_the_failed_filter_and_find_cover_every_unfinished_run():

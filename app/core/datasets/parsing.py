@@ -168,15 +168,25 @@ def _open_source(source):
 #: a workbook's first bytes (.xlsx is a zip, .xls an OLE file)
 WORKBOOK_MAGIC = (b"PK\x03\x04", b"\xd0\xcf\x11\xe0")
 
+#: what each WORKBOOK_MAGIC can be, said without naming one program: a zip
+#: is an .xlsx or .ods workbook, a .docx, or a zip archive (of CSV files,
+#: say); an OLE file an .xls workbook or another older Office file
+_CONTAINER_WORDS = dict(zip(WORKBOOK_MAGIC, (
+    ("This looks like a workbook or a zip archive, not a CSV file: save "
+     "the sheet as CSV UTF-8, or unzip the archive and choose the CSV "
+     "files in it."),
+    ("This looks like a workbook or another Office file, not a CSV file: "
+     "save the sheet as CSV UTF-8."))))
+
 
 def not_text(head: bytes) -> str:
     """Why a file's first bytes are no text FluBNF reads, or '': a workbook
-    (WORKBOOK_MAGIC), or binary data (_binary). Said before any reading,
-    so neither is named by the NUL characters in its "header" or read as
-    Windows-1252."""
-    if head.startswith(WORKBOOK_MAGIC):
-        return ("This looks like an Excel workbook, not a CSV file: save it "
-                "as CSV UTF-8.")
+    or a zip archive (WORKBOOK_MAGIC), or binary data (_binary). Said
+    before any reading, so neither is named by the NUL characters in its
+    "header" or read as Windows-1252."""
+    for magic, said in _CONTAINER_WORDS.items():
+        if head.startswith(magic):
+            return said
     if _binary(head):
         return ("The file is not text: it holds binary data. Save it as CSV "
                 "UTF-8.")

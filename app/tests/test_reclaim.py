@@ -610,3 +610,58 @@ def test_protect_roots_env_keeps_a_research_arms_evidence(tmp_path, monkeypatch)
     assert reclaim.week_intermediates(wd) == []
     assert reclaim.prune_week(wd) == 0
     assert (wd / "ess_0.txt").exists()
+
+
+def test_another_spelling_of_a_protected_root_still_protects(tmp_path,
+                                                             monkeypatch):
+    """Review S3 (ST-06): FLUBNF_PROTECT_ROOTS with a leading space, in
+    upper case, or with /users/ for /Users/ names the same folder on a
+    case-insensitive volume (this Mac's), so it protects as the exact
+    spelling does. Protects more, never less: a sibling stays unprotected
+    and a blank entry protects nothing. Storage's own sealed-root check
+    compares the same way."""
+    from app.core import reclaim, retro
+    from app.ui import retro_seasons
+    from app.ui.routes import storage as ui_storage
+    arm = (tmp_path / "arms" / "B" / "2023-24").resolve()
+    wd = arm / "weeks" / "2023-09-23"
+    wd.mkdir(parents=True)
+    (wd / retro.SAMPLES_JSON).write_text("{}")
+    (wd / "ess_0.txt").write_text("1000\n")
+    sibling = arm.parent / "2024-25"
+    sibling.mkdir()
+    exact = str(arm)
+    folded = exact.upper()
+    insensitive = os.path.isdir(folded) and os.path.samefile(exact, folded)
+    first = arm.parts[1]                         # "Users" on this Mac
+    other_first = first.lower() if first != first.lower() else first.upper()
+    variants = [" " + exact, exact + " "]
+    if insensitive:
+        # the path's own anchor ("/" here, "C:\\" on Windows), so the
+        # variant keeps its drive and names the same folder
+        variants += [folded,
+                     os.path.join(arm.anchor, other_first, *arm.parts[2:])]
+    for spelling in variants:
+        monkeypatch.setenv("FLUBNF_PROTECT_ROOTS",
+                           os.pathsep.join(["/nonexistent/other", spelling]))
+        assert reclaim.is_protected(wd), spelling
+        assert reclaim.is_protected(arm), spelling
+        assert reclaim.is_protected(wd / "not-yet-written"), spelling
+        assert ui_storage._storage_protected(wd), spelling
+        assert reclaim.week_intermediates(wd) == [], spelling
+        assert reclaim.prune_week(wd) == 0, spelling
+        assert not reclaim.is_protected(sibling), spelling
+    assert (wd / "ess_0.txt").exists()
+    # blank entries are skipped, as before: they protect nothing
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS",
+                       os.pathsep.join(["", "  ", "/nonexistent/other"]))
+    assert not reclaim.is_protected(wd)
+    if not insensitive:
+        pytest.skip("case-sensitive volume: only the spaced spellings apply")
+    # Storage's sealed roots (and the hub) by another spelling, outside
+    # reclaim's own list
+    monkeypatch.delenv("FLUBNF_PROTECT_ROOTS")
+    monkeypatch.setattr(retro_seasons, "RETRO_RESEAL", Path(folded))
+    assert not reclaim.is_protected(wd)
+    assert ui_storage._storage_protected(wd)
+    assert not ui_storage._storage_protected(sibling)

@@ -141,8 +141,9 @@ def test_clear_refuses_a_stale_count(state):
 
 def test_clear_control_names_the_count_and_the_no_disk_promise(state):
     html = client.get("/runs").text
-    assert "Clear 3 completed\n   rows" in html or \
-        "Clear 3 completed rows" in " ".join(html.split())
+    # the rows counted are every row not running (interrupted and partial
+    # runs too), as the dialog says (review of #88, ST-11)
+    assert "Clear 3 rows not running (files kept)" in " ".join(html.split())
     # the second-confirmation copy states the ledger-only scope
     assert "does NOT delete run data on disk" in html
     assert "window.FluBNFConfirm" in html

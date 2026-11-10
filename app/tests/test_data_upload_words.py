@@ -9,7 +9,11 @@
     counts are written without the dots.
   * A workbook, or a binary file, is named as such before any reading,
     with no "read as Windows-1252" note beside the refusal; a CSV with a
-    few control characters in its cells is still read as text.
+    few control characters in its cells is still read as text. A zip is
+    named a workbook or a zip archive, an OLE file a workbook or another
+    Office file (a zip of CSV files is no Excel workbook).
+  * A value column chosen in the mapping stands: another column named
+    like a value (cases) is not read as the value in its place.
   * The preview buttons' tip says what Save only does.
 """
 import gzip
@@ -87,13 +91,20 @@ def test_dotted_numbers_say_what_counts_need():
 
 # ------------------------------------- DA-20: not a CSV, named as such
 
+#: what a zip (an .xlsx, an .ods, a .docx, a zip of CSV files) and an OLE
+#: file (an .xls, a .doc) are called
+ZIP_SAID = ("This looks like a workbook or a zip archive, not a CSV file: "
+            "save the sheet as CSV UTF-8, or unzip the archive and choose "
+            "the CSV files in it.")
+OLE_SAID = ("This looks like a workbook or another Office file, not a CSV "
+            "file: save the sheet as CSV UTF-8.")
+
+
 def test_a_workbook_or_a_binary_file_is_named_not_decoded():
-    workbook = ("This looks like an Excel workbook, not a CSV file: save it "
-                "as CSV UTF-8.")
     binary = ("The file is not text: it holds binary data. Save it as CSV "
               "UTF-8.")
-    for head, said in ((b"PK\x03\x04\x14\x00\x06\x00", workbook),
-                       (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", workbook),
+    for head, said in ((b"PK\x03\x04\x14\x00\x06\x00", ZIP_SAID),
+                       (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", OLE_SAID),
                        (bytes(range(256)) * 4, binary),
                        (bytes(range(1, 256)) * 4, binary)):  # no NUL at all
         rep = D.validate(head + bytes(range(256)) * 8)
@@ -159,6 +170,94 @@ def test_a_text_csv_with_a_few_control_characters_still_reads(tmp_path):
         z.writestr("flu.csv", text)
     rep = D.validate(archive.getvalue())
     assert rep.codes == ["encoding"] and rep.warnings == []
+
+
+def _xlsx() -> bytes:
+    """A small .xlsx as a spreadsheet program writes one: a zip of its
+    XML parts (one sheet, one row)."""
+    ns = "http://schemas.openxmlformats.org"
+    parts = {
+        "[Content_Types].xml": (
+            f'<Types xmlns="{ns}/package/2006/content-types">'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/'
+            'vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '</Types>'),
+        "_rels/.rels": (
+            f'<Relationships xmlns="{ns}/package/2006/relationships">'
+            f'<Relationship Id="r1" Type="{ns}/officeDocument/2006/'
+            'relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'),
+        "xl/workbook.xml": (
+            f'<workbook xmlns="{ns}/spreadsheetml/2006/main"><sheets>'
+            '<sheet name="flu" sheetId="1" r:id="r1" xmlns:r="'
+            f'{ns}/officeDocument/2006/relationships"/></sheets></workbook>'),
+        "xl/worksheets/sheet1.xml": (
+            f'<worksheet xmlns="{ns}/spreadsheetml/2006/main"><sheetData>'
+            '<row r="1"><c r="A1" t="inlineStr"><is><t>date</t></is></c>'
+            '</row></sheetData></worksheet>')}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, body in parts.items():
+            z.writestr(name, body)
+    return buf.getvalue()
+
+
+def test_a_zip_of_csv_files_is_not_called_an_excel_workbook():
+    """Review of #86 (S3): any zip or OLE file was "an Excel workbook": a
+    zip of CSV files, a .docx, an .ods. The words now fit each, and the
+    same files are refused (a zip or an OLE file, before any reading)."""
+    text = "date,target_group,value\n2024-01-06,A,5\n2024-01-13,A,6\n"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("flu/2024-01-13.csv", text)
+        z.writestr("flu/2024-01-20.csv", text)
+    for raw, said in ((archive.getvalue(), ZIP_SAID), (_xlsx(), ZIP_SAID),
+                      (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(4088),
+                       OLE_SAID)):
+        rep = D.validate(raw)
+        assert rep.codes == ["encoding"] and rep.warnings == []
+        assert [p.message for p in rep.problems] == [said]
+        assert "Excel" not in said
+    # the Data tab's check says the same words
+    r = client.post("/data/datasets/check",
+                    files={"file": ("flu.zip", archive.getvalue(),
+                                    "application/zip")},
+                    data={"kind": "count"})
+    assert r.json()["ok"] is False
+    assert "a workbook or a zip archive, not a CSV file" in r.json()["html"]
+    # a CSV that holds those letters is text, read as before
+    rep = D.validate(text.replace(",A,", ",PK,").encode())
+    assert rep.problems == []
+
+
+# ------------------------- SB-05, review of #83: a mapped value column stands
+
+def test_a_value_column_chosen_in_the_mapping_stands():
+    """Review of #83 (S3): with the value mapped to n, a cases column of
+    words was read as the value in n's place: "The 'cases' column must
+    contain numbers only", and "Ignored column(s): n", against the choice
+    just made. The file is refused as it was before #83, for the column
+    the mapping leaves unnamed."""
+    raw = (b"date,cases,n\n2024-01-06,ten,5\n2024-01-13,12,6\n"
+           b"2024-01-20,<5,7\n2024-01-27,14,8\n")
+    rep = D.validate(raw, columns={"value": "n"})
+    assert rep.codes == ["missing_columns"]
+    assert rep.problems[0].message.startswith("No column for the group")
+    assert "'cases' column must contain numbers" not in rep.problems[0].message
+    assert rep.warnings == []                  # n is not "ignored"
+    # files that read are read as before: n of numbers, the value mapped
+    rep = D.validate(raw.replace(b"ten", b"10").replace(b"<5", b"4"),
+                     columns={"value": "n"})
+    assert rep.problems == [] and rep.columns["value"] == "n"
+    assert rep.warnings == ["Ignored column(s): cases."]
+    # cases mapped, or the one column named like a value: its words named
+    for cols, body in (({"value": "cases"}, raw),
+                       (None, b"date,cases\n2024-01-06,ten\n2024-01-13,12\n")):
+        rep = D.validate(body, columns=cols)
+        assert rep.codes == ["value_numeric"]
+        assert "The 'cases' column must contain numbers only" in \
+            rep.problems[0].message
 
 
 # ------------------------------------------ DA-21: Save only stays here

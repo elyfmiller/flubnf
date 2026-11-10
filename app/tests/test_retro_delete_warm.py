@@ -196,6 +196,32 @@ def test_a_warm_still_on_its_week_refuses_and_removes_nothing(world,
     assert sorted(p.name for p in (root / "weeks").iterdir()) == weeks
 
 
+@pytest.mark.parametrize("route", ["archive", "discard", "storage"])
+def test_a_protected_delete_is_refused_and_leaves_the_warm_alone(
+        world, monkeypatch, route):
+    """A tree in a protected folder (FLUBNF_PROTECT_ROOTS) is never
+    deleted, so its week maps go on being prepared: each delete checks
+    the protection before it stops the warm (dev's barrier and this
+    branch's warm, met in one merge)."""
+    root = _season_tree(world["rr"], SEASON)
+    if route == "archive":
+        root = retro.archive_run(world["rr"], SEASON, stamp=STAMP)
+    job = _warm(world, root)
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", str(root))
+    if route == "archive":
+        client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
+                    data={"confirm": SEASON}, follow_redirects=False)
+    elif route == "discard":
+        client.post("/retro/run", data=DISCARD, follow_redirects=False)
+    else:
+        client.post("/storage/delete", data={
+            "kind": "retro-season", "ident": SEASON, "confirm": SEASON},
+            follow_redirects=False)
+    assert "protected" in _flash(), _flash()
+    assert root.exists()
+    assert not job.get("warm_stop")
+
+
 # ------------------------------------------------------------- the warm
 
 def test_a_stopped_warm_writes_no_card_and_begins_no_week(world):

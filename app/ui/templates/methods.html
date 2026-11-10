@@ -41,15 +41,38 @@
         toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
     }
   }
+  // the chip just clicked: when the last sections share the final screen,
+  // its jump ends at the page's end, where its section, not the last one,
+  // stays marked while in view (read again after the jump, which scrolls
+  // nothing when the page is at its end already); the reader's own next
+  // scroll (wheel, touch, a scroll key, the scroll bar) forgets it
+  var picked = null;
+  secs.forEach(function (s) {
+    s.a.addEventListener('click', function () { picked = s; onScroll(); });
+  });
+  function forget() { picked = null; }
+  addEventListener('wheel', forget, {passive: true});
+  addEventListener('touchmove', forget, {passive: true});
+  addEventListener('mousedown', forget);
+  addEventListener('keydown', function (e) {
+    if (/^(Arrow(Up|Down)|Page(Up|Down)|Home|End| |Spacebar)$/.test(e.key)) forget();
+  });
   // the current section: the last one whose top has passed the band under
   // the bar, and the last one of all once the page is scrolled to its end
-  // (the last card can never reach the band)
+  // (the last card can never reach the band), unless a chip was just
+  // clicked and its section is in view
   function spy() {
     if (!secs.length) return;
-    var band = bar.offsetHeight + 8, cur = secs[0], i;
+    var band = bar.offsetHeight + 8, cur = secs[0], i, r;
     for (i = 0; i < secs.length; i++)
       if (secs[i].el.getBoundingClientRect().top <= band + 1) cur = secs[i];
-    if (innerHeight + pageYOffset >= de.scrollHeight - 2) cur = secs[secs.length - 1];
+    if (innerHeight + pageYOffset >= de.scrollHeight - 2) {
+      cur = secs[secs.length - 1];
+      if (picked) {
+        r = picked.el.getBoundingClientRect();
+        if (r.top < innerHeight && r.bottom > band) cur = picked;
+      }
+    }
     mark(cur.a);
   }
   var ticking = false;
@@ -125,6 +148,22 @@
     closed = [];
     if (theme) de.setAttribute('data-theme', theme);
   });
+  // ---- a link to a fold opens it (the Forecast tab's settings note links
+  // #mt-newest): the fold the address names, or every fold holding what it
+  // names, on arrival and when the address changes; then the target is
+  // brought under the bar (its scroll margin is the bar's height)
+  function openFromHash() {
+    var id = location.hash.slice(1), t, d, opened = false;
+    try { id = decodeURIComponent(id); } catch (e) { /* as written */ }
+    t = id && document.getElementById(id);
+    if (!t) return;
+    for (d = t.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+      if (!d.open) { d.open = true; opened = true; }
+    }
+    if (opened) t.scrollIntoView();
+  }
+  openFromHash();
+  addEventListener('hashchange', openFromHash);
  });
 </script>{% endblock %}
 {# the same shell as every page: no main_class override #}
@@ -311,7 +350,7 @@
   {{ tips.stat("Sample paths", "30,000", "per state", id="mt-paths") }}
   {{ tips.stat("Donors", "1", "per sample path", id="mt-donor") }}
   {{ tips.stat("Donor window", "2", "epiweeks", id="mt-window") }}
-  {{ tips.stat("Growth blend", "half and half", "", id="mt-blend") }}
+  {{ tips.stat("Growth blend", "half and half", "as registered; one quarter on the filter's growth since the 2026-10-17 round", id="mt-blend") }}
  {% endcall %}
  {{ dg.eq_oracle(kit=(active is defined)) }}
  <div class="mt-folds">
@@ -402,10 +441,11 @@
  influenza A among typed specimens), which also set the season-start A/B
  mix; both channels are vintage data.</p>
  {% endcall %}
- {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
+ {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse than the blend it was tested in") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
- <p>Stronger at turning points but worse on
- the full grid in the August 2026 evaluation; it stays a research run.</p>
+ <p>Stronger at turning points but worse than
+ the blend it was tested in, in the August 2026 evaluation; it stays a
+ research run.</p>
  {% endcall %}
  </div>
 </div>
@@ -554,6 +594,10 @@
  the pooled form before that 0.670. The other rows use the earlier rule. Under it the pooled form
  (0.666) and the bare analogue share 15,340 cells; their paired difference
  is below zero in all 4,000 bootstrap replicates.</p>
+ {# Home's third column, which this table does not carry: Home's line
+    under its record sends the reader here for each column's cells #}
+ <p>Home's FluSight Ensemble column is scored on 15,460 cells under the
+ earlier rule.</p>
  {% endcall %}
  </div>
 </div>

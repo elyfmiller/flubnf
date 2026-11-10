@@ -260,7 +260,9 @@ product, is [docs/archive/RELEASE-1.0.md](docs/archive/RELEASE-1.0.md).
 | `proposals/` | model variants students propose, one folder of six files each | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
 
 `app/state/` (ledger and retrospectives), `sandbox/` and `site/` are
-generated locally and ignored by git. Every `FLUBNF_*` environment
+generated locally and ignored by git. `app/state/hubcheck_results.json`
+keeps the Output page's hub check results; you can delete it at any time,
+and the checks run again. Every `FLUBNF_*` environment
 variable is listed in [docs/LAUNCHERS.md](docs/LAUNCHERS.md).
 
 ## Citing

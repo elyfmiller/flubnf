@@ -49,6 +49,13 @@ def test_home_renders_workflow_performance_and_component_cards():
                  "9,279", "6,021", "4,859", "4,420",
                  "frozen-specification replication", "Placement among"):
         assert cell in methods, cell
+    # the FluSight Ensemble column's own cells, in the fold Home's line
+    # links ("15,460" alone is also the plain filter's reseal; review of
+    # #97, UI-14)
+    cells = " ".join(methods.split('id="mt-perf-cells"', 1)[1]
+                     .split("</details>", 1)[0].split()).replace("&#39;", "'")
+    assert ("<p>Home's FluSight Ensemble column is scored on 15,460 cells "
+            "under the earlier rule.</p>") in cells
     # the filter alone is no longer a headline column
     assert "Filter alone" not in r.text
     # the performance card names no blend (the outlook label above it

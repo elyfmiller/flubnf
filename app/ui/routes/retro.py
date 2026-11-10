@@ -392,19 +392,27 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         _flash(f"Not deleted: no archived {season} run from "
                f"{retro.stamp_human(stamp)}.", "warn")
         return _back(request, "/retro")
-    weeks = retro.run_summary(p)["weeks"]
-    size_h = retro.human_bytes(retro.dir_size(p))
     from app.core import replay_bundle
     # an imported run by where it came from, an archived one by when
     what = (f"the {season} run {replay_bundle.imported_label(p)}"
             if replay_bundle.imported_label(p) else
             f"the archived {season} run from {retro.stamp_human(stamp)}")
+    # Storage's one barrier: the sealed records, the hub clone and
+    # FLUBNF_PROTECT_ROOTS (a link into one of them too). Checked first,
+    # so a refused delete stops no warm, as the Run form's discard does
+    from app.ui.routes.storage import _storage_protected
+    if _storage_protected(p):
+        _flash(f"Not deleted: {what} is in a protected folder, which the "
+               "console never deletes.", "warn")
+        return _back(request, "/retro")
     # its week maps may still be written (a results page opened it): a
     # delete meanwhile could fail half way
     if not retro_prep._stop_warm(p):
         _flash(f"Not deleted: the week maps of {what} are still being "
                "prepared.", "warn", detail="Try again in a minute.")
         return _back(request, "/retro")
+    weeks = retro.run_summary(p)["weeks"]
+    size_h = retro.human_bytes(retro.dir_size(p))
     try:
         retro.delete_tree(p)
     except Exception as e:
@@ -765,6 +773,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             had = _knobs.legacy_settings_knobs(prior)
             # a pre-registry tree resumes as it was, never re-recorded
             legacy_resume = bool(prior) and "knobs" not in prior
+            # what this run asks for, as asked (the refusal says it; the
+            # rule popped below is still the user's choice)
+            asked = dict(nd)
             # a tree replayed before the zero-anchor rule existed did what
             # abstain does: it resumes so, and is not re-recorded with it
             if (_missing.ZERO_ANCHOR_KEY not in had
@@ -778,8 +789,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     f"Not started: {season} has {existing} week"
                     f"{'' if existing == 1 else 's'} with other model "
                     "settings.",
-                    f"They were replayed with {_settings_words(had)}; "
-                    f"this run asks for {_settings_words(nd)}. Resuming "
+                    "They were replayed with "
+                    f"{_settings_words(had, side='recorded')}; this run "
+                    f"asks for {_settings_words(asked, side='asked')}. "
+                    "Resuming "
                     "would mix two "
                     "configurations in one season. Archive or discard the "
                     "existing results to run it.")
@@ -836,6 +849,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 f"Not started: discarding {season} was not confirmed.",
                 "Nothing was deleted.")
+        if mode == "discard" and existing:
+            # Storage's one barrier (sealed records, the hub clone,
+            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed
+            from app.ui.routes.storage import _storage_protected
+            if _storage_protected(live):
+                return _refused(
+                    f"Not started: the {season} results are in a protected "
+                    "folder, which the console never deletes.",
+                    "Nothing was deleted.")
         if (not (mode == "resume" and existing)
                 and _missing.ZERO_ANCHOR_KEY not in nd):
             # a fresh replay (both presets run the Groundhog) must say what
@@ -1033,10 +1055,16 @@ async def retro_import(request: Request):
 ZERO_ANCHOR_LABEL = "Groundhog when the newest week reads 0"
 
 
-def _settings_words(values) -> str:
+def _settings_words(values, side: str = "") -> str:
     """A replay's model settings as a refusal says them: the zero-anchor
     rule by the Run form's label, the rest as the run page does
-    (knobs.words: labels and values, no keys or digests)."""
+    (knobs.words: labels and values, no keys or digests).
+
+    The rule has no default, so with it absent `side` says what stands in
+    its place: "recorded" (a season replayed before the rule existed) the
+    choice the code holds it to (ZERO_ANCHOR_LEGACY, as settings_digest
+    compares it), "asked" (a request that chose none) no choice. With no
+    side, an absent rule is left unsaid."""
     from app.core import missing as _missing
     values = dict(values or {})
     za = values.pop(_missing.ZERO_ANCHOR_KEY, None)
@@ -1044,8 +1072,16 @@ def _settings_words(values) -> str:
         rest = _knobs.words(_knobs.from_record(values))
     except ValueError:                       # a record this build cannot read
         rest = _knobs.label(values)
-    bits = ([f"{ZERO_ANCHOR_LABEL}: {za}"] if za else []) + (
-        [rest] if rest else [])
+    if za:
+        zbit = f"{ZERO_ANCHOR_LABEL}: {za}"
+    elif side == "recorded":
+        zbit = (f"{ZERO_ANCHOR_LABEL}: {_missing.ZERO_ANCHOR_LEGACY} (what "
+                "every replay did before this setting existed)")
+    elif side == "asked":
+        zbit = f"{ZERO_ANCHOR_LABEL}: no choice"
+    else:
+        zbit = ""
+    bits = ([zbit] if zbit else []) + ([rest] if rest else [])
     return ", ".join(bits) or "the default settings"
 
 

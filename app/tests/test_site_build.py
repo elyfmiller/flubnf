@@ -19,6 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.core import site_build as sb                 # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
+#: the checkout's own state folder: the build reads the console's state
+#: folder (FLUBNF_STATE_DIR), which the suite points at an empty temp
+#: folder, so this module names the real one (and reads it only)
+REAL_STATE = REPO / "app" / "state"
+#: the build's season roots (ROOT_ORDER), moved under REAL_STATE
+REAL_ROOTS = tuple((origin, REAL_STATE / Path(root).relative_to(sb.APP_STATE))
+                   for origin, root in sb.ROOT_ORDER)
 
 
 def _have_state() -> bool:
@@ -26,7 +33,7 @@ def _have_state() -> bool:
     builds an empty table)."""
     try:
         from app.core.scoring import load_truth
-        if not sb.discover_seasons():
+        if not sb.discover_seasons(roots=REAL_ROOTS):
             return False
         load_truth()
         return True
@@ -46,14 +53,16 @@ def _roots_shadowed(tmp_path_factory):
     shadowed in a temp folder: scoring a week writes its playback cache and
     quantile sidecar beside it, and those land in the shadow, never in the
     checkout's app/state. discover_seasons binds ROOT_ORDER as a default,
-    so it is rebound too."""
+    so it is rebound too. The newest run's bundle is read (only read) from
+    the checkout's workroots, as the build reads them there."""
     from test_playback import shadow_tree
     base = tmp_path_factory.mktemp("roots")
     order = tuple(
         (origin, shadow_tree(root, base / root.name) if Path(root).is_dir()
          else base / root.name)
-        for origin, root in sb.ROOT_ORDER)
+        for origin, root in REAL_ROOTS)
     with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sb, "APP_STATE", REAL_STATE)
         mp.setattr(sb, "ROOT_ORDER", order)
         mp.setattr(sb, "discover_seasons",
                    functools.partial(sb.discover_seasons, roots=order))

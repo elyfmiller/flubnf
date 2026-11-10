@@ -36,11 +36,11 @@
   <span class="uk-tt-line"><b>Groups</b> are forecast one by one{% if dataset.national %}; {{ dataset.national }} is scored beside them, never pooled{% endif %}. Scores are against an in-house persistence baseline.</span>
   <span class="uk-tt-line">Forecasts export under non-hub names; never submitted.</span>
   {%- else %}
-  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from any archived week, as it stood then.</span>
+  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from an archived week, as it stood.</span>
   <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
-  <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until the archive has it.</span>
-  <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days. It names the round; horizons count from it.</span>
-  <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC and Puerto Rico, and US, which is fitted and scored apart.</span>
+  <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until archived.</span>
+  <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days; it names the round, and horizons count from it.</span>
+  <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is fitted and scored apart.</span>
   {%- if data_issues %}
   <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
   {%- endif %}
