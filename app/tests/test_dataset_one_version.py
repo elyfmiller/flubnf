@@ -172,6 +172,19 @@ def test_an_unedited_dataset_reads_as_before(monkeypatch):
     assert ds.__dict__["_final_rows_key"] == ds.__dict__["_final_held"][0]
 
 
+def test_an_unedited_dataset_reads_its_rows_with_the_windows_key(monkeypatch):
+    """Windows keys a snapshot by the opened file (fstat's ctime and a
+    digest of its ends). The rows' key must be made the same way as the
+    stored key, or truth() never reads the rows there: it reads the
+    parsed snapshot, in another order. Run on every system."""
+    monkeypatch.setattr(DM, "_CTIME_IN_KEY", False)
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
+    ds = D.get(ds.id)
+    t = ds.truth()
+    assert list(t) == list(row_truth(ds.final_path))
+    assert ds.__dict__["_final_rows_key"] == ds.__dict__["_final_held"][0]
+
+
 # ---------------------------------------- truth from the parsed snapshot
 
 def _drop(path, cols) -> None:

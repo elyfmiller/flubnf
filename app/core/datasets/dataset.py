@@ -388,7 +388,9 @@ class Dataset:
         if rows is None:
             p = self.final_path
             with open(p, newline="", encoding="utf-8") as fh:
-                key = _snap_key(os.path.abspath(p), os.fstat(fh.fileno()))
+                # the same key _keyed_entry stores (on Windows it reads the
+                # file's ends and puts the position back at 0)
+                key = _handle_key(os.path.abspath(p), fh.fileno())
                 rows = list(csv.DictReader(fh))
             self.__dict__["_final_rows_key"] = key
             self.__dict__["_final_cache"] = rows
