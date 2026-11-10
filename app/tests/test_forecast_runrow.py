@@ -228,9 +228,9 @@ def test_the_fold_says_what_it_holds_and_where(hub):
     assert form.index('id="lcount"') < i
     assert ('<summary><span class="uk-fold-sum">Pick locations</span>'
             '</summary>') in form
-    # the list's own rows are as they were (UI-15's wording is not this
-    # package's)
-    assert "all 53 jurisdictions</b></label>" in form
+    # the list's own rows sit inside the fold (their words are UI-15's,
+    # not this package's: G35 made the first one "all 53 locations")
+    assert i < form.index('id="ck-all"') < form.index("</details>", i)
     # no "?" in the fold's summary
     summ = form[i:form.index("</summary>", i)]
     assert "uk-tip" not in summ
