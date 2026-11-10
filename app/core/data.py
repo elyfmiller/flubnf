@@ -308,21 +308,23 @@ def source_phrase(rec) -> str:
     return f"archived vintage {wk}" if wk else "archived vintage"
 
 
-def load_vintage(date: str):
+def load_vintage(date: str, path=None):
     """One archived vintage as a frame: location zero-filled, value numeric,
     unreported rows dropped (the missingness policy: dropped, never imputed).
-    Raises the same LOUD error as vintage_path for a date never archived."""
-    df = pd.read_csv(vintage_path(date), dtype={"location": str})
+    Raises the same LOUD error as vintage_path for a date never archived.
+    `path` reads that file instead (the Data tab's view of the live target
+    file, whose newest week the archive does not hold yet)."""
+    df = pd.read_csv(path or vintage_path(date), dtype={"location": str})
     df["location"] = df["location"].str.zfill(2)
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     return df[df["value"].notna()]
 
 
-def vintage_summary(date: str) -> dict:
+def vintage_summary(date: str, path=None) -> dict:
     """What one vintage knew, in one glance: reported rows, jurisdictions
     covered, and the week span. Every count comes from the reported rows
     (value present), the rows every downstream consumer actually uses."""
-    df = load_vintage(date)
+    df = load_vintage(date, path)
     return {"date": date,
             "rows": int(len(df)),
             "locations": int(df["location"].nunique()),
@@ -330,19 +332,19 @@ def vintage_summary(date: str) -> dict:
             "oldest_week": str(df["date"].min())[:10] if len(df) else ""}
 
 
-def vintage_location_names(date: str) -> list:
+def vintage_location_names(date: str, path=None) -> list:
     """Location names present in one vintage, US first then alphabetical --
     the order every location selector in the application uses."""
-    names = sorted(set(load_vintage(date)["location_name"].astype(str)))
+    names = sorted(set(load_vintage(date, path)["location_name"].astype(str)))
     return ([n for n in names if n.upper() == "US"]
             + [n for n in names if n.upper() != "US"])
 
 
-def vintage_series(date: str, location_name: str) -> dict:
+def vintage_series(date: str, location_name: str, path=None) -> dict:
     """The admissions series one vintage holds for one location, oldest
     first: {'dates': [...], 'values': [...]}. Unknown locations return empty
     lists rather than raising; the caller renders the honest empty state."""
-    df = load_vintage(date)
+    df = load_vintage(date, path)
     g = df[df["location_name"].astype(str) == str(location_name)]
     g = g.sort_values("date")
     return {"dates": [str(d)[:10] for d in g["date"]],
