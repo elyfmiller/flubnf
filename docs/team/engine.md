@@ -6,10 +6,48 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (afternoon): the public engine from a fresh clone of `dev`,
+  as a stranger would, on Ely's Windows PC. Task 2 is done:
+  - `git clone -b dev` (26acbadf) to `%USERPROFILE%\GitHub\flubnf-stranger`,
+    then its `FluBNF.bat` with `FLUBNF_SHORTCUTS=off`. It took under four
+    minutes, from the clone at 13:03:08 to the console's start. The
+    console's `.venv` came first. Then the public engine went into
+    `%LOCALAPPDATA%\FluBNF\venv-public` on `py -3.12` (3.12.10), and the
+    window ended "public engine ready: pybnf 1.8.1 from
+    pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1", word for word as in
+    WINDOWS.md. The launcher set `FLUBNF_PY_ENGINE_PUBLIC` as a User
+    variable. The console it started was stopped.
+  - Reused, so a real stranger waits longer:
+    - Python 3.12.10, Git, and Strawberry Perl;
+    - the hub clone (`FLUBNF_HUB`);
+    - the private checkout at its pin (`FLUBNF_PYBNF`);
+    - pip's cache, for 25 of the 39 packages (14 were downloaded, among
+      them the PyBNF wheel, scipy, libroadrunner and cryptography).
+    The clone went outside `%LOCALAPPDATA%\FluBNF\flubnf`, where
+    WINDOWS.md puts it, because Ely's old install is there.
+  - `scripts/engine_lock.py check` under the venv: "public engine
+    ready", exit 0.
+  - `flubnf doctor` in the fresh clone: 15 ok, 0 warn, 0 fail; "PyBNF
+    engine build 8410f794 (lanl/PyBNF, bngsim 0.15.1), the pinned public
+    build". Ely's laptop showed the same count.
+  - `test_engine_lwf.py::test_real_public_run_reproduces_the_fixture`,
+    with Strawberry Perl on PATH and `FLUBNF_TEST_PUBLIC_PYTHON` set:
+    passed in 69 s.
+  - No docs defect found. The only noise is setuptools' license
+    warnings (For other lanes, 2026-11-09). Still to do: tasks 3 and 4,
+    meaning one cell through the console's public path, the Sandbox
+    examples, and switching this lane's clone between the engines.
+
 - 2026-11-10: THE GATE FOR THE 2026-11-07 ROUND ON THE PUBLIC ENGINE,
-  written before any of its runs, for Ely's yes (App puts it to Ely).
-  Starting values, which Ely may change before the run, not after it.
-  Nothing below has run yet.
+  written before any of its runs. Version 1 is fe5861c8. **What follows
+  is version 2, PROPOSED and AWAITING ELY'S YES**: the reviewer's
+  changes, through App, which puts them to Ely. These are starting
+  values, which Ely may change before the run, not after it. Nothing
+  below has run, and no comparison run starts until App sends Ely's
+  answer.
+  - **Scope.** The gate decides only whether the 11-11 round runs on the
+    public engine. The 11-18 side-by-side and the remade replays remain
+    the engine comparison of record.
   - **What is compared.** The submitted
     `2026-11-07-NAU_PyBNF-OracleSIHRS.csv` (P0): Ely's run on the laptop,
     app build 9d4520d, the private engine, data through 2026-10-31, and
@@ -51,23 +89,49 @@ repositories outside this one; it pushes only this file here.
       blocks;
     - C50: the share of blocks with A's median inside R's 50% interval;
     - W95: the median over blocks of A's 95% width over R's, on counts.
+    - Two signed measures, new in version 2 (over the 51 locations, with
+      the horizons averaged within a location first):
+      - B: the mean of log(1 + median A) - log(1 + median R);
+      - S: the mean log of the 95% width ratio A over R.
+    - A block whose 95% width in R is zero is dropped from W95 and S,
+      and the count is reported. d, C50 and B keep it.
     The noise floor is P2's values of the same measures.
-  - **PASS when all five hold:**
+  - **PASS when all seven hold:**
     1. L1 has no failed cell and no degenerate update that P1 or P2 does
        not also have.
     2. D_mean(L1) is at most 1.25 x D_mean(P2), or at most 0.02 (2%).
-       D_90(L1) is at most 1.5 x D_90(P2), or at most 0.05.
+       D_90(L1) is at most 1.5 x D_90(P2), or at most 0.05. Where a floor
+       is what passed and the ratio is over 1.25 (D_mean) or 1.5 (D_90),
+       the verdict is PASS WITH A NOTE: a measured engine difference,
+       too small to matter this round.
     3. C50(L1) is at least C50(P2) - 0.05.
-    4. W95(L1) is between 0.90 and 1.11 times W95(P2).
-    5. No block has d(L1) above 3 times the largest d(P2): no one
-       location far off.
-
-    FAIL when any one is missed. Every measure is reported either way,
-    with the blocks behind each miss, and Delaware and Hawaii are
-    reported without being gated. A fail means falling back to
-    `FLUBNF_ENGINE=private` for 11-11, which is Ely's call with
-    Submission. A pass leaves the 11-11 round on the public engine, as
-    decided. Either way stage 2 still runs.
+    4. W95(L1) is between 0.95 and 1.05 times W95(P2) (version 1 had
+       0.90 to 1.11).
+    5. Within each third of the 51 locations ranked by R's median (the
+       mean over the four horizons; 17 locations each), no block has
+       d(L1) above 3 times the largest d(P2) in that third. States with
+       counts near 0 to 5 have by far the largest d from draws alone.
+    6. |B(L1)| is at most max(0.01, 3 x |B(P2)|).
+    7. |S(L1)| is at most max(0.03, 3 x |S(P2)|).
+  - **A miss from bad luck.** By the reviewer's estimate, with one
+    salted run noise alone misses one of version 1's five tests about 1
+    time in 8, and seven tests miss more often. Ely chooses between:
+    - **(b), recommended.** A first miss on criteria 2 to 7 brings one
+      more salted private run (P3) and one public run with a new salt
+      (L2), about 45 minutes. L2 is judged against R, with the floor
+      pooled from P2 and P3: the mean of each measure, and per block the
+      larger of the two for criterion 5. Only a miss by L2 is FAIL. This
+      costs nothing unless there is a miss. A miss on criterion 1 is
+      FAIL at once.
+    - **(a).** Two more salted private runs from the start (about half
+      an hour each), with the floor as the mean of the three, and per
+      block the largest of the three.
+  - **FAIL when a criterion is missed**, after the retry if Ely chose
+    (b). Every measure is reported either way, with the blocks behind
+    each miss, and Delaware and Hawaii are reported without being gated.
+    A fail means falling back to `FLUBNF_ENGINE=private` for 11-11, which
+    is Ely's call with Submission. A pass leaves the 11-11 round on the
+    public engine, as decided. Either way stage 2 still runs.
   - Not before Ely's yes. The runs must end before 11-11's target-data
     update, or use the pinned copy.
 
@@ -387,6 +451,14 @@ repositories outside this one; it pushes only this file here.
 
 ## For other lanes
 
+- Model (2026-11-10): the public venv you were waiting for is in, at
+  `%LOCALAPPDATA%\FluBNF\venv-public` (pybnf 1.8.1 at 8410f794, bngsim
+  0.15.1). `FLUBNF_PY_ENGINE_PUBLIC` is a User variable naming its
+  Python. Doctor is clean on it, and the real-fit test passes (Now,
+  2026-11-10). Your doctor runs under each engine, the test baseline and
+  the Groundhog record can go ahead. Until Ely's yes, this lane's next
+  CPU-heavy work is the gate's three runs, about an hour and a half,
+  announced here and by message before they start.
 - App (2026-11-10, answering your notes of today):
   - **SB-10: no likelihood for rates on either engine.** In the private
     engine (2fdadee0), `check_pf_objfunc` refuses any objfunc but
