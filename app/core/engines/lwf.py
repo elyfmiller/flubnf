@@ -839,6 +839,7 @@ cells = json.load(open({cells_json!r}))
 out = {out_json!r}
 halt = Path({halt_path!r})
 results = {{}}
+secs = {{}}                  # seconds per finished cell (execute's pf_timing.json)
 _t0 = _t.time()
 
 
@@ -850,6 +851,10 @@ def _write(path, payload, tries=10):
 
 
 def _publish(done):
+    try:
+        _write(out + ".secs.prog", secs)
+    except OSError:
+        pass
     try:
         _write(out, results)
     except OSError as e:
@@ -868,7 +873,9 @@ published = _publish(0)
 for _i, c in enumerate(cells, 1):
     if halt.exists():
         break
+    _tc = _t.monotonic()
     results[c["key"]] = _run_lwf(c)
+    secs[c["key"]] = round(_t.monotonic() - _tc, 3)
     published = _publish(_i)
 if not published:
     try:
@@ -937,6 +944,16 @@ def read_table(path: Path):
         raise Unreadable(f"{Path(path).name} is torn "
                          f"({'empty' if not lines else 'a header alone'})")
     header = lines[0].split()
+    # np.loadtxt reads a well-formed table to the same numbers, bit for
+    # bit, faster; it is kept only when every row has the header's width.
+    # Anything else (a token that is not a number, a ragged row) is read
+    # below, which gives the same numbers or the same refusal as before.
+    try:
+        arr = np.loadtxt(lines[1:], ndmin=2, comments=None)
+    except Exception:
+        arr = None
+    if arr is not None and arr.shape == (len(lines) - 1, len(header)):
+        return header, arr
     try:
         rows = [[float(x) for x in ln.split()] for ln in lines[1:]]
     except ValueError as e:

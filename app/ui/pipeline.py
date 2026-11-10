@@ -25,7 +25,8 @@ from app.core.runs import (Ledger, RunSpec, lease_workroot,
                            version_pairs)
 from app.ui import state, versions
 from app.ui.forms import _knobs
-from app.ui.shared import _invalidate_scans, _name_workroot, _phase
+from app.ui.shared import (_invalidate_scans, _name_workroot, _phase,
+                           _phase_mark, _phase_seconds, _phase_start)
 from app.ui.state import _status
 from app.ui.versions import RUNNING_SHA, VERSIONS
 
@@ -564,6 +565,32 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
     return pf_rows, an_rows, counts
 
 
+#: the console run's steps and the seconds each took, beside results.json
+#: and never inside it (results.json keeps its bytes); the fits' own
+#: seconds are in pf_timing.json (app/core/engines/pf.py execute)
+RUN_TIMING_NAME = "run_timing.json"
+
+
+def _write_run_timing(workroot: Path, run_id, ended) -> None:
+    """Write RUN_TIMING_NAME from shared._phase's marks: each step in
+    order with its seconds, their total, and how the run ended ("ok",
+    "partial", "stopped" or "error"; None when it ended before its ledger
+    row closed). Never fatal: a run never fails here."""
+    import json as _json
+    import os as _os
+    try:
+        phases = _phase_seconds()
+        out = Path(workroot) / RUN_TIMING_NAME
+        tmp = out.parent / (out.name + ".tmp")
+        tmp.write_text(_json.dumps({
+            "run_id": run_id, "ended": ended,
+            "seconds": round(sum(p["seconds"] for p in phases), 3),
+            "phases": phases}), encoding="utf-8")
+        _os.replace(tmp, out)
+    except Exception:
+        pass
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then the two
     standalone submissions (no blend; each under its own hub identity,
@@ -577,8 +604,11 @@ def _run_all(spec: RunSpec) -> None:
                                  rows_from_quantiles, write_submission)
 
     import time as _time
+    _phase_start("setting up the run")
     ledger = Ledger()
     run_id = None
+    workroot = None
+    ended = None                    # how the run ended, for run_timing.json
     outcome = {}
     guard = _sleep_guard()          # macOS: no idle sleep mid-run
     # the route starts the clock on click; direct calls (scripts, tests) here
@@ -698,6 +728,7 @@ def _run_all(spec: RunSpec) -> None:
             _pf_notes = pf_engine.read_anchor_notes(workroot)
             if _pf_notes:
                 outcome["pf_anchor_notes"] = _pf_notes
+            _phase_mark("reading the fits")
             pf_samples = pf_engine.collect(workroot)
             # collect() records a torn trajectory in pf_status.json after
             # execute's status was read: carry it into the run record, so
@@ -724,6 +755,7 @@ def _run_all(spec: RunSpec) -> None:
                     weeks_to_drop=int(spec.weeks_to_drop or 0),
                     drop_same_day=bool(getattr(spec, "drop_same_day", False)))
                 outcome["oracle"] = oprov["bank"]["label"]
+                _phase_mark("keeping the filter's own forecasting sample")
                 try:
                     oracle_mod.write_filter_record(workroot, spec.forecast_date,
                                                    pf_raw)
@@ -976,6 +1008,7 @@ def _run_all(spec: RunSpec) -> None:
                                         outcome["optional_rows"].items()
                                         if k in subs}
         # 5. retrospective scoring (once truth exists); contained, like 5b
+        _phase_mark("scoring")
         df = pd.DataFrame()
         score_frames: dict = {}
         try:
@@ -1015,6 +1048,7 @@ def _run_all(spec: RunSpec) -> None:
         except Exception as e:
             outcome["score_error"] = str(e)[:200]
         # 5b. weekly report from its inputs bundle; contained
+        _phase_mark("writing the weekly report")
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
@@ -1023,6 +1057,7 @@ def _run_all(spec: RunSpec) -> None:
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
+        _phase_mark("writing the results and the archive")
         import json as _json
         import numpy as _np
         from app.core import horizons as _hz
@@ -1098,7 +1133,9 @@ def _run_all(spec: RunSpec) -> None:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
         # count them); "failed"/"error" are reserved for runs that died
-        ledger.close_run(run_id, "partial" if fails else "ok", outcome)
+        _phase_mark("closing the run and pruning its fit folders")
+        ended = "partial" if fails else "ok"
+        ledger.close_run(run_id, ended, outcome)
         # prune per-cell fit trees once the record is on disk; a run with
         # failures keeps them as evidence. Never fatal.
         if not fails:
@@ -1118,12 +1155,16 @@ def _run_all(spec: RunSpec) -> None:
         if run_id is None:
             _status["log"].append(f"run setup failed: {str(e)[:200]}")
         elif isinstance(e, RunStopped):
+            ended = "stopped"
             ledger.close_run(run_id, "stopped", outcome)
             _status["log"].append("run stopped by user")
         else:
+            ended = "error"
             ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
             _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
+        if workroot is not None:
+            _write_run_timing(workroot, run_id, ended)
         try:
             from app.core import data as _data_fin
             _data_fin.unpin_source(spec)

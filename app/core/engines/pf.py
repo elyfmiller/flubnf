@@ -21,12 +21,13 @@ Sections, in file order:
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
   prepare         DATASET_REFUSED, LIBRARY_REFUSED, _named_model,
-                  dataset_tag, prepare
+                  dataset_tag, _cell_files, _netgen_added, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
                   runner_popen_kwargs, record_runner_pids, shard_cells,
-                  cell_seconds, budget_seconds, _stop_all, execute
-  collect         _cell_statuses, _record_collect_failure, _save_cloud, collect,
-                  _pool
+                  cell_seconds, budget_seconds, _stop_all, TIMING_NAME,
+                  _write_timing, execute
+  collect         _cell_statuses, _record_collect_failure, _save_cloud,
+                  _read_trajectory, collect, _pool
 
 The public engine, the default (flubnf.settings.engine_choice), runs the
 same cells on lanl/PyBNF's job_type = lwf (app/core/engines/lwf.py): the
@@ -180,6 +181,7 @@ cells = json.load(open({cells_json!r}))
 out = {out_json!r}
 halt = Path({halt_path!r})
 results = {{}}
+secs = {{}}                  # seconds per finished cell (execute's pf_timing.json)
 _t0 = _t.time()
 
 
@@ -194,7 +196,12 @@ def _publish(done):
     """Status and progress, written beside-then-replaced so a reader never
     sees half a file; True when the status was written. Neither write ends
     the runner: progress is best effort, and a status missed now is carried
-    by the next one, since results only grows."""
+    by the next one, since results only grows. The cells' seconds are best
+    effort too."""
+    try:
+        _write(out + ".secs.prog", secs)
+    except OSError:
+        pass
     try:
         _write(out, results)
     except OSError as e:
@@ -213,6 +220,7 @@ published = _publish(0)
 for _i, c in enumerate(cells, 1):
     if halt.exists():
         break                     # stopped: this shard dispatches nothing more
+    _tc = _t.monotonic()
     d = Path(c["dir"])
     shutil.rmtree(d / "out", ignore_errors=True)
     (d / "out" / "Results").mkdir(parents=True)
@@ -226,6 +234,7 @@ for _i, c in enumerate(cells, 1):
         results[c["key"]] = _failed(c["key"], e, Path(cwd) / d)
     finally:
         os.chdir(cwd)
+    secs[c["key"]] = round(_t.monotonic() - _tc, 3)
     published = _publish(_i)
 if not published:
     # the status execute() merges must exist: tried for longer (2 s), then
@@ -281,7 +290,7 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
 
 def perl_missing_message(_platform: str | None = None) -> str:
     """Operator message for a machine with no Perl that can run BNG2.pl:
-    BNG2.pl runs once per cell at prepare, and without Perl Windows only
+    BNG2.pl runs once per location at prepare, and without Perl Windows only
     says '[WinError 2]'. On Windows it names a perl that was found and
     passed over (settings.perl_unusable), and promises no restart, since
     resolve_perl looks again at every fit. `_platform` is injectable for
@@ -843,8 +852,37 @@ def dataset_tag(loc: str) -> str:
     return pf_stem(loc)
 
 
+def _cell_files(d: Path) -> dict | None:
+    """{name: bytes} of every entry in cell folder d, before its BNG2.pl
+    check; None when one is not a plain file. Two replicates of a
+    location write the same model and data, so these match."""
+    out = {}
+    for p in d.iterdir():
+        if p.is_symlink() or not p.is_file():
+            return None
+        out[p.name] = p.read_bytes()
+    return out
+
+
+def _netgen_added(d: Path, before: dict | None) -> tuple | None:
+    """(before, the names BNG2.pl added, d) for replicate 0's folder d, so
+    a later replicate with the same files can copy what BNG2.pl wrote;
+    None when that cannot be done safely: a folder that held more than
+    plain files, or one whose files BNG2.pl changed."""
+    after = _cell_files(d)
+    if before is None or after is None:
+        return None
+    if any(after.get(n) != b for n, b in before.items()):
+        return None
+    return before, sorted(set(after) - set(before)), d
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
+
+    BNG2.pl's network check runs once per location, for replicate 0; the
+    other replicates hold the same model and data, so they get copies of
+    the files it wrote there (a replicate whose files differ runs it too).
 
     Failures are contained PER LOCATION (e.g. resolve_state refusing an
     all-NaN tail during a reporting pause) and recorded in
@@ -1132,6 +1170,8 @@ def prepare(spec, workroot: Path) -> list:
                 typed_by_t, a0 = {}, 0.85   # typed feed down: channel 2 just
                                             # has no rows; the fit still runs
         loc_cells = []
+        # replicate 0's network check, for its later replicates (_netgen)
+        r0 = None
         for rep in range(spec.replicates):
             tag = f"{tag_of(loc)}_r{rep}"
             d = workroot / tag
@@ -1185,24 +1225,37 @@ def prepare(spec, workroot: Path) -> list:
                                               newline="\n", encoding="utf-8")
             else:
                 write_exp(s, d / f"{sfx}.exp")
-            # Windows only until the conf decision for production: bng_env
-            # (BNGPATH pinned) and the ANSI read. The bare perl is the
-            # native one there: the preflight's resolve_perl put its folder
-            # first on this process's PATH. macOS and Linux run BNG2.pl
-            # exactly as before.
-            nt = os.name == "nt"
-            try:
-                r = subprocess.run(
-                    ["perl", BNG, "m.bngl"], capture_output=True,
-                    cwd=str(d), timeout=300,
-                    **bng_run_kwargs(bng_env(BNG) if nt else None))
-            except FileNotFoundError:
-                # perl vanished since preflight, or which() disagreed
-                raise RuntimeError(perl_missing_message())
-            if not (d / "m.net").is_file():
-                # stderr's head first: the record keeps 200 characters
-                raise RuntimeError(f"netgen failed for {loc}: "
-                                   f"{bng_failure_text(r, sep=' | ')}")
+            # BNG2.pl runs for replicate 0. A later replicate whose files
+            # equal replicate 0's, byte for byte, gets copies of the files
+            # BNG2.pl added there: the same bytes it would write again.
+            # Any difference runs BNG2.pl, as for replicate 0.
+            mine = _cell_files(d)
+            reused = (rep > 0 and r0 is not None and mine is not None
+                      and mine == r0[0])
+            if reused:
+                for name in r0[1]:
+                    shutil.copy2(r0[2] / name, d / name)
+            if not (reused and (d / "m.net").is_file()):
+                # Windows only until the conf decision for production:
+                # bng_env (BNGPATH pinned) and the ANSI read. The bare perl
+                # is the native one there: the preflight's resolve_perl put
+                # its folder first on this process's PATH. macOS and Linux
+                # run BNG2.pl exactly as before.
+                nt = os.name == "nt"
+                try:
+                    r = subprocess.run(
+                        ["perl", BNG, "m.bngl"], capture_output=True,
+                        cwd=str(d), timeout=300,
+                        **bng_run_kwargs(bng_env(BNG) if nt else None))
+                except FileNotFoundError:
+                    # perl vanished since preflight, or which() disagreed
+                    raise RuntimeError(perl_missing_message())
+                if not (d / "m.net").is_file():
+                    # stderr's head first: the record keeps 200 characters
+                    raise RuntimeError(f"netgen failed for {loc}: "
+                                       f"{bng_failure_text(r, sep=' | ')}")
+                if rep == 0:
+                    r0 = _netgen_added(d, mine)
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
             # conf: newline="\n" (line-based reader); every path via
@@ -1669,6 +1722,58 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
             f"sharding ({WIDTH_ENV}); otherwise suspect the engine venv.")
 
 
+#: what execute() writes beside pf_status.json: how long each cell took in
+#: its runner, with what the cost model reads, so cell_seconds can be
+#: refitted on each machine and engine. A record of time only: nothing
+#: reads it back.
+TIMING_NAME = "pf_timing.json"
+
+
+def _write_timing(workroot: Path, shards: list, status_files: list,
+                  public: bool, width, wall: float) -> None:
+    """Write TIMING_NAME from the runners' per-cell seconds (each shard's
+    <status>.secs.prog): every cell a runner finished, with its shard, its
+    n_obs, weeks_dropped and particles, and the grid's engine, width
+    (shard_width of the caller's), cores, wall clock and predicted seconds.
+    Never fatal: a run never fails here."""
+    try:
+        engine = "public" if public else "private"
+        width = shard_width(width)
+        cells = {}
+        for i, (shard, sf) in enumerate(zip(shards, status_files)):
+            try:
+                got = json.loads(Path(str(sf) + ".secs.prog")
+                                 .read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                got = {}
+            if not isinstance(got, dict):
+                got = {}
+            for c in shard:
+                s = got.get(c["key"])
+                if isinstance(s, bool) or not isinstance(s, (int, float)):
+                    continue
+                cells[c["key"]] = {
+                    "seconds": float(s), "shard": i,
+                    "n_obs": int(c.get("n_obs") or 0),
+                    "weeks_dropped": int(c.get("weeks_dropped") or 0),
+                    "particles": int(c.get("particles")
+                                     or COST_REFERENCE_PARTICLES)}
+        predicted = max((sum(cell_seconds(c, engine) for c in s)
+                         for s in shards), default=0.0)
+        rec = {"engine": engine, "width": int(width), "shards": len(shards),
+               "cpus": os.cpu_count(), "platform": sys.platform,
+               "cells_planned": sum(len(s) for s in shards),
+               "seconds": round(float(wall), 3),
+               "predicted_seconds": round(predicted, 3),
+               "cells": cells}
+        out = Path(workroot) / TIMING_NAME
+        tmp = out.parent / (out.name + ".tmp")
+        tmp.write_text(json.dumps(rec), encoding="utf-8")
+        replace_file(tmp, out)
+    except Exception:
+        pass
+
+
 def execute(workroot: Path, timeout: float | None = None,
             width: int | None = None, env: dict | None = None) -> dict:
     """Run the prepared cells sharded across low-priority runner
@@ -1680,7 +1785,9 @@ def execute(workroot: Path, timeout: float | None = None,
     quoting that shard's stderr; no status at all raises with the stderr.
     `timeout` defaults to budget_seconds(); `width` to shard_width() (env
     override, else DEFAULT_SHARD_WIDTH); `env` is the runners'
-    environment (runner_popen_kwargs says what None means).
+    environment (runner_popen_kwargs says what None means). Once every
+    runner is reaped, the seconds each finished cell took go to
+    pf_timing.json (_write_timing), however the grid ended.
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
@@ -1711,6 +1818,7 @@ def execute(workroot: Path, timeout: float | None = None,
     # each Popen is still the real runner. See app/core/proc.py.
     from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
     procs, status_files, err_files, handles = [], [], [], []
+    t_wall = time.monotonic()
     try:
         for i, shard in enumerate(shards):
             sj = workroot / f"pf_cells_{i}.json"
@@ -1757,6 +1865,9 @@ def execute(workroot: Path, timeout: float | None = None,
                 fh.close()
             except Exception:
                 pass
+        if procs:
+            _write_timing(workroot, shards, status_files, public, width,
+                          time.monotonic() - t_wall)
     if stop.exists():
         # STOP landed before the first poll or after the last runner exited:
         # still a stop, never a status that reads like a finished grid
@@ -1846,6 +1957,18 @@ def _save_cloud(workroot: Path, c: dict) -> None:
     rec.write_text(json.dumps(cur, sort_keys=True), encoding="utf-8")
 
 
+def _read_trajectory(path: Path):
+    """One private-engine trajectory as np.genfromtxt reads it. np.loadtxt
+    reads a well-formed file to the same array, bit for bit, in about half
+    the time; anything it refuses (a token that is not a number, a ragged
+    row) goes to np.genfromtxt, whose array or error stands as before."""
+    import numpy as np
+    try:
+        return np.loadtxt(path)
+    except Exception:
+        return np.genfromtxt(path)
+
+
 def collect(workroot: Path) -> dict:
     """Forecast samples per location: replicate-pooled, anchored at origin.
 
@@ -1856,7 +1979,6 @@ def collect(workroot: Path) -> dict:
     Each cell is read by what it holds: the public engine's Results/LWF
     tables (lwf.cell_blocks) or the private engine's trajectory, anchored
     alike (_pool)."""
-    import numpy as np
     from app.core.engines import lwf
     cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     status = _cell_statuses(workroot)
@@ -1880,7 +2002,7 @@ def collect(workroot: Path) -> dict:
         if not tr_files:
             continue
         try:
-            tr = np.genfromtxt(tr_files[0])
+            tr = _read_trajectory(tr_files[0])
         except Exception as e:
             _record_collect_failure(
                 workroot, c["key"],

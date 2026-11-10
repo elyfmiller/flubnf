@@ -539,11 +539,16 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
 
 def _reclaim_skips() -> tuple:
     """(season entry names, workroot names) the reclaim must not touch right
-    now: seasons replaying or mid-finalize, and the active run's workroot."""
+    now: seasons replaying, mid-finalize or still warming their week map
+    cards (the warm reads each week's samples file, which a reclaim could
+    compress or remove under it), and the active run's workroot."""
     skip_seasons = {s for s in retro_seasons._known_seasons()
                     if _season_status(s) in _RETRO_ACTIVE}
     for key, job in list(_results_jobs.items()):
-        if job and not job["done"].is_set():
+        if not job:
+            continue
+        warming = job.get("warm") is not None and not job["warm"].is_set()
+        if not job["done"].is_set() or warming:
             skip_seasons.add(Path(key).name)
     return skip_seasons, set(_live_workroot_ids())
 
