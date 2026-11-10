@@ -58,12 +58,56 @@
     return MODELS[o.engine] + ", " + where + ": " + w + (o.ratio ? " here" : "");
   }
 
-  // a model setting's field (data-knob) as a whole number, blank at its
-  // data-default; null when the form has no such field
+  // what a number box holds, and so posts: its text when that is a valid
+  // floating-point number (HTML), else blank. A browser's box never holds
+  // "x" or "1,000"; it does hold "1e4", "2.5" and "-3"
+  var HTML_FLOAT = /^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+  function boxValue(f) {
+    var t = String(f.value === null || f.value === undefined ? "" : f.value);
+    var number =
+      String(f.getAttribute("type") || "").toLowerCase() === "number";
+    return number && !HTML_FLOAT.test(t) ? "" : t;
+  }
+
+  // Python's str.strip() (what str.isspace() calls space), and int()'s
+  // own spaces (the same but U+001C to U+001F)
+  var PY_STRIP = new RegExp(
+    "^[\\t\\n\\x0b-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028" +
+    "\\u2029\\u202f\\u205f\\u3000]+|[\\t\\n\\x0b-\\r\\x1c-\\x1f \\x85\\xa0" +
+    "\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]+$", "g");
+  var PY_INT_SPACE = "[\\t\\n\\x0b-\\r \\x85\\xa0\\u1680\\u2000-\\u200a" +
+                     "\\u2028\\u2029\\u202f\\u205f\\u3000]";
+  var PY_INT = new RegExp("^" + PY_INT_SPACE + "*([+-]?)([0-9]+)" +
+                          PY_INT_SPACE + "*$");
+  // the most digits Python's int() reads from text
+  // (sys.int_info.default_max_str_digits)
+  var PY_INT_DIGITS = 4300;
+
+  // a model setting's whole number (Particles, Independent Runs) as the
+  // server's check reads what the box posts (app/core/knobs.py _coerce,
+  // as retro_progress.js knobWhole): blank is the field's data-default;
+  // else stripped, commas and underscores dropped, then Python's int(),
+  // within the field's min and max. null for what the check refuses
+  // ("1e4", "2.5", "0"), so the line gives no figure for a run that will
+  // not start (review of #93, re-check at 099907c, finding 3)
+  function knobWhole(f) {
+    var t = boxValue(f).replace(PY_STRIP, "");
+    if (t === "") return whole(f.getAttribute("data-default"), null);
+    var m = PY_INT.exec(t.replace(/[,_]/g, ""));
+    if (!m || m[2].length > PY_INT_DIGITS) return null;
+    var v = parseInt(m[1] + m[2], 10);
+    var lo = parseFloat(f.getAttribute("min")),
+        hi = parseFloat(f.getAttribute("max"));
+    if (!isFinite(v) || (isFinite(lo) && v < lo) || (isFinite(hi) && v > hi))
+      return null;
+    return v;
+  }
+
+  // a model setting's field (data-knob) as knobWhole reads it; null when
+  // the form has no such field
   function knob(form, key) {
     var el = form.querySelector('[data-knob="' + key + '"]');
-    if (!el) return null;
-    return whole(el.value, whole(el.getAttribute("data-default"), null));
+    return el ? knobWhole(el) : null;
   }
 
   // the form as runWords reads it: the model, the locations ("all" is the

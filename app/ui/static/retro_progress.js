@@ -232,6 +232,41 @@
     return v;
   }
 
+  // what a number box holds, and so posts: its text when that is a valid
+  // floating-point number (HTML), else blank. A browser's box never holds
+  // "abc" or "1,000"; it does hold "2e0", "2.0" and "-3"
+  var HTML_FLOAT = /^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+  function boxValue(f) {
+    var t = String(f.value === null || f.value === undefined ? "" : f.value);
+    var number =
+      String(f.getAttribute("type") || "").toLowerCase() === "number";
+    return number && !HTML_FLOAT.test(t) ? "" : t;
+  }
+
+  // Python's int() of text: its own spaces (str.isspace() but U+001C to
+  // U+001F), a sign, digits with single underscores between them
+  var PY_INT_SPACE = "[\\t\\n\\x0b\\x0c\\r \\x85\\xa0\\u1680" +
+                     "\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+  var PY_INT = new RegExp("^" + PY_INT_SPACE + "*([+-]?)([0-9]+(?:_[0-9]+)*)" +
+                          PY_INT_SPACE + "*$");
+
+  // the runners box as the run's POST reads what the box posts
+  // (routes/retro.py retro_run): stripped, commas dropped, blank is
+  // `dflt`, else Python's int() (the caller holds it to 1 and the box's
+  // max, as the POST holds it to 1 to 16). null for what the POST refuses
+  // ("2e0", "2.0", "1e1": not a whole number), so the option gets no
+  // figure for a run that will not start (review of #93, re-check at
+  // 099907c, finding 2)
+  function runners(f, dflt) {
+    var t = boxValue(f).replace(PY_STRIP, "").replace(/,/g, "");
+    if (t === "") return dflt;
+    var m = PY_INT.exec(t);
+    if (!m) return null;
+    var digits = m[2].replace(/_/g, "");
+    if (digits.length > PY_INT_DIGITS) return null;
+    return parseInt(m[1] + digits, 10);       // past a double: +-Infinity
+  }
+
   // the cost words for one state of the form (o: what read() returns):
   // FluBNFEstimate.human of the span over o.weeks at o.fits a week
   // (locations x Independent Runs), o.particles and o.width; " here" when
@@ -261,9 +296,10 @@
   // the locations (the scope: the panel's count, every state box, or the
   // boxes ticked; US national adds one), Independent Runs, particles
   // (each blank at its data-default, null for what the server refuses:
-  // knobWhole), the width box (blank: the page's, never above its max)
-  // and this computer's ratio (data-rt-ratio). null without the
-  // estimate's attributes.
+  // knobWhole), the width box (runners: blank is the page's, null for
+  // what the run refuses; at least 1 and never above its max) and this
+  // computer's ratio (data-rt-ratio). null without the estimate's
+  // attributes.
   function read(form) {
     var E = root.FluBNFEstimate;
     var p = E && form ? E.params(form) : null;
@@ -293,13 +329,14 @@
     if (n > 0 && national && national.value !== "0") n += 1;
     var reps = knob("replicates");
     var wmax = wbox ? whole(wbox.getAttribute("max"), null) : null;
-    var w = wbox ? whole(wbox.value, p.width) : p.width;
-    if (wmax) w = Math.min(w, wmax);
+    var w = wbox ? runners(wbox, p.width) : p.width;
+    if (w !== null && wmax) w = Math.min(w, wmax);
     return {p: p, start: c ? c.start : "",
             weeks: c ? (c.left || c.weeks || []) : [],
             left: c && c.left ? c.left.length : 0,
             fits: reps === null ? 0 : n * reps,
-            particles: knob("particles"), width: Math.max(1, w),
+            particles: knob("particles"),
+            width: w === null ? null : Math.max(1, w),
             ratio: ratio};
   }
 

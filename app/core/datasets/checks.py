@@ -1053,11 +1053,13 @@ def groundhog_donors(rep: Report):
     window (a horizon that reaches into weeks reading 0 gains less from
     each). With none to go by, an ordinary season of every group
     (window_weeks_a_season: four weeks around a week 53, else five). A
-    horizon at 0 although an earlier season holds a week of the window
-    and the week that horizon later (_held_pairs: their values give no
-    donor, a summer of zeros, say) has nothing to go by either, and no
-    ordinary season stands for the file's: "seasons" is None, and the
-    check gives no figure (datasets_ui.model_view)."""
+    horizon at 0 although earlier seasons hold a week of the window and
+    the week that horizon later, where the file shows that more seasons
+    like its own give it nothing (_seasons_give_nothing: a summer of
+    zeros, say, not one dead season or one group of zeros), has nothing
+    to go by either, and no ordinary season stands for the file's:
+    "seasons" is None, and the check gives no figure
+    (datasets_ui.model_view)."""
     import math
 
     from flubnf import analogue as AN
@@ -1080,23 +1082,63 @@ def groundhog_donors(rep: Report):
     per = (n / len(seasons) if n and seasons else
            window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
     more = math.ceil((need - n) / per) if n < need else 0
-    if not n and _held_pairs(bank, window,
-                             [h for h, c in zip(GROUNDHOG_HORIZONS, counts)
-                              if not c]):
+    if not n and _seasons_give_nothing(bank, window, counts):
         more = None
     return {"counts": counts, "n": n, "need": need,
             "enough": sum(1 for c in counts if c >= need),
             "seasons": more}
 
 
-def _held_pairs(bank, window, horizons) -> bool:
-    """Whether, at any of `horizons`, `bank` holds for one group a week
-    of `window` (earlier seasons' weeks within the donor window) and the
-    week h later: a pair the Groundhog reads for a donor week
-    (donor_counts). At a horizon that counts 0, every such pair gave
-    none, so the file's own seasons give that horizon nothing."""
-    return any((g, d + timedelta(days=7 * h)) in bank
-               for g, d in bank if d in window for h in horizons)
+def _seasons_give_nothing(bank, window, counts) -> bool:
+    """Whether the file shows that more seasons like its own leave a
+    horizon at 0 donor weeks (`counts`, one per GROUNDHOG_HORIZONS).
+
+    A pair is a week of `window` (earlier seasons' weeks within the donor
+    window) and the week h later, both in `bank` for one group: what the
+    Groundhog reads for a donor week (donor_counts). At a horizon that
+    counts 0, every pair gave none. That alone is no proof: one season of
+    zeros, or one small group of zeros, does it, and real seasons would
+    help (review of #93, re-check at 099907c, finding 1). So at a horizon
+    at 0 with pairs, the file shows it only when:
+
+      * every group and season holding a pair there finds donor weeks at
+        another horizon: the window's weeks have cases and the weeks h
+        later do not (R1's 36, 24, 12 and 0); or
+      * two or more earlier seasons of every group with data hold a
+        pair there."""
+    import math
+
+    from flubnf import analogue as AN
+
+    def later(g, d, h):
+        return bank.get((g, d + timedelta(days=7 * h)))
+
+    # the (group, season)s that find a donor week at each horizon
+    finds = {h: set() for h in GROUNDHOG_HORIZONS}
+    for (g, d), v0 in bank.items():
+        if d not in window or not (math.isfinite(v0) and v0 > 0):
+            continue
+        for h in GROUNDHOG_HORIZONS:
+            v1 = later(g, d, h)
+            if (v1 is not None and math.isfinite(v1) and v1 > 0
+                    and math.isfinite(v1 / v0)):
+                finds[h].add((g, AN.season_of(d)))
+    groups = {g for g, _ in bank}
+    for h, c in zip(GROUNDHOG_HORIZONS, counts):
+        if c:
+            continue
+        held = {(g, AN.season_of(d)) for g, d in bank
+                if d in window and later(g, d, h) is not None}
+        if not held:
+            continue
+        elsewhere = set().union(*(finds[k] for k in GROUNDHOG_HORIZONS
+                                  if k != h))
+        if held <= elsewhere:
+            return True
+        per = Counter(g for g, _ in held)
+        if all(per[g] >= 2 for g in groups):
+            return True
+    return False
 
 
 def groundhog_shortfall(rep: Report):
