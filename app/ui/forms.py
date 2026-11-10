@@ -188,14 +188,15 @@ def _knob_panel(scope: str, form: dict | None = None,
 
 
 #: the registry's type words (knobs._coerce) and the particle filter's
-#: prior check (engines/pf.py priors_for), as the panel says them
+#: prior check (engines/pf.py priors_for), as the panel says them. The
+#: value is Python's repr: in double quotes when it holds an apostrophe
 _PLAIN_REFUSALS = (
-    (re.compile(r"^('.*') is not a valid float$"), r"\1 is not a number"),
-    (re.compile(r"^('.*') is not a valid int$"), r"\1 is not a whole number"),
-    (re.compile(r"^('.*') is not a valid range$"),
+    (re.compile(r"^('.*'|\".*\") is not a valid float$"), r"\1 is not a number"),
+    (re.compile(r"^('.*'|\".*\") is not a valid int$"), r"\1 is not a whole number"),
+    (re.compile(r"^('.*'|\".*\") is not a valid range$"),
      r"\1 is not two numbers, low then high"),
-    (re.compile(r"^('.*') is not a valid bool$"), r"\1 is not on or off"),
-    (re.compile(r"^('.*') is not a valid date$"), r"\1 is not a date"),
+    (re.compile(r"^('.*'|\".*\") is not a valid bool$"), r"\1 is not on or off"),
+    (re.compile(r"^('.*'|\".*\") is not a valid date$"), r"\1 is not a date"),
     (re.compile(r"^prior_ranges: \S+ \[(\S+), (\S+)\] is not a valid "
                 r"(log)?uniform_var range$"),
      lambda m: (f"{float(m[1]):g}, {float(m[2]):g} is not a range: the low "

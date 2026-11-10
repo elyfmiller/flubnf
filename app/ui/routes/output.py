@@ -992,7 +992,8 @@ def _weekly_report_name(date: str, suffix: str = "") -> str:
 def _report_suffix(dirpath: Path) -> str:
     """The suffix the report's own run put on its files: "-modified" for
     modified settings without the override (pipeline names them so), ""
-    otherwise. The run is the workroot's id, or the run an archive holds."""
+    otherwise. The run is the workroot's id, or the run an archive holds;
+    its ledger row says, else the folder's own record (_folder_suffix)."""
     from app.core import archive_record as _ar
     from app.core.runs import Ledger, is_run_id
     d = Path(dirpath)
@@ -1002,7 +1003,37 @@ def _report_suffix(dirpath: Path) -> str:
         spec = ((Ledger().row(rid) or {}).get("spec") or "") if rid else ""
     except Exception:
         spec = ""
-    return "" if not spec or _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+    if not spec:
+        return _folder_suffix(d)
+    return "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+
+
+def _folder_suffix(d: Path) -> str:
+    """_report_suffix for a run with no ledger row (the ledger cleared, or
+    the row deleted and its workroot kept): what the folder itself
+    records. results.json's spec, as the pipeline named the files from;
+    else knobs.json (written for a modified run only; its override puts
+    the hub names back); else the submission folders' own names."""
+    import json as _json
+    try:
+        spec = _json.loads((d / "results.json").read_text(
+            encoding="utf-8")).get("spec") or ""
+    except Exception:
+        spec = ""
+    if spec:
+        return "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+    try:
+        kn = _json.loads((d / "knobs.json").read_text(encoding="utf-8"))
+    except Exception:
+        kn = None
+    if isinstance(kn, dict):
+        return "" if kn.get("override") else _knobs.MODIFIED_SUFFIX
+    try:
+        subs = [p.name for p in (d / "submission").iterdir() if p.is_dir()]
+    except Exception:
+        subs = []
+    return (_knobs.MODIFIED_SUFFIX
+            if any(n.endswith(_knobs.MODIFIED_SUFFIX) for n in subs) else "")
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
