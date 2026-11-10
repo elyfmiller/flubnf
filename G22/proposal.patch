@@ -1,0 +1,308 @@
+diff --git a/app/core/sandbox.py b/app/core/sandbox.py
+index 3390639e..01ea560f 100644
+--- a/app/core/sandbox.py
++++ b/app/core/sandbox.py
+@@ -361,6 +361,8 @@ def new_model(name: str) -> Path:
+ 
+ def model_dir(name: str) -> Path:
+     d = MODELS / check_name(name)
++    if not d.is_dir():                   # deleted, or never made
++        raise SandboxError(f"no sandbox model named {name}")
+     missing = [f for f in REQUIRED if not (d / f).is_file()]
+     if missing:
+         raise SandboxError(f"model {name!r} is missing {', '.join(missing)}")
+diff --git a/app/tests/test_error_pages.py b/app/tests/test_error_pages.py
+new file mode 100644
+index 00000000..85ab32e8
+--- /dev/null
++++ b/app/tests/test_error_pages.py
+@@ -0,0 +1,90 @@
++"""Unknown pages and malformed requests (bug hunt 2026-10-25, G22).
++
++  * A mistyped or stale address opened in the window (it asks for HTML)
++    is a page of the console with the way back: any unknown path, an
++    unknown model, an unknown dataset replay, a season report that cannot
++    be built. A script's request keeps FastAPI's JSON.
++  * Output's downloads, reveal and report pages answer a missing path or
++    an impossible date with the console's notice, and the view of a
++    missing archive answers 404 as its download does.
++  * Opening a deleted Sandbox model says there is no such model.
++"""
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.ui import server as srv                               # noqa: E402
++from app.ui import state as ui_state                           # noqa: E402
++
++client = TestClient(srv.app)
++PAGE = {"Accept": "text/html,application/xhtml+xml"}
++
++
++# ------------------------------- UI-10 (MO-11, WI-14): unknown addresses
++
++def test_an_unknown_page_opened_in_the_window_is_a_console_page():
++    r = client.get("/nope", headers=PAGE)
++    assert r.status_code == 404 and r.headers["content-type"].startswith(
++        "text/html")
++    assert "No page at this address" in r.text
++    assert 'href="/">Back to Home</a>' in r.text
++    assert "<title>FluBNF · Not found</title>" in r.text
++    # a script's request, and any /api/ path, keep FastAPI's JSON
++    assert client.get("/nope").json() == {"detail": "Not Found"}
++    assert client.get("/api/nope", headers=PAGE).json() == \
++        {"detail": "Not Found"}
++
++
++def test_an_unknown_model_or_replay_address_is_a_console_page():
++    r = client.get("/model/nope", headers=PAGE)
++    assert r.status_code == 404 and "No model named nope" in r.text
++    assert 'href="/models">Open Models</a>' in r.text
++    r = client.get("/retro/dataset/nope/20260101T000000Z", headers=PAGE)
++    assert r.status_code == 404 and "No such replay" in r.text
++    assert 'href="/retro">Open Retrospective</a>' in r.text
++
++
++def test_a_season_report_that_cannot_be_built_is_a_console_page():
++    r = client.get("/retro/2098-99/report", headers=PAGE)
++    assert r.status_code == 404
++    assert "2098-99: no completed weeks yet" in r.text
++    assert 'href="/retro/2098-99">Back to the season</a>' in r.text
++
++
++# ------------------------------------ OU-16: malformed Output requests
++
++def test_malformed_output_requests_get_the_console_notice(tmp_path,
++                                                          monkeypatch):
++    import app.core.runs as runs_mod
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    r = client.get("/output/download", headers=PAGE)
++    assert r.status_code == 404 and "File not found in app state" in r.text
++    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: None)
++    monkeypatch.setitem(ui_state._status, "flash", None)
++    r = client.post("/output/reveal", follow_redirects=False)
++    assert r.status_code == 303
++    assert "not in app state" in (ui_state._status.get("flash") or "")
++    # a date with the shape and no such day is refused as invalid
++    r = client.get("/output/report?date=2026-13-45")
++    assert r.status_code == 400 and "Invalid date" in r.text
++    # a missing archive: the view and the download agree
++    assert client.get("/output/report?date=2098-01-03").status_code == 404
++    assert client.get(
++        "/output/report/download?date=2098-01-03").status_code == 404
++
++
++# ----------------------------------------- SB-16: a deleted Sandbox model
++
++def test_opening_a_deleted_sandbox_model_says_it_is_not_there(sandbox_root):
++    from app.core import sandbox as sb
++    with pytest.raises(sb.SandboxError,
++                       match="no sandbox model named del_me"):
++        sb.model_dir("del_me")
++    page = client.get("/sandbox?model=del_me").text
++    assert "Not opened: no sandbox model named del_me" in page
++    assert "is missing" not in page
+diff --git a/app/tests/test_output_by_date.py b/app/tests/test_output_by_date.py
+index c858d64a..fba9d4f1 100644
+--- a/app/tests/test_output_by_date.py
++++ b/app/tests/test_output_by_date.py
+@@ -323,7 +323,8 @@ def test_each_files_coverage_fold_has_its_own_handle(root):
+ def test_refusals_and_missing_reports_are_console_pages(root):
+     """A bad date, a report that is not there or a refused download is a
+     page of the console (the Output tab: one line and the way back), with
+-    the status code it always had."""
++    the status code it always had; a missing archive's view answers 404,
++    as its download does."""
+     r = client.get("/output/report?date=nope")
+     assert r.status_code == 400 and 'role="alert"' in r.text
+     assert "Invalid date. Expected YYYY-MM-DD." in r.text
+@@ -331,7 +332,7 @@ def test_refusals_and_missing_reports_are_console_pages(root):
+     r = client.get("/output/report/download?date=nope")
+     assert r.status_code == 400 and 'role="alert"' in r.text
+     r = client.get("/output/report?date=2098-01-03")
+-    assert r.status_code == 200
++    assert r.status_code == 404           # as its download answers (OU-16)
+     assert "No archived report for 2098-01-03" in r.text
+     r = client.get("/output/report")
+     assert r.status_code == 200 and "No report yet" in r.text
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 82910e8a..f516bb6e 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -1305,7 +1305,11 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
+     ds = get_dataset(ds_id)
+     if ds is None or not CX.valid_stamp(stamp) \
+             or not CX.replay_dir(ds, stamp).is_dir():
+-        return HTMLResponse("<p>No such replay.</p>", status_code=404)
++        from app.ui.routes import output as output_routes
++        return output_routes._notice(
++            request, 404, "empty", "No such replay",
++            action=("/retro", "Open Retrospective"), active="Retrospective",
++            heading="Replay")
+     meta, fc, cells, cov = CX.load(CX.replay_dir(ds, stamp))
+     status = meta.get("status") or "unknown"
+     live = _REPLAY.get("stamp") == stamp
+diff --git a/app/ui/routes/models.py b/app/ui/routes/models.py
+index 93b383d2..08bc8cac 100644
+--- a/app/ui/routes/models.py
++++ b/app/ui/routes/models.py
+@@ -175,7 +175,12 @@ def model_page(request: Request, name: str):
+     manchor = {"pf": "oracle", "analogue": "analogue",
+                "pf2s": "two-strain"}
+     if name not in HEADERS:
+-        return HTMLResponse("unknown model", status_code=404)
++        # a mistyped or retired model's address: a page of the console
++        from app.ui.routes import output as output_routes
++        return output_routes._notice(
++            request, 404, "empty", f"No model named {name}",
++            action=("/models", "Open Models"), active="Models",
++            heading="Models")
+     from app.core.archive_record import realtime_of
+     rid, res = shared._latest_results()
+     # a newer run of any kind (a vintage week or modified settings, as a
+diff --git a/app/ui/routes/output.py b/app/ui/routes/output.py
+index 2cecdce8..2c8bdea0 100644
+--- a/app/ui/routes/output.py
++++ b/app/ui/routes/output.py
+@@ -697,14 +697,32 @@ def _not_found(request: Request):
+     return _notice(request, 404, "empty", "File not found in app state")
+ 
+ 
++async def _not_found_page(request: Request, exc):
++    """The app's HTTPException handler (server.py): a mistyped or stale
++    address opened in the window or a browser (it asks for HTML) gets this
++    notice with the way back to Home, never a bare line; a script's request
++    (/api/, /static/, any other Accept) and every other code keep FastAPI's
++    JSON."""
++    from fastapi.exception_handlers import http_exception_handler
++    if (exc.status_code == 404
++            and not request.url.path.startswith(("/api/", "/static/"))
++            and "text/html" in request.headers.get("accept", "")):
++        return _notice(request, 404, "empty", "No page at this address",
++                       action=("/", "Back to Home"), active="",
++                       heading="Not found")
++    return await http_exception_handler(request, exc)
++
++
+ @router.get("/output/download")
+-def output_download(request: Request, path: str):
++def output_download(request: Request, path: str = ""):
+     """Download a submission CSV. The file must be inside app state, and a
+     submission/ file must sit under a registered hub model's directory (the
+     listings' rule, enforced here for hand-edited URLs)."""
+     from fastapi.responses import FileResponse
+     from app.core.runs import APP_STATE
+     from app.core import datasets as _datasets
++    if not path:                        # no file named: nothing to serve
++        return _not_found(request)
+     try:
+         p = Path(path).resolve()
+     except (OSError, ValueError):       # a NUL byte or an unusable name
+@@ -749,14 +767,15 @@ def _reveal_command(p: Path, platform: str | None = None):
+ 
+ 
+ @router.post("/output/reveal")
+-def output_reveal(request: Request, path: str = Form(...)):
++def output_reveal(request: Request, path: str = Form("")):
+     """Show the file in Finder / Explorer (a local desktop app), then back
+     to the page that asked (a run page or Output); a warning there when no
+     file manager could be opened on it."""
+     import subprocess
+     from app.core.runs import APP_STATE
+     try:
+-        p = Path(path).resolve()
++        # no path named reads as a file that is not there
++        p = Path(path).resolve() if path else None
+     except (OSError, ValueError):       # a NUL byte or an unusable name
+         p = None
+     # containment via is_relative_to, as in /output/download: a string-prefix
+@@ -830,10 +849,16 @@ def _report_for_serving(dirpath: Path) -> str:
+ 
+ 
+ def _bad_date(date: str, request: Request):
+-    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
++    """The 400 for a malformed ?date=; None when it is a real YYYY-MM-DD
++    day (2026-13-45 has the shape and is refused)."""
+     import re
++    from datetime import date as _day
+     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+-        return None
++        try:
++            _day.fromisoformat(date)
++            return None
++        except ValueError:
++            pass
+     return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
+ 
+ 
+@@ -847,7 +872,8 @@ def output_report(request: Request, date: str = ""):
+             return bad
+         d = APP_STATE / "archive" / date
+         if not (d / "report.html").is_file():
+-            return _notice(request, 200, "empty",
++            # a 404, as its download answers
++            return _notice(request, 404, "empty",
+                            f"No archived report for {date}")
+         return HTMLResponse(_report_for_serving(d))
+     # the shipped rule: Home's report button and its map link come here,
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f4bd85ec..1487d875 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -1288,13 +1288,21 @@ def _season_report(season: str, archive: str):
+ 
+ 
+ @router.get("/retro/{season}/report")
+-def retro_season_report(season: str, archive: str = ""):
++def retro_season_report(request: Request, season: str, archive: str = ""):
+     """Download the season report (_season_report), under
+-    report_season.download_name."""
++    report_season.download_name; a report it cannot build is a page of the
++    console with the way back to the season."""
+     from app.core import report_season
++    from app.ui.routes import output as output_routes
+     p = _season_report(season, archive)
+     if isinstance(p, PlainTextResponse):
+-        return p
++        back = ((f"/retro/{season}", "Back to the season")
++                if _valid_season(season) else ("/retro", "Open Retrospective"))
++        return output_routes._notice(
++            request, p.status_code,
++            "empty" if p.status_code == 404 else "error",
++            p.body.decode("utf-8").strip(), action=back,
++            active="Retrospective", heading="Season report")
+     return FileResponse(p, filename=report_season.download_name(season,
+                                                                 archive),
+                         media_type="text/html",
+diff --git a/app/ui/server.py b/app/ui/server.py
+index d1dde31e..68e850f8 100644
+--- a/app/ui/server.py
++++ b/app/ui/server.py
+@@ -7,8 +7,8 @@ This module only assembles the console, in this order: the app and its
+ /static mount; the middleware (the CSRF guard, the sandbox engine guard
+ around it, the no-store header around both, and the slow-request log
+ outermost); the tab routers; the sandbox_storage Jinja global;
+-datasets_ui's router, last, and the dataset_upload_mb global; then the
+-startup warm pass, started last. Its public names are app, templates,
++datasets_ui's router, last, and the dataset_upload_mb global; the
++not-found page; then the startup warm pass, started last. Its public names are app, templates,
+ VERSIONS and RUNNING_SHA (app/core/site_build.py reads the last three
+ here); every other name lives in the module that defines it.
+ 
+@@ -127,6 +127,11 @@ app.include_router(_datasets_ui.router)
+ templates.env.globals["dataset_upload_mb"] = _datasets_ui.max_mb
+ 
+ 
++# === Not found: an unknown page someone opened is a page of the console ===
++from starlette.exceptions import HTTPException as _HTTPException  # noqa: E402
++app.exception_handler(_HTTPException)(output_routes._not_found_page)
++
++
+ # === Public names (app/core/site_build.py reads the last three here) ===
+ __all__ = ["app", "templates", "VERSIONS", "RUNNING_SHA"]
+ 
