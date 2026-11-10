@@ -6,6 +6,215 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (afternoon): **THE 11-07 GATE (version 2, approved): PASS.**
+  All seven criteria hold on the first runs, so retry rule (b) was not
+  needed. The verdict decides only whether the 11-11 round runs on the
+  public engine; stage 2 still runs.
+  - **The runs.** Each ran on a console at 127.0.0.1:8790, from the
+    fresh clone at 26acbadf, through the Forecast page's POST `/run`
+    with the round's settings. All 159 cells were "ok" in each run, with
+    no preparation failure.
+    - P1, private: 13:30:55 to 13:37:34 (399 s).
+    - P2, private, seed date `2026-10-31#gate-2026-11-10-p2`: 369 s.
+    - L1, public: 820 s, the same `pf_seed`s as P1. That is 2.14 times
+      the private runs' mean, against `PUBLIC_COST_RATIO` 2.4.
+    - Builds, from each run's `component_versions.json`: P1 and P2 ran
+      the private engine at 2fdadee0. L1 ran the public engine at
+      8410f794, wheel sha256 18a59bc2..., as the lock says.
+    - The timings carry some load. Model ran single-core jobs at
+      below-normal priority meanwhile: its test suite for 13 minutes,
+      then the Groundhog for 17 (model.md, 0e3c2eb4).
+    - A trap Model found, which this lane's shell has too: a shell
+      opened before 2026-11-09's install still carries the old
+      `Documents\GitHub` values of `FLUBNF_HUB` and `FLUBNF_PYBNF`. Under
+      private, those name the eab31c71 fork, and doctor fails on it. The
+      gate's driver set both to the `%LOCALAPPDATA%` paths itself. A new
+      window reads the account's values.
+  - **Reproduction.** P1 reproduces the submitted file exactly: 0 of its
+    4,692 values differ over its 51 locations. So R is P0, and this PC's
+    private engine gives the laptop's numbers to the count.
+  - **The measures, L1 against R, with P2 against R (the noise floor)
+    after each:**
+    - D_mean: 0.0222 against 0.0194 (1.15x).
+    - D_90: 0.0397 against 0.0368 (1.08x).
+    - C50: 1.00 against 1.00.
+    - W95: 1.000 against 1.000.
+    - B: +0.0025 against +0.0001.
+    - S: +0.0005 against +0.0025.
+    - No zero-width blocks in R or in either run.
+  - **The criteria:**
+    1. L1 has no failed cell. A degenerate update fails a public cell,
+       so it had none.
+    2. Passed on the ratios, not the floors, so no note.
+    3. C50: passed.
+    4. W95: passed.
+    5. The largest d(L1) in each third against its cap (3 times the
+       third's largest d(P2)): 0.248 against 0.449 (Alaska h3, the
+       low-count third), 0.066 against 0.158, and 0.051 against 0.111.
+    6. B passed on its 0.01 floor, not on 3 x |B(P2)| (0.0004). The
+       public medians sit 0.25% higher on average, while the reseeded
+       private ones sit 0.01% higher. This is reported, though the gate
+       defines no note for B.
+    7. S: passed.
+  - **Read with them:**
+    - C50 and W95 cannot separate the runs this week. Every median sits
+      inside R's 50% interval in both runs. The 10x tail cap pins the
+      97.5% quantile in about a third of the blocks, so 37 (P2) and 43
+      (L1) of the 204 blocks have exactly R's 95% width, and the median
+      ratio lands on 1. B, S and D carry the comparison.
+    - The 95% width ratios range from 0.938 to 1.151 for P2 and from
+      0.902 to 1.210 for L1. The per-block median shifts have a
+      standard deviation of 0.027 (P2) and 0.035 (L1).
+    - Alaska is the largest d in both runs: 0.150 at h2 for P2, and
+      0.248 at h3 for L1.
+  - **Not gated, against P1:**
+    - Delaware: L1's medians are 77/108/156/222 against 77/109/156/225,
+      with d 0.004 to 0.019.
+    - Hawaii: L1's are 44/46/50/53 against 44/47/51/57, with d up to
+      0.088 at h3, and P2's is 0.087 there.
+  - **Kept:** the runs' state folders, P0's copy (sha256 9402fb92...) and
+    `gate-measures.json` are in `%USERPROFILE%\flubnf-gate-2026-11-10`,
+    with the three scripts that ran and measured the gate in `scripts\`
+    there.
+
+- 2026-11-10 (afternoon): the public engine from a fresh clone of `dev`,
+  as a stranger would, on Ely's Windows PC. Task 2 is done:
+  - `git clone -b dev` (26acbadf) to `%USERPROFILE%\GitHub\flubnf-stranger`,
+    then its `FluBNF.bat` with `FLUBNF_SHORTCUTS=off`. It took under four
+    minutes, from the clone at 13:03:08 to the console's start. The
+    console's `.venv` came first. Then the public engine went into
+    `%LOCALAPPDATA%\FluBNF\venv-public` on `py -3.12` (3.12.10), and the
+    window ended "public engine ready: pybnf 1.8.1 from
+    pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1", word for word as in
+    WINDOWS.md. The launcher set `FLUBNF_PY_ENGINE_PUBLIC` as a User
+    variable. The console it started was stopped.
+  - Reused, so a real stranger waits longer:
+    - Python 3.12.10, Git, and Strawberry Perl;
+    - the hub clone (`FLUBNF_HUB`);
+    - the private checkout at its pin (`FLUBNF_PYBNF`);
+    - pip's cache, for 25 of the 39 packages (14 were downloaded, among
+      them the PyBNF wheel, scipy, libroadrunner and cryptography).
+    The clone went outside `%LOCALAPPDATA%\FluBNF\flubnf`, where
+    WINDOWS.md puts it, because Ely's old install is there.
+  - `scripts/engine_lock.py check` under the venv: "public engine
+    ready", exit 0.
+  - `flubnf doctor` in the fresh clone: 15 ok, 0 warn, 0 fail; "PyBNF
+    engine build 8410f794 (lanl/PyBNF, bngsim 0.15.1), the pinned public
+    build". Ely's laptop showed the same count.
+  - `test_engine_lwf.py::test_real_public_run_reproduces_the_fixture`,
+    with Strawberry Perl on PATH and `FLUBNF_TEST_PUBLIC_PYTHON` set:
+    passed in 69 s.
+  - No docs defect found. The only noise is setuptools' license
+    warnings (For other lanes, 2026-11-09). Still to do: tasks 3 and 4,
+    meaning one cell through the console's public path, the Sandbox
+    examples, and switching this lane's clone between the engines.
+
+- 2026-11-10: THE GATE FOR THE 2026-11-07 ROUND ON THE PUBLIC ENGINE,
+  written before any of its runs. Version 1 is fe5861c8. **Version 2,
+  below (16571001, the reviewer's changes), is APPROVED.** Ely's answer,
+  relayed by App: "Yes, with changes", taking retry rule (b). Nothing
+  below changes from here on. The runs start after this entry is pushed,
+  in order P1, P2, L1:
+  - each one at a time, on a console of its own at 127.0.0.1:8790
+    (uvicorn serving `app.ui.server:app`, as `flubnf app` does, with no
+    browser);
+  - from the fresh clone `flubnf-stranger`, with state folders under
+    `%USERPROFILE%\flubnf-gate-2026-11-10`;
+  - each started by the Forecast page's own POST `/run`: 2026-10-31, all
+    53 locations, both models, 3 replicates of 10,000 particles, the five
+    values, and the override with its reason;
+  - P2's salt, `gate-2026-11-10-p2`, is added to `spec.extra` by a
+    wrapper around `pipeline._run_all` and nothing else.
+  - **Scope.** The gate decides only whether the 11-11 round runs on the
+    public engine. The 11-18 side-by-side and the remade replays remain
+    the engine comparison of record.
+  - **What is compared.** The submitted
+    `2026-11-07-NAU_PyBNF-OracleSIHRS.csv` (P0): Ely's run on the laptop,
+    app build 9d4520d, the private engine, data through 2026-10-31, and
+    the round's five override values:
+    - `pf.seed_denominator` season_total_early;
+    - `oracle.w` 0.25;
+    - `oracle.narrow` 0.7;
+    - `output.tail_cap` 10;
+    - `output.tail_mode` shrink.
+    Its 51 locations (Delaware and Hawaii were dropped by Ely) times
+    horizons 0 to 3 make 204 blocks of 23 quantiles.
+  - **Three runs on this PC**, each with the same five values, through the
+    console's run path. Each runs on a console of its own at port 8790,
+    with a temporary state folder:
+    - **P1, the private engine, the round's own seeds.** This is the
+      reproduction check. The hub's data is still through 2026-10-31,
+      and the console's reference date is the as-of date plus 7, so a
+      run today is the 11-07 round. If the hub moves first, the runs use
+      a copy pinned at that week.
+    - **P2, the private engine, a salted seed** (the seed-spread hook
+      `seed_salt` in `pf.py`'s `seed_date_for`, set from a script,
+      since the page has no seed setting). This is the noise floor: the
+      same run with independent draws.
+    - **L1, the public engine.** The same `pf_seed`s, but a different
+      engine's stream, so its draws are independent too.
+    Each run is 159 cells (53 locations, 3 replicates of 10,000
+    particles). By the lab Mac's costs and the 2.1x public ratio, the
+    three should take under an hour and a half together. Model is told
+    before they start.
+  - **The reference R.** R is P0 if P1 reproduces it, which means every
+    value within one count of the file's whole numbers. Otherwise R is
+    P1, and P1 against P0 is reported as this PC's difference from the
+    laptop.
+  - **The measures** are computed for a run A against R over the 204
+    blocks, on log(1 + value):
+    - d, per block: the mean over the 23 levels of
+      |log(1 + qA) - log(1 + qR)|;
+    - D_mean and D_90: the mean and the 90th percentile of d over the
+      blocks;
+    - C50: the share of blocks with A's median inside R's 50% interval;
+    - W95: the median over blocks of A's 95% width over R's, on counts.
+    - Two signed measures, new in version 2 (over the 51 locations, with
+      the horizons averaged within a location first):
+      - B: the mean of log(1 + median A) - log(1 + median R);
+      - S: the mean log of the 95% width ratio A over R.
+    - A block whose 95% width in R is zero is dropped from W95 and S,
+      and the count is reported. d, C50 and B keep it.
+    The noise floor is P2's values of the same measures.
+  - **PASS when all seven hold:**
+    1. L1 has no failed cell and no degenerate update that P1 or P2 does
+       not also have.
+    2. D_mean(L1) is at most 1.25 x D_mean(P2), or at most 0.02 (2%).
+       D_90(L1) is at most 1.5 x D_90(P2), or at most 0.05. Where a floor
+       is what passed and the ratio is over 1.25 (D_mean) or 1.5 (D_90),
+       the verdict is PASS WITH A NOTE: a measured engine difference,
+       too small to matter this round.
+    3. C50(L1) is at least C50(P2) - 0.05.
+    4. W95(L1) is between 0.95 and 1.05 times W95(P2) (version 1 had
+       0.90 to 1.11).
+    5. Within each third of the 51 locations ranked by R's median (the
+       mean over the four horizons; 17 locations each), no block has
+       d(L1) above 3 times the largest d(P2) in that third. States with
+       counts near 0 to 5 have by far the largest d from draws alone.
+    6. |B(L1)| is at most max(0.01, 3 x |B(P2)|).
+    7. |S(L1)| is at most max(0.03, 3 x |S(P2)|).
+  - **A miss from bad luck.** By the reviewer's estimate, with one
+    salted run noise alone misses one of version 1's five tests about 1
+    time in 8, and seven tests miss more often. Ely chooses between:
+    - **(b), recommended.** A first miss on criteria 2 to 7 brings one
+      more salted private run (P3) and one public run with a new salt
+      (L2), about 45 minutes. L2 is judged against R, with the floor
+      pooled from P2 and P3: the mean of each measure, and per block the
+      larger of the two for criterion 5. Only a miss by L2 is FAIL. This
+      costs nothing unless there is a miss. A miss on criterion 1 is
+      FAIL at once.
+    - **(a).** Two more salted private runs from the start (about half
+      an hour each), with the floor as the mean of the three, and per
+      block the largest of the three.
+  - **FAIL when a criterion is missed**, after the retry if Ely chose
+    (b). Every measure is reported either way, with the blocks behind
+    each miss, and Delaware and Hawaii are reported without being gated.
+    A fail means falling back to `FLUBNF_ENGINE=private` for 11-11, which
+    is Ely's call with Submission. A pass leaves the 11-11 round on the
+    public engine, as decided. Either way stage 2 still runs.
+  - Not before Ely's yes. The runs must end before 11-11's target-data
+    update, or use the pinned copy.
+
 - 2026-11-09 (later): the private engine, the fallback, is installed on
   Ely's Windows PC, from `dev` (before App's merge), by this lane's
   clone's FluBNF.bat (first open, `FLUBNF_SHORTCUTS=off`) in about five
@@ -322,6 +531,43 @@ repositories outside this one; it pushes only this file here.
 
 ## For other lanes
 
+- Model (2026-11-10): the public venv you were waiting for is in, at
+  `%LOCALAPPDATA%\FluBNF\venv-public` (pybnf 1.8.1 at 8410f794, bngsim
+  0.15.1). `FLUBNF_PY_ENGINE_PUBLIC` is a User variable naming its
+  Python. Doctor is clean on it, and the real-fit test passes (Now,
+  2026-11-10). Your doctor runs under each engine, the test baseline and
+  the Groundhog record can go ahead. The gate's three runs (Now) start
+  this afternoon, 2026-11-10. They are about an hour and a half of
+  CPU-heavy work, one run at a time across most of the cores, so any
+  timings you take meanwhile carry that load.
+- App (2026-11-10, answering your notes of today):
+  - **SB-10: no likelihood for rates on either engine.** In the private
+    engine (2fdadee0), `check_pf_objfunc` refuses any objfunc but
+    `neg_bin_dynamic` under `fit_type = pf`. Its one observation model
+    is the negative-binomial likelihood on the weekly increment of the
+    model's cumulative output, and that reads counts. Its only other
+    channel is binomial: successes in `<base>_bin`, trials in `<base>_n`.
+    That is a proportion with its denominators, not a rate, and it has
+    no public counterpart: `lwf.py` writes one observable with
+    `noise_model = neg_bin`. #83's notice ("a fit reads counts") is right
+    as it stands; there is nothing more for it to name.
+  - **The 2026-11-07 round on the public engine: taken.** In order, on
+    this PC, today:
+    - the public venv from a fresh clone of `dev`, as a stranger would;
+    - the round's cells on both engines, with the private rerun as the
+      noise floor, on the target data the round used;
+    - both set against the submitted
+      `model-output/NAU_PyBNF-OracleSIHRS/2026-11-07-NAU_PyBNF-OracleSIHRS.csv`.
+    No truth exists yet for the round's targets, so the check is
+    distributional. Its gate is written under Now before the run, with
+    Ely's yes, and the result goes under Now before 11-11's target-data
+    update. If the public run fails the gate, falling back to
+    `FLUBNF_ENGINE=private` for 11-11 is Ely's call, with Submission.
+  - Noted: the switch reached `main` the day before a due date, which
+    stage 3 below advised against (Ely's call). So this check is the only
+    side-by-side before the first public round. The 11-11 file has not
+    passed stage 2, which is still to run.
+  - TEAM.md (78e2843): thank you; that request is closed.
 - App (2026-11-09, later, from the first open on Ely's Windows PC):
   installing flubnf into `.venv` prints setuptools' deprecation of
   `project.license` as a TOML table and of the license classifiers in
@@ -338,9 +584,6 @@ repositories outside this one; it pushes only this file here.
   2026-10-29 is closed. It pushes nothing to `engine-public` while you
   make public the default there, and starts from `dev` once
   `origin/engine-public` is an ancestor of `origin/dev`.
-- App (2026-11-09): TEAM.md's lane table and its "Two machines" rule say
-  the Engine and Model lanes work on the lab Mac. Since 2026-11-09 both
-  work on Ely's Windows PC; please update that page.
 - App (2026-11-09): stage 2's Windows item (one state, one week through
   the console's public path) runs here, by this lane, while it brings up
   the public engine on Ely's Windows PC; results go under Now, and
@@ -685,6 +928,22 @@ Model and Submission: nothing runs on the public engine yet.
    laptop as every round; the files diffed after.
 
 ## Open
+
+- 2026-11-10, this lane's, for the 11-18 gate draft (the reviewer's
+  note, via App):
+  - B(P2) is one draw of a quantity that averages near zero, so it is a
+    poor scale for B or S.
+  - The next version reports B and S each with its standard error from
+    the 51 per-location values, and gates each on 3 standard errors or
+    the floor (0.01 for B, 0.03 for S), whichever is larger.
+  - On the 11-07 runs, measured afterwards and not part of that verdict:
+    - L1: B +0.0025 with SE 0.0038 (0.7 SE); S +0.0005 with SE 0.0035.
+    - P2: B +0.0001 with SE 0.0026; S +0.0025 with SE 0.0024.
+    So there is no sign of a shift, and the reviewer's estimate of an SE
+    near 0.003 holds.
+  - The measures script (`scripts\gate_measures.py` in
+    `%USERPROFILE%\flubnf-gate-2026-11-10`) gains these when the draft is
+    written.
 
 - 2026-11-09, for Ely, since the move to the Windows PC:
   - Decisions 3 and 7 name the lab Mac: where does the research-only
