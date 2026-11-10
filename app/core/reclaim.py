@@ -9,10 +9,13 @@ LOAD-BEARING (never touched here):
   * scores.json, run_meta.json, playback caches, season report HTML;
   * a workroot's record: results.json, pf_status.json, cells.json,
     scores_pf.json, report.html and its bundle, every submission CSV;
-  * the sealed record (app/state/retro_seal) and the hub clone: refused
-    wholesale by path resolution before any other rule.
+  * the sealed records (app/state/retro_reseal, the production record,
+    and app/state/retro_seal) and the hub clone: refused wholesale by path
+    resolution before any other rule. Storage's Delete refuses the same.
 
-INTERMEDIATE (deletable once its week or run is COMPLETE):
+INTERMEDIATE (deletable once its week or run is COMPLETE; a run whose
+merged pf_status.json records a failure keeps them as evidence, as the
+pipeline does):
   * per-cell fit trees (<location>_r<n>/: BNGL copies, .net, .cdat/.gdat,
     trajectories, pf_state.npz);
   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
@@ -23,6 +26,7 @@ reach them. An interrupted week keeps every checkpoint and resumes.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -54,11 +58,12 @@ RESEARCH_ROOTS = (APP_STATE / "retro_2s",)
 
 
 def _protected_roots() -> list:
-    """The trees reclaim never touches: the sealed record, the hub clone, and
-    FLUBNF_PROTECT_ROOTS (os.pathsep-separated, read per call) so a research
-    arm outside app/state keeps the per-cell evidence a diagnostic needs."""
+    """The trees reclaim never touches: the sealed records (the production
+    reseal and v1.0.0's seal), the hub clone, and FLUBNF_PROTECT_ROOTS
+    (os.pathsep-separated, read per call) so a research arm outside
+    app/state keeps the per-cell evidence a diagnostic needs."""
     from flubnf.settings import HUB
-    roots = [APP_STATE / "retro_seal", Path(HUB)]
+    roots = [APP_STATE / "retro_reseal", APP_STATE / "retro_seal", Path(HUB)]
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
     roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
     return roots
@@ -154,6 +159,25 @@ def workroot_complete(w: Path) -> bool:
     return (Path(w) / "results.json").is_file()
 
 
+def workroot_failures(w: Path) -> bool:
+    """True when a merged pf_status.json (the top level's, or a research
+    run's pf2s/) records a cell that did not end "ok": the pipeline keeps
+    such a run's fit trees as evidence (it prunes only a run without
+    failures), so reclaim keeps them too. An unreadable status file counts
+    as a failure, never a reason to delete."""
+    for scope in (Path(w), Path(w) / "pf2s"):
+        f = scope / "pf_status.json"
+        if not f.is_file():
+            continue
+        try:
+            st = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return True
+        if not isinstance(st, dict) or any(v != "ok" for v in st.values()):
+            return True
+    return False
+
+
 def workroot_intermediates(w: Path) -> list:
     """Intermediates inside a COMPLETED workroot: the per-cell fit trees,
     the per-shard runner scripts and their stderr, the per-shard cell lists
@@ -161,7 +185,7 @@ def workroot_intermediates(w: Path) -> list:
     (results, scores, the MERGED status, cells.json, report, bundle,
     submissions) stays untouched."""
     w = Path(w)
-    if not workroot_complete(w) or is_protected(w):
+    if not workroot_complete(w) or is_protected(w) or workroot_failures(w):
         return []
     out = []
     try:

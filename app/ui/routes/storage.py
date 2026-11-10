@@ -45,8 +45,13 @@ def _tree_size(path: str) -> int:
 
 
 def _storage_protected(p: Path) -> bool:
-    """True when a path lies inside a sealed record or the hub clone."""
+    """True when a path lies inside a sealed record or the hub clone, or
+    anything else reclaim protects (FLUBNF_PROTECT_ROOTS): one barrier for
+    Delete, Delete all and Reclaim."""
+    from app.core import reclaim
     from flubnf.settings import HUB
+    if reclaim.is_protected(p):
+        return True
     try:
         rp = Path(p).resolve()
     except OSError:
@@ -212,6 +217,7 @@ def _storage_inventory() -> dict:
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
                 "busy": p.name in live_ids,
+                "protected": _storage_protected(p),
                 "why": (_busy_why("workroot", p.name)
                         if p.name in live_ids else ""),
                 # for the dataset rows: the run's size and its dataset
