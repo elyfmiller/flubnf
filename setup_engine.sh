@@ -7,9 +7,10 @@
 #   ./setup_engine.sh            the route FLUBNF_ENGINE names (shell, else .flubnf.env), else public
 #   ./setup_engine.sh --public   the public engine, recorded in .flubnf.env
 #   ./setup_engine.sh --private  the private engine (the fallback), recorded in .flubnf.env
-# Exit codes: 0 ready; 1 not ready (running it again may fix it); 2 an
-# unknown option or FLUBNF_ENGINE value; 3 this machine cannot run the
-# public engine (no Python 3.12, or a platform the lock has no wheels for).
+# Exit codes: 0 ready; 1 not ready (running it again may fix it: every
+# network, pip or conda failure); 2 an unknown option or FLUBNF_ENGINE
+# value; 3 this machine cannot run the public engine (no Python 3.12 and no
+# conda to make one, or a platform the lock has no wheels for).
 set -u
 say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
@@ -183,10 +184,22 @@ case "${1:-}" in
      exit 2 ;;
 esac
 
-# The private engine is there to switch to: its venv's Python and a fork
-# with the particle filter. Said after the public route's failures.
+# The private engine this copy recorded (FLUBNF_PY_ENGINE and FLUBNF_PYBNF in
+# .flubnf.env), read in a subshell as the route is, so this shell's values
+# do not stand in for the record's.
+_rec="$( unset FLUBNF_PY_ENGINE FLUBNF_PYBNF
+         [ -f "$ENVF" ] && . "$ENVF" >/dev/null 2>&1
+         printf '%s\n%s\n' "${FLUBNF_PY_ENGINE:-}" "${FLUBNF_PYBNF:-}" )"
+REC_PY="$(printf '%s\n' "$_rec" | sed -n 1p)"
+REC_PYBNF="$(printf '%s\n' "$_rec" | sed -n 2p)"
+
+# The private engine is there to switch to: a venv's Python and a fork with
+# the particle filter, this shell's, the recorded or the default. Said after
+# the public route's failures.
 private_engine_ready() {
-  [ -x "${FLUBNF_PY_ENGINE:-$ENGINE_VENV/bin/python}" ] && [ -f "$PYBNF/pybnf/pf.py" ]
+  { [ -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ] && [ -f "$PYBNF/pybnf/pf.py" ]; } \
+    || { [ -x "${REC_PY:-/nonexistent}" ] && [ -f "${REC_PYBNF:-$PYBNF}/pybnf/pf.py" ]; } \
+    || { [ -x "$ENGINE_VENV/bin/python" ] && [ -f "$PYBNF/pybnf/pf.py" ]; }
 }
 fallback_line() {
   private_engine_ready || return 0
@@ -206,7 +219,11 @@ PUBLIC_VENV="${PUBLIC_VENV%/}"
 LOCK="${FLUBNF_ENGINE_LOCK:-$HERE/engine-requirements.txt}"
 
 # Exactly 3.12, the Python the lock is resolved for (public PyBNF needs 3.12
-# or newer, and the lock's wheels are 3.12's). Prints its path.
+# or newer, and the lock's wheels are 3.12's). Prints its path. Returns 3
+# when there is none and no conda to make one (running this again cannot
+# fix that), and 1 when conda is there and could not make one: conda
+# downloads it, so that is usually the network, and the next run tries
+# again.
 find_python312() {
   _is312='import sys; assert sys.version_info[:2] == (3, 12)'
   for c in python3.12 python3; do
@@ -226,11 +243,12 @@ find_python312() {
                                "$HOME/miniconda3/bin/conda"; do
     [ -x "$c" ] && { _conda="$c"; break; }
   done
-  [ -n "$_conda" ] || return 1
+  [ -n "$_conda" ] || return 3
   # Its own base, beside the venv: never the private route's flubnf-engine-py312.
   echo "  no Python 3.12 found; asking conda for one (a few minutes)" >&2
   "$_conda" create -y -p "$HOME/.venvs/flubnf-public-py312" python=3.12 >/dev/null \
-    && printf '%s\n' "$HOME/.venvs/flubnf-public-py312/bin/python3"
+    || return 1
+  printf '%s\n' "$HOME/.venvs/flubnf-public-py312/bin/python3"
 }
 
 # A failure that running this again cannot fix: the reason, the private
@@ -337,10 +355,19 @@ public_route() {
   # A Python 3.12 to make it from, looked for only now: a venv that is
   # ready needs none.
   if [ ! -x "$PUBLIC_VENV/bin/python" ]; then
-    if ! PY312="$(find_python312)"; then
-      cannot_run_here "the public engine needs Python 3.12, and none was found or creatable." \
-        "Install 3.12 (python.org, Homebrew or conda) and run this again."
-    fi
+    PY312="$(find_python312)"
+    _py312_rc=$?
+    case "$_py312_rc" in
+      0) ;;
+      3) cannot_run_here "the public engine needs Python 3.12, and none was found or creatable." \
+           "Install 3.12 (python.org, Homebrew or conda) and run this again." ;;
+      *) # never exit 3: FluBNF.command would stamp a dropped connection as
+         # a machine that cannot run the public engine
+         warn "conda could not make a Python 3.12 (its error is above). conda downloads"
+         warn "it, so this is usually the network: run this again with the network up."
+         warn "Or install 3.12 (python.org, Homebrew or conda) and run this again."
+         exit 1 ;;
+    esac
     ok "$("$PY312" -V 2>&1) at $PY312"
     if ! "$PY312" -m venv "$PUBLIC_VENV"; then
       warn "Python could not make the venv (its error is above)"
@@ -392,15 +419,42 @@ fi
 # only where FLUBNF_ENGINE=private is set or recorded.
 
 # The import every generated runner does (checkout first on sys.path). It
-# gates the record at the end, and the switch below.
+# gates the record at the end, and the switch below. $1 and $2: a venv's
+# Python and a checkout, by default this run's.
 verify_private() {
-  "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
+  "${1:-$ENGINE_VENV/bin/python}" - "${2:-$PYBNF}" <<'PYEOF'
 import sys
 sys.path.insert(0, sys.argv[1])
 import bngsim, pybnf
 from pybnf.pf import ParticleFilter  # the point of the whole exercise
 print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
 PYEOF
+}
+
+# The first line of an unpacked copy's version stamp, if it has one.
+copy_stamp() {
+  for _v in "$1/VERSION" "$1/.git_archival.txt"; do
+    [ -f "$_v" ] && { head -1 "$_v" 2>/dev/null; return 0; }
+  done
+  return 0
+}
+
+# The engine archive that replaces the unpacked copy in $1 ("save the file,
+# open the app"): the one the search picks (FLUBNF_PYBNF_BUNDLE, else the
+# newest in the usual folders), when its stamp DIFFERS from the copy's and
+# the file is newer than the copy's VERSION: an old download must never
+# downgrade. Prints the archive, then its stamp; nothing (and 1) when none
+# does. A git checkout is never replaced. The --private switch and the
+# replacement below both ask this, so the switch never skips a replacement.
+replacing_archive() {
+  [ -d "$1/.git" ] && return 1
+  [ -f "$1/pybnf/pf.py" ] && [ -f "$1/setup.py" ] || return 1
+  _ra_arc="$(find_engine_bundle 2>/dev/null)"
+  case "$_ra_arc" in *.tar.gz) ;; *) return 1 ;; esac
+  _ra_new="$(archive_version_stamp "$_ra_arc")"
+  [ -n "$_ra_new" ] && [ "$_ra_new" != "$(copy_stamp "$1")" ] || return 1
+  [ ! -f "$1/VERSION" ] || [ "$_ra_arc" -nt "$1/VERSION" ] || return 1
+  printf '%s\n%s\n' "$_ra_arc" "$_ra_new"
 }
 
 if [ -n "$RECORD_ROUTE" ]; then
@@ -410,50 +464,83 @@ if [ -n "$RECORD_ROUTE" ]; then
   record_env 'FLUBNF_ENGINE' 'export FLUBNF_ENGINE=private'
   ok "FLUBNF_ENGINE=private recorded in $ENVF"
   # Already installed and working: switch, and stop. No pip and no
-  # network, so this works offline in seconds.
-  if [ -x "$ENGINE_VENV/bin/python" ] && verify_private 2>/dev/null; then
+  # network, so this works offline in seconds. The venv and checkout this
+  # copy recorded are tried first, so the fallback runs in the environment
+  # that made its earlier rounds (a FLUBNF_ENGINE_VENV or FLUBNF_PYBNF set
+  # in this shell names its own, and a recorded folder with no engine in it,
+  # as setup.sh can record, gives way to the search); then the defaults.
+  _py1="$REC_PY"
+  [ -z "${FLUBNF_ENGINE_VENV:-}" ] && [ -n "$_py1" ] || _py1="$ENGINE_VENV/bin/python"
+  _pf1="$REC_PYBNF"
+  [ -z "${FLUBNF_PYBNF:-}" ] && [ -f "$_pf1/pybnf/pf.py" ] || _pf1="$PYBNF"
+  _swpy=""
+  _swpf=""
+  for _try in 1 2; do
+    if [ "$_try" = 1 ]; then
+      _p="$_py1"; _c="$_pf1"
+    else
+      _p="$ENGINE_VENV/bin/python"; _c="$PYBNF"
+      [ "$_p" = "$_py1" ] && [ "$_c" = "$_pf1" ] && break
+    fi
+    if [ -x "$_p" ] && [ -f "$_c/pybnf/pf.py" ] && verify_private "$_p" "$_c" 2>/dev/null; then
+      _swpy="$_p"; _swpf="$_c"; break
+    fi
+  done
+  if [ -z "$_swpy" ]; then
+    ok "not installed yet, or it does not load: installing it"
+  elif [ -n "$(replacing_archive "$_swpf")" ]; then
+    # A different engine archive is offered for this copy: the install
+    # below puts it in place of the one on disk, in this venv.
+    case "$_swpy" in */bin/python) ENGINE_VENV="${_swpy%/bin/python}" ;; esac
+    PYBNF="$_swpf"
+    ok "the private engine loads, and a different engine archive is here for it: installing that"
+  else
     record_env 'FLUBNF_PY_ENGINE|FLUBNF_PYBNF' \
-      "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\"" \
-      "export FLUBNF_PYBNF=\"$PYBNF\""
+      "export FLUBNF_PY_ENGINE=\"$_swpy\"" \
+      "export FLUBNF_PYBNF=\"$_swpf\""
+    ok "venv: $_swpy"
+    ok "checkout: $_swpf"
     ok "the private engine is installed and works: this copy runs it now (the fallback). ./setup_engine.sh --public goes back to the default."
     exit 0
   fi
-  ok "not installed yet, or it does not load: installing it"
 fi
 
 # The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
-# at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
+# at cp312 (newer Pythons build numpy from source and fail). Else conda makes
+# a 3.12. Only to make the venv: one already there needs none.
 PY=""
-for c in python3.12 python3.11 python3; do
-  cand=$(command -v "$c" 2>/dev/null) || continue
-  "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
-    && { PY="$cand"; break; }
-done
-if [ -z "$PY" ]; then
-  for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
-              /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
-              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
-              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
-    [ -x "$cand" ] && { PY="$cand"; break; }
+if [ ! -x "$ENGINE_VENV/bin/python" ]; then
+  for c in python3.12 python3.11 python3; do
+    cand=$(command -v "$c" 2>/dev/null) || continue
+    "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
+      && { PY="$cand"; break; }
   done
-fi
-if [ -z "$PY" ]; then
-  CONDA=$(command -v conda 2>/dev/null)
-  [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
-                              "$HOME/miniconda3/bin/conda"; do
-    [ -x "$c" ] && { CONDA="$c"; break; }
-  done
-  if [ -n "$CONDA" ]; then
-    echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
-    "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
-      && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
+  if [ -z "$PY" ]; then
+    for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
+                /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
+                /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
+                /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
+      [ -x "$cand" ] && { PY="$cand"; break; }
+    done
   fi
-fi
-if [ -z "$PY" ]; then
-  warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
-  warn "for newer Pythons) and none was found or creatable. Install 3.12"
-  warn "(python.org, Homebrew, or conda) and re-run."
-  exit 1
+  if [ -z "$PY" ]; then
+    CONDA=$(command -v conda 2>/dev/null)
+    [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
+                                "$HOME/miniconda3/bin/conda"; do
+      [ -x "$c" ] && { CONDA="$c"; break; }
+    done
+    if [ -n "$CONDA" ]; then
+      echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
+      "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
+        && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
+    fi
+  fi
+  if [ -z "$PY" ]; then
+    warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
+    warn "for newer Pythons) and none was found or creatable. Install 3.12"
+    warn "(python.org, Homebrew, or conda) and re-run."
+    exit 1
+  fi
 fi
 
 say "PyBNF fork (feature/particle-filter), the private engine (the fallback)"
@@ -477,10 +564,7 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
   # --no-deps` and needs only an importable package. It has no git identity,
   # so print its stamp: 'which build' is the first question when forecasts differ.
   ok "unpacked copy present (no git): $PYBNF"
-  PFVER=""
-  for v in "$PYBNF/VERSION" "$PYBNF/.git_archival.txt"; do
-    [ -f "$v" ] && { PFVER="$(head -1 "$v" 2>/dev/null)"; break; }
-  done
+  PFVER="$(copy_stamp "$PYBNF")"
   if [ -n "$PFVER" ]; then
     ok "version stamp: $PFVER"
   else
@@ -488,17 +572,13 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
     warn "answer. Whoever cut the archive should include one. Harmless for a"
     warn "single machine, awkward the moment two people compare forecasts."
   fi
-  # A newer archive saved since replaces this copy ("save the file, open the
-  # app"), but only if its stamp DIFFERS and the file is newer than the
-  # installed VERSION: an old download must never downgrade. The old copy is
-  # moved aside, never deleted, and put back if the install fails.
-  _arc="$(find_engine_bundle 2>/dev/null)"
-  _newver=""
-  case "$_arc" in
-    *.tar.gz) _newver="$(archive_version_stamp "$_arc")" ;;
-  esac
-  if [ -n "$_newver" ] && [ "$_newver" != "$PFVER" ] \
-     && { [ ! -f "$PYBNF/VERSION" ] || [ "$_arc" -nt "$PYBNF/VERSION" ]; }; then
+  # A newer archive saved since replaces this copy (replacing_archive says
+  # which). The old copy is moved aside, never deleted, and put back if the
+  # install fails.
+  _repl="$(replacing_archive "$PYBNF")"
+  _arc="$(printf '%s\n' "$_repl" | sed -n 1p)"
+  _newver="$(printf '%s\n' "$_repl" | sed -n 2p)"
+  if [ -n "$_newver" ]; then
     say "a different engine archive has arrived since this copy was installed"
     ok "on disk:  ${PFVER:-(no stamp)}"
     ok "archive:  $_newver"
