@@ -72,11 +72,17 @@ _SNAP_LOCK = threading.Lock()
 _SNAPS: "OrderedDict[tuple, tuple]" = OrderedDict()
 
 
+#: st_ctime_ns is in the key on POSIX only, where a rewrite in place with
+#: the size, mtime and inode put back still moves it. On Windows os.stat
+#: gives the creation time and os.fstat (Python 3.12 on) the last change,
+#: so a lookup's key (stat) would never meet the stored key (fstat) and a
+#: snapshot would be parsed again on every call.
+_CTIME_IN_KEY = os.name != "nt"
+
+
 def _snap_key(path: str, st: os.stat_result) -> tuple:
-    # st_ctime_ns: a rewrite in place with the size, mtime and inode put
-    # back still moves it (POSIX; on Windows it is the creation time)
-    return (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev,
-            st.st_ctime_ns)
+    key = (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev)
+    return key + (st.st_ctime_ns,) if _CTIME_IN_KEY else key
 
 
 #: the columns weeks() and series() read

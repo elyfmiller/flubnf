@@ -248,6 +248,39 @@ def test_a_versioned_dataset_parses_each_snapshot_once(monkeypatch):
                       for w in ds.forecast_dates()]
 
 
+def test_a_snapshot_is_parsed_once_where_stat_and_fstat_disagree(monkeypatch):
+    """Windows with Python 3.12: os.stat gives the creation time as
+    st_ctime and os.fstat the last change, so a key holding ctime never
+    met itself and every call parsed the snapshot again. With ctime out of
+    the key there (_CTIME_IN_KEY off), a stat and an fstat that disagree
+    on ctime alone still find one entry."""
+    import types
+    real_os = DM.os
+
+    class _Os(types.ModuleType):
+        def __getattr__(self, name):
+            return getattr(real_os, name)
+
+        @staticmethod
+        def fstat(fd):
+            st = real_os.fstat(fd)
+            fields = {k: getattr(st, k) for k in dir(st)
+                      if k.startswith("st_")}
+            fields["st_ctime_ns"] = st.st_ctime_ns + 12_345
+            return types.SimpleNamespace(**fields)
+    monkeypatch.setattr(DM, "os", _Os("os"))
+    monkeypatch.setattr(DM, "_CTIME_IN_KEY", False)
+    ds = _make("versioned")
+    DM.clear_snapshot_cache()
+    parsed = _count_parses(monkeypatch)
+    for w in ds.forecast_dates():
+        for _ in range(3):
+            for n in ds.groups:
+                ds.series(n, w)
+    assert parsed == [os.path.abspath(ds.vintage_path(w))
+                      for w in ds.forecast_dates()]
+
+
 @pytest.mark.parametrize("kind", ["final", "versioned"])
 def test_a_replay_reads_each_snapshot_once(kind, tmp_path, monkeypatch):
     ds = _make(kind)
