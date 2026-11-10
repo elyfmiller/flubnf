@@ -117,7 +117,8 @@ def _no_machine_python312(tmp_path: Path) -> str:
 
 def _path_without_python(tmp_path: Path, conda: str | None) -> str:
     """PATH: Apple silicon's uname, a conda stand-in (`conda` is its body,
-    or None for no conda) and every tool of /usr/bin and /bin but Python."""
+    or None for no conda) and every tool of /usr/bin and /bin but Python
+    and conda."""
     stub, tools = tmp_path / "stub-bin", tmp_path / "tools"
     _script(stub / "uname",
             'case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; '
@@ -130,7 +131,10 @@ def _path_without_python(tmp_path: Path, conda: str | None) -> str:
         if not os.path.isdir(d):
             continue
         for name in os.listdir(d):
-            if name.startswith("python") or (tools / name).exists():
+            # GitHub's Linux image puts conda in /usr/bin: a test that
+            # says "no conda" must not find the real one there
+            if (name.startswith(("python", "conda", "mamba", "micromamba"))
+                    or (tools / name).exists()):
                 continue
             os.symlink(os.path.join(d, name), tools / name)
     return f"{stub}{os.pathsep}{tools}"
