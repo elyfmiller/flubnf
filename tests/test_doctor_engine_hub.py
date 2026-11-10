@@ -114,7 +114,11 @@ def test_numpy2_check_leaves_the_fork_alone_on_the_public_engine(
         engine, tmp_path, monkeypatch):
     _no_pybnf_in_console(monkeypatch)
     (engine.fork / "pybnf" / "algorithms.py").write_text("x = np.Inf\n")
-    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    # the public engine by the default: nothing set, and no record (conftest
+    # points settings.INSTALL_ROOT at an empty folder)
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
     for fork in (engine.fork, tmp_path / "no-fork"):    # unpatched, absent
         monkeypatch.setattr(settings, "PYBNF", fork)
         res = doctor._check_numpy2_pybnf()

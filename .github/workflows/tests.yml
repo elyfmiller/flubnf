@@ -333,15 +333,20 @@ jobs:
           Write-Host "setup.ps1 parsed clean"
           exit 0
 
-      # Run 1 has no -Engine and no record: the public engine, the default.
-      # Run 2 records the private engine (-Engine private), the fallback;
-      # runs 3 and 4 keep that record; run 5 goes back with -Engine public.
+      # Run 1 has no -Engine and no record: the public engine, the default,
+      # with a FLUBNF_ENGINE in its environment that names no engine (said,
+      # never recorded). Run 2 records the private engine (-Engine private),
+      # the fallback, before anything is installed, and clears an account
+      # FLUBNF_ENGINE that names the other engine; runs 3 and 4 keep that
+      # record (run 4 over an environment that names public); run 5 goes
+      # back with -Engine public.
       - name: "run 1 of 5: no data fetch, no fork probe"
         shell: cmd
         timeout-minutes: 10
         env:
           FLUBNF_NO_DATA: "1"
           FLUBNF_NO_PROBE: "1"
+          FLUBNF_ENGINE: "pubic"
         run: |
           rem FLUBNF_HUB unset: the %LOCALAPPDATA% default, no legacy folder. -NoPrompt here, omitted in run 2.
           set "LOG=%RUNNER_TEMP%\setup-run1.log"
@@ -371,7 +376,9 @@ jobs:
             "controlled folder access",
             "flubnf installed editable",
             "(read by FluBNF.bat on every launch)",
-            # no -Engine and no record: the public engine, the default
+            # no -Engine and no record: the public engine, the default,
+            # whatever an unknown value in the environment says
+            'FLUBNF_ENGINE is "pubic", which is neither private nor public:',
             "Engine: public PyBNF, the default.",
             "lock:",
             "PyBNF wheel:",
@@ -421,6 +428,19 @@ jobs:
           if not "%FOUND%"=="0" echo ::error::.flubnf.env.cmd points somewhere unexpected. With no FLUBNF_HUB set and no checkout at the old Documents location it must record the default under %%LOCALAPPDATA%%, which Controlled Folder Access does not protect.
           if not "%FOUND%"=="0" exit /b 1
           exit /b 0
+
+      # The account's FLUBNF_ENGINE names the other engine: -Engine private
+      # clears it (flubnf doctor and the CLI in a new window would follow it
+      # over the record). Steps read the runner's environment, not the
+      # registry, so no step sees it; the runner is thrown away after the job.
+      - name: "run 2: an account FLUBNF_ENGINE that names the other engine"
+        shell: powershell
+        run: |
+          [Environment]::SetEnvironmentVariable("FLUBNF_ENGINE", "public", "User")
+          $now = [Environment]::GetEnvironmentVariable("FLUBNF_ENGINE", "User")
+          if ($now -ne "public") { Write-Host "::error::could not set the account's FLUBNF_ENGINE, so the clear below tests nothing"; exit 1 }
+          Write-Host "account FLUBNF_ENGINE=$now"
+          exit 0
 
       - name: "run 2 of 5: the REAL FluSight sparse clone"
         shell: cmd
@@ -479,6 +499,9 @@ jobs:
             "hub data ready (sparse)",
             "engine venv not ready",
             "PRIVATE repository",
+            # recorded first, before anything is installed or fetched
+            "FLUBNF_ENGINE=private recorded in",
+            "cleared FLUBNF_ENGINE=public from your account's environment",
             "this copy runs the private engine now, the fallback (FLUBNF_ENGINE=private)",
             "some externals missing"
           )
@@ -496,6 +519,18 @@ jobs:
           $envCmd = if (Test-Path ".flubnf.env.cmd") { Get-Content ".flubnf.env.cmd" -Raw } else { "" }
           if (-not $envCmd.Contains('set "FLUBNF_ENGINE=private"')) {
             $bad += '.flubnf.env.cmd does not record set "FLUBNF_ENGINE=private" after -Engine private'
+          }
+          # recorded before the first pip, as the switch must be (read in
+          # the flattened transcript: PS 5.1 wraps host output mid-word)
+          $rec = $flat.IndexOf(("FLUBNF_ENGINE=private recorded in" -replace '\s', ''))
+          $pip = $flat.IndexOf(("flubnf installed editable" -replace '\s', ''))
+          if ($rec -lt 0 -or $pip -lt 0 -or $rec -gt $pip) {
+            $bad += "-Engine private was not recorded before the console's install"
+          }
+          # the account's value that named the other engine is gone
+          $acct = [Environment]::GetEnvironmentVariable("FLUBNF_ENGINE", "User")
+          if ($acct) {
+            $bad += "the account still sets FLUBNF_ENGINE=$acct after -Engine private"
           }
           # the probe must say "refused" or "undetermined", never nothing
           if (-not ((Has "this machine cannot read") -or
@@ -604,6 +639,8 @@ jobs:
         env:
           FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
           FLUBNF_NO_PROBE: "1"
+          # the record (private, from run 2) outranks the environment
+          FLUBNF_ENGINE: "public"
         run: |
           rem The command from the bug report, verbatim except for the path.
           git clone --filter=blob:none --sparse --depth 1 https://github.com/cdcepi/FluSight-forecast-hub "%RUNNER_TEMP%\byhand-hub"
@@ -644,15 +681,24 @@ jobs:
           $must = @(
             "hub present:",
             "this clone does not contain",
-            "sparse checkout widened"
+            "sparse checkout widened",
+            # no -Engine: the record from run 2 stands over FLUBNF_ENGINE=public
+            # in this run's environment
+            "Engine: the private PyBNF fork, the fallback (FLUBNF_ENGINE=private);",
+            "engine venv not ready"
           )
           $mustNot = @(
             "all externals present",
             "git clone failed",
-            "hub data ready (sparse)"
+            "hub data ready (sparse)",
+            "Engine: public PyBNF, the default."
           )
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          $envCmd = if (Test-Path ".flubnf.env.cmd") { Get-Content ".flubnf.env.cmd" -Raw } else { "" }
+          if (-not $envCmd.Contains('set "FLUBNF_ENGINE=private"')) {
+            $bad += 'a run with no -Engine and FLUBNF_ENGINE=public in its environment dropped the record set "FLUBNF_ENGINE=private"'
+          }
           if ($bad.Count -gt 0) {
             foreach ($b in $bad) { Write-Host "::error::run 4: $b" }
             exit 1
