@@ -19,6 +19,7 @@ APIs (retro_results, api_retro_playback, api_retro_mapswap, _season_report)
 from __future__ import annotations
 
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
@@ -292,13 +293,21 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         return _back(request, "/retro")
     weeks = retro.run_summary(p)["weeks"]
     size_h = retro.human_bytes(retro.dir_size(p))
-    try:
-        retro.delete_tree(p)
-    except Exception as e:
-        _flash(f"Could not delete the archived {season} run: "
-               f"{type(e).__name__}: {str(e)[:160]}.", "error",
-               detail="Nothing else changed.")
-        return _back(request, "/retro")
+    # its results may still be written (a results page opened it): a
+    # delete meanwhile could fail half way. Marked first, so no results
+    # page starts a finalize on it from here on (retro_prep._removing)
+    with retro_prep._removing(p) as busy:
+        if busy:
+            _flash(f"Not deleted: the {busy} of {what} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/retro")
+        try:
+            retro.delete_tree(p)
+        except Exception as e:
+            _flash(f"Could not delete the archived {season} run: "
+                   f"{type(e).__name__}: {str(e)[:160]}.", "error",
+                   detail="Nothing else changed.")
+            return _back(request, "/retro")
     _flash(f"Deleted {what}: {weeks} week"
            f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
            detail=f"The live {season} season was not touched.")
@@ -536,7 +545,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         return _refused("Not started: unrecognized season name.")
     # busy checks, the archive/discard move and the claim all run under
     # _engine_lock (the move is part of claiming the tree); the worker does not
-    with _engine_lock:
+    with _engine_lock, ExitStack() as held:
         if _season_status(season) in _RETRO_ACTIVE:
             return _refused(
                 f"Not started: {season} is already replaying (status: "
@@ -751,6 +760,19 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 "newest week reads 0.",
                 "Set Groundhog when the newest week reads 0: abstain, "
                 "level, extend or blend.")
+        # a delete or a move: the tree is marked first, so no results page
+        # starts a finalize on it until the claim below (retro_prep.
+        # _removing; leaving `held` lifts the mark)
+        busy = (held.enter_context(retro_prep._removing(live))
+                if mode in ("discard", "archive") and existing else "")
+        if busy:
+            # its results: a delete or a move while they are written could
+            # fail half way
+            return _refused(
+                f"Not started: the {season} {busy} are still being "
+                "prepared.", "Nothing was "
+                + ("deleted" if mode == "discard" else "archived")
+                + ". Try again in a minute.")
         if mode == "discard":
             if existing:
                 try:
@@ -988,6 +1010,9 @@ def retro_results(request: Request, season: str, week: str = "",
         return _refused(
             "Unrecognized archived run identifier.")
     root, _is_seal = retro_seasons._season_root(season, archive)
+    if retro_prep._being_removed(root):
+        # a delete or a move has it: its files are going
+        return _refused(f"{season}: {retro_prep._REMOVING_WHY}.")
     # an archived entry imported from another machine says so in place of
     # the archived-run banner (app/core/replay_bundle)
     from app.core import replay_bundle
@@ -1020,6 +1045,9 @@ def retro_results(request: Request, season: str, week: str = "",
                      or _results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
+        if job.get("refused"):
+            # a delete began since the check above: no job was started
+            return _refused(f"{season}: {job['error']}.")
         job["done"].wait(_RESULTS_GRACE_S)
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
