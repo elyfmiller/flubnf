@@ -17,3 +17,6 @@ Live (the PR tree over a private hub copy, the G31 fixtures: the SIR example, th
 - SB-26: the failed run's zip holds meta.json, m.bngl, data.exp, priors.conf and pf_runner_0.err.
 - SB-18, SB-21, SB-22, SB-25, UI-16: by the tests (Simulate needs the engine here; the save-only-what-differs rule, the labels and 10,000, the dataset start's card, the singulars and the copy's time are each pinned in test_sandbox_polish.py).
 - The model page's marks: the machine notice's "?" (no engine), the files' "i" and the run settings' "i", as on dev (G35 looks at those).
+
+## Re-review of 697f7415 (B)
+Approve. The push changes only `app/tests/test_sandbox_polish.py`: the run-zip test writes the engine's .err as bytes, so Windows adds no \r. The file passes here; all ten checks are green on this head. Merged by B at the App lane's request (A's session paused), as a merge commit.
