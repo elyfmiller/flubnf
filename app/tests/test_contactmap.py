@@ -378,7 +378,8 @@ def test_network_graph_sinks_stoichiometry_and_null_reactions():
     assert len(two) == 1 and two[0]["kind"] == "transfer" and two[0]["text"] == "A + A -> B, rate k2"
     assert "_R4" not in by_rule                                                    # nothing changes
     assert [(e["from"], e["to"], e["kind"]) for e in by_rule["_R5"]] == [("s1", "s1", "catalytic")]
-    assert cm.network_graph({"species": [], "reactions": []}) == {"nodes": [], "edges": [], "influences": []}
+    assert cm.network_graph({"species": [], "reactions": []}) == {
+        "nodes": [], "edges": [], "influences": [], "reactions": 0}
 
 
 def test_contact_graph_carries_ids_for_the_page():

@@ -107,9 +107,11 @@
         var c = unclocked(g), v = MV.network(box, c.graph), rules = {}, n = 0;
         g.nodes.forEach(function (nd) { if (nd.kind === 'species') n++; });
         g.edges.forEach(function (e) { rules[e.rule] = 1; });
-        var m = Object.keys(rules).length;
+        // the model's rules, a rule that draws no arrow too (rule_flow)
+        var m = typeof g.rules === 'number' ? g.rules : Object.keys(rules).length;
         v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules')
           + ' in the saved model';
+        v.svg.setAttribute('aria-label', 'model: ' + v.idle);
         v.say();
         var wrap = document.createElement('div');
         wrap.appendChild(v.el);

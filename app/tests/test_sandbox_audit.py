@@ -107,8 +107,8 @@ def test_split_reason_keeps_the_remedy_in_the_tip():
     ("engine", "does not provide fit_type = pf", "Downloads"),
     ("python", "The engine's Python is missing", "FLUBNF_PY_ENGINE"),
 ])
-def test_a_preflight_refusal_flashes_its_reason_and_its_remedy(box, monkeypatch,
-                                                                why, notice, remedy):
+def test_a_preflight_refusal_points_at_the_pages_reason_and_remedy(
+        box, monkeypatch, why, notice, remedy):
     sb.add_example("kinetics_example")
     if why == "perl":
         monkeypatch.setattr(pf_engine, "perl_available", lambda: False)
@@ -118,10 +118,14 @@ def test_a_preflight_refusal_flashes_its_reason_and_its_remedy(box, monkeypatch,
         monkeypatch.setattr(pf_engine, "PY310", Path("/nonexistent/bin/python"))
     _post("/sandbox/run", {"model": "kinetics_example"})
     msg, detail = _flash()
-    assert msg.startswith("Not started: ") and notice in msg
-    # the remedy is shown: in the tip, or on the line when the whole
-    # reason is short (FluBNF.bat's remedy on Windows is)
-    assert remedy in msg + detail, (msg, detail)
+    # the page's notice says the reason and its remedy (in its "?", or on
+    # the line when the whole reason is short): the refusal points at it
+    # rather than saying it twice (G31, SB-19)
+    assert msg == ("Not started: this computer cannot fit yet; the notice "
+                   "above the editor says why.") and not detail
+    page = client.get("/sandbox?model=kinetics_example").text
+    said = page.split('id="sb-machine"', 1)[1].split("</div>", 1)[0]
+    assert notice.replace("'", "&#39;") in said and remedy in said, said
     assert _no_runs()                                       # nothing made
 
 
