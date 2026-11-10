@@ -109,7 +109,9 @@ def test_a_refusal_keeps_the_particles_replicates_and_same_day_week(
         "season": OTHER, "locations": "custom", "engine": "pf",
         "particles": "2000", "replicates": "5", "drop_same_day": "1",
         "knob.groundhog.zero_anchor": "blend"}, follow_redirects=False)
-    assert "no locations checked" in ui_state._status["flash"]
+    # refused either way: no locations checked, or, on a machine without
+    # the engine (CI), the Oracle preset's engine check comes first
+    assert "Not started" in ui_state._status["flash"]
     form = _run_form()
 
     def value(name):
