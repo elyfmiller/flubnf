@@ -641,9 +641,9 @@ The templates are fitted by the Liu-West filter. The PyBNF build that runs
 it changes once in the 2026-27 season, at the switch to the public engine.
 The switch is Ely's decision of 2026-11-09.
 
-* Last round on the private engine: [CUTOVER-ROUND]. The lab's PyBNF fork,
+* Last round on the private engine: the round of reference date 2026-11-07. The lab's PyBNF fork,
   `feature/particle-filter` at `2fdadee0`, bngsim 0.15.1, `fit_type = pf`.
-* First round on the public engine: [CUTOVER-ROUND]. lanl/PyBNF at
+* First round on the public engine: the round of reference date 2026-11-14, run on 2026-11-11. lanl/PyBNF at
   `8410f794` (`job_type = lwf`), installed as the wheel on the release
   `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b` of elyfmiller/flubnf
   (`pybnf-1.8.1-py3-none-any.whl`, sha256
