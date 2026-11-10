@@ -509,8 +509,13 @@ def test_the_fit_time_writers_are_on_the_allow_list():
         assert token in PS1, f"{token} is not offered to remedy 2"
     allow = PS1.index("Allow the specific programs through")
     tail = PS1[allow:allow + 3000]
-    for token in ("$PerlExe", "$RunNetExe", "$GitExe", "$EnginePy", "$VenvPy"):
+    for token in ("$PerlExe", "$RunNetExe", "$GitExe", "$EnginePy", "$VenvPy",
+                  "$PublicPy"):
         assert token in tail, f"{token} is not printed under remedy 2"
+    # the public engine's Python writes lwf\out under app\state\workroots: on
+    # the allow-list on its route (the default), or wherever it is installed
+    assert ('if (($EngineRoute -eq "public") -or (Test-Path -LiteralPath '
+            '$PublicPy)) {') in tail
     for needle in ("perl.exe", "run_network.exe", "app\\state\\workroots"):
         assert needle in DOC, f"docs/WINDOWS.md never mentions {needle}"
 
@@ -652,7 +657,7 @@ def test_the_windows_doc_describes_ci_as_the_workflow_runs_it():
     bullet = " ".join(bullet[:bullet.index("\n- **", 1)].split())
     assert "promoted to required" not in bullet
     fuses = re.findall(r"^    timeout-minutes: (\d+)", WORKFLOW, re.MULTILINE)
-    assert len(fuses) == 4, fuses
+    assert len(fuses) == 6, fuses
     for minutes in fuses:
         assert re.search(rf"\b{minutes}\b", bullet), (
             f"the workflow gives a job {minutes} minutes and the doc does "

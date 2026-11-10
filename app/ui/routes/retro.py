@@ -185,7 +185,12 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                                        # a half-installed engine cannot
                                        # run the Oracle preset either
                                        "engine_ok": pipeline._pf_engine_state()
-                                       == "ready"})
+                                       == "ready",
+                                       # the switch to the private engine
+                                       # when the default is missing and
+                                       # the fallback is installed here
+                                       "engine_fallback":
+                                       templating._engine_fallback_hint()})
 
 
 @router.get("/api/retro/progress")
@@ -683,15 +688,28 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     "run it.")
             # nor on another engine build (the rule is retro.run_season's
             # too): weeks fitted by two engines would be scored as one
-            bchange = retro.engine_build_change(
-                (retro.read_meta(live) or {}).get("settings"), engine)
+            prior_settings = (retro.read_meta(live) or {}).get("settings")
+            bchange = retro.engine_build_change(prior_settings, engine)
             if bchange:
+                # the engine the season began on (a record with no build was
+                # fitted by the private engine) against this machine's
+                from app.core import engine_build as _eb
+                had_engine = _eb.engine_of(
+                    prior_settings.get("engine_build")
+                    if isinstance(prior_settings, dict) else None)
+                if had_engine != _eb.engine_of(_eb.engine_build()):
+                    remedy = (f"To finish it on the {had_engine} engine it "
+                              f"began on: {_eb.switch_step(had_engine)}; or "
+                              "archive or discard the existing results to "
+                              "replay it on this one.")
+                else:
+                    remedy = ("Switch the engine back, or archive or discard "
+                              "the existing results to run it.")
                 return _refused(
                     f"Not started: {season} has {existing} week"
                     f"{'' if existing == 1 else 's'} that {bchange}.",
                     "Resuming would mix two engine builds in one season. "
-                    "Switch the engine back, or archive or discard the "
-                    "existing results to run it.")
+                    + remedy)
         if mode == "discard" and confirm != season:
             return _refused(
                 f"Not started: discarding {season} was not confirmed.",

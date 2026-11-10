@@ -17,7 +17,8 @@ INTERMEDIATE (deletable once its week or run is COMPLETE; a run whose
 merged pf_status.json records a failure keeps them as evidence, as the
 pipeline does):
   * per-cell fit trees (<location>_r<n>/: BNGL copies, .net, .cdat/.gdat,
-    trajectories, pf_state.npz);
+    trajectories, pf_state.npz; on the public engine its lwf/ files and
+    Results/LWF tables);
   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
     .prog files.
 

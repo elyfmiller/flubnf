@@ -81,6 +81,14 @@ def test_the_key_is_read_off_both_engine_files(tmp_path, monkeypatch):
     assert pf.engine_current()
 
 
+def test_the_public_engine_writes_no_sampling_interval(pr_tree, monkeypatch):
+    """On the public engine, the default, pf.conf does not depend on
+    whether a private checkout that accepts the key sits on disk."""
+    assert pf.sampling_interval_line() == f"{KEY} = 1\n"
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert pf.sampling_interval_line() == ""
+
+
 def test_the_key_is_never_required(pr_tree):
     """An engine that lacks it is not stale: the console adapts to it."""
     assert KEY not in pf.CONF_KEYS_REQUIRED

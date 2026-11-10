@@ -1,13 +1,16 @@
 """The runner's supervisor (app/core/runner.py serve, one poll at a time):
-one runner per computer; jobs only from a clean main; the job child
+one runner per computer; jobs only from a clean main; the engine read
+as the console reads it, the one the install records or no start, and
+named (its start line, runner.json, Storage's line); the job child
 isolated (-I, its own session, no PYTHON*, caffeinate, runner.json's job
-written first); the heartbeat and the waiting move while a job runs; a
-Stop from its page is said; the queue held for replays, never for fits
-(a command line that is not UTF-8 hides none), and for an engine older
-than the console; a job the disk cannot hold waits while a smaller one
-runs; the time, memory, folder and free-space limits kill the job's
-tree and record why (SIGKILL for what outlives SIGTERM); a crashed child
-is recorded, not requeued; a restart or SIGTERM (^C too, its Terminal
+written first) and on the runner's engine; the heartbeat and the waiting
+move while a job runs; a Stop from its page is said; the queue held for
+replays, never for fits (a command line that is not UTF-8 hides none),
+and for an engine older than the console; a job the disk cannot hold
+waits while a smaller one runs; the time, memory, folder and free-space
+limits kill the job's tree and record why (SIGKILL for what outlives
+SIGTERM, each group a fit leads signalled whole); a crashed child is
+recorded, not requeued; a restart or SIGTERM (^C too, its Terminal
 closing unless under nohup, or one that ended the child as well) queues
 the job again first unless STOP stands; the supervisor's writes never
 open a pipe, a hard link or a link a student or anyone left; a new HEAD
@@ -18,9 +21,9 @@ never while the queue is held; and `flubnf runner` is listed and
 refuses without STUDENTS or on Windows.
 
 No process is started: subprocess.Popen, ps, git, the disk, the clock,
-the signals, the sweep and os.execv are faked. A fake child does on
-its start and at each poll what the test says (writes its run record,
-ends with a code)."""
+the signals (a process group's too), the sweep and os.execv are faked.
+A fake child does on its start and at each poll what the test says
+(writes its run record, ends with a code)."""
 import errno
 import json
 import os
@@ -48,7 +51,7 @@ from flubnf import cli                                   # noqa: E402
 from test_experiments import _stale_fork                 # noqa: E402
 from test_runner_folders import (SMOKE, W0, W1, calendar,  # noqa: E402,F401
                                  experiment, stored, student, students)
-from test_runner_queue import _running, state            # noqa: E402
+from test_runner_queue import DEAD, _running, state      # noqa: E402
 
 GiB, MiB = runner.GiB, runner.MiB
 EID = "sihrs_2024-25_smoke_oracle"
@@ -57,6 +60,8 @@ PID0 = 2_147_480_000
 POSIX = pytest.mark.skipif(os.name == "nt",
                            reason="flock and killpg are POSIX's")
 _INSTALL_PROBLEM = runner._install_problem
+#: the real reader of the install's engine record (conftest: none)
+_RECORDED_ENGINE = runner._recorded_engine
 TERM = signal.SIGTERM
 
 
@@ -126,12 +131,14 @@ class Caffeinate:
 def world(students, monkeypatch, tmp_path):
     """The supervisor's world faked: the clock (each wait moves it), git's
     HEAD (w.head), a clean main, the engine ready, ps (w.ps(columns)),
-    the free disk (w.free()), the signals, the registry sweep, Popen
-    (Child, Caffeinate) and os.execv; the install's state and Sandbox in
-    tmp; alice and bob."""
+    the free disk (w.free()), the signals (a group's in w.groups, none
+    led by a fake pid), the registry sweep, Popen (Child, Caffeinate)
+    and os.execv; the install's state and Sandbox in tmp; alice and
+    bob."""
     w = types.SimpleNamespace(
         clock=[1_800_000_000.0], children=[], caffs=[], swept=[],
-        signals=[], execs=[], head="a" * 40, start=None, act=None,
+        signals=[], groups=[], execs=[], head="a" * 40, start=None,
+        act=None,
         ps=lambda columns: [], free=lambda: 500 * GiB, students=students)
     monkeypatch.setattr(runner, "_now", lambda: w.clock[0])
     monkeypatch.setattr(runner, "_sleep",
@@ -143,6 +150,9 @@ def world(students, monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "_free", lambda: w.free())
     monkeypatch.setattr(runner, "_signal",
                         lambda pid, sig: w.signals.append((pid, sig)))
+    monkeypatch.setattr(runner, "_pgid", lambda pid: None)
+    monkeypatch.setattr(runner, "_killpg",
+                        lambda pgid, sig: w.groups.append((pgid, sig)))
     monkeypatch.setattr(cli, "_sweep_runner_groups",
                         lambda registry=None, wait=5.0:
                         w.swept.append(Path(registry)) or 0)
@@ -327,6 +337,263 @@ def test_the_child_is_isolated(world, monkeypatch):
                              "disk": lim.disk}
     assert job["peak_bytes"] == 35_332_432 and job["keep_bytes"] == 878_000
     assert c.at_spawn["waiting"] == []
+
+
+@pytest.mark.parametrize("installed", ["private", "public", "both", "none"])
+@pytest.mark.parametrize("engine", ["private", "public"])
+def test_the_runner_reads_the_engine_as_the_console_does(engine, installed,
+                                                         tmp_path,
+                                                         monkeypatch):
+    # a drift guard: the queue waits for the engine exactly when the
+    # console's up-front check (pipeline._pf_engine_state) says it is not
+    # ready; on public its venv alone, the private venv and fork not needed
+    from app.ui import pipeline
+    from flubnf import settings
+    fork = tmp_path / "fork"
+    venv = tmp_path / "engine" / "bin" / "python"
+    public = tmp_path / "public" / "bin" / "python"
+    if installed in ("private", "both"):
+        (fork / "pybnf").mkdir(parents=True)
+        (fork / pf.PF_MODULE).write_text("# stub\n")
+        venv.parent.mkdir(parents=True)
+        venv.write_text("")
+    if installed in ("public", "both"):
+        public.parent.mkdir(parents=True)
+        public.write_text("")
+    monkeypatch.setattr(settings, "PY_ENGINE", venv)
+    monkeypatch.setattr(settings, "PYBNF", fork)
+    monkeypatch.setattr(pf, "PYBNF_PF", fork)
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(public))
+    monkeypatch.setenv("FLUBNF_ENGINE", engine)
+    ready = installed in (engine, "both")
+    assert runner._engine_ready() is ready
+    assert runner._engine_ready() == (pipeline._pf_engine_state() == "ready")
+
+
+def test_the_engine_an_install_records(tmp_path, monkeypatch):
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_recorded_engine", _RECORDED_ENGINE)
+    monkeypatch.setattr(sb, "REPO", tmp_path)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    env = tmp_path / ".flubnf.env"
+    assert runner._recorded_engine() is None
+    for text, got in (
+            # setup_engine.sh's lines; the last FLUBNF_ENGINE wins, read as
+            # settings.engine_choice reads one
+            ('export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"\n', None),
+            ('export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"\n'
+             "export FLUBNF_ENGINE=public\n", "public"),
+            ('export FLUBNF_ENGINE="Public"\nexport FLUBNF_HUB=/h\n',
+             "public"),
+            ("export FLUBNF_ENGINE=public\nFLUBNF_ENGINE=private\n",
+             "private"),
+            ("export FLUBNF_ENGINE=public  # by hand\n", "public"),
+            # by hand, as sh reads them: quotes first, then a blank or a ;
+            ('export FLUBNF_ENGINE=" public"\n', "public"),
+            ("export FLUBNF_ENGINE='public' # by hand\n", "public"),
+            ("FLUBNF_ENGINE=public; export FLUBNF_ENGINE\n", "public"),
+            # anything but exactly private is the public engine, the default
+            ("export FLUBNF_ENGINE= public\n", "public"),
+            ("export FLUBNF_ENGINE=public#x\n", "public"),
+            ("# export FLUBNF_ENGINE=public\n", None),
+            ("export FLUBNF_ENGINE_LOCK=/l\n", None),
+            ("export FLUBNF_ENGINE=lwf\n", "public"),
+            ('export FLUBNF_ENGINE="PRIVATE"\n', "private")):
+        env.write_text(text, encoding="utf-8")
+        assert runner._recorded_engine() == got, text
+    env.write_text("export FLUBNF_ENGINE=public\n", encoding="utf-8")
+    assert runner._engine_record_problem() == (
+        "this install records FLUBNF_ENGINE=public (.flubnf.env) but this "
+        "Terminal runs the private engine: run `. ./.flubnf.env` in the "
+        "clone first")
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert runner._engine_record_problem() == ""
+    # unset, settings reads the record itself: the two agree
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    assert runner._engine_record_problem() == ""
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    env.unlink()
+    env.mkdir()                                  # not a file: unreadable
+    assert runner._recorded_engine() is None
+    assert runner._engine_record_problem() == ""
+    if hasattr(os, "mkfifo"):
+        # a pipe, which FluBNF.command's [ -f ] skips: never waited on
+        env.rmdir()
+        os.mkfifo(env)
+
+        def stuck(signum, frame):
+            raise AssertionError("the record's reader waited on a pipe")
+        old = signal.signal(signal.SIGALRM, stuck)
+        signal.alarm(5)
+        try:
+            assert runner._recorded_engine() is None
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    # Windows: setup.ps1's and FluBNF.bat's lines, cmd's names in any case
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    cmd = tmp_path / ".flubnf.env.cmd"
+    assert runner._recorded_engine() is None
+    cmd.write_bytes(b'@echo off\r\nrem Written by setup.ps1\r\n'
+                    b'set "FLUBNF_HUB=C:\\hub"\r\n'
+                    b'set "FLUBNF_ENGINE=public"\r\n'
+                    b'set "FLUBNF_PY_ENGINE_PUBLIC=C:\\p\\python.exe"\r\n')
+    assert runner._recorded_engine() == "public"
+    assert runner._engine_record_problem() == (
+        "this install records FLUBNF_ENGINE=public (.flubnf.env.cmd) but "
+        "this Terminal runs the private engine: run `call .flubnf.env.cmd` "
+        "in the clone first")
+    cmd.write_bytes(b'set "FLUBNF_ENGINE=public"\r\n'
+                    b'SET flubnf_engine=private\r\n')
+    assert runner._recorded_engine() == "private"
+
+
+@POSIX
+def test_a_terminal_without_the_installs_engine_is_not_started(
+        world, monkeypatch, tmp_path, capsys):
+    # the install records public (setup_engine.sh --public), this Terminal
+    # never read the record: the job child would inherit the private
+    # engine, so nothing starts
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_recorded_engine", _RECORDED_ENGINE)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    install = tmp_path / "install"
+    install.mkdir()
+    (install / ".flubnf.env").write_text(
+        'export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"\n'
+        "export FLUBNF_ENGINE=public\n", encoding="utf-8")
+    monkeypatch.setattr(sb, "REPO", install)
+    _job(world.alice)
+    # a runner that started anyway stops after its first poll
+    monkeypatch.setattr(runner, "_stopping", False)
+    monkeypatch.setattr(runner, "_dispatch",
+                        lambda sv: setattr(runner, "_stopping", True))
+    assert os.environ["FLUBNF_ENGINE"] == "private"     # the suite's pin
+    assert runner.serve() == 1
+    assert capsys.readouterr().err.strip() == (
+        "Not started: this install records FLUBNF_ENGINE=public "
+        "(.flubnf.env) but this Terminal runs the private engine: run "
+        "`. ./.flubnf.env` in the clone first.")
+    assert world.children == []
+    assert not (runner.state_dir() / runner.STATE_FILE).exists()
+    # Storage's advice reads the record first, as a start must
+    state(world.students, pid=DEAD)
+    assert runner.storage(size=lambda p: 0)["why"].endswith(
+        f"in a Terminal of this account, run cd {install} && . ./.flubnf.env "
+        "&& .venv/bin/flubnf runner.")
+    # one that read it starts
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert runner._start_problem() == ""
+
+
+def _private_install(tmp_path, monkeypatch):
+    """An install that records the private engine (setup_engine.sh
+    --private), which both the runner's check and settings read."""
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_recorded_engine", _RECORDED_ENGINE)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    install = tmp_path / "install"
+    install.mkdir()
+    (install / ".flubnf.env").write_text(
+        'export FLUBNF_PY_ENGINE="/e/bin/python"\n'
+        "export FLUBNF_ENGINE=private\n", encoding="utf-8")
+    monkeypatch.setattr(sb, "REPO", install)
+    monkeypatch.setattr(settings, "INSTALL_ROOT", install)
+    settings.forget_record()
+    return install
+
+
+def test_a_private_record_starts_from_a_terminal_that_names_no_engine(
+        tmp_path, monkeypatch):
+    from flubnf import settings
+    _private_install(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    assert settings.engine_choice() == "private"
+    assert runner._engine_record_problem() == ""
+    # one whose environment names the other engine is refused, as before
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert runner._engine_record_problem() == (
+        "this install records FLUBNF_ENGINE=private (.flubnf.env) but this "
+        "Terminal runs the public engine: run `. ./.flubnf.env` in the "
+        "clone first")
+
+
+@POSIX
+@pytest.mark.parametrize("recorded", [{"engine": "private"}, {}],
+                         ids=["private", "main-wrote-none"])
+def test_a_reexec_onto_another_engine_stops_and_says_why(
+        world, monkeypatch, capsys, recorded):
+    # the runner ran the private engine (main's runner records none, and
+    # ran only it); the update made this install's default the public one.
+    # Its re-execution (the same pid) stops instead of refusing every job
+    # begun on the private engine, and takes no lock. The public engine is
+    # this install's by the default: nothing set, no record.
+    from flubnf import settings
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
+    _job(world.alice)
+    state(world.students, **recorded)
+    before = (runner.state_dir() / runner.STATE_FILE).read_text()
+    monkeypatch.setattr(runner, "_stopping", False)
+    monkeypatch.setattr(runner, "_dispatch",
+                        lambda sv: setattr(runner, "_stopping", True))
+    assert runner.serve() == 1
+    assert capsys.readouterr().err.strip() == (
+        "Not started again: this runner ran the private engine and, after "
+        "the update to aaaaaaa, this install runs the public one. Jobs begun "
+        "on the private engine would be refused and leave the queue. To keep "
+        "the private engine, run ./setup_engine.sh --private in the FluBNF "
+        "folder; to go on with the public one, start the runner again.")
+    assert world.children == []
+    assert (runner.state_dir() / runner.STATE_FILE).read_text() == before
+    # the same engine goes on
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    assert runner._engine_changed_on_reexec() == ""
+    # a start by hand (another pid) goes on with the engine selected
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    state(world.students, pid=DEAD, **recorded)
+    assert runner._engine_changed_on_reexec() == ""
+    assert runner.serve() == 0
+
+
+@POSIX
+def test_the_runner_names_its_engine_and_its_child_runs_it(world,
+                                                           monkeypatch,
+                                                           tmp_path,
+                                                           capsys):
+    # the public engine by the default (nothing set, no record): the child
+    # is given it all the same, as runner.json names it (review #3)
+    from flubnf import settings
+    py = tmp_path / "public" / "bin" / "python"
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    settings.forget_record()
+    assert settings.engine_source() == ("default", None)
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC", str(py))
+    monkeypatch.setattr(pf, "engine_current", lambda: True)  # no venv probe
+    monkeypatch.setattr(runner, "_stopping", False)
+    _job(world.alice)
+    world.act = ends
+    dispatch = runner._dispatch
+
+    def once(sv):
+        dispatch(sv)
+        runner._stopping = True
+    monkeypatch.setattr(runner, "_dispatch", once)
+    assert runner.serve() == 0
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.endswith(f" runner {os.getpid()} on build aaaaaaa (the "
+                          f"public engine): {world.students}")
+    [c] = world.children
+    assert c.kw["env"]["FLUBNF_ENGINE"] == "public"
+    assert c.kw["env"]["FLUBNF_PY_ENGINE_PUBLIC"] == str(py)
+    assert c.at_spawn["engine"] == "public"
+    assert runner.read_state()["engine"] == "public"
+    assert runner.storage(size=lambda p: 0)["runner"][0] == (
+        "The runner (the public engine): idle")
+    # a runner.json of an older runner names none
+    state(world.students)
+    assert runner.storage(size=lambda p: 0)["runner"][0] == "The runner: idle"
 
 
 def test_waits_for_replays_not_fits(world, tmp_path):
@@ -593,6 +860,49 @@ def test_a_tree_that_outlives_its_term_is_killed(world, monkeypatch):
     assert p.signals == ["TERM", "KILL"]
     assert world.signals == [(p.pid + 1, TERM), (p.pid + 2, TERM),
                              (p.pid + 2, kill)]
+    assert world.swept == [world.registry]
+
+
+@POSIX
+def test_a_fit_started_after_the_ps_read_is_reached_by_its_group(
+        world, monkeypatch):
+    # on public each shard runner leads its own group and starts a PyBNF
+    # process per cell in it: one started after the ps read is on no list,
+    # and only its group's killpg reaches it; so does what the child
+    # starts in its own group (its session, _spawn's) after the read, a
+    # BNG2.pl say; the runner's own group is never signalled
+    job, shard, cell, late = PID0 + 30, PID0 + 31, PID0 + 32, PID0 + 33
+    bng = PID0 + 34
+    own = os.getpgrp()
+    members = {job: {job}, shard: {shard, cell}, own: {own}}
+    got, log = {}, []
+
+    def ps(columns):
+        members[shard].add(late)              # a cell starts once ps is read
+        members[job].add(bng)
+        return [f"{job} 1 10", f"{shard} {job} 10", f"{cell} {shard} 10",
+                f"{own} {job} 10"]
+    world.ps = ps
+    leads = {job: job, shard: shard, cell: shard, own: own}
+    monkeypatch.setattr(runner, "_pgid", lambda pid: leads.get(pid))
+    monkeypatch.setattr(runner, "_signal",
+                        lambda pid, sig: log.append(("pid", pid, sig)))
+
+    def killpg(pgid, sig):
+        log.append(("group", pgid, sig))
+        for m in members[pgid]:
+            got.setdefault(m, []).append(sig)
+    monkeypatch.setattr(runner, "_killpg", killpg)
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: False)
+    p = types.SimpleNamespace(pid=job, terminate=lambda: None,
+                              kill=lambda: None, wait=lambda timeout: 0)
+    runner._kill_tree(p)
+    kill = getattr(signal, "SIGKILL", TERM)
+    assert log == [("pid", shard, TERM), ("pid", own, TERM),
+                   ("pid", cell, TERM), ("group", job, TERM),
+                   ("group", shard, TERM), ("group", job, kill),
+                   ("group", shard, kill)]
+    assert got[late] == got[bng] == [TERM, kill]
     assert world.swept == [world.registry]
 
 

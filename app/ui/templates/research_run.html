@@ -16,6 +16,10 @@
  {{ tips.alert("warn", "A run is in progress.", id="rr-busy", action=fc_link) }}
  {% elif pf_missing %}
  {{ tips.alert("warn", "A research run needs the particle-filter engine, " ~ pf_missing ~ ".", id="rr-busy") }}
+ {% elif pf2s_private_only is defined and pf2s_private_only %}
+ {# the public engine, the default, has no two-strain counterpart: the
+    run skips that member (pipeline: pf2s_skipped) #}
+ {{ tips.alert("info", "On the public engine, the default, the two-strain member is skipped: it runs on the private engine only (FLUBNF_ENGINE=private).", id="rr-2s") }}
  {% endif %}
  <form method="post" action="/run" class="md-form">
   <div class="md-fields">

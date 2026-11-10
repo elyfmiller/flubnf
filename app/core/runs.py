@@ -799,6 +799,13 @@ def results_html(outcome, spec, heading: bool = True,
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))
+    if o.get("pf2s_skipped"):
+        # a research run's two-strain member, skipped beside pf_skipped's
+        # row with its reason (pipeline: the public engine has no
+        # two-strain counterpart)
+        import html as _html_2s
+        rows.append(("Two-strain fits", "none: "
+                     + _html_2s.escape(str(o["pf2s_skipped"]))))
     arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
     if arow:
         rows.append(arow)
@@ -1051,6 +1058,21 @@ def _git_sha(repo: Path) -> str:
         return "unknown"
 
 
+def _pybnf_sha() -> str:
+    """The engine build a ledger row names (pybnf_sha): on the public
+    engine, the default, the commit of its installed build (pip's record
+    of the wheel, lwf.public_build); on the private engine, the fork
+    checkout's git SHA."""
+    from flubnf import settings
+    if settings.engine_public():
+        try:
+            from app.core.engines import lwf
+            return lwf.public_build().get("commit") or "unknown"
+        except Exception:
+            return "unknown"
+    return _git_sha(settings.PYBNF)
+
+
 class Ledger:
     """Append-only sqlite record: spec, seeds, engine versions, git SHAs,
     workroot, outcome. Reproducing any submission = re-executing its row."""
@@ -1085,8 +1107,8 @@ class Ledger:
             "pybnf_sha, engine_versions, workroot, status, outcome_json) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (run_id, time.time(), spec.to_json(), _git_sha(root),
-             _git_sha(__import__("flubnf.settings", fromlist=["PYBNF"]).PYBNF),
-             json.dumps(engine_versions), str(workroot), "running", "{}"))
+             _pybnf_sha(), json.dumps(engine_versions), str(workroot),
+             "running", "{}"))
         self._db.commit()
         return run_id
 

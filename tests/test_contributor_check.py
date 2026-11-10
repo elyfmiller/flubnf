@@ -400,6 +400,15 @@ def test_a_rename_away_flags_and_ordinary_code_does_not(cc):
         "FluBNF: read the change line by line before approving its tests."]
 
 
+def test_the_test_lock_script_flags_as_ci(cc):
+    # CI runs it on every pull request: it writes the lock and the wheels
+    # the public-engine-install job installs
+    name, what, _ = cc.FLAGGED[2]
+    assert cc.path_flags(changed("scripts/make_test_lock.py")) == [
+        f"`scripts/make_test_lock.py` is part of {name}, which {what}: "
+        "read the change line by line before approving its tests."]
+
+
 # 30-31: main(), its output and escaping --------------------------------------
 
 class Reader:
@@ -616,10 +625,9 @@ def test_the_lists_match_the_code(cc):
     assert cc.NAME_RE.pattern == sandbox.NAME_RE.pattern.removeprefix("^").removesuffix("$")
 
 
-def test_every_flagged_path_exists_or_arrives_with_61(cc):
-    arriving = {"scripts/engine_lock.py", "engine-requirements.txt"}
+def test_every_flagged_path_exists(cc):
     missing = [p for _, _, paths in cc.FLAGGED for p in paths
-               if not (REPO / p.rstrip("/")).exists() and p not in arriving]
+               if not (REPO / p.rstrip("/")).exists()]
     assert missing == []
 
 
