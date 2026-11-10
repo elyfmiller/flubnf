@@ -6,6 +6,22 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (evening): Ely's old private checkout is renamed, on Ely's
+  yes: `Documents\GitHub\PyBNF-pf` is now `Documents\GitHub\PyBNF-pf-old`.
+  It is still at eab31c71 with a clean tree; nothing had it open, and
+  nothing was deleted. To undo, rename it back.
+  - `flubnf.settings.PYBNF` now gives `%LOCALAPPDATA%\FluBNF\PyBNF-pf`
+    (2fdadee0) in all three cases checked: a shell opened before
+    2026-11-09's install, whose `FLUBNF_PYBNF` still names the old path
+    (the pin is passed over, since no engine is there); no variable; and
+    the account's value. FluBNF.bat's probe follows the same order.
+  - So the trap in the gate entry below is closed for the engine: such a
+    shell now finds the production build, not eab31c71.
+  - It is not closed for the hub. `Documents\GitHub\FluSight-forecast-hub`
+    (e311e57, target data of 2026-08-25) stays. A shell carrying the old
+    `FLUBNF_HUB` still reads it, and so would a shell with no `FLUBNF_HUB`,
+    since on Windows an existing Documents checkout is the default.
+
 - 2026-11-10 (afternoon): **THE 11-07 GATE (version 2, approved): PASS.**
   All seven criteria hold on the first runs, so retry rule (b) was not
   needed. The verdict decides only whether the 11-11 round runs on the
