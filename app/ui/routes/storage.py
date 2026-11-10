@@ -539,21 +539,24 @@ def storage_delete(request: Request, kind: str = Form(""),
     if confirm != ident:
         _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/storage")
-    # a season or archived run whose week maps are still being written
-    # after its replay or a results visit: stopped first, or a delete
-    # meanwhile could fail half way (retro_prep._stop_warm)
+    # a season or archived run whose results or week maps are still being
+    # written after its replay or a results visit: a delete meanwhile could
+    # fail half way. Marked first, so no results page starts a finalize on
+    # it from here on (retro_prep._removing)
     from app.ui import retro_prep
-    if not retro_prep._stop_warm(p):
-        _flash(f"Not deleted: the week maps of {ident} are still being "
-               "prepared.", "warn", detail="Try again in a minute.")
-        return _back(request, "/storage")
-    size_h = retro.human_bytes(retro.dir_size(p))
-    try:
-        retro.delete_tree(p)
-    except Exception as e:
-        _flash(f"Could not delete {ident}: {type(e).__name__}: "
-               f"{str(e)[:160]}.", "error", detail="Nothing else changed.")
-        return _back(request, "/storage")
+    with retro_prep._removing(p) as busy:
+        if busy:
+            _flash(f"Not deleted: the {busy} of {ident} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/storage")
+        size_h = retro.human_bytes(retro.dir_size(p))
+        try:
+            retro.delete_tree(p)
+        except Exception as e:
+            _flash(f"Could not delete {ident}: {type(e).__name__}: "
+                   f"{str(e)[:160]}.", "error",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
