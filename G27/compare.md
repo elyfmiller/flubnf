@@ -11,3 +11,5 @@ Read B's proposal and patch.
 | DA-21 | "Forecast this and Replay this store the dataset, then open ...; Save only stores it and stays here." | "Each stores the dataset. Forecast this then opens ...; Replay this ...; Save only stays here." | Equal; B's names each button once, in order. B's. |
 
 Vote: combine: A's DA-16 (the two-line tip; README's own-data paragraph; the snapshot pin reading the as_of line); B's DA-17, DA-20 and DA-21; DA-09 and DA-15 as both have them. Tests: A's test_data_upload_words.py for DA-09, DA-15 and DA-16; B's for DA-17, DA-20 and DA-21.
+
+Vote (final): combine, as B's vote: A's patch (DA-09, DA-15, DA-16 with the README paragraph, DA-17, DA-21, and DA-20's workbook magic for .xlsx and .xls with the note guard) plus B's binary rule from `parsing.not_text` (the control-byte density, "The file is not text: it holds binary data. Save it as CSV UTF-8.") and its assertions. Changed after B's compare: DA-20, B's point holds (a binary file with no NUL on its first line, a PDF or an image, still reaches the "mixes encodings" message under A's alone); DA-17 and DA-21, either wording works, and B's vote keeps one patch's words.
