@@ -384,12 +384,15 @@ async def upload(request: Request):
     # the counts on the line; the snapshots and any warnings in its tip
     shared._flash((f"This file is already stored as {ds.name}: {counts}"
                    if again else f"Stored {ds.name}: {counts}")
-                  + (f" {len(warn)} warning(s)." if warn else ""),
+                  + (f" {len(warn)} warning{'' if len(warn) == 1 else 's'}."
+                     if warn else ""),
                   "warn" if warn else "ok",
                   detail=" ".join(([snaps] if snaps else []) + warn))
     if nxt == "forecast":
         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
-    return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
+    # #main, where the notice is: the form's #datasets, which a redirect
+    # without a fragment keeps, scrolled it out of view
+    return RedirectResponse(f"/data?source={ds.id}#main", status_code=303)
 
 
 def _delete_confirmed(ds_id: str, confirm: str) -> None:
@@ -415,7 +418,9 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
     _delete_confirmed(ds_id, confirm)
-    return RedirectResponse("/data#datasets", status_code=303)
+    # #main, where the notice is (the delete form's #datasets would keep
+    # it out of view)
+    return RedirectResponse("/data#main", status_code=303)
 
 
 def api_series(ds, locs: str) -> dict:
