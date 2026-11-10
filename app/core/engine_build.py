@@ -13,9 +13,10 @@ compares it with the private engine's pin, defined once here, and fix()
 says how to reach it with this machine's launcher. archive_step() is the
 one wording for installing the private engine from its archive, shared by
 the run errors and doctor. switch_step() is the one wording for switching
-this copy to an engine, engine_of() names the engine of a recorded build,
-and engine_words() names the active engine in words. Every function is
-cheap to call wrong: none raises.
+this copy to an engine, engine_of() names the engine of a recorded build
+(engine_record() is a season's record of a build that could not be read:
+its engine alone), and engine_words() names the active engine in words.
+Every function is cheap to call wrong: none raises.
 """
 from __future__ import annotations
 
@@ -256,19 +257,32 @@ def archive_name() -> str:
     return f"pybnf-pf-{PRODUCTION_ENGINE_COMMIT}.tar.gz"
 
 
+def _records_private() -> bool:
+    """Whether this copy's record names the private engine, read from disk
+    now (settings.recorded_engine): SetupEngine.command, double-clicked,
+    follows the record, so only then does it install the private engine."""
+    try:
+        from flubnf import settings
+        return settings.recorded_engine(settings.INSTALL_ROOT) == "private"
+    except Exception:
+        return False
+
+
 def setup_step(platform: str | None = None) -> str:
     """This machine's installer for the private engine, as a clause (the
     private remedies only; the public engine's is lwf._setup_step):
     FluBNF.bat on Windows (no bash there, and setup.ps1 only diagnoses),
-    SetupEngine.command beside the script on macOS, the script elsewhere,
-    each naming the private route, since a bare ./setup_engine.sh installs
-    the public engine on a copy with no record. The folder is named so no
-    full stop lands on the command. `platform` is sys.platform by default;
-    tests pass one."""
+    ./setup_engine.sh --private elsewhere, since a bare ./setup_engine.sh
+    installs the public engine on a copy with no record. On macOS
+    SetupEngine.command is named first only when the copy records the
+    private engine: a double-click follows the record, and a copy whose
+    choice came from the environment (or from nothing) would get the
+    public engine from it. The folder is named so no full stop lands on
+    the command. `platform` is sys.platform by default; tests pass one."""
     plat = platform or sys.platform
     if plat == "win32":
         return "open FluBNF.bat again"
-    if plat == "darwin":
+    if plat == "darwin" and _records_private():
         return ("double-click SetupEngine.command in the FluBNF folder (or "
                 "run ./setup_engine.sh --private there)")
     return "run ./setup_engine.sh --private in the FluBNF folder"
@@ -291,18 +305,24 @@ def switch_step(engine: str, platform: str | None = None,
     """The step that switches this copy to `engine` ("public" or
     "private"): the installer option that records it, which every open
     reads (and which a Terminal start reads too, settings.engine_choice).
-    The short form is the command alone. `platform` is this machine's by
-    default; tests pass one."""
+    The short form is the command alone. On Windows the long form is the
+    line to type, as FluBNF.bat and setup.ps1 print it: setup.ps1 typed by
+    itself opens in an editor from Command Prompt, and PowerShell wants .\\
+    and refuses it under the default execution policy. `platform` is this
+    machine's by default; tests pass one."""
     if _win(platform):
         return (f"setup.ps1 -Engine {engine}" if short else
-                f"setup.ps1 -Engine {engine}, then open FluBNF.bat again")
+                "powershell -NoProfile -ExecutionPolicy Bypass -File "
+                f"setup.ps1 -Engine {engine} in the FluBNF folder, then open "
+                "FluBNF.bat again")
     return (f"./setup_engine.sh --{engine}" if short else
             f"./setup_engine.sh --{engine} in the FluBNF folder")
 
 
 def engine_of(build) -> str:
-    """The engine a recorded build names: public when it says so, else
-    private (a build recorded without one, or none recorded: seasons
+    """The engine a recorded build names: public when it says so (a public
+    build's record, or engine_record's when the build could not be read),
+    else private (a build recorded without one, or none recorded: seasons
     before the public engine ran on the private one)."""
     from collections.abc import Mapping
     named = build.get("engine") if isinstance(build, Mapping) else None
@@ -426,10 +446,28 @@ def record(build: dict | None) -> dict:
     return out
 
 
+def engine_record(build) -> dict:
+    """What a season records for a build that could not be read (the
+    public engine's probe timed out, a lock whose wheel names no commit, a
+    checkout git will not read): its engine alone, {"engine": "public"} or
+    {"engine": "private"}, so engine_of and change still tell which engine
+    fitted the weeks. record() stays {} for it: no commit to compare."""
+    return {"engine": engine_of(build)}
+
+
 def change(prior: dict | None, now: dict | None) -> str | None:
     """None when a resume over `now` keeps the recorded build (commit and
-    edited state) or none was recorded; else the difference in plain words."""
-    if not isinstance(prior, dict) or not known(prior):
+    edited state), when none was recorded, or when the record names only
+    its engine (engine_record) and `now` is a build of that engine; else
+    the difference in plain words."""
+    if not isinstance(prior, dict):
+        return None
+    if not known(prior):
+        had = prior.get("engine")
+        if had in ("public", "private") and had != engine_of(now):
+            here = label(now) or f"the {engine_of(now)} one"
+            return (f"were fitted by the {had} engine (its build could not "
+                    f"be read); this machine's engine is {here}")
         return None
     p, n = record(prior), record(now)
     if n and p["commit"][:8] == n["commit"][:8] and p["dirty"] == n["dirty"]:

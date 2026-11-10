@@ -1037,6 +1037,14 @@ READY_LINE = ("The private engine is installed on this PC: to run it instead "
 NOT_READY_LINE = ("The private engine, the fallback, needs the lab's engine "
                   "file: run setup.ps1 -Engine private, then open FluBNF with "
                   "the file in Downloads.")
+FORK_LINE = ("The private engine, the fallback, is on this PC but not "
+             "installed yet: run setup.ps1 -Engine private, then open FluBNF "
+             "again, which installs it from the engine folder here (no file "
+             "needed).")
+SWITCH_LINES = [
+    "echo   To switch, type this in Command Prompt or PowerShell:",
+    'echo     powershell -NoProfile -ExecutionPolicy Bypass -File '
+    '"%~dp0setup.ps1" -Engine private']
 
 
 def test_a_public_failure_names_the_fallback_and_never_takes_it():
@@ -1057,7 +1065,10 @@ def test_a_public_failure_names_the_fallback_and_never_takes_it():
         code = _code(_after_label(block, label, "goto :").splitlines())
         assert code == [f"echo   {first}",
                         f"if defined PRIVATEREADY echo   {READY_LINE}",
-                        f"if not defined PRIVATEREADY echo   {NOT_READY_LINE}"], label
+                        "if not defined PRIVATEREADY if defined PRIVATEFORK "
+                        f"echo   {FORK_LINE}",
+                        f"if not defined PRIVATEFORK echo   {NOT_READY_LINE}",
+                        *SWITCH_LINES], label
     for ln in _code(_public_block()):
         assert "FLUBNF_ENGINE=" not in ln, ln
     # the private route's failures name the way back to the default
@@ -2643,7 +2654,8 @@ def _route_slice() -> str:
 @windows_only
 @pytest.mark.parametrize("value, route", [
     (None, "PUBLIC"), ("private", "PRIVATE"), ("Private", "PRIVATE"),
-    ("public", "PUBLIC"), ("Public", "PUBLIC"), ("pubic", "PUBLIC")])
+    ("public", "PUBLIC"), ("Public", "PUBLIC"), ("pubic", "PUBLIC"),
+    ("private ", "PRIVATE"), (" private", "PRIVATE"), ('"private"', "PRIVATE")])
 def test_windows_the_engine_switch_picks_the_route(tmp_path, value, route):
     r = _cmd(tmp_path / "route.bat", _route_slice(), tmp_path,
              FLUBNF_ENGINE=value)

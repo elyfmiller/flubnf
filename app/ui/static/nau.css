@@ -1220,6 +1220,8 @@ button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox a{color:inherit;text-decoration:underline}
 .tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
 .tip.dismissed .tipbox{visibility:hidden;opacity:0}
+/* a notice's detail keeps its lines (BNG2.pl's log, one line a step) */
+#tip-flash{white-space:pre-line}
 @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
 /* the latest-run card: settings left, results right. Tracks auto-fit at a

@@ -602,8 +602,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                         **({"drop_same_day": drop_same_day}
                            if _str_field(drop_same_day).strip() else {})})
         except ValueError as e:              # KnobError is a ValueError
+            # the panel opens on it and says why, once; no second notice
             _last_retro_form["ms_refused"] = str(e) or True
-            return _refused(f"Not started: model settings: {e}.")
+            return RedirectResponse("/retro", status_code=303)
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
         # runners, as typed: the browser's number box lets 2e0 through, and

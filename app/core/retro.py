@@ -1030,12 +1030,19 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
         rec.pop("knobs_digest", None)
     # the engine build the filter weeks are fitted by: one per season (a
     # resume on another commit, or with local edits made or undone, is
-    # refused below); none for a Groundhog-only replay or no engine
+    # refused below); none for a Groundhog-only replay. A build that cannot
+    # be read (the public engine's probe timed out, a lock whose wheel names
+    # no commit, a checkout git will not read) records the engine alone,
+    # {"engine": ...}, so a resume on the other engine is refused
+    # (engine_build.change) and engine_of names the one the season began
+    # on, never private by default
     from app.core import engine_build as _eb
     build = _eb.engine_build() if pf_ran(engine) else {}
     rec.pop("engine_build", None)
     if _eb.record(build):
         rec["engine_build"] = _eb.record(build)
+    elif pf_ran(engine):
+        rec["engine_build"] = _eb.engine_record(build)
     if _weeks_on_disk(root):
         prior = (read_meta(root) or {}).get("settings") or {}
         had = _knobs.legacy_settings_knobs(prior)
@@ -1091,6 +1098,12 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                     "discard the existing results to change it.")
         if prior and "engine_build" not in prior:
             rec.pop("engine_build", None)
+        elif (isinstance(prior.get("engine_build"), dict)
+              and not _eb.known(prior["engine_build"])):
+            # begun with its build unread: the resume keeps the engine-only
+            # record, never stamps a build its first weeks may not have run
+            # (each week's own build is in week_engine_builds)
+            rec["engine_build"] = dict(prior["engine_build"])
         if prior and "knobs" not in prior:
             # a tree from before the registry resumed as it was: never
             # reclassified as modified by the resume

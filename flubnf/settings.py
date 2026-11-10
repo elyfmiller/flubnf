@@ -207,7 +207,10 @@ def engine_value_unknown(raw) -> bool:
 #: the record's file in the install's folder: sh's, then cmd's
 ENV_FILE, ENV_FILE_WIN = ".flubnf.env", ".flubnf.env.cmd"
 _ENGINE_LINE = re.compile(r"\s*(?:export\s+)?FLUBNF_ENGINE=(.*)")
-_ENGINE_LINE_WIN = re.compile(r'\s*set\s+"?FLUBNF_ENGINE=(.*?)"?\s*',
+#: cmd's line: `set "NAME=value"` as setup.ps1 writes it, `set NAME=value`
+#: by hand, and either after a @ (cmd sets it all the same); group 1 is
+#: the opening quote of the quoted form, group 2 the rest (_cmd_value)
+_ENGINE_LINE_WIN = re.compile(r'\s*@?\s*set\s+("?)FLUBNF_ENGINE=(.*)',
                               re.IGNORECASE)
 #: the install this module belongs to, whose record engine_choice reads
 INSTALL_ROOT = Path(__file__).resolve().parents[1]
@@ -223,6 +226,27 @@ def _sh_value(value: str) -> str:
         if end > 0:
             return value[1:end]
     return re.split(r"[\s;]", value, maxsplit=1)[0].strip("\"'")
+
+
+def _cmd_value(quoted: bool, rest: str) -> str:
+    """What cmd's set assigns from the text after `FLUBNF_ENGINE=`: the
+    line ends at an &, |, < or > outside double quotes (another command, or
+    a redirection); in the quoted form the value runs to the last quote
+    before that. The whole value, spaces inside it too: `private now` is
+    no engine to FluBNF.bat, nor to setup.ps1, so none here either."""
+    inq, cut = quoted, len(rest)
+    for i, ch in enumerate(rest):
+        if ch == '"':
+            inq = not inq
+        elif ch in "&|<>" and not inq:
+            cut = i
+            break
+    seg = rest[:cut]
+    if quoted:
+        end = seg.rfind('"')
+        if end >= 0:
+            seg = seg[:end]
+    return seg
 
 
 def record_file(root) -> Path:
@@ -249,13 +273,13 @@ def recorded_engine_raw(root) -> str | None:
     for ln in text.splitlines():
         m = line.fullmatch(ln)
         if m:
-            value = m.group(1)
+            # cmd's value, its double quotes dropped and the spaces around
+            # it trimmed, as FluBNF.bat compares it
+            value = (_cmd_value(bool(m.group(1)), m.group(2))
+                     .replace('"', "").strip() if win else m.group(1))
     if value is None:
         return None
-    if win:                               # cmd's quotes are the pattern's
-        words = value.split()
-        return words[0].strip("\"'") if words else ""
-    return _sh_value(value)
+    return value if win else _sh_value(value)
 
 
 def recorded_engine(root) -> str | None:

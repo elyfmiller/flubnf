@@ -23,8 +23,11 @@ section 5c); before that the US row was the filter alone.
 
 Vocabulary of this repository: a MEMBER is one of the two models the
 console submits (the Oracle SIHRS and the Groundhog); the ENGINE is the
-particle filter in the PyBNF fork; the STORED WEEK is
-`weeks/<T>/samples.json.gz` under a season root; the STORAGE BOUNDARY is
+PyBNF that runs the Liu-West filter: public PyBNF (lanl/PyBNF,
+`job_type = lwf`), the default since the switch to the public engine, or
+the lab's PyBNF fork (`fit_type = pf`), the fallback (docs/ENGINE.md); the
+STORED WEEK is `weeks/<T>/samples.json.gz` under a season root; the
+STORAGE BOUNDARY is
 `app.core.retro.read_week_samples` / `write_week_samples`, where
 `app.core.horizons` translates between the stored keys and the canonical
 ones. The step touches none of those conventions.
@@ -495,31 +498,43 @@ alone, Ely's call of 2026-10-07).
 
 ## 6. The engine key
 
-`pf_sampling_interval = 1` is written into a cell's pf.conf only when the
-installed engine's own source accepts it: the quoted key must appear in
-pybnf/parse.py (the grammar that refuses an unknown key) and in
-pybnf/config.py (the pf key set), which the upstream tree a827e2f8 lists
-and the engine before it does not. Never assumed; recorded per cell in
-cells.json. That key is what lets the a827e2f8 tree fit a one-row .exp,
-the first fitted week of a season.
+This key is the private engine's alone. On the public engine, the
+default, no `pf_sampling_interval` line is written: the console
+translates each cell's pf.conf for lanl/PyBNF (`app/core/engines/lwf.py`),
+with one data row per week, and that engine needs no such key. On the
+private engine, the fallback, `pf_sampling_interval = 1` is written into a
+cell's pf.conf only when the installed engine's own source accepts it:
+the quoted key must appear in pybnf/parse.py (the grammar that refuses an
+unknown key) and in pybnf/config.py (the pf key set), which the upstream
+tree a827e2f8 lists and the engine before it does not. Never assumed;
+recorded per cell in cells.json. That key is what lets the a827e2f8 tree
+fit a one-row .exp, the first fitted week of a season.
 
-Engine line-up for the 2026-27 season: production is the fork's
-`feature/particle-filter` branch at 2fdadee0 (archive
-`pybnf-pf-2fdadee0.tar.gz`) on bngsim 0.15.1, which every install route
-pins. It does not have `pf_sampling_interval`; the console leaves the key
-out there. The engine PR (3a39d0d1, into the private upstream's
+Engine line-up for the 2026-27 season. Since the switch to the public
+engine, the default is public PyBNF: lanl/PyBNF at the merge commit
+8410f794 (`job_type = lwf`), the same Liu-West filter, with bngsim 0.15.1
+on Python 3.12, installed by hash from `engine-requirements.txt` in a venv
+of its own (docs/ENGINE.md, "The public engine (the default)"). The switch
+is Ely's decision of 2026-11-09, made before the planned acceptance run;
+the evidence for it is in-house and retrospective (docs/ENGINE.md). Its
+pinned build is judged by `lwf.is_pinned`. Before the switch, production
+was the fork's `feature/particle-filter` branch at 2fdadee0 (archive
+`pybnf-pf-2fdadee0.tar.gz`) on bngsim 0.15.1. It stays installed as the
+fallback for two rounds after the switch, still pinned at 2fdadee0
+(`engine_build.PRODUCTION_ENGINE_COMMIT`), and runs only on a copy
+switched to it (`./setup_engine.sh --private`, or `setup.ps1 -Engine
+private`). The rest of this paragraph is about that private engine. It
+does not have `pf_sampling_interval`; the console leaves the key out
+there. The engine PR (3a39d0d1, into the private upstream's
 `feature/bngsim`) was measured on 2026-09-24: byte-identical on the two
 reference cells, saved clouds load both ways, and the extra
 `pf_sampling_interval = 1` the console writes for it is inert. The four
 pf keys it drops (`pf_shrink`, `pf_forecast_jitter`, `pf_binom_neff_cap`,
 `pf_mean_scale_column`) are never written by the production conf (only by
-research, two-strain and reporting-model runs). Lab machines stay on
-2fdadee0; bngsim 0.16 is not adopted until measured against 0.15.1. The
-same Liu-West filter is in public PyBNF as `job_type = lwf` (merge commit
-8410f794): with bngsim 0.15.1 on Python 3.12 it installs beside the private
-engine, in a venv of its own, as an opt-in route (docs/ENGINE.md, "The
-public engine"). Production moves to it only at the team lead's cutover,
-after an acceptance run; until then every round runs on 2fdadee0.
+research, two-strain and reporting-model runs); the public engine has no
+counterpart for them, and refuses a cell that sets one. The lab Mac keeps
+2fdadee0 for sealed numbers and research; bngsim 0.16 is not adopted on
+either engine until measured against 0.15.1.
 
 ## 6b. Spread narrowing: the research knob `oracle.narrow`
 
@@ -644,8 +659,10 @@ unchanged). The first live value is 15x (Ely, 2026-10-22), with the gate
   and shipping it is the lead's decision of 2026-09-23 (addendum A2). The
   2026-27 shadow run logs the admissions-only member beside the shipped one
   every week and reads the two against each other at season end.
-* A one-row .exp (the first fitted week of a season) needs the engine key
-  above on the a827e2f8 tree, which refuses one row without it. The
-  console writes it wherever the installed engine accepts it. The engine
-  before that tree (2fdadee0) does not accept the key and does not need
-  it: it takes a one-week interval when the file has one row.
+* On the private engine, a one-row .exp (the first fitted week of a
+  season) needs the engine key above on the a827e2f8 tree, which refuses
+  one row without it. The console writes it wherever the installed
+  private engine accepts it. The engine before that tree (2fdadee0) does
+  not accept the key and does not need it: it takes a one-week interval
+  when the file has one row. The public engine needs no key: the
+  console's translation writes one data row per week.

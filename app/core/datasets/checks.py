@@ -481,8 +481,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         # a grouped CSV lists only reported weeks: NA is an error
         lines = [ln for ln, _ in na]
         rep.add("value_na", f"The '{vcol}' column is blank or NA on "
-                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). All "
-                "rows must have a value; delete rows for weeks not reported.",
+                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). "
+                "Every row must have a value, and a grouped file has a row "
+                "for every week; a hubverse file (date, location, value) "
+                "may hold NA for a week not reported.",
                 lines)
     elif na:
         # hubverse time series carry NA for unreported weeks (FluSight's

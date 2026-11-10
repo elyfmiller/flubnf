@@ -15,6 +15,7 @@ No hub and no engine: the console fixture of test_oracle_step fakes the
 filter and the Groundhog and runs the real Oracle step on a tiny vintage.
 """
 import csv
+import html
 import json
 import sys
 from pathlib import Path
@@ -189,7 +190,7 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
     # two different off-shipped values for one knob: refused, nothing runs
     _post({"particles": "2000", "knob.pf.particles": "3000"})
     assert len(started) == 3 and ui_state._status.get("running") is None
-    assert "two values" in ui_state._status.get("flash", "")
+    assert "two values" in str(ui_state._last_form.get("ms_refused"))
 
 
 @pytest.mark.parametrize("data,msg", [
@@ -212,12 +213,13 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
 def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg,
                                        pf_engine_ready):
     started = _capture_run(monkeypatch, tmp_path)
+    ui_state._status.pop("flash", None)
     r = _post(data)
     assert r.status_code == 303
     assert started == [] and ui_state._status.get("running") is None
-    assert msg in ui_state._status.get("flash", "")
-    assert "Not run" in ui_state._status.get("flash", "")
-    assert ui_state._status.get("flash_kind") == "warn"
+    # said once, under the panel (forms._refusal_words): no notice above it
+    assert msg in str(ui_state._last_form.get("ms_refused"))
+    assert not ui_state._status.get("flash")
 
 
 @pytest.mark.parametrize("field,typed,key", [
@@ -231,12 +233,13 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
     started = _capture_run(monkeypatch, tmp_path)
     r = _post({field: typed})
     assert r.status_code == 303 and started == []
-    assert (f"Not run: model settings: {key}: '{typed}' is not a valid int."
-            in ui_state._status["flash"])
+    assert (f"{key}: '{typed}' is not a valid int"
+            == ui_state._last_form["ms_refused"])
     page = client.get("/forecast").text
     assert '<details class="adv" open data-refused id="model-settings"' in page
     why = page.split('id="ms-refused">')[1].split("</div>")[0]
-    assert f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a valid int." in why
+    assert (f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a whole "
+            "number." in why)
     assert f'name="{field}" id="ks-{key.replace(".", "-")}" value="{typed}"' in page
 
 
@@ -257,8 +260,12 @@ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
         "season": "2024-25", "locations": "panel6", "engine": "pf",
         "replicates": "3.5"}, follow_redirects=False)
     assert r.status_code == 303 and launched == []
-    assert ("Not started: model settings: pf.replicates: '3.5' is not a "
-            "valid int." in ui_state._status["flash"])
+    # the Settings card's panel says it, once (FC-21): no second notice
+    assert "model settings" not in (ui_state._status.get("flash") or "")
+    page = html.unescape(client.get("/retro").text)
+    said = page.split('id="ms-refused">')[1].split("</div>")[0]
+    assert "<strong>Not started.</strong>" in said
+    assert "Replicates: '3.5' is not a whole number." in said
 
 
 @pytest.mark.parametrize("typed,width", [

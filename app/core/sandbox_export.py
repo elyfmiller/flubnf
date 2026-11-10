@@ -41,9 +41,20 @@ from app.core.sandbox_results import results, summary_rows
 
 
 TRAJ_ZIP_MAX = 2 * 1024 * 1024
-#: settings a comparison lists when they differ
-RUN_SETTINGS = ("particles", "jitter", "forecast_weeks", "seed", "cumulative",
-                "suffix", "obs_col", "n_obs")
+#: settings a comparison lists when they differ; engine is the one the run
+#: was fitted by (prepare records it; a run that records none ran on the
+#: private engine, as _run_setting reads it)
+RUN_SETTINGS = ("engine", "particles", "jitter", "forecast_weeks", "seed",
+                "cumulative", "suffix", "obs_col", "n_obs")
+
+
+def _run_setting(meta: dict, key: str):
+    """A run's setting as a comparison shows it: its engine read as
+    sandbox._run_ratio reads it (public when it says so, else private: runs
+    from before the public engine record none), the rest as recorded."""
+    if key == "engine":
+        return "public" if meta.get("engine") == "public" else "private"
+    return meta.get(key)
 
 
 def _run_meta(run_id: str) -> tuple:
@@ -89,8 +100,9 @@ def diff_runs(a: str, b: str, max_lines: int = 400) -> dict:
             lines = lines[:max_lines] + [f"... {len(lines) - max_lines} more lines"]
         files.append({"name": f, "diff": "\n".join(lines),
                       "same": fa[f] == fb[f]})
-    settings = [{"key": k, "a": ma.get(k), "b": mb.get(k)} for k in RUN_SETTINGS
-                if ma.get(k) != mb.get(k)]
+    settings = [{"key": k, "a": _run_setting(ma, k), "b": _run_setting(mb, k)}
+                for k in RUN_SETTINGS
+                if _run_setting(ma, k) != _run_setting(mb, k)]
     out = {"a": a, "b": b, "files": files, "settings": settings}
 
     def src(m):

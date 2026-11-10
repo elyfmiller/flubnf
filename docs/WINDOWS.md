@@ -14,10 +14,10 @@ Install once:
 1. A Python. Anaconda from https://www.anaconda.com/download is the lab's
    standard and needs no settings changed: `FluBNF.bat` and `setup.ps1`
    probe the folders it installs into, so nothing is added to PATH.
-   Python 3.11 or newer from https://www.python.org/downloads/ works too
-   (tick "Add python.exe to PATH" in the installer). The particle-filter
-   engine needs 64-bit (x64) Python 3.12: 3.11 runs the console, but the
-   engine needs 3.12. With Anaconda, FluBNF makes one itself.
+   Without Anaconda, install 64-bit (x64) Python 3.12 from
+   https://www.python.org/downloads/ (tick "Add python.exe to PATH" in
+   the installer). 3.11 runs the console, but the particle-filter engine
+   needs 64-bit (x64) 3.12; with Anaconda, FluBNF makes one itself.
 2. Git from https://git-scm.com/download/win (defaults are fine).
 
 Then get the code and launch:
@@ -89,9 +89,10 @@ analogue forecasts only.
 
 The Liu-West filter from public PyBNF
 ([ENGINE.md](ENGINE.md#the-public-engine-the-default)): no file to hand
-out and no account. A copy that records no engine runs it. `FluBNF.bat`
-checks it on every open, and installs it when it is missing or no longer
-matches `engine-requirements.txt`:
+out and no account. A copy that records no engine runs it. On a copy
+that runs it (every copy not switched to the private engine),
+`FluBNF.bat` checks it on every open, and installs it when it is missing
+or no longer matches `engine-requirements.txt`:
 
 * 64-bit (x64) Python 3.12 and no other version, found as for the private
   engine (`py -3.12`, `python`, Anaconda's own), else conda makes one in
@@ -132,11 +133,21 @@ Prompt, from the FluBNF folder:
 
 then open `FluBNF.bat` again. That records `FLUBNF_ENGINE=private` in
 `.flubnf.env.cmd`, for this FluBNF folder only, never as a User variable;
-it also clears a User `FLUBNF_ENGINE` set by hand that says otherwise.
-From then on `FluBNF.bat` checks the private engine on every open, and
-installs it from the lab's file. `setup.ps1 -Engine public` goes back to
-the default. A `FLUBNF_ENGINE` that is neither `private` nor `public` runs
-the public engine, and the window says so in one line.
+it also clears a User `FLUBNF_ENGINE` set by hand that says otherwise. It
+records the choice first, before it installs or fetches anything, so a
+run that stops early (no network, say) still switches the copy.
+
+* When the private engine is already installed here and loads (the engine
+  environment and folder `FluBNF.bat` would run), and the console's
+  `.venv` is made, that is all it does: a few seconds, nothing installed,
+  no network. It says `Nothing was installed and nothing was fetched.`
+* Otherwise the whole setup follows, which takes minutes and the network,
+  and from then on `FluBNF.bat` checks the private engine on every open,
+  and installs it from the lab's file.
+
+The same line with `-Engine public` goes back to the default. A
+`FLUBNF_ENGINE` that is neither `private` nor `public` runs the public
+engine, and the window says so in one line.
 
 #### Installing it from the lab's file
 
@@ -273,8 +284,8 @@ FluBNF updates itself each time `FluBNF.bat` opens. The engine is a
 separate folder, and what happens to it depends on which engine it is and
 how it was installed.
 
-- **The public engine.** Every open compares its environment with
-  `engine-requirements.txt` (`scripts\engine_lock.py check`). When an
+- **The public engine.** On a copy that runs it, every open compares its
+  environment with `engine-requirements.txt` (`scripts\engine_lock.py check`). When an
   update brings a new lock, that open installs what the lock names; until
   then nothing in the environment changes.
 - **The private engine, from `pybnf-pf-<sha>.tar.gz`.** The unpacked copy has no git history,
@@ -340,9 +351,19 @@ engine, the default, the window says
 
 and then one line about the fallback: `The private engine is installed on
 this PC: to run it instead (the fallback), run setup.ps1 -Engine private,
-then open FluBNF again.`, or, when it is not installed, that it needs the
-lab's engine file. Nothing switches by itself. No record of a failed
-public install is kept: every open tries again.
+then open FluBNF again.`; when the private engine's folder is on the PC
+but not installed yet, that the next open installs it from there, with no
+file; otherwise, that it needs the lab's engine file. The line to type
+follows, for Command Prompt or PowerShell, with this FluBNF folder's path
+in it:
+
+```
+  To switch, type this in Command Prompt or PowerShell:
+    powershell -NoProfile -ExecutionPolicy Bypass -File "<FluBNF folder>\setup.ps1" -Engine private
+```
+
+Nothing switches by itself. No record of a failed public install is kept:
+every open tries again.
 
 On the private engine the window says
 
@@ -351,6 +372,9 @@ Engine setup did not finish (see above). The console still runs,
 analogue forecasts only. With the engine file still in your Downloads
 folder, or the engine folder still in place, the next open tries again.
 ```
+
+followed by the way back to the default, the same line with
+`-Engine public`.
 
 The lines above either one name the cause and one step that works on this
 PC. The usual ones, by what the window says:
@@ -666,8 +690,8 @@ system drive requires elevation on a default install.
 `setup.ps1`, `FluBNF.bat` and `flubnf/settings.py` all resolve in the same
 order -- the `FLUBNF_*` variable, then an existing directory at the old
 `Documents\GitHub` path, then the new default -- so a machine set up before
-this change keeps working with no action. The engine follows the same rule
-with two names and one more condition, a folder counting only when an
+this change keeps working with no action. The private engine's folder is
+found by the same rule, with two names and one more condition, a folder counting only when an
 engine is in it; the full list is under
 [Where it goes](#where-it-goes). Nothing is ever moved or copied
 for you: the author's own machine has 143 MB of PyBNF checkout and 150 MB of
@@ -1000,14 +1024,19 @@ standard `setup.sh` instructions inside the Linux environment.
   engine venv; on macOS it also fits one cell in that venv through
   FluBNF's own run path (`app/tests/test_engine_lwf.py`).
   `public-engine-install`, on Windows and on macOS, installs the public
-  engine for real: `FluBNF.bat`'s public block in cmd.exe (on macOS,
-  `setup_engine.sh --public`), real pip and PyPI, a venv under a folder
-  named `Jane O'Brien (Lab)`. The PyBNF wheel and its lock come from
-  `public-engine-wheel`, which builds the wheel from lanl/PyBNF at the
-  pinned commit and writes a lock for it on macOS
-  (`scripts/make_test_lock.py`; never the engine lane's lock). Then an open
-  with nothing to do, a new lock, a wheel whose hash does not match, and
-  PyBNF's lesson 50 in the venv (`tests/test_public_engine_real.py`).
+  engine for real. Its first open takes the default route, with
+  `FLUBNF_ENGINE` unset and no option: `FluBNF.bat`'s public block in
+  cmd.exe (on macOS, `setup_engine.sh` with no option), real pip and PyPI,
+  a venv under a folder named `Jane O'Brien (Lab)`, and no route recorded.
+  The PyBNF wheel and its lock come from `public-engine-wheel`, which
+  builds the wheel from lanl/PyBNF at the pinned commit and writes a lock
+  for it on macOS (`scripts/make_test_lock.py`; never the engine lane's
+  lock). Then, on macOS only, an open on the private route (the fallback),
+  which must leave the public venv alone; on Windows that open would look
+  for the lab's engine file, which CI does not hold. Then, on the public
+  route, an open with nothing to do, a new lock, a wheel whose hash does
+  not match, and PyBNF's lesson 50 in the venv
+  (`tests/test_public_engine_real.py`).
   `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
@@ -1018,7 +1047,15 @@ standard `setup.sh` instructions inside the Linux environment.
   repair above works, and once against a machine that already holds a
   checkout at the old `Documents` location, which must be reused where it
   stands -- checking each transcript against what the script
-  promised to say. `setup.ps1` installs no engine and the job holds no
+  promised to say. The runs also walk the engine record: run 1 gives no
+  `-Engine` and must write no `FLUBNF_ENGINE` line (the public engine,
+  the default), with `FLUBNF_ENGINE=pubic` in its environment, which it
+  must name and run public; run 2 gives `-Engine private` and must record
+  `FLUBNF_ENGINE=private` before its first pip, and clear the account's
+  `FLUBNF_ENGINE=public` set just before it; runs 3 and 4, with no
+  `-Engine`, must keep that record, run 4 over `FLUBNF_ENGINE=public` in
+  its environment; run 5 gives `-Engine public` and must record
+  `FLUBNF_ENGINE=public`. Five runs, as before. `setup.ps1` installs no engine and the job holds no
   credentials, so the engine is always missing there and the degraded path
   is what gets tested. It does not cover
   `FluBNF.bat` itself, the Perl/winget branch, or any non-ASCII profile

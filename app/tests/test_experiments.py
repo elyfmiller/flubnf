@@ -1117,12 +1117,14 @@ def test_a_resume_on_the_other_engines_build_names_the_step_back(
     assert said.endswith(
         "Resuming would mix two engine builds in one season. To finish it "
         "on the private engine it began on: ./setup_engine.sh --private in "
-        "the FluBNF folder; or archive or discard the existing results to "
-        "replay it on this one."), said
+        "the FluBNF folder; or delete the experiment to replay it on this "
+        "one."), said
     assert _tree(tmp_path) == before
     monkeypatch.setattr(settings, "_windows", lambda: True)
-    assert ("it began on: setup.ps1 -Engine private, then open FluBNF.bat "
-            "again;") in _refused("MACHINE", X.preflight, s, retro_root=season)
+    assert ("it began on: powershell -NoProfile -ExecutionPolicy Bypass "
+            "-File setup.ps1 -Engine private in the FluBNF folder, then open "
+            "FluBNF.bat again;") in _refused("MACHINE", X.preflight, s,
+                                             retro_root=season)
 
 
 def test_a_resume_names_the_replay_its_summary_was_compared_with(

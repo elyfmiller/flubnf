@@ -220,7 +220,7 @@
      <div class="sb-toolbar-h"><h2 id="h-sb-model">Model</h2>
       {%- call tips.toggletip("sb-files", "the three files") %}
       <span class="uk-tt-line"><b>model.bngl:</b> the model, time in weeks. A name ending <code>__FREE</code> is fitted, drawn from its line in priors.conf; the value written here is only for Check and Simulate data.</span>
-      <span class="uk-tt-line"><b>data.exp:</b> a header, then one row per week: the time and the count. The model starts at <code>t&nbsp;=&nbsp;-1</code>, a week before a first row at <code>t&nbsp;=&nbsp;0</code>; a missing week is a gap in time.</span>
+      <span class="uk-tt-line"><b>data.exp:</b> a header, then one row per week: the time and the count. On either engine the model starts a week before a first row at <code>t&nbsp;=&nbsp;0</code>; a missing week is a gap in time. Keep a clock the model reads in a counter species, as FluBNF's own models do: <code>time()</code> runs on the private engine only.</span>
       <span class="uk-tt-line"><b>priors.conf:</b> one line per fitted value, <code>uniform_var = name low high</code> (<code>loguniform_var</code> on a log scale); <code>pf_</code> lines set engine keys, such as <code>pf_cumulative_observable</code>, the output whose weekly increment is the count.</span>
       {%- endcall %}
       <span class="sb-status">

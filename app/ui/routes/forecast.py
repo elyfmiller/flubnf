@@ -22,7 +22,8 @@ from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
 from app.ui import pipeline, retro_seasons, shared, state, templating
 from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
                           _knob_form, _knob_panel, _knob_raw, _knobs,
-                          _season_auto, _str_field, resolve_anchor)
+                          _refusal_words, _season_auto, _str_field,
+                          resolve_anchor)
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
@@ -96,11 +97,14 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # this page is built (its card's poll reloads the page)
     running = _status.get("running") or ""
     _fa.restore_last_form(_last_form, _default_forecast_date)
-    form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
-                                "locations": ["all"],
-                                "engine": "all",
-                                "weeks_to_drop": 0, "weeks_to_nowcast": 0,
-                                "replicates": 3, "members": 2, "season_start": ""}
+    # the defaults under the remembered form: a refusal before the first
+    # run remembers only its reason, and the page still needs every field
+    form = {"forecast_date": _default_forecast_date(),
+            "locations": ["all"],
+            "engine": "all",
+            "weeks_to_drop": 0, "weeks_to_nowcast": 0,
+            "replicates": 3, "members": 2, "season_start": "",
+            **_last_form}
     # a refusal over the model settings opens the panel on this page only;
     # a later visit shows it as the user left it
     _last_form.pop("ms_refused", None)
@@ -319,6 +323,7 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     prior_states = prior_states if isinstance(prior_states, dict) else {}
     rows = {r["fips"]: r for r in _rep.box_rows(rep)}
     knob = MS.zero_anchor_of({"knobs": nd})
+    rules = MS.rules_of({"knobs": nd})
     states = {}
     in_run = set(locs)
     for g in rep.gaps:
@@ -326,22 +331,39 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             continue
         r = rows[g.fips]
         offered = dict(r["options"])
+        # a run-wide setting that counts the week as unreported moves both
+        # models back a week (missing.tail_flags) whatever else is chosen:
+        # only "Both from" and "Leave out" still apply (the box hides the
+        # rest while the setting is on)
+        ruled = [k for k in r["rules"] if k in rules]
+        if ruled:
+            offered = {c: t for c, t in offered.items()
+                       if c in _rep.RULE_LEAVES}
         choice = gap_fields.get(g.fips)
         if choice is None:
             choice = str((prior_states.get(g.location) or {}).get("choice")
                          or "")
         if choice and choice not in offered:
+            if ruled:
+                k = _knobs.BY_KEY[ruled[0]]
+                return None, locs, (
+                    f"Data issues for {g.location}: "
+                    f"{dict(r['options']).get(choice, choice)} does not "
+                    f"apply while {k.label} is set to "
+                    f"{_knobs.choice_word(k.key, 'missing')}; choose "
+                    f"{' or '.join(offered.values())}.")
             return None, locs, (f"Data issues for {g.location}: '{choice}' "
                                 f"is not one of {', '.join(offered)}.")
         if not choice:
-            if g.reason == "zero" and knob:
+            if ruled or (g.reason == "zero" and knob):
                 continue             # the run-wide rule covers it
             choice = r["rec"]        # the box's preselection
+        rec = "set_aside" if ruled else r["rec"]
         entry = {"issue": g.reason, "what": g.what(), "choice": choice,
                  "week": rep.week,
                  "reported": (r["aside"] if choice == "set_aside"
                               else r["reported"]),
-                 "recommended": r["rec"], "followed": choice == r["rec"]}
+                 "recommended": rec, "followed": choice == rec}
         if choice == "set_aside":
             aside = {w for w, _ in r["aside"]}
             before = [w for w, _ in r["reported"] if w not in aside]
@@ -1063,6 +1085,19 @@ def _report_v2_retired() -> tuple:
 
 
 # === Forecast: POST /run (form and rerun entry to _run_all) ===
+def _settings_refused(request: Request, e: Exception) -> RedirectResponse:
+    """A run refused over its model settings: the Forecast tab's panel
+    opens on it and says why under its head (ms_refused, one-shot), so
+    the tab gets no second notice; a page without the panel (a model
+    page's form) gets the one line, in the panel's words."""
+    from urllib.parse import urlsplit
+    _last_form["ms_refused"] = str(e) or True
+    back = _back(request, "/forecast")
+    if urlsplit(back.headers["location"]).path != "/forecast":
+        _flash(f"Not run: {_refusal_words(str(e))}", "warn")
+    return back
+
+
 @router.post("/run")
 def run_models(request: Request,
                background: BackgroundTasks,
@@ -1134,10 +1169,7 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
-        # the panel opens on its error, the reason under its head
-        _last_form["ms_refused"] = str(e) or True
-        _flash(f"Not run: model settings: {e}.", "warn")
-        return _back(request, "/forecast")
+        return _settings_refused(request, e)
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
     kept, kept_fields = _kept_settings(
@@ -1255,9 +1287,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = str(e) or True
-        _flash(f"Not run: model settings: {e}.", "warn")
-        return _back(request, "/forecast")
+        return _settings_refused(request, e)
     kspec = _knobs.spec_fields(nd)
     season_start = kspec.get("season_start", "")
     weeks_to_drop = int(kspec.get("weeks_to_drop", 0))

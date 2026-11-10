@@ -119,6 +119,12 @@ def test_an_unusable_lock_is_refused_with_its_reason(tmp_path, case, says):
     assert out.returncode == 2, out.stdout
     assert says in out.stderr, out.stderr
     assert out.stdout == ""
+    if case == "missing":
+        # the private engine is the fallback, chosen by name: it never
+        # installs because the lock is missing
+        assert ("until then the public engine, the default, cannot be "
+                "installed.") in out.stderr, out.stderr
+        assert "private" not in out.stderr, out.stderr
 
 
 def _site(tmp_path: Path, *, url: str = URL, sha: str | None = SHA,
@@ -308,12 +314,21 @@ def test_private_records_first_and_switches_with_no_install_when_it_loads(tmp_pa
                     "export FLUBNF_ENGINE=public\n")
     eng = _private_engine(tmp_path)
     calls = eng.pop("calls")
+    # the verify sees the record as it stands then: the choice is written
+    # before the engine is tried, so a verify that hangs or fails leaves
+    # the copy recorded private, never quietly public
+    seen = tmp_path / "record-at-verify"
+    py = eng["FLUBNF_ENGINE_VENV"] / "bin" / "python"
+    head, body = py.read_text().split("\n", 1)
+    py.write_text(f'{head}\ngrep "FLUBNF_ENGINE=" "{envf}" >> "{seen}"\n{body}')
     for _ in range(2):
         out = _setup(repo, home, "--private", **eng)
         assert out.returncode == 0, out.stdout + out.stderr
         assert ("the private engine is installed and works: this copy runs it "
                 "now (the fallback). ./setup_engine.sh --public goes back to "
                 "the default.") in out.stdout
+    assert set(seen.read_text().splitlines()) == {
+        "export FLUBNF_ENGINE=private"}, seen.read_text()
     text = envf.read_text()
     assert text.count("FLUBNF_ENGINE=") == 1, text
     assert "export FLUBNF_ENGINE=private" in text and "=public" not in text
@@ -814,8 +829,10 @@ def test_install_refuses_an_unknown_route_before_anything_is_cloned(tmp_path):
 @pytest.mark.parametrize("line", ["export FLUBNF_ENGINE=private",
                                   "export FLUBNF_ENGINE=public"])
 def test_setup_sh_keeps_the_engine_record(tmp_path, line):
-    """setup.sh rewrites .flubnf.env; its KEPT line carries the engine
-    record (and the public venv's path) through."""
+    """setup.sh rewrites .flubnf.env; its KEPT line picks the engine
+    record (and the public venv's path) to carry through. This evaluates
+    that line alone: the write itself, run for real, is
+    test_engine_switch_sh's test_setup_sh_writes_the_engine_record_back."""
     src = (REPO / "setup.sh").read_text(encoding="utf-8")
     kept = next(ln for ln in src.splitlines() if ln.startswith("KEPT="))
     (tmp_path / ".flubnf.env").write_text(

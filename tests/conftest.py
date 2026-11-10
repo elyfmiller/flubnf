@@ -30,12 +30,12 @@ def _no_record_root(tmp_path_factory):
 def _no_engine_record(monkeypatch, _no_record_root):
     """settings reads no engine record from the checkout (INSTALL_ROOT is
     an empty folder), whatever its .flubnf.env says, so a test that unsets
-    FLUBNF_ENGINE gets the default. Only when settings is imported already:
-    the launcher tests do not import it for this."""
-    settings = sys.modules.get("flubnf.settings")
-    if settings is None:
-        yield
-        return
+    FLUBNF_ENGINE gets the default. Imported here whether or not the test's
+    file imports it: a test that imports settings inside itself, in a file
+    run alone, read the checkout's own record (a private one picked the
+    private engine). The launcher tests run the scripts, which never read
+    this."""
+    from flubnf import settings
     monkeypatch.setattr(settings, "INSTALL_ROOT", _no_record_root)
     settings.forget_record()
     yield

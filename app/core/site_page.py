@@ -1188,7 +1188,9 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         integrated by BNGsim (our C++17 engine), and fitted by the Liu-West
         filter in public PyBioNetFit (lanl/PyBNF, job_type = lwf), the
         framework this lab co-developed with Los Alamos; it installs with no
-        lab files. Nothing under the hood is a black box
+        lab files. Rounds and sealed seasons from before the engine switch
+        of 2026-11-09 were fitted by the lab's PyBNF fork. Nothing under the
+        hood is a black box
         we cannot open: when a forecast needs a capability, we write it into
         the same open tools everyone else can use. Methods breaks each layer
         down.</p>

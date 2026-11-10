@@ -492,12 +492,18 @@
             var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
             var probs = d.problems || [], warns = d.warnings || [];
             var notes = warns.length === 1 ? '1 note' : warns.length + ' notes';
+            // a note whose words say a run stops on it (app/core/problem_codes.py):
+            // the headline then promises no run
+            var stops = (d.codes || []).some(function (c) {
+              return c.code === 'ROW_BEFORE_START' || c.code === 'KEY_UNKNOWN';
+            });
             if (probs.length) {
               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
                                 'a run would fail.') + listHtml(probs);
             } else if (warns.length) {
-              // never green above a note: the notes are the headline
-              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'))
+              // never green above a note: the notes are the headline, and
+              // no promise of a run above one that says a run stops
+              html += alertHtml('warn', 'Worth a look:', notes + (f.machine || stops ? '.' : '; the model can run.'))
                 + listHtml(warns);
             } else if (f.machine) {
               html += alertHtml('ok', 'No problems found in the model.', '');

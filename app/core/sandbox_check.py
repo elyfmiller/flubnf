@@ -101,6 +101,14 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
         if any(b <= a for a, b in zip(times, times[1:])):
             problem("EXP_TIME_ORDER",
                     "data.exp: time must increase from row to row")
+        # inf (or a number too large to hold, 1e400) is no count
+        big = next((r for r in exp["rows"]
+                    if any(np.isinf(v) for v in r)), None)
+        if big is not None:
+            problem("EXP_UNREADABLE", "data.exp has a row at t = "
+                    f"{big[0]:g} whose value is not a finite number: write "
+                    "the week's count, or a negative value for a missing "
+                    "week")
     except SandboxError as e:
         problem(e.code, str(e))
     except ValueError as e:
@@ -404,7 +412,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
     """(fact, warning or '') comparing the model at its written values
     with the data: their ranges, and a warning when their totals differ
     tenfold or more (N, the starting state or the scale is off)."""
-    obs = [float(v) for v in observed if float(v) >= 0]
+    obs = [float(v) for v in observed
+           if np.isfinite(float(v)) and float(v) >= 0]
     exp_ = [max(float(v), 0.0) for v in expected]
     if not obs or not exp_:
         return "", ""
@@ -416,6 +425,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
     if so <= 0 or se <= 0:
         return fact, ""
     ratio = se / so
+    if not 0 < ratio < float("inf"):        # too far apart to say how far
+        return fact, ""
     if ratio >= 10 or ratio <= 0.1:
         how = (f"{ratio:,.0f} times" if ratio >= 10
                else f"1/{1 / ratio:,.0f} of")

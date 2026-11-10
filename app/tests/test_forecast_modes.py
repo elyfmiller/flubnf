@@ -99,7 +99,9 @@ def test_run_refuses_a_season_start_that_is_not_before_the_week(
     assert started == []
     assert ui_state._status.get("running") is None
     page = client.get("/forecast").text
-    assert "run.season_start" in page and "Not run" in page
+    # said once, under the panel, in its words (G26)
+    why = page.split('id="ms-refused">')[1].split("</div>")[0]
+    assert "Season start: &#39;not-a-date&#39; is not a date." in why
 
 
 def test_run_settings_name_the_season_start():

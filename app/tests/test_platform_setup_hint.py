@@ -75,8 +75,9 @@ def test_on_the_public_engine_the_hint_is_its_install_step(monkeypatch):
         "; the private engine installed here runs instead after "
         "./setup_engine.sh --private in the FluBNF folder")
     monkeypatch.setattr(ui_templating, "_platform", lambda: "win32")
-    assert "setup.ps1 -Engine private, then open FluBNF.bat again" in str(
-        ui_templating._engine_fallback_hint())
+    assert ("after powershell -NoProfile -ExecutionPolicy Bypass -File "
+            "setup.ps1 -Engine private in the FluBNF folder, then open "
+            "FluBNF.bat again") in str(ui_templating._engine_fallback_hint())
     # on the private engine nothing comes after the hint
     monkeypatch.setenv("FLUBNF_ENGINE", "private")
     assert str(ui_templating._engine_fallback_hint()) == ""

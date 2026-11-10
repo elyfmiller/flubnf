@@ -150,8 +150,8 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 - `flubnf doctor`: environment and engine check.
 - `flubnf engine-update`: move a clean private engine checkout (the
-  fallback) to its pinned build, 2fdadee0. The public engine follows its
-  lock instead.
+  fallback) to its pinned build, 2fdadee0. The public engine changes
+  only when its lock does.
 - `flubnf knobs ...`: settings; changed settings without an override write
   `<model_id>-modified` files, which are not hub names.
 - `flubnf retro <season>` / `flubnf groundhog retro all --aux flusurv`: replays.
@@ -183,9 +183,14 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
   `app/core/engine_build.py`. It stays installed where it was. A different
   build of either engine only warns.
 - To run a Wednesday on the fallback: in the FluBNF folder,
-  `./setup_engine.sh --private` (on Windows, `setup.ps1 -Engine private`),
-  then reopen FluBNF. With the private engine installed, this takes
-  seconds and needs no network. The run records the 2fdadee0 build.
+  `./setup_engine.sh --private` (on Windows, `setup.ps1 -Engine private`,
+  typed as [ENGINE.md](ENGINE.md#choosing-the-engine) gives it), then
+  reopen FluBNF. Either one records the choice before anything else. With
+  the private engine installed and loading, that is all it does: seconds,
+  no network (on Windows, once the console's `.venv` is made). Otherwise
+  the install follows (on Windows, a whole setup run, then the engine on
+  the next open), which needs the network. The run records the 2fdadee0
+  build.
   `./setup_engine.sh --public` (on Windows, `setup.ps1 -Engine public`)
   returns to the default. Switch before the round starts, never halfway
   through it.

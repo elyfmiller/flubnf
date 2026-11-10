@@ -80,8 +80,8 @@ def read_lock(path: Path) -> list[str]:
     except FileNotFoundError:
         raise LockError(
             f"the public engine's lock file is not here: {path}. The engine "
-            "lane posts it (docs/team/engine.md); until then only the private "
-            "engine installs.") from None
+            "lane posts it (docs/team/engine.md); until then the public "
+            "engine, the default, cannot be installed.") from None
     except OSError as e:
         raise LockError(f"could not read {path}: {e}") from None
     return logical_lines(text)
