@@ -1,0 +1,835 @@
+diff --git a/app/core/replay_bundle.py b/app/core/replay_bundle.py
+index 34e708ed..1e560195 100644
+--- a/app/core/replay_bundle.py
++++ b/app/core/replay_bundle.py
+@@ -212,86 +212,91 @@ def _safe_member(name: str) -> bool:
+                for p in parts)
+ 
+ 
+-def inspect_bundle(path: Path) -> dict:
++def inspect_bundle(path: Path, name: str = "") -> dict:
+     """Read and validate a bundle's manifest and table of contents (not the
+     hashes; import_bundle verifies those as it extracts). Returns the
+-    manifest, with "bundle_bytes" and "bundle_sha256" added."""
++    manifest, with "bundle_bytes" and "bundle_sha256" added. `name` is
++    the file as its messages call it (an upload's own name, not the
++    server's copy); the path's name by default."""
+     path = Path(path)
++    name = name or path.name
++    if path.is_dir():
++        raise BundleError(f"{path} is a folder, not a bundle.")
+     if not path.is_file():
+-        raise BundleError(f"{path.name}: no such file.")
++        raise BundleError(f"{name}: no such file.")
+     size = path.stat().st_size
+     if size > BUNDLE_MAX_BYTES:
+-        raise BundleError(f"{path.name} is {size // 1024 ** 2} MB; bundles "
++        raise BundleError(f"{name} is {size // 1024 ** 2} MB; bundles "
+                           f"over {BUNDLE_MAX_BYTES // 1024 ** 3} GB are "
+                           "refused.")
+     if not zipfile.is_zipfile(path):
+-        raise BundleError(f"{path.name} is not a zip file.")
++        raise BundleError(f"{name} is not a zip file.")
+     try:
+         with zipfile.ZipFile(path) as z:
+             infos = z.infolist()
+             names = [i.filename for i in infos]
+             if names.count(MANIFEST) != 1:
+-                raise BundleError(f"{path.name} has no {MANIFEST} at its "
++                raise BundleError(f"{name} has no {MANIFEST} at its "
+                                   "top level, so it is not a replay bundle.")
+             for i in infos:
+                 if i.filename.endswith("/"):
+                     continue                          # a directory entry
+                 if not _safe_member(i.filename):
+-                    raise BundleError(f"{path.name} names a path outside the "
++                    raise BundleError(f"{name} names a path outside the "
+                                       f"bundle ({i.filename!r}); refused.")
+                 if i.file_size > MEMBER_MAX_BYTES:
+-                    raise BundleError(f"{path.name}: {i.filename} is "
++                    raise BundleError(f"{name}: {i.filename} is "
+                                       f"{i.file_size // 1024 ** 2} MB; "
+                                       "members over "
+                                       f"{MEMBER_MAX_BYTES // 1024 ** 2} MB "
+                                       "are refused.")
+                 if i.compress_size and i.file_size > MAX_RATIO * i.compress_size:
+-                    raise BundleError(f"{path.name}: {i.filename} claims a "
++                    raise BundleError(f"{name}: {i.filename} claims a "
+                                       f"{i.file_size // max(1, i.compress_size)}x "
+                                       "inflation; refused.")
+             try:
+                 manifest = json.loads(z.read(MANIFEST).decode("utf-8"))
+             except (ValueError, UnicodeDecodeError) as e:
+-                raise BundleError(f"{path.name}: {MANIFEST} is not valid "
++                raise BundleError(f"{name}: {MANIFEST} is not valid "
+                                   f"JSON ({e}).") from None
+     except zipfile.BadZipFile as e:
+-        raise BundleError(f"{path.name} is not a readable zip file ({e}).") \
++        raise BundleError(f"{name} is not a readable zip file ({e}).") \
+             from None
+     if not isinstance(manifest, dict):
+-        raise BundleError(f"{path.name}: {MANIFEST} is not an object.")
++        raise BundleError(f"{name}: {MANIFEST} is not an object.")
+     if manifest.get("format_version") != FORMAT_VERSION:
+-        raise BundleError(f"{path.name} is format {manifest.get('format_version')!r}; "
++        raise BundleError(f"{name} is format {manifest.get('format_version')!r}; "
+                           f"this FluBNF reads format {FORMAT_VERSION}.")
+     season = str(manifest.get("season") or "")
+     if not _SEASON_RE.fullmatch(season):
+-        raise BundleError(f"{path.name}: season {season!r} is not a season "
++        raise BundleError(f"{name}: season {season!r} is not a season "
+                           "name (YYYY-YY).")
+     from app.core import retro
+     stamp = str(manifest.get("stamp") or "")
+     if not retro.valid_stamp(stamp):
+-        raise BundleError(f"{path.name}: export stamp {stamp!r} is malformed.")
++        raise BundleError(f"{name}: export stamp {stamp!r} is malformed.")
+     files = manifest.get("files")
+     if not isinstance(files, dict) or not files:
+-        raise BundleError(f"{path.name}: {MANIFEST} lists no files.")
++        raise BundleError(f"{name}: {MANIFEST} lists no files.")
+     members = {n for n in names if not n.endswith("/")} - {MANIFEST}
+     for f, ent in files.items():
+         if not _safe_member(f):
+-            raise BundleError(f"{path.name}: {MANIFEST} names a path outside "
++            raise BundleError(f"{name}: {MANIFEST} names a path outside "
+                               f"the bundle ({f!r}); refused.")
+         if not (isinstance(ent, dict) and isinstance(ent.get("sha256"), str)
+                 and len(ent["sha256"]) == 64
+                 and isinstance(ent.get("bytes"), int)):
+-            raise BundleError(f"{path.name}: {MANIFEST} has no sha256 and "
++            raise BundleError(f"{name}: {MANIFEST} has no sha256 and "
+                               f"size for {f}.")
+         if f not in members:
+-            raise BundleError(f"{path.name} is missing {f}, which its "
++            raise BundleError(f"{name} is missing {f}, which its "
+                               f"{MANIFEST} lists.")
+     extra = sorted(members - set(files))
+     if extra:
+-        raise BundleError(f"{path.name} holds {extra[0]}, which its "
++        raise BundleError(f"{name} holds {extra[0]}, which its "
+                           f"{MANIFEST} does not list.")
+     if not any(f.startswith("weeks/") for f in files):
+-        raise BundleError(f"{path.name} carries no weeks.")
++        raise BundleError(f"{name} carries no weeks.")
+     manifest["weeks"] = sorted({f.split("/")[1] for f in files
+                                 if f.startswith("weeks/")})
+     manifest["bundle_bytes"] = size
+@@ -340,7 +345,7 @@ def _extract_member(z: zipfile.ZipFile, name: str, dst: Path,
+ 
+ 
+ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
+-                  build: str = "") -> ImportResult:
++                  build: str = "", name: str = "") -> ImportResult:
+     """Import a bundle as the read-only archived entry
+     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
+     of the same bundle ("already imported as <stamp>") unless `replace`.
+@@ -355,7 +360,8 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
+     from app.core import retro
+     from app.core.retro_store import ORACLE_NAME, samples_file
+     path, retro_root = Path(path), Path(retro_root)
+-    m = inspect_bundle(path)
++    name = name or path.name           # an upload's own name (inspect_bundle)
++    m = inspect_bundle(path, name)
+     season, stamp = m["season"], m["stamp"]
+     dst = retro.archive_dir(retro_root, season, stamp)
+     if dst.exists() or dst.is_symlink():
+@@ -373,7 +379,7 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
+         with zipfile.ZipFile(path) as z:
+             for f in order:
+                 _extract_member(z, f, tmp / f, files[f]["sha256"],
+-                                files[f]["bytes"], path.name)
++                                files[f]["bytes"], name)
+         for f in files:
+             parts = f.split("/")
+             if not (len(parts) == 3 and parts[0] == "weeks"
+@@ -392,7 +398,7 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
+                   "exported_at": str(m.get("exported_at") or ""),
+                   "imported_at": _utc_iso(), "imported_by": hostname(),
+                   "bundle_sha256": m["bundle_sha256"],
+-                  "bundle_name": path.name, "source": m.get("source"),
++                  "bundle_name": name, "source": m.get("source"),
+                   "exported_build": str(m.get("flubnf_build") or ""),
+                   "imported_build": build or ""}
+         (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
+diff --git a/app/core/retro_settings.py b/app/core/retro_settings.py
+index f770336f..131d1063 100644
+--- a/app/core/retro_settings.py
++++ b/app/core/retro_settings.py
+@@ -103,8 +103,12 @@ def location_scope_change(prior_locations, locations) -> str | None:
+     had, want = location_scope(prior_locations), location_scope(locations)
+     if not had or had == want:
+         return None
+-    return (f"replayed over {len(had)} location(s); this run asks for "
+-            f"{len(want)} with a different list")
++    if had - want == {"US"} and not want - had:
++        return "replayed with US; this run leaves US out"
++    if want - had == {"US"} and not had - want:
++        return "replayed without US; this run adds it"
++    return (f"replayed over {len(had)} location{'' if len(had) == 1 else 's'}"
++            f"; this run asks for {len(want)}, a different list")
+ 
+ 
+ #: labels for the retro form's scopes, when a replay recorded no location list
+diff --git a/app/tests/test_dataset_snapshots.py b/app/tests/test_dataset_snapshots.py
+index 87667620..c7ecc5f6 100644
+--- a/app/tests/test_dataset_snapshots.py
++++ b/app/tests/test_dataset_snapshots.py
+@@ -361,7 +361,10 @@ def test_replay_this_stores_one_vintage_true_dataset():
+     (ds,) = D.list_datasets()
+     assert r.headers["location"] == f"/retro?dataset={ds.id}#main"
+     page = client.get(r.headers["location"]).text
+-    assert "Vintage-true: each week sees its as_of snapshot." in page
++    # the badge's word; what it means in the replays' one "?" (G28)
++    assert 'uk-badge-t">vintage-true<' in page
++    assert "Vintage-true: each replayed week sees the as_of snapshot that " \
++        "held it." in page
+     assert ("8 snapshots, as_of <span class=\"nw\">2023-11-04</span> to "
+             "<span class=\"nw\">2023-12-23</span>.") in page
+     first = page.split('id="dsr-first"')[1].split("</select>")[0]
+diff --git a/app/tests/test_datasets_ui.py b/app/tests/test_datasets_ui.py
+index d82bf94c..3ab59b4c 100644
+--- a/app/tests/test_datasets_ui.py
++++ b/app/tests/test_datasets_ui.py
+@@ -423,7 +423,10 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
+     loc = r.headers["location"]
+     assert loc.startswith(f"/retro/dataset/{ds.id}/")
+     page = client.get(loc).text
+-    assert "Final data, not vintage-true: 2023-10-07 to 2024-02-24" in page
++    # the badge's word and the weeks; the why in the Scores "?" (G28)
++    assert 'uk-badge-t">final data<' in page and "2023-10-07 to 2024-02-24" \
++        in page
++    assert "each week was cut from the final series" in page
+     assert "in-house persistence baseline" in page and ">done<" in page
+     assert "FluSight baseline" not in page
+     # listed in its own card, not among the season cards
+diff --git a/app/tests/test_design_batch3.py b/app/tests/test_design_batch3.py
+index ee48846d..df6101c1 100644
+--- a/app/tests/test_design_batch3.py
++++ b/app/tests/test_design_batch3.py
+@@ -99,10 +99,11 @@ def test_active_and_unfinished_seasons_keep_their_bars():
+     live = _index(done=3, status="running", running=True, active=True,
+                   rel=None)
+     assert 'class="runbar"' in live
+-    assert "relWIS" not in live
++    # no score on the card (the page's "?" names relWIS for every card)
++    assert "relWIS" not in live.split(f'data-season="{SEASON}"', 1)[1]
+     part = _index(done=3, status="stopped", rel=0.9)
+     assert 'role="progressbar"' in part       # incomplete: bar, not verdict
+-    assert "relWIS" not in part
++    assert "relWIS" not in part.split(f'data-season="{SEASON}"', 1)[1]
+     unscored = _index(rel=None)               # complete but never scored
+     assert 'role="progressbar"' in unscored
+ 
+diff --git a/app/tests/test_relwis_conventions.py b/app/tests/test_relwis_conventions.py
+index f0f08e4c..c4b5aaec 100644
+--- a/app/tests/test_relwis_conventions.py
++++ b/app/tests/test_relwis_conventions.py
+@@ -618,14 +618,15 @@ def test_the_index_labels_the_convention_beside_every_score():
+                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
+                                 "elapsed_s": None, "rel": 0.9,
+                                 "size_h": "1 MB"}]}])
+-    # the season's headline: its "?" names the convention
++    # the page's one "?" names the convention for every score on it, the
++    # season's headline and the archived rows alike (bug hunt G28, RE-18:
++    # each row's own "?" was clutter)
++    page_tip = html.split('id="tip-rt-page"', 1)[1].split("</span></span>")[0]
++    assert "relWIS: the summed WIS over the FluSight baseline's (a ratio of " \
++        "sums)" in page_tip
+     card = html.split('data-season="2098-99"', 1)[1]
+-    head = card.split('rt-arch-h"', 1)[0]
+-    assert re.search(r'<dt>relWIS<span class="tip">.*?'
+-                     r'relWIS vs FluSight baseline, ratio of sums.*?'
+-                     r'<span class="uk-stat-v"[^>]*>0\.877</span>', head, re.DOTALL)
+-    # the archived runs: their heading's "?" names it for every row
++    assert re.search(r'<dt>relWIS</dt>.*?<span class="uk-stat-v"[^>]*>0\.877'
++                     r'</span>', card, re.DOTALL)
++    assert 'class="tip"' not in card.split('<div class="archrow"', 1)[0]
+     arch = card.split('rt-arch-h"', 1)[1]
+-    assert "relWIS vs FluSight baseline, ratio of sums" in \
+-        arch.split('<div class="archrow"', 1)[0]
+     assert 'relWIS <span class="ok">0.900</span>' in arch
+diff --git a/app/tests/test_resume_rerun.py b/app/tests/test_resume_rerun.py
+index 7e7f1fe2..6157c7ae 100644
+--- a/app/tests/test_resume_rerun.py
++++ b/app/tests/test_resume_rerun.py
+@@ -138,7 +138,8 @@ def test_stopped_season_card_offers_resume_with_recorded_settings():
+     # the same guard kind as the form it shortcuts, and honest copy
+     assert 'data-guard="retro-run"' in seg
+     assert ">Resume</button>" in seg
+-    assert "Resumes with the recorded settings" in html
++    # what Resume does is the page's one "?" (G28: its own "?" went)
++    assert "from its last completed week with the recorded settings" in html
+ 
+ 
+ def test_season_without_recorded_settings_gets_no_resume_button():
+diff --git a/app/tests/test_retro_fit_level.py b/app/tests/test_retro_fit_level.py
+index 738b25ab..0ae4a792 100644
+--- a/app/tests/test_retro_fit_level.py
++++ b/app/tests/test_retro_fit_level.py
+@@ -371,7 +371,9 @@ def test_retro_index_never_fabricates_a_zero_wall_time():
+     timed = dict(_index_card(3725.0), mean_s=124.0, weeks_measured=30)
+     ok = tpl.render(active="Retrospective", state_names=["Ohio"],
+                     engine_ok=True, seasons=[timed])
+-    assert "total wall time 1:02:05, mean 124 s per week over 30 timed" in ok
++    # the per-week mean is the season page's; the index shows the total
++    # alone, with no "?" (bug hunt G28, RE-18)
++    assert ">1:02:05</span>" in ok and "total wall time 1:02:05" not in ok
+ 
+ 
+ def test_season_page_never_fabricates_a_zero_wall_time():
+@@ -431,5 +433,8 @@ def test_stopping_badge_names_the_fits_in_flight():
+                   "running": True, "paused": False, "active": True,
+                   "status": "stopping", "elapsed_s": 600.0, "mean_s": 60.0,
+                   "weeks_measured": 3, "eta_s": None, "scored": False}])
+-    assert "stopping after the fits in flight" in html
++    # the badge's word is the whole message (bug hunt G28, RE-18: its "?"
++    # was clutter); the fits in flight finish, as the Stop button's form
++    # says nowhere it could mislead
++    assert '<span class="uk-badge-t">stopping</span>' in html
+     assert "after the current week" not in html
+diff --git a/app/tests/test_retro_words.py b/app/tests/test_retro_words.py
+new file mode 100644
+index 00000000..d195a51d
+--- /dev/null
++++ b/app/tests/test_retro_words.py
+@@ -0,0 +1,153 @@
++"""The Retrospective's words and marks (bug hunt 2026-10-25, G28).
++
++  * The zero-anchor refusal names the Run form's own control.
++  * The FluSight hub tab has one explainer, the page's; the season rows'
++    badges and figures carry no tips of their own (an error keeps its
++    text). The Your data tab has one, its replays' heading, and the
++    replay page one, its Scores heading.
++  * Import refusals name the file the student chose, and a folder as a
++    folder.
++  * Deleting an imported run says where it came from.
++  * Refusals and notices say settings, scopes and archives in words: no
++    keys, digests or folder names.
++  * docs/RETROSPECTIVES.md puts Import a replay on its own card.
++"""
++import json
++from pathlib import Path
++
++import pytest
++
++from app.core import replay_bundle, retro_settings
++from app.ui import state as ui_state
++from app.ui.routes import retro as ui_retro
++from test_datasets_ui import client, isolated, stored        # noqa: F401
++from test_retro_archive import SEASON, _roots                 # noqa: E402
++
++ROOT = Path(__file__).resolve().parents[2]
++UI = ROOT / "app" / "ui" / "templates"
++
++
++def _flash():
++    return (ui_state._status.get("flash") or "",
++            ui_state._status.get("flash_detail") or "")
++
++
++# ------------------------------------------ RE-16: the form's own label
++
++def test_the_zero_anchor_refusal_names_the_forms_control(tmp_path,
++                                                         monkeypatch):
++    _roots(tmp_path, monkeypatch)
++    ui_state._status.pop("flash", None)
++    client.post("/retro/run", data={"season": SEASON, "engine": "analogue",
++                                    "locations": "custom",
++                                    "custom_locations": "Ohio"},
++                follow_redirects=False)
++    msg, detail = _flash()
++    assert msg.startswith("Not started: choose what the Groundhog does")
++    assert detail == ("Set Groundhog when the newest week reads 0: abstain, "
++                      "level, extend or blend.")
++
++
++# --------------------------------------------------- RE-18, RE-19: marks
++
++def test_the_season_rows_carry_no_tips_of_their_own():
++    page = (UI / "retro.html").read_text(encoding="utf-8")
++    for gone in ('call tips.stat("Wall time"', '"rt-resume-"', '"rt-arch-"',
++                 '"rt-eta-"',
++                 "relWIS vs FluSight baseline, ratio of sums",
++                 "Run resumes it from the last completed week."):
++        assert gone not in page, gone
++    # their words are the page's one explainer
++    assert "relWIS: the summed WIS over the FluSight baseline's" in page
++    assert '<span class="rbasis uk-sr">' in page          # the screen reader's
++    # an error's text and the seal's name stay with their badges: each is
++    # said nowhere else
++    assert 'tips.badge("error", "error", s.status' in page
++    assert 'tips.badge("info", "sealed", s.seal_label' in page
++
++
++def test_the_your_data_tab_has_one_explainer(tmp_path, monkeypatch):
++    ds = stored()
++    page = client.get(f"/retro?dataset={ds.id}").text
++    for gone in ('id="tip-rt-page"', 'id="tip-dsr-src"', 'id="tip-dsr-groups"',
++                 'id="tip-dsr-engine"', 'id="tip-dsr-fs"', 'id="tip-dsr-kind"'):
++        assert gone not in page, gone
++    tip = page.split('id="tip-rt-ds-about"', 1)[1].split("</span></span>")[0]
++    assert "a national group is scored beside the others" in tip
++    assert "Add FluSurv-NET donors (US flu hospitalizations only)" in page
++    rd = (UI / "retro_dataset.html").read_text(encoding="utf-8")
++    for gone in ('"rd-rel"', '"rd-beside"', '"rd-h"', "rd-abst-\" ~ m) }}\n"):
++        assert gone not in rd, gone
++    assert "Horizon 0 is the week after the forecast date." in rd
++
++
++# ------------------------------------- RE-20: the chosen file, a folder
++
++def test_an_import_refusal_names_the_chosen_file_and_a_folder(tmp_path,
++                                                             monkeypatch):
++    _roots(tmp_path, monkeypatch)
++    ui_state._status.pop("flash", None)
++    client.post("/retro/import",
++                files={"file": ("notzip.zip", b"not a zip", "application/zip")},
++                follow_redirects=False)
++    assert _flash()[0] == "Not imported: notzip.zip is not a zip file."
++    ui_state._status.pop("flash", None)
++    client.post("/retro/import", data={"path": str(tmp_path)},
++                follow_redirects=False)
++    assert _flash()[0] == (f"Not imported: {tmp_path} is a folder, not a "
++                           "bundle.")
++    with pytest.raises(replay_bundle.BundleError, match="^a.zip is not a"):
++        replay_bundle.inspect_bundle(_write(tmp_path / "x.bin"), "a.zip")
++
++
++def _write(p: Path) -> Path:
++    p.write_bytes(b"not a zip")
++    return p
++
++
++# --------------------------------------- RE-21: an imported run's delete
++
++def test_deleting_an_imported_run_says_where_it_came_from(tmp_path,
++                                                          monkeypatch):
++    rr = _roots(tmp_path, monkeypatch)
++    arch = rr / "2096-97__archived_20261025T191112Z"
++    arch.mkdir()
++    (arch / replay_bundle.IMPORTED_MARK).write_text(json.dumps(
++        {"from": "vm", "imported_at": "2026-10-25T19:20:00Z"}))
++    ui_state._status.pop("flash", None)
++    client.post("/retro/2096-97/archive/20261025T191112Z/delete",
++                data={"confirm": "2096-97"}, follow_redirects=False)
++    assert _flash()[0].startswith("Deleted the 2096-97 run imported from vm "
++                                  "on 2026-10-25: ")
++    page = (UI / "retro.html").read_text(encoding="utf-8")
++    assert "(d.imported?d.season+' run '+d.when" in page
++
++
++# --------------------------------------------- RE-22: words, not keys
++
++def test_refusals_say_settings_scopes_and_archives_in_words():
++    words = ui_retro._settings_words
++    assert words({"groundhog.zero_anchor": "level"}) == (
++        "Groundhog when the newest week reads 0: level")
++    assert words({"groundhog.zero_anchor": "abstain", "oracle.w": 0.25}) == (
++        "Groundhog when the newest week reads 0: abstain, Oracle blend "
++        "weight 0.25 (default 0.5)")
++    assert words({}) == "the default settings"
++    change = retro_settings.location_scope_change
++    assert change(["Ohio", "Utah"], ["Ohio", "Utah", "US"]) == (
++        "replayed without US; this run adds it")
++    assert change(["Ohio", "Utah", "US"], ["Ohio", "Utah"]) == (
++        "replayed with US; this run leaves US out")
++    assert change(["Ohio", "Utah"], ["Ohio"]) == (
++        "replayed over 2 locations; this run asks for 1, a different list")
++    src = (ROOT / "app/ui/routes/retro.py").read_text(encoding="utf-8")
++    assert "(set aside \"\n" in src or "(set aside " in src
++    assert "{dst.name}" not in src
++
++
++# ------------------------------------------------------- RE-27: the doc
++
++def test_the_doc_puts_import_on_its_own_card():
++    doc = (ROOT / "docs" / "RETROSPECTIVES.md").read_text(encoding="utf-8")
++    assert "(Settings card)" not in doc
++    assert "(its own card under\nSettings)" in doc
+diff --git a/app/tests/test_run_timing.py b/app/tests/test_run_timing.py
+index 795252f6..d36aff8c 100644
+--- a/app/tests/test_run_timing.py
++++ b/app/tests/test_run_timing.py
+@@ -724,7 +724,7 @@ def test_retro_index_offers_pause_and_stop_while_running():
+     # the console's run treatment: bar, readout, estimate basis, quips
+     assert 'class="runbar"' in html and 'class="rfill"' in html
+     assert 'class="runstat rstat"' in html
+-    assert 'class="rbasis"' in html          # the readout's "?" tip
++    assert 'class="rbasis uk-sr"' in html    # for a screen reader (G28)
+     assert 'class="quip rquip"' in html
+     assert 'src="/static/retro_progress.js"' in html
+     assert "GUARD_BUSY" in html
+@@ -751,8 +751,10 @@ def test_retro_index_reports_total_wall_time_for_a_finished_season():
+                   "running": False, "paused": False, "active": False,
+                   "status": "done", "elapsed_s": 3725.0, "mean_s": 124.0,
+                   "weeks_measured": 30, "eta_s": None, "scored": True}])
+-    assert "total wall time 1:02:05" in html
+-    assert "mean 124 s per week over 30 timed" in html
++    # the total on the index; the per-week mean is the season page's (G28:
++    # the index's "?" only repeated the value)
++    assert ">1:02:05</span>" in html
++    assert "mean 124 s per week" not in html
+     assert f'action="/retro/{SEASON}/stop"' not in html      # nothing to stop
+ 
+ 
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f6894860..159bacbb 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -275,6 +275,11 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
+         return _back(request, "/retro")
+     weeks = retro.run_summary(p)["weeks"]
+     size_h = retro.human_bytes(retro.dir_size(p))
++    from app.core import replay_bundle
++    # an imported run by where it came from, an archived one by when
++    what = (f"the {season} run {replay_bundle.imported_label(p)}"
++            if replay_bundle.imported_label(p) else
++            f"the archived {season} run from {retro.stamp_human(stamp)}")
+     try:
+         retro.delete_tree(p)
+     except Exception as e:
+@@ -282,8 +287,7 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
+                f"{type(e).__name__}: {str(e)[:160]}.", "error",
+                detail="Nothing else changed.")
+         return _back(request, "/retro")
+-    _flash(f"Deleted the archived {season} run from "
+-           f"{retro.stamp_human(stamp)}: {weeks} week"
++    _flash(f"Deleted {what}: {weeks} week"
+            f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
+            detail=f"The live {season} season was not touched.")
+     return _back(request, "/retro")
+@@ -641,9 +645,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+                     f"Not started: {season} has {existing} week"
+                     f"{'' if existing == 1 else 's'} with other model "
+                     "settings.",
+-                    f"They were replayed with "
+-                    f"{_knobs.label(_knobs.from_record(had))}; this run "
+-                    f"asks for {_knobs.label(nd)}. Resuming would mix two "
++                    f"They were replayed with {_settings_words(had)}; "
++                    f"this run asks for {_settings_words(nd)}. Resuming "
++                    "would mix two "
+                     "configurations in one season. Archive or discard the "
+                     "existing results to run it.")
+             # never resume a tree with the other engine preset (weeks would be
+@@ -694,8 +698,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+             return _refused(
+                 "Not started: choose what the Groundhog does when the "
+                 "newest week reads 0.",
+-                "Set Newest week reading 0: abstain, level, extend or "
+-                "blend.")
++                "Set Groundhog when the newest week reads 0: abstain, "
++                "level, extend or blend.")
+         if mode == "discard":
+             if existing:
+                 try:
+@@ -719,9 +723,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+                     f"{str(e)[:160]}.",
+                     "Nothing was started; the existing results are "
+                     "intact.", kind="error")
++            stamp = dst.name.partition("__archived_")[2]
+             _flash(f"Archived {existing} week"
+-                   f"{'' if existing == 1 else 's'} of {season} as "
+-                   f"{dst.name}; starting a fresh replay.", "ok",
++                   f"{'' if existing == 1 else 's'} of {season} (set aside "
++                   f"{retro.stamp_human(stamp)}); starting a fresh replay.",
++                   "ok",
+                    detail="The archive stays viewable from the season "
+                    "list.")
+         # claim in the request (not the task) so double submits cannot race
+@@ -775,14 +781,16 @@ def _pasted_path(value) -> str:
+     return s
+ 
+ 
+-def _import_replay_file(src: Path, replace: bool):
++def _import_replay_file(src: Path, replace: bool, name: str = ""):
+     """Import one bundle (a saved upload or a local path) into the retro
+     root; (message, kind, detail) for the flash and the season page to
+-    open, or a refusal and the index."""
++    open, or a refusal and the index. `name`: an upload's own file name,
++    which the refusals say (never the server's copy)."""
+     from app.core import replay_bundle
+     try:
+         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
+-                                        replace=replace, build=RUNNING_SHA)
++                                        replace=replace, build=RUNNING_SHA,
++                                        name=name)
+     except replay_bundle.BundleError as e:
+         return (f"Not imported: {e}", "warn", ""), "/retro"
+     except OSError as e:
+@@ -843,8 +851,9 @@ async def retro_import(request: Request):
+                             f"the upload is larger than the {cap // 1024 ** 3}"
+                             " GB limit")
+                     out.write(chunk)
+-            msg, target = await run_in_threadpool(_import_replay_file, tmp,
+-                                                  replace)
++            msg, target = await run_in_threadpool(
++                _import_replay_file, tmp, replace,
++                Path(str(up.filename).replace("\\", "/")).name)
+         except OSError as e:
+             msg, target = (f"Could not import: {e}.", "error", ""), "/retro"
+         except ValueError as e:
+@@ -864,6 +873,27 @@ async def retro_import(request: Request):
+     return RedirectResponse(target, status_code=303)
+ 
+ 
++#: the Run form's label for the zero-anchor rule (retro.html), which a
++#: refusal names it by
++ZERO_ANCHOR_LABEL = "Groundhog when the newest week reads 0"
++
++
++def _settings_words(values) -> str:
++    """A replay's model settings as a refusal says them: the zero-anchor
++    rule by the Run form's label, the rest as the run page does
++    (knobs.words: labels and values, no keys or digests)."""
++    from app.core import missing as _missing
++    values = dict(values or {})
++    za = values.pop(_missing.ZERO_ANCHOR_KEY, None)
++    try:
++        rest = _knobs.words(_knobs.from_record(values))
++    except ValueError:                       # a record this build cannot read
++        rest = _knobs.label(values)
++    bits = ([f"{ZERO_ANCHOR_LABEL}: {za}"] if za else []) + (
++        [rest] if rest else [])
++    return ", ".join(bits) or "the default settings"
++
++
+ def retro_engine_label(engine: str) -> str:
+     """The preset's plain name: app.core.retro.ENGINE_LABELS, the one map
+     (the Run settings blocks read it too)."""
+diff --git a/app/ui/templates/_dataset_replay.html b/app/ui/templates/_dataset_replay.html
+index 613bb23e..8a27625a 100644
+--- a/app/ui/templates/_dataset_replay.html
++++ b/app/ui/templates/_dataset_replay.html
+@@ -10,7 +10,7 @@
+ {% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
+ {% if not d %}
+ <div class="card" id="dataset-replay">
+- {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week and kept apart from the FluSight seasons.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
++ {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
+  {{ dsup.box("replay") }}
+ </div>
+ {% else %}
+@@ -26,7 +26,7 @@
+  <div><div class="card"><h2>Settings</h2>
+   {# which of your datasets; a plain GET form, like the Forecast tab's #}
+   <form method="get" action="/retro" class="row srcpick">
+-   <span>{{ tips.label("Dataset", "dsr-src", "A dataset replays on its own groups and weeks. Upload one here or on the Data tab.", for_="dsr-ds") }}
++   <span><label for="dsr-ds">Dataset</label>
+    <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
+     <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
+    <button class="quiet">Use</button>
+@@ -40,8 +40,8 @@
+    {# what each replayed week sees, as a badge: vintage-true, or the final
+       series (optimistic scores); the why in its tip #}
+    <div class="lblrow rt-kind"><span class="rt-kind-l">Data</span>
+-   {% if d.vintage_true %}{% call tips.badge("ok", "vintage-true", id="dsr-kind") %}Vintage-true: each week sees its as_of snapshot. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}
+-   {% else %}{% call tips.badge("warn", "final data", id="dsr-kind") %}Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did. With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.{% endcall %}{% endif %}</div>
++   {% if d.vintage_true %}{{ tips.badge("ok", "vintage-true", id="dsr-kind") }}
++   {% else %}{{ tips.badge("warn", "final data", id="dsr-kind") }}{% endif %}</div>
+    {# the week range on one grid that holds at narrow widths; the newest
+       flu season's weeks by default (datasets_ui.replay_window) #}
+    <div class="dsr-range">
+@@ -50,18 +50,17 @@
+     <span><label for="dsr-last">To</label><select name="last" id="dsr-last">{% for w in d.dates %}
+      <option{% if w == d.default_last %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
+    </div>
+-   {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
++   <label for="dsr-groups">Groups</label>
+    {# as tall as its groups (2 to 6 rows): no empty box below the list #}
+    <select name="groups" id="dsr-groups" multiple size="{{ [2, [6, d.groups | length] | min] | max }}">{% for g in d.groups %}
+     <option selected>{{ g }}</option>{% endfor %}</select>
+-   {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
++   <label for="dsr-engine">Models</label>
+    <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
+     <option value="{{ e }}"{% if e == "all" and not (d.pf and dr.pf_state == "ready") %} disabled{% endif %}>{{ text }}</option>{% endfor %}</select>
+    {# the engine build's badge on its own line under the select #}
+    {% if d.pf and dr.pf_state == "ready" %}{% set eb_ds %}{% with eb_id = "dsr", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
+    {% if eb_ds | trim %}<p class="rt-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
+-   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
+-    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
++   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospitalizations only)</label></div>
+    {# the shared Model settings panel (weeks to drop is in its fit window),
+       ids prefixed dsr-; its counts-only rows follow the data's kind #}
+    {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
+@@ -73,7 +72,9 @@
+   </form>
+  </div></div>
+  <div><div class="card dsr-replays">
+-  {{ tips.heading("Replays of " ~ d.name, "rt-ds-about", about, tip_label="replaying your own data") }}
++  {# the tab's one explainer: what a replay does, what the data badge
++     means, the groups and the models (their labels carry no tips) #}
++  {% call tips.heading("Replays of " ~ d.name, "rt-ds-about", tip_label="replaying your own data") %}<span class="ncline">{{ about }}</span><span class="ncline">{{ "Vintage-true: each replayed week sees the as_of snapshot that held it." if d.vintage_true else "Final data: with no as_of snapshots each week is cut from the final series, so later revisions leak in and the scores are optimistic." }}</span><span class="ncline">Every group by default; a national group is scored beside the others, never pooled. {{ dr.names.analogue }} is instant; the plain SIHRS particle filter needs counts with a population and the engine, and takes minutes per week.</span>{% endcall %}
+   {% for r in d.replays %}
+   {% set rid = loop.index %}
+   <div class="archrow">
+diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
+index 61003778..62a05ed2 100644
+--- a/app/ui/templates/retro.html
++++ b/app/ui/templates/retro.html
+@@ -13,9 +13,10 @@
+ {% macro rel_item(name, v) -%}
+ <span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
+ {%- endmacro %}
+-{# the page's title and its "?" on both tabs; the tip's second line is
+-   the Your data tab's #}
+-{{ tips.heading("Retrospective", "rt-page", "Replays a past season week by week on the data each Saturday had, then scores against settled truth. Your data replays a weekly CSV of your own the same way.", level=1, cls="rt-h1") }}
++{# the page's title; on the FluSight hub tab its "?" is the one explainer,
++   for the season rows too (their badges and figures carry no tips of
++   their own); the Your data tab's is its replays' heading #}
++{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1") %}<span class="ncline">Replays a past season week by week on the data each Saturday had, then scores against settled truth.</span><span class="ncline">relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span><span class="ncline">Resume, or Run, continues a stopped or interrupted replay from its last completed week with the recorded settings. Archived runs, set aside when a fresh replay started or imported from another machine, open as the live season does.</span>{% endcall %}{% endif %}
+ {# the data source as two tabs, as on Forecast: the FluSight hub's
+    seasons, or your own datasets (_dataset_replay.html); plain links, so
+    Back, bookmarks and no-script work #}
+@@ -157,13 +158,13 @@
+    <div class="sband">
+     <h2>{{ s.name }}</h2>
+     {% if s.status == 'running' %}{{ tips.badge("pending", "running") }}
+-    {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping", "The replay is stopping after the fits in flight; each finished fit is checkpointed.", id="rt-st-" ~ sid) }}
++    {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping") }}
+     {% elif s.status == 'paused' %}{{ tips.badge("warn", "paused") }}
+-    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted", "The application closed mid-replay. Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
+-    {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped", "Run resumes it from the last completed week.", id="rt-st-" ~ sid) }}
++    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted") }}
++    {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped") }}
+     {% elif s.status == 'done' %}{{ tips.badge("ok", "complete") }}
+     {% elif s.status and s.status.startswith('error') %}{{ tips.badge("error", "error", s.status, id="rt-st-" ~ sid) }}
+-    {% elif not s.total %}{{ tips.badge("neutral", "no hub weeks yet", "The FluSight hub has no weeks of this season yet; Update data on the Data tab fetches them.", id="rt-st-" ~ sid) }}
++    {% elif not s.total %}{{ tips.badge("neutral", "no hub weeks yet") }}
+     {% elif not s.active and s.done == 0 %}{{ tips.badge("neutral", "not replayed") }}
+     {% endif %}
+     {% if s.seal %}{{ tips.badge("info", "sealed", s.seal_label, id="rt-seal-" ~ sid) }}{% endif %}
+@@ -174,12 +175,12 @@
+    </div>
+    {% if s.active %}
+    {# live replay: the console's run bar and its readout, driven by the
+-      ticker; what the estimate rests on is the readout's tip (.rbasis),
++      ticker; what the estimate rests on for a screen reader (.rbasis),
+       a lost connection a badge. .rcount follows the readout (hidden) #}
+    <span class="rcount" hidden>{{ "%d/%d weeks"|format(s.done, s.total) }}</span>
+    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
+    <div class="rt-readout"><p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
+-    {% call tips.tip("rt-eta-" ~ sid, "the estimate") %}<span class="rbasis">{{ ("estimate from " ~ s.weeks_measured ~ " completed week" ~ ("" if s.weeks_measured == 1 else "s")) if s.weeks_measured else "estimate arrives once the first week completes" }}</span>{% endcall %}
++    <span class="rbasis uk-sr">{{ ("estimate from " ~ s.weeks_measured ~ " completed week" ~ ("" if s.weeks_measured == 1 else "s")) if s.weeks_measured else "estimate arrives once the first week completes" }}</span>
+     <span class="rt-stall" hidden>{{ tips.badge("warn", "connection lost", "Connection lost. Numbers paused until the console answers again.", id="rt-stall-" ~ sid) }}</span></div>
+    {% elif not s_complete and s.total and s.done > 0 %}
+    {# an unfinished (or unscored) replay: how far it got #}
+@@ -199,13 +200,12 @@
+     {% set mname = (s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) if m else '' %}
+     {% set rel_label = (mname ~ ' ') ~ 'relWIS' if mname else 'relWIS' %}
+     {{ tips.stat(rel_label, "%.3f"|format(v), tip_label=rel_label,
+-                 tiptext=("relWIS vs FluSight baseline, ratio of sums: below 1 beats the baseline." if loop.first else ""),
+                  id="rt-rel-" ~ sid ~ "-" ~ (m or "x"), state=("ok" if v < 1 else "error"),
+                  after=verdict(v)) }}
+     {% endfor %}{% endif %}
+     {# finished replays only (live ones tick above); a sub-second record
+        predates timing and would read as a fabricated zero, so say nothing #}
+-    {% if s_timed %}{% if s.mean_s %}{% call tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) %}total wall time {{ s.elapsed_s | hms }}, mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endcall %}{% else %}{{ tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) }}{% endif %}{% endif %}
++    {% if s_timed %}{{ tips.stat("Wall time", s.elapsed_s | hms, id="rt-wall-" ~ sid) }}{% endif %}
+    {% endcall %}
+    {% endif %}
+    {% endif %}
+@@ -232,7 +232,6 @@
+      <input type="hidden" name="confirm" value="">
+      <button class="gold" data-guard="retro-run">Resume</button>
+     </form>
+-    {{ tips.tip("rt-resume-" ~ sid, "resume", "Resumes with the recorded settings (Run settings); an interrupted week refits only the cells that never ran.") }}
+    </div>
+    {% endif %}
+    {% if s.active %}
+@@ -252,7 +251,7 @@
+    {# archived runs: complete frozen trees; results, player and report work
+       as for the live season #}
+    {% set n_arch = s.archives | length %}
+-   {{ tips.heading(n_arch ~ " archived run" ~ ("" if n_arch == 1 else "s") ~ " kept", "rt-arch-" ~ sid, "Complete runs set aside when a fresh replay started, or imported from another machine: results, player and report work as for the live season. relWIS vs FluSight baseline, ratio of sums.", level=3, cls="rt-arch-h") }}
++   {{ tips.heading(n_arch ~ " archived run" ~ ("" if n_arch == 1 else "s") ~ " kept", level=3, cls="rt-arch-h") }}
+    {% for a in s.archives %}
+    <div class="archrow"{% if a.imported %} data-imported="1"{% endif %}>
+     {# an imported replay is labelled for where it came from, not for the
+@@ -269,7 +268,7 @@
+       action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
+      <input type="hidden" name="confirm" value="">
+      <button type="button" class="quiet" data-del-archive
+-       data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"
++       data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"{% if a.imported %} data-imported="1"{% endif %}
+        data-weeks="{{ a.weeks }}" data-size="{{ a.size_h }}">Delete</button>
+     </form>
+    </div>
+@@ -289,8 +288,11 @@
+     if(!f||!window.FluBNFConfirm)return;
+     window.FluBNFConfirm({
+      title:'Delete this archived run?',
+-     msg:'This permanently removes the archived '+d.season+' run from '
+-       +d.when+': '+d.weeks+' completed week'+(d.weeks==='1'?'':'s')+', '
++     // an imported run says where it came from ("imported from vm on
++     // 2026-10-25"), an archived one when it was set aside
++     msg:'This permanently removes the '+(d.imported?d.season+' run '+d.when
++       :'archived '+d.season+' run from '+d.when)+': '+d.weeks
++       +' completed week'+(d.weeks==='1'?'':'s')+', '
+        +d.size+' on disk. It cannot be undone.',
+      hint:'The live '+d.season+' season is not touched.',
+      okLabel:'Delete permanently',
+diff --git a/app/ui/templates/retro_dataset.html b/app/ui/templates/retro_dataset.html
+index 3aaaa56e..efd81368 100644
+--- a/app/ui/templates/retro_dataset.html
++++ b/app/ui/templates/retro_dataset.html
+@@ -13,7 +13,7 @@
+  {% if meta.knobs %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+  {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), (status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks") if early else status) }}</div>
+ <div class="rt-sub">
+- {% call tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") %}{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}. {{ "Each week was forecast from the as_of snapshot that held it, as it stood then." if vt else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored." }} Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.{% endcall %}
++ {{ tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") }}
+  {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}
+  {# the way back to this dataset's replays (the Retrospective tab opens
+     on the FluSight hub's seasons) #}
+@@ -42,12 +42,12 @@
+ {% endif %}
+ {% if meta.error %}{{ tips.alert("error", meta.error, title="The replay failed.", id="rd-error") }}{% endif %}
+ 
+-<div class="card">{{ tips.heading("Scores", "rd-scores", "relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a value for its week (0 included), the forecast's quantiles are all finite and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.") }}
++<div class="card">{% call tips.heading("Scores", "rd-scores") %}<span class="ncline">{{ "Each week was forecast from the as_of snapshot that held it." if vt else "The dataset has no as_of snapshots, so each week was cut from the final series: later revisions leak in and these scores are optimistic." }} Scores are relative to an in-house persistence baseline, not FluSight-baseline.</span><span class="ncline">relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a value for its week (0 included), the forecast's quantiles are all finite and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.</span><span class="ncline">Horizon 0 is the week after the forecast date. The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week; early in a short dataset it abstains rather than guess.</span>{% endcall %}
+  {% if summary %}
+  <div class="tablewrap"><table class="compact rd-scores">
+-  <thead><tr><th>Model</th><th class="num">relWIS{{ tips.tip("rd-rel", "the pooled relWIS", "relWIS vs the in-house persistence baseline, pooled over the groups" ~ (" (national group excluded)" if ds.national_group else "") ~ ".") }}</th><th class="num">Cells</th>
++  <thead><tr><th>Model</th><th class="num">relWIS</th><th class="num">Cells</th>
+    <th class="num">50%</th><th class="num">80%</th><th class="num">95%</th>
+-   {% if ds.national_group %}<th class="num">{{ ds.national_group }}{{ tips.tip("rd-beside", "the national group", "Scored beside the pooled figure, never inside it.") }}</th>{% endif %}</tr></thead>
++   {% if ds.national_group %}<th class="num">{{ ds.national_group }}</th>{% endif %}</tr></thead>
+   <tbody>{% for m, s in summary.items() %}{% set p = s.pooled %}
+    <tr><td>{{ member_names.get(m, m) }}</td>
+     <td class="num {{ 'ok' if p.relwis is not none and p.relwis < 1 else 'bad' }}">{{ "%.3f"|format(p.relwis) if p.relwis is not none else "n/a" }}{% if p.relwis is not none %}{{ tips.icon("check" if p.relwis < 1 else "warning", "beats the baseline" if p.relwis < 1 else "does not beat the baseline", cls="rt-verdict") }}{% endif %}</td>
+@@ -70,7 +70,7 @@
+  {{ tips.empty("No scored cells" ~ (" yet" if live else ""), "clock", tiptext="A cell needs a later week in the dataset.", id="rd-none", compact=True) }}
+  {% endif %}
+  {% for m, n in abstained.items() if n %}
+- <p class="rt-abst">{{ tips.badge("neutral", member_names.get(m, m) ~ " abstained on " ~ n ~ " group-week" ~ ("" if n == 1 else "s"), "The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week, pooled over the groups; early in a short dataset it has too few and says nothing rather than guess.", id="rd-abst-" ~ m) }}</p>
++ <p class="rt-abst">{{ tips.badge("neutral", member_names.get(m, m) ~ " abstained on " ~ n ~ " group-week" ~ ("" if n == 1 else "s"), id="rd-abst-" ~ m) }}</p>
+  {% endfor %}
+ </div>
+ 
+@@ -81,7 +81,7 @@
+   {# the horizon as plain links (no script), the current one marked #}
+   <span class="rd-hz"><span class="rt-hz-l" id="rd-hz-l">Horizon</span>
+   <span class="uk-seg" role="group" aria-labelledby="rd-hz-l">{% for hh in horizons %}{% if hh == h %}<span aria-current="true">{{ hh }}</span>{% else %}<a href="?h={{ hh }}">{{ hh }}</a>{% endif %}{% endfor %}</span>
+-  {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
++  </span>
+  </div>
+  <div id="rd-plot" class="rt-plot"></div>
+  <div id="rd-noplot" hidden>{{ tips.empty("No forecasts stored" ~ (" yet" if live else ""), "clock") }}</div>
+diff --git a/docs/RETROSPECTIVES.md b/docs/RETROSPECTIVES.md
+index 7b4ec3c0..4ac9d1e8 100644
+--- a/docs/RETROSPECTIVES.md
++++ b/docs/RETROSPECTIVES.md
+@@ -42,9 +42,9 @@ The manifest records the season, the export stamp, the weeks, when and
+ from which machine it was exported, the FluBNF build, and a sha256 and
+ size per file. A 26-week season of all 52 jurisdictions is about 10 MB.
+ 
+-**Import a replay** on the Retrospective tab (Settings card) takes the
+-file, or its path when it is already on this machine. The import lands as a
+-read-only archived entry of its season,
++**Import a replay** on the Retrospective tab (its own card under
++Settings) takes the file, or its path when it is already on this
++machine. The import lands as a read-only archived entry of its season,
+ `<season>__archived_<export stamp>/`, with an `imported.json` marker, and is
+ labelled "imported from <host> on <date>" wherever archived runs are listed.
+ It never touches the live season tree, so a replay running here is
