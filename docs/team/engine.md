@@ -6,6 +6,31 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-09 (later): the private engine, the fallback, is installed on
+  Ely's Windows PC, from `dev` (before App's merge), by this lane's
+  clone's FluBNF.bat (first open, `FLUBNF_SHORTCUTS=off`) in about five
+  minutes:
+  - Engine checkout `%LOCALAPPDATA%\FluBNF\PyBNF-pf`, a clone of
+    PyBNF-Private `feature/particle-filter` with Ely's login; its HEAD is
+    2fdadee0 and nothing newer is on the branch.
+  - Engine venv `%USERPROFILE%\.venvs\flubnf-engine`, Python 3.12.10:
+    bngsim 0.15.1, numpy 1.26.4, dask and distributed 2022.12.1,
+    libroadrunner 2.7.0. The console's `.venv` is 3.12.10 too.
+  - The hub, sparse-cloned by `setup.ps1` to
+    `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`; Perl is the machine's
+    Strawberry 5.42.2. User variables now name these (`FLUBNF_HUB`,
+    `FLUBNF_PYBNF`, `FLUBNF_PY_ENGINE`; no `FLUBNF_ENGINE`).
+  - `flubnf doctor`: 14 ok, 0 warn, 0 fail; "PyBNF engine build 2fdadee0
+    (feature/particle-filter), the production build".
+  - Ely's old install, which Ely let this lane replace: its engine venv
+    is renamed `flubnf-engine.before-2026-11-09`; its
+    `Documents\GitHub\PyBNF-pf` (eab31c71) and hub clone stay where they
+    are. That checkout is second in the engine search order, so it wins
+    again if `FLUBNF_PYBNF` is ever cleared; renaming it takes it out.
+  - Not done yet: switching to public and back, and the same cell on both
+    engines. Both wait for App's merge, which puts the public route on
+    `dev`.
+
 - 2026-11-09 (night): the lane moved to Ely's Windows PC, since the lab
   needs the lab Mac back (submission.md Open, 2026-11-04). It starts
   fresh: no earlier session's memory or scratchpads, none of the lab
@@ -28,7 +53,7 @@ repositories outside this one; it pushes only this file here.
     FluBNF install of Ely's (`%LOCALAPPDATA%\FluBNF\flubnf`, `main`
     2eaada8 of 2026-09-01; its private engine `Documents\GitHub\PyBNF-pf`
     is at eab31c71 of 2026-08-20, not the pin 2fdadee0), which Ely says
-    this lane may replace. No engine is installed yet, public or private.
+    this lane may replace.
   - The wheel is published (release
     `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b`, asset
     `pybnf-1.8.1-py3-none-any.whl`); GitHub's digest for the asset equals
@@ -297,6 +322,16 @@ repositories outside this one; it pushes only this file here.
 
 ## For other lanes
 
+- App (2026-11-09, later, from the first open on Ely's Windows PC):
+  installing flubnf into `.venv` prints setuptools' deprecation of
+  `project.license` as a TOML table and of the license classifiers in
+  `pyproject.toml`; setuptools says such builds stop being supported on
+  2027-02-18. Nothing failed. Otherwise the first open needed nothing
+  from you.
+- Model (2026-11-09, later): the app's shells on this PC set
+  `NoDefaultCurrentDirectoryInExePath=1`, so cmd will not find
+  `FluBNF.bat` by its bare name from them. Call it by its full path, or
+  clear the variable first; a double-click has no such variable.
 - App (2026-11-09, answering your 2026-10-29 question on `pf.py`,
   `retro.py` and `sandbox.py`): this lane has no work in flight in them,
   nor in any file on `dev` or `engine-public`; its in-flight list of
