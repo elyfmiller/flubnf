@@ -4,7 +4,8 @@
 DATA (auxiliary-data/locations.csv), not for the clone or .git. Repair uses
 `sparse-checkout add` (idempotent); `reapply` adds nothing, and `set` on a
 full clone deletes every unnamed directory. setup.ps1/setup.sh are checked
-as text; Windows CI executes setup.ps1.
+as text; Windows CI executes setup.ps1. Their folder list is
+flubnf.settings.HUB_DIRS, which doctor reads.
 """
 
 from __future__ import annotations
@@ -112,3 +113,20 @@ def test_setup_ps1_repairs_the_cone_before_it_reapplies_it():
     assert repair < reapply, (
         "setup.ps1 reapplies the sparse cone before widening it, so a "
         "root-only clone stays root-only")
+
+
+def test_one_hub_folder_list_for_python_and_both_setup_scripts():
+    """flubnf.settings.HUB_DIRS (doctor reads it) is the list setup.sh and
+    setup.ps1 fetch, in the same order, and this file's own copy."""
+    import re
+
+    from flubnf.settings import HUB_DIRS as SETTINGS_HUB_DIRS
+    assert SETTINGS_HUB_DIRS == HUB_DIRS
+    sh = (REPO / "setup.sh").read_text(encoding="utf-8")
+    lines = re.findall(r'^HUB_DIRS="([^"]*)"$', sh, re.M)
+    assert len(lines) == 1, lines
+    assert tuple(lines[0].split()) == SETTINGS_HUB_DIRS
+    ps1 = (REPO / "setup.ps1").read_text(encoding="utf-8")
+    block = re.search(r"^\$HubDirs = @\((.*?)\)", ps1, re.M | re.S)
+    assert block, "setup.ps1 no longer sets $HubDirs"
+    assert tuple(re.findall(r'"([^"]+)"', block.group(1))) == SETTINGS_HUB_DIRS

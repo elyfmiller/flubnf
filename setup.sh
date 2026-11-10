@@ -49,9 +49,52 @@ fi
 ok "$($PY -V) at $PY"
 
 say "analysis venv (.venv) + package"
-[ -d "$HERE/.venv" ] || $PY -m venv "$HERE/.venv"
-"$HERE/.venv/bin/pip" install -q -e "$HERE[app,dev]" && ok "flubnf installed editable"
-"$HERE/.venv/bin/pip" install -q bionetgen && ok "bionetgen (BNG2.pl) installed"
+VENV="$HERE/.venv"
+# A venv whose Python cannot run pip (made where the venv module came without
+# pip, or left by a Python since removed) is set aside, never deleted, and
+# made again.
+if [ -d "$VENV" ] && ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+  BROKEN="$HERE/.venv.broken-$(date +%Y%m%d-%H%M%S)"
+  [ ! -e "$BROKEN" ] || BROKEN="$BROKEN-$$"
+  if mv "$VENV" "$BROKEN"; then
+    warn "the venv in .venv cannot run pip: it is kept as $(basename "$BROKEN") and made again"
+  else
+    warn "the venv in .venv cannot run pip, and it could not be moved aside."
+    warn "Move or delete $VENV, then run ./setup.sh again."
+    exit 1
+  fi
+fi
+if [ ! -d "$VENV" ] && ! "$PY" -m venv "$VENV"; then
+  warn "$PY could not make the venv (see above)."
+  if command -v apt-get >/dev/null 2>&1; then
+    PYV="$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+    warn "On Debian and Ubuntu the venv module is its own package:"
+    warn "  sudo apt install python${PYV:-3}-venv"
+    warn "then run ./setup.sh again."
+  else
+    warn "Install a Python that has its venv module (Anaconda does:"
+    warn "anaconda.com/download), then run ./setup.sh again."
+  fi
+  exit 1
+fi
+if "$VENV/bin/pip" install -q -e "$HERE[app,dev]"; then
+  ok "flubnf installed editable"
+elif [ -x "$VENV/bin/flubnf" ]; then
+  # an earlier install is there: an offline re-run keeps it
+  warn "FluBNF's packages did not update (see above; offline?). The console"
+  warn "runs with what is installed."
+else
+  warn "FluBNF did not install into .venv (see above; offline?). The console"
+  warn "needs it: run ./setup.sh again once the problem above is fixed."
+  exit 1
+fi
+# BioNetGen is not needed to open the console, so a failure here is a warning.
+if "$VENV/bin/pip" install -q bionetgen; then
+  ok "bionetgen (BNG2.pl) installed"
+else
+  warn "BioNetGen (BNG2.pl) did not install (see above). The console still"
+  warn "runs; fits need it. Run ./setup.sh again to retry."
+fi
 
 if [ "$(uname -s)" = Darwin ]; then
   say "FluBNF.app (FluBNF in the Dock)"
@@ -168,6 +211,10 @@ ok "wrote $ENVF  (source it, or add to your shell profile)"
 say "doctor"
 # shellcheck disable=SC1090
 . "$ENVF"
-"$HERE/.venv/bin/python" -c "from flubnf.settings import check; import sys; sys.exit(1 if check() else 0)" \
+if [ ! -x "$VENV/bin/flubnf" ]; then
+  warn "the console is not installed: .venv/bin/flubnf is missing. Run ./setup.sh again."
+  exit 1
+fi
+"$VENV/bin/python" -c "from flubnf.settings import check; import sys; sys.exit(1 if check() else 0)" \
   && ok "all externals present -- you are ready: .venv/bin/flubnf app" \
   || warn "some externals missing (listed above) -- console still runs: .venv/bin/flubnf app"

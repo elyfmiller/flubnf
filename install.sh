@@ -37,6 +37,13 @@ if [ ! -d "$DEST/.git" ]; then
   git clone https://github.com/elyfmiller/flubnf "$DEST"
 fi
 cd "$DEST" && ./setup.sh
+# FluBNF.app and FluBNF.command are macOS's. Elsewhere the console starts from
+# its venv, and opens in the browser when there is no GTK or Qt for a window.
+if [ "$(uname -s)" = Darwin ]; then
+  LAUNCH="open \"$DEST/FluBNF.app\"   (or double-click FluBNF.command)"
+else
+  LAUNCH="\"$DEST/.venv/bin/flubnf\" app"
+fi
 if [ "$ROUTE" = private ]; then
   # Recorded in .flubnf.env (--private), so the launchers read it.
   PRIVATE_OK=""
@@ -46,7 +53,7 @@ if [ "$ROUTE" = private ]; then
     echo "The private engine did not install (see above); the console still runs, and FluBNF.command tries again with the engine file in Downloads."
   fi
   echo
-  echo "Done. Launch with:  open \"$DEST/FluBNF.app\"   (or double-click FluBNF.command)"
+  echo "Done. Launch with:  $LAUNCH"
   echo
   if [ -n "$PRIVATE_OK" ]; then
     echo "This copy runs the private engine (the fallback). Installed from an"
@@ -66,4 +73,4 @@ fi
 ./setup_engine.sh --public \
   || echo "The public engine did not install (see above); the console still runs, and FluBNF.command tries again on its next open."
 echo
-echo "Done. Launch with:  open \"$DEST/FluBNF.app\"   (or double-click FluBNF.command)"
+echo "Done. Launch with:  $LAUNCH"

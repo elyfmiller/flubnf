@@ -4,7 +4,9 @@ The engine (pybnf + bngsim) lives in its own venv, so the doctor must probe
 it with the ENGINE python, the way the console does, and never by importing
 pybnf in the console venv. An absent engine is a WARN: the console runs
 Groundhog-only without it. The hub clone (FLUBNF_HUB) must hold target-data/
-and auxiliary-data/target-data-archive/.
+and auxiliary-data/target-data-archive/ (FAIL without them); without the
+comparators' folders in model-output/ it is a WARN (forecasts run, scoring
+does not). Every hub hint names the setup script, never a full clone.
 """
 from __future__ import annotations
 
@@ -242,24 +244,57 @@ def _hub(tmp_path, *dirs):
     return hub
 
 
-def test_hub_missing_fails(tmp_path, monkeypatch):
+SETUP_STEP = "it makes or widens the sparse clone, about 150 MB."
+
+
+@pytest.mark.parametrize("platform, script", [
+    ("darwin", "Run ./setup.sh:"), ("linux", "Run ./setup.sh:"),
+    ("win32", "Run setup.ps1:")])
+def test_hub_missing_fails(tmp_path, monkeypatch, platform, script):
+    """No clone: the setup script makes the sparse one (about 150 MB), never
+    a full clone of the hub, about ten times that."""
     monkeypatch.setattr(settings, "HUB", tmp_path / "nope")
-    res = doctor._check_hub()
+    res = doctor._check_hub(platform)
     assert res.status is doctor.Status.FAIL
+    assert f"{script} {SETUP_STEP}" in res.hint
     assert "FLUBNF_HUB" in res.hint
+    assert "Clone cdcepi" not in res.hint
 
 
 def test_hub_without_the_data_directories_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "HUB", _hub(tmp_path, "target-data"))
-    res = doctor._check_hub()
+    res = doctor._check_hub("linux")
     assert res.status is doctor.Status.FAIL
     assert "auxiliary-data/target-data-archive" in res.detail
+    assert f"Run ./setup.sh: {SETUP_STEP}" in res.hint
+    assert "FLUBNF_HUB" in res.hint
 
 
-def test_hub_with_both_data_directories_passes(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "HUB", _hub(
-        tmp_path, "target-data", "auxiliary-data/target-data-archive"))
-    assert doctor._check_hub().status is doctor.Status.OK
+def test_hub_with_only_the_data_directories_warns(tmp_path, monkeypatch):
+    """Forecasts run on the two data folders; scoring and retrospectives
+    also read the comparators' forecasts, which a hand-made clone lacks."""
+    hub = _hub(tmp_path, "target-data", "auxiliary-data/target-data-archive")
+    monkeypatch.setattr(settings, "HUB", hub)
+    res = doctor._check_hub("darwin")
+    assert res.status is doctor.Status.WARN
+    assert ("lacks model-output/FluSight-baseline, "
+            "model-output/FluSight-ensemble: forecasts run") in res.detail
+    assert f"Run ./setup.sh: {SETUP_STEP}" in res.hint
+    assert "Update data" in res.hint
+    (hub / "model-output" / "FluSight-baseline").mkdir(parents=True)
+    res = doctor._check_hub("darwin")
+    assert res.status is doctor.Status.WARN
+    assert "lacks model-output/FluSight-ensemble:" in res.detail
+
+
+def test_hub_with_every_folder_setup_fetches_passes(tmp_path, monkeypatch):
+    hub = _hub(tmp_path, "auxiliary-data/target-data-archive")
+    for d in settings.HUB_DIRS:
+        (hub / d).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "HUB", hub)
+    res = doctor._check_hub()
+    assert res.status is doctor.Status.OK
+    assert res.hint == ""
 
 
 def test_run_doctor_reports_the_hub(tmp_path, monkeypatch):

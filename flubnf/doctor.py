@@ -274,28 +274,47 @@ def _check_engine_build() -> "CheckResult":
                                 if x))
 
 
-#: what a usable hub clone must hold (a sparse checkout can lack either)
-HUB_DIRS = ("target-data", "auxiliary-data/target-data-archive")
+#: what a hub clone must hold to forecast at all: truth and its vintages
+#: (a sparse checkout can lack either)
+HUB_DATA_DIRS = ("target-data", "auxiliary-data/target-data-archive")
 
 
-def _check_hub() -> CheckResult:
-    """The FluSight hub clone (settings.HUB, FLUBNF_HUB): truth and its
-    vintages. Tested by its data directories, not by the clone existing."""
-    from flubnf.settings import HUB
+def _hub_setup_step(platform: str | None = None) -> str:
+    """The setup step that makes or widens the sparse hub clone on this
+    machine (the script app.ui.templating._hub_setup_words names):
+    setup.ps1 on Windows, ./setup.sh elsewhere."""
+    script = "setup.ps1" if (platform or sys.platform) == "win32" else "./setup.sh"
+    return f"Run {script}: it makes or widens the sparse clone, about 150 MB."
+
+
+def _check_hub(platform: str | None = None) -> CheckResult:
+    """The FluSight hub clone (settings.HUB, FLUBNF_HUB), tested by its
+    folders, not by the clone existing. Without truth and its vintages
+    nothing runs (FAIL). Without the comparators' forecasts
+    (settings.HUB_DIRS, model-output/) forecasts run but scoring and
+    retrospectives cannot (WARN)."""
+    from flubnf.settings import HUB, HUB_DIRS
     hub = Path(HUB)
+    step = _hub_setup_step(platform)
     if not hub.is_dir():
         return CheckResult(
             "FluSight hub", Status.FAIL, f"no clone at {hub}",
-            "Clone cdcepi/FluSight-forecast-hub there, or set FLUBNF_HUB "
-            "to an existing clone.")
-    missing = [d for d in HUB_DIRS if not (hub / d).is_dir()]
+            f"{step} Or set FLUBNF_HUB to an existing clone.")
+    missing = [d for d in HUB_DATA_DIRS if not (hub / d).is_dir()]
     if missing:
         return CheckResult(
             "FluSight hub", Status.FAIL,
             f"{hub} lacks {', '.join(missing)}",
-            "A sparse checkout must include target-data/ and "
-            "auxiliary-data/ (sparse-checkout add target-data "
-            "auxiliary-data).")
+            f"{step} Or set FLUBNF_HUB to an existing clone.")
+    comparators = [d for d in HUB_DIRS if d.startswith("model-output/")
+                   and not (hub / d).is_dir()]
+    if comparators:
+        return CheckResult(
+            "FluSight hub", Status.WARN,
+            f"{hub} lacks {', '.join(comparators)}: forecasts run, but "
+            "scoring and retrospectives need these comparators",
+            f"{step} Or press Update data on the console's Data tab, "
+            "which adds them.")
     return CheckResult("FluSight hub", Status.OK, str(hub))
 
 
