@@ -6,6 +6,45 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (overnight, at Ely's go of 2026-11-09): the engine switch,
+  an independent review of it and of the bug-hunt fixes, and a usability
+  and compute pass.
+  - **The PyBNF wheel release** `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b`
+    is published (Ely's OK). It rebuilds byte for byte with setuptools
+    80.9.0 and `SOURCE_DATE_EPOCH=1792031099`; the sha256 matches the
+    lock's.
+  - **The engine switch is on `dev`** (#61, merge def45db).
+    - The public engine is the default. The private engine is an
+      explicit fallback (`FLUBNF_ENGINE=private`), never automatic (Ely).
+    - `./setup_engine.sh --private` and `setup.ps1 -Engine private`
+      record the choice first and switch offline when the private engine
+      already loads.
+    - An independent review found 9 S2 and 6 S3, no S1; all fixed and
+      re-checked. CI is green on every leg, Windows included.
+    - Stage 2 has not run. `[CUTOVER-ROUND]` marks the round dates in
+      MODEL-PROVENANCE.md and FLUSIGHT-2026-27.md.
+    - Recommended: `dev` to `main` after the 2026-11-11 hub pull request
+      is open (a Thursday cutover, as the engine notes say).
+  - **The Engine and Model lanes moved to Ely's Windows PC** (TEAM.md,
+    78e2843). Their warm starts are outside the repository.
+  - **The bug-hunt fix run is done** (cloud A and B; FINAL.md on
+    `fix-coord-b`). An independent review of V01 and G11 to G35 found:
+    - no S1;
+    - its S2s fixed in #84, #89 and #92 (including every dataset
+      Forecast page's dead chart script, `const RASIDE = ;`, from G19);
+    - its S3s: #98 fixes 30, the second pass takes the rest, and four
+      are for Ely.
+  - **Usability and compute: #93, a draft for Ely**, not merged.
+    - 14 packages were planned from seven reviewers' 79 findings, each
+      checked by an adversarial verifier. 12 are built; P13 was dropped,
+      and P7 (vocabulary) is deferred for usage.
+    - Every forecast, score and stored file is byte-identical. The
+      reviewer's attacks hold: 24,080 random Groundhog calls, 299,552 hub
+      quantile values, 55 rendered forms.
+    - Speed: a Groundhog hub week takes 0.25 s (was 3 to 6 s), an
+      own-data replay of 200 groups takes 72 s (was 628 s), and a rescore
+      after Update data takes 0.45 s (was 45 s).
+    - The review's 4 S2 and about 30 S3 are fixed.
 - 2026-11-10: the fix run of the 2026-10-25 bug hunt is done. All 35
   groups are merged into `dev`, #50 to #97 (#64 among them, the re-check
   of G01 to G10), each reproduced first, reviewed by both A and B, and
