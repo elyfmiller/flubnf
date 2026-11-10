@@ -132,11 +132,51 @@ if [ "$(uname -s)" = Darwin ] && [ -f scripts/macos/move_home.sh ] \
   fi
 fi
 
-# Dependency refresh policy: the package is editable, so pip runs only when
-# pyproject.toml differs from the last good install's stamp. Never reinstall
-# on every open (slow, and an interrupted reinstall left no .venv/bin/flubnf);
-# keep errors visible and check the launcher exists before using it.
+# Dependency refresh policy: the package is editable, so it is refreshed only
+# when pyproject.toml differs from the last good install's stamp. Never
+# reinstall on every open (slow, and an interrupted reinstall left no
+# .venv/bin/flubnf); keep errors visible and check the launcher exists before
+# using it. The refresh uses uv when uv made the venv (its pyvenv.cfg says
+# "uv = <version>"; such a venv has no pip) and uv is on PATH, else the
+# venv's own python -m pip (setup.sh makes the venv with python -m venv,
+# which has pip). The installer's output is shown as it was; a failure says
+# "offline?" only when those words are a network failure's, else its cause.
 STAMP=".venv/.pyproject.stamp"
+# Whether the installer's output (refresh_cause's, on one line) holds any of
+# the -e strings given, case aside.
+refresh_said() { printf '%s' "$_said" | grep -q -i -F "$@"; }
+# Why a refresh failed, in plain words, from the installer's output ($1), the
+# installer ($2: pip or uv) and whether uv made the venv ($3).
+refresh_cause() {
+  local _said
+  _said="$(printf '%s' "$1" | tr -s '[:space:]' ' ')"
+  if refresh_said -e 'No module named pip'; then
+    if [ -n "$3" ]; then
+      echo "the venv in .venv was made by uv and has no pip, and no uv command was found"
+    else
+      echo "the venv in .venv has no pip"
+    fi
+  elif refresh_said -e 'NewConnectionError' -e 'Failed to establish a new connection' \
+       -e 'Temporary failure in name resolution' -e 'nodename nor servname' \
+       -e 'Name or service not known' -e 'Network is unreachable' \
+       -e 'No route to host' -e 'Max retries exceeded' -e 'timed out' \
+       -e 'ConnectTimeout' -e 'ProxyError' -e 'Could not fetch URL' \
+       -e 'dns error' -e 'failed to lookup address' -e 'tcp connect error' \
+       -e 'error sending request' -e 'client error (Connect)'; then
+    echo "offline?"
+  elif refresh_said -e 'No space left on device'; then
+    echo "the disk is full"
+  elif refresh_said -e 'Permission denied' -e '[Errno 13]'; then
+    echo "a file could not be written: permission denied"
+  elif refresh_said -e 'requires a different Python' -e 'current Python version'; then
+    echo "a package needs a different Python version than the venv's"
+  elif refresh_said -e 'ResolutionImpossible' -e 'conflicting dependencies' \
+       -e 'No solution found'; then
+    echo "the packages FluBNF needs conflict with each other"
+  else
+    echo "$2 stopped with the error above"
+  fi
+}
 if [ ! -x .venv/bin/flubnf ]; then
   needs_terminal "first run"
   echo "First run, setting up (a few minutes)..."
@@ -145,10 +185,29 @@ if [ ! -x .venv/bin/flubnf ]; then
 elif ! cmp -s pyproject.toml "$STAMP" 2>/dev/null; then
   needs_terminal "project dependencies changed"
   echo "· project dependencies changed, refreshing (about a minute)"
-  if .venv/bin/pip install -q -e ".[app,dev]"; then
+  UVMADE=""
+  grep -q -E '^[[:space:]]*uv[[:space:]]*=' .venv/pyvenv.cfg 2>/dev/null && UVMADE=1
+  if [ -n "$UVMADE" ] && command -v uv >/dev/null 2>&1; then
+    INSTALLER=uv
+    REFRESH_OUT="$(uv pip install -q --python .venv/bin/python -e ".[app,dev]" 2>&1)"
+    REFRESH_RC=$?
+  else
+    INSTALLER=pip
+    REFRESH_OUT="$(.venv/bin/python -m pip install -q -e ".[app,dev]" 2>&1)"
+    REFRESH_RC=$?
+  fi
+  [ -z "$REFRESH_OUT" ] || printf '%s\n' "$REFRESH_OUT"
+  if [ "$REFRESH_RC" -eq 0 ]; then
     cp pyproject.toml "$STAMP" 2>/dev/null
   else
-    echo "· dependency refresh failed (offline?), running with what is installed"
+    CAUSE="$(refresh_cause "$REFRESH_OUT" "$INSTALLER" "$UVMADE")"
+    echo "· dependency refresh failed ($CAUSE), running with what is installed"
+    case "$CAUSE" in
+      *"no uv command"*)
+        echo "  Put uv on PATH, or give the venv pip: \"$PWD/.venv/bin/python\" -m ensurepip, then open FluBNF again." ;;
+      *"has no pip")
+        echo "  To give it pip: \"$PWD/.venv/bin/python\" -m ensurepip, then open FluBNF again." ;;
+    esac
   fi
 fi
 

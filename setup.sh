@@ -6,6 +6,16 @@ ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# How to run this again, as the user can type it. The one-line reinstall
+# (reinstall.sh) runs this in the new copy while the user's shell stays where
+# it was, and says so (FLUBNF_SETUP_FROM=reinstall). Its line is no way back:
+# pasted again it sets this new copy aside as well, or finds it current and
+# does nothing. So the command names this folder.
+if [ "${FLUBNF_SETUP_FROM:-}" = reinstall ]; then
+  again="run cd \"$HERE\" && ./setup.sh again"
+else
+  again="rerun setup.sh"
+fi
 # Checkouts live in ~/GitHub: macOS keeps FluBNF.app out of Documents
 # (FluBNF.command moves an older setup's). One already in ~/Documents/GitHub,
 # and none in ~/GitHub, is used where it is.
@@ -103,7 +113,7 @@ else
       https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
     && (cd "$HUB" && git sparse-checkout set $HUB_DIRS) \
     && ok "hub data ready (sparse): $HUB" \
-    || warn "data fetch failed (offline?) -- rerun setup.sh when connected"
+    || warn "data fetch failed (offline?) -- $again when connected"
 fi
 
 say "engine venv (pybnf + bngsim)"

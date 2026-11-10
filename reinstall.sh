@@ -431,7 +431,9 @@ export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore::SyntaxWarning}"
 say "installing FluBNF (about five minutes)"
 mkdir -p "$PARENT"
 git clone "$REPO" "$DEST" || stop "the clone failed (no internet?). Connect and paste the line again."
-( cd "$DEST" && ./setup.sh ) || {
+# The user's shell stays where it was, so setup.sh's "run ./setup.sh again"
+# would not run as typed: told it came from here, it names the folder.
+( cd "$DEST" && FLUBNF_SETUP_FROM=reinstall ./setup.sh ) || {
   warn "setup.sh did not finish (see above)."
   exit 1
 }
