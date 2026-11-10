@@ -63,10 +63,8 @@ def test_a_dataset_run_refuses_it(monkeypatch):
         "engine": "analogue", f"knob.{PARTIAL}": "missing"},
         follow_redirects=False)
     assert got == []
-    flash = ui_state._status.get("flash", "")
-    assert (f"Not run: model settings: {PARTIAL}: this rule's floor (a prior "
-            "week of 20 or more) assumes hospital admission counts and cannot "
-            "run on the custom dataset 'Kids'.") in flash
+    # the panel opens on it and says why (checked below); no top notice
+    assert "model settings" not in ui_state._status.get("flash", "")
     # the trailing-zero rule runs
     client.post("/run/dataset", data={
         "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",

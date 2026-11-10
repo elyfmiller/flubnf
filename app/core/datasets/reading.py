@@ -526,6 +526,11 @@ def _one_series(header, norm, chosen, mapped, rows):
               and norm[i] not in ROLE_ALIASES["population"]]
     kinds = {i: _column_kind(rows, i) for i in others}
     if "text" in kinds.values():
+        # the one other column, named as a value (cases, count, value):
+        # a word in it is a value that is not a number, which the checks
+        # name, not a group under an unknown name
+        if len(others) == 1 and norm[others[0]] in ROLE_ALIASES["value"]:
+            return others, []
         return None
     if "value" in mapped:
         return [chosen["value"]], []

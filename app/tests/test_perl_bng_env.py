@@ -462,6 +462,33 @@ def test_the_reinstall_remedy_reinstalls_bionetgen_alone(monkeypatch):
         assert "-m pip install --force-reinstall --no-deps bionetgen" in msg
 
 
+def test_a_bng_refusal_puts_its_own_reason_on_the_first_line():
+    """The notice once ended in a colon with BNG2.pl's whole log behind the
+    "?", its ERROR line last (SB-04, WI-11): the ERROR line, with its line
+    number, is the first line now, and the log follows for the tip."""
+    r = types.SimpleNamespace(
+        stdout="BioNetGen version 2.9.3\nReading from file cm.bngl (level 0)\n"
+               "Read 7 parameters.\nERROR: Molecule Z() does not match any "
+               "declared molecule types\n  at line 48\n",
+        stderr="ABORT: Reaction rule list could not be read because of "
+               "errors.\n", returncode=1)
+    said = pf.bng_could_not("generate the network", r)
+    notice, tip = sb.split_reason(said)
+    assert notice == ("BNG2.pl could not generate the network: Molecule Z() "
+                      "does not match any declared molecule types (line 48)")
+    assert tip.startswith("ABORT: Reaction rule list could not be read")
+    assert pf.bng_started(said)
+    # no ERROR line: the ABORT line; nothing at all: the last line said
+    assert pf.bng_said_why("BioNetGen version 2.9.3\nABORT: Molecule Q not "
+                           "defined\n") == "Molecule Q not defined"
+    assert pf.bng_said_why("Can't open perl script\n") == \
+        "Can't open perl script"
+    assert pf.bng_said_why("") == ""
+    empty = types.SimpleNamespace(stdout="", stderr="", returncode=1)
+    assert pf.bng_could_not("draw the contact map", empty).startswith(
+        "BNG2.pl could not draw the contact map: BNG2.pl printed nothing\n")
+
+
 def test_the_sandboxs_netgen_failure_keeps_perls_first_line(sandbox_root,
                                                             monkeypatch):
     """A run that dies before BioNetGen's banner is this computer's
@@ -490,7 +517,8 @@ def test_the_sandboxs_netgen_failure_keeps_perls_first_line(sandbox_root,
     with pytest.raises(sb.SandboxError) as e:
         sb.prepare("kinetics_example")
     notice, tip = sb.split_reason(str(e.value))
-    assert notice == "BNG2.pl could not generate the network:"
+    assert notice == ("BNG2.pl could not generate the network: Molecule Q "
+                      "not defined")
     assert tip.startswith("ABORT: Molecule Q not defined")
 
 

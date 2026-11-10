@@ -192,6 +192,12 @@
       if (tick) tick.checked = false;
       if (reason) reason.value = '';
       update();
+      // a refusal of the values just reset says nothing about these
+      var said = box.querySelector('.fc-ms-refused');
+      if (said) said.hidden = true;
+      // values set by script fire no change: tell what follows them (the
+      // Forecast tab's Data issues box)
+      box.dispatchEvent(new CustomEvent('ms-reset', {bubbles: true}));
     });
     // open or closed as the user left it this session; the server opens
     // it only on the page after a refusal over its settings

@@ -386,6 +386,35 @@ def bng_failure_text(r, sep: str = "\n") -> str:
     return sep.join(parts) or "BNG2.pl printed nothing"
 
 
+def bng_said_why(said: str) -> str:
+    """BNG2.pl's own account of what stopped it, from `said` (its output,
+    or bng_failure_text of the run): the ERROR line, with the "at line N"
+    that follows it as "(line N)"; else the ABORT line; else the last
+    line. '' when it said nothing."""
+    lines = [l.strip() for l in str(said or "").splitlines() if l.strip()]
+    for i, line in enumerate(lines):
+        if line.startswith("ERROR:"):
+            why = line[len("ERROR:"):].strip()
+            at = (re.match(r"at line (\d+)\b", lines[i + 1])
+                  if i + 1 < len(lines) else None)
+            return why + (f" (line {at.group(1)})" if at else "")
+    for line in lines:
+        if line.startswith("ABORT:"):
+            return line[len("ABORT:"):].strip()
+    return lines[-1] if lines else ""
+
+
+def bng_could_not(what: str, r) -> str:
+    """The refusal for a BNG2.pl run that did not `what` ("generate the
+    network"): its own reason on the first line, which a notice shows,
+    then everything it said (bng_failure_text), which the notice's tip
+    holds (sandbox.split_reason)."""
+    said = bng_failure_text(r)
+    why = bng_said_why(said)
+    head = f"BNG2.pl could not {what}" + (f": {why}" if why else ".")
+    return f"{head}\n{said}"
+
+
 def bng_started(said) -> bool:
     """Whether a BNG2.pl run got as far as the model: its banner is in
     `said` (its stdout, or bng_failure_text of the run). Without it Perl

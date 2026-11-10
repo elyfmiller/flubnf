@@ -127,8 +127,7 @@ def _run_bng(source: str, workdir: Path, out_name: str, timeout: int,
              "cm.bngl"], capture_output=True, cwd=str(workdir),
             timeout=timeout, **_pf.bng_run_kwargs(bng_env(BNG, cwd=workdir)))
         if not out.is_file():
-            raise ContactMapError(f"BNG2.pl could not {what}:\n"
-                                  + _pf.bng_failure_text(r))
+            raise ContactMapError(_pf.bng_could_not(what, r))
         return out.read_text(encoding="utf-8", errors="replace")
 
 

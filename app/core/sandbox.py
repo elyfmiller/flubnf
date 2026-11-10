@@ -1037,8 +1037,7 @@ def _netgen(cell: Path) -> None:
         said = pf_engine.bng_failure_text(r)
         if not pf_engine.bng_started(r.stdout):
             raise SandboxError(pf_engine.bng_broken_message(said))
-        raise SandboxError("BNG2.pl could not generate the network:\n"
-                           + said)
+        raise SandboxError(pf_engine.bng_could_not("generate the network", r))
 
 
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
