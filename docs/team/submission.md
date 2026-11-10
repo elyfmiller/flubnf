@@ -6,6 +6,19 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-10 (17:56 UTC): THE REPOSITORY MOVES TONIGHT (from the App
+  lane), before Wednesday's round. elyfmiller/flubnf becomes a new
+  repository with the same name; the old one becomes
+  elyfmiller/flubnf-archive. Eight commits that named Claude take Ely's
+  name; the files are identical, but every commit id from 2026-10-09 on
+  changes, so the commit ids these notes cite from that date on are the
+  archive's. This branch (assited_dev/bold-sagan-kfw8gg, the card draft
+  under Open) is carried as it stands at the freeze; this entry is its
+  last change before the move. After the move, every copy of this lane
+  (the session clone and its dev worktree) runs `git fetch origin` and
+  `git reset --hard origin/<branch>` against the new repository before
+  any push: a push from an old copy would bring the old commits back.
+  Wednesday's submission runs from Ely's laptop on the new clone.
 - 2026-11-10 (16:18 UTC): WEDNESDAY'S ROUND, FROM THE APP LANE (second
   message). Round 2026-11-14 submits from Ely's laptop on the public
   engine, once Ely has merged #101 and opened FluBNF twice (the second
