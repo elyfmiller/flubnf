@@ -84,7 +84,7 @@ two-per-target limit for the admissions target.
 
 | Model id | Key | Method |
 |---|---|---|
-| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in public PyBNF (lanl/PyBNF at 8410f794, `job_type = lwf`) since the switch to the public engine ([CUTOVER-ROUND]; before it, in the lab's private PyBNF fork at 2fdadee0, kept as the fallback), whose output is a forecasting sample, then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
+| `NAU_PyBNF-OracleSIHRS` | `pf` | SIHRS compartment model (BNGL) fitted weekly by the Liu-West filter (10,000 particles per jurisdiction from Aug 1) in public PyBNF (lanl/PyBNF at 8410f794, `job_type = lwf`) since the switch to the public engine (2026-11-14; before it, in the lab's private PyBNF fork at 2fdadee0, kept as the fallback), whose output is a forecasting sample, then the "Oracle step": each path's growth blended 50/50 (geometric mean) with a donor growth path from an earlier season at the same calendar week (within 2 epiweeks); donors half NHSN, half FluSurv-NET |
 | `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions with the jurisdiction's own past weeks carrying half of the weight (since 2026-10-15; [DONOR-BANKS.md](DONOR-BANKS.md)), with a FluSurv-NET donor bank pooled across sites; no fitting, no engine needed |
 
 Recorded pooled relative WIS (ratio of sums vs FluSight-baseline, replays of
@@ -161,7 +161,7 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
 
 ### Engine
 
-- Since the switch to the public engine ([CUTOVER-ROUND]), the rounds run
+- Since the switch to the public engine (the round of 2026-11-14), the rounds run
   on public PyBNF: lanl/PyBNF at the merge commit 8410f794
   (`job_type = lwf`) with bngsim 0.15.1 on Python 3.12, from
   `engine-requirements.txt` by hash, in a venv of its own. It needs no
@@ -302,8 +302,8 @@ Decided by Ely on 2026-09-30 and 2026-10-01 (see
 
 Decided by Ely on 2026-11-09: the public engine is the default, and the
 private engine is the fallback for two rounds. The last round on the
-private engine is [CUTOVER-ROUND]; the first on the public engine is
-[CUTOVER-ROUND] (docs/MODEL-PROVENANCE.md, section 9).
+private engine is 2026-11-07; the first on the public engine is
+2026-11-14 (docs/MODEL-PROVENANCE.md, section 9).
 
 Still open:
 
