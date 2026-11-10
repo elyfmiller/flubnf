@@ -122,7 +122,7 @@ def test_clear_removes_completed_rows_never_the_active_one(state):
     assert r.status_code == 303
     left = led.rows(50)
     assert [x["run_id"] for x in left] == [state["rids"]["running"]]
-    assert "Cleared 3 completed ledger rows" in _flash()
+    assert "Cleared 3 ledger rows" in _flash()
     # the confirm copy's promise holds: clearing deleted NO disk data
     for rid in state["rids"].values():
         assert (state["root"] / "workroots" / rid).is_dir()
@@ -163,7 +163,10 @@ def test_storage_panel_lists_everything_with_sizes(state):
     for rid in state["rids"].values():
         assert rid in html
     assert SEASON in html
-    assert "2098-02-04 10:15 UTC" in html            # the archived run
+    # the archived run, in this computer's time as the workroot rows read
+    # (bug hunt G28/G29, ST-10: one page, one clock)
+    assert ui_storage._local_when("20980204T101500Z") in html
+    assert "2098-02-04 10:15 UTC" not in html
     assert "2098-01-03" in html                      # the report archive
     assert "Sealed validation record" in html
     assert "FluSight hub clone" in html
@@ -215,15 +218,17 @@ def test_busy_rows_render_no_delete_controls(state):
     # workroot rows are found by their data-wid attribute
     row = html.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in row             # the live workroot
-    # its Delete is disabled, and its "?" says why in the refusal's words
-    assert " disabled " in row and "running now" in row
+    # its Delete is disabled with no "?" of its own; why, in the refusal's
+    # words, is said once above the sections (ST-08)
+    assert " disabled " in row and "running now" in row and "tip" not in row
+    busy = html.split('id="st-busy"', 1)[1].split("</div>", 1)[0]
     assert (f"The run {live} is active; its workroot cannot be deleted "
-            "while it runs.") in row
+            "while it runs.") in busy
     srow = html.split(f">{SEASON} retrospective</a></strong>",
                       1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in srow            # the replaying season
     assert " disabled " in srow
-    assert f"{SEASON} is replaying (status: running); stop it first." in srow
+    assert f"{SEASON} is replaying (status: running); stop it first." in busy
 
 
 # ---------------------------------------------------------------- deletions
@@ -293,12 +298,16 @@ def test_delete_retro_archive_and_report_archive(state):
                                          "ident": name, "confirm": name},
                 follow_redirects=False)
     assert not (state["retro_root"] / name).exists()
-    # report archive: refused while a console run is live, allowed after
+    # report archive: the live run (both models, 2098-01-10) may write its
+    # own date's, so that one is refused while it runs; another date's is
+    # not its to write (bug hunt G29, ST-08: every archive was held)
+    own = state["root"] / "archive" / "2098-01-10"
+    (own / "submission").mkdir(parents=True)
     client.post("/storage/delete", data={"kind": "report-archive",
-                                         "ident": "2098-01-03",
-                                         "confirm": "2098-01-03"},
+                                         "ident": "2098-01-10",
+                                         "confirm": "2098-01-10"},
                 follow_redirects=False)
-    assert (state["root"] / "archive" / "2098-01-03").is_dir()
+    assert own.is_dir()
     ui_state._status["running"] = None
     ui_state._status["workroot"] = None
     client.post("/storage/delete", data={"kind": "report-archive",
@@ -343,7 +352,8 @@ def test_clear_all_control_names_count_and_total_size(state):
     assert state["rids"]["running"] not in [w["id"] for w in cw]
     html = client.get("/runs").text
     joined = " ".join(html.split())
-    assert "Delete all 3 completed workroots" in joined
+    # "not running", not "completed": an interrupted run's counts too (ST-11)
+    assert "Delete all 3 workroots not running" in joined
     size_h = retro.human_bytes(sum(w["bytes"] for w in cw))
     assert f'data-size="{size_h}"' in html
     assert 'data-count="3"' in html
@@ -372,7 +382,7 @@ def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
                     / state["rids"][status]).exists()
     assert (state["root"] / "workroots"
             / state["rids"]["running"]).is_dir()
-    assert "Deleted 3 completed run workroots" in _flash()
+    assert "Deleted 3 run workroots" in _flash()          # G29: not "completed"
     assert "ledger row" in ui_state._status.get("flash_detail", "")
     # every ledger row remains, the cleared ones honestly dangling
     html = client.get("/runs").text
@@ -410,7 +420,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert "no completed run workroots" in _flash()
+    assert "no run workroots on disk" in _flash()
     # and the control disappears from the page
     html = client.get("/runs").text
     assert "Delete all" not in html
@@ -527,7 +537,8 @@ def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
     assert 'id="ledgerfold"' not in html
     # an empty state (icon, title, one action), not a sentence
     empty = html.split('id="st-ledger-empty"', 1)[1].split("</div></div>", 1)[0]
-    assert "No runs yet" in empty and 'href="/forecast"' in empty
+    # a cleared ledger beside workroots on disk says so (ST-12)
+    assert "No runs in the ledger" in empty and 'href="/forecast"' in empty
 
 
 # ------------------------------- the runner computer's student experiments
@@ -677,7 +688,8 @@ def test_a_student_experiment_is_kept_while_the_runner_has_it(state,
     runner_state(students, job=job)
     row = _row(_stu(client.get("/storage").text), ident)
     assert "data-del-storage" not in row and " disabled " in row
-    assert why.replace("'", "&#39;") in row
+    page = client.get("/storage").text            # why: the one notice
+    assert why.replace("'", "&#39;") in page.split('id="st-busy"', 1)[1]
     _delete(ident)
     assert smoke.is_dir() and _flash() == f"Not deleted: {why}"
     # its record under way, the runner's job another

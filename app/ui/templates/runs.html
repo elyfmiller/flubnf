@@ -17,9 +17,10 @@
    data-hint="{{ hint }}">Delete</button>
 </form>
 {%- endmacro %}
+{# an entry in use: Delete off, with no "?" of its own (the one notice
+   above the sections says why) #}
 {% macro busy_act(id, why, what) -%}
-{%- set named %}aria-label="Delete {{ what }}"{% endset -%}
-<span class="st-act row">{{ tips.reason_button("Delete", id, why, cls="quiet st-del", attrs=named, label="why " ~ what ~ " cannot be deleted now") }}</span>
+<span class="st-act row"><button type="button" class="quiet st-del" id="{{ id }}" disabled aria-label="Delete {{ what }}: in use">Delete</button></span>
 {%- endmacro %}
 {# a section's count beside its heading: the kit's neutral badge, as on
    the other tabs; none for an empty section, whose empty state says so #}
@@ -38,7 +39,8 @@
    leads the page and ships open, a reader's closed state persists #}
 <details class="ledgerfold" id="ledgerfold" open>
  <summary class="st-sum"><h2 class="stfold-h" id="h-st-ledger">Run ledger</h2>
-  <strong class="st-lcount">{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
+  {% set n_led = ledger_total | default(ledger | length, true) %}
+  <strong class="st-lcount">{{ n_led }} run{{ "" if n_led == 1 else "s" }}
   recorded</strong>
   <span class="st-newest">{{ tips.icon("clock") }} newest {{ ledger[0].label }}
   <span class="uk-sr">(</span>{{ tips.badge(ST.get(ledger[0].status, "error"), ledger[0].status) }}<span class="uk-sr">)</span></span></summary>
@@ -46,7 +48,7 @@
    it): a status or kind, and a date typed in part ("10-03") #}
 <div class="st-filter" id="st-filter" hidden>
  <div class="uk-seg" role="group" aria-label="Show runs">
-  {% for key, word in [("all", "All"), ("ok", "ok"), ("failed", "failed"), ("running", "running"), ("research", "research"), ("modified", "modified")] %}<button type="button" data-lf="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ word }}</button>{% endfor %}
+  {% for key, word in [("all", "All"), ("ok", "ok"), ("failed", "not ok"), ("running", "running"), ("research", "research"), ("modified", "modified")] %}<button type="button" data-lf="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ word }}</button>{% endfor %}
  </div>
  <label class="st-find"><span class="uk-sr">Find a date</span><input type="search" id="st-find" placeholder="Find a date, e.g. 10-03" autocomplete="off"></label>
  <span class="st-shown" id="st-shown" aria-live="polite"></span>
@@ -67,7 +69,7 @@
    took the hub names by override, said once in the run label's badge #}
 {% set kf = (r.facts or []) | selectattr("text", "equalto", "modified settings") | first %}
 {% set hub_names = kf and "hub names by override" in kf.chip %}
- <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
+ <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.run_id[:4] }}-{{ r.run_id[4:6] }}-{{ r.run_id[6:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
  {# research badge (the spec asked for the third member) #}
  {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
  {# model settings off the default ones (a knobs record in the spec) #}
@@ -99,7 +101,8 @@
   function fits(r){
    var st=r.getAttribute('data-st');
    if(kind==='ok'&&st!=='ok')return false;
-   if(kind==='failed'&&st!=='failed'&&st!=='error')return false;
+   // every run that did not finish ok and is not running
+   if(kind==='failed'&&['failed','error','partial','stopped','interrupted'].indexOf(st)<0)return false;
    if(kind==='running'&&st!=='running')return false;
    if(kind==='research'&&!r.hasAttribute('data-research'))return false;
    if(kind==='modified'&&!r.hasAttribute('data-modified'))return false;
@@ -138,9 +141,9 @@
    if(!f||!window.FluBNFConfirm)return;
    window.FluBNFConfirm({
     title:'Clear the run ledger?',
-    msg:'This removes '+n+' completed row'+(n==='1'?'':'s')+' (statuses ok, '
-      +'failed, stopped, error, and interrupted) from the ledger. A row '
-      +'whose run is still active is never removed.',
+    msg:'This removes '+n+' row'+(n==='1'?'':'s')+' of runs that are '
+      +'not running from the ledger. A row whose run is still active is '
+      +'never removed.',
     hint:'Clearing the ledger does NOT delete run data on disk: every '
       +'workroot stays exactly where it is and remains listed in the '
       +'storage panel until deleted there.',
@@ -166,7 +169,9 @@
 </script>
 {% else %}
 {{ tips.heading("Run ledger", "st-ledger") }}
-{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
+{# a cleared ledger beside workroots still on disk says so, not "no runs" #}
+{% if storage and storage.workroots %}{{ tips.empty("No runs in the ledger", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}
+{% else %}{{ tips.empty("No runs yet", "clock", action='<a class="btn quiet" href="/forecast">Run a forecast</a>' | safe, id="st-ledger-empty") }}{% endif %}
 {% endif %}
 </div>
 
@@ -179,8 +184,9 @@
    persists #}
 <details class="ledgerfold" id="storagefold">
  <summary class="st-sum"><h2 class="stfold-h" id="h-st-disk">On disk</h2>
+  {% set st_listed = (storage.workroots or storage.retro or storage.retro_archives or storage.report_archives or storage.datasets) %}
   <span class="stotal st-total">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
-  <span class="st-unit">in use</span>{% else %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
+  <span class="st-unit">in use</span>{% elif not st_listed %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
   {%- if storage.cats %}
   {# the total by category; the legend in the body names each one #}
   <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
@@ -202,7 +208,7 @@
    <input type="hidden" name="confirm" value="">
    <button type="button" class="quiet st-btn" id="reclaim-btn">{{ tips.icon("refresh") }} Reclaim space…</button>
    {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
-   <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim", "No completed week or run carries intermediates and every stored week is already compressed.", id="st-reclaim-none") }}</span></span>
+   <span class="st-note" id="reclaim-note" aria-live="polite"><span id="reclaim-busy" hidden>{{ tips.badge("pending", "Measuring…") }}</span><span id="reclaim-none" hidden>{{ tips.badge("ok", "Nothing to reclaim", id="st-reclaim-none") }}</span></span>
   </form>
  </div>
  <div id="reclaim-fail" hidden>{{ tips.alert("error", "Nothing was changed. Try again.", title="The reclaim report failed.", id="st-reclaim-fail") }}</div>
@@ -246,9 +252,15 @@
  {% endif %}
 
  {% set sbx = sandbox_storage() %}
- {% if not storage.total_bytes %}
- {# nothing counted yet: one empty state, no empty sections (the ledger's
-    empty state below carries the one action) #}
+ {# entries in use: their Delete is off with no "?" each; why, said once
+    per reason (the same reason on five rows reads once) #}
+ {% set st_whys = [] %}
+ {% for x in storage.workroots + storage.retro + storage.retro_archives + storage.report_archives + storage.datasets + ((storage.students or {}).rows or []) %}{% if x.busy and x.why and x.why not in st_whys %}{% set _ = st_whys.append(x.why) %}{% endif %}{% endfor %}
+ {% if st_whys %}{{ tips.alert("info", st_whys | join(" "), title="In use now:", id="st-busy", live="") }}{% endif %}
+ {% if not st_listed %}
+ {# nothing listed: one empty state, no empty sections (the ledger's
+    empty state carries the one action); keyed on the listings, not the
+    bytes, so an empty workroot still lists #}
  {{ tips.empty("No runs or replays on disk", "folder", id="st-empty") }}
  {% endif %}
 
@@ -264,12 +276,12 @@
  {% endif %}
  {% set wr_aside %}{% if clear_workroots.count %}<button type="button" class="quiet st-btn" id="clear-workroots-btn" form="clear-workroots"
     data-count="{{ clear_workroots.count }}"
-    data-size="{{ clear_workroots.size_h }}">Delete all
-    {{ clear_workroots.count }} completed
-    workroot{{ "" if clear_workroots.count == 1 else "s" }}
-    ({{ clear_workroots.size_h }})</button>{% endif %}{% endset %}
+    data-size="{{ clear_workroots.size_h }}">Delete
+    {{ "the" if clear_workroots.count == 1 else "all" }}
+    {{ clear_workroots.count }} workroot{{ "" if clear_workroots.count == 1 else "s" }}
+    not running ({{ clear_workroots.size_h }})</button>{% endif %}{% endset %}
  <section class="st-sec" aria-labelledby="h-st-wr">
- {{ tips.heading("Run workroots", "st-wr", "One folder per console run. Deleting one keeps its ledger row, which then shows a dash for disk use.", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
+ {{ tips.heading("Run workroots", "st-wr", level=3, after=count(storage.workroots | length), aside=wr_aside, cls="st-h") }}
  {% for w in storage.workroots %}
  {# label from the run's ledger row, linked to its run page (the id is
     secondary); no row = an unrecorded run, time parsed from the id, whose
@@ -289,7 +301,7 @@
   <span class="st-size">{{ w.size_h }}</span>
   {% if w.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
   {% elif w.busy %}{{ busy_act("st-wr-" ~ loop.index, w.why, "workroot " ~ w.id) }}
-  {% else %}{{ del_form("/storage/delete", "workroot", w.id, "workroot " ~ w.id ~ " (" ~ w.label ~ ")", w.size_h, "The run's ledger row is kept and will show a dash for disk use.") }}{% endif %}
+  {% else %}{{ del_form("/storage/delete", "workroot", w.id, ("the run " ~ w.label) if w.recorded else ("the unrecorded run " ~ w.id), w.size_h, "Its folder " ~ w.id ~ " goes, with the run's report and submission files in it. The ledger row stays and shows a dash for disk use.") }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
  </section>
@@ -297,7 +309,7 @@
 
  {% if storage.retro or storage.total_bytes %}
  <section class="st-sec" aria-labelledby="h-st-rs">
- {{ tips.heading("Retrospective seasons", "st-rs", "Each season's live replay results. Deleting one leaves its archived runs and the sealed record untouched: they are separate trees.", level=3, after=count(storage.retro | length), cls="st-h") }}
+ {{ tips.heading("Retrospective seasons", "st-rs", level=3, after=count(storage.retro | length), cls="st-h") }}
  {% for s in storage.retro %}
  <div class="st-row">
   <span class="st-title"><strong><a href="/retro/{{ s.id }}">{{ s.id }} retrospective</a></strong>
@@ -312,7 +324,7 @@
 
  {% if storage.retro_archives %}
  <section class="st-sec" aria-labelledby="h-st-ra">
- {{ tips.heading("Archived retrospective runs", "st-ra", "Earlier replays of a season, kept when it started fresh, and replays imported from another machine.", level=3, after=count(storage.retro_archives | length), cls="st-h") }}
+ {{ tips.heading("Archived retrospective runs", "st-ra", level=3, after=count(storage.retro_archives | length), cls="st-h") }}
  {% for a in storage.retro_archives %}
  {% set a_when = a.imported if a.imported else ('archived ' ~ a.when) %}
  <div class="st-row">
@@ -333,7 +345,7 @@
  {# while a console run may write the archive, one notice on the heading;
     each row's Delete stays off with its reason #}
  {% set rp_after %}{{ count(storage.report_archives | length) }}{% if storage.report_archives | selectattr("busy") | list %} {{ tips.badge("pending", "console run in progress", id="st-rp-busy") }}{% endif %}{% endset %}
- {{ tips.heading("Report archives", "st-rp", "The weekly report and submission files kept per forecast date. The workroot that produced each is a separate entry under Run workroots.", level=3, after=rp_after, cls="st-h") }}
+ {{ tips.heading("Report archives", "st-rp", level=3, after=rp_after, cls="st-h") }}
  {% for f in storage.report_archives %}
  <div class="st-row">
   <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
@@ -352,7 +364,7 @@
     its upload, replays and runs; the delete takes all three, confirmed by
     the dataset's name, and keeps the runs' ledger rows #}
  <section class="st-sec" aria-labelledby="h-st-datasets">
- {{ tips.heading("Your datasets", "st-datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.", level=3, after=count(storage.datasets | length), cls="st-h") }}
+ {{ tips.heading("Your datasets", "st-datasets", level=3, after=count(storage.datasets | length), cls="st-h") }}
  {% for d in storage.datasets %}
  <div class="st-row">
   <span class="st-title"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
@@ -369,7 +381,7 @@
  {% if storage.protected %}
  <section class="st-sec" id="st-protected" aria-labelledby="h-st-protected">
  {# listed, never counted in the total: the tag says so where it applies #}
- {{ tips.heading("Protected", "st-protected", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
+ {{ tips.heading("Protected", "st-protected", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
  {% for p in storage.protected %}
  {# never deletable here; the server refuses crafted requests too #}
  <div class="st-row">
@@ -431,7 +443,7 @@
    var f=b.form,n=b.dataset.count,s=b.dataset.size;
    if(!f||!window.FluBNFConfirm)return;
    window.FluBNFConfirm({
-    title:'Delete all completed run workroots?',
+    title:'Delete the run workroots not running?',
     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
       +' totaling '+s+' on disk. A run that is active right now is '
       +'excluded, and it cannot be undone.',
