@@ -633,9 +633,15 @@ def data_issues_row(o: dict, spec_extra: dict, names: dict):
     (app/core/missing.py): what came of them, "1 set aside, 1 left out, 2
     level, 1 anchored earlier", a set-aside that no longer matched the data
     counted too; every state's issue, choice and engine note in the "?"
-    tip. The count against the recommendations is Run settings' (Data
-    issues). None when the run carried none: the Unreported and Newest week
-    reading 0 rows then say what the engines did."""
+    tip. Each count is of states: one state two models anchored earlier
+    is "1 anchored earlier". A state a model made no forecast for (the
+    engine notes "no forecast: newest week reads 0" and "abstained: ...",
+    which carry no data flag) counts as "no forecast", the box's word, so
+    "as reported" is said only when no chosen state has a note (the
+    donors' abstention excepted: Too few donors says it). The count
+    against the recommendations is Run settings' (Data issues). None when
+    the run carried none: the Unreported and Newest week reading 0 rows
+    then say what the engines did."""
     import html as _html
     from app.core import missing as MS
     from app.core import reported as _rep
@@ -643,9 +649,6 @@ def data_issues_row(o: dict, spec_extra: dict, names: dict):
     states = MS.choices_of(spec_extra)
     if not states:
         return None
-    text = MS.choices_line({m: [r for r in rows or ()
-                                if r.get("location") in states]
-                            for m, rows in flags.items()})
     lines = []
     for loc in sorted(states):
         st = states[loc] or {}
@@ -653,23 +656,36 @@ def data_issues_row(o: dict, spec_extra: dict, names: dict):
         # a set-aside or carry names the week it forecasts from
         what = _rep.reason_text(str(st.get("what") or st.get("issue") or ""))
         lines.append(f"{loc}: {what}; {_rep.choice_text(st)}.")
-    not_applied = moved = 0
+    # the notes' outcomes as rows choices_line counts beside the flags, once
+    # per state and word whichever model wrote them: a zero-anchor rule by
+    # its word, no forecast (abstain) by the box's
+    noted, not_applied, moved = [], set(), set()
     for m, key in ANCHOR_NOTE_KEYS:
         notes = o.get(key) if isinstance(o.get(key), dict) else {}
         for loc, v in sorted(notes.items()):
             v = str(v)
             if v.startswith(MS.NOT_APPLIED_NOTE):
-                not_applied += 1
+                not_applied.add(loc)
             elif loc not in states or v == NO_DONORS:
                 continue
             elif v.startswith("anchored on"):
-                moved += 1
+                moved.add(loc)
+            elif v.startswith((NO_FORECAST, "abstained")):
+                noted.append({"location": loc,
+                              "rule": f"{MS.ZERO_ANCHOR_NOTE} abstain"})
+            elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
+                rule = v[len(MS.ZERO_ANCHOR_NOTE) + 1:].split(":", 1)[0]
+                noted.append({"location": loc,
+                              "rule": f"{MS.ZERO_ANCHOR_NOTE} {rule}"})
             lines.append(f"{names.get(m, m)}, {loc}: {_note_words(v)}.")
+    chosen = {m: [r for r in rows or () if r.get("location") in states]
+              for m, rows in flags.items()}
+    text = MS.choices_line({**chosen, "_notes": noted})
     if moved:
-        bit = f"{moved} anchored earlier"
+        bit = f"{len(moved)} anchored earlier"
         text = f"{text}, {bit}" if text else bit
     if not_applied:
-        bit = f"{not_applied} not applied (the data changed)"
+        bit = f"{len(not_applied)} not applied (the data changed)"
         text = f"{text}, {bit}" if text else bit
     text = text or "as reported"
     tip = _tip("data-issues", "the data issues",

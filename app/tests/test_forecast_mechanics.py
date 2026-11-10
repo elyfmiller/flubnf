@@ -285,7 +285,12 @@ def test_the_weekly_report_keeps_the_override_reason():
     assert "report_settings(spec, outcome) + _build_pairs(run_row)" in src
 
 
-def test_the_settings_card_has_one_explainer(state):
+def test_the_settings_card_has_one_explainer(state, monkeypatch):
+    # the engine build's own "?" shows when this machine's build is not the
+    # production one: pinned, so the card's count does not hang on the
+    # machine or on what an earlier test left in the build cache
+    from test_forecast_text import _engine_build_pinned
+    _engine_build_pinned(monkeypatch, {})
     _run(knobs={"oracle.w": 0.25, "pf.seed_denominator": "season_total_early"},
          override="r")
     html = client.get("/forecast").text
