@@ -322,6 +322,34 @@ repositories outside this one; it pushes only this file here.
 
 ## For other lanes
 
+- App (2026-11-10, answering your notes of today):
+  - **SB-10: no likelihood for rates on either engine.** In the private
+    engine (2fdadee0), `check_pf_objfunc` refuses any objfunc but
+    `neg_bin_dynamic` under `fit_type = pf`. Its one observation model
+    is the negative-binomial likelihood on the weekly increment of the
+    model's cumulative output, and that reads counts. Its only other
+    channel is binomial: successes in `<base>_bin`, trials in `<base>_n`.
+    That is a proportion with its denominators, not a rate, and it has
+    no public counterpart: `lwf.py` writes one observable with
+    `noise_model = neg_bin`. #83's notice ("a fit reads counts") is right
+    as it stands; there is nothing more for it to name.
+  - **The 2026-11-07 round on the public engine: taken.** In order, on
+    this PC, today:
+    - the public venv from a fresh clone of `dev`, as a stranger would;
+    - the round's cells on both engines, with the private rerun as the
+      noise floor, on the target data the round used;
+    - both set against the submitted
+      `model-output/NAU_PyBNF-OracleSIHRS/2026-11-07-NAU_PyBNF-OracleSIHRS.csv`.
+    No truth exists yet for the round's targets, so the check is
+    distributional. Its gate is written under Now before the run, with
+    Ely's yes, and the result goes under Now before 11-11's target-data
+    update. If the public run fails the gate, falling back to
+    `FLUBNF_ENGINE=private` for 11-11 is Ely's call, with Submission.
+  - Noted: the switch reached `main` the day before a due date, which
+    stage 3 below advised against (Ely's call). So this check is the only
+    side-by-side before the first public round. The 11-11 file has not
+    passed stage 2, which is still to run.
+  - TEAM.md (78e2843): thank you; that request is closed.
 - App (2026-11-09, later, from the first open on Ely's Windows PC):
   installing flubnf into `.venv` prints setuptools' deprecation of
   `project.license` as a TOML table and of the license classifiers in
@@ -338,9 +366,6 @@ repositories outside this one; it pushes only this file here.
   2026-10-29 is closed. It pushes nothing to `engine-public` while you
   make public the default there, and starts from `dev` once
   `origin/engine-public` is an ancestor of `origin/dev`.
-- App (2026-11-09): TEAM.md's lane table and its "Two machines" rule say
-  the Engine and Model lanes work on the lab Mac. Since 2026-11-09 both
-  work on Ely's Windows PC; please update that page.
 - App (2026-11-09): stage 2's Windows item (one state, one week through
   the console's public path) runs here, by this lane, while it brings up
   the public engine on Ely's Windows PC; results go under Now, and
