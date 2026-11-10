@@ -7,6 +7,10 @@ new copy aside too, or finds it current and does nothing (a failed data
 fetch leaves a copy that reads as current). So reinstall.sh says where it
 came from (FLUBNF_SETUP_FROM=reinstall), and setup.sh's run-again line then
 gives the command with the folder in it: cd "<the copy>" && ./setup.sh.
+The three sentences that open with that line (the venv cannot be made,
+BioNetGen does not install, the console is missing) are checked for each
+way setup.sh is run: by hand, from the one-line install and from the
+one-line reinstall.
 
 setup.sh runs in a copy of its own with stand-ins for Python, the venv's
 pip and python, the app host build and git, whose clone of the hub fails
@@ -84,13 +88,15 @@ class Setup:
             "FLUBNF_ENGINE_VENV": str(self.home / ".venvs" / "flubnf-engine"),
             "FLUBNF_PYBNF": str(self.home / "GitHub" / "PyBNF-pf")})
 
-    def run(self, **env: str) -> subprocess.CompletedProcess:
+    def run(self, hub: bool = True, **env: str) -> subprocess.CompletedProcess:
         out = subprocess.run(
             [BASH, str(self.repo / "setup.sh")], env={**self.env, **env},
             cwd=self.tmp, stdin=subprocess.DEVNULL, capture_output=True,
             text=True, timeout=60)
-        # the stand-ins ran: the hub clone was tried, and failed
-        assert "git clone" in self.calls.read_text(), _said(out)
+        # the stand-ins ran: the hub clone was tried, and failed (`hub`
+        # False: a run that stops before the hub step)
+        if hub:
+            assert "git clone" in self.calls.read_text(), _said(out)
         return out
 
 
@@ -122,6 +128,71 @@ def test_the_reinstall_wording_is_its_own_and_the_plain_run_stands(
     assert (f"data fetch failed (offline?) -- {again} when connected"
             in plain.stdout), plain.stdout
     assert not _commands(plain.stdout), plain.stdout
+
+
+#: the run-again line that opens a sentence (setup.sh's $Again), by who ran
+#: setup.sh: by hand in its folder, the one-line install, the one-line
+#: reinstall
+AGAIN = {"plain": ({}, "Run ./setup.sh again"),
+         "install": ({"FLUBNF_SETUP_FROM": "install"},
+                     "Paste the install line again"),
+         "reinstall": ({"FLUBNF_SETUP_FROM": "reinstall"},
+                       'Run cd "{repo}" && ./setup.sh again')}
+
+
+def _venv_fails(s: Setup) -> tuple:
+    """No venv yet, and Python cannot make one for a reason of its own
+    (a full disk), not a missing venv module."""
+    shutil.rmtree(s.repo / ".venv")
+    _stub(s.tmp / "stand-ins" / "python3.12",
+          f'echo "$0 $*" >> "{s.calls}"\n'
+          '[ "$1" = -V ] && echo "Python 3.12.8"\n'
+          'if [ "$1" = -m ] && [ "$2" = venv ]; then\n'
+          '  echo "Error: [Errno 28] No space left on device" >&2; exit 1\n'
+          'fi\nexit 0\n')
+    return 1, False, "{Again} once the problem above is fixed."
+
+
+def _bionetgen_fails(s: Setup) -> tuple:
+    """FluBNF installs; BioNetGen does not (a warning, setup goes on)."""
+    _stub(s.repo / ".venv" / "bin" / "pip",
+          f'echo "$0 $*" >> "{s.calls}"\n'
+          'case "$*" in *bionetgen*) exit 1;; esac\nexit 0\n')
+    return 0, True, "runs; fits need it. {Again} to retry."
+
+
+def _console_missing(s: Setup) -> tuple:
+    """The venv's console is not there when the doctor step comes."""
+    (s.repo / ".venv" / "bin" / "flubnf").unlink()
+    return 1, True, ("the console is not installed: .venv/bin/flubnf is "
+                     "missing. {Again}.")
+
+
+@pytest.mark.parametrize("step", [_venv_fails, _bionetgen_fails,
+                                  _console_missing],
+                         ids=["venv", "bionetgen", "console"])
+@pytest.mark.parametrize("by", ["plain", "install", "reinstall"])
+def test_a_sentence_that_opens_with_the_run_again_line_says_it_for_its_run(
+        tmp_path, by, step):
+    """The three sentences that open with the run-again line (the venv
+    cannot be made, BioNetGen does not install, the console is missing)
+    give the reinstall's command with the folder in it, and keep the
+    plain run's and the install's words."""
+    s = Setup(tmp_path)
+    rc, hub, sentence = step(s)
+    env, again = AGAIN[by]
+    out = s.run(hub=hub, **env)
+    assert out.returncode == rc, _said(out)
+    want = sentence.format(Again=again.format(repo=s.repo))
+    assert want in out.stdout, out.stdout
+    if by == "reinstall":
+        # typed in a Terminal opened anywhere, each runs this copy's setup.sh
+        assert _commands(out.stdout), out.stdout
+        assert {tuple(c) for c in _commands(out.stdout)} == {
+            ("cd", str(s.repo), "&&", "./setup.sh")}, out.stdout
+        assert "Run ./setup.sh again" not in out.stdout, out.stdout
+    else:
+        assert not _commands(out.stdout), out.stdout
 
 
 # --- reinstall.sh tells setup.sh ------------------------------------------
