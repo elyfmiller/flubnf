@@ -110,6 +110,7 @@ Paths default to `~/GitHub/<name>` (an older setup's `~/Documents/GitHub/<name>`
 | `FLUBNF_ENGINE_LOCK` | `scripts/engine_lock.py` and everything that calls it | `engine-requirements.txt` in the FluBNF folder |
 | `FLUBNF_PERL_FROM` | `scripts\windows\get_perl.py` (`FluBNF.bat`'s own Perl) | unset = download the pinned package from conda.anaconda.org; a path = a local copy of it, held to the same size and SHA-256 |
 | `BNGSIM_NO_CODEGEN` | the engine (`BngsimModel`); set to `1` for every Windows engine runner by `pf.runner_popen_kwargs` | unset on macOS and Linux (bngsim compiles each model); any non-empty value turns code generation off, `0` included |
+| `BNGSIM_CODEGEN_CACHE_DIR` | the engine (bngsim's compiled models); set for every engine runner, on every platform, by `pf.runner_popen_kwargs`, unless it already names a folder | `<state folder>/engine-cache/bngsim-codegen`, absolute (`FLUBNF_STATE_DIR` moves it; bngsim's own default is `~/.cache/bngsim/codegen`). Storage lists it outside the total; its Delete and Reclaim clear it only while no engine job runs |
 | `FLUBNF_REINSTALL_YES`, `_FORCE`, `_NO_INSTALL`, `_NO_OPEN`, `_IGNORE_RUNNING` | `reinstall.sh` (header lists each) | unset |
 | `FLUBNF_PYBNF_FORK` (private engine only) | `scripts/cut_engine_archive.sh` | `~/Documents/GitHub/PyBNF-Private` |
 | `FLUBNF_RLIB` | `scripts/validate_submission.R` | unset; an extra R library path |
