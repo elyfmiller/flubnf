@@ -276,7 +276,7 @@
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {# why the particle filter's options are off, in the badge's words #}
-   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ " only: " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
+   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ ": " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
    {% else %}{% set eb_ds %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
    {% if eb_ds | trim %}<p class="fc-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
    {# off by default: the Groundhog draws growth from the data's own

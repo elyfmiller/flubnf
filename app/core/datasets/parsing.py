@@ -154,6 +154,29 @@ def _open_source(source):
     return source, False
 
 
+#: a workbook's first bytes (.xlsx is a zip, .xls an OLE file)
+WORKBOOK_MAGIC = (b"PK\x03\x04", b"\xd0\xcf\x11\xe0")
+
+
+def not_text(head: bytes) -> str:
+    """Why a file's first bytes are no text FluBNF reads, or '': a workbook
+    (WORKBOOK_MAGIC), or control bytes throughout in no UTF-16 or UTF-32
+    pattern (binary). Said before any reading, so neither is named by the
+    NUL characters in its "header" or read as Windows-1252."""
+    if head.startswith(WORKBOOK_MAGIC):
+        return ("This looks like an Excel workbook, not a CSV file: save it "
+                "as CSV UTF-8.")
+    # control bytes throughout (not tab, newline or return): binary, unless
+    # they are UTF-16's or UTF-32's padding; a stray NUL in a text cell is
+    # shown as a cell, not refused
+    control = sum(head.count(bytes([b])) for b in range(32)
+                  if b not in (9, 10, 13))
+    if control >= max(8, len(head) // 64) and detect_encoding(head) == "utf-8":
+        return ("The file is not text: it holds binary data. Save it as CSV "
+                "UTF-8.")
+    return ""
+
+
 def detect_encoding(head: bytes) -> str:
     """The codec for a file's first bytes: a BOM decides; UTF-32 and UTF-16
     without one show as NUL bytes in three of every four, or every other,
