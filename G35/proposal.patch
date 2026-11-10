@@ -1,0 +1,1107 @@
+diff --git a/app/core/archive_record.py b/app/core/archive_record.py
+index e664373b..0ce014b6 100644
+--- a/app/core/archive_record.py
++++ b/app/core/archive_record.py
+@@ -131,7 +131,7 @@ def keep_reason(d: Path, complete: bool, full: bool = True,
+         return ("this run is not complete, so the archive kept the "
+                 "earlier complete run" + (f" {held}" if held else ""))
+     if not full and held_done and rec.get("full", True):
+-        return ("this run covers part of the 53 jurisdictions, so the "
++        return ("this run covers part of the 53 locations, so the "
+                 "archive kept the earlier run on all 53"
+                 + (f" {held}" if held else ""))
+     return ""
+diff --git a/app/tests/test_a11y_modes.py b/app/tests/test_a11y_modes.py
+index 43581148..42407702 100644
+--- a/app/tests/test_a11y_modes.py
++++ b/app/tests/test_a11y_modes.py
+@@ -406,8 +406,10 @@ def test_a11y_controls_sit_with_the_theme_picker_and_state_checked():
+ def test_modes_persist_and_dispatch_themechange():
+     # persisted like the theme; an explicit 'normal' stops the OS preference
+     # re-enabling contrast
+-    assert "localStorage.setItem('contrast',on?'normal':'high')" in BASE_T
+-    assert "localStorage.setItem('vision',v?'normal':'cvd')" in BASE_T
++    # (guarded: with storage blocked the switch still turns and reads on)
++    assert ("try{localStorage.setItem('contrast',on?'normal':'high');}"
++            "catch(e){}") in BASE_T
++    assert "try{localStorage.setItem('vision',v?'normal':'cvd');}catch(e){}" in BASE_T
+     # each press dispatches themechange so Plotly and the player recolor
+     a11y = BASE_T.split("// accessibility modes:", 1)[1] \
+                  .split("// text-size control:", 1)[0]
+@@ -418,7 +420,8 @@ def test_first_paint_honors_the_os_contrast_preference():
+     # no stored choice: prefers-contrast: more enables it before first paint
+     assert "matchMedia('(prefers-contrast: more)').matches" in BASE_T
+     assert "setAttribute('data-contrast','high')" in BASE_T
+-    assert "localStorage.getItem('vision')==='cvd'" in BASE_T
++    assert "v=localStorage.getItem('vision')" in BASE_T
++    assert "if(v==='cvd')de.setAttribute('data-vision','cvd');" in BASE_T
+ 
+ 
+ # --------------------------------------------- the map follows the mode
+diff --git a/app/tests/test_cross_page.py b/app/tests/test_cross_page.py
+new file mode 100644
+index 00000000..8881eb52
+--- /dev/null
++++ b/app/tests/test_cross_page.py
+@@ -0,0 +1,101 @@
++"""Across pages (bug hunt 2026-10-25, G35).
++
++  * With the browser's storage blocked, a page follows the OS's theme and
++    contrast, and the Display menu's switches still turn and say so: no
++    read or write of storage can stop the page's scripts (UI-12).
++  * One count of places: 52 jurisdictions (the states, DC and Puerto
++    Rico), and 53 locations with US national; US is never called a
++    jurisdiction (UI-15).
++"""
++import json
++import re
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from fastapi.testclient import TestClient                      # noqa: E402
++
++from app.ui import server as srv                               # noqa: E402
++
++client = TestClient(srv.app)
++NODE = shutil.which("node")
++UI = Path(__file__).resolve().parents[1] / "ui"
++
++# a page whose storage throws, as Safari's does with site data blocked
++_PAGE = r"""
++function boom(){throw new Error('SecurityError');}
++var store={getItem:boom,setItem:boom,removeItem:boom};
++var localStorage=store, sessionStorage=store, errors=[];
++function El(){this.a={};this.style={};this.dataset={};}
++El.prototype.setAttribute=function(k,v){this.a[k]=String(v);};
++El.prototype.getAttribute=function(k){return k in this.a?this.a[k]:null;};
++El.prototype.removeAttribute=function(k){delete this.a[k];};
++var de=new El(), btn=new El(); btn.dataset.ax='contrast';
++var document={documentElement:de,
++  querySelectorAll:function(s){return s.indexOf('data-ax')>=0?[btn]:[];}};
++function matchMedia(q){return {matches:q.indexOf('dark')>=0};}
++function dispatchEvent(){} function Event(){}
++"""
++
++
++def _scripts():
++    """The first-paint script and the a11y switches, as a page carries
++    them."""
++    html = client.get("/methods").text
++    boot = html.split("// before first paint", 1)[1]
++    boot = boot[boot.index("(function(){"):]
++    boot = boot[:boot.index("})();") + len("})();")]
++    sw = html.split("// accessibility modes:", 1)[1].split(
++        "// text-size control:", 1)[0]
++    return boot, sw[sw.index("(function(){"):]
++
++
++@pytest.mark.skipif(not NODE, reason="no node to run the page's scripts")
++def test_with_storage_blocked_a_page_follows_the_os_and_its_switches_work(
++        tmp_path):
++    boot, sw = _scripts()
++    drv = tmp_path / "blocked.js"
++    drv.write_text(
++        _PAGE + "try{\n" + boot + "\n" + sw + "\n"
++        "btn.onclick();\n"
++        "}catch(e){errors.push(String(e));}\n"
++        "console.log(JSON.stringify({theme:de.getAttribute('data-theme'),"
++        "contrast:de.getAttribute('data-contrast'),"
++        "checked:btn.getAttribute('aria-checked'),"
++        "size:de.style.fontSize,errors:errors}));\n",
++        encoding="utf-8")
++    out = subprocess.run([NODE, str(drv)], capture_output=True, text=True,
++                         timeout=60)
++    assert out.returncode == 0, out.stderr
++    assert json.loads(out.stdout.strip().splitlines()[-1]) == {
++        "theme": "dark", "contrast": "high", "checked": "true",
++        "size": "100%", "errors": []}
++
++
++def test_every_storage_call_in_the_shell_is_guarded():
++    base = (UI / "templates" / "base.html").read_text(encoding="utf-8")
++    for line in base.splitlines():
++        if re.search(r"(local|session)Storage\.", line):
++            assert "try{" in line or line.lstrip().startswith(
++                ("v=localStorage.getItem", "//")), line
++
++
++def test_us_national_is_a_location_never_a_jurisdiction():
++    pages = {p: client.get(p).text for p in ("/", "/forecast", "/data",
++                                             "/methods", "/retro")}
++    for p, html in pages.items():
++        assert "53 jurisdictions" not in html, p
++    assert "<b>all 53 locations</b>" in pages["/forecast"]
++    assert "<li><b>52</b> jurisdictions plus US national</li>" in pages["/"]
++    assert ('<dt>Locations</dt><dd><span class="uk-stat-v" id="mt-locs">all '
++            '52</span> <span class="uk-stat-u">jurisdictions plus US '
++            'national</span>') in pages["/methods"]
++    # a replay's "all" is the 52; US national is its own box there
++    assert ">all 52 jurisdictions</option>" in pages["/retro"]
++    data = (UI / "templates" / "data.html").read_text(encoding="utf-8")
++    assert 'tips.stat("Jurisdictions"' not in data
+diff --git a/app/tests/test_data_view.py b/app/tests/test_data_view.py
+index 0dff810d..7b7c26d7 100644
+--- a/app/tests/test_data_view.py
++++ b/app/tests/test_data_view.py
+@@ -63,7 +63,7 @@ def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
+             ) in html
+     joined = " ".join(html.split())
+     # V2's own numbers: jurisdictions, reported rows, newest week
+-    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
++    assert ('<dt>Locations</dt><dd><span class="uk-stat-v" '
+             'id="latest-locs">3</span>') in joined
+     assert ('<dt>Rows</dt><dd><span class="uk-stat-v" id="latest-rows">9'
+             '</span>') in joined
+@@ -159,7 +159,7 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
+     assert ">140<" in html                            # what V1 knew for Ohio
+     assert ">155<" not in html and ">190<" not in html   # V2's revisions
+     # Wyoming's unreported row was dropped, so V1 covers 3 jurisdictions
+-    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
++    assert ('<dt>Locations</dt><dd><span class="uk-stat-v" '
+             'id="vb-locs">3</span>') in joined
+ 
+ 
+diff --git a/app/tests/test_dataset_upload_box.py b/app/tests/test_dataset_upload_box.py
+index f60aa794..0e0de933 100644
+--- a/app/tests/test_dataset_upload_box.py
++++ b/app/tests/test_dataset_upload_box.py
+@@ -123,7 +123,7 @@ def test_the_box_stays_on_a_dataset_forecast_and_the_hub_is_unchanged():
+     assert page.index('id="fc-upload"') < page.index('id="fcform"')
+     # the hub tab carries no upload box: that is the Your data tab's
+     hub = client.get("/forecast").text
+-    assert 'action="/run"' in hub and "all 53 jurisdictions" in hub
++    assert 'action="/run"' in hub and "all 53 locations" in hub
+     assert boxes(hub) == []
+ 
+ 
+diff --git a/app/tests/test_datasets_ui.py b/app/tests/test_datasets_ui.py
+index d2866381..d9e7f281 100644
+--- a/app/tests/test_datasets_ui.py
++++ b/app/tests/test_datasets_ui.py
+@@ -216,7 +216,7 @@ def test_output_download_never_serves_the_dataset_store(tmp_path, monkeypatch):
+ 
+ def test_hub_forecast_page_is_unchanged_without_datasets():
+     page = client.get("/forecast").text
+-    assert "all 53 jurisdictions" in page and 'action="/run"' in page
++    assert "all 53 locations" in page and 'action="/run"' in page
+     assert 'id="fc-source"' not in page             # no selector, no datasets
+     assert "const SRCQ = \"\";" in page
+ 
+@@ -243,7 +243,7 @@ def test_forecast_with_a_dataset_lists_groups_and_its_weeks():
+     page = client.get(f"/forecast?source={ds.id}").text
+     assert 'action="/run/dataset"' in page
+     assert f"all {len(ds.groups)} groups" in page
+-    assert "all 53 jurisdictions" not in page
++    assert "all 53 locations" not in page
+     assert "US national is always fitted" not in page
+     assert f'name="dataset" value="{ds.id}"' in page
+     assert f'<option value="{ds.forecast_dates()[-1]}">' in page
+diff --git a/app/tests/test_display_themes.py b/app/tests/test_display_themes.py
+index 3f29fd3d..1e107a9b 100644
+--- a/app/tests/test_display_themes.py
++++ b/app/tests/test_display_themes.py
+@@ -380,7 +380,8 @@ def test_the_text_size_is_a_labelled_slider_from_80_to_160():
+     boot = BASE_T.split("<script>", 1)[1].split("</script>", 1)[0]
+     assert "var old={s:87.5,m:100,l:115}" in boot
+     assert "if(!(p>=80&&p<=160))p=100;" in boot
+-    assert "if(old[f])localStorage.setItem('fontsize',String(p));" in boot
++    assert ("if(old[f])try{localStorage.setItem('fontsize',String(p));}"
++            "catch(e){}") in boot
+     assert "de.style.fontSize=p+'%';" in boot
+     # the control clamps, speaks its value and fires fontsizechange once
+     # the slider rests
+diff --git a/app/tests/test_fewer_marks.py b/app/tests/test_fewer_marks.py
+index dac68d8d..08c99526 100644
+--- a/app/tests/test_fewer_marks.py
++++ b/app/tests/test_fewer_marks.py
+@@ -78,7 +78,7 @@ def marks(html: str) -> list:
+ 
+ #: page -> (the marks it keeps, prefixes of marks a passing state adds)
+ KEEP = {
+-    "/": ({"tt-hm-map", "tt-hm-perf", "tt-hm-how"},
++    "/": ({"tt-hm-map"},
+           ("tip-hm-miss", "tip-home-pin", "tip-eb-", "tip-hm-approx")),
+     "/data": ({"tip-archive", "tip-dsup-data-about"},
+               ("tip-hub-empty", "tip-hub-detail", "tip-newest-gaps",
+@@ -86,7 +86,7 @@ KEEP = {
+     "/output": ({"tt-out-files"},
+                 ("tip-out-live-", "tip-out-lchk-", "tip-out-notice",
+                  "tip-out-own")),
+-    "/retro": ({"tip-rt-page", "tip-rt-import-h"},
++    "/retro": ({"tt-rt-page"},
+                ("tip-rt-engine-off", "tip-rt-run-why", "tip-rt-st-")),
+     "/storage": (set(), ("tip-st-int-", "tip-st-cap")),
+     "/models": ({"tt-md-rec"}, ()),
+@@ -95,7 +95,7 @@ KEEP = {
+     "/methods": ({"tt-mt-replay"}, ()),
+     "/sandbox": ({"tip-sbnew-about-t"},
+                  ("tip-sb-season", "tip-sb-fdate", "tip-sb-asof",
+-                  "tip-sb-note-", "tip-sb-miss-")),
++                  "tip-sb-miss-")),
+ }
+ 
+ 
+@@ -106,6 +106,14 @@ def test_each_page_keeps_only_the_marks_that_explain_something():
+         assert rest == keep, (path, sorted(rest))
+ 
+ 
++def test_every_page_holds_one_i_and_the_forecast_tab_two():
++    """At most one "i" a page as served: the Forecast tab's Settings card
++    and its Model settings panel are the two it keeps."""
++    for path in list(KEEP) + ["/forecast", "/output", "/storage"]:
++        tts = [m for m in marks(client.get(path).text) if m.startswith("tt-")]
++        assert len(tts) <= (2 if path == "/forecast" else 1), (path, tts)
++
++
+ def test_the_display_menu_has_no_visible_question_marks():
+     """Its headings stand alone; the two switches keep their descriptions
+     as visually hidden text, so aria-describedby still reads them."""
+@@ -129,34 +137,32 @@ def _home(**kw):
+     return ENV.get_template("home.html").render(**ctx)
+ 
+ 
+-def test_home_how_it_works_reads_the_three_equations():
+-    """Home has no Variables fold: the three equations' readings are How
+-    it works' "i", and the chips beside them carry no "?"."""
++def test_home_how_it_works_is_its_drawing_and_three_named_equations():
++    """How it works carries no "i": the drawing says the pipeline (its
++    description the full sentence), each equation is named, and the
++    chips beside them carry no "?"; Methods reads them in full."""
+     html = _home()
+-    how = html.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
+-    for reading in ("Seasonal forcing: the curve the filter bends each",
+-                    "The Oracle step: each forecast path grows at the",
+-                    "The Groundhog: the last value scaled by past"):
+-        assert reading in " ".join(how.split()), reading
++    assert 'id="tt-hm-how"' not in html
++    assert "<desc>One weekly data pull feeds the Oracle SIHRS" in html
+     for chip in ("hm-eq-forcing", "hm-eq-oracle", "hm-eq-groundhog"):
+         assert f'id="tip-{chip}"' not in html, chip
++    for name in ("Seasonal forcing", "The Oracle step", "The Groundhog"):
++        assert f">{name}<" in html, name
+ 
+ 
+-def test_home_record_is_the_cards_one_i():
+-    """The Oracle SIHRS column's record joins the card's "i"; the column
+-    header is plain text."""
++def test_home_record_says_its_unit_under_the_table():
++    """The record has no "i": its unit is one line under the table, and
++    each column's cells and the plain filter's figures are Methods'. The
++    column header is plain text."""
+     html = _home()
+-    assert 'id="tt-home-oracle"' not in html
++    assert 'id="tt-hm-perf"' not in html and 'id="tt-home-oracle"' not in html
+     assert '<th class="num">Oracle SIHRS</th>' in html
+-    perf = " ".join(html.split('id="tt-hm-perf"', 1)[1]
+-                    .split("</span></span>", 1)[0].split())
+-    assert "frozen-specification replication" in perf
+-    assert "2024-25 and 2025-26 together:" in perf
+-    # the figures and their cells only; the cell rule and the convention's
+-    # comparison with the dashboard are Methods' Scoring details
+-    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
+-    assert "third decimal" not in perf and "CDC FluSight dashboard" not in perf
+-    assert len(re.sub(r"<[^>]+>", " ", perf).split()) < 115
++    card = html.split('class="card hm-perf"', 1)[1].split('class="card hm-start"', 1)[0]
++    unit = " ".join(card.split('<p class="hint">', 1)[1].split("</p>", 1)[0].split())
++    assert unit == ('relWIS vs the FluSight baseline, ratio of sums; below 1 '
++                    'beats it. Each column on its own cells: '
++                    '<a href="/methods#performance">Methods</a>.')
++    assert "frozen-specification replication" not in card
+ 
+ 
+ def test_home_says_the_bngsim_pin_only_when_the_build_differs():
+@@ -256,6 +262,21 @@ def test_a_plain_fact_with_a_reason_says_it_in_its_chip():
+ 
+ # ---------------------------------- Sandbox: each start says what it is
+ 
++def test_the_model_list_carries_no_note_marks(sandbox_root):
++    """A model's first comment opens its model.bngl; the list's rows
++    carry no "i" of their own, so the list keeps the one beside Start
++    from."""
++    from app.core import sandbox as sb
++    sb.add_example("sir_example")
++    sb.add_example("kinetics_example")
++    html = client.get("/sandbox").text
++    assert "sir_example" in html and "kinetics_example" in html
++    assert 'id="tip-sb-note-' not in html
++    assert [m for m in marks(html) if not m.startswith(
++        ("tip-sb-season", "tip-sb-fdate", "tip-sb-asof", "tip-sb-miss-"))] == [
++        "tip-sbnew-about-t"]
++
++
+ def test_every_start_carries_its_own_note():
+     """The "i" beside Start from explains the chosen start, whatever it
+     is, so it never needs the "?" that explained them all."""
+@@ -272,40 +293,40 @@ def test_every_start_carries_its_own_note():
+ 
+ # ------------- the Sandbox workbench: one "i" a card, the rest in words
+ 
+-def test_the_workbench_keeps_one_mark_a_card_from_a_first_visit_to_a_fit(sandbox_root):
+-    """A student's path (the SIR example, Check, a quick fit) shows two
+-    "i"s, one a card: the Model heading's (what the three files hold) and
+-    Run settings' (what Jitter and Seed do). The file tabs, the labels,
++def test_the_workbench_keeps_one_mark_from_a_first_visit_to_a_fit(sandbox_root):
++    """A student's path (the SIR example, Check, a quick fit) shows one
++    "i", the Model heading's (what the three files hold); what Jitter and
++    Seed do is How it works' Save and run step. The file tabs, the labels,
+     the fit's result and the diagram carry no "?"; their labels, badges
+     and one-line reasons say it."""
+     from app.core import sandbox as sb
+     from test_sandbox_guide import _finish
+     sb.add_example("sir_example")
+     html = client.get("/sandbox?model=sir_example").text
+-    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
++    assert marks(html) == ["tt-sb-files"]
+     files = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
+     for fact in ("<b>model.bngl:</b>", "A name ending <code>__FREE</code> is fitted",
+                  "<b>data.exp:</b>", "a missing week is a gap in time",
+                  "<b>priors.conf:</b>", "<code>uniform_var = name low high</code>",
+                  "(<code>loguniform_var</code> on a log scale)"):
+         assert fact in files, fact
+-    # what Jitter and Seed do, in the Run settings legend; the group's
+-    # name is the legend's words alone
+-    run = html.split('id="tt-sb-run"', 1)[1].split("</span></span>", 1)[0]
+-    for fact in ("<b>Jitter:</b> how far each fitted value is nudged between weeks",
+-                 "the Liu-West kernel scale", "0.15 in production, 0.2 to 0.3 for a fit that collapses",
+-                 "<b>Seed:</b> the same seed and files repeat a fit exactly",
+-                 "another seed shows how much it varies by chance"):
++    # what Jitter and Seed do, in How it works' Save and run step (the
++    # workbench's menu only); the group's name is the legend's words alone
++    menu = html.split('aria-label="How the Sandbox works"', 1)[1].split("</ol>", 1)[0]
++    run = menu.split(">Save and run<", 1)[1].split("</li>", 1)[0]
++    for fact in ("Jitter nudges each fitted value between weeks (the Liu-West kernel scale)",
++                 "0.15 in production, 0.2 to 0.3 for a fit that collapses",
++                 "The same seed and files repeat a fit exactly"):
+         assert fact in run, fact
+     assert ('<fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend">'
+-            '<span id="sb-run-name">Run settings</span>') in html
++            '<span id="sb-run-name">Run settings</span></legend>') in html
+     # what Simulate data replaces, beside its button
+     assert '<span class="sb-hint">Replaces data.exp with counts' in html
+     # after a quick check: its title, its reason in sight, the full fit
+     w = sb.prepare("sir_example", particles=200)
+     _finish(w)
+     html = client.get(f"/sandbox?model=sir_example&run={w.name}").text
+-    assert marks(html) == ["tt-sb-files", "tt-sb-run"]
++    assert marks(html) == ["tt-sb-files"]
+     assert "<strong>Quick check: the model runs</strong>" in html
+     assert ('<span class="sb-says">200 particles: the ranges are rough; '
+             'the full fit gives the estimates.</span>') in html
+diff --git a/app/tests/test_forecast_us_choice.py b/app/tests/test_forecast_us_choice.py
+index 82685465..ea45a236 100644
+--- a/app/tests/test_forecast_us_choice.py
++++ b/app/tests/test_forecast_us_choice.py
+@@ -1,7 +1,7 @@
+ """US national on the Forecast tab: a location of its own, and the FluSight
+ comparators drawn over a vintage run's fans.
+ 
+-"all 53 jurisdictions" is the hub's 53: the 52 (the 50 states, DC and
++"all 53 locations" is the hub's 53: the 52 (the 50 states, DC and
+ Puerto Rico) AND US (national), ticked by default, so a national fit is
+ not forgotten. US (national) stays a box of its own, listed last, ticked
+ with "all"; a custom pick keeps it unless the user unticks it, and fits
+@@ -128,7 +128,7 @@ def test_the_run_scope_reads_without_us_for_a_state_run():
+     assert runs_mod.locations_phrase(["California"]) == "1 state: California"
+     assert fc._scope_label(["US"]) == "US only"
+     assert fc._scope_label([f"S{i}" for i in range(52)] + ["US"]) == \
+-        "all 53 jurisdictions"
++        "all 53 locations"
+ 
+ 
+ def test_all_queues_the_53_in_the_progress_label(started):
+@@ -138,12 +138,13 @@ def test_all_queues_the_53_in_the_progress_label(started):
+ 
+ 
+ def test_the_default_form_ticks_all_53_with_us(monkeypatch):
+-    """A fresh console ticks "all 53 jurisdictions", and US (national),
++    """A fresh console ticks "all 53 locations", and US (national),
+     offered last, is ticked with it."""
+     ui_state._last_form.clear()
+     html = client.get("/forecast").text
+     assert re.search(r'id="ck-all" value="all" name="locations"\s+checked', html)
+-    assert "<b>all 53 jurisdictions</b>" in html
++    assert "<b>all 53 locations</b>" in html
++    assert "53 jurisdictions" not in html
+     assert "all 52 jurisdictions" not in html
+     assert re.search(r'id="ck-us" name="locations" value="US \(national\)"'
+                      r'\s+checked\s*>', html)
+diff --git a/app/tests/test_hub_setup.py b/app/tests/test_hub_setup.py
+index 3aa78365..0afc41ad 100644
+--- a/app/tests/test_hub_setup.py
++++ b/app/tests/test_hub_setup.py
+@@ -141,9 +141,8 @@ def test_a_missing_hub_gets_its_action_line_first():
+ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
+     html = _home(ENGINE_GONE,
+                  dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
+-    assert ">1 not installed<" in html
+-    assert html.split('id="tip-hm-missing"', 1)[1].split(">", 1)[1] \
+-        .split("</span>", 1)[0].strip() == ENGINE
++    # the badge counts; the row below names it, so the badge has no "?"
++    assert ">1 not installed<" in html and 'id="tip-hm-missing"' not in html
+     rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
+     assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
+     assert "fit_type=pf" not in rows and "venv" not in rows
+@@ -158,6 +157,21 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
+     assert 'id="hm-v-engine"' not in html
+ 
+ 
++def test_a_machine_without_the_engine_says_so_once_in_setup(monkeypatch):
++    """No engine (a student laptop): the Setup card names it once, with
++    its fix and one "?" (where it was looked for); the build line that
++    would repeat it is not shown."""
++    from test_fewer_marks import marks
++    monkeypatch.setattr(V, "ENGINE_BUILD", {
++        "engine": "public", "error": "there is no Python at /v/bin/python"})
++    html = _home(ENGINE_GONE,
++                 dict(INSTALLED, pybnf="not installed", bngsim="not installed"))
++    setup = html.split('class="card hm-setup"', 1)[1]
++    assert setup.count("To add the particle-filter engine") == 1
++    assert "data-engine-build" not in setup
++    assert [m for m in marks(html) if m.startswith("tip-")] == ["tip-hm-miss-1"]
++
++
+ def test_the_bngsim_pin_note_stays_off_beside_not_installed():
+     html = _home([], dict(INSTALLED, bngsim="not installed"))
+     assert 'id="tip-home-pin"' not in html
+@@ -171,10 +185,12 @@ def test_a_cold_launch_says_checking_until_the_probe_lands():
+     assert 'id="hm-checking"' in html and ">checking…<" in html
+     assert 'id="hm-installed"' not in html and 'id="hm-missing"' not in html
+     assert 'id="hm-setup-state"' in html
+-    # the recount waits for every value and draws the badge with its "?"
++    # the recount waits for every value and draws the badge (the list and
++    # the values name what it counts, so it has no "?")
+     script = html.split("function recount()", 1)[1].split("</script>", 1)[0]
+     assert "indexOf('resolving') >= 0) return" in script
+-    assert "FluBNFUI.tip('hm-missing', word, names.join(', '))" in script
++    assert "slot.innerHTML = FluBNFUI.badge('warn', word);" in script
++    assert "FluBNFUI.tip(" not in script
+     assert "FluBNFUI.badge('ok', 'All components installed')" in script
+ 
+ 
+diff --git a/app/tests/test_pages.py b/app/tests/test_pages.py
+index 057fa736..17fb7150 100644
+--- a/app/tests/test_pages.py
++++ b/app/tests/test_pages.py
+@@ -38,13 +38,17 @@ def test_home_renders_workflow_performance_and_component_cards():
+     for cell in ("0.767", "0.697", "0.781", "0.738",
+                  "0.680", "0.627", "0.645", "0.642",
+                  "0.741", "0.663", "0.684", "0.685",
+-                 "15,460", "17,116", "15,300", "Oracle SIHRS", "Groundhog",
+-                 # the plain filter on the same cells, in the card's "i"
+-                 # (its ablation), and the two-season figure
++                 "Oracle SIHRS", "Groundhog", "below 1 beats it"):
++        assert cell in r.text, cell
++    # each column's cells, the plain filter on the same cells (its
++    # ablation), the two-season figure and the withdrawn placement are
++    # Methods', which the card's unit line links (Home's record has no "i")
++    methods = client.get("/methods").text
++    for cell in ("15,460", "17,116", "15,300",
+                  "0.840", "0.794", "0.843", "0.819", "0.731", "0.813",
+                  "9,279", "6,021", "4,859", "4,420",
+-                 "below 1.000 beats it", "frozen-specification replication"):
+-        assert cell in r.text, cell
++                 "frozen-specification replication", "Placement among"):
++        assert cell in methods, cell
+     # the filter alone is no longer a headline column
+     assert "Filter alone" not in r.text
+     # the performance card names no blend (the outlook label above it
+@@ -55,7 +59,8 @@ def test_home_renders_workflow_performance_and_component_cards():
+     for gone in ("14 of 34 teams", "4 of 40 teams", "19 of 47 teams",
+                  "mean 71st"):
+         assert gone not in r.text, gone
+-    assert "withdrawn" in r.text
++    # the withdrawal is said where the record is read in full
++    assert "Placement among FluSight teams was withdrawn" in " ".join(methods.split())
+     # the two-strain member is settled, not pending
+     assert "full-grid validation is in progress" not in r.text
+     # component cards lead with a visual and keep links and versions
+@@ -147,15 +152,20 @@ def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
+     assert dict(got) == {"2023-24": fmt(y23), "2024-25": fmt(y24),
+                          "2025-26": fmt(y25), "Pooled": fmt(three)}
+     home = client.get("/").text
+-    tip = " ".join(home.split('id="tt-hm-perf"', 1)[1]
+-                   .split("</span></span>", 1)[0].split()).replace("&#39;", "'")
+-    # each column's cells and cell rule: the Groundhog's alone is FluSight's
+-    assert ("15,460 (placement among teams withdrawn) under the earlier cell "
+-            f"rule, the shipped Groundhog on {cells} under FluSight's (the "
+-            f"form it replaced: {fmt(replaced)}).") in tip
++    # Home's record has no "i": each column's cells and cell rule are
++    # Methods', which its unit line links
++    assert "Each column on its own cells: " \
++        '<a href="/methods#performance">Methods</a>.' in " ".join(home.split())
+     assert "0.666" not in home and "15,340" not in home
+-    # Methods: the Groundhog row and its three-season tile
++    # Methods: the Groundhog row and its three-season tile; its Cells fold
++    # names the Groundhog's cells and rule (FluSight's, its alone) and the
++    # form it replaced
+     methods = client.get("/methods").text
++    fold = " ".join(methods.split('id="mt-perf-cells"', 1)[1]
++                    .split("</details>", 1)[0].split()).replace("&#39;", "'")
++    assert (f"The Groundhog row is its shipped form, on {cells} cells under "
++            "FluSight's cell rule; the form it replaced scores "
++            f"{fmt(replaced)} on the same cells") in fold
+     row = methods.split("<tr><td>Groundhog</td>", 1)[1].split("</tr>", 1)[0]
+     assert re.findall(r'class="num ok">([0-9.]+)<', row) == [
+         fmt(y23), fmt(y24), fmt(y25)]
+@@ -446,9 +456,11 @@ def test_every_equation_group_defines_its_symbols():
+ def test_home_workflow_carries_the_forcing_and_groundhog_equations():
+     t = client.get("/").text
+     assert 'class="eqpanel"' in t
+-    # the readings are How it works' "i" (Home has no Variables fold)
+-    how = t.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
+-    assert "the curve the filter bends each week" in how
++    # each equation is named on Home; its reading is the model's own page
++    # (How it works has no "i": Home has no Variables fold)
++    assert 'id="tt-hm-how"' not in t and ">Seasonal forcing<" in t
++    assert "the curve the filter bends each week" in " ".join(
++        client.get("/models").text.split())
+     # the Groundhog's growth-ratio quantile replaced the blend's mean
+     assert "growth\n   ratios at matched calendar weeks" in t
+     assert "mean<sub>m</sub>" not in t
+diff --git a/app/tests/test_relwis_conventions.py b/app/tests/test_relwis_conventions.py
+index c4b5aaec..bdb97f42 100644
+--- a/app/tests/test_relwis_conventions.py
++++ b/app/tests/test_relwis_conventions.py
+@@ -594,10 +594,12 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
+             == relwis.PUBLISHED_CONVENTION_NOTE)
+     src = (ui / "templates" / "methods.html").read_text()
+     assert "{{ relwis_convention_note }}" in src
+-    # Home's record names it in its "i", which links Methods for the note
++    # Home's record names it in the unit line under its table, which links
++    # Methods for each column's cells
+     home = (ui / "templates" / "home.html").read_text()
+-    perf = home.split('"hm-perf"', 1)[1].split("{% endcall %}", 1)[0]
+-    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
++    perf = home.split('"hm-perf"', 1)[1].split("{# provenance", 1)[0]
++    unit = " ".join(perf.split('<p class="hint">', 1)[1].split("</p>", 1)[0].split())
++    assert "ratio of sums" in unit and 'href="/methods#performance"' in unit
+     # builders outside the template environment use the same constant (the
+     # season report renders the season page, inside it)
+     for mod in ("site_page.py",):
+@@ -618,10 +620,10 @@ def test_the_index_labels_the_convention_beside_every_score():
+                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
+                                 "elapsed_s": None, "rel": 0.9,
+                                 "size_h": "1 MB"}]}])
+-    # the page's one "?" names the convention for every score on it, the
++    # the page's one "i" names the convention for every score on it, the
+     # season's headline and the archived rows alike (bug hunt G28, RE-18:
+     # each row's own "?" was clutter)
+-    page_tip = html.split('id="tip-rt-page"', 1)[1].split("</span></span>")[0]
++    page_tip = html.split('id="tt-rt-page"', 1)[1].split("</span></span>")[0]
+     assert "relWIS: the summed WIS over the FluSight baseline's (a ratio of " \
+         "sums)" in page_tip
+     card = html.split('data-season="2098-99"', 1)[1]
+diff --git a/app/tests/test_retro_words.py b/app/tests/test_retro_words.py
+index 8d6f0cc2..500ae7a3 100644
+--- a/app/tests/test_retro_words.py
++++ b/app/tests/test_retro_words.py
+@@ -69,7 +69,7 @@ def test_the_season_rows_carry_no_tips_of_their_own():
+ def test_the_your_data_tab_has_one_explainer(tmp_path, monkeypatch):
+     ds = stored()
+     page = client.get(f"/retro?dataset={ds.id}").text
+-    for gone in ('id="tip-rt-page"', 'id="tip-dsr-src"', 'id="tip-dsr-groups"',
++    for gone in ('id="tt-rt-page"', 'id="tip-dsr-src"', 'id="tip-dsr-groups"',
+                  'id="tip-dsr-engine"', 'id="tip-dsr-fs"', 'id="tip-dsr-kind"'):
+         assert gone not in page, gone
+     tip = page.split('id="tip-rt-ds-about"', 1)[1].split("</span></span>")[0]
+diff --git a/app/tests/test_sandbox_shipped.py b/app/tests/test_sandbox_shipped.py
+index 634977a5..87610e95 100644
+--- a/app/tests/test_sandbox_shipped.py
++++ b/app/tests/test_sandbox_shipped.py
+@@ -348,9 +348,8 @@ def test_no_bare_model_name_in_the_sandbox_pages(hub):
+         assert not bare, (page, bare)
+         # no placeholder reaches a page outside the editor
+         assert "{{" not in text, page
+-    # the template's workbench keeps the page's two marks, no more
+-    assert marks(client.get("/sandbox?model=tpl").text) == ["tt-sb-files",
+-                                                             "tt-sb-run"]
++    # the template's workbench keeps the page's one mark, no more
++    assert marks(client.get("/sandbox?model=tpl").text) == ["tt-sb-files"]
+ 
+ 
+ # ---------------------------------------------- the Oracle SIHRS template
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index b2a5b546..1135f143 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -85,7 +85,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+     except Exception as e:
+         all_locs = []
+         locations_error = (f"State list unavailable ({type(e).__name__}); "
+-                           "runs will cover all 53 jurisdictions.")
++                           "runs will cover all 53 locations.")
+     # the default run is the full hub submission: "all" is the 53, the 52
+     # jurisdictions AND US national (US stays ticked with it, so a custom
+     # pick starts with US in; the user unticks it to leave it out). After a
+@@ -994,7 +994,7 @@ def _location_progress(workroot) -> list:
+ 
+ def _scope_label(locs) -> str:
+     """The progress label's scope: '3 states', '1 state + US',
+-    'all 53 jurisdictions' (the form's "all": the 52 and US) or
++    'all 53 locations' (the form's "all": the 52 jurisdictions and US) or
+     'US only'."""
+     from app.core import us_national as _usn
+     n = len(_usn.state_names(locs))
+@@ -1002,7 +1002,7 @@ def _scope_label(locs) -> str:
+     if not n:
+         return "US only" if us else "0 states"
+     if n == 52 and us:
+-        return "all 53 jurisdictions"
++        return "all 53 locations"
+     return f"{n} state{'s' if n != 1 else ''}" + (" + US" if us else "")
+ 
+ 
+@@ -1325,7 +1325,7 @@ def run_models(request: Request,
+     locations = [x.strip() for l in locations
+                  for x in str(l).split(",") if x.strip()]
+     if not locations:
+-        _flash("Not run: select a location, or all 53 jurisdictions.",
++        _flash("Not run: select a location, or all 53 locations.",
+                "warn")
+         return _back(request, "/forecast")
+     try:
+diff --git a/app/ui/templates/base.html b/app/ui/templates/base.html
+index 57889543..cd254d7b 100644
+--- a/app/ui/templates/base.html
++++ b/app/ui/templates/base.html
+@@ -37,26 +37,28 @@
+ <script>
+  // before first paint, so the page never flashes the wrong look: the theme
+  // (one of the eight; an unknown stored value falls back to the system
+- // preference), the two a11y modes and the text size
+- (function(){var de=document.documentElement,t=localStorage.getItem('theme');
++ // preference), the two a11y modes and the text size. Storage can be
++ // blocked (site data off, some private windows): then nothing is stored
++ // and the page follows the OS at the standard size
++ (function(){var de=document.documentElement,t=null,c=null,v=null,f=null;
++  try{t=localStorage.getItem('theme');c=localStorage.getItem('contrast');
++   v=localStorage.getItem('vision');f=localStorage.getItem('fontsize');}
++  catch(e){}
+   if([{% for id, _name, _ground in THEMES %}'{{ id }}'{{ "," if not loop.last }}{% endfor %}].indexOf(t)<0)
+    t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+   de.setAttribute('data-theme',t);
+   // a11y modifiers: a stored choice wins; otherwise high contrast follows
+   // the OS (prefers-contrast: more)
+-  var c=localStorage.getItem('contrast');
+   if(c!=='high'&&c!=='normal')
+    c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
+   if(c==='high')de.setAttribute('data-contrast','high');
+-  if(localStorage.getItem('vision')==='cvd')
+-   de.setAttribute('data-vision','cvd');
++  if(v==='cvd')de.setAttribute('data-vision','cvd');
+   // text size: a percentage of the standard size, 80 to 160. The old
+   // three-step values (s, m, l) read as 87.5, 100 and 115 and are stored
+   // back as numbers, so nobody's setting is lost
+-  var old={s:87.5,m:100,l:115},f=localStorage.getItem('fontsize'),
+-      p=old[f]||parseFloat(f);
++  var old={s:87.5,m:100,l:115},p=old[f]||parseFloat(f);
+   if(!(p>=80&&p<=160))p=100;
+-  if(old[f])localStorage.setItem('fontsize',String(p));
++  if(old[f])try{localStorage.setItem('fontsize',String(p));}catch(e){}
+   de.style.fontSize=p+'%';})();
+ </script>
+ {% block head %}{% endblock %}
+@@ -320,7 +322,8 @@
+  },true);
+  // preserve scroll across form posts/reloads -- keyed by page so it never
+  // carries to a different tab, and never stomps a deliberate #anchor redirect
+- addEventListener('beforeunload',()=>sessionStorage.setItem('scy:'+location.pathname,scrollY));
++ addEventListener('beforeunload',()=>{
++   try{sessionStorage.setItem('scy:'+location.pathname,scrollY);}catch(e){}});
+  // a page brought back from the back/forward cache names what was true
+  // when it was rendered (an earlier run's files): fetch it afresh
+  addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
+@@ -328,8 +331,8 @@
+  addEventListener('click',e=>{const y=scrollY;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if(Math.abs(scrollY-y)>50 && !e.target.closest('a')) scrollTo(0,y);}));},true);
+- addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
+-   sessionStorage.removeItem(k);
++ addEventListener('load',()=>{const k='scy:'+location.pathname;let y=null;
++   try{y=sessionStorage.getItem(k);sessionStorage.removeItem(k);}catch(e){}
+    // a notice at the top (the action's outcome) stays in view instead
+    if(y && !location.hash && !document.getElementById('flash')) scrollTo(0,parseInt(y));});
+  // theme picker: native radios (arrow keys move the choice), the current
+@@ -384,12 +387,12 @@
+       var on=de.getAttribute('data-contrast')==='high';
+       if(on)de.removeAttribute('data-contrast');
+       else de.setAttribute('data-contrast','high');
+-      localStorage.setItem('contrast',on?'normal':'high');
++      try{localStorage.setItem('contrast',on?'normal':'high');}catch(e){}
+     }else{
+       var v=de.getAttribute('data-vision')==='cvd';
+       if(v)de.removeAttribute('data-vision');
+       else de.setAttribute('data-vision','cvd');
+-      localStorage.setItem('vision',v?'normal':'cvd');
++      try{localStorage.setItem('vision',v?'normal':'cvd');}catch(e){}
+     }
+     mark();
+     dispatchEvent(new Event('themechange'));};});})();
+@@ -420,7 +423,7 @@
+   function apply(p,now){
+     p=Math.max(80,Math.min(160,p));
+     de.style.fontSize=p+'%';show(p);
+-    localStorage.setItem('fontsize',String(p));
++    try{localStorage.setItem('fontsize',String(p));}catch(e){}
+     clearTimeout(timer);
+     timer=setTimeout(function(){
+       dispatchEvent(new Event('fontsizechange'));},now?0:150);}
+diff --git a/app/ui/templates/data.html b/app/ui/templates/data.html
+index 9b0f0c87..6bc73c2c 100644
+--- a/app/ui/templates/data.html
++++ b/app/ui/templates/data.html
+@@ -85,7 +85,7 @@
+    {{ tips.stat("Latest vintage", nw(latest_vintage), id="latest-vintage") }}
+    {# the latest vintage's own numbers, read from the archived file #}
+    {% if latest %}
+-   {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
++   {{ tips.stat("Locations", latest.locations, id="latest-locs") }}
+    {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
+    {# only when it says something the Latest vintage tile does not #}
+    {% if latest.newest_week != latest_vintage %}
+@@ -167,7 +167,7 @@
+   {{ tips.stat("Source", "hub archive", id="vb-source") }}
+   {% endif %}
+   {{ tips.stat("Reported rows", "{:,}".format(sel_summary.rows), id="vb-rows") }}
+-  {{ tips.stat("Jurisdictions", sel_summary.locations, id="vb-locs") }}
++  {{ tips.stat("Locations", sel_summary.locations, id="vb-locs") }}
+   {{ tips.stat("Weeks", nw(sel_summary.oldest_week) ~ ' to ' ~ nw(sel_summary.newest_week), id="vb-weeks") }}
+  {% endcall %}
+  {% endif %}
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index 82016284..af50a0f1 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -265,7 +265,7 @@
+      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
+    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
+      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
+-       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 jurisdictions" }}</b></label>
++       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 locations" }}</b></label>
+      {% for l in all_locs %}
+      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
+        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
+diff --git a/app/ui/templates/home.html b/app/ui/templates/home.html
+index 759a647b..d82611a3 100644
+--- a/app/ui/templates/home.html
++++ b/app/ui/templates/home.html
+@@ -1,15 +1,16 @@
+ {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
+ {% block head %}<link rel="stylesheet" href="/static/tabs/home.css">{% endblock %}
+ {% block content %}
+-{# the page reads as headings, values and controls; the few explanations
+-   it needs sit in an "i": how to read the map, the record and the
+-   pipeline (docs/UI-KIT.md) #}
++{# the page reads as headings, values and controls; its one "i" is how
++   to read the map (docs/UI-KIT.md). The record's unit is a line under its
++   table; the pipeline is its drawing, the models in full are Methods' #}
+ <div class="hero hm-hero">
+  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
+  <p>Weekly probabilistic forecasts of influenza hospital admissions.</p>
+- {# the rest of the old lead as facts; the full sentence is How it works' "i" #}
++ {# the rest of the old lead as facts; the full sentence is the workflow
++    drawing's description #}
+  <ul class="hm-facts" aria-label="At a glance">
+-  <li><b>52</b> US jurisdictions</li>
++  <li><b>52</b> jurisdictions plus US national</li>
+   <li><b>CDC FluSight</b> format</li>
+   <li><b>Oracle SIHRS</b> mechanistic, fitted each week</li>
+   <li><b>Groundhog</b> empirical calendar model</li>
+@@ -127,41 +128,15 @@
+    diagram (read-once reference) sits one scroll below #}
+ <div class="grid2 homeperf">
+  <div class="card hm-perf">
+-  {% call tips.heading("Measured performance", "hm-perf", rich=True, after=tips.tag("relWIS"),
+-                       tip_label="the measured performance") %}
+-   <span class="uk-tt-line">relWIS vs the FluSight baseline, ratio of sums;
+-   below 1.000 beats it.</span>
+-   <span class="uk-tt-line">Each column on its own cells: the Oracle SIHRS on
+-   {{ oracle_text.cells(oracle_text.RECORD.three.cells) }} and the FluSight
+-   Ensemble on 15,460 (placement among teams withdrawn) under the earlier
+-   cell rule, the shipped Groundhog on 17,116 under FluSight's (the form
+-   it replaced: 0.660).</span>
+-   <span class="uk-tt-line">Oracle SIHRS: the stored forecasts with the
+-   Oracle step and its donor bank applied, a
+-   frozen-specification replication (<a href="/methods#oracle">Methods</a>), on
+-   {{ oracle_text.cells(oracle_text.RECORD["2023-24"].cells) }},
+-   {{ oracle_text.cells(oracle_text.RECORD["2024-25"].cells) }} and
+-   {{ oracle_text.cells(oracle_text.RECORD["2025-26"].cells) }} cells. The
+-   plain filter on the same cells:
+-   {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }},
+-   {{ oracle_text.fmt(oracle_text.RECORD["2024-25"].filter) }} and
+-   {{ oracle_text.fmt(oracle_text.RECORD["2025-26"].filter) }};
+-   {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} pooled.</span>
+-   <span class="uk-tt-line">2024-25 and 2025-26 together:
+-   {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
+-   filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on
+-   {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells.</span>
+-   <span class="uk-tt-line">The scoring details are in
+-   <a href="/methods#policies">Methods</a>.</span>
+-  {% endcall %}
++  {{ tips.heading("Measured performance", "hm-perf", after=tips.tag("relWIS")) }}
+   {# the shipped Oracle SIHRS (oracle_text.RECORD, the B2 screen's seed
+      means; its "three" row is the pooled cell) beside the Groundhog and the
+      FluSight Ensemble. The table's markup stays as it is: site_build.
+      harvest_placement reads the first class="perf" table of this SOURCE,
+      its first "num rel" cell per season row, so the Oracle figures are
+      literals here, held equal to oracle_text.fmt(RECORD) by
+-     app/tests/test_pages.py. The plain filter's figures are its ablation,
+-     in the card's "i" #}
++     app/tests/test_pages.py. Each column's cells and the plain filter's
++     figures are Methods' (its Measured performance card and the record) #}
+   {# at larger text the table outgrows a phone's card: it scrolls with
+      the figures' cue (nau.css .figscroll) #}
+   <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
+@@ -183,6 +158,9 @@
+    </tbody>
+   </table>
+   </div>
++  <p class="hint">relWIS vs the FluSight baseline, ratio of sums;
++  below 1 beats it. Each column on its own cells:
++  <a href="/methods#performance">Methods</a>.</p>
+   {# provenance: Oracle SIHRS = oracle_text.RECORD (docs/ORACLE-SIHRS.md,
+      the B2 screen, reproduced with this app's scorer 2026-09-23; 15,300
+      cells); FluSight Ensemble = reseal 2026-09-07 (app/state/retro_reseal,
+@@ -207,23 +185,7 @@
+ </div>
+ 
+ <div class="card hm-how">
+- {% call tips.heading("How it works", "hm-how", rich=True, tip_label="how it works") %}
+-  <span class="uk-tt-line">Weekly probabilistic forecasts of influenza
+-  hospital admissions for all 52 US jurisdictions in the CDC FluSight
+-  format, from two models: the Oracle SIHRS, a mechanistic model fitted each
+-  week, and the Groundhog, an empirical calendar model.</span>
+-  <span class="uk-tt-line">One weekly data pull feeds the Oracle SIHRS (the
+-  particle-filter fit, its forecast growth then blended with donor growth
+-  from past seasons at the same calendar week) and the Groundhog; each
+-  model's quantiles are written as its own FluSight CSV, nothing is blended
+-  between the two, and the weekly report shows both.</span>
+-  <span class="uk-tt-line">Seasonal forcing: the curve the filter bends each week.</span>
+-  <span class="uk-tt-line">The Oracle step: each forecast path grows at the
+-  geometric mean of the filter's growth and one past season's at the same
+-  calendar week.</span>
+-  <span class="uk-tt-line">The Groundhog: the last value scaled by past
+-  seasons' growth at the same calendar week.</span>
+- {% endcall %}
++ {{ tips.heading("How it works", "hm-how") }}
+  {# labels audited to fit their boxes at A+ (115%); aria-label, not a
+     title element (its tooltip pops over the drawing) #}
+  <div class="pipe figscroll" tabindex="0" role="region" aria-label="Weekly forecasting workflow (scrolls)">
+@@ -287,8 +249,8 @@
+  </svg>
+  </div>
+  {# the three equations behind the pipeline: seasonal forcing, the Oracle
+-    growth blend, the Groundhog quantile; each named, the readings in How
+-    it works' "i" (Home has no Variables fold) #}
++    growth blend, the Groundhog quantile; each named, read in full in
++    Methods (Home has no Variables fold) #}
+  <div class="eqpanel">
+   <p class="uk-figline"><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
+@@ -376,7 +338,7 @@
+     script below then counts); a badge from values still resolving said
+     "All components installed" beside "resolving…" #}
+  {% if setup_pending is defined and setup_pending %}{% set setup_state = tips.badge("pending", "checking…", id="hm-checking") %}
+- {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", tiptext=gaps | join(", "), id="hm-missing") %}
++ {% elif gaps %}{% set setup_state = tips.badge("warn", gaps | length ~ " not installed", id="hm-missing") %}
+  {% else %}{% set setup_state = tips.badge("ok", "All components installed", id="hm-installed") %}{% endif %}
+  {% set setup_slot %}<span id="hm-setup-state">{{ setup_state }}</span>{% endset %}
+  {{ tips.heading("Setup", "hm-setup", after=setup_slot) }}
+@@ -414,8 +376,14 @@
+    {% endfor %}
+   </ul>
+  {% endif %}
+- {# the engine build when it is not production (the fix in its tip) #}
+- {% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}
++ {# the engine absent, by the check (its files) or by the probe (both
++    parts): one value, as the badge counts it #}
++ {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
++ {# the engine build when it is not production (the fix in its tip); not
++    the public engine's unreadable build while the engine is missing: the
++    lines above already say so, and how to add it #}
++ {% set ebv = engine_build_view() %}
++ {% if not (engine_absent and ebv.engine == "public" and not ebv.known) %}{% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}{% endif %}
+  {# the engine this copy runs, in words (engine_build.engine_words):
+     the public engine, the default, or the private one, the
+     fallback, which this copy records #}
+@@ -427,10 +395,6 @@
+     is named by its build (branch and commit) once known; its
+     self-reported version until then. data-vkey spans are base.html's
+     version poll targets #}
+- {% set ebv = engine_build_view() %}
+- {# the engine absent, by the check (its files) or by the probe (both
+-    parts): one value, as the badge counts it #}
+- {% set engine_absent = (missing | map(attribute="0") | list) | select("in", ["FLUBNF_PY_ENGINE", "FLUBNF_PYBNF", "FLUBNF_PY_ENGINE_PUBLIC"]) | list %}
+  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
+   {% if (engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known %}
+   {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
+@@ -451,9 +415,10 @@
+   {% endfor %}
+  {% endcall %}
+  {# a version that was still resolving at paint lands through base.html's
+-    poll: once none is, the badge is drawn again with its "?" naming what
+-    is missing (the components check() reported, plus each value now
+-    reading "not installed", each once), as a fresh load draws it #}
++    poll: once none is, the badge is drawn again counting what is missing
++    (the components check() reported, plus each value now reading "not
++    installed", each once), as a fresh load draws it; the list and the
++    values name them #}
+  <script>
+  (function () {
+    var box = document.querySelector('.hm-versions');
+@@ -475,8 +440,7 @@
+      if (!slot || !window.FluBNFUI) return;
+      if (names.length) {
+        var word = names.length + ' not installed';
+-       slot.innerHTML = '<span class="uk-badge-pair">' + FluBNFUI.badge('warn', word)
+-         + FluBNFUI.tip('hm-missing', word, names.join(', ')) + '</span>';
++       slot.innerHTML = FluBNFUI.badge('warn', word);
+      } else slot.innerHTML = FluBNFUI.badge('ok', 'All components installed');
+    }
+    new MutationObserver(recount).observe(box, {childList: true, subtree: true, characterData: true});
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index 59ab7d8d..a1a42019 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -165,7 +165,7 @@
+  forecast hub</a>{% endset %}
+  {% call tips.stats("uk-stats--row mt-lead", label="What FluBNF forecasts") %}
+   {{ tips.stat("Forecasts", "weekly influenza hospital admissions", id="mt-target") }}
+-  {{ tips.stat("Locations", "all 52", "US jurisdictions", id="mt-locs") }}
++  {{ tips.stat("Locations", "all 52", "jurisdictions plus US national", id="mt-locs") }}
+   {{ tips.stat("Format", hub, id="mt-format") }}
+   {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
+  {% endcall %}
+@@ -459,15 +459,11 @@
+   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
+   <span class="mt-unit mt-end">Replayed weeks
+   {%- call tips.toggletip("mt-replay", "the replayed weeks", title="Three seasons replayed on the data each week had") %}
+-   <span class="uk-tt-line">A replay's weeks are the hub's dated truth vintages
+-   inside the season.</span>
+-   <span class="uk-tt-line">Eight scored weeks the hub archive skipped (three in
+-   2024-25, five in 2025-26) ship with FluBNF as copies of the hub's own
+-   published files (<code>data/vintages/</code>) and are replayed and scored
+-   like the rest.</span>
+-   <span class="uk-tt-line">Two weeks had no published data and no FluSight round
+-   (as of 2024-05-04 and 2025-01-18); the player shows them as
+-   placeholders.</span>
++   <span class="uk-tt-line">Eight weeks the hub archive skipped (three in
++   2024-25, five in 2025-26) ship with FluBNF, copied from the hub's own
++   files (<code>data/vintages/</code>), and are scored like the rest.</span>
++   <span class="uk-tt-line">Two weeks had no data and no FluSight round
++   (2024-05-04 and 2025-01-18); the player shows them as placeholders.</span>
+   {%- endcall %}</span>
+  </div>
+  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
+diff --git a/app/ui/templates/retro.html b/app/ui/templates/retro.html
+index 1f62dc0c..97a333aa 100644
+--- a/app/ui/templates/retro.html
++++ b/app/ui/templates/retro.html
+@@ -13,10 +13,21 @@
+ {% macro rel_item(name, v) -%}
+ <span class="rt-rel">{{ (name ~ ' ') if name }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ verdict(v) }}</span>
+ {%- endmacro %}
+-{# the page's title; on the FluSight hub tab its "?" is the one explainer,
+-   for the season rows too (their badges and figures carry no tips of
+-   their own); the Your data tab's is its replays' heading #}
+-{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1") %}<span class="ncline">Replays a past season week by week on the data each Saturday had, then scores against settled truth.</span><span class="ncline">relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span><span class="ncline">Resume, or Run, continues a stopped or interrupted replay from its last completed week with the recorded settings. Archived runs, set aside when a fresh replay started or imported from another machine, open as the live season does.</span>{% endcall %}{% endif %}
++{# the page's title; on the FluSight hub tab its "i" is the one explainer
++   (as Output's and a season page's), for the season rows and the import
++   too (their badges, figures and fields carry no tips of their own); the
++   Your data tab's is its replays' heading #}
++{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1", rich=True, tip_label="the retrospective") %}
++ <span class="uk-tt-line">Replays a past season week by week on the data each
++ Saturday had, then scores against settled truth.
++ relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span>
++ <span class="uk-tt-line">Resume, or Run, continues a stopped or interrupted
++ replay from its last completed week with its recorded settings. Archived
++ and imported replays open as the live season does.</span>
++ <span class="uk-tt-line">Import a replay takes the .flubnf-replay.zip that
++ Export replay writes on a season page; an import is read only, and
++ Delete removes it.</span>
++{% endcall %}{% endif %}
+ {# the data source as two tabs, as on Forecast: the FluSight hub's
+    seasons, or your own datasets (_dataset_replay.html); plain links, so
+    Back, bookmarks and no-script work #}
+@@ -128,7 +139,7 @@
+     lands as a read-only archived run of its season, never in the live
+     tree. The file picker, or a path when the file is already here #}
+  <div class="card rt-importcard">
+-  {{ tips.heading("Import a replay", "rt-import-h", "A .flubnf-replay.zip from Export replay on a season page. Imported replays are read only: results, player and report as for an archived run, and Delete removes them.") }}
++  {{ tips.heading("Import a replay", "rt-import-h") }}
+   <form method="post" action="/retro/import" enctype="multipart/form-data"
+     id="rt-import">
+    <label for="rt-import-file">Replay bundle</label>
+diff --git a/app/ui/templates/sandbox.html b/app/ui/templates/sandbox.html
+index fcfb1be6..8d7cfca4 100644
+--- a/app/ui/templates/sandbox.html
++++ b/app/ui/templates/sandbox.html
+@@ -94,8 +94,9 @@
+    {% if models %}
+    <table class="kv sbmodels"><thead><tr><th>model</th><th>from</th><th>last run</th><th>changed</th></tr></thead><tbody>
+    {% for m in models %}<tr>
++    {# a model's first comment opens its model.bngl, so the row carries no
++       tip of its own #}
+     <td><span class="sb-name"><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>
+-     {%- if m.note %}{{ tips.icon_tip("sb-note-" ~ loop.index, m.name, "info", m.note, state="muted") }}{% endif %}
+      {%- if not m.complete %} {{ tips.badge("warn", "incomplete", "missing " ~ (m.missing | join(", ")), id="sb-miss-" ~ loop.index) }}{% endif %}</span></td>
+     {# an example's origin by its display name, as the Start from list names it #}
+     {% set ns = namespace(o=m.origin) %}{% for e in (templates or []) + (examples or []) %}{% if ns.o == "example " ~ e %}{% set ns.o = exname(e) %}{% endif %}{% endfor %}
+@@ -173,7 +174,7 @@
+  <div class="sbhead-menus">
+  <details class="sbmanage sbhelp">
+   <summary>How it works</summary>
+-  <div class="sbmenu sbhelpmenu sb-howmenu">{% with how_id = "sb-howm", how_vertical = true %}{% include "sandbox_help.html" %}{% endwith %}</div>
++  <div class="sbmenu sbhelpmenu sb-howmenu">{% with how_id = "sb-howm", how_vertical = true, how_run = true %}{% include "sandbox_help.html" %}{% endwith %}</div>
+  </details>
+  <details class="sbmanage">
+   <summary>Manage</summary>
+@@ -270,14 +271,10 @@
+     <div id="sb-checked" aria-live="polite"></div>
+    </div>
+    <div class="card sb-runcard">
+-    {# the card's one explainer, in its legend: what Jitter and Seed do.
+-       The presets name what each count is for (How it works says it
+-       too). The group's name is the legend's words alone #}
+-    <fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend"><span id="sb-run-name">Run settings</span>
+-     {%- call tips.toggletip("sb-run", "the run settings") %}
+-     <span class="uk-tt-line"><b>Jitter:</b> how far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 in production, 0.2 to 0.3 for a fit that collapses.</span>
+-     <span class="uk-tt-line"><b>Seed:</b> the same seed and files repeat a fit exactly; another seed shows how much it varies by chance.</span>
+-     {%- endcall %}</legend>
++    {# what Jitter and Seed do is How it works' Save and run step (the
++       page's one "i" is the files'); the presets name what each count is
++       for. The group's name is the legend's words alone #}
++    <fieldset class="sbrun" aria-labelledby="sb-run-name"><legend class="sb-legend"><span id="sb-run-name">Run settings</span></legend>
+      <div class="sbrun-grid">
+       <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", for_="sb-preset") }}
+        <span class="sb-partsrow"><span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">
+diff --git a/app/ui/templates/sandbox_help.html b/app/ui/templates/sandbox_help.html
+index 2d30d178..ca3e451b 100644
+--- a/app/ui/templates/sandbox_help.html
++++ b/app/ui/templates/sandbox_help.html
+@@ -2,7 +2,8 @@
+    stepper, each step's one line under its label, so the steps read as a
+    list. Shared by the gallery (a card, open while there are no models)
+    and the workbench (the How it works menu beside Manage); the includer
+-   sets how_id (unique per page) and how_vertical. #}
++   sets how_id (unique per page) and how_vertical, and how_run on the
++   workbench, whose Run settings it describes. #}
+ {% import "_tips.html" as tips %}
+ {{ tips.stepper([
+     {"label": "Start a model",
+@@ -12,7 +13,8 @@
+     {"label": "Check",
+      "meta": "What would stop a run, and the model beside the data, without fitting."},
+     {"label": "Save and run",
+-     "meta": "The full fit (10,000 particles) gives the estimates; with a quick check (200) the ranges are rough."},
++     "meta": "The full fit (10,000 particles) gives the estimates; with a quick check (200) the ranges are rough."
++             ~ (" Jitter nudges each fitted value between weeks (the Liu-West kernel scale), so the particles stay varied: 0.15 in production, 0.2 to 0.3 for a fit that collapses. The same seed and files repeat a fit exactly." if how_run else "")},
+     {"label": "Read the result",
+      "meta": "The effective sample size (ESS) grades the sampling; the band meets the data; each fitted value with its 5 to 95% range."},
+     {"label": "Try a change",
