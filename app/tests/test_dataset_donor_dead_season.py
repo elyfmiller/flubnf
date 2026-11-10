@@ -11,7 +11,11 @@ that, and real seasons would help there. Now no figure only when:
     do not: R1's 36, 24, 12 and 0), or
   * two or more earlier seasons of every group with data hold the pair.
 
-Otherwise the figure is given, as before R1's fix.
+Otherwise the figure is given, as before R1's fix. Where some groups
+show it and others have no earlier season (the small group's three
+seasons of zeros beside five new groups), the check gives neither a
+figure nor "would not help" (review of #93 at d5a7eb16, findings 1 and
+2; test_dataset_donor_mixed_groups).
 """
 from __future__ import annotations
 
@@ -108,17 +112,19 @@ def test_real_seasons_would_help_the_dead_season_file():
     assert min(counts_of(dead_season_bytes(live_before=6))) >= 30
 
 
-def test_one_zero_group_beside_new_groups_gets_a_figure():
+def test_one_zero_group_beside_new_groups_says_their_seasons_may():
     raw = zero_group_bytes()
     rep = D.validate(raw)
     assert len(rep.summary["groups"]) == 6
     assert counts_of(raw) == (0, 0, 0, 0)
     got = CK.groundhog_donors(rep)
-    assert got["seasons"] == _figure(END_B, 6) == 1
+    assert got["seasons"] is None
+    assert got["open"] == 5 and got["open_new"] is True
     html = check(raw, kind="rate")
     assert notice(html).endswith(
-        "Give about 1 more earlier season of data.")
-    assert "would not help" not in html
+        "No earlier season in the file has a week like it at any horizon, "
+        "but earlier seasons of the 5 groups without any may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
 def test_real_seasons_of_every_group_would_help_the_zero_group_file():

@@ -1,5 +1,5 @@
 """"More seasons like these would not help" judged group by group (review
-of #93 at d160002b, finding 2; checks._seasons_give_nothing).
+of #93 at d160002b, finding 2; checks._seasons_say).
 
 Rule one said "no figure" when every group-season holding a pair of weeks
 (a week of the donor window and the week the horizon reads) found donor
@@ -18,8 +18,12 @@ weeks at another horizon. Two shapes came out wrong:
     would not help there", where real seasons of the five groups would.
 
 Now a season that finds nothing at any horizon is left out, and every
-group with data must speak through a live season: (a) gives no figure,
-(b) gives its figure.
+group with data must speak through a live season: (a) gives no figure.
+In (b) the small group speaks and the five have no earlier season: since
+the review of #93 at d5a7eb16 (findings 1 and 2) no count of groups
+decides, so (b) gives neither its figure nor "would not help": the
+earlier seasons in the file give no week like it there, and seasons of
+the five may (test_dataset_donor_mixed_groups).
 """
 from __future__ import annotations
 
@@ -133,16 +137,16 @@ def test_b_real_seasons_of_the_five_groups_would_help():
     assert min(counts_of(b_bytes(real_seasons=2))) >= 30
 
 
-def test_b_gives_its_figure():
+def test_b_says_seasons_of_the_five_may():
     raw = b_bytes()
     got = CK.groundhog_donors(D.validate(raw))
-    # an ordinary season of every group, nothing else to go by (as dev)
-    assert got["seasons"] == 1 == -(-30 // (
-        CK.window_weeks_a_season(AN.epiweek(END_B)) * 6))
+    assert got["counts"] == (3, 2, 1, 0) and got["seasons"] is None
+    assert got["open"] == 5 and got["open_new"] is True
     html = check(raw, kind="rate")
     assert notice(html).endswith(
-        "Give about 1 more earlier season of data.")
-    assert "would not help" not in html
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but earlier seasons of the 5 groups without any may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
 # ------------------------------------------------ the rule, group by group
@@ -154,7 +158,8 @@ def _bank(rows) -> dict:
 def test_a_group_with_only_dead_seasons_does_not_speak():
     """Group A's live season shows the weeks 4 later read 0; group B's
     one earlier season is all 0 and so says nothing: B could still gain
-    from real seasons, so a figure is given."""
+    from real seasons. Neither a figure (A's seasons show an ordinary one
+    gives horizon 4 nothing) nor "would not help"."""
     raw = a_bytes().decode().splitlines()
     out = [raw[0]]
     for ln in raw[1:]:
@@ -162,9 +167,17 @@ def test_a_group_with_only_dead_seasons_does_not_speak():
         if g == "B" and AN.season_of(date.fromisoformat(d)) == 2023:
             v = "0"
         out.append(",".join((d, g, v)))
-    got = CK.groundhog_donors(D.validate(("\n".join(out) + "\n").encode()))
+    raw = ("\n".join(out) + "\n").encode()
+    got = CK.groundhog_donors(D.validate(raw))
     assert got["counts"][-1] == 0
-    assert got["seasons"] is not None
+    assert got["seasons"] is None
+    assert got["open"] == 1 and got["open_new"] is False
+    html = check(raw, kind="rate")
+    assert notice(html).endswith(
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but more seasons of the group whose seasons show nothing "
+        "either way may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
 def test_the_rule_itself_on_a_bank():
@@ -182,9 +195,9 @@ def test_the_rule_itself_on_a_bank():
               <= AN.DEFAULT_BANDWIDTH}
     counts = CK.donor_counts(bank, [end])[end]
     assert counts[-1] == 0 and min(counts[:-1]) > 0
-    assert CK._seasons_give_nothing(bank, window, counts) is True
-    # a second group with the newest season only: it has no say yet
+    assert CK._seasons_say(bank, window, counts) == set()
+    # a second group with the newest season only: left open
     rows += [("B", d, 5) for d in _saturdays(date(S, 8, 1), end)]
     bank = _bank(rows)
     assert CK.donor_counts(bank, [end])[end] == counts
-    assert CK._seasons_give_nothing(bank, window, counts) is False
+    assert CK._seasons_say(bank, window, counts) == {"B"}

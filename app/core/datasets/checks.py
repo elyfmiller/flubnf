@@ -1042,11 +1042,14 @@ def groundhog_donors(rep: Report):
     weeks: {"counts": (one per horizon), "n": the fewest, "need":
     MIN_DONORS, "enough": how many horizons reach it, "seasons": about
     how many more earlier seasons of every group would bring the fewest
-    to it (0 when it is there; None when no number of seasons like the
-    file's would, see below)}. A count is one per group and week. It
-    forecasts each horizon that reaches MIN_DONORS and skips the others,
-    so the fewest says whether it forecasts all four. The stored notice
-    (dataset_checks, horizon 1) is not changed by it.
+    to it (0 when it is there; None when the file's own seasons stand
+    against a figure, see below), "open": how many groups with data the
+    file's seasons say nothing for while they show the others' give
+    nothing (0 unless so), "open_new": whether those groups have no
+    earlier season in the file at all}. A count is one per group and
+    week. It forecasts each horizon that reaches MIN_DONORS and skips the
+    others, so the fewest says whether it forecasts all four. The stored
+    notice (dataset_checks, horizon 1) is not changed by it.
 
     "seasons" takes what an earlier season gave the fewest horizon in
     this file: its count over the earlier seasons holding a week of the
@@ -1054,12 +1057,14 @@ def groundhog_donors(rep: Report):
     each). With none to go by, an ordinary season of every group
     (window_weeks_a_season: four weeks around a week 53, else five). A
     horizon at 0 although earlier seasons hold a week of the window and
-    the week that horizon later, where the file shows that more seasons
-    like its own give it nothing (_seasons_give_nothing: a summer of
-    zeros, say, not one dead season or one group of zeros), has nothing
-    to go by either, and no ordinary season stands for the file's:
-    "seasons" is None, and the check gives no figure
-    (datasets_ui.model_view)."""
+    the week that horizon later, where some group's seasons show that
+    more like them give it nothing (_seasons_say: a summer of zeros, say,
+    not one dead season), has nothing to go by either, and no ordinary
+    season stands for the file's: "seasons" is None, and the check gives
+    no figure (datasets_ui.model_view). Where every group with data shows
+    it ("open" 0), more seasons like these would not help; where some
+    groups have no season that shows it, seasons of theirs may, and the
+    check says so instead (review of #93 at d5a7eb16, findings 1 and 2)."""
     import math
 
     from flubnf import analogue as AN
@@ -1082,40 +1087,47 @@ def groundhog_donors(rep: Report):
     per = (n / len(seasons) if n and seasons else
            window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
     more = math.ceil((need - n) / per) if n < need else 0
-    if not n and _seasons_give_nothing(bank, window, counts):
+    left = _seasons_say(bank, window, counts) if not n else None
+    if left is not None:
         more = None
+    earlier = {g for g, d in bank if AN.season_of(d) < S}
     return {"counts": counts, "n": n, "need": need,
             "enough": sum(1 for c in counts if c >= need),
-            "seasons": more}
+            "seasons": more, "open": len(left or ()),
+            "open_new": bool(left) and not (left & earlier)}
 
 
-def _seasons_give_nothing(bank, window, counts) -> bool:
-    """Whether the file shows that more seasons like its own leave a
-    horizon at 0 donor weeks (`counts`, one per GROUNDHOG_HORIZONS).
+def _seasons_say(bank, window, counts):
+    """What the file's earlier seasons show of a horizon at 0 donor weeks
+    (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
+    show that more like them leave it at 0 (a figure is given); else the
+    groups with data whose seasons do not show it at such a horizon (an
+    empty set when every group's do: more seasons like these would not
+    help).
 
     A pair is a week of `window` (earlier seasons' weeks within the donor
     window) and the week h later, both in `bank` for one group: what the
     Groundhog reads for a donor week (donor_counts). At a horizon that
     counts 0, every pair gave none. That alone is no proof: one season of
-    zeros, or one small group of zeros, does it, and real seasons would
-    help (review of #93, re-check at 099907c, finding 1). So at a horizon
-    at 0 with pairs, the file shows it only when:
+    zeros does it, and real seasons would help (review of #93, re-check
+    at 099907c, finding 1). So at a horizon at 0 with pairs, a group
+    shows it when:
 
-      * more than half the groups with data have a season holding a pair
-        there that finds donor weeks at another horizon: the window's
+      * a season of it holding a pair there finds donor weeks at another
+        horizon, every such season of the file doing so: the window's
         weeks have cases and the weeks h later do not (R1's 36, 24, 12
         and 0). A season holding a pair that finds none at any horizon (a
-        dead season) says nothing either way and is left out; it no
-        longer hides what the group's live seasons show. A group with no
-        such season (one with the newest season only, say) could still
-        gain from real seasons, so the groups that speak must outnumber
-        the rest: one small group does not speak for five new ones
-        (review of #93 at d160002b, finding 2), and one new group does
-        not outweigh five whose 25 seasons give that horizon nothing,
-        which "about 1 more earlier season" would (review of #93 at
-        3120298e, finding 3); or
-      * two or more earlier seasons of more than half the groups with
-        data hold a pair there."""
+        dead season) says nothing either way and is left out; or
+      * two or more earlier seasons of it hold a pair there.
+
+    A group with no such season (one with the newest season only, say)
+    could still gain from real seasons. No count of groups decides it: one
+    small group does not speak for five new ones (review of #93 at
+    d160002b, finding 2), and five old groups do not speak for one new
+    one (at 3120298e, finding 3) or for five (at d5a7eb16, findings 1
+    and 2). Where some groups show it and others do not, the check says
+    both, and gives neither a figure nor "would not help"
+    (datasets_ui.no_more_seasons)."""
     import math
 
     from flubnf import analogue as AN
@@ -1135,10 +1147,7 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
                 finds[h].add((g, AN.season_of(d)))
     groups = {g for g, _ in bank}
     anywhere = set().union(*finds.values())
-
-    def most(speaking) -> bool:
-        # the groups that show it are more than half of those with data
-        return 2 * len(speaking) > len(groups)
+    shown_any, left = False, set()
     for h, c in zip(GROUNDHOG_HORIZONS, counts):
         if c:
             continue
@@ -1148,15 +1157,16 @@ def _seasons_give_nothing(bank, window, counts) -> bool:
             continue
         elsewhere = set().union(*(finds[k] for k in GROUNDHOG_HORIZONS
                                   if k != h))
-        # rule one, group by group: the dead seasons left out, more than
-        # half the groups with data speak through a live one
+        # the dead seasons left out, a group speaks through a live one
         live = held & anywhere
-        if live <= elsewhere and most({g for g, _ in live}):
-            return True
+        shown = {g for g, _ in live} if live <= elsewhere else set()
+        # or through two seasons holding the pair
         per = Counter(g for g, _ in held)
-        if most({g for g in groups if per[g] >= 2}):
-            return True
-    return False
+        shown |= {g for g, k in per.items() if k >= 2}
+        if shown:
+            shown_any = True
+            left |= groups - shown
+    return left if shown_any else None
 
 
 def groundhog_shortfall(rep: Report):
@@ -1164,8 +1174,9 @@ def groundhog_shortfall(rep: Report):
     None when every horizon has MIN_DONORS donor weeks (or the file did not
     read): {"n": the fewest donor weeks at any horizon, "need":
     MIN_DONORS, "seasons": about how many more earlier seasons of every
-    group would give the rest, None when seasons like the file's would
-    not} (groundhog_donors, which says how the seasons are worked out).
+    group would give the rest, None when the file's own seasons stand
+    against a figure} (groundhog_donors, which says how the seasons are
+    worked out).
     The stored notice (dataset_checks) is not changed by it."""
     d = groundhog_donors(rep)
     if d is None or d["n"] >= d["need"]:

@@ -262,7 +262,9 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
     without a population, a population column (and the engine when it is
     not ready) so the Liu-West filter can fit it. No N when a horizon
     finds no week like it although the file's earlier seasons hold the
-    weeks it reads (no_more_seasons): more such seasons would not help.
+    weeks it reads and show it (no_more_seasons): more such seasons would
+    not help, or, where some groups have no season that shows it, seasons
+    of those groups may.
     The Groundhog's badge, notice and fix go by one count, its donor
     weeks at the newest week's scarcest horizon
     (checks.groundhog_donors), as the Forecast tab's line
@@ -301,7 +303,9 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
                   if count and not ready else "")
         if k is None:
             # a horizon the file's own seasons give nothing: no figure
-            nothing = no_more_seasons(donors["counts"])
+            nothing = no_more_seasons(donors["counts"],
+                                      donors.get("open", 0),
+                                      donors.get("open_new", False))
             out["groundhog_fix"] = (f"{nothing} {pf_fix}." if pf_fix
                                     else nothing)
         else:
@@ -312,12 +316,29 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
     return out
 
 
-def no_more_seasons(counts) -> str:
+def no_more_seasons(counts, open_groups: int = 0,
+                    open_new: bool = False) -> str:
     """The check's words for a horizon at 0 donor weeks although earlier
     seasons in the file hold the weeks it reads (checks.groundhog_donors
-    gives no "seasons" figure then): more seasons like the file's give
-    that horizon nothing."""
+    gives no "seasons" figure then). Where every group's seasons show it
+    (`open_groups` 0): more seasons like the file's give that horizon
+    nothing. Where `open_groups` groups have no season that shows it,
+    none at all when `open_new`: the earlier seasons in the file give no
+    week like it there, and seasons of those groups may, with neither a
+    figure nor "would not help" (review of #93 at d5a7eb16, findings 1
+    and 2)."""
     z = sum(1 for c in counts if not c)
+    if open_groups:
+        who = ("the group" if open_groups == 1
+               else f"the {open_groups} groups")
+        but = (f"but earlier seasons of {who} without any may." if open_new
+               else f"but more seasons of {who} whose seasons show nothing "
+               "either way may.")
+        if z == len(counts):
+            return ("No earlier season in the file has a week like it at "
+                    f"any horizon, {but}")
+        return (f"At {z} horizon{'' if z == 1 else 's'} the earlier "
+                f"seasons in the file give no week like it, {but}")
     if z == len(counts):
         return ("No earlier season in the file has a week like it at any "
                 "horizon, so more seasons like these would not help.")
