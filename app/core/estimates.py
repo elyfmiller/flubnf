@@ -68,10 +68,12 @@ HOURS_FROM_S = 5400
 #: below this many seconds at the high end, the human text is "under a
 #: minute"
 MINUTE_S = 60
-#: from this many hours at the high end the human text says nothing: no
-#: run is that long, and JavaScript's toFixed writes such a figure as
-#: "1e+21" (a posted form can carry any number; review 3 of #93, finding 3)
-TOO_MANY_HOURS = 1e21
+#: from this many hours at either end the human text says nothing: no run
+#: is that long (no form prices a tenth of it within its fields' bounds),
+#: and above it the figure is float noise, "88477999999999983616.0 h", or
+#: from 1e21 hours JavaScript's toFixed writes "1e+21" (a posted form can
+#: carry any number; review 3 of #93, finding 3, and its re-check, R5)
+TOO_MANY_HOURS = 1e9
 
 #: the data-* attributes page_params() gives, in order
 PARAM_NAMES = ("data-est-intercept", "data-est-per-week",
@@ -178,14 +180,14 @@ def human(lo: float, hi: float) -> str:
     up, else whole minutes, never below 1; one figure when both ends read
     alike. "about 10 to 20 min", "about 1.5 to 6.0 h", "about 3 min";
     "under a minute" when 0 < hi < MINUTE_S; "" for no estimate (hi not
-    above 0, not finite, or TOO_MANY_HOURS or more)."""
+    above 0, not finite, or either end TOO_MANY_HOURS or more)."""
     try:
         lo, hi = float(lo), float(hi)
     except (TypeError, ValueError, OverflowError):
         return ""
     if not (math.isfinite(lo) and math.isfinite(hi)) or not hi > 0:
         return ""
-    if hi / 3600 >= TOO_MANY_HOURS:
+    if max(lo, hi) / 3600 >= TOO_MANY_HOURS:
         return ""
     if hi < MINUTE_S:
         return "under a minute"

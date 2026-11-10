@@ -202,6 +202,36 @@
     return /^[0-9]+$/.test(t) ? parseInt(t, 10) : dflt;
   }
 
+  // Python's str.strip() and int()'s own: what str.isspace() calls space
+  var PY_SPACE = "[\\t\\n\\x0b\\x0c\\r\\x1c-\\x1f \\x85\\xa0\\u1680" +
+                 "\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+  var PY_STRIP = new RegExp("^" + PY_SPACE + "+|" + PY_SPACE + "+$", "g");
+  // the most digits Python's int() reads from text (sys.int_info's
+  // default_max_str_digits); more is refused, leading zeros included
+  var PY_INT_DIGITS = 4300;
+
+  // a model setting's whole number (Particles, Independent Runs) as the
+  // server's check reads it (app/core/knobs.py _coerce): blank is the
+  // field's data-default; else commas and underscores dropped, then an
+  // optional sign and digits, within the field's min and max. null for
+  // anything the server refuses ("1e4", "2.5", "0", 309 digits), so the
+  // option gets no figure for a run that will not start (review 3 of
+  // #93, re-check R5)
+  function knobWhole(f) {
+    var t = String(f.value === null || f.value === undefined ? "" : f.value)
+      .replace(PY_STRIP, "");
+    if (t === "") return whole(f.getAttribute("data-default"), null);
+    t = t.replace(/[,_]/g, "").replace(PY_STRIP, "");
+    var m = /^[+-]?([0-9]+)$/.exec(t);
+    if (!m || m[1].length > PY_INT_DIGITS) return null;
+    var v = parseInt(t, 10);
+    var lo = parseFloat(f.getAttribute("min")),
+        hi = parseFloat(f.getAttribute("max"));
+    if (!isFinite(v) || (isFinite(lo) && v < lo) || (isFinite(hi) && v > hi))
+      return null;
+    return v;
+  }
+
   // the cost words for one state of the form (o: what read() returns):
   // FluBNFEstimate.human of the span over o.weeks at o.fits a week
   // (locations x Independent Runs), o.particles and o.width; " here" when
@@ -230,9 +260,10 @@
   // the form as words() reads it: the season's weeks (data-rt-costs),
   // the locations (the scope: the panel's count, every state box, or the
   // boxes ticked; US national adds one), Independent Runs, particles
-  // (each blank at its data-default), the width box (blank: the page's,
-  // never above its max) and this computer's ratio (data-rt-ratio).
-  // null without the estimate's attributes.
+  // (each blank at its data-default, null for what the server refuses:
+  // knobWhole), the width box (blank: the page's, never above its max)
+  // and this computer's ratio (data-rt-ratio). null without the
+  // estimate's attributes.
   function read(form) {
     var E = root.FluBNFEstimate;
     var p = E && form ? E.params(form) : null;
@@ -245,8 +276,7 @@
     function field(name) { return form.elements.namedItem(name); }
     function knob(name) {
       var f = field(name);
-      return f ? whole(f.value, whole(f.getAttribute("data-default"), null))
-               : null;
+      return f ? knobWhole(f) : null;
     }
     var season = field("season"), scope = field("locations"),
         national = field("national"), wbox = field("width");

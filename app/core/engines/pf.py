@@ -21,7 +21,8 @@ Sections, in file order:
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
   prepare         DATASET_REFUSED, LIBRARY_REFUSED, _named_model,
-                  dataset_tag, _cell_files, _netgen_added, prepare
+                  dataset_tag, _cell_files, _netgen_added, _copy_added,
+                  _drop_copies, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
                   runner_popen_kwargs, record_runner_pids, shard_cells,
                   cell_seconds, budget_seconds, _stop_all, TIMING_NAME,
@@ -920,6 +921,29 @@ def _copy_added(r0: tuple, d: Path) -> bool:
         return False
 
 
+def _drop_copies(r0: tuple, d: Path, mine: dict, part_only: bool = False
+                 ) -> None:
+    """Remove from the later replicate's folder d what a _copy_added that
+    returned False may have left when its own removal failed too (a file
+    the scanner still held): the names BNG2.pl added to replicate 0's
+    folder, which d did not hold before the copy (`mine`, d's files then,
+    equal replicate 0's before its BNG2.pl), and m.net's part file. So
+    BNG2.pl runs in the folder it ran in before the copy existed, and the
+    run's folder holds the files a BNG2.pl-everywhere run gives (review 3
+    of #93, re-check R7). `part_only`: the part file alone, once BNG2.pl
+    has written its own files under the other names. As far as it can:
+    an OSError leaves that file where it is (nothing reads either)."""
+    part = "m.net" + _COPY_PART
+    names = [part] if part_only else list(r0[1]) + [part]
+    for name in names:
+        if name in mine:
+            continue
+        try:
+            (d / name).unlink()
+        except OSError:
+            pass
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
 
@@ -1274,9 +1298,13 @@ def prepare(spec, workroot: Path) -> list:
             # Any difference runs BNG2.pl, as for replicate 0, and so does
             # an OSError while reading or copying (_cell_files, _copy_added).
             mine = _cell_files(d)
-            reused = (rep > 0 and r0 is not None and mine is not None
-                      and mine == r0[0] and _copy_added(r0, d))
+            tried = (rep > 0 and r0 is not None and mine is not None
+                     and mine == r0[0])
+            reused = tried and _copy_added(r0, d)
             if not (reused and (d / "m.net").is_file()):
+                if tried:
+                    # what a failed copy could not remove then: again now
+                    _drop_copies(r0, d, mine)
                 # Windows only until the conf decision for production:
                 # bng_env (BNGPATH pinned) and the ANSI read. The bare perl
                 # is the native one there: the preflight's resolve_perl put
@@ -1295,6 +1323,9 @@ def prepare(spec, workroot: Path) -> list:
                     # stderr's head first: the record keeps 200 characters
                     raise RuntimeError(f"netgen failed for {loc}: "
                                        f"{bng_failure_text(r, sep=' | ')}")
+                if tried:
+                    # a part file still held before BNG2.pl: once more
+                    _drop_copies(r0, d, mine, part_only=True)
                 if rep == 0:
                     r0 = _netgen_added(d, mine)
             seed = derive_seed(loc, seed_date_for(spec), rep)

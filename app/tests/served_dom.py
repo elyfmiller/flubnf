@@ -19,8 +19,9 @@ markup, by its own selectors, or not at all.
 MINIDOM_JS covers what the console's form scripts use: getElementById,
 querySelector(All) for simple selectors (tag, #id, .class, [attr],
 [attr=value], :checked, :first-child, :last-child) joined by descendant
-or child combinators, attributes, value, checked, selected, options,
-disabled, hidden, textContent, and events that bubble. Anything else it
+or child combinators, attributes, value, checked, selected, options, a
+form's elements (namedItem), disabled, hidden, textContent (nested
+elements' text included), and events that bubble. Anything else it
 is asked for throws, so a test fails rather than passing on a guess.
 Timers queue until flush() runs them (the scripts wait a tick).
 """
@@ -145,11 +146,14 @@ var MiniDOM = (function () {
                         else this.removeAttribute("disabled"); }});
   Object.defineProperty(El.prototype, "textContent", {
     get: function () {
+      // each nested element's text in its place: `out += (text(c), "")`
+      // read out before the call added to it, and dropped what it added
       var out = "";
       (function text(el) {
         for (var i = 0; i < el.childNodes.length; i++) {
           var c = el.childNodes[i];
-          out += c.nodeType === 3 ? c.data : (text(c), "");
+          if (c.nodeType === 3) out += c.data;
+          else text(c);
         }
       })(this);
       return out;
@@ -160,6 +164,25 @@ var MiniDOM = (function () {
       if (this.localName !== "select") return undefined;
       var out = [];
       walk(this, function (c) { if (c.localName === "option") out.push(c); });
+      return out;
+    }});
+  // a form's controls, in order, and namedItem by id or name: the one
+  // control, null for none; several of one name throw (a RadioNodeList
+  // is not modelled)
+  var CONTROLS = /^(button|fieldset|input|object|output|select|textarea)$/;
+  Object.defineProperty(El.prototype, "elements", {
+    get: function () {
+      if (this.localName !== "form") return undefined;
+      var out = [];
+      walk(this, function (c) { if (CONTROLS.test(c.localName)) out.push(c); });
+      out.namedItem = function (n) {
+        var hit = out.filter(function (c) {
+          return c.getAttribute("id") === n || c.getAttribute("name") === n;
+        });
+        if (hit.length > 1)
+          throw new Error("MiniDOM: several controls named " + JSON.stringify(n));
+        return hit[0] || null;
+      };
       return out;
     }});
   Object.defineProperty(El.prototype, "value", {

@@ -30,14 +30,19 @@
   // the human text's switch to hours (retro_progress.js etaText's rule),
   // and the high end below which it reads "under a minute"
   var HOURS_FROM_S = 5400, MINUTE_S = 60;
-  // estimates.TOO_MANY_HOURS: from this many hours human() says nothing
-  // (toFixed would write "1e+21")
-  var TOO_MANY_HOURS = 1e21;
+  // estimates.TOO_MANY_HOURS: from this many hours at either end human()
+  // says nothing (no form prices that much within its fields' bounds;
+  // above it toFixed writes float noise such as "88477999999999983616.0",
+  // and from 1e21 "1e+21")
+  var TOO_MANY_HOURS = 1e9;
 
-  // Python's int(): toward zero
+  // Python's int(): toward zero. A number too long for a double (parseInt
+  // of 309 digits) stays infinite, as Python's int keeps it whole, so the
+  // cost of it is no figure, never the reference's; NaN is 0
   function toInt(x) {
     x = +x;
-    if (!isFinite(x)) return 0;
+    if (x !== x) return 0;
+    if (!isFinite(x)) return x;
     return x < 0 ? Math.ceil(x) : Math.floor(x);
   }
 
@@ -73,10 +78,13 @@
 
   // pf.cell_seconds for one fit: (intercept + per week x (n_obs +
   // forecast weeks)) x particles / reference, times the public ratio on
-  // the public engine. `engine` null: p.engine.
+  // the public engine. `engine` null: p.engine. An infinite count
+  // (where Python's float() overflows and the caller gives no figure):
+  // Infinity, which human() reads as no figure
   function fitSeconds(nObs, particles, p, engine) {
     var n = toInt(nObs || 0);
     var parts = toInt(particles || 0) || p.refParticles;
+    if (!isFinite(n) || !isFinite(parts)) return Infinity;
     var s = ((p.intercept + p.perWeek * (n + p.forecastWeeks))
              * Math.max(parts, 1) / p.refParticles);
     var eng = engine === null || engine === undefined ? p.engine : engine;
@@ -159,11 +167,11 @@
   // estimates.human: etaText's rule after "about" (the unit is the high
   // end's; hours with one decimal from 90 min up; minutes never below 1);
   // "under a minute" below 60 s at the high end; "" for no estimate (and
-  // for TOO_MANY_HOURS or more)
+  // for TOO_MANY_HOURS or more at either end)
   function human(lo, hi) {
     if (typeof lo !== "number" || typeof hi !== "number") return "";
     if (!isFinite(lo) || !isFinite(hi) || !(hi > 0)) return "";
-    if (hi / 3600 >= TOO_MANY_HOURS) return "";
+    if (Math.max(lo, hi) / 3600 >= TOO_MANY_HOURS) return "";
     if (hi < MINUTE_S) return "under a minute";
     var hours = hi >= HOURS_FROM_S;
     function fmt(s) {

@@ -3,7 +3,9 @@ can carry any number, which the Retrospective page remembers and prices on
 every visit. estimates.human and estimate.js human say nothing from
 TOO_MANY_HOURS up, where Python's exact rounding gave up
 (decimal.InvalidOperation) and the page's toFixed wrote "about 1e+33 h";
-below it both read as before, and alike.
+below it both read as before, and alike. Since the re-check's R5 the edge
+is 1e9 hours, at either end of a span: above it a figure was float noise
+("88477999999999983616.0 h"), and no form prices a run that long.
 """
 from __future__ import annotations
 
@@ -26,9 +28,11 @@ needs_js = pytest.mark.skipif(
 
 EDGE = 3600 * ES.TOO_MANY_HOURS
 #: (lo, hi) in seconds: ordinary spans, the last ones said, and too large
-SPANS = [(600.0, 2400.0), (5400.0, 21600.0), (1e18, 4e18),
-         (1e23, 3.5e24), (EDGE / 4, EDGE * (1 - 1e-15)), (EDGE / 4, EDGE),
-         (1e24, 1e30), (1e30, 1e36), (1e300, 1e308)]
+#: (the edge at either end; the review's long figures)
+SPANS = [(600.0, 2400.0), (5400.0, 21600.0), (1e9, 4e9),
+         (1e11, 3.5e12), (EDGE / 4, EDGE * (1 - 1e-15)), (EDGE / 4, EDGE),
+         (EDGE, EDGE / 4), (1e18, 4e18), (1e23, 3.5e24), (1e24, 1e30),
+         (1e30, 1e36), (1e300, 1e308)]
 
 
 def _js(tmp_path, body):
@@ -56,7 +60,8 @@ def test_a_figure_too_large_says_nothing():
     for (lo, hi), w in zip(SPANS[2:5], got[2:5]):
         assert w == "about %s to %s h" % (ES._js_fixed1(lo / 3600),
                                           ES._js_fixed1(hi / 3600))
-    assert got[5:] == [""] * 4
+    assert got[5:] == [""] * 7
+    assert ES.TOO_MANY_HOURS == 1e9
     # a 40-digit or 400-digit particles figure: nothing, never an error
     for particles in (10 ** 40, 10 ** 400):
         try:

@@ -520,8 +520,11 @@ def _week_in_flight(root: Path) -> tuple | None:
 
 #: seconds a run record's wall span may exceed its active time and still
 #: read as one stretch of running (_one_stretch). Both are written at every
-#: fold of the clock, so one stretch matches to the millisecond; a stop
-#: and a start again take longer than this
+#: fold of the clock, so one stretch matches to the millisecond. A stop
+#: (or pause) and a start again from the page take longer than this; one
+#: within it (a scripted stop and resume) still reads as one stretch: the
+#: record keeps no mark of a resume, and adding one would change what
+#: every run record holds (review 3 of #93, re-check R8)
 _ONE_STRETCH_SLACK_S = 1.0
 
 
@@ -535,7 +538,14 @@ def _one_stretch(meta: dict) -> bool:
     weeks may have run at another width than the record says (a resume may
     change the width). A worker that died and was closed later
     (runner._close) stopped its clock at its last heartbeat: one stretch.
-    A record without these times shows no break."""
+    A record without these times shows no break.
+
+    The window: the record holds no mark of a stop, a pause or a resume
+    (retro._start_record keeps started_utc and elapsed_s, and each start
+    writes the same fields as the first), only these times, so a break of
+    _ONE_STRETCH_SLACK_S or less reads as one stretch. Only a scripted
+    stop and resume is that quick; its weeks may then be priced at the
+    last start's width (app/tests/test_retro_one_stretch_window.py)."""
     try:
         start = float(meta["started_utc"])
         end = float(meta.get("heartbeat_utc") or meta["finished_utc"])

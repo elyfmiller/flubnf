@@ -154,17 +154,32 @@ def _form_costs(seasons: list, form: dict, state_names: list,
             for r in g.get("rows", ())}
 
     def knob(key, fallback):
+        # as the page's script reads it (retro_progress.js knobWhole) and
+        # the server's check does (knobs._coerce): blank is the default;
+        # None, so no figure, for what the check refuses (review 3 of #93,
+        # re-check R5)
+        import re
         r = rows.get(key) or {}
-        return _whole(r.get("value"), _whole(r.get("default"), fallback))
+        t = str(r.get("value") if r.get("value") is not None else "").strip()
+        if not t:
+            return _whole(r.get("default"), fallback)
+        if not re.fullmatch(r"[+-]?[0-9]+",
+                            t.replace(",", "").replace("_", "").strip()):
+            return None
+        try:
+            return int(_knobs._coerce(_knobs.BY_KEY[key], t, None))
+        except _knobs.KnobError:
+            return None
     width = max(1, min(_whole(form.get("width"), DEFAULT_SHARD_WIDTH),
                        SHARD_WIDTH_CAP))
     c = costs.get(season) or {}
     weeks = c.get("left") or c.get("weeks") or []
-    fits = n * knob("pf.replicates", RunSpec.replicates)
-    words = retro_seasons._cost_words(
-        weeks, c.get("start", ""), fits,
-        knob("pf.particles", RunSpec.particles), width, ratio,
-        len(c["left"]) if c.get("left") else 0)
+    reps = knob("pf.replicates", RunSpec.replicates)
+    particles = knob("pf.particles", RunSpec.particles)
+    words = "" if reps is None or particles is None else (
+        retro_seasons._cost_words(
+            weeks, c.get("start", ""), n * reps, particles, width, ratio,
+            len(c["left"]) if c.get("left") else 0))
     return {"est": estimates.page_params(DEFAULT_SHARD_WIDTH),
             "rt_costs": costs, "rt_ratio": ratio, "pf_cost": words,
             "panel6_n": len(PANEL6)}
