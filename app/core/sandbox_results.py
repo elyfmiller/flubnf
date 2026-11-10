@@ -16,7 +16,7 @@ from app.core.sandbox import _RAW, FULL_FIT_PARTICLES, _fmt, shown_status
 
 def results(workroot: Path, live=_RAW) -> dict:
     """What the engine wrote, read back: the outcome, a parameter table
-    (5th, 50th and 95th percentiles of the posterior sample), the ESS
+    (5th, 50th and 95th percentiles of the forecasting sample), the ESS
     record, and the trajectory summarised per week (10th, 50th, 90th
     percentiles over particles) with the observed counts beside it. With
     live=, the status reads as shown_status says."""
@@ -26,6 +26,9 @@ def results(workroot: Path, live=_RAW) -> dict:
     out = {"meta": meta, "run_id": workroot.name, "params": [], "ess": [],
            "traj": None, "stderr": ""}
     cell = workroot / f"{meta['model']}_r0"
+    from app.core.engines import lwf
+    if lwf.has_outputs({"dir": str(cell)}):
+        return _public_results(out, meta, cell, workroot)
     runs = cell / "out" / "Results" / "PF" / "Runs"
     pf = next(runs.glob("params_*.txt"), None) if runs.is_dir() else None
     if pf is not None:
@@ -60,6 +63,42 @@ def results(workroot: Path, live=_RAW) -> dict:
                            "q90": q[2].tolist()}
         except Exception as exc:
             out["stderr"] += f"trajectory unreadable: {exc}\n"
+    for err in sorted(workroot.glob("pf_runner_*.err")):
+        try:
+            txt = err.read_text(errors="replace", encoding="utf-8").strip()
+        except OSError:
+            continue
+        if txt:
+            out["stderr"] += txt[-1500:]
+    out["health"] = fit_health(out)
+    return out
+
+
+def _public_results(out: dict, meta: dict, cell: Path, workroot: Path) -> dict:
+    """results() for a run of the public engine (FLUBNF_ENGINE=public): its
+    Results/LWF tables read into the same shapes (app/core/engines/lwf.py),
+    and its own words from lwf/run.log when it stopped."""
+    from app.core.engines import lwf
+    c = {"dir": str(cell)}
+    table = lwf.parameter_table(c)
+    if table is not None:
+        names, arr = table
+        for j, nme in enumerate(names):
+            q = np.percentile(arr[:, j], [5, 50, 95])
+            out["params"].append({"name": nme, "p5": float(q[0]),
+                                  "p50": float(q[1]), "p95": float(q[2])})
+        out["distinct"] = int(np.unique(arr, axis=0).shape[0])
+        out["sample"] = int(arr.shape[0])
+    out["ess"] = lwf.ess_record(c)
+    try:
+        tr = lwf.trajectory(c, meta.get("time") or [])
+        n = int(meta["n_obs"]) if "n_obs" in meta else len(meta["observed"])
+        q = np.nanpercentile(tr, [10, 50, 90], axis=0)
+        out["traj"] = {"n_obs": n, "columns": int(tr.shape[1]),
+                       "q10": q[0].tolist(), "q50": q[1].tolist(),
+                       "q90": q[2].tolist()}
+    except lwf.Unreadable as exc:
+        out["stderr"] += f"trajectory unreadable: {exc}\n"
     for err in sorted(workroot.glob("pf_runner_*.err")):
         try:
             txt = err.read_text(errors="replace", encoding="utf-8").strip()

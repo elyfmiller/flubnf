@@ -122,7 +122,7 @@
 <div class="fc-rungrid out-rp-kv">
 {% if results and not live %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
 <div class="card runrec">{{ tips.heading("Run settings", "run-settings") }}
- {{ settings_html(settings, title="Settings") | safe }}
+ {{ settings_html(settings, title="") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
 </div>
 </div>

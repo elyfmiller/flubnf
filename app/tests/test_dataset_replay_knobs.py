@@ -168,8 +168,9 @@ def test_a_refused_value_starts_nothing():
     ds = stored(TEMPLATE.read_bytes(), "Template")
     r, meta = _replay(ds, weeks_to_drop="9")
     assert meta is None and r.headers["location"] == f"/retro?dataset={ds.id}"
-    assert ("Not started: model settings: run.weeks_to_drop: 9 is outside "
-            "0 to 4.") in ui_state._status.get("flash", "")
+    # the setting by the panel's label, never its key (review of #85)
+    assert ("Not started: Weeks to drop: 9 is outside 0 to 4."
+            in ui_state._status.get("flash", ""))
     assert ui_state._status.get("flash_kind") == "warn"
     assert not DU._REPLAY and not ui_state._status.get("running")
 
@@ -185,7 +186,8 @@ def test_the_filter_knobs_ride_to_the_worker_when_it_runs(monkeypatch):
     monkeypatch.setattr(DU, "replay_worker",
                         lambda *a, **k: calls.append((a, k)))
     r, _ = _replay(ds, engine="all", season_start=LAST)
-    assert calls == [] and "run.season_start" in ui_state._status["flash"]
+    assert calls == [] and ("Not started: Season start: "
+                            in ui_state._status["flash"])
     _replay(ds, engine="all", particles="2000", season_start="2023-09-02",
             **{"knob.pf.jitter": "0.3", "knob.pf.initialization": "lh"})
     ((args, kw),) = calls

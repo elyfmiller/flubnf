@@ -38,13 +38,24 @@ def test_home_renders_workflow_performance_and_component_cards():
     for cell in ("0.767", "0.697", "0.781", "0.738",
                  "0.680", "0.627", "0.645", "0.642",
                  "0.741", "0.663", "0.684", "0.685",
-                 "15,460", "17,116", "15,300", "Oracle SIHRS", "Groundhog",
-                 # the plain filter on the same cells, in the card's "i"
-                 # (its ablation), and the two-season figure
+                 "Oracle SIHRS", "Groundhog", "below 1.000 beats it"):
+        assert cell in r.text, cell
+    # each column's cells, the plain filter on the same cells (its
+    # ablation), the two-season figure and the withdrawn placement are
+    # Methods', which the card's unit line links (Home's record has no "i")
+    methods = client.get("/methods").text
+    for cell in ("15,460", "17,116", "15,300",
                  "0.840", "0.794", "0.843", "0.819", "0.731", "0.813",
                  "9,279", "6,021", "4,859", "4,420",
-                 "below 1.000 beats it", "frozen-specification replication"):
-        assert cell in r.text, cell
+                 "frozen-specification replication", "Placement among"):
+        assert cell in methods, cell
+    # the FluSight Ensemble column's own cells, in the fold Home's line
+    # links ("15,460" alone is also the plain filter's reseal; review of
+    # #97, UI-14)
+    cells = " ".join(methods.split('id="mt-perf-cells"', 1)[1]
+                     .split("</details>", 1)[0].split()).replace("&#39;", "'")
+    assert ("<p>Home's FluSight Ensemble column is scored on 15,460 cells "
+            "under the earlier rule.</p>") in cells
     # the filter alone is no longer a headline column
     assert "Filter alone" not in r.text
     # the performance card names no blend (the outlook label above it
@@ -147,15 +158,20 @@ def test_every_page_prints_the_shipped_groundhog_from_the_readme_record():
     assert dict(got) == {"2023-24": fmt(y23), "2024-25": fmt(y24),
                          "2025-26": fmt(y25), "Pooled": fmt(three)}
     home = client.get("/").text
-    tip = " ".join(home.split('id="tt-hm-perf"', 1)[1]
-                   .split("</span></span>", 1)[0].split()).replace("&#39;", "'")
-    # each column's cells and cell rule: the Groundhog's alone is FluSight's
-    assert ("15,460 (placement among teams withdrawn) under the earlier cell "
-            f"rule, the shipped Groundhog on {cells} under FluSight's (the "
-            f"form it replaced: {fmt(replaced)}).") in tip
+    # Home's record has no "i": each column's cells and cell rule are
+    # Methods', which its unit line links
+    assert "Each column is scored on its own cells (placement among teams " \
+        'withdrawn): <a href="/methods#performance">Methods</a>' in " ".join(home.split())
     assert "0.666" not in home and "15,340" not in home
-    # Methods: the Groundhog row and its three-season tile
+    # Methods: the Groundhog row and its three-season tile; its Cells fold
+    # names the Groundhog's cells and rule (FluSight's, its alone) and the
+    # form it replaced
     methods = client.get("/methods").text
+    fold = " ".join(methods.split('id="mt-perf-cells"', 1)[1]
+                    .split("</details>", 1)[0].split()).replace("&#39;", "'")
+    assert (f"The Groundhog row is its shipped form, on {cells} cells under "
+            "FluSight's cell rule; the form it replaced scores "
+            f"{fmt(replaced)} on the same cells") in fold
     row = methods.split("<tr><td>Groundhog</td>", 1)[1].split("</tr>", 1)[0]
     assert re.findall(r'class="num ok">([0-9.]+)<', row) == [
         fmt(y23), fmt(y24), fmt(y25)]
@@ -446,9 +462,11 @@ def test_every_equation_group_defines_its_symbols():
 def test_home_workflow_carries_the_forcing_and_groundhog_equations():
     t = client.get("/").text
     assert 'class="eqpanel"' in t
-    # the readings are How it works' "i" (Home has no Variables fold)
-    how = t.split('id="tt-hm-how"', 1)[1].split("</span></span>", 1)[0]
-    assert "the curve the filter bends each week" in how
+    # each equation is named on Home; its reading is the model's own page
+    # (How it works has no "i": Home has no Variables fold)
+    assert 'id="tt-hm-how"' not in t and ">Seasonal forcing<" in t
+    assert "the curve the filter bends each week" in " ".join(
+        client.get("/models").text.split())
     # the Groundhog's growth-ratio quantile replaced the blend's mean
     assert "growth\n   ratios at matched calendar weeks" in t
     assert "mean<sub>m</sub>" not in t

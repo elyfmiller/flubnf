@@ -1,13 +1,22 @@
 """Which particle-filter engine build this machine runs.
 
-The engine is a checkout of the private PyBNF fork at flubnf.settings.PYBNF.
-engine_build() names its branch and commit (from git, or from the VERSION
-stamp an archive install carries), and whether tracked files have local
-edits. is_production() compares it with the season's production build,
-defined once here, and fix() says how to reach it with this machine's
-launcher. archive_step() is the one wording for installing the engine from
-its archive, shared by the run errors and doctor. Every function is cheap
-to call wrong: none raises.
+The default engine is the public one, lanl/PyBNF in its own venv
+(app/core/engines/lwf.py): engine_build() reads pip's record of the
+installed wheel (lwf.public_build, "engine": "public"), and the functions
+below judge it against the pin in engine-requirements.txt.
+
+With FLUBNF_ENGINE=private (the fallback) the engine is a checkout of the
+lab's PyBNF fork at flubnf.settings.PYBNF. engine_build() then names its
+branch and commit (from git, or from the VERSION stamp an archive install
+carries), and whether tracked files have local edits. is_production()
+compares it with the private engine's pin, defined once here, and fix()
+says how to reach it with this machine's launcher. archive_step() is the
+one wording for installing the private engine from its archive, shared by
+the run errors and doctor. switch_step() is the one wording for switching
+this copy to an engine, engine_of() names the engine of a recorded build
+(engine_record() is a season's record of a build that could not be read:
+its engine alone), and engine_words() names the active engine in words.
+Every function is cheap to call wrong: none raises.
 """
 from __future__ import annotations
 
@@ -15,8 +24,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-#: the production engine for the 2026-27 season (docs/ORACLE-SIHRS.md,
-#: "Engine line-up"); the commit decides, the branch is informative
+#: the private engine's pin, the fallback (docs/ORACLE-SIHRS.md, "Engine
+#: line-up"): engine_update fast-forwards the fork to it, archive_name
+#: names the lab's file after it, and recorded private seasons are judged
+#: by it. The commit decides, the branch is informative. Never set it to
+#: the public engine's commit: every open would try to fetch that commit
+#: into the fork, and every sealed season would read "not the production
+#: build". The public engine's pin is lwf.PUBLIC_ENGINE_COMMIT and the
+#: lock. The name goes when the private engine does.
 PRODUCTION_ENGINE_COMMIT = "2fdadee0"
 PRODUCTION_ENGINE_BRANCH = "feature/particle-filter"
 
@@ -112,6 +127,9 @@ def engine_build(path=None) -> dict:
     if path is None:
         try:
             from flubnf import settings
+            if settings.engine_public():
+                from app.core.engines import lwf
+                return lwf.public_build()
             path = settings.PYBNF
         except Exception:
             path = ""
@@ -163,8 +181,12 @@ def engine_build(path=None) -> dict:
 
 def is_production(build: dict | None) -> bool:
     """True when the build is the production commit with no local edits
-    (commit prefix match; the branch is informative only)."""
+    (commit prefix match; the branch is informative only). A public build
+    is judged against its own pin (lwf.is_pinned)."""
     b = build or {}
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        return lwf.is_pinned(b)
     c = str(b.get("commit") or "").lower()
     if not c or b.get("dirty"):
         return False
@@ -185,7 +207,9 @@ def label(build: dict | None) -> str:
         return ""
     s = str(b["commit"])
     bits = [x for x in (str(b.get("branch") or ""),
-                        "local changes" if b.get("dirty") else "") if x]
+                        "local changes" if b.get("dirty") else "",
+                        f"bngsim {b['bngsim']}" if b.get("bngsim") else "")
+            if x]
     return f"{s} ({', '.join(bits)})" if bits else s
 
 
@@ -209,7 +233,16 @@ def warning(build: dict | None) -> str:
             why = why[len("fatal: "):]
         return f"git could not read {where}: {why.rstrip('.')}."
     if not known(b) or is_production(b):
+        if b.get("engine") == "public" and not known(b):
+            why = str(b.get("error") or "pip has no record of its wheel")
+            return f"The public engine's build could not be read: {why}."
         return ""
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        what = ("not the lock's wheel" if b.get("source") == "wheel"
+                else "not the pinned commit")
+        return (f"The public engine is lanl/PyBNF at {b['commit']}, {what} "
+                f"({lwf.PUBLIC_ENGINE_COMMIT[:8]}, {lwf.LOCK_NAME}).")
     where = str(b.get("branch") or "a detached HEAD")
     s = (f"The engine is {where} at {b['commit']}, not the production build "
          f"{PRODUCTION_ENGINE_COMMIT} on {PRODUCTION_ENGINE_BRANCH}")
@@ -224,19 +257,91 @@ def archive_name() -> str:
     return f"pybnf-pf-{PRODUCTION_ENGINE_COMMIT}.tar.gz"
 
 
+def _records_private() -> bool:
+    """Whether this copy's record names the private engine, read from disk
+    now (settings.recorded_engine): SetupEngine.command, double-clicked,
+    follows the record, so only then does it install the private engine."""
+    try:
+        from flubnf import settings
+        return settings.recorded_engine(settings.INSTALL_ROOT) == "private"
+    except Exception:
+        return False
+
+
 def setup_step(platform: str | None = None) -> str:
-    """This machine's engine installer, as a clause: FluBNF.bat on Windows
-    (no bash there, and setup.ps1 only diagnoses), SetupEngine.command
-    beside the script on macOS, the script elsewhere; the folder is named
-    so no full stop lands on the command. `platform` is sys.platform by
-    default; tests pass one."""
+    """This machine's installer for the private engine, as a clause (the
+    private remedies only; the public engine's is lwf._setup_step):
+    FluBNF.bat on Windows (no bash there, and setup.ps1 only diagnoses),
+    ./setup_engine.sh --private elsewhere, since a bare ./setup_engine.sh
+    installs the public engine on a copy with no record. On macOS
+    SetupEngine.command is named first only when the copy records the
+    private engine: a double-click follows the record, and a copy whose
+    choice came from the environment (or from nothing) would get the
+    public engine from it. The folder is named so no full stop lands on
+    the command. `platform` is sys.platform by default; tests pass one."""
     plat = platform or sys.platform
     if plat == "win32":
         return "open FluBNF.bat again"
-    if plat == "darwin":
+    if plat == "darwin" and _records_private():
         return ("double-click SetupEngine.command in the FluBNF folder (or "
-                "run ./setup_engine.sh there)")
-    return "run ./setup_engine.sh in the FluBNF folder"
+                "run ./setup_engine.sh --private there)")
+    return "run ./setup_engine.sh --private in the FluBNF folder"
+
+
+def _win(platform: str | None) -> bool:
+    """Windows: the platform given, else this machine (settings._windows,
+    the seam the tests patch)."""
+    if platform:
+        return platform == "win32"
+    try:
+        from flubnf import settings
+        return settings._windows()
+    except Exception:
+        return sys.platform == "win32"
+
+
+def switch_step(engine: str, platform: str | None = None,
+                short: bool = False) -> str:
+    """The step that switches this copy to `engine` ("public" or
+    "private"): the installer option that records it, which every open
+    reads (and which a Terminal start reads too, settings.engine_choice).
+    The short form is the command alone. On Windows the long form is the
+    line to type, as FluBNF.bat and setup.ps1 print it: setup.ps1 typed by
+    itself opens in an editor from Command Prompt, and PowerShell wants .\\
+    and refuses it under the default execution policy. `platform` is this
+    machine's by default; tests pass one."""
+    if _win(platform):
+        return (f"setup.ps1 -Engine {engine}" if short else
+                "powershell -NoProfile -ExecutionPolicy Bypass -File "
+                f"setup.ps1 -Engine {engine} in the FluBNF folder, then open "
+                "FluBNF.bat again")
+    return (f"./setup_engine.sh --{engine}" if short else
+            f"./setup_engine.sh --{engine} in the FluBNF folder")
+
+
+def engine_of(build) -> str:
+    """The engine a recorded build names: public when it says so (a public
+    build's record, or engine_record's when the build could not be read),
+    else private (a build recorded without one, or none recorded: seasons
+    before the public engine ran on the private one)."""
+    from collections.abc import Mapping
+    named = build.get("engine") if isinstance(build, Mapping) else None
+    return "public" if named == "public" else "private"
+
+
+def engine_words(engine: str | None = None) -> str:
+    """The engine in words, for doctor and Home's Setup card: `engine`, or
+    the one this process runs (settings.engine_choice)."""
+    if engine is None:
+        try:
+            from flubnf import settings
+            engine = settings.engine_choice()
+        except Exception:
+            engine = "public"
+    if engine == "private":
+        return ("the private engine (the lab's PyBNF fork), the fallback: "
+                "FLUBNF_ENGINE=private")
+    return "the public engine (lanl/PyBNF's Liu-West filter), the default"
 
 
 def archive_step(platform: str | None = None) -> str:
@@ -310,6 +415,9 @@ def fix(build: dict | None, platform: str | None = None) -> str:
     machine's launcher (`platform`, sys.platform by default: Windows opens
     FluBNF.bat and has no setup_engine.sh)."""
     b = build or {}
+    if b.get("engine") == "public":
+        from app.core.engines import lwf
+        return (f"To install the pinned build, {lwf._setup_step(platform)}.")
     if b.get("source") == "unreadable":
         return _unreadable_fix(b, platform)
     if b.get("source") == "archive":
@@ -326,15 +434,40 @@ def record(build: dict | None) -> dict:
     b = build or {}
     if not known(b):
         return {}
-    return {"branch": str(b.get("branch") or ""), "commit": str(b["commit"]),
-            "dirty": bool(b.get("dirty")),
-            "source": str(b.get("source") or "unknown")}
+    out = {"branch": str(b.get("branch") or ""), "commit": str(b["commit"]),
+           "dirty": bool(b.get("dirty")),
+           "source": str(b.get("source") or "unknown")}
+    if b.get("engine") == "public":
+        # what a run on the public engine names: the full commit, the
+        # wheel's hash, bngsim's version and build (never pybnf.__version__)
+        out.update({k: b[k] for k in ("engine", "full_commit", "wheel_sha256",
+                                      "lock_wheel", "bngsim", "bngsim_build")
+                    if k in b})
+    return out
+
+
+def engine_record(build) -> dict:
+    """What a season records for a build that could not be read (the
+    public engine's probe timed out, a lock whose wheel names no commit, a
+    checkout git will not read): its engine alone, {"engine": "public"} or
+    {"engine": "private"}, so engine_of and change still tell which engine
+    fitted the weeks. record() stays {} for it: no commit to compare."""
+    return {"engine": engine_of(build)}
 
 
 def change(prior: dict | None, now: dict | None) -> str | None:
     """None when a resume over `now` keeps the recorded build (commit and
-    edited state) or none was recorded; else the difference in plain words."""
-    if not isinstance(prior, dict) or not known(prior):
+    edited state), when none was recorded, or when the record names only
+    its engine (engine_record) and `now` is a build of that engine; else
+    the difference in plain words."""
+    if not isinstance(prior, dict):
+        return None
+    if not known(prior):
+        had = prior.get("engine")
+        if had in ("public", "private") and had != engine_of(now):
+            here = label(now) or f"the {engine_of(now)} one"
+            return (f"were fitted by the {had} engine (its build could not "
+                    f"be read); this machine's engine is {here}")
         return None
     p, n = record(prior), record(now)
     if n and p["commit"][:8] == n["commit"][:8] and p["dirty"] == n["dirty"]:

@@ -348,9 +348,8 @@ def test_no_bare_model_name_in_the_sandbox_pages(hub):
         assert not bare, (page, bare)
         # no placeholder reaches a page outside the editor
         assert "{{" not in text, page
-    # the template's workbench keeps the page's two marks, no more
-    assert marks(client.get("/sandbox?model=tpl").text) == ["tt-sb-files",
-                                                             "tt-sb-run"]
+    # the template's workbench keeps the page's one mark, no more
+    assert marks(client.get("/sandbox?model=tpl").text) == ["tt-sb-files"]
 
 
 # ---------------------------------------------- the Oracle SIHRS template

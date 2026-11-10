@@ -2,14 +2,92 @@
 
 The Oracle SIHRS and Groundhog methods, replays and scores; see
 [ORACLE-SIHRS.md](../ORACLE-SIHRS.md) and [RETROSPECTIVES.md](../RETROSPECTIVES.md).
-Works on the lab Mac (the Mac Studio); its research record lives in the
-lab's private FluBNF-local tree, `research/groundhog-beta/oracle_member/`,
-not in this repository.
+Works on Ely's Windows PC since 2026-11-09 (before that the lab Mac). Its
+research record from the lab Mac is still in the lab's private
+FluBNF-local tree, `research/groundhog-beta/oracle_member/`, not in this
+repository and not yet on the PC.
+Since 2026-11-09 this lane also takes the Groundhog's requests (Decided).
 Entries marked (laptop) are the Groundhog and donor-bank agent's, on
-Ely's laptop, which pushes them itself; the others are the Oracle SIHRS
-agent's.
+Ely's laptop; the others are the Oracle SIHRS agent's, on the lab Mac
+until 2026-11-09 and on the Windows PC since then.
 
 ## Now
+
+- 2026-11-10 (04:40 UTC): THE GROUNDHOG'S FLAT SMALL STATES (Submission,
+  2026-11-05): NOT A DEFECT AND NOT THE PIN. THE GROUNDHOG HAS NO TREND
+  TERM, SO EVERY STATE GETS THE CALENDAR'S RISE. Record:
+  [model-groundhog-flat-states-2026-11-09/](model-groundhog-flat-states-2026-11-09/README.md).
+  This is a diagnosis, not a screen: no forecast or variant was scored.
+  - Round 2026-11-07 reproduced here, engine-free, from the hub's target
+    file of 2026-11-04 (fcc3c636) cut at 2026-10-31, with the shipped
+    Groundhog. The medians equal the submitted file to rounding (Alaska
+    14, 19, 26, 36; Montana 30, 48, 73, 97; Washington 230, 355, 540,
+    766) and Hawaii's left-out 58, 80, 104, 141.
+  - Why: the median ratio blends the calendar-matched admissions donors
+    (epiweek 44 within 2 weeks, seasons 2022-23 to 2025-26) half and half
+    with FluSurv-NET's. A state enters only through its anchor, the size
+    kernel (both its level) and its own past seasons at this week (a
+    quarter of the blend). Nothing reads its recent trend. Four weeks past
+    the anchor, FluSurv-NET's median ratio is 2.98 for every state and the
+    other states' is 2.9 to 3.6. So implied weekly growth to h3 is 1.27
+    to 1.38 in the middle 80% of the 52 states (median 1.34), against
+    observed 1.10 to 1.54 over the last three weeks (median 1.26). Rank
+    correlation between the two: -0.10.
+  - The four, as observed growth per week, then the 4-week ratio from own
+    seasons / other states / FluSurv-NET, then the Groundhog's growth per
+    week to h3:
+    - Hawaii: 0.89; 1.85 / 3.39 / 2.98; 1.27. It peaked on 10-17, off
+      the calendar.
+    - Alaska: 0.97; 2.80 / 3.62 / 2.98; 1.32.
+    - Montana: 1.01; 6.66 / 3.47 / 2.98; 1.38.
+    - Washington: 1.12; 8.92 / 2.94 / 2.98; 1.44. All four of its past
+      seasons rose 2 to 23 times from early November.
+  - Not these: the to_date pin is the Oracle's seed stage, and the
+    Groundhog has none. Every anchor is the state's newest week (no lag,
+    no note). The donors are as registered.
+  - What follows: wherever a season runs off the calendar or stalls, the
+    Groundhog keeps forecasting the calendar's rise, round after round
+    (Hawaii has run 1.3 to 2.3 times high since its peak, per
+    submission.md). Until a method changes, the guard is Submission's
+    pre-submission review for 2026-11-11: any rise where the data are
+    flat or falling. On the 10-31 data, the states at or below 1.05 per
+    week over three weeks were Hawaii, Alaska, Vermont and Montana.
+  - A lead for Ely, not a change: a trend-matched donor weight, the size
+    kernel's twin, which weights donors by how close their own trailing
+    3-week growth is to the state's. It would be screened engine-free on
+    the Groundhog's retro seasons (hub 3a83d410, the 17,116-cell record,
+    leave-one-season-out), under a pre-registration frozen before any
+    score. No variant of it has been scored.
+- 2026-11-10 (04:40 UTC): THIS LANE MOVED TO ELY'S WINDOWS PC (Ely,
+  2026-11-09: the lab Mac is needed by other lab members). The PC has an
+  i7-12700KF (12 cores, 20 threads), 32 GB and an RTX 4070 Ti. Nothing
+  came across from the lab Mac: no memory, no scratch folders, no
+  research tree.
+  - Set up so far: this lane's own clone, `%USERPROFILE%\GitHub\flubnf-model`
+    on `dev`, with the identity set (the Engine session has its own clone,
+    `%USERPROFILE%\GitHub\flubnf`). Its console venv runs Python 3.11.9
+    (numpy 2.4.6, pandas 3.1.1). A sparse partial hub clone,
+    `%USERPROFILE%\GitHub\FluSight-forecast-hub-model`, holds target-data,
+    auxiliary-data, hub-config and four model-output folders.
+  - Not yet: both engines (the Engine session installs them, Decided), so
+    no doctor, no test baseline and no Groundhog record reproduction on
+    this PC yet. They follow once the engines are in.
+    `engine-public` is not yet merged into `dev` (b4b176b), so a `dev`
+    clone installs the private engine only. G21 (#79) has landed: replays,
+    season reports and `engine_update.json` now follow FLUBNF_STATE_DIR.
+    The Sandbox part is left for Ely.
+  - 2026-11-10 (07:54 UTC): `engine-public` is merged into `dev` (#61,
+    def45db), and this clone is at that commit. A `dev` copy that records
+    no engine now runs the public engine; the private one runs only with
+    `FLUBNF_ENGINE=private`. `main` is unchanged, so the weekly round stays
+    on the private engine. Every replay this lane runs names
+    `FLUBNF_ENGINE`, since a season begun on one engine is refused on the
+    other. On the PC, the private engine is in (engine.md, 2026-11-09:
+    2fdadee0 at `%LOCALAPPDATA%\FluBNF\PyBNF-pf`); the public venv
+    (`%LOCALAPPDATA%\FluBNF\venv-public`) is not yet. The doctor under
+    each engine, `engine_lock.py check`, the test baseline and the
+    Groundhog record reproduction wait for it, so as not to run against
+    the Engine session's install and timings.
 
 - 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
   REPOSITORY (Ely: "make sure your results are visible to the Team agent
@@ -1102,6 +1180,15 @@ agent's.
 
 ## Decided
 
+- 2026-11-09 (Ely, on the move to the Windows PC):
+  - This lane takes the Groundhog's requests.
+  - The Submission-Wednesday window does not apply to the Windows PC: the
+    round runs on Ely's laptop. Replays here only need announcing in these
+    notes first. It still applies wherever a round can run.
+  - The Engine session leads the per-account installs on the PC: both
+    engines, the shared venvs and Perl, the User variables that
+    `setup.ps1` and `FluBNF.bat` write, `gh` and Python 3.12. This lane
+    runs only its own clone's checks on them.
 - 2026-10-15 (laptop, Ely): the shipped Groundhog weights the jurisdiction's
   own past weeks to half of the admissions pool (`SHIPPED_OWN_SHARE`
   0.5); the FluSurv-NET pool stays pooled and no jurisdiction uses its own
@@ -1241,6 +1328,30 @@ agent's.
 
 ## For other lanes
 
+- 2026-11-10 (04:40 UTC), Submission: answered your request of 2026-11-05
+  (the Groundhog lifts flat small states) under Now, same time. In short,
+  the Groundhog has no trend term, so its growth is the calendar's in every
+  state. Your pre-submission review for 2026-11-11 is the guard until Ely
+  decides otherwise.
+- 2026-11-10 (04:40 UTC), App: docs/TEAM.md still puts the Engine and Model
+  lanes on the lab Mac: the lane table, "Messages between agents", and
+  "Two machines, not to be confused". Both now work on Ely's Windows PC
+  (Now, same time). The page is yours. While you're there, say "lab Mac"
+  rather than "the Mac Studio" (done in this file's header).
+- 2026-11-10 (04:40 UTC), Engine: on the PC, this lane's clone is
+  `%USERPROFILE%\GitHub\flubnf-model` and its hub
+  `%USERPROFILE%\GitHub\FluSight-forecast-hub-model`. Yours are untouched.
+  Ely put the per-account installs with you (Decided). Please say in your
+  notes when an install, `setup.ps1` or `FluBNF.bat` run starts and ends,
+  and this lane stays off them in between. Found here before either of us
+  ran anything (read-only):
+  - Ely's install of 2026-09-01, `%LOCALAPPDATA%\FluBNF\flubnf`, on main.
+  - User variables pointing into Documents\GitHub, where Controlled
+    Folder Access is on: FLUBNF_PYBNF (a PyBNF-pf checkout at eab31c71,
+    not 2fdadee0) and FLUBNF_HUB.
+  - The engine venv on Python 3.11.9.
+  - No Python 3.12 and no `gh`.
+  - Strawberry Perl 5.42.2 machine-wide.
 - 2026-10-26 (laptop), Submission: THREE FINDINGS ON THE HISTORICAL
   CEILING (flubnf/tailcap.py and its wiring in app/ui/pipeline.py), from
   the Groundhog's screen (Now, 2026-10-25 23:50 UTC, laptop; the record is
@@ -1561,6 +1672,20 @@ agent's.
 
 ## Open
 
+- 2026-11-10 (04:40 UTC), for Ely, from the move:
+  - Can the lab Mac's research tree be copied to the PC (C0's stored
+    replays and per-cell tables, `scorehub`, `groundhog-beta/` whole,
+    `kernel-regularizer/grid/J15`)? Where should it go? Outside Documents
+    and outside the clone.
+  - What do "longer runs" mean (submission.md Open, 2026-11-04)?
+  - Which engine should replays use? A proposal follows once both are
+    installed.
+  - What is the hub deadline's hour (8 PM or 9 PM Arizona)?
+  - Does the round's fallback move here? That would need R with
+    hubValidations 2.1.1.
+  - Does a shadow Wednesday still run, and where?
+  - Should a Groundhog trend-matched donor weight (Now, same time) be
+    screened?
 - 2026-09-30, decided (a) above; kept for the record: the options were
   (a) keep the fitted US (frozen spec; at 25% a week the h3 truth is
   about 6,100, inside the band's 8,381 but far above the 1,872 median),

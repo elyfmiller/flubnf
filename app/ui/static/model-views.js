@@ -45,6 +45,14 @@
     var vw = root.innerWidth || 0;
     return vw ? Math.min(HEIGHT, Math.max(240, Math.round(0.7 * vw))) : HEIGHT;
   }
+  // the page's text size (the Display menu sets the root's font size): a
+  // drawing is laid out in units that many times smaller than its pixels,
+  // so its labels, boxes and all grow with the rest of the page's text
+  function textScale() {
+    var de = root.document && root.document.documentElement;
+    var px = de && root.getComputedStyle ? parseFloat(root.getComputedStyle(de).fontSize) : 0;
+    return px ? Math.max(0.5, Math.min(2, px / 16)) : 1;
+  }
   var CELL = 200;                // the most a small unjoined part gets along the side strip
   var TOOLS = 32;                // the zoom buttons' band at the top of the drawing
   // the contact map's panels, the same measures as the server's drawing
@@ -401,12 +409,12 @@
 
   // ------------------------------------------------ the reaction network
   function network(box, graph) {
-    var W = Math.max(320, box.clientWidth || 640), n0 = 0;
+    var k = textScale(), W = Math.max(320, box.clientWidth || 640) / k, n0 = 0;
     (graph.nodes || []).forEach(function (nd) { if (nd.kind === 'species') n0 += 1; });
     // a small model gets a shorter drawing; a phone a shorter one too
-    var H = n0 <= 3 ? Math.min(280, tall()) : tall();
+    var Hpx = n0 <= 3 ? Math.min(280, tall()) : tall(), H = Hpx / k;
     var v = new View(box, W, H), svg = v.svg;
-    svg.style.height = H + 'px';
+    svg.style.height = Hpx + 'px';
     var nodes = graph.nodes || [], edges = graph.edges || [], infs = graph.influences || [];
     var defs = el('defs', {}, svg), gInf, gEdges, gHits, gLabels, gNodes;
     var pos = arrange(graph, W, H), home = {}, size = {}, N = {}, E = {}, I = [], pairs = {};
@@ -469,7 +477,11 @@
       N[f.from].infs.push(rec);
       E[f.edge].infs.push(rec);
     });
-    v.idle = plural(species, 'species', 'species') + ', ' + plural(Object.keys(reactions).length, 'reaction', 'reactions');
+    // the network's own count (network_graph): a reaction with no net
+    // change draws no arrow, and several reactions share a rule
+    v.idle = plural(species, 'species', 'species') + ', ' + plural(
+      typeof graph.reactions === 'number' ? graph.reactions : Object.keys(reactions).length,
+      'reaction', 'reactions');
     svg.setAttribute('aria-label', 'reaction network: ' + v.idle);
 
     // an arrow's path: a loop over its one node, a line, or a bent curve;
@@ -503,7 +515,9 @@
                        y: u * u * g.a.y + 2 * u * t * g.c.y + t * t * g.b.y};
       return {x: u * g.a.x + t * g.b.x, y: u * g.a.y + t * g.b.y};
     }
-    function box(x, y, w, h) { return {x0: x - w / 2, y0: y - h / 2, x1: x + w / 2, y1: y + h / 2}; }
+    // named so it cannot shadow the box parameter (a function declared in
+    // here would hoist over it, and box.clientWidth read as undefined)
+    function bounds(x, y, w, h) { return {x0: x - w / 2, y0: y - h / 2, x1: x + w / 2, y1: y + h / 2}; }
     function clash(b, list) {
       for (var i = 0; i < list.length; i++) {
         if (b.x0 < list[i].x1 && b.x1 > list[i].x0 && b.y0 < list[i].y1 && b.y1 > list[i].y0) return true;
@@ -518,14 +532,14 @@
     function labels() {
       var taken = [];
       Object.keys(N).forEach(function (id) {
-        taken.push(box(pos[id].x, pos[id].y, size[id].w + 4, size[id].h + 4));
+        taken.push(bounds(pos[id].x, pos[id].y, size[id].w + 4, size[id].h + 4));
       });
       I.forEach(function (rec) {
         var m = E[rec.inf.edge].mid, p = rec.curve, k, t, u;
-        taken.push(box(m.x, m.y, 10, 10));
+        taken.push(bounds(m.x, m.y, 10, 10));
         for (k = 1; k < 8; k++) {
           t = k / 8; u = 1 - t;
-          taken.push(box(u * u * p[0] + 2 * u * t * p[2] + t * t * p[4],
+          taken.push(bounds(u * u * p[0] + 2 * u * t * p[2] + t * t * p[4],
                          u * u * p[1] + 2 * u * t * p[3] + t * t * p[5], 6, 6));
         }
       });
@@ -533,7 +547,7 @@
         var r = E[id], g = r.mid, s = String(r.edge.label || ''), w = 6.2 * s.length + 6, h = 14;
         var dx, dy, d, nx, ny, off, i, p, q, b, best = null;
         if (!s) return;
-        if (!g.a) { r.label.setAttribute('x', g.x); r.label.setAttribute('y', g.y + 4); taken.push(box(g.x, g.y, w, h)); return; }
+        if (!g.a) { r.label.setAttribute('x', g.x); r.label.setAttribute('y', g.y + 4); taken.push(bounds(g.x, g.y, w, h)); return; }
         dx = g.b.x - g.a.x; dy = g.b.y - g.a.y;
         d = Math.sqrt(dx * dx + dy * dy) || 1;
         nx = -dy / d; ny = dx / d;
@@ -541,10 +555,10 @@
         for (i = 0; i < TRIES.length && !best; i++) {
           p = along(g, TRIES[i][0]);
           q = {x: p.x + nx * off * TRIES[i][1], y: p.y + ny * off * TRIES[i][1]};
-          b = box(q.x, q.y, w, h);
+          b = bounds(q.x, q.y, w, h);
           if (!clash(b, taken)) best = q;
         }
-        if (!best) { best = {x: g.x, y: g.y}; b = box(g.x, g.y, w, h); }
+        if (!best) { best = {x: g.x, y: g.y}; b = bounds(g.x, g.y, w, h); }
         taken.push(b);
         r.label.setAttribute('x', Math.round(best.x));
         r.label.setAttribute('y', Math.round(best.y) + 4);
@@ -635,7 +649,7 @@
 
   // ------------------------------------------------------ the contact map
   function contactmap(box, graph) {
-    var W = Math.max(320, box.clientWidth || 640), H = tall();
+    var k = textScale(), W = Math.max(320, box.clientWidth || 640) / k, H = tall() / k;
     var v = new View(box, W, H), svg = v.svg;
     var mols = graph.molecules || [], bonds = graph.bonds || [];
     var gMols = el('g', {}, svg), gBonds = el('g', {}, svg);

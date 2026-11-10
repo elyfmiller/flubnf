@@ -136,9 +136,8 @@
         g.hidden = !applies(g, ms)
           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
       });
-      // the "coming later" and a group's "N more" folds hide with their
-      // last applying row
-      box.querySelectorAll('.ms-later-fold, .ms-more').forEach(function (f) {
+      // a group's "N more" fold hides with its last applying row
+      box.querySelectorAll('.ms-more').forEach(function (f) {
         var rows = Array.prototype.slice.call(f.querySelectorAll('.ms-row'));
         f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
       });
@@ -192,6 +191,12 @@
       if (tick) tick.checked = false;
       if (reason) reason.value = '';
       update();
+      // a refusal of the values just reset says nothing about these
+      var said = box.querySelector('.fc-ms-refused');
+      if (said) said.hidden = true;
+      // values set by script fire no change: tell what follows them (the
+      // Forecast tab's Data issues box)
+      box.dispatchEvent(new CustomEvent('ms-reset', {bubbles: true}));
     });
     // open or closed as the user left it this session; the server opens
     // it only on the page after a refusal over its settings

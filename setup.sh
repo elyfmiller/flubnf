@@ -107,24 +107,46 @@ else
 fi
 
 say "engine venv (pybnf + bngsim)"
-if [ -x "$ENGINE_VENV/bin/python" ] \
+# The engine record (setup_engine.sh --public or --private; docs/ENGINE.md)
+# is kept through the rewrite of .flubnf.env below, and says which engine to
+# report on: FLUBNF_ENGINE from this shell first, else the record. Quotes,
+# surrounding spaces and case do not count; anything but private is the
+# public engine, the default.
+KEPT="$(grep -E '(^|[[:space:]])(FLUBNF_ENGINE|FLUBNF_PY_ENGINE_PUBLIC)=' "$HERE/.flubnf.env" 2>/dev/null)"
+RAW="${FLUBNF_ENGINE:-$( [ -f "$HERE/.flubnf.env" ] && . "$HERE/.flubnf.env" >/dev/null 2>&1; printf '%s' "${FLUBNF_ENGINE:-}" )}"
+ROUTE="$(printf '%s' "$RAW" | tr -d '"' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+case "$ROUTE" in
+  private|public|"") ;;
+  *) warn "FLUBNF_ENGINE is \"$RAW\", which is neither private nor public: the public engine, the default, is checked" ;;
+esac
+PUBPY="${FLUBNF_PY_ENGINE_PUBLIC:-$( [ -f "$HERE/.flubnf.env" ] && . "$HERE/.flubnf.env" >/dev/null 2>&1; printf '%s' "${FLUBNF_PY_ENGINE_PUBLIC:-}" )}"
+PUBPY="${PUBPY:-$HOME/.venvs/flubnf-public/bin/python}"
+if [ "$ROUTE" != private ]; then
+  if [ -x "$PUBPY" ] && "$PUBPY" "$HERE/scripts/engine_lock.py" check >/dev/null 2>&1; then
+    ok "public engine venv ready (the default): ${PUBPY%/bin/python}"
+  else
+    warn "the public engine (the default) is not installed yet; FluBNF.command installs it on its next open (./setup_engine.sh does it now)"
+  fi
+elif [ -x "$ENGINE_VENV/bin/python" ] \
    && "$ENGINE_VENV/bin/python" -c "import pybnf, bngsim" 2>/dev/null; then
-  ok "engine venv ready: $ENGINE_VENV"
+  ok "this copy is set to the private engine (the fallback); its venv is ready: $ENGINE_VENV"
 else
-  warn "engine venv not ready. The PF engine (fit_type=pf) needs a PyBNF fork"
-  warn "that is not yet public, so it is the one part of this install that can"
-  warn "ask who you are. ./setup_engine.sh does the whole thing -- the clone,"
-  warn "the venv, the pinned dependencies -- and it tries an offline bundle"
-  warn "BEFORE it tries GitHub. So the shortest route needs no account:"
+  warn "this copy is set to the private engine (the fallback)"
+  warn "engine venv not ready. The private engine (fit_type=pf) needs the lab's"
+  warn "PyBNF fork, which is private, so it is the one part of this install that"
+  warn "can ask who you are. ./setup_engine.sh --private does the whole thing --"
+  warn "the clone, the venv, the pinned dependencies -- and it tries an offline"
+  warn "bundle BEFORE it tries GitHub. So the shortest route needs no account:"
   warn "  someone who has the fork runs, once:"
   warn "    git bundle create pybnf.bundle feature/particle-filter"
   warn "  you put that one file in ~/Downloads (or beside this folder), then:"
-  warn "    ./setup_engine.sh"
+  warn "    ./setup_engine.sh --private"
   # Not run from here (minutes more, a large download): FluBNF.command runs
   # setup_engine.sh right after this.
-  warn "With GitHub access instead, ./setup_engine.sh clones it for you and"
-  warn "explains, in detail, whatever stops it."
+  warn "With GitHub access instead, ./setup_engine.sh --private clones it for"
+  warn "you and explains, in detail, whatever stops it."
   warn "Without the engine: the console, analogue engine, and reports still work."
+  warn "./setup_engine.sh --public goes back to the public engine, the default."
 fi
 
 say "git hooks"
@@ -139,7 +161,8 @@ say "environment"
 ENVF="$HERE/.flubnf.env"
 { echo "export FLUBNF_HUB=\"$HUB\""
   echo "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\""
-  echo "export FLUBNF_PYBNF=\"$PYBNF\""; } > "$ENVF"
+  echo "export FLUBNF_PYBNF=\"$PYBNF\""
+  [ -z "$KEPT" ] || printf '%s\n' "$KEPT"; } > "$ENVF"
 ok "wrote $ENVF  (source it, or add to your shell profile)"
 
 say "doctor"

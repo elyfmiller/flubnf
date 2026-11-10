@@ -63,7 +63,7 @@ def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
             ) in html
     joined = " ".join(html.split())
     # V2's own numbers: jurisdictions, reported rows, newest week
-    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
+    assert ('<dt>Locations</dt><dd><span class="uk-stat-v" '
             'id="latest-locs">3</span>') in joined
     assert ('<dt>Rows</dt><dd><span class="uk-stat-v" id="latest-rows">9'
             '</span>') in joined
@@ -159,7 +159,7 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
     assert ">140<" in html                            # what V1 knew for Ohio
     assert ">155<" not in html and ">190<" not in html   # V2's revisions
     # Wyoming's unreported row was dropped, so V1 covers 3 jurisdictions
-    assert ('<dt>Jurisdictions</dt><dd><span class="uk-stat-v" '
+    assert ('<dt>Locations</dt><dd><span class="uk-stat-v" '
             'id="vb-locs">3</span>') in joined
 
 

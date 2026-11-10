@@ -522,7 +522,9 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     of it is under way in another process (a console refuses its own
     first, by its claim), when the Groundhog's bank cannot be read or
     checked, at a resume when this machine's engine build is not the one
-    the stored weeks were fitted by, and when the engine here is older
+    the stored weeks were fitted by, when a week not stored began its fits
+    on the other engine, for the two-strain model on the public engine
+    (which refuses every cell of it), and when the engine here is older
     than this console (pf.prepare would refuse every week; with no engine
     at all the callers say so in their own words), but never for the
     engine once every week is stored: nothing is left to fit. Writes
@@ -550,11 +552,49 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     if done and not complete:
         change = retro.engine_build_change(st, "pf")
         if change:
+            from app.core import engine_build as _eb
+            had = _eb.engine_of(st.get("engine_build"))
+            if had != _eb.engine_of(_eb.engine_build()):
+                # the engine it began on, and the step that switches back;
+                # a student's experiment has no archive, so the way to
+                # replay it here is the one its other refusals name
+                raise Refusal(finding(
+                    "MACHINE", f"{p['id']} has weeks that {change}. Resuming "
+                    "would mix two engine builds in one season. To finish it "
+                    f"on the {had} engine it began on: {_eb.switch_step(had)}; "
+                    "or delete the experiment to replay it on this one."))
             raise Refusal(finding(
                 "MACHINE", f"{p['id']} has weeks that {change}: resuming "
                 "would mix two engine builds. Switch the engine back to "
                 "resume it, or delete the experiment to replay it on this "
                 "one."))
+    here = "public" if pf_engine._public() else "private"
+    if not complete:
+        # a week stopped on one engine before it was stored: run_season
+        # would stop on it (retro._week_engine), and no stored week tells
+        # the build check above
+        for w in weeks:
+            if w in done:
+                continue
+            had = _begun_elsewhere(root() / p["id"], w, here)
+            if had:
+                raise Refusal(finding(
+                    "MACHINE", f"week {w} of {p['id']} began on the {had} "
+                    f"engine, and resuming it on the {here} one would pool "
+                    "fits from two engines in one week: switch this "
+                    f"install to the {had} engine ({_switch_step(had)}) to "
+                    "finish it, or delete the experiment to replay it on "
+                    "this one"))
+    if not complete and here == "public" and _two_strain(p["model"]):
+        # refused here, not cell by cell after each network is generated
+        from app.core.engines import lwf
+        key = "pf_binom_neff_cap"
+        raise Refusal(finding(
+            "MACHINE", f"{p['model']} runs on the private engine only: its "
+            f"cells set {key} ({lwf._NO_COUNTERPART[key]}), which has no "
+            "counterpart in the public engine, so every cell would be "
+            "refused. Switch this install to the private engine "
+            f"({_switch_step('private')}) to run it."))
     if (not complete and pf_engine.engine_available()
             and not pf_engine.engine_current()):
         raise Refusal(finding("MACHINE", pf_engine.engine_stale_message()))
@@ -570,13 +610,60 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
             "weeks_done": len(done), "complete": complete}
 
 
+def _begun_elsewhere(folder: Path, asof: str, here: str) -> str | None:
+    """The engine other than `here` a week's fits began on
+    (retro.WEEK_ENGINE_NAME, beside its fit markers) when one of them
+    finished there and did not fail (run_week tries a failed fit again
+    on either engine); None otherwise. The record is read only when it
+    is a regular file."""
+    from app.core import retro
+    from app.core.retro_store import _week_dir
+    wd = _week_dir(folder, asof)
+    f = wd / retro.WEEK_ENGINE_NAME
+    if not os.path.isfile(f):
+        return None
+    try:
+        had = json.loads(f.read_text(encoding="utf-8")).get("engine")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not had or had == here:
+        return None
+    ok = retro.cells_done(wd) - set(retro.cells_failed(wd))
+    return str(had) if ok else None
+
+
+def _switch_step(engine: str) -> str:
+    """The step that switches this install to `engine`: its launcher's
+    record, which every open reads over the shell's FLUBNF_ENGINE (and
+    which a terminal start reads too, settings.engine_choice). The short
+    form of engine_build.switch_step."""
+    from app.core.engine_build import switch_step
+    return switch_step(engine, short=True)
+
+
+def _two_strain(ref: str) -> bool:
+    """A model prepare writes as the two-strain variant: a shipped one
+    with {{A0SHARE}} (engines/pf.py _named_model)."""
+    model = library.resolve(ref)
+    return model["shipped"] and "{{A0SHARE}}" in library.tokens(
+        model["files"]["model.bngl"])
+
+
+def _engine_of(build) -> str:
+    """The engine a recorded build names: public when it says so, else
+    private (a build recorded without one, or none recorded);
+    engine_build.engine_of."""
+    from app.core.engine_build import engine_of
+    return engine_of(build)
+
+
 def started(p: Mapping) -> dict:
     """Start's answer for a preflight p about to run (not complete):
     {"text" (started or resumed, or that there is nothing to compare it
-    with), "detail" (the notes: the shipped replay compared with, and
-    each finding with its code), "kind" ("ok" with a shipped replay to
-    compare with, else "warn"), "plan" (the plan as Start's JSON gives
-    it)}."""
+    with), "detail" (the notes: the shipped replay compared with, that it
+    ran on the other engine when it did, and each finding with its code),
+    "kind" ("ok" with a shipped replay to compare with, else "warn"),
+    "plan" (the plan as Start's JSON gives it)}."""
     eid = p["id"]
     ref, weeks, done = p["reference"], len(p["weeks"]), p["weeks_done"]
     if p["resume"]:
@@ -590,6 +677,14 @@ def started(p: Mapping) -> dict:
                      + ("the Oracle SIHRS" if ref["member"] == "pf"
                         else "the Liu-West filter alone")
                      + ") on the cells both score.")
+        # allowed, and said: the shipped replays record no engine and
+        # ran on the private one
+        from flubnf.settings import engine_choice
+        here, there = engine_choice(), _engine_of(ref.get("engine_build"))
+        if here != there:
+            notes.append(f"Compared across engines: this experiment runs on "
+                         f"the {here} engine, the shipped replay ran on the "
+                         f"{there} one.")
     else:
         # nothing to compare with leads; a resume's count goes to the "?"
         if p["resume"]:

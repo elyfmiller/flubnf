@@ -409,8 +409,10 @@ def test_check_keeps_a_model_failure_after_the_banner_as_the_models(
     files = {n: (EXAMPLE / n).read_text() for n in sb.REQUIRED}
     r = sb.check(files, work=tmp_path / "check")
     assert r["facts"]["network"] == "fails" and r["facts"]["machine"] == ""
+    # BNG2.pl's own reason first (the notice), its words after (SB-04)
     assert r["problems"][0].startswith("BNG2.pl could not generate the "
-                                       "network:\nABORT: Molecule Q")
+                                       "network: Molecule Q not defined\n"
+                                       "ABORT: Molecule Q")
     # the banner is kept although the tail cut it: the run reached the model
     assert pf.bng_started(r["problems"][0])
 
@@ -425,8 +427,10 @@ def test_perl_and_the_engine_both_missing_are_both_named(sandbox_root,
     monkeypatch.setattr(pf, "engine_available", lambda: False)
     msg = sb.machine_problem()
     notice, tip = sb.split_reason(msg)
-    assert notice.startswith(f"The PyBNF fork at {pf.PYBNF_PF} does not "
-                             "provide fit_type = pf")
+    # the headline in words, the engine's own message first in the tip
+    assert notice == "The fitting engine is not installed."
+    assert tip.startswith(f"The PyBNF fork at {pf.PYBNF_PF} does not "
+                          "provide fit_type = pf")
     assert "1 more thing to fix after that: (2) Perl was not found" in tip
     r = sb.check({n: (EXAMPLE / n).read_text() for n in sb.REQUIRED})
     assert r["facts"]["machine"] == notice

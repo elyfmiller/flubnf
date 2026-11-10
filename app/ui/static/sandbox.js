@@ -59,8 +59,15 @@
     return clock(elapsed) + ' so far' + (eta ? ' \u00b7 ' + eta + ' in all' : '');
   }
 
+  // Check's notes whose own words say a run stops on them (their codes
+  // are app/core/problem_codes.py's): above one, the headline promises no run
+  var RUN_STOPS = ['ROW_BEFORE_START', 'KEY_UNKNOWN', 'ONE_ROW'];
+  function stopsRun(codes) {
+    return (codes || []).some(function (c) { return !!c && RUN_STOPS.indexOf(c.code) >= 0; });
+  }
+
   root.SandboxPage = {xsFor: xsFor, clock: clock, fmtEta: fmtEta, fitLine: fitLine,
-                      suggestName: suggestName};
+                      suggestName: suggestName, stopsRun: stopsRun};
   if (typeof document === 'undefined') return;
 
   function $(id) { return document.getElementById(id); }
@@ -344,7 +351,7 @@
       if (ds && changed) rangeFromGroup();
     }
     // the range against the source, said beside the dates: Load is off
-    // (its "?" and one alert line say why) while the range is empty,
+    // (one alert line says why, and describes the button) while the range is empty,
     // backwards, or wholly outside the weeks the source holds. The
     // inputs carry no browser constraint (they ride in the editor's
     // form, whose Save a constraint would stop too); the server checks
@@ -376,8 +383,9 @@
     function rangeCheck() {
       if (!d0 || !d1 || !load) return;
       var r = rangeReason();
-      if (root.FluBNFUI) root.FluBNFUI.setReason(load, r || null);
-      else load.disabled = !!r;
+      load.disabled = !!r;
+      if (r) load.setAttribute('aria-describedby', 'sbfill-why');
+      else load.removeAttribute('aria-describedby');
       if (why) why.innerHTML = r ? alertHtml('warn', 'Load is off:', r, null) : '';
     }
     if (src) {
@@ -390,7 +398,7 @@
       e.addEventListener('input', rangeCheck);
       e.addEventListener('change', rangeCheck);
     });
-    // tips.js (setReason, the alert) runs after this deferred script
+    // tips.js (the alert) runs after this deferred script
     if (root.FluBNFUI) rangeCheck();
     else document.addEventListener('DOMContentLoaded', rangeCheck);
 
@@ -427,6 +435,14 @@
         dirty = false;
       });
       if (csv) csv.addEventListener('change', function () { csv.setCustomValidity(''); });
+      // the size refusal's message must not outlive its own button: a click
+      // on any button clears it before the browser validates (Save and run
+      // has no formnovalidate), and the handler above sets it again only
+      // for another upload of the same file
+      if (csv) form.addEventListener('click', function (e) {
+        var t = e.target;
+        if (t && t.closest && t.closest('button, input[type=submit]')) csv.setCustomValidity('');
+      }, true);
       addEventListener('beforeunload', function (e) {
         if (!dirty) return;
         e.preventDefault();
@@ -492,12 +508,16 @@
             var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
             var probs = d.problems || [], warns = d.warnings || [];
             var notes = warns.length === 1 ? '1 note' : warns.length + ' notes';
+            // a note whose words say a run stops on it: the headline then
+            // promises no run
+            var stops = stopsRun(d.codes);
             if (probs.length) {
               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
                                 'a run would fail.') + listHtml(probs);
             } else if (warns.length) {
-              // never green above a note: the notes are the headline
-              html += alertHtml('warn', 'Worth a look:', notes + (f.machine ? '.' : '; the model can run.'))
+              // never green above a note: the notes are the headline, and
+              // no promise of a run above one that says a run stops
+              html += alertHtml('warn', 'Worth a look:', notes + (f.machine || stops ? '.' : '; the model can run.'))
                 + listHtml(warns);
             } else if (f.machine) {
               html += alertHtml('ok', 'No problems found in the model.', '');

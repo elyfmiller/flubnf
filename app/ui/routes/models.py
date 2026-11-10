@@ -141,6 +141,16 @@ def _record(name: str) -> dict:
              f"{fmt(blend)}), so it is kept for research runs only.")]})
 
 
+def _engine_public() -> bool:
+    """Whether this copy runs the public engine, the default
+    (settings.engine_public); False when it cannot be read."""
+    try:
+        from flubnf.settings import engine_public
+        return engine_public()
+    except Exception:
+        return False
+
+
 def _rule(v: float) -> str:
     """The one relWIS rule's class: below 1 beats the baseline."""
     return "ok" if v < 1 else "bad"
@@ -175,7 +185,12 @@ def model_page(request: Request, name: str):
     manchor = {"pf": "oracle", "analogue": "analogue",
                "pf2s": "two-strain"}
     if name not in HEADERS:
-        return HTMLResponse("unknown model", status_code=404)
+        # a page of the console (under Models, which lists the three)
+        from app.ui.routes import output as output_routes
+        return output_routes._notice(
+            request, 404, "empty", f"No model named {name}",
+            action=("/models", "Open Models"), active="Models",
+            heading="Model")
     from app.core.archive_record import realtime_of
     rid, res = shared._latest_results()
     # a newer run of any kind (a vintage week or modified settings, as a
@@ -238,5 +253,8 @@ def model_page(request: Request, name: str):
         # the Oracle SIHRS's runs (its quick run, the research run) need the
         # particle-filter engine: why not, else ''
         "pf_missing": pipeline._pf_engine_missing(pipeline._pf_engine_state()),
+        # the research run's two-strain member has no counterpart in the
+        # public engine, the default: pipeline skips it there
+        "pf2s_private_only": _engine_public(),
         # the replicates field's range is the knob's (the Forecast panel's)
         "replicates_knob": _knobs.BY_KEY["pf.replicates"]})

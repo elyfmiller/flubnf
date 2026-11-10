@@ -29,9 +29,10 @@ def doctor(
 ):
     """Diagnose the environment and dependencies.
 
-    Catches the common showstoppers (broken venv, missing engine or hub
-    clone, missing BNG2.pl or the Perl that runs it, NumPy 2.0 / pybnf
-    incompat patch missing)
+    Names the engine that runs (public, the default, or private, the
+    fallback) and catches the common showstoppers (broken venv, missing
+    engine or hub clone, missing BNG2.pl or the Perl that runs it, NumPy
+    2.0 / pybnf incompat patch missing)
     before they bite mid-run. Exits 1 when any check fails.
     """
     from . import doctor as docmod
@@ -74,23 +75,26 @@ def doctor(
 def engine_update(
     path: Optional[Path] = typer.Option(
         None, "--path",
-        help="The engine checkout (default: the one the console uses)."),
+        help="The private engine's checkout (default: FLUBNF_PYBNF, the "
+             "one FLUBNF_ENGINE=private uses)."),
     fetch: bool = typer.Option(
         True, "--fetch/--no-fetch",
-        help="Fetch the production commit from GitHub when it is not on "
-             "disk yet."),
+        help="Fetch the private engine's pinned commit from GitHub when it "
+             "is not on disk yet."),
     quiet: bool = typer.Option(
         False, "--quiet", "-q",
-        help="Print nothing when the engine is already the production "
+        help="Print nothing when the private engine is already its pinned "
              "build."),
 ):
-    """Move the particle-filter engine to the production build, when that
-    is safe.
+    """Move the private engine (the fallback, the lab's PyBNF fork) to its
+    pinned build, when that is safe.
 
-    Only a clean git checkout on the production branch that is behind the
-    production commit moves, by fast-forward. Anything else is left as it
-    is and the reason is printed. The launchers run this on every open.
-    Always exits 0: an engine left where it is never blocks a launch."""
+    Only a clean git checkout on the pinned branch that is behind the
+    pinned commit moves, by fast-forward. Anything else is left as it is
+    and the reason is printed. The launchers run this on every open, so
+    the fallback is ready when FLUBNF_ENGINE=private is chosen. The public
+    engine, the default, is a venv this leaves alone. Always exits 0: an
+    engine left where it is never blocks a launch."""
     from app.core import engine_update as EU
     out = EU.update(path, fetch=fetch)
     EU.save(out)

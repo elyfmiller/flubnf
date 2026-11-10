@@ -22,7 +22,7 @@
   addEventListener('fontsizechange', barH);
   // ---- scrollspy: the section in view marks its chip aria-current
   var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
-  var secs = [], seen = {};
+  var secs = [];
   links.forEach(function (a) {
     var t = document.getElementById(a.getAttribute('href').slice(1));
     if (!t) return;
@@ -41,13 +41,54 @@
         toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
     }
   }
+  // the chip just clicked: when the last sections share the final screen,
+  // its jump ends at the page's end, where its section, not the last one,
+  // stays marked while in view (read again after the jump, which scrolls
+  // nothing when the page is at its end already); the reader's own next
+  // scroll (wheel, touch, a scroll key, the scroll bar) forgets it
+  var picked = null;
+  secs.forEach(function (s) {
+    s.a.addEventListener('click', function () { picked = s; onScroll(); });
+  });
+  function forget() { picked = null; }
+  addEventListener('wheel', forget, {passive: true});
+  addEventListener('touchmove', forget, {passive: true});
+  addEventListener('mousedown', forget);
+  addEventListener('keydown', function (e) {
+    if (/^(Arrow(Up|Down)|Page(Up|Down)|Home|End| |Spacebar)$/.test(e.key)) forget();
+  });
+  // the current section: the last one whose top has passed the band under
+  // the bar, and the last one of all once the page is scrolled to its end
+  // (the last card can never reach the band), unless a chip was just
+  // clicked and its section is in view
+  function spy() {
+    if (!secs.length) return;
+    var band = bar.offsetHeight + 8, cur = secs[0], i, r;
+    for (i = 0; i < secs.length; i++)
+      if (secs[i].el.getBoundingClientRect().top <= band + 1) cur = secs[i];
+    if (innerHeight + pageYOffset >= de.scrollHeight - 2) {
+      cur = secs[secs.length - 1];
+      if (picked) {
+        r = picked.el.getBoundingClientRect();
+        if (r.top < innerHeight && r.bottom > band) cur = picked;
+      }
+    }
+    mark(cur.a);
+  }
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { ticking = false; spy(); });
+  }
   if ('IntersectionObserver' in window && secs.length) {
-    var io = new IntersectionObserver(function (es) {
-      es.forEach(function (e) { seen[secs.map(function (s) { return s.el; }).indexOf(e.target)] = e.isIntersecting; });
-      for (var i = 0; i < secs.length; i++) if (seen[i]) { mark(secs[i].a); return; }
-    }, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
+    // a section entering or leaving the view re-reads the position too
+    var io = new IntersectionObserver(onScroll, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
     secs.forEach(function (s) { io.observe(s.el); });
   }
+  addEventListener('scroll', onScroll, {passive: true});
+  addEventListener('resize', onScroll);
+  spy();
   // ---- copy a link to each section, beside its title
   function said(btn, text) {
     var s = btn.parentNode.querySelector('.mt-said');
@@ -85,6 +126,10 @@
   pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
   pb.addEventListener('click', function () { window.print(); });
   bar.appendChild(pb);
+  // the button can wrap the chips onto a second row: measure again, and
+  // whenever the bar's height changes (fonts, text size, a narrow window)
+  barH();
+  if ('ResizeObserver' in window) new ResizeObserver(barH).observe(bar);
   // (once per print: a second beforeprint before afterprint keeps the
   // first one's record of what to restore)
   var closed = [], theme = null, printing = false;
@@ -103,6 +148,22 @@
     closed = [];
     if (theme) de.setAttribute('data-theme', theme);
   });
+  // ---- a link to a fold opens it (the Forecast tab's settings note links
+  // #mt-newest): the fold the address names, or every fold holding what it
+  // names, on arrival and when the address changes; then the target is
+  // brought under the bar (its scroll margin is the bar's height)
+  function openFromHash() {
+    var id = location.hash.slice(1), t, d, opened = false;
+    try { id = decodeURIComponent(id); } catch (e) { /* as written */ }
+    t = id && document.getElementById(id);
+    if (!t) return;
+    for (d = t.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+      if (!d.open) { d.open = true; opened = true; }
+    }
+    if (opened) t.scrollIntoView();
+  }
+  openFromHash();
+  addEventListener('hashchange', openFromHash);
  });
 </script>{% endblock %}
 {# the same shell as every page: no main_class override #}
@@ -165,7 +226,7 @@
  forecast hub</a>{% endset %}
  {% call tips.stats("uk-stats--row mt-lead", label="What FluBNF forecasts") %}
   {{ tips.stat("Forecasts", "weekly influenza hospital admissions", id="mt-target") }}
-  {{ tips.stat("Locations", "all 52", "US jurisdictions", id="mt-locs") }}
+  {{ tips.stat("Locations", "53", "locations: 52 jurisdictions plus the national total", id="mt-locs") }}
   {{ tips.stat("Format", hub, id="mt-format") }}
   {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
  {% endcall %}
@@ -232,7 +293,7 @@
   {{ tips.stat("Particles", "10,000", "per state", id="mt-particles") }}
   {{ tips.stat("Liu-West kernel", "0.15", "scale", id="mt-kernel") }}
   {{ tips.stat("Each run starts", "August 1", "", id="mt-start") }}
-  {{ tips.stat("State-season fit", "seconds", "", id="mt-speed") }}
+  {{ tips.stat("State-season fit", "about a minute", "", id="mt-speed") }}
  {% endcall %}
  {{ tips.heading("Each week", "mt-cycle", level=3, cls="mt-h3") }}
  {{ tips.stepper([
@@ -260,7 +321,7 @@
   {{ tips.stat("Sample paths", "30,000", "per state", id="mt-paths") }}
   {{ tips.stat("Donors", "1", "per sample path", id="mt-donor") }}
   {{ tips.stat("Donor window", "2", "epiweeks", id="mt-window") }}
-  {{ tips.stat("Growth blend", "half and half", "", id="mt-blend") }}
+  {{ tips.stat("Growth blend", "half and half", "as registered; one quarter on the filter's growth since the 2026-10-17 round", id="mt-blend") }}
  {% endcall %}
  {{ dg.eq_oracle(kit=(active is defined)) }}
  <div class="mt-folds">
@@ -305,7 +366,7 @@
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
  {# a season label never splits at its hyphen (non-breaking hyphens) #}
- <div style="overflow-x:auto"><table class="mt-rec">
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Record by season (scrolls)"><table class="mt-rec">
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
   {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
                          ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
@@ -351,10 +412,11 @@
  influenza A among typed specimens), which also set the season-start A/B
  mix; both channels are vintage data.</p>
  {% endcall %}
- {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse on the full grid") }}{% endset %}
+ {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse than the blend it was tested in") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
- <p>Stronger at turning points but worse on
- the full grid in the August 2026 evaluation; it stays a research run.</p>
+ <p>Stronger at turning points but worse than
+ the blend it was tested in, in the August 2026 evaluation; it stays a
+ research run.</p>
  {% endcall %}
  </div>
 </div>
@@ -420,7 +482,7 @@
  {% for g in settings_ref %}
  {% call tips.fold(g.title, id="mt-set-" ~ g.id, cls="mt-fold", after=tips.tag(g.rows | length ~ (" setting" if g.rows | length == 1 else " settings"))) %}
  <p class="hint">{{ g.cost }}</p>
- <div class="mt-setscroll"><table class="mt-settings">
+ <div class="mt-setscroll" tabindex="0" role="region" aria-label="{{ g.title }} (scrolls)"><table class="mt-settings">
   <thead><tr><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Range</th><th scope="col">Default</th></tr></thead>
   <tbody>
   {%- for r in g.rows %}
@@ -432,29 +494,39 @@
  </table></div>
  {% endcall %}
  {% endfor %}
+ {% if settings_fixed %}
+ {% call tips.fold("Fixed by the model definition", id="mt-set-fixed", cls="mt-fold", after=tips.tag(settings_fixed | length ~ " settings")) %}
+ <p class="hint">Not settable: each value and why the model fixes it.</p>
+ <div class="mt-setscroll" tabindex="0" role="region" aria-label="Fixed by the model definition (scrolls)"><table class="mt-settings">
+  <thead><tr><th scope="col">Setting</th><th scope="col">Why it is fixed</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+  {%- for l in settings_fixed %}
+   <tr><th scope="row">{{ l.key }}</th><td>{{ l.why }}</td><td data-label="Value">{{ l.value }}</td></tr>
+  {%- endfor %}
+  </tbody>
+ </table></div>
+ {% endcall %}
+ {% endif %}
  </div>
 </div>
 {% endif %}
 
 {# The site harvest drops this card (site_build._PERF_CARD): it must open
-   exactly as below, with no class or id of its own, and be followed
-   directly by a <div class="card". Kit icons are fine here, as the public
-   site never shows it #}
-<div class="card"><h2>Measured performance</h2><span id="performance"></span>
+   exactly as below, with no class of its own and only this id (the
+   contents chip's target, so a jump lands on the card's top edge), and be
+   followed directly by a <div class="card". Kit icons are fine here, as
+   the public site never shows it #}
+<div class="card" id="performance"><h2>Measured performance</h2>
  <div class="mt-bar">
   <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums</span>
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
   <span class="mt-unit mt-end">Replayed weeks
   {%- call tips.toggletip("mt-replay", "the replayed weeks", title="Three seasons replayed on the data each week had") %}
-   <span class="uk-tt-line">A replay's weeks are the hub's dated truth vintages
-   inside the season.</span>
-   <span class="uk-tt-line">Eight scored weeks the hub archive skipped (three in
-   2024-25, five in 2025-26) ship with FluBNF as copies of the hub's own
-   published files (<code>data/vintages/</code>) and are replayed and scored
-   like the rest.</span>
-   <span class="uk-tt-line">Two weeks had no published data and no FluSight round
-   (as of 2024-05-04 and 2025-01-18); the player shows them as
-   placeholders.</span>
+   <span class="uk-tt-line">Eight weeks the hub archive skipped (three in
+   2024-25, five in 2025-26) ship with FluBNF, copied from the hub's own
+   files (<code>data/vintages/</code>), and are scored like the rest.</span>
+   <span class="uk-tt-line">Two weeks had no data and no FluSight round
+   (2024-05-04 and 2025-01-18); the player shows them as placeholders.</span>
   {%- endcall %}</span>
  </div>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
@@ -462,7 +534,7 @@
     (the shipped member); the particle filter alone, its component before
     the step, is an ablation in the Cells fold under the table #}
  {% set rec = oracle_text.RECORD %}
- <div style="overflow-x:auto"><table>
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Measured performance by season (scrolls)"><table>
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
   <tr><td>Oracle SIHRS</td>
    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
@@ -485,24 +557,33 @@
  {{ oracle_text.cells(rec["2025-26"].cells) }};
  {{ oracle_text.cells(rec.three.cells) }} pooled, where the plain filter
  scores {{ oracle_text.fmt(rec.three.filter) }}), not the Groundhog's. The
- particle filter alone, the production engine's replay (reseal of
- 2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.</p>
+ particle filter alone, the private engine's replay (2fdadee0, production
+ before the switch; reseal of 2026-09-07, 15,460 cells): 0.840, 0.797 and
+ 0.846.</p>
  <p>The Groundhog row is its shipped form, on 17,116 cells under
  FluSight's cell rule; the form it replaced scores 0.660 on the same cells,
  the pooled form before that 0.670. The other rows use the earlier rule. Under it the pooled form
  (0.666) and the bare analogue share 15,340 cells; their paired difference
  is below zero in all 4,000 bootstrap replicates.</p>
+ {# Home's third column, which this table does not carry: Home's line
+    under its record sends the reader here for each column's cells #}
+ <p>Home's FluSight Ensemble column is scored on 15,460 cells under the
+ earlier rule.</p>
  {% endcall %}
  </div>
 </div>
 
 <div class="card" id="stack">
  <div class="uk-heading"><h2>Under the hood</h2></div>
- <div style="overflow-x:auto"><table class="mt-stack">
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Components and versions (scrolls)"><table class="mt-stack">
   <tr><th>Component</th><th>Role</th><th>Version</th></tr>
   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
       <td>Fitting suite</td>
-      <td>{{ version("pybnf", versions.pybnf) }}</td></tr>
+      {# the public engine, the default, self-reports 1.8.1, the August
+         release, which has no lwf: its build commit says which one runs.
+         The console's only (the site drops this column) #}
+      {% set ebv = engine_build_view() if active is defined else {} %}
+      <td>{{ version("pybnf", versions.pybnf) }}{% if ebv.engine == "public" and ebv.known and versions.pybnf != "not installed" and "resolving" not in versions.pybnf %}, build {{ ebv.commit }}{% endif %}</td></tr>
   <tr><td><a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a></td>
       <td>Simulator</td>
       {# the self-reported bngsim string can mislead (the seal-era build said
@@ -529,12 +610,15 @@
  </table></div>
  <div class="mt-folds">
  {% call tips.fold("The particle-filter engine", id="mt-engine", cls="mt-fold") %}
- <p>A particle filter (<code>fit_type=pf</code> in a fork of
- <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>).
- BNG2.pl expands the BNGL model into a reaction network once per state when
- a run is prepared; the filter then integrates it in process with
+ <p>The Liu-West filter (<code>job_type = lwf</code> in public
+ <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>,
+ lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the engine switch of
+ 2026-11-09; before it the lab's fork, <code>fit_type = pf</code>, which
+ stays installed as the fallback). BNG2.pl expands the BNGL model into a
+ reaction network once per state when a run is prepared; the filter then
+ integrates it in process with
  <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
- so a state-season fit takes seconds.</p>
+ so a state-season fit takes about a minute.</p>
  <p>Reproducing the sealed record needs bngsim 0.15.1 (pinned by every
  engine installer), whatever version a build reports.</p>
  {# platform-NEUTRAL: site_build publishes this page, so name all three.
@@ -591,17 +675,34 @@
  that cannot be rerun from it (docs/archive/RELEASE-1.0.md).</p>
  {% endcall %}
  {% call tips.fold("A newest week that reads 0, collapses, or was not reported", id="mt-newest", cls="mt-fold") %}
- <p>A newest week that reads 0, collapses, or was not reported
- is the forecaster's decision, per state, made in Data issues on the
+ <p>It is the forecaster's decision, per state, made in Data issues on the
  Forecast tab and recorded with the run: what the Groundhog forecasts from
  when the week reads 0 (abstain, level, extend or blend), or setting the
  newest one or two weeks aside for both models, or leaving the state out.
  Such a choice never marks a run modified (docs/MISSING-DATA.md).</p>
+ <p>A state is listed when its newest week reads 0, falls under a fifth of
+ a week of 20 or more (collapsed), or was not reported. Each choice applies
+ to that run only and is recorded with it.</p>
+ <ul>
+  <li><b>Reads 0:</b> No forecast, the Groundhog abstains. Level, it
+  anchors on the mean of the last 4 weeks (all 0: a Poisson floor).
+  Extend, it carries the last positive week over the 0s. Blend, the mean
+  of level and extend. For all four the Oracle SIHRS keeps the 0.</li>
+  <li><b>Both from a week:</b> both models count the newest week or two as
+  unreported and forecast from that week, every horizon still counted
+  from the forecast date. Keep: as reported. From a week (not reported):
+  the engines' own walk back to the last reported week. Leave out: the
+  state is in neither file.</li>
+  <li><b>Recommended:</b> both from the week before when a 0 or a collapse
+  follows counts of 10 or more (a missed or partial report is likely);
+  level for small counts and runs of 0; keep a collapse when the two weeks
+  before already fell by half each.</li>
+ </ul>
  {% endcall %}
  {% call tips.fold("Two measured caveats", id="mt-sealcaveats", cls="mt-fold") %}
- <p>Two measured caveats (docs/archive/RELEASE-1.0.md): seven
- of 76 sealed weeks' vintages differ from what was public at the deadline,
- and sealed scores use unrounded forecasts (a third-decimal difference).</p>
+ <p>Seven of 76 sealed weeks' vintages differ from what was public at the
+ deadline, and sealed scores use unrounded forecasts (a third-decimal
+ difference); docs/archive/RELEASE-1.0.md has both.</p>
  {% endcall %}
  </div>
 </div>

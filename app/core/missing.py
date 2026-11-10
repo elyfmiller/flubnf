@@ -314,10 +314,15 @@ def unreported_flags(flags) -> dict:
     return out
 
 
+#: a zero-anchor rule as choices_line counts it (the box's words)
+_ZERO_WORDS = {"abstain": "no forecast"}
+
+
 def choices_line(flags, choices: Mapping | None = None) -> str:
     """The run page's "Data issues" value: counts by outcome over the
-    recorded flags and choices, e.g. "3 set aside, 1 left out, 2
-    zero-anchor level"; "" when there is nothing to count."""
+    recorded flags and choices, e.g. "3 set aside, 1 left out, 2 level"
+    (a zero-anchor rule by its word, abstain as "no forecast"); "" when
+    there is nothing to count."""
     seen: dict = {}
     for m, rows in (flags or {}).items():
         for r in rows or ():
@@ -327,11 +332,13 @@ def choices_line(flags, choices: Mapping | None = None) -> str:
             elif rule == LEFT_OUT_RULE:
                 seen.setdefault(("left out", r.get("location")), 1)
             elif rule.startswith(ZERO_ANCHOR_NOTE):
-                seen.setdefault((rule, r.get("location")), 1)
+                word = rule.removeprefix(ZERO_ANCHOR_NOTE).strip()
+                seen.setdefault((_ZERO_WORDS.get(word, word),
+                                 r.get("location")), 1)
     counts: dict = {}
     for (what, _loc) in seen:
         counts[what] = counts.get(what, 0) + 1
-    order = ["set aside", "left out"] + [f"{ZERO_ANCHOR_NOTE} {r}"
+    order = ["set aside", "left out"] + [_ZERO_WORDS.get(r, r)
                                         for r in ZERO_ANCHOR_RULES]
     bits = [f"{counts[k]} {k}" for k in order if k in counts]
     bits += [f"{counts[k]} {k}" for k in sorted(counts) if k not in order]

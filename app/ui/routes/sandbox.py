@@ -101,14 +101,27 @@ def _sandbox_redirect(model: str = "", run: str = "") -> RedirectResponse:
 def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
                          priors_conf: str) -> list:
     """Save the editor fields that were posted non-empty (a script or an
-    alias posting none blanks nothing); the names of the files saved."""
+    alias posting none blanks nothing) and differ from the file on disk
+    (an unchanged file keeps its time); the names of the files saved."""
+    d = sandbox_mod.MODELS / sandbox_mod.check_name(name)
+
+    def same(f: str, v: str) -> bool:
+        try:
+            return (d / f).read_text(encoding="utf-8") == v.replace("\r\n", "\n")
+        except (OSError, UnicodeDecodeError):
+            return False
     files = {f: v for f, v in (("model.bngl", model_bngl),
                                ("data.exp", data_exp),
                                ("priors.conf", priors_conf))
-             if (v or "").strip()}
+             if (v or "").strip() and not same(f, v)}
     if files:
         sandbox_mod.save_model(name, files)
     return sorted(files)
+
+
+def _weeks(n: int, what: str = "week") -> str:
+    """'1 week', '3 weeks'."""
+    return f"{n} {what}{'' if n == 1 else 's'}"
 
 
 # ------------------------------------------------------ the page (GET)
@@ -121,13 +134,23 @@ FIRST_START = "sir_example"
 _sandbox_new_refused: dict = {}
 
 
-def _free_name(stem: str, taken: set) -> str:
-    """The first of stem_1, stem_2, ... that no model has: the name the
-    New model form fills in, so a first visit need not invent one."""
+#: the longest a model name may be (sandbox.NAME_RE, check_name)
+_NAME_MAX = 64
+
+
+def _free_name(stem: str, taken: set, tail: str = "") -> str:
+    """The first of stem_1, stem_2, ... (stem_copy_1 ... with a tail) that
+    no model has: the name the New model form fills in, so a first visit
+    need not invent one. A long stem is cut so the name, its tail and
+    number whole, fits the 64 characters a name may have (as the Oracle
+    start's suggested name is cut in sandbox.js)."""
     n = 1
-    while f"{stem}_{n}" in taken:
+    while True:
+        end = f"{tail}_{n}"
+        name = stem[:_NAME_MAX - len(end)] + end
+        if name not in taken:
+            return name
         n += 1
-    return f"{stem}_{n}"
 
 
 @router.get("/sandbox", response_class=HTMLResponse)
@@ -201,7 +224,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
            "example_names": {e: _free_name(e, taken)
                              for e in examples + ["skeleton", "variant"]},
-           "copy_names": {m: _free_name(m + "_copy", taken) for m in taken},
+           "copy_names": {m: _free_name(m, taken, "_copy") for m in taken},
            # a refused New model form comes back as it was posted (SB-09)
            "new_form": _sandbox_new_refused.pop("form", {}),
            "runs": runs,
@@ -513,19 +536,30 @@ def _sandbox_fill_flash(info: dict) -> None:
     one = " (one series)" if info.get("one_series") else ""
     # the weeks loaded, not the range asked for
     wk = info.get("dates") or [info["start"], info["end"]]
-    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
+    msg = (f"data.exp filled: {_weeks(info['rows'])} of {info['location']}"
            f"{one}, {wk[0]} to {wk[-1]}.")
     detail = f"Source: {what}."
     if info["dropped"]:
-        detail += f" {info['dropped']} missing weeks dropped."
+        detail += f" {_weeks(info['dropped'], 'missing week')} dropped."
     if info.get("population_set"):
         detail += f" N set to {info['population_set']:,}."
     rate = info.get("kind") == "rate"
     if rate:
         # to act on: said on the line, the why in the tip
-        msg += " Rates: set objfunc in priors.conf."
-        detail += " The default objfunc expects counts."
+        msg += " Rates: a fit reads counts, so load counts to fit this data."
+        detail += (" The fit's likelihood, objfunc neg_bin_dynamic, is for "
+                   "weekly counts.")
     _flash(msg, "warn" if rate else "ok", detail=detail)
+
+
+def _say_saved(saved: list, replaced: bool = False) -> None:
+    """Name the editor's files that Load, Simulate or Upload saved before
+    acting. data.exp is left out only once the action has replaced it; an
+    action that stopped short (a refused Load, an upload with no file or
+    of several groups) leaves the edit on disk, so it is named."""
+    said = [f for f in saved if not (replaced and f == "data.exp")]
+    if said:
+        _flash(f"Saved {', '.join(said)} first.", "ok")
 
 
 @router.post("/sandbox/models/{name}/fill-data")
@@ -542,10 +576,9 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
     location's population (refused for a model that derives i0 from N)."""
     pop = bool(set_pop)
     src = (source or "settled").strip()
+    saved, filled = [], False
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
-        if saved:
-            _flash(f"Saved {', '.join(saved)} first.", "ok")
         if src.startswith("dataset:"):
             info = sandbox_mod.fill_data(name, (group or "").strip(),
                                          (start or "").strip(),
@@ -557,8 +590,12 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
                 name, (location or "").strip(), (start or "").strip(),
                 (end or "").strip(), asof=None if src == "settled" else src,
                 set_pop=pop)
+        filled = True
+        _say_saved(saved, replaced=True)
         _sandbox_fill_flash(info)
     except Exception as e:
+        if not filled:
+            _say_saved(saved)
         _not_done("Not filled", e)
     return _sandbox_redirect(name)
 
@@ -571,20 +608,23 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     gives at the values model.bngl writes, over data.exp's own weeks, so a
     fit can be seen to recover values that are known. The editor's text
     is saved first."""
+    saved, filled = [], False
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
-        if saved:
-            _flash(f"Saved {', '.join(saved)} first.", "ok")
         s = int(sim_seed) if str(sim_seed).strip().isdigit() else 1
         f = sandbox_mod.simulate_data(name, seed=s)
+        filled = True
+        _say_saved(saved, replaced=True)
         noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
                  else "Poisson noise")
         # what a fit on them should find is the Simulate button's tip
-        _flash(f"data.exp filled with {f['rows']} simulated weeks of "
+        _flash(f"data.exp filled with {_weeks(f['rows'], 'simulated week')} of "
                f"{f['column']}.", "ok",
                detail=f"Drawn from the model at the values written in "
                f"model.bngl, with {noise}.")
     except Exception as e:
+        if not filled:
+            _say_saved(saved)
         _not_done("Not simulated", e)
     return _sandbox_redirect(name)
 
@@ -625,6 +665,26 @@ async def _sandbox_capped_form(request: Request, cap: int):
         max_files=1, max_fields=40, max_part_size=_SANDBOX_BODY_SLACK)
 
 
+#: the dataset store's column advice, for the Data tab's upload, which has
+#: the column mapping; the Sandbox's upload has none, so it points there.
+#: The example may hold its own ')' (a repeated name is 'cases (#2)').
+_COLUMN_CHOICE = (
+    (re.compile(r" Choose which column holds each\.$"),
+     (" Name the columns so in the file, or upload it on the Data tab, "
+      "where the columns can be chosen.")),
+    (re.compile(r" Choose one \(e\.g\., .*\), or keep only one in the "
+                r"file\.$"),
+     (" Keep only one in the file, or upload it on the Data tab, where the "
+      "column can be chosen.")))
+
+
+def _sandbox_columns_advice(problem: str) -> str:
+    """A refusal's column advice as the Sandbox can act on it."""
+    for pat, words in _COLUMN_CHOICE:
+        problem = pat.sub(words, problem)
+    return problem
+
+
 @router.post("/sandbox/models/{name}/upload-data")
 async def sandbox_upload_data(request: Request, name: str):
     """A CSV of your own (grouped date,target_group,value[,population],
@@ -653,13 +713,12 @@ async def sandbox_upload_data(request: Request, name: str):
         saved = await run_in_threadpool(
             _sandbox_save_posted, name, str(form.get("model_bngl") or ""),
             str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""))
-        if saved:
-            _flash(f"Saved {', '.join(saved)} first.", "ok")
     except Exception as e:
         _not_done("Not saved", e)
         return _sandbox_redirect(name)
     up = form.get("csv")
     if not isinstance(up, UploadFile) or not up.filename:
+        _say_saved(saved)
         _sandbox_upload_report[name] = {"problems": ["Choose a CSV file to upload."]}
         return _sandbox_redirect(name)
     kind = str(form.get("kind") or "")          # '' = from the values
@@ -667,22 +726,34 @@ async def sandbox_upload_data(request: Request, name: str):
         ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
                                      up.filename, kind, cap)
     except sandbox_mod.UploadRefused as e:
-        _sandbox_upload_report[name] = {"problems": e.problems or [str(e)]}
+        _say_saved(saved)
+        _sandbox_upload_report[name] = {"problems": [
+            _sandbox_columns_advice(p) for p in (e.problems or [str(e)])]}
         return _sandbox_redirect(name)
+    except Exception:
+        _say_saved(saved)
+        raise
     finally:
         await up.close()
     warn = list(ds.meta.get("warnings") or [])
     if len(ds.groups) == 1:
+        filled = False
         try:
             info = await run_in_threadpool(sandbox_mod.fill_data, name,
                                            ds.groups[0], "", "",
                                            dataset=ds.id)
+            filled = True
             info["one_series"] = bool((ds.meta.get("columns") or {})
                                       .get("series"))
+            _say_saved(saved, replaced=True)
             _sandbox_fill_flash(info)
         except Exception as e:
+            if not filled:
+                _say_saved(saved)
             _not_done(f"Stored {ds.name}; data.exp not filled", e)
     else:
+        # nothing loaded: the edit to data.exp stays, so it is named
+        _say_saved(saved)
         _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick one "
                "under Load data.", "ok")
     if warn:
@@ -692,6 +763,17 @@ async def sandbox_upload_data(request: Request, name: str):
 
 
 # ---------------------------------------------------------------- runs
+
+def _opens(name: str) -> bool:
+    """Whether the page opens this model, as sandbox_page does: its editor
+    and the notice above it are shown only then."""
+    try:
+        sandbox_mod.check_name(name)
+        sandbox_mod.read_model(name)
+        return True
+    except Exception:
+        return False
+
 
 def _sandbox_start(name: str, *, particles: int, jitter: float,
                    forecast_weeks: int, seed: int) -> RedirectResponse:
@@ -713,7 +795,14 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
     except Exception as e:
         with _engine_lock:
             _sandbox_status.update(claim=None, cancel=False)
-        _not_done("Not started", e)
+        if (isinstance(e, sandbox_mod.MachineProblem)
+                and sandbox_mod.machine_problem() and _opens(name)):
+            # the page's own notice says why and what to do (it is there
+            # only when the model opens; else the reason is said here)
+            _flash("Not started: this computer cannot fit yet; the notice "
+                   "above the editor says why.", "warn")
+        else:
+            _not_done("Not started", e)
         return _sandbox_redirect(name)
     run_id = workroot.name
     with _engine_lock:

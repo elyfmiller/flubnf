@@ -127,7 +127,7 @@ def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
     # refused before the engine is claimed, never clamped
     assert len(started) == 1
     assert ui_state._status.get("running") is None
-    assert "pf.particles" in ui_state._status.get("flash", "")
+    assert "pf.particles" in str(ui_state._last_form.get("ms_refused"))
 
 
 # ----------------------------------------------------------------- the tag

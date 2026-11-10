@@ -12,8 +12,11 @@ _weekly_report_file here. An APIRouter server.py includes.
 from __future__ import annotations
 
 import hashlib
+import itertools
+import os
 import re
 import sys
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -303,7 +306,8 @@ def _date_status(ref: str, today=None, now=None) -> dict:
     "badge": (kit state, words)}; {} when the rules cannot be read. A due or
     coming round also carries "deadline" (the close as ISO UTC, for the
     page to name in the reader's own time) and "deadline_et" (the same
-    close in Eastern words, shown until the page script runs); a due one
+    close in Eastern words, shown until the page script runs), and "flips"
+    (the instants, ISO UTC, at which its badge changes next); a due one
     "left" (time left,
     _time_left; "" when `today` stands in for the clock) and "urgent"
     (under URGENT_HOURS left: the badge turns error)."""
@@ -322,13 +326,23 @@ def _date_status(ref: str, today=None, now=None) -> dict:
         return {}
     kind, words = _WINDOW_BADGE[state]
     out = {"state": state, "text": text, "left": "", "urgent": False,
-           "deadline": "", "deadline_et": ""}
+           "deadline": "", "deadline_et": "", "flips": []}
     if window and state in ("due", "soon"):
         close = _deadline_utc(window[1])
         out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
         out["deadline_et"] = f"{window[1]:%a %Y-%m-%d}, 11 PM ET"
-        if state == "due" and today is None:
+        if today is None:
             clock = now or _dt.datetime.now(_dt.timezone.utc)
+            # when the badge next changes (the window opens at midnight
+            # Eastern on its first day, turns urgent, closes): a page left
+            # open reloads then (output.html)
+            opens = (_deadline_utc(window[0] - _dt.timedelta(days=1))
+                     + _dt.timedelta(hours=24 - HUB_CLOSE_HOUR))
+            urgent_at = close - _dt.timedelta(hours=URGENT_HOURS)
+            out["flips"] = [t.strftime("%Y-%m-%dT%H:%M:%SZ")
+                            for t in ((opens,) if state == "soon"
+                                      else (urgent_at, close)) if t > clock]
+        if state == "due" and today is None:
             out["left"] = _time_left(close, clock)
             out["urgent"] = bool(out["left"]) and (
                 close - clock).total_seconds() < URGENT_HOURS * 3600
@@ -347,25 +361,143 @@ def _date_window(ref: str, today=None, now=None) -> str:
     return _date_status(ref, today=today, now=now).get("text", "")
 
 
-#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once
+#: path -> (mtime_ns, size, hubcheck.summary); a file is checked once,
+#: and the result kept on disk (CHECKS_FILE in the state folder) so a
+#: relaunch does not check every listed file again. One entry per file:
+#: a newer version of a file replaces its older one, a file no longer
+#: there is dropped when the results are written, and past CHECKS_MAX
+#: files the one checked longest ago goes first. Request threads share
+#: the dict: every read and change of it holds _CHECKED_LOCK, and the
+#: checks themselves run outside it.
 _CHECKED: dict = {}
+CHECKS_FILE = "hubcheck_results.json"
+CHECKS_MAX = 4096
+_CHECKS_READ: set = set()
+_CHECKED_LOCK = threading.Lock()
+#: one writer at a time, each from a snapshot taken in its turn, so an
+#: older snapshot never replaces a newer one on disk
+_KEEP_LOCK = threading.Lock()
+
+
+def _rules_digest() -> str:
+    """The checks' own version: hubcheck's code and its vendored tasks.json.
+    A result kept on disk holds only while both are the ones that made it."""
+    from app.core import hubcheck
+    h = hashlib.sha256()
+    for p in (Path(hubcheck.__file__), Path(hubcheck.VENDORED_TASKS)):
+        try:
+            h.update(p.read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:16]
+
+
+def _checks_path() -> Path:
+    from app.core.runs import APP_STATE
+    return Path(APP_STATE) / CHECKS_FILE
+
+
+def _bound_checks() -> None:
+    """Past CHECKS_MAX files, drop the ones checked longest ago (the dict
+    keeps the order results came in). Called with _CHECKED_LOCK held."""
+    extra = len(_CHECKED) - CHECKS_MAX
+    if extra > 0:
+        for path in list(itertools.islice(_CHECKED, extra)):
+            del _CHECKED[path]
+
+
+def _read_checks() -> None:
+    """The results kept on disk, once per state folder; "due" is not kept
+    (summary's window for the reference date, rebuilt here). A file this
+    process has checked already keeps its own result."""
+    import json
+    from app.core import hubcheck
+    p = _checks_path()
+    with _CHECKED_LOCK:
+        if str(p) in _CHECKS_READ:
+            return
+        _CHECKS_READ.add(str(p))
+    rows = []
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if d.get("rules") != _rules_digest():
+            return
+        for path, mtime, size, s in d.get("files") or []:
+            ref = s.get("reference_date") or ""
+            s["due"] = hubcheck.submission_window(ref) if s.get("round") else None
+            rows.append((str(path), int(mtime), int(size), s))
+    except Exception:
+        return                        # unreadable: the files are checked again
+    with _CHECKED_LOCK:
+        for path, mtime, size, s in rows:
+            if path not in _CHECKED:
+                _CHECKED[path] = (mtime, size, s)
+        _bound_checks()
+
+
+def _keepable(s: dict) -> bool:
+    """An unreadable file is a moment's state, not a result to keep."""
+    return not any(str(x).startswith("unreadable:")
+                   for x in s.get("problems") or ())
+
+
+def _keep_checks() -> None:
+    """Write the results to disk, replaced whole: one entry per file still
+    there, oldest checked first. It walks a snapshot of the dict taken
+    under its lock (another request may add to the dict meanwhile), and
+    writes through a temporary file of its own (as report_season does)."""
+    import json
+    p = _checks_path()
+    with _KEEP_LOCK:
+        with _CHECKED_LOCK:
+            snap = list(_CHECKED.items())
+        rows, gone = [], []
+        for path, (mtime, size, s) in snap:
+            if not os.path.isfile(path):
+                gone.append((path, s))
+            elif _keepable(s):
+                rows.append([path, mtime, size,
+                             {f: v for f, v in s.items() if f != "due"}])
+        if gone:
+            with _CHECKED_LOCK:
+                for path, s in gone:
+                    e = _CHECKED.get(path)
+                    if e is not None and e[2] is s:     # not checked again since
+                        del _CHECKED[path]
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            tmp.write_text(json.dumps({"rules": _rules_digest(),
+                                       "files": rows}), encoding="utf-8")
+            os.replace(tmp, p)
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _check_summary(path: str) -> dict:
-    """hubcheck.summary of one file, cached per file version."""
+    """hubcheck.summary of one file, cached per file version (on disk too)."""
     from app.core import hubcheck
+    _read_checks()
     try:
         st = Path(path).stat()
         key = (str(path), st.st_mtime_ns, st.st_size)
     except OSError:
         key = None
-    s = _CHECKED.get(key) if key else None
-    if s is None:
-        s = hubcheck.summary(path)
-        if key:
-            if len(_CHECKED) > 512:
-                _CHECKED.clear()
-            _CHECKED[key] = s
+    if key:
+        with _CHECKED_LOCK:
+            e = _CHECKED.get(key[0])
+        if e is not None and e[:2] == key[1:]:
+            return e[2]
+    s = hubcheck.summary(path)
+    if key:
+        with _CHECKED_LOCK:
+            _CHECKED.pop(key[0], None)      # its older version; newest last
+            _CHECKED[key[0]] = (key[1], key[2], s)
+            _bound_checks()
+        if _keepable(s):
+            _keep_checks()
     return s
 
 
@@ -611,6 +743,7 @@ def output_stamp() -> dict:
 
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
+    import datetime as _dt
     from app.core import archive_record as _ar
     from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
@@ -639,6 +772,11 @@ def output_page(request: Request):
         win = (d.get("status") or {}).get("state") in ("due", "soon")
         for f in d["files"]:
             f["validate"] = validator_command(f["path"], window=win)
+    # the server's clock as the page goes out, to the second (rounded
+    # down): the page's countdown keeps time by it, so a browser whose
+    # clock runs ahead does not reload before a badge has changed here
+    server_now = _dt.datetime.now(_dt.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
@@ -666,7 +804,7 @@ def output_page(request: Request):
         "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
         "report_modified": report_modified,
-        "stamp": stamp})
+        "stamp": stamp, "server_now": server_now})
 
 
 @router.get("/api/output/stamp")
@@ -698,18 +836,27 @@ def _not_found(request: Request):
 
 
 @router.get("/output/download")
-def output_download(request: Request, path: str):
-    """Download a submission CSV. The file must be inside app state, and a
-    submission/ file must sit under a registered hub model's directory (the
-    listings' rule, enforced here for hand-edited URLs)."""
+def output_download(request: Request, path: str = ""):
+    """Download a submission CSV. The file must be inside app state, a CSV
+    in a model's folder under submission/ or a dataset run's export/ (the
+    files the console links; never the ledger, the form memory or a run's
+    results), and a submission/ file must sit under a registered hub
+    model's directory (the listings' rule, enforced here for hand-edited
+    URLs). No path at all is a file that is not there."""
     from fastapi.responses import FileResponse
+    from app.core.custom_run import EXPORT_DIR
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
+    if not path:                        # no file named: nothing to serve
+        return _not_found(request)
     try:
         p = Path(path).resolve()
     except (OSError, ValueError):       # a NUL byte or an unusable name
         return _not_found(request)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
+        return _not_found(request)
+    if p.suffix.lower() != ".csv" \
+            or p.parent.parent.name not in ("submission", EXPORT_DIR):
         return _not_found(request)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)
@@ -749,32 +896,45 @@ def _reveal_command(p: Path, platform: str | None = None):
 
 
 @router.post("/output/reveal")
-def output_reveal(request: Request, path: str = Form(...)):
+def output_reveal(request: Request, path: str = Form("")):
     """Show the file in Finder / Explorer (a local desktop app), then back
     to the page that asked (a run page or Output); a warning there when no
-    file manager could be opened on it."""
+    file manager could be opened on it. A script caller that accepts JSON
+    (the season page's Show in folder) gets {ok, message, detail} instead
+    of the redirect, so it can show the warning itself (the redirect's page
+    would eat the flash)."""
     import subprocess
+    from fastapi.responses import JSONResponse
     from app.core.runs import APP_STATE
+    wants_json = "application/json" in request.headers.get("accept", "")
+
+    def answer(message: str = "", detail: str = ""):
+        if wants_json:
+            return JSONResponse({"ok": not message, "message": message,
+                                 "detail": detail})
+        if message:
+            shared._flash(message, "warn", detail=detail)
+        return shared._back(request, "/output")
     try:
-        p = Path(path).resolve()
+        # no path at all (a hand-made request) is nothing to open, never the
+        # working folder "" would resolve to
+        p = Path(path).resolve() if path else None
     except (OSError, ValueError):       # a NUL byte or an unusable name
         p = None
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p is None or not (p.is_relative_to(APP_STATE.resolve())
                          and p.exists()):
-        shared._flash("Nothing opened: the file is not in app state any "
-                      "more.", "warn",
-                      detail="It may have been deleted or moved; Storage "
-                             "lists what is on disk.")
-        return shared._back(request, "/output")
+        return answer("Nothing opened: the file is not in app state any "
+                      "more.",
+                      "It may have been deleted or moved; Storage lists "
+                      "what is on disk.")
     try:
         subprocess.Popen(_reveal_command(p))
     except OSError as e:
-        shared._flash("Nothing opened: no file manager could be started.",
-                      "warn", detail=f"{type(e).__name__}: {e}. The file "
-                                     f"is at {p}.")
-    return shared._back(request, "/output")
+        return answer("Nothing opened: no file manager could be started.",
+                      f"{type(e).__name__}: {e}. The file is at {p}.")
+    return answer()
 
 
 #: report path -> builder-sources mtime of a failed rebuild: retry once per
@@ -830,10 +990,16 @@ def _report_for_serving(dirpath: Path) -> str:
 
 
 def _bad_date(date: str, request: Request):
-    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
+    """The 400 for a malformed or impossible ?date= (2026-13-45); None when
+    it is a real YYYY-MM-DD."""
     import re
+    from datetime import date as _date
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        return None
+        try:
+            _date.fromisoformat(date)
+            return None
+        except ValueError:
+            pass
     return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
 
 
@@ -847,7 +1013,8 @@ def output_report(request: Request, date: str = ""):
             return bad
         d = APP_STATE / "archive" / date
         if not (d / "report.html").is_file():
-            return _notice(request, 200, "empty",
+            # 404, as the same date's download answers
+            return _notice(request, 404, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
     # the shipped rule: Home's report button and its map link come here,
@@ -880,7 +1047,8 @@ def _weekly_report_name(date: str, suffix: str = "") -> str:
 def _report_suffix(dirpath: Path) -> str:
     """The suffix the report's own run put on its files: "-modified" for
     modified settings without the override (pipeline names them so), ""
-    otherwise. The run is the workroot's id, or the run an archive holds."""
+    otherwise. The run is the workroot's id, or the run an archive holds;
+    its ledger row says, else the folder's own record (_folder_suffix)."""
     from app.core import archive_record as _ar
     from app.core.runs import Ledger, is_run_id
     d = Path(dirpath)
@@ -890,7 +1058,37 @@ def _report_suffix(dirpath: Path) -> str:
         spec = ((Ledger().row(rid) or {}).get("spec") or "") if rid else ""
     except Exception:
         spec = ""
-    return "" if not spec or _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+    if not spec:
+        return _folder_suffix(d)
+    return "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+
+
+def _folder_suffix(d: Path) -> str:
+    """_report_suffix for a run with no ledger row (the ledger cleared, or
+    the row deleted and its workroot kept): what the folder itself
+    records. results.json's spec, as the pipeline named the files from;
+    else knobs.json (written for a modified run only; its override puts
+    the hub names back); else the submission folders' own names."""
+    import json as _json
+    try:
+        spec = _json.loads((d / "results.json").read_text(
+            encoding="utf-8")).get("spec") or ""
+    except Exception:
+        spec = ""
+    if spec:
+        return "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
+    try:
+        kn = _json.loads((d / "knobs.json").read_text(encoding="utf-8"))
+    except Exception:
+        kn = None
+    if isinstance(kn, dict):
+        return "" if kn.get("override") else _knobs.MODIFIED_SUFFIX
+    try:
+        subs = [p.name for p in (d / "submission").iterdir() if p.is_dir()]
+    except Exception:
+        subs = []
+    return (_knobs.MODIFIED_SUFFIX
+            if any(n.endswith(_knobs.MODIFIED_SUFFIX) for n in subs) else "")
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,

@@ -230,6 +230,32 @@ def _us_words(card: dict | None) -> str:
     return f"{top.replace('_', ' ')} {float(probs[top]):.0%}"
 
 
+def _gray_words(card_sets: list, scope: set | None,
+                gaps: set | None) -> str:
+    """The legend's words for the plain gray, as the hovers word the states
+    that wear it under any model the toggle shows: "no data" while the
+    run's scope is unknown; else "not in this run" for a state outside the
+    scope, "no forecast" for one inside it that a model made no forecast
+    for (a reporting gap wears the hatch, not this gray), or both."""
+    if scope is None:
+        return "no data"
+    from app.core import usmap
+    outside = inside = False
+    for fips in usmap.state_paths():
+        for cards in card_sets:
+            card = cards.get(fips, {})
+            # svg_map's own test for the hatch (usmap._state_view)
+            if card.get("probs") or usmap._is_gap(fips, card, scope, gaps):
+                continue
+            if fips in scope:
+                inside = True
+            else:
+                outside = True
+    if inside and outside:
+        return "not in this run or no forecast"
+    return "no forecast" if inside else "not in this run"
+
+
 @ttlcache.ttl_cache(ttl_s=300.0)
 def _outlook_block_cached(rid: str | None, mtime: float,
                           has_report: bool = False) -> dict:
@@ -276,15 +302,15 @@ def _outlook_block_cached(rid: str | None, mtime: float,
         gaps = outlook_src.get("gap_fips") if outlook_src else None
         gaps = set(gaps) if gaps is not None else None
         why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
-        map_svg = (f"<div class='{MAP_BOX}'>"
-                   + ("<script>window.MAP_LINK='/output/report';</script>"
-                      if has_report else "")
-                   + svg_map(cards,
-                             clickable=with_data if has_report else set(),
-                             scope_fips=scope, gap_fips=gaps,
-                             reasons=why.get(outlook_src.get("model")))
-                   + map_legend("not in this run" if scope is not None
-                                else "no data") + "</div>")
+        map_head = (f"<div class='{MAP_BOX}'>"
+                    + ("<script>window.MAP_LINK='/output/report';</script>"
+                       if has_report else "")
+                    + svg_map(cards,
+                              clickable=with_data if has_report else set(),
+                              scope_fips=scope, gap_fips=gaps,
+                              reasons=why.get(outlook_src.get("model"))))
+        # the gray's words cover every model the toggle can show
+        gray_sets = [cards]
         # toggle from the v3 bundle's per-model cards, else the approximate
         # sets; fewer than two models -> label only, never a dead control
         try:
@@ -310,8 +336,11 @@ def _outlook_block_cached(rid: str | None, mtime: float,
                     group_id="outlook-model", btn_class="quiet",
                     active_class="gold", wrap_class="uk-seg",
                     short_labels=report_v2.MODEL_SHORT)
+                gray_sets += [by_model[m] for m in order]
         except Exception:
             outlook_toggle = ""
+        map_svg = (map_head + map_legend(_gray_words(gray_sets, scope, gaps))
+                   + "</div>")
     except Exception:
         pass
     return {"map_svg": map_svg, "outlook_date": outlook_date,
@@ -344,7 +373,8 @@ def _has_report(rid: str | None) -> bool:
 ENGINE_NAME = "Particle-filter engine"
 _CHECK_NAMES = {"FLUBNF_HUB": "FluSight data", "FLUBNF_BNG": "BioNetGen",
                 "perl": "Perl", "FLUBNF_PY_ENGINE": ENGINE_NAME,
-                "FLUBNF_PYBNF": ENGINE_NAME}
+                "FLUBNF_PYBNF": ENGINE_NAME,
+                "FLUBNF_PY_ENGINE_PUBLIC": ENGINE_NAME}
 _VERSION_NAMES = (("pybnf", ENGINE_NAME), ("bngsim", ENGINE_NAME),
                   ("bionetgen", "BioNetGen"), ("perl", "Perl"),
                   ("fastapi", "FastAPI"), ("plotly", "Plotly"))
@@ -359,6 +389,9 @@ _ROW_WORDS = {
     "FLUBNF_PY_ENGINE": "The particle filter's own Python, with PyBNF and "
                         "bngsim",
     "FLUBNF_PYBNF": "The PyBNF fork that holds the particle filter",
+    "FLUBNF_PY_ENGINE_PUBLIC": "The public engine's own Python, with "
+                               "lanl/PyBNF and bngsim from "
+                               "engine-requirements.txt",
 }
 
 
@@ -456,7 +489,31 @@ def home(request: Request):
         # launch): the page recounts when the probe lands
         "setup_pending": any(v == VERSION_PENDING
                              for v in VERSIONS.values()),
-        "engine_name": ENGINE_NAME})
+        "engine_name": ENGINE_NAME,
+        # the engine this copy runs, in words, and the switch to the
+        # private engine when the default is missing and that one is
+        # installed here
+        "engine_words": _engine_words(),
+        "engine_fallback": _engine_fallback()})
+
+
+def _engine_words() -> str:
+    """The engine this copy runs, in words (engine_build.engine_words);
+    "" when it cannot be said."""
+    try:
+        from app.core.engine_build import engine_words
+        return engine_words()
+    except Exception:
+        return ""
+
+
+def _engine_fallback():
+    """templating._engine_fallback_hint, or "" when it cannot be read."""
+    try:
+        from app.ui.templating import _engine_fallback_hint
+        return _engine_fallback_hint()
+    except Exception:
+        return ""
 
 
 def _engine_known() -> bool:

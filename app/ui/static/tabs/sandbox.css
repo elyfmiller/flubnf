@@ -140,6 +140,8 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
 .sb-settings{margin:0}
 .sb-sample{margin:.1rem 0 .2rem}
 .sb-rsec{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--line)}
+/* a failed or stopped run has no plot: the summary's rule is the one */
+.sb-rsum + .sb-rsec{border-top:0;padding-top:0}
 .sb-rsec > .uk-heading{margin-bottom:.3rem}
 .sb-cmprow{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;margin:0}
 .sb-cmprow > label{margin:0;white-space:nowrap}
@@ -205,6 +207,13 @@ pre.sb-viewerr{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0;
      inside the screen (right:0 hung it off the left) */
   .sbhead-menus > details.sbmanage{position:static}
   .sbhead-menus .sbmenu{left:0;right:auto}
+  /* at large text Manage's rows outgrow the menu: each row wraps
+     (Duplicate under the name field, Delete model under Download), the
+     field drops its fixed width (nau.css .sbmenu) to fill its line, and
+     a label wider than the menu (Download at 160%) breaks onto two lines */
+  .sbmenu .row{flex-wrap:wrap}
+  .sbmenu input{flex:1 1 9rem;width:100%;min-width:0}
+  .sb-menurow a.btn,.sb-menurow button{white-space:normal}
   .sb-title > h1{overflow-wrap:anywhere}
   .sbtabs{flex-wrap:wrap;border-bottom:0}
   .sbtablist{flex:1 1 100%;overflow-x:auto;border-bottom:1px solid var(--line)}

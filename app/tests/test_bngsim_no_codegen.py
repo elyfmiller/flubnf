@@ -6,9 +6,11 @@ compiler on PATH.
 
 Skipped unless FLUBNF_BNGSIM_REAL=1 (the windows-own-perl CI job): it needs
 bngsim and a perl that runs BNG2.pl, and a missing one then fails rather
-than skips. The engine itself is private and cannot run in CI; what it
+than skips. The private engine (the fallback) cannot run in CI; what it
 does with the flag is read from its source (BngsimModel skips
-prepare_codegen when BNGSIM_NO_CODEGEN is set).
+prepare_codegen when BNGSIM_NO_CODEGEN is set). The public engine, the
+default, gets the same environment on Windows (lwf.py's runners start
+through pf.runner_popen_kwargs).
 """
 import logging
 import os

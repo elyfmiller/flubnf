@@ -154,9 +154,8 @@ def test_the_warning_names_the_build_and_the_fix_names_the_path():
                    "to the private fork (a checkout cloned from a bundle), "
                    "rename the engine folder so FluBNF stops using it, then "
                    "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder "
-                   "and double-click SetupEngine.command in the FluBNF folder "
-                   "(or run ./setup_engine.sh there). Research runs may use "
-                   "other builds on purpose.")
+                   "and run ./setup_engine.sh --private in the FluBNF folder. "
+                   "Research runs may use other builds on purpose.")
     assert "stash" not in EB.fix(dict(OTHER, dirty=False))
 
 
@@ -166,12 +165,70 @@ def test_the_archive_step_names_this_machines_installer():
         "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and open "
         "FluBNF.bat again")
     assert EB.archive_step("darwin") == (
-        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and "
-        "double-click SetupEngine.command in the FluBNF folder (or run "
-        "./setup_engine.sh there)")
+        "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and run "
+        "./setup_engine.sh --private in the FluBNF folder")
     assert EB.archive_step("linux") == (
         "save pybnf-pf-2fdadee0.tar.gz in your Downloads folder and run "
-        "./setup_engine.sh in the FluBNF folder")
+        "./setup_engine.sh --private in the FluBNF folder")
+
+
+def test_the_private_remedies_name_the_private_route():
+    """A bare ./setup_engine.sh installs the public engine on a copy with
+    no record, so every private remedy names --private (Windows: FluBNF.bat
+    reads setup.ps1's record)."""
+    assert EB.setup_step("win32") == "open FluBNF.bat again"
+    # (the double-click form needs a private record: test_engine_cutover_fixes)
+    assert EB.setup_step("darwin") == (
+        "run ./setup_engine.sh --private in the FluBNF folder")
+    assert EB.setup_step("linux") == (
+        "run ./setup_engine.sh --private in the FluBNF folder")
+
+
+@pytest.mark.parametrize("platform, engine, long, short", [
+    ("darwin", "private", "./setup_engine.sh --private in the FluBNF folder",
+     "./setup_engine.sh --private"),
+    ("linux", "public", "./setup_engine.sh --public in the FluBNF folder",
+     "./setup_engine.sh --public"),
+    # Windows: the line to type, as FluBNF.bat prints it (setup.ps1 typed
+    # alone opens in an editor, or is refused by PowerShell's policy)
+    ("win32", "private", "powershell -NoProfile -ExecutionPolicy Bypass "
+     "-File setup.ps1 -Engine private in the FluBNF folder, then open "
+     "FluBNF.bat again", "setup.ps1 -Engine private"),
+    ("win32", "public", "powershell -NoProfile -ExecutionPolicy Bypass "
+     "-File setup.ps1 -Engine public in the FluBNF folder, then open "
+     "FluBNF.bat again", "setup.ps1 -Engine public"),
+])
+def test_the_switch_step_names_the_option_that_records_the_engine(
+        platform, engine, long, short):
+    assert EB.switch_step(engine, platform) == long
+    assert EB.switch_step(engine, platform, short=True) == short
+
+
+def test_the_switch_step_reads_this_machine_and_the_experiments_form(
+        monkeypatch):
+    from app.core import experiments as X
+    for win, step in ((False, "./setup_engine.sh --public"),
+                      (True, "setup.ps1 -Engine public")):
+        monkeypatch.setattr(fs, "_windows", lambda w=win: w)
+        assert EB.switch_step("public", short=True) == step
+        assert X._switch_step("public") == step
+
+
+def test_the_engine_of_a_build_is_public_only_when_it_says_so():
+    assert EB.engine_of({"engine": "public", "commit": "8410f794"}) == "public"
+    for build in (PROD, OTHER, {}, None, "2fdadee0", {"engine": "lwf"}):
+        assert EB.engine_of(build) == "private", build
+
+
+def test_the_engine_in_words(monkeypatch):
+    assert EB.engine_words("public") == (
+        "the public engine (lanl/PyBNF's Liu-West filter), the default")
+    assert EB.engine_words("private") == (
+        "the private engine (the lab's PyBNF fork), the fallback: "
+        "FLUBNF_ENGINE=private")
+    assert EB.engine_words() == EB.engine_words("private")    # the pin
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert EB.engine_words() == EB.engine_words("public")
 
 
 @pytest.mark.parametrize("build", [
@@ -336,6 +393,12 @@ def test_a_slow_status_is_asked_again_before_it_counts_as_edited(
 # ---------------------------------------------------------------------- Home
 def _home_with(monkeypatch, path) -> str:
     monkeypatch.setattr(fs, "PYBNF", path)
+    # an engine Python that exists: Home names a missing engine venv on its
+    # own (HM-11), which on a machine with no engine (CI) would hide the
+    # build these tests are about
+    import sys as _sys
+    from pathlib import Path as _Path
+    monkeypatch.setattr(fs, "PY_ENGINE", _Path(_sys.executable))
     V.refresh_engine_build()
     return client.get("/").text
 
@@ -496,6 +559,64 @@ def test_a_season_records_each_weeks_build_and_refuses_another(
     assert retro.read_meta(root)["week_engine_builds"] == {W1: rec, W2: rec}
 
 
+def test_a_resume_on_the_other_engine_names_the_step_back(
+        repo, tmp_path, monkeypatch):
+    """A season begun on the private engine's build, resumed where the
+    public engine runs: refused (W5), naming the engine it began on and the
+    step that switches this copy back; the same engine keeps today's words."""
+    _fake_pf_season(monkeypatch)
+    monkeypatch.setattr(fs, "PYBNF", repo)
+    monkeypatch.setattr(fs, "_windows", lambda: False)
+    root = tmp_path / SEASON
+
+    def stop_after_first(asof):
+        retro.stop_path(root).touch()
+    with pytest.raises(retro.SeasonStopped):
+        retro.run_season(root, SEASON, ["Ohio"], width=1,
+                         progress=stop_after_first)
+    public = {"engine": "public", "commit": "8410f794", "dirty": False,
+              "source": "lock"}
+    real = EB.engine_build
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(public))
+    with pytest.raises(retro.EngineBuildMismatch) as e:
+        retro.run_season(root, SEASON, ["Ohio"], width=1)
+    said = str(e.value)
+    assert said.endswith(
+        "Resuming would mix two engine builds in one season. To finish it "
+        "on the private engine it began on: ./setup_engine.sh --private in "
+        "the FluBNF folder; or archive or discard the existing results to "
+        "replay it on this one."), said
+    # another build of the same engine: switch back, as before
+    (repo / "pybnf" / "parse.py").write_text("x = 2\n")
+    monkeypatch.setattr(EB, "engine_build", real)
+    with pytest.raises(retro.EngineBuildMismatch,
+                       match="Switch the engine back, or archive or discard"):
+        retro.run_season(root, SEASON, ["Ohio"], width=1)
+
+
+def test_a_week_begun_on_the_other_engine_names_the_step_back(
+        tmp_path, monkeypatch):
+    from app.core.retro_settings import EngineBuildMismatch
+    monkeypatch.setattr(fs, "_windows", lambda: False)
+    retro._week_engine(tmp_path, "private")
+    retro.mark_cell_done(tmp_path, "A_r0", "ok")
+    with pytest.raises(EngineBuildMismatch) as e:
+        retro._week_engine(tmp_path, "public")
+    assert str(e.value) == (
+        f"the week at {tmp_path} began on the private engine and this "
+        "install now runs the public one. Resuming would pool fits from two "
+        "engines in one week. To finish it on the private engine: "
+        "./setup_engine.sh --private in the FluBNF folder; or archive or "
+        "discard the existing results to replay it on this one.")
+    monkeypatch.setattr(fs, "_windows", lambda: True)
+    with pytest.raises(EngineBuildMismatch,
+                       match=r"engine: powershell -NoProfile -ExecutionPolicy "
+                             r"Bypass -File setup\.ps1 -Engine private in the "
+                             r"FluBNF folder, then open FluBNF\.bat again; or "
+                             r"archive"):
+        retro._week_engine(tmp_path, "public")
+
+
 def test_an_engine_changed_mid_season_stops_it_before_the_next_week(
         repo, tmp_path, monkeypatch):
     """The build is re-read before every filter week: an edit (or a branch
@@ -526,6 +647,37 @@ def test_an_engine_changed_mid_season_stops_it_before_the_next_week(
     meta = retro.read_meta(root)
     assert retro.week_done(root, W2) and "stop_reason" not in meta
     assert meta["status"] == "done"
+
+
+def test_a_week_begun_on_the_other_engine_stops_the_season(
+        repo, tmp_path, monkeypatch):
+    """A season stopped inside its first week on one engine and resumed on
+    the other: no week finished, so the season's build check passes, and the
+    week's own record refuses (_week_engine). That stops the season with the
+    reason; it used to fail the week and fit the rest on the new engine."""
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.setattr(fs, "PYBNF", repo)
+    root = tmp_path / SEASON
+    wd = retro._week_dir(root, W1)
+    retro._week_engine(wd, "public")          # W1 began on public, one fit done
+    retro.mark_cell_done(wd, "Ohio_r0", "ok")
+    ran = []
+
+    def fake_week(root, season, asof, *a, **k):
+        ran.append(asof)
+        # what _launch_runners does before dispatching on this engine
+        retro._week_engine(retro._week_dir(root, asof), "private")
+        (retro._week_dir(root, asof) / retro.SAMPLES_JSON).write_text("{}")
+    monkeypatch.setattr(retro, "run_week", fake_week)
+    with pytest.raises(retro.EngineBuildChanged,
+                       match="began on the public engine"):
+        retro.run_season(root, SEASON, ["Ohio"], width=1)
+    meta = retro.read_meta(root)
+    assert ran == [W1]                        # W2 was never fitted
+    assert meta["status"] == "stopped"
+    assert meta["stop_reason"].startswith(f"stopped at {W1}: ")
+    assert not (root / "failures.log").exists()
+    assert not retro.week_done(root, W1)
 
 
 def test_a_season_with_no_recorded_build_resumes_as_before(

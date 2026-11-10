@@ -481,8 +481,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         # a grouped CSV lists only reported weeks: NA is an error
         lines = [ln for ln, _ in na]
         rep.add("value_na", f"The '{vcol}' column is blank or NA on "
-                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). All "
-                "rows must have a value; delete rows for weeks not reported.",
+                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). "
+                "Every row must have a value, and a grouped file has a row "
+                "for every week; a hubverse file (date, location, value) "
+                "may hold NA for a week not reported.",
                 lines)
     elif na:
         # hubverse time series carry NA for unreported weeks (FluSight's
@@ -498,9 +500,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 f"decimals or have a {sep_name} separating thousands "
                 f"({_rows(lines)}; e.g., {cells(either)}): {t} is "
                 f"{t.replace(',', '.')} as a rate or {t.replace(mark, '')} "
-                "as a count. Choose whether the values are counts or rates; "
-                f"counts are written without thousands separators "
-                f"({t.replace(mark, '')}).", lines)
+                "as a count. Rates: choose rates. Counts: write them "
+                f"without the {sep_name}s ({t} as {t.replace(mark, '')}).",
+                lines)
     elif either and kind == "rate":
         t = either[0][1]
         rep.warnings.append(

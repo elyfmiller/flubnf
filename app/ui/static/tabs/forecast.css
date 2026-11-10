@@ -5,7 +5,7 @@
    itself (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the
    nau.css tokens; new classes start "fc-"; kit classes (uk-*) are used as
    they are, never restyled here (an fc- class passed through a macro's
-   cls, as fc-kv, fc-flush and fc-ms-locked are, only lays out its box:
+   cls, as fc-kv and fc-flush are, only lays out its box:
    margins, columns and text size, never its colors).
 
    CONTENTS
@@ -145,20 +145,18 @@
 
 /* ---- 3. the Data issues box ---- */
 /* the Model settings look; one row per state: the check and the name,
-   the flag and its "i" under them, the select beside (under them when
+   the flag under them, the select beside (under them when
    the column is too narrow for both: large text, a narrow window) */
-/* the count and its "i" open the box (the legend is the title alone) */
-.fc-di-head{display:flex;align-items:center;flex-wrap:wrap;gap:.2rem .4rem;
-  margin:0 0 .35rem}
-.fc-di-head .uk-tt{margin-left:0}
 .fc-di .di-row{margin:.35rem 0 0}
 .fc-di .di-state{display:flex;align-items:center;flex-wrap:wrap;
   gap:.3rem .4rem;padding-top:.35rem;border-top:1px solid var(--line)}
 .fc-di .di-state:first-of-type{border-top:0;padding-top:0}
 .fc-di .di-row select{margin:0;font-size:var(--fs-label);
   padding:.3rem .45rem}
+/* never narrower than its words ("Both from 10-10"): beside the name when
+   both fit, else under it */
 .fc-di .di-state select{width:auto;flex:1 1 7.5rem;min-width:7.5rem;
-  max-width:15rem}
+  min-width:min-content;max-width:15rem}
 .fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
   margin-bottom:.2rem}
 .fc-di .di-all label{margin:0;white-space:nowrap}
@@ -168,7 +166,6 @@
 .fc-di .di-head label{margin:0;color:var(--ink);font-weight:600}
 .fc-di .di-flag{flex-basis:100%;color:var(--mut);font-size:var(--fs-hint);
   font-variant-numeric:tabular-nums}
-.fc-di .di-flag .tip{margin-left:.1rem}
 .fc-di .di-rec{display:inline-flex;font-size:var(--fs-label)}
 .fc-di .di-rec[hidden]{display:none}
 .fc-di[hidden]{display:none}
@@ -189,19 +186,6 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 .ms-more{margin-top:.55rem}
 .ms-more > summary{font-size:var(--fs-label)}
 .ms-more[hidden]{display:none}
-/* a knob not wired yet: its group as a tag under the disabled field */
-.fc-ms-soon{display:block;margin:.3rem 0 .1rem}
-/* the fixed settings: a fold with one labelled value each */
-.fc-ms-locked{margin-top:.9rem}
-.fc-ms-locked > summary{font-size:var(--fs-label)}
-/* the side column is narrow: each fixed setting's name over its value */
-.fc-ms-locked .fc-kv{grid-template-columns:minmax(0,1fr);row-gap:.1rem;
-  font-size:var(--fs-label)}
-.fc-ms-locked .fc-kv dd{margin-bottom:.45rem;overflow-wrap:anywhere}
-.fc-ms-locked .fc-kv dt{min-width:0;overflow-wrap:anywhere}
-/* ... and why it is fixed, muted under the value */
-.fc-lk-why{display:block;color:var(--mut);font-size:var(--fs-hint);
-  font-weight:400}
 /* a field's one-line help, under it while its row has focus (the field
    names it as its description either way; a changed row's mark names
    the default) */
@@ -285,9 +269,5 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
   display:inline-block;margin-left:.4rem;padding:0 .4em;border:1px solid var(--warn);
   border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
   font-weight:650;white-space:nowrap}
-/* the knobs coming later, folded under the groups */
-.ms-later-fold{margin-top:.7rem}
-.ms-later-fold > summary{font-size:var(--fs-label)}
-.ms-later-fold[hidden]{display:none}
 /* the fan chart takes focus for its arrow keys */
 #fanplot:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}

@@ -1,8 +1,9 @@
 # FluBNF on Windows
 
 Native Windows support is in active bring-up. The console, the analogue
-engine, data fetching, scoring, and reports are expected to work. The PF
-fitting engine is installed separately, from one small file (see
+engine, data fetching, scoring, and reports are expected to work. The
+particle-filter engine is public PyBNF, which `FluBNF.bat` installs on its
+first open with no file and no account (see
 [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)),
 and its externals are listed under Limitations.
 
@@ -13,10 +14,10 @@ Install once:
 1. A Python. Anaconda from https://www.anaconda.com/download is the lab's
    standard and needs no settings changed: `FluBNF.bat` and `setup.ps1`
    probe the folders it installs into, so nothing is added to PATH.
-   Python 3.11 or newer from https://www.python.org/downloads/ works too
-   (tick "Add python.exe to PATH" in the installer). The particle-filter
-   engine needs 64-bit (x64) Python 3.12 or 3.11; with Anaconda, FluBNF
-   makes one itself.
+   Without Anaconda, install 64-bit (x64) Python 3.12 from
+   https://www.python.org/downloads/ (tick "Add python.exe to PATH" in
+   the installer). 3.11 runs the console, but the particle-filter engine
+   needs 64-bit (x64) 3.12; with Anaconda, FluBNF makes one itself.
 2. Git from https://git-scm.com/download/win (defaults are fine).
 
 Then get the code and launch:
@@ -39,8 +40,8 @@ nothing needs moving.
 
 Double-click `FluBNF.bat` in that folder. The first run creates the
 virtual environment and installs dependencies (a few minutes); every later
-run self-updates with a fast-forward `git pull`, brings a clean PyBNF
-engine checkout up to the production build the same way, and starts the
+run self-updates with a fast-forward `git pull`, keeps a clean private
+engine checkout (the fallback) at its pin the same way, and starts the
 console. When it cannot update, it says why and prints the commands that
 would do it; see
 [When FluBNF.bat cannot update itself](#when-flubnfbat-cannot-update-itself).
@@ -54,9 +55,9 @@ this folder; open FluBNF from a second clone, or after moving this one,
 and the Start menu entry follows it. `scripts\windows\shortcuts.ps1`
 makes them, and `set FLUBNF_SHORTCUTS=off` before launching skips it.
 
-For the particle-filter engine, save the lab's `pybnf-pf-<sha>.tar.gz` in
-your Downloads folder before that double-click, or before any later one:
-`FluBNF.bat` installs it. The next section has the details.
+The first double-click also installs the particle-filter engine, public
+PyBNF, in 2 to 5 minutes: there is no file to save and nothing to choose.
+The next section has the details.
 
 If the FluSight data is not on the machine yet, `FluBNF.bat` says so and
 offers to run `setup.ps1` for you. Answering N starts the console anyway
@@ -73,17 +74,87 @@ Nothing on the double-click path waits on input without a deadline.
 ## The particle-filter engine on Windows
 
 The console, the Groundhog and the reports need nothing more. Fits by the
-particle filter need the engine: a copy of the lab's private PyBNF fork and
-a Python environment of its own. `FluBNF.bat` installs both, and needs no
-GitHub account and no administrator to do it. Fits also need Perl, which
-`FluBNF.bat` installs for FluBNF with no administrator either (below).
-Without the engine the console runs analogue forecasts only.
+particle filter need the engine. Since the switch to the public engine,
+that is public PyBNF (lanl/PyBNF, `job_type = lwf`) in a Python
+environment of its own, and `FluBNF.bat` installs it with no file, no
+GitHub account and no administrator. The lab's private PyBNF fork stays as
+the fallback (ENGINE.md), installed only on a copy switched to it. Fits
+also need Perl, which `FluBNF.bat` installs for FluBNF with no
+administrator either (below). Without the engine the console runs
+analogue forecasts only.
 
-### Installing it from the lab's file
+<a id="the-public-engine-opt-in"></a>
+
+### The public engine (the default)
+
+The Liu-West filter from public PyBNF
+([ENGINE.md](ENGINE.md#the-public-engine-the-default)): no file to hand
+out and no account. A copy that records no engine runs it. On a copy
+that runs it (every copy not switched to the private engine),
+`FluBNF.bat` checks it on every open, and installs it when it is missing
+or no longer matches `engine-requirements.txt`:
+
+* 64-bit (x64) Python 3.12 and no other version, found as for the private
+  engine (`py -3.12`, `python`, Anaconda's own), else conda makes one in
+  `%LOCALAPPDATA%\FluBNF\python312-public`;
+* its own environment, `%LOCALAPPDATA%\FluBNF\venv-public`, never the
+  private engine's `%USERPROFILE%\.venvs\flubnf-engine`;
+* every package from `engine-requirements.txt`, by hash and as wheels only,
+  after a five-second check that pypi.org is reachable. PyBNF itself is
+  one wheel there, from a release on github.com, which also keeps it clear
+  of the Windows path limit.
+
+The window shows
+
+```
+Installing the public engine (public PyBNF, with the Liu-West filter).
+One time, a few minutes.
+looking for a Python for the engine, 64-bit (x64) 3.12:
+  downloading the public engine's packages and installing them, usually
+  2 to 5 minutes; leave this window open
+  + public engine ready: pybnf 1.8.1 from pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1
+```
+
+with a line under "looking for a Python" for each Python it tried, and
+pip's own lines under "downloading"; the console then starts with both
+models.
+
+Perl is still needed and is checked as before. bngsim's code generation
+stays off on Windows (`BNGSIM_NO_CODEGEN=1`), so no compiler is needed.
+The private engine's folders and environment are never touched by the
+public route, and an engine file in Downloads is left alone.
+
+### The private engine (the fallback)
+
+The lab's PyBNF fork runs only on a copy switched to it. In Command
+Prompt, from the FluBNF folder:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine private
+
+then open `FluBNF.bat` again. That records `FLUBNF_ENGINE=private` in
+`.flubnf.env.cmd`, for this FluBNF folder only, never as a User variable;
+it also clears a User `FLUBNF_ENGINE` set by hand that says otherwise. It
+records the choice first, before it installs or fetches anything, so a
+run that stops early (no network, say) still switches the copy.
+
+* When the private engine is already installed here and loads (the engine
+  environment and folder `FluBNF.bat` would run), and the console's
+  `.venv` is made, that is all it does: a few seconds, nothing installed,
+  no network. It says `Nothing was installed and nothing was fetched.`
+* Otherwise the whole setup follows, which takes minutes and the network,
+  and from then on `FluBNF.bat` checks the private engine on every open,
+  and installs it from the lab's file.
+
+The same line with `-Engine public` goes back to the default. A
+`FLUBNF_ENGINE` that is neither `private` nor `public` runs the public
+engine, and the window says so in one line.
+
+#### Installing it from the lab's file
 
 The lab hands out `pybnf-pf-<sha>.tar.gz`, about 130 KB. Save it in your
-Downloads folder exactly as it is (do not unzip it, do not rename it) and
-double-click `FluBNF.bat`. The window shows
+Downloads folder exactly as it is (do not unzip it, do not rename it),
+switch the copy to the private engine as above, and double-click
+`FluBNF.bat`. The window shows
 
 ```
 unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
@@ -162,19 +233,21 @@ fit, with no restart, and `flubnf doctor` names the one it finds.
 
 | what | where |
 |---|---|
-| the engine, from `pybnf-pf-<sha>.tar.gz` | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` (unpacked, no `.git`) |
-| the engine, from `pybnf.bundle` | `%LOCALAPPDATA%\FluBNF\PyBNF-pf` (a git clone) |
-| its Python environment | `%USERPROFILE%\.venvs\flubnf-engine` (`FLUBNF_ENGINE_VENV` puts it elsewhere) |
-| an unpacked engine a newer file replaced | `%LOCALAPPDATA%\FluBNF\PyBNF-Private.replaced-<date and time>` |
-| the record of a failed install | `.venv\engine-attempt.txt` in the FluBNF folder |
+| the public engine's Python environment ([above](#the-public-engine-the-default)) | `%LOCALAPPDATA%\FluBNF\venv-public` (`FLUBNF_PUBLIC_VENV` puts it elsewhere) |
+| the Python 3.12 conda makes for it, when no other is found | `%LOCALAPPDATA%\FluBNF\python312-public` |
 | FluBNF's own Perl | `%LOCALAPPDATA%\FluBNF\perl` (`flubnf-perl.ok` marks it whole) |
 | the record of the Perl offer | `.venv\perl-offer.txt` in the FluBNF folder |
+| the private engine (the fallback), from `pybnf-pf-<sha>.tar.gz` | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` (unpacked, no `.git`) |
+| the private engine, from `pybnf.bundle` | `%LOCALAPPDATA%\FluBNF\PyBNF-pf` (a git clone) |
+| the private engine's Python environment | `%USERPROFILE%\.venvs\flubnf-engine` (`FLUBNF_ENGINE_VENV` puts it elsewhere) |
+| an unpacked private engine a newer file replaced | `%LOCALAPPDATA%\FluBNF\PyBNF-Private.replaced-<date and time>` |
+| the record of a failed private install | `.venv\engine-attempt.txt` in the FluBNF folder |
 
 None of these is in a folder Controlled Folder Access protects.
 
-The environment is built with 64-bit (x64) Python 3.12 or 3.11 and no
-other: the engine pins `numpy<2`, which has no Windows wheels past Python
-3.12, and `numpy<2`, bngsim and libroadrunner have Windows wheels for x64
+The private engine's environment is built with 64-bit (x64) Python 3.12
+or 3.11 and no other: the private engine pins `numpy<2`, which has no
+Windows wheels past Python 3.12, and `numpy<2`, bngsim and libroadrunner have Windows wheels for x64
 only. An environment whose Python is another version or build, no longer
 starts, or has no pip is rebuilt. `FluBNF.bat` tries `py -3.12`,
 `py -3.11`, a `python` on PATH, then Anaconda's own Python, with one line
@@ -188,8 +261,8 @@ installers' usual folders, `C:\anaconda3` and `C:\anaconda` among them
 Before it installs the packages, `FluBNF.bat` checks for five seconds
 that this network reaches pypi.org, where they come from.
 
-When more than one engine folder exists, the first of these that holds an
-engine (a `.git` folder or `pybnf\pf.py`) is used:
+When more than one private engine folder exists, the first of these that
+holds an engine (a `.git` folder or `pybnf\pf.py`) is used:
 
 1. the folder `FLUBNF_PYBNF` names, if it holds one,
 2. `%USERPROFILE%\Documents\GitHub\PyBNF-pf`,
@@ -208,19 +281,26 @@ takes it out of the search.
 ### Updates
 
 FluBNF updates itself each time `FluBNF.bat` opens. The engine is a
-separate folder, and what happens to it depends on how it was installed.
+separate folder, and what happens to it depends on which engine it is and
+how it was installed.
 
-- **From `pybnf-pf-<sha>.tar.gz`.** The unpacked copy has no git history,
+- **The public engine.** On a copy that runs it, every open compares its
+  environment with `engine-requirements.txt` (`scripts\engine_lock.py check`). When an
+  update brings a new lock, that open installs what the lock names; until
+  then nothing in the environment changes.
+- **The private engine, from `pybnf-pf-<sha>.tar.gz`.** The unpacked copy has no git history,
   so nothing can update it in place. When the lab sends a newer file, save
   it in Downloads and open `FluBNF.bat` again. A file whose version stamp
   differs, and which is newer than the copy on disk, replaces it; an older
   one never does. The copy it replaces is renamed to
   `PyBNF-Private.replaced-<date and time>`, never deleted, and is put back
   if the new file does not unpack.
-- **A git clone** (from `pybnf.bundle`, GitHub Desktop or `git clone`).
-  After its own update, `FluBNF.bat` runs `flubnf engine-update`. A clone
-  on `feature/particle-filter` with no edits to its tracked files, behind
-  the production build, is fast-forwarded to exactly that commit. When the
+- **The private engine, a git clone** (from `pybnf.bundle`, GitHub
+  Desktop or `git clone`). After its own update, `FluBNF.bat` runs
+  `flubnf engine-update`, on either engine: it touches only this clone,
+  and keeps the fallback at its pin. A clone on `feature/particle-filter`
+  with no edits to its tracked files, behind the production build
+  `2fdadee0`, is fast-forwarded to exactly that commit. When the
   commit is not on disk yet it is fetched from GitHub first, with no
   password prompt and a 30-second limit. Anything else is left as it is,
   and the reason is printed in the window on a line starting `engine:`.
@@ -231,15 +311,19 @@ open Command Prompt in the FluBNF folder and run
 
 ### "not the production build"
 
-When the engine is any build other than the production one (`2fdadee0` on
-`feature/particle-filter` for the 2026-27 season), or has local edits, the
-Home page's Setup card and the Forecast tab's Engine row carry a warning:
+Each engine has one pinned build, its production build: lanl/PyBNF at
+`8410f794`, from the lock, for the public engine, and `2fdadee0` on
+`feature/particle-filter` for the private one. When the engine is any
+other build, or has local edits, the Home page's Setup card and the
+Forecast tab's Engine row carry a warning. On the public engine it names
+the lock, and its fix is to open `FluBNF.bat` again, which installs the
+lock's build. On the private engine it reads like this:
 
 ```
 The engine is feature/particle-filter at 1a2b3c4d, not the production build 2fdadee0 on feature/particle-filter.
 ```
 
-For a clone the update left alone, it goes on with
+For a private clone the update left alone, it goes on with
 `FluBNF tried to update it when it opened:` and the reason, and its "?"
 gives the fix for this machine. By what it says:
 
@@ -258,8 +342,30 @@ engine am I running?", shows how to read the build by hand.
 
 ### If the install fails
 
-The console starts anyway, with analogue forecasts only, and the window
-says
+The console starts anyway, with analogue forecasts only. On the public
+engine, the default, the window says
+
+```
+  The public engine did not install (see above). The console starts without it, and the next open tries again.
+```
+
+and then one line about the fallback: `The private engine is installed on
+this PC: to run it instead (the fallback), run setup.ps1 -Engine private,
+then open FluBNF again.`; when the private engine's folder is on the PC
+but not installed yet, that the next open installs it from there, with no
+file; otherwise, that it needs the lab's engine file. The line to type
+follows, for Command Prompt or PowerShell, with this FluBNF folder's path
+in it:
+
+```
+  To switch, type this in Command Prompt or PowerShell:
+    powershell -NoProfile -ExecutionPolicy Bypass -File "<FluBNF folder>\setup.ps1" -Engine private
+```
+
+Nothing switches by itself. No record of a failed public install is kept:
+every open tries again.
+
+On the private engine the window says
 
 ```
 Engine setup did not finish (see above). The console still runs,
@@ -267,27 +373,38 @@ analogue forecasts only. With the engine file still in your Downloads
 folder, or the engine folder still in place, the next open tries again.
 ```
 
-The lines above it name the cause and one step that works on this PC.
-The usual ones, by what the window says:
+followed by the way back to the default, the same line with
+`-Engine public`.
+
+The lines above either one name the cause and one step that works on this
+PC. The usual ones, by what the window says:
 
 - `This network does not reach the Python package index (pypi.org)`: the
   engine's packages come from there, once. Open `FluBNF.bat` on another
   network, such as home Wi-Fi or a phone's hotspot.
-- `pip could not install the engine's packages`: pip's error is above it.
-  If the connection dropped, open `FluBNF.bat` again; pip reuses what it
-  already downloaded.
-- `No Python on this PC can run the engine`: none is 64-bit (x64) 3.12
-  or 3.11, and there is no Anaconda to make one. Where the Python install
-  manager is installed, the window says to run `py install 3.12`;
-  otherwise, and on a PC with an ARM processor, it says to install
-  Anaconda. An Anaconda installed in a folder FluBNF does not know is
-  found when `FluBNF.bat` runs from Anaconda Prompt.
+- `pip could not install the public engine's packages` (or, on the private
+  engine, `the engine's packages`): pip's error is above it. If the
+  connection dropped, open `FluBNF.bat` again; pip reuses what it already
+  downloaded. The public engine's PyBNF wheel comes from github.com, so a
+  network that blocks GitHub's downloads stops it too: try another
+  network. A hash that does not match means a changed or damaged download:
+  tell the lab.
+- `The public engine, the default, cannot be installed: its lock file
+  cannot be used yet`: the line above it says why. Nothing was installed;
+  tell the lab.
+- `No Python on this PC can run the engine`: none is 64-bit (x64) 3.12 (or
+  3.11, for the private engine), and there is no Anaconda to make one.
+  Where the Python install manager is installed, the window says to run
+  `py install 3.12`; otherwise, and on a PC with an ARM processor, it says
+  to install Anaconda. An Anaconda installed in a folder FluBNF does not
+  know is found when `FluBNF.bat` runs from Anaconda Prompt.
 - `conda did not make a Python the engine can use`: conda's own messages
   are above it. When they name a command to run (`conda tos accept ...`),
   run it in Anaconda Prompt.
-- `The engine's packages are installed, but the engine does not load`:
-  when `msvcp140.dll` is missing from `Windows\System32`, the window says
-  to install the Visual C++ Redistributable for x64 from
+- `The public engine's packages are installed, but the check above
+  failed`, or `The engine's packages are installed, but the engine does
+  not load`: when `msvcp140.dll` is missing from `Windows\System32`, the
+  window says to install the Visual C++ Redistributable for x64 from
   https://aka.ms/vc14/vc_redist.x64.exe, which asks for an administrator.
   Otherwise it prints a `ren` line that sets the engine's Python
   environment aside, so the next open builds a fresh one.
@@ -296,18 +413,18 @@ The usual ones, by what the window says:
   Windows.
 - Python could not make the engine venv, or pip would not go into it: a
   full disk (free about 1 GB) or antivirus holding pip's files.
-- the archive did not unpack: the download did not finish, so fetch the
-  file again. Windows 10 before version 1803 has no `tar.exe` at all;
-  update Windows, or ask for `pybnf.bundle`.
-- `git is not on PATH`, for a bundle: install Git for Windows, or use the
-  `.tar.gz`, which needs no git.
+- the private engine's archive did not unpack: the download did not
+  finish, so fetch the file again. Windows 10 before version 1803 has no
+  `tar.exe` at all; update Windows, or ask for `pybnf.bundle`.
+- `git is not on PATH`, for a private engine's bundle: install Git for
+  Windows, or use the `.tar.gz`, which needs no git.
 
-Apart from that `ren` line, nothing needs resetting between tries: every
-open tries again for as long as the engine file or folder is there.
-`.venv\engine-attempt.txt` records the failed attempt and stops the
-retries only when there is nothing left to install from (no engine file,
-no engine folder); the window then says `PF engine still not installed`,
-asks for the file and lists the folders it looked in.
+Apart from that `ren` line, nothing needs resetting between tries. On the
+private engine every open tries again for as long as the engine file or
+folder is there. `.venv\engine-attempt.txt` records the failed attempt and
+stops the retries only when there is nothing left to install from (no
+engine file, no engine folder); the window then says `PF engine still not
+installed`, asks for the file and lists the folders it looked in.
 
 For a fuller account of what this machine can see, run `setup.ps1` in
 Command Prompt:
@@ -318,10 +435,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
 ```
 
 (with your own FluBNF folder in the first line, if it is elsewhere). It
-reports on the engine environment and names the engine file `FluBNF.bat`
-would install from, in which case it does not check GitHub at all, since
-the file needs no account. With no file, it says where it looked and
-whether this machine can reach the private fork. For the GitHub routes
+names the engine this copy runs, and reports on the public engine's lock
+and environment. For the private engine it names the engine file
+`FluBNF.bat` would install from, in which case it does not check GitHub at
+all, since the file needs no account. With no file, it says where it
+looked and whether this machine can reach the private fork. For the GitHub routes
 (GitHub Desktop, the GitHub CLI, SSH) see [ENGINE.md](ENGINE.md).
 
 ## When FluBNF.bat cannot update itself
@@ -520,14 +638,15 @@ variable and prints the one `setx` line that clears it.
 2. **Allow the specific executables through.** This needs an administrator.
    Windows Security > Virus & threat protection > Ransomware protection >
    Manage ransomware protection > Allow an app through Controlled folder
-   access > Add an allowed app. Five are worth adding, and `setup.ps1`
-   prints the full path of each:
+   access > Add an allowed app. Up to six are worth adding, and
+   `setup.ps1` prints the full path of each:
 
    | executable | usual location | what it writes |
    |---|---|---|
    | `git.exe` | `C:\Program Files\Git\cmd\git.exe` | the FluSight hub clone and every later pull |
    | `python.exe` (console venv) | `<repo>\.venv\Scripts\python.exe` | the app itself, and `__pycache__` |
-   | `python.exe` (engine venv) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
+   | `python.exe` (public engine venv, the default) | `%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe` | `lwf\out` under `app\state\workroots`, during a fit |
+   | `python.exe` (private engine venv, the fallback) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
    | `perl.exe` | `%LOCALAPPDATA%\FluBNF\perl\Library\bin\perl.exe` (FluBNF's own), or `C:\Strawberry\perl\bin\perl.exe` for a Strawberry Perl | `m.net`, from `BNG2.pl`, during a fit |
    | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\bin\run_network.exe` (older wheels omit the `bin\`; setup.ps1 prints the path that actually exists on your machine) | simulation output, during a fit |
 
@@ -554,8 +673,9 @@ variable and prints the one `setx` line that clears it.
 | what | default | protected? |
 |---|---|---|
 | FluSight hub (`FLUBNF_HUB`) | `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub` | no |
-| PyBNF engine (`FLUBNF_PYBNF`) | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` from the lab's file, `%LOCALAPPDATA%\FluBNF\PyBNF-pf` for a clone | no |
-| engine venv (`FLUBNF_ENGINE_VENV`) | `%USERPROFILE%\.venvs\flubnf-engine` | no; the profile **root** is not protected, only the named folders inside it |
+| public engine venv, the default (`FLUBNF_PUBLIC_VENV`) | `%LOCALAPPDATA%\FluBNF\venv-public` | no |
+| private PyBNF engine, the fallback (`FLUBNF_PYBNF`) | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` from the lab's file, `%LOCALAPPDATA%\FluBNF\PyBNF-pf` for a clone | no |
+| private engine venv (`FLUBNF_ENGINE_VENV`) | `%USERPROFILE%\.venvs\flubnf-engine` | no; the profile **root** is not protected, only the named folders inside it |
 | the repository itself | wherever you cloned it | `Documents` is, `%LOCALAPPDATA%` is not |
 
 `%LOCALAPPDATA%` was chosen over the alternatives because it is the
@@ -570,8 +690,8 @@ system drive requires elevation on a default install.
 `setup.ps1`, `FluBNF.bat` and `flubnf/settings.py` all resolve in the same
 order -- the `FLUBNF_*` variable, then an existing directory at the old
 `Documents\GitHub` path, then the new default -- so a machine set up before
-this change keeps working with no action. The engine follows the same rule
-with two names and one more condition, a folder counting only when an
+this change keeps working with no action. The private engine's folder is
+found by the same rule, with two names and one more condition, a folder counting only when an
 engine is in it; the full list is under
 [Where it goes](#where-it-goes). Nothing is ever moved or copied
 for you: the author's own machine has 143 MB of PyBNF checkout and 150 MB of
@@ -616,7 +736,7 @@ work, and the setup-script job rules out the runner hardware. What is left is
 the shape of the workload: this suite creates many temporary directories and
 spawns many subprocesses, which is exactly what real-time scanning is most
 expensive against. The corresponding author also sees live Defender
-notifications while running this project on his own Windows machine.
+notifications while running this project on their own Windows machine.
 
 That is a strong hypothesis and it is still labelled one. Both the ubuntu and
 the windows jobs run pytest with `--durations=25 --durations-min=1.0` and
@@ -787,9 +907,14 @@ Useful switches and variables:
 | `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without Perl: `FluBNF.bat` checks for a Windows Perl on every open, installs FluBNF's own when there is none (no administrator), and asks its own time-bounded winget question once only when that fails (see [Perl](#perl)). Run `setup.ps1` by hand to be asked here too. |
 | `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
-| `FLUBNF_PYBNF` | the PyBNF engine folder, used only when an engine is in it (a `.git` folder or `pybnf\pf.py`); otherwise the first engine in the list under [Where it goes](#where-it-goes). A clone made by hand defaults to `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
-| `FLUBNF_PYBNF_BUNDLE` | an engine file (`pybnf-pf-<sha>.tar.gz` or `pybnf.bundle`) kept outside the folders searched; `FluBNF.bat` installs from it and `setup.ps1` names it |
-| `FLUBNF_ENGINE_VENV` | the engine virtual environment. Default `%USERPROFILE%\.venvs\flubnf-engine` |
+| `-Engine public`, `-Engine private` | record which engine this copy runs, as `FLUBNF_ENGINE` in `.flubnf.env.cmd` (this folder only), and clear a User `FLUBNF_ENGINE` that says otherwise. Without `-Engine`, the recorded choice stands, and a copy that records none runs the public engine, the default. See [The private engine (the fallback)](#the-private-engine-the-fallback) |
+| `FLUBNF_ENGINE` | `private` runs the private engine, the fallback; empty or `public` runs the public engine, the default; any other value runs the public engine, with a warning. `setup.ps1 -Engine` writes it; `FluBNF.bat` reads the record in `.flubnf.env.cmd` before any value set by hand |
+| `FLUBNF_PUBLIC_VENV` | the public engine's virtual environment. Default `%LOCALAPPDATA%\FluBNF\venv-public`; never one of the private engine's |
+| `FLUBNF_ENGINE_LOCK` | the public engine's lock file. Default `engine-requirements.txt` in the FluBNF folder |
+| `FLUBNF_PY_ENGINE_PUBLIC` | the public engine's python.exe; `FluBNF.bat` records it in `.flubnf.env.cmd` once the engine passes its check |
+| `FLUBNF_PYBNF` | the private PyBNF engine folder, used only when an engine is in it (a `.git` folder or `pybnf\pf.py`); otherwise the first engine in the list under [Where it goes](#where-it-goes). A clone made by hand defaults to `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
+| `FLUBNF_PYBNF_BUNDLE` | a private engine file (`pybnf-pf-<sha>.tar.gz` or `pybnf.bundle`) kept outside the folders searched; `FluBNF.bat` installs from it and `setup.ps1` names it |
+| `FLUBNF_ENGINE_VENV` | the private engine's virtual environment. Default `%USERPROFILE%\.venvs\flubnf-engine` |
 | `FLUBNF_NO_DATA=1` | skip the data clone entirely |
 | `FLUBNF_NO_PROBE=1` | skip the read-only check for access to the private PyBNF fork |
 
@@ -825,9 +950,13 @@ standard `setup.sh` instructions inside the Linux environment.
   BNG2.pl runs (network generation at preparation, the Sandbox's Check)
   run at normal priority, as they do on macOS and Linux.
 - **PF engine.** The particle-filter engine needs three externals on
-  Windows (`FluBNF.bat` installs the first two from the lab's engine file;
-  see [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)):
-  - the private PyBNF fork (pure Python; clones and installs normally),
+  Windows (`FluBNF.bat` installs all three: the first two with the engine,
+  and Perl on its own; see
+  [The particle-filter engine on Windows](#the-particle-filter-engine-on-windows)):
+  - PyBNF: public PyBNF from the lock, `engine-requirements.txt` (one
+    pure-Python wheel), or, on a copy switched to the private engine, the
+    lab's fork from its engine file (pure Python; clones and installs
+    normally),
   - `bngsim` (official Windows wheels exist on PyPI for Python 3.10-3.13,
     so `pip install bngsim` works without a compiler). Windows fits run
     with its code generation off (`BNGSIM_NO_CODEGEN=1`, set for every
@@ -863,15 +992,17 @@ standard `setup.sh` instructions inside the Linux environment.
     PF fits, 4 of which failed and were never diagnosed; 2 submissions
     were written and the report built (commit d461782). Perl was
     installed by hand, since that VM has no winget.
-  - Nothing has been recorded since: no fit on the production engine
-    `2fdadee0` (pinned 2026-09-25) or on the current launcher and runner
-    code, no Sandbox-tab fit (the tab came on 2026-09-04), and no run of
-    `FluBNF.bat`'s winget Perl install.
+  - Nothing has been recorded since: no fit on either engine, the public
+    one (lanl/PyBNF `8410f794`, the default since the switch to the public
+    engine) or the private one (`2fdadee0`, pinned 2026-09-25), and none
+    on the current launcher and runner code; no Sandbox-tab fit (the tab
+    came on 2026-09-04), and no run of `FluBNF.bat`'s winget Perl install.
 
   Machines without the engine run the analogue engine only, exactly as on
   a Tier-A Mac.
 - **Windows CI is required.** Three jobs in
-  `.github/workflows/tests.yml` run on `windows-latest`, and a red Windows
+  `.github/workflows/tests.yml`, and a leg of a fourth, run on
+  `windows-latest`, and a red Windows
   run fails the checks as a red Ubuntu one does. `test-windows` runs the
   test suite, which runs `FluBNF.bat`'s blocks in cmd.exe with stand-in
   programs (the update, a moved `.venv`, the engine file, `:sync`, the
@@ -888,8 +1019,24 @@ standard `setup.sh` instructions inside the Linux environment.
   `Jane O'Brien (Lab)`; `tests/test_windows_own_perl.py`), then runs the
   real BNG2.pl under that Perl, and bngsim through a fit's calls with code
   generation off and no compiler on PATH
-  (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget, a
-  real engine venv build or a real fit.
+  (`app/tests/test_bngsim_no_codegen.py`). No job runs a real winget or a
+  real fit on Windows, and only `public-engine-install` builds a real
+  engine venv; on macOS it also fits one cell in that venv through
+  FluBNF's own run path (`app/tests/test_engine_lwf.py`).
+  `public-engine-install`, on Windows and on macOS, installs the public
+  engine for real. Its first open takes the default route, with
+  `FLUBNF_ENGINE` unset and no option: `FluBNF.bat`'s public block in
+  cmd.exe (on macOS, `setup_engine.sh` with no option), real pip and PyPI,
+  a venv under a folder named `Jane O'Brien (Lab)`, and no route recorded.
+  The PyBNF wheel and its lock come from `public-engine-wheel`, which
+  builds the wheel from lanl/PyBNF at the pinned commit and writes a lock
+  for it on macOS (`scripts/make_test_lock.py`; never the engine lane's
+  lock). Then, on macOS only, an open on the private route (the fallback),
+  which must leave the public venv alone; on Windows that open would look
+  for the lab's engine file, which CI does not hold. Then, on the public
+  route, an open with nothing to do, a new lock, a wheel whose hash does
+  not match, and PyBNF's lesson 50 in the venv
+  (`tests/test_public_engine_real.py`).
   `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
@@ -900,8 +1047,17 @@ standard `setup.sh` instructions inside the Linux environment.
   repair above works, and once against a machine that already holds a
   checkout at the old `Documents` location, which must be reused where it
   stands -- checking each transcript against what the script
-  promised to say. It holds no credentials, so the engine is always missing
-  there and the degraded path is what gets tested. It does not cover
+  promised to say. The runs also walk the engine record: run 1 gives no
+  `-Engine` and must write no `FLUBNF_ENGINE` line (the public engine,
+  the default), with `FLUBNF_ENGINE=pubic` in its environment, which it
+  must name and run public; run 2 gives `-Engine private` and must record
+  `FLUBNF_ENGINE=private` before its first pip, and clear the account's
+  `FLUBNF_ENGINE=public` set just before it; runs 3 and 4, with no
+  `-Engine`, must keep that record, run 4 over `FLUBNF_ENGINE=public` in
+  its environment; run 5 gives `-Engine public` and must record
+  `FLUBNF_ENGINE=public`. Five runs, as before. `setup.ps1` installs no engine and the job holds no
+  credentials, so the engine is always missing there and the degraded path
+  is what gets tested. It does not cover
   `FluBNF.bat` itself, the Perl/winget branch, or any non-ASCII profile
   path.
 
@@ -909,8 +1065,9 @@ standard `setup.sh` instructions inside the Linux environment.
   its job rather than running to GitHub's 6 hour default. The budgets are
   fuses, not targets: 20 minutes on ubuntu, which finishes in about 5, 90
   on windows, which took 71 at its worst, 30 for `windows-own-perl` (a
-  31 MB download and a few BNG2.pl runs), and 60 for
-  `windows-setup-script`. The windows number should come down a long way
+  31 MB download and a few BNG2.pl runs), 60 for
+  `windows-setup-script`, 20 for `public-engine-wheel` and 30 for
+  `public-engine-install` (a first install takes a few minutes). The windows number should come down a long way
   once the hour is accounted for, because a fuse sized far above the load
   never blows.
 - **The windows suite takes an hour and nobody yet knows on what.** 62 and

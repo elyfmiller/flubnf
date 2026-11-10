@@ -22,7 +22,8 @@ from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
 from app.ui import pipeline, retro_seasons, shared, state, templating
 from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
                           _knob_form, _knob_panel, _knob_raw, _knobs,
-                          _season_auto, _str_field, resolve_anchor)
+                          _refusal_words, _season_auto, _str_field,
+                          resolve_anchor)
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
@@ -84,7 +85,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     except Exception as e:
         all_locs = []
         locations_error = (f"State list unavailable ({type(e).__name__}); "
-                           "runs will cover all 53 jurisdictions.")
+                           "runs will cover all 53 locations.")
     # the default run is the full hub submission: "all" is the 53, the 52
     # jurisdictions AND US national (US stays ticked with it, so a custom
     # pick starts with US in; the user unticks it to leave it out). After a
@@ -96,11 +97,14 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # this page is built (its card's poll reloads the page)
     running = _status.get("running") or ""
     _fa.restore_last_form(_last_form, _default_forecast_date)
-    form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
-                                "locations": ["all"],
-                                "engine": "all",
-                                "weeks_to_drop": 0, "weeks_to_nowcast": 0,
-                                "replicates": 3, "members": 2, "season_start": ""}
+    # the defaults under the remembered form: a refusal before the first
+    # run remembers only its reason, and the page still needs every field
+    form = {"forecast_date": _default_forecast_date(),
+            "locations": ["all"],
+            "engine": "all",
+            "weeks_to_drop": 0, "weeks_to_nowcast": 0,
+            "replicates": 3, "members": 2, "season_start": "",
+            **_last_form}
     # a refusal over the model settings opens the panel on this page only;
     # a later visit shows it as the user left it
     _last_form.pop("ms_refused", None)
@@ -271,11 +275,9 @@ def _data_issues_context(rep, form) -> tuple:
     from app.core import reported as _rep
     rows = _rep.box_rows(rep)
     prior = ((form or {}).get("data_choices") or {}).get(rep.week) or {}
-    facts = " ".join(f for f, on in ((_rep.ZERO_FACT, rep.zeros),
-                                     (_rep.COLLAPSED_FACT, rep.collapsed)) if on)
     zero_opts = {v for r in rows if r["issue"] == "zero" for v, _ in r["options"]}
     all_options = [(c, _ALL_TEXT[c]) for c in MS.ZERO_CHOICES if c in zero_opts]
-    return ({"week": rep.week, "rows": rows, "prior": prior, "facts": facts,
+    return ({"week": rep.week, "rows": rows, "prior": prior,
              "all_options": all_options}, _source_sha(rep.week))
 
 
@@ -294,7 +296,9 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     record for that week passes through verbatim (the engines match its
     set-asides against the data) and the form's fields are ignored.
     Refuses when the data changed since the box was built and when a
-    choice is not one the state was offered."""
+    choice is not one the state was offered; a recorded choice the
+    run-wide setting now removes is dropped instead, so the setting covers
+    the state (a re-run cannot choose again)."""
     from app.core import missing as MS
     from app.core import reported as _rep
     locs = list(locs)
@@ -319,6 +323,7 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
     prior_states = prior_states if isinstance(prior_states, dict) else {}
     rows = {r["fips"]: r for r in _rep.box_rows(rep)}
     knob = MS.zero_anchor_of({"knobs": nd})
+    rules = MS.rules_of({"knobs": nd})
     states = {}
     in_run = set(locs)
     for g in rep.gaps:
@@ -326,28 +331,55 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
             continue
         r = rows[g.fips]
         offered = dict(r["options"])
+        # a run-wide setting that counts the week as unreported moves both
+        # models back a week (missing.tail_flags) whatever else is chosen:
+        # only "Both from" and "Leave out" still apply (the box hides the
+        # rest while the setting is on)
+        ruled = [k for k in r["rules"] if k in rules]
+        if ruled:
+            offered = {c: t for c, t in offered.items()
+                       if c in _rep.RULE_LEAVES}
         choice = gap_fields.get(g.fips)
-        if choice is None:
+        from_record = choice is None
+        if from_record:
             choice = str((prior_states.get(g.location) or {}).get("choice")
                          or "")
+        if choice and choice not in offered and ruled and from_record:
+            # a re-run's recorded choice the run-wide setting now removes:
+            # a re-run cannot choose again, so the setting covers the state
+            # as it does a state with no choice (it keeps precedence)
+            choice = ""
         if choice and choice not in offered:
+            if ruled:
+                k = _knobs.BY_KEY[ruled[0]]
+                return None, locs, (
+                    f"Data issues for {g.location}: "
+                    f"{dict(r['options']).get(choice, choice)} does not "
+                    f"apply while {k.label} is set to "
+                    f"{_knobs.choice_word(k.key, 'missing')}; choose "
+                    f"{' or '.join(offered.values())}.")
             return None, locs, (f"Data issues for {g.location}: '{choice}' "
                                 f"is not one of {', '.join(offered)}.")
         if not choice:
-            if g.reason == "zero" and knob:
+            if ruled or (g.reason == "zero" and knob):
                 continue             # the run-wide rule covers it
             choice = r["rec"]        # the box's preselection
+        rec = "set_aside" if ruled else r["rec"]
         entry = {"issue": g.reason, "what": g.what(), "choice": choice,
                  "week": rep.week,
                  "reported": (r["aside"] if choice == "set_aside"
                               else r["reported"]),
-                 "recommended": r["rec"], "followed": choice == r["rec"]}
+                 "recommended": rec, "followed": choice == rec}
         if choice == "set_aside":
             aside = {w for w, _ in r["aside"]}
             before = [w for w, _ in r["reported"] if w not in aside]
             entry["from_week"] = before[-1] if before else ""
         elif choice in MS.ZERO_ANCHOR_RULES:
             entry["from_week"] = rep.week
+        elif choice == "carry":
+            # the week the engines' own walk forecasts from, as the box
+            # offered it ("From 10-10"); "" when the walk found none
+            entry["from_week"] = g.from_week or ""
         states[g.location] = entry
     omitted = {l for l, st in states.items() if st["choice"] == "omit"}
     kept = [l for l in locs if l not in omitted]
@@ -606,7 +638,10 @@ def run_page(request: Request, run_id: str):
         # gets no empty table
         "models": {m: v for m, v in (res.get("models") or {}).items()
                    if v and m not in _report_v2_retired()},
-        "settings": spec_settings(spec_json, o),
+        # the Modified model settings card says how its files were named:
+        # the settings block does not say it again
+        "settings": [(k, v) for k, v in spec_settings(spec_json, o)
+                     if not (k == "files" and _runs.is_modified(spec_json))],
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
                       and not dsx),
@@ -620,6 +655,17 @@ def run_page(request: Request, run_id: str):
             res.get("forecast_date") if dsx else _sd.get("forecast_date"),
             dataset=bool(dsx)),
         "report": report})
+
+
+def _gap_weeks(earlier: str, later: str) -> int:
+    """How many weekly snapshots an archive gap skips between two archived
+    Saturdays ('2026-01-10', '2026-01-24' -> 1); 0 when unreadable."""
+    import datetime as _dt
+    try:
+        d = (_dt.date.fromisoformat(later) - _dt.date.fromisoformat(earlier)).days
+    except ValueError:
+        return 0
+    return max(d // 7 - 1, 0)
 
 
 def _median_weeks(asof, dataset: bool = False) -> tuple:
@@ -956,7 +1002,7 @@ def _location_progress(workroot) -> list:
 
 def _scope_label(locs) -> str:
     """The progress label's scope: '3 states', '1 state + US',
-    'all 53 jurisdictions' (the form's "all": the 52 and US) or
+    'all 53 locations' (the form's "all": the 52 jurisdictions and US) or
     'US only'."""
     from app.core import us_national as _usn
     n = len(_usn.state_names(locs))
@@ -964,7 +1010,7 @@ def _scope_label(locs) -> str:
     if not n:
         return "US only" if us else "0 states"
     if n == 52 and us:
-        return "all 53 jurisdictions"
+        return "all 53 locations"
     return f"{n} state{'s' if n != 1 else ''}" + (" + US" if us else "")
 
 
@@ -1063,6 +1109,19 @@ def _report_v2_retired() -> tuple:
 
 
 # === Forecast: POST /run (form and rerun entry to _run_all) ===
+def _settings_refused(request: Request, e: Exception) -> RedirectResponse:
+    """A run refused over its model settings: the Forecast tab's panel
+    opens on it and says why under its head (ms_refused, one-shot), so
+    the tab gets no second notice; a page without the panel (a model
+    page's form) gets the one line, in the panel's words."""
+    from urllib.parse import urlsplit
+    _last_form["ms_refused"] = str(e) or True
+    back = _back(request, "/forecast")
+    if urlsplit(back.headers["location"]).path != "/forecast":
+        _flash(f"Not run: {_refusal_words(str(e))}", "warn")
+    return back
+
+
 @router.post("/run")
 def run_models(request: Request,
                background: BackgroundTasks,
@@ -1134,10 +1193,7 @@ def run_models(request: Request,
     try:
         kraw = _knob_raw(knob_fields, knobs)
     except ValueError as e:                  # KnobError is a ValueError
-        # the panel opens on its error, the reason under its head
-        _last_form["ms_refused"] = str(e) or True
-        _flash(f"Not run: model settings: {e}.", "warn")
-        return _back(request, "/forecast")
+        return _settings_refused(request, e)
     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
     kept, kept_fields = _kept_settings(
@@ -1232,12 +1288,24 @@ def run_models(request: Request,
             _flash(f"Not run: no archived data for {forecast_date}.", "warn",
                    detail="Pull the FluSight hub on the Data tab first.")
         elif earlier:
+            # the gap as wide as it is, from the snapshot before to the one
+            # after: a week or two is usually a holiday, the off-season
+            # months are not
+            later = [v for v in vs if v > forecast_date]
+            skipped = _gap_weeks(near, min(later)) if later else 0
+            if skipped:
+                gap = (f"The archive skips {skipped} week"
+                       f"{'' if skipped == 1 else 's'} after {near}"
+                       + (" (usually a holiday week)" if skipped <= 2 else "")
+                       + ".")
+            else:
+                gap = f"The archive has nothing after {near} yet."
             _flash(f"Not run: the hub archived no snapshot dated "
                    f"{forecast_date}. Nearest earlier: {near}.", "warn",
-                   detail="Such gaps are real, usually holiday weeks. The "
-                   "graphs still show a point at that date because they "
-                   "draw today's settled data. A later snapshot would leak "
-                   "a week of hindsight, so it is not offered.")
+                   detail=f"{gap} The graphs still show a point at that "
+                   "date because they draw today's settled data. A later "
+                   "snapshot would leak a week of hindsight, so it is not "
+                   "offered.")
         else:
             _flash(f"Not run: no archived data for {forecast_date}; the "
                    f"archive starts at {near}.", "warn")
@@ -1255,9 +1323,7 @@ def run_models(request: Request,
                     "drop_same_day": bool(_int_field(drop_same_day))},
             override=override, reason=reason)
     except ValueError as e:                  # KnobError is a ValueError
-        _last_form["ms_refused"] = str(e) or True
-        _flash(f"Not run: model settings: {e}.", "warn")
-        return _back(request, "/forecast")
+        return _settings_refused(request, e)
     kspec = _knobs.spec_fields(nd)
     season_start = kspec.get("season_start", "")
     weeks_to_drop = int(kspec.get("weeks_to_drop", 0))
@@ -1267,7 +1333,7 @@ def run_models(request: Request,
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
     if not locations:
-        _flash("Not run: select a location, or all 53 jurisdictions.",
+        _flash("Not run: select a location, or all 53 locations.",
                "warn")
         return _back(request, "/forecast")
     try:

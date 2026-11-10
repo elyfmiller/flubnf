@@ -191,9 +191,11 @@ def _local_refusal(eid: str) -> dict | None:
     under way (eid named first when it is one); then, with no terminal run
     left alive, an earlier terminal run's orphaned fits are swept, before
     the runner's probe (_replay_elsewhere), which would otherwise wait for
-    them; any other replay on this computer; no particle-filter engine
-    (a probe that raises counts as none); an engine older than this
-    console (pf.prepare would refuse every week), in its own words."""
+    them; any other replay on this computer; a terminal whose engine is
+    not the one this clone records for its launchers
+    (runner._engine_record_problem); no particle-filter engine (a probe
+    that raises counts as none); an engine older than this console
+    (pf.prepare would refuse every week), in its own words."""
     from flubnf import cli
     from app.core import experiments as X
     from app.core import retro, runner
@@ -216,6 +218,9 @@ def _local_refusal(eid: str) -> dict | None:
     why = runner._replay_elsewhere()
     if why:
         return finding("MACHINE", f"{why}: one replay at a time")
+    why = runner._engine_record_problem()
+    if why:
+        return finding("MACHINE", why)
     try:
         ready = runner._engine_ready()
         stale = ready and not pf.engine_current()

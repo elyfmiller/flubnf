@@ -85,7 +85,10 @@ def test_every_location_reported(tmp_path, monkeypatch):
     r = reported.check()
     assert r.complete and r.kind == "live" and r.week == NEW
     assert r.expected == len(LOCS)
-    assert r.line() == f"All {len(LOCS)} jurisdictions reported for week {NEW}"
+    # the hub's locations, US among them: "locations", never
+    # "jurisdictions" (52 of those; bug hunt G35, UI-15, review of #97)
+    assert r.line() == f"All {len(LOCS)} locations reported for week {NEW}"
+    assert "jurisdiction" not in r.line()
     assert r.short() == f"All {len(LOCS)} reported"
 
 
@@ -101,7 +104,7 @@ def test_no_row_and_blank_are_told_apart_and_forecast_from_the_week_before(
     assert r.line() == f"3 of {len(LOCS)} reported · 2 not reported"
     assert r.short() == f"3 of {len(LOCS)} reported · 2 not reported"
     assert r.details()[:2] == [
-        f"No row: Nebraska. Forecast from {WEEKS[-2]}.",
+        f"Not reported: Nebraska. Forecast from {WEEKS[-2]}.",
         f"Blank value: Utah. Forecast from {WEEKS[-2]}."]
     assert r.details()[2].startswith("Each is chosen per state in Data issues")
 
@@ -116,7 +119,7 @@ def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
     last = WEEKS[-(AE.MAX_ANCHOR_LAG + 2)]
     assert last in g.why and f"more than {AE.MAX_ANCHOR_LAG} unreported" in g.why
     assert r.line() == f"4 of {len(LOCS)} reported · 1 not reported"
-    assert r.details()[0].startswith("No row: Wyoming. Skipped: its newest")
+    assert r.details()[0].startswith("Not reported: Wyoming. Skipped: its newest")
     assert reported.recommend(g) == ("carry", g.why)
     # at exactly MAX_ANCHOR_LAG unreported weeks it still forecasts
     _hub(tmp_path / "hub2", monkeypatch,
@@ -138,8 +141,10 @@ def test_a_zero_is_flagged_and_worded_by_consequence(tmp_path, monkeypatch):
     assert g.flag() == "0 after 40, 40, 40"
     assert r.line() == f"All {len(LOCS)} reported · 1 reads 0"
     assert r.short() == f"All {len(LOCS)} reported · 1 reads 0"
-    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: set "
-                              "aside (looks like a missed report).")
+    # the choice by the Forecast tab's name for it (G27, DA-15)
+    assert r.details()[0] == ("0 after 40, 40, 40: Ohio. Recommended: both "
+                              "from the week before (looks like a missed "
+                              "report).")
     assert reported.ZERO_FACT in r.details()
     # the setting treats it as missing: the run forecasts from the week before
     (g,) = reported.check("missing").gaps
@@ -182,8 +187,9 @@ def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
     assert r.complete and not r.clean
     assert r.line() == f"All {len(LOCS)} reported · 1 collapsed"
     assert r.short() == f"All {len(LOCS)} reported · 1 collapsed"
-    assert r.details()[0] == ("5 after 40: Ohio. Recommended: set aside "
-                              "(looks like a partial report).")
+    assert r.details()[0] == ("5 after 40: Ohio. Recommended: both from "
+                              "the week before (looks like a partial "
+                              "report).")
     assert reported.COLLAPSED_FACT in r.details()
     # a moderate drop is not a collapse (a fifth of the week before)
     _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "8"})
@@ -215,8 +221,52 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
     neb = rows["Nebraska"]
     assert neb["issue"] == "no row" and neb["default"] == "carry"
     assert neb["options"] == [("carry", f"From {md}"), ("omit", "Leave out")]
-    assert neb["rec"] == "carry" and neb["flag"] == "no row"
+    assert neb["rec"] == "carry" and neb["flag"] == "not reported"
     assert neb["hint"] == f"forecast from {WEEKS[-2]}"
+
+
+def test_a_state_too_old_for_both_models_is_said_to_be_skipped(
+        tmp_path, monkeypatch):
+    """FC-26: Wyoming's newest reported week is past the walk's lag, so
+    both models skip it; its Data issues row says so, and the run page
+    names no week the record does not have. Display only: what the run
+    records is unchanged."""
+    import app.core.runs as runs_mod
+    from test_data_issues import _capture_run, _post
+    gone = WEEKS[-(AE.MAX_ANCHOR_LAG + 1):]
+    _hub(tmp_path / "hub", monkeypatch, newest={"Nebraska": None},
+         drop_weeks={"Wyoming": gone})
+    rep = reported.check()
+    rows = {r["name"]: r for r in reported.box_rows(rep)}
+    wy, neb = rows["Wyoming"], rows["Nebraska"]
+    assert wy["flag"] == "not reported, skipped"
+    assert wy["options"] == [("carry", reported.CARRY_SKIP_TEXT),
+                             ("omit", "Leave out")]
+    assert neb["flag"] == "not reported"          # forecast from the week before
+    gap = {g.location: g for g in rep.gaps}["Wyoming"]
+    assert (gap.what(), gap.flag()) == ("not reported", "not reported")
+    # the Forecast tab's row
+    ui_state._last_form.clear()
+    ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
+                                "engine": "all"})
+    page = client.get("/forecast").text
+    box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
+    assert '<span class="di-flag" id="di-flag-56">not reported, skipped</span>' in box
+    assert '<span class="di-flag" id="di-flag-31">not reported</span>' in box
+    # the record a run keeps, then the run page's words for it
+    started = _capture_run(monkeypatch)
+    _post({"gap.56": "carry", "gap.31": "carry"})
+    st = started[-1].extra["data_choices"]["states"]
+    assert {k: st["Wyoming"][k] for k in ("what", "choice", "from_week")} == {
+        "what": "not reported", "choice": "carry", "from_week": ""}
+    assert reported.choice_text(st["Wyoming"]) == "skipped"
+    assert reported.choice_text(st["Nebraska"]) == f"from {WEEKS[-2][5:]}"
+    tip = runs_mod.data_issues_row({}, started[-1].extra, {})[1]
+    assert "Wyoming: not reported; skipped." in tip
+    assert "last reported week" not in tip
+    # a record from before the week was recorded keeps its general words
+    assert reported.choice_text({"choice": "carry"}) == \
+        "from the last reported week"
 
 
 def _gap(reason, values, **kw):
@@ -284,7 +334,7 @@ def test_the_line_counts_and_the_tip_names_every_location(tmp_path, monkeypatch)
     r = reported.check()
     assert r.line() == (f"3 of {len(LOCS)} reported · 2 not reported "
                         "· 1 reads 0 · 1 collapsed")
-    assert r.details()[0] == f"No row: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
+    assert r.details()[0] == f"Not reported: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
     assert "Ohio" not in r.line() and "Nebraska" not in r.line()
 
 
@@ -311,7 +361,7 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
             in row)
     assert '<span class="uk-badge-t">1 not reported</span>' in row
     assert f"4 of {len(LOCS)} reported" in row
-    assert f"No row: Nebraska. Forecast from {WEEKS[-2]}." in page
+    assert f"Not reported: Nebraska. Forecast from {WEEKS[-2]}." in page
     assert ('<a href="/forecast#data-issues">Data issues on the Forecast '
             'tab</a>') in page
 
@@ -395,4 +445,7 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
     assert '<span class="uk-badge-t">1 reads 0</span>' in line
     assert 'aria-label="Complete, with issues"' in page
-    assert "0 after 40, 40, 40: Ohio. Recommended: set aside" in page
+    # the Data issues box under the line names Ohio: the line has no "?"
+    # of its own (FC-26)
+    assert 'id="tip-newest-gaps"' not in page
+    assert '<label for="gap-39">Ohio</label>' in page

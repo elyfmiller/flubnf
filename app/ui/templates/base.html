@@ -37,26 +37,28 @@
 <script>
  // before first paint, so the page never flashes the wrong look: the theme
  // (one of the eight; an unknown stored value falls back to the system
- // preference), the two a11y modes and the text size
- (function(){var de=document.documentElement,t=localStorage.getItem('theme');
+ // preference), the two a11y modes and the text size. Storage can be
+ // blocked (site data off, some private windows): then nothing is stored
+ // and the page follows the OS at the standard size
+ (function(){var de=document.documentElement,t=null,c=null,v=null,f=null;
+  try{t=localStorage.getItem('theme');c=localStorage.getItem('contrast');
+   v=localStorage.getItem('vision');f=localStorage.getItem('fontsize');}
+  catch(e){}
   if([{% for id, _name, _ground in THEMES %}'{{ id }}'{{ "," if not loop.last }}{% endfor %}].indexOf(t)<0)
    t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
   de.setAttribute('data-theme',t);
   // a11y modifiers: a stored choice wins; otherwise high contrast follows
   // the OS (prefers-contrast: more)
-  var c=localStorage.getItem('contrast');
   if(c!=='high'&&c!=='normal')
    c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
   if(c==='high')de.setAttribute('data-contrast','high');
-  if(localStorage.getItem('vision')==='cvd')
-   de.setAttribute('data-vision','cvd');
+  if(v==='cvd')de.setAttribute('data-vision','cvd');
   // text size: a percentage of the standard size, 80 to 160. The old
   // three-step values (s, m, l) read as 87.5, 100 and 115 and are stored
   // back as numbers, so nobody's setting is lost
-  var old={s:87.5,m:100,l:115},f=localStorage.getItem('fontsize'),
-      p=old[f]||parseFloat(f);
+  var old={s:87.5,m:100,l:115},p=old[f]||parseFloat(f);
   if(!(p>=80&&p<=160))p=100;
-  if(old[f])localStorage.setItem('fontsize',String(p));
+  if(old[f])try{localStorage.setItem('fontsize',String(p));}catch(e){}
   de.style.fontSize=p+'%';})();
 </script>
 {% block head %}{% endblock %}
@@ -320,7 +322,8 @@
  },true);
  // preserve scroll across form posts/reloads -- keyed by page so it never
  // carries to a different tab, and never stomps a deliberate #anchor redirect
- addEventListener('beforeunload',()=>sessionStorage.setItem('scy:'+location.pathname,scrollY));
+ addEventListener('beforeunload',()=>{
+   try{sessionStorage.setItem('scy:'+location.pathname,scrollY);}catch(e){}});
  // a page brought back from the back/forward cache names what was true
  // when it was rendered (an earlier run's files): fetch it afresh
  addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
@@ -328,8 +331,8 @@
  addEventListener('click',e=>{const y=scrollY;
    requestAnimationFrame(()=>requestAnimationFrame(()=>{
      if(Math.abs(scrollY-y)>50 && !e.target.closest('a')) scrollTo(0,y);}));},true);
- addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
-   sessionStorage.removeItem(k);
+ addEventListener('load',()=>{const k='scy:'+location.pathname;let y=null;
+   try{y=sessionStorage.getItem(k);sessionStorage.removeItem(k);}catch(e){}
    // a notice at the top (the action's outcome) stays in view instead
    if(y && !location.hash && !document.getElementById('flash')) scrollTo(0,parseInt(y));});
  // theme picker: native radios (arrow keys move the choice), the current
@@ -338,12 +341,17 @@
  (function(){
   // "Match system" (data-sys) clears the stored theme: the page then
   // follows prefers-color-scheme, now and whenever the system changes
+  // A choice made on this page is kept here too (null for Match system):
+  // with storage blocked or full it is the only record of the pick, so the
+  // picked theme stays checked and a change of the system's scheme does
+  // not override it
   var picks=document.querySelectorAll('.themepick input[data-th]'),
       sys=document.querySelector('.themepick input[data-sys]'),
       now=document.querySelector('.dm-sys-now'),
-      mq=matchMedia('(prefers-color-scheme: dark)');
+      mq=matchMedia('(prefers-color-scheme: dark)'),picked;
   function stored(){var s=null,ok=false;
-    try{s=localStorage.getItem('theme');}catch(e){}
+    if(picked!==undefined)s=picked;
+    else try{s=localStorage.getItem('theme');}catch(e){}
     picks.forEach(function(b){if(b.dataset.th===s)ok=true;});
     return ok?s:null;}
   function mark(t){var free=!stored();
@@ -356,10 +364,12 @@
   picks.forEach(function(b){b.addEventListener('change',function(){
     if(!b.checked)return;
     var t=b.dataset.th;
+    picked=t;
     try{localStorage.setItem('theme',t);}catch(e){}
     apply(t);});});
   if(sys)sys.addEventListener('change',function(){
     if(!sys.checked)return;
+    picked=null;
     try{localStorage.removeItem('theme');}catch(e){}
     apply(mq.matches?'dark':'light');});
   function follow(){
@@ -384,12 +394,12 @@
       var on=de.getAttribute('data-contrast')==='high';
       if(on)de.removeAttribute('data-contrast');
       else de.setAttribute('data-contrast','high');
-      localStorage.setItem('contrast',on?'normal':'high');
+      try{localStorage.setItem('contrast',on?'normal':'high');}catch(e){}
     }else{
       var v=de.getAttribute('data-vision')==='cvd';
       if(v)de.removeAttribute('data-vision');
       else de.setAttribute('data-vision','cvd');
-      localStorage.setItem('vision',v?'normal':'cvd');
+      try{localStorage.setItem('vision',v?'normal':'cvd');}catch(e){}
     }
     mark();
     dispatchEvent(new Event('themechange'));};});})();
@@ -420,7 +430,7 @@
   function apply(p,now){
     p=Math.max(80,Math.min(160,p));
     de.style.fontSize=p+'%';show(p);
-    localStorage.setItem('fontsize',String(p));
+    try{localStorage.setItem('fontsize',String(p));}catch(e){}
     clearTimeout(timer);
     timer=setTimeout(function(){
       dispatchEvent(new Event('fontsizechange'));},now?0:150);}

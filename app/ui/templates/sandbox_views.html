@@ -3,7 +3,10 @@
    molecules have sites also gets BNG2.pl's binding-site contact map and
    its generated network; for a population model like SIHRS those repeat
    the Model view, so their tabs stay hidden. model-views.js draws each
-   graph (pan, zoom, drag, hover, click; view only), built once and kept.
+   graph (pan, zoom, drag, hover, click; view only), built once and kept
+   until the text size changes (fontsizechange, from the Display menu):
+   a drawing is laid out for the size it was built at, so the kept views
+   go and the one shown is built again from the graph already fetched.
    What a view shows instead of a drawing (loading, nothing to draw, a
    fetch that failed) is a one-line empty state; the key is legend chips,
    which say what each line is, and the line under the drawing names what
@@ -25,6 +28,8 @@
   var model = card.dataset.model, view = 'flow';
   var LIMIT = 80;                                   // species past which the network is a note, not a drawing
   var cache = {flow: null, contactmap: null, network: null};
+  // the fetched graph each view is built from, kept to build it again
+  var got = {flow: null, contactmap: null, network: null};
   var netAsked = false;
   // what a view shows instead of a drawing: BNG2.pl's own words (pre), or
   // a one-line empty state, an icon and its title (the kit's markup;
@@ -107,9 +112,11 @@
         var c = unclocked(g), v = MV.network(box, c.graph), rules = {}, n = 0;
         g.nodes.forEach(function (nd) { if (nd.kind === 'species') n++; });
         g.edges.forEach(function (e) { rules[e.rule] = 1; });
-        var m = Object.keys(rules).length;
+        // the model's rules, a rule that draws no arrow too (rule_flow)
+        var m = typeof g.rules === 'number' ? g.rules : Object.keys(rules).length;
         v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules')
           + ' in the saved model';
+        v.svg.setAttribute('aria-label', 'model: ' + v.idle);
         v.say();
         var wrap = document.createElement('div');
         wrap.appendChild(v.el);
@@ -130,6 +137,7 @@
   }
   function show() {
     while (box.firstChild) box.removeChild(box.firstChild);
+    if (!cache[view] && got[view]) cache[view] = build(view, got[view]);
     if (!cache[view]) { box.appendChild(note('Drawing the model', false, 'clock')); return; }
     box.appendChild(cache[view]);
   }
@@ -161,7 +169,7 @@
     if (netAsked) return;
     netAsked = true;
     fetch(url('network')).then(function (r) { return r.json(); })
-      .then(function (d) { cache.network = build('network', d); if (view === 'network') show(); })
+      .then(function (d) { got.network = d; cache.network = build('network', d); if (view === 'network') show(); })
       .catch(function () { netAsked = false; cache.network = note('The network could not be fetched', false, 'error'); if (view === 'network') show(); });
   }
   function start() {
@@ -170,6 +178,7 @@
         var flows = d.flow && d.flow.edges.length;
         var list = (flows || d.error ? ['flow'] : []).concat(!d.error && (d.sites || !flows) ? ['contactmap', 'network'] : []);
         view = list[0];
+        got.flow = got.contactmap = d;
         cache.flow = build('flow', d);
         cache.contactmap = build('contactmap', d);
         tabs(list);
@@ -196,6 +205,16 @@
       e.preventDefault();
       pick(shown[j].dataset.view, true);
     });
+  });
+  // the text size changed: the drawings built from a graph go (a view
+  // that could not be fetched keeps its note), and the one shown is built
+  // again at the new size; the others are built when their tab is picked
+  window.addEventListener('fontsizechange', function () {
+    var dropped = false;
+    Object.keys(cache).forEach(function (k) {
+      if (got[k] && cache[k]) { cache[k] = null; dropped = true; }
+    });
+    if (dropped) show();
   });
   // model-views.js is deferred: draw once it has run
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

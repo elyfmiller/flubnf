@@ -154,6 +154,58 @@ def _open_source(source):
     return source, False
 
 
+#: a workbook's first bytes (.xlsx is a zip, .xls an OLE file)
+WORKBOOK_MAGIC = (b"PK\x03\x04", b"\xd0\xcf\x11\xe0")
+
+#: what each WORKBOOK_MAGIC can be, said without naming one program: a zip
+#: is an .xlsx or .ods workbook, a .docx, or a zip archive (of CSV files,
+#: say); an OLE file an .xls workbook or another older Office file
+_CONTAINER_WORDS = dict(zip(WORKBOOK_MAGIC, (
+    ("This looks like a workbook or a zip archive, not a CSV file: save "
+     "the sheet as CSV UTF-8, or unzip the archive and choose the CSV "
+     "files in it."),
+    ("This looks like a workbook or another Office file, not a CSV file: "
+     "save the sheet as CSV UTF-8."))))
+
+
+def not_text(head: bytes) -> str:
+    """Why a file's first bytes are no text FluBNF reads, or '': a workbook
+    or a zip archive (WORKBOOK_MAGIC), or binary data (_binary). Said
+    before any reading, so neither is named by the NUL characters in its
+    "header" or read as Windows-1252."""
+    for magic, said in _CONTAINER_WORDS.items():
+        if head.startswith(magic):
+            return said
+    if _binary(head):
+        return ("The file is not text: it holds binary data. Save it as CSV "
+                "UTF-8.")
+    return ""
+
+
+def _binary(head: bytes) -> bool:
+    """Whether a file's first bytes are binary data, not text: control bytes
+    (not tab, newline or return) throughout, in no UTF-16 or UTF-32
+    pattern, and either over a quarter of the head (zero-filled data, a
+    database) or beside bytes that read as no text: not UTF-8, and a tenth
+    or more past ASCII (Windows-1252 text has few). Random or compressed
+    data (an image, a gzip) is about a ninth control bytes and half past
+    ASCII. A CSV with a few control bytes in its cells (vertical tabs
+    pasted from Word, a stray NUL) is text: read as before, the cells shown
+    or the column ignored."""
+    n = len(head)
+    control = sum(head.count(bytes([b])) for b in range(32)
+                  if b not in (9, 10, 13))
+    if control < max(8, n // 64) or detect_encoding(head) != "utf-8":
+        return False
+    if control * 4 > n:
+        return True
+    try:          # a character cut at the head's end does not count
+        codecs.getincrementaldecoder("utf-8")().decode(head, final=False)
+        return False
+    except UnicodeDecodeError:
+        return sum(head.count(bytes([b])) for b in range(128, 256)) * 10 >= n
+
+
 def detect_encoding(head: bytes) -> str:
     """The codec for a file's first bytes: a BOM decides; UTF-32 and UTF-16
     without one show as NUL bytes in three of every four, or every other,

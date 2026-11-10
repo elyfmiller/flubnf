@@ -23,6 +23,11 @@
   * runner.STUDENTS -> a missing tmp folder: every test sees a computer
     without a runner, a suite run inside a student's clone on the Mac
     Studio included (its ~/Students/.runner would turn the queue on).
+  * runner._recorded_engine -> none, and settings.INSTALL_ROOT -> an
+    empty folder: the checkout's own .flubnf.env (a clone set up with
+    --public or --private) would refuse runner and terminal starts, and
+    would pick the engine of every test that unsets FLUBNF_ENGINE; the
+    record's tests read a tmp clone's.
 """
 import atexit
 import os
@@ -117,6 +122,21 @@ def _app_state_untouched():
 
 
 @pytest.fixture(autouse=True)
+def _engine_pinned_private(monkeypatch):
+    """The suite pins the private engine (the fallback), whose stub fork
+    about 90 test files encode, whatever the shell exports. The default,
+    the public engine, has its own tests: they set FLUBNF_ENGINE
+    themselves."""
+    from app.core.engines import lwf
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    for var in ("FLUBNF_PY_ENGINE_PUBLIC", "FLUBNF_ENGINE_LOCK"):
+        monkeypatch.delenv(var, raising=False)
+    lwf._CHECK.clear()
+    lwf._BUILD.clear()
+    lwf._PENDING.clear()
+
+
+@pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
 
@@ -127,6 +147,26 @@ def _students_in_tmp(tmp_path, monkeypatch):
     runner's tests make their own under tmp_path."""
     from app.core import runner
     monkeypatch.setattr(runner, "STUDENTS", tmp_path / "no-students")
+
+
+@pytest.fixture(scope="session")
+def _no_record_root(tmp_path_factory):
+    """An install folder with no .flubnf.env and no .flubnf.env.cmd."""
+    return tmp_path_factory.mktemp("no-record")
+
+
+@pytest.fixture(autouse=True)
+def _no_engine_record(monkeypatch, _no_record_root):
+    """The checkout records no engine (runner._recorded_engine, and
+    settings' read of INSTALL_ROOT), whatever its .flubnf.env says; the
+    record's tests put the real ones back or point them at a tmp clone."""
+    from app.core import runner
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_recorded_engine", lambda: None)
+    monkeypatch.setattr(settings, "INSTALL_ROOT", _no_record_root)
+    settings.forget_record()
+    yield
+    settings.forget_record()
 
 
 @pytest.fixture(scope="session")
@@ -232,6 +272,16 @@ def _sandbox_released():
     release()
     yield
     release()
+
+
+@pytest.fixture(autouse=True)
+def _retro_form_forgotten():
+    """The Retrospective's remembered Settings form is module state: no
+    test's post may set another test's form."""
+    from app.ui.routes import retro as ui_retro
+    ui_retro._last_retro_form.clear()
+    yield
+    ui_retro._last_retro_form.clear()
 
 
 @pytest.fixture

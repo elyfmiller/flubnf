@@ -45,8 +45,10 @@
    {{ tips.stat("Hub clone", clone, id="hub-clone") }}
    {# the hub's baseline and official ensemble, which runs are scored
       against (an older sparse clone may lack them; Update data adds
-      them) #}
-   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
+      them). With no hub data the alert above names the step that
+      fetches it (Update data is refused without a clone), so the row
+      says no more #}
+   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% if not hub_missing %} <span class="hint">Update data adds them.</span>{% endif %}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
    {{ tips.stat("Scored against", comp, id="comparators") }}
    {# did every jurisdiction report the newest week? (the file a real-time
       run reads; app/core/reported.py) #}
@@ -59,8 +61,9 @@
      still intercepts a pull during run preparation #}
   {# the primary is what to do next: Update data once a check shows the
      clone behind (or with no data at all), else the check (the script
-     swaps them when a check answers) #}
-  {% set pull_first = hub_behind or (not live_week and not n_vintages) %}
+     swaps them when a check answers); never Update data with no hub
+     folder, since a pull is refused then #}
+  {% set pull_first = not hub_absent and (hub_behind or comparators_missing or (not live_week and not n_vintages)) %}
   <div class="row hubacts">
   <form method="post" action="/data/pull">
    <button class="{{ 'gold' if pull_first else 'quiet' }}" id="hub-pull" data-guard="data-pull">Update data</button></form>
@@ -85,7 +88,7 @@
    {{ tips.stat("Latest vintage", nw(latest_vintage), id="latest-vintage") }}
    {# the latest vintage's own numbers, read from the archived file #}
    {% if latest %}
-   {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
+   {{ tips.stat("Locations", latest.locations, id="latest-locs") }}
    {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
    {# only when it says something the Latest vintage tile does not #}
    {% if latest.newest_week != latest_vintage %}
@@ -101,7 +104,8 @@
    <text x="0" y="{{ y + 4 }}" font-size="11" fill="currentColor">{{ row.season }}</text>
    <line x1="64" y1="{{ y }}" x2="556" y2="{{ y }}" stroke="currentColor" stroke-opacity=".18"/>
    {# a shipped snapshot is a ring, not a dot; its title says so #}
-   {% for off, d in row.points %}{% if d in shipped %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="none" stroke="{{ row.color }}" stroke-width="1.6"><title>{{ d }} (shipped snapshot)</title></circle>{% else %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"><title>{{ d }}</title></circle>{% endif %}{% endfor %}
+   {# a season's colour is the chart's (routes/data._season_vars) #}
+   {% for off, d in row.points %}{% if d in shipped %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="none" stroke="{{ row.color }}"{% if row.var %} style="stroke:var({{ row.var }})"{% endif %} stroke-width="1.6"><title>{{ d }} (shipped snapshot)</title></circle>{% else %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"{% if row.var %} style="fill:var({{ row.var }})"{% endif %}><title>{{ d }}</title></circle>{% endif %}{% endfor %}
    {% endfor %}
    {% set yb = 14 + 22 * vintage_rows | length %}
    {% for m, lab in ((0, "Aug"), (13, "Nov"), (26, "Feb"), (39, "May"), (52, "Aug")) %}
@@ -143,7 +147,7 @@
    <select id="dv-vintage" name="vintage">
     {# a shipped snapshot's label says so (the hub's alone: a dataset's
        as_of dates are its own); its value stays the bare date #}
-    {% for v in vintages %}{% set shp = not ds and v in shipped %}<option {% if v == sel_vintage %}selected{% endif %}{% if shp %} value="{{ v }}"{% endif %}>{{ v }}{% if shp %} (shipped snapshot){% endif %}</option>{% endfor %}
+    {% for v in vintages %}{% set shp = not ds and v in shipped %}{% set lv = not ds and v == live_entry %}<option {% if v == sel_vintage %}selected{% endif %}{% if shp or lv %} value="{{ v }}"{% endif %}>{{ v }}{% if lv %} (target-data, not archived){% endif %}{% if shp %} (shipped snapshot){% endif %}</option>{% endfor %}
    </select></span>
   {% endif %}
   <span class="dt-field"><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
@@ -159,11 +163,14 @@
   {% if sel_vintage in shipped %}
   {% set src %}{% call tips.badge("info", "shipped snapshot", id="vb-shipped") %}Shipped snapshot for {{ sel_vintage }} ({{ shipped_labels[sel_vintage] }}){% endcall %}{% endset %}
   {{ tips.stat("Source", src, id="vb-source") }}
+  {% elif live_entry and sel_vintage == live_entry %}
+  {# the live target file: the data a real-time run reads, not archived yet #}
+  {{ tips.stat("Source", tips.badge("neutral", "target-data, not archived", id="vb-live"), id="vb-source") }}
   {% else %}
   {{ tips.stat("Source", "hub archive", id="vb-source") }}
   {% endif %}
   {{ tips.stat("Reported rows", "{:,}".format(sel_summary.rows), id="vb-rows") }}
-  {{ tips.stat("Jurisdictions", sel_summary.locations, id="vb-locs") }}
+  {{ tips.stat("Locations", sel_summary.locations, id="vb-locs") }}
   {{ tips.stat("Weeks", nw(sel_summary.oldest_week) ~ ' to ' ~ nw(sel_summary.newest_week), id="vb-weeks") }}
  {% endcall %}
  {% endif %}
@@ -216,8 +223,14 @@
  const VSERIES = {{ series_json | safe }};
  const VLOC = {{ sel_loc | tojson }};
  const VVINTAGE = {{ sel_vintage | tojson }};
+ // each season's colour token, shared with the Archive strip
+ const SEASON_VARS = {{ (season_vars or {}) | tojson }};
  // a custom dataset's name and unit (null on the hub's vintage browser)
  const VDS = {{ (ds.name if ds else none) | tojson }};
+ // a snapshot dataset: its titles name the snapshot shown (DA-23)
+ const VDSVT = {{ (ds.vintage_true if ds else false) | tojson }};
+ // the hub's live target file shown (its week is not archived yet)
+ const VLIVE = {{ (sel_vintage == live_entry and live_entry is not none) | tojson }};
  const VUNIT = {{ (ds.unit if ds else "admissions") | tojson }};
  const VFMT = VDS ? ',.6~g' : ',.0f';
  // [month label, week offset from August 1] (server-side list)
@@ -276,7 +289,8 @@
         name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
         hovertemplate:'newest: %{x} · %{y:'+VFMT+'}<extra></extra>'}];
      FluCharts.react(el,traces,
-       vlay(VDS ? VLOC+' · '+VDS : VLOC+': admissions as archived '+VVINTAGE,380),
+       vlay(VDS ? VLOC+' · '+VDS+(VDSVT ? ' · as of '+VVINTAGE : '')
+                : VLOC+': admissions as '+(VLIVE ? 'in target-data ' : 'archived ')+VVINTAGE,380),
        vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
      return;
    }
@@ -290,10 +304,11 @@
      customdata:by[k].d,
      hovertemplate:k+' · %{customdata} · %{y:'+VFMT+'}<extra></extra>',
      line:{width:i===seasons.length-1?3:1.5,
-           color:i===seasons.length-1?(css('--gold')||SCOLORS[0])
-                :seasonColor(seasons.length-2-i)}}));
-   const L=vlay(VDS ? VLOC+' · '+VDS+': season over season'
-                : VLOC+': season over season, as archived '+VVINTAGE,380);
+           color:(SEASON_VARS[k]&&css(SEASON_VARS[k]))
+                ||(i===seasons.length-1?(css('--gold')||SCOLORS[0])
+                   :seasonColor(seasons.length-2-i))}}));
+   const L=vlay(VDS ? VLOC+' · '+VDS+': season over season'+(VDSVT ? ', as of '+VVINTAGE : '')
+                : VLOC+': season over season, as '+(VLIVE ? 'in target-data ' : 'archived ')+VVINTAGE,380);
    L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
    L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
    FluCharts.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));

@@ -6,6 +6,272 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-05 (02:37 UTC): ROUND 2026-11-07 STANDS AS MERGED (Ely: too
+  late to drop; more rigorous checking from next week). FOR THE NEXT
+  ROUND (2026-11-14, run Wednesday 2026-11-11) AND FUTURE AGENTS OF THIS
+  LANE, what happened and what to do differently:
+  - Timeline (UTC): files to the fork 19:25 Wed; #3995 opened 19:44; the
+    state-by-state plausibility review only at 19:55, after the pull
+    request; the Groundhog's Hawaii dropped and recommitted about 21:45;
+    merged before 23:27; the other members' files: only epymorph at
+    21:25 Wed, all five on cdcepi main by 01:01 Thu. So the member table
+    could only run after the merge, when any change needs a new hub pull
+    request that Ely must open.
+  - What slipped through: Groundhog rises in states whose data are flat
+    or falling. Hawaii (dropped), Alaska (observed 0.97/week; 12 to 36
+    at h3), Montana (1.01; 27 to 97), Washington (1.12; 179 to 766, the
+    Oracle 323). All four showed in this lane's review and again in the
+    member table.
+  - Next round, before anything goes to the fork: (1) the state-by-state
+    review on both models: each model's implied weekly growth to h3
+    against the observed growth over the last 3 weeks, the two models'
+    h3 medians against each other (1.5x), and any rise where the data
+    are flat or falling; (2) the member table on whatever members are
+    in (epymorph usually first), with last week's member files as a
+    guide, rerun as the rest arrive; (3) the list goes to Ely with the
+    files, so locations are dropped before the pull request, not after.
+  - Read the member table with each member's growth beside it: this
+    week the others' median was pulled low by two near-plateau members
+    (implied weekly growth FourCAT 1.11, epymorph 1.14; observed 1.25),
+    so 21 locations flagged, many in line with the data. See Open.
+- 2026-11-05 (01:02 UTC): ROUND 2026-11-07 MEMBER TABLE (all five other
+  members in, from cdcepi main), run on the merged pair. No red flags
+  (Copycat the widest member, typical 17.5x); flat or higher everywhere.
+  The rule flags 21 locations. Oracle (typical 1.10x the others), 8 of
+  51, all near the line: DC 0.61, Maine 0.61, Vermont 0.65, New Jersey
+  1.58, South Dakota 1.60, Idaho 1.62, Alabama 1.63, Puerto Rico 1.64.
+  Groundhog (typical 1.28x), 13 of 52: Nevada 1.53, California 1.55,
+  Wisconsin 1.59, Idaho 1.59, New York 1.61, Connecticut 1.63, Oregon
+  1.70, Puerto Rico 1.78, Montana 1.90, Maine 1.95, Delaware 2.00,
+  Washington 2.30, Alaska 2.40. The others' median is pulled low this
+  week: implied weekly growth to h3 (typical state) FourCAT 1.11 and
+  epymorph 1.14 against INFLAenza 1.22, the Oracle 1.30, ABERT 1.32, the
+  Groundhog 1.34, Copycat 1.42; observed 1.25. Several flags sit with
+  the data (South Dakota observed 1.79/week, Delaware 1.75, Idaho 1.54,
+  New Jersey 1.53). Three do not: Alaska (observed 0.97/week; Groundhog
+  12 to 36), Montana (1.01; 27 to 97) and Washington (1.12; 179 to 766,
+  the Oracle 323). The round is merged, so any change needs a new hub
+  pull request from FluBNF_submission before 03:00 UTC; Ely decides.
+  Staged, hub check GREEN: stage_rule (Oracle 43, Groundhog 39) and
+  stage_c (the Groundhog without Alaska, Montana and Washington, 49; the
+  Oracle unchanged).
+- 2026-11-04 (23:27 UTC): ROUND 2026-11-07 MERGED: #3995 is in cdcepi
+  main (seen at 23:27 UTC, main 6d17ab8 contains cec8608). The files on
+  main are byte-identical to the checked pair: GroundHogCGR 52
+  locations (0de90710...), OracleSIHRS 51 (9402fb92...). The 01:00 UTC
+  member table still runs; with the round merged, a flagged location
+  would need a new hub pull request before 03:00 UTC, which waits on Ely.
+- 2026-11-04 (22:11 UTC): ROUND 2026-11-07, VALIDATION PASSED ON THE
+  RECOMMIT (Ely: both commits on #3995 green; not yet merged by the hub
+  admin). Before that, checked here: #3995's merge with cdcepi main
+  (bd63a14 over 487bc2a) adds exactly our two files, byte-identical to
+  the checked pair, and the Python hub check is GREEN on both against
+  main's tasks.json. The hub's own check results stay unreadable from
+  this session (403). Next: the member table at 01:00 UTC; the git watch
+  records the merge.
+- 2026-11-04 (21:47 UTC): ROUND 2026-11-07, THE GROUNDHOG'S HAWAII LEFT
+  OUT (Ely) AND RECOMMITTED (cec8608 on FluBNF_submission; #3995 now
+  heads there). Hawaii peaked at 86 (week ending 10-17), then 67 and 54;
+  each newest week has since been revised up by about 4, so 54 likely
+  ends near 58, still falling (two falling weeks, not three as told to
+  Ely earlier). The Groundhog's medians 58, 80, 104, 141 (h3 95% 20-690)
+  against the Oracle's left-out 44, 47, 51, 57 and epymorph's 61, 52, 44,
+  36. Since the peak the Groundhog has called a rise in Hawaii every
+  round and run about 1.3-2.3x high (round 10-17: 88 for the week that
+  came in at 67, 123 for the one at 54; 10-24: 90 for 67, 109 for 54;
+  10-31: 66 for 54), though the observed weeks stayed inside its wide 95%
+  bands. The new Groundhog file is the submitted one minus Hawaii's 92
+  rows (52 locations, sha256 0de90710...); the Oracle file is unchanged
+  (9402fb92...). Checks on the pair: hub check GREEN for both, gate PASS,
+  no red flags (the Groundhog's widest is now 11.7x, Alaska), flat or
+  higher everywhere; the member table still waits (only epymorph in at
+  21:25 UTC). round-2026-11-07/in holds the new pair for the 01:00 UTC
+  member table; the git watch on #3995 restarted on cec8608 (a container
+  restart had stopped it). Neither model forecasts Hawaii this round.
+- 2026-11-04 (19:55 UTC): ROUND 2026-11-07, VALIDATION PASSED (Ely: the
+  hub's checks are green on #3995); THE SUBMITTED FILES REVIEWED FOR
+  PLAUSIBILITY. The files at the pull request's head (10589b5) are
+  byte-identical to the checked ones. As a whole they are plausible: the
+  Oracle's medians continue the observed rise (implied weekly growth to
+  h3 1.30, typical state, against 1.25 observed over the last three
+  weeks; US 10,783 to 25,408, the sum of its state medians 23,240 at h3),
+  the Groundhog's a little faster (1.34; US 9,619 to 26,293); the last
+  week sits inside every h0 95% band; no h3 top above 12.8x the last
+  week. The Groundhog lifts slowly growing states to the national pace
+  (forecast growth more than 1.15x the observed rate in 14 states), and
+  three of them stand out: Hawaii (weeks 78, 86, 67, 54, falling; medians
+  58, 80, 104, 141; epymorph 61 to 36; last week 2.04x the members), Montana
+  (27 last; medians 30 to 97; the Oracle 43, epymorph 24) and Alaska (12
+  last; 14 to 36; the Oracle 14, epymorph 12). The Oracle runs below the
+  Groundhog in the old-pin and small states (h3 Alaska 0.39x, Washington
+  0.42x, Montana 0.44x, Maine 0.45x). The member table, once three other
+  members are in, decides under the rule; a flagged location means a
+  recommit to FluBNF_submission, which updates #3995 and reruns the
+  validation.
+- 2026-11-04 (19:44 UTC): ROUND 2026-11-07, HUB PULL REQUEST #3995 OPENED
+  BY ELY (cdcepi/FluSight-forecast-hub#3995, from
+  elyfmiller:FluBNF_submission, head 10589b5). GitHub's test merge
+  (3747e66, on cdcepi main 42725dd) adds only our two files. This
+  session cannot read the hub's checks or comments (the GitHub API and
+  pages for cdcepi are closed to it, and attaching the repository was
+  refused); it watches the pull request by git (a head change, the merge
+  ref, the merge into main), and the hub's "Hub Submission Validation
+  (R)" result comes from Ely or the merge.
+- 2026-11-04 (19:25 UTC): ROUND 2026-11-07 COMMITTED TO THE FORK AT 10x
+  (Ely's choice; Decided). FluBNF_submission on elyfmiller's fork:
+  commit 10589b5 "NAU_PyBNF forecast 2026-11-07 (EW44): upper tail
+  shrunk to 10x for both models (Oracle without Delaware and Hawaii)",
+  authored as Ely, on top of b71aadb (last week's fork sync, already in
+  cdcepi main); pushed without force. The Oracle file is Ely's 10x upload
+  minus Delaware and Hawaii (51 locations, sha256 9402fb92...), the
+  Groundhog file Ely's 10x upload (53, c82858ea...); both on the fork
+  byte-identical to the checked ones. Against cdcepi main 42725dd the
+  branch merges cleanly and adds only those two files. The fork clone is
+  back at /home/user/flusight-forecast-hub (shallow, sparse). Ely opens
+  the hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  The member table runs once three other members are in (a watcher; the
+  6 PM Arizona check-in at 01:00 UTC runs it regardless); a location it
+  flags would mean a recommit, Ely decides. The deadline is 8 PM Arizona
+  time (03:00 UTC).
+- 2026-11-04 (19:20 UTC): ROUND 2026-11-07 AGAINST EPYMORPH (the only
+  other member in at 19:17 UTC, cdcepi/FluSight-forecast-hub#3981);
+  THE GROUNDHOG'S DELAWARE; ELY ON THE TWO-SIDED CAP.
+  - Ely (2026-11-04): the cap should act in both directions, above and
+    below the median, above all in the middle of the exponential rise;
+    the work comes later (Open). Ely is moving the agents' runs to the
+    Windows machine, since other lab members need the Mac Studio.
+  - Widths at 10x are in epymorph's range: the h3 97.5% over the last
+    week, typical state, Oracle 7.3x, Groundhog 7.5x, epymorph 7.5x (h0
+    1.9x, 2.1x, 2.9x); the 2.5% over the last week at h3 0.39, 0.46,
+    0.29. At 15x our h3 top is 10.9x and 11.2x, about 1.45x epymorph's.
+    Our bands are narrower than epymorph's about our own medians (h3 95%
+    width over the median 2.64 and 2.28 against 4.05) because our medians
+    are higher.
+  - Medians agree at h0 and h1 (ours over epymorph's, typical state:
+    Oracle 0.93 and 1.05, Groundhog 0.87 and 1.11; our median inside
+    epymorph's 50% band in 39 to 45 of 52 states) and part at h2 and h3
+    (Oracle 1.26 and 1.62, Groundhog 1.45 and 1.95; at h3 more than 1.5x
+    apart in 34 and 39 states). US medians h0 to h3: epymorph 11,119,
+    12,009, 12,754, 12,824; Oracle 10,783, 14,198, 19,021, 25,408;
+    Groundhog 9,619, 13,709, 19,003, 26,293. The split is the shape:
+    median growth per step, typical state, epymorph 1.32, 1.13, 1.07,
+    1.03 (a plateau), the Oracle 1.27, 1.30, 1.30, 1.31 (the rise
+    continued), the Groundhog 1.14, 1.43, 1.37, 1.42. Epymorph also ran
+    low at long horizons last week (round 10-31, h3 0.72x the other four
+    members' median, 0.81x the ensemble's). Last week's h0 medians all
+    sat under the truth (10-31 over the h0 median, typical state:
+    epymorph 1.08, ensemble 1.14, Oracle 1.21, Groundhog 1.33); the
+    Groundhog's first step is again the lowest (1.14x the last week).
+  - The Groundhog's Delaware is the only state whose median stalls at h3
+    (56, 108, 141, 142) after strong early growth; Delaware jumped 3.7x
+    in its last week, and its donor weeks after such a jump flatten.
+    Epymorph's Delaware h3 median is about 63, the Oracle's 225.
+- 2026-11-04 (19:11 UTC): ROUND 2026-11-07, THE 15x PAIR CHECKED; THE
+  POST-PROCESSING CHAIN CHECKED FOR THE "CUT" LOWER BANDS (Ely: the bottom
+  quantiles look cut off rather than shrunk like the top; is the inverse
+  of the cap applied, and is the post-calibration step sound?).
+  - The 15x pair (same run settings, tail cap 15): both files 53
+    locations, GREEN on app.core.hubcheck, gate PASS (h3 15.0x typical
+    and at most), no red flag (h3 97.5% over the last week: Oracle 10.9x
+    typical, widest Rhode Island 16.1x; Groundhog 11.4x, widest Alaska
+    17.2x); US h3 Oracle 5,030-25,408-98,000, Groundhog
+    4,469-26,293-98,000. Flat or higher: the Oracle fails in Hawaii only,
+    as at 10x. Delaware at 15x: the Oracle 16 to 102 at h0 (median 77)
+    and 18 to 345 at h3 (225), the Groundhog 11 to 109 and 17 to 345; no
+    location's upper half is squeezed flat; the h0 band leans upward
+    again (upper half over lower half, typical state: Oracle 1.42 against
+    0.93 at 10x, Groundhog 2.20 against 1.27). Widths against the NAU
+    members (h3 97.5% over the last week, typical state): ours 7.4x and
+    7.6x at 10x, 10.9x and 11.4x at 15x; epymorph today 7.6x; last week's
+    members 6.8x (FourCAT) to 10.0x (epymorph), Copycat 17.6x. Member
+    table: only epymorph in at 19:09 UTC.
+  - The chain, step by step. (1) The tail cap acts above the median only
+    and no inverse is applied below it: between Ely's 10x and 15x files
+    every median and every level below the median is identical (212 of
+    212 blocks, both models). (2) The narrowing (oracle.narrow 0.7, the
+    Oracle only) is symmetric on the log scale, q' = m (q/m)^0.7 for every
+    level, so it lifts the lower edge rather than cutting it: undone on
+    Delaware's Oracle, the 2.5% is about 8 at h0 and 6 at h3 against 16
+    and 18 submitted. (3) The output floor (app/core/floor.py) adds
+    Poisson(0.35) noise to the samples; it shows only near zero (the
+    Oracle's 1% is 0 in 26 blocks of 9 small jurisdictions). The steps do
+    what they are documented to do.
+  - What looks cut is the forecasting sample's own lower edge: the 2.5%
+    stays flat or falls across the horizons while the median climbs (the
+    Oracle in 45 of 53 locations, e.g. Alabama 124, 120, 111, 99 under
+    medians 223 to 558; the Groundhog in 36, e.g. Colorado 43, 43, 44, 43
+    under 110 to 303). The Liu-West filter's sample keeps trajectories
+    at the pre-rise level, and the Groundhog's donors include seasons
+    that stalled; with the top shaped by the cap and the bottom left as
+    the model drew it, the fan's lower edge reads as a straight cut. The
+    same lower-half width is the 2026-10-28 handoff to the Model lane.
+  - The shrink mirrored onto the lower half (each location's cap exponent
+    applied to every level, both halves; a post hoc check on our
+    as-submitted rounds 10-10, 10-17 and 10-24, truth through 10-31, the
+    hub's target data in the oracle-output form): states relative WIS,
+    Oracle 15x 0.670 one-sided against 0.656 mirrored, 10x 0.646 against
+    0.620; log scale 0.627 against 0.598 and 0.633 against 0.589;
+    Groundhog 15x 0.669 against 0.650, 10x 0.631 against 0.597, log 0.557
+    against 0.542 and 0.561 against 0.534. The mirror trades 0.9 to 1.7
+    of spread for 0.3 to 0.9 more above truth per state forecast. Three
+    October rounds, files that predate the narrowing: a lead for the
+    Model lane's replay screen (For other lanes), not a change for this
+    round.
+  - Staged (recommendation, Ely decides between the pairs): at 15x, the
+    Oracle without Hawaii (52 locations; the upload minus 92 rows byte
+    for byte, sha256 e43ccf23...) and the Groundhog as uploaded
+    (fc45b8d6...); at 10x, the pair staged at 18:54 UTC (the Oracle
+    without Hawaii and Delaware). Both stagings GREEN, gate PASS, no red
+    flag, flat or higher everywhere.
+- 2026-11-04 (18:54 UTC): ROUND 2026-11-07, THE 10x PAIR CHECKED (Ely's
+  run: app build 9d4520d, seed season_total_early, weight 0.25,
+  narrowing 0.7, tail cap 10 shrink; data through 2026-10-31). Both
+  files: 53 locations, horizons 0-3, 212 monotone whole-number blocks;
+  GREEN on app.core.hubcheck against cdcepi main's tasks.json; gate PASS
+  (h3 10.0x typical and at most); no red flag (h3 97.5% over the last
+  week: Oracle 7.4x typical, widest Oregon 11.1x; Groundhog 7.6x, widest
+  Hawaii 12.8x). Oracle h0 medians 1.27x the last week (10th-90th
+  1.06-1.43), Groundhog 1.15x (1.08-1.23); the last week inside the h0
+  95% band everywhere; US h3 Oracle 5,030-25,408-65,333, Groundhog
+  4,469-26,293-65,333. Flat or higher: the Oracle fails in Hawaii
+  (medians 44, 47, 51, 57 against a last week of 54; on the old pin),
+  the Groundhog passes everywhere; CA and WA (on the old pin from this
+  week) pass, with the Oracle's h3 medians at 2.07x and 1.80x the last
+  week against about 2.85x elsewhere. The member table: only epymorph
+  in at 18:51 UTC (cdcepi/FluSight-forecast-hub#3981).
+  - Ely: the quantiles below the median look off in places like
+    Delaware. Delaware's last week jumped from 13 to 48, 2.09x the
+    three-week mean (23) that sets the cap, so the 10x limit is 230. The
+    Oracle's h3 median before the cap is 225 (95% 18 to 1,334); the
+    shrink takes the exponent its worst horizon needs (0.01) to every
+    horizon, so the Oracle's Delaware band has no upper half left (h0:
+    2.5% 16, median 77, 97.5% 78). The Groundhog's Delaware (exponent
+    0.29) keeps its upper half; its lower half is lumpy (25% to 50%
+    levels 51 to 56, then 11 at 2.5%) and its lowest levels fall from h1
+    to h2.
+  - Beyond Delaware: the 10x shrink acts in nearly every state this
+    week, because growth (the last week 1.30x the three-week mean,
+    typical state) carries the h3 medians toward a limit set on the
+    lagging level. Exponent by location (1 = untouched; from the
+    report's before-cap 95% bounds): median 0.54 for both models; under
+    0.5 in 22 Oracle and 17 Groundhog states. The lower half is never
+    touched, so the h0 band turns lopsided downward: the width below the
+    median over the width above, typical state, Oracle 0.49 before the
+    cap and 1.09 after, Groundhog 0.32 and 0.79; the Oracle's h0 lower
+    half is the wider one in 29 of 52 states. On the WIS spread term,
+    states: Oracle 17.3 below the median and 15.9 above, Groundhog 18.6
+    and 16.3; last week the ensemble was 8.8 below and 11.6 above.
+    Estimated at 15x from the same before-cap bounds: median exponent
+    0.74 Oracle and 0.79 Groundhog, under 0.5 in 3 and 0 states, lower
+    over upper 0.71 and 0.46; Delaware's Oracle exponent 0.24.
+  - Staged (recommendation, Ely decides): the Oracle file without Hawaii
+    (flat or higher) and Delaware (no upper half), 51 locations, the
+    upload minus those 184 rows byte for byte (sha256 9402fb92...);
+    the Groundhog file as uploaded (c82858ea...). Both GREEN, gate PASS,
+    no red flag, flat or higher everywhere. The member table runs again
+    once three other members are in; the deadline is 8 PM Arizona time
+    (03:00 UTC).
 - 2026-11-04 (16:59 UTC): ROUND 2026-11-07 PREPARATION: THE NEW WEEK, THE
   SEED STAGES, 10x AGAINST 15x ON THIS SEASON'S SCORED WEEKS (Ely runs
   both today and compares; the choice stays with Ely and the PI); THE
@@ -2757,6 +3023,20 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-05 (Ely): round 2026-11-07 stands as merged (Groundhog 52
+  locations without Hawaii, Oracle 51 without Hawaii and Delaware). The
+  member table, which could only run at 01:00 UTC Thursday after the
+  merge, flagged 21 locations; none are dropped, as it was too late.
+  From round 2026-11-14 on, forecasts are checked more rigorously before
+  submission (Now, 2026-11-05).
+- 2026-11-04 (Ely): the Groundhog file for round 2026-11-07 also leaves
+  out Hawaii (past its early peak while the Groundhog's medians kept
+  rising), so neither model forecasts Hawaii this round.
+- 2026-11-04 (Ely): round 2026-11-07 goes out with the upper-tail shrink
+  at 10x for both models (Ely ran 10x and 15x and compared). The Oracle
+  file leaves out Hawaii (flat or higher) and Delaware (the 10x shrink
+  left it no upper half); the Groundhog file keeps all 53. The member
+  table is rerun once three other members are in.
 - 2026-10-30 (Ely): this lane stays on top of forecast plausibility and
   our standing every week, to optimize as far as we can. Beating the
   baseline, our goal, is met; the ensemble's level is the harder target.
@@ -2871,6 +3151,31 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-05, Submission to Model: THE GROUNDHOG LIFTS FLAT SMALL STATES.
+  On round 2026-11-07 the Groundhog forecast steep rises where the data
+  are flat or falling: Hawaii (54 after a peak of 86; medians to 141 at
+  h3), Alaska (12; to 36), Montana (27; to 97), Washington (179; to
+  766). Since Hawaii's peak it ran about 1.3-2.3x high there every
+  round. Worth a look at why these states follow the national pace
+  (old to_date pin, donors, or the growth prior) before the next run.
+- 2026-11-04 (19:11 UTC), Submission to Model: SCREEN THE TAIL SHRINK
+  MIRRORED ONTO THE LOWER HALF, AND THE CAP'S LAGGING LEVEL. (1) The
+  location-wide shrink (output.tail_mode shrink) narrows only the upper
+  half; in a rising week it leaves the band leaning downward (round
+  2026-11-07 at 10x: the h0 width below the median over the width above,
+  typical state, Oracle 0.49 before the cap and 1.09 after, Groundhog 0.32
+  and 0.79). Applying each location's exponent to both halves, q' = m
+  (q/m)^k (a location-specific narrowing that keeps the forecast's shape),
+  scored better on this season's three scored rounds at both caps (under
+  Now, 2026-11-04; Oracle states 0.646 to 0.620 at 10x, log 0.633 to
+  0.589). Please screen it on the stored replays, reporting the
+  corrected-seed weeks apart (as in the 2026-10-30 handoff), against the
+  one-sided shrink and against a lower narrowing. (2) The cap's level is
+  the mean of the last three weeks, which lags a jump: Delaware's last
+  week was 48 against a mean of 23, so the 10x limit (230) sat at the
+  Oracle's own h3 median (225) and the shrink removed its whole upper half
+  at every horizon. A level that follows a jump (the last week, or the
+  larger of the two) belongs in the same screen.
 - 2026-10-30 (20:30 UTC), Submission to Model (Ely's handoff): THE
   FULL-SEASON CAP SCREENS ARE MOSTLY OLD-PIN WEEKS, AND THE SEED SWITCH IS
   NOW URGENT. The split is under Now (2026-10-30): in the replayed seasons
@@ -3441,6 +3746,26 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-05: the member table's reference when some members plateau.
+  The 1.5x rule compares our h3 median with the median of the other six
+  members; on 2026-11-07 two of them (FourCAT, epymorph) forecast near-
+  plateaus, the median sat low, and 21 of our locations were flagged,
+  many in line with the observed growth. Keep the rule as is, or read
+  it beside each member's growth (or the observed growth)? Ely decides.
+- 2026-11-04 (Ely): the compute agents move to Ely's Windows machine
+  (dedicated CPU and GPU) over the next few days, since the lab needs the
+  Mac Studio. Set up there: the tail cap on both halves (entry below) and
+  longer runs. This lane's round checks (Spencer's report, the member
+  table, plausibility, the hub check, the cap comparisons and post-hoc
+  scoring) still live only in a session scratchpad; they should move
+  into scripts/ on a branch for Ely's merge before the move.
+- 2026-11-04 (Ely): the tail cap on both halves (the shrink's exponent
+  applied below the median as well as above, or a separate lower-half
+  exponent), so the cap acts in both directions in the middle of the
+  rise. Later work: the code is a third output.tail_mode value in
+  flubnf/tailcap.py with its tests (Submission can branch it for Ely's
+  merge), screened by the Model lane on the stored replays first (For
+  other lanes, 2026-11-04).
 - 2026-10-30: the upper-tail limit back to 15x (shrink) from round
   2026-11-07 (run Wednesday 2026-11-04), Ely's proposal for the higher
   growth; it waits on Ely and the PI, since 10x was their joint choice.

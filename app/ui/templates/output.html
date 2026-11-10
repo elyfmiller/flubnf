@@ -13,7 +13,10 @@
 {% if d.status %}{% set st = d.status.state %}
 {%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
      else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
-<span class="out-bt">{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
+{#- the time left, which the page script keeps to the minute #}
+{%- set tail = " · " ~ d.status.left %}
+{%- if d.status.left and words.endswith(tail) %}{% set words %}{{ words[:words | length - tail | length] }} · <span data-out-left="{{ d.status.deadline }}">{{ d.status.left }}</span>{% endset %}{% endif %}
+<span class="out-bt"{% if d.status.flips %} data-out-flips="{{ d.status.flips | join(' ') }}"{% endif %}>{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
 {%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
 {%- endmacro %}
 {# One forecast date as a card (routes/output.forecast_dates): its
@@ -61,7 +64,8 @@
  {%- for f in d.files + d.modified %}
   <a class="btn quiet out-dl" href="/output/download?path={{ f.path | urlencode }}" download="{{ f.name }}" aria-label="Download {{ f.name }}" title="{{ f.name }}">{{ tips.icon("download") }} {{ f.model.split("-", 1)[-1] }}{% if f.modified %} (modified){% endif %}</a>
  {%- endfor %}
- {%- if bad %} <span class="out-bt">{% call tips.badge("error", "fails hub checks", id="out-lchk-" ~ di) %}{% for f in bad %}{{ f.name }}: {{ f.check.text }}. {% endfor %}{% endcall %}</span>{% endif %}
+ {#- failing checks as the cards say them: the badge and an "i" listing each problem (_filerow) #}
+ {%- if bad %} <span class="out-bt uk-badge-pair">{{ tips.badge("error", "fails hub checks", id="out-lchk-" ~ di) }}{% call tips.toggletip("out-lchk-" ~ di, "the hub check problems", title="Fails hub checks") %}{% for f in bad %}<span class="uk-tt-line">{{ f.name }}: {{ f.check.text }}.</span>{% endfor %}{% endcall %}</span>{% endif %}
  </span>
 </div>
 {%- endmacro %}
@@ -79,15 +83,9 @@
 {% else %}
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
-<span class="uk-tt-line">Your forecasts by date, newest first, as hub-format CSV files.</span>
-<span class="uk-tt-line">One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. The newest date, a round open or coming (outlined) and a date a run is writing now each get a card; other dates take one line each, with their checks, coverage and folder on each run's page.</span>
-<span class="uk-tt-line">Each model's file is named &lt;reference date&gt;-&lt;team&gt;-&lt;model&gt;.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3).</span>
-<span class="uk-tt-line">Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates.</span>
-<span class="uk-tt-line">When a date was run more than once, it shows each model's file from the newest complete run on all 53 locations, else the newest complete run, else the newest run that wrote one; a run made in the round's own week comes before a later vintage run, and the other runs' files stay in their run folders.</span>
-<span class="uk-tt-line">A run with modified model settings writes &lt;model&gt;-modified files: a record under a non-hub name, not for the hub. Its weekly report still shows above when it is the newest run, badged.</span>
-<span class="uk-tt-line">Files an earlier version wrote under retired hub names are not listed; they stay on disk and in <a href="/storage">Storage</a>.</span>
-<span class="uk-tt-line">The copy buttons beside a file copy its path, or the command that runs it through the hub's own validator (scripts/validate_submission.R; it needs R and the hubValidations package).</span>
-<span class="uk-tt-line">The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes the files; you upload them to the hub yourself.</span>
+<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
+<span class="uk-tt-line">A date run more than once shows the newest complete run's files: all 53 locations first, and a run made in the round's own week before a later vintage run. Modified settings write &lt;model&gt;-modified files, not for the hub.</span>
+<span class="uk-tt-line">The hub takes files from Sunday to Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes them; you upload them yourself.</span>
 {% endset %}
 {{ tips.heading("Output", "out-files", about, level=1, rich=True, tip_label="the submission files", cls="out-title") }}
 {% if rid or archive_dates %}
@@ -165,7 +163,7 @@
 {% endif %}
 {% if own %}
 <div class="card out-own" id="own-data">
- {{ tips.heading("Your data", "out-own", "Forecasts on your own datasets, newest first: hubverse-format quantile CSVs (23 levels, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own groups. They carry non-hub names (FluBNF-Groundhog, FluBNF-SIHRS-PF) and are for your own use; downloads work on this computer only, since they carry your data.",
+ {{ tips.heading("Your data", "out-own", "Forecasts on your own datasets, newest first, under non-hub names: for your own use, downloaded on this computer only.",
                  after=tips.badge("neutral", "this computer only", icon_name="lock")) }}
  {% for r in own %}
  {% set runlink %}<a href="/runs/{{ r.run_id }}">run {{ r.run_when }}</a>{% endset %}
@@ -178,7 +176,9 @@
 </div>
 {% endif %}
 {{ fr.copy_script() }}
-<script>
+{# data-out-now: the server's clock as it rendered the page
+   (routes/output.output_page); the countdown below keeps time by it #}
+<script{% if server_now %} data-out-now="{{ server_now }}"{% endif %}>
  // a round's close in the reader's own clock (the badge says Eastern);
  // a time the browser cannot read keeps the Eastern words
  (function(){
@@ -190,6 +190,50 @@
    try{s=t.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){s=t.toString();}
    els[i].textContent='closes '+s+' your time';
   }
+ })();
+ // a page left open keeps a due round's time left to the minute, and
+ // reloads once when a badge changes (the window opens, its last 12
+ // hours, it closes: the badge and the primary Download follow). Each
+ // change reloads at most once, so it cannot loop; the reload waits while
+ // a form has focus or the guard modal is open. Time is the server's, the
+ // one its badges change by: the browser's clock plus the gap measured at
+ // load (data-out-now), so a browser clock ahead of the server's does not
+ // reload before the badge has changed and then never again
+ (function(){
+  var lefts=document.querySelectorAll('[data-out-left]'),flips=[],
+      srv=document.querySelectorAll('[data-out-now]'),
+      gap=srv.length?Date.parse(srv[0].getAttribute('data-out-now'))-Date.now():0;
+  if(isNaN(gap))gap=0;
+  document.querySelectorAll('[data-out-flips]').forEach(function(e){
+   e.getAttribute('data-out-flips').split(' ').forEach(function(s){var t=Date.parse(s);if(!isNaN(t))flips.push(s);});
+  });
+  if(!lefts.length&&!flips.length)return;
+  function left(ms){
+   var s=Math.floor(ms/1000),d,h;
+   if(s<=0)return '';
+   d=Math.floor(s/86400);h=Math.floor(s%86400/3600);
+   if(d)return d+(d===1?' day':' days')+(h?' '+h+' h':'')+' left';
+   if(h)return h+' h left';
+   return Math.max(1,Math.floor(s%3600/60))+' min left';
+  }
+  function done(s){try{return sessionStorage.getItem('out-flip '+s)==='1';}catch(e){return false;}}
+  function tick(){
+   var now=Date.now()+gap,i,t,s;
+   for(i=0;i<lefts.length;i++){
+    t=Date.parse(lefts[i].getAttribute('data-out-left'));
+    s=isNaN(t)?'':left(t-now);
+    if(s)lefts[i].textContent=s;
+   }
+   for(i=0;i<flips.length;i++){
+    if(Date.parse(flips[i])>now||done(flips[i]))continue;
+    if(window.GUARD_BUSY||(document.activeElement&&document.activeElement.form))return;
+    try{sessionStorage.setItem('out-flip '+flips[i],'1');}catch(e){return;}
+    location.reload();return;
+   }
+  }
+  setInterval(tick,60000);
+  addEventListener('focus',tick);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});
  })();
 </script>
 {# an older server (a pull while the console runs reloads templates,

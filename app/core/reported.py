@@ -44,7 +44,7 @@ from app.core import ttlcache
 #: newest weeks kept with each gap (the wording and the recorded choice)
 RECENT_WEEKS = 8
 
-REASON_TEXT = {"no row": "no row", "blank": "blank value",
+REASON_TEXT = {"no row": "not reported", "blank": "blank value",
                "zero": "reads 0", "collapsed": "collapsed"}
 #: gaps that leave the week incomplete (a value the models never saw)
 UNREPORTED = ("no row", "blank")
@@ -56,8 +56,9 @@ COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
                   "to at least twice the reported value.")
 #: a choice in a few words (the tip, the run page)
 CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
-                "blend": "blend", "set_aside": "set aside", "omit": "leave out",
-                "keep": "keep", "carry": "carry"}
+                "blend": "blend", "set_aside": "both from the week before",
+                "omit": "leave out",
+                "keep": "keep", "carry": "from the last reported week"}
 
 
 def _num(v: float) -> str:
@@ -121,7 +122,7 @@ class Gap:
     def what(self) -> str:
         """The gap in a few words, by consequence: 'reads 0, recent weeks
         1-4', 'reads 0 after 19, 24, 3', 'reads 0 for 5 weeks (last 2 on
-        2026-05-30)', 'reads 8 after 194', 'no row', 'blank value'."""
+        2026-05-30)', 'reads 8 after 194', 'not reported', 'blank value'."""
         if self.reason == "zero":
             n = self.zeros
             if n >= 2:
@@ -144,7 +145,7 @@ class Gap:
 
     def flag(self) -> str:
         """The gap in two or three words (the box's row): '0 after 1, 4',
-        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'no row', 'blank
+        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'not reported', 'blank
         value'."""
         if self.reason == "zero":
             n = self.zeros
@@ -258,11 +259,12 @@ class Report:
 
     def line(self) -> str:
         """The Data tab's line (and the Update data message's): 'All 53
-        jurisdictions reported for week W' when clean, else short(); the
-        week is on the card above it and the names are in the tip
-        (details)."""
+        locations reported for week W' when clean (the hub's locations, US
+        included, so not "jurisdictions": there are 52 of those), else
+        short(); the week is on the card above it and the names are in the
+        tip (details)."""
         if self.clean:
-            return (f"All {self.expected} jurisdictions reported for week "
+            return (f"All {self.expected} locations reported for week "
                     f"{self.week}")
         return self.short()
 
@@ -429,15 +431,79 @@ OPTION_TEXT = {
 }
 #: the carry label when the walk found no week to forecast from
 CARRY_SKIP_TEXT = "Engines' own walk"
+#: what a run does with a state the walk found no week for (Gap.outcome)
+SKIPPED_TEXT = "skipped"
+
+
+def choice_text(entry: Mapping) -> str:
+    """A recorded per-state choice (missing.choices_of's entry) in the
+    box's words, mid-sentence: 'both from 10-10', 'from 10-10' (the week
+    it forecasts from, when the record names it), 'skipped' (a carry
+    whose record names no week: the walk found none), 'level', 'kept',
+    'left out', 'no forecast'; the key itself when unknown. A record from
+    before the week was recorded (no from_week key) keeps the general
+    words."""
+    c = str((entry or {}).get("choice") or "")
+    frm = str((entry or {}).get("from_week") or "")
+    if c == "set_aside" and frm:
+        return f"both from {_md(frm)}"
+    if c == "carry" and frm:
+        return f"from {_md(frm)}"
+    if c == "carry" and "from_week" in (entry or {}):
+        return SKIPPED_TEXT
+    if c == "keep":
+        return "kept"
+    if c == "omit":
+        return "left out"
+    return CHOICE_WORDS.get(c, c)
+
+
+def reason_text(what: str) -> str:
+    """A recorded gap description ('no row', 'reads 0 after 1, 4') as the
+    box says it now: an older record's 'no row' reads 'not reported'."""
+    return REASON_TEXT["no row"] if what == "no row" else what
+
+
+#: a state's choices that still apply while a run-wide setting counts its
+#: newest week as unreported (covering_rules): both models then forecast
+#: from the week before, as "Both from" does, whatever else is chosen
+RULE_LEAVES = ("set_aside", "omit")
+
+
+def covering_rules(g: Gap) -> list:
+    """The run-wide settings (missing.KEYS) that, set to "missing", count
+    this state's newest week as unreported, as the engines apply them
+    (missing.tail_flags); under any of them only RULE_LEAVES apply.
+
+    No settings for a state with no row or a blank value for the newest
+    week: a setting may count its newest reported week as unreported too,
+    but that only moves the engines' own walk ("From ...", carry) back
+    further, so both its choices still apply."""
+    if g.unreported:
+        return []
+    vals = [v for _, v in g.reported]
+    return [k for k in MS.KEYS if MS.tail_flags(vals, {k: "missing"})]
+
+
+def box_flag(g: Gap) -> str:
+    """The box row's flag: Gap.flag(), and for an unreported state the
+    walk found no week for (its newest reported week too old for both
+    models, or none at all), that a run skips it: 'not reported,
+    skipped'. Display only; the run records Gap.what()."""
+    if g.unreported and g.action == "skip":
+        return f"{g.flag()}, {SKIPPED_TEXT}"
+    return g.flag()
 
 
 def box_rows(report: Report) -> list:
     """One row per state for templates/_data_issues.html: {fips, name,
     issue, what, flag, hint, rec, why, reported, default, options: [(value,
-    label)], aside: [[week, value]]}. `rec` and `why` are the
-    recommendation (recommend()); `hint` is `why`. Choices a state cannot
+    label)], aside: [[week, value]], rules}. `rec` and `why` are the
+    recommendation (recommend()); `hint` is `why`; `rules` the run-wide
+    settings that cover the state (covering_rules). Choices a state cannot
     take (extend, blend and set aside for 3 or more trailing zeros) are
-    left out of its options."""
+    left out of its options. `flag` is box_flag's (a skipped state says
+    so)."""
     rows = []
     for g in report.gaps:
         opts = []
@@ -465,10 +531,11 @@ def box_rows(report: Report) -> list:
                         if c != "carry" or g.from_week else CARRY_SKIP_TEXT)
                 opts.append((c, text))
         rows.append({"fips": g.fips, "name": g.location, "issue": g.reason,
-                     "what": g.what(), "flag": g.flag(), "hint": why,
+                     "what": g.what(), "flag": box_flag(g), "hint": why,
                      "rec": rec, "why": why,
                      "reported": [[w, v] for w, v in g.reported],
                      "default": MS.DEFAULT_CHOICE.get(g.reason, ""),
                      "options": opts,
-                     "aside": [[w, v] for w, v in g.aside]})
+                     "aside": [[w, v] for w, v in g.aside],
+                     "rules": covering_rules(g)})
     return rows

@@ -123,6 +123,11 @@ class SandboxError(ValueError):
         self.code = code
 
 
+class MachineProblem(SandboxError):
+    """The preflight's refusal: this computer cannot fit yet (the page's
+    own notice says why before a run is tried)."""
+
+
 def check_name(name: str) -> str:
     if not isinstance(name, str) or not NAME_RE.match(name):
         raise SandboxError(
@@ -274,6 +279,8 @@ def add_example(name: str, as_name: str | None = None) -> Path:
     dst.mkdir(parents=True)
     for f in REQUIRED:
         shutil.copy2(src / f, dst / f)
+        # the gallery's "changed" is the copy's creation, as copy_model's
+        (dst / f).touch()
     _write_info(target, {"origin": f"example:{name}", "created_utc": _stamp()})
     return dst
 
@@ -361,6 +368,9 @@ def new_model(name: str) -> Path:
 
 def model_dir(name: str) -> Path:
     d = MODELS / check_name(name)
+    if not d.is_dir():
+        # deleted, or never there: not "missing its files"
+        raise SandboxError(f"no sandbox model named {name!r}")
     missing = [f for f in REQUIRED if not (d / f).is_file()]
     if missing:
         raise SandboxError(f"model {name!r} is missing {', '.join(missing)}")
@@ -680,11 +690,14 @@ def from_shipped(name: str, location: str, forecast_date: str, *,
 
 def shipped_state(name: str, files: dict | None = None) -> dict:
     """Whether a model is an Oracle SIHRS start and still as created:
-    {"shipped", "intact", "changed": [files edited since], "info"}. A
+    {"shipped", "intact", "changed": [files edited since], "info",
+    "dataset": started from a dataset}. A
     model without creation digests is never intact."""
     info = read_info(name)
     out = {"shipped": info.get("origin") in SHIPPED_ORIGINS, "intact": False,
-           "changed": [], "info": info}
+           "changed": [], "info": info,
+           # a dataset start: no Oracle step (it reads the hub's bank)
+           "dataset": info.get("origin") == SHIPPED_DATASET}
     if not out["shipped"]:
         return out
     dig = info.get("digests")
@@ -938,13 +951,23 @@ def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
     out = []
     engine = pf_engine.engine_available()
     if not engine:
-        out.append(pf_engine.engine_missing_message())
+        # the headline in words; the engine's own message is the tip
+        out.append("The fitting engine is not installed. "
+                   + pf_engine.engine_missing_message())
+    elif pf_engine._public():
+        # the lock check loads the filter and bngsim in the public venv: a
+        # page waits `wait` seconds for it and says nothing while it runs
+        from app.core.engines import lwf
+        res = lwf.lock_check_soon(wait)
+        if res is not None and not res[0]:
+            out.append(lwf.engine_stale_message())
     elif not pf_engine.engine_current():
         out.append(pf_engine.engine_stale_message())
     # the engine's Python only once the engine is unpacked: installing the
     # engine file is what makes it, so without one it is not another thing
-    # to fix
-    if engine:
+    # to fix. The public engine is its venv alone, and engine_current has
+    # already loaded the filter and bngsim there (lwf.lock_check).
+    if engine and not pf_engine._public():
         if not Path(pf_engine.PY310).exists():
             out.append(engine_python_missing_message())
         else:
@@ -987,7 +1010,7 @@ def preflight() -> None:
     for the engine-import probe."""
     problems = machine_problems(wait=ENGINE_PROBE_RUN_WAIT_S)
     if problems:
-        raise SandboxError(_joined(problems))
+        raise MachineProblem(_joined(problems))
 
 
 def machine_problem() -> str:
@@ -1026,8 +1049,7 @@ def _netgen(cell: Path) -> None:
         said = pf_engine.bng_failure_text(r)
         if not pf_engine.bng_started(r.stdout):
             raise SandboxError(pf_engine.bng_broken_message(said))
-        raise SandboxError("BNG2.pl could not generate the network:\n"
-                           + said)
+        raise SandboxError(pf_engine.bng_could_not("generate the network", r))
 
 
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
@@ -1145,6 +1167,12 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             "digests": digests(files),
             "origin": str(info.get("origin", "")),
             "status": "prepared"}
+    # the engine the run is fitted by (its build is recorded when it
+    # starts, off the request: run): two runs on different engines are
+    # told apart, and each is timed on its own engine's cost model
+    # (_run_ratio)
+    from flubnf.settings import engine_choice
+    meta["engine"] = engine_choice()
     if fill:
         meta["placeholders"] = fill             # how this run filled them
     if shipped["shipped"]:
@@ -1177,6 +1205,15 @@ def run(workroot: Path, width: int = 1) -> dict:
     workroot = Path(workroot)
     meta = json.loads((workroot / "meta.json").read_text(encoding="utf-8"))
     meta["status"] = "running"
+    # the build the fit runs on (a few git calls, or pip's record of the
+    # public engine's wheel), beside the engine prepare recorded
+    from app.core import engine_build as _eb
+    try:
+        build = _eb.record(_eb.engine_build())
+    except Exception:
+        build = {}
+    if build:
+        meta["engine_build"] = build
     _write_meta(workroot, meta)
     t0 = time.monotonic()
     try:
@@ -1219,6 +1256,11 @@ def _with_load_remedy(error: str) -> str:
     hit = next(ln for ln in error.splitlines()
                if any(s in ln for s in _LOAD_FAILURES))
     said = hit.strip().removeprefix("FAIL: ")[:300]
+    if pf_engine._public():
+        from app.core.engines import lwf
+        return (error + "\n\n" + f"The public engine's Python ({lwf.python()}) "
+                f"cannot load the engine ({said}). To reinstall it, "
+                f"{lwf._setup_step()}.")
     return error + "\n\n" + engine_import_message(said)
 
 
@@ -1328,8 +1370,9 @@ def _view_file(name: str, kind: str) -> Path:
 
 
 #: bumped when the views' reading of a model changes (2: rule_flow reads
-#: cBNGL compartment prefixes), so a drawing cached before is redrawn
-VIEW_VERSION = 2
+#: cBNGL compartment prefixes; 3: the graphs carry their rule and reaction
+#: counts), so a drawing cached before is redrawn
+VIEW_VERSION = 3
 
 
 def _view_key(bngl: str) -> str:
@@ -1354,11 +1397,13 @@ def store_view(name: str, kind: str, bngl: str, payload: dict) -> None:
         pass
 
 
-def eta_seconds(n_obs: int, particles: int) -> float:
+def eta_seconds(n_obs: int, particles: int,
+                engine: str | None = None) -> float:
     """The engine's own cost model (pf.cell_seconds), calibrated on the
-    production cell: approximate for any other model."""
+    production cell: approximate for any other model. On `engine`
+    ("public" or "private"), the one this process runs by default."""
     return pf_engine.cell_seconds({"n_obs": int(n_obs),
-                                   "particles": int(particles)})
+                                   "particles": int(particles)}, engine)
 
 
 # --------------------------------------------------- the time a fit takes
@@ -1384,13 +1429,16 @@ ETA_SLOW_FLOOR_S = 30.0
 
 def _run_ratio(meta: dict) -> float | None:
     """A finished run's seconds over what the cost model predicts for its
-    own rows and particles, or None for a run that cannot say."""
+    own rows and particles on its own engine (a run that records none ran
+    on the private engine), or None for a run that cannot say. The ratio
+    is this computer's speed, so it carries over to either engine."""
     if meta.get("status") != "ok":
         return None
+    engine = "public" if meta.get("engine") == "public" else "private"
     try:
         seconds = float(meta["seconds"])
         n_obs = int(meta.get("n_obs") or len(meta.get("observed") or []))
-        predicted = eta_seconds(n_obs, int(meta["particles"]))
+        predicted = eta_seconds(n_obs, int(meta["particles"]), engine)
     except (KeyError, TypeError, ValueError):
         return None
     if not (0 < seconds < float("inf")) or predicted <= 0:

@@ -7,6 +7,8 @@ read _vintage_frame here. An APIRouter server.py includes.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -36,19 +38,21 @@ def _vintage_frame(path: str):
     return tdf
 
 
+# the readers take the file's path: an archived vintage's, or the live
+# target file's when the browser shows the week the archive lacks
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_summary(path: str, date: str) -> dict:
-    return state.data_mod.vintage_summary(date)
+    return state.data_mod.vintage_summary(date, path)
 
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_locations(path: str, date: str) -> tuple:
-    return tuple(state.data_mod.vintage_location_names(date))
+    return tuple(state.data_mod.vintage_location_names(date, path))
 
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_series(path: str, date: str, loc: str) -> dict:
-    return state.data_mod.vintage_series(date, loc)
+    return state.data_mod.vintage_series(date, loc, path)
 
 
 def _newest_report():
@@ -64,9 +68,26 @@ def _newest_report():
 
 
 #: the clone's state a pull just established, for the page the pull
-#: reloads (one-shot: later visits read "not checked" until a check, so
-#: no "up to date" outlives the moment it was true)
+#: reloads, with the monotonic time it was set ("at"). One-shot, and only
+#: within PULLED_TTL_S: later visits read "not checked" until a check, so
+#: no "up to date" outlives the moment it was true (a pull whose page was
+#: left before the answer must not say it on a visit hours later)
 _pulled: dict = {}
+
+#: how long a pull's "up to date" waits for the page the pull reloads
+PULLED_TTL_S = 60.0
+
+#: the clock _pulled is timed by (a test sets its own)
+_clock = time.monotonic
+
+
+def _take_pulled():
+    """The freshness a pull just established, taken once; None when there
+    is none or it is older than PULLED_TTL_S."""
+    f, at = _pulled.pop("freshness", None), _pulled.pop("at", None)
+    if f is None or at is None or not 0 <= _clock() - at <= PULLED_TTL_S:
+        return None
+    return f
 
 
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
@@ -89,11 +110,15 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
                               for w in shipped},
            "latest": None, "vintages": list(reversed(vs)),
            "sel_vintage": "", "sel_loc": "", "loc_names": [],
+           # the live target file's newest week, when the archive has not
+           # caught up: the browser offers it first (a real-time run reads it)
+           "live_entry": None,
            "sel_summary": None, "series_table": [], "series_n": 0,
            "series_json": "null", "peak": None, "view_note": "",
            # season-over-season chart palette (fallback for --season-N)
            "season_colors_json": _script_json(_season_colors())}
     ctx["vintage_rows"] = _vintage_rows(vs)
+    _set_season_vars(ctx, [])
     # the live target file: its newest week is what a real-time run reads
     # when the hand-kept archive has not caught up yet
     try:
@@ -101,10 +126,16 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     except Exception:
         ctx["live_week"] = None
     ctx["live_age"] = _data_age(ctx["live_week"])
+    lw = ctx["live_week"]
+    if lw and (not vs or lw > vs[-1]):
+        ctx["live_entry"] = lw
+        ctx["vintages"] = [lw] + ctx["vintages"]
     ctx["hub_behind"] = _clone_behind(freshness)
     # no clone at all: the card says so and what fetches it (nothing on
     # this page can; Update data pulls an existing clone)
     ctx["hub_missing"] = state.data_mod.hub_missing()
+    # no folder at all: a pull is refused (_pull), so it is never primary
+    ctx["hub_absent"] = bool(state.data_mod.hub_missing(data=False))
     # the newest week's reporting, from the file a real-time run reads
     ctx["newest_report"] = _newest_report()
     # the hub models runs are compared against (an older sparse clone may
@@ -115,24 +146,30 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
     ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
-    if not vs:
+    live = ctx["live_entry"]
+    if not vs and not live:
         return ctx
-    latest = vs[-1]
-    try:
-        ctx["latest"] = _vintage_summary(
-            str(state.data_mod.vintage_path(latest)), latest)
-    except Exception as e:
-        ctx["view_note"] = ("Could not read the latest vintage "
-                            f"({type(e).__name__}). The archive may still "
-                            "be updating; try again shortly.")
-        return ctx
+    if vs:
+        latest = vs[-1]
+        try:
+            ctx["latest"] = _vintage_summary(
+                str(state.data_mod.vintage_path(latest)), latest)
+        except Exception as e:
+            ctx["view_note"] = ("Could not read the latest vintage "
+                                f"({type(e).__name__}). The archive may still "
+                                "be updating; try again shortly.")
+            return ctx
+    # the browser opens on the newest data: the live week when the archive
+    # lacks it, else the latest vintage
+    newest = live or latest
     sel_v = (vintage if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", vintage or "")
-             and vintage in vs else latest)
+             and (vintage in vs or vintage == live) else newest)
     if vintage and sel_v != vintage:
         ctx["view_note"] = (f"No archived vintage for {vintage}; showing "
-                            f"the latest, {latest}.")
+                            f"the latest, {newest}.")
     try:
-        pv = str(state.data_mod.vintage_path(sel_v))
+        pv = str(state.data_mod.live_path() if sel_v == live
+                 else state.data_mod.vintage_path(sel_v))
         names = list(_vintage_locations(pv, sel_v))
         sel_loc = loc if loc in names else (names[0] if names else "")
         if loc and sel_loc != loc:
@@ -156,10 +193,22 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
             ctx["series_json"] = _script_json(
                 {"dates": [str(d)[:10] for d in dates],
                  "values": [float(v) for v in values]})
+        # the chart's seasons share the strip's colours
+        _set_season_vars(ctx, [_season_label(d) for d in dates])
     except Exception as e:
         ctx["view_note"] = (f"Could not read the {sel_v} vintage "
                             f"({type(e).__name__}).")
     return ctx
+
+
+def _set_season_vars(ctx: dict, more) -> None:
+    """The page's season colours (_season_vars) over the strip's seasons and
+    `more` (the chart's), onto each strip row and for the chart's script."""
+    sv = _season_vars([r["season"] for r in ctx["vintage_rows"]]
+                      + list(more))
+    ctx["season_vars"] = sv
+    for r in ctx["vintage_rows"]:
+        r["var"] = sv.get(r["season"], "")
 
 
 #: days past a week's Saturday after which its data counts as overdue: the
@@ -202,6 +251,27 @@ def _clone_behind(f) -> bool:
         return False
 
 
+def _season_vars(labels) -> dict:
+    """{season label: colour token}: the newest season --gold, the older
+    ones --season-1, -2, ... by rank, as the season-over-season chart draws
+    them. One map for the Archive strip and the chart, so a season keeps
+    one colour on the page."""
+    n = len(_season_colors() or []) or 1
+    out = {}
+    for k, s in enumerate(sorted(set(labels), reverse=True)):
+        out[s] = "--gold" if k == 0 else f"--season-{(k - 1) % n + 1}"
+    return out
+
+
+def _season_label(day) -> str:
+    """A date's season (August to July), as the strip and the chart name
+    it: 2025-26."""
+    from datetime import date as _d
+    d = _d.fromisoformat(str(day)[:10])
+    y = d.year if d.month >= 8 else d.year - 1
+    return f"{y}-{str(y + 1)[2:]}"
+
+
 def _vintage_rows(vs) -> list:
     """The archive as rows: one per season (August to July), each vintage
     a (week offset from August 1, date) point, newest season first."""
@@ -241,12 +311,30 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
         if ds is not None and not why:
             ctx = _data_context()
             ctx.update(_dsu.data_context(ds, loc, vintage))
+            _dataset_season_vars(ctx, ds)
             return templates.TemplateResponse(request, "data.html", ctx)
         _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
     return templates.TemplateResponse(
         request, "data.html",
-        _data_context(loc, vintage, freshness=_pulled.pop("freshness", None)))
+        _data_context(loc, vintage, freshness=_take_pulled()))
+
+
+def _dataset_season_vars(ctx: dict, ds) -> None:
+    """A dataset's page: its chart's season colours from the dataset's own
+    seasons (the newest --gold, each season its own token, the same for
+    every group and snapshot), not the hub's map, which ranks the hub's
+    seasons and gave two of the dataset's seasons one colour. The hub's
+    Archive strip above is another source's seasons: it keeps its plain
+    palette, so no token stands for one season there and another in the
+    chart."""
+    try:
+        labels = [_season_label(w) for w in ds.weeks()]
+    except Exception:
+        labels = []
+    ctx["season_vars"] = _season_vars(labels)
+    for r in ctx.get("vintage_rows") or []:
+        r["var"] = ""
 
 
 # === Console controls on the Data tab: /data/pull, /freshness ===
@@ -342,6 +430,7 @@ def _pull() -> tuple:
         before = None
     # the live file's values, to say what the pull changed (None: unread)
     values_before = _live_values()
+    comp_before = state.data_mod.comparators()
     ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
@@ -373,13 +462,21 @@ def _pull() -> tuple:
     bits = [lead]
     # what changed, in counts: weeks added and earlier values revised
     bits += _pull_changes(before, after, values_before, _live_values())
-    clause = _pull_clause(_newest_report(), state.data_mod.comparators())
+    comp_after = state.data_mod.comparators()
+    clause = _pull_clause(_newest_report(), comp_after)
     if clause:
         bits.append(clause)
+    # the comparator folders a sparse clone lacked and this pull added
+    added = [k for k, ok in comp_after.items() if ok and not comp_before.get(k)]
+    if added:
+        bits.append(f"{' and '.join(added)} comparator"
+                    f"{'s' if len(added) > 1 else ''} added")
     bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
     _flash(" · ".join(bits), "ok")
-    # the pull just matched origin: the page it reloads says so
-    _pulled["freshness"] = state.data_mod.fresh_after_pull()
+    # the pull just matched origin: the page it reloads says so, if it
+    # comes within PULLED_TTL_S
+    _pulled.update(freshness=state.data_mod.fresh_after_pull(),
+                   at=_clock())
     return True, " · ".join(bits)
 
 
@@ -397,9 +494,16 @@ def freshness(request: Request):
     f = state.data_mod.check_freshness()
     if _wants_json(request):
         cls, words = f.pill()
+        # "behind": Update data is the page's primary (a clone behind
+        # origin, or one lacking the comparator folders a pull adds),
+        # never with no hub folder, where a pull is refused
+        missing = [k for k, ok in state.data_mod.comparators().items()
+                   if not ok]
+        behind = ((_clone_behind(f) or bool(missing))
+                  and not state.data_mod.hub_missing(data=False))
         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
                              "words": words, "detail": f.detail,
-                             "behind": _clone_behind(f)})
+                             "behind": behind})
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
 

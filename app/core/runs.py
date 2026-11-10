@@ -181,21 +181,23 @@ def data_issues_label(extra: dict) -> str:
     before the rule) and the run-wide zero-anchor rule when one was set;
     "" when neither."""
     from app.core import missing as MS
+    from app.core import reported as _rep
     bits = []
     states = MS.choices_of(extra)
-    words = {"set_aside": "set aside", "omit": "left out"}
     for loc in sorted(states):
         st = states[loc] or {}
-        c = str(st.get("choice") or "")
-        if c and not st.get("followed"):
-            bits.append(f"{loc} {words.get(c, c)}")
+        if st.get("choice") and not st.get("followed"):
+            # the box's words, with the week a set-aside or carry forecasts from
+            bits.append(f"{loc} {_rep.choice_text(st)}")
     text = ", ".join(bits)
     counts = MS.followed_line(states)
     if counts:
         text = f"{counts}: {text}" if text else counts
     za = MS.zero_anchor_of(extra)
     if za:
-        rule = f"zero-anchor rule {za}" + (" for the other states" if bits else "")
+        rule = (f"Groundhog when the newest week reads 0: "
+                f"{_rep.CHOICE_WORDS.get(za, za)}"
+                + (" for the other states" if bits else ""))
         text = f"{text}; {rule}" if text else rule
     return text
 
@@ -496,10 +498,11 @@ ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
 HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
-def anchor_notes_row(o: dict, names: dict):
+def anchor_notes_row(o: dict, names: dict, skip=()):
     """The Results table's one row for both members' anchor notes, or None
     when neither recorded any (a shipped run on complete data): a count per
-    member in the cell, every location's note in the "?" tip."""
+    member in the cell, every location's note in the "?" tip. `skip`: the
+    states chosen in Data issues (that row says theirs)."""
     import html as _html
     parts, lines = [], []
     for m, key in ANCHOR_NOTE_KEYS:
@@ -510,7 +513,7 @@ def anchor_notes_row(o: dict, names: dict):
         # (the zero-anchor row); a set-aside that did not apply is the
         # Data issues row's
         notes = {k: v for k, v in notes.items()
-                 if not str(v).startswith(_OWN_ROW_PREFIXES)}
+                 if not str(v).startswith(_OWN_ROW_PREFIXES) and k not in skip}
         if not notes:
             continue
         name = names.get(m, m)
@@ -545,11 +548,12 @@ NO_DONORS = "no forecast: the donors gave no distribution"
 _OWN_ROW_PREFIXES = (NO_FORECAST, "zero-anchor", "set-aside not applied")
 
 
-def zero_anchor_row(o: dict, names: dict):
+def zero_anchor_row(o: dict, names: dict, skip=()):
     """The Results table's row for the Groundhog's locations whose newest
     week read 0 (engine notes "no forecast ..." = abstained, or
     "zero-anchor <rule>: ..."), or None: a count per rule, each location's
-    note in the "?" tip."""
+    note in the "?" tip. `skip`: the states chosen in Data issues (that row
+    says theirs)."""
     import html as _html
     from app.core import missing as MS
     parts, lines = [], []
@@ -560,8 +564,8 @@ def zero_anchor_row(o: dict, names: dict):
         by: dict = {}
         for loc, v in sorted(notes.items()):
             v = str(v)
-            if v == NO_DONORS:
-                continue                        # no_donors_row's
+            if v == NO_DONORS or loc in skip:
+                continue                        # no_donors_row's, Data issues'
             if v.startswith(NO_FORECAST):
                 by.setdefault("abstain", []).append(loc)
             elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
@@ -569,7 +573,7 @@ def zero_anchor_row(o: dict, names: dict):
                 by.setdefault(rule, []).append(loc)
             else:
                 continue
-            lines.append(f"{names.get(m, m)}, {loc}: {v}.")
+            lines.append(f"{names.get(m, m)}, {loc}: {_note_words(v)}.")
         if not by:
             continue
         bits = [f"{len(by[r])} {r}" for r in MS.ZERO_ANCHOR_RULES if r in by]
@@ -582,11 +586,18 @@ def zero_anchor_row(o: dict, names: dict):
                "The Groundhog forecasts a ratio of the newest count, so a "
                "newest week that reads 0 gives it nothing to scale: it "
                "abstains (no forecast, the location is left out of its "
-               "file) unless a zero-anchor rule was chosen for the state: "
+               "file) unless a rule was chosen for the state: "
                "level (the mean of the last 4 weeks), extend (the last "
                "positive week carried forward) or blend (the two averaged). "
                + " ".join(lines))
     return ("Newest week reading 0", _html.escape("; ".join(parts)) + tip)
+
+
+def _note_words(note: str) -> str:
+    """An engine note as the page says it: the rule's word, not its key
+    ("zero-anchor level: ..." reads "level: ...")."""
+    from app.core import missing as MS
+    return note.removeprefix(MS.ZERO_ANCHOR_NOTE + " ")
 
 
 #: kept for callers that knew the row by its old name
@@ -618,45 +629,68 @@ def no_donors_row(o: dict, names: dict):
 
 
 def data_issues_row(o: dict, spec_extra: dict, names: dict):
-    """The Results table's row for the per-state choices a run carried
-    (app/core/missing.py): "3 set aside, 1 left out, 2 zero-anchor level",
-    a set-aside that no longer matched the data counted too; every state's
-    outcome in the "?" tip. None when the run carried none."""
+    """The Results table's one row for the per-state choices a run carried
+    (app/core/missing.py): what came of them, "1 set aside, 1 left out, 2
+    level, 1 anchored earlier", a set-aside that no longer matched the data
+    counted too; every state's issue, choice and engine note in the "?"
+    tip. Each count is of states: one state two models anchored earlier
+    is "1 anchored earlier". A state a model made no forecast for (the
+    engine notes "no forecast: newest week reads 0" and "abstained: ...",
+    which carry no data flag) counts as "no forecast", the box's word, so
+    "as reported" is said only when no chosen state has a note (the
+    donors' abstention excepted: Too few donors says it). The count
+    against the recommendations is Run settings' (Data issues). None when
+    the run carried none: the Unreported and Newest week reading 0 rows
+    then say what the engines did."""
     import html as _html
     from app.core import missing as MS
+    from app.core import reported as _rep
     flags = o.get("data_flags") if isinstance(o.get("data_flags"), dict) else {}
     states = MS.choices_of(spec_extra)
-    if not states and not any(
-            str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE)
-            for rows in flags.values() for r in rows or ()):
+    if not states:
         return None
-    text = "; ".join(t for t in (MS.followed_line(states),
-                                 MS.choices_line(flags)) if t)
     lines = []
-    not_applied = 0
+    for loc in sorted(states):
+        st = states[loc] or {}
+        # the box's words: an older record's "no row" reads "not reported",
+        # a set-aside or carry names the week it forecasts from
+        what = _rep.reason_text(str(st.get("what") or st.get("issue") or ""))
+        lines.append(f"{loc}: {what}; {_rep.choice_text(st)}.")
+    # the notes' outcomes as rows choices_line counts beside the flags, once
+    # per state and word whichever model wrote them: a zero-anchor rule by
+    # its word, no forecast (abstain) by the box's
+    noted, not_applied, moved = [], set(), set()
     for m, key in ANCHOR_NOTE_KEYS:
         notes = o.get(key) if isinstance(o.get(key), dict) else {}
         for loc, v in sorted(notes.items()):
-            if str(v).startswith(MS.NOT_APPLIED_NOTE):
-                not_applied += 1
-                lines.append(f"{names.get(m, m)}, {loc}: {v}.")
-    if not_applied:
-        bit = f"{not_applied} not applied (the data changed)"
+            v = str(v)
+            if v.startswith(MS.NOT_APPLIED_NOTE):
+                not_applied.add(loc)
+            elif loc not in states or v == NO_DONORS:
+                continue
+            elif v.startswith("anchored on"):
+                moved.add(loc)
+            elif v.startswith((NO_FORECAST, "abstained")):
+                noted.append({"location": loc,
+                              "rule": f"{MS.ZERO_ANCHOR_NOTE} abstain"})
+            elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
+                rule = v[len(MS.ZERO_ANCHOR_NOTE) + 1:].split(":", 1)[0]
+                noted.append({"location": loc,
+                              "rule": f"{MS.ZERO_ANCHOR_NOTE} {rule}"})
+            lines.append(f"{names.get(m, m)}, {loc}: {_note_words(v)}.")
+    chosen = {m: [r for r in rows or () if r.get("location") in states]
+              for m, rows in flags.items()}
+    text = MS.choices_line({**chosen, "_notes": noted})
+    if moved:
+        bit = f"{len(moved)} anchored earlier"
         text = f"{text}, {bit}" if text else bit
-    for loc in sorted(states):
-        st = states[loc] or {}
-        what = str(st.get("what") or st.get("issue") or "")
-        lines.append(f"{loc}: {what}; {st.get('choice', '')}.")
-    for rows in flags.values():
-        for r in rows or ():
-            if str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE):
-                lines.append(f"{r.get('location')}: {r.get('week')} reads "
-                             f"{float(r.get('value') or 0):g}; {r.get('rule')}.")
-    if not text:
-        return None
+    if not_applied:
+        bit = f"{len(not_applied)} not applied (the data changed)"
+        text = f"{text}, {bit}" if text else bit
+    text = text or "as reported"
     tip = _tip("data-issues", "the data issues",
-               "Per-state choices made in Data issues on the Forecast tab, "
-               "recorded with the run; they do not mark it modified. "
+               "Each state's choice in Data issues on the Forecast tab, "
+               "recorded with the run; it does not mark it modified. "
                + " ".join(dict.fromkeys(lines)))
     return ("Data issues", _html.escape(text) + tip)
 
@@ -799,10 +833,20 @@ def results_html(outcome, spec, heading: bool = True,
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))
-    arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
+    if o.get("pf2s_skipped"):
+        # a research run's two-strain member, skipped beside pf_skipped's
+        # row with its reason (pipeline: the public engine has no
+        # two-strain counterpart)
+        import html as _html_2s
+        rows.append(("Two-strain fits", "none: "
+                     + _html_2s.escape(str(o["pf2s_skipped"]))))
+    # the states chosen in Data issues: that row says what came of them
+    from app.core import missing as _ms
+    covered = set(_ms.choices_of(extra))
+    arow = anchor_notes_row(o, HUB_MEMBER_NAMES, skip=covered)
     if arow:
         rows.append(arow)
-    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES)
+    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES, skip=covered)
     if nrow:
         rows.append(nrow)
     frow = no_donors_row(o, HUB_MEMBER_NAMES)
@@ -912,8 +956,9 @@ def settings_html(pairs, title: str = "Run settings",
     ident = f' id="{_html.escape(el_id)}"' if el_id else ""
     base = _html.escape(cls)
     wrap = f"{base} runsettings" if "runsettings" not in cls else base
-    return (f'<div class="{wrap}"{ident}>'
-            f'<strong>{_html.escape(title)}</strong>'
+    # no title: the card's own heading names the block
+    head = f'<strong>{_html.escape(title)}</strong>' if title else ""
+    return (f'<div class="{wrap}"{ident}>{head}'
             f'<dl class="kv">{body}</dl></div>')
 
 
@@ -1051,6 +1096,21 @@ def _git_sha(repo: Path) -> str:
         return "unknown"
 
 
+def _pybnf_sha() -> str:
+    """The engine build a ledger row names (pybnf_sha): on the public
+    engine, the default, the commit of its installed build (pip's record
+    of the wheel, lwf.public_build); on the private engine, the fork
+    checkout's git SHA."""
+    from flubnf import settings
+    if settings.engine_public():
+        try:
+            from app.core.engines import lwf
+            return lwf.public_build().get("commit") or "unknown"
+        except Exception:
+            return "unknown"
+    return _git_sha(settings.PYBNF)
+
+
 class Ledger:
     """Append-only sqlite record: spec, seeds, engine versions, git SHAs,
     workroot, outcome. Reproducing any submission = re-executing its row."""
@@ -1085,8 +1145,8 @@ class Ledger:
             "pybnf_sha, engine_versions, workroot, status, outcome_json) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (run_id, time.time(), spec.to_json(), _git_sha(root),
-             _git_sha(__import__("flubnf.settings", fromlist=["PYBNF"]).PYBNF),
-             json.dumps(engine_versions), str(workroot), "running", "{}"))
+             _pybnf_sha(), json.dumps(engine_versions), str(workroot),
+             "running", "{}"))
         self._db.commit()
         return run_id
 

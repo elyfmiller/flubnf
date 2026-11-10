@@ -33,11 +33,14 @@
   <span class="uk-tt-line"><b>Groups</b> are forecast one by one{% if dataset.national %}; {{ dataset.national }} is scored beside them, never pooled{% endif %}. Scores are against an in-house persistence baseline.</span>
   <span class="uk-tt-line">Forecasts export under non-hub names; never submitted.</span>
   {%- else %}
-  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from any archived week, as it stood then.</span>
-  <span class="uk-tt-line"><b>Forecast date:</b> any day anchors on the latest archived week on or before it.</span>
-  <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until the archive has it.</span>
-  <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days. It names the round; horizons count from it.</span>
-  <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC and Puerto Rico, and US, which is fitted and scored apart.</span>
+  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from an archived week, as it stood.</span>
+  <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
+  <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until archived.</span>
+  <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days; it names the round, and horizons count from it.</span>
+  <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is fitted and scored apart.</span>
+  {%- if data_issues %}
+  <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
+  {%- endif %}
   {%- endif %}
   {% endcall %}
   {% if dataset %}
@@ -61,11 +64,11 @@
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
-   <div class="modes">
-    <div role="tablist" aria-label="forecast mode">
-    <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
-    <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
-    </div>
+   {# a pressed-button group, as the page's other segmented controls: a
+      tab pattern would promise panels and arrow keys it has not got #}
+   <div class="modes" role="group" aria-label="Forecast mode">
+    <button type="button" class="pill mode" data-mode="realtime" aria-pressed="true">Real-time</button>
+    <button type="button" class="pill mode" data-mode="vintage" aria-pressed="false">Vintage</button>
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {{ tips.label("Forecast date", "fc-date", for_="fc-date-in") }}
@@ -105,7 +108,9 @@
    </div>
    {% endif %}
    {# the newest week's reporting, shown while the anchor is that week #}
-   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
+   {# with the Data issues box under it, the line's counts are the box's
+      head and the box's rows name each state: no "?" #}
+   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week), tip=not data_issues) }}{% endif %}
    {# the per-state choices for that week's zeros, collapses and gaps
       (app/core/reported.py box_rows; recorded with the run) #}
    {% if data_issues and not dataset %}{% import "_data_issues.html" as di %}{{ di.box(data_issues, data_issues_sha, hidden=(anchor_week != data_issues.week)) }}{% endif %}
@@ -141,6 +146,7 @@
       // Saturday past the data, or one the archive skipped (the nearest
       // earlier week named); else no week is on or before the day
       function noWeek(day) {
+        if (!day) return 'Pick a date.';            // the field cleared
         var d = new Date(day + 'T00:00:00Z'), newest = VS[VS.length - 1];
         if (!isNaN(d) && d.getUTCDay() === 6 && newest) {
           if (day > newest) return 'No data for ' + day + ' yet; the data ends at ' + newest + '.';
@@ -192,6 +198,9 @@
         // nothing to say: no empty line under the date
         line.hidden = !!a && (!kv || kv.hidden) && (!live || live.hidden);
         paintRound(a);
+        // the picker shows the week only while the date is that week, so
+        // the same week can be picked again after typing another date
+        if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
         // the Data issues box belongs to that week too; disabled, it
@@ -216,7 +225,7 @@
         form.classList.toggle('mode-vintage', mode === 'vintage');
         var mf = document.getElementById('mode-field'); if (mf) mf.value = mode;
         document.querySelectorAll('.pill.mode').forEach(function (b) {
-          b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
+          b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
         });
         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
           box.value = box.dataset.default; paint(); paintSeason();
@@ -256,7 +265,7 @@
      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
-       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 jurisdictions" }}</b></label>
+       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 locations" }}</b></label>
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
@@ -276,7 +285,7 @@
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    {# why the particle filter's options are off, in the badge's words #}
-   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ " only: " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
+   {% if not dataset.pf_ok %}<p class="fc-under">{{ tips.badge("neutral", engine_names.analogue ~ ": " ~ dataset.pf_why, id="fc-pf-off", icon_name="lock") }}</p>
    {% else %}{% set eb_ds %}{% with eb_id = "fcds", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
    {% if eb_ds | trim %}<p class="fc-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
    {# off by default: the Groundhog draws growth from the data's own

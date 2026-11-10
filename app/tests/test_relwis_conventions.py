@@ -594,10 +594,12 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
             == relwis.PUBLISHED_CONVENTION_NOTE)
     src = (ui / "templates" / "methods.html").read_text()
     assert "{{ relwis_convention_note }}" in src
-    # Home's record names it in its "i", which links Methods for the note
+    # Home's record names it in the line under its heading, which links
+    # Methods for the note
     home = (ui / "templates" / "home.html").read_text()
-    perf = home.split('"hm-perf"', 1)[1].split("{% endcall %}", 1)[0]
-    assert "ratio of sums" in perf and 'href="/methods#policies"' in perf
+    perf = home.split('"hm-perf"', 1)[1].split('class="perf"', 1)[0]
+    unit = perf.split('<p class="hint hm-perf-how">', 1)[1].split("</p>", 1)[0]
+    assert "ratio of sums" in unit and 'href="/methods#policies"' in unit
     # builders outside the template environment use the same constant (the
     # season report renders the season page, inside it)
     for mod in ("site_page.py",):
@@ -618,14 +620,15 @@ def test_the_index_labels_the_convention_beside_every_score():
                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
                                 "elapsed_s": None, "rel": 0.9,
                                 "size_h": "1 MB"}]}])
-    # the season's headline: its "?" names the convention
+    # the page's one "i" names the convention for every score on it, the
+    # season's headline and the archived rows alike (bug hunt G28, RE-18:
+    # each row's own "?" was clutter)
+    page_tip = html.split('id="tt-rt-page"', 1)[1].split("</span></span>")[0]
+    assert "relWIS: the summed WIS over the FluSight baseline's (a ratio of " \
+        "sums)" in page_tip
     card = html.split('data-season="2098-99"', 1)[1]
-    head = card.split('rt-arch-h"', 1)[0]
-    assert re.search(r'<dt>relWIS<span class="tip">.*?'
-                     r'relWIS vs FluSight baseline, ratio of sums.*?'
-                     r'<span class="uk-stat-v"[^>]*>0\.877</span>', head, re.DOTALL)
-    # the archived runs: their heading's "?" names it for every row
+    assert re.search(r'<dt>relWIS</dt>.*?<span class="uk-stat-v"[^>]*>0\.877'
+                     r'</span>', card, re.DOTALL)
+    assert 'class="tip"' not in card.split('<div class="archrow"', 1)[0]
     arch = card.split('rt-arch-h"', 1)[1]
-    assert "relWIS vs FluSight baseline, ratio of sums" in \
-        arch.split('<div class="archrow"', 1)[0]
     assert 'relWIS <span class="ok">0.900</span>' in arch

@@ -1,11 +1,24 @@
 # flubnf one-command setup (Windows), twin of setup.sh. Idempotent.
-#   powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 [-NoPrompt] [-ShowDefenderExclusion]
+#   powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 [-NoPrompt] [-ShowDefenderExclusion] [-Engine private|public]
 # -NoProfile: a profile's $ErrorActionPreference = "Stop" makes git's stderr fatal.
 # -NoPrompt: ask nothing (FluBNF.bat, CI); otherwise the only question is the
 #   winget Strawberry Perl offer, and only in an interactive session.
 # -ShowDefenderExclusion: print the scanning-exclusion detail; changes nothing.
 #   A switch, never a prompt or default: someone has to ask for it.
-param([switch]$NoPrompt, [switch]$ShowDefenderExclusion)
+# -Engine: which engine this copy of FluBNF runs (docs\ENGINE.md), recorded
+#   in .flubnf.env.cmd as FLUBNF_ENGINE. -Engine public is the default:
+#   public PyBNF from engine-requirements.txt, in a venv of its own, which
+#   FluBNF.bat installs. -Engine private is the fallback, the lab's PyBNF
+#   fork. Without -Engine the recorded choice stands, and with no record the
+#   public engine runs. -Engine is recorded first, before anything is
+#   installed, so a run that stops early still switches; and -Engine
+#   private on a PC whose private engine already loads stops there: no pip
+#   and no network, seconds, as setup_engine.sh --private does.
+param([switch]$NoPrompt, [switch]$ShowDefenderExclusion,
+      [ValidateSet("private", "public")][string]$Engine = "")
+# ValidateSet takes any case (-Engine PRIVATE): the record is written in
+# the spelling the docs, FluBNF.bat and the tests use.
+if ($Engine) { $Engine = $Engine.ToLowerInvariant() }
 
 # "Continue" on purpose: under "Stop" any native stderr line (git progress) is
 # terminating. So every native call reads its exit code on the NEXT statement;
@@ -45,6 +58,9 @@ $Interactive = ((-not $NoPrompt) -and (-not $env:CI) -and
                 [Environment]::UserInteractive)
 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
+# This script as the docs start it, for the lines that name another run of
+# it: typed as printed, it runs in Command Prompt and in PowerShell alike.
+$SelfCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
 
 # Checkouts default under %LOCALAPPDATA%\FluBNF, not Documents. Controlled
 # Folder Access, when switched on, lets only trusted programs write to
@@ -305,17 +321,203 @@ $EnginePy = Join-Path $EngineVenv "Scripts\python.exe"
 $VenvDir = Join-Path $Here ".venv"
 $VenvPy = Join-Path $VenvDir "Scripts\python.exe"
 
+$EnvCmd = Join-Path $Here ".flubnf.env.cmd"
+function Get-OemEncoding {
+    <# The code page cmd reads and writes batch files in (not Set-Content's
+       ANSI; only accented paths differ, untested). No BOM: it breaks
+       "@echo off". #>
+    $cp = [int](Get-Culture).TextInfo.OEMCodePage
+    if ($cp -eq 65001) { return (New-Object System.Text.UTF8Encoding($false)) }
+    return [Text.Encoding]::GetEncoding($cp)
+}
+
+function Get-EnvCmdValue {
+    <# What .flubnf.env.cmd sets $Name to, as cmd would read it: the last
+       line that sets it wins, since FluBNF.bat appends what it verifies.
+       Every form cmd runs counts, not only the `set "NAME=..."` this script
+       and FluBNF.bat write: set NAME=... unquoted, @set or @ set, SET, spaces after
+       the value. A hand-written `set FLUBNF_ENGINE=private` was read as no
+       record, and the rewrite at the end of the run dropped it, so the copy
+       went public with no word. $null when the file or the line is not
+       there; "" for a line that sets it to nothing. #>
+    param([string]$Name)
+    if (-not (Test-Path -LiteralPath $EnvCmd)) { return $null }
+    try { $lines = [IO.File]::ReadAllLines($EnvCmd, (Get-OemEncoding)) }
+    catch { return $null }
+    $val = $null
+    $pat = '^\s*@?\s*set\s+"?' + [regex]::Escape($Name) + '=(.*?)"?\s*$'
+    foreach ($ln in $lines) {
+        if ($ln -match $pat) { $val = $Matches[1] }
+    }
+    return $val
+}
+
+function Set-EnvCmdLines {
+    <# Write `set "NAME=value"` into .flubnf.env.cmd now, for each name in
+       $Values in turn: every line that sets that name, in any form
+       Get-EnvCmdValue reads (the same pattern), goes, and every other line
+       stays as it is. With no file yet, one is made, @echo off first. For
+       -Engine, before anything is installed; the end of the run rewrites
+       the file whole, in the same code page. Throws when it cannot write. #>
+    param([System.Collections.IDictionary]$Values)
+    $enc = Get-OemEncoding
+    $lines = @("@echo off")
+    if (Test-Path -LiteralPath $EnvCmd) {
+        $lines = @([IO.File]::ReadAllLines($EnvCmd, $enc))
+    }
+    foreach ($name in @($Values.Keys)) {
+        $pat = '^\s*@?\s*set\s+"?' + [regex]::Escape($name) + '=(.*?)"?\s*$'
+        $lines = @($lines | Where-Object { $_ -notmatch $pat })
+        $lines += "set `"$name=$($Values[$name])`""
+    }
+    [IO.File]::WriteAllText($EnvCmd, (($lines -join "`r`n") + "`r`n"), $enc)
+}
+
+# Which engine (docs\ENGINE.md): -Engine when given; else what
+# .flubnf.env.cmd records, which FluBNF.bat reads on every open and so
+# outranks the account's variable; else FLUBNF_ENGINE; else public, the
+# default. The value is read as FluBNF.bat reads it: quotes dropped, spaces
+# trimmed, case ignored. Only private picks the private engine, the
+# fallback; empty means public, and any other value is said and runs the
+# public engine. The public engine never shares the private engine's venv
+# or its checkout, and the private one stays as it is.
+# The record is kept as FluBNF.bat reads it (quotes dropped, trimmed; an
+# engine's name in lower case), the form the end of this run writes back.
+# A record that sets it to nothing counts: FluBNF.bat calls the file, which
+# clears an account value, so the public engine runs there.
+$EngineRecord = Get-EnvCmdValue "FLUBNF_ENGINE"
+if ($null -ne $EngineRecord) {
+    $EngineRecord = "$EngineRecord".Replace('"', '').Trim()
+    if (@("private", "public") -contains $EngineRecord) {
+        $EngineRecord = $EngineRecord.ToLowerInvariant()
+    }
+}
+$EngineRoute = if ($Engine) { $Engine }
+               elseif ($EngineRecord) { $EngineRecord }
+               elseif ($null -ne $EngineRecord) { "public" }
+               elseif ($env:FLUBNF_ENGINE) { $env:FLUBNF_ENGINE }
+               else { "public" }
+$EngineRoute = "$EngineRoute".Replace('"', '').Trim().ToLowerInvariant()
+$EngineRouteBad = $null
+if (-not $EngineRoute) {
+    $EngineRoute = "public"
+} elseif (@("private", "public") -notcontains $EngineRoute) {
+    $EngineRouteBad = $EngineRoute
+    $EngineRoute = "public"
+}
+
+# -Engine is recorded now, before anything is installed or fetched, as
+# setup_engine.sh --private records it: a run that stops early (no Python,
+# a venv that cannot be made, pip on a network that does not reach PyPI)
+# still leaves the choice for FluBNF.bat's next open, so the switch its
+# failure lines name always switches. A User FLUBNF_ENGINE that names the
+# other engine goes now too. The end of the run rewrites the file whole.
+if ($Engine) {
+    Say "engine: -Engine $Engine"
+    try {
+        Set-EnvCmdLines ([ordered]@{ FLUBNF_ENGINE = $Engine })
+        Ok "FLUBNF_ENGINE=$Engine recorded in $EnvCmd"
+    } catch {
+        Warn "could not record FLUBNF_ENGINE=$Engine in $EnvCmd yet:"
+        Warn "  $($_.Exception.Message)"
+    }
+    # FLUBNF_ENGINE is never written for the account: it would switch every
+    # copy of FluBNF on it. A value set there by hand that names another
+    # engine goes, and is named: flubnf doctor and the CLI in a new window
+    # would follow it over the record.
+    $acct = [Environment]::GetEnvironmentVariable("FLUBNF_ENGINE", "User")
+    if ($acct -and ("$acct".Replace('"', '').Trim().ToLowerInvariant() -ne $Engine)) {
+        [Environment]::SetEnvironmentVariable("FLUBNF_ENGINE", $null, "User")
+        Ok "cleared FLUBNF_ENGINE=$acct from your account's environment"
+    }
+}
+# The switch to the private engine, when it is installed here and loads,
+# is that record and no more, as setup_engine.sh --private does it: no pip
+# and no network, seconds. The probe is FluBNF.bat's own, on the venv and
+# checkout FluBNF.bat runs. A copy with no console venv gets the whole run.
+if ($Engine -eq "private") {
+    $Switched = $false
+    if ((Test-Path -LiteralPath $VenvPy) -and (Test-Path -LiteralPath $EnginePy)) {
+        $switchProbe = "import sys; sys.path.insert(0, sys.argv[1]); import bngsim; " +
+                       "from pybnf.pf import ParticleFilter"
+        $sw = Invoke-Captured $EnginePy @("-c", $switchProbe, $PyBnf.TrimEnd('\'))
+        if ($sw.Code -eq 0) {
+            try {
+                Set-EnvCmdLines ([ordered]@{ FLUBNF_ENGINE = "private"
+                                             FLUBNF_PY_ENGINE = $EnginePy
+                                             FLUBNF_PYBNF = $PyBnf })
+                $Switched = $true
+            } catch {
+                Warn "could not write $EnvCmd"
+                Warn "  $($_.Exception.Message)"
+            }
+        }
+    }
+    if ($Switched) {
+        Ok "the private engine is installed and loads: $EnginePy, with $PyBnf"
+        Ok "this copy runs the private engine now, the fallback (FLUBNF_ENGINE=private);"
+        Ok "setup.ps1 -Engine public goes back to the default"
+        Info "Nothing was installed and nothing was fetched. Open FluBNF.bat again."
+        exit 0
+    }
+    if (-not (Test-Path -LiteralPath $VenvPy)) {
+        Info "this copy has no console venv (.venv) yet, so the whole setup follows."
+    } else {
+        Info "the private engine is not installed here yet, or does not load, so the"
+        Info "whole setup follows (its section below says what installing it needs)."
+    }
+}
+
+$PublicVenv = if ($env:FLUBNF_PUBLIC_VENV) {
+                  $env:FLUBNF_PUBLIC_VENV.Trim().Trim('"').TrimEnd('\', '/') }
+              else { Join-Path $FluBnfRoot "venv-public" }
+$PublicPy = Join-Path $PublicVenv "Scripts\python.exe"
+$EngineLock = if ($env:FLUBNF_ENGINE_LOCK) { $env:FLUBNF_ENGINE_LOCK.Trim().Trim('"') }
+              else { Join-Path $Here "engine-requirements.txt" }
+$LockTool = Join-Path $Here "scripts\engine_lock.py"
+# Inside or equal to a private engine venv, the two defaults or this PC's:
+# FluBNF.bat refuses the same, and installs nothing there.
+$PublicVenvTaken = $null
+foreach ($v in @((Resolve-ProfilePath ".venvs\flubnf"),
+                 (Resolve-ProfilePath ".venvs\flubnf-engine"), $EngineVenv)) {
+    if (Test-PathInside $PublicVenv $v) { $PublicVenvTaken = $v; break }
+}
+
 Say "plan (nothing has been installed yet)"
 function Plan($label, $path) {
     $mark = if (Test-Path -LiteralPath $path) { "present" }
             else { "will be created" }
     Write-Host ("  {0,-18} {1}   [{2}]" -f ($label + ":"), $path, $mark)
 }
+function Plan-Fallback($label, $path) {
+    # The private engine's rows on the public route: nothing is made there.
+    $mark = if (Test-Path -LiteralPath $path) { "present" }
+            else { "not installed; not needed" }
+    Write-Host ("  {0,-18} {1}   (private, the fallback) [{2}]" -f ($label + ":"), $path, $mark)
+}
 Plan "repository"      $Here
 Plan "console venv"    $VenvDir
 Plan "FluSight data"   $Hub
-Plan "engine venv"     $EngineVenv
-Plan "PyBNF checkout"  $PyBnf
+if ($EngineRoute -eq "public") {
+    Plan "public venv"     $PublicVenv
+    Plan "engine lock"     $EngineLock
+    Plan-Fallback "engine venv"     $EngineVenv
+    Plan-Fallback "PyBNF checkout"  $PyBnf
+} else {
+    Plan "engine venv"     $EngineVenv
+    Plan "PyBNF checkout"  $PyBnf
+}
+Info ""
+if ($EngineRouteBad) {
+    Warn "FLUBNF_ENGINE is `"$EngineRouteBad`", which is neither private nor public:"
+    Warn "the public engine, the default, it is, as FluBNF.bat does."
+}
+if ($EngineRoute -eq "public") {
+    Info "Engine: public PyBNF, the default."
+} else {
+    Info "Engine: the private PyBNF fork, the fallback (FLUBNF_ENGINE=private);"
+    Info "setup.ps1 -Engine public goes back to the default."
+}
 if ($script:ReusedLegacy.Count -gt 0) {
     Info ""
     Info "Reusing folders that are already on this machine, rather than the"
@@ -338,10 +540,14 @@ Info "To put any of these somewhere else, set the variable first, open a NEW"
 Info "window so the setting is visible, then re-run this script:"
 Info "  setx FLUBNF_HUB `"D:\FluSight-forecast-hub`""
 Info "  setx FLUBNF_ENGINE_VENV `"D:\venvs\flubnf-engine`""
-Info "The engine folder counts only once it holds the engine, so clone or move"
-Info "the engine there first, then point FLUBNF_PYBNF at it:"
-Info "  git clone -b feature/particle-filter $PyBnfRemote `"D:\Projects\PyBNF-pf`""
-Info "  setx FLUBNF_PYBNF `"D:\Projects\PyBNF-pf`""
+if ($EngineRoute -eq "public") {
+    Info "  setx FLUBNF_PUBLIC_VENV `"D:\venvs\flubnf-public`""
+} else {
+    Info "The engine folder counts only once it holds the engine, so clone or move"
+    Info "the engine there first, then point FLUBNF_PYBNF at it:"
+    Info "  git clone -b feature/particle-filter $PyBnfRemote `"D:\Projects\PyBNF-pf`""
+    Info "  setx FLUBNF_PYBNF `"D:\Projects\PyBNF-pf`""
+}
 if ($Hub -like "*OneDrive*") {
     Warn "the data path is inside OneDrive. A git clone of this size in a"
     Warn "synced folder syncs tens of thousands of small files; putting it"
@@ -387,6 +593,10 @@ $Resolved = @(
     @{ Label = "PyBNF checkout"; Path = $PyBnf;      Var = "FLUBNF_PYBNF"
        FromEnv = ([bool]$env:FLUBNF_PYBNF -and -not $script:IgnoredPyBnfPin) }
 )
+if ($EngineRoute -eq "public") {
+    $Resolved += @{ Label = "public venv"; Path = $PublicVenv; Var = "FLUBNF_PUBLIC_VENV"
+                    FromEnv = [bool]$env:FLUBNF_PUBLIC_VENV }
+}
 # Defaults UNION the machine's list: a false warning costs a paragraph, a
 # missed one a day. The inner parentheses bound what the pipeline claims.
 $Protected = @((@(Get-ProtectedFolders) + @($Cfa.Folders)) |
@@ -501,6 +711,10 @@ if ($Cfa.State -eq "off") {
     Info "     folder access > Add an allowed app, and add:"
     Info "       $GitExe"
     Info "       $EnginePy"
+    # The public engine's Python writes lwf\out under app\state\workroots.
+    if (($EngineRoute -eq "public") -or (Test-Path -LiteralPath $PublicPy)) {
+        Info "       $PublicPy"
+    }
     Info "       $VenvPy"
     Info "       $PerlExe"
     Info "       $RunNetExe"
@@ -563,8 +777,9 @@ Say "defender real-time scanning (speed, not failure)"
 # Windows CI is a hypothesis, not a measurement (docs\WINDOWS.md).
 $Rt = Get-RealtimeState
 # Paths this project writes constantly (the repo: venv, __pycache__, workroots).
-$ScanPaths = @($Here, $Hub, $PyBnf, $EngineVenv) |
-             Where-Object { $_ } | Select-Object -Unique
+$ScanList = @($Here, $Hub, $PyBnf, $EngineVenv)
+if ($EngineRoute -eq "public") { $ScanList += $PublicVenv }
+$ScanPaths = $ScanList | Where-Object { $_ } | Select-Object -Unique
 $AlreadyExcluded = @()
 $NotExcluded = @()
 foreach ($p in $ScanPaths) {
@@ -748,9 +963,11 @@ foreach ($c in $Cands) {
     }
 }
 if (-not $PyExe) {
-    Warn "python >= 3.11 required. The easy route is Anaconda"
+    Warn "python >= 3.11 required: the console accepts 3.11 or newer, and the"
+    Warn "engine needs 64-bit (x64) Python 3.12. The easy route is Anaconda"
     Warn "(anaconda.com/download, defaults are fine: this script finds it with"
-    Warn "nothing added to PATH). Or python.org, then re-run this script."
+    Warn "nothing added to PATH, and FluBNF.bat asks it for the engine's 3.12)."
+    Warn "Or 64-bit (x64) Python 3.12 from python.org, then re-run this script."
     Warn "If 'python' opens the Microsoft Store instead of running, that is the"
     Warn "App Installer stub: install real Python from the link above."
     exit 1
@@ -1126,7 +1343,116 @@ function Clear-EngineAttempt {
     }
 }
 
-Say "engine venv (pybnf + bngsim)"
+$PublicReady = $false
+$PublicInstallable = $false
+if ($EngineRoute -eq "public") {
+    Say "public engine (the default)"
+    # Twin of setup_engine.sh --public. FluBNF.bat installs it, as it does
+    # the private engine: this run checks the lock and the venv, and prints
+    # the steps for doing it by hand. The lock is read only through
+    # scripts\engine_lock.py (the wheel's address and sha256 are written in
+    # the lock alone), here with the console venv's Python.
+    $LockOk = $false
+    if ($PublicVenvTaken) {
+        Warn "FLUBNF_PUBLIC_VENV names $PublicVenv,"
+        Warn "which is inside a venv of the private engine ($PublicVenvTaken)."
+        Warn "The public engine never shares one, so nothing goes there. Clear"
+        Warn "FLUBNF_PUBLIC_VENV (the public engine's own default is"
+        Warn "$(Join-Path $FluBnfRoot "venv-public")) and re-run this script."
+    } else {
+        $lock = Invoke-Captured $VenvPy @($LockTool, "wheel", $EngineLock)
+        if ($lock.Code -eq 0) {
+            $LockOk = $true
+            Ok "lock: $EngineLock"
+            Ok "PyBNF wheel: $(@($lock.Output)[0])"
+        } else {
+            Warn "the public engine's lock file cannot be used yet, so nothing can be"
+            Warn "installed from it ($(CodeStr $lock)):"
+            Show-Output $lock 5
+        }
+    }
+    if ($LockOk -and (Test-Path -LiteralPath $PublicPy)) {
+        # Ready means the Liu-West filter imports, bngsim is the version the
+        # lock pins, and pybnf came from the lock's wheel.
+        $chk = Invoke-Captured $PublicPy @($LockTool, "check", $EngineLock)
+        if ($chk.Code -eq 0) {
+            $PublicReady = $true
+            Ok "public engine ready: $PublicVenv"
+        } else {
+            Warn "the public venv at $PublicVenv does not hold what the lock"
+            Warn "names ($(CodeStr $chk)):"
+            Show-Output $chk 5
+        }
+    }
+    if ($LockOk -and -not $PublicReady) {
+        # What FluBNF.bat makes the public venv from, in its order: py 3.12,
+        # python, conda's base, each only if it is 64-bit (x64) 3.12; else
+        # conda makes a 3.12 of its own (never the private engine's).
+        $PublicGate = "import sys, sysconfig; print(int(sys.version_info[:2] == (3,12) and sysconfig.get_platform() == 'win-amd64'))"
+        $PublicBootCmd = $null
+        $pubCands = @(@{ exe = "py"; args = @("-3.12") }, @{ exe = "python"; args = @() })
+        if ($CondaRoot) { $pubCands += @{ exe = (Join-Path $CondaRoot "python.exe"); args = @() } }
+        foreach ($c in $pubCands) {
+            if (-not (Get-Command $c.exe -ErrorAction SilentlyContinue)) { continue }
+            $gateArgs = @($c.args) + @("-c", $PublicGate)
+            try { $fits = & $c.exe @gateArgs 2>$null }
+            catch { $fits = $null }
+            if ("$fits".Trim() -eq "1") {
+                $exe = if ($c.exe -match '\\') { "`"$($c.exe)`"" } else { $c.exe }
+                $PublicBootCmd = "$exe $($c.args -join ' ')".Trim()
+                break
+            }
+        }
+        $PublicConda = Join-Path $FluBnfRoot "python312-public"
+        $force = if (Test-Path -LiteralPath $PublicPy) { " --force-reinstall" } else { "" }
+        if ((-not $PublicBootCmd) -and (-not $CondaRoot)) {
+            Warn "No Python on this PC can run the public engine: it needs 64-bit"
+            Warn "(x64) Python 3.12. The console runs on 3.11 or newer; the engine"
+            Warn "needs 3.12 exactly. Install Anaconda (anaconda.com/download; the"
+            Warn "defaults are fine), then open FluBNF.bat again: it asks conda for"
+            Warn "one. 64-bit (x64) Python 3.12 from python.org works too."
+        } else {
+            $PublicInstallable = $true
+            Info "FluBNF.bat installs it: right after this, when FluBNF.bat started"
+            Info "this setup; otherwise open FluBNF.bat. Or by hand, in Command Prompt:"
+            if (Test-Path -LiteralPath $PublicPy) {
+                Info "  (the venv is there already)"
+            } elseif ($PublicBootCmd) {
+                Info "  $PublicBootCmd -m venv `"$PublicVenv`""
+            } else {
+                Info "  (no 64-bit x64 Python 3.12 here: conda makes one first, in Anaconda Prompt)"
+                Info "  set `"CONDA_SUBDIR=win-64`""
+                Info "  (in Anaconda PowerShell Prompt that line is: `$env:CONDA_SUBDIR = `"win-64`")"
+                Info "  conda create -y -p `"$PublicConda`" python=3.12"
+                Info "  `"$PublicConda\python.exe`" -m venv `"$PublicVenv`""
+            }
+            Info "  `"$PublicPy`" -m pip install --require-hashes --only-binary :all:$force -r `"$EngineLock`""
+            Info "  `"$PublicPy`" `"$LockTool`" check `"$EngineLock`""
+            Info "(In PowerShell, put & and a space in front of a line that starts with a quote.)"
+        }
+    }
+    # The private engine, the fallback, by the file test FluBNF.bat's failure
+    # lines use; the next section probes it properly.
+    $PrivateOnDisk = ((Test-Path -LiteralPath $EnginePy) -and
+                      (Test-Path -LiteralPath "$PyBnf\pybnf\pf.py"))
+    if ($PrivateOnDisk -and -not $PublicReady) {
+        if ($PublicInstallable) {
+            Info "FluBNF.bat installs the public engine on its next open; until then"
+            Info "the private engine installed here runs as the fallback after"
+            Info "setup.ps1 -Engine private."
+        } else {
+            Info "Until the public engine is installed, the private engine installed"
+            Info "here runs as the fallback after setup.ps1 -Engine private."
+        }
+        Info "To switch, type this in Command Prompt or PowerShell:"
+        Info "  $SelfCmd -Engine private"
+    } elseif ($PrivateOnDisk) {
+        Info "The private engine below stays installed, as the fallback; nothing in"
+        Info "this section touches it."
+    }
+}
+
+Say "engine venv (pybnf + bngsim): the private engine, the fallback"
 $EngineReady = $false
 if (Test-Path $EnginePy) {
     # Probe as runners load the fork (checkout on sys.path, see
@@ -1158,7 +1484,23 @@ if (Test-Path $EnginePy) {
         }
     }
 }
-if ($EngineReady) {
+if ($EngineRoute -eq "public") {
+    # The fallback is reported, never diagnosed or fetched: this copy runs
+    # the public engine (the section above).
+    if ($EngineReady) {
+        Ok "engine venv ready: $EngineVenv (the private engine, the fallback)"
+    } else {
+        Info "the private engine is not installed here; the public engine, the"
+        Info "default, does not need it."
+        # Its folder already here (a clone, or an archive FluBNF.bat
+        # unpacked) needs no file: the private route installs from it.
+        if (Test-EngineOnDisk $PyBnf) {
+            Info "the fallback's folder is here, $($PyBnf): run setup.ps1 -Engine private, then open FluBNF.bat, which installs it from there (no file needed)."
+        } else {
+            Info "the fallback needs the lab's engine file: save it in Downloads, run setup.ps1 -Engine private, open FluBNF.bat."
+        }
+    }
+} elseif ($EngineReady) {
     Ok "engine venv ready: $EngineVenv"
 } else {
     Warn "engine venv not ready."
@@ -1355,6 +1697,14 @@ if ($PyBnfRecorded) {
 } else {
     Info "FLUBNF_PYBNF not recorded: $PyBnf holds no engine yet"
 }
+# The public engine's Python once it checks out against the lock, as
+# FluBNF.bat records it.
+if ($PublicReady) {
+    [Environment]::SetEnvironmentVariable("FLUBNF_PY_ENGINE_PUBLIC", $PublicPy, "User")
+    $Recorded += "FLUBNF_PY_ENGINE_PUBLIC"
+}
+# FLUBNF_ENGINE is never written for the account (a User value that names
+# the other engine was cleared when -Engine was recorded, at the start).
 # No FLUBNF_HUB after a failed clone: a User value wins every later
 # Resolve-Checkout and would pin the unwritable path (the launcher and
 # settings.py resolve the same default without it). Skipped, never cleared:
@@ -1373,7 +1723,6 @@ if ($HubCloneFailed) {
     Ok "user environment recorded ($((@("FLUBNF_HUB") + $Recorded) -join ', '))"
 }
 
-$EnvCmd = Join-Path $Here ".flubnf.env.cmd"
 $EnvLines = @(
     "@echo off",
     "rem Written by setup.ps1; FluBNF.bat calls this on every launch.",
@@ -1383,14 +1732,49 @@ $EnvLines = @(
     "set `"FLUBNF_PY_ENGINE=$EnginePy`""
 )
 if ($PyBnfRecorded) { $EnvLines += "set `"FLUBNF_PYBNF=$PyBnf`"" }
+# The engine switch and the public engine's Python stay as they were unless
+# this run changed them: -Engine public and -Engine private each write
+# their own FLUBNF_ENGINE line (an explicit public means the same to a copy
+# on older code, where no record meant private); without -Engine the
+# record is kept, in the form FluBNF.bat reads (a hand-written unquoted
+# line comes back quoted, never dropped), and so is a line that sets it to
+# nothing, which clears an account value for FluBNF.bat.
+# FLUBNF_PY_ENGINE_PUBLIC is written for a public engine checked above.
+$EngineLine = if ($Engine) { $Engine } else { $EngineRecord }
+if ($EngineLine) { $EnvLines += "set `"FLUBNF_ENGINE=$EngineLine`"" }
+if (($null -ne $EngineLine) -and ("$EngineLine" -eq "")) { $EnvLines += "set `"FLUBNF_ENGINE=`"" }
+$PublicLine = if ($PublicReady) { $PublicPy }
+              else { Get-EnvCmdValue "FLUBNF_PY_ENGINE_PUBLIC" }
+if ($PublicLine) { $EnvLines += "set `"FLUBNF_PY_ENGINE_PUBLIC=$PublicLine`"" }
 try {
-    # cmd reads batch files in the OEM code page (not Set-Content's ANSI; only
-    # accented paths differ, untested). No BOM: it breaks "@echo off".
-    $cp = [int](Get-Culture).TextInfo.OEMCodePage
-    $enc = if ($cp -eq 65001) { New-Object System.Text.UTF8Encoding($false) }
-           else { [Text.Encoding]::GetEncoding($cp) }
-    [IO.File]::WriteAllText($EnvCmd, (($EnvLines -join "`r`n") + "`r`n"), $enc)
+    # cmd reads batch files in the OEM code page (Get-OemEncoding).
+    [IO.File]::WriteAllText($EnvCmd, (($EnvLines -join "`r`n") + "`r`n"), (Get-OemEncoding))
     Ok "wrote $EnvCmd (read by FluBNF.bat on every launch)"
+    if ($Engine -eq "public" -and $PublicReady) {
+        Ok "this copy runs the public engine now, the default (FLUBNF_ENGINE=public)"
+    } elseif ($Engine -eq "public" -and $LockOk) {
+        Ok "this copy runs the public engine now, the default (FLUBNF_ENGINE=public);"
+        Ok "FluBNF.bat installs it on its next open"
+    } elseif ($Engine -eq "public") {
+        Warn "this copy is set to the public engine, the default (FLUBNF_ENGINE=public),"
+        Warn "which cannot be installed yet (the public engine section above says why);"
+        Warn "setup.ps1 -Engine private switches this copy to the private engine, the"
+        Warn "fallback"
+    } elseif ($Engine -eq "private") {
+        Ok "this copy runs the private engine now, the fallback (FLUBNF_ENGINE=private);"
+        Ok "setup.ps1 -Engine public goes back to the default"
+        if ((-not $EngineReady) -and $EngineOnDisk) {
+            Info "FluBNF.bat installs it on its next open, from $PyBnf"
+        } elseif (-not $EngineReady) {
+            Info "FluBNF.bat installs it on its next open, from the lab's engine file"
+        }
+    } elseif ((-not $EngineRecord) -and ($EngineRoute -eq "public")) {
+        if ($PublicReady) {
+            Ok "this copy runs the public engine, the default"
+        } else {
+            Ok "this copy runs the public engine, the default (FluBNF.bat installs it)"
+        }
+    }
 } catch {
     Warn "could not write $EnvCmd"
     Warn "  $($_.Exception.Message)"
@@ -1401,6 +1785,8 @@ Say "doctor"
 $env:FLUBNF_HUB = $Hub
 $env:FLUBNF_PY_ENGINE = $EnginePy
 $env:FLUBNF_PYBNF = $PyBnf
+$env:FLUBNF_ENGINE = $EngineRoute
+if ($PublicLine) { $env:FLUBNF_PY_ENGINE_PUBLIC = $PublicLine }
 & $VenvPy -c "from flubnf.settings import check; import sys; sys.exit(1 if check() else 0)"
 $DoctorCode = $LASTEXITCODE
 if ($DoctorCode -eq 0) {

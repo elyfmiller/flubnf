@@ -894,8 +894,10 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
-/* the swatches keep an edge, so the gray one shows on a dark card */
-.maplegend .sw{box-shadow:inset 0 0 0 1px var(--line)}
+/* the swatches keep an edge, so the gray one shows on the card: the field
+   boundary's token, 3:1 on the card in every theme (--line is fainter
+   than the gray itself) */
+.maplegend .sw{box-shadow:inset 0 0 0 1px var(--field-line)}
 
 /* ---- home: workflow pipeline, performance table, card glyphs ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
@@ -1161,10 +1163,9 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
 
 /* Forecast form modes (Real-time / Vintage) and the advanced group */
 .modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
-.modes > [role=tablist]{display:flex;gap:.4rem}
 .modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
-.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
+.pill.mode[aria-selected="true"],.pill.mode[aria-pressed="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
 #fcform.mode-realtime #vintage-pick{display:none}
 details.adv{margin:.7rem 0 .4rem}
@@ -1220,6 +1221,8 @@ button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox a{color:inherit;text-decoration:underline}
 .tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
 .tip.dismissed .tipbox{visibility:hidden;opacity:0}
+/* a notice's detail keeps its lines (BNG2.pl's log, one line a step) */
+#tip-flash{white-space:pre-line}
 @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
 /* the latest-run card: settings left, results right. Tracks auto-fit at a
@@ -1389,6 +1392,9 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
     border-bottom:1px solid var(--line)}
   .dstable td{border:0;padding:0;text-align:left}
   .dstable td.dsname,.dstable td.dsactions{flex-basis:100%}
+  /* the name has the whole line now: its column floor would push it past
+     a phone's card at large text */
+  .dstable td.dsname{min-width:0}
   .dstable td[data-label]::before{content:attr(data-label) ": ";color:var(--mut)}
   .dstable td.dsactions button{margin-left:.5rem}
 }

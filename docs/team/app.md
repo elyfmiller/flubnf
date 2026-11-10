@@ -6,6 +6,66 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (overnight, at Ely's go of 2026-11-09): the engine switch,
+  an independent review of it and of the bug-hunt fixes, and a usability
+  and compute pass.
+  - **The PyBNF wheel release** `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b`
+    is published (Ely's OK). It rebuilds byte for byte with setuptools
+    80.9.0 and `SOURCE_DATE_EPOCH=1792031099`; the sha256 matches the
+    lock's.
+  - **The engine switch is on `dev`** (#61, merge def45db).
+    - The public engine is the default. The private engine is an
+      explicit fallback (`FLUBNF_ENGINE=private`), never automatic (Ely).
+    - `./setup_engine.sh --private` and `setup.ps1 -Engine private`
+      record the choice first and switch offline when the private engine
+      already loads.
+    - An independent review found 9 S2 and 6 S3, no S1; all fixed and
+      re-checked. CI is green on every leg, Windows included.
+    - Stage 2 has not run. `[CUTOVER-ROUND]` marks the round dates in
+      MODEL-PROVENANCE.md and FLUSIGHT-2026-27.md.
+    - Recommended: `dev` to `main` after the 2026-11-11 hub pull request
+      is open (a Thursday cutover, as the engine notes say).
+  - **The Engine and Model lanes moved to Ely's Windows PC** (TEAM.md,
+    78e2843). Their warm starts are outside the repository.
+  - **The bug-hunt fix run is done** (cloud A and B; FINAL.md on
+    `fix-coord-b`). An independent review of V01 and G11 to G35 found:
+    - no S1;
+    - its S2s fixed in #84, #89 and #92 (including every dataset
+      Forecast page's dead chart script, `const RASIDE = ;`, from G19);
+    - its S3s: #98 fixes 30, the second pass takes the rest, and four
+      are for Ely.
+  - **Usability and compute: #93, a draft for Ely**, not merged.
+    - 14 packages were planned from seven reviewers' 79 findings, each
+      checked by an adversarial verifier. 12 are built; P13 was dropped,
+      and P7 (vocabulary) is deferred for usage.
+    - Every forecast, score and stored file is byte-identical. The
+      reviewer's attacks hold: 24,080 random Groundhog calls, 299,552 hub
+      quantile values, 55 rendered forms.
+    - Speed: a Groundhog hub week takes 0.25 s (was 3 to 6 s), an
+      own-data replay of 200 groups takes 72 s (was 628 s), and a rescore
+      after Update data takes 0.45 s (was 45 s).
+    - The review's 4 S2 and about 30 S3 are fixed.
+- 2026-11-10: the fix run of the 2026-10-25 bug hunt is done. All 35
+  groups are merged into `dev`, #50 to #97 (#64 among them, the re-check
+  of G01 to G10), each reproduced first, reviewed by both A and B, and
+  merged with CI green; each group's Status cell in
+  [bug-hunt-2026-10-25.md](bug-hunt-2026-10-25.md) names its PR. Of the
+  208 bugs, 197 are fixed in full (24 S2, 77 S3, 96 S4); 9 leave a part
+  for Ely (under Open, 2026-11-10); 2 had a part that did not reproduce:
+  ME-11's bank half (with the bank at none the console runs the bare
+  analogue, as its help says) and WI-08's shipped snapshot badged "not
+  archived" (the badge stays hidden). No forecast numbers, knob defaults
+  or submission files changed; the groups that touched the run path passed
+  the output check (an all-53 Groundhog run on 2026-10-17 gives the same
+  files). Left for Ely to delete, since a pushed branch delete was
+  refused: the merged branches `fix/G21-state-dir-protect` to
+  `fix/G35-cross-page` and `fix/G35-run-notes`, and the coordination
+  branches `fix-coord-a` and `fix-coord-b` if they are still there.
+- 2026-11-04 (later): Ely merged #78 (`dev` to `main`, merge e982d09):
+  the Update data fix and the experiment and runner fixes (9eec15f) are
+  on `main`, whose tree equals `dev`'s d3101e1, CI green on it. Ely's hub
+  clone got this week's data by the fix's steps run by hand; the console
+  runs the fix once FluBNF is reopened.
 - 2026-11-04 (round day): Update data failed on Ely's laptop, twice at
   its 300 s limit, then at once on the `.git/index.lock` the first kill
   left (Ely deleted it by hand). The hub clone is a partial clone: the
@@ -1081,6 +1141,34 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-11-10, the bug hunt's fix run), each fixed in its group
+  but for the part named, which needs Ely's call (the group's Status cell
+  in bug-hunt-2026-10-25.md says more):
+  - DA-02 (G04): one week of a 200-group dataset still takes minutes;
+    the walk's speed, or an upload cap, is the engine's or the limits'
+    call.
+  - RE-17 (G08): a dataset's national row is a spelling by decision
+    (2026-09-24), and the template's "Overall" is not one of them.
+  - MO-20 (G12): the blend's members and the seasons or cells behind
+    0.719 and 0.704 are in no document, so the record keeps the two
+    figures, dated.
+  - SB-12 (G14): only the refusals' words changed; the one-run engine
+    lock stays.
+  - OU-03 (G16): two shipped runs of one week still save their reports
+    under one name (the decided name is the reference date's).
+  - UI-03 (G19): the weekly report keeps #A87300 for the Groundhog on
+    light cards, close to the Liu-West filter's #C77100 under the
+    colour-blind simulation (the console now draws #806000).
+  - WI-04 (G21), its Sandbox part: the Sandbox is the checkout's
+    `sandbox/`, outside `app/state`, where the student-workspace runner
+    reads each student's experiments; whether FLUBNF_STATE_DIR should
+    carry it is a design decision.
+  - SB-10 (G25): whether the private engine has a likelihood for rates
+    (it cannot be run here); until then the notice says the fit reads
+    counts.
+  - FC-13 (G26): the run-wide setting keeps precedence over a state's
+    own Data issues choice, as the engines apply it.
 
 - For Ely (2026-10-26, `engine-public`):
   - The ENGINE_WHEEL_URL and ENGINE_WHEEL_SHA256 pair is read from the

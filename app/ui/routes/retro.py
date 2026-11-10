@@ -170,17 +170,27 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    # the form as last posted; its panel opens once after its own refusal
+    form = dict(_last_retro_form)
+    _last_retro_form.pop("ms_refused", None)
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
                                        "own_tab": False, "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
-                                       "knob_panel": _knob_panel("retro"),
+                                       "form": form,
+                                       "knob_panel": _knob_panel("retro",
+                                                                 form),
                                        # a half-installed engine cannot
                                        # run the Oracle preset either
                                        "engine_ok": pipeline._pf_engine_state()
-                                       == "ready"})
+                                       == "ready",
+                                       # the switch to the private engine
+                                       # when the default is missing and
+                                       # the fallback is installed here
+                                       "engine_fallback":
+                                       templating._engine_fallback_hint()})
 
 
 @router.get("/api/retro/progress")
@@ -268,6 +278,18 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
         _flash(f"Not deleted: no archived {season} run from "
                f"{retro.stamp_human(stamp)}.", "warn")
         return _back(request, "/retro")
+    from app.core import replay_bundle
+    # an imported run by where it came from, an archived one by when
+    what = (f"the {season} run {replay_bundle.imported_label(p)}"
+            if replay_bundle.imported_label(p) else
+            f"the archived {season} run from {retro.stamp_human(stamp)}")
+    # Storage's one barrier: the sealed records, the hub clone and
+    # FLUBNF_PROTECT_ROOTS (a link into one of them too)
+    from app.ui.routes.storage import _storage_protected
+    if _storage_protected(p):
+        _flash(f"Not deleted: {what} is in a protected folder, which the "
+               "console never deletes.", "warn")
+        return _back(request, "/retro")
     weeks = retro.run_summary(p)["weeks"]
     size_h = retro.human_bytes(retro.dir_size(p))
     try:
@@ -277,8 +299,7 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
                f"{type(e).__name__}: {str(e)[:160]}.", "error",
                detail="Nothing else changed.")
         return _back(request, "/retro")
-    _flash(f"Deleted the archived {season} run from "
-           f"{retro.stamp_human(stamp)}: {weeks} week"
+    _flash(f"Deleted {what}: {weeks} week"
            f"{'' if weeks == 1 else 's'}, {size_h} freed.", "ok",
            detail=f"The live {season} season was not touched.")
     return _back(request, "/retro")
@@ -362,6 +383,22 @@ def _retro_bg(season: str, locations: list, width: int,
                 guard.terminate()
             except Exception:
                 pass
+
+
+#: the Settings form as last posted (this console session): the page shows
+#: it again, so a refusal or a run never resets every choice; "ms_refused"
+#: (one-shot) opens the Model settings panel on its own refusal
+_last_retro_form: dict = {}
+
+
+def _remember_retro_form(**fields) -> None:
+    """Keep the posted Settings form for the page (_last_retro_form)."""
+    try:
+        knob_vals = _knob_raw(fields.pop("knob_fields"), fields.pop("knobs"))
+    except ValueError:                   # refused below, with the reason
+        knob_vals = {}
+    _last_retro_form.clear()
+    _last_retro_form.update(fields, knobs=knob_vals)
 
 
 def _refused(msg: str, detail: str = "",
@@ -486,6 +523,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core import retro
     from app.core.retro import available_seasons
     _invalidate_scans()
+    # every field the panel shows, its older names included (forms.
+    # _knob_panel reads particles, replicates and drop_same_day), so a
+    # refusal never resets a choice the next Run would then replay
+    _remember_retro_form(season=season, locations=locations,
+                         custom_locations=list(custom_locations),
+                         national=national, width=width, engine=engine,
+                         particles=particles, replicates=replicates,
+                         drop_same_day=drop_same_day,
+                         knob_fields=knob_fields, knobs=knobs)
     if not _valid_season(season):
         return _refused("Not started: unrecognized season name.")
     # busy checks, the archive/discard move and the claim all run under
@@ -572,7 +618,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                         **({"drop_same_day": drop_same_day}
                            if _str_field(drop_same_day).strip() else {})})
         except ValueError as e:              # KnobError is a ValueError
-            return _refused(f"Not started: model settings: {e}.")
+            # the panel opens on it and says why, once; no second notice
+            _last_retro_form["ms_refused"] = str(e) or True
+            return RedirectResponse("/retro", status_code=303)
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
         # runners, as typed: the browser's number box lets 2e0 through, and
@@ -602,6 +650,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             had = _knobs.legacy_settings_knobs(prior)
             # a pre-registry tree resumes as it was, never re-recorded
             legacy_resume = bool(prior) and "knobs" not in prior
+            # what this run asks for, as asked (the refusal says it; the
+            # rule popped below is still the user's choice)
+            asked = dict(nd)
             # a tree replayed before the zero-anchor rule existed did what
             # abstain does: it resumes so, and is not re-recorded with it
             if (_missing.ZERO_ANCHOR_KEY not in had
@@ -615,9 +666,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     f"Not started: {season} has {existing} week"
                     f"{'' if existing == 1 else 's'} with other model "
                     "settings.",
-                    f"They were replayed with "
-                    f"{_knobs.label(_knobs.from_record(had))}; this run "
-                    f"asks for {_knobs.label(nd)}. Resuming would mix two "
+                    "They were replayed with "
+                    f"{_settings_words(had, side='recorded')}; this run "
+                    f"asks for {_settings_words(asked, side='asked')}. "
+                    "Resuming "
+                    "would mix two "
                     "configurations in one season. Archive or discard the "
                     "existing results to run it.")
             # never resume a tree with the other engine preset (weeks would be
@@ -647,19 +700,47 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     "run it.")
             # nor on another engine build (the rule is retro.run_season's
             # too): weeks fitted by two engines would be scored as one
-            bchange = retro.engine_build_change(
-                (retro.read_meta(live) or {}).get("settings"), engine)
+            prior_settings = (retro.read_meta(live) or {}).get("settings")
+            bchange = retro.engine_build_change(prior_settings, engine)
             if bchange:
+                # the engine the season began on (a record with no build was
+                # fitted by the private engine) against this machine's
+                from app.core import engine_build as _eb
+                had_engine = _eb.engine_of(
+                    prior_settings.get("engine_build")
+                    if isinstance(prior_settings, dict) else None)
+                if had_engine != _eb.engine_of(_eb.engine_build()):
+                    remedy = (f"To finish it on the {had_engine} engine it "
+                              f"began on: {_eb.switch_step(had_engine)}; or "
+                              "archive or discard the existing results to "
+                              "replay it on this one.")
+                else:
+                    remedy = ("Switch the engine back, or archive or discard "
+                              "the existing results to run it.")
                 return _refused(
                     f"Not started: {season} has {existing} week"
                     f"{'' if existing == 1 else 's'} that {bchange}.",
                     "Resuming would mix two engine builds in one season. "
-                    "Switch the engine back, or archive or discard the "
-                    "existing results to run it.")
+                    + remedy)
         if mode == "discard" and confirm != season:
             return _refused(
                 f"Not started: discarding {season} was not confirmed.",
                 "Nothing was deleted.")
+        if mode in ("discard", "archive") and existing:
+            # Storage's one barrier (sealed records, the hub clone,
+            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed:
+            # an archive would move the season out from under it
+            from app.ui.routes.storage import _storage_protected
+            if _storage_protected(live):
+                if mode == "archive":
+                    return _refused(
+                        f"Not started: the {season} results are in a "
+                        "protected folder, which the console never moves.",
+                        "Nothing was moved.")
+                return _refused(
+                    f"Not started: the {season} results are in a protected "
+                    "folder, which the console never deletes.",
+                    "Nothing was deleted.")
         if (not (mode == "resume" and existing)
                 and _missing.ZERO_ANCHOR_KEY not in nd):
             # a fresh replay (both presets run the Groundhog) must say what
@@ -668,8 +749,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 "Not started: choose what the Groundhog does when the "
                 "newest week reads 0.",
-                "Set Newest week reading 0: abstain, level, extend or "
-                "blend.")
+                "Set Groundhog when the newest week reads 0: abstain, "
+                "level, extend or blend.")
         if mode == "discard":
             if existing:
                 try:
@@ -693,9 +774,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     f"{str(e)[:160]}.",
                     "Nothing was started; the existing results are "
                     "intact.", kind="error")
+            stamp = dst.name.partition("__archived_")[2]
             _flash(f"Archived {existing} week"
-                   f"{'' if existing == 1 else 's'} of {season} as "
-                   f"{dst.name}; starting a fresh replay.", "ok",
+                   f"{'' if existing == 1 else 's'} of {season} (set aside "
+                   f"{retro.stamp_human(stamp)}); starting a fresh replay.",
+                   "ok",
                    detail="The archive stays viewable from the season "
                    "list.")
         # claim in the request (not the task) so double submits cannot race
@@ -749,14 +832,16 @@ def _pasted_path(value) -> str:
     return s
 
 
-def _import_replay_file(src: Path, replace: bool):
+def _import_replay_file(src: Path, replace: bool, name: str = ""):
     """Import one bundle (a saved upload or a local path) into the retro
     root; (message, kind, detail) for the flash and the season page to
-    open, or a refusal and the index."""
+    open, or a refusal and the index. `name`: an upload's own file name,
+    which the refusals say (never the server's copy)."""
     from app.core import replay_bundle
     try:
         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
-                                        replace=replace, build=RUNNING_SHA)
+                                        replace=replace, build=RUNNING_SHA,
+                                        name=name)
     except replay_bundle.BundleError as e:
         return (f"Not imported: {e}", "warn", ""), "/retro"
     except OSError as e:
@@ -817,8 +902,9 @@ async def retro_import(request: Request):
                             f"the upload is larger than the {cap // 1024 ** 3}"
                             " GB limit")
                     out.write(chunk)
-            msg, target = await run_in_threadpool(_import_replay_file, tmp,
-                                                  replace)
+            msg, target = await run_in_threadpool(
+                _import_replay_file, tmp, replace,
+                Path(str(up.filename).replace("\\", "/")).name)
         except OSError as e:
             msg, target = (f"Could not import: {e}.", "error", ""), "/retro"
         except ValueError as e:
@@ -836,6 +922,41 @@ async def retro_import(request: Request):
     _invalidate_scans()
     _flash(msg[0], msg[1], detail=msg[2])
     return RedirectResponse(target, status_code=303)
+
+
+#: the Run form's label for the zero-anchor rule (retro.html), which a
+#: refusal names it by
+ZERO_ANCHOR_LABEL = "Groundhog when the newest week reads 0"
+
+
+def _settings_words(values, side: str = "") -> str:
+    """A replay's model settings as a refusal says them: the zero-anchor
+    rule by the Run form's label, the rest as the run page does
+    (knobs.words: labels and values, no keys or digests).
+
+    The rule has no default, so with it absent `side` says what stands in
+    its place: "recorded" (a season replayed before the rule existed) the
+    choice the code holds it to (ZERO_ANCHOR_LEGACY, as settings_digest
+    compares it), "asked" (a request that chose none) no choice. With no
+    side, an absent rule is left unsaid."""
+    from app.core import missing as _missing
+    values = dict(values or {})
+    za = values.pop(_missing.ZERO_ANCHOR_KEY, None)
+    try:
+        rest = _knobs.words(_knobs.from_record(values))
+    except ValueError:                       # a record this build cannot read
+        rest = _knobs.label(values)
+    if za:
+        zbit = f"{ZERO_ANCHOR_LABEL}: {za}"
+    elif side == "recorded":
+        zbit = (f"{ZERO_ANCHOR_LABEL}: {_missing.ZERO_ANCHOR_LEGACY} (what "
+                "every replay did before this setting existed)")
+    elif side == "asked":
+        zbit = f"{ZERO_ANCHOR_LABEL}: no choice"
+    else:
+        zbit = ""
+    bits = ([zbit] if zbit else []) + ([rest] if rest else [])
+    return ", ".join(bits) or "the default settings"
 
 
 def retro_engine_label(engine: str) -> str:
@@ -1288,13 +1409,21 @@ def _season_report(season: str, archive: str):
 
 
 @router.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = ""):
+def retro_season_report(request: Request, season: str, archive: str = ""):
     """Download the season report (_season_report), under
-    report_season.download_name."""
+    report_season.download_name. A refusal is a page of the console (under
+    Retrospective, with the way to the season), never a bare line."""
     from app.core import report_season
+    from app.ui.routes import output as output_routes
     p = _season_report(season, archive)
     if isinstance(p, PlainTextResponse):
-        return p
+        return output_routes._notice(
+            request, p.status_code,
+            "error" if p.status_code >= 500 else "empty",
+            p.body.decode("utf-8"),
+            action=((f"/retro/{season}" if _valid_season(season) else "/retro"),
+                    "Open the season"),
+            active="Retrospective", heading="Season report")
     return FileResponse(p, filename=report_season.download_name(season,
                                                                 archive),
                         media_type="text/html",

@@ -1,10 +1,12 @@
-"""Bring the particle-filter engine checkout up to the production build.
+"""Keep the private engine's checkout, the fallback, at its pin.
 
-FluBNF updates itself each time it opens (FluBNF.command, FluBNF.bat), but
-the engine is a separate private checkout that nothing moved: a machine that
+The default engine, the public one, is a venv the launchers keep at
+engine-requirements.txt. The private engine (FLUBNF_ENGINE=private) is a
+separate checkout of the lab's PyBNF fork that nothing moved: a machine that
 cloned it months ago kept that build, and the console's warning said so with
 no way out but git by hand. update() is that way out. Both launchers run it
-on every open (`flubnf engine-update`), and it is safe to run anywhere:
+on every open (`flubnf engine-update`), so the fallback is at its pin when
+it is needed, and it is safe to run anywhere:
 
   * only a git checkout that is clean (no edits to tracked files), on the
     production branch, and behind the production commit moves;
@@ -30,9 +32,11 @@ import time
 from pathlib import Path
 
 from app.core import engine_build as _eb
+from app.core.runs import APP_STATE
 
-#: where the last outcome is kept (app/state is gitignored)
-STATE_FILE = Path(__file__).resolve().parents[1] / "state" / "engine_update.json"
+#: where the last outcome is kept: the state folder, which FLUBNF_STATE_DIR
+#: moves (app/state is gitignored)
+STATE_FILE = APP_STATE / "engine_update.json"
 
 #: a git call that reads the checkout; a fetch gets FETCH_TIMEOUT_S
 GIT_TIMEOUT_S = 15.0

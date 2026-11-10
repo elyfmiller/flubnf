@@ -12,7 +12,7 @@ Covered templates:
 | Template | Role |
 |---|---|
 | `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template, and so the Oracle SIHRS member's (the filter plus the post-fit Oracle step, docs/ORACLE-SIHRS.md; the step changes nothing in the template) |
-| `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) research variant (7 fitted parameters); failed its full-grid gate, not shipped |
+| `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) research variant (7 fitted parameters); failed its full-grid gate, not shipped; runs on the private engine only (section 6) |
 | `SIHRS_pop_natg.bngl` | `min` plus one exogenous national-growth factor, zero new fitted parameters |
 | `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3. Reference for `tests/test_min_template.py` |
 
@@ -82,7 +82,10 @@ admissions target conflates a stock with a flow.
 What is reported is a weekly COUNT, so the fit target is the INTEGRAL of the
 ascertained admission flux `rho*mult*gamma*I` across the reporting week, never
 a point sample of that flux. The shipped particle filter's one observation
-model forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`. The two are not
+model forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`, on either
+engine: the private engine through `neg_bin_dynamic` on the `_Cum`
+observable, the public engine through a `neg_bin` noise model marked
+`cumulative` on the same observable. The two are not
 interchangeable: at local weekly log-growth `lam` the ratio of the instant to
 the integral is `lam/(1 - exp(-lam))`, which on 2024-25 state admissions is
 +46 percent at the median jurisdiction's fastest week and reverses sign in
@@ -95,9 +98,10 @@ appears in the reaction rules because it is a real branching fraction; `mult`
 does NOT and must never: ascertainment must never alter how people move
 between compartments, only what we observe of them.
 
-`H_Cum` (the `Hadm()` accumulator) exists because the engine's
+`H_Cum` (the `Hadm()` accumulator) exists because the private engine's
 `neg_bin_dynamic` likelihood differences any `_Cum` observable into weekly
-increments. The accumulator rule `I() -> I() + Hadm()` counts the `I -> H`
+increments; the public engine differences the observable its conf marks
+`cumulative`, which is the same one. The accumulator rule `I() -> I() + Hadm()` counts the `I -> H`
 flux without consuming `I`.
 
 ### 1.5 The `pi` constant (engine workaround)
@@ -197,8 +201,10 @@ is fixed for influenza. The COVID port frees it; see section 5.
 
 ### r (fitted)
 
-Negative-binomial dispersion of the observation model, fitted by both
-engines; in the PF it is carried per particle.
+Negative-binomial dispersion of the observation model, fitted; in the
+particle filter it is carried per particle. The public engine refuses a
+dispersion outside 1e-6 to 1e6; the SIHRS prior, 0.1 to 40, is well
+inside.
 
 ### N, s0, i0 (known data, never fitted)
 
@@ -502,6 +508,11 @@ instead; the token makes that a materialization choice, not an edit.
 
 ## 6. The two-strain variant (`SIHRS_pop_2strain_min.bngl`)
 
+The two-strain variant runs on the private engine only. The public engine
+has no counterpart for its typed-positives channel (`pf_binom_neff_cap`),
+so it refuses the variant's cells before they start; the refusal names the
+switch to the private engine (docs/ENGINE.md, "Choosing the engine").
+
 ### 6.1 Motivation, measured (seal 2026-08-19)
 
 The single-strain model's one catastrophic phase is the late-season type
@@ -539,7 +550,7 @@ annotated draft with `impr` retained, `SIHRS_pop_2strain.bngl`, was removed
   file under `print_functions=>1`. See 1.4 for the size of the gap between
   the two and for which fitting path evaluates which.
 * `A_share = Ia/(Ia+Ib)` -> NREVSS typed positives ratio,
-  binomial via the engine's `_bin`/`_n` exp columns.
+  binomial via the private engine's `_bin`/`_n` exp columns.
 
 `A_share` assumes equal per-infection test-positivity ascertainment for A and
 B; the shared factors cancel in the ratio, which is why `mult` does NOT
@@ -551,7 +562,7 @@ comes from surveillance, the model only evolves it.
 
 ### 6.4 Engine constraint: exactly one `_Cum` observable
 
-The engine's integrated mode globs the FIRST `_Cum` column, so only the
+The private engine's integrated mode globs the FIRST `_Cum` column, so only the
 COMBINED accumulator (`H_Cum`, summing `HadmA()` and `HadmB()`) may carry the
 suffix. BNGL observables sum multiple patterns natively. Per-strain
 admissions are recoverable as `rho*gamma*Ia` / `rho*gamma*Ib` if ever needed.
@@ -621,3 +632,54 @@ the worst-conditioned direction throttles all of them.
 
 The season-start reproduction number in this form is `Reff*exp(a1+a2)`,
 because both sines vanish at `t = 0`.
+
+---
+
+## 9. Engine of record
+
+The templates are fitted by the Liu-West filter. The PyBNF build that runs
+it changes once in the 2026-27 season, at the switch to the public engine.
+The switch is Ely's decision of 2026-11-09.
+
+* Last round on the private engine: the round of reference date 2026-11-07. The lab's PyBNF fork,
+  `feature/particle-filter` at `2fdadee0`, bngsim 0.15.1, `fit_type = pf`.
+* First round on the public engine: the round of reference date 2026-11-14, run on 2026-11-11. lanl/PyBNF at
+  `8410f794` (`job_type = lwf`), installed as the wheel on the release
+  `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b` of elyfmiller/flubnf
+  (`pybnf-1.8.1-py3-none-any.whl`, sha256
+  `18a59bc24caa99ae1b4cc14518a4233cf17a0e4edac45d50d5e4189413ee21e5`),
+  with bngsim 0.15.1 on Python 3.12, from the 38-package lock
+  `engine-requirements.txt`.
+
+The evidence for the switch is in-house and retrospective, the lab's own
+(docs/team/engine.md). It is not an acceptance result:
+
+* Fed the private engine's random inputs, the public engine gives the same
+  forecast draws on 144 of 144 SIHRS cells.
+* With its own random streams, its total WIS is 1.0013 times the private
+  engine's (95% interval 0.986 to 1.016) on the six-state panel, three
+  seasons.
+* A cell takes 2.07 times as long at the median, 2.21 at most, so the time
+  budgets on the public engine are 2.4 times as long.
+
+Stage 2 of the engine plan has not run: no full grid through the console
+against the private engine's own rerun, no shadow Wednesday, no install by
+someone outside the lab, and no fit on native Windows. The switch was made
+before it.
+
+The stored private-engine records (the sealed replays, the reseal of
+2026-09-07, and the Oracle SIHRS and particle-filter figures in the
+README's measured record and in docs/ORACLE-SIHRS.md) cannot be
+regenerated bit for bit on the public engine, which draws from
+another random-number source. They stay as measured, with the build that
+made them. Reproducing one exactly needs the private engine at
+`2fdadee0`, which the lab Mac keeps.
+
+The private engine stays installed as the fallback for two rounds after
+the switch (`./setup_engine.sh --private`, or `setup.ps1 -Engine private`;
+docs/ENGINE.md). Every run records the engine and the build it used. The
+two-strain variant runs on the private engine only (section 6). A template
+that calls `time()` would run a week out of phase on the public engine,
+which starts its clock at 0 where the private one starts at -1; the
+shipped templates keep the clock in a counter species, which starts with
+the run on both.

@@ -86,6 +86,14 @@ def engine_build_change(prior_settings, engine: str = "pf",
     had = (prior_settings or {}).get("engine_build") \
         if isinstance(prior_settings, dict) else None
     if not isinstance(had, dict):
+        # a record from before builds were recorded was fitted by the
+        # private engine: it resumes as before there, never on the public one
+        if prior_settings:
+            now = _eb.engine_build() if build is None else build
+            if (now or {}).get("engine") == "public":
+                return ("were fitted before engine builds were recorded, by "
+                        "the private engine; this machine's engine is "
+                        f"{_eb.label(now) or 'the public engine'}")
         return None
     return _eb.change(had, _eb.engine_build() if build is None else build)
 
@@ -103,8 +111,12 @@ def location_scope_change(prior_locations, locations) -> str | None:
     had, want = location_scope(prior_locations), location_scope(locations)
     if not had or had == want:
         return None
-    return (f"replayed over {len(had)} location(s); this run asks for "
-            f"{len(want)} with a different list")
+    if had - want == {"US"} and not want - had:
+        return "replayed with US; this run leaves US out"
+    if want - had == {"US"} and not had - want:
+        return "replayed without US; this run adds it"
+    return (f"replayed over {len(had)} location{'' if len(had) == 1 else 's'}"
+            f"; this run asks for {len(want)}, a different list")
 
 
 #: labels for the retro form's scopes, when a replay recorded no location list

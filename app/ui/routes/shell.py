@@ -81,3 +81,18 @@ async def api_perf(request: Request):
         perflog.write("page", total, f"{path}  server {server:.0f} ms "
                                      f"scripts {scripts:.0f} ms")
     return Response(status_code=204)
+
+
+async def not_found_page(request: Request, exc):
+    """An unknown page (a mistyped or stale link) is a page of the console
+    with the way on (routes/output._notice), never bare JSON: the desktop
+    window has no back control. API paths and static files keep the plain
+    answer their callers read, and every other status keeps FastAPI's."""
+    from fastapi.exception_handlers import http_exception_handler
+    from app.ui.routes import output as output_routes
+    path = request.url.path
+    if exc.status_code == 404 and not path.startswith(("/api/", "/static/")):
+        return output_routes._notice(
+            request, 404, "empty", "No page at this address",
+            action=("/", "Open Home"), active="", heading="Not found")
+    return await http_exception_handler(request, exc)

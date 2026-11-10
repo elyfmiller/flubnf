@@ -371,7 +371,9 @@ def test_retro_index_never_fabricates_a_zero_wall_time():
     timed = dict(_index_card(3725.0), mean_s=124.0, weeks_measured=30)
     ok = tpl.render(active="Retrospective", state_names=["Ohio"],
                     engine_ok=True, seasons=[timed])
-    assert "total wall time 1:02:05, mean 124 s per week over 30 timed" in ok
+    # the per-week mean is the season page's; the index shows the total
+    # alone, with no "?" (bug hunt G28, RE-18)
+    assert ">1:02:05</span>" in ok and "total wall time 1:02:05" not in ok
 
 
 def test_season_page_never_fabricates_a_zero_wall_time():
@@ -431,5 +433,8 @@ def test_stopping_badge_names_the_fits_in_flight():
                   "running": True, "paused": False, "active": True,
                   "status": "stopping", "elapsed_s": 600.0, "mean_s": 60.0,
                   "weeks_measured": 3, "eta_s": None, "scored": False}])
-    assert "stopping after the fits in flight" in html
+    # the badge's word is the whole message (bug hunt G28, RE-18: its "?"
+    # was clutter); the fits in flight finish, as the Stop button's form
+    # says nowhere it could mislead
+    assert '<span class="uk-badge-t">stopping</span>' in html
     assert "after the current week" not in html

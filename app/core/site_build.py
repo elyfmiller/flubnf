@@ -2,8 +2,9 @@
 
 The public site generator (`flubnf site build` -> site/).
 
-Reads app/state (season roots, the newest run bundle) and the hub clone and
-writes a static, offline-openable page. Nothing is typed by hand. app/state
+Reads app/state, or the folder FLUBNF_STATE_DIR names (season roots, the
+newest run bundle), and the hub clone and writes a static,
+offline-openable page. Nothing is typed by hand. app/state
 is gitignored, so the generated page IS the published evidence, reviewed as
 a diff and committed: site.json is data-only and pretty-printed so a
 rebuild's diff shows which numbers moved.
@@ -39,10 +40,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.core import horizons as hz
+#: the console's state folder (FLUBNF_STATE_DIR moves it): the season
+#: roots and run workroots are read where the console writes them
+from app.core.runs import APP_STATE
 
 APP = Path(__file__).resolve().parents[1]
 REPO = APP.parent
-APP_STATE = APP / "state"
 TEMPLATES = APP / "ui" / "templates"
 STATIC = APP / "ui" / "static"
 BNGL = REPO / "flubnf" / "templates" / "SIHRS_pop_min.bngl"
@@ -782,7 +785,7 @@ def harvest_placement() -> dict:
 #: the Measured-performance card duplicates the site's own scores: dropped
 #: from the harvested Methods
 _PERF_CARD = re.compile(
-    r'<div class="card"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
+    r'<div class="card" id="performance"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
     re.S)
 
 
@@ -799,15 +802,41 @@ def engine_version(versions: dict, key: str) -> str | None:
     return v
 
 
+def public_pybnf_commit() -> str | None:
+    """The public engine's build commit (8 characters) when the builder
+    runs the public engine, the default, and its build is known; else
+    None. Every public PyBNF build self-reports 1.8.1 (the August release,
+    which has no lwf), so the commit names the build: lanl/PyBNF at the
+    pin of engine-requirements.txt. The private engine, the fallback,
+    reports its fork's own version."""
+    try:
+        from flubnf.settings import engine_public
+        if not engine_public():
+            return None
+        from app.core import engine_build as _eb
+        b = _eb.engine_build()
+        if _eb.engine_of(b) == "public" and _eb.known(b):
+            return str(b["commit"])[:8]
+    except Exception:
+        pass
+    return None
+
+
 def public_versions(versions: dict) -> dict:
     """The versions the payload publishes: reported version strings only,
     never an absent component, a pending probe, or a local path (perl
-    reports where it lives, not a version)."""
+    reports where it lives, not a version). On the public engine, pybnf
+    is its build commit (public_pybnf_commit), never the 1.8.1 every
+    public build reports."""
     out = {}
     for k, v in sorted((versions or {}).items()):
         v = engine_version(versions, k)
         if v and "/" not in v and "\\" not in v:
             out[k] = v
+    if "pybnf" in out:
+        commit = public_pybnf_commit()
+        if commit:
+            out["pybnf"] = commit
     return out
 
 
@@ -822,13 +851,6 @@ def engines_missing(versions: dict) -> list:
 #: only with `active`)
 _STACK_TABLE = re.compile(r'(<table class="mt-stack">)(.*?)(</table>)', re.S)
 _STACK_CELL = re.compile(r"<t([dh])\b[^>]*>.*?</t\1>", re.S)
-#: the Purpose tile's location count: the forecast covers the national
-#: total too (docs/FLUSIGHT-2026-27.md: 53 FIPS strings)
-_LOCS_TILE = re.compile(
-    r'(id="mt-locs">)all 52(</span>\s*<span class="uk-stat-u">)'
-    r"US jurisdictions(</span>)")
-
-
 def _drop_version_column(html: str) -> str:
     """Drop the stack table's last (Version) column (the sealed record's
     bngsim pin is the engine fold's, not a Version cell's)."""
@@ -849,12 +871,9 @@ def _drop_version_column(html: str) -> str:
 def site_methods(html: str) -> str:
     """The rendered Methods made fit for a public page: no Version column
     (the builder's install: "(not installed)", local paths such as
-    /usr/bin/perl) and the location count the forecast really covers."""
-    html = _drop_version_column(html)
-    html = _LOCS_TILE.sub(
-        r"\g<1>53\g<2>locations: 52 jurisdictions plus the national total"
-        r"\g<3>", html)
-    return html
+    /usr/bin/perl). The location count is the page's own (53: the 52
+    jurisdictions plus the national total)."""
+    return _drop_version_column(html)
 
 
 def harvest_methods(versions: dict) -> str:

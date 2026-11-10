@@ -199,7 +199,8 @@ def test_fresh_profile_renders_normal_palettes():
     choice; bare :root holds the normal season and map-category scales."""
     html = client.get("/").text
     assert 'data-vision="cvd"' not in html.split("<script>")[0]
-    assert "localStorage.getItem('vision')==='cvd'" in BASE_T
+    assert "v=localStorage.getItem('vision')" in BASE_T   # a guarded read
+    assert "if(v==='cvd')de.setAttribute('data-vision','cvd');" in BASE_T
     # no OS media query enables cvd (there is no such preference signal)
     boot = BASE_T.split("</script>", 1)[0]
     assert "vision" in boot

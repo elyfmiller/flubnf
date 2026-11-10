@@ -73,6 +73,24 @@ def test_a_runs_ratio_is_its_seconds_over_the_cost_model_for_its_own_size():
         assert sb._run_ratio(bad) is None, bad
 
 
+def test_each_run_is_priced_on_its_own_engine(monkeypatch):
+    """A run records the engine it ran on (none recorded: the private
+    engine); its ratio is this computer's speed on either engine."""
+    from app.core.engines import pf as pf_engine
+    private = sb.eta_seconds(46, FULL, "private")
+    public = sb.eta_seconds(46, FULL, "public")
+    assert public == pytest.approx(private * pf_engine.PUBLIC_COST_RATIO)
+    # the default is the engine this process runs (the suite pins private)
+    assert sb.eta_seconds(46, FULL) == pytest.approx(private)
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert sb.eta_seconds(46, FULL) == pytest.approx(public)
+    m = _meta(n_obs=46, seconds=2.0 * public)
+    assert sb._run_ratio({**m, "engine": "public"}) == pytest.approx(2.0)
+    assert sb._run_ratio(m) == pytest.approx(2.0 * public / private)
+    m = _meta(n_obs=46, seconds=2.0 * private)
+    assert sb._run_ratio({**m, "engine": "private"}) == pytest.approx(2.0)
+
+
 def test_the_ratio_comes_from_the_newest_full_fit_of_any_model():
     runs = [_meta(model="b", particles=QUICK, ratio=12.0),     # newest
             _meta(model="b", status="failed", seconds=5.0),

@@ -16,6 +16,7 @@ from app.core.engines import pf as pf_engine
 from app.core.problem_codes import finding
 from app.core.sandbox import DEFAULT_HEADER, SandboxError, _fmt
 from app.core.sandbox_bngl import (
+    RETIRED_KEYS,
     _check_prior,
     _number,
     _prior_start_warnings,
@@ -64,6 +65,11 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
         warnings.append(text)
         wcodes.append(code)
 
+    def unknown(key: str) -> None:
+        warning("KEY_UNKNOWN", f"{key} is not a setting the installed "
+                "engine knows (check the spelling), so a run would stop on "
+                "it")
+
     facts = {"suffix": "", "free": [], "priors": [], "rows": 0,
              "columns": [], "cumulative": "", "species": None,
              "reactions": None, "network": "not checked", "at_start": "",
@@ -95,6 +101,14 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
         if any(b <= a for a, b in zip(times, times[1:])):
             problem("EXP_TIME_ORDER",
                     "data.exp: time must increase from row to row")
+        # inf (or a number too large to hold, 1e400) is no count
+        big = next((r for r in exp["rows"]
+                    if any(np.isinf(v) for v in r)), None)
+        if big is not None:
+            problem("EXP_UNREADABLE", "data.exp has a row at t = "
+                    f"{big[0]:g} whose value is not a finite number: write "
+                    "the week's count, or a negative value for a missing "
+                    "week")
     except SandboxError as e:
         problem(e.code, str(e))
     except ValueError as e:
@@ -172,14 +186,38 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
         warning("KEY_RETIRED", "pf_observable_mode is retired: the filter "
                 "always fits the weekly increment, and runs drop this line, "
                 "so it can be deleted")
-    if pf_engine.engine_available():
+    if pf_engine._public():
+        # the public engine's own tables (engines/lwf.py), read without
+        # its venv: its runners refuse a cell whose pf.conf holds a key
+        # with no counterpart there or one it neither maps nor reads (the
+        # engine keys priors.conf sets included), and a model it cannot
+        # run (lwf.model_refusal)
+        from app.core.engines import lwf
+        for k in [ln.split("=", 1)[0].strip() for ln in priors] + list(keys):
+            if not k.startswith("pf_") or k in RETIRED_KEYS:
+                continue
+            if k in lwf._NO_COUNTERPART:
+                warning("KEY_UNKNOWN", f"{k} ({lwf._NO_COUNTERPART[k]}) has "
+                        "no counterpart in the public engine, so a run "
+                        "would stop on it")
+            elif k not in lwf._MAPPED and k not in lwf._READ:
+                unknown(k)
+        # as a run reads the model (sandbox.read_model's universal
+        # newlines, library._lf for a replay): a lone \r never reaches it
+        why = lwf.model_refusal(bngl.replace("\r\n", "\n").replace("\r", "\n"),
+                                "model.bngl")
+        if why:
+            warning("KEY_UNKNOWN", f"{why}; the public engine refuses such "
+                    "a model, so a run would stop on it")
+    elif pf_engine.engine_available():
         for line in priors:
             k = line.split("=", 1)[0].strip()
             if k.startswith("pf_") and not pf_engine.engine_accepts_pf_key(k):
-                warning("KEY_UNKNOWN", f"{k} is not a setting the installed "
-                        "engine knows (check the spelling), so a run would "
-                        "stop on it")
+                unknown(k)
+    # the private engine only: the public one writes its own data rows
+    # (lwf.translate_cell), and sampling_interval_line is empty there
     if (times is not None and len(times) == 1
+            and not pf_engine._public()
             and "pf_sampling_interval" not in keys
             and not pf_engine.sampling_interval_line()):
         warning("ONE_ROW", "one data row: this engine needs two or more "
@@ -374,7 +412,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
     """(fact, warning or '') comparing the model at its written values
     with the data: their ranges, and a warning when their totals differ
     tenfold or more (N, the starting state or the scale is off)."""
-    obs = [float(v) for v in observed if float(v) >= 0]
+    obs = [float(v) for v in observed
+           if np.isfinite(float(v)) and float(v) >= 0]
     exp_ = [max(float(v), 0.0) for v in expected]
     if not obs or not exp_:
         return "", ""
@@ -386,6 +425,8 @@ def _scale_note(expected: list, observed: list) -> tuple:
     if so <= 0 or se <= 0:
         return fact, ""
     ratio = se / so
+    if not 0 < ratio < float("inf"):        # too far apart to say how far
+        return fact, ""
     if ratio >= 10 or ratio <= 0.1:
         how = (f"{ratio:,.0f} times" if ratio >= 10
                else f"1/{1 / ratio:,.0f} of")

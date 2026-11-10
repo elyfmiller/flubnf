@@ -645,7 +645,9 @@ def test_dots_that_may_separate_thousands_ask_for_the_kind():
     assert ("e.g., 1.234 (2024-01-13, Berlin), 2.345 (2024-01-20, Berlin), "
             "12.345 (2024-01-27, Berlin)") in p.message
     assert "1.234 is 1.234 as a rate or 1234 as a count" in p.message
-    assert "Choose whether the values are counts or rates" in p.message
+    # rates keep the dots; counts need them gone, so "counts" is no fix
+    assert ("Rates: choose rates. Counts: write them without the dots "
+            "(1.234 as 1234).") in p.message
     assert rep.summary["inferred_kind"] is None       # nothing inferred
     with pytest.raises(D.DatasetError):
         D.ingest(DOT_THOUSANDS, "berlin")
@@ -798,6 +800,11 @@ def test_missing_values_quote_the_cell_its_date_and_group():
     assert p.rows == (5, 8)
     assert ("(rows 5, 8; e.g., (blank) (2024-08-10, B), NA (2024-08-24, A))"
             in p.message)
+    # deleting the row was once the advice, and the gap check then refused
+    # the file (SB-27): the advice names a file that loads instead
+    assert "delete rows" not in p.message
+    assert ("a hubverse file (date, location, value) may hold NA for a week "
+            "not reported") in p.message
     assert "row 5; e.g., row 5" not in str(rep.problems)
     p = only(rep, "population_missing")
     assert "(row 8; e.g., (blank) (2024-08-24, A))" in p.message
@@ -1326,6 +1333,21 @@ def test_separator_only_rows_and_a_dos_end_mark_are_blank():
     assert D.validate(b"\n\n,,,\n").codes == ["empty"]
     ok(D.validate(b"date,target_group,value\r\n2024-01-06,A,5\r\n"
                   b"2024-01-13,A,6\r\n\x1a"))
+
+
+def test_a_workbook_or_binary_file_is_named_as_such():
+    """DA-20: an .xlsx got 'The header holds NUL characters' plus a note
+    that it was read as Windows-1252; a binary file a long 'mixes
+    encodings' message. Each is named before any reading."""
+    binary = bytes(range(256)) * 8
+    rep = D.validate(binary)
+    assert [p.code for p in rep.problems] == ["encoding"]
+    assert rep.problems[0].message == (
+        "The file is not text: it holds binary data. Save it as CSV UTF-8.")
+    assert rep.warnings == []
+    # a stray NUL in a text file is still a cell (the test below)
+    rep = D.validate(b"date,target_group,value\n2024-01-06,A,5\x00\n")
+    assert [p.code for p in rep.problems] == ["value_numeric"]
 
 
 def test_a_blank_group_says_blank_and_control_characters_show():

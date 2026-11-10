@@ -25,6 +25,29 @@ Retrospective tab and on the Storage tab, open as
 `/retro/<season>?archive=<stamp>` with the player and the report, and are
 deleted from either tab. They are never resumed.
 
+## Resuming across engines
+
+A season resumes only on the engine and the build its weeks were fitted
+by. Since the switch to the public engine, a season begun on the private
+engine is refused on the public one, and the other way round: resuming
+would pool fits from two engines in one season, or in one week. The
+refusal names the engine the season began on and the step that switches
+back. For a season begun on the private engine, that is
+`./setup_engine.sh --private` in the FluBNF folder, or, on Windows,
+`powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine
+private` in the FluBNF folder (in Command Prompt or PowerShell), then open
+FluBNF.bat again.
+
+For each such season, choose one:
+
+- finish it on the engine it began on: switch, finish the season, then
+  switch back (`./setup_engine.sh --public`, or `setup.ps1 -Engine public`);
+- or archive or discard it, and replay it on this engine.
+
+Nothing chooses for you. A season recorded before builds were recorded
+resumes as before. Viewing, exporting and importing a replay need no
+engine.
+
 ## Export and import of a replay
 
 A replayed season can be viewed on another machine: the season page's
@@ -42,9 +65,9 @@ The manifest records the season, the export stamp, the weeks, when and
 from which machine it was exported, the FluBNF build, and a sha256 and
 size per file. A 26-week season of all 52 jurisdictions is about 10 MB.
 
-**Import a replay** on the Retrospective tab (Settings card) takes the
-file, or its path when it is already on this machine. The import lands as a
-read-only archived entry of its season,
+**Import a replay** on the Retrospective tab (its own card under
+Settings) takes the file, or its path when it is already on this
+machine. The import lands as a read-only archived entry of its season,
 `<season>__archived_<export stamp>/`, with an `imported.json` marker, and is
 labelled "imported from <host> on <date>" wherever archived runs are listed.
 It never touches the live season tree, so a replay running here is

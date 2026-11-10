@@ -1,18 +1,19 @@
 # Installing FluBNF
 
-For lab members. Two files, two double clicks, no GitHub account needed.
-
-You will be given one small file, `pybnf-pf-<something>.tar.gz`, about 130 KB.
-That is the forecasting engine. Everything else downloads itself.
+For lab members. One line or one clone, then one double click. No GitHub
+account is needed, and nothing has to be sent to you: the forecasting
+engine downloads itself with everything else.
 
 ---
 
 ## Before you start
 
 **macOS**: install Anaconda from <https://www.anaconda.com/download>,
-defaults are fine; setup finds it with nothing added to PATH. If macOS offers
-to install "command line developer tools" along the way, click Install. Git
-and Perl already ship with the system.
+defaults are fine; setup finds it with nothing added to PATH, and asks it
+for the Python 3.12 the engine needs. If macOS offers to install "command
+line developer tools" along the way, click Install: the engine needs them.
+Git and Perl already ship with the system. An Intel Mac needs macOS 15 or
+newer for the engine.
 
 **Windows**: install these two first, both are normal installers with
 defaults that are fine as they are.
@@ -21,8 +22,9 @@ defaults that are fine as they are.
   Python). No settings to change: FluBNF finds it where it installs. If
   your Windows user name has a space and the installer will not use the
   folder it suggests, install it in `C:\anaconda3`, which FluBNF also
-  finds. On a laptop with an ARM processor (Snapdragon), Anaconda is the
-  one to use: FluBNF asks it for the 64-bit (x64) Python the engine needs.
+  finds. FluBNF asks it for the 64-bit (x64) Python 3.12 the engine needs.
+  On a laptop with an ARM processor (Snapdragon), Anaconda is the one to
+  use.
 * Git, from <https://git-scm.com/download/win>.
 
 ---
@@ -52,20 +54,7 @@ just fail for reasons that look unrelated.
 
 ---
 
-## Step 2: save the engine file to Downloads
-
-Save the `pybnf-pf-...tar.gz` you were sent into your **Downloads** folder.
-
-That is the whole step. Do not unzip it, do not move it, do not rename it.
-The setup finds it there on both platforms, unpacks it to the right place
-itself, and tells you which file it used.
-
-(It is also found on your Desktop, in Documents, or next to the FluBNF
-folder, if that is where it ended up.)
-
----
-
-## Step 3: open FluBNF
+## Step 2: open FluBNF
 
 * **macOS**: double-click `FluBNF.command` in `~/GitHub/flubnf`. The first
   time only, right-click it and choose **Open**, because the app is not
@@ -78,10 +67,12 @@ folder, if that is where it ended up.)
   shortcut also appears on your Desktop; delete it if you do not want it,
   and it will not come back.
 
-That is the whole install. The first launch sets everything up, which takes a
-few minutes, then the console opens in a window of its own (or a browser tab,
-where that cannot be shown). **You do not need to run
-`SetupEngine` separately**; opening the app does it.
+That is the whole install. The first launch sets everything up, the engine
+included, which takes a few minutes, then the console opens in a window of
+its own (or a browser tab, where that cannot be shown). **You do not need
+to run `SetupEngine` separately**; opening the app does it. The engine
+needs the network once: its PyBNF comes from github.com, and its other
+packages from pypi.org.
 
 **Windows: the first launch installs Perl too.** Fits need Perl, and
 FluBNF installs its own when the PC has none: the window says "installing
@@ -105,36 +96,34 @@ FluBNF folder: a copy dragged to Applications cannot start.
 
 ## How to tell it worked
 
-The lines differ a little by platform; the one that matters ends the same
-way on both.
+The lines differ a little by platform; the one that matters is the same
+on both.
 
-macOS:
+macOS (in the Terminal window the install runs in):
 
 ```
-+ engine unpacked from pybnf-pf-XXXX.tar.gz into .../PyBNF-Private
-+ version stamp: feature/particle-filter XXXX
-+ bngsim installed: 0.15.1
-+ pybnf (fork) installed editable
-+ pybnf with fit_type=pf, bngsim 0.15.1 -- engine ready
+== public PyBNF (the Liu-West filter, job_type = lwf), the default ==
+...
+== verify ==
+  + public engine ready: pybnf 1.8.1 from pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1
 ```
 
 Windows:
 
 ```
-unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
-version stamp: feature/particle-filter XXXX
-Installing the particle filter engine. One time, a few minutes.
-looking for a Python for the engine, 64-bit (x64) 3.12 or 3.11:
-downloading about 100 MB of packages and installing them, usually 2 to
-5 minutes; leave this window open
-PF engine ready, bngsim 0.15.1 -- engine ready
+Installing the public engine (public PyBNF, with the Liu-West filter).
+One time, a few minutes.
+looking for a Python for the engine, 64-bit (x64) 3.12:
+  downloading the public engine's packages and installing them, usually
+  2 to 5 minutes; leave this window open
+  + public engine ready: pybnf 1.8.1 from pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1
 ```
 
 Under "looking for a Python" comes a line for each Python it tried, and
 under "downloading", pip's own lines.
 
-If you see **`engine ready`**, you are done. On Windows, also check that
-no line says Perl is still missing: the Sandbox needs Perl too.
+If you see **`public engine ready`**, you are done. On Windows, also check
+that no line says Perl is still missing: the Sandbox needs Perl too.
 
 ---
 
@@ -157,10 +146,12 @@ until someone uploads them.
 
 To fit a model of your own instead, the Sandbox tab starts from an example
 or a template: [SANDBOX.md](SANDBOX.md) walks through it. The Sandbox fits
-with the engine, so it needs the engine file installed, and on Windows
-Perl too, which FluBNF installs; when something is missing, a model's page says "This
-computer cannot fit yet" and its "?" says what to do, and lists anything
-else missing.
+with the engine, so it needs the engine installed, which the first open
+does, and on Windows Perl too, which FluBNF installs; when something is
+missing, a model's page says "This computer cannot fit yet" and its "?"
+says what to do, and lists anything else missing. A model that calls
+`time()`, and the two-strain model, run on the private engine only
+([ENGINE.md](ENGINE.md#choosing-the-engine)).
 
 ---
 
@@ -168,20 +159,33 @@ else missing.
 
 **"It opened but says the engine is not installed."**
 FluBNF still works, it just runs one of its two models instead of both, so you
-are not stuck. The Sandbox cannot fit until the engine is installed. Check the
-engine file is in your Downloads folder with its original name, then open
-FluBNF again. On Windows, the window lists every folder it looked in.
+are not stuck. The Sandbox cannot fit until the engine is installed. Right
+after an update this is expected once: the engine is public PyBNF since
+the switch to the public engine, and the next open installs it. So open
+FluBNF again first.
 
-If it still says that: on macOS, double-click **`SetupEngine.command`** in the
-FluBNF folder. It does only the engine step, prints a section called **"what
-this machine can see"** naming the actual cause, and installs the engine when
-it can find the file.
+If it still says that, the install needs, once:
+
+* a network that reaches github.com and pypi.org (the engine's PyBNF comes
+  from a GitHub release, its other packages from pypi.org); a network that
+  blocks either stops it, so try home Wi-Fi or a phone's hotspot;
+* Python 3.12, 64-bit (x64) on Windows: Anaconda, from "Before you start",
+  makes one;
+* on macOS, Apple's Command Line Tools (`xcode-select --install` in
+  Terminal);
+* on a Mac with an Intel processor, macOS 15 or newer.
+
+On macOS, double-click **`SetupEngine.command`** in the FluBNF folder. It
+does only the engine step and names the actual cause. When a Mac cannot
+run the engine at all (no Python 3.12 and no Anaconda to make one, an
+Intel Mac below macOS 15), FluBNF says so and stops trying the install on
+every open, until FluBNF's engine files or the Mac's system change. When
+Anaconda is there but could not make a Python 3.12, that is usually the
+network, and the next open tries again.
 
 On Windows, read the `FluBNF.bat` window: the lines above
-`Engine setup did not finish` name the cause and what to do (a network
-that does not reach pypi.org, no Python the engine can use, a download
-that did not finish). Every open tries again by itself while the engine
-file is in Downloads, so do what it says and open FluBNF again.
+`The public engine did not install` name the cause and what to do. Every
+open tries again by itself, so do what it says and open FluBNF again.
 [docs/WINDOWS.md](WINDOWS.md#if-the-install-fails) lists the usual causes.
 To see what the machine itself can see, run these two lines in Command
 Prompt (the first is your FluBNF folder):
@@ -191,16 +195,39 @@ cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
 powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-It names the engine file FluBNF will install from, or the folders it looked
-in when it found none.
-
 Either way, if it does not finish, send Ely what it prints.
 
+**The lab asks you to use the private engine.** The lab's own PyBNF fork
+is kept as the fallback for two rounds after the switch. For it you are
+sent one small file, `pybnf-pf-<something>.tar.gz`, about 130 KB. Save it
+in your **Downloads** folder as it is (do not unzip, move or rename it),
+then switch this copy of FluBNF to it. On macOS, in Terminal:
+
+```bash
+cd ~/GitHub/flubnf && ./setup_engine.sh --private
+```
+
+On Windows, in Command Prompt:
+
+```
+cd /d "%LOCALAPPDATA%\FluBNF\flubnf"
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine private
+```
+
+On macOS the line installs it from the file there and then; on Windows,
+open FluBNF again, which installs it from the file. When FluBNF already
+says the private engine is installed here, the same line switches to it in
+seconds, with no file and no network. Either way the line records the
+choice first, so it holds even when the rest cannot finish (no network,
+say). `./setup_engine.sh --public` (on Windows, the same `powershell` line
+with `-Engine public`) goes back to the default.
+
 **It tried to log in to GitHub and asked for a password.**
-That means it did not find the engine file, so it fell back to downloading
-the engine, which does need an account. Check the file is in Downloads with
-its original name. Nothing you type at that prompt will work: GitHub stopped
-accepting account passwords in 2021.
+This happens only on the private engine. It means it did not find the
+engine file, so it fell back to downloading the engine, which does need an
+account. Check the file is in Downloads with its original name. Nothing you
+type at that prompt will work: GitHub stopped accepting account passwords
+in 2021.
 
 **Windows: the window says Perl is still missing.**
 FluBNF could not install its own Perl: the window said why just above
@@ -238,12 +265,16 @@ echo %USERPROFILE% & echo BNGPATH=%BNGPATH%
 whoami /groups | findstr /c:"S-1-5-32-544" >nul && echo admin || echo standard
 where perl & perl -e "print $^O"
 dir /b "%SystemDrive%\Strawberry\perl\bin\perl.exe" "%USERPROFILE%\Downloads\pybnf*.tar.gz"
-type .venv\engine-attempt.txt .venv\perl-offer.txt "%LOCALAPPDATA%\FluBNF\perl\flubnf-perl.ok"
+type .flubnf.env.cmd .venv\engine-attempt.txt .venv\perl-offer.txt "%LOCALAPPDATA%\FluBNF\perl\flubnf-perl.ok"
+"%LOCALAPPDATA%\FluBNF\venv-public\Scripts\python.exe" scripts\engine_lock.py check
 "%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe" -c "import sys, sysconfig; print(sysconfig.get_platform()); sys.path.insert(0, sys.argv[1]); import bngsim, pybnf.pf; print('engine imports')" "%LOCALAPPDATA%\FluBNF\PyBNF-Private"
 FluBNF.bat
 ```
 
-The last line opens FluBNF in this window, so if it crashes, the reason
+The line with `engine_lock.py check` checks the public engine, and the
+line after it the private one, the fallback; on a PC without one of them,
+that line says it cannot be found. The last line opens FluBNF in this
+window, so if it crashes, the reason
 stays on screen ("The syntax of the command is incorrect.") instead of
 the window closing. Copy everything the window shows, or take screenshots
 of it, and send that to Ely. Lines that say a file or program cannot be
@@ -255,35 +286,27 @@ found are answers too: leave them in.
 
 If your copy is out of date or broken, or Ely asks everyone to reinstall,
 do this instead of the steps above. Restart your Mac first, so no old
-FluBNF is still running. Save the engine file you were sent into Downloads
-(Step 2), and delete any older `pybnf-pf-….tar.gz` files from Downloads
-and the Desktop, so the file you were sent is the only engine file on the
-machine. Then paste this one line into Terminal:
+FluBNF is still running. Then paste this one line into Terminal:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | bash
 ```
 
-It checks first and changes nothing until the checks pass: git, a Python
-the engine can use (Anaconda from "Before you start", or Python 3.12), no
-FluBNF running, GitHub reachable, an engine file saved where setup looks.
-Then it renames your old FluBNF folder, the engine's Python environment
-and any unpacked engine copy with `-old-` and the date and time (nothing
+It needs no engine file. It checks first and changes nothing until the
+checks pass: git, a Python the engine can use (Anaconda from "Before you
+start", or Python 3.12), no FluBNF running, GitHub reachable. Then it
+renames your old FluBNF folder with `-old-` and the date and time (nothing
 is deleted; your old runs stay inside the renamed folder, and the new
-console starts without them), moves every other engine file
-(`pybnf….tar.gz`, `pybnf….bundle`) sitting in Downloads, Desktop,
-Documents or the GitHub folder beside FluBNF into
-`Downloads/old-engine-files`, installs FluBNF fresh, installs the engine
-from the file it found, and opens the console. If the install stops before
-a new console exists, it puts the old copies back.
+console starts without them), installs FluBNF fresh, installs the public
+engine (or checks the one already installed against its lock), and opens
+the console. If the install stops before a new console exists, it puts the
+old folder back. The private engine, the fallback, its Python environment
+and any engine files are left where they are.
 
-Once the new console works, the `-old-` folders and
-`Downloads/old-engine-files` (your old engine `.tar.gz` files) can go in
-the Trash. Old `pybnf-pf-….tar.gz` files left in Downloads are how a
-machine ends up with the wrong engine, because setup takes the newest file
-it finds, so delete them whenever a new one arrives. If FluBNF was in your
-Dock, that icon now points at the renamed copy and will not open; drag it
-off and drag `FluBNF.app` from the new folder on instead.
+Once the new console works, the `-old-` folder can go in the Trash. If
+FluBNF was in your Dock, that icon now points at the renamed copy and will
+not open; drag it off and drag `FluBNF.app` from the new folder on
+instead.
 
 Pasting the line again on a machine that is already current changes
 nothing; it just opens the console. If it says `already current` but the
@@ -292,6 +315,20 @@ console is still broken, paste this instead:
 ```bash
 curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | FLUBNF_REINSTALL_FORCE=1 bash
 ```
+
+Only when the lab asks you to reinstall on the private engine: save the
+engine file you were sent in Downloads, delete any older
+`pybnf-pf-….tar.gz` files from Downloads and the Desktop, and paste:
+
+```bash
+curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | FLUBNF_ENGINE=private bash
+```
+
+That also renames the private engine's Python environment and any unpacked engine copy, moves
+every other engine file (`pybnf….tar.gz`, `pybnf….bundle`) into
+`Downloads/old-engine-files`, and installs the private engine from the
+file it found. Setup takes the newest engine file it finds, so old ones
+left in Downloads are how a machine ends up with the wrong engine.
 
 ---
 
@@ -332,11 +369,12 @@ was.
 everyone to reinstall. Nothing is deleted until you choose to delete it.
 
 1. Close FluBNF.
-2. Rename your FluBNF folder, every engine folder and the engine's Python
-   environment with `-old` on the end. In Command Prompt:
+2. Rename your FluBNF folder, both engines' Python environments and every
+   private engine folder with `-old` on the end. In Command Prompt:
 
    ```
    ren "%LOCALAPPDATA%\FluBNF\flubnf" flubnf-old
+   ren "%LOCALAPPDATA%\FluBNF\venv-public" venv-public-old
    ren "%LOCALAPPDATA%\FluBNF\PyBNF-Private" PyBNF-Private-old
    ren "%LOCALAPPDATA%\FluBNF\PyBNF-pf" PyBNF-pf-old
    ren "%USERPROFILE%\Documents\GitHub\PyBNF-Private" PyBNF-Private-old
@@ -345,38 +383,51 @@ everyone to reinstall. Nothing is deleted until you choose to delete it.
    ```
 
    The first line is your FluBNF folder (change it if yours is elsewhere),
-   the next four are the places the engine can be, and the last is its
-   Python environment. If you ever pointed `FLUBNF_PYBNF` at a folder of
-   your own, rename that one too. A line for a folder you do not have says
+   and the second is the public engine's Python environment. The other
+   five also set aside the private engine (the fallback): the next four
+   are the places it can be, and the last is its Python environment. If
+   you ever pointed `FLUBNF_PYBNF` at a folder of your own, rename that one
+   too. A line for a folder you do not have says
    `The system cannot find the file specified`, which is fine. If one says
    `A duplicate file name exists`, an `-old` copy is there from before: add
    the date, as in `flubnf-old-2026-09-29`. `Access is denied` means
    something still has the folder open; close FluBNF and any window inside
    that folder.
-3. Delete older `pybnf-pf-….tar.gz` and `pybnf….bundle` files from
-   Downloads, Desktop and Documents, and save the engine file you were sent
-   in Downloads (Step 2), so it is the only one on the machine.
-4. Get FluBNF again, in Command Prompt:
+3. Get FluBNF again, in Command Prompt:
 
    ```
    git clone https://github.com/elyfmiller/flubnf "%LOCALAPPDATA%\FluBNF\flubnf"
    ```
 
-5. Double-click `FluBNF.bat` in the new folder. The first run sets
-   everything up again and installs the engine from the file; the window
-   ends as in "How to tell it worked".
+4. Double-click `FluBNF.bat` in the new folder. The first run sets
+   everything up again and installs the public engine; the window ends as
+   in "How to tell it worked".
 
 Your old runs stay in `flubnf-old`, and the new console starts without them.
 To bring your uploaded datasets across, close FluBNF and copy the folder
 `app\state\datasets` from `flubnf-old` to the same place in `flubnf`. Once
 the new console works, the `-old` folders can go in the Recycle Bin.
 
+Only when the lab asks you to reinstall on the private engine: before
+step 4, delete older `pybnf-pf-….tar.gz` and `pybnf….bundle` files from
+Downloads, Desktop and Documents, save the engine file you were sent in
+Downloads, and switch the new copy to it as under "The lab asks you to use
+the private engine" above. Then double-click `FluBNF.bat`.
+
 ---
 
 ## Notes
 
-The engine you were sent is a **snapshot**, so it does not update itself
-from GitHub. When the engine changes you are sent a newer file: save it in
+The engine is public PyBNF since the switch to the public engine, and
+FluBNF installs it itself, with no file to save
+([ENGINE.md](ENGINE.md#the-public-engine-the-default)). It changes only
+when FluBNF's lock file does, and the next open then installs the new one.
+The engine file the lab used to send, `pybnf-pf-….tar.gz`, is now only for
+the private engine, the fallback, and only on a copy switched to it; a
+copy on the default leaves it alone in Downloads.
+
+The private engine's file is a **snapshot**, so it does not update itself
+from GitHub. When the lab changes it you are sent a newer file: save it in
 Downloads, delete the old `pybnf-pf-….tar.gz` from Downloads so there is
 no doubt which one was installed, and open FluBNF again. Setup takes the
 newest archive it can find,
@@ -405,9 +456,18 @@ clone. It touches nothing outside it: the virtual environment, the engine,
 `app/state` and the data clone are all untracked and stay exactly as they
 are.
 
-Each snapshot carries a `VERSION` file naming the exact commit it came from,
-and FluBNF prints that on every setup. If two people's forecasts ever disagree,
-that line is the first thing to compare.
+If two people's forecasts ever disagree, compare the engines first. The
+Home page's Setup card names the engine and its build (`PyBNF 8410f794`
+for the public engine). For the public engine, this line in the FluBNF
+folder prints what is installed, the same on every machine that matches
+the lock:
+
+    ~/.venvs/flubnf-public/bin/python scripts/engine_lock.py check
+
+(on Windows, the `engine_lock.py check` line under "If it still does not
+work (Windows)"). For the private engine, each snapshot carries a `VERSION`
+file naming the exact commit it came from, and FluBNF prints that on every
+setup.
 
 ---
 

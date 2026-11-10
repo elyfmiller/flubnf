@@ -150,8 +150,20 @@ class Knob:
         if self.kind == "date":
             return f"before the forecast date, within {SEASON_START_WINDOW_DAYS} days"
         if self.kind == "range":
-            return "lo < hi (the engine's rule)"
+            # the engine's rule (pf.priors_for): bounds from 0 up, the low
+            # one above 0 on a log scale
+            return ("0 < low < high" if _log_prior(self.key)
+                    else "0 \u2264 low < high")
         return f"{_fmt(self.lo)} to {_fmt(self.hi)}"
+
+
+def _log_prior(key: str) -> bool:
+    """Whether a prior-range knob's parameter has a log-uniform prior in
+    the filter's own block (PF.VARS_1S)."""
+    short = key.removeprefix("pf.prior.")
+    return any(l.split("=")[0].strip() == "loguniform_var"
+               and l.split("=")[-1].split()[0].split("__")[0] == short
+               for l in PF.VARS_1S.splitlines() if "=" in l)
 
 
 # --- engine validators ---------------------------------------------------------
@@ -196,12 +208,13 @@ REGISTRY: tuple = (
          card=(ORACLE_CARD, {10_000: "10,000 candidate epidemics"})),
     Knob("pf.replicates", "Replicates", PF_ONLY, "fit", "run", "int",
          RunSpec.replicates, "app.core.runs:RunSpec.replicates",
-         "Seeded filter runs per jurisdiction, pooled; fewer than 3 breaks rule 3.",
+         "Seeded filter runs per jurisdiction, pooled; per-state numbers ship with 3 or more.",
          lo=1, hi=10, unit="runs"),
     Knob("pf.jitter", "Kernel jitter", PF_ONLY, "fit", "method", "float",
          RunSpec.jitter, "app.core.runs:RunSpec.jitter",
-         "Liu-West kernel scale h; the sealed record ran 0.30.",
-         lo=0.01, hi=1.0),
+         "How far each fitted value is nudged between weeks, so the particles stay varied.",
+         lo=0.01, hi=1.0,
+         note="The Liu-West kernel scale h; the sealed record ran 0.30."),
     *(_prior_knob(n) for n in PRIOR_DEFAULTS),
     Knob("pf.initialization", "Particle initialization", PF_ONLY, "fit",
          "method", "choice", "rand", "app.core.engines.pf:initialization_for",
@@ -209,17 +222,14 @@ REGISTRY: tuple = (
          choices=("rand", "lh"), check=_check_initialization),
     Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
          "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
-         "Pins rho*mult and i0: admissions to date, the expected season "
-         f"total, or that total until {SP.EARLY_FRACTION:.0%} is in.",
+         "Sets the reporting rate and first infections from the admissions to date "
+         "or the expected total.",
          choices=SP.SEED_DENOMINATORS,
-         note=("season_total: the expected total is the median per-capita "
-               "total of the completed past seasons in the vintage, floored "
-               "at the to-date count; i0 shrinks by expected/to-date and the "
-               "model's implied depletion grows with the season instead of "
-               "sitting at the attack rate from the first week. "
-               "season_total_early: the same until "
-               f"{SP.EARLY_FRACTION:.0%} of the expected total is in, the "
-               "shipped rule after (the brake near the peak).")),
+         note=("The expected season total is the median per-person total of "
+               "the finished past seasons, never below the admissions so far; "
+               "the early-season form uses it until "
+               f"{SP.EARLY_FRACTION:.0%} of it is in, then the admissions to "
+               "date.")),
     Knob("run.season_start", "Season start", PF_ONLY, "fit", "run", "date",
          default_season_start, "app.core.runs:default_season_start",
          "First week the filter fits; August 1 of the forecast's season.",
@@ -249,16 +259,9 @@ REGISTRY: tuple = (
          OR.K_PRODUCTION, "flubnf.oracle:K_PRODUCTION",
          "Exponent on each value's log-distance from the median: 1 is the member's own spread, 0.7 narrower.",
          lo=0.1, hi=1.0,
-         note=("Applied after the Oracle step to the submitted seed's samples, "
-               "x' = m (x / m)^k about each horizon's median: the median is "
-               "untouched and a value ten times it becomes 10^k times it. "
-               "Screened on the 44 stored replay weeks of 2023-24 to 2025-26 "
-               "(docs/team/submission.md, 2026-10-16), on the stage-rule "
-               "member at weight 0.25 (9,152 cells): k = 0.7 took pooled "
-               "relWIS from 0.720 to 0.671 with 50 / 80 / 95 coverage at "
-               "0.47 / 0.76 / 0.93; leave-one-season-out picks 0.7, 0.7 and 0.6. Research; "
-               "the run records k and the unnarrowed quantiles beside the "
-               "narrowed ones; no card phrase until the default changes.")),
+         note=("Research, off at 1: the median stays and a value ten times it "
+               "becomes 10^k times it, and a run records k with the "
+               "quantiles before narrowing.")),
     Knob("oracle.w_aux", "FluSurv-NET donor share", PF_ONLY, "step", "method",
          "float", MX.W_AUX, "flubnf.oracle_mix:W_AUX",
          "Chance a path draws a FluSurv-NET donor when both streams qualify.",
@@ -320,30 +323,23 @@ REGISTRY: tuple = (
          "Weight share of the jurisdiction's own past weeks in the admissions "
          "pool; 0 drops it.",
          lo=0.0, hi=1.0,
-         note=("Pre-registered screen of 2026-10-15: 0.5 scored 0.660 "
-               "against 0.670 pooled on three replayed seasons, "
-               "leave-one-season-out; 0.75 scored 0.658 with lower "
-               "coverage. The FluSurv-NET pool stays pooled."),
+         note=("One half beat the pooled form on three replayed seasons "
+               "(0.660 against 0.670); the FluSurv-NET pool stays pooled."),
          card=(GROUNDHOG_CARD, {0.5: "own past weeks carry half"})),
     Knob("groundhog.kernel_sd", "Size-matched donor kernel", GH_ONLY,
          "groundhog", "method", "float", AN.SHIPPED_KERNEL_SD,
          "flubnf.analogue:SHIPPED_KERNEL_SD",
          "Log-count width of the weight on donor weeks sized like the newest; 0 is off.",
          lo=0.0, hi=5.0,
-         note=("Pre-registered screen of 2026-10-17 (width 1 chosen by "
-               "leave-one-season-out over 0.5 and 1): 0.642 against 0.660 "
-               "on three replayed seasons, coverage unchanged; with its "
-               "effective-donor guard (30) it scored again on 2026-10-22 "
-               "under every upper-tail cap, about 0.017 better. It keeps a "
-               "donor week based on one or two admissions from setting a "
-               "large jurisdiction's tail (the Ohio band of 2026-10-24). "
-               "0 is the form of 2026-10-15 to 2026-10-23."),
+         note=("Width 1 beat the form without it on three replayed seasons "
+               "(0.642 against 0.660), and keeps a donor week of one or two "
+               "admissions from setting a large state's upper tail."),
          card=(GROUNDHOG_CARD, {1.0: "similar-sized weeks carry the most weight"})),
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
-         "Donor weeks within this many epiweeks; the seal ran 2.",
-         lo=0, hi=8, unit="epiweeks",
+         "Donor weeks within this many epiweeks of the forecast week.",
+         lo=0, hi=8, unit="epiweeks", note="The sealed record ran 2.",
          card=(GROUNDHOG_CARD, {2: "within two MMWR epiweeks"})),
     Knob("groundhog.min_donors", "Groundhog minimum donors", GH_ONLY,
          "groundhog", "method", "int", AN.MIN_DONORS,
@@ -360,72 +356,43 @@ REGISTRY: tuple = (
          TC.CAP_PRODUCTION, "flubnf.tailcap:CAP_PRODUCTION",
          "Quantiles above the median clipped at this many times the recent level; 0 is no cap.",
          lo=0.0, hi=100.0,
-         note=("Applied to both members' hub rows at the output stage, after "
-               "the Oracle step, the narrowing and the floor: in each "
-               "(location, horizon) block the levels above 0.5 are clipped at "
-               "n times the mean of the last three reported weeks, never below "
-               "the block's median; the median and the lower quantiles are "
-               "untouched. Spencer Fox's red-flag rule (2026-10-21) reads the "
-               "97.5% quantile at horizon 3 against the recent level. Screened "
-               "post hoc on the stored replays (docs/team/submission.md, "
-               "2026-10-22): 15-20x left both members' pooled relWIS and "
-               "coverage within a thousandth and removed every horizon-3 cell "
-               "above 30x. Research; the run records n and the cells it "
-               "touched; no card phrase until the default changes.")),
+         note=("Research, off at 0: in each location and horizon the levels "
+               "above the median are clipped at n times the mean of the last "
+               "three reported weeks, never below the median, and a run "
+               "records n and the cells it touched.")),
     Knob("output.tail_mode", "Upper-tail form", BOTH, "output", "method",
          "choice", TC.MODE_PRODUCTION, "flubnf.tailcap:MODE_PRODUCTION",
          "clip: levels above the median clipped at the limit; shrink: the location-wide exponent form.",
          choices=TC.MODES,
-         note=("shrink (Ely, 2026-10-22): the exponent the worst horizon needs "
-               "to bring its 97.5% quantile to the limit is applied to every "
-               "horizon of the location above the median, so the band keeps "
-               "its fan across the weeks and only the worst horizon touches "
-               "the limit. Replays: the clip scores a little better over "
-               "whole seasons, the shrink better in September-October weeks. "
-               "Takes effect only with output.tail_cap above 0.")),
+         note=("Shrink applies the exponent the worst horizon needs to every "
+               "horizon above the median, so the band keeps its fan; either "
+               "form acts only when the Upper-tail cap is above 0.")),
     Knob("output.tail_hist", "Historical ceiling", BOTH, "output", "method",
          "float", TC.HIST_PRODUCTION, "flubnf.tailcap:HIST_PRODUCTION",
          "Upper quantiles clipped, per horizon, at this quantile of past growth over the recent level; 0 off.",
          lo=0.0, hi=1.0,
-         note=("Spencer Fox's bound read on our data (2026-10-25): for each "
-               "horizon h, the growth y[W+h+1] over the recent level at W, "
-               "over every jurisdiction's weeks within two epiweeks of the "
-               "forecast date in strictly earlier seasons with a recent "
-               "level of at least 10, from the run's own truth vintage. The "
-               "knob is the quantile of that history used as the ceiling: 1 "
-               "the maximum (only growth history never produced is removed), "
-               "0.975 its 97.5th percentile. Applied as a clip before the "
-               "n-cap (output.tail_cap), so the two compose: the ceiling "
-               "deletes the impossible, the cap or the shrink shapes the "
-               "rest. Screened post hoc on the Oracle's 44 stage-rule weeks "
-               "(docs/team/submission.md, 2026-10-25): the maximum alone was "
-               "the best arm (-0.007 relWIS against the clip at 15x, "
-               "coverage 0.91) and with the shrink at 15x on top beat the "
-               "shrink alone by 1%; the 97.5th percentile was too tight "
-               "(coverage 0.86). Research; the run records the ratios and "
-               "the cells it touched.")),
+         note=("Research, off at 0: the ceiling is this quantile of how far "
+               "each horizon grew over the recent level in the same weeks of "
+               "earlier seasons (1 is the largest growth seen), applied "
+               "before the Upper-tail cap.")),
     # -- Optional hub outputs (extra rows; the required rows are unchanged) --
     Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
          "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
          "Optional; the hub never scores it. Adds the week before the "
          "reference date.",
-         note=("Oracle SIHRS: its own draws for that week. Groundhog: only "
-               "where it did not see that week (weeks to drop, or the "
-               "same-day week treated as unreported); its forecast starts "
-               "from that week's count, so otherwise it has no spread to "
-               "give and writes none. Adds rows only: the files keep the "
+         note=("The Oracle SIHRS writes its own draws; the Groundhog writes "
+               "rows only for a week it did not see (weeks dropped, or the "
+               "same-day week treated as unreported), and the files keep the "
                "hub names.")),
     Knob("output.rate_change_pmf", "Rate-change rows", BOTH, "output",
          "optional", "bool", SB.RATE_CHANGE_PMF,
          "app.core.submit:RATE_CHANGE_PMF",
          "Optional; not in the hub's WIS ranking. Adds the five trend "
          "probabilities.",
-         note=("The hub's 'wk flu hosp rate change' target, horizons 0 to 3: "
-               "large decrease to large increase from the week before the "
-               "reference date, by the hub's rate and 10-admission rules. "
-               "From each model's own draws or quantiles; the Groundhog "
-               "writes none for a state whose starting week it did not "
-               "see. Adds rows only: the files keep the hub names.")),
+         note=("The hub's rate-change target for horizons 0 to 3, from each "
+               "model's own forecasts; the Groundhog writes none for a state "
+               "whose starting week it did not see, and the files keep the "
+               "hub names.")),
 )
 
 BY_KEY: dict = {k.key: k for k in REGISTRY}
@@ -473,7 +440,11 @@ LOCKED: tuple = (
            "The SIHRS compartment model the card describes."),
     Locked("pf.engine_keys", "neg_bin_dynamic, reflect, start -1, Hobs",
            "app.core.engines.pf:prepare",
-           "Objective, bounds and start time pinned to the records' conventions."),
+           "Objective, bounds and start time pinned to the records' "
+           "conventions. On the public engine, the default, these are "
+           "written to lwf.conf as noise_model neg_bin, lwf_* and "
+           "random_seed; a seed repeats a fit exactly only on the same "
+           "engine."),
     Locked("pf.starting_values", "DEFAULTS_BLOCK", "app.core.engines.pf:DEFAULTS_BLOCK",
            "Inert under initialization=rand."),
     Locked("pooling", "all jurisdictions, own weeks at half weight, size-matched",
@@ -1208,7 +1179,8 @@ def panel(scope: str, values: Optional[Mapping] = None) -> dict:
     refused submission keeps what was typed). Knobs with an older field
     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
     particles), so every earlier poster still works; the rest post as
-    knob.<key>. Coming-later knobs render disabled. A row is "changed"
+    knob.<key>. Coming-later knobs are kept out of the template's groups
+    (Methods lists them, and LOCKED). A row is "changed"
     when its value is off the default (never a coming-later or optional
     one); its group opens on it. Each group's "tip" says what a change
     costs (the Methods tab's settings table reads it; the panel shows

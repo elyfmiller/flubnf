@@ -216,7 +216,7 @@ def test_output_download_never_serves_the_dataset_store(tmp_path, monkeypatch):
 
 def test_hub_forecast_page_is_unchanged_without_datasets():
     page = client.get("/forecast").text
-    assert "all 53 jurisdictions" in page and 'action="/run"' in page
+    assert "all 53 locations" in page and 'action="/run"' in page
     assert 'id="fc-source"' not in page             # no selector, no datasets
     assert "const SRCQ = \"\";" in page
 
@@ -243,7 +243,7 @@ def test_forecast_with_a_dataset_lists_groups_and_its_weeks():
     page = client.get(f"/forecast?source={ds.id}").text
     assert 'action="/run/dataset"' in page
     assert f"all {len(ds.groups)} groups" in page
-    assert "all 53 jurisdictions" not in page
+    assert "all 53 locations" not in page
     assert "US national is always fitted" not in page
     assert f'name="dataset" value="{ds.id}"' in page
     assert f'<option value="{ds.forecast_dates()[-1]}">' in page
@@ -326,8 +326,12 @@ def test_run_refuses_a_number_the_browser_allows_in_words(monkeypatch):
         "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
         "engine": "analogue", "weeks_to_drop": "1e1"}, follow_redirects=False)
     assert r.status_code == 303 and got == []
-    assert ("Not run: model settings: run.weeks_to_drop: '1e1' is not a "
-            "valid int." in ui_state._status["flash"])
+    # the panel on the dataset's Forecast view says it, once (FC-21)
+    assert "model settings" not in (ui_state._status.get("flash") or "")
+    page = client.get(f"/forecast?source={ds.id}").text
+    said = page.split('id="ms-refused">')[1].split("</div>")[0]
+    assert "<strong>Not run.</strong>" in said
+    assert "Weeks to drop: &#39;1e1&#39; is not a whole number." in said
 
 
 def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
@@ -423,7 +427,10 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
     loc = r.headers["location"]
     assert loc.startswith(f"/retro/dataset/{ds.id}/")
     page = client.get(loc).text
-    assert "Final data, not vintage-true: 2023-10-07 to 2024-02-24" in page
+    # the badge's word and the weeks; the why in the Scores "?" (G28)
+    assert 'uk-badge-t">final data<' in page and "2023-10-07 to 2024-02-24" \
+        in page
+    assert "each week was cut from the final series" in page
     assert "in-house persistence baseline" in page and ">done<" in page
     assert "FluSight baseline" not in page
     # listed in its own card, not among the season cards

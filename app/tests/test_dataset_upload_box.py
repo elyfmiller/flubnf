@@ -123,7 +123,7 @@ def test_the_box_stays_on_a_dataset_forecast_and_the_hub_is_unchanged():
     assert page.index('id="fc-upload"') < page.index('id="fcform"')
     # the hub tab carries no upload box: that is the Your data tab's
     hub = client.get("/forecast").text
-    assert 'action="/run"' in hub and "all 53 jurisdictions" in hub
+    assert 'action="/run"' in hub and "all 53 locations" in hub
     assert boxes(hub) == []
 
 
@@ -576,7 +576,7 @@ def test_numbers_that_read_two_ways_leave_the_kind_to_the_user():
            b"2024-01-13,Berlin,1.234\n2024-01-20,Berlin,12.345\n")
     j = check(raw).json()
     assert not j["ok"] and j["inferred_kind"] is None
-    assert "Choose whether the values are counts or rates" in j["html"]
+    assert "Rates: choose rates. Counts: write them without" in j["html"]
     assert READY not in j["html"]
     j = check(raw, kind="rate").json()
     assert j["ok"] and fact(j["html"], "Values") == "rates"

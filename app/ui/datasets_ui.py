@@ -384,12 +384,15 @@ async def upload(request: Request):
     # the counts on the line; the snapshots and any warnings in its tip
     shared._flash((f"This file is already stored as {ds.name}: {counts}"
                    if again else f"Stored {ds.name}: {counts}")
-                  + (f" {len(warn)} warning(s)." if warn else ""),
+                  + (f" {len(warn)} warning{'' if len(warn) == 1 else 's'}."
+                     if warn else ""),
                   "warn" if warn else "ok",
                   detail=" ".join(([snaps] if snaps else []) + warn))
     if nxt == "forecast":
         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
-    return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
+    # #main, where the notice is: the form's #datasets, which a redirect
+    # without a fragment keeps, scrolled it out of view
+    return RedirectResponse(f"/data?source={ds.id}#main", status_code=303)
 
 
 def _delete_confirmed(ds_id: str, confirm: str) -> None:
@@ -408,14 +411,19 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
         shared._flash(f"Not deleted: the confirmation did not name {ds.name}.",
                       "warn")
         return
-    msg, kind, detail = deleted_message(ds, *delete_everything(ds))
+    from app.core import custom_retro as _cx
+    replays = len(_cx.list_replays(ds))       # counted before they go
+    msg, kind, detail = deleted_message(ds, *delete_everything(ds),
+                                        replays=replays)
     shared._flash(msg, kind, detail=detail)
 
 
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
     _delete_confirmed(ds_id, confirm)
-    return RedirectResponse("/data#datasets", status_code=303)
+    # #main, where the notice is (the delete form's #datasets would keep
+    # it out of view)
+    return RedirectResponse("/data#main", status_code=303)
 
 
 def api_series(ds, locs: str) -> dict:
@@ -613,6 +621,10 @@ def forecast_page(request: Request, ds):
             templating._season_colors()),
         "run_obs_json": templating._script_json(
             (res or {}).get("observed", {})),
+        # the weeks each member set aside, as the hub's page passes them:
+        # forecast.html's inline script reads RASIDE, and an empty value
+        # there is a syntax error that stops every chart script on the page
+        "run_aside_json": templating._script_json(shared._run_aside(rid)),
         "fc_date": (res or {}).get("forecast_date", ""),
         "fc_run": rid or "",
         "dataset": view, "source_choices": choices(),
@@ -742,7 +754,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     try:
         kraw = knob_values(ds, knob_fields, knobs_json)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Not run: model settings: {e}.", "warn")
+        shared._flash(f"Not run: {forms._refusal_words(str(e))}", "warn")
         return RedirectResponse(here, status_code=303)
     _LAST[ds.id] ={"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
@@ -771,9 +783,9 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
-        # the panel opens on its error, the reason under its head
+        # the panel opens on its error, the reason under its head; no
+        # second notice for it
         _LAST[ds.id]["ms_refused"] = str(e) or True
-        shared._flash(f"Not run: model settings: {e}.", "warn")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)
     # built before the claim: nothing between the claim and the queued
@@ -1024,18 +1036,31 @@ def delete_everything(ds) -> tuple:
     return freed, gone, kept
 
 
-def deleted_message(ds, freed: int, gone: int, kept: int) -> tuple:
-    """(message, kind, detail) of a dataset delete's notice."""
+def deleted_message(ds, freed: int, gone: int, kept: int,
+                    replays: int = 0) -> tuple:
+    """(message, kind, detail) of a dataset delete's notice; the detail
+    names only what the dataset had (its replays, its runs' workroots),
+    sentence by sentence, so it never starts with a space or says "the
+    rest" when nothing went."""
     from app.core import retro
-    s = "" if gone == 1 else "s"
-    detail = (f"Its replays and {gone} run workroot{s} went with it; the "
-              "runs' ledger rows are kept.")
+    went = [f"{n} {w}{'' if n == 1 else 's'}" for n, w in
+            ((replays, "replay"), (gone, "run workroot")) if n]
+    parts = []
+    if went:
+        parts.append(f"Its {' and '.join(went)} went with it"
+                     + ("; the runs' ledger rows are kept." if gone else "."))
     if kept:
+        # the workroots that could not be deleted: "the rest" only beside
+        # the ones that went
+        parts.append("The rest stay under Run workroots." if gone else
+                     "The run workroot stays under Run workroots."
+                     if kept == 1 else
+                     f"The {kept} run workroots stay under Run workroots.")
         return ((f"Deleted {ds.name}, but {kept} run workroot"
                  f"{'' if kept == 1 else 's'} could not be deleted."), "warn",
-                detail + " The rest stay under Run workroots.")
+                " ".join(parts))
     return (f"Deleted {ds.name}: {retro.human_bytes(freed)} freed.", "ok",
-            detail)
+            " ".join(parts))
 
 
 @router.post("/storage/datasets/{ds_id}/delete")
@@ -1203,7 +1228,9 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         from app.core import missing as _missing
         _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:                  # KnobError is a ValueError
-        shared._flash(f"Not started: model settings: {e}.", "warn")
+        # the setting by the panel's label and its value in plain words,
+        # as the dataset's Forecast form says it; never the knob's key
+        shared._flash(f"Not started: {forms._refusal_words(str(e))}", "warn")
         return back
     kspec = forms._knobs.spec_fields(nd)
     k = int(kspec.pop("weeks_to_drop", 0))
@@ -1305,7 +1332,13 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     ds = get_dataset(ds_id)
     if ds is None or not CX.valid_stamp(stamp) \
             or not CX.replay_dir(ds, stamp).is_dir():
-        return HTMLResponse("<p>No such replay.</p>", status_code=404)
+        # a page of the console (the Retrospective tab lists the replays)
+        from app.ui.routes import output as output_routes
+        return output_routes._notice(
+            request, 404, "empty", "No such replay",
+            action=((f"/retro?dataset={ds.id}" if ds else "/retro"),
+                    "Open Retrospective"),
+            active="Retrospective", heading="Replay")
     meta, fc, cells, cov = CX.load(CX.replay_dir(ds, stamp))
     status = meta.get("status") or "unknown"
     live = _REPLAY.get("stamp") == stamp

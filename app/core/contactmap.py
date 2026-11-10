@@ -127,8 +127,7 @@ def _run_bng(source: str, workdir: Path, out_name: str, timeout: int,
              "cm.bngl"], capture_output=True, cwd=str(workdir),
             timeout=timeout, **_pf.bng_run_kwargs(bng_env(BNG, cwd=workdir)))
         if not out.is_file():
-            raise ContactMapError(f"BNG2.pl could not {what}:\n"
-                                  + _pf.bng_failure_text(r))
+            raise ContactMapError(_pf.bng_could_not(what, r))
         return out.read_text(encoding="utf-8", errors="replace")
 
 
@@ -533,7 +532,8 @@ def network_graph(net: dict) -> dict:
 
     Returns {"nodes": [{"id", "label", "kind", "text"}], "edges": [{"id",
     "from", "to", "label", "kind", "rule", "text"}], "influences":
-    [{"from": node id, "edge": edge id}]}.
+    [{"from": node id, "edge": edge id}], "reactions": how many the network
+    has (a reaction with no net change draws no edge)}.
     """
     species = net.get("species") or []
     label = {s["index"]: _species_label(s["pattern"]) for s in species}
@@ -584,7 +584,8 @@ def network_graph(net: dict) -> dict:
         for d in drivers:
             for eid in made:
                 influences.append({"from": f"s{d}", "edge": eid})
-    return {"nodes": nodes, "edges": edges, "influences": influences}
+    return {"nodes": nodes, "edges": edges, "influences": influences,
+            "reactions": len(net.get("reactions") or [])}
 
 
 _NAME = re.compile(r"[A-Za-z_]\w*")
@@ -651,7 +652,7 @@ def rule_flow(bngl_text: str) -> dict | None:
     molecule types, so S() + I() -> I() + I() is S to I, driven by I.
     Read from the model text (no BNG2.pl). None when there are no rules."""
     text = re.sub(r"\\\s*\n", " ", bngl_text)
-    types, rules, where = [], [], None
+    types, rules, where, lines = [], [], None, 0
     for raw in text.splitlines():
         s = raw.split("#", 1)[0].strip()
         if not s:
@@ -673,6 +674,7 @@ def rule_flow(bngl_text: str) -> dict | None:
             arrow = "<->" if "<->" in s else "->" if "->" in s else None
             if not arrow:
                 continue
+            lines += 1                         # a rule, drawn or not
             lhs, rhs = s.split(arrow, 1)
             left, _ = _patterns(lhs.strip())
             right, rest = _patterns(rhs.strip())
@@ -699,6 +701,9 @@ def rule_flow(bngl_text: str) -> dict | None:
                           "rule": name}
                          for k, (left, right, rate, name) in enumerate(rules)]}
     graph = network_graph(net)
+    # the caption counts the model's rules, not the arrows drawn: a rule
+    # that changes only a state draws none, and A <-> B is one rule
+    graph["rules"] = lines
     for nd in graph["nodes"]:
         if nd["kind"] == "species":
             nd["text"] = nd["label"]

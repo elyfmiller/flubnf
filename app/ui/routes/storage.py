@@ -45,20 +45,41 @@ def _tree_size(path: str) -> int:
 
 
 def _storage_protected(p: Path) -> bool:
-    """True when a path lies inside a sealed record or the hub clone."""
+    """True when a path lies inside a sealed record or the hub clone, or
+    anything else reclaim protects (FLUBNF_PROTECT_ROOTS): one barrier for
+    Delete, Delete all and Reclaim, and for Retrospective's two deletes (an
+    archived run's Delete, the Run form's discard)."""
+    from app.core import reclaim
     from flubnf.settings import HUB
-    try:
-        rp = Path(p).resolve()
-    except OSError:
-        return True                      # unresolvable: refuse, never guess
-    for root in [base for base, _ in _sealed_roots()] + [HUB]:
-        try:
-            r = Path(root).resolve()
-            if rp == r or rp.is_relative_to(r):
-                return True
-        except OSError:
-            continue
-    return False
+    if reclaim.is_protected(p):
+        return True
+    # the same comparison (another spelling of a root matches; an
+    # unresolvable path is refused, never guessed)
+    return reclaim.inside_any(
+        p, [base for base, _ in _sealed_roots()] + [HUB])
+
+
+#: a dataset run's export folder in its workroot (custom_run.EXPORT_DIR,
+#: named here so the Storage page does not load that module's science
+#: imports; test_s3b_storage holds the two equal)
+_EXPORT_DIR = "export"
+
+
+def _workroot_files(p: Path) -> str:
+    """What a workroot's Delete takes with it beyond the working files, in
+    the delete hint's words ("report and submission files", "report",
+    "export files"); "" when it holds none (a stopped run may have written
+    neither)."""
+    have = []
+    if (p / "report.html").is_file():
+        have.append("report")
+    for sub, words in (("submission", "submission files"),
+                       (_EXPORT_DIR, "export files")):
+        if next(p.glob(f"{sub}/*/*.csv"), None) is not None:
+            have.append(words)
+    if len(have) > 2:
+        return ", ".join(have[:-1]) + " and " + have[-1]
+    return " and ".join(have)
 
 
 def _live_workroot_ids() -> set:
@@ -71,6 +92,67 @@ def _live_workroot_ids() -> set:
     if w:
         out.add(Path(w).name)
     return out
+
+
+def _may_archive() -> bool:
+    """Whether the console run in progress can write a report archive, by
+    the pipeline's own archive step (pipeline.py, step 7): it skips a
+    one-model run, a research run and a modified run whose files carry the
+    non-hub name; every other run reaches _archive_run, a vintage run and a
+    modified run exported under the hub names included. A dataset run or
+    replay never reaches it. A run still starting may."""
+    from app.core.knobs import hub_names
+    from app.core.runs import is_research
+    running = _status.get("running") or ""
+    if not running:
+        return False
+    kind, _sep, rid = running.partition(":")
+    if kind in ("dataset", "dataset-replay"):
+        return False
+    if not rid:
+        return True
+    try:
+        row = Ledger().row(rid) or {}
+    except Exception:
+        return True
+    spec = row.get("spec") or ""
+    # the step's own three skips, in its order; a vintage run is not one
+    # (_archive_run writes it when the date holds no real-time run)
+    return (not is_research(spec) and hub_names(spec)
+            and str(_spec_of(spec).get("engine") or "all")
+            not in ("analogue", "pf"))
+
+
+def _archiving_date() -> str | None:
+    """The forecast date whose report archive the run in progress may be
+    writing: None when it can write none (_may_archive), "" when it may
+    but its date is unknown (every archive is then held)."""
+    if not _may_archive():
+        return None
+    import json
+    for w in _live_workroot_ids():
+        try:
+            spec = Ledger().row(w)["spec"]
+            spec = json.loads(spec) if isinstance(spec, str) else spec
+            return str(spec.get("forecast_date") or "")
+        except Exception:                # no row yet, or an odd one
+            continue
+    return ""
+
+
+def _local_when(stamp: str) -> str:
+    """An archive's stamp ('20261025T191800Z', UTC) in this computer's
+    time, as the workroot rows' run times read ('2026-10-25 12:18'), so
+    the two on one page compare; an unreadable stamp as stamp_human says
+    it."""
+    from datetime import datetime, timezone
+    from app.core import retro
+    try:
+        t = datetime.strptime((stamp or "").split("-")[0], "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return retro.stamp_human(stamp)
+    return t.replace(tzinfo=timezone.utc).astimezone().strftime(
+        "%Y-%m-%d %H:%M")
 
 
 def _busy_why(kind: str, ident: str, status: str = "") -> str:
@@ -165,8 +247,9 @@ def _ledger_parts(run_id: str, spec) -> list:
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
     archives, report archives, your datasets (each with a busy flag and,
-    when busy, "why" it cannot be deleted), plus the protected trees (no
-    controls). total_bytes/total_h sum the managed categories only, each
+    when busy, "why" it cannot be deleted; all but a dataset with a
+    "protected" flag, whose row has no Delete), plus the protected trees
+    (no controls). total_bytes/total_h sum the managed categories only, each
     byte once: a dataset adds its own folder (the upload and its replays),
     its runs being counted as workroots. "cats" splits that total by
     category (the page's composition bar and legend). "students" holds
@@ -181,7 +264,6 @@ def _storage_inventory() -> dict:
            "report_archives": [], "datasets": [], "protected": [],
            "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
-    console_busy = bool(_status.get("running"))
     # ledger rows label each workroot; one without a row reads as unrecorded
     try:
         led_rows = {r["run_id"]: r for r in Ledger().rows(100_000)}
@@ -212,6 +294,9 @@ def _storage_inventory() -> dict:
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
                 "busy": p.name in live_ids,
+                "protected": _storage_protected(p),
+                # what its delete hint says goes with it (_workroot_files)
+                "files": _workroot_files(p),
                 "why": (_busy_why("workroot", p.name)
                         if p.name in live_ids else ""),
                 # for the dataset rows: the run's size and its dataset
@@ -228,6 +313,7 @@ def _storage_inventory() -> dict:
                     "id": p.name, "size_h": retro.human_bytes(size),
                     "bytes": size, "status": st,
                     "busy": st in _RETRO_ACTIVE,
+                    "protected": _storage_protected(p),
                     "why": (_busy_why("retro-season", p.name, st)
                             if st in _RETRO_ACTIVE else "")})
                 continue
@@ -240,13 +326,17 @@ def _storage_inventory() -> dict:
                 from app.core import replay_bundle
                 inv["retro_archives"].append({
                     "id": p.name, "season": season, "stamp": stamp,
-                    "when": retro.stamp_human(stamp),
+                    "when": _local_when(stamp),
                     # a replay imported from another machine
                     # ("imported from <host> on <date>"), else ""
                     "imported": replay_bundle.imported_label(p),
                     "size_h": retro.human_bytes(size), "bytes": size,
                     "busy": _season_status(season) in _RETRO_ACTIVE,
+                    "protected": _storage_protected(p),
                     "why": _busy_why("retro-archive", season)})
+    # held only while the run in progress can write a report archive, and
+    # then only its own date's
+    run_fd = _archiving_date()
     arch = APP_STATE / "archive"
     for d in reversed(_scan_archive_dates(arch)):
         size = _tree_size(str(arch / d))
@@ -257,7 +347,9 @@ def _storage_inventory() -> dict:
             "label": _round_label({"forecast_date": d}, d),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
-            "busy": console_busy, "why": _busy_why("report-archive", d)})
+            "busy": run_fd is not None and run_fd in ("", d),
+            "protected": _storage_protected(arch / d),
+            "why": _busy_why("report-archive", d)})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
     for d in inv["datasets"]:
         d["why"] = (f"{d['name']} cannot be deleted now: {d['busy']}."
@@ -367,7 +459,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
     ledger = Ledger()
     ids = _clearable_run_ids(ledger)
     if not ids:
-        _flash("Nothing to clear: the ledger has no completed rows.", "warn")
+        _flash("Nothing to clear: the ledger has no rows to remove.", "warn")
         return _back(request, "/storage")
     if confirm != str(len(ids)):
         _flash("Not cleared: the ledger changed "
@@ -376,7 +468,7 @@ def runs_clear(request: Request, confirm: str = Form("")):
         return _back(request, "/storage")
     n = ledger.delete_runs(ids)
     _invalidate_scans()
-    _flash(f"Cleared {n} completed ledger row{'' if n == 1 else 's'}.", "ok",
+    _flash(f"Cleared {n} ledger row{'' if n == 1 else 's'}.", "ok",
            detail="No data on disk was deleted: the runs' workroots stay "
            "in the storage panel until deleted there.")
     return _back(request, "/storage")
@@ -415,7 +507,8 @@ def _storage_target(kind: str, ident: str):
     elif kind == "report-archive":
         if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
             return None, "Unrecognized report archive date."
-        if _status.get("running"):
+        held = _archiving_date()
+        if held is not None and held in ("", ident):
             return None, _busy_why(kind, ident)
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
@@ -446,9 +539,10 @@ def _storage_target(kind: str, ident: str):
     # but _storage_protected resolves, so a link into a protected tree fails.
     assert p.parent == Path(base), "storage target escaped its parent"
     if _storage_protected(p):
-        return None, ("That tree is protected (the sealed validation "
-                      "record and the hub clone are never deletable from "
-                      "the interface).")
+        # which record it is is not claimed: FLUBNF_PROTECT_ROOTS protects
+        # folders that are neither the sealed records nor the hub clone
+        return None, ("That folder is protected; the console never "
+                      "deletes it.")
     if not (p.is_dir() or p.is_symlink()):
         return None, "Nothing is on disk under that name."
     return p, ""
@@ -495,8 +589,9 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     _invalidate_scans()
     items = _clearable_workroots()
     if not items:
-        _flash("Nothing to delete: no completed run workroots on disk.",
-               "warn")
+        _flash("Nothing to delete: no run workroots on disk"
+               + (" apart from the active run's." if _live_workroot_ids()
+                  else "."), "warn")
         return _back(request, "/storage")
     if confirm != str(len(items)):
         _flash("Not deleted: the storage panel changed "
@@ -520,7 +615,7 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
         except Exception:
             continue          # one stuck tree must not sink the sweep
     _invalidate_scans()
-    _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
+    _flash(f"Deleted {n} run workroot{'' if n == 1 else 's'}: "
            f"{retro.human_bytes(freed)} freed.", "ok",
            detail="Every ledger row is kept and shows a dash for disk use.")
     return _back(request, "/storage")
