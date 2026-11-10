@@ -6,6 +6,20 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-10 (16:18 UTC): WEDNESDAY'S ROUND, FROM THE APP LANE (second
+  message). Round 2026-11-14 submits from Ely's laptop on the public
+  engine, once Ely has merged #101 and opened FluBNF twice (the second
+  open installs the engine). If the round looks wrong,
+  `./setup_engine.sh --private` on the laptop is the way back and the
+  round runs on the private engine. Today the Engine lane reruns round
+  2026-11-07 on the public engine and sets it against the submitted
+  private files, state by state; the result goes on its notes branch.
+  Not there yet at 16:18 UTC (engine-public's newest commit is 00:40
+  MST, docs/team/engine.md has no 2026-11-07 comparison). Read it before
+  Wednesday's review: same data, same round, only the engine changed, so
+  it is the direct measure; this lane's week-to-week baseline (entry
+  below) is the second one. Ely approves the card's engine clause in the
+  hub pull request (Open, 2026-11-10).
 - 2026-11-10 (15:41 UTC): THE ENGINE SWITCH IN WEDNESDAY'S REVIEW (round
   2026-11-14, the first on public PyBNF; the App lane's request). Done on
   the branch assited_dev/bold-sagan-kfw8gg while #101 (dev to main) is
