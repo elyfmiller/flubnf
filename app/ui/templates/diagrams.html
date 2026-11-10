@@ -44,7 +44,7 @@
 {% macro _vars(kit, id, rows) -%}
 {% set count %}{% if kit %}{{ tips.tag(rows | length ~ " symbols") }}{% endif %}{% endset %}
 {% call tips.fold("Variables", id=id, cls="eqvars", after=count) %}
-<div class="eqvars-scroll"><table class="eqvars-t">
+<div class="eqvars-scroll" tabindex="0" role="region" aria-label="Variables (scrolls)"><table class="eqvars-t">
  <thead><tr><th scope="col">Symbol</th><th scope="col">Meaning</th><th scope="col">Units, range</th><th scope="col">Source</th></tr></thead>
  <tbody>
  {%- for sym, meaning, units, src in rows %}
@@ -599,8 +599,7 @@
  <path d="M62,{{ g.y_one }} H540" stroke="var(--mut)" stroke-width="1.2"
        stroke-dasharray="2 5" fill="none"/>
  <text x="536" y="{{ (g.y_one - 5) | round(1) }}" text-anchor="end"
-       class="svgt-sm" fill="var(--mut)">1.0 (&#946;<tspan class="svgt-sub"
-       dy="3">0</tspan><tspan dy="-3">)</tspan></text>
+       class="svgt-sm" fill="var(--mut)">1.0</text>
  <!-- axes and month ticks (quarterly month starts, via harmonic_fig) -->
  <g stroke="currentColor" stroke-width="1.4" fill="none">
   <path d="M62,170 H540"/>
@@ -614,13 +613,12 @@
  <text x="22" y="95" text-anchor="middle" class="svgt-sm" fill="currentColor"
        transform="rotate(-90 22 95)">&#946;(t) / &#946;<tspan
        class="svgt-sub" dy="3">0</tspan></text>
- <!-- amplitude extremes, in the pockets the curves keep clear -->
+ <!-- amplitude extremes, in the pockets the curves keep clear: on the
+      beta(t) / beta-0 axis, e to the plus and minus epsilon-1 -->
  <g class="svgt-sm" fill="currentColor">
-  <text x="68" y="33">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+  <text x="68" y="33">e<tspan class="svgt-sub"
    dy="-7">+&#949;&#8321;</tspan></text>
-  <text x="68" y="164">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
-   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+  <text x="68" y="164">e<tspan class="svgt-sub"
    dy="-7">&#8722;&#949;&#8321;</tspan></text>
  </g>
  {% if two %}

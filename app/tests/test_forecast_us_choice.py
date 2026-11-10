@@ -1,7 +1,7 @@
 """US national on the Forecast tab: a location of its own, and the FluSight
 comparators drawn over a vintage run's fans.
 
-"all 53 jurisdictions" is the hub's 53: the 52 (the 50 states, DC and
+"all 53 locations" is the hub's 53: the 52 (the 50 states, DC and
 Puerto Rico) AND US (national), ticked by default, so a national fit is
 not forgotten. US (national) stays a box of its own, listed last, ticked
 with "all"; a custom pick keeps it unless the user unticks it, and fits
@@ -128,7 +128,7 @@ def test_the_run_scope_reads_without_us_for_a_state_run():
     assert runs_mod.locations_phrase(["California"]) == "1 state: California"
     assert fc._scope_label(["US"]) == "US only"
     assert fc._scope_label([f"S{i}" for i in range(52)] + ["US"]) == \
-        "all 53 jurisdictions"
+        "all 53 locations"
 
 
 def test_all_queues_the_53_in_the_progress_label(started):
@@ -138,12 +138,13 @@ def test_all_queues_the_53_in_the_progress_label(started):
 
 
 def test_the_default_form_ticks_all_53_with_us(monkeypatch):
-    """A fresh console ticks "all 53 jurisdictions", and US (national),
+    """A fresh console ticks "all 53 locations", and US (national),
     offered last, is ticked with it."""
     ui_state._last_form.clear()
     html = client.get("/forecast").text
     assert re.search(r'id="ck-all" value="all" name="locations"\s+checked', html)
-    assert "<b>all 53 jurisdictions</b>" in html
+    assert "<b>all 53 locations</b>" in html
+    assert "53 jurisdictions" not in html
     assert "all 52 jurisdictions" not in html
     assert re.search(r'id="ck-us" name="locations" value="US \(national\)"'
                      r'\s+checked\s*>', html)

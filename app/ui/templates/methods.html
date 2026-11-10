@@ -22,7 +22,7 @@
   addEventListener('fontsizechange', barH);
   // ---- scrollspy: the section in view marks its chip aria-current
   var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
-  var secs = [], seen = {};
+  var secs = [];
   links.forEach(function (a) {
     var t = document.getElementById(a.getAttribute('href').slice(1));
     if (!t) return;
@@ -41,13 +41,31 @@
         toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
     }
   }
+  // the current section: the last one whose top has passed the band under
+  // the bar, and the last one of all once the page is scrolled to its end
+  // (the last card can never reach the band)
+  function spy() {
+    if (!secs.length) return;
+    var band = bar.offsetHeight + 8, cur = secs[0], i;
+    for (i = 0; i < secs.length; i++)
+      if (secs[i].el.getBoundingClientRect().top <= band + 1) cur = secs[i];
+    if (innerHeight + pageYOffset >= de.scrollHeight - 2) cur = secs[secs.length - 1];
+    mark(cur.a);
+  }
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { ticking = false; spy(); });
+  }
   if ('IntersectionObserver' in window && secs.length) {
-    var io = new IntersectionObserver(function (es) {
-      es.forEach(function (e) { seen[secs.map(function (s) { return s.el; }).indexOf(e.target)] = e.isIntersecting; });
-      for (var i = 0; i < secs.length; i++) if (seen[i]) { mark(secs[i].a); return; }
-    }, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
+    // a section entering or leaving the view re-reads the position too
+    var io = new IntersectionObserver(onScroll, {rootMargin: '-' + (bar.offsetHeight + 8) + 'px 0px -55% 0px'});
     secs.forEach(function (s) { io.observe(s.el); });
   }
+  addEventListener('scroll', onScroll, {passive: true});
+  addEventListener('resize', onScroll);
+  spy();
   // ---- copy a link to each section, beside its title
   function said(btn, text) {
     var s = btn.parentNode.querySelector('.mt-said');
@@ -85,6 +103,10 @@
   pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
   pb.addEventListener('click', function () { window.print(); });
   bar.appendChild(pb);
+  // the button can wrap the chips onto a second row: measure again, and
+  // whenever the bar's height changes (fonts, text size, a narrow window)
+  barH();
+  if ('ResizeObserver' in window) new ResizeObserver(barH).observe(bar);
   // (once per print: a second beforeprint before afterprint keeps the
   // first one's record of what to restore)
   var closed = [], theme = null, printing = false;
@@ -165,7 +187,7 @@
  forecast hub</a>{% endset %}
  {% call tips.stats("uk-stats--row mt-lead", label="What FluBNF forecasts") %}
   {{ tips.stat("Forecasts", "weekly influenza hospital admissions", id="mt-target") }}
-  {{ tips.stat("Locations", "all 52", "US jurisdictions", id="mt-locs") }}
+  {{ tips.stat("Locations", "53", "locations: 52 jurisdictions plus the national total", id="mt-locs") }}
   {{ tips.stat("Format", hub, id="mt-format") }}
   {{ tips.stat("Models", "2", "submitted separately", id="mt-nmodels") }}
  {% endcall %}
@@ -305,7 +327,7 @@
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-rec-lg") }}
  </div>
  {# a season label never splits at its hyphen (non-breaking hyphens) #}
- <div style="overflow-x:auto"><table class="mt-rec">
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Record by season (scrolls)"><table class="mt-rec">
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
   {% for key, label in [("2023-24", "2023&#8209;24"), ("2024-25", "2024&#8209;25"), ("2025-26", "2025&#8209;26"),
                          ("both", "2024&#8209;25 and 2025&#8209;26"), ("three", "Three seasons")] %}
@@ -420,7 +442,7 @@
  {% for g in settings_ref %}
  {% call tips.fold(g.title, id="mt-set-" ~ g.id, cls="mt-fold", after=tips.tag(g.rows | length ~ (" setting" if g.rows | length == 1 else " settings"))) %}
  <p class="hint">{{ g.cost }}</p>
- <div class="mt-setscroll"><table class="mt-settings">
+ <div class="mt-setscroll" tabindex="0" role="region" aria-label="{{ g.title }} (scrolls)"><table class="mt-settings">
   <thead><tr><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Range</th><th scope="col">Default</th></tr></thead>
   <tbody>
   {%- for r in g.rows %}
@@ -435,7 +457,7 @@
  {% if settings_fixed %}
  {% call tips.fold("Fixed by the model definition", id="mt-set-fixed", cls="mt-fold", after=tips.tag(settings_fixed | length ~ " settings")) %}
  <p class="hint">Not settable: each value and why the model fixes it.</p>
- <div class="mt-setscroll"><table class="mt-settings">
+ <div class="mt-setscroll" tabindex="0" role="region" aria-label="Fixed by the model definition (scrolls)"><table class="mt-settings">
   <thead><tr><th scope="col">Setting</th><th scope="col">Why it is fixed</th><th scope="col">Value</th></tr></thead>
   <tbody>
   {%- for l in settings_fixed %}
@@ -450,24 +472,21 @@
 {% endif %}
 
 {# The site harvest drops this card (site_build._PERF_CARD): it must open
-   exactly as below, with no class or id of its own, and be followed
-   directly by a <div class="card". Kit icons are fine here, as the public
-   site never shows it #}
-<div class="card"><h2>Measured performance</h2><span id="performance"></span>
+   exactly as below, with no class of its own and only this id (the
+   contents chip's target, so a jump lands on the card's top edge), and be
+   followed directly by a <div class="card". Kit icons are fine here, as
+   the public site never shows it #}
+<div class="card" id="performance"><h2>Measured performance</h2>
  <div class="mt-bar">
   <span class="mt-unit">relWIS vs the FluSight baseline, ratio of sums</span>
   {{ tips.legend([("var(--ok)", rel_ok), ("var(--bad)", rel_bad)], label="relWIS colors", id="mt-perf-lg") }}
   <span class="mt-unit mt-end">Replayed weeks
   {%- call tips.toggletip("mt-replay", "the replayed weeks", title="Three seasons replayed on the data each week had") %}
-   <span class="uk-tt-line">A replay's weeks are the hub's dated truth vintages
-   inside the season.</span>
-   <span class="uk-tt-line">Eight scored weeks the hub archive skipped (three in
-   2024-25, five in 2025-26) ship with FluBNF as copies of the hub's own
-   published files (<code>data/vintages/</code>) and are replayed and scored
-   like the rest.</span>
-   <span class="uk-tt-line">Two weeks had no published data and no FluSight round
-   (as of 2024-05-04 and 2025-01-18); the player shows them as
-   placeholders.</span>
+   <span class="uk-tt-line">Eight weeks the hub archive skipped (three in
+   2024-25, five in 2025-26) ship with FluBNF, copied from the hub's own
+   files (<code>data/vintages/</code>), and are scored like the rest.</span>
+   <span class="uk-tt-line">Two weeks had no data and no FluSight round
+   (2024-05-04 and 2025-01-18); the player shows them as placeholders.</span>
   {%- endcall %}</span>
  </div>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
@@ -475,7 +494,7 @@
     (the shipped member); the particle filter alone, its component before
     the step, is an ablation in the Cells fold under the table #}
  {% set rec = oracle_text.RECORD %}
- <div style="overflow-x:auto"><table>
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Measured performance by season (scrolls)"><table>
   <tr><th>Model</th><th class="num">2023-24</th><th class="num">2024-25</th><th class="num">2025-26</th></tr>
   <tr><td>Oracle SIHRS</td>
    {%- for s in ("2023-24", "2024-25", "2025-26") %}{% set v = rec[s].oracle %}<td class="num {{ 'ok' if v < 1 else 'bad' }}">{{ oracle_text.fmt(v) }}{{ rel_verdict(v) }}</td>{% endfor %}</tr>
@@ -512,7 +531,7 @@
 
 <div class="card" id="stack">
  <div class="uk-heading"><h2>Under the hood</h2></div>
- <div style="overflow-x:auto"><table class="mt-stack">
+ <div class="mt-scroll" tabindex="0" role="region" aria-label="Components and versions (scrolls)"><table class="mt-stack">
   <tr><th>Component</th><th>Role</th><th>Version</th></tr>
   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
       <td>Fitting suite</td>
@@ -612,8 +631,7 @@
  that cannot be rerun from it (docs/archive/RELEASE-1.0.md).</p>
  {% endcall %}
  {% call tips.fold("A newest week that reads 0, collapses, or was not reported", id="mt-newest", cls="mt-fold") %}
- <p>A newest week that reads 0, collapses, or was not reported
- is the forecaster's decision, per state, made in Data issues on the
+ <p>It is the forecaster's decision, per state, made in Data issues on the
  Forecast tab and recorded with the run: what the Groundhog forecasts from
  when the week reads 0 (abstain, level, extend or blend), or setting the
  newest one or two weeks aside for both models, or leaving the state out.
@@ -638,9 +656,9 @@
  </ul>
  {% endcall %}
  {% call tips.fold("Two measured caveats", id="mt-sealcaveats", cls="mt-fold") %}
- <p>Two measured caveats (docs/archive/RELEASE-1.0.md): seven
- of 76 sealed weeks' vintages differ from what was public at the deadline,
- and sealed scores use unrounded forecasts (a third-decimal difference).</p>
+ <p>Seven of 76 sealed weeks' vintages differ from what was public at the
+ deadline, and sealed scores use unrounded forecasts (a third-decimal
+ difference); docs/archive/RELEASE-1.0.md has both.</p>
  {% endcall %}
  </div>
 </div>

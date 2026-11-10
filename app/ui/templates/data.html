@@ -85,7 +85,7 @@
    {{ tips.stat("Latest vintage", nw(latest_vintage), id="latest-vintage") }}
    {# the latest vintage's own numbers, read from the archived file #}
    {% if latest %}
-   {{ tips.stat("Jurisdictions", latest.locations, id="latest-locs") }}
+   {{ tips.stat("Locations", latest.locations, id="latest-locs") }}
    {{ tips.stat("Rows", "{:,}".format(latest.rows), id="latest-rows") }}
    {# only when it says something the Latest vintage tile does not #}
    {% if latest.newest_week != latest_vintage %}
@@ -167,7 +167,7 @@
   {{ tips.stat("Source", "hub archive", id="vb-source") }}
   {% endif %}
   {{ tips.stat("Reported rows", "{:,}".format(sel_summary.rows), id="vb-rows") }}
-  {{ tips.stat("Jurisdictions", sel_summary.locations, id="vb-locs") }}
+  {{ tips.stat("Locations", sel_summary.locations, id="vb-locs") }}
   {{ tips.stat("Weeks", nw(sel_summary.oldest_week) ~ ' to ' ~ nw(sel_summary.newest_week), id="vb-weeks") }}
  {% endcall %}
  {% endif %}
