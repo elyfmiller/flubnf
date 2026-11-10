@@ -542,8 +542,10 @@ def _one_series(header, norm, chosen, mapped, rows):
     if "text" in kinds.values():
         # the one other column, named as a value (cases, count, value):
         # a word in it is a value that is not a number, which the checks
-        # name, not a group under an unknown name
-        if len(others) == 1 and norm[others[0]] in ROLE_ALIASES["value"]:
+        # name, not a group under an unknown name. Not when a mapping
+        # named another column the value: that choice stands
+        if (len(others) == 1 and norm[others[0]] in ROLE_ALIASES["value"]
+                and "value" not in mapped):
             return others, []
         return None
     if "value" in mapped:

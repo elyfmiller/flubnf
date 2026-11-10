@@ -91,6 +91,32 @@ def test_a_dataset_delete_names_only_what_it_had():
         "Its 2 replays went with it."
 
 
+def test_a_dataset_delete_that_kept_its_only_workroot_says_so():
+    """Review of #88 (S3): the dataset's one run workroot could not be
+    deleted and it had no replays: the detail was " The rest stay under
+    Run workroots.", a leading space and the rest of nothing."""
+    class D:
+        name = "My counts"
+    msg, kind, detail = DU.deleted_message(D, 2_000, 0, 1, replays=0)
+    assert kind == "warn"
+    assert msg == "Deleted My counts, but 1 run workroot could not be deleted."
+    assert detail == "The run workroot stays under Run workroots."
+    assert DU.deleted_message(D, 2_000, 0, 2)[2] == \
+        "The 2 run workroots stay under Run workroots."
+    # replays went, no workroot did: "the rest" would be of the replays
+    assert DU.deleted_message(D, 2_000, 0, 1, replays=2)[2] == (
+        "Its 2 replays went with it. The run workroot stays under Run "
+        "workroots.")
+    # some went: the rest stay, as before
+    assert DU.deleted_message(D, 2_000, 2, 1, replays=1)[2] == (
+        "Its 1 replay and 2 run workroots went with it; the runs' ledger "
+        "rows are kept. The rest stay under Run workroots.")
+    for gone, kept, replays in ((0, 1, 0), (0, 3, 0), (0, 1, 1), (1, 1, 0),
+                                (0, 0, 0), (2, 0, 3)):
+        detail = DU.deleted_message(D, 1, gone, kept, replays=replays)[2]
+        assert detail == detail.strip() and "  " not in detail
+
+
 def test_the_failed_filter_and_find_cover_every_unfinished_run():
     assert ("['failed','error','partial','stopped','interrupted']"
             ".indexOf(st)<0") in PAGE
