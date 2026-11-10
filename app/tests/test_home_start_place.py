@@ -1,4 +1,4 @@
-"""Home's Start here on a fresh install, and its Data step against doctor
+"""Home's Start here on a fresh install, and its Data step against the hub
 (review 3 of the usability work, P2-9 and P2-10), tested on the page the
 server renders, its markup parsed (served_dom.tree).
 
@@ -6,10 +6,14 @@ server renders, its markup parsed (served_dom.tree).
     puts Start here where the reload will have it, before the map, its
     steps plain until that reload reads the data. With a stored run the
     card sits beside the record on both paints, as the weekly view has it.
-  * P2-10: Home's Data step reads done only where both tests of a usable
-    hub clone pass: the run gate's (data.hub_missing) and doctor's
-    (flubnf.doctor.HUB_DATA_DIRS). A clone with auxiliary-data and no
-    target-data, which doctor FAILs, is the step to take, not done.
+  * P2-10, as the re-check of #93 at 099907c (findings 6 and 7) changed
+    it: Home's Data step reads done where a run can read the hub, that is
+    where the run gate (data.hub_missing) lets a run through and the hub
+    holds auxiliary-data/locations.csv. Doctor's test (flubnf.doctor.
+    HUB_DATA_DIRS) no longer decides it: a clone with auxiliary-data, its
+    archive and locations.csv and no target-data forecasts, so it reads
+    done, although doctor FAILs it. test_home_data_step_hub.py tests the
+    week and the reason against real hub data.
 """
 from __future__ import annotations
 
@@ -100,18 +104,24 @@ def test_a_stored_run_keeps_start_here_beside_the_record_on_both_paints(
     assert empty.calls == 0
 
 
-# ----------------------------------------- P2-10: the Data step and doctor
+# ----------------- P2-10 as the re-check at 099907c left it: the Data step
 
-#: hub states by the folders the clone holds (None: no folder at all)
+ARCHIVE = "auxiliary-data/target-data-archive"
+LOCS = "auxiliary-data/locations.csv"
+
+#: hub states by what the clone holds (None: no folder at all); a path
+#: ending in .csv is a file, any other a folder
 HUBS = {
     "no folder": None,
     "empty clone": [],
     "auxiliary-data only": ["auxiliary-data"],
-    "auxiliary-data and its archive, no target-data":
-        ["auxiliary-data/target-data-archive"],
+    "auxiliary-data and its archive, no locations.csv": [ARCHIVE],
+    "auxiliary-data, its archive and locations.csv, no target-data":
+        [ARCHIVE, LOCS],
     "target-data only": ["target-data"],
-    "target-data and the archive":
-        ["target-data", "auxiliary-data/target-data-archive"],
+    "target-data and the archive, no locations.csv": ["target-data", ARCHIVE],
+    "target-data, the archive and locations.csv":
+        ["target-data", ARCHIVE, LOCS],
 }
 
 
@@ -122,13 +132,20 @@ def hub(tmp_path, monkeypatch, empty, hub_check_real):
     archive and the shipped snapshots can hold one either way)."""
     path = tmp_path / "hub"
 
-    def make(dirs):
-        if dirs is not None:
+    def make(items):
+        if items is not None:
             path.mkdir()
-            for d in dirs:
-                (path / d).mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(core_data, "HUB", path)
-        monkeypatch.setattr(fs, "HUB", path)
+            for rel in items:
+                p = path / rel
+                if rel.endswith(".csv"):
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text("location,location_name,population\n")
+                else:
+                    p.mkdir(parents=True, exist_ok=True)
+        for mod in (core_data, fs):
+            monkeypatch.setattr(mod, "HUB", path)
+            monkeypatch.setattr(mod, "ARCHIVE", path / ARCHIVE)
+            monkeypatch.setattr(mod, "LOCATIONS", path / LOCS)
         return path
     return make
 
@@ -138,32 +155,32 @@ def _data_step(p):
 
 
 @pytest.mark.parametrize("name", list(HUBS))
-def test_the_data_step_is_done_only_where_doctor_passes_the_hub(
+def test_the_data_step_is_done_only_where_a_run_can_read_the_hub(
         hub, empty, name):
-    hub(HUBS[name])
-    check = doctor._check_hub()
-    usable = check.status != doctor.Status.FAIL
+    """Done exactly where the run gate (data.hub_missing) lets a run
+    through and the hub holds the locations table the run reads."""
+    h = hub(HUBS[name])
+    usable = not core_data.hub_missing() and (h / LOCS).is_file()
     step = _data_step(_get())
     if usable:
-        assert step == ("done", None, f"through {WEEK}"), (name, check)
+        assert step == ("done", None, f"through {WEEK}"), name
     else:
-        assert step == ("current", "step", ""), (name, check)
-    # the run gate refuses no hub doctor passes
-    assert not (usable and core_data.hub_missing()), name
+        assert step == ("current", "step", ""), name
 
 
-def test_a_clone_with_auxiliary_data_and_no_target_data_is_not_done(
-        hub, empty):
-    """The review's state: a sparse clone widened by hand to
-    auxiliary-data. The run gate lets it through, doctor FAILs it, and
-    Home's Data step is the step to take, the Forecast step after it."""
-    h = hub(["auxiliary-data/target-data-archive"])
+def test_a_clone_with_auxiliary_data_and_no_target_data_is_done(hub, empty):
+    """The re-check's state (finding 6): a sparse clone widened by hand
+    to auxiliary-data, its archive and locations.csv. The run gate lets
+    it through and a run reads the archive, so Data is done and Forecast
+    is the step to take. Doctor still FAILs the clone for its missing
+    target-data."""
+    hub([ARCHIVE, LOCS])
     assert core_data.hub_missing() == ""
     check = doctor._check_hub()
     assert check.status == doctor.Status.FAIL
     assert "lacks target-data" in check.detail
-    assert H._hub_unusable() == f"{h} lacks target-data"
+    assert H._start_data() == (WEEK, "")
     assert [s[2:5] for s in _steps(_get())] == [
-        ("current", "step", ""),
-        ("todo", None, "Groundhog only on this computer"),
+        ("done", None, f"through {WEEK}"),
+        ("current", "step", "Groundhog only on this computer"),
         ("todo", None, "")]

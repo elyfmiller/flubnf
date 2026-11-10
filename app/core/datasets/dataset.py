@@ -5,6 +5,7 @@ delete."""
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -72,17 +73,62 @@ _SNAP_LOCK = threading.Lock()
 _SNAPS: "OrderedDict[tuple, tuple]" = OrderedDict()
 
 
-#: st_ctime_ns is in the key on POSIX only, where a rewrite in place with
-#: the size, mtime and inode put back still moves it. On Windows os.stat
-#: gives the creation time and os.fstat (Python 3.12 on) the last change,
-#: so a lookup's key (stat) would never meet the stored key (fstat) and a
-#: snapshot would be parsed again on every call.
+#: On POSIX the key holds st_ctime_ns from os.stat, which a rewrite in
+#: place with the size, mtime and inode put back still moves. On Windows
+#: os.stat gives the creation time and os.fstat (Python 3.12 on) the last
+#: change, so a lookup by stat would never meet the stored key (fstat).
+#: There both keys come from an opened file instead (_handle_key): fstat's
+#: ctime, which moves on a rewrite from Python 3.12 on, and a digest of the
+#: file's first and last _ENDS_BYTES, which moves on any rewrite that
+#: changes them. The limit left: on Windows before Python 3.12, a rewrite
+#: in place at the same size, with its mtime put back, that changes only
+#: the middle of a file longer than twice _ENDS_BYTES.
 _CTIME_IN_KEY = os.name != "nt"
+#: bytes read from each end of a snapshot for its key on Windows
+_ENDS_BYTES = 32 * 1024
 
 
-def _snap_key(path: str, st: os.stat_result) -> tuple:
+def _snap_key(path: str, st: os.stat_result, ends: bytes = b"") -> tuple:
     key = (path, st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev)
-    return key + (st.st_ctime_ns,) if _CTIME_IN_KEY else key
+    return key + (st.st_ctime_ns,) if _CTIME_IN_KEY else key + (
+        st.st_ctime_ns, ends)
+
+
+def _read_at(fd: int, pos: int, n: int) -> bytes:
+    os.lseek(fd, pos, os.SEEK_SET)
+    out = b""
+    while len(out) < n:
+        got = os.read(fd, n - len(out))
+        if not got:
+            break
+        out += got
+    return out
+
+
+def _handle_key(path: str, fd: int) -> tuple:
+    """The key of the file open on `fd` (see _CTIME_IN_KEY). On Windows it
+    reads the file's ends and leaves the position at 0."""
+    st = os.fstat(fd)
+    if _CTIME_IN_KEY:
+        return _snap_key(path, st)
+    n = _ENDS_BYTES
+    h = hashlib.blake2b(_read_at(fd, 0, n), digest_size=16)
+    if st.st_size > n:
+        h.update(_read_at(fd, max(n, st.st_size - n), n))
+    os.lseek(fd, 0, os.SEEK_SET)
+    return _snap_key(path, st, h.digest())
+
+
+def _lookup_key(path: str) -> tuple:
+    """The key a lookup finds an entry by: from os.stat on POSIX, from the
+    opened file on Windows, as the stored key is (_handle_key)."""
+    if _CTIME_IN_KEY:
+        return _snap_key(path, os.stat(path))
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    try:
+        return _handle_key(path, fd)
+    finally:
+        os.close(fd)
 
 
 #: the columns weeks() and series() read
@@ -173,15 +219,17 @@ def _keyed_entry(path) -> tuple:
     """(the file version's key, _entry(path)): the version is what a
     held Dataset pins its final snapshot to (Dataset._final)."""
     path = os.path.abspath(path)
-    key = _snap_key(path, os.stat(path))
+    key = _lookup_key(path)
     with _SNAP_LOCK:
         hit = _SNAPS.get(key)
         if hit is not None:
             _SNAPS.move_to_end(key)
             return key, hit
     with open(path, newline="", encoding="utf-8") as fh:
-        # keyed on the file this handle read, not on the earlier stat
-        key = _snap_key(path, os.fstat(fh.fileno()))
+        # keyed on the file this handle read, not on the earlier lookup
+        # (nothing read through fh yet: on Windows the key reads the
+        # file's ends under it and puts the position back at 0)
+        key = _handle_key(path, fh.fileno())
         entry = _parse_snapshot(fh)
     with _SNAP_LOCK:
         for k in [k for k in _SNAPS if k[0] == path and k != key]:

@@ -287,6 +287,30 @@ def _hub_setup_step(platform: str | None = None) -> str:
     return f"Run {script}: it makes or widens the sparse clone, about 150 MB."
 
 
+def _is_clone(hub: Path) -> bool:
+    """Whether the hub folder is a git clone of its own: git takes it as
+    its top level. Its .git can be a file (a worktree or a submodule); an
+    empty or broken .git folder is no clone, and git then answers for any
+    repository around the folder. When git cannot be asked, a .git there
+    counts, as setup.sh counts it."""
+    if not (hub / ".git").exists():
+        return False
+    try:
+        r = subprocess.run(["git", "-C", str(hub), "rev-parse",
+                            "--show-toplevel"], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace",
+                           timeout=15, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    top = r.stdout.strip()
+    if r.returncode != 0 or not top:
+        return False
+    try:
+        return Path(top).samefile(hub)
+    except OSError:
+        return False
+
+
 def _check_hub(platform: str | None = None) -> CheckResult:
     """The FluSight hub clone (settings.HUB, FLUBNF_HUB), tested by its
     folders, not by the clone existing. Without truth and its vintages
@@ -303,7 +327,7 @@ def _check_hub(platform: str | None = None) -> CheckResult:
     missing = [d for d in HUB_DATA_DIRS if not (hub / d).is_dir()]
     if missing:
         lacks = f"{hub} lacks {', '.join(missing)}"
-        if (hub / ".git").exists():
+        if _is_clone(hub):
             # git's own step as well: it widens a sparse clone on any
             # system, whatever the setup script there looks for. Alone on
             # the last line: a pasted "target-data," names another folder.

@@ -477,6 +477,7 @@ def home(request: Request):
     # off the cold paint (the data read imports pandas): plain until then
     first = rid is None if pending else not ob["outlook_date"]
     states = first and not pending
+    newest, data_why = _start_data() if states else ("", "")
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
@@ -510,42 +511,48 @@ def home(request: Request):
         # the cold paint, its steps' states: the Data step's caption and
         # the Forecast step's (home.html start_here)
         "start_first": first, "start_states": states,
-        "start_newest": _start_newest() if states else "",
+        "start_newest": newest, "start_data_why": data_why,
         "start_pf_state": _start_pf_state() if states else ""})
 
 
-def _hub_unusable() -> str:
-    """Why the FluSight hub clone cannot feed a forecast, in plain words;
-    "" when it can. Both tests of a usable hub, so the Data step never
-    reads done where either says no: the run gate's (data.hub_missing, the
-    folder and its auxiliary-data) and doctor's (flubnf.doctor.
-    HUB_DATA_DIRS: target-data and the vintage archive, each a folder in
-    the clone). A folder that is not there at all is hub_missing's to
-    report: it answers first."""
-    why = state.data_mod.hub_missing()
-    if why:
-        return why
-    from flubnf.doctor import HUB_DATA_DIRS
-    hub = Path(state.data_mod.HUB)
-    if not hub.is_dir():
-        return ""
-    lacks = [d for d in HUB_DATA_DIRS if not (hub / d).is_dir()]
-    return f"{hub} lacks {', '.join(lacks)}" if lacks else ""
+def _sentence(words: str) -> str:
+    words = words.strip()
+    return words[:1].upper() + words[1:] + ("" if words.endswith(".") else ".")
 
 
-def _start_newest() -> str:
-    """The newest week the hub data holds (data.newest_week), for the
-    first-run Data step's "through <week>"; "" when the hub clone is not
-    usable (_hub_unusable: a run is then refused, or doctor fails it,
-    whatever week the shipped snapshots or the archive hold) or when it
-    cannot be read. It imports pandas: never on the cold paint, which
-    exists to avoid that import."""
+def _start_data() -> tuple:
+    """(week, why) for the first-run Data step. When a forecast can run
+    on the hub, week is the newest week the hub's own data holds (its
+    live target file or its archive), for "through <week>", and why is
+    "". Otherwise week is "" and why says what stops it, in a plain
+    sentence: the run gate's own reason (data.hub_missing, the test a
+    run must pass), no locations table in the hub (a run that passes the
+    gate reads it, and fails), or no week in the hub at all.
+    data.newest_week also counts the shipped snapshots, which every copy
+    holds: a week found only there is not the hub's. A hub folder that is
+    not there at all is hub_missing's to report. It imports pandas: never
+    on the cold paint, which exists to avoid that import."""
+    d = state.data_mod
     try:
-        if _hub_unusable():
-            return ""
-        return state.data_mod.newest_week() or ""
-    except Exception:
-        return ""
+        why = d.hub_missing()
+        if why:
+            return "", _sentence(why)
+        hub = Path(d.HUB)
+        if hub.is_dir() and not Path(d.LOCATIONS).is_file():
+            return "", (f"The hub folder {hub} has no "
+                        "auxiliary-data/locations.csv.")
+        week = d.newest_week()
+        if week and week in d.shipped_weeks():
+            live, archive = d.live_newest_week(), d.archive_vintages()
+            if week != live and week not in archive:
+                week = max([w for w in (live, archive[-1] if archive
+                                        else None) if w], default=None)
+        if not week:
+            return "", f"The hub folder {hub} holds no weeks of data yet."
+        return week, ""
+    except Exception as e:
+        return "", _sentence(f"the hub data could not be read: "
+                             f"{e or type(e).__name__}")
 
 
 def _start_pf_state() -> str:

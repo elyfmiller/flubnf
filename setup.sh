@@ -194,7 +194,17 @@ missing_hub_dirs() {
   for _d in $HUB_NEEDS; do [ -d "$HUB/$_d" ] || _m="$_m $_d"; done
   printf '%s' "$_m"
 }
-if [ -d "$HUB/.git" ]; then
+# A clone is a folder git takes as its own top level. Its .git can be a
+# file (a worktree or a submodule); an empty or broken .git folder is no
+# clone, and git then answers for any repository around the folder.
+# Without git to ask, a .git there counts, as before.
+hub_is_clone() {
+  [ -e "$HUB/.git" ] || return 1
+  command -v git >/dev/null 2>&1 || return 0
+  _top="$(git -C "$HUB" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [ -n "$_top" ] && [ "$_top" -ef "$HUB" ]
+}
+if hub_is_clone; then
   ok "hub present: $HUB"
   # A by-hand `clone --sparse` holds only the root. Widen with `add`: it is
   # idempotent and fails harmlessly on a full clone, where `set` would prune
@@ -217,7 +227,7 @@ if [ -d "$HUB/.git" ]; then
   fi
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
-elif [ ! -e "$HUB/.git" ] && [ -e "$HUB" ] \
+elif [ -e "$HUB" ] \
      && { [ ! -d "$HUB" ] || [ -n "$(ls -A "$HUB" 2>/dev/null)" ]; }; then
   # Something there that is not a clone: git clone would fail on it, and
   # git -C would reach any repository around it.

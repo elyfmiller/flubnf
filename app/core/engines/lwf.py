@@ -204,26 +204,36 @@ def engine_current() -> bool:
     return lock_check()[0]
 
 
-#: lock checks running for a page: key -> {"done": Event, "result"}
+#: lock checks running for a page: key -> {"done": Event, "result", "at":
+#: when the answer came}. A page that stops waiting leaves its slot for the
+#: next look, which takes the answer only within CHECK_TTL_S of it, as
+#: lock_check's own store does.
 _PENDING: dict = {}
 
 
 def lock_check_soon(wait: float) -> tuple[bool, str] | None:
     """lock_check for a page: the answer when it is ready within `wait`
     seconds, None while it is still running (the page says nothing yet,
-    and a run's own preflight waits for it)."""
+    and a run's own preflight waits for it). An answer left by a page
+    that stopped waiting is dropped once CHECK_TTL_S old, and asked
+    again."""
     import threading
     py = python()
     key = (str(py), _file_key(py), _file_key(lock_path()))
     slot = _PENDING.get(key)
+    if (slot is not None and slot["done"].is_set()
+            and time.time() - slot["at"] >= CHECK_TTL_S):
+        _PENDING.pop(key, None)
+        slot = None
     if slot is None:
-        slot = {"done": threading.Event(), "result": None}
+        slot = {"done": threading.Event(), "result": None, "at": 0.0}
         _PENDING[key] = slot
 
         def _go():
             try:
                 slot["result"] = lock_check()
             finally:
+                slot["at"] = time.time()
                 slot["done"].set()
         threading.Thread(target=_go, daemon=True,
                          name="flubnf-public-lock-check").start()

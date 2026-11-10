@@ -11,6 +11,10 @@ text holds it as one line.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+
 import pytest
 from typer.testing import CliRunner
 
@@ -20,10 +24,24 @@ from flubnf.cli import app
 
 @pytest.fixture
 def hub_clone_lacking_data(tmp_path, monkeypatch):
-    """A hub folder with its own .git and no data folders: doctor's git
-    step (no git is run here)."""
+    """A hub folder that is a git clone of its own (git init, nothing
+    fetched) with no data folders: doctor's git step. An empty .git
+    folder is no clone (doctor._is_clone); with no git to ask, doctor
+    counts a .git there."""
     hub = tmp_path / "a folder with a long name" / "FluSight-forecast-hub"
-    (hub / ".git").mkdir(parents=True)
+    hub.mkdir(parents=True)
+    for k in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(k)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    git = shutil.which("git")
+    if git:
+        subprocess.run([git, "init", "-q", str(hub)], check=True,
+                       capture_output=True, stdin=subprocess.DEVNULL,
+                       timeout=60)
+    else:
+        (hub / ".git").mkdir()
     monkeypatch.setattr(settings, "HUB", hub)
     return hub
 
