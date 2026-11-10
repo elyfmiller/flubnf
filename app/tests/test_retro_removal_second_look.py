@@ -10,8 +10,8 @@
   * The mark did not refuse a second remover: two deletes of one tree at
     once (a double click, another tab) both went ahead, and the loser said
     "Could not delete" though the tree was gone. A second remover is now
-    refused in words ("already being deleted"), nothing removed by it, and
-    the first goes through whole.
+    refused in words ("already being deleted or replaced"), nothing
+    removed by it, and the first goes through whole.
 
 The races are made deterministic as in test_retro_removal_import_resume:
 the first delete pauses part way; the claim is posted in the gap.
@@ -208,7 +208,7 @@ def _tree(world, which: str):
         post = ("/storage/delete", {"kind": "retro-season", "ident": SEASON,
                                     "confirm": SEASON})
         return root, post, post, (f"Not deleted: {SEASON} is already being "
-                                  "deleted.")
+                                  "deleted or replaced.")
     _season_tree(rr, SEASON)
     arch = retro.archive_run(rr, SEASON, stamp=STAMP)
     storage = ("/storage/delete", {"kind": "retro-archive",
@@ -218,13 +218,14 @@ def _tree(world, which: str):
     if which == "archive-twice":
         return arch, own, own, (
             f"Not deleted: the archived {SEASON} run from "
-            f"{retro.stamp_human(STAMP)} is already being deleted.")
+            f"{retro.stamp_human(STAMP)} is already being deleted or "
+            "replaced.")
     if which == "archive-then-storage":
         return arch, own, storage, (f"Not deleted: {arch.name} is already "
-                                    "being deleted.")
+                                    "being deleted or replaced.")
     return arch, storage, own, (
         f"Not deleted: the archived {SEASON} run from "
-        f"{retro.stamp_human(STAMP)} is already being deleted.")
+        f"{retro.stamp_human(STAMP)} is already being deleted or replaced.")
 
 
 @pytest.mark.parametrize("which", ["storage-twice", "archive-twice",
@@ -295,14 +296,15 @@ def test_a_replace_import_during_a_delete_of_its_run_is_refused(
                         data={"path": str(bundle), "replace": "1"},
                         follow_redirects=False)
         seen = _flash()
-        extracted = list(world["rr"].glob("*.importing"))
+        extracted = list(world["rr"].glob("*.importing*"))
         _clear_flash()
     finally:
         go.set()
         t.join(30)
     assert r.headers["location"] == "/retro"
     assert seen == (f"Not imported: {SEASON} from this bundle is imported "
-                    f"as {stamp}, and that run is already being deleted; "
+                    f"as {stamp}, and that run is already being deleted or "
+                    "replaced; "
                     "nothing was replaced. Import it again once the delete "
                     "is done."), seen
     assert extracted == []
@@ -322,9 +324,10 @@ def test_the_mark_refuses_a_second_holder_by_any_name(world):
     with RP._removing(root) as first:
         assert first == ""
         with RP._removing(root) as second:
-            assert second == RP._ALREADY_REMOVING == "already being deleted"
+            assert second == RP._ALREADY_REMOVING == \
+                "already being deleted or replaced"
         with RP._removing(other) as third:
-            assert third == "already being deleted"
+            assert third == "already being deleted or replaced"
         assert RP._being_removed(root)          # still held by the first
     assert not RP._REMOVING
     with RP._removing(root) as again:

@@ -176,7 +176,7 @@ def test_a_replace_refuses_while_a_finalize_runs_on_the_import(
         "Try again in a minute.")
     assert ui_state._status.get("flash_kind") == "warn"
     assert _snapshot(dst) == before                    # nothing removed
-    assert not list(world["rr"].glob("*.importing"))   # nothing extracted
+    assert not list(world["rr"].glob("*.importing*"))  # nothing extracted
     assert not RP._REMOVING                            # the mark is lifted
 
     # the finalize done, the Replace goes ahead

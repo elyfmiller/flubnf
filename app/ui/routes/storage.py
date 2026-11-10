@@ -598,8 +598,8 @@ def storage_delete(request: Request, kind: str = Form(""),
             busy = held.enter_context(retro_prep._removing(p))
             replaying = "" if busy else _replaying_why(kind, ident)
         if busy == retro_prep._ALREADY_REMOVING:
-            # a second delete at once (a double click, another tab): the
-            # first goes on and says so
+            # a second delete at once (a double click, another tab), or
+            # an import replacing the run: the first goes on and says so
             _flash(f"Not deleted: {ident} is {busy}.", "warn",
                    detail="Nothing else changed.")
             return _back(request, "/storage")

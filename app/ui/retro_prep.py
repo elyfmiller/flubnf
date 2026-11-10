@@ -162,8 +162,9 @@ _GONE_WHY = "the run is no longer on disk; its results are not prepared"
 #: what _removing yields while another delete, move or Replace import
 #: already holds the tree: the caller refuses in these words, nothing
 #: removed (two removers of one tree cannot both succeed; the loser's
-#: delete failed on the tree the winner had taken)
-_ALREADY_REMOVING = "already being deleted"
+#: delete failed on the tree the winner had taken). A Run form's discard
+#: or archive, whose tree is the live season, says its own sentence
+_ALREADY_REMOVING = "already being deleted or replaced"
 
 
 def _tree_keys(root: Path) -> set:
@@ -188,9 +189,10 @@ def _removing(root: Path):
     """Around a season tree's delete or move (Start's discard and archive,
     an archived run's delete, Storage's delete, an import's Replace). The
     tree is marked first, so from here on no finalize job starts on it,
-    then yields _ALREADY_REMOVING ("already being deleted") while another
-    such block holds it, under its name or the same folder named another
-    way (two deletes at once: the caller refuses, nothing removed);
+    then yields _ALREADY_REMOVING ("already being deleted or replaced")
+    while another such block holds it, under its name or the same folder
+    named another way (two deletes at once: the caller refuses, nothing
+    removed);
     "results" while a finalize still runs on it (it would go on writing
     into the half removed tree: the caller refuses, nothing removed); or
     "" when the caller may remove or move it. The mark is lifted when the

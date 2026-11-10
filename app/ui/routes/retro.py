@@ -298,7 +298,8 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     # page starts a finalize on it from here on (retro_prep._removing)
     with retro_prep._removing(p) as busy:
         if busy == retro_prep._ALREADY_REMOVING:
-            # a second delete at once: the first goes on and says so
+            # a second delete at once, or an import replacing the run:
+            # the first goes on and says so
             _flash(f"Not deleted: {what} is {busy}.", "warn",
                    detail="Nothing else changed.")
             return _back(request, "/retro")
@@ -781,6 +782,14 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         # _removing; leaving `held` lifts the mark)
         busy = (held.enter_context(retro_prep._removing(live))
                 if mode in ("discard", "archive") and existing else "")
+        if busy == retro_prep._ALREADY_REMOVING:
+            # another delete or move holds the season (the look above
+            # refuses it first; this answer is never put into the
+            # sentence below)
+            return _refused(
+                f"Not started: the {season} results are being deleted.",
+                "Nothing was started. Start the replay again once the "
+                "delete is done.")
         if busy:
             # its results: a delete or a move while they are written could
             # fail half way
@@ -930,7 +939,11 @@ async def retro_import(request: Request):
         # the client's file name is never used as a path
         d = _exports_dir()
         d.mkdir(parents=True, exist_ok=True)
-        tmp = d / f"incoming-{os.getpid()}-{int(time.time() * 1000)}.zip"
+        # pid, clock and a random part: two uploads in one millisecond
+        # never share a file
+        import secrets
+        tmp = d / (f"incoming-{os.getpid()}-{int(time.time() * 1000)}-"
+                   f"{secrets.token_hex(4)}.zip")
         try:
             with open(tmp, "wb") as out:
                 seen = 0

@@ -141,7 +141,7 @@ def test_two_imports_of_one_bundle_at_once_give_one_whole_tree(
                            f"as {world['stamp']}.")
     assert waiting, "the second import ran alongside the first"
     assert (dst / rb.IMPORTED_MARK).is_file()
-    assert not list(world["rr"].glob("*.importing"))
+    assert not list(world["rr"].glob("*.importing*"))
 
 
 def test_two_replace_imports_at_once_give_one_whole_tree(world, monkeypatch):
@@ -156,7 +156,7 @@ def test_two_replace_imports_at_once_give_one_whole_tree(world, monkeypatch):
     assert isinstance(second, rb.ImportResult), second
     assert waiting, "the second import ran alongside the first"
     assert _files(world["dst"]) == world["reference"]
-    assert not list(world["rr"].glob("*.importing"))
+    assert not list(world["rr"].glob("*.importing*"))
     assert not RP._REMOVING
 
 
@@ -187,7 +187,7 @@ def test_a_tree_that_appears_meanwhile_is_not_deleted_without_replace(
     assert str(out["r"]) == (f"{SEASON} from this bundle was already "
                              f"imported as {world['stamp']}.")
     assert sorted(p.name for p in dst.iterdir()) == ["theirs.txt"]
-    assert not list(world["rr"].glob("*.importing"))
+    assert not list(world["rr"].glob("*.importing*"))
 
 
 def test_a_double_click_on_import_says_imported_once(world, monkeypatch):

@@ -26,11 +26,13 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import threading
 import time
 import zipfile
+import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,6 +53,11 @@ MAX_RATIO = 100
 
 _SEASON_RE = re.compile(r"\d{4}-\d{2}")
 _CHUNK = 1024 * 1024
+
+#: what reading a member whose compressed bytes are damaged raises (a bad
+#: CRC or header, a corrupt deflate stream, data that ends early); refused
+#: as a damaged bundle, never a raw error
+_UNREADABLE = (zipfile.BadZipFile, zlib.error, EOFError)
 
 
 class BundleError(ValueError):
@@ -257,7 +264,13 @@ def inspect_bundle(path: Path, name: str = "") -> dict:
                                       f"{i.file_size // max(1, i.compress_size)}x "
                                       "inflation; refused.")
             try:
-                manifest = json.loads(z.read(MANIFEST).decode("utf-8"))
+                raw = z.read(MANIFEST)
+            except _UNREADABLE:
+                raise BundleError(f"{name}: {MANIFEST} could not be "
+                                  "unpacked; the bundle is damaged or "
+                                  "altered.") from None
+            try:
+                manifest = json.loads(raw.decode("utf-8"))
             except (ValueError, UnicodeDecodeError) as e:
                 raise BundleError(f"{name}: {MANIFEST} is not valid "
                                   f"JSON ({e}).") from None
@@ -376,6 +389,122 @@ def _import_lock(dst: Path):
                 _IMPORT_LOCKS.pop(key, None)
 
 
+#: an import's temp tree is <dst>.importing-<pid>-<random>, its own: two
+#: processes importing one bundle (a terminal `flubnf retro import` and the
+#: console) once shared <dst>.importing, each deleting the other's work, so
+#: one said "Imported" over a tree with files missing. <dst>.importing
+#: alone is an older build's name
+_TEMP_RE = re.compile(r"\.importing(?:-(\d+)-[0-9a-f]+)?")
+
+#: a temp tree nothing has written for this long is a leftover, whatever
+#: its process (a pid can be reused)
+STALE_TEMP_S = 3600.0
+
+
+def _temp_tree(dst: Path) -> Path:
+    """A new, empty temp tree beside `dst` for this call alone (the retro
+    root made when it is not there yet, as an import always did)."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(8):
+        tmp = dst.with_name(f"{dst.name}.importing-{os.getpid()}-"
+                            f"{secrets.token_hex(4)}")
+        try:
+            tmp.mkdir()
+            return tmp
+        except FileExistsError:
+            continue
+    raise BundleError(f"could not make a temporary folder beside {dst}.")
+
+
+def _process_alive(pid: int) -> bool:
+    """Whether `pid` is a live process on this machine (never signals it;
+    Windows asks without terminating). True when it cannot be told: the
+    age rule then decides."""
+    try:
+        from flubnf.cli import _pid_alive
+    except Exception:                    # noqa: BLE001 - cannot tell
+        return True
+    return _pid_alive(pid)
+
+
+def _newest_mtime(p: Path) -> float:
+    """The newest modification time in a tree (links not followed): when
+    an import last wrote into it."""
+    try:
+        newest = os.lstat(p).st_mtime
+    except OSError:
+        return 0.0
+    if not os.path.isdir(p) or os.path.islink(p):
+        return newest
+    for top, dirs, names in os.walk(p, onerror=lambda e: None):
+        for n in dirs + names:
+            try:
+                newest = max(newest, os.lstat(os.path.join(top, n)).st_mtime)
+            except OSError:
+                pass
+    return newest
+
+
+def _remove_quietly(p: Path) -> None:
+    """Remove a temp tree (a link loses only itself); a failure leaves it
+    for a later sweep."""
+    try:
+        if p.is_symlink():
+            p.unlink()
+        else:
+            shutil.rmtree(p, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _sweep_stale_temps(dst: Path, now: float | None = None) -> list:
+    """Remove the temp trees earlier imports into `dst` left behind: one
+    whose process is no longer alive, and any (an older build's
+    <dst>.importing included) nothing has written for STALE_TEMP_S. Another
+    import's tree, still being written by a live process, is never
+    touched. Returns the paths removed."""
+    prefix = dst.name + ".importing"
+    try:
+        cands = [p for p in dst.parent.iterdir()
+                 if p.name.startswith(prefix)]
+    except OSError:
+        return []
+    now = time.time() if now is None else now
+    gone = []
+    for p in cands:
+        m = _TEMP_RE.fullmatch(p.name[len(dst.name):])
+        if m is None:
+            continue
+        pid = int(m.group(1)) if m.group(1) else 0
+        if ((pid and not _process_alive(pid))
+                or now - _newest_mtime(p) > STALE_TEMP_S):
+            _remove_quietly(p)
+            gone.append(p)
+    return gone
+
+
+def _clear_for_replace(dst: Path) -> None:
+    """A Replace's delete of the tree at `dst`. Another process's Replace
+    of the same bundle may be deleting it, or may already have put its own
+    tree there, at the same moment: what vanishes meanwhile is not an
+    error, and the delete goes on until nothing is left at the name (a
+    whole tree of this bundle then replaces whatever stood there)."""
+    from app.core import retro
+    for attempt in range(5):
+        try:
+            retro.delete_tree(dst)
+        except FileNotFoundError:
+            pass                       # removed by the other at this moment
+        except OSError:
+            # the other's tree landed at the name mid delete (a folder that
+            # is not empty): deleted in turn. A delete that keeps failing
+            # is raised
+            if attempt == 4 and (dst.exists() or dst.is_symlink()):
+                raise
+        if not (dst.exists() or dst.is_symlink()):
+            return
+
+
 def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                   build: str = "", name: str = "",
                   removing=None) -> ImportResult:
@@ -384,11 +513,17 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     of the same bundle ("already imported as <stamp>") unless `replace`.
     Two imports into one tree at once run one after the other (a lock per
     tree in this process), so the second, without `replace`, is refused
-    once the first is done; and the tree's name is looked at again just
+    once the first is done. Each call extracts into a temp tree of its own
+    (<dst>.importing-<pid>-<random>), so an import in another process (a
+    terminal's and the console's) never writes into or deletes this one's;
+    only leftovers are swept. The tree's name is looked at again just
     before the rename, so a tree that appeared meanwhile is never deleted
-    without `replace`.
-    Every member is verified against the manifest while extracting; the
-    tree appears under its final name only once complete. A week whose
+    without `replace`, and of two that reach the rename at once one
+    stands and the other is refused in words.
+    Every member is verified against the manifest while extracting (a
+    member whose compressed bytes are damaged is refused as a damaged
+    bundle); the tree appears under its final name only once complete,
+    every member present at its size. A week whose
     oracle.json travelled was exported with its quantiles only when
     current, so they are made newer than the samples extracted after
     them; a bundle without oracle.json lands as it always did (its
@@ -401,8 +536,8 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     before anything is extracted and held until the new tree is in place
     (no finalize starts on the tree meanwhile). It yields a word ("results")
     while a finalize still runs on the tree, or what is under way
-    ("already being deleted") while a delete holds it: refused, nothing
-    replaced."""
+    ("already being deleted or replaced") while a delete holds it:
+    refused, nothing replaced."""
     path, retro_root = Path(path), Path(retro_root)
     name = name or path.name           # an upload's own name (inspect_bundle)
     m = inspect_bundle(path, name)
@@ -447,18 +582,29 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                               f"{stamp}, and that run is {busy}; nothing "
                               "was replaced. Import it again once the "
                               "delete is done.")
-        tmp = dst.with_name(dst.name + ".importing")
-        if tmp.exists() or tmp.is_symlink():
-            retro.delete_tree(tmp)
+        # this call's own temp tree; another process's import of the same
+        # bundle has its own, and only leftovers are swept (a dead process's,
+        # or one nothing has written for an hour)
+        _sweep_stale_temps(dst)
+        tmp = _temp_tree(dst)
         files = m["files"]
         # scores.json last, so it is newer than every sample it scores (the
         # results page would otherwise rescore on the first visit)
         order = sorted(files, key=lambda f: (f == "scores.json", f))
         try:
-            with zipfile.ZipFile(path) as z:
-                for f in order:
-                    _extract_member(z, f, tmp / f, files[f]["sha256"],
-                                    files[f]["bytes"], name)
+            try:
+                with zipfile.ZipFile(path) as z:
+                    for f in order:
+                        try:
+                            _extract_member(z, f, tmp / f, files[f]["sha256"],
+                                            files[f]["bytes"], name)
+                        except _UNREADABLE:
+                            raise BundleError(
+                                f"{name}: {f} could not be unpacked; the "
+                                "bundle is damaged or altered.") from None
+            except zipfile.BadZipFile:
+                raise BundleError(f"{name} is not a readable zip "
+                                  "file.") from None
             for f in files:
                 parts = f.split("/")
                 if not (len(parts) == 3 and parts[0] == "weeks"
@@ -486,6 +632,19 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
             sf = tmp / "scores.json"
             if sf.is_file():
                 os.utime(sf)
+            # every member still there at its size: a temp tree that lost
+            # files while it was written never goes into place
+            for f in order:
+                try:
+                    whole = (tmp / f).stat().st_size == files[f]["bytes"]
+                except OSError:
+                    whole = False
+                if not whole:
+                    raise BundleError(f"{season} from this bundle: {f} was "
+                                      "removed from the import's temporary "
+                                      "folder while it was imported; "
+                                      "nothing was imported. Import it "
+                                      "again.")
             # looked at again: a tree that appeared while this one was
             # extracted (another process's import) is deleted only by a
             # Replace
@@ -493,8 +652,22 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                 if not replace:
                     raise BundleError(f"{season} from this bundle was "
                                       f"already imported as {stamp}.")
-                retro.delete_tree(dst)
-            os.rename(tmp, dst)
+                _clear_for_replace(dst)
+            try:
+                os.rename(tmp, dst)
+            except OSError:
+                # another process's import put its whole tree at the name
+                # between the look and the rename: it stands
+                if not (dst.exists() or dst.is_symlink()):
+                    raise
+                if not replace:
+                    raise BundleError(f"{season} from this bundle was "
+                                      f"already imported as {stamp}.") \
+                        from None
+                raise BundleError(f"{season} from this bundle was imported "
+                                  f"as {stamp} by another import that "
+                                  "finished at the same moment; that one "
+                                  "stands.") from None
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
