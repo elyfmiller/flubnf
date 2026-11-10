@@ -8,12 +8,14 @@
 {{ inline_static('tabs/retro.css') }}
 <script>window.FLUBNF_EMBED = {{ embed_json | safe }};</script>
 {# on paper the light theme takes over, whichever theme is on screen, and
-   the controls stay behind; tiles and table rows stay whole #}
+   the controls stay behind; tiles and table rows stay whole. The
+   Groundhog's colour too (--model-analogue, the light themes' dark
+   gold): a chart drawn before printing keeps the colours it drew with #}
 <style>
  @media print{
   :root,:root[data-theme]{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
    --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;--field-line:#DCD8E9;
-   --shadow:none}
+   --model-analogue:#806000;--shadow:none}
   body{background:#FFFFFF;color:#000F7E}
   .ok{color:#177245}.bad{color:#C42840}
   .cov-ok{color:#177245}.cov-low{color:#C42840}.cov-wide{color:#8A5A14}

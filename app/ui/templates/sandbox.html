@@ -53,7 +53,7 @@
       <optgroup label="Oracle SIHRS filter">
        <option value="shipped:sihrs" data-note="{{ shipped_note }}, for one hub location and week."{% if not (vintages and locations) %} disabled{% endif %}{% if _nf.start == "shipped:sihrs" %} selected{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (update data on the Data tab first){% endif %}</option>
        {% if vintages and locations %}<option value="template:sihrs" data-note="The production model with its per-state values kept as placeholders, ready to register for replays; data.exp holds one hub location's counts as of a week." data-name="{{ example_names.variant }}"{% if _nf.start == "template:sihrs" %} selected{% endif %}>Oracle SIHRS template, for replays</option>
-       {% endif %}{% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.name }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+       {% endif %}{% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}" data-note="{{ shipped_note }}, for one group of {{ d.label }} and week."{% if _nf.start == "shipped:dataset:" ~ d.id %} selected{% endif %}>Oracle SIHRS filter, dataset {{ d.label }}</option>{% endfor %}
       </optgroup>
      </select>
      <span class="sb-about"{% if not _about %} hidden{% endif %}>{% call tips.icon_tip("sbnew-about-t", "the chosen start", "info") %}<span id="sbnew-about">{{ _about }}</span>{% endcall %}</span>
@@ -418,10 +418,12 @@
   {% set since %}<span class="sb-since">from {{ diff.a }}</span>{% endset %}
   <div class="card sbdiff">{{ tips.heading("What changed", "sb-diff", after=since) }}
    {% if diff.settings or diff.data_source %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
-    {# numbers as the page writes them (10,000); data with no source
-       recorded (written in the editor, or a shipped example's) "as written" #}
-    {% macro sv(v) %}{{ "{:,}".format(v) if v is integer and v is not boolean else v }}{% endmacro %}
-    {% for s in diff.settings %}<tr><td>{{ s.label or s.key }}</td><td>{{ sv(s.a) }}</td><td>{{ sv(s.b) }}</td></tr>{% endfor %}
+    {# counts as the page writes them (10,000), the seed as the Run
+       settings card and its field write it (20240907); data with no
+       source recorded (written in the editor, or a shipped example's)
+       "as written" #}
+    {% macro sv(v, key) %}{{ "{:,}".format(v) if key in ("particles", "forecast_weeks", "n_obs") and v is integer and v is not boolean else v }}{% endmacro %}
+    {% for s in diff.settings %}<tr><td>{{ s.label or s.key }}</td><td>{{ sv(s.a, s.key) }}</td><td>{{ sv(s.b, s.key) }}</td></tr>{% endfor %}
     {% if diff.data_source %}{% set da, db = diff.data_source.a, diff.data_source.b %}<tr><td>data</td><td>{{ da.location or "as written" }} {{ da.asof or "" }}</td><td>{{ db.location or "as written" }} {{ db.asof or "" }}</td></tr>{% endif %}
    </tbody></table>{% endif %}
    {% set same = diff.files | selectattr("same") | list %}

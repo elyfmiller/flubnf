@@ -112,24 +112,56 @@ def dataset_choices() -> list:
     "population"}]}]; empty when there are none or the store is unreadable."""
     try:
         from app.core import datasets
+        stored = datasets.list_datasets()
         out = [{"id": d.id, "name": d.name, "kind": d.kind,
                 "pf": d.pf_eligible,
                 "groups": [{k: g.get(k) for k in ("name", "first", "last",
                                                   "population")}
                            for g in d.meta.get("groups", [])]}
-               for d in datasets.list_datasets()]
+               for d in stored]
+        uploaded = [str(d.meta.get("created") or "")[:10] for d in stored]
     except Exception:
         return []
-    # "label": the name, with its weeks when another dataset shares it (two
-    # uploads of cases.csv read as two identical "cases" otherwise)
+    _label_choices(out, uploaded)
+    return out
+
+
+def _label_choices(out: list, uploaded: list) -> None:
+    """Each choice's "label", which the Source list and the New model list
+    show: the name, with its weeks when another dataset shares it (two
+    uploads of cases.csv read as two identical "cases" otherwise); when
+    the weeks match too, the day it was uploaded, or where that is shared
+    or not recorded, the end of its id. `uploaded` is each one's upload
+    day (meta "created"), "" when none."""
     names = [d["name"] for d in out]
+    marks = []
     for d in out:
         firsts = [g["first"] for g in d["groups"] if g.get("first")]
         lasts = [g["last"] for g in d["groups"] if g.get("last")]
-        d["label"] = (f"{d['name']} ({min(firsts)} to {max(lasts)})"
-                      if names.count(d["name"]) > 1 and firsts and lasts
+        marks.append([f"{min(firsts)} to {max(lasts)}"]
+                     if names.count(d["name"]) > 1 and firsts and lasts
+                     else [])
+    keys = [(d["name"], tuple(m)) for d, m in zip(out, marks)]
+    for i, d in enumerate(out):
+        same = [j for j, k in enumerate(keys) if k == keys[i]]
+        if len(same) > 1:
+            days = [uploaded[j] for j in same]
+            if uploaded[i] and days.count(uploaded[i]) == 1:
+                marks[i].append(f"uploaded {uploaded[i]}")
+            else:
+                ids = [str(out[j]["id"]) for j in same]
+                marks[i].append(f"id ending {_id_end(str(d['id']), ids)}")
+        d["label"] = (f"{d['name']} ({', '.join(marks[i])})" if marks[i]
                       else d["name"])
-    return out
+
+
+def _id_end(ident: str, ids: list) -> str:
+    """The last 6 characters of `ident`, more when another of `ids` ends
+    the same way (stored ids are distinct, so the whole id at most)."""
+    for n in range(6, len(ident)):
+        if sum(1 for o in ids if o[-n:] == ident[-n:]) == 1:
+            return ident[-n:]
+    return ident
 
 
 class UploadRefused(SandboxError):
