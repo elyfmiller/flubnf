@@ -146,6 +146,44 @@ def test_citation_release_is_not_an_ensemble_release_or_older_than_the_package()
     assert str(cff["date-released"]) >= "2026-10-23", cff["date-released"]
 
 
+def test_the_version_is_the_same_in_every_file_that_states_it():
+    """flubnf/__init__.py keeps its version in lockstep with pyproject.toml,
+    CITATION.cff and FluBNF.app's Info.plist: one release, one number."""
+    import plistlib
+    module = re.search(r'^__version__ = "(.*)"$', _read("flubnf/__init__.py"), re.M)
+    info = plistlib.loads((REPO / "FluBNF.app/Contents/Info.plist").read_bytes())
+    stated = {
+        "pyproject.toml": tomllib.loads(_read("pyproject.toml"))["project"]["version"],
+        "flubnf/__init__.py": module and module.group(1),
+        "CITATION.cff": str(_citation()["version"]),
+        "CFBundleShortVersionString": info["CFBundleShortVersionString"],
+        "CFBundleVersion": info["CFBundleVersion"],
+    }
+    assert len(set(stated.values())) == 1, stated
+
+
+def test_citation_states_the_oracle_sihrs_record_and_its_engines():
+    """The Oracle SIHRS's figure is the B2 screen's (oracle_text.RECORD,
+    three seasons), its registered form against the plain Liu-West filter;
+    the method names both engines it ran on, the public one at the pinned
+    commit, and the weight its growth carries."""
+    oracle_text = pytest.importorskip("app.core.oracle_text")
+    lwf = pytest.importorskip("app.core.engines.lwf")
+    rec = oracle_text.RECORD["three"]
+    abstract = _flat(_citation()["abstract"])
+    assert (f"the Oracle SIHRS pools at {oracle_text.fmt(rec['oracle'])} against "
+            f"the plain Liu-West filter's {oracle_text.fmt(rec['filter'])} on "
+            f"{oracle_text.cells(rec['cells'])} cells under the earlier cell "
+            "rule") in abstract
+    assert "under its registered form (weight one half" in abstract
+    assert f"(lanl/PyBNF at {lwf.PUBLIC_ENGINE_COMMIT[:8]}, job type lwf)" in abstract
+    assert "the lab's private PyBNF fork on bngsim before it" in abstract
+    assert "at weight one quarter on the filter's growth" in abstract
+    for stale in ("half and half", "a fork of PyBNF on the bngsim engine",
+                  "plain filter's"):
+        assert stale not in abstract, stale
+
+
 def test_citation_references_the_public_engine_at_its_pinned_commit():
     lwf = pytest.importorskip("app.core.engines.lwf")
     refs = _citation().get("references") or []

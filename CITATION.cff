@@ -23,11 +23,14 @@ keywords:
 abstract: >-
   FluBNF forecasts weekly influenza hospital admissions for the 52 US
   jurisdictions of the CDC FluSight challenge. It submits two standalone
-  models, each under its own hub identity, and blends nothing. Oracle SIHRS
-  is mechanistic: an SIHRS compartmental model written in BNGL, fitted every
-  week by a Liu-West filter (a sequential particle filter) in a fork of
-  PyBNF on the bngsim engine, whose forecast growth is then combined
-  (geometric mean, half and half) with donor growth from earlier seasons at the same calendar week.
+  models, each under its own hub identity, and blends nothing. The Oracle
+  SIHRS fits an SIHRS compartment model each week with the Liu-West filter:
+  in public PyBNF (lanl/PyBNF at 8410f794, job type lwf) from the 2026-11-14
+  round, and in the lab's private PyBNF fork on bngsim before it. Each
+  forecast path's growth is then combined, by a weighted geometric mean,
+  with donor growth from earlier seasons at the same calendar week, at
+  weight one quarter on the filter's growth from the 2026-10-17 round (one
+  half before).
   Groundhog is empirical: the last observed count scaled by the empirical
   quantiles of growth ratios seen at the same epiweek in strictly earlier
   seasons, pooled across jurisdictions with the jurisdiction's own past
@@ -39,9 +42,12 @@ abstract: >-
   FluSight-baseline (ratio of WIS sums on shared cells), the Groundhog's
   shipped form, own-state weighting with size-matched donors, pools at
   0.642 (0.680, 0.627 and 0.645 by season) on 17,116 cells under
-  FluSight's cell rule. The Oracle SIHRS pools at 0.738 against the plain
-  filter's 0.819 on 15,300 cells under the earlier rule (truth and median
-  above 0). All
+  FluSight's cell rule. In vintage-true retrospective replays of 2023-24
+  to 2025-26 under its registered form (weight one half, the season-to-date
+  seed, no narrowing or cap, on the private fork), the Oracle SIHRS pools
+  at 0.738 against the plain Liu-West filter's 0.819 on 15,300 cells under
+  the earlier cell rule (truth and median above 0). The settings submitted
+  since October have not been scored on those cells. All
   scores are self-computed from the hub's archived vintage data and
   baseline files, and are retrospective replays rather than real-time
   submissions. The 1.0 and 1.1 releases shipped a
