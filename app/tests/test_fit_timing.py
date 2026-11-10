@@ -65,8 +65,12 @@ def test_every_finished_cell_has_its_seconds(engine, tmp_path):
     assert t["platform"] == sys.platform and t["cpus"] >= 1
     assert set(t["cells"]) == {"cell_0", "cell_1", "cell_2"}
     assert [t["cells"][f"cell_{i}"]["shard"] for i in range(3)] == [0, 1, 0]
+    # the runner (this Python) times a cell with time.monotonic, whose
+    # reading can lag by one tick: 15.6 ms on Windows before Python 3.13,
+    # so a 0.05 s sleep can read 0.047 there (well under 1 ms elsewhere)
+    tick = time.get_clock_info("monotonic").resolution
     for k, c in t["cells"].items():
-        assert 0.05 <= c["seconds"] < t["seconds"], k
+        assert round(0.05 - tick, 3) <= c["seconds"] < t["seconds"], k
         assert (c["n_obs"], c["particles"]) == (1, 100)
     assert t["cells"]["cell_2"]["weeks_dropped"] == 1
     assert t["predicted_seconds"] == pytest.approx(
@@ -255,7 +259,17 @@ def test_results_and_the_outcome_are_the_same_without_the_timing(
     assert (w1 / "results.json").read_bytes() == (w2 / "results.json").read_bytes()
 
     def same(o, w):
-        return json.loads(json.dumps(o).replace(str(w), "<W>"))
+        """o with its workroot written <W>, in the parsed strings: in
+        json.dumps text a Windows path's backslashes (and any non-ASCII
+        letter) are escaped, and str(w) would not be found there."""
+        if isinstance(o, str):
+            return o.replace(str(w), "<W>")
+        if isinstance(o, dict):
+            return {same(k, w): same(v, w) for k, v in o.items()}
+        if isinstance(o, list):
+            return [same(v, w) for v in o]
+        return o
+    assert "<W>" in json.dumps(same(out1, w1))      # its paths were there
     assert same(out1, w1) == same(out2, w2)
     assert row1["status"] == row2["status"] == "ok"
 
