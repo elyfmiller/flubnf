@@ -41,11 +41,19 @@ from app.core.sandbox_results import results, summary_rows
 
 
 TRAJ_ZIP_MAX = 2 * 1024 * 1024
+#: the engine's messages (pf_runner_*.err) keep their last this many bytes
+ERR_ZIP_MAX = 64 * 1024
 #: settings a comparison lists when they differ; engine is the one the run
 #: was fitted by (prepare records it; a run that records none ran on the
 #: private engine, as _run_setting reads it)
 RUN_SETTINGS = ("engine", "particles", "jitter", "forecast_weeks", "seed",
                 "cumulative", "suffix", "obs_col", "n_obs")
+#: each as the comparison names it
+RUN_SETTING_LABELS = {"engine": "engine", "particles": "particles",
+                      "jitter": "jitter", "forecast_weeks": "forecast weeks",
+                      "seed": "seed", "cumulative": "cumulative observable",
+                      "suffix": "data file name", "obs_col": "data column",
+                      "n_obs": "weeks of data"}
 
 
 def _run_setting(meta: dict, key: str):
@@ -100,7 +108,8 @@ def diff_runs(a: str, b: str, max_lines: int = 400) -> dict:
             lines = lines[:max_lines] + [f"... {len(lines) - max_lines} more lines"]
         files.append({"name": f, "diff": "\n".join(lines),
                       "same": fa[f] == fb[f]})
-    settings = [{"key": k, "a": _run_setting(ma, k), "b": _run_setting(mb, k)}
+    settings = [{"key": k, "label": RUN_SETTING_LABELS.get(k, k),
+                 "a": _run_setting(ma, k), "b": _run_setting(mb, k)}
                 for k in RUN_SETTINGS
                 if _run_setting(ma, k) != _run_setting(mb, k)]
     out = {"a": a, "b": b, "files": files, "settings": settings}
@@ -164,8 +173,9 @@ def run_zip(run_id: str) -> bytes:
     """A run as a zip under <run_id>/: meta.json, pf.conf (paths made
     relative), the three files, the engine's parameter sample and ESS
     record, summary.csv (the 10/50/90% trajectory per week beside the
-    observed count), the Oracle step's summary when one was made, and the
-    raw trajectory only when it is small (TRAJ_ZIP_MAX)."""
+    observed count), the engine's messages the page shows (pf_runner_*.err,
+    their last ERR_ZIP_MAX bytes), the Oracle step's summary when one was
+    made, and the raw trajectory only when it is small (TRAJ_ZIP_MAX)."""
     d, meta = _run_meta(run_id)
     cell = d / f"{meta['model']}_r0"
     files = run_files(run_id)
@@ -208,6 +218,13 @@ def run_zip(run_id: str) -> bytes:
     for p in sorted(runs.glob("*traj_noise*")) if runs.is_dir() else []:
         if p.stat().st_size <= _sb.TRAJ_ZIP_MAX:
             entries.append((f"{run_id}/{p.name}", p.read_bytes()))
+    for p in sorted(d.glob("pf_runner_*.err")):
+        try:
+            data = p.read_bytes()
+        except OSError:
+            continue
+        if data.strip():
+            entries.append((f"{run_id}/{p.name}", data[-ERR_ZIP_MAX:]))
     if (d / ORACLE_FILE).is_file():
         entries.append((f"{run_id}/{ORACLE_FILE}", (d / ORACLE_FILE).read_bytes()))
     return _zip(entries)

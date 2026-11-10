@@ -344,7 +344,7 @@
       if (ds && changed) rangeFromGroup();
     }
     // the range against the source, said beside the dates: Load is off
-    // (its "?" and one alert line say why) while the range is empty,
+    // (one alert line says why, and describes the button) while the range is empty,
     // backwards, or wholly outside the weeks the source holds. The
     // inputs carry no browser constraint (they ride in the editor's
     // form, whose Save a constraint would stop too); the server checks
@@ -376,8 +376,9 @@
     function rangeCheck() {
       if (!d0 || !d1 || !load) return;
       var r = rangeReason();
-      if (root.FluBNFUI) root.FluBNFUI.setReason(load, r || null);
-      else load.disabled = !!r;
+      load.disabled = !!r;
+      if (r) load.setAttribute('aria-describedby', 'sbfill-why');
+      else load.removeAttribute('aria-describedby');
       if (why) why.innerHTML = r ? alertHtml('warn', 'Load is off:', r, null) : '';
     }
     if (src) {
@@ -390,7 +391,7 @@
       e.addEventListener('input', rangeCheck);
       e.addEventListener('change', rangeCheck);
     });
-    // tips.js (setReason, the alert) runs after this deferred script
+    // tips.js (the alert) runs after this deferred script
     if (root.FluBNFUI) rangeCheck();
     else document.addEventListener('DOMContentLoaded', rangeCheck);
 

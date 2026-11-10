@@ -101,14 +101,27 @@ def _sandbox_redirect(model: str = "", run: str = "") -> RedirectResponse:
 def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
                          priors_conf: str) -> list:
     """Save the editor fields that were posted non-empty (a script or an
-    alias posting none blanks nothing); the names of the files saved."""
+    alias posting none blanks nothing) and differ from the file on disk
+    (an unchanged file keeps its time); the names of the files saved."""
+    d = sandbox_mod.MODELS / sandbox_mod.check_name(name)
+
+    def same(f: str, v: str) -> bool:
+        try:
+            return (d / f).read_text(encoding="utf-8") == v.replace("\r\n", "\n")
+        except (OSError, UnicodeDecodeError):
+            return False
     files = {f: v for f, v in (("model.bngl", model_bngl),
                                ("data.exp", data_exp),
                                ("priors.conf", priors_conf))
-             if (v or "").strip()}
+             if (v or "").strip() and not same(f, v)}
     if files:
         sandbox_mod.save_model(name, files)
     return sorted(files)
+
+
+def _weeks(n: int, what: str = "week") -> str:
+    """'1 week', '3 weeks'."""
+    return f"{n} {what}{'' if n == 1 else 's'}"
 
 
 # ------------------------------------------------------ the page (GET)
@@ -513,11 +526,11 @@ def _sandbox_fill_flash(info: dict) -> None:
     one = " (one series)" if info.get("one_series") else ""
     # the weeks loaded, not the range asked for
     wk = info.get("dates") or [info["start"], info["end"]]
-    msg = (f"data.exp filled: {info['rows']} weeks of {info['location']}"
+    msg = (f"data.exp filled: {_weeks(info['rows'])} of {info['location']}"
            f"{one}, {wk[0]} to {wk[-1]}.")
     detail = f"Source: {what}."
     if info["dropped"]:
-        detail += f" {info['dropped']} missing weeks dropped."
+        detail += f" {_weeks(info['dropped'], 'missing week')} dropped."
     if info.get("population_set"):
         detail += f" N set to {info['population_set']:,}."
     rate = info.get("kind") == "rate"
@@ -545,6 +558,8 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
     src = (source or "settled").strip()
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        # data.exp is replaced next: never said as saved
+        saved = [f for f in saved if f != "data.exp"]
         if saved:
             _flash(f"Saved {', '.join(saved)} first.", "ok")
         if src.startswith("dataset:"):
@@ -574,6 +589,8 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
     is saved first."""
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        # data.exp is replaced next: never said as saved
+        saved = [f for f in saved if f != "data.exp"]
         if saved:
             _flash(f"Saved {', '.join(saved)} first.", "ok")
         s = int(sim_seed) if str(sim_seed).strip().isdigit() else 1
@@ -581,7 +598,7 @@ def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
         noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
                  else "Poisson noise")
         # what a fit on them should find is the Simulate button's tip
-        _flash(f"data.exp filled with {f['rows']} simulated weeks of "
+        _flash(f"data.exp filled with {_weeks(f['rows'], 'simulated week')} of "
                f"{f['column']}.", "ok",
                detail=f"Drawn from the model at the values written in "
                f"model.bngl, with {noise}.")
@@ -673,6 +690,7 @@ async def sandbox_upload_data(request: Request, name: str):
         saved = await run_in_threadpool(
             _sandbox_save_posted, name, str(form.get("model_bngl") or ""),
             str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""))
+        saved = [f for f in saved if f != "data.exp"]
         if saved:
             _flash(f"Saved {', '.join(saved)} first.", "ok")
     except Exception as e:
@@ -734,7 +752,13 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
     except Exception as e:
         with _engine_lock:
             _sandbox_status.update(claim=None, cancel=False)
-        _not_done("Not started", e)
+        if (isinstance(e, sandbox_mod.MachineProblem)
+                and sandbox_mod.machine_problem()):
+            # the page's own notice says why and what to do
+            _flash("Not started: this computer cannot fit yet; the notice "
+                   "above the editor says why.", "warn")
+        else:
+            _not_done("Not started", e)
         return _sandbox_redirect(name)
     run_id = workroot.name
     with _engine_lock:

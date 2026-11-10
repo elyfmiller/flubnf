@@ -140,6 +140,8 @@ details.sbfill{margin:.6rem 0 0;padding:.15rem .85rem .75rem;
 .sb-settings{margin:0}
 .sb-sample{margin:.1rem 0 .2rem}
 .sb-rsec{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--line)}
+/* a failed or stopped run has no plot: the summary's rule is the one */
+.sb-rsum + .sb-rsec{border-top:0;padding-top:0}
 .sb-rsec > .uk-heading{margin-bottom:.3rem}
 .sb-cmprow{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;margin:0}
 .sb-cmprow > label{margin:0;white-space:nowrap}

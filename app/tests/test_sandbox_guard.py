@@ -100,7 +100,8 @@ def test_prepare_refuses_without_perl_or_engine_in_production_words(box, monkeyp
     monkeypatch.setattr(pf_engine, "engine_available", lambda: False)
     with pytest.raises(sb.SandboxError) as e:
         sb.prepare("kinetics_example")
-    assert str(e.value) == pf_engine.engine_missing_message()
+    assert str(e.value) == ("The fitting engine is not installed. "
+                            + pf_engine.engine_missing_message())
     monkeypatch.setattr(pf_engine, "engine_available", lambda: True)
     monkeypatch.setattr(pf_engine, "engine_current", lambda: False)
     with pytest.raises(sb.SandboxError) as e:

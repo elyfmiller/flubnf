@@ -83,7 +83,7 @@ def test_diff_runs_names_the_changed_prior_line_and_settings(two_runs):
     assert not by["priors.conf"]["same"]
     assert f"-{two_runs['line']}" in by["priors.conf"]["diff"]
     assert f"+{two_runs['edited']}" in by["priors.conf"]["diff"]
-    assert d["settings"] == [{"key": "seed", "a": 1, "b": 2}]
+    assert d["settings"] == [{"key": "seed", "label": "seed", "a": 1, "b": 2}]
     # a run without its own priors.conf falls back to pf.conf's prior lines
     (sb.RUNS / two_runs["a"] / "kinetics_example_r0" / "priors.conf").unlink()
     assert two_runs["line"].split("=")[0].strip() in \

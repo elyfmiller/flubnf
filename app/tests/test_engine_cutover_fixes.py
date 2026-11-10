@@ -239,12 +239,12 @@ def test_a_comparison_names_the_two_engines(monkeypatch):
         ("model.bngl", "data.exp", "priors.conf"), ""))
     assert SE.RUN_SETTINGS[0] == "engine"
     assert SE.diff_runs("a", "b")["settings"] == [
-        {"key": "engine", "a": "private", "b": "public"}]
+        {"key": "engine", "label": "engine", "a": "private", "b": "public"}]
     assert SE.diff_runs("a", "c")["settings"] == []
     metas["c"]["seed"] = 2
     assert SE.diff_runs("b", "c")["settings"] == [
-        {"key": "engine", "a": "public", "b": "private"},
-        {"key": "seed", "a": 1, "b": 2}]
+        {"key": "engine", "label": "engine", "a": "public", "b": "private"},
+        {"key": "seed", "label": "seed", "a": 1, "b": 2}]
 
 
 def test_the_data_tip_holds_on_either_engine(sandbox_root):
