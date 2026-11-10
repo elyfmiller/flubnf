@@ -1,0 +1,1182 @@
+diff --git a/app/core/knobs.py b/app/core/knobs.py
+index 4bf118cc..39310fca 100644
+--- a/app/core/knobs.py
++++ b/app/core/knobs.py
+@@ -196,12 +196,13 @@ REGISTRY: tuple = (
+          card=(ORACLE_CARD, {10_000: "10,000 candidate epidemics"})),
+     Knob("pf.replicates", "Replicates", PF_ONLY, "fit", "run", "int",
+          RunSpec.replicates, "app.core.runs:RunSpec.replicates",
+-         "Seeded filter runs per jurisdiction, pooled; fewer than 3 breaks rule 3.",
++         "Seeded filter runs per jurisdiction, pooled; per-state numbers ship with 3 or more.",
+          lo=1, hi=10, unit="runs"),
+     Knob("pf.jitter", "Kernel jitter", PF_ONLY, "fit", "method", "float",
+          RunSpec.jitter, "app.core.runs:RunSpec.jitter",
+-         "Liu-West kernel scale h; the sealed record ran 0.30.",
+-         lo=0.01, hi=1.0),
++         "How far each fitted value is nudged between weeks, so the particles stay varied.",
++         lo=0.01, hi=1.0,
++         note="The Liu-West kernel scale h; the sealed record ran 0.30."),
+     *(_prior_knob(n) for n in PRIOR_DEFAULTS),
+     Knob("pf.initialization", "Particle initialization", PF_ONLY, "fit",
+          "method", "choice", "rand", "app.core.engines.pf:initialization_for",
+@@ -209,10 +210,11 @@ REGISTRY: tuple = (
+          choices=("rand", "lh"), check=_check_initialization),
+     Knob("pf.seed_denominator", "Seed denominator", PF_ONLY, "fit", "method",
+          "choice", SP.SEED_DENOMINATOR, "flubnf.sihrs_priors:SEED_DENOMINATOR",
+-         "Pins rho*mult and i0: admissions to date, the expected season "
+-         f"total, or that total until {SP.EARLY_FRACTION:.0%} is in.",
++         "Sets the reporting rate and first infections from the admissions to date "
++         "or the expected total.",
+          choices=SP.SEED_DENOMINATORS,
+-         note=("season_total: the expected total is the median per-capita "
++         note=("It pins rho*mult and i0. "
++               "season_total: the expected total is the median per-capita "
+                "total of the completed past seasons in the vintage, floored "
+                "at the to-date count; i0 shrinks by expected/to-date and the "
+                "model's implied depletion grows with the season instead of "
+@@ -342,8 +344,8 @@ REGISTRY: tuple = (
+     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
+          "method", "int", AN.DEFAULT_BANDWIDTH,
+          "flubnf.analogue:DEFAULT_BANDWIDTH",
+-         "Donor weeks within this many epiweeks; the seal ran 2.",
+-         lo=0, hi=8, unit="epiweeks",
++         "Donor weeks within this many epiweeks of the forecast week.",
++         lo=0, hi=8, unit="epiweeks", note="The sealed record ran 2.",
+          card=(GROUNDHOG_CARD, {2: "within two MMWR epiweeks"})),
+     Knob("groundhog.min_donors", "Groundhog minimum donors", GH_ONLY,
+          "groundhog", "method", "int", AN.MIN_DONORS,
+@@ -1208,7 +1210,8 @@ def panel(scope: str, values: Optional[Mapping] = None) -> dict:
+     refused submission keeps what was typed). Knobs with an older field
+     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
+     particles), so every earlier poster still works; the rest post as
+-    knob.<key>. Coming-later knobs render disabled. A row is "changed"
++    knob.<key>. Coming-later knobs are kept out of the template's groups
++    (Methods lists them, and LOCKED). A row is "changed"
+     when its value is off the default (never a coming-later or optional
+     one); its group opens on it. Each group's "tip" says what a change
+     costs (the Methods tab's settings table reads it; the panel shows
+diff --git a/app/core/missing.py b/app/core/missing.py
+index 20711f31..2ee9189b 100644
+--- a/app/core/missing.py
++++ b/app/core/missing.py
+@@ -314,10 +314,15 @@ def unreported_flags(flags) -> dict:
+     return out
+ 
+ 
++#: a zero-anchor rule as choices_line counts it (the box's words)
++_ZERO_WORDS = {"abstain": "no forecast"}
++
++
+ def choices_line(flags, choices: Mapping | None = None) -> str:
+     """The run page's "Data issues" value: counts by outcome over the
+-    recorded flags and choices, e.g. "3 set aside, 1 left out, 2
+-    zero-anchor level"; "" when there is nothing to count."""
++    recorded flags and choices, e.g. "3 set aside, 1 left out, 2 level"
++    (a zero-anchor rule by its word, abstain as "no forecast"); "" when
++    there is nothing to count."""
+     seen: dict = {}
+     for m, rows in (flags or {}).items():
+         for r in rows or ():
+@@ -327,11 +332,13 @@ def choices_line(flags, choices: Mapping | None = None) -> str:
+             elif rule == LEFT_OUT_RULE:
+                 seen.setdefault(("left out", r.get("location")), 1)
+             elif rule.startswith(ZERO_ANCHOR_NOTE):
+-                seen.setdefault((rule, r.get("location")), 1)
++                word = rule.removeprefix(ZERO_ANCHOR_NOTE).strip()
++                seen.setdefault((_ZERO_WORDS.get(word, word),
++                                 r.get("location")), 1)
+     counts: dict = {}
+     for (what, _loc) in seen:
+         counts[what] = counts.get(what, 0) + 1
+-    order = ["set aside", "left out"] + [f"{ZERO_ANCHOR_NOTE} {r}"
++    order = ["set aside", "left out"] + [_ZERO_WORDS.get(r, r)
+                                         for r in ZERO_ANCHOR_RULES]
+     bits = [f"{counts[k]} {k}" for k in order if k in counts]
+     bits += [f"{counts[k]} {k}" for k in sorted(counts) if k not in order]
+diff --git a/app/core/reported.py b/app/core/reported.py
+index be01ff2b..fc2a50bf 100644
+--- a/app/core/reported.py
++++ b/app/core/reported.py
+@@ -44,7 +44,7 @@ from app.core import ttlcache
+ #: newest weeks kept with each gap (the wording and the recorded choice)
+ RECENT_WEEKS = 8
+ 
+-REASON_TEXT = {"no row": "no row", "blank": "blank value",
++REASON_TEXT = {"no row": "not reported", "blank": "blank value",
+                "zero": "reads 0", "collapsed": "collapsed"}
+ #: gaps that leave the week incomplete (a value the models never saw)
+ UNREPORTED = ("no row", "blank")
+@@ -58,7 +58,7 @@ COLLAPSED_FACT = ("9 of the 17 such weeks in the archive were later revised "
+ CHOICE_WORDS = {"abstain": "no forecast", "level": "level", "extend": "extend",
+                 "blend": "blend", "set_aside": "both from the week before",
+                 "omit": "leave out",
+-                "keep": "keep", "carry": "carry"}
++                "keep": "keep", "carry": "from the last reported week"}
+ 
+ 
+ def _num(v: float) -> str:
+@@ -122,7 +122,7 @@ class Gap:
+     def what(self) -> str:
+         """The gap in a few words, by consequence: 'reads 0, recent weeks
+         1-4', 'reads 0 after 19, 24, 3', 'reads 0 for 5 weeks (last 2 on
+-        2026-05-30)', 'reads 8 after 194', 'no row', 'blank value'."""
++        2026-05-30)', 'reads 8 after 194', 'not reported', 'blank value'."""
+         if self.reason == "zero":
+             n = self.zeros
+             if n >= 2:
+@@ -145,7 +145,7 @@ class Gap:
+ 
+     def flag(self) -> str:
+         """The gap in two or three words (the box's row): '0 after 1, 4',
+-        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'no row', 'blank
++        '0, 0 after 4, 2', '0 for 5 wk', '8 after 194', 'not reported', 'blank
+         value'."""
+         if self.reason == "zero":
+             n = self.zeros
+diff --git a/app/core/runs.py b/app/core/runs.py
+index 8429f580..7d92bd04 100644
+--- a/app/core/runs.py
++++ b/app/core/runs.py
+@@ -181,6 +181,7 @@ def data_issues_label(extra: dict) -> str:
+     before the rule) and the run-wide zero-anchor rule when one was set;
+     "" when neither."""
+     from app.core import missing as MS
++    from app.core import reported as _rep
+     bits = []
+     states = MS.choices_of(extra)
+     words = {"set_aside": "set aside", "omit": "left out"}
+@@ -188,14 +189,16 @@ def data_issues_label(extra: dict) -> str:
+         st = states[loc] or {}
+         c = str(st.get("choice") or "")
+         if c and not st.get("followed"):
+-            bits.append(f"{loc} {words.get(c, c)}")
++            bits.append(f"{loc} {words.get(c, _rep.CHOICE_WORDS.get(c, c))}")
+     text = ", ".join(bits)
+     counts = MS.followed_line(states)
+     if counts:
+         text = f"{counts}: {text}" if text else counts
+     za = MS.zero_anchor_of(extra)
+     if za:
+-        rule = f"zero-anchor rule {za}" + (" for the other states" if bits else "")
++        rule = (f"Groundhog when the newest week reads 0: "
++                f"{_rep.CHOICE_WORDS.get(za, za)}"
++                + (" for the other states" if bits else ""))
+         text = f"{text}; {rule}" if text else rule
+     return text
+ 
+@@ -496,10 +499,11 @@ ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
+ HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+ 
+ 
+-def anchor_notes_row(o: dict, names: dict):
++def anchor_notes_row(o: dict, names: dict, skip=()):
+     """The Results table's one row for both members' anchor notes, or None
+     when neither recorded any (a shipped run on complete data): a count per
+-    member in the cell, every location's note in the "?" tip."""
++    member in the cell, every location's note in the "?" tip. `skip`: the
++    states chosen in Data issues (that row says theirs)."""
+     import html as _html
+     parts, lines = [], []
+     for m, key in ANCHOR_NOTE_KEYS:
+@@ -510,7 +514,7 @@ def anchor_notes_row(o: dict, names: dict):
+         # (the zero-anchor row); a set-aside that did not apply is the
+         # Data issues row's
+         notes = {k: v for k, v in notes.items()
+-                 if not str(v).startswith(_OWN_ROW_PREFIXES)}
++                 if not str(v).startswith(_OWN_ROW_PREFIXES) and k not in skip}
+         if not notes:
+             continue
+         name = names.get(m, m)
+@@ -545,11 +549,12 @@ NO_DONORS = "no forecast: the donors gave no distribution"
+ _OWN_ROW_PREFIXES = (NO_FORECAST, "zero-anchor", "set-aside not applied")
+ 
+ 
+-def zero_anchor_row(o: dict, names: dict):
++def zero_anchor_row(o: dict, names: dict, skip=()):
+     """The Results table's row for the Groundhog's locations whose newest
+     week read 0 (engine notes "no forecast ..." = abstained, or
+     "zero-anchor <rule>: ..."), or None: a count per rule, each location's
+-    note in the "?" tip."""
++    note in the "?" tip. `skip`: the states chosen in Data issues (that row
++    says theirs)."""
+     import html as _html
+     from app.core import missing as MS
+     parts, lines = [], []
+@@ -560,8 +565,8 @@ def zero_anchor_row(o: dict, names: dict):
+         by: dict = {}
+         for loc, v in sorted(notes.items()):
+             v = str(v)
+-            if v == NO_DONORS:
+-                continue                        # no_donors_row's
++            if v == NO_DONORS or loc in skip:
++                continue                        # no_donors_row's, Data issues'
+             if v.startswith(NO_FORECAST):
+                 by.setdefault("abstain", []).append(loc)
+             elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
+@@ -569,7 +574,7 @@ def zero_anchor_row(o: dict, names: dict):
+                 by.setdefault(rule, []).append(loc)
+             else:
+                 continue
+-            lines.append(f"{names.get(m, m)}, {loc}: {v}.")
++            lines.append(f"{names.get(m, m)}, {loc}: {_note_words(v)}.")
+         if not by:
+             continue
+         bits = [f"{len(by[r])} {r}" for r in MS.ZERO_ANCHOR_RULES if r in by]
+@@ -582,13 +587,20 @@ def zero_anchor_row(o: dict, names: dict):
+                "The Groundhog forecasts a ratio of the newest count, so a "
+                "newest week that reads 0 gives it nothing to scale: it "
+                "abstains (no forecast, the location is left out of its "
+-               "file) unless a zero-anchor rule was chosen for the state: "
++               "file) unless a rule was chosen for the state: "
+                "level (the mean of the last 4 weeks), extend (the last "
+                "positive week carried forward) or blend (the two averaged). "
+                + " ".join(lines))
+     return ("Newest week reading 0", _html.escape("; ".join(parts)) + tip)
+ 
+ 
++def _note_words(note: str) -> str:
++    """An engine note as the page says it: the rule's word, not its key
++    ("zero-anchor level: ..." reads "level: ...")."""
++    from app.core import missing as MS
++    return note.removeprefix(MS.ZERO_ANCHOR_NOTE + " ")
++
++
+ #: kept for callers that knew the row by its old name
+ no_forecast_row = zero_anchor_row
+ 
+@@ -618,45 +630,53 @@ def no_donors_row(o: dict, names: dict):
+ 
+ 
+ def data_issues_row(o: dict, spec_extra: dict, names: dict):
+-    """The Results table's row for the per-state choices a run carried
+-    (app/core/missing.py): "3 set aside, 1 left out, 2 zero-anchor level",
+-    a set-aside that no longer matched the data counted too; every state's
+-    outcome in the "?" tip. None when the run carried none."""
++    """The Results table's one row for the per-state choices a run carried
++    (app/core/missing.py): what came of them, "1 set aside, 1 left out, 2
++    level, 1 anchored earlier", a set-aside that no longer matched the data
++    counted too; every state's issue, choice and engine note in the "?"
++    tip. The count against the recommendations is Run settings' (Data
++    issues). None when the run carried none: the Unreported and Newest week
++    reading 0 rows then say what the engines did."""
+     import html as _html
+     from app.core import missing as MS
++    from app.core import reported as _rep
+     flags = o.get("data_flags") if isinstance(o.get("data_flags"), dict) else {}
+     states = MS.choices_of(spec_extra)
+-    if not states and not any(
+-            str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE)
+-            for rows in flags.values() for r in rows or ()):
++    if not states:
+         return None
+-    text = "; ".join(t for t in (MS.followed_line(states),
+-                                 MS.choices_line(flags)) if t)
++    text = MS.choices_line({m: [r for r in rows or ()
++                                if r.get("location") in states]
++                            for m, rows in flags.items()})
+     lines = []
+-    not_applied = 0
++    for loc in sorted(states):
++        st = states[loc] or {}
++        what = str(st.get("what") or st.get("issue") or "")
++        # a record from before the words: its unreported week said "no row"
++        what = _rep.REASON_TEXT["no row"] if what == "no row" else what
++        c = str(st.get("choice") or "")
++        lines.append(f"{loc}: {what}; {_rep.CHOICE_WORDS.get(c, c)}.")
++    not_applied = moved = 0
+     for m, key in ANCHOR_NOTE_KEYS:
+         notes = o.get(key) if isinstance(o.get(key), dict) else {}
+         for loc, v in sorted(notes.items()):
+-            if str(v).startswith(MS.NOT_APPLIED_NOTE):
++            v = str(v)
++            if v.startswith(MS.NOT_APPLIED_NOTE):
+                 not_applied += 1
+-                lines.append(f"{names.get(m, m)}, {loc}: {v}.")
++            elif loc not in states or v == NO_DONORS:
++                continue
++            elif v.startswith("anchored on"):
++                moved += 1
++            lines.append(f"{names.get(m, m)}, {loc}: {_note_words(v)}.")
++    if moved:
++        bit = f"{moved} anchored earlier"
++        text = f"{text}, {bit}" if text else bit
+     if not_applied:
+         bit = f"{not_applied} not applied (the data changed)"
+         text = f"{text}, {bit}" if text else bit
+-    for loc in sorted(states):
+-        st = states[loc] or {}
+-        what = str(st.get("what") or st.get("issue") or "")
+-        lines.append(f"{loc}: {what}; {st.get('choice', '')}.")
+-    for rows in flags.values():
+-        for r in rows or ():
+-            if str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE):
+-                lines.append(f"{r.get('location')}: {r.get('week')} reads "
+-                             f"{float(r.get('value') or 0):g}; {r.get('rule')}.")
+-    if not text:
+-        return None
++    text = text or "as reported"
+     tip = _tip("data-issues", "the data issues",
+-               "Per-state choices made in Data issues on the Forecast tab, "
+-               "recorded with the run; they do not mark it modified. "
++               "Each state's choice in Data issues on the Forecast tab, "
++               "recorded with the run; it does not mark it modified. "
+                + " ".join(dict.fromkeys(lines)))
+     return ("Data issues", _html.escape(text) + tip)
+ 
+@@ -799,10 +819,13 @@ def results_html(outcome, spec, heading: bool = True,
+                                 'incomplete)</span>'
+                                 + _tip("pf-broken", "the incomplete engine "
+                                        "install", str(o["pf_engine_broken"]))))
+-    arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
++    # the states chosen in Data issues: that row says what came of them
++    from app.core import missing as _ms
++    covered = set(_ms.choices_of(extra))
++    arow = anchor_notes_row(o, HUB_MEMBER_NAMES, skip=covered)
+     if arow:
+         rows.append(arow)
+-    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES)
++    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES, skip=covered)
+     if nrow:
+         rows.append(nrow)
+     frow = no_donors_row(o, HUB_MEMBER_NAMES)
+@@ -912,8 +935,9 @@ def settings_html(pairs, title: str = "Run settings",
+     ident = f' id="{_html.escape(el_id)}"' if el_id else ""
+     base = _html.escape(cls)
+     wrap = f"{base} runsettings" if "runsettings" not in cls else base
+-    return (f'<div class="{wrap}"{ident}>'
+-            f'<strong>{_html.escape(title)}</strong>'
++    # no title: the card's own heading names the block
++    head = f'<strong>{_html.escape(title)}</strong>' if title else ""
++    return (f'<div class="{wrap}"{ident}>{head}'
+             f'<dl class="kv">{body}</dl></div>')
+ 
+ 
+diff --git a/app/tests/test_data_issues.py b/app/tests/test_data_issues.py
+index 6b449b7c..9a54d61e 100644
+--- a/app/tests/test_data_issues.py
++++ b/app/tests/test_data_issues.py
+@@ -252,8 +252,8 @@ def test_choices_and_the_rule_keep_the_hub_names():
+     assert runs_mod.model_settings_label(spec) == ""
+     pairs = dict(runs_mod.spec_settings(spec))
+     # a record from before the recommendation names every state
+-    assert pairs["Data issues"] == ("Utah set aside; zero-anchor rule blend for "
+-                                    "the other states")
++    assert pairs["Data issues"] == ("Utah set aside; Groundhog when the newest "
++                                    "week reads 0: blend for the other states")
+     assert "model settings" not in pairs
+     assert MS.followed_line(MS.choices_of(spec.extra)) == ""
+     assert MS.followed_line({"A": {"choice": "level", "followed": True},
+@@ -286,29 +286,30 @@ def test_the_box_lists_the_states_and_preselects_the_recommendation(tmp_path, mo
+     page = client.get("/forecast").text
+     box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
+     assert f'data-week="{NEW}"' in box and "<legend>Data issues</legend>" in box
+-    assert '<div class="fc-di-head"><span class="uk-badge' in box
+-    assert ('<span class="uk-badge uk-badge--warn" id="di-count" data-state="warn">'
+-            in box and '<span class="uk-badge-t">2 states</span>' in box)
++    # the line above counts the states; the box has no count or "i" of its
++    # own (FC-26)
++    assert 'id="di-count"' not in box and 'class="uk-tt' not in box
+     md = WEEKS[-2][5:]
+-    # one compact row: the "recommended" check, the name, the reason's "i",
+-    # the flag, then the select
++    # one compact row: the "recommended" check, the name, the flag, then
++    # the select
+     assert ('<div class="di-head"><span class="di-rec uk-c-ok">' in box
+             and 'aria-label="recommended"' in box)
+     assert '<label for="gap-39">Ohio</label>' in box
+-    assert '<span class="di-flag">0 after 40, 40, 40 <span class="tip">' in box
++    assert '<span class="di-flag" id="di-flag-39">0 after 40, 40, 40</span>' in box
+     assert 'name="gap.39" id="gap-39" data-issue="zero" data-rec="set_aside"' in box
+     assert f'<option value="set_aside" selected>Both from {md}</option>' in box
+     assert f'<option value="extend">Extend 40 from {md}</option>' in box
+-    # the reason is the row's "i" tip, and it describes the select
+-    assert ('id="tip-di-why-39">0 after 40, 40, 40 looks like a missed report</span>'
+-            in box and 'aria-describedby="tip-di-why-39"' in box)
++    # the flag describes the select; no "i" per state
++    assert 'aria-describedby="di-flag-39"' in box and "tip-di-why" not in box
+     assert 'name="gap.49" id="gap-49" data-issue="collapsed" data-rec="set_aside"' in box
+     assert '<option value="keep">Keep 5</option>' in box
+     assert "required" not in box and "Choose…" not in box   # nothing to answer
+     assert 'name="gap._sha"' in box
+-    # the long explanations live in the legend's tip
+-    assert "Level = it anchors on the mean of the last 4 weeks" in box
+-    assert "about three quarters stayed 0 once settled" in box
++    # the long explanations are Methods', which the Settings "i" links
++    assert "Level = it anchors on the mean of the last 4 weeks" not in box
++    assert '<a href="/methods#mt-newest">What each choice does</a>' in page
++    mt = client.get("/methods").text.split('id="mt-newest"')[1]
++    assert "Level, it\n  anchors on the mean of the last 4 weeks" in mt
+     assert "Groundhog:" not in box                 # no long option labels
+     assert "di.hidden = a !== di.dataset.week; di.disabled = di.hidden" in page
+     assert 'id="di-all"' not in box                 # one zero state: no "all"
+@@ -371,7 +372,8 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
+         {"location": "Ohio", "week": NEW, "value": 0.0, "rule": MS.LEFT_OUT_RULE},
+         {"location": "Utah", "week": NEW, "value": 5.0, "rule": MS.SET_ASIDE_RULE}]}}
+     row = runs_mod.data_issues_row(o, s.extra, {"analogue": "Groundhog"})
+-    assert row[1].startswith("2 states, 1 recommended, 1 changed; 1 set aside, 1 left out")
++    # ... and Results what came of them (the counts are Run settings')
++    assert row[1].startswith("1 set aside, 1 left out<")
+     # the form comes back pre-filled, the badge off where the choice differs
+     page = client.get("/forecast").text
+     assert '<option value="omit" selected>Leave out</option>' in page
+@@ -387,7 +389,7 @@ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_pat
+     assert {l: (s["choice"], s["followed"]) for l, s in got.items()} == {
+         "Ohio": ("abstain", False), "Utah": ("keep", False)}
+     assert runs_mod.data_issues_label(started[1].extra) == (
+-        "2 states, 0 recommended, 2 changed: Ohio abstain, Utah keep")
++        "2 states, 0 recommended, 2 changed: Ohio no forecast, Utah keep")
+     _hub(tmp_path / "hub2", monkeypatch, newest={"Utah": "5"})
+     _post({"gap.49": "keep"})
+     assert len(started) == 3
+@@ -476,7 +478,7 @@ def test_the_run_page_counts_the_zero_anchor_weeks_by_rule():
+     assert runs_mod.anchor_notes_row(o, {"analogue": "Groundhog"}) is None
+     flags = {"analogue": [{"location": l, "week": T, "value": 0.0,
+                            "rule": "zero-anchor level"} for l in ("Utah", "Idaho")]}
+-    assert MS.choices_line(flags) == "2 zero-anchor level"
++    assert MS.choices_line(flags) == "2 level"
+     assert MS.line(MS.unreported_flags(flags)) == ""
+     assert MS.replay_zero_anchor_count({T: flags, T_WEEKS[0]: {"analogue": []}}) == \
+         "2 location-weeks (2 level)"
+diff --git a/app/tests/test_forecast_text.py b/app/tests/test_forecast_text.py
+new file mode 100644
+index 00000000..5e994fd9
+--- /dev/null
++++ b/app/tests/test_forecast_text.py
+@@ -0,0 +1,214 @@
++"""The Forecast tab's and the run page's words and marks (bug hunt
++2026-10-25, G30).
++
++  * With data issues the Settings card keeps its own "i" and the panel's:
++    the newest-week line under the date has no "?" while the Data issues
++    box names each state, and the box has no "i" of its own or per state.
++    Results say the data issues in one row.
++  * Run summaries say the choices in the box's words: no raw keys
++    ("set_aside", "carry", "zero-anchor level") and no "no row".
++  * The Model settings panel lists only what a student can set, with hints
++    free of engine names; Methods lists the fixed values.
++  * The Settings "i" and the archive-gap refusal say the rule as it works:
++    a Saturday the archive skipped is refused, and holidays are named only
++    for a gap of a week or two.
++  * The Real-time and Vintage pills are a group of pressed buttons.
++  * The run page says how a modified run's files were named once, under
++    one heading.
++"""
++import json
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from app.core import knobs as K                              # noqa: E402
++from app.core import missing as MS                           # noqa: E402
++from app.core import reported                                # noqa: E402
++from app.core import runs as runs_mod                        # noqa: E402
++from app.core.runs import Ledger, RunSpec                    # noqa: E402
++from app.ui import state as ui_state                         # noqa: E402
++
++from test_data_source import (W1, W2, W3, _capture, _hub,     # noqa: E402,F401
++                              _isolated, client)
++from test_newest_reported import NEW                         # noqa: E402
++from test_newest_reported import _hub as _newest_hub         # noqa: E402
++
++UI = Path(__file__).resolve().parents[1] / "ui"
++GH = {"analogue": "Groundhog"}
++
++
++# ------------------------------------------------- FC-26: one statement
++
++def test_with_data_issues_the_settings_card_keeps_two_marks(tmp_path,
++                                                            monkeypatch):
++    _newest_hub(tmp_path / "hub", monkeypatch,
++                newest={"Ohio": "0", "Utah": "5", "Nebraska": None})
++    ui_state._last_form.clear()
++    ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
++                                "engine": "all"})
++    page = client.get("/forecast").text
++    card = page.split('class="card fc-settings"', 1)[1].split(
++        'id="model-settings"', 1)[0]
++    # the Settings "i" alone before the panel: no "?" on the newest-week
++    # line, no "i" on the box or its rows
++    assert card.count('class="uk-tt-btn"') == 1 and 'class="tipbtn"' not in card
++    assert 'id="tip-newest-gaps"' not in page and "tip-di-why" not in page
++    assert 'id="tt-data-issues"' not in page and 'id="di-count"' not in page
++    # the line keeps its counts
++    line = page.split('id="newest-check"')[1].split("</p>")[0]
++    assert '<span class="uk-badge-t">1 reads 0</span>' in line
++
++
++def test_results_say_the_data_issues_in_one_row():
++    extra = {"data_choices": {"week": W1, "states": {
++        "Alaska": {"issue": "no row", "what": "no row", "choice": "carry",
++                   "recommended": "carry", "followed": True},
++        "Arizona": {"issue": "zero", "what": "reads 0 after 67, 59, 29",
++                    "choice": "level", "recommended": "set_aside",
++                    "followed": False}}}}
++    o = {"analogue_anchor_notes": {
++            "Alaska": f"anchored on {W1}: 1 newer week(s) unreported",
++            "Arizona": f"zero-anchor level: newest week {W2} reads 0",
++            "Utah": f"anchored on {W1}: 1 newer week(s) unreported"},
++         "data_flags": {"analogue": [{"location": "Arizona", "week": W2,
++                                      "value": 0.0,
++                                      "rule": "zero-anchor level"}]}}
++    covered = set(MS.choices_of(extra))
++    # the states chosen in Data issues are that row's; Utah, not chosen,
++    # keeps its own row
++    arow = runs_mod.anchor_notes_row(o, GH, skip=covered)
++    assert arow[1].startswith("Groundhog: 1 location anchored earlier")
++    assert "Alaska" not in arow[1]
++    assert runs_mod.zero_anchor_row(o, GH, skip=covered) is None
++    row = runs_mod.data_issues_row(o, extra, GH)
++    assert row[1].startswith("1 level, 1 anchored earlier<")
++    assert ("Alaska: not reported; from the last reported week. Arizona: "
++            "reads 0 after 67, 59, 29; level. Groundhog, Alaska: anchored on "
++            f"{W1}: 1 newer week(s) unreported. Groundhog, Arizona: level: "
++            f"newest week {W2} reads 0.") in row[1]
++    # the counts against the recommendations are Run settings', once
++    assert "recommended" not in row[1].split("<", 1)[0]
++    assert runs_mod.data_issues_label(extra) == (
++        "2 states, 1 recommended, 1 changed: Arizona level")
++
++
++# ------------------------------------------------ FC-27: the box's words
++
++def test_run_summaries_say_choices_in_the_boxs_words():
++    assert reported.REASON_TEXT["no row"] == "not reported"
++    assert reported.CHOICE_WORDS["carry"] == "from the last reported week"
++    extra = {"data_choices": {"states": {
++        "Ohio": {"what": "reads 2 after 75", "choice": "set_aside",
++                 "followed": False},
++        "Utah": {"what": "no row", "choice": "carry", "followed": False},
++        "Iowa": {"what": "reads 0", "choice": "abstain", "followed": False}}},
++        "knobs": {}}
++    label = runs_mod.data_issues_label(extra)
++    assert label.endswith("Iowa no forecast, Ohio set aside, Utah from the "
++                          "last reported week")
++    tip = runs_mod.data_issues_row({}, extra, GH)[1]
++    for raw in ("set_aside", "carry.", "no row", "abstain"):
++        assert raw not in tip, raw
++    flags = {"analogue": [{"location": "Iowa", "week": W1, "value": 0.0,
++                           "rule": "zero-anchor abstain"},
++                          {"location": "Utah", "week": W1, "value": 0.0,
++                           "rule": "zero-anchor blend"}]}
++    assert MS.choices_line(flags) == "1 no forecast, 1 blend"
++    # the run-wide rule by the Run form's label
++    assert runs_mod.data_issues_label(
++        K.write_extra({MS.ZERO_ANCHOR_KEY: "level"}, {})) == (
++        "Groundhog when the newest week reads 0: level")
++
++
++# ----------------------------------------------- FC-28: what can be set
++
++def test_the_panel_lists_only_what_a_student_can_set():
++    ui_state._last_form.clear()
++    page = client.get("/forecast").text
++    panel = page.split('id="model-settings"', 1)[1].split("</details>\n<script")[0]
++    assert "coming later" not in panel and "Fixed by the model" not in panel
++    for k in K.LATER:
++        assert f'data-knob="{k}"' not in panel, k
++    for lk in K.LOCKED:
++        assert lk.key not in panel.replace("knob.", ""), lk.key
++    # the hints name no engine internals
++    for raw in ("rule 3", "rho*mult", "i0", "sealed record", "the seal",
++                "Liu-West"):
++        assert raw not in panel, raw
++    # Methods keeps them: the fixed values, the coming-later rows, the
++    # technical notes
++    mt = client.get("/methods").text
++    fixed = mt.split('id="mt-set-fixed"')[1].split("</details>")[0]
++    assert all(lk.key in fixed for lk in K.LOCKED)
++    assert "Liu-West kernel scale h; the sealed record ran 0.30." in mt
++    assert "It pins rho*mult and i0." in mt
++
++
++# ---------------------------------------------- FC-29: the rule as it is
++
++def test_the_date_rule_and_the_gap_refusal_say_what_happens(tmp_path,
++                                                            monkeypatch):
++    tpl = (UI / "templates" / "forecast.html").read_text(encoding="utf-8")
++    assert "any day anchors on the latest archived week" not in tpl
++    assert "except a Saturday the archive skipped, which is refused." in tpl
++    started = _capture(monkeypatch, tmp_path)
++    # a holiday: one Saturday skipped
++    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W3], monkeypatch)
++    ui_state._status["running"] = None
++    client.post("/run", data={"forecast_date": W2, "mode": "vintage",
++                              "locations": ["Ohio"], "engine": "analogue"},
++                follow_redirects=False)
++    assert ui_state._status["flash_detail"].startswith(
++        "Such gaps are real, usually holiday weeks.")
++    # an off-season gap: five weeks back to the nearest snapshot
++    far = "2098-11-08"
++    _hub(tmp_path / "hub2", [W1, far, "2098-11-15"], [W1, "2098-11-15"],
++         monkeypatch)
++    ui_state._status.update(running=None, flash=None, flash_detail=None)
++    client.post("/run", data={"forecast_date": far, "mode": "vintage",
++                              "locations": ["Ohio"], "engine": "analogue"},
++                follow_redirects=False)
++    assert started == []
++    detail = ui_state._status["flash_detail"]
++    assert "holiday" not in detail
++    assert detail.startswith("The nearest earlier snapshot is 5 weeks before "
++                             "it.")
++
++
++# ------------------------------------------------- FC-30: pressed buttons
++
++def test_the_mode_pills_are_a_group_of_pressed_buttons():
++    page = client.get("/forecast").text
++    modes = page.split('<div class="modes">', 1)[1].split("</div>", 1)[0]
++    assert '<div role="group" aria-label="forecast mode">' in modes
++    assert 'role="tab' not in modes and "aria-selected" not in modes
++    assert modes.count('aria-pressed="false"') == 2
++    assert "b.setAttribute('aria-pressed', b.dataset.mode === mode" in page
++    css = (UI / "static" / "nau.css").read_text(encoding="utf-8")
++    assert '.pill.mode[aria-pressed="true"]' in css
++    assert ".modes > [role=group]{display:flex" in css
++
++
++# ---------------------------------------------- FC-33: each fact once
++
++def test_the_run_page_names_a_modified_runs_files_once(tmp_path,
++                                                      monkeypatch):
++    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
++    led = Ledger()
++    spec = RunSpec(engine="analogue", forecast_date=W1,
++                   extra=K.write_extra({"groundhog.own_share": 0.4}, {}))
++    rid = led.open_run(spec, Path("pending"), {})
++    led.close_run(rid, "ok", {})
++    page = client.get(f"/runs/{rid}").text
++    assert 'id="modified-note"' in page and "Files named" in page
++    rec = page.split('class="card runrec"', 1)[1]
++    rec = rec.split("Produced by", 1)[0]
++    assert "<dt>files</dt>" not in rec
++    assert "<strong>Settings</strong>" not in rec
++    assert "<dt>model settings</dt>" in rec
++    # the weekly report, read without the app, keeps its files row
++    assert "files" in dict(runs_mod.report_settings(json.loads(
++        spec.to_json())))
++    assert runs_mod.settings_html([("a", "b")], title="").startswith(
++        '<div class="hint runsettings"><dl')
+diff --git a/app/tests/test_knobs_panel.py b/app/tests/test_knobs_panel.py
+index d03c2b40..f12170f2 100644
+--- a/app/tests/test_knobs_panel.py
++++ b/app/tests/test_knobs_panel.py
+@@ -110,8 +110,9 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
+     f = _panel_form(html)
+     names = {n for n, _ in f.fields} | f.disabled
+     for k in K.REGISTRY:
+-        if k.key in K.DECISION_KEYS:
+-            continue        # asked on the form itself (the Data issues box)
++        if k.key in K.DECISION_KEYS or k.key in K.LATER:
++            continue        # asked on the form itself (the Data issues box);
++            #                 Methods lists the coming-later ones (FC-28)
+         name = K.FIELD_OF.get(k.key, "knob." + k.key)
+         assert name in names, k.key
+         # its one-line help under the field, as the field's description,
+@@ -153,24 +154,25 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
+     for old in ("season_start", "weeks_to_drop", "replicates", "particles",
+                 "drop_same_day"):
+         assert old in names
+-    # coming-later knobs are shown, disabled, and never posted
+-    assert {"knob." + k for k in K.LATER} == f.disabled
+-    # ... in one fold that counts them, each named by its group
+-    assert f">{len(K.LATER)} coming later<" in html
+-    fold = html.split('id="ms-later-fold"')[1].split("</details>")[0]
+-    assert fold.count('class="ms-row ms-later"') == len(K.LATER)
++    # coming-later knobs are not in the panel, which lists only what a
++    # student can set (FC-28): Methods' settings table tags them
++    assert not f.disabled and "coming later" not in panel
++    assert not {"knob." + k for k in K.LATER} & names
+     # the override and its reason (a placeholder says what to type), and
+     # the reset control
+     assert 'name="submit_modified"' in html and 'name="modified_reason"' in html
+     assert 'placeholder="Why export under the hub names?"' in html
+     assert 'id="ms-reset"' in html and "Reset to defaults" in html
+     assert "/static/model_settings.js" in html
+-    # the fixed list; each fixed value's reason as text under it
+-    assert "Fixed by the model definition" in html
+-    for key in ("horizons", "quantile_levels", "epiweek_53", "gamma"):
+-        assert f"<dt>{key}</dt>" in html
++    # the fixed list is Methods' (FC-28), each value with its reason
++    assert "Fixed by the model definition" not in html
++    mt = client.get("/methods").text
++    fixed = mt.split('id="mt-set-fixed"')[1].split("</details>")[0]
+     for lk in K.LOCKED:
+-        assert f'<span class="fc-lk-why">{escape(lk.why)}</span>' in panel
++        assert f'<th scope="row">{lk.key}</th><td>{escape(lk.why)}</td>' in fixed
++    later = mt.split('id="settings"')[1]
++    for k in K.LATER:
++        assert f'id="set-{k.replace(".", "-")}"' in later
+ 
+ 
+ def test_no_auxiliary_bank_turns_the_donor_weights_off():
+diff --git a/app/tests/test_newest_reported.py b/app/tests/test_newest_reported.py
+index cca4ce5f..b995aa59 100644
+--- a/app/tests/test_newest_reported.py
++++ b/app/tests/test_newest_reported.py
+@@ -101,7 +101,7 @@ def test_no_row_and_blank_are_told_apart_and_forecast_from_the_week_before(
+     assert r.line() == f"3 of {len(LOCS)} reported · 2 not reported"
+     assert r.short() == f"3 of {len(LOCS)} reported · 2 not reported"
+     assert r.details()[:2] == [
+-        f"No row: Nebraska. Forecast from {WEEKS[-2]}.",
++        f"Not reported: Nebraska. Forecast from {WEEKS[-2]}.",
+         f"Blank value: Utah. Forecast from {WEEKS[-2]}."]
+     assert r.details()[2].startswith("Each is chosen per state in Data issues")
+ 
+@@ -116,7 +116,7 @@ def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
+     last = WEEKS[-(AE.MAX_ANCHOR_LAG + 2)]
+     assert last in g.why and f"more than {AE.MAX_ANCHOR_LAG} unreported" in g.why
+     assert r.line() == f"4 of {len(LOCS)} reported · 1 not reported"
+-    assert r.details()[0].startswith("No row: Wyoming. Skipped: its newest")
++    assert r.details()[0].startswith("Not reported: Wyoming. Skipped: its newest")
+     assert reported.recommend(g) == ("carry", g.why)
+     # at exactly MAX_ANCHOR_LAG unreported weeks it still forecasts
+     _hub(tmp_path / "hub2", monkeypatch,
+@@ -218,7 +218,7 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
+     neb = rows["Nebraska"]
+     assert neb["issue"] == "no row" and neb["default"] == "carry"
+     assert neb["options"] == [("carry", f"From {md}"), ("omit", "Leave out")]
+-    assert neb["rec"] == "carry" and neb["flag"] == "no row"
++    assert neb["rec"] == "carry" and neb["flag"] == "not reported"
+     assert neb["hint"] == f"forecast from {WEEKS[-2]}"
+ 
+ 
+@@ -287,7 +287,7 @@ def test_the_line_counts_and_the_tip_names_every_location(tmp_path, monkeypatch)
+     r = reported.check()
+     assert r.line() == (f"3 of {len(LOCS)} reported · 2 not reported "
+                         "· 1 reads 0 · 1 collapsed")
+-    assert r.details()[0] == f"No row: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
++    assert r.details()[0] == f"Not reported: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
+     assert "Ohio" not in r.line() and "Nebraska" not in r.line()
+ 
+ 
+@@ -314,7 +314,7 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
+             in row)
+     assert '<span class="uk-badge-t">1 not reported</span>' in row
+     assert f"4 of {len(LOCS)} reported" in row
+-    assert f"No row: Nebraska. Forecast from {WEEKS[-2]}." in page
++    assert f"Not reported: Nebraska. Forecast from {WEEKS[-2]}." in page
+     assert ('<a href="/forecast#data-issues">Data issues on the Forecast '
+             'tab</a>') in page
+ 
+@@ -398,5 +398,7 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
+     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
+     assert '<span class="uk-badge-t">1 reads 0</span>' in line
+     assert 'aria-label="Complete, with issues"' in page
+-    assert ("0 after 40, 40, 40: Ohio. Recommended: both from the week "
+-            "before") in page
++    # the Data issues box under the line names Ohio: the line has no "?"
++    # of its own (FC-26)
++    assert 'id="tip-newest-gaps"' not in page
++    assert '<label for="gap-39">Ohio</label>' in page
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index a5ce08f4..0258f07e 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -275,11 +275,9 @@ def _data_issues_context(rep, form) -> tuple:
+     from app.core import reported as _rep
+     rows = _rep.box_rows(rep)
+     prior = ((form or {}).get("data_choices") or {}).get(rep.week) or {}
+-    facts = " ".join(f for f, on in ((_rep.ZERO_FACT, rep.zeros),
+-                                     (_rep.COLLAPSED_FACT, rep.collapsed)) if on)
+     zero_opts = {v for r in rows if r["issue"] == "zero" for v, _ in r["options"]}
+     all_options = [(c, _ALL_TEXT[c]) for c in MS.ZERO_CHOICES if c in zero_opts]
+-    return ({"week": rep.week, "rows": rows, "prior": prior, "facts": facts,
++    return ({"week": rep.week, "rows": rows, "prior": prior,
+              "all_options": all_options}, _source_sha(rep.week))
+ 
+ 
+@@ -628,7 +626,10 @@ def run_page(request: Request, run_id: str):
+         # gets no empty table
+         "models": {m: v for m, v in (res.get("models") or {}).items()
+                    if v and m not in _report_v2_retired()},
+-        "settings": spec_settings(spec_json, o),
++        # the Modified model settings card says how its files were named:
++        # the settings block does not say it again
++        "settings": [(k, v) for k, v in spec_settings(spec_json, o)
++                     if not (k == "files" and _runs.is_modified(spec_json))],
+         "versions": version_pairs(row_sha, row_engine_versions),
+         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
+                       and not dsx),
+@@ -1264,12 +1265,18 @@ def run_models(request: Request,
+             _flash(f"Not run: no archived data for {forecast_date}.", "warn",
+                    detail="Pull the FluSight hub on the Data tab first.")
+         elif earlier:
++            # a gap of a week or two is a holiday's; a longer one is not
++            gap = (_date.fromisoformat(forecast_date)
++                   - _date.fromisoformat(near)).days // 7
++            why = ("Such gaps are real, usually holiday weeks. " if gap <= 2
++                   else f"The nearest earlier snapshot is {gap} weeks "
++                   "before it. ")
+             _flash(f"Not run: the hub archived no snapshot dated "
+                    f"{forecast_date}. Nearest earlier: {near}.", "warn",
+-                   detail="Such gaps are real, usually holiday weeks. The "
+-                   "graphs still show a point at that date because they "
+-                   "draw today's settled data. A later snapshot would leak "
+-                   "a week of hindsight, so it is not offered.")
++                   detail=why + "The graphs still show a point at that date "
++                   "because they draw today's settled data. A later "
++                   "snapshot would leak a week of hindsight, so it is not "
++                   "offered.")
+         else:
+             _flash(f"Not run: no archived data for {forecast_date}; the "
+                    f"archive starts at {near}.", "warn")
+diff --git a/app/ui/routes/methods.py b/app/ui/routes/methods.py
+index cc972412..23c0b733 100644
+--- a/app/ui/routes/methods.py
++++ b/app/ui/routes/methods.py
+@@ -57,6 +57,10 @@ def methods_page(request: Request):
+     """Methodology reference: the SIHRS compartment model, the fitting
+     machinery, the Oracle step, the Groundhog, the Model settings, and the
+     data and verification policies."""
++    from app.core import knobs as K
+     return templates.TemplateResponse(request, "methods.html", {
+         "active": "Methods", "versions": VERSIONS,
+-        "settings_ref": settings_reference()})
++        "settings_ref": settings_reference(),
++        # what the model definition fixes; the panel lists only what a
++        # student can set
++        "settings_fixed": K.panel("forecast")["locked"]})
+diff --git a/app/ui/static/model_settings.js b/app/ui/static/model_settings.js
+index 68bbbe83..ac4da31b 100644
+--- a/app/ui/static/model_settings.js
++++ b/app/ui/static/model_settings.js
+@@ -136,9 +136,8 @@
+         g.hidden = !applies(g, ms)
+           || (rows.length > 0 && rows.every(function (n) { return n.hidden; }));
+       });
+-      // the "coming later" and a group's "N more" folds hide with their
+-      // last applying row
+-      box.querySelectorAll('.ms-later-fold, .ms-more').forEach(function (f) {
++      // a group's "N more" fold hides with its last applying row
++      box.querySelectorAll('.ms-more').forEach(function (f) {
+         var rows = Array.prototype.slice.call(f.querySelectorAll('.ms-row'));
+         f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
+       });
+diff --git a/app/ui/static/nau.css b/app/ui/static/nau.css
+index f3fd4ee4..1f632999 100644
+--- a/app/ui/static/nau.css
++++ b/app/ui/static/nau.css
+@@ -1161,10 +1161,10 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
+ 
+ /* Forecast form modes (Real-time / Vintage) and the advanced group */
+ .modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
+-.modes > [role=tablist]{display:flex;gap:.4rem}
++.modes > [role=group]{display:flex;gap:.4rem}
+ .modes .pill.mode{margin-top:0}
+ .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
+-.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
++.pill.mode[aria-selected="true"],.pill.mode[aria-pressed="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
+ .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
+ #fcform.mode-realtime #vintage-pick{display:none}
+ details.adv{margin:.7rem 0 .4rem}
+diff --git a/app/ui/static/tabs/forecast.css b/app/ui/static/tabs/forecast.css
+index 8e5fc28c..aac050a9 100644
+--- a/app/ui/static/tabs/forecast.css
++++ b/app/ui/static/tabs/forecast.css
+@@ -5,7 +5,7 @@
+    itself (docs/UI-KIT.md, "Tab stylesheets"). Colors only through the
+    nau.css tokens; new classes start "fc-"; kit classes (uk-*) are used as
+    they are, never restyled here (an fc- class passed through a macro's
+-   cls, as fc-kv, fc-flush and fc-ms-locked are, only lays out its box:
++   cls, as fc-kv and fc-flush are, only lays out its box:
+    margins, columns and text size, never its colors).
+ 
+    CONTENTS
+@@ -145,12 +145,8 @@
+ 
+ /* ---- 3. the Data issues box ---- */
+ /* the Model settings look; one row per state: the check and the name,
+-   the flag and its "i" under them, the select beside (under them when
++   the flag under them, the select beside (under them when
+    the column is too narrow for both: large text, a narrow window) */
+-/* the count and its "i" open the box (the legend is the title alone) */
+-.fc-di-head{display:flex;align-items:center;flex-wrap:wrap;gap:.2rem .4rem;
+-  margin:0 0 .35rem}
+-.fc-di-head .uk-tt{margin-left:0}
+ .fc-di .di-row{margin:.35rem 0 0}
+ .fc-di .di-state{display:flex;align-items:center;flex-wrap:wrap;
+   gap:.3rem .4rem;padding-top:.35rem;border-top:1px solid var(--line)}
+@@ -170,7 +166,6 @@
+ .fc-di .di-head label{margin:0;color:var(--ink);font-weight:600}
+ .fc-di .di-flag{flex-basis:100%;color:var(--mut);font-size:var(--fs-hint);
+   font-variant-numeric:tabular-nums}
+-.fc-di .di-flag .tip{margin-left:.1rem}
+ .fc-di .di-rec{display:inline-flex;font-size:var(--fs-label)}
+ .fc-di .di-rec[hidden]{display:none}
+ .fc-di[hidden]{display:none}
+@@ -191,19 +186,6 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
+ .ms-more{margin-top:.55rem}
+ .ms-more > summary{font-size:var(--fs-label)}
+ .ms-more[hidden]{display:none}
+-/* a knob not wired yet: its group as a tag under the disabled field */
+-.fc-ms-soon{display:block;margin:.3rem 0 .1rem}
+-/* the fixed settings: a fold with one labelled value each */
+-.fc-ms-locked{margin-top:.9rem}
+-.fc-ms-locked > summary{font-size:var(--fs-label)}
+-/* the side column is narrow: each fixed setting's name over its value */
+-.fc-ms-locked .fc-kv{grid-template-columns:minmax(0,1fr);row-gap:.1rem;
+-  font-size:var(--fs-label)}
+-.fc-ms-locked .fc-kv dd{margin-bottom:.45rem;overflow-wrap:anywhere}
+-.fc-ms-locked .fc-kv dt{min-width:0;overflow-wrap:anywhere}
+-/* ... and why it is fixed, muted under the value */
+-.fc-lk-why{display:block;color:var(--mut);font-size:var(--fs-hint);
+-  font-weight:400}
+ /* a field's one-line help, under it while its row has focus (the field
+    names it as its description either way; a changed row's mark names
+    the default) */
+@@ -287,9 +269,5 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
+   display:inline-block;margin-left:.4rem;padding:0 .4em;border:1px solid var(--warn);
+   border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
+   font-weight:650;white-space:nowrap}
+-/* the knobs coming later, folded under the groups */
+-.ms-later-fold{margin-top:.7rem}
+-.ms-later-fold > summary{font-size:var(--fs-label)}
+-.ms-later-fold[hidden]{display:none}
+ /* the fan chart takes focus for its arrow keys */
+ #fanplot:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+diff --git a/app/ui/templates/_data_issues.html b/app/ui/templates/_data_issues.html
+index 6399f39d..49f35c44 100644
+--- a/app/ui/templates/_data_issues.html
++++ b/app/ui/templates/_data_issues.html
+@@ -1,10 +1,10 @@
+ {# The Forecast tab's Data issues box (app/core/reported.py box_rows): one
+    row per state whose newest week reads 0, collapsed, or was not
+-   reported: the name, a short flag ("0 after 1, 4"), a check that marks
+-   the select while it holds the rule's choice (reported.recommend), the
+-   reason in an "i" tip after the flag (keyboard and touch reach it; it
+-   also describes the select), and the select. The toggletip beside the
+-   count explains the choices. Each posts as gap.<fips> (forms._gap_form) and is
++   reported: the name, a short flag ("0 after 1, 4", which also describes
++   the select), a check that marks the select while it holds the rule's
++   choice (reported.recommend), and the select. The newest-week line above
++   counts the states; Methods explains the choices (its "A newest week
++   that reads 0" fold). Each posts as gap.<fips> (forms._gap_form) and is
+    recorded with the run (extra["data_choices"], app/core/missing.py) with
+    whether the recommendation was followed. Rendered inside #fcform under
+    the anchor line, only when the week has such a state; forecast.html's
+@@ -13,20 +13,11 @@
+    {% import "_data_issues.html" as di %}{{ di.box(issues, sha) }} #}
+ {% import "_tips.html" as tips %}
+ {% macro box(issues, sha="", hidden=False) -%}
+-{% set n = issues.rows|length %}
+ {% set zeros = issues.rows|selectattr("issue", "equalto", "zero")|list %}
+ <fieldset class="ms-group fc-di" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
+  {# the legend is the title alone, so it stays one line on the border at
+-    any text size; the count and the explainer open the box #}
++    any text size #}
+  <legend>Data issues</legend>
+- <div class="fc-di-head">{{ tips.badge("warn", n ~ " state" ~ ("s" if n != 1 else ""), id="di-count") }}
+-  {%- call tips.toggletip("data-issues", "the data issues", title="Newest week " ~ issues.week) -%}
+-  <span class="uk-tt-line">States reading 0, under a fifth of a week of 20 or more (collapsed), or not reported. Each select is preset to the recommended choice; pick another if you know better. The choice applies to this run only and is recorded with it.</span>
+-  <span class="uk-tt-line"><b>Zero:</b> No forecast = the Groundhog abstains. Level = it anchors on the mean of the last 4 weeks (all 0: a Poisson floor). Extend = it carries the last positive week over the 0s. Blend = the mean of level and extend. For all four the Oracle SIHRS keeps the 0.</span>
+-  <span class="uk-tt-line">Both from a week = both models count the newest week(s) as unreported and forecast from that week, every horizon still from the forecast date (at most 2 weeks). Keep = as reported. From a week (not reported) = the engines' own walk. Leave out = the state is in neither file.</span>
+-  <span class="uk-tt-line"><b>Recommended:</b> both from the week before when a 0 or a collapse follows counts of 10 or more (a missed or partial report is likely); level for small counts and runs of 0; keep a collapse when the two weeks before already fell by half each.</span>
+-  {% if issues.facts %}<span class="uk-tt-line">{{ issues.facts }}</span>{% endif %}
+-  {%- endcall %}</div>
+  <input type="hidden" name="gap._sha" value="{{ sha }}">
+  {% if zeros|length > 1 %}
+  <div class="di-row di-all">
+@@ -39,8 +30,8 @@
+  {% endif %}
+  {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
+  <div class="di-row di-state" data-issue="{{ r.issue }}">
+-  <div class="di-head"><span class="di-rec uk-c-ok"{% if sel != r.rec %} hidden{% endif %}>{{ tips.icon("check", "recommended") }}</span><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }} {{ tips.icon_tip("di-why-" ~ r.fips, "why " ~ r.name ~ " is flagged", "info", r.why, state="muted") }}</span></div>
+-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}"{% if r.rules %} data-rules="{{ r.rules|join(' ') }}"{% endif %} aria-describedby="tip-di-why-{{ r.fips }}">
++  <div class="di-head"><span class="di-rec uk-c-ok"{% if sel != r.rec %} hidden{% endif %}>{{ tips.icon("check", "recommended") }}</span><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag" id="di-flag-{{ r.fips }}">{{ r.flag }}</span></div>
++  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}"{% if r.rules %} data-rules="{{ r.rules|join(' ') }}"{% endif %} aria-describedby="di-flag-{{ r.fips }}">
+    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
+   </select>
+  </div>
+diff --git a/app/ui/templates/_model_settings.html b/app/ui/templates/_model_settings.html
+index c67b2be0..9cb8bc75 100644
+--- a/app/ui/templates/_model_settings.html
++++ b/app/ui/templates/_model_settings.html
+@@ -24,7 +24,7 @@
+    none of these and render exactly as before. #}
+ {# one knob's row: its label, its control and its hint (a later knob's
+    off, its group named as a tag) #}
+-{% macro ms_row(r, px, tips, group="") -%}{% set rid = px ~ r.id %}
++{% macro ms_row(r, px, tips) -%}{% set rid = px ~ r.id %}
+   <div class="ms-row{% if r.later %} ms-later{% endif %}" data-affects="{{ r.affects }}"{% if r.only %} data-only="{{ r.only }}"{% endif %}{% if r.mark %} style="--ms-mark:'{{ r.mark }}'"{% endif %}>
+    {{ tips.label(r.label, rid ~ "-tip", "", for_=rid) }}
+    {% set hint = (' aria-describedby="' ~ rid ~ '-hint"') | safe if r.hint else "" %}
+@@ -56,7 +56,6 @@
+      step="{{ r.step }}"{% if r.later %} disabled{% endif %}>
+    {% endif %}
+    {% if r.hint %}<p class="ms-hint" id="{{ rid }}-hint">{{ r.hint }}</p>{% endif %}
+-   {% if group %}<span class="fc-ms-soon">{{ tips.tag(group) }}</span>{% endif %}
+   </div>
+ {%- endmacro %}
+ {% if knob_panel %}{% import "_tips.html" as tips %}{% set kp = knob_panel %}{% set px = kp.prefix or "" %}
+@@ -95,13 +94,6 @@
+   </fieldset>
+  </details>
+  {% endif %}{% endfor %}
+- {# the knobs not settable yet, in one fold: each row off, its group named #}
+- {% set ns = namespace(n=0) %}{% for g in kp.groups %}{% for r in g.rows if r.later %}{% set ns.n = ns.n + 1 %}{% endfor %}{% endfor %}
+- {% if ns.n %}
+- {% call tips.fold(ns.n ~ " coming later", id=px ~ "ms-later-fold", cls="ms-later-fold") %}
+-  {% for g in kp.groups %}{% for r in g.rows if r.later %}{{ ms_row(r, px, tips, g.title) }}{% endfor %}{% endfor %}
+- {% endcall %}
+- {% endif %}
+  {% if kp.override %}
+  {# the override: shown once a value is changed; its reason once ticked
+     (the reason is then required) #}
+@@ -117,12 +109,6 @@
+   </div>
+  </div>
+  {% endif %}
+- {# the settings the model definition fixes: each value and its reason #}
+- {% call tips.fold("Fixed by the model definition", id=px ~ "ms-locked-fold", cls="fc-ms-locked") %}
+-  {% call tips.stats("uk-stats--kv fc-kv") %}
+-   {% for l in kp.locked %}{% set why %}<span class="fc-lk-why">{{ l.why }}</span>{% endset %}{{ tips.stat(l.key, l.value, id=px ~ "ms-lk-" ~ loop.index, after=why) }}{% endfor %}
+-  {% endcall %}
+- {% endcall %}
+ </details>
+ <script src="/static/model_settings.js" defer></script>
+ {% endif %}
+diff --git a/app/ui/templates/_newest.html b/app/ui/templates/_newest.html
+index f16a1400..3cb8fe73 100644
+--- a/app/ui/templates/_newest.html
++++ b/app/ui/templates/_newest.html
+@@ -9,6 +9,7 @@
+    zero, collapsed or unreported state; the per-state choice is made on
+    the Forecast tab (the Data issues box, _data_issues.html).
+    head_only=True: the head alone ("All 53 reported") plus the "?".
++   tip=False: no "?" (the Data issues box under the line names each).
+ 
+    row(r): the Data tab's "Newest week" value: the mark and the head, one
+    badge per count ("5 read 0"), and a toggletip naming each location,
+@@ -34,7 +35,7 @@
+ {% if not r.complete %}<span class="ncline{% if link %} uk-tt-line{% endif %}">Runs do this themselves: up to {{ r.max_lag }} unreported weeks, the forecast starts from the latest reported week and keeps the hub's horizons; beyond that the location is skipped.</span>{% endif %}
+ {%- endmacro %}
+ 
+-{% macro check(r, short=False, hidden=False, head_only=False) -%}
++{% macro check(r, short=False, hidden=False, head_only=False, tip=True) -%}
+ {%- set parts = r.short().split(' · ') -%}
+ <p class="newest-check{% if short %} hint{% endif %}" id="newest-check" data-week="{{ r.week }}"
+  data-complete="{{ 'yes' if r.complete else 'no' }}"{% if hidden %} hidden{% endif %}>
+@@ -44,7 +45,7 @@
+ {%- else -%}
+ {{ mark(r) }} {{ r.line() }}
+ {%- endif %}
+-{%- if not r.clean %}
++{%- if tip and not r.clean %}
+ {% call tips.tip("newest-gaps", "the jurisdictions to look at for " ~ r.week) -%}
+ {{ lines(r) }}
+ {%- endcall %}
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index dd5af382..2ba32c45 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -34,10 +34,13 @@
+   <span class="uk-tt-line">Forecasts export under non-hub names; never submitted.</span>
+   {%- else %}
+   <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from any archived week, as it stood then.</span>
+-  <span class="uk-tt-line"><b>Forecast date:</b> any day anchors on the latest archived week on or before it.</span>
++  <span class="uk-tt-line"><b>Forecast date:</b> a day anchors on the latest archived week on or before it, except a Saturday the archive skipped, which is refused.</span>
+   <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until the archive has it.</span>
+   <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days. It names the round; horizons count from it.</span>
+   <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC and Puerto Rico, and US, which is fitted and scored apart.</span>
++  {%- if data_issues %}
++  <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
++  {%- endif %}
+   {%- endif %}
+   {% endcall %}
+   {% if dataset %}
+@@ -62,9 +65,9 @@
+    {# two modes, one form (same controls, same run record): Real-time takes
+       the latest archived week the calendar allows; Vintage names one #}
+    <div class="modes">
+-    <div role="tablist" aria-label="forecast mode">
+-    <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
+-    <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
++    <div role="group" aria-label="forecast mode">
++    <button type="button" class="pill mode" data-mode="realtime" aria-pressed="false">Real-time</button>
++    <button type="button" class="pill mode" data-mode="vintage" aria-pressed="false">Vintage</button>
+     </div>
+    </div>
+    <input type="hidden" name="mode" id="mode-field" value="realtime">
+@@ -105,7 +108,9 @@
+    </div>
+    {% endif %}
+    {# the newest week's reporting, shown while the anchor is that week #}
+-   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
++   {# with the Data issues box under it, the line's counts are the box's
++      head and the box's rows name each state: no "?" #}
++   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week), tip=not data_issues) }}{% endif %}
+    {# the per-state choices for that week's zeros, collapses and gaps
+       (app/core/reported.py box_rows; recorded with the run) #}
+    {% if data_issues and not dataset %}{% import "_data_issues.html" as di %}{{ di.box(data_issues, data_issues_sha, hidden=(anchor_week != data_issues.week)) }}{% endif %}
+@@ -220,7 +225,7 @@
+         form.classList.toggle('mode-vintage', mode === 'vintage');
+         var mf = document.getElementById('mode-field'); if (mf) mf.value = mode;
+         document.querySelectorAll('.pill.mode').forEach(function (b) {
+-          b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
++          b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
+         });
+         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
+           box.value = box.dataset.default; paint(); paintSeason();
+diff --git a/app/ui/templates/methods.html b/app/ui/templates/methods.html
+index f61df049..128daec3 100644
+--- a/app/ui/templates/methods.html
++++ b/app/ui/templates/methods.html
+@@ -432,6 +432,19 @@
+  </table></div>
+  {% endcall %}
+  {% endfor %}
++ {% if settings_fixed %}
++ {% call tips.fold("Fixed by the model definition", id="mt-set-fixed", cls="mt-fold", after=tips.tag(settings_fixed | length ~ " settings")) %}
++ <p class="hint">Not settable: each value and why the model fixes it.</p>
++ <div class="mt-setscroll"><table class="mt-settings">
++  <thead><tr><th scope="col">Setting</th><th scope="col">Why it is fixed</th><th scope="col">Value</th></tr></thead>
++  <tbody>
++  {%- for l in settings_fixed %}
++   <tr><th scope="row">{{ l.key }}</th><td>{{ l.why }}</td><td data-label="Value">{{ l.value }}</td></tr>
++  {%- endfor %}
++  </tbody>
++ </table></div>
++ {% endcall %}
++ {% endif %}
+  </div>
+ </div>
+ {% endif %}
+@@ -597,6 +610,24 @@
+  when the week reads 0 (abstain, level, extend or blend), or setting the
+  newest one or two weeks aside for both models, or leaving the state out.
+  Such a choice never marks a run modified (docs/MISSING-DATA.md).</p>
++ <p>A state is listed when its newest week reads 0, falls under a fifth of
++ a week of 20 or more (collapsed), or was not reported. Each choice applies
++ to that run only and is recorded with it.</p>
++ <ul>
++  <li><b>Reads 0:</b> No forecast, the Groundhog abstains. Level, it
++  anchors on the mean of the last 4 weeks (all 0: a Poisson floor).
++  Extend, it carries the last positive week over the 0s. Blend, the mean
++  of level and extend. For all four the Oracle SIHRS keeps the 0.</li>
++  <li><b>Both from a week:</b> both models count the newest week or two as
++  unreported and forecast from that week, every horizon still counted
++  from the forecast date. Keep: as reported. From a week (not reported):
++  the engines' own walk back to the last reported week. Leave out: the
++  state is in neither file.</li>
++  <li><b>Recommended:</b> both from the week before when a 0 or a collapse
++  follows counts of 10 or more (a missed or partial report is likely);
++  level for small counts and runs of 0; keep a collapse when the two weeks
++  before already fell by half each.</li>
++ </ul>
+  {% endcall %}
+  {% call tips.fold("Two measured caveats", id="mt-sealcaveats", cls="mt-fold") %}
+  <p>Two measured caveats (docs/archive/RELEASE-1.0.md): seven
+diff --git a/app/ui/templates/run.html b/app/ui/templates/run.html
+index d049f9df..92474782 100644
+--- a/app/ui/templates/run.html
++++ b/app/ui/templates/run.html
+@@ -122,7 +122,7 @@
+ <div class="fc-rungrid out-rp-kv">
+ {% if results and not live %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
+ <div class="card runrec">{{ tips.heading("Run settings", "run-settings") }}
+- {{ settings_html(settings, title="Settings") | safe }}
++ {{ settings_html(settings, title="") | safe }}
+  {{ settings_html(versions, title="Produced by") | safe }}
+ </div>
+ </div>
