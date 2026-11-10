@@ -1,6 +1,6 @@
 diff --git a/app/tests/test_models_polish.py b/app/tests/test_models_polish.py
 new file mode 100644
-index 00000000..95f63442
+index 00000000..55745c4e
 --- /dev/null
 +++ b/app/tests/test_models_polish.py
 @@ -0,0 +1,76 @@
@@ -27,8 +27,8 @@ index 00000000..95f63442
 +from app.tests.test_models_tab import _run            # noqa: E402
 +
 +client = TestClient(srv)
-+PLOTLY = '<script defer src="/static/plotly.min.js"></script>'
-+CHARTS = '<script defer src="/static/charts.js"></script>'
++PLOTLY = '<script src="/static/plotly.min.js" defer></script>'
++CHARTS = '<script src="/static/charts.js" defer></script>'
 +
 +
 +def test_the_empty_forecasts_card_says_which_run_in_one_muted_line(monkeypatch):
@@ -96,6 +96,23 @@ index 50c42660..7a3cf11d 100644
      # the caption owns the figure's honesty note
      assert "Values shown are illustrative" in html
      assert "illustrative" in html
+diff --git a/app/tests/test_week_ticks.py b/app/tests/test_week_ticks.py
+index 1347ab43..bbe87d42 100644
+--- a/app/tests/test_week_ticks.py
++++ b/app/tests/test_week_ticks.py
+@@ -154,8 +154,10 @@ DATE_PAGES = ("forecast.html", "data.html", "model.html",
+ def test_every_console_chart_draws_through_the_helper():
+     for name in DATE_PAGES:
+         t = (TEMPLATES / name).read_text()
+-        assert ('<script src="/static/plotly.min.js"></script>'
+-                '<script src="/static/charts.js"></script>') in t, name
++        # the model page loads the pair deferred, and only with a fan
++        assert any(f'<script src="/static/plotly.min.js"{d}></script>'
++                   f'<script src="/static/charts.js"{d}></script>' in t
++                   for d in ("", " defer")), name
+     for p in list(TEMPLATES.glob("*.html")) + [STATIC / "sandbox.js"]:
+         t = p.read_text()
+         # no chart bypasses the helper (Plotly.Plots.resize and relayout
 diff --git a/app/ui/static/tabs/models.css b/app/ui/static/tabs/models.css
 index 4d160e7e..cf469df1 100644
 --- a/app/ui/static/tabs/models.css
@@ -140,7 +157,7 @@ index a8abf931..dd43984b 100644
   {% if two %}
   <!-- the two circuits: one harmonic form, per-strain peak timing -->
 diff --git a/app/ui/templates/model.html b/app/ui/templates/model.html
-index c0006db7..fb61b752 100644
+index c0006db7..1790b341 100644
 --- a/app/ui/templates/model.html
 +++ b/app/ui/templates/model.html
 @@ -1,6 +1,8 @@
@@ -149,7 +166,7 @@ index c0006db7..fb61b752 100644
 -{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 +{# the chart library (4.8 MB) only when there is a fan to draw, and
 +   deferred, so the page paints first; the research view never has one #}
-+{% block head %}{% if has_fans %}<script defer src="/static/plotly.min.js"></script><script defer src="/static/charts.js"></script>{% endif %}
++{% block head %}{% if has_fans %}<script src="/static/plotly.min.js" defer></script><script src="/static/charts.js" defer></script>{% endif %}
  <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
  {% block content %}
  {# a keyboard user reaches the run form without walking the diagrams and

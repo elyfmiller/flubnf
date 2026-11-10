@@ -14,7 +14,7 @@ How: the dev server over a state with one Groundhog-only run (all 53 locations, 
 - Reproduced: yes. /model/pf2s cold at 1280 px: DOMContentLoaded 1100 ms with plotly.min.js (4.8 MB) and charts.js in its head; /models 184 ms; neither page has a chart (no Oracle fan in this state).
 - Fix: model.html's head loads plotly.min.js and charts.js only `{% if has_fans %}`, both `defer`; the inline script's first `draw()` moves to DOMContentLoaded (deferred scripts run before it), the theme and text-size listeners stay. The research view never has fans, so it never loads the library.
 - After: /model/pf2s DOMContentLoaded 120 ms, no scripts in the head; /models 43 ms; /model/analogue (which has the fan) loads both deferred and draws the fan, no page errors.
-- Tests: `test_the_chart_library_loads_deferred_and_only_for_a_fan`.
+- Tests: `test_the_chart_library_loads_deferred_and_only_for_a_fan`; test_week_ticks' pin of the blocking pair in model.html takes the deferred pair (the blocking load is the bug).
 - Risk: a page whose fan arrives without a reload cannot happen (the fans are rendered server-side into FANQ). test_data_view and test_sandbox_editor pin the Data and Sandbox pages' plain script tags, which are untouched. Invariance: no.
 
 ## HM-17 (medium confidence: reproduced)
@@ -24,7 +24,7 @@ How: the dev server over a state with one Groundhog-only run (all 53 locations, 
 - Risk: the public site's harvest of Methods renders the same macro (the site-build test passes). Invariance: no.
 
 ## Checks
-- New `app/tests/test_models_polish.py` (3 tests), each failing on dev; test_theme_and_harmonic's pin moved. Models, harmonic, marks, pages, fans, layout, phone tables, site build, data view, download headers and month axes tests: 137 passed, 21 skipped. ruff (the gate) clean. Full suite: running; the result follows in a second commit.
+- New `app/tests/test_models_polish.py` (3 tests), each failing on dev; test_theme_and_harmonic's pin moved. Models, harmonic, marks, pages, fans, layout, phone tables, site build, data view, download headers and month axes tests: 137 passed, 21 skipped. ruff (the gate) clean. Full suite: the first run stopped on test_week_ticks' pin (now moved); rerun in progress.
 - Windows: templates and CSS only.
 
 ## Patch
